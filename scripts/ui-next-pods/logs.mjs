@@ -65,8 +65,8 @@ export const waitProcessMs = (seconds) => (seconds + 30) * 1000;
 // leave it behind, and the next run found its name taken. A Pod of that name that is already there is not the check's, so it is neither made, used nor removed: the check stops and says so. `exists`, `create` and
 // `remove` are the cluster's side, passed in, so each of these rules is tested without a cluster. A removal that fails is never lost: after a body that passed it fails the check (the Pod is still there, and the next run
 // would stop at it); after a failure of the creation or the body it is `report`ed on its own and the first failure is the one thrown.
-export async function withOwnedPod({ exists, create, remove }, body, { report = (message) => console.error(message) } = {}) {
-  const name = `${LOGS_RUNNING.namespace}/${LOGS_RUNNING.name}`;
+export async function withOwnedPod({ exists, create, remove, pod = LOGS_RUNNING }, body, { report = (message) => console.error(message) } = {}) {
+  const name = `${pod.namespace}/${pod.name}`;
   if (await exists()) {
     throw new Error(`the Pod ${name} is already there: it is not this check's, so it is not used and not deleted; delete it and run the check again`);
   }
@@ -147,6 +147,87 @@ export function compareRepress(reading, podName) {
 
   if (closed.sessions !== before) {
     problems.push(`the SDK holds ${String(closed.sessions)} sessions after the tab was closed, wanted ${String(before)}`);
+  }
+
+  return problems;
+}
+
+// S1-host: the RATE on the Logs strip of a busy Pod. The plugin's stream replays a Pod's latest lines (its default tail is 1,000 for each container) before its live ones, and the strip used to count the replay as the rate (7,878
+// lines/s on a Pod that writes 5: the demo's D2), and, with two containers, the tail of the second that arrived after the first one's first live line (53 lines/s on a Pod that writes 10), until the host learned to ask the plugin to
+// say where each source's replay ends (replay markers: the plugin counts the lines at the head of each stream, flags them and says when the last is delivered). The Pod is made for the check (`LOGS_BUSY`: two containers, each a
+// busybox that writes a backlog at once and then a known number of lines a second, never ending) and its session's strip is read every 250 ms after the Logs command is pressed.
+export const LOGS_BUSY = { namespace: 'checkout', name: 'logs-busy', backlog: 3000, perSecond: 5, containers: ['a', 'b'] };
+
+// What the Pod makes, all its containers together: the rate the strip is held to.
+export const busyRate = ({ perSecond, containers }) => perSecond * containers.length;
+
+// The lines the session replays at least: the tail of each container, which the plugin's request caps at 1,000 (below the backlog, so the replay is a tail and a rate made of it would be a burst).
+export const busyReplayed = ({ containers }) => REPLAYED_AT_LEAST * containers.length;
+
+// A container's script: its backlog at once, then `perSecond` lines a second for ever (a line, then a sleep of the share of a second one line takes).
+export function busyScript({ backlog, perSecond }) {
+  return `i=0; while [ $i -lt ${String(backlog)} ]; do i=$((i + 1)); echo "backlog $i"; done; while true; do echo live; sleep ${String(1 / perSecond)}; done`;
+}
+
+// The Pod as a manifest (`kubectl apply -f`): one container for each of `containers`, the same script in each.
+export function busyPod(pod) {
+  return {
+    apiVersion: 'v1',
+    kind: 'Pod',
+    metadata: { name: pod.name, namespace: pod.namespace },
+    spec: { restartPolicy: 'Never', containers: pod.containers.map((name) => ({ name, image: 'busybox:1.37.0', command: ['sh', '-c', busyScript(pod)] })) },
+  };
+}
+
+// What the strip says in place of a rate when none is known: the mock's words for a rate that is absent (cat-msg-c-eventbridge4.js, `EB.none('No rate')`).
+export const NO_RATE = 'No rate';
+
+// The strip's text (`1,000 lines · 4.9 lines/s · Following`) -> what it says: how many lines, and the rate as a number, 'none' when it says no rate, or undefined when it says neither (the strip is not on screen yet).
+export function readStrip(text) {
+  const lines = /^(?:[\d,]+ of )?([\d,]+) lines?/.exec(text);
+  const rate = /([\d,.]+) lines\/s/.exec(text);
+  return {
+    lines: lines === null ? undefined : Number(lines[1].replace(/,/g, '')),
+    rate: text.includes(NO_RATE) ? 'none' : rate === null ? undefined : Number(rate[1].replace(/,/g, '')),
+  };
+}
+
+// The strip is bounded by what the Pod makes: no sample may read above this many times the Pod's rate, and the last SETTLED_SAMPLES must read between these shares of it. The bound is a figure, not a time, so a slow runner
+// cannot break it; the counts are of samples, not seconds. The strip must also have counted the replay (REPLAYED_AT_LEAST lines: the plugin's default tail), or a rate made of it would not have shown and the check would be blind.
+export const RATE_BOUND_FACTOR = 2;
+export const RATE_SETTLED = { low: 0.5, high: 2 };
+export const SETTLED_SAMPLES = 8;
+export const TELLING_SAMPLES = 24;
+export const REPLAYED_AT_LEAST = 1000;
+
+// What the samples of the strip (its text every 250 ms, in order) say is wrong with the rate of a Pod that makes `perSecond` lines a second (all its containers together) and whose session replays `replayed` lines or more: it read
+// above the bound at a sample (the replay counted as live), it told a rate in too few samples (no source said its backlog was delivered, or the strip never said so), it did not settle near the Pod's rate, or it never counted the
+// replay (a check that compared nothing with nothing).
+export function compareRate(texts, { perSecond, replayed = REPLAYED_AT_LEAST }) {
+  const problems = [];
+  const readings = texts.map(readStrip);
+  const lines = Math.max(0, ...readings.map((reading) => reading.lines ?? 0));
+  if (lines < replayed) {
+    problems.push(`the strip counted ${String(lines)} lines at most, wanted ${String(replayed)} or more: the session did not replay the Pod's backlog, so a rate made of the replay would not show`);
+  }
+
+  const bound = RATE_BOUND_FACTOR * perSecond;
+  readings.forEach((reading, at) => {
+    if (typeof reading.rate === 'number' && reading.rate > bound) {
+      problems.push(`sample ${String(at + 1)} of ${String(readings.length)} reads ${String(reading.rate)} lines/s, the Pod writes ${String(perSecond)} a second (the limit is ${String(bound)})`);
+    }
+  });
+  const told = readings.filter((reading) => typeof reading.rate === 'number');
+  if (told.length < SETTLED_SAMPLES) {
+    problems.push(`the strip told a rate in ${String(told.length)} of ${String(readings.length)} samples, wanted ${String(SETTLED_SAMPLES)} or more: the source did not say its backlog was delivered, or the strip did not say what it was told`);
+    return problems;
+  }
+
+  const low = RATE_SETTLED.low * perSecond;
+  const high = RATE_SETTLED.high * perSecond;
+  const off = readings.slice(-SETTLED_SAMPLES).filter((reading) => typeof reading.rate !== 'number' || reading.rate < low || reading.rate > high);
+  if (off.length > 0) {
+    problems.push(`the last ${String(SETTLED_SAMPLES)} samples read ${JSON.stringify(readings.slice(-SETTLED_SAMPLES).map((reading) => reading.rate))}, wanted every one between ${String(low)} and ${String(high)} lines/s (the Pod writes ${String(perSecond)})`);
   }
 
   return problems;

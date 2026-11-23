@@ -5,8 +5,8 @@ export type StatInput = {
   readonly shown: number;
   /** Lines the view holds. */
   readonly total: number;
-  /** Lines a second over the last few seconds. */
-  readonly rate: number;
+  /** Lines a second over the last few seconds; undefined when the feed has no count to tell it from (its sources are replaying, or it never says): the strip says so, and not 0.0. */
+  readonly rate: number | undefined;
   /** Whether the stream is still going: a log that is over has no rate and no end to follow. */
   readonly live: boolean;
   readonly paused: boolean;
@@ -27,6 +27,12 @@ const NUMBER = new Intl.NumberFormat('en-US');
 const RATE = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const plural = (count: number, word: string): string => `${NUMBER.format(count)} ${word}${count === 1 ? '' : 's'}`;
+
+/**
+ * What the strip says where the rate would be when none is known: the mock's words for a rate that is absent (cat-msg-c-eventbridge4.js:91, `['Rate', r.rate ? `${M.nf(r.rate)}/s` : EB.none('No rate')]`, the dash of
+ * its `H.none` named "No rate"). A source that writes nothing reads 0.0 lines/s, and that is a known rate; this is the rate nobody has said.
+ */
+export const NO_RATE = 'No rate';
 
 /**
  * What the one number of dropped lines is made of, for the tooltip and the accessible description of the strip's text; undefined while nothing was dropped. The strip says one
@@ -55,7 +61,7 @@ export function droppedNote({ dropped, unread, capacity }: Pick<StatInput, 'drop
 export function statText({ shown, total, rate, live, paused, held, following, unseen, dropped }: StatInput): string {
   const parts = [shown === total ? plural(total, 'line') : `${NUMBER.format(shown)} of ${plural(total, 'line')}`];
   if (live) {
-    parts.push(`${RATE.format(rate)} lines/s`);
+    parts.push(rate === undefined ? NO_RATE : `${RATE.format(rate)} lines/s`);
   }
 
   if (paused) {

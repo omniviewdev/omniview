@@ -81,8 +81,9 @@ it('preserves session readiness and terminal state independently of bounded sour
   disconnect();
 });
 
-// SDK v0.22.0: an event kind the SDK does not know arrives as -1 (v0.21.0 sent it as 0), and the opt-in kind 7 (SOURCE_CAUGHT_UP) as 7, which the host
-// does not ask for. Neither is a kind a reader of this buffer reads, so neither takes one of the 100 slots of the events it keeps while a create call is out.
+// SDK v0.22.0: an event kind the SDK does not know arrives as -1 (v0.21.0 sent it as 0), and the opt-in kind 7 (SOURCE_CAUGHT_UP) as 7, which the host's lane asks every session for and which the one
+// stream that reads it (`openLogStream`) takes over before this buffer holds anything. Neither is a kind a late reader of this buffer reads, so neither takes one of the 100 slots of the events it keeps
+// while a create call is out.
 it('keeps the events it reads through a burst of events of a kind it does not read, and hands none of those on', async () => {
   const id = 'unknown-burst';
   const response = Promise.withResolvers<{ id: string }>();

@@ -61,7 +61,7 @@ type Mounted = {
  * `endsOnClose`: the stream tells its listeners it ended as it closes, as a real one does (the runtime's `close` publishes the end before it returns): the view hears the end of the stream the host closed.
  * The body is rendered over the session's record as the store holds it, as the panel's slot does, so a session that became held is drawn as one.
  */
-function mount(options: { readonly visible?: boolean; readonly stream?: boolean; readonly endsOnClose?: boolean } = {}): Mounted {
+function mount(options: { readonly visible?: boolean; readonly stream?: boolean; readonly endsOnClose?: boolean; readonly marked?: boolean } = {}): Mounted {
   const store = createPanelStore();
   store.registerTool(LOGS_TOOL);
   store.syncPlugins([{ id: 'acme', tools: [] }]);
@@ -69,6 +69,7 @@ function mount(options: { readonly visible?: boolean; readonly stream?: boolean;
   streams.attach();
   const feed: FakeFeed = fakeFeed({
     state: 'streaming',
+    ...(options.marked === undefined ? {} : { marked: options.marked }),
     ...(options.endsOnClose === true
       ? {
         close: () => {
@@ -416,5 +417,30 @@ describe('the source of a line (L2)', () => {
     frames();
     expect(heads()).toEqual(['Time', 'Level', 'Source', 'Message']);
     expect(dataRows().map((row) => cells(row)[2])).toEqual(['worker', 'worker']);
+  });
+});
+
+// S1-host: the strip's rate is what the feed counts live, and a feed whose producer says nothing of which lines are live has no rate to show. The words are the mock's for a rate that is absent, and the strip is the
+// kit's own: what the host adds is that it hands the feed over as it is, with no adapter that would give a count the producer did not.
+describe('the strip of a Logs session and the rate its feed says it has (S1)', () => {
+  const strip = (): string => screen.getByRole('group', { name: 'Session status' }).textContent;
+
+  it('shows the rate of a feed whose producer says which lines are live', () => {
+    const { feed } = mount();
+    act(() => {
+      feed.push(20);
+      vi.advanceTimersByTime(16);
+    });
+    expect(strip()).toMatch(/^20 lines · \d+\.\d lines\/s · Following$/);
+  });
+
+  it('says no rate for a feed whose producer says nothing, and still draws every line: the lines are not the rate\'s to hold back', () => {
+    const { feed } = mount({ marked: false });
+    act(() => {
+      feed.push(20);
+      vi.advanceTimersByTime(16);
+    });
+    expect(strip()).toBe('20 lines · No rate · Following');
+    expect(rows()).toBeGreaterThan(0);
   });
 });

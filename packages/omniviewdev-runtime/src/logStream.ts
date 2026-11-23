@@ -16,6 +16,14 @@
 // What reaches React. `getSnapshot()` is a new object only when the status changes (state, pause, cause, the list of sources), a few times in a
 // session and never per line: 10,000 lines a second are not 10,000 commits. A consumer that draws lines subscribes with the same `subscribe`
 // and reads on its own clock (one animation frame): the listener runs at most once between two `read()` calls for lines.
+//
+// Replay markers (SDK v0.22.0, S1-host). A stream opened on a source that has written before replays its latest lines first, in the same stream as the live ones. The host's Go lane asks the
+// backend to say where each source's replay ends, and the backend says it in three places: the answer to the create call (`replay_markers`: will markers come for this session at all), each line
+// (`replay`: this one is part of a replay) and one event per source and per opening (SOURCE_CAUGHT_UP: this source's replay is over). The stream keeps what the backend said and nothing it
+// guessed: no clock, no time on a line, no gap. Each source is `replaying` (markers will come, its word is not in yet), `live` (its replay is over) or `unknown` (the backend will say nothing of it:
+// a session without markers, from a plugin that predates them or declares no count). The count a rate may be made of, `LogStreamStats.live`, is the lines that are not flagged replay and come from a
+// source that is `live`, counted when the stream ACCEPTS them, so a reader that is slow, paused or away does not change it. A source that is never marked (a plugin that could not count its replay in
+// time says so by saying nothing) stays `replaying` for as long as the session lasts: the stream turns nothing live by waiting, and it says nothing of the wait but the absence of a rate.
 
 import type { CancellablePromise } from '@wailsio/runtime';
 import type { LogSession } from './bindings/github.com/omniviewdev/plugin-sdk/pkg/v1/logs/models';
@@ -46,6 +54,12 @@ export interface LogLine {
   readonly level: LogLevel | undefined;
   /** Where the backend says the line comes from; `current` for every line today. */
   readonly origin: LogLineOrigin;
+  /**
+   * True when the backend flags the line as part of its source's replay: one of the lines the source already held when its stream opened. Only the backend's flag, as it sent it: false for a line it did
+   * not flag, and for every line of a session without markers (`LogStreamSnapshot.markers` is `no`), where it says nothing of replay. A flag on a line of a source that is not `live` is not a fact about
+   * the line either: a plugin that cannot count a source's replay flags every line of that opening, the live ones too, and never says it is over.
+   */
+  readonly replay: boolean;
 }
 
 /** What one `read` returns. */
@@ -70,6 +84,19 @@ export type LogStreamState = 'starting' | 'streaming' | 'paused' | 'ended' | 'fa
  */
 export type LogSourceState = 'connecting' | 'streaming' | 'reconnecting' | 'ended' | 'failed' | 'removed';
 
+/**
+ * Where a source stands in the replay of the lines it already held when its stream opened, as the BACKEND says it (never as the stream works it out): `replaying` while markers will come for the session
+ * and the source's word that its replay is over is not in yet; `live` from that word (SOURCE_CAUGHT_UP) on; `unknown` when the backend will say nothing about it. A source that reopens is `replaying` again
+ * from the word that it did, and `live` again at its next marker; a source that is never marked stays `replaying` (it is not turned `live` by waiting).
+ */
+export type LogSourceReplay = 'replaying' | 'live' | 'unknown';
+
+/**
+ * Whether the backend marks the replays of this session: `pending` until the answer to the create call (or the first marker, which is the backend's word that it does), then `yes` (it flags each source's
+ * replay and says when it is over) or `no` (it never will: the plugin predates replay markers, declares no count, or the host did not ask). Decided once; `yes` is never taken back.
+ */
+export type LogStreamMarkers = 'pending' | 'yes' | 'no';
+
 /** One source of a session (for a Pod, one container), as far as the backend's events and lines tell. */
 export interface LogSourceInfo {
   /** The id lines name in `LogLine.source`. */
@@ -80,6 +107,8 @@ export interface LogSourceInfo {
   readonly state: LogSourceState;
   /** The backend's last message about the source: the reconnect attempt, the failure. */
   readonly message?: string | undefined;
+  /** Where the source stands in its replay, as the backend says it. */
+  readonly replay: LogSourceReplay;
 }
 
 /** Why a stream failed. */
@@ -106,6 +135,8 @@ export interface LogStreamSnapshot {
   readonly cause: LogStreamCause | undefined;
   /** Every source the stream has heard of, in the order it heard of them; the list changes at most every 50 ms. */
   readonly sources: readonly LogSourceInfo[];
+  /** Whether the backend marks the replays of this session. */
+  readonly markers: LogStreamMarkers;
 }
 
 /** Counters of the buffer. Read them when a frame draws: they change with every batch and are not part of the snapshot. */
@@ -116,6 +147,12 @@ export interface LogStreamStats {
   readonly dropped: number;
   /** Lines held now, waiting for `read`. */
   readonly held: number;
+  /**
+   * The lines a rate may be made of, counted when the stream accepted them (dropped ones included, and whether or not anyone has read them): those the backend did NOT flag as replay and that came from a
+   * source it has said is `live`. It only goes up. `undefined` while no source that is still going is `live`: the backend has said nothing that makes a rate (no source has finished its replay, or the
+   * session has no markers at all), and the stream does not guess one.
+   */
+  readonly live: number | undefined;
 }
 
 /** What to read, and how. A Pod is `resourceKey` `k8s:/pods`, its name `resourceId`, its container `target`. */
@@ -198,6 +235,8 @@ const EVENT_RECONNECTING = 3;
 const EVENT_RECONNECTED = 4;
 const EVENT_STREAM_ENDED = 5;
 const EVENT_SESSION_READY = 6;
+/** Sent only for a session that asked for replay markers and whose plugin accepted: one source's replay is over (once for each opening of the source). */
+const EVENT_SOURCE_CAUGHT_UP = 7;
 const LEVELS: ReadonlyArray<LogLevel | undefined> = [undefined, 'trace', 'debug', 'info', 'warn', 'error', 'fatal'];
 const ORIGINS: readonly LogLineOrigin[] = ['current', 'previous', 'system'];
 /** Go writes the zero time for a line that has none. */
@@ -206,12 +245,22 @@ const NO_LABELS: Readonly<Record<string, string>> = Object.freeze({});
 /** Past this many released slots, and once they are half of the array, the buffer is rebuilt without them. */
 const COMPACT_AFTER = 4096;
 
-type WireLine = { source_id?: unknown; labels?: unknown; timestamp?: unknown; content?: unknown; origin?: unknown; level?: unknown };
+type WireLine = { source_id?: unknown; labels?: unknown; timestamp?: unknown; content?: unknown; origin?: unknown; level?: unknown; replay?: unknown };
 type WireEvent = { type?: unknown; source_id?: unknown; message?: unknown };
 type Phase = 'starting' | 'streaming' | 'ended' | 'failed';
-type SourceRecord = { id: string; labels: Readonly<Record<string, string>>; state: LogSourceState; message: string | undefined; view: LogSourceInfo | undefined };
+type SourceRecord = {
+  id: string;
+  labels: Readonly<Record<string, string>>;
+  state: LogSourceState;
+  message: string | undefined;
+  replay: LogSourceReplay;
+  view: LogSourceInfo | undefined;
+};
 /** What a line with no source id is attributed to. Never listed and never changed: frozen, so that a change attempted anywhere fails at once and cannot hand the next stream labels. */
-const UNNAMED: SourceRecord = Object.freeze({ id: '', labels: NO_LABELS, state: 'streaming', message: undefined, view: undefined });
+const UNNAMED: SourceRecord = Object.freeze({ id: '', labels: NO_LABELS, state: 'streaming', message: undefined, replay: 'unknown', view: undefined });
+
+/** A source whose lines may make a rate: it has not ended, failed or been removed. */
+const isGoing = (state: LogSourceState): boolean => state !== 'ended' && state !== 'failed' && state !== 'removed';
 
 function positiveInteger(name: string, value: number): number {
   if (!Number.isInteger(value) || value < 1) {
@@ -293,6 +342,9 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
   let cause: LogStreamCause | undefined;
   let closed = false;
   let hasNoSession = false;
+  let markers: LogStreamMarkers = 'pending';
+  /** The lines accepted that the backend did not flag as replay and that a source that is live sent: what `stats().live` says once a source is live. */
+  let liveLines = 0;
   const sources = new Map<string, SourceRecord>();
   let lastSource: SourceRecord | undefined;
   let lastFailure: { source: string; message: string } | undefined;
@@ -303,7 +355,7 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
   let disconnect = (): void => undefined;
   let creation: CancellablePromise<LogSession | null> | undefined;
   let closing: Promise<void> | undefined;
-  let snapshot: LogStreamSnapshot = { id, state: 'starting', paused: false, cause: undefined, sources: [] };
+  let snapshot: LogStreamSnapshot = { id, state: 'starting', paused: false, cause: undefined, sources: [], markers };
 
   const notify = (): void => {
     for (const listener of [...listeners]) {
@@ -322,9 +374,9 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
     let list = snapshot.sources;
     if (sourcesChanged) {
       sourcesChanged = false;
-      list = [...sources.values()].map((source) => (source.view ??= { id: source.id, labels: source.labels, state: source.state, message: source.message }));
+      list = [...sources.values()].map((source) => (source.view ??= { id: source.id, labels: source.labels, state: source.state, message: source.message, replay: source.replay }));
     }
-    snapshot = { id, state: phase === 'ended' || phase === 'failed' ? phase : paused ? 'paused' : phase, paused, cause, sources: list };
+    snapshot = { id, state: phase === 'ended' || phase === 'failed' ? phase : paused ? 'paused' : phase, paused, cause, sources: list, markers };
     notify();
   };
 
@@ -342,6 +394,56 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
       source.view = undefined;
       sourcesChanged = true;
     }
+  };
+
+  /** What a source that is heard of now stands at: `replaying` when markers will come, `unknown` while that is not known or when it will not. */
+  const startingReplay = (): LogSourceReplay => (markers === 'yes' ? 'replaying' : 'unknown');
+
+  const setReplay = (source: SourceRecord, replay: LogSourceReplay): void => {
+    if (source !== UNNAMED && source.replay !== replay) {
+      source.replay = replay;
+      source.view = undefined;
+      sourcesChanged = true;
+    }
+  };
+
+  /** The source opens again (it was added, or reconnects): its replay is delivered again, and the backend will say again when it is over. Only a session with markers has anything to wait for. */
+  const reopens = (source: SourceRecord): void => {
+    if (markers === 'yes') {
+      setReplay(source, 'replaying');
+    }
+  };
+
+  /**
+   * The backend's word on whether markers come: the answer to the create call, or a marker itself (which exists only because they do). `yes` is never taken back; the sources heard of before the word was
+   * known, which were `unknown`, now wait for their own.
+   */
+  const learnMarkers = (next: 'yes' | 'no'): void => {
+    if (markers === next || (markers === 'yes' && next === 'no')) {
+      return;
+    }
+
+    markers = next;
+    if (next === 'yes') {
+      for (const source of sources.values()) {
+        if (source.replay === 'unknown') {
+          setReplay(source, 'replaying');
+        }
+      }
+    }
+
+    publishSoon();
+  };
+
+  /** True while some source that is still going has said its replay is over: the only time the stream has a count to give. */
+  const hasLiveSource = (): boolean => {
+    for (const source of sources.values()) {
+      if (source.replay === 'live' && isGoing(source.state)) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
   /**
@@ -367,7 +469,7 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
       learnLabels(known, wireLabels);
       return known;
     }
-    const source: SourceRecord = { id: sourceId, labels: labelsOf(wireLabels), state: phase === 'ended' ? 'ended' : state, message: undefined, view: undefined };
+    const source: SourceRecord = { id: sourceId, labels: labelsOf(wireLabels), state: phase === 'ended' ? 'ended' : state, message: undefined, replay: startingReplay(), view: undefined };
     sources.set(sourceId, source);
     sourcesChanged = true;
     return source;
@@ -464,6 +566,12 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
       }
       lastSource = source;
       const text = typeof raw.content === 'string' ? raw.content : '';
+      const replay = raw.replay === true;
+      // The rate's lines: not flagged replay, from a source whose replay the backend said is over. Counted here, when the line is accepted, not when it is read: a view that is away reads late, a bound drops lines
+      // it never read, and neither changes how fast the source writes.
+      if (!replay && source.replay === 'live' && isGoing(source.state)) {
+        liveLines++;
+      }
       ring.push({
         seq: ++seq,
         source: source.id,
@@ -471,6 +579,7 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
         text,
         level: LEVELS[(raw.level as number | undefined) ?? 0],
         origin: ORIGINS[(raw.origin as number | undefined) ?? 0] ?? 'current',
+        replay,
       });
       heldChars += text.length;
     }
@@ -539,8 +648,11 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
       }
       case EVENT_SOURCE_ADDED: {
         const added = source();
-        if (added !== undefined && added.state !== 'streaming') {
-          touch(added, 'connecting');
+        if (added !== undefined) {
+          if (added.state !== 'streaming') {
+            touch(added, 'connecting');
+          }
+          reopens(added);
         }
         break;
       }
@@ -555,6 +667,7 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
         const reconnecting = source();
         if (reconnecting !== undefined) {
           touch(reconnecting, 'reconnecting', message);
+          reopens(reconnecting);
         }
         break;
       }
@@ -562,6 +675,20 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
         const reconnected = source();
         if (reconnected !== undefined) {
           touch(reconnected, 'streaming');
+          reopens(reconnected);
+        }
+        break;
+      }
+      case EVENT_SOURCE_CAUGHT_UP: {
+        // The backend's word that this source's replay is over: it is live from here, and the marker is the proof that markers are on. A source it never named is named now, like by any other event; a marker for no
+        // source (an empty id) is a marker of nothing. The word repeats once for each opening, and a repeat of the same state changes nothing.
+        if (sourceId === '') {
+          return;
+        }
+        learnMarkers('yes');
+        const caught = source();
+        if (caught !== undefined) {
+          setReplay(caught, 'live');
         }
         break;
       }
@@ -666,6 +793,8 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
         if (closed || session === null) {
           return;
         }
+        // The answer says whether markers will come: absent is `no` (Go omits the field when it is false), and a plugin that predates them never sets it.
+        learnMarkers(session.replay_markers === true ? 'yes' : 'no');
         // Go sends `null`, not `[]`, for a session that has no sources yet, and the runtime's create call hands the JSON back as it came.
         for (const source of session.active_sources ?? []) {
           sourceOf(source.id, source.labels, 'connecting');
@@ -699,7 +828,7 @@ export function openLogStream(request: LogStreamRequest, options: LogStreamOptio
     },
     getSnapshot: () => snapshot,
     read,
-    stats: () => ({ received: seq, dropped, held: ring.length - head }),
+    stats: () => ({ received: seq, dropped, held: ring.length - head, live: hasLiveSource() ? liveLines : undefined }),
     pause,
     resume,
     close,

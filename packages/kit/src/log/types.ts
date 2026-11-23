@@ -80,6 +80,13 @@ export type LogFeedStats = {
   readonly dropped: number;
   /** Lines held now, waiting for `read`. */
   readonly held: number;
+  /**
+   * The lines a rate may be made of: those the source says are live, counted when the feed ACCEPTED them (dropped ones included, and whether or not the view has read them), so a view that is away or slow does not
+   * change it. A line the source flags as part of a replay (what it already held when the stream opened) is not live, and nor is a line of a source that has not yet said its replay is over. It only goes up. The view
+   * tells the strip's rate from it and the clock, and reads no line's time and no gap to work one out: what is live is the source's to say, and a feed that is told nothing says nothing. `undefined` (or absent: a feed
+   * written before this member) while it has no count (the sources are replaying, or the source never says): the strip then shows no rate, which is not 0.0 (a source that writes nothing).
+   */
+  readonly live?: number | undefined;
 };
 
 /**

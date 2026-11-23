@@ -1,13 +1,19 @@
-// The Logs session body (`LogSession`, the host's own) over a feed that does what a real stream does at open, for the probe (logs-open-probe.mjs): it replays the last lines of a source that has been writing for a
-// while (REPLAY lines, each stamped with the time it was written, the newest 1 s before the page opened, delivered in batches in the first half second, with nothing to say they are a replay) and then writes
-// RATE lines a second, each stamped with the time it is written. Nothing else is invented: the view, its model, the strip are the product's.
+// The Logs session body (`LogSession`, the host's own) over a feed that is told by its producer, as the runtime's stream is told by a backend that marks replays (S1-host), for the probe (logs-open-probe.mjs). The producer
+// replays the last lines of a source that has been writing for a while (REPLAY lines, flagged as replay, delivered in batches in the first second) and says the replay is over BEFORE the tail of it was delivered (the host
+// batches lines and sends events at once, so a marker overtakes the lines before it): the lines flagged replay that come after the marker are the last 1,500. Then the source writes RATE lines a second. The feed counts what
+// the producer says is live (`LogFeedStats.live`: lines that are not flagged replay, from a source that has said its replay is over) when it accepts a line, and says nothing before the marker. Nothing else is invented:
+// the view, its model and the strip are the product's. A line carries a time, which the view must not read.
 //
-//   ?rate=5            lines a second after the replay (default 5)
-//   ?replay=5000       lines replayed at open (default 5000)
-//   ?control=fresh     the probe's perturbation: the replay is stamped with the instant it is delivered, as lines that were written just now: a feed that gives
-//                      the view no way to tell a replay from live lines, which the strip must then read as the live rate it is (a burst). The probe's rate assertion must see it.
+//   ?rate=5              lines a second after the replay (default 5)
+//   ?replay=5000         lines replayed at open (default 5000)
+//   ?marker=ahead        the default: the marker comes after 70% of the replay, with the rest of it still to come
+//   ?marker=never        the source is never marked (a plugin that could not count its replay in time): no word comes, at all, and the strip must say no rate for as long as the page lives
+//   ?control=...         the probe's perturbations, each the fault one of its assertions is there to see:
+//                          counted-replay   the feed counts the lines flagged replay as live (a consumer that ignores the flag): the strip reads the burst
+//                          no-wait          the feed has a count from the start and does not wait for the producer's word (a consumer that takes a source for live before it is told): the strip reads 0.0 where it should say no rate
+//                          timeout-live     with ?marker=never, the feed turns live after 3 s with no word (an invented timeout): the strip reads a figure where it should say no rate, for good
 //
-// What the page exposes: `window.__series` (a sample of the strip's text every 250 ms from the first frame: `[ms since the page opened, text]`) and `window.__feed` (what the feed made so far).
+// What the page exposes: `window.__series` (a sample of the strip's text every 250 ms from the moment the producer starts: `[ms since then, text]`) and `window.__feed` (what the feed made so far, and when its producer spoke).
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import { ThemeProvider, type LogFeed, type LogFeedBatch, type LogFeedLine, type LogFeedSnapshot, type LogFeedStats } from '@omniviewdev/kit';
@@ -17,24 +23,45 @@ import { LogSession } from '../panel/logs/LogSession';
 const params = new URLSearchParams(window.location.search);
 const RATE = Number(params.get('rate') ?? 5);
 const REPLAY = Number(params.get('replay') ?? 5000);
+const MARKER = params.get('marker') ?? 'ahead';
 const CONTROL = params.get('control') ?? '';
 const BATCH = 250;
-const BATCH_EVERY_MS = 25;
+const BATCH_EVERY_MS = 50;
+/** The marker comes after this share of the replay's batches: the rest of the replay is delivered after it. */
+const MARKER_AFTER_SHARE = 0.7;
+const SILENT_TIMEOUT_MS = 3000;
+/** The producer starts this long after the page mounted the view, so that the strip is on screen before anything is said and the series has samples that come before the marker. */
+const START_AFTER_MS = 600;
 
-/** The feed: what the runtime's stream is to the view (a consumer-paced `read`, one wake-up between two reads), over the replay and the live lines of this page. */
-function makeFeed(): LogFeed & { readonly made: { replayed: number; live: number } } {
+/** What the producer made so far: `markerAt` and `liveFrom` are on the clock of the series (ms since the producer started). */
+type Made = { replayed: number; live: number; afterMarker: number; markerAt: number | undefined; liveFrom: number | undefined };
+
+/** The feed: what the runtime's stream is to the view (a consumer-paced `read`, one wake-up between two reads, a count of live lines), over the replay and the live lines of this page. */
+function makeFeed(): LogFeed & { readonly made: Made; readonly start: (startedAt: number) => void } {
   const held: LogFeedLine[] = [];
   const listeners = new Set<() => void>();
-  const made = { replayed: 0, live: 0 };
+  const made: Made = { replayed: 0, live: 0, afterMarker: 0, markerAt: undefined, liveFrom: undefined };
   let seq = 0;
   let received = 0;
+  let liveLines = 0;
+  /** Whether the producer has said a source's replay is over. With `no-wait` the feed behaves as if it had from the start. */
+  let marked = CONTROL === 'no-wait';
   let status: LogFeedSnapshot = { state: 'streaming', paused: false, cause: undefined };
-  const accept = (lines: LogFeedLine[]): void => {
-    held.push(...lines);
-    received += lines.length;
+  const wake = (): void => {
     for (const listener of [...listeners]) {
       listener();
     }
+  };
+
+  const accept = (lines: LogFeedLine[], replay: boolean): void => {
+    held.push(...lines);
+    received += lines.length;
+    // Counted when the feed accepts a line, whoever reads it: a line flagged replay is not live (unless the feed is the control that ignores the flag), and no line is before the producer's word.
+    if (marked && (!replay || CONTROL === 'counted-replay')) {
+      liveLines += lines.length;
+    }
+
+    wake();
   };
 
   const line = (text: string, written: number): LogFeedLine => {
@@ -42,28 +69,56 @@ function makeFeed(): LogFeed & { readonly made: { replayed: number; live: number
     return { seq, source: 'worker/app', timestamp: new Date(written).toISOString(), text, level: undefined };
   };
 
-  const opened = Date.now();
-  let delivered = 0;
-  const replay = setInterval(() => {
-    const lines: LogFeedLine[] = [];
-    for (let index = 0; index < BATCH && delivered < REPLAY; index += 1, delivered += 1) {
-      const written = CONTROL === 'fresh' ? Date.now() : opened - 1000 - (REPLAY - 1 - delivered) * 200;
-      lines.push(line(`replayed line ${delivered + 1}`, written));
-    }
+  const start = (startedAt: number): void => {
+    const opened = Date.now();
+    const say = (): void => {
+      marked = true;
+      made.markerAt = Math.round(performance.now() - startedAt);
+      wake();
+    };
 
-    made.replayed += lines.length;
-    accept(lines);
-    if (delivered >= REPLAY) {
-      clearInterval(replay);
-      setInterval(() => {
-        made.live += 1;
-        accept([line(`live line ${made.live}`, Date.now())]);
-      }, 1000 / RATE);
+    const batches = Math.ceil(REPLAY / BATCH);
+    const markerBatch = Math.floor(batches * MARKER_AFTER_SHARE);
+    let delivered = 0;
+    let batch = 0;
+    const replay = setInterval(() => {
+      const lines: LogFeedLine[] = [];
+      for (let index = 0; index < BATCH && delivered < REPLAY; index += 1, delivered += 1) {
+        lines.push(line(`replayed line ${delivered + 1}`, opened - 1000 - (REPLAY - 1 - delivered) * 200));
+      }
+
+      made.replayed += lines.length;
+      if (made.markerAt !== undefined) {
+        made.afterMarker += lines.length;
+      }
+
+      accept(lines, true);
+      batch += 1;
+      if (MARKER !== 'never' && batch === markerBatch) {
+        say();
+      }
+
+      if (delivered >= REPLAY) {
+        clearInterval(replay);
+        made.liveFrom = Math.round(performance.now() - startedAt);
+        setInterval(() => {
+          made.live += 1;
+          // A source that is never marked flags what it writes as replay too (the interim of a plugin that could not count): nothing it sends is live, whatever its own flag says.
+          accept([line(`live line ${made.live}`, Date.now())], MARKER === 'never');
+        }, 1000 / RATE);
+      }
+    }, BATCH_EVERY_MS);
+    if (MARKER === 'never' && CONTROL === 'timeout-live') {
+      setTimeout(() => {
+        marked = true;
+        wake();
+      }, SILENT_TIMEOUT_MS);
     }
-  }, BATCH_EVERY_MS);
+  };
 
   return {
     made,
+    start,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
@@ -75,7 +130,7 @@ function makeFeed(): LogFeed & { readonly made: { replayed: number; live: number
       const lines = held.splice(0, max);
       return { lines, dropped: 0, held: held.length };
     },
-    stats: (): LogFeedStats => ({ received, dropped: 0, held: held.length }),
+    stats: (): LogFeedStats => ({ received, dropped: 0, held: held.length, live: marked ? liveLines : undefined }),
     pause: () => {
       status = { ...status, state: 'paused', paused: true };
     },
@@ -90,11 +145,6 @@ Reflect.set(window, '__feed', feed);
 
 const series: Array<[number, string]> = [];
 Reflect.set(window, '__series', series);
-const opened = performance.now();
-setInterval(() => {
-  const text = document.querySelector('[role="group"][aria-label="Session status"] > span[aria-live]')?.textContent ?? '';
-  series.push([Math.round(performance.now() - opened), text]);
-}, 250);
 
 createRoot(document.getElementById('root')!).render(
   <ThemeProvider>
@@ -103,3 +153,12 @@ createRoot(document.getElementById('root')!).render(
     </div>
   </ThemeProvider>,
 );
+
+setTimeout(() => {
+  const opened = performance.now();
+  feed.start(opened);
+  setInterval(() => {
+    const text = document.querySelector('[role="group"][aria-label="Session status"] > span[aria-live]')?.textContent ?? '';
+    series.push([Math.round(performance.now() - opened), text]);
+  }, 250);
+}, START_AFTER_MS);
