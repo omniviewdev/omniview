@@ -131,7 +131,8 @@ func TestAnAttachHandsOverWhatTheTerminalWroteMeanwhileAndWhatItWritesNext(t *te
 
 	att := page.comeBack(t, "w2", testKey)
 	assert.Equal(t, uint64(len("A\r\n")), att.Replay.Start, "the replay starts at the offset the page had")
-	assert.Equal(t, "x\r\nB:x\r\ny\r\n", string(att.Replay.Data), "and holds exactly what it missed: what the host had read")
+	assert.Contains(t, []string{"x\r\nB:x\r\n", "x\r\nB:x\r\ny\r\n"}, string(att.Replay.Data),
+		"and holds what it missed: what the host had read, with or without the echo that the read in flight took")
 	assert.Equal(t, att.Replay.Start+uint64(len(att.Replay.Data)), att.Replay.End)
 	assert.Equal(t, info.PID, att.Session.PID)
 	assert.Equal(t, info.ID, att.Session.ID)
@@ -531,6 +532,26 @@ func TestTheHostRemembersABoundedNumberOfTerminalsThatEndedAndOnlyThoseThatEnded
 	m.ReleaseOwned("w4", ClosedByWindow)
 	sink.waitEnd(t, timed.ID)
 	assert.Empty(t, m.List(nil, otherTestKey), "a close, a lease that ran out and a terminal without a key leave nothing")
+}
+
+// The tombstone of a terminal lives as long as the lease the terminal was detached with, not the one it was
+// opened with: a page that was told it has a minute finds the terminal's end for a minute.
+func TestATombstoneIsKeptForTheLeaseTheTerminalWasDetachedWith(t *testing.T) {
+	m, sink := newPageManager(t)
+	info := m.startKeyed(t, `stty -echo; printf 'up\n'; read x; exit 0`, "w1", Options{LeaseMs: 700})
+	sink.waitFor(t, info.ID, "up\r\n")
+	detached, err := m.Detach(info.ID, "w1", DetachRequest{LeaseMs: 60000})
+	require.NoError(t, err)
+	assert.Equal(t, 60000, detached.LeaseMs)
+	require.NoError(t, m.Write(info.ID, 0, []byte("go\n")))
+	require.Eventually(t, func() bool {
+		listed := m.List(nil, testKey)
+		return len(listed) == 1 && listed[0].Ended != nil
+	}, 30*time.Second, 10*time.Millisecond, "the terminal ended and left its end")
+	assert.WithinDuration(t, time.Now().Add(60*time.Second), time.UnixMilli(m.List(nil, testKey)[0].LeaseExpiresUnixMs), 5*time.Second,
+		"kept for the lease it was detached with")
+	time.Sleep(1200 * time.Millisecond)
+	assert.Len(t, m.List(nil, testKey), 1, "and not forgotten when the lease it was opened with would have run out")
 }
 
 // 8. WHAT THE LEGACY ATTACH SEES.

@@ -431,6 +431,8 @@ type retiringRealm struct {
 	mu    sync.Mutex
 	after int
 	calls int
+	// onRefuse runs at the refusal, before it is answered: something that happens at that moment.
+	onRefuse func()
 }
 
 func (r *retiringRealm) AdmitWindow(window application.Window) (*invocation.Scope, error) {
@@ -439,6 +441,9 @@ func (r *retiringRealm) AdmitWindow(window application.Window) (*invocation.Scop
 	refuse := r.calls > r.after
 	r.mu.Unlock()
 	if refuse {
+		if r.onRefuse != nil {
+			r.onRefuse()
+		}
 		return nil, invocation.ErrWindowUnavailable
 	}
 	return r.WindowRealm.AdmitWindow(window)
@@ -480,4 +485,27 @@ func TestAWindowRetiredBetweenTheTakeOverAndTheAnswerOfAnAttachLeavesTheTerminal
 	listed := fx.ctrl.terminalManager.List(nil, keyA)
 	require.Len(t, listed, 1)
 	assert.False(t, listed[0].Attached, "the terminal is detached again: it waits for a page that is there")
+}
+
+// A failed create ends its own terminal, but not one that another window took over in the meantime (a page with
+// the same key, which chose the id): the cleanup depends on who owns the terminal.
+func TestAFailedCreateDoesNotEndATerminalAnotherWindowTookOver(t *testing.T) {
+	fx := newTerminalFixture(t)
+	second := fx.page(2)
+	realm := &retiringRealm{WindowRealm: fx.realm, after: 1}
+	var attachErr error
+	realm.onRefuse = func() {
+		_, attachErr = fx.ctrl.terminalManager.Attach("taken-over-1", invocation.IdentityOf(second), terminal.AttachRequest{PageKey: keyA})
+	}
+	fx.wrapper = &ServiceWrapper{Ctrl: fx.ctrl, Realm: realm}
+	first := fx.page(1)
+	_, err := fx.wrapper.CreateTerminal(fx.ctx(first),
+		execsdk.SessionOptions{ID: "taken-over-1", Command: append(shell(t), "-c", "read x")}, terminal.Launch{PageKey: keyA})
+	require.ErrorIs(t, err, invocation.ErrWindowUnavailable)
+	require.NoError(t, attachErr)
+
+	listed := fx.ctrl.terminalManager.List(nil, keyA)
+	require.Len(t, listed, 1)
+	assert.True(t, listed[0].Attached, "the page that took it over keeps it")
+	assert.Empty(t, fx.closes("taken-over-1"))
 }

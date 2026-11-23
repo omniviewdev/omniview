@@ -59,6 +59,9 @@ type Controller interface {
 	// ReleaseOwnedTerminals is what a window going away does to its local terminals: those with a page key are
 	// detached and kept for their lease, any other is ended.
 	ReleaseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) terminal.Released
+	// CloseTerminalUnlessTakenOver ends a local terminal that a call could not hand to owner's window, unless
+	// another window took it over meanwhile.
+	CloseTerminalUnlessTakenOver(sessionID string, owner terminal.Owner)
 	// AttachTerminal takes a local terminal over for owner and hands it the output it lacks, in one step that is
 	// ordered with the terminal's events (terminal.Manager.Attach).
 	AttachTerminal(ctx context.Context, owner terminal.Owner, sessionID string, request terminal.AttachRequest) (*terminal.Attached, error)

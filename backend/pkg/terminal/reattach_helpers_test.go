@@ -211,6 +211,7 @@ type testPage struct {
 	mu        sync.Mutex
 	alive     bool
 	attaching bool
+	epoch     uint64
 	pending   []event
 	next      uint64
 	data      bytes.Buffer
@@ -237,15 +238,16 @@ func (p *testPage) take(offset uint64, data []byte) {
 		return
 	}
 	applied := p.apply(offset, data)
+	epoch := p.epoch
 	hook := p.onEvent
 	p.mu.Unlock()
 	if hook != nil {
 		hook(p)
 	}
 	p.mu.Lock()
-	alive := p.alive
+	current := p.alive && p.epoch == epoch
 	p.mu.Unlock()
-	if alive && applied {
+	if current && applied {
 		// What the page rendered is acknowledged, and only that: an event it dropped, because the replay has it,
 		// was counted by the host before the attach forgot the debt, and is not acknowledged.
 		_ = p.m.Ack(p.id, len(data))
@@ -289,6 +291,7 @@ func (p *testPage) have() uint64 {
 func (p *testPage) comeBack(t *testing.T, owner Owner, key string) *Attached {
 	t.Helper()
 	p.mu.Lock()
+	p.epoch++
 	p.alive, p.attaching, p.pending = true, true, nil
 	from := p.next
 	p.mu.Unlock()

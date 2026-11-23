@@ -249,6 +249,29 @@ func (m *Manager) ReleaseOwned(owner Owner, by ClosedBy) Released {
 	return done
 }
 
+// CloseUnlessTakenOver ends a terminal that a call failed to hand to owner's window (the window was retired
+// while the call ran), unless another window took it over meanwhile: a terminal that belongs to another window
+// stays as it is. One that still belongs to owner, or that is detached (the retirement of the failed window
+// found it), is ended the way a close ends it. It says whether it ended the terminal. The ownership is read and
+// the terminal is ended in one step under the session's lock, so that an attach that comes together with it has
+// exactly one winner.
+func (m *Manager) CloseUnlessTakenOver(sessionID string, owner Owner) bool {
+	s, err := m.live(sessionID)
+	if err != nil || checkOwner(owner) != nil {
+		return false
+	}
+	s.mu.Lock()
+	if (s.owner != nil && s.owner != owner) || s.fate.set || s.ending.Load() {
+		s.mu.Unlock()
+		return false
+	}
+	s.fate = fate{set: true, closedBy: ClosedByWindow, failure: nil}
+	s.mu.Unlock()
+	s.startClose()
+	m.awaitGone([]*session{s})
+	return true
+}
+
 func (m *Manager) sessionList() []*session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -478,7 +501,7 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	s.outMu.Unlock()
 	now := time.Now()
 	t := &tombstone{
-		id: s.id, key: s.pageKey, info: s.info, labels: s.labels, params: s.params, ring: frozen, end: end, until: now.Add(s.lease),
+		id: s.id, key: s.pageKey, info: s.info, labels: s.labels, params: s.params, ring: frozen, end: end, until: s.tombstoneDeadline(now),
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -487,6 +510,18 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	if len(m.tombs) > TombstoneLimit {
 		m.tombs = slices.Delete(m.tombs, 0, len(m.tombs)-TombstoneLimit)
 	}
+}
+
+// tombstoneDeadline is when the tombstone of the terminal is forgotten: the end of the lease in effect when it
+// ended, which is the lease a page detached it with when it was detached, and the terminal's own lease from now
+// when it was attached.
+func (s *session) tombstoneDeadline(now time.Time) time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.detached {
+		return s.leaseEnd
+	}
+	return now.Add(s.lease)
 }
 
 // pruneTombstonesLocked forgets the tombstones whose lease has passed. The caller holds m.mu.

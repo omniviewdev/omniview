@@ -92,6 +92,9 @@ func (m *Manager) Detach(_ string, _ Owner, _ DetachRequest) (Detached, error) {
 // List lists nothing: no session can exist. It is an empty list, as on any platform, and not none.
 func (m *Manager) List(_ Owner, _ string) []Listed { return []Listed{} }
 
+// CloseUnlessTakenOver ends nothing: no session can exist.
+func (m *Manager) CloseUnlessTakenOver(_ string, _ Owner) bool { return false }
+
 // Shutdown ends nothing: no session can exist.
 func (m *Manager) Shutdown() {}
 

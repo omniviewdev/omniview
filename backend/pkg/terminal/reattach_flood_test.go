@@ -185,10 +185,15 @@ func TestAReloadUnderAFloodReattachesByteExactByOffset(t *testing.T) {
 	rng := rand.New(rand.NewPCG(17, 3))
 
 	reloads := 0
+	deadline := time.Now().Add(180 * time.Second)
 	for len(sink.closes(info.ID)) == 0 {
 		select {
 		case <-died:
 		case <-time.After(20 * time.Millisecond):
+			if time.Now().After(deadline) {
+				require.Failf(t, "the flood did not end", "after %d reloads the page had %d bytes and the host had written %d",
+					reloads, page.have(), m.session(t, info.ID).next())
+			}
 			continue
 		}
 		have := page.have()
@@ -418,7 +423,7 @@ func TestAttachAgainstAttachNeverLosesOrRepeatsAByte(t *testing.T) {
 	rng := rand.New(rand.NewPCG(5, 8))
 	for i := range 40 {
 		id := "aa-" + strconv.Itoa(i)
-		info := m.startKeyed(t, "seq 1 100000", owner(0), Options{ID: id})
+		info := m.startKeyed(t, "seq 1 100000; read x", owner(0), Options{ID: id})
 		m.ReleaseOwned(owner(0), ClosedByWindow)
 		if i%2 == 0 {
 			time.Sleep(time.Duration(rng.IntN(4)) * time.Millisecond)
@@ -442,6 +447,14 @@ func TestAttachAgainstAttachNeverLosesOrRepeatsAByte(t *testing.T) {
 		for k := range 2 {
 			require.NoError(t, errs[k], "iteration %d attach %d", i, k)
 		}
+		// The shell waits for a line after its burst, so it is alive here: the terminal belongs to one of the two
+		// callers, attached, and its flow is not held. Then the shell is let go.
+		s := m.session(t, id)
+		stillDetached, who, _, _ := s.state()
+		assert.False(t, stillDetached, "iteration %d", i)
+		assert.Contains(t, []Owner{owner(10), owner(11)}, who, "iteration %d: the terminal belongs to one of the two", i)
+		assert.False(t, s.flow.isHeld(), "iteration %d", i)
+		require.NoError(t, m.Write(id, 0, []byte("go\n")))
 		end := sink.waitEnd(t, info.ID)
 		truth := sink.stream(t, id)
 		assert.Equal(t, uint64(len(truth)), end.LastOffset)

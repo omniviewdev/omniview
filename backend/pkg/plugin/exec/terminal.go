@@ -235,6 +235,15 @@ func (c *controller) ReleaseOwnedTerminals(owner terminal.Owner, by terminal.Clo
 	return released
 }
 
+// CloseTerminalUnlessTakenOver ends a local terminal that a call could not hand to owner's window, unless
+// another window took it over meanwhile.
+func (c *controller) CloseTerminalUnlessTakenOver(sessionID string, owner terminal.Owner) {
+	if c.terminalManager == nil {
+		return
+	}
+	c.terminalManager.CloseUnlessTakenOver(sessionID, owner)
+}
+
 // AttachTerminal takes a local terminal over for owner and hands it the output it lacks.
 //
 //nolint:nonamedreturns // The deferred span records the returned error.

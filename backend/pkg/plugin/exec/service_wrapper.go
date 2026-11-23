@@ -131,9 +131,10 @@ func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.Sessio
 	// registered found nothing to release. The realm refuses a retired window, so asking it again now that the
 	// session is registered closes the gap: a retirement after this point finds the session. A terminal that
 	// no page can know about is ended whatever its key says: a detached one would wait for a page that never
-	// heard of it.
+	// heard of it. One that another window took over meanwhile (a page with the same key, which chose the id) is
+	// not this call's to end.
 	if _, admitErr := s.Realm.AdmitWindow(window); admitErr != nil {
-		_ = s.Ctrl.CloseSession(session.ID)
+		s.Ctrl.CloseTerminalUnlessTakenOver(session.ID, owner)
 		return nil, admitErr
 	}
 	return session, nil
