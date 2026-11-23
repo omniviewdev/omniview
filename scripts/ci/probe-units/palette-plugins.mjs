@@ -22,6 +22,7 @@ export const units = [
     script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key', 'connection-key-face'],
+    plants: 'page',
     seconds: 175,
   },
 ];

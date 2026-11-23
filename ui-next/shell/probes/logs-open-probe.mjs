@@ -5,7 +5,7 @@
 // per engine shows a source that is NEVER marked (the interim of a plugin that could not count its replay): no word comes, and the strip must say no rate for as long as the page lives. The demo read 7,878 lines/s at open on a source
 // that writes 5 and took 8 s to come down (L4); the old inference ended it with the lines' times and a quiet gap, and a replay it could not tell (a second container's tail, a clock that was ahead) was counted again.
 //
-//   node ui-next/shell/probes/logs-open-probe.mjs      builds the fixture (OMNIVIEW_UI=next) into a temp dir, serves it, probes it, in WebKit and Chromium at 1440 x 900
+//   node ui-next/shell/probes/logs-open-probe.mjs      builds the fixture (OMNIVIEW_UI=next) into a temp dir (or BUILD_CACHE), serves it, probes it, in WebKit and Chromium at 1440 x 900
 //
 //   FIXTURE_DIST=<dir>        probe an existing build of the fixture         FONT_DELAY_MS=40   as a runner serves fonts      ENGINES=webkit,chromium      REPORT=<file>   the report as JSON
 //   NEGATIVE_CONTROL=<name>   perturb the page and run it in Chromium, twice: without the perturbation (the assertion the control is named for must hold) and with it (it must fail); "detected" and exit 0 when it did, "NOT DETECTED"
@@ -25,11 +25,10 @@
 //   premise.never    (second page) the strip counted the replay and the feed made at least 15 live lines, and no word came
 //   never.unknown    (second page) every sample says no rate, at least 20 of them: nothing turns a source that is never marked live by waiting, and the strip says nothing more than that
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build, loadConfigFromFile, mergeConfig } from 'vite';
+import { sharedBuild } from '../../../packages/kit/probes/build-cache.mjs';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
 import { serve } from '../../../packages/kit/probes/serve.mjs';
 
@@ -52,14 +51,10 @@ const NEVER_SECONDS = 6;
 const NO_RATE = 'No rate';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** The fixture, built with the repository's own Vite configuration, as build-fixture.mjs builds the others (this probe's page is the only entry). */
-async function buildFixture() {
+/** The fixture, built with the repository's own Vite configuration (logs-open-build.mjs, as build-fixture.mjs builds the others: this probe's page is the only entry). BUILD_CACHE: build once into `<dir>/logs-open-fixture/production` and read it afterwards. */
+function buildFixture() {
   if (process.env.FIXTURE_DIST !== undefined && process.env.FIXTURE_DIST !== '') return process.env.FIXTURE_DIST;
-  const outDir = mkdtempSync(path.join(os.tmpdir(), 'logs-open-fixture-'));
-  const loaded = await loadConfigFromFile({ command: 'build', mode: 'production' }, path.join(repo, 'vite.config.ts'));
-  if (loaded === null) throw new Error('vite.config.ts not found');
-  await build(mergeConfig(loaded.config, { configFile: false, logLevel: 'warn', mode: 'production', build: { outDir, emptyOutDir: true, rollupOptions: { input: [path.join(here, 'logs-open-fixture.html')] } } }));
-  return outDir;
+  return sharedBuild({ kind: 'logs-open-fixture', mode: 'production', build: (out, env) => execFileSync('node', [path.join(here, 'logs-open-build.mjs'), out], { cwd: repo, env: { ...env, OMNIVIEW_UI: 'next' }, stdio: 'pipe' }) });
 }
 
 /** The strip's rate: a number, 'none' when it says no rate, undefined when the strip is not drawn yet or says neither. */
@@ -122,7 +117,7 @@ function judge(engine, { series, made, errors, marker }) {
   return out;
 }
 
-const dist = await buildFixture();
+const dist = buildFixture();
 const { server, url } = await serve(dist);
 const origin = url.replace(/\/$/, '');
 const report = { replay: REPLAY, rate: RATE, uptime: execFileSync('uptime', { encoding: 'utf8' }).trim(), runs: {} };

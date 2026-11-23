@@ -22,6 +22,7 @@ export const units = [
     script: 'ui-next/shell/probes/logs-open-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['counted-replay', 'no-wait', 'timeout-live'],
+    plants: 'page',
     seconds: 36,
   },
 ];

@@ -30,6 +30,7 @@ export const units = [
     name: 'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved',
     script: 'ui-next/shell/probes/logs-probe.mjs',
     controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines', 'second-stream', 'lone-scope', 'same-name', 'axe-name', 'over-lines'],
+    plants: 'page',
     seconds: 230,
   },
 
@@ -41,6 +42,7 @@ export const units = [
     name: 'Probe that the logs probe sees a toolbar that is wrong',
     script: 'ui-next/shell/probes/logs-probe.mjs',
     controls: ['toolbar-moved', 'pause-leaks', 'copy-no-source', 'clear-miscount', 'state-lost', 'more-missing', 'pause-commits', 'toolbar-timer'],
+    plants: 'page',
     seconds: 255,
   },
 ];

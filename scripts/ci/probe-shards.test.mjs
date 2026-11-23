@@ -42,8 +42,10 @@ import {
   renderPlan,
   renderSummary,
   runShard,
+  shardBuildCache,
   verifyRan,
 } from './probe-shards.mjs';
+import { parseBuilds } from './probe-builds.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const command = fileURLToPath(new URL('./probe-shards.mjs', import.meta.url));
@@ -159,7 +161,7 @@ const A = 'packages/kit/probes/a-probe.mjs';
 const B = 'ui-next/shell/probes/b-probe.mjs';
 const C = 'ui-next/page/probes/c-probe.mjs';
 const D = 'ui-next/page/probes/d-probe.mjs';
-const small = () => [unit('a', A, { env: { REPORT: '$RUNNER_TEMP/a-probe.json' } }), unit('a-controls', A, { controls: ['x', 'y'] }), unit('b', B)];
+const small = () => [unit('a', A, { env: { REPORT: '$RUNNER_TEMP/a-probe.json' } }), unit('a-controls', A, { controls: ['x', 'y'], plants: 'page' }), unit('b', B)];
 const FOUND = [A, B, C];
 const FLOOR = { [A]: { probe: true, controls: ['x', 'y'] }, [B]: { probe: true, controls: [] } };
 const check = (changes = {}) => checkUnits({ units: small(), byHand: [{ script: C, reason: 'run by hand' }], found: FOUND, exists: () => true, manifest: FLOOR, ...changes });
@@ -185,7 +187,7 @@ test('negative control: a probe that a by-hand entry names is run by nobody in C
 
 test('a probe\'s negative controls may be split into several units (N25), as long as the probe is one unit and each control is in one unit once', () => {
   const split = small();
-  split.splice(2, 0, unit('a-controls-more', A, { controls: ['z'] }));
+  split.splice(2, 0, unit('a-controls-more', A, { controls: ['z'], plants: 'page' }));
   assert.deepEqual(messages(check({ units: split })), []);
 });
 
@@ -198,7 +200,7 @@ test('negative control: a probe that runs twice, a control in two units or twice
   assert.match(first[0].message, /packages\/kit\/probes\/a-probe\.mjs runs twice as a probe: the units "a" and "a-again"/);
 
   const control = small();
-  control.push(unit('a-controls-again', A, { controls: ['y', 'q'] }));
+  control.push(unit('a-controls-again', A, { controls: ['y', 'q'], plants: 'page' }));
   const second = check({ units: control });
   assert.equal(second.length, 1);
   assert.match(second[0].message, /control "y" of packages\/kit\/probes\/a-probe\.mjs is in two units: "a-controls" and "a-controls-again": each control runs once/);
@@ -252,6 +254,65 @@ test('negative control: controls that would run the probe zero times, or a contr
   assert.match(messages(check({ units: number }))[0], /the unit "b" sets FONT_DELAY_MS to a number: an env value is a string/);
 });
 
+// N27: a negative control runs on the build the shard shares unless it plants its fault in the SOURCE or at BUILD time, so every unit of controls says which it is, and a unit that plants at build time may not read a shared build.
+test('negative control: a unit of controls that does not say where they plant their fault fails the check, and the message gives the two answers; a unit that is not of controls may not say it', () => {
+  const undecided = small();
+  delete undecided[1].plants;
+  const problems = check({ units: undecided });
+  assert.equal(problems.length, 1);
+  assert.equal(problems[0].file, `${UNITS_DIRECTORY}/a-controls.mjs`);
+  assert.match(problems[0].message, /the unit "a-controls" has controls and does not say where they plant their fault \(plants\): "page" .* or "build"/);
+  for (const plants of ['', 'source', 'Page', true, null, 3]) {
+    const odd = small();
+    odd[1].plants = plants;
+    assert.ok(messages(check({ units: odd })).some((message) => /the unit "a-controls" says plants: .*: it is "page" or "build"/.test(message)), JSON.stringify(plants));
+  }
+  const probe = small();
+  probe[0].plants = 'page';
+  assert.match(messages(check({ units: probe }))[0], /the unit "a" says where its controls plant their fault and has no controls: only a unit of controls plants/);
+});
+
+test('negative control: a unit may not set the shared build itself (BUILD_CACHE) nor name a build of its own (FIXTURE_DIST, FIXTURE_DIST_DEV): the runner gives every process of a shard one directory, and the check names the variable', () => {
+  for (const name of ['BUILD_CACHE', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV']) {
+    const own = small();
+    own[1].env = { [name]: '$RUNNER_TEMP/mine' };
+    const problems = messages(check({ units: own }));
+    assert.equal(problems.length, 1, problems.join('\n'));
+    assert.match(problems[0], new RegExp(`the unit "a-controls" sets ${name} in env: the shard runner gives every process of a shard the shared build directory`));
+    const probe = small();
+    probe[0].env = { ...probe[0].env, [name]: '$RUNNER_TEMP/mine' };
+    assert.match(messages(check({ units: probe }))[0], new RegExp(`the unit "a" sets ${name} in env`));
+  }
+});
+
+test('negative control: a unit that plants its faults at build time may not read a shared build: DIST in its env fails the check whatever it names, while a unit that plants in the page may read the shard\'s ui-next build', () => {
+  const page = small();
+  page[1].env = { DIST: '$PROBE_DIST' };
+  assert.deepEqual(messages(check({ units: page })), [], 'a control that perturbs the page reads the shared ui-next build');
+  for (const dist of ['$PROBE_DIST', '${PROBE_DIST}/x', '/tmp/somewhere']) {
+    const build = small();
+    build[1].plants = 'build';
+    build[1].env = { DIST: dist };
+    const problems = messages(check({ units: build }));
+    assert.equal(problems.length, 1, `${dist}: ${problems.join('\n')}`);
+    assert.match(problems[0], /the unit "a-controls" plants its faults at build time and sets DIST in env: a control that changes the build needs a build of its own, and must not read one that is shared/);
+  }
+  const clean = small();
+  clean[1].plants = 'build';
+  assert.deepEqual(messages(check({ units: clean })), [], 'a unit that plants at build time and reads no shared build is whole');
+});
+
+test('every unit of controls of the real table says where its controls plant their fault, and every one says the page: the 219 controls were read one by one (the N27 status file), none plants in the source or at build time; and no unit sets a shared build', () => {
+  const withControls = REAL.units.filter((entry) => entry.controls !== undefined);
+  assert.ok(withControls.length >= 23, `${withControls.length} units of controls`);
+  assert.ok(sum(withControls, (entry) => entry.controls.length) >= 219);
+  for (const entry of withControls) assert.equal(entry.plants, 'page', `${entry.id} says plants: ${JSON.stringify(entry.plants)}`);
+  for (const entry of REAL.units) {
+    for (const name of ['BUILD_CACHE', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV']) assert.equal(entry.env?.[name], undefined, `${entry.id} sets ${name}`);
+    if (entry.controls === undefined) assert.equal(entry.plants, undefined, `${entry.id} is a probe and says where controls plant`);
+  }
+});
+
 // What the planner needs of every unit: whole seconds, and one unit at most the limit (a unit over it cannot be put in any shard: split it).
 test('negative control: seconds that are missing, not whole, not positive, a string, or over what one shard may hold fail the check; the unit over the limit is told to split', () => {
   for (const seconds of [undefined, 0, -4, 3.5, '40', null, Number.NaN]) {
@@ -282,7 +343,7 @@ test('negative control: a unit that still declares paths fails the check: since 
 
 test('the floor holds on a table that has everything the manifest lists, and the manifest is not a mirror: a probe or a control it does not list is not a problem, so two pull requests that add probes do not both edit it', () => {
   assert.deepEqual(check(), []);
-  const more = [...small(), unit('d', D), unit('d-controls', D, { controls: ['p', 'q'] })];
+  const more = [...small(), unit('d', D), unit('d-controls', D, { controls: ['p', 'q'], plants: 'page' })];
   assert.deepEqual(messages(check({ units: more, found: [...FOUND, D] })), []);
   const extra = small();
   extra[1].controls = ['x', 'y', 'z'];
@@ -317,7 +378,7 @@ test('negative control: a probe that the manifest lists and no unit runs fails t
 test('a control may move to another unit of its probe, and the floor does not mind; a manifest entry that lists no probe asks for no probe unit (the check still wants one for every probe script of the tree)', () => {
   const moved = small();
   moved[1].controls = ['x'];
-  moved.push(unit('a-controls-late', A, { controls: ['y'] }));
+  moved.push(unit('a-controls-late', A, { controls: ['y'], plants: 'page' }));
   assert.deepEqual(check({ units: moved }), []);
   const controlsOnly = check({ manifest: { [A]: { probe: false, controls: ['x', 'y'] }, [B]: { probe: true, controls: [] } }, units: small().filter((entry) => entry.id !== 'a') });
   assert.deepEqual(messages(controlsOnly).filter((message) => message.includes(MANIFEST)), []);
@@ -326,7 +387,7 @@ test('a control may move to another unit of its probe, and the floor does not mi
 });
 
 test('negative control: a control is the control of one probe: a unit of another probe that runs a control of the same name does not satisfy the manifest', () => {
-  const swapped = [unit('a', A), unit('b', B), unit('b-controls', B, { controls: ['x', 'y'] })];
+  const swapped = [unit('a', A), unit('b', B), unit('b-controls', B, { controls: ['x', 'y'], plants: 'page' })];
   const problems = check({ units: swapped });
   assert.deepEqual(messages(problems).map((message) => /control "(\w+)"/.exec(message)?.[1]), ['x', 'y']);
 });
@@ -635,6 +696,27 @@ test('a unit reads the ui-next build only when its env names $PROBE_DIST', () =>
   assert.equal(readsDist(unit('a', A, { env: { DIST: '$PROBE_DIST_OTHER' } })), false);
 });
 
+const SHARED = '/tmp/runner/probe-builds/0123456789abcdef';
+const SHARED_VARIABLES = ['BUILD_CACHE', 'DIST', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV'];
+
+test('every run of a probe, and of a control that plants in the page, gets the shard\'s shared build directory; no run gets one when the shard has none', () => {
+  const probe = expandUnit(unit('a', A, { env: { DIST: '$PROBE_DIST' } }), VARS, { buildCache: SHARED });
+  assert.deepEqual(probe.map((run) => run.env), [{ DIST: '/tmp/runner/ui-next-dist', BUILD_CACHE: SHARED }]);
+  const controls = expandUnit(unit('a-controls', A, { controls: ['x', 'y'], plants: 'page' }), VARS, { buildCache: SHARED });
+  assert.deepEqual(controls.map((run) => run.env), [
+    { NEGATIVE_CONTROL: 'x', BUILD_CACHE: SHARED },
+    { NEGATIVE_CONTROL: 'y', BUILD_CACHE: SHARED },
+  ]);
+  assert.ok(controls.every((run) => run.unset === undefined));
+  assert.deepEqual(expandUnit(unit('a-controls', A, { controls: ['x'], plants: 'page' }), VARS).map((run) => run.env), [{ NEGATIVE_CONTROL: 'x' }], 'no shared directory when the shard has none');
+});
+
+test('negative control: a unit that plants at build time gets no shared build, and the runner is told to take every variable that names a build out of the environment of its processes, whatever the shard\'s environment holds', () => {
+  const runs = expandUnit(unit('a-controls', A, { controls: ['x', 'y'], plants: 'build' }), VARS, { buildCache: SHARED });
+  assert.deepEqual(runs.map((run) => run.env), [{ NEGATIVE_CONTROL: 'x' }, { NEGATIVE_CONTROL: 'y' }], 'no BUILD_CACHE in what it runs with');
+  for (const run of runs) assert.deepEqual([...run.unset].sort(), [...SHARED_VARIABLES].sort());
+});
+
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Running a shard
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -718,6 +800,46 @@ test('a script that is not there fails the run (the check names it first, this i
   const root = scratch(PROBES);
   const { results } = await run([unit('gone', 'ui-next/shell/probes/gone-probe.mjs', { name: 'Gone' })], '1', root);
   assert.deepEqual(results.map((result) => [result.label, result.ok]), [['Gone', false]]);
+});
+
+// What the processes of a shard are given to build with (N27). The probes print `probe-build: <kind>/<mode> built in <s> s (shared)` or `... reused`; the runner counts them for each run.
+const BUILD_PROBES = {
+  'ui-next/shell/probes/env-probe.mjs':
+    "console.log('shared ' + JSON.stringify({ cache: process.env.BUILD_CACHE ?? null, dist: process.env.DIST ?? null, fixture: process.env.FIXTURE_DIST ?? null, fixtureDev: process.env.FIXTURE_DIST_DEV ?? null, control: process.env.NEGATIVE_CONTROL ?? null }));\n",
+  'ui-next/shell/probes/building-probe.mjs':
+    "process.stdout.write('probe-build: shell-fixtures/production bui');\nawait new Promise((resolve) => setTimeout(resolve, 40));\nprocess.stdout.write('lt in 7.5 s (shared)\\n');\nconsole.log('probe-build: shell-fixtures/development reused');\nconsole.log('probe-build: this is not a build line');\n",
+};
+const ENV_PROBE = 'ui-next/shell/probes/env-probe.mjs';
+const BUILDING = 'ui-next/shell/probes/building-probe.mjs';
+
+test('the processes of a shard are given its shared build directory, and a unit that plants at build time sees none of the variables that name a build, even when the shard\'s own environment holds them', async () => {
+  const root = scratch(BUILD_PROBES);
+  const units = [unit('page', ENV_PROBE, { name: 'Page controls', controls: ['a'], plants: 'page' }), unit('build', ENV_PROBE, { name: 'Build controls', controls: ['b'], plants: 'build' }), unit('plain', ENV_PROBE, { name: 'Plain probe' })];
+  const chunks = [];
+  const env = { ...callerEnv(), RUNNER_TEMP: '/tmp/runner', DIST: '/shard/dist', FIXTURE_DIST: '/shard/fixture', FIXTURE_DIST_DEV: '/shard/dev', BUILD_CACHE: '/shard/stale-cache' };
+  const results = await runShard(units, '1', { root, env, out: (text) => chunks.push(text), buildCache: SHARED });
+  assert.ok(results.every((result) => result.ok));
+  const seen = [...chunks.join('').matchAll(/^shared (.*)$/gm)].map((match) => JSON.parse(match[1]));
+  assert.deepEqual(seen, [
+    { cache: SHARED, dist: '/shard/dist', fixture: '/shard/fixture', fixtureDev: '/shard/dev', control: 'a' },
+    { cache: null, dist: null, fixture: null, fixtureDev: null, control: 'b' },
+    { cache: SHARED, dist: '/shard/dist', fixture: '/shard/fixture', fixtureDev: '/shard/dev', control: null },
+  ]);
+  const without = [];
+  await runShard(units.slice(0, 1), '1', { root, env: { ...callerEnv(), RUNNER_TEMP: '/tmp/runner' }, out: (text) => without.push(text) });
+  assert.equal(JSON.parse(/^shared (.*)$/m.exec(without.join(''))[1]).cache, null, 'no shared directory when the runner has none');
+});
+
+test('the builds a probe says it made or read are counted for each run, a line that arrives in two pieces included, and a line that is not one is not', async () => {
+  const root = scratch(BUILD_PROBES);
+  const { results } = await run([unit('building', BUILDING, { name: 'Builds' })], '1', root);
+  assert.deepEqual(results[0].builds, [
+    { kind: 'shell-fixtures', mode: 'production', action: 'built', seconds: 7.5, shared: true },
+    { kind: 'shell-fixtures', mode: 'development', action: 'reused', seconds: 0, shared: true },
+  ]);
+  const quiet = await run([unit('quiet', ENV_PROBE, { name: 'Quiet' })], '1', root);
+  assert.deepEqual(quiet.results[0].builds, []);
+  assert.deepEqual(parseBuilds('probe-build: a/production reused\n'), [{ kind: 'a', mode: 'production', action: 'reused', seconds: 0, shared: true }]);
 });
 
 test('the summary of a shard counts runs and failures, one row each with its seconds, the probe script, the control (none for the probe itself) and the step, and says which failed and how', () => {
@@ -1175,6 +1297,47 @@ test('the run command exits 1 when a probe of the shard fails and 0 when every p
   const controls = cli(root, ['run', '3', 'tour-controls'], env);
   assert.equal(controls.status, 0, controls.stdout + controls.stderr);
   assert.deepEqual(JSON.parse(readFileSync(path.join(root, 'ran-3-probe.json'), 'utf8')).units, [{ id: 'tour-controls', ok: true, runs: byId('tour-controls').controls.length, controls: byId('tour-controls').controls }]);
+});
+
+test('the run command gives the shard a shared build directory under $RUNNER_TEMP/probe-builds that the key of its tree names, says so, puts the builds of the shard in its summary, and reports what it ran exactly as before', () => {
+  const files = {
+    ...BUILD_PROBES,
+    'ui-next/index.html': '<html></html>',
+    'pnpm-lock.yaml': 'lockfileVersion: 9\n',
+    [`${UNITS_DIRECTORY}/env.mjs`]: UNIT_FILE([{ id: 'env', name: 'Env probe', script: ENV_PROBE, seconds: 5 }]),
+    [`${UNITS_DIRECTORY}/building.mjs`]: UNIT_FILE([
+      { id: 'building', name: 'Building probe', script: BUILDING, seconds: 5 },
+      { id: 'building-controls', name: 'Building controls', script: BUILDING, controls: ['x', 'y'], plants: 'page', seconds: 5 },
+    ]),
+  };
+  const root = scratch(files);
+  const temp = mkdtempSync(path.join(tmpdir(), 'probe-shards-temp-'));
+  roots.push(temp);
+  const summary = path.join(temp, 'summary.md');
+  const env = { RUNNER_TEMP: temp, GITHUB_STEP_SUMMARY: summary };
+  const result = cli(root, ['run', '4', 'env,building,building-controls'], env);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const expected = shardBuildCache({ root, env: { ...callerEnv(), ...env } });
+  assert.equal(path.dirname(expected), path.join(temp, 'probe-builds'));
+  assert.match(path.basename(expected), /^[0-9a-f]{16}$/);
+  assert.equal(JSON.parse(/^shared (.*)$/m.exec(result.stdout)[1]).cache, expected, 'the process was given the directory the key names');
+  assert.match(result.stdout, new RegExp(`^probe-shards: the processes of shard 4 share their builds in ${expected.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+  const text = readFileSync(summary, 'utf8');
+  assert.match(text, /^#### Kit probes shard 4: builds$/m);
+  assert.match(text, /\| shell-fixtures\/production \| 3 \| 0 \| 23 \|/);
+  assert.match(text, /\| shell-fixtures\/development \| 0 \| 3 \| 0 \|/);
+  assert.match(text, /3 builds took 23 s and 3 reads reused them/);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(temp, 'ran-4-probe.json'), 'utf8')), {
+    shard: 4,
+    units: [
+      { id: 'env', ok: true, runs: 1, controls: [] },
+      { id: 'building', ok: true, runs: 1, controls: [] },
+      { id: 'building-controls', ok: true, runs: 2, controls: ['x', 'y'] },
+    ],
+  });
+  // The tree changes: the directory changes, so a build of the old tree is not found.
+  writeFileSync(path.join(root, 'ui-next/index.html'), '<html>changed</html>');
+  assert.notEqual(shardBuildCache({ root, env: { ...callerEnv(), ...env } }), expected);
 });
 
 test('the run command fails the shard when a unit drifted from its seconds, even though every probe passed, and names the unit and the number to put in the table', async () => {

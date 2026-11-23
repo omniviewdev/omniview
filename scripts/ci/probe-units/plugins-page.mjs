@@ -5,7 +5,7 @@
 //
 // The cost of the page is the second probe, `plugins-page-perf`: the same script with one section, so that it is a probe of its own (a probe is one unit, and the two together would be more than a shard holds). EVERY ASSERTION IN IT IS A
 // COUNT (commits, animation frames, batches of DOM changes, nodes changed, timers) and none depends on how fast the machine is; the milliseconds of the open are printed and held only against a catastrophe (400 ms, 13 times a laptop's),
-// because a time asserted on the runner failed three pull requests (docs/ui-next/status/N25.md, section 4). It builds its own fixtures (production, and development for the counts of commits) into BUILD_CACHE, one build for each shard,
+// because a time asserted on the runner failed three pull requests (docs/ui-next/status/N25.md, section 4). It builds its own fixtures (production, and development for the counts of commits) into the shard's shared BUILD_CACHE (the engine sets it), one build for each shard,
 // so it does not read PROBE_DIST.
 //
 // WHY THE UNITS RUN WRAPPERS. The probe is ui-next/shell/plugins-page/probes/plugins-probe.mjs, with its fixture and its mock reference beside the page. The table's scan (`findProbeScripts`, PROBE_DIRS in scripts/ci/probe-shards.mjs:
@@ -19,14 +19,12 @@
 // 1.1 to 3). Nothing here has run on the runner yet: the summary of the first shard that runs a unit prints the real seconds and says what to put in `seconds`. A unit that is faster than its seconds by more than the margin only warns; one
 // that is slower fails its shard, so they are rounded up.
 
-const FIXTURES = '$RUNNER_TEMP/plugins-page-fixtures';
-
 export const units = [
   {
     id: 'plugins-page',
     name: 'Probe the Plugins page against the pinned mock reference',
     script: 'ui-next/shell/probes/plugins-page-probe.mjs',
-    env: { FONT_DELAY_MS: '40', SECTIONS: 'geometry,tokens,a11y,keyboard', BUILD_CACHE: FIXTURES, REPORT: '$RUNNER_TEMP/plugins-page-probe.json' },
+    env: { FONT_DELAY_MS: '40', SECTIONS: 'geometry,tokens,a11y,keyboard', REPORT: '$RUNNER_TEMP/plugins-page-probe.json' },
     seconds: 85,
   },
 
@@ -36,21 +34,22 @@ export const units = [
     id: 'plugins-page-perf',
     name: 'Probe what the Plugins page costs',
     script: 'ui-next/shell/probes/plugins-page-perf-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES, REPORT: '$RUNNER_TEMP/plugins-page-perf-probe.json' },
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/plugins-page-perf-probe.json' },
     seconds: 75,
   },
 
   // The negative controls of the page's boxes and paint: each adds a rule to the page right before it is read (a transform that moves one part by 2 to 6 px, or a colour or a radius of its own) and passes only when the assertion of that part
   // sees it and no other does: the count footer, a row's tile, the facts line, the More slot, the lane, the card's title, the confirm's button, the empty detail's body, and the list's fill, the selected row's, the title's colour, a button's
-  // radius, the lane's fill, the card's and the dialog's radius. With ASSERTION_OFF=<its assertion> the fault must pass undetected. The first control builds the fixtures into BUILD_CACHE and the others read that build.
+  // radius, the lane's fill, the card's and the dialog's radius. With ASSERTION_OFF=<its assertion> the fault must pass undetected. The shard's shared build of the fixtures serves the probe and every control (the engine sets BUILD_CACHE).
   {
     id: 'plugins-page-controls-boxes',
     name: 'Probe that the Plugins page probe sees a page whose boxes and paint are wrong',
     script: 'ui-next/shell/probes/plugins-page-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES },
+    env: { FONT_DELAY_MS: '40' },
     controls: [
       'list-foot', 'row-tile', 'facts-down', 'more-slot', 'lane-down', 'card-title', 'confirm-button', 'empty-body', 'list-fill', 'selected-fill', 'title-colour', 'button-radius', 'lane-fill', 'card-fill', 'dialog-radius',
     ],
+    plants: 'page',
     seconds: 30,
   },
 
@@ -59,8 +58,9 @@ export const units = [
     id: 'plugins-page-controls-page',
     name: 'Probe that the Plugins page probe sees a page whose colours, names and keys are wrong',
     script: 'ui-next/shell/probes/plugins-page-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES },
+    env: { FONT_DELAY_MS: '40' },
     controls: ['pinned-lane', 'no-name', 'extra-stop', 'focus-lost'],
+    plants: 'page',
     seconds: 20,
   },
 
@@ -70,8 +70,9 @@ export const units = [
     id: 'plugins-page-controls-perf',
     name: 'Probe that the Plugins page cost probe sees a page that costs too much',
     script: 'ui-next/shell/probes/plugins-page-perf-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES },
+    env: { FONT_DELAY_MS: '40' },
     controls: ['late-change', 'second-row', 'late-list', 'slow-open', 'idle-timer'],
+    plants: 'page',
     seconds: 45,
   },
 ];

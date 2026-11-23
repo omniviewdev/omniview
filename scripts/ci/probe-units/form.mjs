@@ -27,6 +27,7 @@ export const units = [
       'face-height', 'mono-font', 'lane-offset', 'track-width', 'stepper-pad', 'label-for', 'switch-pressable', 'step-tab-stop', 'select-unblocked', 'secret-attribute',
       'row-glyph-gutter', 'row-slot-held', 'row-clamp', 'row-message-moves', 'row-tip-missing', 'row-title-weight', 'row-unavailable-title', 'row-reset-ring',
     ],
+    plants: 'page',
     seconds: 80,
   },
 ];

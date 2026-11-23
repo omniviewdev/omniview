@@ -7,9 +7,11 @@ name: UI next kit probes
 #
 # THE SHARDS (N24 K1 to K3, N25). The probes took 26 to 33 minutes one after the other in one job. They run in as many jobs at the same time as the plan below says (`Kit probes shard 1` to the last), each one the units the plan gives
 # it, and the job named `Kit probes` waits for them and is green only when the plan and every shard are, and when what the shards say they ran is every unit of the table. A probe is a Node process on its own VM, as it was on the one VM:
-# nothing is shared between probes but the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its units reads it. The units are the files of scripts/ci/probe-units (one for each probe: the probe, and its
-# negative controls in units of their own); no unit names a shard. To add a probe, add its file (the check below fails, naming the file, when a probe script is in no unit); to slow a probe down, change its `seconds` (the shard that
-# ran it fails, with the number, when they differ).
+# nothing is shared between probes but the builds of their pages, which the processes of one shard share (N27): the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its units reads it, and the fixtures the
+# shell, Settings, Plugins page, list page and Logs probes build, which the first process that needs them builds into one BUILD_CACHE per shard (the runner sets it, named by the hash of what a build reads: scripts/ci/probe-builds.mjs)
+# and every later process, a negative control included, reads. A control that plants its fault in the SOURCE or at build time (`plants: 'build'` in its unit; none does) is given no shared build. The units are the files of
+# scripts/ci/probe-units (one for each probe: the probe, and its negative controls in units of their own); no unit names a shard. To add a probe, add its file (the check below fails, naming the file, when a probe script is in no
+# unit); to slow a probe down, change its `seconds` (the shard that ran it fails, with the number, when they differ).
 #
 # EVERY PROBE AND EVERY CONTROL RUNS ON EVERY RUN: every pull request, every push to main and every dispatch. N25 tried to run the controls by the paths a pull request changed and dropped it after an independent review
 # (docs/ui-next/status/N25.md): a control can go inert through a path no unit lists while the probe stays green, and the one run that would notice had no reader.
