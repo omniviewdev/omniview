@@ -5,6 +5,7 @@ import {
   createLogStreams,
   createPanelStore,
   createRailChoice,
+  createSettingsControl,
   createTabsStore,
   dispositionOf,
   completeLogCard,
@@ -26,6 +27,7 @@ import {
   type PanelStore,
   type RailChoice,
   type Route,
+  type SettingsControl,
   type ShellRail,
   type ShellRegistration,
   type ShellSidebar,
@@ -82,6 +84,8 @@ export type PluginHostProps = {
   readonly onRetryInventory: () => void;
   /** Closes the window, where the app has one of its own: what Command W does with no tab open, on a Mac. Absent in a browser tab. */
   readonly onCloseWindow?: (() => void) | undefined;
+  /** Shows the host's own Settings window, where the app has native windows: the gear, the palette's Settings and the chord ask it. Absent in a browser tab, where Settings is a sheet in the window. */
+  readonly openSettingsWindow?: (() => Promise<unknown>) | undefined;
   /**
    * The window's bottom panel: its model. Default: the host makes one, from the panel the session saved, and it lives as long as the window does. One that is passed is the caller's as it stands:
    * the session saves it and does not restore into it.
@@ -123,13 +127,15 @@ type Host = {
   readonly palette: HostPalette;
   /** The window's toasts: the store the shell draws, and the one source that feeds it, a plugin's command that failed (`notices.ts`). The window attaches it to the models once it is on screen. */
   readonly notices: HostNotices;
+  /** Settings: whether the sheet is open and where it was left. The sheet's code is a lazy chunk, fetched when it is first asked for (`shell/settings/host.ts`). */
+  readonly settings: SettingsControl;
 };
 
 /**
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -142,6 +148,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const routes = new Published<Route>();
   const panelHosts = panelHostsOf(logs);
   const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator), saved });
+  const settings = createSettingsControl({ load: async () => import('../../shell/settings/surface'), openWindow: openSettingsWindow });
   return {
     frames,
     names,
@@ -160,8 +167,9 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, panel: store, platform: platformOf(navigator), onCloseWindow, remembered: (plugin) => routes.get(plugin), panelHosts }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts }),
     notices,
+    settings,
   };
 }
 
@@ -547,9 +555,9 @@ function logsBodyOf(streams: LogStreams, session: PanelSession, visible: boolean
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, panel: given, session, savedNotices }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
@@ -764,6 +772,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         panel={bindings}
         palette={host.palette}
         notices={host.notices}
+        settings={host.settings}
       />
     </>
   );

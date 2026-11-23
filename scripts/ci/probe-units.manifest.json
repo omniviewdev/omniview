@@ -15,7 +15,15 @@
       "switch-pressable",
       "step-tab-stop",
       "select-unblocked",
-      "secret-attribute"
+      "secret-attribute",
+      "row-glyph-gutter",
+      "row-slot-held",
+      "row-clamp",
+      "row-message-moves",
+      "row-tip-missing",
+      "row-title-weight",
+      "row-unavailable-title",
+      "row-reset-ring"
     ]
   },
   "packages/kit/probes/kit-probe-bc.mjs": {
@@ -44,6 +52,18 @@
     "controls": [
       "trigger-not-expanded",
       "expanded-twice"
+    ]
+  },
+  "packages/kit/probes/sheet-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "no-wrap",
+      "scrim-closes",
+      "escape-ignores-draft",
+      "no-restore-escape",
+      "no-restore-close",
+      "veil-present",
+      "frame-size"
     ]
   },
   "packages/kit/probes/table-probe.mjs": {
@@ -216,6 +236,74 @@
   "ui-next/shell/probes/rail-probe.mjs": {
     "probe": true,
     "controls": []
+  },
+  "ui-next/shell/probes/settings-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "win-sidebar",
+      "win-caption",
+      "win-shell",
+      "win-drag",
+      "win-escape",
+      "win-hidden-paints",
+      "win-sync-dropped",
+      "nav-height",
+      "nav-selected-paint",
+      "group-size",
+      "group-tabbable",
+      "heading-lane",
+      "heading-type",
+      "heading-oneline",
+      "list-start",
+      "rows-height",
+      "rows-order",
+      "rows-pitch",
+      "rows-separator",
+      "rows-column",
+      "scroll-pane",
+      "scroll-wheel",
+      "scroll-end",
+      "scroll-reset",
+      "scroll-fits",
+      "states-loading",
+      "states-failed",
+      "states-empty",
+      "states-anatomy",
+      "states-type",
+      "paint-token",
+      "sheet-gear-name",
+      "sheet-open-chord",
+      "sheet-not-modal",
+      "sheet-frame-size",
+      "sheet-no-clamp",
+      "sheet-veil",
+      "sheet-no-wrap",
+      "sheet-scrim-closes",
+      "sheet-escape-draft",
+      "sheet-no-restore-escape",
+      "sheet-no-restore-close",
+      "sheet-keep-lost",
+      "sheet-tip-hidden",
+      "keys-nav-wrap",
+      "keys-nav-stops",
+      "keys-unreachable",
+      "keys-switch-space",
+      "keys-select-typeahead",
+      "keys-draft",
+      "axe-name",
+      "axe-contrast",
+      "perf-open-commits",
+      "perf-open-slow",
+      "perf-show-commits",
+      "perf-key-twice",
+      "perf-key-rows",
+      "perf-idle-timer",
+      "perf-idle-commit",
+      "perf-closed-node",
+      "perf-closed-listener",
+      "perf-closed-timer",
+      "perf-show-slow"
+    ]
   },
   "ui-next/shell/probes/shell-probe.mjs": {
     "probe": true,

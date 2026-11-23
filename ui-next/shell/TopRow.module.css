@@ -65,8 +65,8 @@
     min-inline-size: 48px;
   }
 
-  /* The window actions (S4): 138 px, kept so the strip has the room the mock gives it. Of All tabs, Search and Settings only Search is built, and it sits where the mock's does: its right edge 46 px
-     from the row's end, which is the 12 px inset, the 4 px gap and the 30 px of Settings, whose place is kept empty (a track, not spacing). With no palette nothing is drawn in it. */
+  /* The window actions (S4): 138 px, kept so the strip has the room the mock gives it. Of All tabs, Search and Settings, Search and Settings are built, and Search sits where the mock's does: its right edge 46 px
+     from the row's end, which is the 12 px inset, the 4 px gap and the 30 px of Settings, whose place is its own track (a track, not spacing: `settings/Gear.module.css`). With neither nothing is drawn in it. */
   .actions {
     display: grid;
     flex: 0 0 138px;

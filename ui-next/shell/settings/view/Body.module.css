@@ -1,0 +1,50 @@
+/* The body of Settings, in either container: the pages on the left (the old window's 212 px) and the page on the right, which is the pane that scrolls. The frame, the header and the Close control are the kit's `Sheet`. */
+@layer ov.shell {
+  .body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    block-size: 100%;
+    min-block-size: 0;
+    min-inline-size: 0;
+  }
+
+  .layout {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: 212px minmax(0, 1fr);
+    min-block-size: 0;
+    min-inline-size: 0;
+  }
+
+  .content {
+    min-block-size: 0;
+    min-inline-size: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Loading, could not load, nothing to show: one line in the middle of the body, under the header that never goes. */
+  .state {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    align-items: center;
+    justify-content: center;
+    min-block-size: 0;
+    text-align: center;
+  }
+
+  /* Said by assistive technology and never drawn: the form's live message. */
+  .live {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

@@ -72,6 +72,13 @@ export class Snapshot {
     "scope": Scope;
     "categories": settings$0.Store;
 
+    /**
+     * Stored says, for every sensitive host setting, whether it holds a value now.
+     * Keys are the ids a commit takes ("category.setting"). The value itself is
+     * never carried; the plugin scope leaves the map empty.
+     */
+    "stored"?: { [_ in string]?: boolean };
+
     /** Creates a new Snapshot instance. */
     constructor($$source: Partial<Snapshot> = {}) {
         if (!("scope" in $$source)) {
@@ -90,12 +97,16 @@ export class Snapshot {
     static createFrom($$source: any = {}): Snapshot {
         const $$createField0_0 = $$createType1;
         const $$createField1_0 = $$createType2;
+        const $$createField2_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("scope" in $$parsedSource) {
             $$parsedSource["scope"] = $$createField0_0($$parsedSource["scope"]);
         }
         if ("categories" in $$parsedSource) {
             $$parsedSource["categories"] = $$createField1_0($$parsedSource["categories"]);
+        }
+        if ("stored" in $$parsedSource) {
+            $$parsedSource["stored"] = $$createField2_0($$parsedSource["stored"]);
         }
         return new Snapshot($$parsedSource as Partial<Snapshot>);
     }
@@ -112,3 +123,4 @@ var $$createType2 = (function $$initCreateType2(...args: any[]): any {
 });
 const $$createType3 = settings$0.Category.createFrom;
 const $$createType4 = $Create.Map($Create.Any, $$createType3);
+const $$createType5 = $Create.Map($Create.Any, $Create.Any);

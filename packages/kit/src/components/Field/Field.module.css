@@ -175,4 +175,91 @@
       animation: reveal 1ms linear 1s forwards;
     }
   }
+
+  /* The row layout (design 16 S126, S127; the mock's `.setting-row--setting`, base.css 1527 to 1541, with the settings page's own overrides, shell-page-settings.css
+     35 to 42): a text column (the title, the description, the lane) and a control column (the control and a slot) on one line, 16 px apart. The height is the
+     content's and nothing else's: 6 px, the title's 16, the description's 16 a line (two at most), the lane's 16 when it is reserved, 6 px; so 44, 60 or 76 px, and
+     a message or a state change never alters it. The 20 px at the start are a gutter, which the glyph of the lane hangs in, so that the words of every message start
+     where the title starts and never move sideways when the message changes. The row never grows or shrinks along a column that holds it: it is as wide as its place. */
+  .root[data-ov-layout='row'] {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    gap: var(--ov-spacing-16);
+    box-sizing: border-box;
+    width: 100%;
+    /* The 28 px control between two paddings of 6 px: what a row that holds nothing taller is. */
+    min-height: 40px;
+    padding-block: var(--ov-spacing-6);
+    padding-inline-start: var(--ov-spacing-20);
+  }
+
+  .text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  /* The title: weight 600 (the mock's `.setting-row--setting .setting-row__title`); a row that cannot change keeps it legible, the control is the dimmed part and the
+     reason is the lane (the settings page's override of the mock's disabled colour, design SP-16). */
+  .text > .label {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .root[data-ov-unavailable='true'] .text > .label {
+    color: var(--ov-fg-muted);
+  }
+
+  /* The description is at most two lines; the tooltip host shows all of it while it is cut (it measures a box clipped in height as it does one clipped in width). */
+  .root[data-ov-layout='row'] .help {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .root[data-ov-layout='row'] .lane {
+    position: relative;
+  }
+
+  .root[data-ov-layout='row'] .lane > svg {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: calc(-1 * var(--ov-spacing-20));
+  }
+
+  /* The control and then the slot, top-aligned (the control is aligned with the title line) and 8 px apart, at the end of the row. */
+  .control {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    margin-inline-start: auto;
+  }
+
+  /* A select in a row is at least 200 px wide (the mock's `.settings-select`, shell-page-settings.css 48). Its own minimum, `min(200px, 100%)`, names a percentage that
+     a column as wide as its contents cannot resolve before the contents have a width: the select would stay as wide as its longest option and push the slot out of the row. */
+  .root[data-ov-layout='row'] .control > [data-ov-part='select'][data-ov-width='normal'] {
+    min-width: 200px;
+  }
+
+  /* The slot is 24 by 24 px with 2 px above and below (the 28 px of the control) in every state, empty or not, so that what it comes to hold moves nothing; what it holds
+     keeps its focus ring inside it, the row has no room beyond its end (the mock's `.setting-row__reset`, shell-page-settings.css 38 to 40). */
+  .trailing {
+    display: flex;
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    margin-block: var(--ov-spacing-2);
+  }
+
+  .root[data-ov-layout='row'] .trailing > :focus-visible {
+    outline-offset: -2px;
+  }
 }

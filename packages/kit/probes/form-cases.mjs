@@ -107,6 +107,46 @@ const STEP_PARTS = {
   inc: { mock: 'button:last-of-type', kit: '[data-ov-slot="increase"]' },
 };
 
+// ---- the row (design 16 S126, S127): the mock's `H.settingRow` where the settings page puts it ------------------------------------------------------------------
+// Staged as `.settings-page .setting-list > .setting-row`, so that the page's own rules apply (the 20 px gutter, the glyph of the lane hung in it, the 24 px of the slot,
+// the title of a row that cannot change: shell-page-settings.css 35 to 42), and the page's list is at most 880 px wide (line 16). 880 px is the room the probe gives the kit's
+// row (`ROW_ROOM`), so that the control column, which is at the end of the row, is compared at one place. The texts are the ones of the kit's examples (Field.examples.tsx).
+export const ROW_ROOM = 880;
+const NAME = 'How the workspace is named in the title bar.';
+const SERVER = 'The address Omniview contacts first.';
+const PORT = 'The port Omniview listens on.';
+const LONG =
+  'How long Omniview keeps what it records about a workspace before it removes it: the logs of its sessions, the audit trail of what ran and the notices it showed. A longer time keeps more history and more files on disk; a shorter one frees the room sooner and leaves less to look back on when something goes wrong.';
+// A control is a JavaScript expression of the mock: a string of markup, or a call of one of its helpers. The mock paints a warning on a control only when the page puts
+// `data-validation="warning"` on it (base.css 1043), as it does for the field of `face-warning`: the kit's Field does it for the control inside it.
+const textField = (value, attributes = '') => J(`<input class="inp settings-input settings-input--normal" id="probe-sr" value="${value}"${attributes}>`);
+const settingRow = (extra, control = textField('orders-api')) =>
+  `'<div class="settings-page"><div class="setting-list">' + H.settingRow({ ...${J({ id: 'probe-sr', key: 'probe.setting', title: 'Display name', description: NAME, ...extra })}, control: ${control} }) + '</div></div>'`;
+const ROW = { mockRoot: '#probe-stage .setting-row', kitRoot: '[data-ov-layout="row"]' };
+// The row's own box draws no text: the font and the colour it passes on are its place's, and the title, the description and the lane are compared by parts of their own.
+// The slot is a box as well: what it holds is compared by its own part.
+const rowParts = (control, extra = {}) => ({
+  row: { mock: ':self', kit: ':self', skip: ['color', 'font'] },
+  text: { mock: '.setting-row__text', kit: '[data-ov-part="text"]', skip: ['color', 'font'] },
+  title: { mock: '.setting-row__title', kit: '[data-ov-part="label"]' },
+  desc: { mock: '.setting-row__desc', kit: '[data-ov-part="help"]' },
+  column: { mock: '.setting-row__control', kit: '[data-ov-part="control"]', skip: ['color', 'font'] },
+  control,
+  slot: { mock: '.setting-row__reset', kit: '[data-ov-part="trailing"]', skip: ['color', 'font'] },
+  ...extra,
+});
+const ROW_TEXT_FIELD = { mock: '.setting-row__control > input', kit: '[data-ov-part="control"] > input' };
+// The switch of a row is the switch of `switch-on`: its own text colour, border colour and font paint nothing there either (SWITCH_SKIP); its place in the row is what is read here.
+const ROW_SWITCH = { mock: '.setting-row__control > button', kit: '[data-ov-part="control"] > [role="switch"]', skip: ['color', 'border', 'font'] };
+// The lane of a row: the glyph hangs in the gutter (x = 0 of the row), the words start where the title starts (x = 20).
+const rowLane = (glyph, extra = {}) => ({
+  lane: { mock: '.field__message', kit: '[data-ov-part="lane"]' },
+  message: { mock: '.field__message-text', kit: '[data-ov-part="message"]' },
+  ...(glyph ? { glyph: { mock: '.field__message-icon', kit: '[data-ov-part="lane"] > svg', skip: ['font'] } } : {}),
+  ...extra,
+});
+const ROW_RETRY = { retry: { mock: '.field__message .linkbtn', kit: '[data-ov-part="lane"] button' } };
+
 /**
  * id, the mock's expression (`mock`) and the element it is measured as (`mockRoot`), the kit's example (`kit`) and its element (`kitRoot`, inside the
  * example), `states` (measured with real focus and the pointer: `rest`, `hover`, `focus`), `parts` (mock and kit selectors inside the root, `skip` what
@@ -158,4 +198,25 @@ export const CASES = [
   { id: 'secret-not-set', mock: secret('Not set', 'Type a value first.'), mockRoot: '#probe-stage .settings-secret', kitRoot: '[data-ov-part="secret"]', kit: 'SecretInput/NotSet', parts: { group: ':self', input: { mock: 'input', kit: 'input' }, eye: { mock: 'button', kit: '[data-ov-slot="show"]' }, eyeIcon: { mock: 'button svg', kit: '[data-ov-slot="show"] svg', skip: ['font'] } } },
   // The saved secret's field is read-only in the kit (a fact until Replace opens it) and a plain field in the mock, which has no Replace: only its place, size and words are the mock's.
   { id: 'secret-saved', mock: secret('Saved · hidden', 'A saved secret is never shown again.'), mockRoot: '#probe-stage .settings-secret', kitRoot: '[data-ov-part="secret"]', kit: 'SecretInput/Set', parts: { input: { mock: 'input', kit: 'input', skip: ['bg', 'border', 'color'] } } },
+
+  // the row (base.css 1527 to 1541; shell-page-settings.css 35 to 42; design 16 S126, S127): at rest, with a switch, with a description of more than two lines, then the lane in each kind
+  { id: 'row-rest', mock: settingRow({}), ...ROW, kit: 'Field/RowDefault', parts: rowParts(ROW_TEXT_FIELD, rowLane(false)) },
+  { id: 'row-switch', mock: settingRow({ title: 'Fold code', description: 'Collapse blocks of code in the editor.' }, 'H.switch(true, \'\', \'Fold code\')'), ...ROW, kit: 'Field/RowWithToggle', parts: rowParts(ROW_SWITCH, rowLane(false)) },
+  { id: 'row-long', mock: settingRow({ title: 'Retention', description: LONG, validate: true }, textField('30 days')), ...ROW, kit: 'Field/RowLongDescription', parts: rowParts(ROW_TEXT_FIELD, rowLane(false)) },
+  { id: 'row-lane-hint', mock: settingRow({ message: { kind: 'hint', text: 'Letters and digits.' } }), ...ROW, kit: 'Field/RowHint', parts: rowParts(ROW_TEXT_FIELD, rowLane(false)) },
+  { id: 'row-lane-error', mock: settingRow({ message: { kind: 'error', text: 'Name has a space. Use letters and digits.' } }, textField('orders api')), ...ROW, kit: 'Field/RowInvalid', parts: rowParts(ROW_TEXT_FIELD, rowLane(true)) },
+  { id: 'row-lane-warning', mock: settingRow({ title: 'Log directory', description: 'Where the logs of this workspace are written.', message: { kind: 'warning', text: 'Directory is not empty. Existing files stay.' } }, textField('logs', ' data-validation="warning"')), ...ROW, kit: 'Field/RowWarning', parts: rowParts(ROW_TEXT_FIELD, rowLane(true)) },
+  // The loader turns, so the box of its glyph is not read: its place is the text's (20 px in), which is.
+  { id: 'row-lane-checking', mock: settingRow({ title: 'Server address', description: SERVER, message: { kind: 'checking', text: 'Contacting the server…' } }, textField('https://api.example.test')), ...ROW, kit: 'Field/RowChecking', parts: rowParts(ROW_TEXT_FIELD, rowLane(false)) },
+  { id: 'row-lane-retry', mock: settingRow({ title: 'Server address', description: SERVER, message: { kind: 'retry', action: { label: 'Retry', action: 'noop:retry' } } }, textField('https://api.example.test')), ...ROW, kit: 'Field/RowCouldNotCheck', parts: rowParts(ROW_TEXT_FIELD, rowLane(true, ROW_RETRY)) },
+  { id: 'row-lane-saved', mock: settingRow({ title: 'Port', description: PORT, message: { kind: 'success' } }, textField('8080')), ...ROW, kit: 'Field/RowSaved', parts: rowParts(ROW_TEXT_FIELD, rowLane(true)) },
+  { id: 'row-lane-failed', mock: settingRow({ title: 'Port', description: PORT, message: { kind: 'error', failed: true, text: 'Couldn’t save this change. Retry.', detail: 'The settings store is read-only.', action: { label: 'Retry', action: 'noop:retry' } } }, textField('9000')), ...ROW, kit: 'Field/RowApplyFailed', parts: rowParts(ROW_TEXT_FIELD, rowLane(true, ROW_RETRY)) },
+  { id: 'row-lane-info', mock: settingRow({ title: 'Port', description: PORT, message: { kind: 'info', text: 'Restart required to apply.' } }, textField('8080')), ...ROW, kit: 'Field/RowRestartRequired', parts: rowParts(ROW_TEXT_FIELD, rowLane(true)) },
+
+  // the row when it holds a command, cannot change and is a fact
+  { id: 'row-modified', mock: settingRow({ validate: true, modified: true, reset: 'noop:reset' }, textField('orders-prod')), ...ROW, kit: 'Field/RowModified', parts: rowParts(ROW_TEXT_FIELD, { ...rowLane(false), reset: { mock: '.setting-row__reset > button', kit: '[data-ov-part="trailing"] > button' } }) },
+  { id: 'row-unavailable', mock: settingRow({ title: 'Traces', description: 'Send traces of this workspace to the collector.', disabled: 'Turn on Send telemetry to change this.', validate: true }, 'H.switch(true, \'\', \'Traces\')'), ...ROW, kit: 'Field/RowUnavailable', parts: rowParts({ ...ROW_SWITCH, skip: ['color', 'border', 'font', 'bg'] }, rowLane(true)) },
+  { id: 'row-readonly', mock: settingRow({ title: 'Data directory', description: 'Where Omniview keeps its data.', readonly: 'Managed by your organisation.', validate: true }, textField('/var/omniview')), ...ROW, kit: 'Field/RowReadOnly', parts: rowParts(ROW_TEXT_FIELD, rowLane(true)) },
+  // The Reset command of a modified row, in the settings page's slot: 24 by 24 px, its ring inside the slot (shell-page-settings.css 38 to 40).
+  { id: 'row-reset', mock: settingRow({ validate: true, modified: true, reset: 'noop:reset' }, textField('orders-prod')), mockRoot: '#probe-stage .setting-row__reset > button', kitRoot: '[data-ov-part="trailing"] > button', kit: 'Field/RowModified', states: ['rest', 'hover', 'focus'] },
 ];
