@@ -1,0 +1,180 @@
+// N27 proof tool (scratch: kept as a text copy in docs/ui-next/status/N27/, never part of CI): runs the negative controls of the units it is given BOTH WAYS.
+//   planted       the control as the table runs it (NEGATIVE_CONTROL=<c>): must be DETECTED (exit 0)
+//   assertion off the same fault with the assertion the control is named for removed (ASSERTION_OFF=<value>): must be NOT DETECTED (exit 1, rule 28)
+// and writes one row for each control to $RUNNER_TEMP/both-ways-<shard>-probe.json. The environment of every run is the engine's own (expandUnit, and the shared build directory when the engine has one), so the same tool run on main
+// and on the branch compares like with like.
+//
+//   node scripts/ci/probe-controls-both-ways.mjs <shard> <unit>,<unit>,...
+import { spawn } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import * as engine from './probe-shards.mjs';
+
+const root = engine.REPO_ROOT;
+const [shard, ids] = process.argv.slice(2);
+const MODE = process.env.BOTH_WAYS_MODE ?? 'engine';
+
+// How the assertion of a control is taken out, by probe script (read from the probes: docs/ui-next/status/N27.md).
+//   says     ASSERTION_OFF=says                                  name   ASSERTION_OFF=<the control's name>
+//   printed  the probe prints `its assertion, to remove with ASSERTION_OFF: <pattern>`
+//   error    the probe's error for a wrong ASSERTION_OFF says `its pattern is <source>`
+//   source   the `expected` regular expression of the control's entry in the probe's own table (the probe never prints it): read from <file>
+//   none     the probe has no ASSERTION_OFF
+const OFF = {
+  'packages/kit/probes/form-probe.mjs': { how: 'says' },
+  'packages/kit/probes/sheet-probe.mjs': { how: 'says' },
+  'ui-next/shell/probes/settings-probe.mjs': { how: 'says' },
+  'ui-next/shell/probes/tour-probe.mjs': { how: 'name' },
+  'ui-next/shell/probes/logs-open-probe.mjs': { how: 'printed' },
+  'ui-next/shell/probes/notices-probe.mjs': { how: 'printed' },
+  'ui-next/shell/probes/plugins-page-probe.mjs': { how: 'printed' },
+  'ui-next/shell/probes/plugins-page-perf-probe.mjs': { how: 'printed' },
+  'ui-next/shell/probes/logs-probe.mjs': { how: 'error' },
+  'ui-next/shell/probes/palette-probe.mjs': { how: 'source', file: 'ui-next/shell/probes/palette-probe.mjs' },
+  'ui-next/shell/probes/palette-plugins-probe.mjs': { how: 'source', file: 'ui-next/shell/probes/palette-probe.mjs' },
+  'packages/kit/probes/row-menu-probe.mjs': { how: 'source', file: 'packages/kit/probes/row-menu-probe.mjs' },
+  'packages/kit/probes/log-probe.mjs': { how: 'none', why: 'log-probe.mjs has no ASSERTION_OFF: a control is judged by its `expect` pattern, clean against perturbed, inside the probe' },
+  'ui-next/shell/probes/panel-probe.mjs': { how: 'none', why: 'panel-probe.mjs has no ASSERTION_OFF' },
+  'ui-next/shell/probes/strip-probe.mjs': { how: 'none', why: 'strip-probe.mjs has no ASSERTION_OFF' },
+};
+
+/** The `expected` regular expression of the entry `control` in the table of `text`: its source. */
+function expectedSource(text, control) {
+  const keys = [`'${control}':`, `"${control}":`, `${control}:`];
+  let at = -1;
+  for (const key of keys) {
+    const found = text.search(new RegExp(`(^|[\\s{,])${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'm'));
+    if (found !== -1) {
+      at = found;
+      break;
+    }
+  }
+  if (at === -1) throw new Error(`no entry ${control}`);
+  const from = text.indexOf('expected:', at);
+  if (from === -1) throw new Error(`no expected for ${control}`);
+  let i = text.indexOf('/', from);
+  const start = i + 1;
+  let inClass = false;
+  for (i = start; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '\\') i += 1;
+    else if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) break;
+  }
+  return new RegExp(text.slice(start, i)).source;
+}
+
+const TAIL = 24 * 1024;
+function run(script, env, label) {
+  return new Promise((resolve) => {
+    const started = performance.now();
+    let all = '';
+    const child = spawn(process.execPath, [path.join(root, script)], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const take = (chunk) => {
+      all = (all + chunk.toString('utf8')).slice(-TAIL);
+    };
+    child.stdout.on('data', take);
+    child.stderr.on('data', take);
+    const timer = setTimeout(() => child.kill('SIGKILL'), 8 * 60 * 1000);
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      resolve({ code: null, output: `could not start: ${error.message}`, seconds: 0 });
+    });
+    child.on('close', (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal, output: all, seconds: (performance.now() - started) / 1000, label });
+    });
+  });
+}
+
+/** The verdict of a run: what the probe said, by its exit code and its last verdict line. */
+function verdictOf(result) {
+  const { code, output } = result;
+  const line = output.split('\n').filter((text) => /NEGATIVE CONTROL "|^detected: |^NOT DETECTED|^INVALID|^control /.test(text)).at(-1) ?? output.trim().split('\n').at(-1) ?? '';
+  let verdict;
+  if (code === 0) verdict = 'detected';
+  else if (/NOT DETECTED/.test(output)) verdict = 'not detected';
+  else if (/INVALID/.test(output)) verdict = 'invalid';
+  else if (/: FAILED,/.test(output)) verdict = 'failed (other failures)';
+  else verdict = 'error';
+  return { verdict, code, line: line.slice(0, 300), seconds: Math.round(result.seconds * 10) / 10 };
+}
+
+const shardEnv = process.env;
+const loaded = await engine.loadUnits(root);
+if (loaded.problems.length > 0) {
+  for (const problem of loaded.problems) console.error(problem.message);
+  process.exit(1);
+}
+const table = new Map(loaded.units.map((unit) => [unit.id, unit]));
+const buildCache = typeof engine.shardBuildCache === 'function' && MODE !== 'own' ? await engine.shardBuildCache({ root, env: shardEnv }) : undefined;
+const rows = [];
+const texts = new Map();
+const text = (file) => {
+  if (!texts.has(file)) texts.set(file, readFileSync(path.join(root, file), 'utf8'));
+  return texts.get(file);
+};
+
+for (const id of ids.split(',')) {
+  const unit = table.get(id);
+  if (unit === undefined) throw new Error(`no unit ${id}`);
+  if (unit.controls === undefined) continue;
+  const only = process.env.BOTH_WAYS_ONLY === undefined ? null : process.env.BOTH_WAYS_ONLY.split(',');
+  const runs = engine.expandUnit(unit, shardEnv, { buildCache }).filter((one) => only === null || only.includes(one.control));
+  for (const one of runs) {
+    const env = { ...shardEnv, ...one.env };
+    console.log(`::group::${unit.id} ${one.control}`);
+    const planted = await run(one.script, env, 'planted');
+    const p = verdictOf(planted);
+    console.log(`planted: ${p.verdict} (exit ${p.code}, ${p.seconds} s) ${p.line}`);
+    if (p.verdict !== 'detected') console.log(planted.output.split('\n').slice(-30).join('\n'));
+    const rule = OFF[one.script] ?? { how: 'none', why: `no rule for ${one.script}` };
+    let off;
+    if (rule.how === 'none') {
+      off = { na: rule.why };
+    } else {
+      let value;
+      let problem;
+      try {
+        if (rule.how === 'says') value = 'says';
+        else if (rule.how === 'name') value = one.control;
+        else if (rule.how === 'printed') {
+          const found = /its assertion, to remove with ASSERTION_OFF: (.*?)(?:\s+\(ASSERTION_OFF=says does it\).*)?$/m.exec(planted.output);
+          if (found === null) throw new Error('the probe printed no pattern');
+          value = found[1];
+        } else if (rule.how === 'error') {
+          const probe = await run(one.script, { ...env, ASSERTION_OFF: 'x' }, 'pattern');
+          const found = /its pattern is (.*)\)\s*$/m.exec(probe.output);
+          if (found === null) throw new Error(`the probe's error has no pattern: ${probe.output.slice(-200)}`);
+          value = found[1];
+        } else if (rule.how === 'source') {
+          value = expectedSource(text(rule.file), one.control);
+        }
+      } catch (error) {
+        problem = error.message;
+      }
+      if (problem !== undefined) off = { problem };
+      else {
+        const result = await run(one.script, { ...env, ASSERTION_OFF: value }, 'off');
+        const v = verdictOf(result);
+        console.log(`assertion off (${value}): ${v.verdict} (exit ${v.code}, ${v.seconds} s) ${v.line}`);
+        if (v.verdict === 'detected' || v.verdict === 'error' || v.verdict === 'invalid') console.log(result.output.split('\n').slice(-30).join('\n'));
+        off = { value, ...v };
+      }
+    }
+    console.log('::endgroup::');
+    rows.push({ unit: unit.id, control: one.control, script: one.script, planted: p, off });
+  }
+}
+
+const planted = rows.filter((row) => row.planted.verdict === 'detected').length;
+const offOk = rows.filter((row) => row.off.verdict === 'not detected').length;
+const offNa = rows.filter((row) => row.off.na !== undefined).length;
+const bad = rows.filter((row) => row.planted.verdict !== 'detected' || (row.off.na === undefined && row.off.verdict !== 'not detected'));
+console.log(`\nboth ways, shard ${shard}: ${rows.length} controls; planted detected ${planted}; assertion off not detected ${offOk}; no ASSERTION_OFF in the probe ${offNa}; wrong ${bad.length}`);
+for (const row of bad) console.log(`::error title=control both ways::${row.unit} ${row.control}: planted ${row.planted.verdict}; off ${row.off.verdict ?? row.off.problem ?? row.off.na}`);
+const dir = process.env.RUNNER_TEMP ?? '/tmp';
+mkdirSync(dir, { recursive: true });
+writeFileSync(path.join(dir, `both-ways-${shard}-probe.json`), `${JSON.stringify({ shard: Number(shard), mode: MODE, buildCache: buildCache ?? null, rows }, null, 1)}\n`);
+process.exitCode = bad.length === 0 ? 0 : 1;
