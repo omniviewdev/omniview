@@ -1,6 +1,6 @@
-// K, the kit's LogView, as ui-next mounts it: the built package, its stylesheet and a ThemeProvider. The feed is the bench's source.
+// K, the kit's LogView, as ui-next mounts it: the built package, its stylesheet and a ThemeProvider. The toolbar shares the window's menu host. The feed is the bench's source.
 import '@omniviewdev/kit/styles.css';
-import { LogView, ThemeProvider, type LogFeed } from '@omniviewdev/kit';
+import { LogView, MenuHost, ThemeProvider, type LogFeed } from '@omniviewdev/kit';
 import '../toolbar.css';
 import { LogSession } from '../../../../ui-next/shell/panel/logs/LogSession';
 import logs from '../../../../ui-next/shell/panel/logs/LogsBody.module.css';
@@ -18,9 +18,11 @@ export default function KitVariant({ feed, toolbar }: { readonly feed: LogFeed; 
   return (
     <ThemeProvider>
       {toolbar ? (
-        <div className={`${logs.log} bench-log-box`}>
-          <LogSession label="bench · app" feed={feed} session="bench" />
-        </div>
+        <MenuHost>
+          <div className={`${logs.log} bench-log-box`}>
+            <LogSession label="bench · app" feed={feed} session="bench" />
+          </div>
+        </MenuHost>
       ) : (
         <LogView label="bench · app" feed={feed} />
       )}

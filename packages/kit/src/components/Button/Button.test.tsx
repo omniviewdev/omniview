@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { menuTrigger } from '../Menu';
 import * as examples from './Button.examples';
 import { Button, type ButtonProps } from './Button';
 
@@ -20,6 +21,15 @@ describe('Button', () => {
     for (const attribute of ['title', 'style', 'aria-disabled', 'aria-busy', 'aria-describedby', 'disabled', 'tabindex']) {
       expect(button.hasAttribute(attribute), attribute).toBe(false);
     }
+  });
+
+  it('declares a menu for the dropdown trigger but not for a context trigger', () => {
+    const { rerender } = render(<Button {...menuTrigger('actions')}>Actions</Button>);
+    const button = screen.getByRole('button', { name: 'Actions' });
+    expect(button.getAttribute('aria-haspopup')).toBe('menu');
+
+    rerender(<Button {...menuTrigger('actions', undefined, 'context')}>Actions</Button>);
+    expect(button.hasAttribute('aria-haspopup')).toBe(false);
   });
 
   it('never submits a form: it is a command, not a submitter', () => {

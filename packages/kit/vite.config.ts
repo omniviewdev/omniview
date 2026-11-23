@@ -38,7 +38,7 @@ export default defineConfig({
       // React is the host's: a plugin and the host must render with one copy. The examples are written as a consumer writes
       // them, from "@omniviewdev/kit", and stay external so they render the same parts as the root entry. The font placeholder is
       // listed so that Vite does not warn about a URL it is meant to leave alone (scripts/kitFonts.ts).
-      external: ['react', 'react/jsx-runtime', 'react/compiler-runtime', '@omniviewdev/kit', new RegExp(`^${FONT_URL_PLACEHOLDER}`)],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'react/compiler-runtime', '@omniviewdev/kit', new RegExp(`^${FONT_URL_PLACEHOLDER}`)],
     },
     // The host minifies; the package stays readable and diffable. No source maps ship (strategy P2 D2.2).
     minify: false,

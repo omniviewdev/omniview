@@ -4,10 +4,15 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cssRules, declarationsOf } from '../../../scripts/cssRules.ts';
+import { MenuHost } from '../Menu';
 import { PageHeader, type PageHeaderProps } from './PageHeader';
 import * as examples from './PageHeader.examples';
 
-const header = (props: Partial<PageHeaderProps> = {}) => <PageHeader title="orders-api" {...props} />;
+const header = (props: Partial<PageHeaderProps> = {}) => (
+  <MenuHost>
+    <PageHeader title="orders-api" {...props} />
+  </MenuHost>
+);
 const noop = () => undefined;
 const command = (id: string, label: string, rest: Record<string, unknown> = {}) => ({ id, label, onSelect: noop, ...rest });
 const root = (container: HTMLElement) => container.firstElementChild as HTMLElement;
@@ -69,9 +74,9 @@ describe('PageHeader, the breadcrumb (design 12 PH3)', () => {
   });
 
   it('is not there without a path', () => {
-    render(header());
+    const { rerender } = render(header());
     expect(screen.queryByRole('navigation')).toBeNull();
-    render(header({ path: [] }));
+    rerender(header({ path: [] }));
     expect(screen.queryByRole('navigation')).toBeNull();
   });
 });
@@ -155,7 +160,7 @@ describe('PageHeader, the commands (design 12 PH2)', () => {
 
   beforeEach(() => {
     // jsdom's default stylesheet hides every popover that is not `:popover-open`, a state it cannot match, so nothing in the overflow menu could be
-    // found by role. A browser shows the popover once showPopover has run: this is the same rule, in the page (as RowMenu.test.tsx does).
+    // found by role. A browser shows the popover once showPopover has run.
     popoverRule = document.createElement('style');
     popoverRule.textContent = '[popover] { display: block; }';
     document.head.append(popoverRule);
@@ -307,6 +312,47 @@ describe('PageHeader, the commands (design 12 PH2)', () => {
       render(header({ commands: { primary: command('scale', 'Scale'), menu: [{ id: 'scale', label: 'Scale', onSelect: noop }, { id: 'labels', label: 'Edit labels', onSelect: noop }] } }));
       fireEvent.click(screen.getByRole('button', { name: 'More actions for orders-api' }));
       expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Edit labels']);
+    });
+
+    it.each(['disabled', 'removed'] as const)('dismisses the old opening if a destructive action is %s', (change) => {
+      const remove = vi.fn();
+      const deletion = { id: 'delete', label: 'Delete', destructive: true, onSelect: remove };
+      const copy = { id: 'copy', label: 'Copy name', onSelect: noop };
+      const { rerender } = render(header({ commands: { menu: [deletion, copy] } }));
+      const trigger = screen.getByRole('button', { name: 'More actions for orders-api' });
+      fireEvent.click(trigger);
+      expect(screen.getByRole('menuitem', { name: 'Delete' }).hasAttribute('aria-disabled')).toBe(false);
+
+      const menu = change === 'disabled' ? [{ ...deletion, disabled: true }, copy] : [copy];
+      rerender(header({ commands: { menu } }));
+      expect(screen.queryByRole('menu')).toBeNull();
+      expect(document.activeElement).toBe(trigger);
+
+      fireEvent.click(trigger);
+      expect(screen.getByRole('menuitem', { name: 'Copy name' })).toBeTruthy();
+      if (change === 'disabled') {
+        const disabled = screen.getByRole('menuitem', { name: 'Delete' });
+        expect(disabled.getAttribute('aria-disabled')).toBe('true');
+        fireEvent.click(disabled);
+      } else {
+        expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+      }
+
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('keeps an opening across an unrelated redraw and invokes the latest handler for that action', () => {
+      const old = vi.fn();
+      const current = vi.fn();
+      const { rerender } = render(header({ commands: { menu: [{ id: 'copy', label: 'Copy name', onSelect: old }] } }));
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for orders-api' }));
+      const menu = screen.getByRole('menu');
+
+      rerender(header({ note: 'Read-only details', commands: { menu: [{ id: 'copy', label: 'Copy name', onSelect: current }] } }));
+      expect(screen.getByRole('menu')).toBe(menu);
+      fireEvent.click(within(menu).getByRole('menuitem', { name: 'Copy name' }));
+      expect(old).not.toHaveBeenCalled();
+      expect(current).toHaveBeenCalledOnce();
     });
 
     it('puts the destructive items last behind one separator', () => {

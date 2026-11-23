@@ -74,6 +74,7 @@ export function Panel({ platform }: PanelProps) {
         hidden={!open}
         aria-label="Panel"
         data-shell-region="panel"
+        data-ov-menu-scope=""
         data-shell-part="panel"
         style={{ '--_size': height === null ? undefined : `${String(height)}px` }}
       >

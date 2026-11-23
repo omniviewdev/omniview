@@ -5,9 +5,11 @@
 // This file imports nothing, on purpose: the build of a plugin bundle (and the fixture's) reads the list from here with Node, and `shared.ts` holds the
 // loaders that serve each name and is typed against this list, so the two cannot drift.
 //
-// Not here, deliberately: the old shell's other 30 names (`@omniviewdev/base-ui`, `ai-ui`, `editors`, `react-router`, `react-dom`, Monaco, the runtime's
-// whole barrel `@omniviewdev/runtime`, and its raw `/api`, `/runtime` and `/models` entries). The new shell does not carry the old libraries (strategy R3,
-// R4), so a bundle that imports one cannot run in it and must be refused by name. The runtime joins as its curated entry `@omniviewdev/runtime/ui/v1`
+// `react-dom` is internal to the host and its kit, not a plugin import. Only the duplicate-kit fixture bundles that peer.
+//
+// Also excluded: the old shell's other names (`@omniviewdev/base-ui`, `ai-ui`, `editors`, `react-router`, Monaco, the runtime's whole barrel
+// `@omniviewdev/runtime`, and its raw `/api`, `/runtime` and `/models` entries). The new shell does not carry the old libraries (strategy R3, R4),
+// so a bundle that imports one must be refused by name. The runtime joins as its curated entry `@omniviewdev/runtime/ui/v1`
 // (packages/omniviewdev-runtime/src/ui/v1.ts: ten functions and their types, API report `api/ui-v1.api.md`): sharing the whole barrel instead costs the
 // new build a 1.88 MB chunk with the old UI library in it (docs/ui-next/slices/n19-plugin-seam.md, 1.2).
 export const SHARED_SPECIFIERS_V1 = [

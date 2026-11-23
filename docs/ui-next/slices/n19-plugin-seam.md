@@ -100,6 +100,8 @@ What exists: the old loader imports `http://127.0.0.1:<port>/src/entry.ts` nativ
 | `fixture-c-old` | a bundle that imports `@omniviewdev/base-ui` and sets a global when it runs | refused by name; the global is never set |
 | `fixture-d-missing` | `assets/` holds no bundle | a named state |
 
+The duplicate-kit build alone allows the kit's `react-dom` peer to be bundled. `MenuHost` uses it for portals; a normal plugin imports the host's kit and never resolves that dependency itself. Both fixtures still externalize React, and `react-dom` is not a shared name.
+
 **How it was run** (macOS arm64, Playwright 1.64.1 WebKit and Chromium, 2026-11-17):
 
 ```sh

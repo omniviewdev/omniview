@@ -1,0 +1,6873 @@
+{
+ "engines": {
+  "webkit": {
+   "1440x900": {
+    "cycles": [
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 321,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 293,
+       "bottom": 317
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       3,
+       4,
+       4
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 321,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 293,
+       "bottom": 317
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       4,
+       5,
+       5
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 321,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 293,
+       "bottom": 317
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       5,
+       6,
+       6
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 321,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 293,
+       "bottom": 317
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       6,
+       7,
+       7
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 321,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 293,
+       "bottom": 317
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       7,
+       8,
+       8
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 465,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 437,
+       "bottom": 461
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       8,
+       9,
+       9
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 465,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 437,
+       "bottom": 461
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       9,
+       10,
+       10
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 465,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 437,
+       "bottom": 461
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       10,
+       11,
+       11
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 465,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 437,
+       "bottom": 461
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       11,
+       12,
+       12
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 465,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 437,
+       "bottom": 461
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       12,
+       13,
+       13
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 609,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 581,
+       "bottom": 605
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       13,
+       14,
+       14
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 609,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 581,
+       "bottom": 605
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       14,
+       15,
+       15
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 609,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 581,
+       "bottom": 605
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       15,
+       16,
+       16
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 609,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 581,
+       "bottom": 605
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       16,
+       17,
+       17
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 609,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 581,
+       "bottom": 605
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       17,
+       18,
+       18
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "top (344 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       20,
+       21,
+       21
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (344 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       21,
+       22,
+       22
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (344 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       22,
+       23,
+       23
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "middle (200 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 704,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 676,
+       "bottom": 700
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       23,
+       24,
+       24
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (200 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 704,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 676,
+       "bottom": 700
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       24,
+       25,
+       25
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (200 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 704,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 676,
+       "bottom": 700
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       25,
+       26,
+       26
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "bottom (56 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "top",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 693,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 820,
+       "bottom": 844
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       26,
+       27,
+       27
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (56 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "top",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 693,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 820,
+       "bottom": 844
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       27,
+       28,
+       28
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (56 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "top",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 693,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 820,
+       "bottom": 844
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       28,
+       29,
+       29
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     }
+    ],
+    "clipping": {
+     "mid": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 104
+     },
+     "low": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 0
+     }
+    },
+    "keys": {
+     "walk": [
+      "item:Inspect",
+      "item:Resume",
+      "item:Delete…",
+      "item:Inspect",
+      "item:Resume"
+     ],
+     "afterTab": "div[region]",
+     "afterTabFromPointer": "div[region]",
+     "afterShiftTabFromPointer": "div[region]",
+     "selected": "Last action: resume worker-2"
+    },
+    "closers": {
+     "scroll": {
+      "roots": 0,
+      "focus": "trigger:Actions for worker-1"
+     },
+     "resize": {
+      "roots": 0
+     },
+     "recycled": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "rowRemoved": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "focusDropped": {
+      "rootsAfterMove": 1,
+      "focusAfterMove": "popup",
+      "rootsAfterEscape": 0
+     }
+    },
+    "elements": {
+     "large": [
+      {
+       "at": 0,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "2",
+       "last": "25",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 0,
+        "key": null
+       },
+       "inspected": {
+        "rowIndex": 8,
+        "key": "7",
+        "result": "Last action: inspect worker-7",
+        "resolverCalls": {
+         "idle": 0,
+         "open": 1,
+         "navigated": 1,
+         "closed": 1
+        }
+       }
+      },
+      {
+       "at": 0.5,
+       "spacers": 2,
+       "rows": 36,
+       "triggers": 36,
+       "elementsInFigure": 239,
+       "elementsInPage": 582,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "9986",
+       "last": "10021",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 1,
+        "key": "7"
+       },
+       "inspected": {
+        "rowIndex": 10002,
+        "key": "10001",
+        "result": "Last action: inspect worker-10001",
+        "resolverCalls": {
+         "idle": 1,
+         "open": 2,
+         "navigated": 2,
+         "closed": 2
+        }
+       }
+      },
+      {
+       "at": 1,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "19978",
+       "last": "20001",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 2,
+        "key": "10001"
+       },
+       "inspected": {
+        "rowIndex": 19995,
+        "key": "19994",
+        "result": "Last action: inspect worker-19994",
+        "resolverCalls": {
+         "idle": 2,
+         "open": 3,
+         "navigated": 3,
+         "closed": 3
+        }
+       }
+      }
+     ],
+     "twoLine": {
+      "rows": 12,
+      "min": 40,
+      "max": 40,
+      "button": [
+       "24x24"
+      ]
+     },
+     "small": {
+      "rows": 12,
+      "triggers": 12,
+      "heights": [
+       24
+      ]
+     },
+     "windowSizeRange": [
+      24,
+      36
+     ],
+     "elementsInPageRange": [
+      508,
+      582
+     ],
+     "constant": 362,
+     "a": 24,
+     "b": 36,
+     "c": 24
+    },
+    "look": {
+     "trigger": {
+      "width": 24,
+      "height": 24,
+      "glyph": "ellipsis",
+      "glyphBox": "16x16",
+      "glyphCentre": [
+       12,
+       12
+      ],
+      "paths": 1,
+      "outlineOffset": "0px",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "focusVisible": false,
+      "color": "rgb(195, 197, 203)",
+      "cursor": "pointer",
+      "borderTopWidth": "1px"
+     },
+     "popup": {
+      "width": 180,
+      "height": 123,
+      "border": "1px solid",
+      "radius": "8px",
+      "background": "rgb(38, 40, 44)",
+      "color": "rgb(209, 211, 217)",
+      "borderColor": "rgb(51, 53, 59)",
+      "font": "13px/16px 400",
+      "paddingBlock": "8px 8px",
+      "position": "fixed",
+      "itemHeight": 24,
+      "itemInset": 8,
+      "itemRadius": "4px",
+      "itemPadding": "0px",
+      "itemBackground": "rgba(0, 0, 0, 0)",
+      "destructiveColor": "rgb(245, 126, 132)",
+      "separatorTop": 4,
+      "activeFill": "rgb(42, 67, 113)"
+     }
+    },
+    "rest": {
+     "roots": 0,
+     "portals": 0,
+     "listeners": 27,
+     "listenerTypes": [
+      "document:DOMContentLoaded:false",
+      "document:DOMContentLoaded:false",
+      "document:click:false",
+      "document:click:true",
+      "document:contextmenu:false",
+      "document:focusin:false",
+      "document:focusout:false",
+      "document:keydown:false",
+      "document:pointerdown:true",
+      "document:pointerout:false",
+      "document:pointerover:false",
+      "document:scroll:true",
+      "document:selectionchange:false",
+      "window:blur:false",
+      "window:click:true",
+      "window:contextmenu:false",
+      "window:contextmenu:true",
+      "window:dblclick:true",
+      "window:keydown:true",
+      "window:mousedown:true",
+      "window:mousemove:true",
+      "window:mouseup:true",
+      "window:offline:false",
+      "window:online:false",
+      "window:resize:false",
+      "window:visibilitychange:false",
+      "window:wails:runtime-config-ready"
+     ],
+     "elements": 508,
+     "observers": {
+      "created": 1,
+      "disconnected": 0,
+      "live": 1
+     },
+     "resolver": {
+      "calls": 0,
+      "key": null
+     }
+    },
+    "flipped": 3,
+    "benchmark": {
+     "warmups": 5,
+     "samplesPerPosition": 40,
+     "positions": {
+      "top": {
+       "trigger": "Actions for worker-7",
+       "openMs": {
+        "min": 1,
+        "p50": 1,
+        "p95": 2,
+        "max": 2,
+        "samples": [
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         2,
+         2,
+         2,
+         1,
+         2,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         2,
+         1,
+         2,
+         1,
+         2,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 1,
+        "p95": 1,
+        "max": 1,
+        "samples": [
+         0,
+         0,
+         1,
+         1,
+         1,
+         0,
+         1,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         0,
+         1,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         0,
+         1,
+         0,
+         0,
+         1,
+         1,
+         0,
+         1,
+         1,
+         0,
+         1
+        ]
+       }
+      },
+      "middle": {
+       "trigger": "Actions for worker-10000",
+       "openMs": {
+        "min": 1,
+        "p50": 1,
+        "p95": 2,
+        "max": 2,
+        "samples": [
+         1,
+         1,
+         2,
+         1,
+         2,
+         2,
+         2,
+         2,
+         1,
+         2,
+         2,
+         1,
+         1,
+         1,
+         2,
+         2,
+         2,
+         1,
+         1,
+         2,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         2,
+         2,
+         2,
+         1,
+         1,
+         1,
+         2,
+         2,
+         1,
+         2,
+         2,
+         1,
+         1,
+         1
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 1,
+        "p95": 1,
+        "max": 1,
+        "samples": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         0,
+         0,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         0,
+         0,
+         1,
+         1,
+         0,
+         1,
+         0,
+         0,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         0,
+         1,
+         1,
+         0,
+         0
+        ]
+       }
+      },
+      "bottom": {
+       "trigger": "Actions for worker-19994",
+       "openMs": {
+        "min": 1,
+        "p50": 1,
+        "p95": 2,
+        "max": 2,
+        "samples": [
+         1,
+         1,
+         2,
+         2,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         2,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         2,
+         2,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 1,
+        "p95": 1,
+        "max": 1,
+        "samples": [
+         1,
+         1,
+         0,
+         1,
+         0,
+         1,
+         1,
+         0,
+         1,
+         0,
+         1,
+         0,
+         0,
+         1,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         0,
+         0,
+         1,
+         1,
+         1,
+         1,
+         0,
+         0,
+         1,
+         0,
+         1,
+         1,
+         0,
+         0,
+         1,
+         1,
+         1
+        ]
+       }
+      }
+     }
+    }
+   },
+   "1280x800": {
+    "cycles": [
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 271,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 243,
+       "bottom": 267
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       3,
+       4,
+       4
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 271,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 243,
+       "bottom": 267
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       4,
+       5,
+       5
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 271,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 243,
+       "bottom": 267
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       5,
+       6,
+       6
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 271,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 243,
+       "bottom": 267
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       6,
+       7,
+       7
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 271,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 243,
+       "bottom": 267
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       7,
+       8,
+       8
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 415,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 387,
+       "bottom": 411
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       8,
+       9,
+       9
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 415,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 387,
+       "bottom": 411
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       9,
+       10,
+       10
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 415,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 387,
+       "bottom": 411
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       10,
+       11,
+       11
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 415,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 387,
+       "bottom": 411
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       11,
+       12,
+       12
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 415,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 387,
+       "bottom": 411
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       12,
+       13,
+       13
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       13,
+       14,
+       14
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       14,
+       15,
+       15
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       15,
+       16,
+       16
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       16,
+       17,
+       17
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       17,
+       18,
+       18
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "top (344 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 460,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 432,
+       "bottom": 456
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       20,
+       21,
+       21
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (344 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 460,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 432,
+       "bottom": 456
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       21,
+       22,
+       22
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (344 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 460,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 432,
+       "bottom": 456
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       22,
+       23,
+       23
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "middle (200 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 604,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 576,
+       "bottom": 600
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       23,
+       24,
+       24
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (200 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 604,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 576,
+       "bottom": 600
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       24,
+       25,
+       25
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (200 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 604,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 576,
+       "bottom": 600
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       25,
+       26,
+       26
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "bottom (56 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "top",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 593,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 720,
+       "bottom": 744
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       26,
+       27,
+       27
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (56 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "top",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 593,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 720,
+       "bottom": 744
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       27,
+       28,
+       28
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (56 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "top",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 593,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 720,
+       "bottom": 744
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       28,
+       29,
+       29
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     }
+    ],
+    "clipping": {
+     "mid": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 104
+     },
+     "low": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 0
+     }
+    },
+    "keys": {
+     "walk": [
+      "item:Inspect",
+      "item:Resume",
+      "item:Delete…",
+      "item:Inspect",
+      "item:Resume"
+     ],
+     "afterTab": "div[region]",
+     "afterTabFromPointer": "div[region]",
+     "afterShiftTabFromPointer": "div[region]",
+     "selected": "Last action: resume worker-2"
+    },
+    "closers": {
+     "scroll": {
+      "roots": 0,
+      "focus": "trigger:Actions for worker-1"
+     },
+     "resize": {
+      "roots": 0
+     },
+     "recycled": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "rowRemoved": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "focusDropped": {
+      "rootsAfterMove": 1,
+      "focusAfterMove": "popup",
+      "rootsAfterEscape": 0
+     }
+    },
+    "elements": {
+     "large": [
+      {
+       "at": 0,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "2",
+       "last": "25",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 0,
+        "key": null
+       },
+       "inspected": {
+        "rowIndex": 8,
+        "key": "7",
+        "result": "Last action: inspect worker-7",
+        "resolverCalls": {
+         "idle": 0,
+         "open": 1,
+         "navigated": 1,
+         "closed": 1
+        }
+       }
+      },
+      {
+       "at": 0.5,
+       "spacers": 2,
+       "rows": 36,
+       "triggers": 36,
+       "elementsInFigure": 239,
+       "elementsInPage": 582,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "9986",
+       "last": "10021",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 1,
+        "key": "7"
+       },
+       "inspected": {
+        "rowIndex": 10002,
+        "key": "10001",
+        "result": "Last action: inspect worker-10001",
+        "resolverCalls": {
+         "idle": 1,
+         "open": 2,
+         "navigated": 2,
+         "closed": 2
+        }
+       }
+      },
+      {
+       "at": 1,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "19978",
+       "last": "20001",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 2,
+        "key": "10001"
+       },
+       "inspected": {
+        "rowIndex": 19995,
+        "key": "19994",
+        "result": "Last action: inspect worker-19994",
+        "resolverCalls": {
+         "idle": 2,
+         "open": 3,
+         "navigated": 3,
+         "closed": 3
+        }
+       }
+      }
+     ],
+     "twoLine": {
+      "rows": 12,
+      "min": 40,
+      "max": 40,
+      "button": [
+       "24x24"
+      ]
+     },
+     "small": {
+      "rows": 12,
+      "triggers": 12,
+      "heights": [
+       24
+      ]
+     },
+     "windowSizeRange": [
+      24,
+      36
+     ],
+     "elementsInPageRange": [
+      508,
+      582
+     ],
+     "constant": 362,
+     "a": 24,
+     "b": 36,
+     "c": 24
+    },
+    "look": {
+     "trigger": {
+      "width": 24,
+      "height": 24,
+      "glyph": "ellipsis",
+      "glyphBox": "16x16",
+      "glyphCentre": [
+       12,
+       12
+      ],
+      "paths": 1,
+      "outlineOffset": "0px",
+      "outlineStyle": "none",
+      "outlineWidth": "3px",
+      "focusVisible": false,
+      "color": "rgb(195, 197, 203)",
+      "cursor": "pointer",
+      "borderTopWidth": "1px"
+     },
+     "popup": {
+      "width": 180,
+      "height": 123,
+      "border": "1px solid",
+      "radius": "8px",
+      "background": "rgb(38, 40, 44)",
+      "color": "rgb(209, 211, 217)",
+      "borderColor": "rgb(51, 53, 59)",
+      "font": "13px/16px 400",
+      "paddingBlock": "8px 8px",
+      "position": "fixed",
+      "itemHeight": 24,
+      "itemInset": 8,
+      "itemRadius": "4px",
+      "itemPadding": "0px",
+      "itemBackground": "rgba(0, 0, 0, 0)",
+      "destructiveColor": "rgb(245, 126, 132)",
+      "separatorTop": 4,
+      "activeFill": "rgb(42, 67, 113)"
+     }
+    },
+    "rest": {
+     "roots": 0,
+     "portals": 0,
+     "listeners": 27,
+     "listenerTypes": [
+      "document:DOMContentLoaded:false",
+      "document:DOMContentLoaded:false",
+      "document:click:false",
+      "document:click:true",
+      "document:contextmenu:false",
+      "document:focusin:false",
+      "document:focusout:false",
+      "document:keydown:false",
+      "document:pointerdown:true",
+      "document:pointerout:false",
+      "document:pointerover:false",
+      "document:scroll:true",
+      "document:selectionchange:false",
+      "window:blur:false",
+      "window:click:true",
+      "window:contextmenu:false",
+      "window:contextmenu:true",
+      "window:dblclick:true",
+      "window:keydown:true",
+      "window:mousedown:true",
+      "window:mousemove:true",
+      "window:mouseup:true",
+      "window:offline:false",
+      "window:online:false",
+      "window:resize:false",
+      "window:visibilitychange:false",
+      "window:wails:runtime-config-ready"
+     ],
+     "elements": 508,
+     "observers": {
+      "created": 1,
+      "disconnected": 0,
+      "live": 1
+     },
+     "resolver": {
+      "calls": 0,
+      "key": null
+     }
+    },
+    "flipped": 3,
+    "benchmark": {
+     "warmups": 5,
+     "samplesPerPosition": 40,
+     "positions": {
+      "top": {
+       "trigger": "Actions for worker-7",
+       "openMs": {
+        "min": 1,
+        "p50": 1,
+        "p95": 2,
+        "max": 2,
+        "samples": [
+         2,
+         2,
+         2,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         2,
+         1,
+         1,
+         2,
+         2,
+         1,
+         1,
+         1,
+         2,
+         2,
+         2,
+         2,
+         1,
+         1,
+         1,
+         2,
+         2,
+         2,
+         1,
+         1,
+         1
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 1,
+        "p95": 1,
+        "max": 1,
+        "samples": [
+         1,
+         1,
+         1,
+         0,
+         1,
+         1,
+         0,
+         1,
+         1,
+         0,
+         1,
+         1,
+         0,
+         0,
+         1,
+         0,
+         0,
+         0,
+         0,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         1,
+         1,
+         0,
+         0,
+         0,
+         1,
+         1
+        ]
+       }
+      },
+      "middle": {
+       "trigger": "Actions for worker-10000",
+       "openMs": {
+        "min": 1,
+        "p50": 1,
+        "p95": 2,
+        "max": 2,
+        "samples": [
+         2,
+         1,
+         1,
+         2,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         2,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         2,
+         2,
+         1,
+         2,
+         2,
+         1,
+         2,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         2,
+         1,
+         2
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 1,
+        "p95": 1,
+        "max": 1,
+        "samples": [
+         1,
+         0,
+         1,
+         1,
+         0,
+         0,
+         0,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         1,
+         0,
+         0,
+         0,
+         1,
+         1,
+         0,
+         1,
+         0,
+         0,
+         0,
+         1,
+         1,
+         0,
+         0
+        ]
+       }
+      },
+      "bottom": {
+       "trigger": "Actions for worker-19994",
+       "openMs": {
+        "min": 1,
+        "p50": 1,
+        "p95": 2,
+        "max": 2,
+        "samples": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         1,
+         1,
+         2
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 1,
+        "p95": 1,
+        "max": 1,
+        "samples": [
+         1,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         0,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         0,
+         1,
+         0,
+         0,
+         1,
+         0,
+         1,
+         1,
+         0,
+         0,
+         0,
+         0,
+         1,
+         0,
+         1,
+         0
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "chromium": {
+   "1440x900": {
+    "cycles": [
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 322,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 294,
+       "bottom": 318
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       3,
+       4,
+       4
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 322,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 294,
+       "bottom": 318
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       4,
+       5,
+       5
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 322,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 294,
+       "bottom": 318
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       5,
+       6,
+       6
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 322,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 294,
+       "bottom": 318
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       6,
+       7,
+       7
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 322,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 294,
+       "bottom": 318
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       7,
+       8,
+       8
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 466,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 438,
+       "bottom": 462
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       8,
+       9,
+       9
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 466,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 438,
+       "bottom": 462
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       9,
+       10,
+       10
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 466,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 438,
+       "bottom": 462
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       10,
+       11,
+       11
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 466,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 438,
+       "bottom": 462
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       11,
+       12,
+       12
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 466,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 438,
+       "bottom": 462
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       12,
+       13,
+       13
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 610,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 582,
+       "bottom": 606
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       13,
+       14,
+       14
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 610,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 582,
+       "bottom": 606
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       14,
+       15,
+       15
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 610,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 582,
+       "bottom": 606
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       15,
+       16,
+       16
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 610,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 582,
+       "bottom": 606
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       16,
+       17,
+       17
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 610,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 582,
+       "bottom": 606
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       17,
+       18,
+       18
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "top (345 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       20,
+       21,
+       21
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (345 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       21,
+       22,
+       22
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (345 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 559,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 531,
+       "bottom": 555
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       22,
+       23,
+       23
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "middle (201 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 703,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 675,
+       "bottom": 699
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       23,
+       24,
+       24
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (201 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 703,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 675,
+       "bottom": 699
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       24,
+       25,
+       25
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (201 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 703,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 675,
+       "bottom": 699
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       25,
+       26,
+       26
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "bottom (57 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "top",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 45,
+       "top": 692,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 819,
+       "bottom": 843
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       26,
+       27,
+       27
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (57 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "top",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 45,
+       "top": 692,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 819,
+       "bottom": 843
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       27,
+       28,
+       28
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (57 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "top",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 45,
+       "top": 692,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 225,
+       "top": 819,
+       "bottom": 843
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       28,
+       29,
+       29
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     }
+    ],
+    "clipping": {
+     "mid": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 104
+     },
+     "low": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 0
+     }
+    },
+    "keys": {
+     "walk": [
+      "item:Inspect",
+      "item:Resume",
+      "item:Delete…",
+      "item:Inspect",
+      "item:Resume"
+     ],
+     "afterTab": "trigger:Actions for worker-3",
+     "afterTabFromPointer": "trigger:Actions for worker-3",
+     "afterShiftTabFromPointer": "trigger:Actions for worker-1",
+     "selected": "Last action: resume worker-2"
+    },
+    "closers": {
+     "scroll": {
+      "roots": 0,
+      "focus": "trigger:Actions for worker-1"
+     },
+     "resize": {
+      "roots": 0
+     },
+     "recycled": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "rowRemoved": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "focusDropped": {
+      "rootsAfterMove": 0,
+      "focusAfterMove": "body",
+      "rootsAfterEscape": 0
+     }
+    },
+    "elements": {
+     "large": [
+      {
+       "at": 0,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "2",
+       "last": "25",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 0,
+        "key": null
+       },
+       "inspected": {
+        "rowIndex": 8,
+        "key": "7",
+        "result": "Last action: inspect worker-7",
+        "resolverCalls": {
+         "idle": 0,
+         "open": 1,
+         "navigated": 1,
+         "closed": 1
+        }
+       }
+      },
+      {
+       "at": 0.5,
+       "spacers": 2,
+       "rows": 36,
+       "triggers": 36,
+       "elementsInFigure": 239,
+       "elementsInPage": 582,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "9986",
+       "last": "10021",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 1,
+        "key": "7"
+       },
+       "inspected": {
+        "rowIndex": 10002,
+        "key": "10001",
+        "result": "Last action: inspect worker-10001",
+        "resolverCalls": {
+         "idle": 1,
+         "open": 2,
+         "navigated": 2,
+         "closed": 2
+        }
+       }
+      },
+      {
+       "at": 1,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "19978",
+       "last": "20001",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 2,
+        "key": "10001"
+       },
+       "inspected": {
+        "rowIndex": 19995,
+        "key": "19994",
+        "result": "Last action: inspect worker-19994",
+        "resolverCalls": {
+         "idle": 2,
+         "open": 3,
+         "navigated": 3,
+         "closed": 3
+        }
+       }
+      }
+     ],
+     "twoLine": {
+      "rows": 12,
+      "min": 40,
+      "max": 40,
+      "button": [
+       "24x24"
+      ]
+     },
+     "small": {
+      "rows": 12,
+      "triggers": 12,
+      "heights": [
+       24
+      ]
+     },
+     "windowSizeRange": [
+      24,
+      36
+     ],
+     "elementsInPageRange": [
+      508,
+      582
+     ],
+     "constant": 362,
+     "a": 24,
+     "b": 36,
+     "c": 24
+    },
+    "look": {
+     "trigger": {
+      "width": 24,
+      "height": 24,
+      "glyph": "ellipsis",
+      "glyphBox": "16x16",
+      "glyphCentre": [
+       12,
+       12
+      ],
+      "paths": 1,
+      "outlineOffset": "-2px",
+      "outlineStyle": "solid",
+      "outlineWidth": "2px",
+      "focusVisible": true,
+      "color": "rgb(195, 197, 203)",
+      "cursor": "pointer",
+      "borderTopWidth": "1px"
+     },
+     "popup": {
+      "width": 180,
+      "height": 123,
+      "border": "1px solid",
+      "radius": "8px",
+      "background": "rgb(38, 40, 44)",
+      "color": "rgb(209, 211, 217)",
+      "borderColor": "rgb(51, 53, 59)",
+      "font": "13px/16px 400",
+      "paddingBlock": "8px 8px",
+      "position": "fixed",
+      "itemHeight": 24,
+      "itemInset": 8,
+      "itemRadius": "4px",
+      "itemPadding": "0px",
+      "itemBackground": "rgba(0, 0, 0, 0)",
+      "destructiveColor": "rgb(245, 126, 132)",
+      "separatorTop": 4,
+      "activeFill": "rgb(42, 67, 113)"
+     }
+    },
+    "rest": {
+     "roots": 0,
+     "portals": 0,
+     "listeners": 27,
+     "listenerTypes": [
+      "document:DOMContentLoaded:false",
+      "document:DOMContentLoaded:false",
+      "document:click:false",
+      "document:click:true",
+      "document:contextmenu:false",
+      "document:focusin:false",
+      "document:focusout:false",
+      "document:keydown:false",
+      "document:pointerdown:true",
+      "document:pointerout:false",
+      "document:pointerover:false",
+      "document:scroll:true",
+      "document:selectionchange:false",
+      "window:blur:false",
+      "window:click:true",
+      "window:contextmenu:false",
+      "window:contextmenu:true",
+      "window:dblclick:true",
+      "window:keydown:true",
+      "window:mousedown:true",
+      "window:mousemove:true",
+      "window:mouseup:true",
+      "window:offline:false",
+      "window:online:false",
+      "window:resize:false",
+      "window:visibilitychange:false",
+      "window:wails:runtime-config-ready"
+     ],
+     "elements": 508,
+     "observers": {
+      "created": 1,
+      "disconnected": 0,
+      "live": 1
+     },
+     "resolver": {
+      "calls": 0,
+      "key": null
+     }
+    },
+    "flipped": 3,
+    "benchmark": {
+     "warmups": 5,
+     "samplesPerPosition": 40,
+     "positions": {
+      "top": {
+       "trigger": "Actions for worker-7",
+       "openMs": {
+        "min": 0.2,
+        "p50": 0.4,
+        "p95": 0.6,
+        "max": 0.7,
+        "samples": [
+         0.5999999046325684,
+         0.7000000476837158,
+         0.40000009536743164,
+         0.7000000476837158,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.40000009536743164,
+         0.39999985694885254,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.5,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.3000001907348633,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.5,
+         0.20000004768371582,
+         0.2999999523162842,
+         0.20000004768371582,
+         0.3000001907348633,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.39999985694885254,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.39999985694885254,
+         0.20000004768371582
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.2,
+        "max": 0.2,
+        "samples": [
+         0.09999990463256836,
+         0.20000004768371582,
+         0,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.20000004768371582,
+         0.20000004768371582,
+         0,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.19999980926513672,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.19999980926513672,
+         0.09999990463256836,
+         0,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.20000004768371582
+        ]
+       }
+      },
+      "middle": {
+       "trigger": "Actions for worker-10001",
+       "openMs": {
+        "min": 0.3,
+        "p50": 0.4,
+        "p95": 0.5,
+        "max": 0.6,
+        "samples": [
+         0.40000009536743164,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.3000001907348633,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.5,
+         0.3000001907348633,
+         0.39999985694885254,
+         0.5,
+         0.40000009536743164,
+         0.39999985694885254,
+         0.2999999523162842,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.5,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.3000001907348633,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.5,
+         0.5,
+         0.5999999046325684,
+         0.39999985694885254,
+         0.2999999523162842,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.5,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.2999999523162842
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.2,
+        "max": 0.2,
+        "samples": [
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.19999980926513672,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.10000014305114746,
+         0,
+         0.10000014305114746,
+         0,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.19999980926513672,
+         0.09999990463256836,
+         0,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.09999990463256836
+        ]
+       }
+      },
+      "bottom": {
+       "trigger": "Actions for worker-19994",
+       "openMs": {
+        "min": 0.2,
+        "p50": 0.4,
+        "p95": 0.5,
+        "max": 0.5,
+        "samples": [
+         0.39999985694885254,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.5,
+         0.2999999523162842,
+         0.5,
+         0.5,
+         0.20000004768371582,
+         0.40000009536743164,
+         0.5,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.5,
+         0.5,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.39999985694885254,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.40000009536743164
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.2,
+        "max": 0.3,
+        "samples": [
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.10000014305114746,
+         0,
+         0.19999980926513672,
+         0.10000014305114746,
+         0,
+         0.10000014305114746,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.19999980926513672,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.2999999523162842,
+         0,
+         0.10000014305114746,
+         0.09999990463256836,
+         0,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.20000004768371582
+        ]
+       }
+      }
+     }
+    }
+   },
+   "1280x800": {
+    "cycles": [
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 272,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 244,
+       "bottom": 268
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       3,
+       4,
+       4
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 272,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 244,
+       "bottom": 268
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       4,
+       5,
+       5
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 272,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 244,
+       "bottom": 268
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       5,
+       6,
+       6
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 272,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 244,
+       "bottom": 268
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       6,
+       7,
+       7
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "top",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 272,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 244,
+       "bottom": 268
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       7,
+       8,
+       8
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 416,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 388,
+       "bottom": 412
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       8,
+       9,
+       9
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 416,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 388,
+       "bottom": 412
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       9,
+       10,
+       10
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 416,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 388,
+       "bottom": 412
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       10,
+       11,
+       11
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 416,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 388,
+       "bottom": 412
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       11,
+       12,
+       12
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "middle",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 416,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 388,
+       "bottom": 412
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       12,
+       13,
+       13
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       13,
+       14,
+       14
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "enter",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       14,
+       15,
+       15
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "space",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       15,
+       16,
+       16
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       16,
+       17,
+       17
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "mid",
+      "name": "bottom",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 560,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 532,
+       "bottom": 556
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       17,
+       18,
+       18
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "top (345 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 459,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 431,
+       "bottom": 455
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       20,
+       21,
+       21
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (345 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 459,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 431,
+       "bottom": 455
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       21,
+       22,
+       22
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "top (345 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 459,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 431,
+       "bottom": 455
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       22,
+       23,
+       23
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-1"
+     },
+     {
+      "window": "low",
+      "name": "middle (201 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "bottom",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 603,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 575,
+       "bottom": 599
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       23,
+       24,
+       24
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (201 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "bottom",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 603,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 575,
+       "bottom": 599
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       24,
+       25,
+       25
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "middle (201 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "bottom",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 603,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 575,
+       "bottom": 599
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       25,
+       26,
+       26
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-7"
+     },
+     {
+      "window": "low",
+      "name": "bottom (57 px above the window's bottom edge)",
+      "mode": "mouse",
+      "side": "top",
+      "focusOpen": "popup",
+      "popup": {
+       "left": 305,
+       "top": 592,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 719,
+       "bottom": 743
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       26,
+       27,
+       27
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (57 px above the window's bottom edge)",
+      "mode": "down",
+      "side": "top",
+      "focusOpen": "item:Inspect",
+      "popup": {
+       "left": 305,
+       "top": 592,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 719,
+       "bottom": 743
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       27,
+       28,
+       28
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     },
+     {
+      "window": "low",
+      "name": "bottom (57 px above the window's bottom edge)",
+      "mode": "up",
+      "side": "top",
+      "focusOpen": "item:Delete…",
+      "popup": {
+       "left": 305,
+       "top": 592,
+       "width": 180,
+       "height": 123
+      },
+      "trigger": {
+       "right": 485,
+       "top": 719,
+       "bottom": 743
+      },
+      "roots": [
+       0,
+       1,
+       0
+      ],
+      "portals": [
+       0,
+       1,
+       0
+      ],
+      "resolvers": [
+       28,
+       29,
+       29
+      ],
+      "listeners": [
+       27,
+       31,
+       27
+      ],
+      "elements": [
+       508,
+       520,
+       508
+      ],
+      "focusClosed": "trigger:Actions for worker-13"
+     }
+    ],
+    "clipping": {
+     "mid": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 104
+     },
+     "low": {
+      "shipped": true,
+      "topLayerInTransformedRegion": true,
+      "fixedInOverflowOnlyRegion": true,
+      "fixedInTransformedRegion": false,
+      "popupPastRegionBottomPx": 0
+     }
+    },
+    "keys": {
+     "walk": [
+      "item:Inspect",
+      "item:Resume",
+      "item:Delete…",
+      "item:Inspect",
+      "item:Resume"
+     ],
+     "afterTab": "trigger:Actions for worker-3",
+     "afterTabFromPointer": "trigger:Actions for worker-3",
+     "afterShiftTabFromPointer": "trigger:Actions for worker-1",
+     "selected": "Last action: resume worker-2"
+    },
+    "closers": {
+     "scroll": {
+      "roots": 0,
+      "focus": "trigger:Actions for worker-1"
+     },
+     "resize": {
+      "roots": 0
+     },
+     "recycled": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "rowRemoved": {
+      "roots": 0,
+      "focus": "div[region]"
+     },
+     "focusDropped": {
+      "rootsAfterMove": 0,
+      "focusAfterMove": "body",
+      "rootsAfterEscape": 0
+     }
+    },
+    "elements": {
+     "large": [
+      {
+       "at": 0,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "2",
+       "last": "25",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 0,
+        "key": null
+       },
+       "inspected": {
+        "rowIndex": 8,
+        "key": "7",
+        "result": "Last action: inspect worker-7",
+        "resolverCalls": {
+         "idle": 0,
+         "open": 1,
+         "navigated": 1,
+         "closed": 1
+        }
+       }
+      },
+      {
+       "at": 0.5,
+       "spacers": 2,
+       "rows": 36,
+       "triggers": 36,
+       "elementsInFigure": 239,
+       "elementsInPage": 582,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "9986",
+       "last": "10021",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 1,
+        "key": "7"
+       },
+       "inspected": {
+        "rowIndex": 10002,
+        "key": "10001",
+        "result": "Last action: inspect worker-10001",
+        "resolverCalls": {
+         "idle": 1,
+         "open": 2,
+         "navigated": 2,
+         "closed": 2
+        }
+       }
+      },
+      {
+       "at": 1,
+       "spacers": 1,
+       "rows": 24,
+       "triggers": 24,
+       "elementsInFigure": 165,
+       "elementsInPage": 508,
+       "minHeight": 24,
+       "maxHeight": 24,
+       "first": "19978",
+       "last": "20001",
+       "rowcount": "20001",
+       "perRow": [
+        6
+       ],
+       "listeners": [
+        "document:DOMContentLoaded:false",
+        "document:DOMContentLoaded:false",
+        "document:click:false",
+        "document:click:true",
+        "document:contextmenu:false",
+        "document:focusin:false",
+        "document:focusout:false",
+        "document:keydown:false",
+        "document:pointerdown:true",
+        "document:pointerout:false",
+        "document:pointerover:false",
+        "document:scroll:true",
+        "document:selectionchange:false",
+        "window:blur:false",
+        "window:click:true",
+        "window:contextmenu:false",
+        "window:contextmenu:true",
+        "window:dblclick:true",
+        "window:keydown:true",
+        "window:mousedown:true",
+        "window:mousemove:true",
+        "window:mouseup:true",
+        "window:offline:false",
+        "window:online:false",
+        "window:resize:false",
+        "window:visibilitychange:false",
+        "window:wails:runtime-config-ready"
+       ],
+       "triggerListenerAdds": 0,
+       "triggerClickHandlers": 0,
+       "resolver": {
+        "calls": 2,
+        "key": "10001"
+       },
+       "inspected": {
+        "rowIndex": 19995,
+        "key": "19994",
+        "result": "Last action: inspect worker-19994",
+        "resolverCalls": {
+         "idle": 2,
+         "open": 3,
+         "navigated": 3,
+         "closed": 3
+        }
+       }
+      }
+     ],
+     "twoLine": {
+      "rows": 12,
+      "min": 40,
+      "max": 40,
+      "button": [
+       "24x24"
+      ]
+     },
+     "small": {
+      "rows": 12,
+      "triggers": 12,
+      "heights": [
+       24
+      ]
+     },
+     "windowSizeRange": [
+      24,
+      36
+     ],
+     "elementsInPageRange": [
+      508,
+      582
+     ],
+     "constant": 362,
+     "a": 24,
+     "b": 36,
+     "c": 24
+    },
+    "look": {
+     "trigger": {
+      "width": 24,
+      "height": 24,
+      "glyph": "ellipsis",
+      "glyphBox": "16x16",
+      "glyphCentre": [
+       12,
+       12
+      ],
+      "paths": 1,
+      "outlineOffset": "-2px",
+      "outlineStyle": "solid",
+      "outlineWidth": "2px",
+      "focusVisible": true,
+      "color": "rgb(195, 197, 203)",
+      "cursor": "pointer",
+      "borderTopWidth": "1px"
+     },
+     "popup": {
+      "width": 180,
+      "height": 123,
+      "border": "1px solid",
+      "radius": "8px",
+      "background": "rgb(38, 40, 44)",
+      "color": "rgb(209, 211, 217)",
+      "borderColor": "rgb(51, 53, 59)",
+      "font": "13px/16px 400",
+      "paddingBlock": "8px 8px",
+      "position": "fixed",
+      "itemHeight": 24,
+      "itemInset": 8,
+      "itemRadius": "4px",
+      "itemPadding": "0px",
+      "itemBackground": "rgba(0, 0, 0, 0)",
+      "destructiveColor": "rgb(245, 126, 132)",
+      "separatorTop": 4,
+      "activeFill": "rgb(42, 67, 113)"
+     }
+    },
+    "rest": {
+     "roots": 0,
+     "portals": 0,
+     "listeners": 27,
+     "listenerTypes": [
+      "document:DOMContentLoaded:false",
+      "document:DOMContentLoaded:false",
+      "document:click:false",
+      "document:click:true",
+      "document:contextmenu:false",
+      "document:focusin:false",
+      "document:focusout:false",
+      "document:keydown:false",
+      "document:pointerdown:true",
+      "document:pointerout:false",
+      "document:pointerover:false",
+      "document:scroll:true",
+      "document:selectionchange:false",
+      "window:blur:false",
+      "window:click:true",
+      "window:contextmenu:false",
+      "window:contextmenu:true",
+      "window:dblclick:true",
+      "window:keydown:true",
+      "window:mousedown:true",
+      "window:mousemove:true",
+      "window:mouseup:true",
+      "window:offline:false",
+      "window:online:false",
+      "window:resize:false",
+      "window:visibilitychange:false",
+      "window:wails:runtime-config-ready"
+     ],
+     "elements": 508,
+     "observers": {
+      "created": 1,
+      "disconnected": 0,
+      "live": 1
+     },
+     "resolver": {
+      "calls": 0,
+      "key": null
+     }
+    },
+    "flipped": 3,
+    "benchmark": {
+     "warmups": 5,
+     "samplesPerPosition": 40,
+     "positions": {
+      "top": {
+       "trigger": "Actions for worker-7",
+       "openMs": {
+        "min": 0.2,
+        "p50": 0.4,
+        "p95": 0.6,
+        "max": 0.8,
+        "samples": [
+         0.7999999523162842,
+         0.5999999046325684,
+         0.6000001430511475,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.3000001907348633,
+         0.5,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.3000001907348633,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.5,
+         0.39999985694885254,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.5,
+         0.39999985694885254,
+         0.5999999046325684,
+         0.7000000476837158,
+         0.5,
+         0.5,
+         0.6000001430511475,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.5,
+         0.39999985694885254
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.2,
+        "max": 0.2,
+        "samples": [
+         0.20000004768371582,
+         0.20000004768371582,
+         0.19999980926513672,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.19999980926513672,
+         0,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.19999980926513672,
+         0.09999990463256836,
+         0,
+         0.10000014305114746,
+         0,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.10000014305114746,
+         0,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.10000014305114746,
+         0.09999990463256836,
+         0,
+         0.19999980926513672,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.19999980926513672,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836
+        ]
+       }
+      },
+      "middle": {
+       "trigger": "Actions for worker-10001",
+       "openMs": {
+        "min": 0.3,
+        "p50": 0.4,
+        "p95": 0.5,
+        "max": 0.5,
+        "samples": [
+         0.39999985694885254,
+         0.40000009536743164,
+         0.5,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.5,
+         0.2999999523162842,
+         0.5,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.39999985694885254,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.3000001907348633,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.5,
+         0.5,
+         0.5,
+         0.40000009536743164,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.5,
+         0.40000009536743164,
+         0.39999985694885254,
+         0.2999999523162842
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.2,
+        "max": 0.3,
+        "samples": [
+         0.09999990463256836,
+         0.09999990463256836,
+         0,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.2999999523162842,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.10000014305114746,
+         0,
+         0,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.09999990463256836,
+         0,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.09999990463256836,
+         0,
+         0,
+         0.20000004768371582,
+         0.19999980926513672,
+         0.19999980926513672,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.19999980926513672,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.09999990463256836
+        ]
+       }
+      },
+      "bottom": {
+       "trigger": "Actions for worker-19994",
+       "openMs": {
+        "min": 0.2,
+        "p50": 0.4,
+        "p95": 0.5,
+        "max": 0.6,
+        "samples": [
+         0.5,
+         0.5999999046325684,
+         0.40000009536743164,
+         0.5999999046325684,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.40000009536743164,
+         0.20000004768371582,
+         0.2999999523162842,
+         0.5,
+         0.3000001907348633,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.2999999523162842,
+         0.5,
+         0.5,
+         0.39999985694885254,
+         0.20000004768371582,
+         0.3000001907348633,
+         0.2999999523162842,
+         0.2999999523162842,
+         0.3000001907348633,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.20000004768371582,
+         0.39999985694885254,
+         0.3000001907348633,
+         0.2999999523162842,
+         0.5,
+         0.39999985694885254,
+         0.2999999523162842,
+         0.40000009536743164,
+         0.39999985694885254,
+         0.40000009536743164,
+         0.5,
+         0.5
+        ]
+       },
+       "closeMs": {
+        "min": 0,
+        "p50": 0.1,
+        "p95": 0.2,
+        "max": 0.2,
+        "samples": [
+         0.19999980926513672,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.19999980926513672,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.09999990463256836,
+         0,
+         0.10000014305114746,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.19999980926513672,
+         0,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.10000014305114746,
+         0.09999990463256836,
+         0.09999990463256836,
+         0,
+         0.09999990463256836,
+         0,
+         0.09999990463256836,
+         0.09999990463256836,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.09999990463256836,
+         0.10000014305114746,
+         0.20000004768371582,
+         0.20000004768371582,
+         0.20000004768371582
+        ]
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "notes": []
+}

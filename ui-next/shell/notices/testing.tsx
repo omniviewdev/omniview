@@ -1,3 +1,4 @@
+import { MenuHost } from '@omniviewdev/kit';
 import { act, cleanup, render } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { Profiler, useRef, type ReactNode } from 'react';
@@ -187,6 +188,7 @@ export function mountWindow(options: WindowOptions = {}): MountedWindow {
         {options.page}
       </StaticShell>
     </Profiler>,
+    { wrapper: MenuHost },
   );
   const flush = async (): Promise<void> => {
     await act(async () => {

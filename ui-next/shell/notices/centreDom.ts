@@ -1,14 +1,11 @@
 // What the notification centre asks of the document: where its popover stands, and the focus. Plain DOM functions, kept out of the components so that the one place that may throw (`showPopover` on an element that is
 // open already) and the places that read geometry are here and tested here (`centreDom.test.ts`).
 
-/** The width of the centre's popover (the mock's `data-size="wide"`, 420 px) and of its Filter menu. */
+/** The width of the centre's popover (the mock's `data-size="wide"`, 420 px). */
 export const CENTRE_WIDTH = 420;
 
 /** Where a popover that opens above its invoker stands: its left edge, the distance from the window's bottom to its bottom edge, and the most height it may take. */
 export type Place = { readonly x: number; readonly bottom: number; readonly max: number };
-
-/** Where a menu that opens below its invoker stands: its left edge, its top edge, and the most height it may take. */
-export type Below = { readonly x: number; readonly top: number; readonly max: number };
 
 /** The window's size as the document says it: what a popover is placed in. */
 const viewport = (): { readonly width: number; readonly height: number } => ({ width: document.documentElement.clientWidth, height: document.documentElement.clientHeight });
@@ -23,14 +20,6 @@ export function placeAbove(invoker: Element, width: number = CENTRE_WIDTH): Plac
   const wide = Math.min(width, across - 16);
   const edge = box.left + box.width / 2 > across / 2 ? box.right - wide : box.left;
   return { x: Math.round(Math.max(8, Math.min(edge, across - 8 - wide))), bottom: Math.round(down - box.top + 4), max: Math.max(120, Math.round(box.top - 12)) };
-}
-
-/** A menu below the button that opens it (the mock's menu, 'bottom-end'): 4 px under it, its right edge on the button's, kept 8 px inside the window, and no taller than the room under it less 12 px (never under 120 px). */
-export function placeBelow(invoker: Element, width: number): Below {
-  const { width: across, height: down } = viewport();
-  const box = invoker.getBoundingClientRect();
-  const wide = Math.min(width, across - 16);
-  return { x: Math.round(Math.max(8, Math.min(box.right - wide, across - 8 - wide))), top: Math.round(box.bottom + 4), max: Math.max(120, Math.round(down - box.bottom - 12)) };
 }
 
 /** Puts a popover in the top layer. One that is open already (a development build mounts an effect twice) is left as it is. */

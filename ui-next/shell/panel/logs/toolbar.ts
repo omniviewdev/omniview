@@ -94,8 +94,7 @@ export function fitTools<T>(tools: readonly T[], slots: number): { readonly show
 }
 
 /**
- * What an item of the More menu says for a button. A toggle in the column keeps one name and says its state in `aria-pressed`; the kit's menu has no checked item (the mock's menu has: checkbox items for the
- * pressed toggles), so an item says what pressing it does.
+ * What an overflow entry says for a button. A toggle in the column keeps one name and says its state in `aria-pressed`; the overflow uses command labels that say what pressing the entry does.
  */
 export function menuLabelOf(tool: LogTool): string {
   const name = nameInMenu(tool);

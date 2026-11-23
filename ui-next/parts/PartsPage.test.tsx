@@ -1,5 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react/pure';
-import { ThemeProvider } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider } from '@omniviewdev/kit';
 import { examples } from '@omniviewdev/kit/examples';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PartsPage } from './PartsPage';
@@ -24,7 +24,9 @@ beforeAll(() => {
   rootStyleBefore = document.documentElement.getAttribute('style');
   ({ container: page } = render(
     <ThemeProvider>
-      <PartsPage />
+      <MenuHost>
+        <PartsPage />
+      </MenuHost>
     </ThemeProvider>,
   ));
   for (const figure of page.querySelectorAll('[data-example]')) {

@@ -1,7 +1,7 @@
 // The kit's stylesheet first: it declares the cascade layer order that every later stylesheet sits in.
 import '@omniviewdev/kit/styles.css';
 import './global.css';
-import { ThemeProvider, TooltipHost } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import { WindowClient } from '@omniviewdev/runtime/api';
 import { Window } from '@omniviewdev/runtime/runtime';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -60,10 +60,12 @@ function Screen() {
   );
 }
 
-// The one tooltip of the window, mounted once beside every screen (the kit's TooltipHost listens on the document for every `tip`).
+// One delegated action menu and one tooltip per window, shared by every screen.
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={queryClient}>
-    <Screen />
+    <MenuHost>
+      <Screen />
+    </MenuHost>
     <TooltipHost />
   </QueryClientProvider>,
 );

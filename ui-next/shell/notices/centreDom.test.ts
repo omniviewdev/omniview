@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyStop, CENTRE_WIDTH, focusInto, focusRow, idOf, placeAbove, placeBelow, rowOf, rowsOf, showPopover } from './centreDom';
+import { applyStop, CENTRE_WIDTH, focusInto, focusRow, idOf, placeAbove, rowOf, rowsOf, showPopover } from './centreDom';
 
-// What the centre asks of the document (centreDom.ts): where its popover and its menu stand, the one call that may throw, and the focus. The placement is the mock's `placePopover` (shell-widgets.js), and its numbers are the
+// What the centre asks of the document (centreDom.ts): where its popover stands, the one call that may throw, and the focus. The placement is the mock's `placePopover` (shell-widgets.js), and its numbers are the
 // mock's own measurement of the bell at 1440 x 900 and 1280 x 800 (mock-notice-centre.json): bell [1396, 872, 32, 24], popover [1008, 388, 420, 480], its bottom edge at 868.
 
 /** An element whose box is the test's: jsdom has no layout. */
@@ -52,17 +52,6 @@ describe('placeAbove', () => {
   it('is never taller than the room above the bell less 12 px, and never under 120 px', () => {
     expect(placeAbove(boxed(1396, 200, 32, 24)).max).toBe(188);
     expect(placeAbove(boxed(1396, 60, 32, 24)).max).toBe(120);
-  });
-});
-
-describe('placeBelow', () => {
-  it('stands the menu 4 px under its button with its right edge on the button\'s', () => {
-    expect(placeBelow(boxed(1346, 430, 69, 28), 240)).toEqual({ x: 1175, top: 462, max: 430 });
-  });
-
-  it('keeps the menu inside the window and gives it the room that is left, never under 120 px', () => {
-    expect(placeBelow(boxed(2, 430, 69, 28), 240).x).toBe(8);
-    expect(placeBelow(boxed(1346, 880, 69, 20), 240).max).toBe(120);
   });
 });
 

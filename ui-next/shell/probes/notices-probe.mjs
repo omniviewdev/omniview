@@ -70,7 +70,7 @@ import { fileURLToPath } from 'node:url';
 import { ENGINES, launch, normalizeFont } from '../../../packages/kit/probes/probe-lib.mjs';
 import { AXE, NATIVE_VIEWPORTS, SAMPLER, buildFixtures, open, serveFixtures, sleep } from './harness.mjs';
 import { PARTS, readParts, readStyles } from './notices-targets.mjs';
-import { PARTS as CENTRE_PARTS, readStyles as readCentreStyles } from './centre-targets.mjs';
+import { FILTER_MENU, PARTS as CENTRE_PARTS, readStyles as readCentreStyles } from './centre-targets.mjs';
 import { script, watch } from './palette-perf.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -596,7 +596,7 @@ const PERTURBATIONS = {
     expected: /^centre facts [^:]* bell-error: the bell's dot holds "3"/,
   },
   // A Filter menu 20 px from where the Filter button hangs it.
-  'centre-menu-offset': { css: '[data-notices-part="filterMenu"] { left: calc(var(--_edge) + 20px) !important; }', sections: ['centre'], parts: ['geometry'], scenes: ['menu'], expected: /^centre geometry [^:]* menu: menu\[right edge on the Filter button's\]/ },
+  'centre-menu-offset': { css: `${FILTER_MENU} { translate: 20px 0 !important; }`, sections: ['centre'], parts: ['geometry'], scenes: ['menu'], expected: /^centre geometry [^:]* menu: menu\[right edge on the Filter button's\]/ },
   // An unnamed dialog: the name is taken off the centre as it is drawn.
   'centre-no-name': {
     init: script(() => {
@@ -1907,7 +1907,7 @@ async function centreScene(page, scene) {
   if (spec.expand === true) await page.click('[data-notices-part="row"] [data-notices-part="rowToggle"]');
   if (spec.menu === true) {
     await page.click('[data-notices-part="filter"]');
-    await page.waitForSelector('[data-notices-part="filterMenu"]:popover-open', { timeout: WAIT });
+    await page.waitForSelector(`${FILTER_MENU}:popover-open`, { timeout: WAIT });
   }
 
   await page.mouse.move(1, 1);
@@ -1915,7 +1915,7 @@ async function centreScene(page, scene) {
 }
 
 /** What the centre drew, in the words the probe judges it by (the page's side): the bell, the dialog, its tools, notes, headings, rows, empty state and menu. */
-function centreFacts() {
+function centreFacts(filterMenu) {
   const attr = (element, name) => element?.getAttribute(name) ?? null;
   const within = (scope, name) => scope?.querySelector(`[data-notices-part="${name}"]`) ?? null;
   const all = (scope, name) => [...(scope?.querySelectorAll(`[data-notices-part="${name}"]`) ?? [])];
@@ -1925,7 +1925,7 @@ function centreFacts() {
   const centre = document.querySelector('[data-notices-part="centre"]');
   const bell = document.querySelector('[data-notices-part="bell"]');
   const dot = document.querySelector('[data-notices-part="bellDot"]');
-  const menu = document.querySelector('[data-notices-part="filterMenu"]');
+  const menu = document.querySelector(filterMenu);
   const empty = within(centre, 'centreEmpty');
   return {
     toasts: document.querySelectorAll('[data-notices-part="toast"]').length,
@@ -1951,7 +1951,7 @@ function centreFacts() {
     menu:
       menu === null
         ? null
-        : { name: attr(menu, 'aria-label'), role: attr(menu, 'role'), items: all(menu, 'filterItem').map((item) => ({ label: words(item), role: attr(item, 'role'), checked: attr(item, 'aria-checked') })) },
+        : { name: attr(menu, 'aria-label'), role: attr(menu, 'role'), items: [...menu.querySelectorAll('[role^="menuitem"]')].map((item) => ({ label: words(item), role: attr(item, 'role'), checked: attr(item, 'aria-checked') })) },
   };
 }
 
@@ -2170,7 +2170,7 @@ function checkCentreFacts(scene, mock, drew) {
   said('the dialog\'s name, role and state', [mock.popover.ariaLabel, mock.popover.role, mock.popover.open], [drew.name, drew.role, drew.open]);
   said('the header', mock.title, drew.title);
   said('the tools', mock.tools.map((tool) => [tool.text, tool.disabled === 'true']), drew.tools.map((tool) => [tool.text, tool.disabled === 'true']));
-  said('the tools\' menu button', [mock.tools.at(-1).haspopup, mock.tools.at(-1).expanded], [drew.tools.at(-1)?.haspopup, drew.tools.at(-1)?.expanded]);
+  said('the tools\' menu button', [mock.tools.at(-1).haspopup, mock.tools.at(-1).expanded === 'true'], [drew.tools.at(-1)?.haspopup, drew.tools.at(-1)?.expanded === 'true']);
   said('the notes', mock.notes.map((note) => ({ text: space(note.text), button: note.button })), drew.notes.map((note) => ({ text: space(note.text), button: note.button })));
   said('the headings', mock.labels, drew.labels);
   said('the rows\' titles', mock.rows.map((row) => row.title), drew.rows.map((row) => row.title));
@@ -2205,7 +2205,7 @@ async function centreGeometry(browser, engine, viewportName, viewport, origin, o
       await centreScene(page, scene);
       const shellParts = await readParts(page, CENTRE_PARTS, 'shell');
       const shellStyles = await readCentreStyles(page, CENTRE_PARTS, 'shell');
-      const drew = await page.evaluate(centreFacts);
+      const drew = await page.evaluate(centreFacts, FILTER_MENU);
       const mock = rows[scene];
       const expected = centreExpected(rows, scene);
       const result = compareCentre(scene, mock.parts, shellParts);
@@ -2289,24 +2289,25 @@ async function centreA11y(browser, engine, viewportName, viewport, origin, axe, 
 // between its rows, Tab goes through the row's own buttons and leaves the list, Delete removes a row; and the Filter menu: Enter opens it, the arrows move in it, Escape closes only the menu and the focus is back on Filter.
 
 /** Where the focus is, in the words the probe judges it by, and which buttons of the list are Tab stops (`stops`: for each row, how many of its buttons have a tabindex of 0 or more). */
-function centreFocus() {
+function centreFocus(filterMenu) {
   const active = document.activeElement;
   const rows = [...document.querySelectorAll('[data-notices-part="row"]')];
   const row = active?.closest('[data-notices-part="row"]') ?? null;
   const centre = document.querySelector('[data-notices-part="centre"]');
+  const menu = document.querySelector(filterMenu);
   return {
     tag: active?.tagName ?? null,
     part: active?.getAttribute('data-notices-part') ?? null,
     label: (active?.getAttribute('aria-label') ?? active?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40),
     row: row === null ? -1 : rows.indexOf(row),
     inCentre: active !== null && centre !== null && centre.contains(active),
-    inMenu: active?.closest('[data-notices-part="filterMenu"]') != null,
+    inMenu: menu?.contains(active) === true,
     bell: active?.matches('[data-notices-part="bell"]') ?? false,
     fixture: active?.getAttribute('data-fixture') ?? active?.getAttribute('data-probe-only') ?? null,
     stops: rows.map((each) => [...each.querySelectorAll('button')].filter((button) => button.tabIndex >= 0).length),
     rows: rows.length,
     open: centre !== null && centre.matches(':popover-open'),
-    menu: document.querySelector('[data-notices-part="filterMenu"]') !== null,
+    menu: menu !== null,
   };
 }
 
@@ -2326,7 +2327,7 @@ async function centreKeyboard(browser, engine, viewportName, viewport, origin) {
   const notes = {};
   const say = (what) => fail(`centre keyboard ${where}`, what);
   await centrePart(where, 'keyboard', browser, origin, viewport, 'case=real&centre=1&seed=list', {}, async (page) => {
-    const focus = () => page.evaluate(centreFocus);
+    const focus = () => page.evaluate(centreFocus, FILTER_MENU);
     const press = async (key, wait = 120) => {
       await page.keyboard.press(key);
       await sleep(wait);

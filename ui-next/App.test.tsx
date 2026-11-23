@@ -1,3 +1,4 @@
+import { MenuHost } from '@omniviewdev/kit';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,6 +8,7 @@ import { App } from './App';
 // `App.appearance.test.tsx`, which draws the App without that page: the page is 5,500 nodes, and every lookup in it is dear (docs/ui-next/status/FM2a-fix.md).
 
 const root = document.documentElement;
+const renderApp = () => render(<MenuHost><App /></MenuHost>);
 
 afterEach(() => {
   cleanup();
@@ -14,13 +16,13 @@ afterEach(() => {
 
 describe('ui-next App', () => {
   it('renders the single ui-next screen', () => {
-    render(<App />);
+    renderApp();
 
     expect(screen.getByRole('heading', { level: 1, name: 'Omniview ui-next' })).toBeInTheDocument();
   });
 
   it('draws its three controls with the kit Button and shows the parts examples under them', () => {
-    render(<App />);
+    renderApp();
 
     for (const name of ['Next theme', 'Next density', 'Next text size']) {
       expect(screen.getByRole('button', { name })).toHaveProperty('dataset.ovVariant', 'secondary');
@@ -32,7 +34,7 @@ describe('ui-next App', () => {
 
   it('never writes a style or a custom property on the document root', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp();
     // The shared test setup paints color-scheme on <html> before any test; what must hold is that the screen adds nothing.
     const before = root.getAttribute('style');
     for (const name of ['Next theme', 'Next density', 'Next text size']) {

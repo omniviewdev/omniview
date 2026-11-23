@@ -100,6 +100,14 @@ describe('a kit part is closed', () => {
     expect(await rulesFired('export const A = (p: P) => <div {...p} />;', part)).toContain('kit/closed-props');
   });
 
+  it('allows the kit’s fixed menu attributes from the public or local entry', async () => {
+    const example = 'packages/kit/src/components/Probe/Probe.examples.tsx';
+    const code = (source) => `import { menuTrigger } from "${source}"; export const Example = () => <button {...menuTrigger('actions')} />;`;
+    expect(await rulesFired(code('@omniviewdev/kit'), example)).toEqual([]);
+    expect(await rulesFired(code('../Menu'), part)).toEqual([]);
+    expect(await rulesFired(code('./Menu'), part)).toContain('kit/closed-props');
+  });
+
   it('the rule is for parts, not for every kit file', async () => {
     expect(await rulesFired('export type P = { className?: string };', 'packages/kit/src/shared/Probe.ts')).not.toContain('kit/closed-props');
   });

@@ -28,7 +28,7 @@
 // this entry with the profiling build of React DOM). `window.__host` is the `PluginStore`.
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { ThemeProvider, type IconName } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider, type IconName } from '@omniviewdev/kit';
 import { Profiler, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { ContextV1, ContributionV1, ListPageViewV1, PageV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../../plugins/contract/v1';
@@ -319,7 +319,9 @@ createRoot(document.getElementById('root')!).render(
         commits.push({ phase, actualDuration });
       }}
     >
-      <Screen />
+      <MenuHost>
+        <Screen />
+      </MenuHost>
     </Profiler>
   </ThemeProvider>,
 );

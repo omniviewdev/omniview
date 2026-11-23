@@ -1,11 +1,10 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
-import commandStyles from '../../shared/command.module.css';
+import { useLayoutEffect, useRef } from 'react';
 import { dataAttributes, type DataAttributes } from '../../shared/dataAttributes';
 import { Button } from '../Button';
 import { Icon, type IconName } from '../Icon';
 import { IconButton } from '../IconButton';
 import { KindTile, type KindTileTone } from '../KindTile';
-import { RowMenu, createRowMenu, type RowMenuHandle, type RowMenuItem } from '../RowMenu';
+import { menuTrigger, useMenu } from '../Menu';
 import { Status, type StatusRole } from '../Status';
 import { laneMode } from './lane';
 import { overflowItems, type MenuEntry } from './overflow';
@@ -101,47 +100,37 @@ const MAX_FACTS = 4;
 
 type OverflowProps = {
   readonly title: string;
-  readonly handle: RowMenuHandle<undefined>;
-  readonly items: ReadonlyArray<RowMenuItem<undefined>>;
+  readonly entries: readonly MenuEntry[];
+  readonly visible: ReadonlySet<string>;
 };
 
-/** The overflow trigger, always the last control, and the menu it opens: the part's own RowMenu, with one handle for the header. */
-function Overflow({ title, handle, items }: OverflowProps) {
+/** Overflow registers its own commands; the window's menu host opens and draws them. */
+function Overflow({ title, entries, visible }: OverflowProps) {
   const name = `More actions for ${title}`;
-  const open = (event: MouseEvent<HTMLButtonElement>) => {
-    // A click with no pointer behind it is a key (Enter, Space): the first item takes the focus.
-    handle.toggle(event.currentTarget, undefined, event.detail === 0 ? 'first' : 'menu');
-  };
+  const latest = useRef({ entries, visible });
+  useLayoutEffect(() => {
+    latest.current = { entries, visible };
+  }, [entries, visible]);
 
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if ((event.key !== 'ArrowDown' && event.key !== 'ArrowUp') || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-      return;
-    }
+  const revision = JSON.stringify([
+    title,
+    entries.filter((entry) => !visible.has(entry.id)).map(({ id, label, disabled, destructive, separatorBefore }) => [id, label, disabled === true, destructive === true, separatorBefore === true]),
+  ]);
+  const id = useMenu(
+    () => overflowItems(entries, visible, (key) => {
+      const current = latest.current;
+      if (current.visible.has(key)) {
+        return;
+      }
 
-    event.preventDefault();
-    handle.open(event.currentTarget, undefined, event.key === 'ArrowUp' ? 'last' : 'first');
-  };
-
-  return (
-    <>
-      <button
-        type="button"
-        className={commandStyles.root}
-        data-ov-shape="icon"
-        data-ov-variant="secondary"
-        data-ov-tone="neutral"
-        data-ov-size="standard"
-        data-ov-tip={name}
-        aria-label={name}
-        aria-haspopup="menu"
-        onClick={open}
-        onKeyDown={onKeyDown}
-      >
-        <Icon name="ellipsis" />
-      </button>
-      <RowMenu handle={handle} label={`Actions for ${title}`} items={() => items} />
-    </>
+      const entry = current.entries.find((candidate) => candidate.id === key);
+      if (entry !== undefined && entry.disabled !== true) {
+        entry.onSelect();
+      }
+    }),
+    revision,
   );
+  return <IconButton icon="ellipsis" label={name} data-ov-tip={name} data-ov-menu-label={`Actions for ${title}`} {...menuTrigger(id)} />;
 }
 
 function Labelled({ command, variant, tone }: { readonly command: PageHeaderCommand; readonly variant: 'primary' | 'secondary'; readonly tone?: 'danger' }) {
@@ -170,14 +159,13 @@ const HEADINGS = ['h1', 'h2', 'h3', 'h4'] as const;
  * The header of a page (design 12 PH1 to PH3; the mock's `H.pageHeader`): a breadcrumb, a row with the kind tile, the one h1 and the commands,
  * and one identity line that holds the state, at most four facts, the first reason a command cannot be used and the operation slot. The commands
  * are in one fixed order, primary, at most two secondaries, danger, the Refresh utility, the overflow menu last; the identity line is one 28 px
- * line that never wraps. Props are closed: no `className`, no `style`; `data-*` passes through.
+ * line that never wraps. Overflow commands use the window's `MenuHost`. Props are closed: no `className`, no `style`; `data-*` passes through.
  */
 export function PageHeader({ title, subtitle, level = 1, path, tile, state, facts, note, commands, operation, label, ...rest }: PageHeaderProps) {
   if (title.trim() === '') {
     throw new TypeError('PageHeader needs a title: a page with no h1 is a defect');
   }
 
-  const [menu] = useState(() => createRowMenu<undefined>());
   const Heading = HEADINGS[level - 1] ?? 'h1';
 
   const primary = commands?.primary;
@@ -187,10 +175,11 @@ export function PageHeader({ title, subtitle, level = 1, path, tile, state, fact
   const drawn = secondary.slice(0, MAX_SECONDARY);
   const visible = new Set([primary, ...drawn, danger, utility].flatMap((command) => (command === undefined ? [] : [command.id])));
   const moved = secondary.slice(MAX_SECONDARY).map((command): MenuEntry => ({ id: command.id, label: command.label, onSelect: command.onSelect, disabled: command.disabledReason !== undefined }));
-  const items = overflowItems([...moved, ...(commands?.menu ?? [])], visible);
+  const entries = [...moved, ...(commands?.menu ?? [])];
+  const hasOverflow = entries.some((entry) => !visible.has(entry.id));
 
   const labelled = [primary, ...drawn, danger].flatMap((command) => (command === undefined ? [] : [command]));
-  const icons = (utility === undefined ? 0 : 1) + (items.length > 0 ? 1 : 0);
+  const icons = (utility === undefined ? 0 : 1) + (hasOverflow ? 1 : 0);
   const hasLane = labelled.length + icons > 0;
   const mode = laneMode({
     labels: labelled.map((command) => command.label),
@@ -303,7 +292,7 @@ export function PageHeader({ title, subtitle, level = 1, path, tile, state, fact
                 data-ov-tip={utility.label}
               />
             )}
-            {items.length === 0 ? null : <Overflow title={title} handle={menu} items={items} />}
+            {hasOverflow ? <Overflow title={title} entries={entries} visible={visible} /> : null}
           </div>
         ) : null}
       </div>

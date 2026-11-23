@@ -1,0 +1,44 @@
+@layer ov.plugin {
+  .scene {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+  }
+
+  /* A native button keeps the trigger stateless: no per-row hook, effect, event handler or popup. */
+  .rowTrigger {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    width: var(--ov-row-target);
+    height: var(--ov-row-target);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-icon);
+    vertical-align: top;
+    cursor: pointer;
+  }
+
+  .rowTrigger:hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .rowTrigger[aria-expanded='true'],
+  .rowTrigger:active {
+    background-color: var(--ov-pressed);
+  }
+
+  .rowTrigger:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+}

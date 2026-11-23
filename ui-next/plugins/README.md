@@ -10,7 +10,7 @@ How the new shell shows the pages the installed plugins contribute. It is **host
 | `contract/admit.ts` | Admission: what a bundle's exports must be before the host builds anything from them. Pure |
 | `contract/paletteRows.ts` | Admission of what a plugin's palette provider answers (C1c): each row is read once, member by member, into a clean copy (bounded lengths, a glyph the kit has, a route to one of the plugin's own pages or a command it registers) or a problem that names it. Pure; `PALETTE_LIMITS` holds the bounds |
 | `contract/sidebarKeywords.ts` | Admission of the keywords a sidebar node carries (C1e): the other names a page is known by, read where they are used (a hook answers its nodes anew on every render) into at most eight words of 1 to 32 characters, or a problem that names the node. Never throws, never refuses a bundle. Pure; `SIDEBAR_KEYWORD_LIMITS` holds the bounds. The host gives them to the palette as the aliases of the page's Go to row |
-| `loader/specifiers.ts` | The five modules the host shares with a plugin's bundle (the ABI of contract v1). Imports nothing, so a plugin's build reads it with Node |
+| `loader/specifiers.ts` | The modules the host shares with a plugin's bundle (the ABI of contract v1). Imports nothing, so a plugin's build reads it with Node |
 | `loader/shared.ts` | How each shared module is served (the host's own instance, on first use) and registered in SystemJS |
 | `loader/importBundle.ts` | Fetches and links a plugin's `assets/entry.js`; refuses a bundle that imports what the host does not serve, before it runs (`preflight.ts`); `clearBundle` |
 | `loader/failure.ts` | The six kinds of a plugin with no contribution and the sentence for each: five ways a bundle failed to load, and `unloaded` (it had a contribution and the host says it stopped or could not start: `UnloadCause`, the six words the host's `plugin/unloaded` carries, and the host's own sentence for a crash, a reload, a load that failed and one that ran out of time) |
@@ -38,6 +38,7 @@ node ui-next/plugins/e2e/seam.check.mjs      # needs Playwright's browsers; exit
 
 1. A bundle exports `contributionV1` and nothing else is the host's business. The version is the export name.
 2. A plugin imports its own files, the shared list and nothing else. Sharing the runtime's whole barrel would put the old UI library into the new build (1.88 MB, measured); the runtime joins as a curated entry.
+   ReactDOM is internal to the host and its kit. Only the duplicate-kit negative control bundles that dependency itself.
 3. The plugin's words never reach the page: a failure is a kind and a sentence the host wrote; the detail goes to the log.
 4. A contribution's hook runs in the host's React, inside the contribution's own boundary.
 5. A page is a `list` or a `detail` page. A detail page is the page of one object: a route names it by a page id and the object's identity as string parameters (`RouteV1.params`), the tab is called `{name} · {Kind}` from the route and the definition alone, and it has no sidebar entry (it needs an object; `home` is never one). It was added to version 1 as a minor addition: the rule that decides minor or a new `contributionV2` is written at the head of `contract/v1.ts`, and `admit.test.ts` keeps a bundle written before it.
