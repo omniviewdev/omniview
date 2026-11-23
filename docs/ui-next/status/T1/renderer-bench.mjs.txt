@@ -1,0 +1,814 @@
+// T1 renderer bench: the DRIVER. Throwaway harness (suffix .txt so no tool compiles or lints it).
+//
+// Which xterm.js renderer (built-in DOM, or the WebGL addon) should the host's Terminal use, and what does the terminal cost?
+// Questions B1 to B10 of the T1 renderer-bench task; the page side is renderer-bench-page.txt.
+//
+// RUN (from the worktree root, ui-next-t1-terminal; Playwright 1.64.1 browsers webkit + chromium installed):
+//   mkdir -p /tmp/t1-bench && cp docs/ui-next/status/T1/renderer-bench.mjs.txt /tmp/t1-bench/renderer-bench.mjs
+//   node /tmp/t1-bench/renderer-bench.mjs                       # all questions, all three engines (cwd = the worktree root; the page source is read from docs/ui-next/status/T1/renderer-bench-page.txt)
+//   node /tmp/t1-bench/renderer-bench.mjs --only B3,B8 --engines webkit,chromium-gpu
+//   node /tmp/t1-bench/renderer-bench.mjs --list                # the question ids
+// Options (command line only, no environment variables):
+//   --engines a,b   webkit | chromium | chromium-gpu   (default: all three)
+//                   chromium     = probe-lib launch: Playwright's headless shell, args --font-render-hinting=none. Its WebGL is SwiftShader (software).
+//                   chromium-gpu = channel 'chromium' (new headless, the full browser), the same arg; WebGL is ANGLE/Metal on the real GPU (what WebView2 would have).
+//   --only B1,B3    questions to run (default all)
+//   --out file      JSON result file; results are MERGED into it, so questions can be run one by one
+//                   (default <tmp>/t1-bench/assets/renderer-bench.json, <tmp> being the real path of /tmp)
+//   --assets dir    screenshots (default <tmp>/t1-bench/assets/renderer-bench-shots)
+//   --reps n        repetitions where a question has them (default: per question)
+//   --w2 0|1        run the 82 MB flood W2 (default 1)
+// The driver builds the page with the root's vite (production build, esbuild minify) into /tmp/t1-bench/dist (outside the repo), serves it
+// from a local static server (cross-origin-isolated headers, for performance.measureUserAgentSpecificMemory), and reads the machine's
+// 1-minute load average before each run; above 30 it waits (the machine is shared). Needs macOS (ps).
+import { createRequire } from 'node:module';
+import { execFileSync, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import http from 'node:http';
+import zlib from 'node:zlib';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const ROOT = process.cwd(); // run it from the worktree root
+const HERE = path.join(ROOT, 'docs/ui-next/status/T1');
+const rq = createRequire(path.join(ROOT, 'package.json'));
+const pw = rq('playwright');
+const TMP = path.join(fs.realpathSync('/tmp'), 't1-bench');
+const ASSETS_DEFAULT = path.join(TMP, 'assets');
+
+// ------------------------------------------------------------------ args
+const argv = process.argv.slice(2);
+const arg = (name, dflt) => { const i = argv.indexOf('--' + name); return i >= 0 ? argv[i + 1] : dflt; };
+const ENGINES = (arg('engines', 'webkit,chromium,chromium-gpu')).split(',');
+const ONLY = arg('only', null)?.split(',') ?? null;
+const OUT = arg('out', path.join(ASSETS_DEFAULT, 'renderer-bench.json'));
+const SHOTS = arg('assets', path.join(ASSETS_DEFAULT, 'renderer-bench-shots'));
+const REPS = arg('reps', null) ? Number(arg('reps')) : null;
+const RUN_W2 = arg('w2', '1') !== '0';
+const RENDERERS = ['dom', 'webgl'];
+fs.mkdirSync(SHOTS, { recursive: true });
+fs.mkdirSync(TMP, { recursive: true });
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const r2 = (n) => Math.round(n * 100) / 100;
+const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+const median = (a) => { const s = a.filter((x) => typeof x === 'number' && !Number.isNaN(x)).sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) / 2)] : null; };
+
+// ------------------------------------------------------------------ result file (merged)
+let RESULT = {};
+if (fs.existsSync(OUT)) { try { RESULT = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch (e) { RESULT = {}; } }
+function save(key, value) { RESULT[key] = value; fs.mkdirSync(path.dirname(OUT), { recursive: true }); fs.writeFileSync(OUT, JSON.stringify(RESULT, null, 1)); }
+function put(q, eng, rend, value) {
+  const cur = RESULT[q] ?? {};
+  cur[eng] = cur[eng] ?? {};
+  if (rend) { cur[eng][rend] = value; } else cur[eng] = { ...cur[eng], ...value };
+  save(q, cur);
+}
+
+// ------------------------------------------------------------------ load average
+const uptimeStr = () => execFileSync('uptime', { encoding: 'utf8' }).trim();
+async function waitLoad(label) {
+  for (let i = 0; i < 40; i++) {
+    const l = os.loadavg()[0];
+    if (l <= 30) return { load1: r2(l), at: new Date().toISOString() };
+    log(`load ${l.toFixed(1)} > 30, waiting before ${label}`);
+    await sleep(15000);
+  }
+  return { load1: r2(os.loadavg()[0]), at: new Date().toISOString(), note: 'load stayed above 30 after 10 minutes' };
+}
+const loadNow = () => r2(os.loadavg()[0]);
+
+// ------------------------------------------------------------------ build + serve the page
+async function buildPage() {
+  const vite = rq('vite');
+  const src = path.join(TMP, 'page');
+  fs.mkdirSync(src, { recursive: true });
+  // The page imports the emulator by its package name and its build directory is outside the repository: the repository's node_modules are linked into it (a link from an earlier run is replaced), or the bare imports do not resolve.
+  const link = path.join(src, 'node_modules');
+  if (fs.lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink()) fs.unlinkSync(link);
+  if (!fs.existsSync(link)) fs.symlinkSync(path.join(ROOT, 'node_modules'), link, 'dir');
+  fs.copyFileSync(path.join(HERE, 'renderer-bench-page.txt'), path.join(src, 'main.js'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/kit/fonts/manifest.json'), 'utf8'));
+  const mono = manifest.faces.find((f) => f.family === 'Int UI Mono');
+  fs.copyFileSync(path.join(ROOT, 'packages/kit/fonts', mono.file), path.join(src, mono.file));
+  fs.writeFileSync(path.join(src, 'index.html'), `<!doctype html><html><head><meta charset="utf-8"><title>t1 bench</title>
+<style>
+@font-face { font-family: 'Int UI Mono'; src: url('./${mono.file}') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; unicode-range: ${mono.unicodeRange}; }
+html, body { margin: 0; padding: 0; background: #191A1C; color: #BCBEC4; }
+</style></head><body><div id="stage"></div><script type="module" src="./main.js"></script></body></html>`);
+  fs.rmSync(path.join(TMP, 'dist'), { recursive: true, force: true });
+  await vite.build({ root: src, configFile: false, logLevel: 'silent', base: './', build: { outDir: path.join(TMP, 'dist'), emptyOutDir: true, minify: 'esbuild', target: 'es2022', copyPublicDir: false, assetsInlineLimit: 0 } });
+  fs.copyFileSync(path.join(src, mono.file), path.join(TMP, 'dist', mono.file));
+  return fs.readdirSync(path.join(TMP, 'dist', 'assets')).map((f) => ({ f, bytes: fs.statSync(path.join(TMP, 'dist/assets', f)).size }));
+}
+
+function serve() {
+  const dist = path.join(TMP, 'dist');
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' };
+  const srv = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://x');
+    const p = path.join(dist, u.pathname === '/' ? 'index.html' : u.pathname);
+    if (!p.startsWith(dist) || !fs.existsSync(p)) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'content-type': types[path.extname(p)] || 'application/octet-stream', 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp', 'cross-origin-resource-policy': 'same-origin', 'cache-control': 'no-store' });
+    fs.createReadStream(p).pipe(res);
+  });
+  return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve({ srv, url: `http://127.0.0.1:${srv.address().port}` })));
+}
+
+// ------------------------------------------------------------------ engines
+async function launch(name) {
+  if (name === 'webkit') return pw.webkit.launch();
+  if (name === 'chromium') return pw.chromium.launch({ args: ['--font-render-hinting=none'] }); // = packages/kit/probes/probe-lib.mjs launch()
+  if (name === 'chromium-gpu') return pw.chromium.launch({ channel: 'chromium', args: ['--font-render-hinting=none'] });
+  throw new Error('engine ' + name);
+}
+const isChromium = (e) => e.startsWith('chromium');
+
+const INSTRUMENT = () => {
+  const c = (window.__c = { setTimeout: 0, setInterval: 0, raf: 0, rafMs: 0, sites: {}, trace: false });
+  const site = () => (new Error().stack || '').split('\n').slice(2, 5).map((x) => x.trim().replace(/https?:\/\/[^/]+/g, '').slice(0, 100)).join(' < ');
+  for (const n of ['setTimeout', 'setInterval']) {
+    const o = window[n];
+    window[n] = function (f, ...a) { c[n]++; if (c.trace) { const k = n + ' ' + site(); c.sites[k] = (c.sites[k] || 0) + 1; } return o.call(window, f, ...a); };
+  }
+  const ro = window.requestAnimationFrame;
+  window.requestAnimationFrame = function (cb) {
+    c.raf++;
+    if (c.trace) { const k = 'raf ' + site(); c.sites[k] = (c.sites[k] || 0) + 1; }
+    return ro.call(window, (t) => { const s = performance.now(); try { cb(t); } finally { c.rafMs += performance.now() - s; } });
+  };
+};
+
+async function openPage(eng, ctxOpts = {}, query = '') {
+  const ctx = await eng.browser.newContext({ viewport: { width: 1440, height: 900 }, ...ctxOpts });
+  await ctx.addInitScript(INSTRUMENT);
+  const page = await ctx.newPage();
+  const consoleMsgs = [];
+  const pageErrors = [];
+  page.on('console', (m) => consoleMsgs.push({ type: m.type(), text: m.text().slice(0, 300) }));
+  page.on('pageerror', (e) => pageErrors.push(String(e.message || e).slice(0, 300)));
+  await page.goto(`${eng.url}/index.html?lh=${eng.lh ?? 1}${query}`);
+  await page.waitForFunction(() => window.__benchReady === true);
+  const p = { page, ctx, consoleMsgs, pageErrors, eng };
+  p.close = async () => { try { await ctx.close(); } catch (e) { /* */ } };
+  if (isChromium(eng.name)) p.cdp = await ctx.newCDPSession(page);
+  return p;
+}
+const ev = (p, fn, arg) => p.page.evaluate(fn, arg);
+const B = (p, name, ...args) => p.page.evaluate(({ name, args }) => window.bench[name](...args), { name, args });
+
+// ------------------------------------------------------------------ processes
+function psAll() {
+  const out = execFileSync('ps', ['-axo', 'pid=,ppid=,rss=,command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return out.split('\n').map((l) => l.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean).map((m) => ({ pid: +m[1], ppid: +m[2], rssKB: +m[3], cmd: m[4] }));
+}
+const rssOf = (pid) => { const o = spawnSync('ps', ['-o', 'rss=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim(); return o ? Number(o) / 1024 : null; };
+function descendants(all, root) { const out = []; const q = [root]; while (q.length) { const p = q.pop(); for (const x of all) if (x.ppid === p) { out.push(x); q.push(x.pid); } } return out; }
+
+/** Attribute a renderer (Chromium) / WebContent (WebKit) process to a page by allocating a ballast in it and seeing whose RSS jumps. */
+async function attribute(p) {
+  const eng = p.eng;
+  const all0 = psAll();
+  let cands;
+  if (isChromium(eng.name)) cands = descendants(all0, process.pid).filter((x) => /--type=renderer/.test(x.cmd));
+  else cands = all0.filter((x) => /com\.apple\.WebKit\.WebContent/.test(x.cmd));
+  const before = new Map(cands.map((c) => [c.pid, c.rssKB]));
+  await B(p, 'allocBallast', 160);
+  await sleep(400);
+  const all1 = psAll();
+  const jumps = cands.map((c) => { const n = all1.find((x) => x.pid === c.pid); return { pid: c.pid, delta: n ? (n.rssKB - before.get(c.pid)) / 1024 : -1 }; }).sort((a, b) => b.delta - a.delta);
+  await B(p, 'freeBallast');
+  await sleep(400);
+  const best = jumps[0];
+  const second = jumps[1];
+  p.proc = { pid: best && best.delta > 120 ? best.pid : null, jumpMB: best ? r2(best.delta) : null, runnerUpMB: second ? r2(second.delta) : null, candidates: cands.length, method: isChromium(eng.name) ? 'descendant --type=renderer of this node pid, ballast-verified' : 'all com.apple.WebKit.WebContent pids, ballast-verified (XPC services have ppid 1, so no parent link)' };
+  return p.proc;
+}
+function gpuRssMB(p) {
+  const eng = p.eng;
+  const all = psAll();
+  if (isChromium(eng.name)) return descendants(all, process.pid).filter((x) => /--type=gpu-process/.test(x.cmd)).reduce((a, x) => a + x.rssKB / 1024, 0);
+  return all.filter((x) => /com\.apple\.WebKit\.GPU/.test(x.cmd) && !eng.gpuBefore.has(x.pid)).reduce((a, x) => a + x.rssKB / 1024, 0);
+}
+function startPoll(p, ms = 100) {
+  let peak = 0; let peakGpu = 0; let n = 0; let stop = false;
+  const loop = (async () => {
+    while (!stop) {
+      if (p.proc?.pid) { const r = rssOf(p.proc.pid); if (r && r > peak) peak = r; n++; }
+      await sleep(ms);
+    }
+  })();
+  return async () => { stop = true; await loop; return { peakRssMB: r2(peak), samples: n }; };
+}
+async function snap(p, label) {
+  const s = { label };
+  if (isChromium(p.eng.name)) {
+    await p.cdp.send('HeapProfiler.collectGarbage'); await p.cdp.send('HeapProfiler.collectGarbage');
+    s.cdpHeapUsedMB = r2((await p.cdp.send('Runtime.getHeapUsage')).usedSize / 1e6);
+    await p.cdp.send('Performance.enable');
+    const m = (await p.cdp.send('Performance.getMetrics')).metrics;
+    const g = (n) => m.find((x) => x.name === n)?.value;
+    s.perfJSHeapUsedMB = r2(g('JSHeapUsedSize') / 1e6); s.perfJSHeapTotalMB = r2(g('JSHeapTotalSize') / 1e6);
+    const ua = await B(p, 'uaMemory');
+    if (ua.supported) s.uaMemoryMB = r2(ua.bytes / 1e6);
+  } else s.gc = 'not forceable in WebKit (no CDP, no window.gc)';
+  await sleep(150);
+  if (p.proc?.pid) s.rendererRssMB = r2(rssOf(p.proc.pid));
+  s.gpuProcRssMB = r2(gpuRssMB(p));
+  return s;
+}
+
+// ------------------------------------------------------------------ screenshots
+const png = async (p, rect, name) => {
+  const buf = await p.page.screenshot({ clip: { x: rect.x, y: rect.y, width: rect.w, height: rect.h }, animations: 'disabled', caret: 'initial' });
+  if (name) fs.writeFileSync(path.join(SHOTS, `${p.eng.name}-${name}.png`), buf);
+  return buf.toString('base64');
+};
+const diffPng = (p, a, c, points) => p.page.evaluate((x) => window.bench.comparePng(x), { a, c, points: points || [] });
+
+// ------------------------------------------------------------------ calibration of lineHeight
+async function calibrateLH(eng) {
+  const p = await openPage(eng);
+  const out = {};
+  for (const r of RENDERERS) out[r] = await B(p, 'calibrate', r);
+  await p.close();
+  // the smallest lineHeight whose DOM row is 16 px high and whose css cell height is 16
+  const pick = out.dom.table.find((x) => x.domRowH === 16 && x.cssH === 16);
+  const webglSame = pick ? out.webgl.table.find((x) => x.lh === pick.lh) : null;
+  eng.lh = pick ? pick.lh : null;
+  return { chosen: eng.lh, dom: pick, webgl: webglSame, tables: out };
+}
+
+// ------------------------------------------------------------------ run engines
+const Q = {};
+async function forEngines(q, fn) {
+  const { srv, url } = await serve();
+  try {
+    for (const name of ENGINES) {
+      log(`${q} ${name}`);
+      const eng = { name, url };
+      try {
+        eng.gpuBefore = new Set(psAll().filter((x) => /com\.apple\.WebKit\.GPU/.test(x.cmd)).map((x) => x.pid));
+        eng.browser = await launch(name);
+        eng.version = eng.browser.version();
+        if (!eng.lhFromResult) {
+          const cal = RESULT.lineHeight?.[name];
+          if (cal?.chosen) eng.lh = cal.chosen; else { const c = await calibrateLH(eng); put('lineHeight', name, null, { ...c, tables: undefined, rawTables: c.tables }); }
+        }
+        await fn(eng);
+      } catch (e) { log(`${q} ${name} FAILED`, e.stack || e); put(q, name, null, { error: String(e.stack || e).slice(0, 800) }); }
+      try { await eng.browser.close(); } catch (e) { /* */ }
+    }
+  } finally { srv.close(); }
+}
+
+// ================================================================== B1 bundle
+Q.B1 = async () => {
+  const vite = rq('vite');
+  const dir = path.join(TMP, 'b1');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'));
+  const html = (entry) => `<!doctype html><html><head></head><body><script type="module" src="./${entry}.js"></script></body></html>`;
+  const entries = {
+    none: 'console.log(1);',
+    other1: "const a = () => import('./other.js'); window.a = a;",
+    three: "window.l = { xterm: () => import('@xterm/xterm'), webgl: () => import('@xterm/addon-webgl'), fit: () => import('@xterm/addon-fit'), css: () => import('@xterm/xterm/css/xterm.css') }; console.log(window.l);",
+    threeJsOnly: "window.l = { xterm: () => import('@xterm/xterm'), webgl: () => import('@xterm/addon-webgl'), fit: () => import('@xterm/addon-fit') }; console.log(window.l);",
+    otherPlusThree: "const a = () => import('./other.js'); window.a = a; window.l = { xterm: () => import('@xterm/xterm'), webgl: () => import('@xterm/addon-webgl'), fit: () => import('@xterm/addon-fit') }; console.log(window.l);",
+  };
+  fs.writeFileSync(path.join(dir, 'other.js'), "export const other = 'x'.repeat(3) + Math.random();");
+  const res = {};
+  const gz = (b, level) => zlib.gzipSync(b, { level }).length;
+  const br = (b) => zlib.brotliCompressSync(b, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
+  for (const [name, code] of Object.entries(entries)) {
+    fs.writeFileSync(path.join(dir, `${name}.js`), code);
+    fs.writeFileSync(path.join(dir, `${name}.html`), html(name));
+    res[name] = {};
+    for (const minify of [false, 'esbuild']) {
+      const out = path.join(dir, `dist-${name}-${minify ? 'min' : 'raw'}`);
+      await vite.build({ root: dir, configFile: false, logLevel: 'silent', base: './', build: { outDir: out, emptyOutDir: true, minify, target: 'es2022', rollupOptions: { input: path.join(dir, `${name}.html`) }, cssMinify: minify ? true : false } });
+      const files = fs.readdirSync(path.join(out, 'assets')).map((f) => ({ f, buf: fs.readFileSync(path.join(out, 'assets', f)) }));
+      res[name][minify ? 'min' : 'raw'] = files.map(({ f, buf }) => ({ file: f.replace(/-[A-Za-z0-9_-]{8}\./, '.'), bytes: buf.length, gzip: gz(buf, 6), gzip9: gz(buf, 9), brotli11: br(buf) }));
+    }
+  }
+  // per chunk table (three-import build): raw (unminified build), minified, gzip of minified
+  const table = {};
+  const pick = (arr, re) => arr.find((x) => re.test(x.file));
+  for (const [key, re] of [['xterm', /^xterm\.js$/], ['addon-webgl', /^addon-webgl\.js$/], ['addon-fit', /^addon-fit\.js$/], ['xterm.css', /\.css$/]]) {
+    const raw = pick(res.three.raw, re); const min = pick(res.three.min, re);
+    table[key] = { rawBytes: raw?.bytes, minBytes: min?.bytes, gzipBytes: min?.gzip, gzip9Bytes: min?.gzip9, brotliBytes: min?.brotli11 };
+  }
+  const entryOf = (name) => pick(res[name].min, /^(none|other1|three|threeJsOnly|otherPlusThree)\./) ?? res[name].min.find((x) => x.file.startsWith(name));
+  const e = (n) => res[n].min.filter((x) => x.file.startsWith(n + '.'))[0];
+  const entryCost = {
+    entryNoDynamic: e('none'), entryOneUnrelatedDynamic: e('other1'), entryThreeXtermImports: e('three'), entryThreeJsOnly: e('threeJsOnly'), entryOtherPlusThree: e('otherPlusThree'),
+    deltaFirstDynamicImportIncludingPreloadHelper: e('other1').bytes - e('none').bytes,
+    delta3XtermJsImportsWhenNoOtherDynamic: e('threeJsOnly').bytes - e('none').bytes,
+    delta3XtermJsImportsWhenHelperAlreadyThere: e('otherPlusThree').bytes - e('other1').bytes,
+    deltaCssImportToo: e('three').bytes - e('threeJsOnly').bytes,
+  };
+  const pkg = (p) => fs.statSync(path.join(ROOT, 'node_modules', p)).size;
+  const packageFiles = { 'xterm/lib/xterm.mjs': pkg('@xterm/xterm/lib/xterm.mjs'), 'xterm/css/xterm.css': pkg('@xterm/xterm/css/xterm.css'), 'addon-webgl/lib/addon-webgl.mjs': pkg('@xterm/addon-webgl/lib/addon-webgl.mjs'), 'addon-fit/lib/addon-fit.mjs': pkg('@xterm/addon-fit/lib/addon-fit.mjs') };
+  const versions = Object.fromEntries(['xterm', 'addon-webgl', 'addon-fit'].map((n) => [n, JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules/@xterm', n, 'package.json'), 'utf8')).version]));
+  const vv = JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules/vite/package.json'), 'utf8')).version;
+  save('B1', { vite: vv, versions, perChunk: table, entryCost, packageFiles, allBuilds: res, note: 'raw = vite build with minify:false; min = esbuild minify; gzip = zlib level 6 (what vite prints), gzip9 = level 9; brotli = quality 11. @xterm packages ship already-minified .mjs, so raw ~= min.' });
+  log('B1', JSON.stringify(table), JSON.stringify(entryCost));
+};
+
+// ================================================================== B2 construction
+Q.B2 = async () => {
+  await forEngines('B2', async (eng) => {
+    const coldReps = REPS ?? 5; const warmReps = Math.max(2, Math.ceil(coldReps / 2));
+    for (const r of RENDERERS) {
+      const w = await waitLoad('B2');
+      const cold = []; const warm = [];
+      for (let i = 0; i < coldReps; i++) { const p = await openPage(eng); cold.push((await B(p, 'construct', r, 1)).first); await p.close(); }
+      for (let i = 0; i < warmReps; i++) { const p = await openPage(eng); warm.push((await B(p, 'construct', r, 10)).nth); await p.close(); }
+      const agg = (rows) => Object.fromEntries(Object.keys(rows[0]).map((k) => [k, { median: r2(median(rows.map((x) => x[k]))), min: r2(Math.min(...rows.map((x) => x[k]))), max: r2(Math.max(...rows.map((x) => x[k]))) }]));
+      put('B2', eng.name, r, { cold: agg(cold), warm: agg(warm), coldRuns: cold.length, warmRuns: warm.length, load1: w.load1, load1After: loadNow(), version: eng.version, lineHeight: eng.lh });
+      log('B2', eng.name, r, 'cold total', agg(cold).firstFrameTotal.median, 'warm', agg(warm).firstFrameTotal.median);
+    }
+  });
+};
+
+// ================================================================== B3 flood
+const FLOODS = () => {
+  const l = [
+    { kind: 'W1', mode: 'chunk', pace: 'free', reps: 5 }, { kind: 'W1', mode: 'raf', pace: 'free', reps: 5 },
+  ];
+  if (RUN_W2) l.push(
+    { kind: 'W2', mode: 'chunk', pace: 'free', reps: 1 }, { kind: 'W2', mode: 'raf', pace: 'free', reps: 1 },
+    { kind: 'W2', mode: 'chunk', pace: 'bp', reps: 1 }, { kind: 'W2', mode: 'raf', pace: 'bp', reps: 1 },
+    { kind: 'W2', mode: 'chunk', pace: 'burst', reps: 1 },
+  );
+  return l;
+};
+Q.B3 = async () => {
+  await forEngines('B3', async (eng) => {
+    for (const r of RENDERERS) {
+      const rows = {};
+      for (const f of FLOODS()) {
+        const key = `${f.kind}-${f.mode}-${f.pace}`;
+        rows[key] = [];
+        const reps = REPS ?? f.reps;
+        for (let i = 0; i < reps; i++) {
+          const w = await waitLoad(key);
+          const p = await openPage(eng);
+          await attribute(p);
+          const rss0 = p.proc.pid ? rssOf(p.proc.pid) : null;
+          const stopPoll = startPoll(p, 100);
+          let res;
+          try { res = await p.page.evaluate((cfg) => window.bench.flood(cfg), { renderer: r, kind: f.kind, mode: f.mode, pace: f.pace }); } catch (e) { res = { error: String(e).slice(0, 300) }; }
+          const peak = await stopPoll();
+          const rss1 = p.proc.pid ? rssOf(p.proc.pid) : null;
+          res.rss = { baselineMB: rss0 && r2(rss0), peakMB: peak.peakRssMB, peakOverBaselineMB: rss0 && r2(peak.peakRssMB - rss0), endMB: rss1 && r2(rss1), pollSamples: peak.samples, proc: p.proc };
+          res.load1 = w.load1; res.load1After = loadNow();
+          res.consoleWarnings = p.consoleMsgs.filter((m) => m.type !== 'log').slice(0, 3);
+          if (res.check?.lastLineOk !== undefined && f.kind === 'W2' && i === 0 && !res.error) {
+            // screenshot of the end state, for the record
+            try { const rect = { x: 0, y: 0, w: 1360, h: 224 }; await png(p, rect, `B3-${key}-${r}`); } catch (e) { /* */ }
+          }
+          rows[key].push(res);
+          log('B3', eng.name, r, key, `drain ${res.drainMs} ms, frames ${res.frames}, p95 ${res.frameInterval?.p95}, max ${res.frameInterval?.max}, discarded ${res.discarded}, lastOk ${res.check?.lastLineOk}, load ${w.load1}`);
+          await p.close();
+        }
+      }
+      put('B3', eng.name, r, rows);
+    }
+  });
+};
+
+// ================================================================== B4 memory
+Q.B4 = async () => {
+  await forEngines('B4', async (eng) => {
+    for (const r of RENDERERS) {
+      const out = {};
+      for (const sb of [1000, 2000, 5000, 10000]) {
+        const w = await waitLoad('B4');
+        const p = await openPage(eng);
+        await attribute(p);
+        const snaps = {};
+        snaps.page = await snap(p, 'page, no terminal');
+        const c = await B(p, 'memCreate', { renderer: r, scrollback: sb });
+        snaps.created = await snap(p, 'terminal created, empty');
+        const stopPoll = startPoll(p, 100);
+        const fl = await B(p, 'memFlood', { kind: 'W2', pace: 'bp', mode: 'chunk' });
+        const peak = await stopPoll();
+        snaps.afterW2 = await snap(p, 'after W2 (82 MB, flow-controlled, reused chunk arrays) + GC');
+        const series = async (secs) => { const a = []; for (let i = 0; i < secs; i++) { await sleep(1000); a.push(p.proc?.pid ? r2(rssOf(p.proc.pid)) : null); } return a; };
+        if (isChromium(eng.name)) { await sleep(2000); snaps.afterW2plus2s = await snap(p, 'after W2 + 2 s'); }
+        else { snaps.afterW2series1sSteps = await series(12); snaps.afterW2min12s = Math.min(...snaps.afterW2series1sSteps); }
+        await B(p, 'memDispose');
+        await sleep(300);
+        snaps.afterDispose = await snap(p, 'after dispose() + GC');
+        if (isChromium(eng.name)) { await sleep(3000); snaps.afterDispose3s = await snap(p, 'after dispose() + 3 s'); }
+        else {
+          snaps.afterDisposeSeries1sSteps = await series(12); snaps.afterDisposeMin12s = Math.min(...snaps.afterDisposeSeries1sSteps);
+          await B(p, 'pressure', 256, 3); // not a GC: allocation pressure, to nudge JavaScriptCore's collector (WebKit offers no way to force one)
+          snaps.afterDisposePressureSeries1sSteps = await series(6);
+        }
+        out[sb] = { snaps, flood: { drainMs: fl.drainMs, discarded: fl.discarded, lastLineOk: fl.check.lastLineOk, bufferLength: fl.check.bufferLength }, peakRssDuringW2MB: peak.peakRssMB, colsRows: c, proc: p.proc, load1: w.load1 };
+        log('B4', eng.name, r, sb, JSON.stringify({ created: snaps.created.rendererRssMB, afterW2: snaps.afterW2.rendererRssMB, heap: snaps.afterW2.cdpHeapUsedMB, afterDispose: snaps.afterDispose.rendererRssMB }));
+        await p.close();
+      }
+      put('B4', eng.name, r, out);
+    }
+  });
+};
+
+// ================================================================== B5 webgl
+Q.B5 = async () => {
+  await forEngines('B5', async (eng) => {
+    // (a) how many contexts, and what a lost one looks like
+    {
+      const w = await waitLoad('B5a');
+      const p = await openPage(eng);
+      const t0 = Date.now();
+      const lim = await p.page.evaluate(() => window.bench.ctxLimit({ max: 40, wait: 150 }));
+      const lostIdx = lim.lostIdx.length ? lim.lostIdx : lim.addonLossIdx;
+      const a = { created: lim.created, events: lim.events.slice(0, 12), lostIdx, addonLossIdx: lim.addonLossIdx, restoredIdx: lim.restoredIdx, load1: w.load1 };
+      const lostFirst = lim.events.find((e) => e.type.startsWith('webglcontextlost'));
+      a.contextsAliveWhenFirstLost = lostFirst ? lostFirst.aliveAtThatTime + 1 : null; // counting the one being lost
+      a.contextsCreatedWhenFirstLost = lostFirst ? lostFirst.createdSoFar : null;
+      const msgs = {};
+      for (const m of p.consoleMsgs) { const k = `${m.type}: ${m.text}`.replace(/\d+/g, 'N').slice(0, 220); msgs[k] = (msgs[k] || 0) + 1; }
+      a.console = msgs; a.pageErrors = p.pageErrors.slice(0, 3);
+      if (lostIdx.length) {
+        const idx = lostIdx[0];
+        const rect = await B(p, 'lossFocusHost', idx);
+        const before = await png(p, rect, 'B5a-lost-before-write');
+        a.inspectLost = await B(p, 'lossInspect', idx);
+        a.afterWrite = await B(p, 'lossWrite', idx);
+        const lost = await png(p, rect, 'B5a-lost-after-write');
+        const ref = await B(p, 'lossControl');
+        const refShot = await png(p, ref, 'B5a-control-dom');
+        const rect2 = await B(p, 'lossFocusHost', idx);
+        const lost2 = await png(p, rect2);
+        a.lostVsDomControl = await diffPng(p, lost2, refShot);
+        a.afterDispose = await B(p, 'lossDispose', idx);
+        const rect3 = await B(p, 'lossFocusHost', idx);
+        const after = await png(p, rect3, 'B5a-lost-after-addon-dispose');
+        a.disposedVsDomControl = await diffPng(p, after, refShot);
+        a.lostBeforeWriteVsAfterWrite = await diffPng(p, before, lost2);
+        // a healthy webgl terminal against the dom control: the renderer difference baseline
+        const alive = lim.created - 1;
+        const rectA = await B(p, 'lossFocusHost', alive);
+        const healthy = await png(p, rectA, 'B5a-healthy-webgl');
+        a.healthyWebglVsDomControl = await diffPng(p, healthy, refShot);
+      }
+      a.seconds = r2((Date.now() - t0) / 1000);
+      put('B5', eng.name, 'a_contextLimit', a);
+      await p.close();
+      log('B5a', eng.name, 'created', a.created, 'first lost at', a.contextsCreatedWhenFirstLost, 'lost', lostIdx.join(','));
+    }
+    // (b) hide -> dispose, show -> load costs; (c) hidden open
+    const b = {};
+    for (const hide of ['visible', 'visibility', 'displaynone']) {
+      const w = await waitLoad('B5b');
+      const rows = {};
+      let p = await openPage(eng);
+      const setup = await B(p, 'togSetup', { lines: 6000, hide });
+      const rect = await B(p, 'togSnapRect');
+      const s0 = await png(p, rect, `B5b-${hide}-0-dom`);
+      rows.load = await B(p, 'togLoad', {});
+      await B(p, 'hiddenRefreshAll').catch(() => 0);
+      const s1 = await png(p, rect, `B5b-${hide}-1-webgl-after-2-frames`);
+      await sleep(600);
+      const s2 = await png(p, rect, `B5b-${hide}-2-webgl-settled`);
+      rows.dispose = await B(p, 'togDispose');
+      await p.page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const s3 = await png(p, rect, `B5b-${hide}-3-dom-after-dispose`);
+      await p.close();
+      p = await openPage(eng);
+      await B(p, 'togSetup', { lines: 6000, hide: 'visible' });
+      await B(p, 'togFresh');
+      const sF = await png(p, rect, `B5b-fresh-webgl`);
+      await p.close();
+      rows.setup = setup;
+      const pd = await openPage(eng);
+      rows.diffs = {
+        domBefore_vs_domAfterDispose: await diffPng(pd, s0, s3),
+        webglAfter2Frames_vs_webglSettled: await diffPng(pd, s1, s2),
+        webglLateLoaded_vs_webglFromStart: await diffPng(pd, s2, sF),
+        domBefore_vs_webglSettled: await diffPng(pd, s0, s2),
+        domBefore_vs_webglFromStart: await diffPng(pd, s0, sF),
+      };
+      await pd.close();
+      const p2 = await openPage(eng);
+      await B(p2, 'togSetup', { lines: 6000, hide });
+      rows.reps20 = await B(p2, 'togReps', { n: 20, hide });
+      await p2.close();
+      rows.load1 = w.load1; rows.load1After = loadNow();
+      b[hide] = rows;
+      log('B5b', eng.name, hide, JSON.stringify(rows.reps20.loadSyncMs), JSON.stringify(rows.reps20.disposeSyncMs));
+    }
+    put('B5', eng.name, 'b_visibleOnlyPolicy', b);
+    // (c)
+    const c = {};
+    const variants = ['ctrl', 'dn', 'dnpct', 'vis', 'ctrlweb', 'dnweb'];
+    const shots = {};
+    for (const v of variants) {
+      const p = await openPage(eng);
+      const info = await B(p, 'hiddenOpen', { variant: v });
+      const rect = await B(p, 'hiddenRect');
+      const noFit = await png(p, rect, `B5c-${v}-after-show-nofit`);
+      const refit = await B(p, 'hiddenRefit');
+      const withFit = await png(p, rect, `B5c-${v}-after-show-fit`);
+      const errors = await B(p, 'hiddenErrors');
+      c[v] = { info, refit, errors, console: p.consoleMsgs.filter((m) => m.type !== 'log').slice(0, 3) };
+      shots[v] = { noFit, withFit };
+      await p.close();
+    }
+    const pd = await openPage(eng);
+    for (const v of variants) {
+      const ctrl = v.endsWith('web') ? 'ctrlweb' : 'ctrl';
+      c[v].controlIs = ctrl;
+      c[v].diffVsControl = { afterShowNoFit: await diffPng(pd, shots[v].noFit, shots[ctrl].noFit), afterFit: await diffPng(pd, shots[v].withFit, shots[ctrl].withFit) };
+      for (const k of ['afterShowNoFit', 'afterFit']) c[v].diffVsControl[k] = { differingPixels: c[v].diffVsControl[k].differingPixels, maxChannelDelta: c[v].diffVsControl[k].maxChannelDelta };
+    }
+    // font not loaded when open() runs
+    {
+      const p = await openPage(eng);
+      const info = await B(p, 'hiddenOpen', { variant: 'ctrl', preloadFont: false });
+      await p.page.evaluate(() => document.fonts.load('12px "Int UI Mono"'));
+      await sleep(300);
+      const fontLoaded = await p.page.evaluate(() => document.fonts.check('12px "Int UI Mono"'));
+      const rect = await B(p, 'hiddenRect');
+      const noRefit = await png(p, rect, 'B5c-open-before-font-no-refit');
+      const refit = await B(p, 'hiddenRefit');
+      const refitShot = await png(p, rect, 'B5c-open-before-font-refit');
+      const fam = await B(p, 'hiddenRemeasure', 'fontFamilyReassign');
+      const famShot = await png(p, rect, 'B5c-open-before-font-fontFamily-reassign-refit');
+      c.openBeforeFontLoaded = { info, fontLoadedAfterwards: fontLoaded, refit, remeasureByReassigningFontFamily: fam, vsCtrlNoRefit: await diffPng(pd, noRefit, shots.ctrl.withFit), vsCtrlAfterRefit: await diffPng(pd, refitShot, shots.ctrl.withFit), vsCtrlAfterFontFamilyReassign: await diffPng(pd, famShot, shots.ctrl.withFit) };
+      for (const k of ['vsCtrlNoRefit', 'vsCtrlAfterRefit', 'vsCtrlAfterFontFamilyReassign']) c.openBeforeFontLoaded[k] = { differingPixels: c.openBeforeFontLoaded[k].differingPixels };
+      await p.close();
+    }
+    await pd.close();
+    put('B5', eng.name, 'c_hiddenOpen', c);
+  });
+};
+
+// ================================================================== B6 idle
+Q.B6 = async () => {
+  await forEngines('B6', async (eng) => {
+    const cases = [{ name: 'control-no-terminal', none: true }];
+    for (const r of RENDERERS) for (const focused of [true, false]) for (const blink of [false, true]) cases.push({ name: `${r}-${focused ? 'focused' : 'unfocused'}-blink${blink}`, renderer: r, focused, blink });
+    const out = {};
+    for (const c of cases) {
+      const w = await waitLoad('B6');
+      const p = await openPage(eng);
+      const setup = await B(p, 'idleSetup', c);
+      let m0 = null;
+      if (p.cdp) { await p.cdp.send('Performance.enable'); m0 = (await p.cdp.send('Performance.getMetrics')).metrics; }
+      let tracing = false;
+      if (isChromium(eng.name)) { try { await eng.browser.startTracing(p.page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline.frame', 'cc', 'viz'] }); tracing = true; } catch (e) { tracing = false; } }
+      await B(p, 'idleStart');
+      await sleep(5000);
+      let m1 = null;
+      if (p.cdp) m1 = (await p.cdp.send('Performance.getMetrics')).metrics;
+      const res = await B(p, 'idleStop');
+      if (tracing) {
+        try {
+          const buf = await eng.browser.stopTracing();
+          const events = JSON.parse(buf.toString('utf8')).traceEvents || [];
+          const counts = {};
+          for (const e of events) if (e.ph !== 'M' && /Paint|DrawFrame|BeginMainThreadFrame|BeginFrame|Commit|SwapBuffers|CompositeLayers|ActivateLayerTree|RasterTask|UpdateLayoutTree|^Layout$/.test(e.name)) counts[e.name] = (counts[e.name] || 0) + 1;
+          res.chromiumTrace = { note: 'trace events during the 5 s window (all processes): paints, frames, commits; a CSS-animated cursor shows here although no timer, rAF or mutation exists', counts, totalEvents: events.length };
+        } catch (e) { res.chromiumTrace = { error: String(e).slice(0, 200) }; }
+      }
+      const d = (n) => { const a = m0?.find((x) => x.name === n)?.value; const b = m1?.find((x) => x.name === n)?.value; return a === undefined || b === undefined ? null : r2(b - a); };
+      res.cdp = m0 ? { layouts: d('LayoutCount'), recalcStyles: d('RecalcStyleCount'), scriptDurationMs: m0 && r2(d('ScriptDuration') * 1000), taskDurationMs: r2(d('TaskDuration') * 1000), layoutDurationMs: r2(d('LayoutDuration') * 1000), recalcStyleDurationMs: r2(d('RecalcStyleDuration') * 1000) } : 'WebKit: no CDP';
+      res.setup = setup; res.load1 = w.load1;
+      res.meetsRule = res.counters.setTimeout === 0 && res.counters.setInterval === 0 && res.counters.raf === 0 && res.mutations.records === 0;
+      out[c.name] = res;
+      log('B6', eng.name, c.name, JSON.stringify(res.counters), 'mut', res.mutations.records, 'meets', res.meetsRule);
+      await p.close();
+    }
+    put('B6', eng.name, 'cases', out);
+  });
+};
+
+// ================================================================== B7 hidden cost
+Q.B7 = async () => {
+  await forEngines('B7', async (eng) => {
+    for (const r of RENDERERS) {
+      const out = {};
+      for (const hide of ['visible', 'visibility', 'displaynone']) {
+        const w = await waitLoad('B7');
+        const p = await openPage(eng);
+        await attribute(p);
+        const s = { hide };
+        s.setup = await B(p, 'hcSetup', { renderer: r, hide });
+        s.snapBefore = await snap(p, 'before');
+        s.W1 = await B(p, 'hcRun', { kind: 'W1' });
+        const stopPoll = startPoll(p, 100);
+        s.B20MB = await B(p, 'hcRun', { kind: 'B244000' });
+        s.peak = await stopPoll();
+        s.snapAfter = await snap(p, 'after W1 + 20 MB');
+        s.load1 = w.load1;
+        out[`write-${hide}`] = s;
+        log('B7', eng.name, r, `write-${hide}`, `20MB drain ${s.B20MB.drainMs} parse ${s.B20MB.parseMs} raf ${s.B20MB.counters.raf} mut ${s.B20MB.mutations}`);
+        await p.close();
+      }
+      for (const hide of ['visibility', 'displaynone']) {
+        const w = await waitLoad('B7');
+        const p = await openPage(eng);
+        await attribute(p);
+        const s = { hide };
+        s.setup = await B(p, 'hcSetup', { renderer: r, hide });
+        s.snapBefore = await snap(p, 'before');
+        s.hold = await B(p, 'hcHold', { kind: 'B244000' });
+        s.snapHeld = await snap(p, 'holding 20 MB');
+        const stopPoll = startPoll(p, 100);
+        s.show = await B(p, 'hcShowAndWrite', { refit: true });
+        s.peak = await stopPoll();
+        s.snapAfterShow = await snap(p, 'after show + write');
+        s.load1 = w.load1;
+        out[`hold-${hide}`] = s;
+        log('B7', eng.name, r, `hold-${hide}`, `hold ${s.hold.holdMs} ms; show drain ${s.show.drainMs} parse ${s.show.parseMs} frames ${s.show.frames} p95 ${s.show.frameInterval.p95}`);
+        await p.close();
+      }
+      put('B7', eng.name, r, out);
+    }
+  });
+};
+
+// ================================================================== B8 input latency
+Q.B8 = async () => {
+  await forEngines('B8', async (eng) => {
+    const n = REPS ?? 200;
+    for (const r of RENDERERS) {
+      const out = {};
+      for (const scen of [{ name: 'idle', cap: 0 }, { name: 'flood-cap2MB', cap: 2 * 1024 * 1024 }, { name: 'flood-cap256KB', cap: 256 * 1024 }]) {
+        const w = await waitLoad('B8');
+        const p = await openPage(eng);
+        const setup = await B(p, 'latSetup', { renderer: r, floodCap: scen.cap });
+        const samples = []; let timeouts = 0;
+        const keys = 'abcdefghijklmnopqrstuvwxyz';
+        for (let i = 0; i < n; i++) {
+          await B(p, 'latArm');
+          await p.page.keyboard.press(keys[i % 26]);
+          const s = await B(p, 'latWait', 8000);
+          if (s.timeout) timeouts++; else samples.push(s);
+          await sleep(25);
+        }
+        const floodChunks = await B(p, 'latStopFlood');
+        const col = (k) => { const a = samples.map((x) => x[k]).sort((x, y) => x - y); const q = (pp) => a[Math.min(a.length - 1, Math.ceil(pp / 100 * a.length) - 1)]; return { n: a.length, p50: q(50), p95: q(95), p99: q(99), max: a[a.length - 1], min: a[0] }; };
+        out[scen.name] = { setup, samples: samples.length, timeouts, floodChunksWritten: floodChunks, total: col('total'), totalFromHandler: col('totalFromHandler'), queueMs: col('queueMs'), keyToData: col('keyToData'), dataToCb: col('dataToCb'), cbToPaint: col('cbToPaint'), dataSeen: samples.slice(0, 3).map((x) => x.data), load1: w.load1, load1After: loadNow() };
+        log('B8', eng.name, r, scen.name, JSON.stringify(out[scen.name].total), 'timeouts', timeouts);
+        await p.close();
+      }
+      put('B8', eng.name, r, out);
+    }
+  });
+};
+
+// ================================================================== B9 keyboard
+Q.B9 = async () => {
+  {
+    await forEngines('B9', async (eng) => {
+      const w = await waitLoad('B9');
+      const out = { load1: w.load1 };
+      const p = await openPage(eng, isChromium(eng.name) ? { permissions: ['clipboard-read', 'clipboard-write'] } : {});
+      const press = async (key) => { await p.page.keyboard.press(key); await sleep(120); return B(p, 'kbTake'); };
+      const brief = (log_) => log_.map((e) => { const o = { ph: e.ph }; for (const k of ['key', 'type', 'target', 'defaultPrevented', 'json', 'clipboardText', 'propagationStopped', 'cancelBubble']) if (e[k] !== undefined) o[k] = e[k]; return o; });
+      // (a)
+      out.a_withHandlerReturningFalse = { setup: await B(p, 'kbSetup', { f6Handler: true }), F6: brief(await press('F6')), state: await B(p, 'kbState') };
+      out.a_withoutHandler = { setup: await B(p, 'kbSetup', { f6Handler: false }), F6: brief(await press('F6')), state: await B(p, 'kbState') };
+      // (b)
+      const b = {};
+      await B(p, 'kbSetup', {});
+      b.Escape = brief(await press('Escape'));
+      b.Tab = brief(await press('Tab'));
+      b.activeAfterTab = await B(p, 'kbState');
+      await B(p, 'kbSetup', {});
+      b['Control+c (with selection)'] = brief(await press('Control+c'));
+      await B(p, 'kbSetup', {});
+      await B(p, 'kbClearSel');
+      b['Control+c (no selection)'] = brief(await press('Control+c'));
+      out.b_escape_tab_ctrlc = b;
+      // (c)
+      const c = {};
+      for (const stop of [false, true]) {
+        await B(p, 'kbSetup', { captureShortcut: { key: 'j' }, captureStop: stop });
+        c[`captureStop=${stop}`] = { 'Meta+j': brief(await press('Meta+j')), 'Control+j': brief(await press('Control+j')) };
+      }
+      out.c_captureShortcut = c;
+      // (d) copy: what ends up on the clipboard is read back by pasting into a plain textarea (the engines' pasteboards are private to the browser, pbpaste cannot see them)
+      const d = {};
+      for (const key of ['Meta+c', 'Control+c']) {
+        await B(p, 'kbSetup', { text: 'HELLOCOPYTEST' });
+        await B(p, 'kbSinkSet', 'SENTINEL-BEFORE-COPY');
+        await press('Meta+c'); // put the sentinel on the clipboard
+        const sel = await B(p, 'kbReselect');
+        const logs = brief(await press(key));
+        await B(p, 'kbSinkFocusEmpty');
+        await press('Meta+v');
+        const pasted = await B(p, 'kbSinkValue');
+        d[key] = { selection: sel, events: logs, clipboardReadBackByPastingIntoATextarea: pasted, selectionReachedClipboard: pasted === 'HELLOCOPYT', sentinelStillThere: pasted === 'SENTINEL-BEFORE-COPY' };
+      }
+      out.d_copy = d;
+      // (e) paste: multi-line text on the clipboard, bracketed paste off and on
+      const e = {};
+      for (const bracketed of [false, true]) {
+        for (const key of ['Meta+v', 'Control+v']) {
+          await B(p, 'kbSetup', { bracketed });
+          await B(p, 'kbSinkSet', 'line1\nline2\nline3');
+          await press('Meta+c');
+          await B(p, 'kbClearSel');
+          await B(p, 'kbFocusTerm');
+          e[`${key} bracketed=${bracketed}`] = { events: brief(await press(key)) };
+        }
+      }
+      out.e_paste = e;
+      put('B9', eng.name, null, out);
+      await p.close();
+      log('B9', eng.name, 'done');
+    });
+  }
+};
+
+// ================================================================== B10 theme
+Q.B10 = async () => {
+  await forEngines('B10', async (eng) => {
+    const out = {};
+    const p0 = await openPage(eng);
+    const values = ['#191A1C', '#BCBEC4', 'rgb(25 26 28)', 'rgb(25, 26, 28)', 'rgba(33, 66, 131, 0.5)', '#21428380', 'hsl(220 6% 10%)', 'oklch(0.2 0.005 260)', 'oklch(0.7 0.15 30)', 'color-mix(in srgb, #ff0000 50%, #0000ff)', 'color-mix(in oklab, #191A1C 80%, white)', 'color(display-p3 1 0 0)', 'color(srgb 0.1 0.2 0.3)', 'light-dark(#fff, #000)', 'transparent', 'currentcolor', 'red'];
+    out.resolution = await B(p0, 'resolveColors', values);
+    // custom-property chain: --a: var(--b), --b: #hex
+    out.chain = await p0.page.evaluate(() => { const el = document.createElement('div'); document.body.appendChild(el); el.style.cssText = '--b:#BCBEC4;--a:var(--b);color:var(--a)'; const v = getComputedStyle(el).color; el.remove(); return v; });
+    out.registeredProperty = await p0.page.evaluate(() => { try { CSS.registerProperty({ name: '--reg', syntax: '<color>', inherits: true, initialValue: 'red' }); const el = document.createElement('div'); document.body.appendChild(el); el.style.setProperty('--reg', '#191A1C'); const v = getComputedStyle(el).getPropertyValue('--reg'); el.remove(); return v; } catch (e) { return 'ERR ' + e.message; } });
+    out.rawCustomPropertyValue = await p0.page.evaluate(() => { const el = document.createElement('div'); document.body.appendChild(el); el.style.setProperty('--x', ' #191A1C '); const v = getComputedStyle(el).getPropertyValue('--x'); el.remove(); return JSON.stringify(v); });
+    await p0.close();
+    for (const r of RENDERERS) {
+      const w = await waitLoad('B10');
+      const rr = {};
+      const p = await openPage(eng);
+      const hex = await p.page.evaluate(() => window.bench.themeFrom());
+      const viaComputed = await p.page.evaluate((t) => window.bench.themeViaComputed(t), hex);
+      const spaceSyntax = Object.fromEntries(Object.entries(viaComputed).map(([k, v]) => [k, v.replace(/rgba?\((\d+), (\d+), (\d+)\)/, 'rgb($1 $2 $3)')]));
+      const negative = { ...viaComputed, red: 'rgb(247, 84, 101)' }; // one level off in blue (100 -> 101)
+      const alphaHex = { ...hex, selectionBackground: '#21428380' };
+      const alphaComputed = { ...viaComputed, selectionBackground: await p.page.evaluate(() => window.bench.themeViaComputed({ x: '#21428380' }).x) };
+      const oklchBg = { ...hex, background: 'oklch(0.2 0.005 260)' };
+      const oklchBgResolved = { ...hex, background: await p.page.evaluate(() => window.bench.themeViaComputed({ x: 'oklch(0.2 0.005 260)' }).x) };
+      rr.sampleValues = { viaComputed: { background: viaComputed.background, foreground: viaComputed.foreground, red: viaComputed.red, selectionBackground: viaComputed.selectionBackground }, space: spaceSyntax.red, alphaComputedSelection: alphaComputed.selectionBackground, oklchBgResolved: oklchBgResolved.background };
+      const shot = async (theme, name) => { const info = await p.page.evaluate((a) => window.bench.themePattern(a), { renderer: r, theme }); const buf = await png(p, info.rect, name ? `B10-${r}-${name}` : null); return { info, buf }; };
+      const A = await shot(hex, 'hex');
+      const Bc = await shot(viaComputed, 'computed-rgb');
+      const Cs = await shot(spaceSyntax, 'space-rgb');
+      const Neg = await shot(negative, 'negative-control');
+      const Ah = await shot(alphaHex, 'alpha-hex8');
+      const Ac = await shot(alphaComputed, 'alpha-computed-rgba');
+      const Ob = await shot(oklchBg, 'raw-oklch-bg');
+      const Or = await shot(oklchBgResolved, 'resolved-oklch-bg');
+      const cell = A.info.cell;
+      const pts = [];
+      for (let i = 0; i < 16; i++) pts.push([Math.round((25) * cell.cssW), Math.round((i + 1) * 16 + 8)]);
+      pts.push([600, 8 * 16 + 2]);
+      const dA = await diffPng(p, A.buf, Bc.buf, pts);
+      rr.cell = cell; rr.colsRows = [A.info.cols, A.info.rows]; rr.hasFocus = A.info.hasFocus;
+      rr.hex_vs_computedRgb = (({ differingPixels, maxChannelDelta, nonBackgroundPixelsA }) => ({ differingPixels, maxChannelDelta, nonBackgroundPixelsA }))(dA);
+      rr.hex_vs_spaceRgb = await diffPng(p, A.buf, Cs.buf);
+      rr.hex_vs_negativeControl = await diffPng(p, A.buf, Neg.buf);
+      rr.alphaHex8_vs_alphaComputedRgba = await diffPng(p, Ah.buf, Ac.buf);
+      rr.alphaHex8_vs_opaqueSelection = await diffPng(p, Ah.buf, A.buf);
+      rr.rawOklchBg_vs_computedStyleOfOklchBg = await diffPng(p, Ob.buf, Or.buf);
+      rr.rawOklchBg_vs_hexBg = await diffPng(p, Ob.buf, A.buf);
+      const bgPt = [[600, 8 * 16 + 2]];
+      rr.rawOklchBg_backgroundPixel = (await p.page.evaluate((x) => window.bench.pixelsOf(x), { a: Ob.buf, points: bgPt })).points[0]; // 21,22,24 = what a canvas makes of that oklch(); 0,0,0 = xterm ignored it
+      // absolute pixels: the ANSI background blocks and the default background, hex theme
+      const expected = p.page.evaluate(() => window.bench.ANSI_HEX);
+      const exp = (await expected).map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+      exp.push([25, 26, 28]);
+      rr.absolutePixels = dA.points.map((got, i) => ({ i, expected: exp[i], got, equal: got.every((v, k) => v === exp[i][k]) }));
+      rr.absoluteMismatches = rr.absolutePixels.filter((x) => !x.equal).length;
+      rr.load1 = w.load1;
+      out[r] = rr;
+      await p.close();
+      log('B10', eng.name, r, 'hex vs computed diff', rr.hex_vs_computedRgb.differingPixels, 'neg', rr.hex_vs_negativeControl.differingPixels, 'abs mismatches', rr.absoluteMismatches);
+    }
+    put('B10', eng.name, null, out);
+  });
+};
+
+// ================================================================== main
+async function main() {
+  if (argv.includes('--list')) { console.log(Object.keys(Q).join(' ')); return; }
+  const load = await waitLoad('start');
+  const meta = { started: new Date().toISOString(), uptime: uptimeStr(), load1AtStart: load.load1, node: process.version, host: `${os.type()} ${os.release()} ${os.arch()}, ${os.cpus().length} cpus`, engines: ENGINES, playwright: JSON.parse(fs.readFileSync(path.join(ROOT, 'node_modules/playwright/package.json'), 'utf8')).version };
+  const files = await buildPage();
+  meta.pageBuild = files;
+  const list = ONLY ?? Object.keys(Q);
+  save('meta', { ...(RESULT.meta ?? {}), [meta.started]: { ...meta, only: list } });
+  for (const q of list) {
+    if (!Q[q]) { log('unknown question', q); continue; }
+    log('=== ', q, 'load', loadNow());
+    await Q[q]();
+    const m = RESULT.meta; m[meta.started][q + 'Done'] = { at: new Date().toISOString(), uptime: uptimeStr() }; save('meta', m);
+  }
+  log('done');
+}
+main().then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });

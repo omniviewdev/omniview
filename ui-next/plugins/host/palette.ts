@@ -2,8 +2,11 @@ import {
   createAnnouncer,
   createPaletteStore,
   normaliseRoute,
+  SCREEN_READER_COMMAND,
+  screenReaderSaid,
   seedChips,
   settingsChordText,
+  TERMINAL_TOOL,
   toggleChordText,
   togglePanel,
   type Contributions,
@@ -63,6 +66,11 @@ export type HostPaletteDeps = {
   readonly onCloseWindow: (() => void) | undefined;
   /** Opens Settings (the shell's control: `shell/settings/host.ts`). Absent: the window has none, and the command is not offered. */
   readonly openSettings?: (() => void) | undefined;
+  /**
+   * The Terminal tool's screen reader mode: `toggle` flips the window's one choice and answers what it is now, and `say` tells a person who cannot see the screen what it came to, through the window's live region.
+   * Absent: the window has no Terminal tool, and the command is not offered.
+   */
+  readonly terminalScreenReader?: { readonly toggle: () => boolean; readonly say: (text: string) => void } | undefined;
   /** Where each plugin was last shown. A page of a plugin that is not on screen opens at the connection that plugin was last used in, as the entries of its own sidebar do. Absent: no connection is carried. */
   readonly remembered?: ((plugin: string) => Route | undefined) | undefined;
   /**
@@ -374,11 +382,11 @@ type HostCommand = {
 };
 
 /**
- * The commands the host can run from here, made from what is true now: Close tab, Toggle panel (when there is a panel), Settings (when the window has them), Close window (only on a Mac, and only when the app can close its window:
- * elsewhere the main window hides and nothing brings it back, decision A17), and Next tab and Previous tab. The palette lists them and the runner looks them up here, so what it runs is what
- * it checked a moment before.
+ * The commands the host can run from here, made from what is true now: Close tab, Toggle panel (when there is a panel), the Terminal's screen reader switch (when the window has the Terminal tool), Settings (when the window has them),
+ * Close window (only on a Mac, and only when the app can close its window: elsewhere the main window hides and nothing brings it back, decision A17), and Next tab and Previous tab. The palette lists them and the runner looks them
+ * up here, so what it runs is what it checked a moment before.
  */
-function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings }: HostPaletteDeps): HostCommand[] {
+function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, terminalScreenReader }: HostPaletteDeps): HostCommand[] {
   const state = tabs.getSnapshot();
   const others = state.order.length > 1 ? undefined : NO_OTHER_TAB;
   // The app's own window gets the chords the shell binds natively; a browser tab keeps those for itself, and the shell's Control Option chords are what work there.
@@ -403,6 +411,24 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings }: Host
       shortcut: native ? toggleChordText(platform) : WEB_TOGGLE_CHORD[platform],
       run: () => {
         togglePanel(panel);
+        return true;
+      },
+    });
+  }
+
+  if (terminalScreenReader !== undefined) {
+    commands.push({
+      id: 'host.terminal.toggleScreenReader',
+      title: SCREEN_READER_COMMAND,
+      context: 'Panel',
+      icon: TERMINAL_TOOL.icon,
+      // The palette is a modal dialog while this runs: the rest of the window, its live region with it, is outside the accessibility tree until the palette is gone, and a change in a region that is not there is not heard.
+      // One task later the palette is gone, so what the choice came to is said then, once.
+      run: () => {
+        const on = terminalScreenReader.toggle();
+        setTimeout(() => {
+          terminalScreenReader.say(screenReaderSaid(on));
+        }, 0);
         return true;
       },
     });

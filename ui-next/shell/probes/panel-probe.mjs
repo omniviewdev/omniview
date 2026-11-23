@@ -1255,28 +1255,30 @@ async function late(browser, engine, viewportName, viewport, origin) {
     await sleep(3300);
     const result = await page.evaluate(() => ({ ...window.__probe, tools: Object.keys(window.__panel.getSnapshot().tools) }));
     report.late[`${where} closed`] = { frames: result.frames, moves: result.moves, layoutShift: result.layoutShift, tools: result.tools };
-    if (result.tools.length !== 3) fail(`${where} closed`, `the model has ${JSON.stringify(result.tools)}, wanted the host's Logs tool and both plugins' tools`);
+    if (result.tools.length !== 4) fail(`${where} closed`, `the model has ${JSON.stringify(result.tools)}, wanted the host's Terminal and Logs tools and both plugins' tools`);
     const moved = result.moves.filter((move) => [...MUST_NOT_MOVE, ...PANEL_PARTS].includes(move.part));
     if (moved.length > 0) fail(`${where} closed`, `${moved.length} parts moved while a plugin's tool arrived: ${JSON.stringify(moved.slice(0, 4))}`);
     if (result.layoutShift !== null && result.layoutShift > 0) fail(`${where} closed`, `layout shift ${result.layoutShift} from ${result.shiftSources.join(', ')}`);
     await page.getByRole('button', { name: 'Panel', exact: true }).click();
     await sleep(300);
     const tools = await page.evaluate(TOOLS);
-    if (tools.join() !== 'Logs*,Alpha streams,Beta streams') fail(`${where} closed`, `the strip draws ${JSON.stringify(tools)} once it is opened, wanted the host's Logs tool (first, on screen), Alpha streams and Beta streams`);
+    if (tools.join() !== 'Terminal*,Logs,Alpha streams,Beta streams') fail(`${where} closed`, `the strip draws ${JSON.stringify(tools)} once it is opened, wanted the host's Terminal tool (first, on screen), its Logs tool, Alpha streams and Beta streams`);
     for (const error of errors) fail(`errors ${where} closed`, error);
     await context.close();
   }
   // b. The user opens the panel before the second plugin is there, on the first plugin's tool (the host's Logs tool is first in the strip and would be on screen otherwise): the second plugin's tool joins the
   // strip. Nothing but the strip's own content moves, and the tool that was on screen stays on screen.
   for (const [label, query, wantedTools, wantedFirst] of [
-    ['after', 'plugins=2&lateMs=900', 'Logs,Alpha streams*,Beta streams', 'Alpha streams'],
-    ['before', 'plugins=2&lateMs=900&first=beta', 'Logs,Beta streams,Alpha streams*', 'Alpha streams'],
+    ['after', 'plugins=2&lateMs=900', 'Terminal,Logs,Alpha streams*,Beta streams', 'Alpha streams'],
+    ['before', 'plugins=2&lateMs=900&first=beta', 'Terminal,Logs,Beta streams,Alpha streams*', 'Alpha streams'],
   ]) {
     const { page, context, errors } = await open(browser, hostUrl(origin, query), viewport, { init: SAMPLE });
     // The first plugin's tool is there at about 400 ms; the user opens the panel then, and the second plugin arrives 900 ms later.
-    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 2, null, { timeout: 5000 });
+    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 3, null, { timeout: 5000 });
     await page.evaluate(() => window.__panel.show({ tool: 'alpha:streams' }));
     await sleep(300);
+    // The control of the baseline guard below: the probe is made slow, so the late tool is in the strip before the baseline is taken.
+    if (CONTROL === 'late-early') await sleep(1500);
     // What the sampler saw up to here is the panel opening and the window loading: only what comes after is the late tool's.
     const openedAt = await page.evaluate(() => window.__probe.frames);
     const firstTool = await page.evaluate(() => {
@@ -1285,7 +1287,10 @@ async function late(browser, engine, viewportName, viewport, origin) {
       return { label: tab.textContent.trim(), rect: [box.x, box.y, box.width, box.height] };
     });
     const regions0 = await page.evaluate(REGIONS);
-    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 3, null, { timeout: 8000 });
+    // The baseline is taken while the strip still lacks the late tool, and the probe says so: if the late tool had registered before this point, the wait below would return at once and nothing after the baseline would see its arrival.
+    const toolsAtBaseline = await page.evaluate(() => Object.keys(window.__panel.getSnapshot().tools).length);
+    if (toolsAtBaseline !== 3) fail(`${where} open, tool arrives ${label}`, `the baseline was taken with ${String(toolsAtBaseline)} tools in the model, wanted 3 (Terminal, Logs and the first plugin's): the late tool had arrived already, so its arrival would not be observed`);
+    await page.waitForFunction(() => Object.keys(window.__panel.getSnapshot().tools).length === 4, null, { timeout: 8000 });
     await sleep(600);
     const result = await page.evaluate(() => ({ ...window.__probe }));
     const regions1 = await page.evaluate(REGIONS);
@@ -1589,6 +1594,8 @@ const PERTURBATIONS = {
   'twin-lone-scope': { sections: ['twin-rules'], expected: /^twin-rules .*: a session with no twin draws a scope/ },
   'twin-scope-kept': { sections: ['twin-rules'], expected: /^twin-rules .*: the tab that is left draws a scope/ },
   'scope-name': { sections: ['a11y'], expected: /^a11y .*: label-content-name-mismatch/ },
+  // The late section's baseline is taken while the second plugin's tool is not yet in the strip, and the section says so (its guard): the control makes the probe slow, so the tool is in the strip first and the guard must say it.
+  'late-early': { sections: ['late'], expected: /^late .*: the baseline was taken with 4 tools in the model, wanted 3/ },
 };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 if (CONTROL !== '' && PERTURBATIONS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be one of ${Object.keys(PERTURBATIONS).join(', ')}`);
@@ -1609,6 +1616,7 @@ for (const engineName of engineNames) {
     if (wants('twins')) await twins(browser, engineName, viewportName, viewport, production.origin);
     if (wants('twin-rules')) await twinRules(browser, engineName, viewportName, viewport, production.origin);
     if (CONTROL !== '' && wants('a11y')) await a11y(browser, engineName, viewportName, viewport, production.origin, axe);
+    if (CONTROL !== '' && wants('late')) await late(browser, engineName, viewportName, viewport, production.origin);
     if (CONTROL === '') {
       await card(browser, engineName, viewportName, viewport, production.origin);
       await paint(browser, engineName, viewportName, viewport, production.origin);

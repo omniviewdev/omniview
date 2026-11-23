@@ -35,3 +35,5 @@ export { settingsChordText, WEB_SETTINGS_CHORD } from './settings/chords';
 export { WindowKindScreen } from './settings/WindowKindScreen';
 export { resolveWindowKind } from './settings/windowKind';
 export type { WindowKind } from './settings/windowKind';
+export { createTerminals, SCREEN_READER_COMMAND, screenReaderSaid, TERMINAL_TOOL, TERMINAL_TOOL_ID } from './panel/terminal';
+export type { ScreenReaderChoice, Terminals, TerminalsOptions, TerminalsRestored, TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './panel/terminal';

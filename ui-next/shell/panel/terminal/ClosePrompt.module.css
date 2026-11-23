@@ -1,0 +1,77 @@
+/* The question a close of a running terminal asks (ch16 S115). A modal dialog in the browser's top layer, as the palette is: the dialog is the scrim (the whole window, transparent) and the frame hangs
+   in it, centred. The width of the frame is the one measure here that is not a token (a dialog this narrow keeps its sentence to two lines). */
+@layer ov.shell {
+  .scrim {
+    display: none;
+  }
+
+  .scrim[open] {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: 100%;
+    block-size: 100%;
+    max-inline-size: none;
+    max-block-size: none;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    background-color: transparent;
+    color: inherit;
+  }
+
+  .scrim::backdrop {
+    background-color: transparent;
+  }
+
+  .frame {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    inline-size: 400px;
+    max-inline-size: calc(100vw - 32px);
+    padding: var(--ov-spacing-16);
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    box-shadow: var(--ov-shadow-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-18);
+  }
+
+  .title {
+    margin: 0;
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-20);
+  }
+
+  .name {
+    margin: 0;
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .body {
+    margin: 0;
+  }
+
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--ov-spacing-8);
+    padding-block-start: var(--ov-spacing-8);
+  }
+}

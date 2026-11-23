@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, RESTORED_CAUSE, type PanelStore } from '../core/panel';
 import { createTabsStore, type TabsStore } from '../core/tabs';
 import { cloudPage, FIXTURE_PLUGINS, makeWorld, stackPage, type World } from '../core/tabs/testing';
-import { createRailChoice, loadSession, QUARANTINE_PREFIX, SESSION_VERSION, type Lifecycle, type LoadedSession, type RailChoice, type Restored, type SessionOptions, type SessionStorage } from './index';
-import { memoryStorage, type Memory } from './testing';
+import { createRailChoice, loadSession, MIGRATIONS, QUARANTINE_PREFIX, SESSION_VERSION, type Lifecycle, type LoadedSession, type RailChoice, type Restored, type SessionOptions, type SessionStorage } from './index';
+import { flag, memoryStorage, type Flag, type Memory } from './testing';
 
 // The session: loaded before the window draws, restored into the two models, saved one burst at a time, and never the reason the window does not start. The cases are the ones the assignment of
 // step S3a names (round trip, migration from an older version, quarantine, a plugin that is not there yet) and the ones that follow from "never a crash, never a blank window".
@@ -32,6 +32,7 @@ type Life = {
   readonly tabs: TabsStore;
   readonly panel: PanelStore;
   readonly rail: RailChoice;
+  readonly screenReader: Flag;
   readonly stop: () => void;
   readonly restored: Restored;
   readonly hide: () => void;
@@ -71,9 +72,10 @@ function live(loaded: LoadedSession, { world = makeWorld(), without = [] as read
   const tabs = createTabsStore({ contributions: world.contributions, newId: () => `t${String((counter += 1))}`, ...(restored.tabs === undefined ? {} : { initial: restored.tabs }) });
   const panel = createPanelStore({ ...(restored.panel === undefined ? {} : { initial: restored.panel }), newId: () => `s${String((counter += 1))}` });
   const rail = createRailChoice(restored.rail ?? null);
+  const screenReader = flag(restored.terminalScreenReader);
   const page = pageLifecycle();
-  const stop = loaded.attach({ tabs, panel, rail, lifecycle: page.lifecycle });
-  return { world, tabs, panel, rail, stop, restored, hide: page.hide };
+  const stop = loaded.attach({ tabs, panel, rail, terminalScreenReader: screenReader, lifecycle: page.lifecycle });
+  return { world, tabs, panel, rail, screenReader, stop, restored, hide: page.hide };
 }
 
 const titles = (tabs: TabsStore) => tabs.getSnapshot().order.map((id) => tabs.getSnapshot().tabs[id]?.face.title);
@@ -91,7 +93,7 @@ describe('a window that is saved and comes back', () => {
   it('has its tabs, the one on screen, the rail and the panel as the user left them, written in one document', async () => {
     const memory = memoryStorage();
     const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
-    expect(first.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined });
+    expect(first.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined, terminalScreenReader: false });
     first.tabs.open(cloudPage('instances'));
     first.tabs.open(stackPage('services', { connection: 'north' }), { how: 'new' });
     equip(first.panel);
@@ -115,6 +117,45 @@ describe('a window that is saved and comes back', () => {
     // What was saved is what is held now: restoring wrote nothing.
     await settle(1000);
     expect(memory.writes).toHaveLength(1);
+  });
+
+  it('brings the Terminal\'s screen reader mode back as the person left it: off in a window that never chose, saved with the burst when it is chosen, on in the next run', async () => {
+    const memory = memoryStorage();
+    const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    expect(first.screenReader.getSnapshot()).toBe(false);
+    first.screenReader.set(true);
+    await settle(399);
+    expect(memory.writes).toEqual([]);
+    await settle(1);
+    expect(memory.writes).toHaveLength(1);
+    expect(JSON.parse(memory.writes[0] ?? '')).toMatchObject({ version: SESSION_VERSION, terminalScreenReader: true });
+
+    const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    expect(second.restored.terminalScreenReader).toBe(true);
+    expect(second.screenReader.getSnapshot()).toBe(true);
+    // What was saved is what is held now: restoring wrote nothing.
+    await settle(1000);
+    expect(memory.writes).toHaveLength(1);
+
+    second.screenReader.set(false);
+    await settle();
+    expect(JSON.parse(memory.writes[1] ?? '')).toMatchObject({ terminalScreenReader: false });
+  });
+
+  it('brings a session saved by the first release (version 1, no screen reader choice) back with the mode off, and writes the current version from the next change on', async () => {
+    const memory = memoryStorage(JSON.stringify({ version: 1, tabs: { version: 1, active: null, tabs: [] }, rail: 'cloud', panel: { version: 1, open: true, height: 301, tool: 'logs', active: {}, sessions: [] } }));
+    const { log, messages } = notes();
+    const life = live(await loadSession(memory.storage, optionsOf(log)));
+    expect(life.restored).toMatchObject({ rail: 'cloud', terminalScreenReader: false });
+    expect(life.screenReader.getSnapshot()).toBe(false);
+    expect(messages()).toEqual([]);
+    expect(memory.kept.size).toBe(0);
+    await settle(1000);
+    expect(memory.writes).toEqual([]);
+
+    life.screenReader.set(true);
+    await settle();
+    expect(JSON.parse(memory.writes[0] ?? '')).toMatchObject({ version: SESSION_VERSION, rail: 'cloud', terminalScreenReader: true });
   });
 
   it('writes one document for a burst of changes of the tabs, the panel and the rail, 400 ms after the last, and nothing for a change that comes back', async () => {
@@ -252,7 +293,7 @@ describe('a session that cannot be used is kept aside and the window starts empt
     const memory = memoryStorage(text);
     const { log, messages } = notes();
     const life = live(await loadSession(memory.storage, optionsOf(log)));
-    expect(life.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined });
+    expect(life.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined, terminalScreenReader: false });
     expect(life.tabs.getSnapshot().order).toEqual([]);
     await settle(0);
 
@@ -368,7 +409,7 @@ describe('a place that cannot be read', () => {
     const life = live(await loadSession(memory.storage, optionsOf(log)));
     life.tabs.open(cloudPage('instances'));
     await settle(2000);
-    expect(life.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined });
+    expect(life.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined, terminalScreenReader: false });
     expect(memory.writes).toEqual([]);
     expect(messages()).toEqual([expect.stringContaining('could not be read') as string]);
     expect(messages()[0]).toContain('the window is not registered');
@@ -392,7 +433,7 @@ describe('a place that cannot be read', () => {
     slow.release(JSON.stringify({ version: SESSION_VERSION, tabs: { version: 1, active: null, tabs: [] }, rail: 'cloud', panel: { version: 1 } }));
     life.tabs.open(cloudPage('instances'));
     await settle(2000);
-    expect(life.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined });
+    expect(life.restored).toEqual({ tabs: undefined, panel: undefined, rail: undefined, terminalScreenReader: false });
     expect(memory.writes).toEqual([]);
     expect(messages()).toEqual([expect.stringContaining('did not answer') as string]);
   });
@@ -400,7 +441,7 @@ describe('a place that cannot be read', () => {
 
 describe('a session of an older version', () => {
   it('is migrated before it is read, and is saved at the version this build writes', async () => {
-    // Version 0 of the wrapper held the rail's choice under `railPlugin`.
+    // Version 0 of the wrapper held the rail's choice under `railPlugin`; the step from version 1 is the real one, which adds the Terminal's screen reader choice, off.
     const old = JSON.stringify({ version: 0, tabs: { version: 1, active: null, tabs: [] }, railPlugin: 'stack', panel: { version: 1 } });
     const memory = memoryStorage(old);
     const steps = {
@@ -408,10 +449,12 @@ describe('a session of an older version', () => {
         const { railPlugin, ...rest } = value;
         return { ...rest, version: 1, rail: railPlugin };
       },
+      ...MIGRATIONS,
     };
     const { log, messages } = notes();
     const life = live(await loadSession(memory.storage, optionsOf(log, { steps })));
     expect(life.rail.getSnapshot()).toBe('stack');
+    expect(life.screenReader.getSnapshot()).toBe(false);
     expect(messages()).toEqual([]);
     expect(memory.kept.size).toBe(0);
     life.tabs.open(cloudPage('instances'));

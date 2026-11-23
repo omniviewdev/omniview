@@ -82,12 +82,12 @@ async function openStreams(user: UserEvent): Promise<void> {
 }
 
 describe('a tool a plugin brings to the panel', () => {
-  it('is in the strip once the plugin is ready, after the host\'s own Logs tool, and starts a session from its `+`', async () => {
+  it('is in the strip once the plugin is ready, after the host\'s own Terminal and Logs tools, and starts a session from its `+`', async () => {
     const { user } = mount(streams());
     await user.click(toggle());
-    // The host's Logs tool is first in the strip (the mock's order, 20) and is the one on screen until the user chooses another.
-    expect(screen.getAllByRole('tab', { name: /^(Logs|Streams)$/ }).map((one) => one.textContent)).toEqual(['Logs', 'Streams']);
-    expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
+    // The host's Terminal tool is first in the strip (the mock's order, 10), then Logs (20); Terminal is the one on screen until the user chooses another.
+    expect(screen.getAllByRole('tab', { name: /^(Terminal|Logs|Streams)$/ }).map((one) => one.textContent)).toEqual(['Terminal', 'Logs', 'Streams']);
+    expect(screen.getByRole('tab', { name: 'Terminal' })).toHaveAttribute('aria-selected', 'true');
     await user.click(screen.getByRole('tab', { name: 'Streams' }));
     expect(screen.getByRole('tab', { name: 'Streams' })).toHaveAttribute('aria-selected', 'true');
     await user.click(plus());

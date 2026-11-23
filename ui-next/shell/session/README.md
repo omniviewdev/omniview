@@ -11,6 +11,7 @@ One document, written one burst at a time (the saver: 400 ms after the last chan
 | `version` | `SESSION_VERSION`, first in the document | this module |
 | `tabs` | the tabs in strip order and the one on screen: route, face, key, pinned, preview, a window of ten history entries | the tab model (`serialise`, its own `version` and `migrate`) |
 | `rail` | the plugin whose sidebar the rail shows, as the user chose it, or `null` | this module (`RailChoice`) |
+| `terminalScreenReader` | whether the Terminal tool exposes its output to a screen reader (the emulator's screen reader mode), as the person chose it; off until they do (added in version 2) | this module (`FlagSource`, which the Terminal tool's choice is) |
 | `panel` | open, height, the tool, the session of each tool, and the identity of each session | the panel model (`serialise`, its own `version` and `migrate`) |
 
 **Deliberately not saved**, and why: scroll positions, the selection and the search of a page (the model's rule: a page's state is plain data kept for the window's life and never saved; a saved offset would be wrong after the data changed, and would race the page's first load); the open groups of a sidebar's tree; the list of closed tabs (Reopen closed tab) and a tab's unsaved flag and attention cue (they mean "now"); the output and the state of a panel session (a restored session comes back `ended`, and never running: nothing is streaming into it); which pages are mounted (only the tab on screen is, and the others when they are shown); the window's size and place (the host's Go side keeps those for windows other than the main one).
@@ -35,4 +36,4 @@ A write that fails is said on the console and left behind; the next change write
 
 ## The version
 
-`SESSION_VERSION` is the wrapper's. A change in the tab or panel model's part is migrated in that part (`MIGRATIONS` of each model); a change of the wrapper (a new field, a renamed one) is a step in `MIGRATIONS` here, which `readSession` applies one version at a time (the tab model's `migrate`, with the steps and the current version injected). `MIGRATIONS` is empty at version 1.
+`SESSION_VERSION` is the wrapper's. A change in the tab or panel model's part is migrated in that part (`MIGRATIONS` of each model); a change of the wrapper (a new field, a renamed one) is a step in `MIGRATIONS` here, which `readSession` applies one version at a time (the tab model's `migrate`, with the steps and the current version injected). `MIGRATIONS` has one step, from version 1 (the first release) to version 2, which adds `terminalScreenReader`, off; a field that is not a yes or a no reads as off and never refuses the session.

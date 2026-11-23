@@ -4,7 +4,7 @@ import { restoreTabs, type Contributions, type ErrorHook, type KeepAlive, type T
 import { readSession, serialiseSession, type ReadOptions } from './document';
 import { browserLifecycle, type Lifecycle } from './lifecycle';
 import type { RailSource } from './rail';
-import type { SessionStorage } from './types';
+import type { FlagSource, SessionStorage } from './types';
 
 // Loading, restoring and saving the session. Three promises, in the order they matter: the window always starts (a session that cannot be read, or used, is a window that starts empty, with a note on
 // the console; the old app exits on a bad `activities.json`, and this does not repeat it); what cannot be used is kept aside and never deleted; and nothing is written over a text that is neither
@@ -32,17 +32,20 @@ export type RestoreOptions = {
   readonly onError?: ErrorHook | undefined;
 };
 
-/** What the window starts from. A part that is `undefined` has nothing to restore: the model starts as it does with no session. */
+/** What the window starts from. A part that is `undefined` has nothing to restore: the model starts as it does with no session. The screen reader choice is off when nothing says it is on. */
 export type Restored = {
   readonly tabs: TabsState | undefined;
   readonly panel: PanelState | undefined;
   readonly rail: string | undefined;
+  readonly terminalScreenReader: boolean;
 };
 
 export type AttachOptions = {
   readonly tabs: Pick<TabsStore, 'getSnapshot' | 'subscribe'>;
   readonly panel: Pick<PanelStore, 'getSnapshot' | 'subscribe'>;
   readonly rail: RailSource;
+  /** Whether the Terminal tool exposes its output to a screen reader: the host's choice, saved with the rest. */
+  readonly terminalScreenReader: FlagSource;
   /** Quiet time after the last change before the write. Default: the saver's, 400 ms. */
   readonly delay?: number | undefined;
   /** When the page is hidden or going away, what is pending is written at once. Default: the browser's. */
@@ -50,9 +53,9 @@ export type AttachOptions = {
 };
 
 export type LoadedSession = {
-  /** The window's two models' states and the rail's choice, from what was saved. Said and kept aside once, however often it is asked. */
+  /** The window's two models' states, the rail's choice and the Terminal's screen reader choice, from what was saved. Said and kept aside once, however often it is asked. */
   readonly restore: (options: RestoreOptions) => Restored;
-  /** Starts saving the three. Returns the function that stops it, after writing what is pending. A window whose session could not be read saves none. */
+  /** Starts saving the four. Returns the function that stops it, after writing what is pending. A window whose session could not be read saves none. */
   readonly attach: (options: AttachOptions) => () => void;
 };
 
@@ -64,7 +67,7 @@ const defaultLog: Log = (message, detail) => {
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-const NOTHING: Restored = Object.freeze({ tabs: undefined, panel: undefined, rail: undefined });
+const NOTHING: Restored = Object.freeze({ tabs: undefined, panel: undefined, rail: undefined, terminalScreenReader: false });
 
 type Read = { readonly ok: true; readonly text: string | undefined } | { readonly ok: false; readonly why: string };
 
@@ -206,16 +209,16 @@ export function openSession(storage: SessionStorage, text: string | undefined, o
         }
       }
 
-      return { tabs, panel, rail: saved.rail };
+      return { tabs, panel, rail: saved.rail, terminalScreenReader: saved.terminalScreenReader };
     },
-    attach: ({ tabs, panel, rail, delay, lifecycle = browserLifecycle() }) => {
+    attach: ({ tabs, panel, rail, terminalScreenReader, delay, lifecycle = browserLifecycle() }) => {
       // A text that was put aside, or tried to be: nothing is written until it is safe, and none if it could not be.
       const ready = keeper.outcome() ?? Promise.resolve(true);
       const writer = createWriter(storage, log, ready);
       const store = {
-        getSnapshot: () => ({ tabs: tabs.getSnapshot(), panel: panel.getSnapshot(), rail: rail.getSnapshot() }),
+        getSnapshot: () => ({ tabs: tabs.getSnapshot(), panel: panel.getSnapshot(), rail: rail.getSnapshot(), terminalScreenReader: terminalScreenReader.getSnapshot() }),
         subscribe: (listener: () => void) => {
-          const stops = [tabs.subscribe(listener), panel.subscribe(listener), rail.subscribe(listener)];
+          const stops = [tabs.subscribe(listener), panel.subscribe(listener), rail.subscribe(listener), terminalScreenReader.subscribe(listener)];
           return () => {
             for (const stop of stops) {
               stop();

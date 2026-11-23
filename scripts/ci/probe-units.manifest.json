@@ -198,7 +198,8 @@
       "twin-moved",
       "twin-lone-scope",
       "twin-scope-kept",
-      "scope-name"
+      "scope-name",
+      "late-early"
     ]
   },
   "ui-next/shell/probes/plugins-page-perf-probe.mjs": {
@@ -316,6 +317,35 @@
     "controls": [
       "slot-width",
       "slot-undeclared"
+    ]
+  },
+  "ui-next/shell/probes/terminal-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "lane-border",
+      "button-size",
+      "ring-back",
+      "scrollbar-block",
+      "scrollbar-stuck",
+      "f6-trap",
+      "escape-leaves",
+      "modal-off",
+      "resize-chatty",
+      "hidden-frames",
+      "idle-timer",
+      "chunk-commit",
+      "flood-janky",
+      "echo-slow",
+      "lazy-load",
+      "big-scrollback",
+      "leaky-heap",
+      "reader-claims",
+      "reader-stuck",
+      "reader-words-stale",
+      "reader-announce-twice",
+      "reader-axe",
+      "reader-hidden-frames",
+      "reader-idle-timer"
     ]
   },
   "ui-next/shell/probes/tour-probe.mjs": {

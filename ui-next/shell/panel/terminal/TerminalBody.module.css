@@ -1,0 +1,242 @@
+@layer ov.shell {
+  /* The body of a terminal session: the tool's vertical toolbar at the left, and beside it the screen over a fixed status lane, as the mock lays out `.ptool` (a column of [main][status strip], shell-panel.css 11-21
+     and 30) beside `.panel__tools` (shell.css 127). The panel lays a session's body out as an item of a row, which sizes an item that does not grow to its content: this box is that item, and it takes all the room
+     the panel gives the body. */
+  .terminal {
+    display: flex;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  /* The toolbar's column (the mock's `.panel__tools`: `flex: 0 0 40px`, 28 px buttons centred, 4 px apart, 4 px above and below). Two buttons fit the shortest panel (120 px), so the column never overflows. */
+  .tools {
+    display: flex;
+    flex: 0 0 40px;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    inline-size: 40px;
+    min-block-size: 0;
+    padding-block: var(--ov-spacing-4);
+    overflow: hidden;
+  }
+
+  .main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  /* The screen (the mock's `.pterm__screen`): the editor's plane, taking all the height the lane leaves, and the emulator draws in it. It draws NO focus ring around itself: the emulator's input is a text-entry surface the
+     size of the panel, and its focus indicator is its caret, a solid block while it has the keyboard and a hollow one while it has not (a change of shape, so it is perceived without hue alone, ch04 section 6). The mock
+     draws the 2 px ring on its output REGION (`.pterm__screen`, `tabindex=0`) when that region is the focused element; where the keyboard is, in its input row, the focus paint is the row's highlight (V64) and the
+     caret: there is no frame around the viewport. The emulator's own rules are the stylesheet it brings (`xtermEngine.ts`); what is the host's is here: the plane, the inset, the viewport that is transparent so the
+     plane shows, and the scrollbar. */
+  .screen {
+    position: relative;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+    background-color: var(--ov-bg-editor);
+  }
+
+  /* The scrollbar is the shell's: the platform's overlay one, nothing painted at rest, thin while it is shown (written rule: scrollbar mode, appearance and size are the platform's, ch03 section on scroll ownership; the
+     shell reserves no lane, `scrollbar-gutter: auto`, S15). The emulator draws its own, 14 px wide in inline styles, so it is made thin and rounded here and is not drawn at all while there is nothing to scroll to
+     (`data-scrollable`, set by the adapter once the buffer holds more than the screen): a full-height slider over a screen that does not scroll is a block of grey. The slider's colour is the emulator's own, the text colour at
+     20% (40% on hover, 50% pressed), so it follows the theme. It is shown on scroll and on hover by the emulator (opacity), as the platform's is. The inline widths are beaten without `!important` (the built stylesheet may carry
+     none, `scripts/ui-flavour.test.mjs`): a maximum size wins over an inline size, and a margin moves the slider whatever its inline offset. */
+  .screen:not([data-scrollable]) :global(.xterm-scrollable-element > .scrollbar) {
+    display: none;
+  }
+
+  .screen :global(.xterm-scrollable-element > .scrollbar.vertical) {
+    max-inline-size: 10px;
+  }
+
+  .screen :global(.xterm-scrollable-element > .scrollbar.vertical > .slider) {
+    max-inline-size: 6px;
+    margin-inline-start: var(--ov-spacing-2);
+    border-radius: var(--ov-radius-mark);
+  }
+
+  /* The mock's screen insets its text by 12 px on all four sides (measured: screen rect [45,639,1390,201], text inset 12). The emulator's fit subtracts its own padding, so the cells it proposes already fit. */
+  .screen :global(.xterm) {
+    padding: var(--ov-spacing-12);
+  }
+
+  .screen :global(.xterm .xterm-viewport) {
+    background-color: transparent;
+  }
+
+  /* The bell (BEL) is shown and never sounded: one 240 ms fade of the text colour over the plane, a change of brightness that moves nothing and flashes once (fewer than three flashes a second, WCAG 2.3.1; none while
+     `prefers-reduced-motion`, as the toasts' fade). The screen holds `data-bell` `a` or `b`, switched for each bell: two names for the same fade restart it without a timer or a reflow. */
+  .screen[data-bell]::after {
+    position: absolute;
+    inset: 0;
+    background-color: var(--ov-fg);
+    content: '';
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .screen[data-bell='a']::after {
+    animation: bell-a 240ms ease-out;
+  }
+
+  .screen[data-bell='b']::after {
+    animation: bell-b 240ms ease-out;
+  }
+
+  @keyframes bell-a {
+    from {
+      opacity: 0.16;
+    }
+
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes bell-b {
+    from {
+      opacity: 0.16;
+    }
+
+    to {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .screen[data-bell]::after {
+      animation: none;
+    }
+  }
+
+  /* The status lane (the mock's `.ptool__status`): a fixed 28 px lane under the screen, so no state moves the screen above it. It says what the session is doing, and, once it is over, what that means for the
+     person: input is off, the output stays readable. A running session says nothing. */
+  .lane {
+    display: flex;
+    flex: 0 0 28px;
+    align-items: center;
+    gap: var(--ov-spacing-12);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    block-size: 28px;
+    padding-inline: var(--ov-spacing-12);
+    border-block-start: 1px solid var(--ov-border-subtle);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-synthesis: none;
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    white-space: nowrap;
+  }
+
+  .laneWords {
+    flex: 0 0 auto;
+    color: var(--ov-fg);
+  }
+
+  .laneNote {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* What a person who cannot see the lane is told: a copy that was made, and how to leave the terminal. Read and never drawn; it takes no room and holds no focus. */
+  .live,
+  .hint {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* The swatches the look of the screen is read from (`appearance.ts`): each is painted with the theme's own token, and what the engine resolved is what the emulator is given. Never drawn. */
+  .swatches {
+    display: none;
+  }
+
+  .swatches [data-swatch='background'] {
+    color: var(--ov-bg-editor);
+  }
+
+  .swatches [data-swatch='foreground'],
+  .swatches [data-swatch='cursor'] {
+    color: var(--ov-fg-editor);
+  }
+
+  .swatches [data-swatch='cursorAccent'] {
+    color: var(--ov-bg-editor);
+  }
+
+  .swatches [data-swatch='selection'] {
+    color: var(--ov-selection-active);
+  }
+
+  .swatches [data-swatch='selectionInactive'] {
+    color: var(--ov-selection-inactive);
+  }
+
+  .swatches [data-swatch='black'] {
+    color: var(--ov-fg-disabled);
+  }
+
+  .swatches [data-swatch='red'],
+  .swatches [data-swatch='brightRed'] {
+    color: var(--ov-error-fg);
+  }
+
+  .swatches [data-swatch='green'],
+  .swatches [data-swatch='brightGreen'] {
+    color: var(--ov-success-fg);
+  }
+
+  .swatches [data-swatch='yellow'],
+  .swatches [data-swatch='brightYellow'] {
+    color: var(--ov-warning-fg);
+  }
+
+  .swatches [data-swatch='blue'],
+  .swatches [data-swatch='brightBlue'] {
+    color: var(--ov-link);
+  }
+
+  .swatches [data-swatch='magenta'],
+  .swatches [data-swatch='brightMagenta'] {
+    color: var(--ov-chart-purple);
+  }
+
+  .swatches [data-swatch='cyan'],
+  .swatches [data-swatch='brightCyan'] {
+    color: var(--ov-chart-teal);
+  }
+
+  .swatches [data-swatch='white'] {
+    color: var(--ov-fg-editor);
+  }
+
+  .swatches [data-swatch='brightBlack'] {
+    color: var(--ov-fg-muted);
+  }
+
+  .swatches [data-swatch='brightWhite'] {
+    color: var(--ov-fg);
+  }
+
+  .swatches [data-swatch='font'] {
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-18);
+  }
+}
