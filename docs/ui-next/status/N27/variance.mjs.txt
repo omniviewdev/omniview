@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { parseUnitSeconds, quantile } from '/Users/joshuapare/Repos/omniviewdev/worktrees/ci-n27-probe-shared-build/scripts/ci/probe-seconds.mjs';
+import { loadUnits } from '/Users/joshuapare/Repos/omniviewdev/worktrees/ci-n27-probe-shared-build/scripts/ci/probe-shards.mjs';
+const dirs = process.argv.slice(2);
+const known = new Map((await loadUnits('/Users/joshuapare/Repos/omniviewdev/worktrees/ci-n27-probe-shared-build')).units.map((u) => [u.id, u.seconds]));
+const samples = new Map();
+let jobs = 0;
+for (const dir of dirs) for (const f of fs.readdirSync(dir)) {
+  jobs += 1;
+  for (const r of parseUnitSeconds(fs.readFileSync(path.join(dir, f), 'utf8'))) { if (!known.has(r.unit)) continue; (samples.get(r.unit) ?? samples.set(r.unit, []).get(r.unit)).push(r.seconds); }
+}
+const rows = [...samples].map(([id, xs]) => { const mean = xs.reduce((a, b) => a + b, 0) / xs.length; const sd = Math.sqrt(xs.reduce((a, x) => a + (x - mean) ** 2, 0) / xs.length); return { id, n: xs.length, min: Math.min(...xs), med: quantile(xs, 0.5), p95: quantile(xs, 0.95), max: Math.max(...xs), cv: sd / mean, spread: (Math.max(...xs) - Math.min(...xs)) / quantile(xs, 0.5), sd }; });
+rows.sort((a, b) => b.cv - a.cv);
+console.log('jobs', jobs);
+console.log('unit n min med p95 max sd cv spread(max-min)/med');
+for (const r of rows) console.log(r.id.padEnd(32), String(r.n).padStart(3), String(r.min).padStart(5), String(r.med).padStart(6), r.p95.toFixed(0).padStart(5), String(r.max).padStart(5), r.sd.toFixed(1).padStart(6), (r.cv * 100).toFixed(1).padStart(5) + '%', (r.spread * 100).toFixed(0).padStart(4) + '%');

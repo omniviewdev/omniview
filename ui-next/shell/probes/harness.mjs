@@ -1,11 +1,10 @@
 // What the shell's probes share: the fixtures' build, a static server for it (the kit's, so FONT_DELAY_MS applies), a page that is opened the way every check opens it, and the sampler
 // that watches the regions at every frame.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sharedBuild } from '../../../packages/kit/probes/build-cache.mjs';
 import { serve } from '../../../packages/kit/probes/serve.mjs';
 import { MOCK_REGISTRATION } from '../../../packages/kit/probes/mock-screen.mjs';
 
@@ -23,22 +22,14 @@ export const NATIVE_VIEWPORTS = { '1440x900': { width: 1440, height: 900 }, '128
 
 /**
  * A build of the fixtures: production (the one every measurement reads) or development (React's Profiler calls `onRender` there; the commit counts read it). FIXTURE_DIST / FIXTURE_DIST_DEV name existing builds.
- * BUILD_CACHE=<dir> builds into `<dir>/<mode>` once and lets every later run read that build: a unit of negative controls is one run for each control, and each would build the same fixtures again (the shard table sets it
- * for them; it is empty for a run that is not told, which builds into a directory of its own).
+ * BUILD_CACHE=<dir> builds into `<dir>/shell-fixtures/<mode>` once and lets every later process read that build (packages/kit/probes/build-cache.mjs): a unit of negative controls is one process for each control, and each would
+ * build the same fixtures again. The shard runner sets it for every process of a shard; it is empty for a process that is not told, which builds into a directory of its own. The build never sees the control the process runs.
  */
 export function buildFixtures(mode = 'production') {
   const existing = mode === 'development' ? process.env.FIXTURE_DIST_DEV : process.env.FIXTURE_DIST;
   if (existing !== undefined && existing !== '') return existing;
-  const cache = process.env.BUILD_CACHE;
-  const cached = cache !== undefined && cache !== '';
-  const out = cached ? path.join(cache, mode) : mkdtempSync(path.join(os.tmpdir(), `shell-probe-fixture-${mode}-`));
-  const stamp = path.join(out, '.built');
-  if (cached && existsSync(stamp)) return out;
-  mkdirSync(out, { recursive: true });
   // React's development build is chosen by NODE_ENV, which `vite build` sets to production unless it is set.
-  execFileSync('node', [path.join(here, 'build-fixture.mjs'), out, mode], { cwd: repo, env: { ...process.env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' });
-  if (cached) writeFileSync(stamp, '');
-  return out;
+  return sharedBuild({ kind: 'shell-fixtures', mode, build: (out, env) => execFileSync('node', [path.join(here, 'build-fixture.mjs'), out, mode], { cwd: repo, env: { ...env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' }) });
 }
 
 /** Serves a build of the fixtures: the origin to open `/shell/probes/fixture.html` and `host-fixture.html` under. FONT_DELAY_MS holds every font file back, as the kit's probes do. */

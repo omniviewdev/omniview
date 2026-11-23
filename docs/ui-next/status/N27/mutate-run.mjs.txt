@@ -1,0 +1,32 @@
+// N27 mutation harness: applies one textual change at a time to the files the new tests read, runs the tests, and restores the file. A mutant that the tests do not fail on is a hole.
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+
+const root = '/Users/joshuapare/Repos/omniviewdev/worktrees/ci-n27-probe-shared-build';
+const mutants = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const only = process.argv[3] ? new RegExp(process.argv[3]) : null;
+mkdirSync('/tmp/n27/mutate/backup', { recursive: true });
+let survived = 0;
+let killed = 0;
+for (const m of mutants) {
+  if (only && !only.test(m.name)) continue;
+  const file = path.join(root, m.file);
+  const original = readFileSync(file, 'utf8');
+  copyFileSync(file, path.join('/tmp/n27/mutate/backup', m.file.replaceAll('/', '__')));
+  const count = original.split(m.find).length - 1;
+  if (count !== (m.count ?? 1)) { console.log(`SKIP ${m.name}: found ${count} times in ${m.file}`); continue; }
+  const mutated = m.all ? original.replaceAll(m.find, m.replace) : original.replace(m.find, m.replace);
+  try {
+    writeFileSync(file, mutated);
+    const tests = m.tests ?? ['scripts/ci/probe-builds.test.mjs', 'scripts/ci/probe-shards.test.mjs'];
+    const run = spawnSync('node', ['--test', ...tests], { cwd: root, encoding: 'utf8', timeout: 180000 });
+    const failing = [...run.stdout.matchAll(/^✖ (.*?) \(/gm)].map((x) => x[1]).filter((t) => !/^failing tests:/.test(t));
+    const dead = run.status !== 0;
+    if (dead) killed += 1; else survived += 1;
+    console.log(`${dead ? 'KILLED  ' : 'SURVIVED'} ${m.name}${dead ? `  <- ${failing.slice(0, 2).map((t) => t.slice(0, 70)).join(' | ')}` : ''}`);
+  } finally {
+    writeFileSync(file, original);
+  }
+}
+console.log(`\nkilled ${killed}, survived ${survived}`);

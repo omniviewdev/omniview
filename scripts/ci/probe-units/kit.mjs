@@ -6,6 +6,6 @@ export const units = [
     name: 'Probe the parts against the pinned mock reference',
     script: 'packages/kit/probes/kit-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/kit-probe.json' },
-    seconds: 195,
+    seconds: 185,
   },
 ];

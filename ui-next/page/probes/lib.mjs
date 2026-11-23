@@ -1,11 +1,11 @@
 // What the page probe (page-probe.mjs) shares: building and serving the fixture, opening a case in an engine, reading rectangles from a page, comparing
 // them with the design mock's reference (packages/kit/probes/mock-page.json), and the report. Page-agnostic: the same functions read any case.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sharedBuild } from '../../../packages/kit/probes/build-cache.mjs';
 import { resolveNode } from '../../../packages/kit/probes/mock-detail-measure.mjs';
 import { expandEntry } from '../../../packages/kit/probes/mock-page-measure.mjs';
 import { normalizeFont, settle } from '../../../packages/kit/probes/probe-lib.mjs';
@@ -36,12 +36,10 @@ export function reference(section, id, viewport, engine) {
 /* Build, serve, open.                                                                                                              */
 /* ------------------------------------------------------------------------------------------------------------------------------ */
 
-/** The fixture built with the repository's own Vite configuration into a temporary directory (FIXTURE_DIST: use a build that exists). */
+/** The fixture built with the repository's own Vite configuration (FIXTURE_DIST: use a build that exists; BUILD_CACHE: build once into `<dir>/page-fixture/production` and read it afterwards: the page and the detail probe build the same fixture). */
 export function buildFixture() {
   if (process.env.FIXTURE_DIST) return process.env.FIXTURE_DIST;
-  const out = mkdtempSync(path.join(os.tmpdir(), 'page-probe-fixture-'));
-  execFileSync('node', [path.join(here, 'build-fixture.mjs'), out], { cwd: repo, env: { ...process.env, OMNIVIEW_UI: 'next' }, stdio: 'pipe' });
-  return out;
+  return sharedBuild({ kind: 'page-fixture', mode: 'production', build: (out, env) => execFileSync('node', [path.join(here, 'build-fixture.mjs'), out], { cwd: repo, env: { ...env, OMNIVIEW_UI: 'next' }, stdio: 'pipe' }) });
 }
 
 export function serve(dist) {

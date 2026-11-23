@@ -1,0 +1,32 @@
+import fs from 'node:fs';
+const sec = (a, b) => (Date.parse(b) - Date.parse(a)) / 1000;
+const q = (xs, p) => { const s = [...xs].sort((a, b) => a - b); const at = (s.length - 1) * p; const lo = Math.floor(at), hi = Math.ceil(at); return s[lo] + (s[hi] - s[lo]) * (at - lo); };
+export function stats(file) {
+  const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const jobs = d.jobs.filter((j) => j.conclusion && j.started_at && j.completed_at);
+  const shards = jobs.filter((j) => j.name.startsWith('Kit probes shard '));
+  const dur = (j) => sec(j.started_at, j.completed_at);
+  const stepSecs = (j, re) => j.steps.filter((s) => re.test(s.name) && s.started_at && s.completed_at).reduce((a, s) => a + sec(s.started_at, s.completed_at), 0);
+  const run = shards.map((j) => stepSecs(j, /^Run the units/));
+  return {
+    jobs: d.jobs.length,
+    shards: shards.length,
+    runner: jobs.reduce((a, j) => a + dur(j), 0),
+    shardRunner: shards.reduce((a, j) => a + dur(j), 0),
+    slowest: Math.max(...shards.map(dur)),
+    units: run.reduce((a, b) => a + b, 0),
+    packages: shards.reduce((a, j) => a + stepSecs(j, /^Build the workspace packages/), 0),
+    dist: shards.reduce((a, j) => a + stepSecs(j, /^Build ui-next once/), 0),
+    init: shards.reduce((a, j) => a + stepSecs(j, /^Initialize containers/), 0),
+    created: Math.min(...d.jobs.map((j) => Date.parse(j.created_at ?? j.started_at))),
+    firstStart: Math.min(...jobs.map((j) => Date.parse(j.started_at))),
+    lastEnd: Math.max(...jobs.map((j) => Date.parse(j.completed_at))),
+  };
+}
+if (process.argv[1].endsWith('runstats.mjs')) {
+  const rows = process.argv.slice(2).map((r) => ({ r, ...stats(`/tmp/n27/jobs/${r}-1.json`) }));
+  console.log('run            jobs shards runner-s shard-s  slowest  unit-step-s  packages-s dist-s init-s  start->end');
+  for (const x of rows) console.log(x.r.padEnd(14), String(x.jobs).padStart(4), String(x.shards).padStart(6), x.runner.toFixed(0).padStart(8), x.shardRunner.toFixed(0).padStart(7), x.slowest.toFixed(0).padStart(8), x.units.toFixed(0).padStart(12), x.packages.toFixed(0).padStart(10), x.dist.toFixed(0).padStart(6), x.init.toFixed(0).padStart(6), ((x.lastEnd - x.firstStart) / 1000).toFixed(0).padStart(10));
+  const mean = (k) => rows.reduce((a, x) => a + x[k], 0) / rows.length;
+  console.log('mean'.padEnd(14), mean('jobs').toFixed(1).padStart(4), mean('shards').toFixed(1).padStart(6), mean('runner').toFixed(0).padStart(8), mean('shardRunner').toFixed(0).padStart(7), mean('slowest').toFixed(0).padStart(8), mean('units').toFixed(0).padStart(12), mean('packages').toFixed(0).padStart(10), mean('dist').toFixed(0).padStart(6), mean('init').toFixed(0).padStart(6));
+}

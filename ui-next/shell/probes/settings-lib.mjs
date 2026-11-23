@@ -1,10 +1,9 @@
 // What the sections of the Settings probe (settings-probe.mjs) share: the failure sink and the named assertions, the fixture's build and the pages the sections open, the page's side of the measurements (the commit counter, the counts of
 // timers, listeners and nodes), the keyboard of an engine, and the numbers the pages are judged by. Every function that is stringified into a page says so and uses nothing of this module.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sharedBuild } from '../../../packages/kit/probes/build-cache.mjs';
 import { normalizeFont } from '../../../packages/kit/probes/probe-lib.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -58,20 +57,13 @@ export function note(section, key, value) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// The fixture: built once for the run with the repository's own Vite configuration (settings-build.mjs), or read from FIXTURE_DIST, or from BUILD_CACHE (the shard table's controls build it once into a directory of their own).
+// The fixture: built with the repository's own Vite configuration (settings-build.mjs), or read from FIXTURE_DIST, or from BUILD_CACHE (`<dir>/settings-fixture/<mode>`: the shard runner gives every process of a shard the same one, so
+// the controls and the probe build it once, packages/kit/probes/build-cache.mjs). The build never sees the control the process runs.
 
 export function buildFixture(mode = 'production') {
   const existing = process.env.FIXTURE_DIST;
   if (existing !== undefined && existing !== '') return existing;
-  const cache = process.env.BUILD_CACHE;
-  const cached = cache !== undefined && cache !== '';
-  const out = cached ? path.join(cache, mode) : mkdtempSync(path.join(os.tmpdir(), `settings-fixture-${mode}-`));
-  const stamp = path.join(out, '.built');
-  if (cached && existsSync(stamp)) return out;
-  mkdirSync(out, { recursive: true });
-  execFileSync('node', [path.join(here, 'settings-build.mjs'), out, mode], { cwd: repo, env: { ...process.env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' });
-  if (cached) writeFileSync(stamp, '');
-  return out;
+  return sharedBuild({ kind: 'settings-fixture', mode, build: (out, env) => execFileSync('node', [path.join(here, 'settings-build.mjs'), out, mode], { cwd: repo, env: { ...env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' }) });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------

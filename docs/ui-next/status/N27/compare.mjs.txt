@@ -1,0 +1,26 @@
+// N27: the both-ways table of main (own builds) against the branch (shared builds): one row for each control, both columns of each, and where they differ.
+import fs from 'node:fs';
+const [mainFile, branchFile, out] = process.argv.slice(2);
+const overrides = process.env.OVERRIDES ? JSON.parse(fs.readFileSync(process.env.OVERRIDES, 'utf8')) : {};
+const load = (f, side) => new Map(JSON.parse(fs.readFileSync(f, 'utf8')).rows.map((r) => { const k = `${r.unit}\t${r.control}`; return [k, overrides[side]?.[k] ? { ...r, ...overrides[side][k] } : r]; }));
+const a = load(mainFile, 'main');
+const b = load(branchFile, 'branch');
+const cell = (way) => (way === undefined ? 'missing' : way.na !== undefined ? 'n/a' : way.problem !== undefined ? `problem` : way.verdict);
+const keys = [...new Set([...a.keys(), ...b.keys()])].sort((x, y) => x.localeCompare(y));
+const rows = keys.map((k) => { const [unit, control] = k.split('\t'); const ra = a.get(k); const rb = b.get(k); return { unit, control, main: { planted: cell(ra?.planted), off: cell(ra?.off) }, branch: { planted: cell(rb?.planted), off: cell(rb?.off) } }; });
+const differ = rows.filter((r) => r.main.planted !== r.branch.planted || r.main.off !== r.branch.off);
+const expected = rows.filter((r) => r.branch.planted !== 'detected' || (r.branch.off !== 'not detected' && r.branch.off !== 'n/a'));
+const lines = [
+  `| Unit | Control | Planted: main | Planted: branch | Assertion off: main | Assertion off: branch | Same |`,
+  `|---|---|---|---|---|---|---|`,
+  ...rows.map((r) => `| ${r.unit} | ${r.control} | ${r.main.planted} | ${r.branch.planted} | ${r.main.off} | ${r.branch.off} | ${r.main.planted === r.branch.planted && r.main.off === r.branch.off ? 'yes' : '**NO**'} |`),
+];
+const na = rows.filter((r) => r.branch.off === 'n/a').length;
+const summary = [
+  `Controls: ${rows.length}. Planted = detected: main ${rows.filter((r) => r.main.planted === 'detected').length}, branch ${rows.filter((r) => r.branch.planted === 'detected').length}. Assertion off = not detected: main ${rows.filter((r) => r.main.off === 'not detected').length}, branch ${rows.filter((r) => r.branch.off === 'not detected').length} (n/a, the probe has no ASSERTION_OFF: ${rows.filter((r) => r.main.off === 'n/a').length} in main, ${na} in the branch).`,
+  `Rows where the branch differs from main in either column: ${differ.length}. Rows where the branch is not (detected, not detected or n/a): ${expected.length}.`,
+];
+fs.writeFileSync(out, `${summary.join('\n\n')}\n\n${lines.join('\n')}\n`);
+console.log(summary.join('\n'));
+for (const r of differ) console.log('DIFFERS', JSON.stringify(r));
+for (const r of expected) console.log('NOT AS EXPECTED', JSON.stringify(r));

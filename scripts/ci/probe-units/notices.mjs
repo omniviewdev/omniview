@@ -13,7 +13,7 @@ export const units = [
     name: 'Probe the toast layer against the pinned mock reference',
     script: 'ui-next/shell/probes/notices-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/notices-probe.json' },
-    seconds: 400,
+    seconds: 370,
   },
 
   // The negative controls of the toast probe, each perturbs one measured value in the page after it loaded and passes only when the probe sees it, on the section that must (Chromium, 1440 x 900); with that assertion
@@ -28,7 +28,8 @@ export const units = [
     controls: [
       'toast-width', 'gap', 'retry-paint', 'no-alert', 'no-live', 'told-twice', 'steals-focus', 'f6-first', 'no-restore', 'sticky-closes', 'no-hold', 'hover-stuck', 'modal-leaks', 'timer-left', 'layout-shift', 'no-avoid', 'covers', 'yield-stop', 'yield-expires', 'yield-drops-focus',
     ],
-    seconds: 250,
+    plants: 'page',
+    seconds: 60,
   },
 
   // The notification centre's fourteen: a popover 20 px too wide, a row 2 px too tall, the bell's dot in the wrong colour, a bell dot that is a number, a Filter menu 20 px off, an unnamed dialog, a centre that Escape does
@@ -42,6 +43,7 @@ export const units = [
     controls: [
       'centre-width', 'centre-row', 'centre-dot', 'centre-bell-number', 'centre-menu-offset', 'centre-no-name', 'centre-escape', 'centre-focus', 'centre-outside', 'centre-two-stops', 'centre-listener-left', 'centre-timer-left', 'centre-second-commit', 'centre-slow-open',
     ],
-    seconds: 205,
+    plants: 'page',
+    seconds: 60,
   },
 ];

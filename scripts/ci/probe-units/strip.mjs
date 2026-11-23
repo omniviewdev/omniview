@@ -17,6 +17,7 @@ export const units = [
     name: 'Probe that the strip probe sees a label that gives way to a count',
     script: 'ui-next/shell/probes/strip-probe.mjs',
     controls: ['slot-width', 'slot-undeclared'],
-    seconds: 60,
+    plants: 'page',
+    seconds: 5,
   },
 ];

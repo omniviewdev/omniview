@@ -1,0 +1,83 @@
+import re, sys
+src = open('.github/workflows/ui-next-kit-probes.yml').read()
+
+# 1. triggers
+m = re.search(r'^on:\n.*?(?=^concurrency:)', src, re.S | re.M)
+on = '''on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "engine: the engine's own environment (its shared build when it has one); own: every process builds its own"
+        default: engine
+
+'''
+src = src[:m.start()] + on + src[m.end():]
+
+# 2. the plan
+src = src.replace('''          node scripts/ci/probe-shards.mjs check
+          node scripts/ci/probe-shards.mjs plan''', '''          node scripts/ci/both-ways-plan.mjs''')
+
+# 3. timeout
+src = src.replace('timeout-minutes: 15', 'timeout-minutes: 30')
+
+# 4. drop the engine's own tests step
+m = re.search(r'      # Before anything is built:.*?(?=      - name: Build the workspace packages)', src, re.S)
+src = src[:m.start()] + src[m.end():]
+
+# 5. the run step
+src = src.replace('''        run: node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"''', '''        env:
+          BOTH_WAYS_MODE: ${{ inputs.mode }}
+        run: node scripts/ci/probe-controls-both-ways.mjs "$SHARD" "$UNITS"''')
+# the step has two env blocks now: merge
+src = src.replace('''        env:
+          SHARD: ${{ matrix.shard }}
+          UNITS: ${{ matrix.units }}
+        env:
+          BOTH_WAYS_MODE: ${{ inputs.mode }}
+''', '''        env:
+          SHARD: ${{ matrix.shard }}
+          UNITS: ${{ matrix.units }}
+          BOTH_WAYS_MODE: ${{ inputs.mode }}
+''')
+
+# 6. the upload
+src = src.replace('name: kit-probe-reports-${{ matrix.shard }}', 'name: both-ways-${{ matrix.shard }}')
+src = src.replace('path: ${{ runner.temp }}/*-probe.json', 'path: ${{ runner.temp }}/both-ways-*-probe.json')
+
+# 7. the verdict job becomes the table
+m = re.search(r'  # The check that keeps the name `Kit probes`.*\Z', src, re.S)
+table = '''  table:
+    name: Controls both ways
+    needs: [plan, shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      - name: Download what the shards wrote
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --pattern 'both-ways-*' --dir "$RUNNER_TEMP/both-ways"
+
+      - name: The table
+        run: node scripts/ci/both-ways-table.mjs "$RUNNER_TEMP/both-ways" "$RUNNER_TEMP/table"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: controls-both-ways-${{ inputs.mode }}
+          path: ${{ runner.temp }}/table/*
+          if-no-files-found: error
+'''
+src = src[:m.start()] + table
+open('.github/workflows/ui-next-kit-probes.yml', 'w').write(src)

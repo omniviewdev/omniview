@@ -28,6 +28,7 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['lane-border', 'button-size', 'ring-back', 'scrollbar-block', 'scrollbar-stuck', 'f6-trap', 'escape-leaves', 'modal-off', 'resize-chatty'],
+    plants: 'page',
     seconds: 210,
   },
 
@@ -38,6 +39,7 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['hidden-frames', 'idle-timer', 'chunk-commit', 'flood-janky', 'echo-slow'],
+    plants: 'page',
     seconds: 140,
   },
 
@@ -48,6 +50,7 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['lazy-load', 'big-scrollback', 'leaky-heap'],
+    plants: 'page',
     seconds: 110,
   },
 
@@ -59,6 +62,7 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['reader-claims', 'reader-stuck', 'reader-words-stale', 'reader-announce-twice', 'reader-axe', 'reader-hidden-frames', 'reader-idle-timer'],
+    plants: 'page',
     seconds: 125,
   },
 ];
