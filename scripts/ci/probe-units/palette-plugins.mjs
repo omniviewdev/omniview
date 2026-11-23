@@ -10,7 +10,7 @@ export const units = [
     name: 'Probe what the providers of a plugin do to the command palette',
     script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/palette-plugins-probe.json' },
-    seconds: 154,
+    seconds: 170,
   },
 
   // The negative controls of the plugin providers probe: each makes the page do what one assertion is there to see (a provider that holds the thread, a fast provider that answers late, a late section that takes the cursor
@@ -22,6 +22,6 @@ export const units = [
     script: 'ui-next/shell/probes/palette-plugins-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['slow-blocks', 'quick-late', 'focus-moves', 'extra-commit', 'plugin-shift', 'closed-work', 'stale-shown', 'alias-ignored', 'alias-loose', 'connection-key', 'connection-key-face'],
-    seconds: 113,
+    seconds: 175,
   },
 ];

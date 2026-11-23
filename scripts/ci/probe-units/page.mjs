@@ -9,6 +9,6 @@ export const units = [
     id: 'page',
     name: 'Probe the list page chrome and its layout shift against the pinned mock reference',
     script: 'ui-next/page/probes/page-probe.mjs',
-    seconds: 70,
+    seconds: 80,
   },
 ];

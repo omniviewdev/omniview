@@ -27,7 +27,7 @@ export const units = [
     name: 'Probe the Plugins page against the pinned mock reference',
     script: 'ui-next/shell/probes/plugins-page-probe.mjs',
     env: { FONT_DELAY_MS: '40', SECTIONS: 'geometry,tokens,a11y,keyboard', BUILD_CACHE: FIXTURES, REPORT: '$RUNNER_TEMP/plugins-page-probe.json' },
-    seconds: 236,
+    seconds: 85,
   },
 
   // What the page costs, in counts: a list of 200 plugins mounts in one commit and one batch of DOM changes; one event for one plugin renders one row in one commit and changes no node outside it; the command that opens the page has the list
@@ -37,7 +37,7 @@ export const units = [
     name: 'Probe what the Plugins page costs',
     script: 'ui-next/shell/probes/plugins-page-perf-probe.mjs',
     env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES, REPORT: '$RUNNER_TEMP/plugins-page-perf-probe.json' },
-    seconds: 224,
+    seconds: 75,
   },
 
   // The negative controls of the page's boxes and paint: each adds a rule to the page right before it is read (a transform that moves one part by 2 to 6 px, or a colour or a radius of its own) and passes only when the assertion of that part
@@ -51,7 +51,7 @@ export const units = [
     controls: [
       'list-foot', 'row-tile', 'facts-down', 'more-slot', 'lane-down', 'card-title', 'confirm-button', 'empty-body', 'list-fill', 'selected-fill', 'title-colour', 'button-radius', 'lane-fill', 'card-fill', 'dialog-radius',
     ],
-    seconds: 56,
+    seconds: 30,
   },
 
   // The negative controls of the tokens, axe and the keyboard: a colour of its own that does not follow a light theme, a button with no name, a second Tab stop in the list, and a focus that is not given back when the confirm closes.
@@ -61,7 +61,7 @@ export const units = [
     script: 'ui-next/shell/probes/plugins-page-probe.mjs',
     env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES },
     controls: ['pinned-lane', 'no-name', 'extra-stop', 'focus-lost'],
-    seconds: 24,
+    seconds: 20,
   },
 
   // The negative controls of the page's cost (all counts): a second commit after the list came in, one commit that renders two rows, a page with no seed whose list comes when the host answers (the commits and the animation frame the list is
@@ -72,6 +72,6 @@ export const units = [
     script: 'ui-next/shell/probes/plugins-page-perf-probe.mjs',
     env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES },
     controls: ['late-change', 'second-row', 'late-list', 'slow-open', 'idle-timer'],
-    seconds: 108,
+    seconds: 45,
   },
 ];

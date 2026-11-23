@@ -6,6 +6,6 @@ export const units = [
     name: 'Probe the rail against the pinned mock reference',
     script: 'ui-next/shell/probes/rail-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/rail-probe.json' },
-    seconds: 17,
+    seconds: 25,
   },
 ];

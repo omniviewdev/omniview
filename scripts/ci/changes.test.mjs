@@ -79,6 +79,8 @@ const NEW_UI_TOOLING = [
   'scripts/ci/probe-shards.runs.json',
   'scripts/ci/probe-pack.mjs',
   'scripts/ci/probe-pack.test.mjs',
+  'scripts/ci/probe-seconds.mjs',
+  'scripts/ci/probe-seconds.test.mjs',
   'scripts/ci/probe-units.manifest.json',
   'scripts/ci/probe-units/panel.mjs', // the probe table, one file for each probe (N25): a pull request that adds a probe adds one
   'scripts/ci/probe-units/a-new-probe.mjs',

@@ -6,7 +6,7 @@ export const units = [
     name: 'Probe the tab strip, the page host and the load against the pinned mock reference',
     script: 'ui-next/shell/probes/strip-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/strip-probe.json' },
-    seconds: 195,
+    seconds: 215,
   },
 
   // The negative controls of the strip probe's `arrival` section (Q2a): a tree that does not hold the count slot (`slot-width`) and a skeleton that declares none (`slot-undeclared`) each make a label give way when its
@@ -17,6 +17,6 @@ export const units = [
     name: 'Probe that the strip probe sees a label that gives way to a count',
     script: 'ui-next/shell/probes/strip-probe.mjs',
     controls: ['slot-width', 'slot-undeclared'],
-    seconds: 28,
+    seconds: 50,
   },
 ];

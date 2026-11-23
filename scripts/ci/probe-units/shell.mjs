@@ -7,6 +7,6 @@ export const units = [
     name: 'Probe the shell frame against the pinned mock reference',
     script: 'ui-next/shell/probes/shell-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/shell-probe.json' },
-    seconds: 47,
+    seconds: 60,
   },
 ];

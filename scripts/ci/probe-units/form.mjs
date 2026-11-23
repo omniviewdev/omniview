@@ -9,7 +9,7 @@ export const units = [
     name: 'Probe the form parts against the pinned mock reference',
     script: 'packages/kit/probes/form-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/form-probe.json' },
-    seconds: 44,
+    seconds: 60,
   },
 
   // The negative controls of the form probe: each plants one fault in the page after it loaded, and the fault trips the one assertion it is named for and no other (a text field at rest 4 px taller, a code-face field in the
@@ -27,6 +27,6 @@ export const units = [
       'face-height', 'mono-font', 'lane-offset', 'track-width', 'stepper-pad', 'label-for', 'switch-pressable', 'step-tab-stop', 'select-unblocked', 'secret-attribute',
       'row-glyph-gutter', 'row-slot-held', 'row-clamp', 'row-message-moves', 'row-tip-missing', 'row-title-weight', 'row-unavailable-title', 'row-reset-ring',
     ],
-    seconds: 65,
+    seconds: 80,
   },
 ];

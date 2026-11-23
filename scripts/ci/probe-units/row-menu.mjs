@@ -9,7 +9,7 @@ export const units = [
     name: 'Probe the row menu on the 5,000-row example',
     script: 'packages/kit/probes/row-menu-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/row-menu-probe.json' },
-    seconds: 25,
+    seconds: 30,
   },
 
   // The negative controls of the row menu probe, each in the page after it loaded, on the one opening that must see it (Chromium, 1440 x 900): the open trigger carries no `aria-expanded` (`trigger-not-expanded`), and the next
@@ -21,6 +21,6 @@ export const units = [
     script: 'packages/kit/probes/row-menu-probe.mjs',
     env: { DIST: '$PROBE_DIST' },
     controls: ['trigger-not-expanded', 'expanded-twice'],
-    seconds: 2,
+    seconds: 5,
   },
 ];

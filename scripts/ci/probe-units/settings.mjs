@@ -11,7 +11,7 @@ export const units = [
     name: 'Probe Settings against the pinned mock reference and the original window',
     script: 'ui-next/shell/probes/settings-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/settings-probe.json' },
-    seconds: 230,
+    seconds: 265,
   },
 
   // The negative controls of the settings probe: each plants one fault in the page after it loaded (a style override, an attribute removed, a handler dropped, a timer left) and the fault trips the one assertion it is named for
@@ -27,7 +27,7 @@ export const units = [
     controls: [
       'win-sidebar', 'win-caption', 'win-shell', 'win-drag', 'win-escape', 'win-hidden-paints', 'win-sync-dropped', 'sheet-gear-name', 'sheet-open-chord', 'sheet-not-modal', 'sheet-frame-size', 'sheet-no-clamp', 'sheet-veil', 'sheet-no-wrap', 'sheet-scrim-closes', 'sheet-escape-draft', 'sheet-no-restore-escape', 'sheet-no-restore-close', 'sheet-keep-lost', 'sheet-tip-hidden',
     ],
-    seconds: 50,
+    seconds: 65,
   },
 
   // The page's twenty-four: a page's row 34 px high, a selected page in a colour that is no role, the group's label in the wrong size or a Tab stop, a heading lane of 24, a title of 22 px, a description that wraps, rows 20 px
@@ -68,6 +68,6 @@ export const units = [
     controls: [
       'perf-open-commits', 'perf-open-slow', 'perf-show-commits', 'perf-key-twice', 'perf-key-rows', 'perf-idle-timer', 'perf-idle-commit', 'perf-closed-node', 'perf-closed-listener', 'perf-closed-timer', 'perf-show-slow',
     ],
-    seconds: 180,
+    seconds: 160,
   },
 ];

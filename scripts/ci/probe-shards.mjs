@@ -28,7 +28,7 @@
 // made. A plan that was short, a shard that never reported and a unit that dropped out of the matrix are red, whatever the shards' own results said.
 //
 // ADDING A PROBE. Write `<thing>-probe.mjs` in one of PROBE_DIRS and a file for it in scripts/ci/probe-units: a unit for the probe, and one for its negative controls. Run `node scripts/ci/probe-shards.mjs check`: it fails, naming the file,
-// for a probe that no unit runs. Put the seconds of the first run of the unit in `seconds` (the summary of its shard prints them). Add the probe and its controls to the manifest to keep them from being deleted unseen. A probe CI is not
+// for a probe that no unit runs. Put the seconds of the first run of the unit in `seconds` (the summary of its shard prints them), and after its first CI runs set them with `node scripts/ci/probe-seconds.mjs --write` (the 95th percentile of the runner's recent runs). Add the probe and its controls to the manifest to keep them from being deleted unseen. A probe CI is not
 // to run goes in BY_HAND with the reason.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
