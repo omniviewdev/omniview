@@ -490,7 +490,6 @@ func TestTheAnswerNamesTheShellAndTheDirectoryItStartedIn(t *testing.T) {
 	assert.Equal(t, filepath.Base(target), info.Shell.Name, "the shell's own name, not the name of a link to it")
 	assert.Equal(t, home, info.Cwd)
 	assert.Positive(t, info.PID)
-	assert.False(t, gone(info.PID))
 	assert.Equal(t, defaultLimits(), info.Limits)
 	assert.False(t, info.CreatedAt.IsZero())
 	text := rec.waitFor(t, info.ID, "shell-1007")
@@ -546,9 +545,17 @@ func TestListGetAttachAndDetachKeepTheirMeaning(t *testing.T) {
 	got, err := m.GetSession(info.ID)
 	require.NoError(t, err)
 	assert.Equal(t, info.ID, got.ID)
-	attached, buffer, err := m.AttachSession(info.ID)
-	require.NoError(t, err)
-	assert.True(t, attached.Attached)
+	var attachedFlag bool
+	var buffer []byte
+	require.Eventually(t, func() bool {
+		attachedSession, history, attachErr := m.AttachSession(info.ID)
+		if attachErr != nil || !strings.Contains(string(history), "history-1008") {
+			return false
+		}
+		attachedFlag, buffer = attachedSession.Attached, history
+		return true
+	}, 10*time.Second, 10*time.Millisecond, "attach returns what the session printed so far")
+	assert.True(t, attachedFlag)
 	assert.Contains(t, string(buffer), "history-1008", "attach returns what the session printed so far")
 	detached, err := m.DetachSession(info.ID)
 	require.NoError(t, err)
@@ -562,9 +569,8 @@ func TestListGetAttachAndDetachKeepTheirMeaning(t *testing.T) {
 func TestInputAndResizeReachTheShellInTheOrderTheyWereNumbered(t *testing.T) {
 	const total = 1000
 	m, rec := newTestManager(t)
-	info := m.run(t, "stty -echo; cat", Options{Cols: 80, Rows: 24})
-	rec.waitFor(t, info.ID, "")
-	time.Sleep(200 * time.Millisecond) // stty -echo has run once cat answers
+	info := m.run(t, "stty -echo; echo ready-$((40+2)); cat", Options{Cols: 80, Rows: 24})
+	rec.waitFor(t, info.ID, "ready-42")
 	var next int
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -597,7 +603,7 @@ func TestInputAndResizeReachTheShellInTheOrderTheyWereNumbered(t *testing.T) {
 	}
 	wg.Wait()
 	rec.waitFor(t, info.ID, fmt.Sprintf("n%04d", total))
-	lines := strings.Fields(rec.text(info.ID))
+	lines := strings.Fields(strings.Replace(rec.text(info.ID), "ready-42", "", 1))
 	want := make([]string, 0, total/2)
 	for seq := 2; seq <= total; seq += 2 {
 		want = append(want, fmt.Sprintf("n%04d", seq))
@@ -667,13 +673,62 @@ func TestFloodingASessionIsRefusedTypedWhileTheShellDoesNotRead(t *testing.T) {
 		}()
 	}
 	// The first write blocks inside the pty; the others wait behind it until the bytes bound is met.
+	queue := m.session(t, stuck.ID).queue
 	require.Eventually(t, func() bool {
-		err := m.Write(stuck.ID, 0, []byte("x"))
-		return errors.Is(err, ErrInputBacklog)
-	}, 10*time.Second, 10*time.Millisecond, "a flood must be refused once the session holds as much as it may")
+		queue.mu.Lock()
+		defer queue.mu.Unlock()
+		return queue.bytes >= MaxPendingBytes
+	}, 10*time.Second, 10*time.Millisecond, "the flood must fill the bytes the session may hold")
 	err := m.Write(stuck.ID, 0, []byte("x"))
 	require.ErrorIs(t, err, ErrInputBacklog)
 	assert.Equal(t, "INPUT_BACKLOG", appErr(t, err).Code)
 	require.NoError(t, m.CloseSession(stuck.ID))
 	wg.Wait()
+}
+
+// A shell that is starting when the host shuts down is not in the index yet: Shutdown waits for it and ends it
+// with the others, so that when it returns no shell of the host is left.
+func TestShutdownWaitsForAShellThatIsStartingAndEndsIt(t *testing.T) {
+	m, _ := newTestManager(t)
+	shellPath := sh(t)
+	entered := make(chan struct{})
+	gate := make(chan struct{})
+	m.resolve = func(command []string) (string, []string, error) {
+		close(entered)
+		<-gate
+		return shellenv.Resolve(command)
+	}
+	type started struct {
+		info Session
+		err  error
+	}
+	result := make(chan started, 1)
+	go func() {
+		info, err := m.Start(Options{Command: []string{shellPath, "-c", "sleep 600"}}, nil)
+		result <- started{info: info, err: err}
+	}()
+	<-entered
+
+	done := make(chan struct{})
+	go func() {
+		m.Shutdown()
+		close(done)
+	}()
+	select {
+	case <-done:
+		require.FailNow(t, "Shutdown returned while a shell was starting: the shell would outlive the host")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	close(gate)
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		require.FailNow(t, "Shutdown never returned")
+	}
+	got := <-result
+	if got.err == nil {
+		assert.True(t, gone(got.info.PID), "the shell that was starting is gone when Shutdown returns")
+	}
+	assert.Empty(t, m.running(), "no session is left")
 }

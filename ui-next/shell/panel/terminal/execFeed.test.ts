@@ -354,15 +354,26 @@ describe('the size of the screen', () => {
     expect(of('create')).toEqual([]);
   });
 
-  it('sends a size that came while the process was starting once it runs, as one more call: ROWS then COLUMNS, as the binding takes them (the old terminal had them swapped once, host #54)', async () => {
-    const { feed, of, pending } = rig({ auto: false, size: false });
+  it('settles a size that came while the process was starting like any other, and sends it once the process runs and the size has stood still, as one more call: ROWS then COLUMNS, as the binding takes them (the old terminal had them swapped once, host #54)', async () => {
+    const { feed, of, pending } = rig({ auto: false, size: false, settleMs: 10 });
     feed.resize(132, 41);
     feed.resize(100, 20);
     expect(of('resize')).toEqual([]);
     pending('create')[0]?.resolve();
     await settle();
     expect(of('create')).toEqual([['term-1', 132, 41]]);
+    expect(of('resize')).toEqual([]);
+    vi.advanceTimersByTime(20);
+    await settle();
     expect(of('resize')).toEqual([['term-1', 20, 100]]);
+  });
+
+  it('starts nothing at a size the host would refuse: a first size past 1,000 cells waits for one it can start at', () => {
+    const { feed, of } = rig({ size: false });
+    feed.resize(1001, 24);
+    expect(of('create')).toEqual([]);
+    feed.resize(1000, 24);
+    expect(of('create')).toEqual([['term-1', 1000, 24]]);
   });
 
   it('settles every size after the first: fifty sizes in a drag are one message when the size stood still', async () => {
@@ -410,7 +421,7 @@ describe('the size of the screen', () => {
     expect(of('resize')).toEqual([['term-1', 20, 100], ['term-1', 22, 120]]);
   });
 
-  it('sends nothing for the size it started at or last sent, and nothing that is not a size: below 1 cell, past 65,535, not a number', async () => {
+  it('sends nothing for the size it started at or last sent, and nothing that is not a size: below 1 cell, past 1,000, not a number', async () => {
     const { feed, of } = rig({ settleMs: 10 });
     await settle();
     feed.resize(80, 24);

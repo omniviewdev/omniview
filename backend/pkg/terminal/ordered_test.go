@@ -369,3 +369,55 @@ func TestQueueAppliesAnEmptyWriteWithoutTouchingTheDevice(t *testing.T) {
 	require.NoError(t, q.write(2, []byte("two")))
 	assert.Equal(t, []string{"w:two"}, dev.entries())
 }
+
+// A resize carries no bytes: when the bytes are full because a write waits for it, it is the one call that can
+// release them, so it is taken in. A refusal would hold the write until the gap gave the number up, and the
+// resize would then be stale.
+func TestAResizeThatFullBytesWaitForIsTakenIn(t *testing.T) {
+	dev := &recordedDevice{}
+	q := newInputQueue(dev, queueLimits{ops: 8, bytes: 4, ahead: 8, gapWait: 10 * time.Second})
+	defer q.close(errors.New("done"))
+	write := call(func() error { return q.write(2, []byte("abcd")) })
+	waitPending(t, q, 1)
+	resize := call(func() error { return q.resize(1, 10, 20) })
+	require.NoError(t, within(t, resize, "the resize"))
+	require.NoError(t, within(t, write, "the write"))
+	assert.Equal(t, []string{"r:10x20", "w:abcd"}, dev.entries())
+}
+
+// lateDevice reads the bytes it is given only after its gate opens, as a pty takes them from the slice when the
+// shell reads.
+type lateDevice struct {
+	gate    chan struct{}
+	started chan struct{}
+	got     chan string
+}
+
+func (d *lateDevice) Write(p []byte) (int, error) {
+	d.started <- struct{}{}
+	<-d.gate
+	d.got <- string(p)
+	return len(p), nil
+}
+
+func (d *lateDevice) Resize(uint16, uint16) error { return nil }
+
+// The caller's slice is the caller's again when close answers its write, though the device may still be inside
+// it: the queue holds its own copy of the bytes.
+func TestTheQueueKeepsItsOwnCopyOfAWrittenSlice(t *testing.T) {
+	dev := &lateDevice{gate: make(chan struct{}), started: make(chan struct{}, 1), got: make(chan string, 1)}
+	q := newInputQueue(dev, testLimits())
+	buf := []byte("original")
+	answer := call(func() error { return q.write(0, buf) })
+	<-dev.started
+	q.close(errors.New("closed"))
+	require.Error(t, within(t, answer, "the write the close answered"))
+	copy(buf, "REUSED!!")
+	close(dev.gate)
+	select {
+	case got := <-dev.got:
+		assert.Equal(t, "original", got, "the device reads what was written, not what the caller put in its slice afterwards")
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "the device never got the bytes")
+	}
+}

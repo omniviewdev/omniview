@@ -19,6 +19,7 @@ run() {
   built=$(echo "$out" | grep -c -E "build failed|declared and not used|undefined:")
   if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $test"
   elif [ "$built" != "0" ]; then echo "CONTROL $name: BUILD BROKEN (not a result)"
+  elif [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (no test failed: the build or the setup did)"
   else echo "CONTROL $name: RED  $failed"; fi
 }
 
@@ -42,6 +43,8 @@ if cmp -s "$WT/backend/pkg/terminal/manager.go" "$M/linux-master.go"; then echo 
   out=$(docker run --rm -v "$WT":/src -v "$M":/mut -v /Users/joshuapare/go/pkg/mod:/go/pkg/mod:ro -w /src -e GOWORK=off -e GOPROXY=off -e GOTOOLCHAIN=local -e GOFLAGS=-mod=mod golang:1.27.4-bookworm go test -overlay=/mut/linux-master.json ./backend/pkg/terminal/ -run '^TestASessionWhoseShellDoesNotReadDoesNotBlockAnother$' -count=1 -timeout 100s 2>&1)
   code=$?
   failed=$(echo "$out" | grep -E "^--- FAIL" | sed 's/ (.*//' | tr '\n' ' ')
-  if [ $code -eq 0 ]; then echo "CONTROL linux-master-not-closed: UNDETECTED (tests passed)"; else echo "CONTROL linux-master-not-closed (Linux arm64): RED  $failed"; fi
+  if [ $code -eq 0 ]; then echo "CONTROL linux-master-not-closed: UNDETECTED (tests passed)"
+  elif [ -z "$failed" ]; then echo "CONTROL linux-master-not-closed (Linux arm64): NOT A DETECTION (no test failed: Docker or the build did)"
+  else echo "CONTROL linux-master-not-closed (Linux arm64): RED  $failed"; fi
 fi
 echo CONTROLS2-DONE

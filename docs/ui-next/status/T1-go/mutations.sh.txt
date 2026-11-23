@@ -17,7 +17,9 @@ run() {
   out=$(go test -overlay="$M/$name.json" "$pkg" -run "$test" -count=1 -timeout 150s 2>&1)
   code=$?
   failed=$(echo "$out" | grep -E "^--- FAIL" | sed 's/ (.*//' | tr '\n' ' ')
-  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $test"; else echo "CONTROL $name: RED  $failed"; fi
+  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $test"
+  elif [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (no test failed: the build or the setup did)"
+  else echo "CONTROL $name: RED  $failed"; fi
 }
 
 run size-72x27 ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \

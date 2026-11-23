@@ -359,6 +359,14 @@ func TestHundredTerminalsAcrossTwentyRetiredPagesLeaveNoShellAlive(t *testing.T)
 	}
 	require.Eventually(t, func() bool { return allGone(pids) }, 60*time.Second, 10*time.Millisecond,
 		"%d of the 100 shells are still alive", aliveOf(pids))
+	require.Eventually(t, func() bool {
+		for _, id := range ids {
+			if len(fx.closes(id)) != 1 {
+				return false
+			}
+		}
+		return fx.indexed() == 2
+	}, 30*time.Second, 10*time.Millisecond, "every shell's CLOSE is delivered and the index holds only the two that live: the CLOSE follows the reaping of the shell")
 
 	assert.Zero(t, aliveOf(pids), "0 shells alive, counted by the pids recorded when they started")
 	listed := fx.ctrl.terminalManager.ListSessions()
@@ -388,6 +396,7 @@ func TestANativeWindowClosingEndsItsTerminals(t *testing.T) {
 	theirs := fx.open(other, terminal.Options{})
 	window.closes()
 	require.Eventually(t, func() bool { return gone(mine.PID) }, 20*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool { return len(fx.closes(mine.ID)) == 1 }, 20*time.Second, 5*time.Millisecond, "the CLOSE follows the reaping of the shell")
 	ends := fx.closes(mine.ID)
 	require.Len(t, ends, 1)
 	assert.Equal(t, terminal.ClosedByWindow, ends[0].ClosedBy)

@@ -62,9 +62,12 @@ type queueLimits struct {
 // refused as stale, so nothing is applied out of order and nothing is dropped without its caller
 // being told.
 //
-// Bound. Past limits.ops pending operations or limits.bytes pending bytes a call is refused at once
-// with the backlog error: the operation was not applied and consumed no sequence number, so the
-// caller may send it again. A call returns when its operation has been applied, or refused.
+// Bound. Past limits.ops pending operations, or limits.bytes pending bytes for a call that carries bytes,
+// a call is refused at once with the backlog error: the operation was not applied and consumed no
+// sequence number, so the caller may send it again. A call that carries no bytes (a resize) is refused
+// only for the operations bound: when the bytes are full because writes wait for the resize that is
+// missing, it is the one call that can release them. A call returns when its operation has been applied,
+// or refused. The queue keeps its own copy of a write's bytes from the moment it takes the write in.
 type inputQueue struct {
 	dev   device
 	limit queueLimits
@@ -123,7 +126,7 @@ func (q *inputQueue) admit(o *op) error {
 	if q.err != nil {
 		return q.err
 	}
-	if q.pending >= q.limit.ops || q.bytes >= q.limit.bytes {
+	if q.pending >= q.limit.ops || (len(o.data) > 0 && q.bytes >= q.limit.bytes) {
 		return backlogError()
 	}
 	switch {
@@ -138,6 +141,7 @@ func (q *inputQueue) admit(o *op) error {
 		if q.held[o.seq] != nil {
 			return staleError(o.seq, q.next)
 		}
+		o.own()
 		q.held[o.seq] = o
 		q.pending++
 		q.bytes += len(o.data)
@@ -150,8 +154,18 @@ func (q *inputQueue) admit(o *op) error {
 	return nil
 }
 
+// own gives the operation its own copy of the bytes of a write, once the queue has taken it in: the
+// caller's slice is the caller's again when close answers the call, and the executor may still be
+// reading it then.
+func (o *op) own() {
+	if len(o.data) > 0 {
+		o.data = append([]byte(nil), o.data...)
+	}
+}
+
 // accept puts an operation in line to be applied. The caller holds q.mu.
 func (q *inputQueue) accept(o *op) {
+	o.own()
 	q.pending++
 	q.bytes += len(o.data)
 	q.ready <- o

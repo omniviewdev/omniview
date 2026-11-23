@@ -54,7 +54,8 @@ export const streamEvent = (id: string, target: 'stdout' | 'stderr'): string => 
 export const signalEvent = (id: string, signal: 'CLOSE' | 'ERROR'): string => `core/exec/signal/${signal}/${id}`;
 
 const EMPTY: TerminalOutput = Object.freeze({ chunks: Object.freeze([]), bytes: 0, dropped: 0 });
-const MAX_CELLS = 65_535;
+/** The most cells a size may have on a side: the host's own limit (`MaxDimension` in backend/pkg/terminal). The first size starts the process and the host refuses a larger one, and a feed whose start failed takes no later size. */
+const MAX_CELLS = 1000;
 
 /** The platform's `crypto`, which every engine the app runs in has, and a test environment may not. */
 const platform: { readonly crypto?: Crypto | undefined } = globalThis;
@@ -245,8 +246,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
         status = { state: 'running' };
         tell();
-        // A size that came while the process was starting is a later size: it is sent now, as one more call.
-        sendSize();
+        // A size that came while the process was starting waits for its own settling; one that has stood still is sent now.
+        if (settling === undefined) {
+          sendSize();
+        }
+
         flushTyped();
       },
       (error: unknown) => {
@@ -310,10 +314,6 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       // The first size starts the process.
       if (starting === undefined) {
         start(size);
-        return;
-      }
-
-      if (!created || status.state !== 'running') {
         return;
       }
 

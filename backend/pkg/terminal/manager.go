@@ -72,6 +72,9 @@ type Manager struct {
 	reported bool
 	// closing is set when the host shuts down: no terminal starts after it.
 	closing atomic.Bool
+	// launching counts the starts in progress. A shell that is starting is not in sessions yet, and a
+	// shutdown waits for it, so that it ends with the others.
+	launching sync.WaitGroup
 	// flowStall is how long a pause on the transport's credit waits before the watchdog steps
 	// (flowControl); a field so that a test can state it. SetFlowStall sets it before sessions start.
 	flowStall time.Duration
@@ -87,7 +90,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	_, reported := sink.(DeliveryReporter)
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
-		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, flowStall: FlowStall,
+		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}),
 	}
 	go m.forwardSignals()
@@ -311,9 +314,10 @@ func (m *Manager) ListSessions() []*sdkexec.Session {
 // Start starts a shell on a pty of the size asked for and returns what the host knows about it. The
 // session belongs to owner and ends with it (CloseOwned); a nil owner is none.
 func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
-	if m.closing.Load() || m.ctx.Err() != nil {
+	if !m.admitLaunch() {
 		return Session{}, startError(errShuttingDown)
 	}
+	defer m.launching.Done()
 	cols, rows, err := resolveSize(opts.Cols, opts.Rows)
 	if err != nil {
 		return Session{}, err
@@ -824,10 +828,14 @@ func (m *Manager) CloseOwned(owner Owner, by ClosedBy) int {
 // Shutdown ends every session the way a close does (SIGHUP to the foreground group and the shell, SIGKILL
 // at the end of the grace for what ignored it), with ClosedByShutdown, so that the jobs of a shell that
 // passes the hangup on end with their terminal, and returns when the sessions are gone or closeWait has
-// passed. No terminal starts after it. The host's own context ending calls it, and so does its service
-// shutdown, which Wails runs after cancelling that context.
+// passed. A shell that is still starting is waited for and ended with the others, and no terminal starts
+// after it. The host's own context ending calls it, and so does its service shutdown, which Wails runs
+// after cancelling that context.
 func (m *Manager) Shutdown() {
+	m.mu.Lock()
 	m.closing.Store(true)
+	m.mu.Unlock()
+	m.awaitLaunches()
 	m.mu.RLock()
 	sessions := make([]*session, 0, len(m.sessions))
 	for _, s := range m.sessions {
@@ -838,6 +846,34 @@ func (m *Manager) Shutdown() {
 		s.beginClose(ClosedByShutdown)
 	}
 	m.awaitGone(sessions)
+}
+
+// admitLaunch counts a start in progress, unless the host is shutting down: Shutdown waits for the starts it
+// admitted before it began, because a shell that is starting is not in sessions yet.
+func (m *Manager) admitLaunch() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing.Load() || m.ctx.Err() != nil {
+		return false
+	}
+	m.launching.Add(1)
+	return true
+}
+
+// awaitLaunches waits, for at most closeWait, for the starts in progress to hand their sessions over.
+func (m *Manager) awaitLaunches() {
+	handed := make(chan struct{})
+	go func() {
+		m.launching.Wait()
+		close(handed)
+	}()
+	deadline := time.NewTimer(closeWait)
+	defer deadline.Stop()
+	select {
+	case <-handed:
+	case <-deadline.C:
+		m.log.Warnw(m.ctx, "a terminal was still starting when the host shut down")
+	}
 }
 
 func (m *Manager) shutdownWhenDone() {

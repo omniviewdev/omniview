@@ -213,10 +213,13 @@ func (s *ServiceWrapper) GetCwd(sessionID string) (terminal.Directory, error) {
 	return s.Ctrl.GetCwd(sessionID)
 }
 
-// AckTerminal tells a terminal that n more bytes of its output were taken in by the client. A client need not
-// call it: the host credits what its transport took. A client that wants its parse speed to pace the shell
-// calls it as it writes into its emulator; from its first call on its acknowledgements are the only credit,
-// and a client that stops acknowledging (a hidden tab) pauses the shell at the high mark.
+// AckTerminal tells a terminal that n more bytes of its output were taken in by the client: written into its
+// emulator, or deliberately dropped. A terminal UI MUST call it: its first call turns flow on, from then on
+// only its acknowledgements credit, and it must acknowledge every byte it parses, dropped bytes included.
+// Without acknowledgements a flood grows the host's memory without bound (a server build with a reader that
+// keeps up, a native webview that stalls): the transport's credit alone does not bound what Wails retains
+// after the point where the host credits. A client that never calls it (the legacy terminal) still gets every
+// byte, paced by what its transport took (docs/ui-next/status/T1-go.md, 2.8.6).
 func (s *ServiceWrapper) AckTerminal(sessionID string, n int) error {
 	return s.Ctrl.AckTerminal(sessionID, n)
 }

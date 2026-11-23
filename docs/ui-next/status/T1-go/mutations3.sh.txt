@@ -22,7 +22,12 @@ run() { # name file sed-expression test-regex
 	if out=$(go test ./backend/pkg/terminal/ -overlay "$scratch/overlay.json" -count=1 -timeout 150s -run "$tests" 2>&1); then
 		echo "GREEN (BAD)  $name"
 	else
-		echo "RED          $name :: $(echo "$out" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')"
+		failed=$(echo "$out" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')
+		if [ -z "$failed" ]; then
+			echo "NOT A DETECTION  $name (no test failed: the build or the setup did)"
+		else
+			echo "RED          $name :: $failed"
+		fi
 	fi
 }
 
@@ -35,7 +40,7 @@ run "no TERM_PROGRAM marker" "$env" '/"TERM_PROGRAM=Omniview",/d' "$emu"
 run "no COLORTERM" "$env" '/"COLORTERM=truecolor",/d' "$emu"
 run "the user's locale is overridden" "$env" 's/if !localeSet \{/if !localeSet || true {/' "$emu"
 run "no default UTF-8 locale" "$env" 's/if !localeSet \{/if !localeSet \&\& false {/' "$emu"
-run "not a login shell" "$mgr" 's/path, args, err := shellenv.Resolve\(opts.Command\)/path, args, err := func() (string, []string, error) { p, a, e := shellenv.Resolve(opts.Command); return p, slices.DeleteFunc(a, func(x string) bool { return x == "-l" }), e }()/' 'TestTheShellIsALoginShell'
+run "not a login shell" "$mgr" 's/path, args, err := m\.resolve\(opts.Command\)/path, args, err := func() (string, []string, error) { p, a, e := m.resolve(opts.Command); return p, slices.DeleteFunc(a, func(x string) bool { return x == "-l" }), e }()/' 'TestTheShellIsALoginShell'
 run "cwd option ignored" "$mgr" 's/cmd.Dir = dir/cmd.Dir = ""/' 'TestTheShellStartsWhere'
 run "cwd fact always unknown" "$mgr" 's/path, err := processCwd\(s.cmd.Process.Pid\)/path, err := "", errors.ErrUnsupported/' 'TestTheShellStartsWhere'
 run "close kills at once, no hangup" "$mgr" 's/go s.hangup\(HangupGrace\)/s.cancel()/' 'TestClosingHangs'

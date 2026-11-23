@@ -22,7 +22,12 @@ run() { # package name file sed-expression test-regex
 	if out=$(go test "$pkg" -overlay "$scratch/overlay.json" -count=1 -timeout 150s -run "$tests" 2>&1); then
 		echo "GREEN (BAD)  $name"
 	else
-		echo "RED          $name :: $(echo "$out" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')"
+		failed=$(echo "$out" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')
+		if [ -z "$failed" ]; then
+			echo "NOT A DETECTION  $name (no test failed: the build or the setup did)"
+		else
+			echo "RED          $name :: $failed"
+		fi
 	fi
 }
 

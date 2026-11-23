@@ -226,8 +226,8 @@ func TestTheFirstAcknowledgementMakesTheClientsAcknowledgementsTheOnlyCredit(t *
 	m, rec := newTestManager(t)
 	info, err := m.Start(Options{Command: []string{sh(t), "-c", "yes flow-control-flood"}}, nil)
 	require.NoError(t, err)
-	before := len(rec.text(info.ID))
 	require.NoError(t, m.Ack(info.ID, 0))
+	before := len(rec.text(info.ID))
 
 	require.Eventually(t, func() bool { return len(rec.text(info.ID)) >= before+FlowHighBytes }, 30*time.Second, 5*time.Millisecond)
 	time.Sleep(300 * time.Millisecond)
