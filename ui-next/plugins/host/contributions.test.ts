@@ -5,6 +5,7 @@ import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
 import { ConnectionNames } from './connectionName';
 import { createContributions, describeDetail, HOME_PAGE, routeKey, type PluginSource } from './contributions';
+import { HOME_ROUTE } from './hostPages';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
 
@@ -294,5 +295,50 @@ describe('subscribe', () => {
 
     expect(listener).not.toHaveBeenCalled();
     expect(listeners.size).toBe(0);
+  });
+});
+
+// A route that names no connection would be read in the plugin's first one, an arbitrary one when there are two or more: the window completes it from what it knows (HM1).
+describe('complete, with what the window knows of the plugin\'s connections', () => {
+  const choose = (keys: readonly string[], last?: string) => {
+    const plugins: PluginSource = { getSnapshot: () => [ready()], subscribe: () => () => undefined };
+    return createContributions({ plugins, frames: new Published<FrameV1>(), choice: (plugin) => (plugin === 'acme' ? { keys, last } : undefined) });
+  };
+
+  const at = route('acme', 'gadgets');
+
+  it('opens a page in the connection the plugin was last used in', () => {
+    expect(choose(['north', 'south'], 'south').complete?.(at, nowhere)).toEqual(route('acme', 'gadgets', { connection: 'south' }));
+  });
+
+  it('leaves a route alone when the plugin has one connection: there is nothing to choose between, and its links stay as they were', () => {
+    expect(choose(['north']).complete?.(at, nowhere)).toBe(at);
+    expect(choose(['north'], 'north').complete?.(at, nowhere)).toBe(at);
+  });
+
+  it('opens Home, not the plugin, when there are two or more and none was used: the plugin would take its first', () => {
+    expect(choose(['north', 'south']).complete?.(at, nowhere)).toEqual(HOME_ROUTE);
+    expect(choose(['north', 'south']).complete?.(route('acme', HOME_PAGE), nowhere)).toEqual(HOME_ROUTE);
+  });
+
+  it('does not let a last-used connection that is gone choose: it is as if none was used', () => {
+    expect(choose(['north', 'south'], 'gone').complete?.(at, nowhere)).toEqual(HOME_ROUTE);
+    expect(choose(['north'], 'gone').complete?.(at, nowhere)).toBe(at);
+  });
+
+  it('leaves alone a route that names a connection, and one opened from a tab of the plugin, which takes that tab\'s', () => {
+    const named = route('acme', 'gadgets', { connection: 'east' });
+    expect(choose(['north', 'south'], 'south').complete?.(named, nowhere)).toBe(named);
+    expect(choose(['north', 'south'], 'south').complete?.(at, from('acme', { connection: 'north' }))).toEqual(route('acme', 'gadgets', { connection: 'north' }));
+  });
+
+  it('leaves a tab that is only described again as it is: it was opened before, and keeps the route it has', () => {
+    expect(choose(['north', 'south']).complete?.(at, { from: undefined, source: 'refresh' })).toBe(at);
+  });
+
+  it('says nothing for a plugin the window has read no connection of, or has no connection data for', () => {
+    expect(choose([]).complete?.(at, nowhere)).toBe(at);
+    expect(world([ready()]).contributions.complete?.(at, nowhere)).toBe(at);
+    expect(choose(['north', 'south']).complete?.(route('other', 'gadgets'), nowhere)).toEqual(route('other', 'gadgets'));
   });
 });

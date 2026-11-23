@@ -117,7 +117,7 @@ async function mount(plugins: readonly InventoryEntry[], options: Options = {}):
   const client = new QueryClient();
   const onRetry = vi.fn<(id: string) => void>();
   const draw = (retry: (id: string) => void, visible: boolean) => {
-    const page = <definition.Page tabs={tabs} tabId={opened.id} plugins={h.entries} onRetry={retry} />;
+    const page = <definition.Page tabs={tabs} tabId={opened.id} plugins={h.entries} onRetry={retry} openPlugin={() => undefined} />;
     return (
       <QueryClientProvider client={client}>
         <NoticesProvider notices={bindings}>

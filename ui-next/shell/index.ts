@@ -1,7 +1,21 @@
 // The shell's public surface: the frame, the registration a screen hands it, and the tab model a host builds to drive it. Everything else in this directory is internal.
 export { Shell } from './Shell';
 export type { ShellProps } from './Shell';
-export type { ShellAccent, ShellApproximateCount, ShellCount, ShellRail, ShellRailEntry, ShellRegistration, ShellScopeFace, ShellSidebar, ShellTreeNode } from './registration';
+export type {
+  ShellAccent,
+  ShellApproximateCount,
+  ShellCount,
+  ShellLaneFace,
+  ShellPickerOption,
+  ShellPickerState,
+  ShellRail,
+  ShellRailEntry,
+  ShellRegistration,
+  ShellScopeFace,
+  ShellScopePicker,
+  ShellSidebar,
+  ShellTreeNode,
+} from './registration';
 export type { PageTab } from './tabs/PageHost';
 export { platformOf } from './core/chords';
 export { clip, createTabsStore, dispositionOf, LIMITS, normaliseRoute } from './core/tabs';

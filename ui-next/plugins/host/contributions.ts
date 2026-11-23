@@ -3,7 +3,7 @@ import type { Contributions, Description, Route, RouteInput } from '../../shell'
 import type { FrameV1, SidebarNodeV1 } from '../contract/v1';
 import { failureWords } from '../loader/failure';
 import { ConnectionNames, laneNameOf, pathSaid, restoredFace } from './connectionName';
-import { hostPageOf } from './hostPages';
+import { HOME_ROUTE, hostPageOf } from './hostPages';
 import type { PluginEntry } from './pluginStore';
 import type { Published } from './published';
 
@@ -55,12 +55,25 @@ export type PluginSource = {
   readonly subscribe: (listener: () => void) => () => void;
 };
 
+/** What the window knows of a plugin's connections (`ContributionsDeps.choice`). */
+export type PluginChoice = {
+  /** The keys of the connections the window has read for the plugin. */
+  readonly keys: readonly string[];
+  /** The key of the connection the plugin was last shown in, in this window. */
+  readonly last: string | undefined;
+};
+
 export type ContributionsDeps = {
   readonly plugins: PluginSource;
   /** The frame each mounted page published, by `routeKey`: the lane it published is where the name of its connection is read (`connectionName.ts`). */
   readonly frames: Published<FrameV1>;
   /** The names this window has learned for its connections, by plugin and key. Default: a set of its own. */
   readonly names?: ConnectionNames | undefined;
+  /**
+   * What the window knows of a plugin's connections (HM1): the keys, and the one the plugin was last used in, in this window. With it a route that names no connection, of a plugin that has two or more, is completed from what the window knows
+   * instead of being left for the plugin to answer with its first one, an arbitrary one (`complete`). Absent, or `undefined` for a plugin: the window knows none, and such a route stays as it is.
+   */
+  readonly choice?: ((plugin: string) => PluginChoice | undefined) | undefined;
 };
 
 /** The glyph of the sidebar entry that opens a page: the page's own glyph before its hook has said another. */
@@ -108,7 +121,7 @@ export function describeDetail(pluginName: string, route: Route, definition: Det
  * plugin that is loading or failed to a page that says so (ch16 S65: degraded) and refuses one the host does not have. `complete` fills in the connection of the tab a destination is
  * opened from, and turns a page the plugin does not have into its home. `home` is a plugin's own first page; the window has none of its own.
  */
-export function createContributions({ plugins, frames, names = new ConnectionNames() }: ContributionsDeps): Contributions {
+export function createContributions({ plugins, frames, names = new ConnectionNames(), choice }: ContributionsDeps): Contributions {
   const entryOf = (plugin: string): PluginEntry | undefined => plugins.getSnapshot().find((entry) => entry.id === plugin);
   // What every page published says of its connection is learned when a page publishes, before the tabs are described again: a tab described before the tab whose page names the connection (a background tab earlier in the
   // strip) has the name in the same pass.
@@ -125,10 +138,10 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
 
   return {
     describe: (route): Description | undefined => {
-      // A page of the host's own (the Plugins page): a singleton tab of no plugin, so it says no scope, no path and no plugin name (ch16 S9, X7).
+      // A page of the host's own (the Plugins page, Home): no scope, no path and no plugin name (ch16 X7). Plugins is a singleton tab of the whole window (ch16 S9); Home is an ordinary tab, and several may exist.
       const hosted = hostPageOf(route);
       if (hosted !== undefined) {
-        return { title: hosted.title, icon: hosted.icon, singleton: true, path: [] };
+        return { title: hosted.title, icon: hosted.icon, singleton: hosted.singleton !== false, path: [] };
       }
 
       const entry = entryOf(route.plugin);
@@ -197,12 +210,26 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
       // A plugin that stopped says why, in the host's words; one whose bundle failed says it did not load.
       return { state: 'degraded', reason: entry.failure.kind === 'unloaded' ? entry.failure.message : 'This plugin did not load.' };
     },
-    complete: (route, { from }) => {
+    complete: (route, { from, source }) => {
       const entry = entryOf(route.plugin);
       const page = entry?.phase === 'ready' && (route.contribution === HOME_PAGE || !Object.hasOwn(entry.contribution.pages, route.contribution)) ? entry.contribution.home : route.contribution;
       // A sidebar entry names a page, not a connection: the page opens in the connection of the tab it is opened from.
       const inherited = from?.plugin === route.plugin ? from.params.connection : undefined;
-      const params = route.params.connection === undefined && typeof inherited === 'string' ? { ...route.params, connection: inherited } : route.params;
+      let params = route.params.connection === undefined && typeof inherited === 'string' ? { ...route.params, connection: inherited } : route.params;
+      // A route that still names no connection is read by the plugin in its first one, which with two or more is an arbitrary one: the window chooses instead (HM1). The connection the plugin was last used in; with none used there is nothing
+      // to choose from, and the destination is Home, where they are listed. With one connection (or none) there is nothing to choose between and the route stays as it is. A tab that is already open keeps the route it has (`refresh`): this is
+      // for what the person opens.
+      if (params.connection === undefined && entry?.phase === 'ready' && source !== 'refresh') {
+        const known = choice?.(route.plugin);
+        if (known !== undefined && known.keys.length > 1) {
+          if (known.last === undefined || !known.keys.includes(known.last)) {
+            return HOME_ROUTE;
+          }
+
+          params = { ...params, connection: known.last };
+        }
+      }
+
       return page === route.contribution && params === route.params ? route : { plugin: route.plugin, contribution: page, params };
     },
     // A saved tab's face, as the host lets it stand: a build before the names saved the key in it, and a tab drawn while its plugin loads must say none (`restoredFace`).

@@ -1,12 +1,12 @@
-import { Icon, KindTile, Text, type IconName, type KindTileTone } from '@omniviewdev/kit';
+import type { IconName, KindTileTone } from '@omniviewdev/kit';
 import { failureWords } from '../loader/failure';
+import { Home, type HomeProps } from './Home';
 import styles from './NoTabs.module.css';
 import type { PluginEntry } from './pluginStore';
 import { DEFAULT_RAIL_ICON, railOf } from './rail';
 
-// What the island shows when no tab is open and the plugins have settled: the mock's Home page, as far as its parts have a destination now (ch16 S8, amended by decision A17: the window
-// is empty, not refilled, when the last tab closes, and it says where to go from here). The mock's Home has more: "Get started" (Search, Install plugins, Settings, a terminal), "Recent",
-// "Connections in use" and a purpose line under each plugin. None of those has a destination or a source in the new window yet, and a button that does nothing is a stub.
+// What the island shows when no tab is open and the plugins have settled: the Home page (`Home.tsx`) with the line that says so (ch16 S8, amended by decision A17: the window is empty, not refilled, when the last tab closes, and it says
+// where to go from here). What that page has and lacks against the mock's Home is written there; this file adds what is the empty window's own: the entries it lists (`homeEntriesOf`), its inset and the part the shell's probes read.
 
 /** One plugin the empty window offers: what it is called, its glyph and colour, and a word when it cannot open to its page. */
 export type HomeEntry = {
@@ -31,52 +31,40 @@ export function homeEntriesOf(entries: readonly PluginEntry[]): readonly HomeEnt
   return [...ready, ...others];
 }
 
+/** What a window that is given no connections lists: none. */
+const NO_GROUPS: HomeProps['groups'] = [];
+/** What a window that is given no way to open one does with a choice. With no group there is no row to choose, so it is never called. */
+const OPEN_NONE: HomeProps['onOpenConnection'] = () => undefined;
+
 type NoTabsProps = {
   readonly entries: readonly HomeEntry[];
   /** A plugin was chosen: its id. The host opens its home page in a tab. */
   readonly onOpen: (id: string) => void;
+  /** The connections of the plugins, grouped by plugin. Absent: none, and no section for them. */
+  readonly groups?: HomeProps['groups'] | undefined;
+  /** What the window knows of them. Absent: they are read, and `groups` is all there is. */
+  readonly connections?: HomeProps['connections'] | undefined;
+  /** A connection was chosen: its plugin and its key, and what chose it. Absent: nothing opens (with no group there is no row to choose). */
+  readonly onOpenConnection?: HomeProps['onOpenConnection'] | undefined;
 };
 
 /**
- * The empty window: a heading, one line that says so, and the plugins that can be opened, each a button that opens the plugin's home page in a tab. It is a document the island scrolls.
+ * The empty window: the Home page with a muted line that says no tab is open. Each plugin is a button that opens the plugin's home page in a tab, each connection one that opens the connection. It is a document the island scrolls.
  * Command W here closes the window on a Mac (`Shell`'s `onCloseWindow`), which the app menu's Close Window does too; on Windows and Linux the chord does nothing for now (a main window that hides has no way back there).
  */
-export function NoTabs({ entries, onOpen }: NoTabsProps) {
+export function NoTabs({ entries, onOpen, groups = NO_GROUPS, connections = 'ready', onOpenConnection = OPEN_NONE }: NoTabsProps) {
   return (
-    <div className={styles.home} data-shell-part="home">
-      <Text as="h1" variant="heading">
-        Home
-      </Text>
-      <Text as="p" tone="muted">
-        No tabs are open.
-      </Text>
-      <section className={styles.section} aria-label="Plugins you can open">
-        <Text as="h2" variant="title">
-          Plugins you can open
-        </Text>
-        <ul className={styles.list}>
-          {entries.map((entry) => (
-            <li key={entry.id}>
-              <button
-                type="button"
-                className={styles.row}
-                onClick={() => {
-                  onOpen(entry.id);
-                }}
-              >
-                <KindTile icon={entry.icon} tone={entry.tone} />
-                <Text variant="title">{entry.label}</Text>
-                {entry.state === undefined ? null : (
-                  <Text variant="caption" tone="muted">
-                    {entry.state}
-                  </Text>
-                )}
-                <Icon name="chevron-right" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+    <div className={styles.window} data-shell-part="home">
+      <Home
+        empty
+        entries={entries}
+        groups={groups}
+        connections={connections}
+        onOpenPlugin={(id) => {
+          onOpen(id);
+        }}
+        onOpenConnection={onOpenConnection}
+      />
     </div>
   );
 }

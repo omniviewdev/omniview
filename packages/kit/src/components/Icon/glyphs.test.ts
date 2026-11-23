@@ -28,6 +28,9 @@ const LOG_TOOLBAR_GLYPHS = ['eraser', 'pause'];
 // FM2a: the form parts add the number field's decrease step (Int UI), and the secret field's show and hide of the TYPED text (Int UI and Lucide).
 const FORM_GLYPHS = ['eye', 'eye-off', 'minus'];
 
+// HM1: Home, in the tab and in the palette: the mock's house (Lucide).
+const HOME_GLYPHS = ['house'];
+
 // O1b-2: the notification centre adds the mock's bell and bell-off (the status bar item), check-check (mark all read), trash (clear), undo and
 // list-filter (the bar). Bell, trash and undo are Int UI in the mock (16 artboard); bell-off, check-check and list-filter are Lucide (24 artboard).
 const CENTRE_LUCIDE_GLYPHS = ['bell-off', 'check-check', 'list-filter'];
@@ -35,7 +38,7 @@ const CENTRE_INT_UI_GLYPHS = ['bell', 'trash', 'undo'];
 
 describe('the glyph registry', () => {
   it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
-    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS].sort());
+    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...HOME_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS].sort());
   });
 
   it('is plain data: nothing in it is a function, a markup string or an element', () => {
@@ -104,7 +107,7 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes, the registry 18,100: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs, then 854 bytes for the form parts\' three, then 1,774 bytes for the six notification centre glyphs; the real total is 18,055 with 76 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not)', () => {
+  it('stays within its byte budget (one glyph 800 bytes, the registry 18,400: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs, then 854 bytes for the form parts\' three, then 1,774 bytes for the six notification centre glyphs, then about 250 bytes for the Home glyph; the real total is about 18,300 with 77 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -112,7 +115,7 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(18100);
+    expect(total).toBeLessThanOrEqual(18400);
   });
 
   it('draws the per-kind glyphs as the Lucide family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke', () => {

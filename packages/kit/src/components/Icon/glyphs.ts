@@ -60,6 +60,7 @@ export type IconName =
   | 'hard-drive'
   | 'hard-drive-download'
   | 'hourglass'
+  | 'house'
   | 'key-round'
   | 'layers'
   | 'layout-template'
@@ -199,6 +200,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   'hard-drive-download': { box: 24, layers: [{ d: 'M12 2v8M16 6l-4 4-4-4M4 14H20A2 2 0 0 1 22 16V20A2 2 0 0 1 20 22H4A2 2 0 0 1 2 20V16A2 2 0 0 1 4 14ZM6 18h.01M10 18h.01', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide hourglass (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuHourglass. */
   hourglass: { box: 24, layers: [{ d: 'M5 22h14M5 2h14M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide house (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuHouse. */
+  house: { box: 24, layers: [{ d: 'M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide key-round (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuKeyRound. */
   'key-round': { box: 24, layers: [{ d: 'M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z', stroke: 'ink', width: 2, cap: 'round', join: 'round' }, { d: 'M16 7.5A.5 .5 0 1 0 17 7.5A.5 .5 0 1 0 16 7.5Z', fill: 'ink', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide layers (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuLayers. */

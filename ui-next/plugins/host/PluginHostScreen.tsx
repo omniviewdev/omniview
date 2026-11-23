@@ -3,6 +3,7 @@ import { WindowClient } from '@omniviewdev/runtime/api';
 import { Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
+import { productionApi } from './connections';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
@@ -102,6 +103,7 @@ export function PluginHostScreen() {
           openSettingsWindow={openSettingsWindow}
           session={loaded.session}
           savedNotices={loaded.notices}
+          connections={productionApi}
         />
       )}
     </ActivityProvider>
