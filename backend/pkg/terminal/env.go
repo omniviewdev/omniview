@@ -35,19 +35,24 @@ func environmentOf(probe shellenv.ProbeResult) Environment {
 	return Environment{Source: EnvironmentLaunch, Probe: Probe{State: string(probe.State), Message: probe.Message}}
 }
 
-// terminalEnvironment is the environment a shell starts with. The base is the environment the host was
-// LAUNCHED with (shellenv.LaunchEnvironment), not the one it restored from the user's login shell, and the
-// shell is started as an interactive login shell (shellenv.Resolve): the user's startup files run once,
-// on the environment a Terminal.app window starts from. (Started from the restored environment they ran
-// on a PATH that /usr/libexec/path_helper had already put in order, and path_helper then moved the user's
-// directories behind the system's.)
+// terminalEnvironment is the environment a shell starts with: the user's LAUNCH environment, and the few
+// variables the terminal sets on purpose, nothing else.
 //
-// What is taken out: the host's own variables and those of the terminal the host was launched from
-// (hostPrivate). What is added is what a terminal emulator tells its programs about itself, as VS Code and
-// JetBrains do: TERM and COLORTERM for the emulator's capabilities, TERM_PROGRAM and TERM_PROGRAM_VERSION
-// so that a shell can tell it runs in Omniview (VS Code sets TERM_PROGRAM=vscode, which its shell
-// integration tests for), PWD, the directory the shell starts in as it was given and not as a symlink
-// resolves it, and a UTF-8 locale when the user has set none. A locale the user chose is theirs and stays.
+// The base is the environment the host was LAUNCHED with (shellenv.LaunchEnvironment, recorded before the
+// host changed anything), not the one it restored from the user's login shell and not its live process
+// environment, which holds whatever the host added after it launched (its profile's directories, its own
+// flags, what a framework publishes). The shell is started as an interactive login shell (shellenv.Resolve):
+// the user's startup files run once, on the environment a Terminal.app window starts from. (Started from the
+// restored environment they ran on a PATH that /usr/libexec/path_helper had already put in order, and
+// path_helper then moved the user's directories behind the system's.)
+//
+// Out of the launch environment come the variables that are the host's own or that describe the terminal
+// the host was launched from, which is not this one (hostPrivate). What is added is what a terminal emulator
+// tells its programs about itself, as VS Code and JetBrains do: TERM and COLORTERM for the emulator's
+// capabilities, TERM_PROGRAM and TERM_PROGRAM_VERSION so that a shell can tell it runs in Omniview (VS Code
+// sets TERM_PROGRAM=vscode, which its shell integration tests for), PWD, the directory the shell starts in
+// as it was given and not as a symlink resolves it, and a UTF-8 locale when the user has set none. A locale
+// the user chose is theirs and stays.
 func terminalEnvironment(base []string, shellPath, dir, version string) []string {
 	own := map[string]bool{"SHELL": true, "PWD": true, "TERM": true, "COLORTERM": true, "TERM_PROGRAM": true, "TERM_PROGRAM_VERSION": true}
 	environment := make([]string, 0, len(base)+len(own)+1)
@@ -76,18 +81,44 @@ func terminalEnvironment(base []string, shellPath, dir, version string) []string
 	return environment
 }
 
-// hostPrivate reports whether a variable belongs to the host, or to the terminal or multiplexer the host
-// was launched from, and has no place in the environment of a new terminal. OMNIVIEW_*, PLUGIN_* and
-// GOWORK are the host's: its own configuration, and the GOWORK=off it keeps its plugin builds apart from
-// the user's Go workspace with (a login shell sets the user's own GOWORK again from their startup files).
-// COLUMNS and LINES are the size of the launching terminal; TMUX, TMUX_PANE and STY name its multiplexer;
-// VTE_VERSION and TERM_SESSION_ID name its emulator. None describes this terminal.
+// hostPrivatePrefixes and hostPrivateNames are the variables of the launch environment that are not the
+// user's and have no place in a terminal's:
+//
+//   - the host's own: OMNIVIEW_*, PLUGIN_*, GOWORK (the host keeps its plugin builds apart from the user's
+//     Go workspace with GOWORK=off, which must not reach the user's go commands), and what a dev supervisor
+//     hands the host (WAILS_*, which include the MCP bearer token, and FRONTEND_DEVSERVER_URL);
+//   - what describes the terminal or multiplexer the host was launched from, which is not this terminal:
+//     its size (COLUMNS, LINES), its multiplexer (TMUX, TMUX_PANE, STY) and its emulator (VTE_VERSION,
+//     TERM_SESSION_ID, ITERM_*, LC_TERMINAL*, KITTY_*, WEZTERM_*, ALACRITTY_*, GHOSTTY_*, VSCODE_*,
+//     TERMINAL_EMULATOR, WT_SESSION, WT_PROFILE_ID): a shell that finds ITERM_SESSION_ID loads iTerm's
+//     integration and writes its escape sequences into this terminal.
+//
+// This list is not what keeps a variable the host added after launch out: the shell does not start from
+// the process environment at all, so nothing the host sets after it launched is in it. It is what keeps out
+// what the host was LAUNCHED with that is not the user's.
+//
+//nolint:gochecknoglobals // Fixed tables of names, read only.
+var (
+	hostPrivatePrefixes = []string{
+		"OMNIVIEW_", "PLUGIN_", "WAILS_", "ITERM_", "KITTY_", "WEZTERM_", "ALACRITTY_", "GHOSTTY_", "VSCODE_", "LC_TERMINAL",
+	}
+	hostPrivateNames = map[string]bool{
+		"GOWORK": true, "FRONTEND_DEVSERVER_URL": true,
+		"COLUMNS": true, "LINES": true, "TMUX": true, "TMUX_PANE": true, "STY": true,
+		"VTE_VERSION": true, "TERM_SESSION_ID": true, "TERMINAL_EMULATOR": true, "WT_SESSION": true, "WT_PROFILE_ID": true,
+	}
+)
+
 func hostPrivate(key string) bool {
-	switch key {
-	case "GOWORK", "COLUMNS", "LINES", "TMUX", "TMUX_PANE", "STY", "VTE_VERSION", "TERM_SESSION_ID":
+	if hostPrivateNames[key] {
 		return true
 	}
-	return strings.HasPrefix(key, "OMNIVIEW_") || strings.HasPrefix(key, "PLUGIN_")
+	for _, prefix := range hostPrivatePrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // defaultLocale is a UTF-8 locale every installation of the platform has: macOS ships en_US.UTF-8, and

@@ -5,6 +5,7 @@ package terminal
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	logging "github.com/omniviewdev/plugin-sdk/log"
@@ -45,6 +46,9 @@ func (m *Manager) Resize(_ string, _ uint64, _, _ int) error { return unsupporte
 // Ack is not supported.
 func (m *Manager) Ack(_ string, _ int) error { return unsupportedError() }
 
+// Delivered credits nothing: no session can exist.
+func (m *Manager) Delivered(_ string, _ int) {}
+
 // Busy answers unknown, the third state: a ConPTY has no foreground process group, so whether
 // something other than the shell holds a Windows terminal cannot be read from the system. (The shell's
 // child processes can be listed, but a child that is a background job looks the same as the program
@@ -73,3 +77,9 @@ func (m *Manager) CloseSession(_ string) error { return unsupportedError() }
 
 // CloseOwned ends nothing: no session can exist.
 func (m *Manager) CloseOwned(_ Owner, _ ClosedBy) int { return 0 }
+
+// Shutdown ends nothing: no session can exist.
+func (m *Manager) Shutdown() {}
+
+// SetFlowStall does nothing: no session can exist.
+func (m *Manager) SetFlowStall(_ time.Duration) {}

@@ -156,7 +156,14 @@ func (c *controller) ServiceStartup(ctx context.Context, _ application.ServiceOp
 	return nil
 }
 
+// ServiceShutdown runs after Wails has cancelled the application context, which already begins to end the
+// local terminals; it ends them the way a close does (SIGHUP, then SIGKILL after the grace) and returns when
+// they are gone, so that the jobs of a shell that passes the hangup on end with their terminal instead of
+// outliving the host.
 func (c *controller) ServiceShutdown() error {
+	if c.terminalManager != nil {
+		c.terminalManager.Shutdown()
+	}
 	return nil
 }
 

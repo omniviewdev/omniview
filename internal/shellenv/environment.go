@@ -50,6 +50,12 @@ type processState struct {
 //nolint:gochecknoglobals // A fact about this process, recorded once at start.
 var state = processState{mu: sync.Mutex{}, environment: nil, probe: ProbeResult{State: ProbeNotRun, Message: ""}}
 
+// RememberLaunchEnvironment records the environment the host was launched with. main calls it before
+// anything of the host (its profile, its runtime directories, a framework) adds to the process environment,
+// so that a terminal starts from what the user's environment was and not from what the host made of it.
+// Restore records it too, when nothing did: the first record wins.
+func RememberLaunchEnvironment() { remember(os.Environ()) }
+
 func remember(environment []string) {
 	state.mu.Lock()
 	defer state.mu.Unlock()

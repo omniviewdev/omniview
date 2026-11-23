@@ -24,12 +24,9 @@ type Launch struct {
 	// Cwd is the directory the shell starts in: an absolute path to a directory that exists. Empty: the
 	// user's home. Anything else is refused, naming the field.
 	Cwd string `json:"cwd,omitempty"`
-	// Flow asks for flow control: the host stops reading the shell's output while FlowHighBytes of what
-	// it delivered are unacknowledged and reads again once the caller has acknowledged it down to
-	// FlowLowBytes (AckTerminal). The shell blocks in its own write meanwhile, so a hidden or slow page
-	// costs the shell time and the host no memory. Off (the default): the host reads and delivers as fast
-	// as the shell writes, which is what a caller that never acknowledges needs.
-	Flow bool `json:"flow,omitempty"`
+	// There is no flow-control option: every terminal is paced by credit (FlowHighBytes, FlowLowBytes), so
+	// that no client, whatever it does, can make the host hold more than that for it. See Manager.Ack and
+	// Manager.Delivered for where credit comes from.
 }
 
 // Options is what the manager starts a terminal from. CreateTerminal builds it from the SDK's session
@@ -45,7 +42,6 @@ type Options struct {
 	Cols    int
 	Rows    int
 	Cwd     string
-	Flow    bool
 	// Labels and Params are what the caller attached to the session; the exec lane lists them with it.
 	Labels map[string]string
 	Params map[string]string
@@ -78,14 +74,24 @@ type Limits struct {
 	// GapWaitMs is how long an operation waits for its predecessor, in milliseconds, before the
 	// host gives the missing number up.
 	GapWaitMs int `json:"gap_wait_ms"`
-	// FlowHighBytes and FlowLowBytes are the marks of flow control (Launch.Flow): at most
-	// FlowHighBytes of delivered output wait for an acknowledgement, plus one read of
-	// DefaultReadBufferSize; reading resumes at FlowLowBytes.
+	// FlowHighBytes and FlowLowBytes are the marks of the credit that paces every terminal: the host
+	// stops reading the shell's output while FlowHighBytes of what it delivered have not been credited
+	// (so it holds at most that, plus one read of DefaultReadBufferSize, for a client that does not read)
+	// and reads again at FlowLowBytes.
 	FlowHighBytes int `json:"flow_high_bytes"`
 	FlowLowBytes  int `json:"flow_low_bytes"`
 	// HangupGraceMs is how long a closing session gets, in milliseconds, between the hangup it is sent
 	// and the kill.
 	HangupGraceMs int `json:"hangup_grace_ms"`
+	// DrainCapMs is the most the host reads from the pty once the shell has exited, in milliseconds: a
+	// process of the shell's session that keeps the pty open and writing does not keep the session alive.
+	DrainCapMs int `json:"drain_cap_ms"`
+	// FlowStallMs is how long a pause on the transport's credit waits, in milliseconds, before the watchdog
+	// gives a step of FlowStepBytes; FlowStallCeilingBytes is the most it gives in all until real credit
+	// comes again. A client that acknowledges is never stepped.
+	FlowStallMs           int `json:"flow_stall_ms"`
+	FlowStepBytes         int `json:"flow_step_bytes"`
+	FlowStallCeilingBytes int `json:"flow_stall_ceiling_bytes"`
 }
 
 // Session is what the host says about a terminal it started.
@@ -101,8 +107,7 @@ type Session struct {
 	// Cols and Rows are the size the pty was opened at: the size asked for, or the default.
 	Cols int `json:"cols"`
 	Rows int `json:"rows"`
-	// Flow says whether flow control is on for this session.
-	Flow   bool   `json:"flow"`
+	// The credit that paces the session is stated by Limits.
 	Limits Limits `json:"limits"`
 	// Environment says where the shell's environment came from and how the host's login probe went.
 	Environment Environment `json:"environment"`
@@ -166,6 +171,13 @@ type End struct {
 	CoreDumped   bool     `json:"core_dumped,omitempty"`
 	ClosedBy     ClosedBy `json:"closed_by,omitempty"`
 	Failure      *Failure `json:"failure,omitempty"`
+	// DrainCapped says the host stopped reading at the drain cap although the pty was still open and
+	// written to: a process of the shell's session (a background job) holds it. What that process writes
+	// after the cap is not delivered.
+	DrainCapped bool `json:"drain_capped,omitempty"`
+	// DroppedBytes is how many bytes the host read after the cap and discarded: a lower bound, because
+	// what the process writes after the host closes the pty is lost to the kernel and cannot be counted.
+	DroppedBytes int `json:"dropped_bytes,omitempty"`
 }
 
 // State is the answer to "is something other than the shell in the foreground of the terminal?".
@@ -225,13 +237,25 @@ type Directory struct {
 
 // Sink receives a session's events. All calls for one session come from one goroutine at a time and
 // in order: every Output of a session precedes its one Closed. Calls for different sessions may be
-// concurrent. A Sink must not call back into the Manager for the same session, except Ack.
+// concurrent. A Sink must not call back into the Manager for the same session, except Ack and Delivered.
+//
+// A Sink that returns from Output once the transport has taken the bytes (a blocking write, a bounded
+// queue) needs nothing more: the manager credits what Output returned from. A Sink whose Output returns
+// at once, whatever the client is doing (an unbounded queue, as Wails' server mode has), implements
+// DeliveryReporter and tells the manager when the transport really took the bytes, through
+// Manager.Delivered: the credit comes back only as fast as the client's socket drains.
 type Sink interface {
 	// Output delivers bytes the shell wrote. The slice belongs to the receiver. The bytes are the
 	// shell's, untouched: a multi-byte character may be cut between two calls.
 	Output(sessionID string, data []byte)
 	// Closed delivers how the session ended. It is the last call for the session.
 	Closed(sessionID string, end End)
+}
+
+// DeliveryReporter marks a Sink that reports, through Manager.Delivered, when the transport has taken
+// output on its way to the client. Without the mark the manager takes the return of Output for delivery.
+type DeliveryReporter interface {
+	ReportsDelivery()
 }
 
 const (
@@ -252,16 +276,29 @@ const (
 	// missing sequence number up and goes on.
 	GapWait = 2 * time.Second
 
-	// FlowHighBytes and FlowLowBytes are the marks of flow control: the host stops reading a shell's
-	// output while FlowHighBytes of what it delivered are unacknowledged, and reads again at
-	// FlowLowBytes. (VS Code's pty host pauses at 100,000 characters and resumes at 5,000; the unit
+	// FlowHighBytes and FlowLowBytes are the marks of the credit that paces every terminal: the host stops
+	// reading a shell's output while FlowHighBytes of what it delivered have not been credited, and reads
+	// again at FlowLowBytes. (VS Code's pty host pauses at 100,000 characters and resumes at 5,000; the unit
 	// here is bytes and the marks are larger because a Wails event costs more than a Node message.)
 	FlowHighBytes = 1 << 20
 	FlowLowBytes  = 256 << 10
 
+	// FlowStall, FlowStepBytes and FlowStallCeilingBytes are the watchdog of a pause on the transport's
+	// credit (flowControl): after FlowStall without credit it gives FlowStepBytes, and at most
+	// FlowStallCeilingBytes until real credit comes again. A client that stopped reading costs the host the
+	// high mark plus the ceiling, at most; a transport whose credit never comes trickles instead of freezing.
+	FlowStall             = 2 * time.Second
+	FlowStepBytes         = FlowLowBytes
+	FlowStallCeilingBytes = 8 << 20
+
 	// HangupGrace is how long a closing session gets between the hangup its foreground program and
 	// shell are sent and the kill of what ignored it.
 	HangupGrace = 1500 * time.Millisecond
+
+	// drainCap is the most the host reads from the pty once the shell has exited, counted from the exit and
+	// not per read: a process that keeps the pty open and writing (a background job) cannot keep the session
+	// alive. The CLOSE comes at the cap, with the shell's exit facts.
+	drainCap = 3 * time.Second
 
 	maxIDLength = 128
 )
@@ -269,13 +306,17 @@ const (
 // defaultLimits states the bounds above.
 func defaultLimits() Limits {
 	return Limits{
-		MaxDimension:  MaxDimension,
-		PendingOps:    MaxPendingOps,
-		PendingBytes:  MaxPendingBytes,
-		SeqAhead:      MaxSeqAhead,
-		GapWaitMs:     int(GapWait / time.Millisecond),
-		FlowHighBytes: FlowHighBytes,
-		FlowLowBytes:  FlowLowBytes,
-		HangupGraceMs: int(HangupGrace / time.Millisecond),
+		MaxDimension:          MaxDimension,
+		PendingOps:            MaxPendingOps,
+		PendingBytes:          MaxPendingBytes,
+		SeqAhead:              MaxSeqAhead,
+		GapWaitMs:             int(GapWait / time.Millisecond),
+		FlowHighBytes:         FlowHighBytes,
+		FlowLowBytes:          FlowLowBytes,
+		HangupGraceMs:         int(HangupGrace / time.Millisecond),
+		DrainCapMs:            int(drainCap / time.Millisecond),
+		FlowStallMs:           int(FlowStall / time.Millisecond),
+		FlowStepBytes:         FlowStepBytes,
+		FlowStallCeilingBytes: FlowStallCeilingBytes,
 	}
 }

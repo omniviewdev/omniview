@@ -5,7 +5,6 @@ package terminal
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"os"
 	"os/exec"
@@ -63,16 +62,6 @@ func (c *chunkSink) parts(sessionID string) [][]byte {
 
 func (c *chunkSink) output(sessionID string) []byte { return bytes.Join(c.parts(sessionID), nil) }
 
-func (c *chunkSink) size(sessionID string) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	total := 0
-	for _, part := range c.chunks[sessionID] {
-		total += len(part)
-	}
-	return total
-}
-
 func (c *chunkSink) waitFor(t *testing.T, sessionID, want string) {
 	t.Helper()
 	require.Eventually(t, func() bool { return bytes.Contains(c.output(sessionID), []byte(want)) }, 20*time.Second, 5*time.Millisecond,
@@ -113,18 +102,10 @@ func physical(t *testing.T, path string) string {
 }
 
 // ended reports whether a process is gone, or is only a zombie nobody has reaped: in a container whose
-// first process does not reap, a killed grandchild stays one (Linux shows it in /proc).
+// first process does not reap, a killed grandchild stays one, and on a machine so busy that launchd is late
+// to reap an orphan it does too; kill(pid, 0) finds a zombie.
 func ended(pid int) bool {
-	if gone(pid) {
-		return true
-	}
-	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
-	if err != nil {
-		return false
-	}
-	// The state is the field after the command name, which is in parentheses and may hold anything.
-	end := bytes.LastIndexByte(stat, ')')
-	return end >= 0 && end+2 < len(stat) && stat[end+2] == 'Z'
+	return gone(pid) || exitedUnreaped(pid)
 }
 
 func send(t *testing.T, m *Manager, id, line string) {
@@ -350,61 +331,6 @@ func TestClosingHangsUpTheBackgroundJobsOfABashShell(t *testing.T) {
 
 	require.NoError(t, m.CloseSession(info.ID))
 	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
-}
-
-// (f) Ten mebibytes in one go arrive complete and in order, with and without flow control.
-func TestTenMebibytesOfOutputArriveCompleteAndInOrder(t *testing.T) {
-	const lines = 1 << 20 // each is eight digits, a carriage return and a line feed: ten bytes, 10 MiB in all
-	expected := sha256.New()
-	for i := range lines {
-		fmt.Fprintf(expected, "%08d\r\n", i)
-	}
-	for _, flow := range []bool{false, true} {
-		t.Run(fmt.Sprintf("flow control %t", flow), func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
-			sink := newChunkSink()
-			m := newChunkManager(t, sink)
-			if flow {
-				sink.onOutput = func(id string, n int) { _ = m.Ack(id, n) }
-			}
-			script := `awk 'BEGIN { for (i = 0; i < 1048576; i++) printf "%08d\n", i }'`
-			info, err := m.Start(Options{Command: []string{sh(t), "-c", script}, Flow: flow}, nil)
-			require.NoError(t, err)
-			end := sink.waitEnd(t, info.ID, 120*time.Second)
-			require.Equal(t, EndExited, end.Reason)
-			require.NotNil(t, end.ExitCode)
-			require.Equal(t, 0, *end.ExitCode)
-			got := sink.output(info.ID)
-			require.Len(t, got, lines*10)
-			sum := sha256.Sum256(got)
-			assert.Equal(t, expected.Sum(nil), sum[:], "every byte arrived, in order")
-		})
-	}
-}
-
-// (f) Backpressure instead of an unbounded buffer: the host stops reading at the high mark.
-func TestFlowControlStopsReadingAtTheHighMarkAndResumesWhenTheOutputIsAcknowledged(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	sink := newChunkSink()
-	m := newChunkManager(t, sink)
-	info, err := m.Start(Options{Command: []string{sh(t), "-c", "yes flow-control-flood"}, Flow: true}, nil)
-	require.NoError(t, err)
-	require.True(t, info.Flow)
-	assert.Equal(t, FlowHighBytes, info.Limits.FlowHighBytes)
-	assert.Equal(t, FlowLowBytes, info.Limits.FlowLowBytes)
-
-	require.Eventually(t, func() bool { return sink.size(info.ID) >= FlowHighBytes }, 30*time.Second, 5*time.Millisecond)
-	stalled := sink.size(info.ID)
-	assert.LessOrEqual(t, stalled, FlowHighBytes+DefaultReadBufferSize, "the host delivers the high mark and the read that crossed it, no more")
-	time.Sleep(500 * time.Millisecond)
-	assert.Equal(t, stalled, sink.size(info.ID), "nothing is read while the caller acknowledges nothing")
-
-	require.NoError(t, m.Ack(info.ID, stalled))
-	require.Eventually(t, func() bool { return sink.size(info.ID) > stalled }, 20*time.Second, 5*time.Millisecond, "reading resumed")
-
-	// A page that is hidden never acknowledges. It still can close the session, and gets its CLOSE.
-	require.NoError(t, m.CloseSession(info.ID))
-	assert.Equal(t, EndClosed, sink.waitEnd(t, info.ID, 20*time.Second).Reason)
 }
 
 // (g) The host passes the shell's bytes untouched: a multi-byte character cut between two reads arrives

@@ -24,9 +24,10 @@ import * as nativeapps$0 from "../../../../internal/nativeapps/models.js";
 import * as exec$0 from "../../../../../plugin-sdk/pkg/v1/exec/models.js";
 
 /**
- * AckTerminal tells a terminal started with flow control (Launch.Flow) that n more bytes of its output
- * were taken in: the host reads the shell's output again once the unacknowledged bytes are down to the
- * low mark. A terminal started without flow control ignores it.
+ * AckTerminal tells a terminal that n more bytes of its output were taken in by the client. A client need not
+ * call it: the host credits what its transport took. A client that wants its parse speed to pace the shell
+ * calls it as it writes into its emulator; from its first call on its acknowledgements are the only credit,
+ * and a client that stops acknowledging (a hidden tab) pauses the shell at the high mark.
  */
 export function AckTerminal(sessionID: string, n: number): $CancellablePromise<void> {
     return $Call.ByID(3740379753, sessionID, n);
@@ -54,9 +55,9 @@ export function CreateSession(plugin: string, connectionID: string, encoded: str
  * CreateTerminal starts a shell on this machine for the window that asks. opts names it as for any
  * session (its id, if the caller chose one so that it can listen first, and its command; empty is the
  * account's login shell) and launch says where and how it starts: the directory (empty is the user's
- * home), the size the pty is opened at before the shell starts, and whether the shell's output is paced
- * by flow control (AckTerminal). The answer states the shell, the directory it started in and the size
- * that was applied.
+ * home) and the size the pty is opened at before the shell starts. The answer states the shell, the
+ * directory it started in and the size that was applied. Every terminal is paced by credit: the host stops
+ * reading a shell whose client does not take its output (T1-go.md, 2.8.6).
  * 
  * The shell belongs to the window and ends with it: when the window closes, or the page it served is
  * gone (the realm says so for both), the window's terminals are ended, and a tab restored in a new page

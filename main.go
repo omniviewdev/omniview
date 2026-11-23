@@ -259,6 +259,8 @@ func (c auditStartupCheck) verifyServiceTypes(registered ...any) {
 //
 //nolint:funlen // main function is expected to be long
 func main() {
+	// The environment the host was launched with, before the host adds to it: a terminal's shell starts from it.
+	shellenv.RememberLaunchEnvironment()
 	updater.HandleHelperMode()
 	if handled, exit := hostruntime.HandleNativeProfileRemoval(os.Args[1:]); handled {
 		os.Exit(exit)

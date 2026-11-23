@@ -39,6 +39,9 @@ const (
 	// drainWait is how long the master is still read once the shell has exited, counted from the last
 	// byte: what the shell wrote before it exited is delivered, then the session ends.
 	drainWait = time.Second
+	// discardSweep and discardMax bound what the host reads and throws away at the drain cap, to count it.
+	discardSweep = 100 * time.Millisecond
+	discardMax   = 4 << 20
 	// exitGrace is how long a shell may outlive the end of its pty before the host ends it.
 	exitGrace = 2 * time.Second
 	// killGrace is how long the host waits for a shell it killed to be reaped.
@@ -47,6 +50,9 @@ const (
 	// it has to cover.
 	closeWait = 5 * time.Second
 )
+
+// errShuttingDown is why a terminal does not start once the host has begun to shut down.
+var errShuttingDown = errors.New("the host is shutting down")
 
 // Manager runs the local terminals. Its one lock guards the map of sessions and is never held across
 // I/O: a session whose shell does not read costs its own input queue and nothing else.
@@ -61,19 +67,31 @@ type Manager struct {
 	ctx  context.Context
 	log  logging.Logger
 	sink Sink
+	// reported is whether the sink says itself when the transport took the output (DeliveryReporter); if
+	// not, the return of Output is taken for it.
+	reported bool
+	// closing is set when the host shuts down: no terminal starts after it.
+	closing atomic.Bool
+	// flowStall is how long a pause on the transport's credit waits before the watchdog steps
+	// (flowControl); a field so that a test can state it. SetFlowStall sets it before sessions start.
+	flowStall time.Duration
 
 	mu       sync.RWMutex
 	sessions map[string]*session
 	starting map[string]struct{}
 }
 
-// NewManager makes a manager whose sessions end when ctx ends and whose events go to sink.
+// NewManager makes a manager whose events go to sink. Its sessions end when ctx ends, the way a close
+// ends them (Shutdown): the host's application context is cancelled first when it quits.
 func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
+	_, reported := sink.(DeliveryReporter)
 	m := &Manager{
-		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
+		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
+		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, flowStall: FlowStall,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}),
 	}
 	go m.forwardSignals()
+	go m.shutdownWhenDone()
 	return m
 }
 
@@ -106,7 +124,7 @@ type session struct {
 	cancel context.CancelFunc
 	buffer *sdkexec.OutputBuffer
 	queue  *inputQueue
-	// flow is nil unless the session was started with flow control.
+	// flow is the credit that paces the session's output.
 	flow *flowControl
 
 	// ending is set as soon as the session is on its way out: it is no longer found, listed or written to.
@@ -114,6 +132,13 @@ type session struct {
 	// exited is closed when the shell has been reaped; status is read after it.
 	exited chan struct{}
 	status exitStatus
+	// drainEnd is when the host stops reading the pty after the shell has exited, in Unix nanoseconds: set
+	// before exited is closed.
+	drainEnd atomic.Int64
+	// capped and dropped are what the reader found at the drain cap. Only the reader goroutine writes them
+	// and finish, which runs on it, reads them.
+	capped  bool
+	dropped int
 	// done is closed when the session is gone: its CLOSE delivered and its resources released.
 	done chan struct{}
 
@@ -145,6 +170,10 @@ func (s *session) beginClose(by ClosedBy) {
 		return
 	}
 	s.ending.Store(true)
+	// A session whose client stopped taking its output is paused for credit. A dying shell has to be read
+	// to finish exiting (on macOS a process cannot exit while the pty it holds has output nobody reads, and
+	// the host closes the master only after the shell has exited), so the pacing stops for good.
+	s.flow.release()
 	go s.hangup(HangupGrace)
 }
 
@@ -152,13 +181,11 @@ func (s *session) beginClose(by ClosedBy) {
 // SIGHUP (the kernel sends it to both when the master of a pty closes; the host sends it itself so that
 // the shell's own jobs are hung up too: an interactive bash or zsh that gets SIGHUP sends it on to its
 // background jobs before it exits, so a job the user did not nohup or disown ends with its terminal, as in
-// VS Code and in a terminal window that is closed). What ignored the hangup is killed once the grace
-// has passed: the foreground group and the shell with SIGKILL.
+// VS Code and in a terminal window that is closed). What ignored the hangup is killed once the grace has
+// passed: the shell, and the foreground group THAT IS THERE THEN: a shell that ignores the hangup may have
+// started something since, and the group the hangup found is gone.
 func (s *session) hangup(grace time.Duration) {
-	shell, group, known := s.groups()
-	if known && group != shell {
-		_ = syscall.Kill(-group, syscall.SIGHUP)
-	}
+	s.signalForeground(syscall.SIGHUP)
 	_ = s.cmd.Process.Signal(syscall.SIGHUP)
 	timer := time.NewTimer(grace)
 	defer timer.Stop()
@@ -167,10 +194,48 @@ func (s *session) hangup(grace time.Duration) {
 		return
 	case <-timer.C:
 	}
-	if known && group != shell {
-		_ = syscall.Kill(-group, syscall.SIGKILL)
-	}
+	s.signalForeground(syscall.SIGKILL)
 	s.cancel()
+}
+
+// foreground is the pty's foreground process group, and whether the system said.
+func (s *session) foreground() (int, bool) {
+	group, err := foregroundGroup(s.master)
+	return group, err == nil && group > 0
+}
+
+// signalForeground sends sig to the pty's foreground process group, read now, when that is a group of this
+// session other than the shell's own (the shell is signalled through its handle).
+func (s *session) signalForeground(sig syscall.Signal) {
+	group, ok := s.foreground()
+	if !ok {
+		return
+	}
+	shellGroup, err := syscall.Getpgid(s.cmd.Process.Pid)
+	if err != nil || group == shellGroup || !s.owns(group) {
+		return
+	}
+	_ = syscall.Kill(-group, sig)
+}
+
+// owns reports whether a process group belongs to this session. The foreground group of the session's pty
+// always does (the kernel lets only a session's own groups be the foreground of its terminal); this asks
+// again, through the session id of the group's leader when the leader is still there, so that a group the
+// session does not own is never signalled. The host's own group, and the groups 0 and 1, never are.
+func (s *session) owns(group int) bool {
+	if group <= 1 || group == syscall.Getpgrp() {
+		return false
+	}
+	sid, err := unix.Getsid(group)
+	switch {
+	case err == nil:
+		return sid == s.cmd.Process.Pid
+	case errors.Is(err, syscall.ESRCH):
+		// The leader is gone and the group lives on: it is the pty's foreground group.
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *session) awaitExit(wait time.Duration) bool {
@@ -246,6 +311,9 @@ func (m *Manager) ListSessions() []*sdkexec.Session {
 // Start starts a shell on a pty of the size asked for and returns what the host knows about it. The
 // session belongs to owner and ends with it (CloseOwned); a nil owner is none.
 func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
+	if m.closing.Load() || m.ctx.Err() != nil {
+		return Session{}, startError(errShuttingDown)
+	}
 	cols, rows, err := resolveSize(opts.Cols, opts.Rows)
 	if err != nil {
 		return Session{}, err
@@ -267,6 +335,10 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	m.mu.Unlock()
 	go m.wait(s)
 	go m.pump(s)
+	if m.closing.Load() {
+		// The host began to shut down while the shell started: it ends with the others.
+		s.beginClose(ClosedByShutdown)
+	}
 	m.log.Debugw(context.Background(), "session started", "session", id, "shell", s.info.Shell.Path, "cols", cols, "rows", rows)
 	return s.info, nil
 }
@@ -329,7 +401,10 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if err != nil {
 		return nil, startError(err)
 	}
-	ctx, cancel := context.WithCancel(m.ctx)
+	// The shell's context is not the host's: when the host's context ends the sessions are closed the way a
+	// close does it (Shutdown), with a hangup the shell can pass on to its jobs. The context kills the shell
+	// outright, and only at the end of the grace.
+	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
 	cmd.Env = terminalEnvironment(env, path, dir, version.Version)
@@ -355,18 +430,15 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if absErr != nil {
 		abs = path
 	}
-	var flow *flowControl
-	if opts.Flow {
-		flow = newFlowControl()
-	}
 	s := &session{
 		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params), owner: owner,
 		info: Session{
 			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
-			Cwd: dir, Cols: int(cols), Rows: int(rows), Flow: opts.Flow, Limits: defaultLimits(), Environment: environmentOf(m.probe()),
+			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: defaultLimits(), Environment: environmentOf(m.probe()),
 		},
-		cmd: cmd, master: polled, cancel: cancel, buffer: sdkexec.NewDefaultOutputBuffer(), queue: nil, flow: flow,
-		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil}, done: make(chan struct{}),
+		cmd: cmd, master: polled, cancel: cancel, buffer: sdkexec.NewDefaultOutputBuffer(), queue: nil, flow: m.newCredit(id),
+		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
+		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
 	}
 	s.queue = newInputQueue(ptyDevice{master: polled}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
@@ -376,15 +448,17 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 // wait reaps the shell and tells the reader the shell is gone.
 func (m *Manager) wait(s *session) {
 	s.status = statusOf(s.cmd.Wait())
-	if m.ctx.Err() != nil {
+	if m.ctx.Err() != nil || m.closing.Load() {
 		s.decide(fate{set: true, closedBy: ClosedByShutdown, failure: nil})
 	} else {
 		s.decide(fate{set: true, closedBy: "", failure: nil})
 	}
+	now := time.Now()
+	s.drainEnd.Store(now.Add(drainCap).UnixNano())
 	s.ending.Store(true)
 	close(s.exited)
 	// What the shell wrote before it exited is still in the pty: the reader gets drainWait to read it.
-	_ = s.master.SetReadDeadline(time.Now().Add(drainWait))
+	_ = s.master.SetReadDeadline(now.Add(drainWait))
 }
 
 func statusOf(err error) exitStatus {
@@ -409,30 +483,62 @@ func (m *Manager) pump(s *session) {
 }
 
 // read delivers the shell's output, in order and untouched (a multi-byte character may be cut between
-// two events: the caller decodes), and returns the error that ended it. With flow control it stops reading
-// while the caller has not acknowledged what it was given.
+// two events: the caller decodes), and returns the error that ended it. It stops reading while the output
+// it delivered is uncredited past the high mark (flowControl). Once the shell has exited it reads what is
+// left for at most drainCap from the exit: a process that keeps the pty open and writing cannot keep the
+// session alive.
 func (m *Manager) read(s *session) error {
 	buf := make([]byte, DefaultReadBufferSize)
 	for {
-		if s.flow != nil {
-			s.flow.wait(s.exited)
-		}
+		s.flow.wait(s.exited)
+		var end time.Time
 		if s.hasExited() {
-			// The shell is gone: keep reading while bytes come, stop when none have for drainWait.
-			_ = s.master.SetReadDeadline(time.Now().Add(drainWait))
+			// The shell is gone: keep reading while bytes come, stop when none have for drainWait, and in
+			// any case at the cap.
+			end = time.Unix(0, s.drainEnd.Load())
+			now := time.Now()
+			if !now.Before(end) {
+				s.capDrain()
+				return os.ErrDeadlineExceeded
+			}
+			deadline := now.Add(drainWait)
+			if deadline.After(end) {
+				deadline = end
+			}
+			_ = s.master.SetReadDeadline(deadline)
 		}
 		n, err := s.master.Read(buf)
 		if n > 0 {
 			// The event owns its bytes: the read buffer is reused.
 			data := slices.Clone(buf[:n])
-			if s.flow != nil {
-				s.flow.sent(n)
-			}
+			s.flow.sent(n)
 			m.sink.Output(s.id, data)
+			if !m.reported {
+				// A sink that returns when the transport has taken the bytes has delivered them.
+				s.flow.delivered(n)
+			}
 			s.buffer.Append(data)
 		}
 		if err != nil {
+			if !end.IsZero() && errors.Is(err, os.ErrDeadlineExceeded) && !time.Now().Before(end) {
+				s.capDrain()
+			}
 			return err
+		}
+	}
+}
+
+// capDrain is what the host does at the drain cap: it notes that it stopped reading with the pty still
+// open, and reads what is there for a moment, to throw it away and count it.
+func (s *session) capDrain() {
+	s.capped = true
+	buf := make([]byte, DefaultReadBufferSize)
+	_ = s.master.SetReadDeadline(time.Now().Add(discardSweep))
+	for s.dropped < discardMax {
+		n, err := s.master.Read(buf)
+		s.dropped += n
+		if err != nil {
+			return
 		}
 	}
 }
@@ -448,6 +554,10 @@ func readEnded(err error) bool {
 func (m *Manager) finish(s *session, readErr error) {
 	s.ending.Store(true)
 	end := m.settle(s, readErr)
+	if s.capped {
+		end.DrainCapped = true
+		end.DroppedBytes = s.dropped
+	}
 	s.queue.close(apperror.SessionNotFound(s.id))
 	// Closing the master wakes a write that is still blocked in the kernel.
 	_ = s.master.Close()
@@ -495,18 +605,30 @@ func endOfStatus(status exitStatus) End {
 		if name == "" {
 			name = "SIG" + strconv.Itoa(int(status.signal))
 		}
-		return End{Reason: EndSignaled, ExitCode: nil, Signal: name, SignalNumber: int(status.signal), CoreDumped: status.coreDumped, ClosedBy: "", Failure: nil}
+		return End{
+			Reason: EndSignaled, ExitCode: nil, Signal: name, SignalNumber: int(status.signal), CoreDumped: status.coreDumped,
+			ClosedBy: "", Failure: nil, DrainCapped: false, DroppedBytes: 0,
+		}
 	}
 	code := status.code
-	return End{Reason: EndExited, ExitCode: &code, Signal: "", SignalNumber: 0, CoreDumped: false, ClosedBy: "", Failure: nil}
+	return End{
+		Reason: EndExited, ExitCode: &code, Signal: "", SignalNumber: 0, CoreDumped: false,
+		ClosedBy: "", Failure: nil, DrainCapped: false, DroppedBytes: 0,
+	}
 }
 
 func endClosed(by ClosedBy) End {
-	return End{Reason: EndClosed, ExitCode: nil, Signal: "", SignalNumber: 0, CoreDumped: false, ClosedBy: by, Failure: nil}
+	return End{
+		Reason: EndClosed, ExitCode: nil, Signal: "", SignalNumber: 0, CoreDumped: false,
+		ClosedBy: by, Failure: nil, DrainCapped: false, DroppedBytes: 0,
+	}
 }
 
 func endFailed(stage FailureStage, message string) End {
-	return End{Reason: EndFailed, ExitCode: nil, Signal: "", SignalNumber: 0, CoreDumped: false, ClosedBy: "", Failure: &Failure{Stage: stage, Message: message}}
+	return End{
+		Reason: EndFailed, ExitCode: nil, Signal: "", SignalNumber: 0, CoreDumped: false,
+		ClosedBy: "", Failure: &Failure{Stage: stage, Message: message}, DrainCapped: false, DroppedBytes: 0,
+	}
 }
 
 // Write applies input to a session's shell. seq is the caller's sequence number, or zero (see
@@ -532,8 +654,10 @@ func (m *Manager) Resize(sessionID string, seq uint64, rows, cols int) error {
 	return s.queue.resize(seq, r, c)
 }
 
-// Ack tells the host that the caller has taken in n more bytes of the session's output. It matters to a
-// session started with flow control, whose reading it paces; for any other it changes nothing.
+// Ack tells the host that the client has taken in n more bytes of the session's output. The first call
+// makes the client's acknowledgements the only credit that paces the session (see flowControl): it reports
+// what the client parsed, which is stronger than what the transport took, and a client that stops
+// acknowledging pauses the shell at the high mark.
 func (m *Manager) Ack(sessionID string, n int) error {
 	if n < 0 {
 		return invalidError("bytes must not be negative.")
@@ -542,10 +666,32 @@ func (m *Manager) Ack(sessionID string, n int) error {
 	if err != nil {
 		return err
 	}
-	if s.flow != nil {
-		s.flow.ack(n)
-	}
+	s.flow.ack(n)
 	return nil
+}
+
+// SetFlowStall states how long a pause on the transport's credit waits before the watchdog steps; zero turns
+// the watchdog off. The exec lane never calls it: a test does, before it starts a session.
+func (m *Manager) SetFlowStall(stall time.Duration) { m.flowStall = stall }
+
+// newCredit makes the credit of a session, whose watchdog warns in the log when it has to step.
+func (m *Manager) newCredit(id string) *flowControl {
+	return newFlowControl(m.flowStall, func(stepped int) {
+		m.log.Warnw(m.ctx, "no credit came for a terminal's output: the transport did not take it for a while; stepping so that the terminal does not freeze",
+			"session", id, "stepped", stepped, "ceiling", FlowStallCeilingBytes)
+	})
+}
+
+// Delivered tells the host that the transport has taken n bytes of the session's output on their way to the
+// client. A sink that implements DeliveryReporter calls it, possibly from another goroutine and later than
+// Output returned; it credits the session unless the client has taken over the credit (Ack).
+func (m *Manager) Delivered(sessionID string, n int) {
+	m.mu.RLock()
+	s := m.sessions[sessionID]
+	m.mu.RUnlock()
+	if s != nil && n > 0 {
+		s.flow.delivered(n)
+	}
 }
 
 // Busy says whether a program other than the shell holds the terminal's foreground: the foreground
@@ -612,13 +758,16 @@ func (s *session) directory() (string, UnknownReason) {
 
 // AttachSession marks a session as attached and returns its current output buffer. The caller renders
 // the returned buffer; it is not also sent on the output stream, where any viewer already listening
-// would print it twice. This matches plugin sessions, whose SDK manager only returns the buffer.
+// would print it twice. This matches plugin sessions, whose SDK manager only returns the buffer. An
+// attach also forgets the credit debt: the client starts from the buffer, so what was in flight before it,
+// and what was emitted while no client was listening, no longer holds the shell.
 func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, error) {
 	s, err := m.live(sessionID)
 	if err != nil {
 		return nil, nil, err
 	}
 	data := s.buffer.GetAll()
+	s.flow.reset()
 	s.mu.Lock()
 	s.attached = true
 	s.mu.Unlock()
@@ -670,6 +819,30 @@ func (m *Manager) CloseOwned(owner Owner, by ClosedBy) int {
 	}
 	m.awaitGone(owned)
 	return len(owned)
+}
+
+// Shutdown ends every session the way a close does (SIGHUP to the foreground group and the shell, SIGKILL
+// at the end of the grace for what ignored it), with ClosedByShutdown, so that the jobs of a shell that
+// passes the hangup on end with their terminal, and returns when the sessions are gone or closeWait has
+// passed. No terminal starts after it. The host's own context ending calls it, and so does its service
+// shutdown, which Wails runs after cancelling that context.
+func (m *Manager) Shutdown() {
+	m.closing.Store(true)
+	m.mu.RLock()
+	sessions := make([]*session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
+	m.mu.RUnlock()
+	for _, s := range sessions {
+		s.beginClose(ClosedByShutdown)
+	}
+	m.awaitGone(sessions)
+}
+
+func (m *Manager) shutdownWhenDone() {
+	<-m.ctx.Done()
+	m.Shutdown()
 }
 
 // awaitGone waits, for at most closeWait in all, until the sessions are gone.

@@ -173,8 +173,8 @@ func (fx *terminalFixture) output(id string) string {
 	var text strings.Builder
 	for _, event := range fx.eventsOf(id) {
 		if event.name == localOutputEvent+id {
-			if data, ok := event.data.([]byte); ok {
-				text.Write(data)
+			if out, ok := event.data.(*terminalOutput); ok {
+				text.Write(out.Bytes())
 			}
 		}
 	}

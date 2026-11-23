@@ -138,15 +138,6 @@ export class Launch {
      */
     "cwd"?: string;
 
-    /**
-     * Flow asks for flow control: the host stops reading the shell's output while FlowHighBytes of what
-     * it delivered are unacknowledged and reads again once the caller has acknowledged it down to
-     * FlowLowBytes (AckTerminal). The shell blocks in its own write meanwhile, so a hidden or slow page
-     * costs the shell time and the host no memory. Off (the default): the host reads and delivers as fast
-     * as the shell writes, which is what a caller that never acknowledges needs.
-     */
-    "flow"?: boolean;
-
     /** Creates a new Launch instance. */
     constructor($$source: Partial<Launch> = {}) {
 
@@ -191,9 +182,10 @@ export class Limits {
     "gap_wait_ms": number;
 
     /**
-     * FlowHighBytes and FlowLowBytes are the marks of flow control (Launch.Flow): at most
-     * FlowHighBytes of delivered output wait for an acknowledgement, plus one read of
-     * DefaultReadBufferSize; reading resumes at FlowLowBytes.
+     * FlowHighBytes and FlowLowBytes are the marks of the credit that paces every terminal: the host
+     * stops reading the shell's output while FlowHighBytes of what it delivered have not been credited
+     * (so it holds at most that, plus one read of DefaultReadBufferSize, for a client that does not read)
+     * and reads again at FlowLowBytes.
      */
     "flow_high_bytes": number;
     "flow_low_bytes": number;
@@ -203,6 +195,21 @@ export class Limits {
      * and the kill.
      */
     "hangup_grace_ms": number;
+
+    /**
+     * DrainCapMs is the most the host reads from the pty once the shell has exited, in milliseconds: a
+     * process of the shell's session that keeps the pty open and writing does not keep the session alive.
+     */
+    "drain_cap_ms": number;
+
+    /**
+     * FlowStallMs is how long a pause on the transport's credit waits, in milliseconds, before the watchdog
+     * gives a step of FlowStepBytes; FlowStallCeilingBytes is the most it gives in all until real credit
+     * comes again. A client that acknowledges is never stepped.
+     */
+    "flow_stall_ms": number;
+    "flow_step_bytes": number;
+    "flow_stall_ceiling_bytes": number;
 
     /** Creates a new Limits instance. */
     constructor($$source: Partial<Limits> = {}) {
@@ -229,6 +236,18 @@ export class Limits {
         }
         if (!("hangup_grace_ms" in $$source)) {
             this["hangup_grace_ms"] = 0;
+        }
+        if (!("drain_cap_ms" in $$source)) {
+            this["drain_cap_ms"] = 0;
+        }
+        if (!("flow_stall_ms" in $$source)) {
+            this["flow_stall_ms"] = 0;
+        }
+        if (!("flow_step_bytes" in $$source)) {
+            this["flow_step_bytes"] = 0;
+        }
+        if (!("flow_stall_ceiling_bytes" in $$source)) {
+            this["flow_stall_ceiling_bytes"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -301,9 +320,8 @@ export class Session {
     "rows": number;
 
     /**
-     * Flow says whether flow control is on for this session.
+     * The credit that paces the session is stated by Limits.
      */
-    "flow": boolean;
     "limits": Limits;
 
     /**
@@ -334,9 +352,6 @@ export class Session {
         if (!("rows" in $$source)) {
             this["rows"] = 0;
         }
-        if (!("flow" in $$source)) {
-            this["flow"] = false;
-        }
         if (!("limits" in $$source)) {
             this["limits"] = (new Limits());
         }
@@ -352,17 +367,17 @@ export class Session {
      */
     static createFrom($$source: any = {}): Session {
         const $$createField3_0 = $$createType1;
-        const $$createField8_0 = $$createType2;
-        const $$createField9_0 = $$createType3;
+        const $$createField7_0 = $$createType2;
+        const $$createField8_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
             $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
         }
         if ("limits" in $$parsedSource) {
-            $$parsedSource["limits"] = $$createField8_0($$parsedSource["limits"]);
+            $$parsedSource["limits"] = $$createField7_0($$parsedSource["limits"]);
         }
         if ("environment" in $$parsedSource) {
-            $$parsedSource["environment"] = $$createField9_0($$parsedSource["environment"]);
+            $$parsedSource["environment"] = $$createField8_0($$parsedSource["environment"]);
         }
         return new Session($$parsedSource as Partial<Session>);
     }

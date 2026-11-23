@@ -2,6 +2,8 @@ package exec
 
 import (
 	"context"
+	"encoding/json"
+	"sync"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,12 +21,56 @@ const (
 	localCloseEvent  = "core/exec/signal/CLOSE/"
 )
 
+// terminalOutput is the payload of a local terminal's stdout event: the bytes the shell wrote, which
+// serialize as base64 text, exactly as a plain byte slice does, and the transport's own signal that it took
+// them. Wails serializes an event when it writes it to a client, and the moment that is DELIVERY is what the
+// host counts as credit (terminal.DeliveryReporter): it keeps a client whose socket stalls from making the
+// host hold more than the credit, with nothing asked of the client. Which serialization it is depends on
+// the build (countsAsDelivery): in a native build it is the window's, which Wails makes in its dispatch
+// worker one event at a time, after the window has run the one before; in a server build it is the one that
+// writes a client's socket, in that client's worker, after the write of the one before, so it happens only
+// as fast as the socket drains. A server build serializes every event a second time first, for the window
+// it keeps (Event.ToJSON, in the dispatch worker, which never waits for a socket), and that one is not
+// delivery.
+type terminalOutput struct {
+	data      []byte
+	delivered func()
+	once      sync.Once
+}
+
+// Bytes is the output.
+func (o *terminalOutput) Bytes() []byte { return o.data }
+
+// deliver reports the delivery once, whichever serialization comes first.
+func (o *terminalOutput) deliver() { o.once.Do(o.delivered) }
+
+// MarshalJSON is the base64 text a byte slice serializes as, and, when this serialization is the one that
+// is delivery in this build, the delivery report.
+func (o *terminalOutput) MarshalJSON() ([]byte, error) {
+	if countsAsDelivery() {
+		o.deliver()
+	}
+	return json.Marshal(o.data)
+}
+
 // localSink delivers a local terminal's events. The manager calls it from one goroutine for each
 // session, in order, so a session's events keep their order without a lock of the controller's.
 type localSink struct{ c *controller }
 
+// ReportsDelivery says the sink tells the manager when the transport took the output: Output returns at
+// once, whatever the client does.
+func (s localSink) ReportsDelivery() {}
+
 func (s localSink) Output(sessionID string, data []byte) {
-	s.c.emitLocal(localOutputEvent+sessionID, data)
+	out := &terminalOutput{data: data, delivered: func() { s.c.terminalManager.Delivered(sessionID, len(data)) }, once: sync.Once{}}
+	if s.c.events == nil {
+		s.c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")
+		out.deliver() // there is no transport to wait for
+		return
+	}
+	if cancelled := s.c.events.Emit(localOutputEvent+sessionID, out); cancelled {
+		out.deliver() // an event a hook cancelled is never serialized: the credit does not wait for it
+	}
 }
 
 func (s localSink) Closed(sessionID string, end terminal.End) {
@@ -102,8 +148,8 @@ func (c *controller) ResizeTerminal(sessionID string, seq uint64, rows, cols int
 	return c.terminalManager.Resize(sessionID, seq, rows, cols)
 }
 
-// AckTerminal tells a local terminal started with flow control that n more bytes of its output were
-// taken in. It runs for every few kilobytes of output, so it opens no span.
+// AckTerminal tells a local terminal that n more bytes of its output were taken in by the client. It runs
+// for every few kilobytes of output, so it opens no span.
 func (c *controller) AckTerminal(sessionID string, n int) error {
 	return c.terminalManager.Ack(sessionID, n)
 }
