@@ -167,6 +167,14 @@ jobs:
           echo "PROBE_DIST=$RUNNER_TEMP/ui-next-dist" >> "$GITHUB_ENV"
           OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build
 
+      - name: n27 sizes
+        run: |
+          du -sk packages/*/dist 2>/dev/null | sort -n | tail -8 || true
+          du -sk "$RUNNER_TEMP/ui-next-dist" 2>/dev/null || true
+          du -sk packages/kit 2>/dev/null | tail -1 || true
+          df -k "$RUNNER_TEMP" | tail -1 || true
+          nproc; cat /proc/meminfo | head -2
+
       # Every unit of the shard, one after the other, as the single job ran them (scripts/ci/probe-shards.mjs: the same scripts, the same env, FONT_DELAY_MS=40 included). All of them run even when one fails, so that a push
       # shows every failing probe; the step fails when any did, names each in an error line with the last lines of its output, writes the seconds of every probe to the job summary, FAILS when a unit took more than its `seconds`
       # plus the larger of a quarter of them and 60 s, or the shard took more than 614 s of units (naming the numbers), and writes ran-<shard>-probe.json, which `Kit probes` compares with the table. The matrix reaches the command
@@ -175,7 +183,9 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           UNITS: ${{ matrix.units }}
-        run: node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"
+        run: |
+          export NODE_OPTIONS="--require $PWD/scripts/ci/n27-timing.cjs"
+          node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"
 
       # The probes' reports and what the shard says it ran (`ran-<shard>-probe.json`): `Kit probes` downloads them all.
       - name: Keep the reports
