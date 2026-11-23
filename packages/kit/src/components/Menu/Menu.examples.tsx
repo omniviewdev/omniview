@@ -269,6 +269,7 @@ function Workloads({ count, lines = 1 }: { readonly count: number; readonly line
     },
     {
       id: 'actions', header: 'Actions', hideHeader: true, fit: 'fixed', width: 48,
+      // Keep the virtual trigger native: IconButton's command hooks and click handler are not needed here.
       cell: (row) => (
         <button type="button" className={styles.rowTrigger} aria-label={`Actions for ${row.name}`} data-ov-menu-label="Workload actions" {...menuTrigger(menu, row.key)}>
           <Icon name="ellipsis" />

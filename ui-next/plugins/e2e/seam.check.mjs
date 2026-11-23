@@ -711,6 +711,16 @@ async function checkRefusals(page, base, engine) {
   await go(DUP);
   await page.getByRole('alert').waitFor();
   assert.match(await page.getByRole('alert').innerText(), /Couldn't load Items[\s\S]*This page failed to display\./, `${engine}: a plugin with its own kit fails the Theme read`);
+  const duplicate = await page.evaluate((entry) => {
+    const bundle = System.get(entry);
+    const kit = System.get('shared://@omniviewdev/kit');
+    const react = System.get('shared://react');
+    return {
+      sameReact: bundle.imports.useState === react.useState,
+      sameKitUseTheme: bundle.imports.useTheme === kit.useTheme,
+    };
+  }, `${base}/_/plugins/${DUP}/assets/entry.js`);
+  assert.deepEqual(duplicate, { sameReact: true, sameKitUseTheme: false }, `${engine}: the duplicate control uses the host's React and its own kit`);
 
   // e. an old-shell bundle is refused before it ran; a plugin with no bundle says so.
   await go(OLD);
@@ -6617,9 +6627,11 @@ let host;
 try {
   const port = await freePort();
   host = await startHost(work, port);
-  // What the build wrote: the healthy bundle imports only what the host serves, the copy lacks the kit, the old one needs the old library.
+  // Both builds link only to the shared list; the control bundles the kit and its ReactDOM dependency instead of sharing them.
   const dependencies = Object.fromEntries(host.built.map(({ id, dependencies: names }) => [id, names]));
-  for (const name of dependencies[OK]) assert.ok(SHARED_SPECIFIERS_V1.includes(name), `${OK} imports ${name}, which is not on the shared list`);
+  for (const id of [OK, DUP]) {
+    for (const name of dependencies[id]) assert.ok(SHARED_SPECIFIERS_V1.includes(name), `${id} imports ${name}, which is not on the shared list`);
+  }
   assert.ok(dependencies[OK].includes('@omniviewdev/kit') && !dependencies[DUP].includes('@omniviewdev/kit'));
   assert.deepEqual(dependencies[OLD], ['@omniviewdev/base-ui']);
   const bytes = (await readFile(path.join(work, 'home/.omniview-feature-ui-next/plugins', OK, 'assets/entry.js'))).length;

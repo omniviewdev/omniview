@@ -127,7 +127,8 @@ function virtualOldEntry() {
 
 async function buildBundle(id, variant, directory, rail) {
   const old = variant === 'old';
-  const bundled = variant === 'duplicate' ? ['@omniviewdev/kit'] : [];
+  // Only the negative control bundles the kit and needs to resolve its ReactDOM peer. React stays external.
+  const bundled = variant === 'duplicate' ? ['@omniviewdev/kit', 'react-dom'] : [];
   const external = old ? [...SHARED_SPECIFIERS_V1, '@omniviewdev/base-ui'] : SHARED_SPECIFIERS_V1.filter((specifier) => !bundled.includes(specifier));
   await build({
     root: here,

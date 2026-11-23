@@ -92,6 +92,23 @@ describe('delegated MenuHost', () => {
     expect(document.activeElement).toBe(b);
   });
 
+  it('accepts a registered empty menu ID but not a missing trigger ID', () => {
+    const emptyId = '';
+    const resolve = vi.fn(() => [action('inspect', 'Inspect')]);
+    render(
+      <MenuHost menus={{ [emptyId]: resolve }}>
+        <button data-ov-menu-mode="dropdown">Missing ID</button>
+        <button {...menuTrigger(emptyId, '')}>Empty ID</button>
+      </MenuHost>,
+    );
+    expect(fireEvent.click(screen.getByRole('button', { name: 'Missing ID' }))).toBe(true);
+    expect(resolve).not.toHaveBeenCalled();
+    expect(fireEvent.click(screen.getByRole('button', { name: 'Empty ID' }))).toBe(false);
+    expect(resolve).toHaveBeenCalledExactlyOnceWith('');
+    expect(panel().getAttribute('data-ov-menu-owner')).toBe('');
+    expect(document.activeElement).toBe(item('Inspect'));
+  });
+
   it('honors the trigger’s earlier default prevention and supports assistive click and pointer entry policies', () => {
     const resolve = vi.fn(() => [action('open', 'Open')]);
     render(
@@ -415,6 +432,30 @@ describe('delegated MenuHost', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('closes the deepest hover-open level on Escape even when its parent still holds focus', () => {
+    vi.useFakeTimers();
+    const entries: readonly MenuItem[] = [{ kind: 'submenu', id: 'open', label: 'Open with', items: [
+      { kind: 'submenu', id: 'local', label: 'Local tools', items: [action('edit', 'Edit file')] },
+    ] }];
+    render(<MenuHost menus={{ root: entries }}><button {...menuTrigger('root')}>Actions</button></MenuHost>);
+    fireEvent.keyDown(screen.getByRole('button'), { key: 'ArrowDown' });
+    key('ArrowRight');
+    const parent = item('Local tools');
+    fireEvent.pointerMove(parent, { pointerType: 'mouse' });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getAllByRole('menu')).toHaveLength(3);
+    expect(document.activeElement).toBe(parent);
+
+    key('Escape');
+    expect(screen.getAllByRole('menu')).toHaveLength(2);
+    expect(document.activeElement).toBe(parent);
+    key('Escape');
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(document.activeElement).toBe(item('Open with'));
+  });
+
   it('keeps a menu in its themed overlay and reverses horizontal navigation in RTL', () => {
     const entries: readonly MenuItem[] = [
       { kind: 'submenu', id: 'open', label: 'Open with', items: [action('edit', 'Edit')] },
@@ -619,6 +660,127 @@ describe('delegated MenuHost', () => {
     });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('region'));
+  });
+
+  it.each([false, true])('dismisses a moved overlay trigger (stale click before observer: %s)', async (activate) => {
+    const run = vi.fn();
+    render(
+      <MenuHost menus={{ root: [action('inspect', 'Inspect', run)] }}>
+        <dialog open aria-label="Original dialog">
+          <div role="region" tabIndex={0} aria-label="Original region">
+            <button {...menuTrigger('root')}>Actions</button>
+          </div>
+        </dialog>
+        <dialog open aria-label="Other dialog" />
+      </MenuHost>,
+    );
+    const original = screen.getByRole('dialog', { name: 'Original dialog' });
+    const region = screen.getByRole('region', { name: 'Original region' });
+    const other = screen.getByRole('dialog', { name: 'Other dialog' });
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    fireEvent.click(trigger);
+    const stale = item('Inspect');
+    expect(original.contains(stale)).toBe(true);
+
+    await act(async () => {
+      other.append(trigger);
+      if (activate) {
+        fireEvent.click(stale);
+        expect(run).not.toHaveBeenCalled();
+      }
+    });
+
+    expect(other.contains(trigger)).toBe(true);
+    expect(trigger.hasAttribute('aria-expanded')).toBe(false);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(region);
+  });
+
+  it.each([false, true])('dismisses a page trigger moved into a closed dialog (stale click before observer: %s)', async (activate) => {
+    const run = vi.fn();
+    const resolve = vi.fn(() => [action('inspect', 'Inspect', run)]);
+    render(
+      <MenuHost menus={{ root: resolve }}>
+        <div role="region" tabIndex={0} aria-label="Page">
+          <button {...menuTrigger('root')}>Actions</button>
+        </div>
+        <dialog data-testid="closed-dialog" />
+      </MenuHost>,
+    );
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    const closedDialog = screen.getByTestId('closed-dialog');
+    fireEvent.click(trigger);
+    const stale = item('Inspect');
+    await act(async () => {
+      closedDialog.append(trigger);
+      if (activate) {
+        fireEvent.click(stale);
+        expect(run).not.toHaveBeenCalled();
+      }
+    });
+
+    expect(trigger.isConnected).toBe(true);
+    expect(trigger.hasAttribute('aria-expanded')).toBe(false);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Page' }));
+    expect(fireEvent.click(trigger)).toBe(true);
+    expect(resolve).toHaveBeenCalledOnce();
+  });
+
+  it('dismisses a dialog menu when its containing dialog loses the open attribute', async () => {
+    render(
+      <MenuHost menus={{ root: [action('inspect', 'Inspect')] }}>
+        <dialog open aria-label="Settings"><button {...menuTrigger('root')}>Actions</button></dialog>
+      </MenuHost>,
+    );
+    const dialog = screen.getByRole('dialog');
+    const trigger = screen.getByRole('button', { name: 'Actions' });
+    fireEvent.click(trigger);
+    expect(dialog.contains(panel())).toBe(true);
+    await act(async () => {
+      dialog.removeAttribute('open');
+    });
+
+    expect(trigger.hasAttribute('aria-expanded')).toBe(false);
+    expect(dialog.querySelector('[data-ov-menu-popup]')).toBeNull();
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
+  it('dismisses a fieldset-disabled trigger but keeps the first legend trigger enabled', async () => {
+    const run = vi.fn();
+    render(
+      <MenuHost menus={{ root: [action('inspect', 'Inspect', run)] }}>
+        <div role="region" tabIndex={0} aria-label="Original region">
+          <fieldset data-testid="settings">
+            <legend><button {...menuTrigger('root')}>Legend actions</button></legend>
+            <button {...menuTrigger('root')}>Field actions</button>
+          </fieldset>
+        </div>
+      </MenuHost>,
+    );
+    const fieldset = screen.getByTestId('settings');
+    const legend = screen.getByRole('button', { name: 'Legend actions' });
+    const field = screen.getByRole('button', { name: 'Field actions' });
+    fireEvent.click(field);
+    expect(panel('Field actions').isConnected).toBe(true);
+    await act(async () => {
+      fieldset.setAttribute('disabled', '');
+    });
+
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(field.hasAttribute('aria-expanded')).toBe(false);
+    expect(document.activeElement).toBe(screen.getByRole('region'));
+
+    fieldset.removeAttribute('disabled');
+    fireEvent.click(legend);
+    await act(async () => {
+      fieldset.setAttribute('disabled', '');
+    });
+
+    expect(panel('Legend actions').isConnected).toBe(true);
+    key('Enter');
+    expect(run).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(legend);
   });
 
   it('rejects a recycled trigger before an observer can run and restores only the original region', () => {

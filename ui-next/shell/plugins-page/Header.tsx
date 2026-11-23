@@ -156,10 +156,11 @@ export function Header({ row, model, onUninstall }: HeaderProps) {
   const busy = row.op !== null || state.busy;
   const verb = verbOf(row);
   const hasMore = row.actions.disable.available || !plugin.builtin;
+  const revision = JSON.stringify([plugin.name, row.actions.disable.available, plugin.builtin ? null : [plugin.devMode, row.actions.uninstall.available]]);
   const menu = useMenu((key) => {
     const opened = key === undefined ? undefined : model.row(key);
     return opened === undefined ? undefined : itemsOf(opened, model, onUninstall);
-  });
+  }, revision);
   const cluster = useRef<HTMLDivElement>(null);
   // Set by a press on a slot button, read once by the progress that replaces it: a progress that appears on its own (the host says the plugin is starting) takes no focus from anyone.
   const pressed = useRef(false);

@@ -4,7 +4,7 @@
 //   node packages/kit/probes/row-menu-probe.mjs         # builds ui-next (OMNIVIEW_UI=next) into a temp dir, serves it, probes it
 //
 //   DIST=<dir>     probe an existing build instead of building one
-//   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1030x720   (defaults: both of each)
+//   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each)
 //   REPORT=<file>  write the full report as JSON
 //   BENCHMARK_SAMPLES=40  optionally time this many open/close cycles at the top, middle and bottom per engine and viewport
 //   NEGATIVE_CONTROL=<name>   perturb ONE thing the probe measures in the page and run the one opening that must see it (chromium at 1440x900 unless ENGINES or VIEWPORTS say otherwise):
@@ -31,13 +31,18 @@
 //   writes       nothing is written to the style of <html> or <body>
 // Exit code 1 when anything differs from what is stated here.
 import { writeFileSync } from 'node:fs';
-import { awaitFonts, ENGINES, launch, sleep, VIEWPORTS } from './probe-lib.mjs';
+import { awaitFonts, ENGINES, launch, sleep } from './probe-lib.mjs';
 import { buildUiNext, serve } from './serve.mjs';
 
+const VIEWPORTS = { '1440x900': { width: 1440, height: 900 }, '1280x800': { width: 1280, height: 800 } };
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 // A negative control runs the one opening that must see it, in one engine at one viewport, unless ENGINES or VIEWPORTS say otherwise.
 const engineNames = (process.env.ENGINES ?? (CONTROL === '' ? Object.keys(ENGINES).join(',') : 'chromium')).split(',');
 const viewportNames = (process.env.VIEWPORTS ?? (CONTROL === '' ? Object.keys(VIEWPORTS).join(',') : '1440x900')).split(',');
+for (const name of viewportNames) {
+  if (!Object.hasOwn(VIEWPORTS, name)) throw new Error(`Unknown viewport ${name}; choose ${Object.keys(VIEWPORTS).join(', ')}`);
+}
+
 const benchmarkSamples = Number(process.env.BENCHMARK_SAMPLES ?? '0');
 if (!Number.isSafeInteger(benchmarkSamples) || benchmarkSamples < 0) throw new Error('BENCHMARK_SAMPLES must be a nonnegative integer');
 

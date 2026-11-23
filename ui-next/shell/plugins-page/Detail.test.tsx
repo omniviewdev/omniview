@@ -1,5 +1,5 @@
 import { MenuHost } from '@omniviewdev/kit';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { unloadedFailure } from '../../plugins/loader/failure';
 import { createPluginsModel, type PluginsModel } from './core/model';
@@ -21,7 +21,7 @@ beforeEach(() => {
   // jsdom's default stylesheet hides every popover that is not `:popover-open`, a state it cannot match, so the menu's items could not be found by role. A browser shows the popover once it has been shown: this is the same rule, in the page
   // (the kit's own tests do the same).
   popoverRule = document.createElement('style');
-  popoverRule.textContent = '[popover] { display: block; }';
+  popoverRule.textContent = '[data-ov-menu-popup][popover] { display: block !important; }';
   document.head.append(popoverRule);
 });
 
@@ -255,6 +255,41 @@ describe('the More menu', () => {
     await open([inventoryEntry('alpha', { origin: 'builtin' })]);
 
     expect(menuItems()).toEqual(['Disable']);
+  });
+
+  it('keeps More open across a status change but dismisses its actions when reload makes them unavailable', async () => {
+    const { h, model, onUninstall } = await open([inventoryEntry('alpha')]);
+    const trigger = screen.getByRole('button', { name: 'More actions for Alpha' });
+    fireEvent.click(trigger, { detail: 0 });
+    const menu = screen.getByRole('menu', { name: 'Actions for Alpha' });
+    expect(within(menu).getByRole('menuitem', { name: 'Disable' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Uninstall…' })).not.toHaveAttribute('aria-disabled');
+
+    await act(async () => {
+      h.events.emit('plugin/state_change', { pluginID: 'alpha', to: 'Degraded' });
+      await settle();
+    });
+    expect(screen.getByRole('menu', { name: 'Actions for Alpha' })).toBe(menu);
+
+    const { promise, resolve: finish } = Promise.withResolvers<void>();
+    h.actions.reload.mockReturnValue(promise);
+    act(() => {
+      model.reload('alpha');
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('menuitem', { name: 'Disable' })).toBeNull();
+    const uninstall = screen.getByRole('menuitem', { name: 'Uninstall…' });
+    expect(uninstall).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(uninstall);
+    expect(onUninstall).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finish();
+      await settle();
+    });
   });
 
   it('draws no More button when the menu would have no items', async () => {

@@ -7,6 +7,7 @@ const MODE = 'data-ov-menu-mode';
 const KEY = 'data-ov-menu-key';
 const ITEM = '[data-ov-menu-item]';
 const POPUP = '[data-ov-menu-popup]';
+const OVERLAY = 'dialog[open], [popover]';
 const NATIVE_EDIT = 'input, textarea, select, [contenteditable]';
 const ROW = 'tr, li, [role="row"], [role="option"], [role="listitem"]';
 const HOVER_DELAY = 250;
@@ -90,13 +91,17 @@ function triggerAt(target: EventTarget | null, mode: MenuTriggerMode): Trigger |
   }
 
   const id = element.getAttribute(MENU);
-  return id ? { element, id, mode, key: element.getAttribute(KEY) } : null;
+  return id !== null ? { element, id, mode, key: element.getAttribute(KEY) } : null;
 }
 
 function isLive({ element, id, mode, key }: Trigger): boolean {
   return element.isConnected && element.getAttribute(MENU) === id && element.getAttribute(MODE) === mode &&
     element.getAttribute(KEY) === key && !element.matches(':disabled, [aria-disabled="true"]') &&
-    element.closest('[hidden], [inert]') === null;
+    element.closest('[hidden], [inert], dialog:not([open])') === null;
+}
+
+function hasLiveTrigger({ trigger, overlay }: Session): boolean {
+  return isLive(trigger) && trigger.element.closest(OVERLAY) === overlay;
 }
 
 function sameTrigger(left: Trigger, right: Trigger): boolean {
@@ -167,11 +172,13 @@ export function createMenuController(rootId: string): MenuController {
     const inPanel = active !== null && inMenu(open, active);
     if (inPanel || active === null || active === doc.body || active === doc.documentElement) {
       const invoker = open.invoker;
-      if (isLive(open.trigger) && ((element.contains(invoker) && tryFocus(invoker)) || tryFocus(element))) {
+      if (hasLiveTrigger(open) && ((element.contains(invoker) && tryFocus(invoker)) || tryFocus(element))) {
         return;
       }
 
-      if (!tryFocus(open.region) && inPanel && active instanceof HTMLElement) {
+      const region = open.region;
+      const restored = region?.closest(OVERLAY) === open.overlay && tryFocus(region);
+      if (!restored && inPanel && active instanceof HTMLElement) {
         active.blur();
       }
     }
@@ -213,7 +220,7 @@ export function createMenuController(rootId: string): MenuController {
       return undefined;
     }
 
-    if (isLive(open.trigger) && definitionFor(open.trigger.id) !== undefined) {
+    if (hasLiveTrigger(open) && open.view.mount.isConnected && definitionFor(open.trigger.id) !== undefined) {
       return open;
     }
 
@@ -230,7 +237,7 @@ export function createMenuController(rootId: string): MenuController {
         return;
       }
 
-      if (!isLive(open.trigger) || !open.view.mount.isConnected) {
+      if (!hasLiveTrigger(open) || !open.view.mount.isConnected) {
         close();
         return;
       }
@@ -242,7 +249,8 @@ export function createMenuController(rootId: string): MenuController {
         panels.get(deepest)?.element.focus({ preventScroll: true });
       }
     });
-    observer.observe(doc, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'inert'] });
+    // The browser's :disabled check handles ancestor fieldsets, including the first legend's exception.
+    observer.observe(doc, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'inert', 'disabled', 'open'] });
     observer.observe(element, { attributes: true, attributeFilter: [MENU, MODE, KEY, 'disabled', 'aria-disabled', 'hidden', 'inert'] });
 
     const press = (event: PointerEvent) => {
@@ -366,7 +374,7 @@ export function createMenuController(rootId: string): MenuController {
     finish(false);
     const { element } = trigger;
     const doc = element.ownerDocument;
-    const overlay = element.closest<HTMLElement>('dialog[open], [popover]');
+    const overlay = element.closest<HTMLElement>(OVERLAY);
     const scope = element.parentElement?.closest<HTMLElement>('[data-ov-menu-scope]');
     const mount = scope != null && (overlay === null || overlay.contains(scope)) ? scope : overlay ?? doc.body;
     // Mirror local tokens that the portal would otherwise miss, without inserting a div into a table or button.
@@ -574,6 +582,7 @@ export function createMenuController(rootId: string): MenuController {
 
     clearHover();
     if (key === 'Escape') {
+      // Hover can open a child without moving focus into it. Close the visible top layer first.
       const deepest = open.view.levels.at(-1);
       if (deepest?.position.kind === 'branch') {
         closeBranch(open, deepest);

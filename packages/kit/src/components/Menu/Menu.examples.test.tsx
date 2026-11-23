@@ -131,6 +131,7 @@ describe.each([
 
     for (const trigger of triggers) {
       expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+      expect(trigger.querySelectorAll('*')).toHaveLength(2);
       expect(trigger.hasAttribute('title')).toBe(false);
       expect(trigger.hasAttribute('aria-expanded')).toBe(false);
       expect(trigger.onclick).toBeNull();
