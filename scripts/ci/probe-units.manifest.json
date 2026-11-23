@@ -319,6 +319,10 @@
       "slot-undeclared"
     ]
   },
+  "ui-next/shell/probes/terminal-data-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-probe.mjs": {
     "probe": true,
     "controls": [
@@ -335,17 +339,48 @@
       "idle-timer",
       "chunk-commit",
       "flood-janky",
+      "flood-no-sample",
       "echo-slow",
       "lazy-load",
       "big-scrollback",
       "leaky-heap",
+      "memory-undrained",
       "reader-claims",
       "reader-stuck",
       "reader-words-stale",
       "reader-announce-twice",
       "reader-axe",
       "reader-hidden-frames",
-      "reader-idle-timer"
+      "reader-idle-timer",
+      "flow-late",
+      "ack-on-receipt",
+      "ack-lost",
+      "drop-held",
+      "ack-double",
+      "no-shell-name",
+      "exit-code-lost",
+      "signal-lost",
+      "closed-lost",
+      "busy-always",
+      "busy-nameless",
+      "unknown-idle",
+      "ask-never",
+      "code-less",
+      "start-typed",
+      "axe-failed",
+      "hidden-burn",
+      "hidden-rest",
+      "draw-hidden",
+      "swap-held",
+      "early-size",
+      "size-off",
+      "arrival-order",
+      "resize-refused",
+      "input-serial",
+      "seq-gap",
+      "legacy-write",
+      "focus-close-button",
+      "focus-delete-swallowed"
     ]
   },
   "ui-next/shell/probes/tour-probe.mjs": {

@@ -1,20 +1,66 @@
 import { createElement, type ReactElement } from 'react';
 import { platformOf } from '../../core/chords';
-import type { PanelStore, Session } from '../../core/panel';
+import type { PanelStore, Session, SessionId } from '../../core/panel';
 import type { PanelCard, PanelEmpty, PanelNewSession } from '../host';
+import { focusTab } from '../focus';
 import { terminalCardOf } from './card';
 import { ClosePrompt } from './ClosePrompt';
 import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
-import type { TerminalTarget } from './feed';
+import type { TerminalBusy, TerminalTarget } from './feed';
 import { keyOf } from './keys';
 import { localShellTarget } from './localShell';
 import { clearScreenIn } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
-import { closeQuestionOf } from './state';
+import { closeQuestionOf, type CloseQuestion } from './state';
 import { TerminalBody } from './TerminalBody';
 import { createTerminalSessions, type TerminalSessions } from './TerminalSessions';
 import { NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_TOOL_ID } from './tool';
+
+/**
+ * How long a close waits for the host to say what runs in the terminal before it asks the general question: a press of Close always leads somewhere, and a host that does not answer is a host that cannot say
+ * (`unknown`: ask).
+ */
+export const ASK_MS = 1_500;
+
+/** The host's answer to "what runs in it", or `unknown` when it does not come in time or the question fails: a question that was not answered is never "nothing runs". */
+async function answered(question: Promise<TerminalBusy>): Promise<TerminalBusy> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve({ state: 'unknown' });
+    }, ASK_MS);
+    question.then(
+      (answer) => {
+        clearTimeout(timer);
+        resolve(answer);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve({ state: 'unknown' });
+      },
+    );
+  });
+}
+
+/**
+ * Whether the keyboard is on something of this session: its own tab in the strip of session tabs, with the pointer's close button beside it (where a close with Delete leaves it, and where a mouse press does: the button goes
+ * with the tab, and the focus on it must not be dropped) or, while the session is the one on screen, its body (the emulator's input and its toolbar: where the close chord leaves it). The focus on another session's tab, close
+ * button or body, on the tool's tab, the `+`, the splitter or the page belongs to nobody that closes: the person is elsewhere, and what follows a close must leave the focus there.
+ */
+function focusIsOn(session: SessionId, onScreen: SessionId | null): boolean {
+  const { activeElement } = document;
+  if (activeElement === null) {
+    return false;
+  }
+
+  // The tab and its close button are the two controls of one item of the strip, which carries the session's id.
+  const item = activeElement.closest('[data-shell-part="sessionTabs"] [data-tab-id]');
+  if (item !== null) {
+    return item.getAttribute('data-tab-id') === session;
+  }
+
+  return onScreen === session && activeElement.closest('[data-shell-part="terminalBody"]') !== null;
+}
 
 // The Terminal tool as the host plugs it in (docs/ui-next/status/T1.md): the registry of its feeds, the close guard with its dialog, and the answers the panel asks of a tool, behind one object, so that the
 // host's wiring is a line for each thing the panel asks and the tool's own rules stay in this folder.
@@ -58,11 +104,49 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
   const sessions = createTerminalSessions(store);
   const screenReader = createScreenReaderChoice(restored.screenReader);
   const guard = createCloseGuard({
-    // Only a terminal asks: a session of another tool closes as it always did.
-    questionOf: (id) => (store.getSnapshot().sessions[id]?.tool === TERMINAL_TOOL_ID ? closeQuestionOf(sessions.recordOf(id)?.snapshot) : undefined),
+    // Only a terminal asks: a session of another tool closes as it always did. A terminal whose feed can say what runs in it is asked at the moment of the close (the host's `IsBusy`: one call, no polling), and asks
+    // only when something runs, the host cannot tell, or typing may have started a program that its answer does not know (an `idle` is true of the moment the host looked); one that cannot say is asked the general question at once.
+    questionOf: (id): CloseQuestion | undefined | Promise<CloseQuestion | undefined> => {
+      if (store.getSnapshot().sessions[id]?.tool !== TERMINAL_TOOL_ID) {
+        return undefined;
+      }
+
+      const snapshot = sessions.recordOf(id)?.snapshot;
+      const feed = sessions.feedOf(id);
+      if (snapshot?.state !== 'running' || feed?.busy === undefined) {
+        return closeQuestionOf(snapshot);
+      }
+
+      const ask = feed.busy.bind(feed);
+      // What the feed knew of the typing when the host was asked: how many calls it had taken, and whether any typing was still on its way to the process.
+      const typedBefore = feed.inputs?.();
+      const onItsWayBefore = feed.inputsSettled?.() === false;
+      const asked = (async (): Promise<TerminalBusy> => ask())();
+      return answered(asked).then((busy) => {
+        // An `idle` is true of the moment the host looked, and typing may have started a program since or not have reached the shell yet. It is not one to close on unless the feed says that nothing was typed meanwhile (it counts
+        // the calls of the typing, and none came) and that nothing was on its way, when the host was asked or now: then it is the general question, as for a host that cannot tell.
+        const doubtful = busy.state === 'idle' && (typedBefore === undefined || feed.inputs?.() !== typedBefore || onItsWayBefore || feed.inputsSettled?.() === false);
+        return closeQuestionOf(sessions.recordOf(id)?.snapshot, doubtful ? { state: 'unknown' } : busy);
+      });
+    },
+    // A close that waited for the host and found nothing running is made by the guard, and the focus follows it as it does after the shell's own close paths: the neighbour tab, or the tool's tab when it was the last.
+    // It follows only when the focus belonged to the session that closes at the press and still does when the close is made (its tab, or its body while it is on screen): a person who moved to another tab, the splitter or a
+    // page control meanwhile, or who was never on the session, keeps the focus where it is.
+    focused: (id) => focusIsOn(id, store.selectors.activeSession(store.getSnapshot(), TERMINAL_TOOL_ID)),
+    closedLater: (result, focused) => {
+      if (focused && result.status === 'done') {
+        if (result.active === null) {
+          focusTab('panelTools', TERMINAL_TOOL_ID);
+        } else {
+          focusTab('sessionTabs', result.active);
+        }
+      }
+    },
     nameOf: (id) => {
-      const session = store.getSnapshot().sessions[id];
-      return session === undefined ? '' : session.scope === '' ? session.title : `${session.title} · ${session.scope}`;
+      const state = store.getSnapshot();
+      const session = state.sessions[id];
+      // As the tab names it, with the ordinal of a twin (`zsh (2)`): two terminals of one shell are told apart in the question as they are in the strip.
+      return store.selectors.sessionItem(state, id)?.name ?? (session === undefined ? '' : session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
     },
   });
   return {
@@ -91,7 +175,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       },
     },
     empty: TERMINAL_EMPTY,
-    bodyOf: (session, visible) => createElement(TerminalBody, { sessions, session, visible, load: options.load, screenReader }),
+    bodyOf: (session, visible) => createElement(TerminalBody, { sessions, session, visible, load: options.load, screenReader, name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name }),
     cardOf: (session) => terminalCardOf(sessions.recordOf(session.id)),
     prompt: createElement(ClosePrompt, { guard }),
     modal: { subscribe: guard.subscribe, open: () => guard.getSnapshot() !== null },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TerminalFeedCause, TerminalFeedSnapshot } from './feed';
-import { causeSentence, closeQuestionOf, exitLine, laneOf, sessionStateOf, stateWords } from './state';
+import { causeSentence, closeQuestionOf, drainLine, exitLine, failureLines, laneOf, sessionStateOf, stateWords } from './state';
 
 // What a feed says about itself, as the panel's session says it, and the words the tab, the card, the status lane and the transcript use for it (ch16 S116's state table; the mock's `sessionWords`,
 // `stripHtml` and `exitSession`). The facts a producer may not know are optional in the snapshot (an exit code, a signal, what runs in the session): each is read in ONE place, so that a session that
@@ -40,6 +40,18 @@ describe('the cause of a failure as a sentence', () => {
     expect(at('Is the service running?')).toBe('The terminal stopped. Is the service running?');
     expect(at('   ')).toBe('The terminal stopped. The producer gave no reason.');
   });
+
+  it('says a start that no shell could answer by its code, and gives the host\'s own words after it, the paths it tried among them: nothing reads the words, the code is what the host branches on', () => {
+    const detail = 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none/sh": not found; /bin/bash: not found';
+    expect(causeSentence({ stage: 'start', code: 'SHELL_UNAVAILABLE', message: detail })).toBe(`No shell could be started. ${detail}.`);
+    expect(causeSentence({ stage: 'start', code: 'SHELL_UNSUPPORTED', message: 'unsupported terminal shell "/bin/cat"' })).toBe('This program is not a shell Omniview starts. unsupported terminal shell "/bin/cat".');
+    expect(causeSentence({ stage: 'start', code: 'START_FAILED', message: 'Failed to start terminal' })).toBe('Couldn\'t start the terminal. Failed to start terminal.');
+    expect(causeSentence({ stage: 'start', message: 'Failed to start terminal' })).toBe('Couldn\'t start the terminal. Failed to start terminal.');
+  });
+
+  it('keeps the typed code to the stage that has it: a refusal to start is the one the words are about', () => {
+    expect(causeSentence({ stage: 'input', code: 'SHELL_UNAVAILABLE', message: 'x' })).toBe('Couldn\'t send what you typed to the terminal. x.');
+  });
 });
 
 describe('the words of a session', () => {
@@ -58,6 +70,18 @@ describe('the words of a session', () => {
     expect(stateWords(snap('ended', { exit: { code: 130 } }))).toBe('Exited with code 130');
     expect(stateWords(snap('ended', { exit: { signal: 'SIGKILL' } }))).toBe('Ended by SIGKILL');
     expect(stateWords(snap('ended', { exit: {} }))).toBe('Ended');
+  });
+
+  it('say how the host ended it, and how a signal did, when the host said so (typed end)', () => {
+    expect(stateWords(snap('ended', { exit: { signal: 'SIGSEGV', signalNumber: 11, coreDumped: true } }))).toBe('Ended by SIGSEGV (core dumped)');
+    expect(stateWords(snap('ended', { exit: { signal: 'SIGTERM', signalNumber: 15 } }))).toBe('Ended by SIGTERM');
+    expect(stateWords(snap('ended', { exit: { closedBy: 'request' } }))).toBe('Closed');
+    expect(stateWords(snap('ended', { exit: { closedBy: 'window' } }))).toBe('Closed with its window');
+    expect(stateWords(snap('ended', { exit: { closedBy: 'shutdown' } }))).toBe('Closed when Omniview quit');
+  });
+
+  it('say the code before anything else: a process that exited is what it exited with, whatever else was told', () => {
+    expect(stateWords(snap('ended', { exit: { code: 4, droppedBytes: 10, drainCapped: true } }))).toBe('Exited with code 4');
   });
 
   it('say nothing of an exit before the process ended: a fact of a running session is not its end', () => {
@@ -98,6 +122,9 @@ describe('the last line of an ended transcript (S116: [Process exited with code 
     expect(exitLine(snap('ended', { exit: { code: 0 } }))).toBe('[Process exited with code 0]');
     expect(exitLine(snap('ended', { exit: { code: 127 } }))).toBe('[Process exited with code 127]');
     expect(exitLine(snap('ended', { exit: { signal: 'SIGHUP' } }))).toBe('[Process ended by SIGHUP]');
+    expect(exitLine(snap('ended', { exit: { signal: 'SIGSEGV', coreDumped: true } }))).toBe('[Process ended by SIGSEGV (core dumped)]');
+    expect(exitLine(snap('ended', { exit: { closedBy: 'shutdown' } }))).toBe('[Process closed when Omniview quit]');
+    expect(exitLine(snap('ended', { exit: { closedBy: 'request' } }))).toBe('[Process closed]');
     expect(exitLine(snap('ended'))).toBe('[Process ended]');
   });
 
@@ -106,32 +133,64 @@ describe('the last line of an ended transcript (S116: [Process exited with code 
     expect(exitLine(snap('failed', { cause: { stage: 'session', message: 'x' } }))).toBe('');
     expect(exitLine(snap('starting'))).toBe('');
   });
+
+  it('says in a line of its own, when the host said so, that a program kept the terminal open after the shell exited and the host stopped reading it, and how much it dropped', () => {
+    expect(drainLine(snap('ended', { exit: { code: 0, drainCapped: true, droppedBytes: 4_096 } }))).toBe('[A program kept the terminal open after the shell exited, so the host stopped reading it and dropped 4 KB of its output]');
+    expect(drainLine(snap('ended', { exit: { code: 0, drainCapped: true } }))).toBe('[A program kept the terminal open after the shell exited, so the host stopped reading it]');
+    expect(drainLine(snap('ended', { exit: { code: 0 } }))).toBe('');
+    expect(drainLine(snap('ended'))).toBe('');
+    expect(drainLine(snap('running', { exit: { drainCapped: true } }))).toBe('');
+  });
 });
 
-describe('the question a close asks (S115, L12: a close with a process running asks first; any other close is immediate)', () => {
-  it('asks for a running session whose producer does not say what runs in it: the shell itself is a running process, and "may be running" is the truthful answer until the producer knows', () => {
-    expect(closeQuestionOf(snap('running'))).toEqual({
+describe('what a start that failed writes into the transcript', () => {
+  it('is the typed words and then the producer\'s own, in two muted lines, for a start no shell could answer', () => {
+    const message = 'shell executable unavailable: tried /bin/zsh: not found; /bin/bash: not found';
+    expect(failureLines(snap('failed', { cause: { stage: 'start', code: 'SHELL_UNAVAILABLE', message } }))).toEqual(['[No shell could be started]', `[${message}]`]);
+    expect(failureLines(snap('failed', { cause: { stage: 'start', code: 'SHELL_UNSUPPORTED', message: 'unsupported' } }))).toEqual(['[This program is not a shell Omniview starts]', '[unsupported]']);
+    expect(failureLines(snap('failed', { cause: { stage: 'start', message: 'Failed to start terminal' } }))).toEqual(['[The terminal could not start]', '[Failed to start terminal]']);
+  });
+
+  it('has one line when the producer said nothing, and nothing for a failure that did not happen at the start: the lane says those', () => {
+    expect(failureLines(snap('failed', { cause: { stage: 'start', message: '  ' } }))).toEqual(['[The terminal could not start]']);
+    expect(failureLines(snap('failed', { cause: { stage: 'session', message: 'x' } }))).toEqual([]);
+    expect(failureLines(snap('failed', { cause: { stage: 'input', message: 'x' } }))).toEqual([]);
+    expect(failureLines(snap('failed'))).toEqual([]);
+    expect(failureLines(snap('running'))).toEqual([]);
+    expect(failureLines(snap('ended'))).toEqual([]);
+  });
+});
+
+describe('the question a close asks (S115, L12: a close with a process running asks first; a close with nothing running is immediate)', () => {
+  it('asks for a running session when the producer cannot say what runs in it (no answer, or `unknown`): the shell itself is a running process, and "may be running" is the truthful answer until the producer knows', () => {
+    const general = {
       title: 'Terminate session?',
       body: 'This ends the terminal session. Programs it left running in the background may keep running.',
       confirm: 'Terminate session',
-    });
+    };
+    expect(closeQuestionOf(snap('running'))).toEqual(general);
+    expect(closeQuestionOf(snap('running'), undefined)).toEqual(general);
+    expect(closeQuestionOf(snap('running'), { state: 'unknown' })).toEqual(general);
   });
 
   it('names the program when the producer says what runs', () => {
-    expect(closeQuestionOf(snap('running', { foreground: { name: 'npm' } }))).toEqual({
+    expect(closeQuestionOf(snap('running'), { state: 'busy', name: 'sleep' })).toEqual({
       title: 'Terminate session?',
-      body: 'npm is running in this terminal. This ends the terminal session and stops it.',
+      body: 'sleep is running in this terminal. This ends the terminal session and stops it.',
       confirm: 'Terminate session',
     });
-    expect(closeQuestionOf(snap('running', { foreground: {} }))?.body).toBe('A program is running in this terminal. This ends the terminal session and stops it.');
+    expect(closeQuestionOf(snap('running'), { state: 'busy' })?.body).toBe('A program is running in this terminal. This ends the terminal session and stops it.');
+    expect(closeQuestionOf(snap('running'), { state: 'busy', name: '   ' })?.body).toBe('A program is running in this terminal. This ends the terminal session and stops it.');
   });
 
   it('does not ask when the producer says that nothing runs but the shell at its prompt: that is the "any other close" of S115', () => {
-    expect(closeQuestionOf(snap('running', { foreground: false }))).toBeUndefined();
+    expect(closeQuestionOf(snap('running'), { state: 'idle' })).toBeUndefined();
   });
 
-  it.each(['starting', 'ended', 'failed'] as const)('does not ask for a session that is %s: there is nothing running to end', (state) => {
+  it.each(['starting', 'ended', 'failed'] as const)('does not ask for a session that is %s, whatever the producer says: there is nothing running to end', (state) => {
     expect(closeQuestionOf(snap(state))).toBeUndefined();
+    expect(closeQuestionOf(snap(state), { state: 'busy', name: 'sleep' })).toBeUndefined();
+    expect(closeQuestionOf(snap(state), { state: 'unknown' })).toBeUndefined();
   });
 
   it('does not ask for a session that has no feed: nothing runs in it', () => {

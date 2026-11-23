@@ -71,6 +71,9 @@ type Entry = {
   readonly resource: TerminalTarget['resource'];
   readonly feed: TerminalFeedHandle;
   stop: () => void;
+  /** What the target says the tab is called once the feed says more than the target knew (`TerminalTarget.retitle`), and the title the session has now. */
+  readonly retitle: TerminalTarget['retitle'];
+  title: string;
   /** The status the registry last copied to the session. */
   last: TerminalFeedSnapshot;
   /** The registry stopped listening to the feed and closed it, and the session stays (A21): the entry is kept for the feed, which the view reads, and for the card's record, until the tab closes. Closed only once. */
@@ -79,9 +82,9 @@ type Entry = {
   final?: TerminalFeedSnapshot | undefined;
 };
 
-const MEMBERS = ['subscribe', 'getSnapshot', 'read', 'write', 'resize', 'close'] as const;
+const MEMBERS = ['subscribe', 'getSnapshot', 'read', 'ack', 'write', 'resize', 'close'] as const;
 
-/** A feed has all six members. A supplier that hands over less has made a mistake the host names, and does not run. */
+/** A feed has all seven members (what it can say about what runs in it is optional). A supplier that hands over less has made a mistake the host names, and does not run. */
 function isFeed(value: unknown): value is TerminalFeedHandle {
   return typeof value === 'object' && value !== null && MEMBERS.every((name) => typeof Reflect.get(value, name) === 'function');
 }
@@ -187,6 +190,31 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     }
   };
 
+  /**
+   * The tab's name once the feed says more than the target knew when it opened (the shell it started): what the target says, when that is something and is not the title the session has. One change of the panel for
+   * each, and none for a flood of wake-ups with the same word. A session its plugin's unload kept never changes again (the panel refuses it).
+   */
+  const retitle = (id: SessionId, entry: Entry, snapshot: TerminalFeedSnapshot): void => {
+    if (entry.retitle === undefined) {
+      return;
+    }
+
+    let named: string | undefined;
+    try {
+      named = entry.retitle(snapshot)?.trim();
+    } catch (error) {
+      warn(`[panel] ${entry.plugin} could not name the terminal`, error);
+      return;
+    }
+
+    if (named === undefined || named === '' || named === entry.title) {
+      return;
+    }
+
+    entry.title = named;
+    store.retitleSession(id, named);
+  };
+
   /** A feed told its listeners something: only a new status is the session's business, and not once the registry has closed the feed (the session is ended for good, with its own cause). */
   const heard = (id: SessionId): void => {
     const entry = entries.get(id);
@@ -201,6 +229,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
 
     entry.last = snapshot;
     store.setSessionState(id, sessionStateOf(snapshot));
+    retitle(id, entry, snapshot);
   };
 
   return {
@@ -252,7 +281,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         return undefined;
       }
 
-      const entry: Entry = { plugin, target: targetId, resource: target.resource, feed, stop: () => undefined, last: first, ended: false };
+      const entry: Entry = { plugin, target: targetId, resource: target.resource, feed, stop: () => undefined, retitle: target.retitle, title: text(target.title), last: first, ended: false };
       entries.set(id, entry);
       const opened = store.openSession({ id, tool: TERMINAL_TOOL_ID, plugin, title: target.title, scope: target.scope, route: target.resource?.route, ...sessionStateOf(first) });
       if (opened.status === 'refused') {
@@ -283,7 +312,9 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         wanted.add(id);
       }
 
-      // A status that changed since the first read (while the panel announced the session) is the session's state now: a subscription only tells of what changes after it.
+      // The first status names the session when the feed already says what it runs, and a status that changed since the first read (while the panel announced the session) is the session's state now: a subscription
+      // only tells of what changes after it.
+      retitle(id, entry, first);
       heard(id);
 
       return {

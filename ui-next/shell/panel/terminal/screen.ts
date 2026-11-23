@@ -3,16 +3,23 @@ import type { Engine, EngineAppearance, EngineLoader, EngineOptions } from './en
 import type { TerminalFeedHandle, TerminalFeedSnapshot } from './feed';
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
-import { exitLine } from './state';
+import { drainLine, exitLine, failureLines } from './state';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It is framework-free and knows no xterm: it is written against `Engine`, and the body
 // (`TerminalBody.tsx`) only gives it a host element and tells it whether it is on screen. The rules:
 //
 //   - NOTHING happens before the screen is first shown: the emulator's code is not asked for, no emulator is made, nothing listens (a terminal that is not on screen costs no code and no time);
 //   - while it is shown, the feed wakes it once between two reads and it draws in the NEXT FRAME, never in the event; a frame takes only what the emulator can parse (`FLOW.high` bytes accepted and not parsed),
-//     cut in slices the emulator parses without a long task (`FLOW.slice`), and what is more stays in the feed, whose bound is the one place output waits (docs/ui-next/optimisations.md HGO-34);
-//   - the size of the host is measured by an observer (before paint, once a frame at most), the emulator follows it, and the feed is told only a size that changed (it settles the rest);
-//   - while it is hidden it does nothing at all: no listener on the feed, no frame, no observer, no GPU context. The output of a hidden terminal is held by the feed and costs a push (MNR-X4);
+//     cut in slices the emulator parses without a long task (`FLOW.slice`), and what is more stays in the feed. Every byte it hands the emulator is acknowledged to the feed WHEN THE EMULATOR HAS PARSED IT, which
+//     is what the host paces the shell by (docs/ui-next/status/T1-go.md 2.8.6, docs/ui-next/status/T2a.md): a screen that is slow to parse slows the shell, and nothing is dropped anywhere;
+//   - the size of the host is measured by an observer (before paint, once a frame at most), the emulator follows it, and the feed is told only a size that changed, and only once the GPU renderer is in place (its cells
+//     are not the DOM's): the first size the feed gets starts the process, so it must be the size the person sees, and nothing is resized after the start (the feed settles the rest);
+//   - while it is hidden it goes on reading, parsing and acknowledging, in frames of a smaller share (`FLOW.hiddenFrame`), and draws nothing itself: no observer, no GPU context, no measure, and no frame once the feed has
+//     nothing more. A build in a session that is not shown must not be stalled by the view: VS Code writes every chunk into xterm and acknowledges it from the write callback whether or not the terminal is shown
+//     (`terminalInstance.ts`, `_writeProcessData`). What it costs the main thread is MEASURED, not assumed zero (docs/ui-next/status/T2a.md): the parse, and the emulator's own bookkeeping inside its hidden element
+//     (the probe counts its DOM changes: they are bounded by the share and none is in the page's own DOM);
+//   - a window that is minimized or covered gives no animation frames, whether the screen is shown or hidden: the screen asks for a timer (`HIDDEN_TICK_MS`) beside every frame it asks for, and whichever comes first runs the
+//     pump once and cancels the other, at the share the screen has then (the shown one while it is shown, the hidden one while it is hidden), so that a build is never stalled by a window that cannot draw;
 //   - the window's screen reader choice is read when the emulator is made and followed while the screen is on screen, one call to the emulator for each change; a hidden screen listens to nothing, its emulator is out of the mode
 //     while it is hidden (an accessibility layer refreshes itself a second after the lines it was given, which must not happen in a hidden panel), and the choice made meanwhile is taken when the screen is shown again;
 //   - the emulator keeps its screen and its scrollback for the life of the session, and is disposed once, with the session.
@@ -21,11 +28,15 @@ import { exitLine } from './state';
 export const SCROLLBACK = 5_000;
 
 /**
- * The flow of output into the emulator: at most `high` bytes accepted and not yet parsed, in writes of at most `slice` bytes, and at most `frame` bytes taken in one frame (about 30 MB/s at 60 Hz, twice the fastest pty
- * the host measured). The last bound keeps the work of a frame to a few milliseconds whatever the frame's lateness: a frame that comes late on a busy machine takes its share and the next frame the next share, where
- * without it the backlog was one task of 150 ms (a long task, and a frame of 50 ms, measured in Chromium under load).
+ * The flow of output into the emulator: at most `high` bytes accepted and not yet parsed, in writes of at most `slice` bytes, and at most `frame` bytes taken in one frame while the screen is shown (about 30 MB/s at
+ * 60 Hz, twice the fastest pty the host measured) and `hiddenFrame` while it is hidden (about 15 MB/s: a hidden terminal draws nothing and what it costs is the parse, kept to a smaller part of every frame so that the
+ * screen that is shown stays smooth). The last bounds keep the work of a frame to a few milliseconds whatever the frame's lateness: a frame that comes late on a busy machine takes its share and the next frame the next
+ * share, where without them the backlog was one task of 150 ms (a long task, and a frame of 50 ms, measured in Chromium under load).
  */
-export const FLOW = Object.freeze({ high: 4 << 20, slice: 64 << 10, frame: 512 << 10 });
+export const FLOW = Object.freeze({ high: 4 << 20, slice: 64 << 10, frame: 512 << 10, hiddenFrame: 256 << 10 });
+
+/** How long a screen waits for a frame before it goes on from a timer, shown or hidden (the name is from its first use, a hidden screen): a window that is minimized or covered suspends its frames, and a build in a session must not stall for it. */
+export const HIDDEN_TICK_MS = 250;
 
 /** The cells an emulator is made with, until the host is measured. */
 const INITIAL = Object.freeze({ cols: 80, rows: 24 });
@@ -53,6 +64,8 @@ export type ScreenDeps = {
   readonly screenReader: ScreenReaderSource;
   /** Asks for a frame; returns what cancels it. */
   readonly frame: (callback: () => void) => () => void;
+  /** Asks for a call after `ms` milliseconds; returns what cancels it. Default: a timer. The screen asks for one beside every frame it asks for, for a window whose frames are suspended. */
+  readonly later?: ((callback: () => void, ms: number) => () => void) | undefined;
   /** Observes the size of an element; returns what stops it. */
   readonly observe: (element: HTMLElement, callback: () => void) => () => void;
   /** Resolves when the font (a CSS `font` shorthand: size and family) is loaded, or is not going to be. */
@@ -76,19 +89,12 @@ export type TerminalScreen = {
   readonly copy: () => Promise<boolean>;
   /** The theme or the font changed: read the appearance again and apply it to the emulator that is there. */
   readonly refresh: () => void;
+  /** The tab was renamed (the shell said its name): the emulator's input is named again. The label is what a screen reader says for it. */
+  readonly rename: (label: string) => void;
   readonly dispose: () => void;
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => ScreenSnapshot;
 };
-
-/** What was skipped, in words a person reads: whole bytes, thousands, millions. */
-function sizeWords(bytes: number): string {
-  if (bytes < 1_000) {
-    return `${String(bytes)} bytes`;
-  }
-
-  return bytes < 1_000_000 ? `${String(Math.round(bytes / 1_000))} KB` : `${(bytes / 1_000_000).toFixed(1)} MB`;
-}
 
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
 const muted = (text: string): string => `\u001b[0m\r\n\u001b[90m${text}\u001b[0m\r\n`;
@@ -127,15 +133,23 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** The screen reader mode the emulator has now. */
   let readerMode = false;
   let visible = false;
+  /** The GPU renderer is in place for this showing: until then nothing is measured, and the feed is told no size. */
+  let rendererReady = false;
+  /** The showings so far: a renderer that answers for an earlier one is not the one the screen waits for. */
+  let showings = 0;
   let disposed = false;
   let loading = false;
   let stopFeed: (() => void) | undefined;
   let stopReader: (() => void) | undefined;
   let stopObserving: (() => void) | undefined;
   let cancelFrame: (() => void) | undefined;
+  let cancelLater: (() => void) | undefined;
   let told: { readonly cols: number; readonly rows: number } | undefined;
   let lastStatus: TerminalFeedSnapshot | undefined;
   let endWritten = false;
+  let failureWritten = false;
+  /** What a screen reader says for the emulator's input: the tab's title, which the shell may rename. */
+  let label = deps.label;
   let pending = 0;
   let blocked = false;
 
@@ -146,13 +160,40 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     }
   };
 
-  const schedule = () => {
-    if (visible && cancelFrame === undefined) {
-      cancelFrame = deps.frame(pump);
-    }
+  const later = deps.later ?? ((callback: () => void, ms: number) => {
+    const timer = setTimeout(callback, ms);
+    return () => {
+      clearTimeout(timer);
+    };
+  });
+
+  /** The frame came: the timer that stood beside it is not needed. */
+  const fromFrame = () => {
+    cancelFrame = undefined;
+    cancelLater?.();
+    cancelLater = undefined;
+    pump();
   };
 
-  /** Writes what is held in slices the emulator parses without a long task, and counts what it has accepted and not parsed. */
+  /** The timer came first (the window's frames are suspended): the frame that stood beside it is not needed. */
+  const fromTimer = () => {
+    cancelLater = undefined;
+    cancelFrame?.();
+    cancelFrame = undefined;
+    pump();
+  };
+
+  const schedule = () => {
+    if (engine === undefined) {
+      return;
+    }
+
+    cancelFrame ??= deps.frame(fromFrame);
+    // A timer stands beside every frame, shown or hidden: when the window's frames are suspended (minimized, covered) the parse goes on from it, at the share the screen has then, and whichever comes first runs the pump once.
+    cancelLater ??= later(fromTimer, HIDDEN_TICK_MS);
+  };
+
+  /** Writes what is held in slices the emulator parses without a long task, counts what it has accepted and not parsed, and tells the feed what it parsed: the host paces the shell by that. */
   function send(emulator: Engine, chunks: readonly Uint8Array[]): void {
     let piece = new Uint8Array(FLOW.slice);
     let filled = 0;
@@ -165,6 +206,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       pending += bytes;
       emulator.write(piece.subarray(0, bytes), () => {
         pending -= bytes;
+        feed.ack(bytes);
         // The emulator took what it had: a frame that stopped at the bound goes on once half of it is parsed.
         if (blocked && pending < FLOW.high / 2) {
           blocked = false;
@@ -191,11 +233,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   }
 
   function pump(): void {
-    cancelFrame = undefined;
-    if (!visible || engine === undefined) {
+    if (engine === undefined) {
       return;
     }
 
+    // Shown, a frame takes its whole share; hidden, a smaller one: nothing is drawn then and the parse is all the work, kept to a bounded part of every frame all the same.
+    const share = visible ? FLOW.frame : FLOW.hiddenFrame;
     let taken = 0;
     for (;;) {
       const room = FLOW.high - pending;
@@ -204,7 +247,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         return;
       }
 
-      const budget = Math.min(room, FLOW.frame - taken);
+      const budget = Math.min(room, share - taken);
       if (budget <= 0) {
         // This frame's share is taken: what the feed still holds is the next frame's.
         schedule();
@@ -212,10 +255,6 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       }
 
       const out = feed.read(budget);
-      if (out.dropped > 0) {
-        engine.write(muted(`[${sizeWords(out.dropped)} of output were skipped]`));
-      }
-
       if (out.chunks.length === 0) {
         break;
       }
@@ -224,11 +263,22 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       taken += out.bytes;
     }
 
-    // How the process ended is the last line of its output.
+    // How the process ended is the last line of its output, and what the host said of a program that kept the terminal open after it. A start that failed says why, where the shell's prompt would have been.
     const status = feed.getSnapshot();
     if (status.state === 'ended' && !endWritten) {
       endWritten = true;
       engine.write(muted(exitLine(status)));
+      const drain = drainLine(status);
+      if (drain !== '') {
+        engine.write(muted(drain));
+      }
+    }
+
+    if (status.state === 'failed' && !failureWritten) {
+      failureWritten = true;
+      for (const line of failureLines(status)) {
+        engine.write(muted(line));
+      }
     }
   }
 
@@ -245,7 +295,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
   /** Measures the host; the emulator follows it, and the feed is told only a size that changed. */
   function fit(): void {
-    if (!visible || engine === undefined) {
+    if (!visible || engine === undefined || !rendererReady) {
       return;
     }
 
@@ -324,30 +374,36 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     }
   }
 
-  /** Listens to the feed and the host, and draws what the feed holds. The emulator is there and the screen is on screen. */
+  /** The screen is on screen: the emulator draws in the host, follows its size and the window's screen reader choice. */
   function attach(emulator: Engine): void {
-    // The GPU's cells are not the DOM's (it rounds the cell to whole device pixels): once it is in place the host is measured again.
-    void emulator.setRenderer('gpu').then(fit);
+    rendererReady = false;
+    showings += 1;
+    const showing = showings;
+    // The GPU's cells are not the DOM's (it rounds the cell to whole device pixels): until it is in place nothing is measured and the feed is told no size, so that the process starts at the size the person sees and
+    // nothing is resized after it started. A renderer that could not be had is the DOM's, which is then the size the person sees.
+    const inPlace = () => {
+      if (showing === showings && visible) {
+        rendererReady = true;
+        fit();
+      }
+    };
+
+    void emulator.setRenderer('gpu').then(inPlace, inPlace);
     if (host !== undefined) {
       stopObserving = deps.observe(host, fit);
     }
 
     follow();
     stopReader = deps.screenReader.subscribe(follow);
-    stopFeed = feed.subscribe(heard);
-    fit();
     heard();
   }
 
+  /** The screen is off screen: what only a screen on show needs is let go of. It goes on reading the feed. */
   function detach(): void {
     stopReader?.();
     stopReader = undefined;
-    stopFeed?.();
-    stopFeed = undefined;
     stopObserving?.();
     stopObserving = undefined;
-    cancelFrame?.();
-    cancelFrame = undefined;
   }
 
   function create(): void {
@@ -359,7 +415,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     const made = factory({ cols: INITIAL.cols, rows: INITIAL.rows, scrollback: SCROLLBACK, appearance: deps.appearance(host), screenReaderMode: readerMode });
     engine = made;
     made.open(host);
-    made.describe(deps.label, deps.descriptionId);
+    made.describe(label, deps.descriptionId);
     made.setKeys(onKey);
     stops.push(
       made.onData((data) => {
@@ -381,6 +437,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     lastStatus = feed.getSnapshot();
     made.setInput(takesInput(lastStatus));
     set({ ready: true });
+    // From here on the screen reads whether or not it is shown: a session that is not shown must not stall its shell.
+    stopFeed = feed.subscribe(heard);
     attach(made);
   }
 
@@ -440,6 +498,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       }
 
       visible = false;
+      rendererReady = false;
       if (engine !== undefined) {
         detach();
         void engine.setRenderer('dom');
@@ -475,6 +534,15 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       }
     },
 
+    rename: (next) => {
+      if (next === label) {
+        return;
+      }
+
+      label = next;
+      engine?.describe(label, deps.descriptionId);
+    },
+
     dispose: () => {
       if (disposed) {
         return;
@@ -487,6 +555,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
       visible = false;
       detach();
+      stopFeed?.();
+      stopFeed = undefined;
+      cancelFrame?.();
+      cancelFrame = undefined;
+      cancelLater?.();
+      cancelLater = undefined;
       for (const stop of stops.splice(0)) {
         stop();
       }

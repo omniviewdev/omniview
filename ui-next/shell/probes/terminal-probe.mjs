@@ -1,41 +1,59 @@
-// Probes the Terminal tool in WebKit and Chromium (docs/ui-next/status/T1.md): the real host's window with NO plugin and a SYNTHETIC shell behind the real exec feed (terminal-fixture.tsx), in a production build of the
-// fixture (the measurements) and a development build (React's Profiler counts commits there). The emulator is the product's own, in its lazy chunk.
+// Probes the Terminal tool in WebKit and Chromium (docs/ui-next/status/T1.md, and T2a for what the host's own shell states): the real host's window with NO plugin and a SYNTHETIC shell behind the real exec feed (terminal-fixture.tsx, which
+// invents only the far end: the host's exec bindings, with its credit flow control, its typed end, its busy fact and its typed refusals), in a production build of the fixture (the measurements) and a development build (React's Profiler counts commits there). The emulator is the product's own, in its lazy chunk.
 //
-//   node ui-next/shell/probes/terminal-probe.mjs      builds the fixture twice (OMNIVIEW_UI=next), serves it, probes it in WebKit and Chromium at 1440 x 900 and 1280 x 800
+//   node ui-next/shell/probes/terminal-probe.mjs      builds the fixture twice (OMNIVIEW_UI=next, once for the processes of a shard that share BUILD_CACHE), serves it, probes it in WebKit and Chromium at 1440 x 900 and 1280 x 800
 //
 //   FIXTURE_DIST=<dir> FIXTURE_DIST_DEV=<dir>   probe existing builds      ENGINES=webkit,chromium      VIEWPORTS=1440x900,1280x800      SECTIONS=geometry,keys      REPORT=<file>   the report as JSON
+//   PART=view|data            run the sections of one part (the unit of CI that runs this script is PART=view, and terminal-data-probe.mjs, the other unit, is PART=data): every section is in one part and only one, and the probe refuses to start when it is not
 //   NEGATIVE_CONTROL=<name>   perturb the page so ONE assertion must fail, in the section it belongs to; "detected" and exit 0 when only that assertion failed, "NOT DETECTED" or "failed another assertion" and exit 1 when not
 //   ASSERTION_OFF=<regex>     drops the failures whose name matches, as if the assertion were not there: the control of it must then print NOT DETECTED (the proof that it trips that assertion and no other)
 //   SCREEN_READER=on          turn the Terminal's screen reader mode on right after each terminal starts, through its palette command and by the keyboard as a person does, so that a section measures a terminal with the mode on:
 //                             `SECTIONS=flood,hidden,idle,commits SCREEN_READER=on` is what the mode costs (docs/ui-next/status/T1.md section 16). Every other section is written for the mode off.
 //
-// Sections and their assertions (the name starts each line of a failure):
+// Sections and their assertions (the name starts each line of a failure). PART=view: geometry, words, title, ended, start, keys, close, resize, size, bundle, paint, axe, screenreader, screenreader-cost. PART=data: hidden, idle, commits, flood, latency, memory, order.
 //   geometry   (both viewports, both engines)  geometry.body / tools / button / screen / lane / rows / colors: the rectangles, sizes and colours of the mock's terminal body (mock-terminal.json: the mock measured in each engine at each
 //              viewport)
 //   words      the empty state, the toolbar and its names, the input's name and hint, the lane for a running, ended and failed session, the exit line written into the transcript
+//   title      the session's tab is called by the shell the host says it started, zsh and bash, and not Terminal; the tool's tab and the emulator's input (title.shell)
+//   ended      how a process ended, from the host's typed CLOSE: the lane's words and note, the last muted line of the transcript and the tab's state, for an exit with its code and a program that kept the terminal open (ended.code), a signal and a core dump
+//              (ended.signal), the host closing it (ended.closed)
+//   start      a start the host refuses: no shell could be started, from the error's code, the lane and the two transcript lines, every path the host tried on the screen (start.unavailable); any other refusal (start.failed)
 //   keys       A14, never trap: Escape and Tab stay in the shell (keys.escape, keys.tab), F6 leaves (keys.f6), Ctrl+C is the interrupt (keys.interrupt), copy and paste chords (keys.copy, keys.paste)
-//   close      the question a close of a running terminal asks: a modal (close.modal), Cancel has the focus, Escape says no (close.no), Terminate session ends the process and the focus goes to the tool's tab (close.yes)
+//   close      the question a close of a running terminal asks, when the host says something runs and not otherwise: a program named in a modal whose Cancel has the focus (close.modal, close.cancel, close.words, close.busy), Escape and Cancel say no (close.no),
+//              Terminate session ends the process and the focus goes to the tool's tab (close.yes); a shell at its prompt asks nothing and the tab goes at once (close.idle); a host that cannot say (close.unknown) or never answers (close.hang) gets the general question;
+//              after a no (Escape, Cancel, a press on the scrim) the focus is on the session's own tab, never on the pointer-only close button, whether the close was pressed with the mouse or asked for with Delete on the tab, and axe finds nothing there;
+//              each of the six paths must be asked and answered: a question that does not come, or does not go, fails it (close.focus)
 //   resize     the first size at once (resize.first), a drag of the splitter is one message after it settles (resize.messages) and it is the size the screen has (resize.last)
+//   size       the process starts at the size the person sees and nothing is resized after it started, in both viewports and both engines, until the panel is resized: the log holds no resize after the create call, not at the start and not after the panel
+//              was hidden and shown (resize.none); the size the shell reports is the emulator's cells and the size the GPU renderer's measure gives (resize.cells)
+//   order      the input goes to the host as numbered calls (docs/ui-next/status/T1-go.md 2.4): the numbers are 1, 2, 3 ... for the keys and the sizes together (order.seq), the old calls are never made (order.legacy), what is typed comes out in the
+//              order it was typed whatever order the calls arrive in, with one inversion that is known (the size call arrives after the keys made after it): by the host's own records every call was applied, in the order of the numbers (order.echo),
+//              and a call is made at once, while the call before it has not been answered (order.nowait)
 //   bundle     the emulator costs nothing until the first terminal: not in the entry chunk or the entry stylesheet (bundle.entry), not requested before (bundle.lazy), requested after (bundle.fetched)
-//   hidden     a hidden panel is no work: no frame (hidden.frames), no write (hidden.writes), no timer (hidden.timers), and what it held is drawn when shown (hidden.drain)
+//   hidden     a hidden terminal goes on reading, parsing and acknowledging, so that its shell is never stalled by the view, and draws nothing of the page's (docs/ui-next/status/T1-go.md 2.8.6, docs/ui-next/status/T2a.md): the first acknowledgement is
+//              made with the process (flow.on); the shell writes 2 MB and then 20 MB while the panel is hidden, and every byte is delivered, parsed and acknowledged (flow.hidden), the emulator is given every byte in order (hidden.drain), no
+//              byte is acknowledged before it was parsed (flow.paced), in a number of frames that follows from the bytes (hidden.frames) and in callbacks of bounded number, total time and length (hidden.work); the page's own document is not
+//              touched and xterm's own changes are bounded (hidden.draws); once everything was taken in it is at rest: no frame, no timer, no change of the document (hidden.rest)
 //   idle       an idle terminal runs no timer and asks for no frame (idle.timers), and renders nothing (idle.commits, development build)
 //   commits    no React commit for an output chunk (commits.chunk, development build)
-//   flood      16 MB in 16,000 events: every byte parsed (flood.complete), frames at 60 Hz or near (flood.frames), no long task (flood.longtask, Chromium)
+//   flood      16 MB in 16,000 events: every byte parsed (flood.complete), the credit exact: every byte acknowledged once and the host never over its mark (flow.exact), frames at 60 Hz or near, in a sample of the frames from the command on (none thrown away, and no fewer than the bytes need: flood.frames), no long task (flood.longtask, Chromium)
 //   latency    a key reaches the process in a frame, idle (latency.idle) and under a flood (latency.flood; latency.premise: the flood was still running)
-//   memory     1,000,000 lines of 80 columns: the oldest line the emulator keeps is the one the 5,000-line cap leaves (memory.cap), and the Chromium JS heap grows no more than 60 MB (memory.heap)
+//   memory     1,000,000 lines of 80 columns, taken in whole before anything is measured (memory.drained: the host's flood is over and nothing waits in its pty, and delivered, given to the emulator, parsed and acknowledged are the same number): the oldest line the emulator keeps is the one the 5,000-line cap leaves (memory.cap), and the Chromium JS heap grows no more than 60 MB (memory.heap)
 //   paint      what is PAINTED, read from the pixels of a screenshot: no frame around the screen while the emulator has the keyboard, its caret is the focus indicator (paint.ring, paint.caret); no scrollbar at rest or over a screen that
 //              does not scroll (scrollbar.rest), a thin one while scrolling (scrollbar.thin) that goes away again once the wheel stops and the pointer leaves (scrollbar.hides)
-//   axe        axe-core: no violation for the running terminal, the empty tool and the question
+//   axe        axe-core: no violation for the running terminal, the empty tool, the ended terminal, the question and the terminal whose shell could not be started (axe.unavailable)
 //   screenreader       the Terminal's screen reader mode (docs/ui-next/status/T1.md section 16), in the DOM renderer, where the printed lines are in the page and are hidden from the accessibility tree until the mode is on: turned on and off
 //              through the palette command by the keyboard alone, the screen's accessibility snapshot holds a known line, and a later one, while it is on (screenreader.tree) and holds neither before it was turned on and after it was
 //              turned off (screenreader.tree-off); the input's name starts with Terminal and the words it is described by say what the mode is and how to change it, in both states (screenreader.words); the result is announced once
 //              for each change through the window's polite live region, when no modal dialog owns the window (screenreader.announce); axe finds nothing in the running terminal with the mode on and with it off (screenreader.axe)
-//   screenreader-cost  the mode on costs nothing at rest: an idle terminal runs no timer and asks for no frame (screenreader.idle), and a hidden panel is no work (screenreader.hidden)
+//   screenreader-cost  the mode on costs nothing at rest: an idle terminal runs no timer and asks for no frame (screenreader.idle), and a hidden panel with the mode on takes in what the shell writes, has no accessibility layer while it is hidden,
+//              touches nothing of the page's and is at rest once it has (screenreader.hidden)
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sharedBuild } from '../../../packages/kit/probes/build-cache.mjs';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
 import { serve } from '../../../packages/kit/probes/serve.mjs';
 import { AXE } from './harness.mjs';
@@ -47,6 +65,8 @@ const engineNames = (process.env.ENGINES ?? Object.keys(ENGINES).join(',')).spli
 const VIEWPORTS = Object.fromEntries((process.env.VIEWPORTS ?? '1440x900,1280x800').split(',').map((vp) => [vp, { width: Number(vp.split('x')[0]), height: Number(vp.split('x')[1]) }]));
 const CONTROL = process.env.NEGATIVE_CONTROL ?? '';
 const OFF = process.env.ASSERTION_OFF === undefined ? undefined : new RegExp(process.env.ASSERTION_OFF);
+/** The part of the probe to run: the sections of `view` or of `data` (the two units of CI), or all of them. */
+const PART = process.env.PART ?? '';
 /** The screen reader mode on after each terminal starts, for the sections that measure what it costs (`SCREEN_READER=on`), and the words the notes say it with. */
 const READER = process.env.SCREEN_READER ?? '';
 if (READER !== '' && READER !== 'on') throw new Error(`SCREEN_READER must be on or not set, it is ${JSON.stringify(READER)}`);
@@ -56,7 +76,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * The negative controls: the assertion each must trip (and no other), the section it belongs to, and how the page is perturbed. `query` perturbs the fixture; `init` runs before the page's own scripts; `after` after the terminal is up.
  * A control of the screen reader sections says where its `after` runs in the section (`stage`): `start` (the terminal is up and the mode is still off), `idle` (an idle terminal with the mode on, after its first second) or
- * `hidden` (the panel is hidden with the mode on). What those perturb is the page's, not the engine's, so they run in Chromium alone.
+ * `hidden` (the panel is hidden with the mode on). What those perturb is the page's, not the engine's, so they run in Chromium alone. The `close` section (`hang`: the page whose host never answers) and the `axe` section (`unavailable`: the page whose shell
+ * could not be started) have several pages, and a control of theirs names the one it perturbs in the same way.
  */
 const CONTROLS = {
   'lane-border': { assertion: 'geometry.lane', section: 'geometry', after: (page) => page.addStyleTag({ content: '[data-shell-part="terminalLane"]{border-block-start-color:rgb(255, 0, 0) !important}' }) },
@@ -70,16 +91,27 @@ const CONTROLS = {
   // A dialog that is open and not modal (what `show()` makes): Escape still says no (the browser's own cancel is told by hand), so only the modal assertion can see it.
   'modal-off': { assertion: 'close.modal', section: 'close', init: () => { HTMLDialogElement.prototype.showModal = function showModal() { this.show(); this.addEventListener('keydown', (event) => { if (event.key === 'Escape') this.dispatchEvent(new Event('cancel', { cancelable: true })); }); }; } },
   'resize-chatty': { assertion: 'resize.messages', section: 'resize', init: () => { const original = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...rest) => original(fn, ms === 100 ? 0 : ms, ...rest); } },
-  'hidden-frames': { assertion: 'hidden.frames', section: 'hidden', after: (page) => page.evaluate(() => { const tick = () => requestAnimationFrame(tick); tick(); }) },
+  // A hidden panel that asks for frames it has no use for: six loops of animation frames, for as long as the shell's output is being taken in (`stage: flood`, which is the 2 MB and then the 20 MB written while the panel is hidden).
+  'hidden-frames': { assertion: 'hidden.frames', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { for (let n = 0; n < 6; n += 1) { const tick = () => { if (window.__phase === 'flood') requestAnimationFrame(tick); }; tick(); } }) },
+  // One callback of the page that holds the main thread for 150 ms while the shell's output is being taken in: the longest task, and a long task in Chromium, which the count of callbacks and the frames never see.
+  'hidden-burn': { assertion: 'hidden.work', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { if (window.__burnInstalled) return; window.__burnInstalled = true; const original = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => original(typeof fn === 'function' ? (...inner) => { if (!window.__burned && window.__phase === 'flood') { window.__burned = true; const until = performance.now() + 150; while (performance.now() < until); } return fn(...inner); } : fn, ms, ...rest); }) },
+  // A hidden panel that is not at rest once everything was taken in: a frame loop and an interval that go on (`stage: rest`: the shell's output has all been taken in).
+  'hidden-rest': { assertion: 'hidden.rest', section: 'hidden', engines: ['chromium'], stage: 'rest', after: (page) => page.evaluate(() => { const tick = () => { if (window.__phase === 'rest') requestAnimationFrame(tick); }; tick(); setInterval(() => undefined, 500); }) },
+  // A page that draws what a hidden terminal is given: every event delivered changes an attribute of the document, outside the emulator's own element.
+  'draw-hidden': { assertion: 'hidden.draws', section: 'hidden', engines: ['chromium'], query: 'control=draw-hidden' },
   'idle-timer': { assertion: 'idle.timers', section: 'idle', after: (page) => page.evaluate(() => { setInterval(() => undefined, 500); }) },
   'chunk-commit': { assertion: 'commits.chunk', section: 'commits', query: 'control=chunk-commit' },
   // Every frame is asked for 45 ms late (a page whose frames come at about a quarter of the rate, with nothing blocked): p95 of the frame times is about 55 ms, over the 34 ms bound with room; no task is a long one and the drain (a share of 512 KiB a frame) keeps up with the shell, so only the frame assertion can see it.
   // `engines`: where the control runs. Frames that come late make the next frame's batch bigger, so in Chromium, which reports long tasks, it also trips the long task assertion: it runs in WebKit, which does not.
   'flood-janky': { assertion: 'flood.frames', section: 'flood', engines: ['webkit'], init: () => { const original = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (callback) => { window.setTimeout(() => { original(callback); }, 45); return 0; }; } },
+  // The sample of frames the flood assertion reads stops before the flood starts: a sample with no frames proves nothing, and does not pass.
+  'flood-no-sample': { assertion: 'flood.frames', section: 'flood', engines: ['chromium'], stage: 'sample', after: (page) => page.evaluate(() => { window.__framesOn = false; }) },
   'echo-slow': { assertion: 'latency.idle', section: 'latency', query: 'control=echo-slow' },
   'lazy-load': { assertion: 'bundle.lazy', section: 'bundle', after: (page, origin) => page.evaluate(async (url) => { const chunk = [...document.querySelectorAll('script')].length; await import(url).catch(() => undefined); return chunk; }, origin) },
   'big-scrollback': { assertion: 'memory.cap', section: 'memory', query: 'control=big-scrollback' },
   'leaky-heap': { assertion: 'memory.heap', section: 'memory', engines: ['chromium'], query: 'control=leaky-heap' },
+  // The memory is measured of a terminal that did not take the flood in: the page acknowledges every byte twice, so what it acknowledged is not what it was given (the cap and the heap are right).
+  'memory-undrained': { assertion: 'memory.drained', section: 'memory', engines: ['chromium'], query: 'control=ack-double' },
   // The screen reader switch (docs/ui-next/status/T1.md section 16). An emulator that is never put in the mode the window says it is in (the lines are not in the accessibility tree while the store, the description and the announcement all
   // say they are), and one that is put in it and never taken out.
   'reader-claims': { assertion: 'screenreader.tree', section: 'screenreader', engines: ['chromium'], query: 'control=reader-claims' },
@@ -91,8 +123,51 @@ const CONTROLS = {
   // A violation that exists only while the mode is on: an image with no text alternative, added to the emulator's accessibility layer the moment the layer is made (it is removed with the mode).
   'reader-axe': { assertion: 'screenreader.axe', section: 'screenreader', engines: ['chromium'], stage: 'start', after: (page) => page.evaluate(() => { new MutationObserver((list) => { for (const record of list) for (const node of record.addedNodes) if (node.classList?.contains('xterm-accessibility')) { const image = document.createElement('img'); image.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; node.append(image); } }).observe(document.querySelector('.xterm'), { childList: true }); }) },
   // The work a hidden panel and an idle terminal must not do, with the mode on: a frame loop that runs while the panel is hidden, and an interval started once the terminal is idle.
-  'reader-hidden-frames': { assertion: 'screenreader.hidden', section: 'screenreader-cost', engines: ['chromium'], stage: 'hidden', after: (page) => page.evaluate(() => { const tick = () => requestAnimationFrame(tick); tick(); }) },
-  'reader-idle-timer': { assertion: 'screenreader.idle', section: 'screenreader-cost', engines: ['chromium'], stage: 'idle', after: (page) => page.evaluate(() => { setInterval(() => undefined, 500); }) },
+  'reader-hidden-frames': { assertion: 'screenreader.hidden', section: 'screenreader-cost', engines: ['chromium'], stage: 'rest', after: (page) => page.evaluate(() => { const tick = () => { if (window.__phase === 'rest') requestAnimationFrame(tick); }; tick(); }) },
+  'reader-idle-timer': { assertion: 'screenreader.idle', section: 'screenreader-cost', engines: ['chromium'], stage: 'idle', after: (page) => page.evaluate(() => { window.__idleTimer = setInterval(() => undefined, 500); }) },
+  // What the host says (docs/ui-next/status/T1-go.md): its credit flow control (2.8.6), the shell it started (2.1), how a process ended (2.2), what runs in it (2.3) and why a start was refused (2.5). Each perturbs the far end of the fixture in ONE way
+  // (`?control=`, terminal-fixture.tsx), or the page once, and runs in Chromium alone: what it proves does not depend on the engine.
+  // The create call answers after the shell's first output was delivered, so the page's first acknowledgement comes late, with something owed.
+  'flow-late': { assertion: 'flow.on', section: 'hidden', engines: ['chromium'], query: 'control=flow-late' },
+  // The page's acknowledgements are replaced by one for each event, made when it is delivered and not when it is parsed: a page that credits what it merely holds, so that the host never slows a shell the page cannot keep up with.
+  'ack-on-receipt': { assertion: 'flow.paced', section: 'hidden', engines: ['chromium'], query: 'control=ack-on-receipt' },
+  // The credit that comes while the host is paused is lost: a host that paused never reads again, and a hidden flood never gets to its end.
+  'ack-lost': { assertion: 'flow.hidden', section: 'hidden', engines: ['chromium'], query: 'control=ack-lost' },
+  // Two of the slices the page gives the emulator never reach it, and are acknowledged all the same: held output that is dropped. The fifth slice is given after the sixth: held output that is out of order.
+  'drop-held': { assertion: 'hidden.drain', section: 'hidden', engines: ['chromium'], query: 'control=drop-held' },
+  'swap-held': { assertion: 'hidden.drain', section: 'hidden', engines: ['chromium'], query: 'control=swap-held' },
+  // Every parsed write is acknowledged twice.
+  'ack-double': { assertion: 'flow.exact', section: 'flood', engines: ['chromium'], query: 'control=ack-double' },
+  // The process starts at the size the person sees (docs/ui-next/status/T2a.md): the renderer is said to be in place before it is and something measures the host again once it is, so that the log holds a resize after the create call; and a host that opens
+  // the pty one column wider than it was asked to, so that the shell's size is not the emulator's.
+  'early-size': { assertion: 'resize.none', section: 'size', engines: ['chromium'], query: 'control=early-size' },
+  'size-off': { assertion: 'resize.cells', section: 'size', engines: ['chromium'], query: 'control=size-off' },
+  // The input as numbered calls (docs/ui-next/status/T1-go.md 2.4): a host that applies the calls in the order they arrive, a host that refuses the size call (a call that was refused is not an applied one), a page that sends what is typed one call at a time, calls numbered with a number missing, and an old call made as well.
+  'arrival-order': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=arrival-order' },
+  'resize-refused': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=resize-refused' },
+  'input-serial': { assertion: 'order.nowait', section: 'order', engines: ['chromium'], query: 'control=input-serial' },
+  'seq-gap': { assertion: 'order.seq', section: 'order', engines: ['chromium'], query: 'control=seq-gap' },
+  'legacy-write': { assertion: 'order.legacy', section: 'order', engines: ['chromium'], query: 'control=legacy-write' },
+  // After a no on the close question the focus goes where a keyboard is: something puts it on the pointer-only close button of the tab once the question is gone.
+  'focus-close-button': { assertion: 'close.focus', section: 'close', engines: ['chromium'], stage: 'start', after: (page) => page.evaluate(() => { let asked = false; new MutationObserver(() => { const open = document.querySelector('dialog[role="alertdialog"]') !== null; if (open) asked = true; else if (asked) { asked = false; setTimeout(() => document.querySelector('[data-shell-part="sessionClose"]')?.focus(), 0); } }).observe(document.body, { childList: true, subtree: true }); }) },
+  // The first Delete on the tab never reaches the tab, so that the question of that path is never asked: a path that is not asked is not let go on, and its keyboard is not looked at as if it had been.
+  'focus-delete-swallowed': { assertion: 'close.focus', section: 'close', engines: ['chromium'], stage: 'start', after: (page) => page.evaluate(() => { let once = true; window.addEventListener('keydown', (event) => { if (once && event.key === 'Delete') { once = false; event.stopImmediatePropagation(); event.preventDefault(); } }, true); }) },
+  // The create call does not name the shell it started: the tab stays Terminal.
+  'no-shell-name': { assertion: 'title.shell', section: 'title', engines: ['chromium'], query: 'control=no-shell-name' },
+  // The typed end of `exit` has no code, that of `kill` and `segv` no signal, that of `quit` no one who closed it.
+  'exit-code-lost': { assertion: 'ended.code', section: 'ended', engines: ['chromium'], query: 'control=exit-code-lost' },
+  'signal-lost': { assertion: 'ended.signal', section: 'ended', engines: ['chromium'], query: 'control=signal-lost' },
+  'closed-lost': { assertion: 'ended.closed', section: 'ended', engines: ['chromium'], query: 'control=closed-lost' },
+  // `IsBusy` says a program named sleep runs while the shell is at its prompt; it says one runs and does not name it; with `?busy=unknown` it says idle; and the page's wait of 1.5 s for an answer never ends (the timer is made a million milliseconds).
+  'busy-always': { assertion: 'close.idle', section: 'close', engines: ['chromium'], query: 'control=busy-always' },
+  'busy-nameless': { assertion: 'close.busy', section: 'close', engines: ['chromium'], query: 'control=busy-nameless' },
+  'unknown-idle': { assertion: 'close.unknown', section: 'close', engines: ['chromium'], query: 'control=unknown-idle' },
+  'ask-never': { assertion: 'close.hang', section: 'close', engines: ['chromium'], stage: 'hang', after: (page) => page.evaluate(() => { const original = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...rest) => original(fn, ms === 1500 ? 1_000_000 : ms, ...rest); }) },
+  // The host's refusal to find a shell has its words and no code; its plain start failure carries the code of a missing shell.
+  'code-less': { assertion: 'start.unavailable', section: 'start', engines: ['chromium'], query: 'control=code-less' },
+  'start-typed': { assertion: 'start.failed', section: 'start', engines: ['chromium'], query: 'control=start-typed' },
+  // A violation that exists only in the lane of a terminal that could not start: an image with no text alternative.
+  'axe-failed': { assertion: 'axe.unavailable', section: 'axe', engines: ['chromium'], stage: 'unavailable', after: (page) => page.evaluate(() => { const image = document.createElement('img'); image.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; document.querySelector('[data-shell-part="terminalLane"]').append(image); }) },
 };
 if (CONTROL !== '' && CONTROL !== 'all' && CONTROLS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be all or one of ${Object.keys(CONTROLS).join(', ')}`);
 
@@ -137,18 +212,87 @@ const percentile = (values, p) => {
 };
 const round = (n) => Math.round(n * 100) / 100;
 
+/** The host's own numbers for its credit flow control (docs/ui-next/status/T1-go.md 2.8.6, `limits` of the answer to the create call): it stops reading the pty at `high` bytes delivered and not acknowledged, reads again at `low`, and a read is `read` bytes at most. `frame` and `hiddenFrame` are the shares of bytes a frame of the page takes at most while its screen is shown and while it is hidden (`FLOW.frame` and `FLOW.hiddenFrame` of screen.ts). */
+const FLOW = Object.freeze({ high: 1_048_576, low: 262_144, read: 20_480, frame: 524_288, hiddenFrame: 262_144 });
+/** The bytes of one event of a burst of the fixture (twelve lines of 80 columns and one of 40, the first line numbered): what the shell writes while the panel is hidden, 2,000 of them and then 20,000. */
+const EVENT_BYTES = 1000;
+const FLOODS = Object.freeze([
+  { name: '2 MB', events: 2000 },
+  { name: '20 MB', events: 20_000 },
+]);
+
+/**
+ * Where the credit stands in the page and at the host: what the host delivered and what still waits in the pty, whether it is paused, what the page acknowledged and in how many calls, the most the host ever had delivered and not
+ * acknowledged, how many floods ended (a flood ends when everything it wrote was delivered), and what the emulator was given and parsed. The page reads it itself (`window.__credit`, `COUNTERS`), so that it can be read in the same task as
+ * something else.
+ */
+const credit = (page) => page.evaluate(() => window.__credit());
+
+/**
+ * Waits for the page to settle after something that moves a lot of bytes (a panel shown again, a flood): until `done` says so of what `credit` reads, or until nothing it reads has moved for `stall` ms (the page is stuck, or the host is: what it
+ * reads then is the answer, and the assertion that reads it fails with its numbers), or until `limit` ms are over. The wait ends by what moves and not by a clock, so a slow machine is waited for and a fault is not waited for long.
+ */
+async function quiet(page, done, { stall = 2500, limit = 60_000 } = {}) {
+  const started = Date.now();
+  let last = await credit(page);
+  let movedAt = Date.now();
+  while (!done(last)) {
+    await sleep(100);
+    const now = await credit(page);
+    if (JSON.stringify(now) !== JSON.stringify(last)) movedAt = Date.now();
+    last = now;
+    if (Date.now() - movedAt >= stall || Date.now() - started >= limit) break;
+  }
+
+  return last;
+}
+
+/**
+ * Waits for what came before a flood to settle: until nothing `credit` reads has moved for `stall` ms. It has its own limit and says so when it ends by the limit: a page that is still moving then has nothing to count a burst from,
+ * and what the assertions after it say would be about that and not about the burst.
+ */
+async function calm(page, { stall = 400, limit = 15_000 } = {}) {
+  const started = Date.now();
+  let last = await credit(page);
+  let movedAt = Date.now();
+  for (;;) {
+    await sleep(100);
+    const now = await credit(page);
+    if (JSON.stringify(now) !== JSON.stringify(last)) movedAt = Date.now();
+    last = now;
+    if (Date.now() - movedAt >= stall) return { calm: true, waited: Date.now() - started, last };
+    if (Date.now() - started >= limit) return { calm: false, waited: Date.now() - started, last };
+  }
+}
+
 /**
  * Counts what a page asks of the main thread: timers and frames created and fired, only while `window.__count.on`, and the repeating intervals alive at any moment (`active`: an interval started before the count
  * began is still a timer that fires). Installed before the page's own scripts.
  */
 const COUNTERS = () => {
-  const counts = (window.__count = { on: false, timeout: 0, interval: 0, raf: 0, fired: 0, active: 0 });
+  const counts = (window.__count = { on: false, timeout: 0, interval: 0, raf: 0, fired: 0, frames: 0, busy: 0, longest: 0, active: 0 });
   const alive = new Set();
   const wrap = (name, key, repeats) => {
     const original = window[name].bind(window);
     window[name] = (callback, ...args) => {
       if (counts.on) counts[key] += 1;
-      const run = typeof callback === 'function' ? (...inner) => { if (counts.on) counts.fired += 1; return callback(...inner); } : callback;
+      // While counting, the time each callback takes is kept (`busy` is their sum and `longest` the longest of them): the work a page does in the timers and frames it asked for.
+      const run =
+        typeof callback === 'function'
+          ? (...inner) => {
+              if (!counts.on) return callback(...inner);
+              const started = performance.now();
+              try {
+                return callback(...inner);
+              } finally {
+                const took = performance.now() - started;
+                counts.fired += 1;
+                if (key === 'raf') counts.frames += 1;
+                counts.busy += took;
+                counts.longest = Math.max(counts.longest, took);
+              }
+            }
+          : callback;
       const id = original(run, ...args);
       if (repeats) {
         alive.add(id);
@@ -170,11 +314,24 @@ const COUNTERS = () => {
   // Every key the page is given, with the instant the browser made it: the start of an input's latency.
   window.__keydowns = [];
   window.addEventListener('keydown', (event) => window.__keydowns.push(event.timeStamp), true);
+  // Where the credit stands, read inside the page so that it can be read in the same task as something else: the baseline of a flood is read in the task that starts it.
+  window.__credit = () => ({
+    floods: window.__pty.log.floods.length,
+    delivered: window.__pty.log.delivered,
+    waiting: window.__pty.log.waiting(),
+    paused: window.__pty.log.paused(),
+    acked: window.__pty.log.acked,
+    acks: window.__pty.log.acks.length,
+    maxUnacked: window.__pty.log.maxUnacked,
+    accepted: window.__engine.accepted,
+    parsed: window.__engine.parsed,
+  });
   window.__longtasks = [];
   try {
-    new PerformanceObserver((list) => {
+    window.__po = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) window.__longtasks.push(entry.duration);
-    }).observe({ type: 'longtask', buffered: true });
+    });
+    window.__po.observe({ type: 'longtask', buffered: true });
   } catch {
     window.__longtasks = null;
   }
@@ -183,9 +340,9 @@ const COUNTERS = () => {
 function build(mode) {
   const existing = mode === 'development' ? process.env.FIXTURE_DIST_DEV : process.env.FIXTURE_DIST;
   if (existing !== undefined && existing !== '') return existing;
-  const out = mkdtempSync(path.join(os.tmpdir(), `terminal-fixture-${mode}-`));
-  execFileSync('node', [path.join(here, 'terminal-build.mjs'), out, mode], { cwd: repo, env: { ...process.env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' });
-  return out;
+  // React's development build is chosen by NODE_ENV, which `vite build` sets to production unless it is set. BUILD_CACHE (the shard runner sets it) shares the build with every process of a shard, the controls' included: the build is
+  // given an environment without the control the process runs, so that no control can reach it, and every control plants its fault in the loaded page or in what the fixture reads of its address.
+  return sharedBuild({ kind: 'terminal-fixture', mode, build: (out, env) => execFileSync('node', [path.join(here, 'terminal-build.mjs'), out, mode], { cwd: repo, env: { ...env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' }) });
 }
 
 async function open(browser, origin, viewport, { query = '', control } = {}) {
@@ -222,6 +379,33 @@ const typeLine = async (page, text) => {
   await page.keyboard.press('Enter');
   await sleep(150);
 };
+
+/**
+ * A start the host refuses (`?fail=`): the panel opens on the Terminal tool, New terminal asks the host, and the lane says that the start failed, after which the host's words are in the transcript (they are written in the frame after the status changes).
+ */
+async function startRefused(page) {
+  await page.click('[data-shell-part="panelToggle"]');
+  await page.waitForSelector('[data-shell-part="panelEmpty"]');
+  await page.click('[data-shell-part="panelEmpty"] button');
+  await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
+  await page.waitForFunction(() => /Failed to start/.test(document.querySelector('[data-shell-part="terminalLane"]')?.textContent ?? ''), null, { timeout: 15_000 });
+  await page.waitForFunction(() => (document.querySelector('.xterm-rows')?.textContent ?? '').includes('['), null, { timeout: 5_000 }).catch(() => undefined);
+  await sleep(300);
+}
+
+/** What a person reads of a terminal in the DOM renderer: the names of the session tabs and of the tool's tabs, the lane's words and the lane, and the rows of the transcript that are not empty (their text, without the blanks a row ends with). */
+const readTerminal = (page) =>
+  page.evaluate(() => {
+    const lane = document.querySelector('[data-shell-part="terminalLane"]');
+    return {
+      session: [...document.querySelectorAll('[data-shell-part="sessionTabs"] [role="tab"]')].map((tab) => tab.getAttribute('aria-label') ?? ''),
+      tools: [...document.querySelectorAll('[data-shell-part="panelTools"] [role="tab"]')].map((tab) => tab.textContent ?? ''),
+      words: lane?.querySelector('span')?.textContent ?? '',
+      lane: lane?.textContent ?? '',
+      rows: [...document.querySelectorAll('.xterm-rows > div')].map((row) => (row.textContent ?? '').trimEnd()).filter((text) => text !== ''),
+      input: document.querySelector('.xterm-helper-textarea')?.getAttribute('aria-label') ?? '',
+    };
+  });
 
 const rectOf = (selector) => `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (el === null) return null; const b = el.getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map((n) => Math.round(n * 100) / 100); })()`;
 const readRects = (page, selectors) => page.evaluate(`({ ${Object.entries(selectors).map(([key, selector]) => `${JSON.stringify(key)}: ${rectOf(selector)}`).join(', ')} })`);
@@ -374,15 +558,16 @@ async function words(ctx) {
     };
   });
   check('words.toolbar', toolbar.label === 'Terminal tools' && toolbar.orientation === 'vertical' && JSON.stringify(toolbar.names) === JSON.stringify(['Clear', 'Copy selection']) && toolbar.copyDisabled === 'true' && toolbar.copyReason === 'Select text in the terminal first', `${engine}: the toolbar is ${JSON.stringify(toolbar)}`);
-  check('words.input', toolbar.input === 'Terminal input, Terminal' && /^Escape and Tab go to the shell\. Press F6 to move to the next part of the window/.test(toolbar.hint ?? ''), `${engine}: the input is ${JSON.stringify([toolbar.input, toolbar.hint])}`);
+  check('words.input', toolbar.input === 'Terminal input, zsh' && /^Escape and Tab go to the shell\. Press F6 to move to the next part of the window/.test(toolbar.hint ?? ''), `${engine}: the input is ${JSON.stringify([toolbar.input, toolbar.hint])}`);
   check('words.running', toolbar.lane === '' && toolbar.laneRole === 'status', `${engine}: the lane of a running session says ${JSON.stringify(toolbar.lane)} (role ${toolbar.laneRole})`);
-  // Ended: the process exits; the lane says so, input is off, the transcript keeps its lines and ends with the exit line.
+  // Ended: the process exits with code 0 (the host's typed end); the lane says so, input is off, the transcript keeps its lines and ends with the exit line (`ended.*` has the other ways a process ends).
   await typeLine(page, 'hello');
   await typeLine(page, 'exit');
   await page.waitForFunction(() => /Input is off/.test(document.querySelector('[data-shell-part="terminalLane"]')?.textContent ?? ''), null, { timeout: 10_000 });
+  await page.waitForFunction(() => /\[Process exited with code 0\]/.test(document.querySelector('.xterm-rows')?.textContent ?? ''), null, { timeout: 5_000 }).catch(() => undefined);
   const ended = await page.evaluate(() => ({ lane: document.querySelector('[data-shell-part="terminalLane"]')?.textContent, text: document.querySelector('.xterm-rows')?.textContent, input: document.querySelector('.xterm-helper-textarea')?.hasAttribute('disabled') }));
-  check('words.ended', /Ended/.test(ended.lane ?? '') && /Input is off\. Its output stays readable here\./.test(ended.lane ?? ''), `${engine}: the lane of an ended session says ${JSON.stringify(ended.lane)}`);
-  check('words.transcript', /hello from the synthetic shell/.test(ended.text ?? '') && /\[Process ended\]/.test(ended.text ?? ''), `${engine}: the transcript of an ended session is ${JSON.stringify((ended.text ?? '').slice(-200))}`);
+  check('words.ended', /Exited with code 0/.test(ended.lane ?? '') && /Input is off\. Its output stays readable here\./.test(ended.lane ?? ''), `${engine}: the lane of an ended session says ${JSON.stringify(ended.lane)}`);
+  check('words.transcript', /hello from the synthetic shell/.test(ended.text ?? '') && /\[Process exited with code 0\]/.test(ended.text ?? ''), `${engine}: the transcript of an ended session is ${JSON.stringify((ended.text ?? '').slice(-200))}`);
   const writes = await page.evaluate(() => window.__pty.log.writes.length);
   await page.keyboard.type('more');
   await sleep(200);
@@ -470,29 +655,252 @@ async function keys(ctx) {
   await page.context().close();
 }
 
+// ---------------------------------------------------------------------------------------------------- title
+/**
+ * The session's tab is called by the shell the host says it started (the answer to the call that started it, `terminal.Session.shell.name`: `zsh`, `bash`) and not `Terminal`; the tool's own tab keeps its name, and the emulator's input
+ * is named by the session's tab, which is what a screen reader says for it.
+ */
+async function title(ctx) {
+  const { browser, origin, viewport, engine } = ctx;
+  if (ctx.vp !== '1440x900') return;
+  for (const shell of ['zsh', 'bash']) {
+    const page = await open(browser, origin, viewport, { query: shell === 'zsh' ? 'renderer=dom' : `renderer=dom&shell=${shell}`, control: ctx.control });
+    await start(page);
+    const read = await readTerminal(page);
+    const named = read.session[0] ?? '';
+    check('title.shell', read.session.length === 1 && named.startsWith(shell) && !named.startsWith('Terminal') && read.tools.includes('Terminal') && read.input === `Terminal input, ${shell}`, `${engine}: the host said it started ${shell}: the session's tab is ${JSON.stringify(read.session)} (it starts with ${shell}), the tool's tabs ${JSON.stringify(read.tools)} (one is Terminal), and the emulator's input is ${JSON.stringify(read.input)} (Terminal input, ${shell})`);
+    await page.context().close();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------- ended
+/**
+ * How a process ended, as the host's typed CLOSE event says it (docs/ui-next/status/T1-go.md 2.2): the lane says it in words and says that input is off, the last line written into the transcript (muted) says it again, and the tab's name has
+ * the state. Read in the DOM renderer, where the transcript is text. `exit 3` is `exited` with its code (`orphan` too, and the host says a program kept the terminal open: one more line), `kill` and `segv` are `signaled` (a core dump is said),
+ * `quit` is `closed` by the host quitting.
+ */
+async function ended(ctx) {
+  const { browser, origin, viewport, engine } = ctx;
+  if (ctx.vp !== '1440x900') return;
+  const NOTE = 'Input is off. Its output stays readable here.';
+  const cases = [
+    { assertion: 'ended.code', command: 'exit 3', words: 'Exited with code 3', tail: ['[Process exited with code 3]'] },
+    { assertion: 'ended.code', command: 'orphan', words: 'Exited with code 0', tail: ['[Process exited with code 0]', '[A program kept the terminal open after the shell exited, so the host stopped reading it and dropped 4 KB of its output]'] },
+    { assertion: 'ended.signal', command: 'kill', words: 'Ended by SIGKILL', tail: ['[Process ended by SIGKILL]'] },
+    { assertion: 'ended.signal', command: 'segv', words: 'Ended by SIGSEGV (core dumped)', tail: ['[Process ended by SIGSEGV (core dumped)]'] },
+    { assertion: 'ended.closed', command: 'quit', words: 'Closed when Omniview quit', tail: ['[Process closed when Omniview quit]'] },
+  ];
+  for (const one of cases) {
+    const page = await open(browser, origin, viewport, { query: 'renderer=dom', control: ctx.control });
+    await start(page);
+    await typeLine(page, one.command);
+    await page.waitForFunction(() => /Input is off/.test(document.querySelector('[data-shell-part="terminalLane"]')?.textContent ?? ''), null, { timeout: 10_000 }).catch(() => undefined);
+    // The transcript's lines are written in the frame after the lane says it: waited for, bounded, until every line it must end with is there (a line the host's words do not change, by its first character).
+    await page.waitForFunction((count) => [...document.querySelectorAll('.xterm-rows > div')].filter((row) => (row.textContent ?? '').trimStart().startsWith('[')).length >= count, one.tail.length, { timeout: 5_000 }).catch(() => undefined);
+    const read = await readTerminal(page);
+    const tail = read.rows.slice(-one.tail.length);
+    const said = `${one.words} ${NOTE}`;
+    check(one.assertion, read.words === one.words && read.lane === said && JSON.stringify(tail) === JSON.stringify(one.tail) && read.session[0] === 'zsh, ended', `${engine}: after "${one.command}" the lane says ${JSON.stringify(read.lane)} (${JSON.stringify(said)}), the last lines of the transcript are ${JSON.stringify(tail)} (${JSON.stringify(one.tail)}) and the session's tab is ${JSON.stringify(read.session)} (zsh, ended)`);
+    await page.context().close();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------- start
+/**
+ * A start the host refuses (docs/ui-next/status/T1-go.md 2.5 and 2.8.8). `SHELL_UNAVAILABLE`, read from the error's code and never from its words, is `No shell could be started`, and the host's detail names every path it tried: the lane says both, and so
+ * does the transcript, one muted line each where the shell's prompt would have been, so that what the host tried can be read and copied. Any other refusal is `Couldn't start the terminal`. The host starts nothing then, and flow control is never turned on.
+ */
+async function refusals(ctx) {
+  const { browser, origin, viewport, engine } = ctx;
+  if (ctx.vp !== '1440x900') return;
+  const flat = (text) => text.replace(/\s+/g, '');
+  const TRIED = ['/bin/zsh', '/opt/none/zsh', '/bin/bash', '/bin/sh'];
+  const MISSING = 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none/zsh": not found; /bin/bash: not found; /bin/sh: not found';
+  const page = await open(browser, origin, viewport, { query: 'renderer=dom&fail=shell-unavailable', control: ctx.control });
+  await startRefused(page);
+  const missing = await readTerminal(page);
+  const host = await page.evaluate(() => ({ refused: window.__pty.log.refused.length, created: window.__pty.log.created.length, acks: window.__pty.log.acks.length }));
+  const screen = flat(missing.rows.join(''));
+  check('start.unavailable', missing.words === 'Failed to start' && missing.lane === `Failed to start No shell could be started. ${MISSING}.` && screen === flat(`[No shell could be started][${MISSING}]`) && TRIED.every((tried) => screen.includes(tried)) && missing.session[0] === 'Terminal, failed' && host.refused === 1 && host.created === 0 && host.acks === 0, `${engine}: no shell could be started: the lane says ${JSON.stringify(missing.lane)}, the transcript ${JSON.stringify(missing.rows)} (the two lines [No shell could be started] and [${MISSING}], with the ${String(TRIED.length)} paths ${TRIED.join(' ')} on the screen: ${String(TRIED.filter((tried) => screen.includes(tried)).length)} are), the session's tab ${JSON.stringify(missing.session)} (Terminal, failed), the host refused ${String(host.refused)} and made ${String(host.created)} sessions, ${String(host.acks)} acknowledgements`);
+  await page.context().close();
+  const PLAIN = 'failed to start the terminal: the pty could not be opened';
+  const plain = await open(browser, origin, viewport, { query: 'renderer=dom&fail=start', control: ctx.control });
+  await startRefused(plain);
+  const other = await readTerminal(plain);
+  check('start.failed', other.words === 'Failed to start' && other.lane === `Failed to start Couldn't start the terminal. ${PLAIN}.` && flat(other.rows.join('')) === flat(`[The terminal could not start][${PLAIN}]`) && other.session[0] === 'Terminal, failed', `${engine}: a start that failed for no shell's sake: the lane says ${JSON.stringify(other.lane)} (Failed to start Couldn't start the terminal. ${PLAIN}.), the transcript ${JSON.stringify(other.rows)} ([The terminal could not start] and [${PLAIN}]), the session's tab ${JSON.stringify(other.session)}`);
+  await plain.context().close();
+}
+
 // ---------------------------------------------------------------------------------------------------- close
+/**
+ * Records, in the page, what a close does, with the page's own clock (`performance.now()`), so that no round trip of the probe is in the instants: the instant of each press on a session's close button, the instant of every question (a
+ * dialog of the close guard) added to the document, and the instant the panel's empty state appeared (the last session went).
+ */
+const watchClose = (page) =>
+  page.evaluate(() => {
+    const seen = (window.__closing = { pressed: [], questions: [], emptyAt: null });
+    document.addEventListener('click', (event) => { if (event.target instanceof Element && event.target.closest('[data-shell-part="sessionClose"]') !== null) seen.pressed.push(performance.now()); }, true);
+    new MutationObserver((list) => {
+      const now = performance.now();
+      for (const record of list) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches('dialog[role="alertdialog"]') || node.querySelector('dialog[role="alertdialog"]') !== null) seen.questions.push(now);
+          if (seen.emptyAt === null && (node.matches('[data-shell-part="panelEmpty"]') || node.querySelector('[data-shell-part="panelEmpty"]') !== null)) seen.emptyAt = now;
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+
+/** The question on screen: whether it is modal, who has the keyboard, its title and its sentence, its buttons. Nothing when there is none. */
+const askedOf = (page) =>
+  page.evaluate(() => {
+    const dialog = document.querySelector('dialog[role="alertdialog"]');
+    if (dialog === null) return null;
+    return {
+      modal: dialog.matches(':modal'),
+      active: document.activeElement?.textContent ?? '',
+      title: document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent ?? '',
+      body: document.getElementById(dialog.getAttribute('aria-describedby') ?? '')?.textContent ?? '',
+      buttons: [...dialog.querySelectorAll('button')].map((button) => button.textContent),
+    };
+  });
+
+/**
+ * Where the keyboard is, for the session `id`: whether it is on the session's own tab in the panel's strip, whether it is on the pointer-only close button of a tab, whether anything above it is `aria-hidden`, and what it is.
+ */
+const focusOf = (page, id) =>
+  page.evaluate((session) => {
+    const active = document.activeElement;
+    return {
+      onTab: active?.matches(`[data-shell-region="panel"] [data-shell-part="sessionTabs"] [role="tab"][data-tab-id="${session}"]`) ?? false,
+      onClose: active?.matches('[data-shell-part="sessionClose"]') ?? false,
+      hiddenAbove: active === null ? false : active.closest('[aria-hidden="true"]') !== null,
+      is: active === null ? 'nothing' : `${active.tagName.toLowerCase()}${active.getAttribute('data-shell-part') === null ? '' : `[${active.getAttribute('data-shell-part')}]`}`,
+    };
+  }, id);
+
+/**
+ * The question a close of a running terminal asks, and when it asks nothing (docs/ui-next/status/T1-go.md 2.3): the person closes it, the page asks the host `IsBusy` (once, never polled), and the host says what holds the terminal. At its prompt
+ * (`idle`) nothing runs and nothing is asked: the tab goes, the process is closed once and the keyboard goes where a close puts it. A program (`busy`, named `sleep`) is named in the question, a modal whose Cancel has the keyboard; Escape and
+ * Cancel keep the session and Terminate session ends it; and after a no (Escape, Cancel, a press on the scrim), asked with the mouse on the close button or with Delete on the tab, the keyboard is on the session's own tab and never on the
+ * pointer-only close button, which is `aria-hidden`. A host that cannot say (`unknown`), and one that does not answer (`hang`: after the wait of 1.5 s, not before it), get the general question.
+ */
 async function close(ctx) {
   const { browser, origin, viewport, engine } = ctx;
   if (ctx.vp !== '1440x900') return;
+  const BUSY = 'sleep is running in this terminal. This ends the terminal session and stops it.';
+  const GENERAL = 'This ends the terminal session. Programs it left running in the background may keep running.';
+  const TITLE = 'Terminate session?';
   const page = await open(browser, origin, viewport, { query: 'renderer=dom', control: ctx.control });
+  await page.addScriptTag({ path: AXE });
   await start(page);
+  await perturb(ctx, page, 'start');
+  await typeLine(page, 'sleep 30');
+  await watchClose(page);
+  const tab = '[data-shell-part="sessionTabs"] [role="tab"]';
+  const tabId = await page.evaluate((selector) => document.querySelector(selector)?.getAttribute('data-tab-id') ?? '', tab);
+  const dialog = page.getByRole('alertdialog', { name: TITLE });
+  // The presses of the close the host was asked about, and where the keyboard was after each no.
+  let presses = 0;
+  const verdicts = [];
+  // Every path asks the question and answers it no, and the question must come, and be gone again, before the keyboard is looked at. A wait that ran out is kept and fails `close.focus`: no path goes on by a timeout that was caught.
+  // A press is one the host was asked about when its question came.
+  const waits = [];
+  const asks = async (how) => {
+    const ok = await dialog.waitFor({ timeout: 5000 }).then(() => true, () => false);
+    waits.push({ how, step: 'the question came', ok });
+    if (ok) presses += 1;
+    return ok;
+  };
+  const goes = async (how) => {
+    const ok = await dialog.waitFor({ state: 'detached', timeout: 3000 }).then(() => true, () => false);
+    waits.push({ how, step: 'the question went', ok });
+  };
+  const noted = async (how) => {
+    await sleep(150);
+    verdicts.push({ how, ...(await focusOf(page, tabId)) });
+  };
   await page.click('[data-shell-part="sessionClose"]');
-  const dialog = page.getByRole('alertdialog', { name: 'Terminate session?' });
-  await dialog.waitFor({ timeout: 5000 });
-  const shown = await page.evaluate(() => ({ modal: document.querySelector('dialog[role="alertdialog"]')?.matches(':modal') ?? false, active: document.activeElement?.textContent, body: document.querySelector('dialog[role="alertdialog"]')?.innerText }));
-  check('close.modal', shown.modal === true, `${engine}: the question is a modal dialog (:modal ${String(shown.modal)})`);
-  check('close.cancel', shown.active === 'Cancel', `${engine}: Cancel has the keyboard in the question (active: ${String(shown.active)})`);
-  check('close.words', /Terminate session\?/.test(shown.body ?? '') && /This ends the terminal session\./.test(shown.body ?? '') && /Terminate session/.test(shown.body ?? ''), `${engine}: the question says ${JSON.stringify(shown.body)}`);
+  await asks('the close button, Escape');
+  const shown = await askedOf(page);
+  check('close.modal', shown?.modal === true, `${engine}: the question is a modal dialog (:modal ${String(shown?.modal)})`);
+  check('close.cancel', shown?.active === 'Cancel', `${engine}: Cancel has the keyboard in the question (active: ${String(shown?.active)})`);
+  check('close.words', shown?.title === TITLE && / is running in this terminal\. This ends the terminal session and stops it\.$/.test(shown.body) && JSON.stringify(shown.buttons) === JSON.stringify(['Cancel', 'Terminate session']), `${engine}: the question says ${JSON.stringify(shown)}`);
   await page.keyboard.press('Escape');
-  await dialog.waitFor({ state: 'detached', timeout: 3000 }).catch(() => undefined);
+  await goes('the close button, Escape');
   check('close.no', (await page.evaluate(() => window.__pty.ids().length)) === 1 && (await page.getByRole('alertdialog').count()) === 0, `${engine}: Escape says no: the shell is still there and the question is gone`);
+  await noted('the close button, Escape');
+  // Cancel says no as well: the session stays, and the host closed nothing.
+  await page.click('[data-shell-part="sessionClose"]');
+  const cancelling = await asks('the close button, Cancel');
+  const again = await askedOf(page);
+  if (cancelling) await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await goes('the close button, Cancel');
+  const kept = await page.evaluate(() => ({ ids: window.__pty.ids().length, closed: window.__pty.log.closed.length, dialogs: document.querySelectorAll('dialog[role="alertdialog"]').length }));
+  await noted('the close button, Cancel');
+  // A press on the scrim, outside the frame, says no too.
+  await page.click('[data-shell-part="sessionClose"]');
+  await asks('the close button, a press on the scrim');
+  await page.mouse.click(4, 4);
+  await goes('the close button, a press on the scrim');
+  await noted('the close button, a press on the scrim');
+  // The keyboard asks with Delete on the tab and answers with Escape, with Enter on Cancel (which has the keyboard) and with a press on the scrim.
+  for (const how of ['Escape', 'Enter on Cancel', 'a press on the scrim']) {
+    const path = `Delete on the tab, ${how}`;
+    await page.locator(tab).focus();
+    await page.keyboard.press('Delete');
+    await asks(path);
+    if (how === 'Escape') await page.keyboard.press('Escape');
+    else if (how === 'Enter on Cancel') await page.keyboard.press('Enter');
+    else await page.mouse.click(4, 4);
+    await goes(path);
+    await noted(path);
+  }
+
+  const axeFocus = await runAxe(page, '[data-shell-part="panelHeader"]');
+  const astray = verdicts.filter((verdict) => !verdict.onTab || verdict.onClose || verdict.hiddenAbove);
+  const unmet = waits.filter((step) => !step.ok);
+  check('close.focus', waits.length === 12 && unmet.length === 0 && verdicts.length === 6 && astray.length === 0 && axeFocus.length === 0, `${engine}: after a no the keyboard is on the session's own tab, never on the pointer-only close button or under an aria-hidden ancestor: ${JSON.stringify(verdicts)} (${String(astray.length)} are not)${unmet.length === 0 ? '' : `; the question did not come, or did not go, in ${JSON.stringify(unmet)}`}, and axe finds ${JSON.stringify(axeFocus)} in the strip with the keyboard there`);
+  presses += 1;
   await page.click('[data-shell-part="sessionClose"]');
   await dialog.waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: 'Terminate session', exact: true }).click();
   await sleep(500);
-  const done = await page.evaluate(() => ({ closed: window.__pty.log.closed.length, empty: document.querySelector('[data-shell-part="panelEmpty"]') !== null, role: document.activeElement?.getAttribute('role'), text: document.activeElement?.textContent }));
+  const done = await page.evaluate(() => ({ closed: window.__pty.log.closed.length, asked: window.__pty.log.busy.length, ids: window.__pty.ids().length, empty: document.querySelector('[data-shell-part="panelEmpty"]') !== null, role: document.activeElement?.getAttribute('role'), text: document.activeElement?.textContent }));
   check('close.yes', done.closed === 1 && done.empty && done.role === 'tab' && /Terminal/.test(done.text ?? ''), `${engine}: Terminate session closed the process (${String(done.closed)}), the tool says it is empty (${String(done.empty)}) and the focus is on the tool's tab (${String(done.role)} ${String(done.text)})`);
-  await page.context().close();
+  check('close.busy', shown?.body === BUSY && again?.body === BUSY && kept.ids === 1 && kept.closed === 0 && kept.dialogs === 0 && done.closed === 1 && done.ids === 0 && done.asked === presses, `${engine}: a program runs: the question says ${JSON.stringify(shown?.body)} and ${JSON.stringify(again?.body)} (${JSON.stringify(BUSY)}); after Cancel ${String(kept.ids)} session(s) stay, ${String(kept.closed)} closed, ${String(kept.dialogs)} questions; after Terminate session ${String(done.closed)} closed and ${String(done.ids)} stay; the host was asked ${String(done.asked)} times for ${String(presses)} presses`);
+  // At its prompt, nothing runs: no question at any moment, the tab goes at once, the process is closed once, and the keyboard goes to the tool's tab (the last session has no neighbour).
+  const idlePage = await open(browser, origin, viewport, { query: 'renderer=dom', control: ctx.control });
+  await start(idlePage);
+  await watchClose(idlePage);
+  await idlePage.click('[data-shell-part="sessionClose"]');
+  await idlePage.waitForSelector('[data-shell-part="panelEmpty"]', { timeout: 4000 }).catch(() => undefined);
+  await sleep(200);
+  const quick = await idlePage.evaluate(() => ({ ...window.__closing, closed: window.__pty.log.closed.length, asked: window.__pty.log.busy.length, ids: window.__pty.ids().length, role: document.activeElement?.getAttribute('role'), text: document.activeElement?.textContent }));
+  const gone = quick.emptyAt === null || quick.pressed.length === 0 ? Infinity : quick.emptyAt - quick.pressed[0];
+  check('close.idle', quick.questions.length === 0 && gone <= 1_000 && quick.closed === 1 && quick.asked === 1 && quick.ids === 0 && quick.role === 'tab' && quick.text === 'Terminal', `${engine}: at its prompt: ${String(quick.questions.length)} questions (none is right), the tab was gone ${String(round(gone))} ms after the press (1,000 ms at most), the process was closed ${String(quick.closed)} time(s) (once) after the host was asked ${String(quick.asked)} time(s) (once), ${String(quick.ids)} sessions stay, and the focus is on ${String(quick.role)} ${JSON.stringify(quick.text)} (the tool's tab)`);
+  await idlePage.context().close();
+  // A host that cannot say gets the general question at once; one that never answers gets it when the wait of 1.5 s is over.
+  const unknown = await open(browser, origin, viewport, { query: 'renderer=dom&busy=unknown', control: ctx.control });
+  await start(unknown);
+  await watchClose(unknown);
+  await unknown.click('[data-shell-part="sessionClose"]');
+  await unknown.getByRole('alertdialog').waitFor({ timeout: 5000 }).catch(() => undefined);
+  const cannot = await askedOf(unknown);
+  const cannotAfter = await unknown.evaluate(() => (window.__closing.questions[0] ?? Infinity) - (window.__closing.pressed[0] ?? 0));
+  check('close.unknown', cannot?.title === TITLE && cannot.body === GENERAL && cannotAfter <= 1_000, `${engine}: the host said it cannot tell: the question says ${JSON.stringify(cannot)} (${JSON.stringify(GENERAL)}) ${String(round(cannotAfter))} ms after the press (at once: 1,000 ms at most, the wait is 1,500)`);
+  await unknown.context().close();
+  const hang = await open(browser, origin, viewport, { query: 'renderer=dom&busy=hang', control: ctx.control });
+  await start(hang);
+  await perturb(ctx, hang, 'hang');
+  await watchClose(hang);
+  await hang.click('[data-shell-part="sessionClose"]');
+  await hang.getByRole('alertdialog').waitFor({ timeout: 6000 }).catch(() => undefined);
+  const silent = await askedOf(hang);
+  const silentAfter = await hang.evaluate(() => (window.__closing.questions[0] ?? Infinity) - (window.__closing.pressed[0] ?? 0));
+  check('close.hang', silent?.title === TITLE && silent.body === GENERAL && silentAfter >= 1_400 && silentAfter <= 4_000, `${engine}: the host never answered: the question says ${JSON.stringify(silent)} (${JSON.stringify(GENERAL)}) ${String(round(silentAfter))} ms after the press (after the wait of 1,500 ms: not before 1,400 and within 4,000)`);
+  await hang.context().close();
 }
 
 // ---------------------------------------------------------------------------------------------------- resize
@@ -527,6 +935,249 @@ async function resize(ctx) {
   await page.context().close();
 }
 
+// ---------------------------------------------------------------------------------------------------- size
+/**
+ * The process starts at the size the person sees (docs/ui-next/status/T2a.md): the screen tells the feed a size only once the GPU renderer is in place, whose cells are not the DOM's, so that the create call carries the final size and
+ * nothing is resized after the process started. Read with the renderer the product has (the GPU's), in both viewports and both engines: the log holds the create call's size and no resize after it, not at the start and not after the panel was
+ * hidden and shown (the renderer goes to the DOM's and back, and the cells are the same), until the panel is resized (`resize.none`); and the size the shell reports when it is asked is the emulator's cells, which are what the renderer in
+ * place gives (`resize.cells`).
+ */
+async function size(ctx) {
+  const { browser, origin, viewport, engine, vp } = ctx;
+  const page = await open(browser, origin, viewport, { control: ctx.control });
+  await start(page);
+  // A resize that follows the create call comes once the renderer is in place and the size has stood still for 100 ms.
+  await sleep(500);
+  const sizes = () => page.evaluate(() => window.__pty.log.resizes.map((entry) => [entry.rows, entry.cols]));
+  const started = await sizes();
+  await typeLine(page, 'size');
+  const read = await page.evaluate(() => ({ reported: window.__pty.log.sizeReports.at(-1) ?? null, grid: window.__engine.grid(), fit: window.__engine.measure(), renderers: window.__engine.renderers }));
+  let cycled = [];
+  if (vp === '1440x900') {
+    // The panel hidden and shown: the DOM's renderer and then the GPU's again, the same cells.
+    await page.click('[data-shell-part="panelToggle"]');
+    await sleep(400);
+    await page.click('[data-shell-part="panelToggle"]');
+    await sleep(600);
+    cycled = await sizes();
+  }
+
+  check('resize.none', started.length === 1 && (vp !== '1440x900' || cycled.length === 1), `${engine} ${vp}: the log of sizes holds ${String(started.length)} after the start and ${vp === '1440x900' ? String(cycled.length) : 'no look'} after the panel was hidden and shown (the create call's, and nothing after it, is right): ${JSON.stringify(cycled.length > 0 ? cycled : started)}`);
+  const same = (a, b) => a !== null && a !== undefined && a.rows === b.rows && a.cols === b.cols;
+  check('resize.cells', same(read.reported, read.grid) && same(read.fit, read.grid) && started.length >= 1 && started[0][0] === read.grid.rows, `${engine} ${vp}: the shell reports ${JSON.stringify(read.reported)} (rows, columns), the emulator's grid is ${JSON.stringify(read.grid)} and the renderer in place measures ${JSON.stringify(read.fit)}, the create call's size ${JSON.stringify(started[0])}; renderers asked for: ${JSON.stringify(read.renderers)}`);
+  note(`size ${engine} ${vp}: the create call carried ${JSON.stringify(started[0])} (rows, columns), the shell reports ${JSON.stringify(read.reported)}, the emulator's grid is ${JSON.stringify(read.grid)}; ${String(started.length - 1)} resizes after the create call${vp === '1440x900' ? `, ${String(cycled.length - 1)} after the panel was hidden and shown` : ''}`);
+  report.numbers[`size ${engine} ${vp}`] = { started, cycled, ...read };
+  await page.context().close();
+}
+
+// ---------------------------------------------------------------------------------------------------- order
+/**
+ * The input goes to the host as numbered calls (docs/ui-next/status/T1-go.md 2.4), and the host puts them in the order of their numbers whatever order they arrive in. The page numbers every call, the keys and the sizes with one
+ * counter, from 1 (`order.seq`: read from the log of the calls the fixture's host took, in the order they were made), and never makes the old calls (`order.legacy`). What is typed comes out of the shell in the order it was typed
+ * (`order.echo`) when the calls take up to 40 ms to arrive, each a different time, and with one inversion that is known: the call that sets the size takes 600 ms to arrive, and the keys typed right after it arrive first. The host's own
+ * records of arrival and application say what happened: every call was applied (a call that was refused is not a finished one), and the calls were applied in the order of their numbers, the keys and the size together. A call is made at
+ * once, whatever became of the one before it (`order.nowait`): the keys made after the size call arrive before it, and, with the host slow to apply a call (1.5 s), the next keys are made while it has not been answered.
+ */
+async function order(ctx) {
+  const { browser, origin, viewport, engine } = ctx;
+  if (ctx.vp !== '1440x900') return;
+  const page = await open(browser, origin, viewport, { query: 'renderer=dom', control: ctx.control });
+  await start(page);
+  const LINE_TYPED = 'the quick brown fox jumps over the lazy dog 0123456789';
+  // Calls that take up to 40 ms to arrive, each a different time: the transport does not deliver them in the order they were made. And one inversion that is known: the call that sets the size takes 600 ms to arrive, so the keys
+  // typed right after it, which take 40 ms at most, arrive before it.
+  await page.evaluate(() => {
+    window.__pty.net.latency = 40;
+    window.__pty.net.late = { kind: 'resize', calls: 1, ms: 600 };
+  });
+  await page.keyboard.type(LINE_TYPED.slice(0, 20));
+  // A size between the keys: the panel's own splitter changes the height of the screen, and the feed tells the host the new size with the next number.
+  await page.locator('[data-shell-part="panelHandle"]').focus();
+  await page.evaluate(() => document.querySelector('[data-shell-part="panelHandle"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true })));
+  // The keys are typed as soon as the size call is made, and not at a time that was guessed.
+  const sized = await page.waitForFunction(() => window.__pty.log.calls.some((call) => call.kind === 'resize'), null, { timeout: 10_000 }).then(() => true, () => false);
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type(LINE_TYPED.slice(20));
+  // Every call the host took is applied: a call it refused is not a finished call, and the wait ends at one.
+  const finished = await page
+    .waitForFunction(
+      (text) => {
+        const { calls, writes } = window.__pty.log;
+        return calls.some((call) => call.outcome !== 'sent' && call.outcome !== 'applied') || (writes.join('').length >= text.length && calls.every((call) => call.outcome === 'applied'));
+      },
+      LINE_TYPED,
+      { timeout: 10_000 },
+    )
+    .then(() => true, () => false);
+  await sleep(300);
+  const made = await page.evaluate(() => ({
+    calls: window.__pty.log.calls.map((call) => ({ kind: call.kind, seq: call.seq, outcome: call.outcome, arrival: call.arrival, application: call.application })),
+    applied: window.__pty.log.writes.join(''),
+    legacy: window.__pty.log.legacy,
+    rows: [...document.querySelectorAll('.xterm-rows > div')].map((row) => (row.textContent ?? '').trimEnd()).filter((text) => text !== ''),
+  }));
+  const seqs = made.calls.map((call) => call.seq);
+  // The host's records: the calls in the order it applied them (the numbers of the ones it applied), and how many keys made after the size call arrived before it.
+  const byApplication = made.calls.filter((call) => call.application !== null).sort((a, b) => a.application - b.application).map((call) => call.seq);
+  const sorted = byApplication.every((seq, index) => index === 0 || seq > byApplication[index - 1]);
+  const unapplied = made.calls.filter((call) => call.application === null || call.outcome !== 'applied');
+  const resize = made.calls.find((call) => call.kind === 'resize');
+  const overtook = resize === undefined || resize.arrival === null ? 0 : made.calls.filter((call) => call.kind === 'write' && call.seq > resize.seq && call.arrival !== null && call.arrival < resize.arrival).length;
+  check('order.seq', seqs.length > 0 && seqs.every((seq, index) => seq === index + 1) && made.calls.some((call) => call.kind === 'resize') && made.calls.some((call) => call.kind === 'write'), `${engine}: the input calls were numbered ${JSON.stringify(seqs)} in the order they were made (1, 2, 3 ... with the keys and the size together is right): ${JSON.stringify(made.calls.map((call) => `${call.kind[0]}${String(call.seq)}`))}`);
+  check('order.legacy', made.legacy.length === 0, `${engine}: the page made the old calls ${JSON.stringify(made.legacy.slice(0, 4))} (${String(made.legacy.length)} in all; none is right)`);
+  check(
+    'order.echo',
+    finished && sized && unapplied.length === 0 && made.calls.length > 0 && sorted && made.applied === LINE_TYPED && made.rows.some((row) => row.includes(LINE_TYPED)),
+    `${engine}: with calls that arrive in another order than they were made in, the host applied ${String(byApplication.length)} of ${String(made.calls.length)} calls${unapplied.length === 0 ? '' : ` (not applied: ${JSON.stringify(unapplied.slice(0, 4).map((call) => `${call.kind[0]}${String(call.seq)} ${call.outcome}`))})`} in the order ${JSON.stringify(byApplication.slice(0, 24))} (${sorted ? 'the order of their numbers' : 'not the order of their numbers'}), the shell was given ${JSON.stringify(made.applied)} (${JSON.stringify(LINE_TYPED)} was typed) and echoed ${JSON.stringify(made.rows.at(-1))}${finished ? '' : '; the calls were not all applied in 10 s'}${sized ? '' : '; no size call was made'}`,
+  );
+  // The host is slow to apply the next call (1.5 s) and no longer takes its time to receive them: a key typed meanwhile is made at once.
+  await page.evaluate(() => { window.__pty.net.latency = 0; window.__pty.net.hold = { calls: 1, ms: 1500 }; });
+  const mark = await page.evaluate(() => window.__pty.log.calls.length);
+  await page.keyboard.press('Control+c');
+  await sleep(100);
+  await page.keyboard.type('xy');
+  await sleep(400);
+  const slow = await page.evaluate((from) => window.__pty.log.calls.slice(from).map((call) => ({ at: call.at, answeredAt: call.answeredAt, seq: call.seq })), mark);
+  const unanswered = slow.length > 0 && slow[0].answeredAt === null;
+  check('order.nowait', overtook >= 1 && slow.length >= 3 && unanswered && slow.slice(1).every((call) => call.answeredAt === null || call.at < (slow[0].answeredAt ?? Infinity)), `${engine}: ${String(overtook)} keys made after the size call arrived before it (1 or more is right: they are made while it is on its way); with the host slow to apply a call, ${String(slow.length)} calls were made in 500 ms (3 or more is right: the one it is slow with and the keys behind it), the first answered: ${String(!unanswered)}`);
+  note(`order ${engine}: ${String(seqs.length)} calls numbered ${String(seqs[0])} to ${String(seqs.at(-1))}, applied in the order of their numbers although ${String(overtook)} keys made after the size call arrived before it, the shell was given the line typed in the order it was typed; with the first of three calls slow, ${String(slow.length)} were made in 500 ms`);
+  report.numbers[`order ${engine}`] = { calls: made.calls, overtook, slow };
+  await page.context().close();
+}
+
+// ---------------------------------------------------------------------------------------------------- hidden
+/**
+ * What a page did in a window of time, from the counters of `COUNTERS` (frames and timers it asked for, callbacks that ran, the time they took, the longest of them, the long tasks of Chromium) and from the document's mutations
+ * told apart: the page's own, and those inside the emulator's element (xterm's character measure element, its scrollbar and its input). `beginWindow` starts it and `endWindow` answers it.
+ */
+const beginWindow = (page) =>
+  page.evaluate(() => {
+    window.__mutations = { page: 0, xterm: 0, first: null };
+    window.__observer = new MutationObserver((list) => {
+      for (const record of list) {
+        const target = record.target instanceof Element ? record.target : record.target.parentElement;
+        if (target?.closest('.xterm') != null) window.__mutations.xterm += 1;
+        else {
+          window.__mutations.page += 1;
+          window.__mutations.first ??= `${record.type} ${target?.tagName ?? '?'}${record.attributeName === null ? '' : ` ${record.attributeName}`}`;
+        }
+      }
+    });
+    window.__observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    Object.assign(window.__count, { timeout: 0, interval: 0, raf: 0, fired: 0, frames: 0, busy: 0, longest: 0, on: true });
+    if (window.__longtasks !== null) window.__longtasks.length = 0;
+  });
+const endWindow = (page) =>
+  page.evaluate(() => {
+    window.__count.on = false;
+    window.__observer.disconnect();
+    for (const entry of window.__po?.takeRecords() ?? []) window.__longtasks.push(entry.duration);
+    const { timeout, interval, raf, fired, frames, busy, longest } = window.__count;
+    return { timeout, interval, raf, fired, frames, busy, longest, mutations: window.__mutations, longtasks: window.__longtasks === null ? null : [...window.__longtasks] };
+  });
+
+/** The main thread's own account of its work, from the browser (Chromium only): the milliseconds of every task, of the scripts in them, of layout and of style recalculation, since the page began. */
+async function metricsOf(cdp) {
+  if (cdp === null) return null;
+  const { metrics } = await cdp.send('Performance.getMetrics');
+  const get = (name) => (metrics.find((metric) => metric.name === name)?.value ?? 0) * 1000;
+  return { task: get('TaskDuration'), script: get('ScriptDuration'), layout: get('LayoutDuration'), style: get('RecalcStyleDuration') };
+}
+
+/**
+ * The shell writes `events` numbered events of 1,000 B while the panel is hidden, in one task (a build that prints a great deal in a session that is not shown): the host delivers what is under its mark in that task and the rest
+ * waits, and the page, which goes on reading, parsing and acknowledging while it is hidden (`FLOW.hiddenFrame` bytes a frame), gives the host the credit to deliver it. What came before settles first (`calm`, which has its own
+ * limit and its own words), and the baseline of the credit is read in the task that starts the burst, so that nothing that was still on its way is counted in it. Answers what the host delivered and the page took in, waited for by
+ * what still moves (the account of every byte and the page's own at rest), what the page did meanwhile (`during`) and the browser's own count of the task time (`browser`). `perturb('flood')` runs before anything is counted.
+ */
+async function flooded(page, { events }, { cdp, perturb }) {
+  const bytes = events * EVENT_BYTES;
+  const calmed = await calm(page);
+  await page.evaluate(() => { window.__phase = 'flood'; });
+  await perturb?.('flood');
+  const m0 = await metricsOf(cdp);
+  await beginWindow(page);
+  const { before, burst } = await page.evaluate((count) => ({ before: window.__credit(), burst: window.__pty.burst(window.__pty.ids()[0], count) }), events);
+  const settled = await quiet(page, (state) => state.waiting === 0 && state.delivered - before.delivered === bytes && state.acked === state.delivered && state.accepted - before.accepted === bytes && state.parsed === state.accepted, { limit: 60_000 });
+  const during = await endWindow(page);
+  const m1 = await metricsOf(cdp);
+  await page.evaluate(() => { window.__phase = 'settle'; });
+  const checked = await page.evaluate(() => window.__engine.order);
+  return { bytes, events, calm: calmed, before, burst, settled, during, checked, browser: m0 === null || m1 === null ? null : { task: m1.task - m0.task, script: m1.script - m0.script, layout: m1.layout - m0.layout, style: m1.style - m0.style } };
+}
+
+/**
+ * The hidden terminal at rest, once everything the shell wrote has been taken in: xterm hides its scrollbar 800 ms after the last line scrolled and refreshes once more, so the page is left alone for 1.5 s, and then a window of 1.2 s
+ * is counted. `perturb('rest')` runs before it.
+ */
+async function resting(page, perturb) {
+  await sleep(1500);
+  await page.evaluate(() => { window.__phase = 'rest'; });
+  await perturb?.('rest');
+  await beginWindow(page);
+  await sleep(1200);
+  const during = await endWindow(page);
+  await page.evaluate(() => { window.__phase = 'done'; });
+  return during;
+}
+
+/** What the page's acknowledgements were, one by one, against what it had parsed at the instant of each: the ones made before the bytes they acknowledge were parsed. */
+const earlyAcks = (page) => page.evaluate(() => window.__pty.log.ackState.filter((state) => state.after > state.parsed).map((state) => `${String(state.after)} acknowledged with ${String(state.parsed)} parsed`));
+
+/**
+ * A hidden terminal goes on taking in what its shell writes (docs/ui-next/status/T1-go.md 2.8.6, docs/ui-next/status/T2a.md): it reads, parses and acknowledges in frames of a smaller share, and draws nothing, so the host never pauses a shell that
+ * is not shown for good, and the shell of a build in a session that is not shown goes on. The panel is hidden and the shell writes 2 MB and then 20 MB in one task each, and, for each: every byte is delivered, parsed and
+ * acknowledged, and the host has no pause left (`flow.hidden`); the emulator was given every byte in the order the shell wrote them (`hidden.drain`: the numbered events are where they belong); in a number of frames that follows from the bytes
+ * (`hidden.frames`: a frame takes `FLOW.hiddenFrame` bytes, and what xterm asks for besides is counted too); in callbacks that are bounded in number, in their time added up and in the longest of them (`hidden.work`); and the page's own
+ * document is not touched while xterm's own is bounded (`hidden.draws`: xterm measures and updates its scrollbar in a hidden element, which costs mutations that grow with what it is given). No byte is acknowledged before it was
+ * parsed (`flow.paced`). Once everything is in, the page is at rest: no frame, no timer, no change (`hidden.rest`). The bounds are counts, and times with at least 3 times the room the laptop needs.
+ */
+async function hidden(ctx) {
+  const { browser, origin, viewport, engine } = ctx;
+  if (ctx.vp !== '1440x900') return;
+  const page = await open(browser, origin, viewport, { control: ctx.control });
+  await start(page);
+  // The host's flow control is turned on with the process: the first acknowledgement, of nothing yet, is made as soon as the host has answered the call that started it, before any byte of the shell's was delivered to the page, given to the emulator or parsed.
+  const first = await page.evaluate(() => window.__pty.log.ackState[0] ?? null);
+  check('flow.on', first !== null && first.count === 0 && first.exists && first.delivered === 0 && first.accepted === 0 && first.parsed === 0, `${engine}: the first AckTerminal call was ${JSON.stringify(first)}: it must be made with the process (count 0, the session there) before any byte was delivered, given to the emulator or parsed`);
+  await typeLine(page, 'hello');
+  const cdp = engine === 'chromium' ? await page.context().newCDPSession(page) : null;
+  await cdp?.send('Performance.enable');
+  await page.click('[data-shell-part="panelToggle"]');
+  await sleep(400);
+  const hooks = { cdp, perturb: (stage) => perturb(ctx, page, stage) };
+  const runs = [];
+  for (const flood of FLOODS) {
+    const run = await flooded(page, flood, hooks);
+    runs.push({ ...flood, ...run });
+    const { bytes, events, calm: calmed, before, burst, settled, during, checked } = run;
+    const MB = bytes / 1_000_000;
+    const units = bytes / FLOW.hiddenFrame;
+    const gained = { delivered: settled.delivered - before.delivered, accepted: settled.accepted - before.accepted, acked: settled.acked - before.acked };
+    const tag = `${engine}, ${flood.name} written while the panel was hidden`;
+    check('flow.hidden', calmed.calm && gained.delivered === bytes && settled.waiting === 0 && settled.paused === false && gained.acked === bytes, `${tag}: ${calmed.calm ? '' : `what came before the burst was still moving after ${String(calmed.waited)} ms (${JSON.stringify(calmed.last)}), so there was no baseline to count it from; `}the burst took the host ${burst.paused ? 'past its mark, to a pause' : 'to no pause'} (${String(burst.waiting)} B waiting in the pty), and then ${String(gained.delivered)} of ${String(bytes)} B were delivered, ${String(gained.acked)} acknowledged, ${String(settled.waiting)} B still wait in the pty and the host is ${settled.paused ? 'paused' : 'not paused'}`);
+    check('hidden.drain', gained.accepted === gained.delivered && settled.parsed === settled.accepted && checked.bad === 0 && checked.checked >= Math.floor((gained.delivered / EVENT_BYTES) * 0.9), `${tag}: the emulator was given ${String(gained.accepted)} of the ${String(gained.delivered)} B delivered and parsed ${String(settled.parsed)} of ${String(settled.accepted)}, ${String(checked.bad)} of ${String(checked.checked)} numbered events looked at were not where they belong${checked.first === null ? '' : ` (first: ${JSON.stringify(checked.first)})`}`);
+    const frames = Math.ceil(5.5 * units) + 20;
+    check('hidden.frames', during.raf <= frames, `${tag}: the page asked for ${String(during.raf)} frames to take it in (${String(frames)} at most: 5.5 times the ${String(Math.round(units * 10) / 10)} frames of ${String(FLOW.hiddenFrame)} B the bytes need, and 20)`);
+    const timers = Math.ceil(5 * units) + 40;
+    const ran = during.fired - during.frames;
+    const busy = 80 * MB + 150;
+    const longtask = during.longtasks === null ? 0 : Math.max(0, ...during.longtasks);
+    check('hidden.work', ran <= timers && during.busy <= busy && during.longest <= 60 && longtask <= 120, `${tag}: ${String(ran)} timer callbacks ran (${String(timers)} at most: xterm's own write timers), the callbacks of the page and of xterm took ${String(round(during.busy))} ms in all (${String(busy)} at most), the longest ${String(round(during.longest))} ms (60 at most)${during.longtasks === null ? '' : `, the longest long task ${String(round(longtask))} ms (120 at most)`}`);
+    const draws = Math.ceil(6000 * MB) + 2000;
+    check('hidden.draws', during.mutations.page <= 2 && during.mutations.xterm <= draws, `${tag}: the page's own document changed ${String(during.mutations.page)} times (2 at most${during.mutations.first === null ? '' : `: ${during.mutations.first}`}), xterm's own ${String(during.mutations.xterm)} times (${String(draws)} at most)`);
+    note(`hidden ${engine}${MODE}, ${flood.name} written while the panel was hidden: the host paused at its mark after ${String(burst.delivered)} B with ${String(burst.waiting)} B waiting, and everything was delivered, parsed and acknowledged (${String(settled.acks - before.acks)} acknowledgements, never more than ${String(settled.maxUnacked)} B unacknowledged); the page asked for ${String(during.raf)} frames and ${String(during.timeout)} timers, ${String(during.fired)} callbacks ran in ${String(round(during.busy))} ms (the longest ${String(round(during.longest))} ms${during.longtasks === null ? '' : `, ${String(during.longtasks.length)} long tasks`})${run.browser === null ? '' : `, the browser counts ${String(round(run.browser.task))} ms of tasks (${String(round(run.browser.script))} ms of script, ${String(round(run.browser.layout + run.browser.style))} ms of layout and style)`}; ${String(during.mutations.page)} changes of the page's document and ${String(during.mutations.xterm)} of xterm's own; the burst took ${String(round(burst.ms))} ms of the page's task`);
+  }
+
+  const early = await earlyAcks(page);
+  check('flow.paced', early.length === 0, `${engine}: ${String(early.length)} acknowledgements were made before the bytes they acknowledge were parsed (none is right): ${JSON.stringify(early.slice(0, 3))}`);
+  const rest = await resting(page, hooks.perturb);
+  check('hidden.rest', rest.raf === 0 && rest.timeout === 0 && rest.interval === 0 && rest.fired === 0 && rest.mutations.page === 0 && rest.mutations.xterm === 0, `${engine}: once everything was taken in the hidden page asked for ${String(rest.raf)} frames and ${String(rest.timeout)} timeouts and ${String(rest.interval)} intervals in 1.2 s, ${String(rest.fired)} callbacks ran, and the document changed ${String(rest.mutations.page)} times (xterm's own ${String(rest.mutations.xterm)}): none is right`);
+  note(`hidden ${engine}${MODE}: at rest, 1.2 s: ${String(rest.raf)} frames, ${String(rest.timeout)} timeouts, ${String(rest.interval)} intervals, ${String(rest.fired)} callbacks, ${String(rest.mutations.page + rest.mutations.xterm)} changes of the document`);
+  report.numbers[`hidden ${engine}`] = { runs: runs.map(({ name, burst, settled, during, browser: counted }) => ({ name, burst, acks: settled.acks, maxUnacked: settled.maxUnacked, during, browser: counted })), rest };
+  await page.context().close();
+}
+
 // ---------------------------------------------------------------------------------------------------- bundle
 async function bundle(ctx) {
   const { browser, origin, viewport, engine, dist } = ctx;
@@ -555,61 +1206,6 @@ async function bundle(ctx) {
   await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
   await sleep(500);
   check('bundle.fetched', page.requests.some((request) => /xtermEngine/.test(request.url)), `${engine}: the emulator was not requested when the first terminal opened`);
-  await page.context().close();
-}
-
-// ---------------------------------------------------------------------------------------------------- hidden
-/**
- * The panel is hidden and the shell writes 2 MB while it is, in 2,000 events in one task: what a flood costs the page when nothing draws. Answers what the page did meanwhile (frames, timers, the emulator's writes, the
- * document's mutations) and the page's task for the events, and after the panel is shown again, what the emulator drew of what was held (waited for, bounded). `perturb` runs once the panel is hidden, before anything is counted.
- */
-async function holdHidden(page, perturb) {
-  await page.click('[data-shell-part="panelToggle"]');
-  await sleep(400);
-  await perturb?.();
-  const before = await page.evaluate(() => ({ writes: window.__engine.writes, accepted: window.__engine.accepted, mutations: 0 }));
-  await page.evaluate(() => {
-    window.__mutations = 0;
-    window.__observer = new MutationObserver((list) => { window.__mutations += list.length; });
-    window.__observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
-    window.__count.timeout = 0;
-    window.__count.interval = 0;
-    window.__count.raf = 0;
-    window.__count.on = true;
-  });
-  const cost = await page.evaluate(() => {
-    const id = window.__pty.ids()[0];
-    const line = `${'x'.repeat(78)}\r\n`.repeat(12);
-    const start = performance.now();
-    for (let n = 0; n < 2000; n += 1) window.__pty.out(id, line);
-    return performance.now() - start;
-  });
-  await sleep(1200);
-  const during = await page.evaluate(() => {
-    window.__count.on = false;
-    window.__observer.disconnect();
-    return { ...window.__count, mutations: window.__mutations, writes: window.__engine.writes, accepted: window.__engine.accepted };
-  });
-  await page.click('[data-shell-part="panelToggle"]');
-  // The held bytes are drawn a frame's share at a time: the drain is waited for, bounded, and not slept for, so a slow machine (or a frame loop that was added) does not read as bytes that were never drawn. The check is still exact, and a drain that lost bytes fails it with its numbers.
-  await page.waitForFunction((at) => window.__engine.accepted - at >= 1_900_000 && window.__engine.parsed === window.__engine.accepted, before.accepted, { timeout: 20_000, polling: 100 }).catch(() => undefined);
-  const drained = await page.evaluate(() => ({ accepted: window.__engine.accepted, parsed: window.__engine.parsed }));
-  return { before, during, cost, drained };
-}
-
-async function hidden(ctx) {
-  const { browser, origin, viewport, engine } = ctx;
-  if (ctx.vp !== '1440x900') return;
-  const page = await open(browser, origin, viewport, { control: ctx.control });
-  await start(page);
-  await typeLine(page, 'hello');
-  const { before, during, cost, drained } = await holdHidden(page, () => ctx.control?.after?.(page));
-  check('hidden.frames', during.raf === 0, `${engine}: the page asked for ${String(during.raf)} frames while the panel was hidden and the shell wrote 2 MB`);
-  check('hidden.timers', during.timeout === 0 && during.interval === 0, `${engine}: the page started ${String(during.timeout)} timeouts and ${String(during.interval)} intervals while hidden`);
-  check('hidden.writes', during.writes === before.writes && during.mutations === 0, `${engine}: the emulator was written ${String(during.writes - before.writes)} times and the document mutated ${String(during.mutations)} times while hidden`);
-  note(`hidden ${engine}${MODE}: 2,000 events (2 MB) held in ${String(round(cost))} ms of the page's task, ${String(during.raf)} frames, ${String(during.writes - before.writes)} writes, ${String(during.mutations)} mutations`);
-  report.numbers[`hidden ${engine}`] = { eventsMs: round(cost), ...during };
-  check('hidden.drain', drained.accepted - before.accepted >= 1_900_000 && drained.parsed === drained.accepted, `${engine}: what was held is drawn when the panel is shown: accepted ${String(drained.accepted - before.accepted)} of 2,000,000 B, parsed ${String(drained.parsed)} of ${String(drained.accepted)}`);
   await page.context().close();
 }
 
@@ -704,30 +1300,37 @@ async function flood(ctx) {
     requestAnimationFrame(tick);
     window.__longtasks = window.__longtasks === null ? null : [];
   });
-  const base = await page.evaluate(() => ({ accepted: window.__engine.accepted, parsed: window.__engine.parsed }));
+  await perturb(ctx, page, 'sample');
+  const base = await page.evaluate(() => ({ accepted: window.__engine.accepted, parsed: window.__engine.parsed, mark: window.__frames.length }));
   const t0 = Date.now();
   await typeLine(page, 'flood 200000 80');
-  await page.waitForFunction(() => window.__pty.log.floods.length === 1 && window.__engine.parsed === window.__engine.accepted, null, { timeout: 120_000, polling: 250 });
-  // The process has sent it all and the emulator has parsed what it was given so far; what the screen has not yet taken from the feed (a frame takes 512 KiB at most, a slow one less) is waited for, bounded: a slow drain is not read as lost bytes. The check below is exact, and a flood that lost bytes fails it with its numbers.
-  await page.waitForFunction((at) => window.__engine.accepted - at >= window.__pty.log.floods[0].bytes && window.__engine.parsed === window.__engine.accepted, base.accepted, { timeout: 60_000, polling: 250 }).catch(() => undefined);
+  // The shell has written it all and the host has delivered it all (a flood ends when everything it wrote was delivered); the page still holds what it has not taken from the feed (a frame takes 512 KiB at most, a slow one less)
+  // until it has parsed and acknowledged it. Waited for by what still moves, never by a clock: a slow drain is waited for, and bytes that were lost leave the numbers below apart (they are checked exactly).
+  const settled = await quiet(page, (state) => state.floods === 1 && state.waiting === 0 && state.acked === state.delivered && state.parsed === state.accepted, { limit: 120_000 });
   const seconds = (Date.now() - t0) / 1000;
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate((mark) => {
     window.__framesOn = false;
-    return { frames: window.__frames.slice(3), accepted: window.__engine.accepted, parsed: window.__engine.parsed, writes: window.__engine.writes, flood: window.__pty.log.floods[0], longtasks: window.__longtasks };
-  });
+    return { frames: window.__frames.slice(mark), accepted: window.__engine.accepted, parsed: window.__engine.parsed, writes: window.__engine.writes, flood: window.__pty.log.floods[0], longtasks: window.__longtasks };
+  }, base.mark);
   const p50 = percentile(result.frames, 50);
   const p95 = percentile(result.frames, 95);
-  const max = Math.max(...result.frames);
+  const max = result.frames.length === 0 ? 0 : Math.max(...result.frames);
   // A COUNT, not a percentile of milliseconds, so that a slower machine does not move the line: a frame that took more than two frames at 60 Hz (34 ms) is a late one, and a tenth of them at most may be (the laptop has none to one in 300).
   const late = result.frames.filter((frame) => frame > 34).length;
   // The emulator's counters are lifetime totals (the banner, the echo of the command, the prompts): the flood's own are what they gained from the command on, and they are the flood's bytes and at most 256 B of echo and prompt.
   const gained = result.accepted - base.accepted;
   const parsedGained = result.parsed - base.parsed;
-  check('flood.complete', result.flood.bytes >= 16_000_000 && gained >= result.flood.bytes && gained - result.flood.bytes <= 256 && parsedGained === gained, `${engine}: the flood was ${String(result.flood.bytes)} B; from the command on the emulator accepted ${String(gained)} B (the flood and at most 256 B of echo and prompt) and parsed ${String(parsedGained)}`);
-  check('flood.frames', late <= Math.floor(result.frames.length / 10), `${engine}: ${String(late)} of ${String(result.frames.length)} frames took longer than 34 ms (two frames at 60 Hz) during a 16 MB flood (a tenth at most); p50 ${String(round(p50))} ms, p95 ${String(round(p95))} ms, max ${String(round(max))} ms`);
+  check('flood.complete', (result.flood?.bytes ?? 0) >= 16_000_000 && gained >= result.flood.bytes && gained - result.flood.bytes <= 256 && parsedGained === gained, `${engine}: the flood was ${String(result.flood?.bytes)} B; from the command on the emulator accepted ${String(gained)} B (the flood and at most 256 B of echo and prompt) and parsed ${String(parsedGained)}`);
+  // The credit, exactly (docs/ui-next/status/T1-go.md 2.8.6): every byte the host delivered was given to the emulator, parsed and acknowledged once (the counts of the acknowledgements add up to what was delivered, which is what was parsed: nothing is dropped and nothing is
+  // acknowledged twice), and the host never had more than its high mark and one read delivered and not acknowledged.
+  check('flow.exact', settled.acked === settled.delivered && settled.delivered === settled.parsed && settled.parsed === settled.accepted && settled.maxUnacked <= FLOW.high + FLOW.read, `${engine}: the host delivered ${String(settled.delivered)} B, the emulator was given ${String(settled.accepted)} and parsed ${String(settled.parsed)}, the page acknowledged ${String(settled.acked)} B in ${String(settled.acks)} calls, and the host never had more than ${String(settled.maxUnacked)} B delivered and not acknowledged (${String(FLOW.high)} and one read of ${String(FLOW.read)} at most)`);
+  // The sample is the frames from the command on, none of them thrown away. A flood of N bytes cannot be taken in fewer than N / `FLOW.frame` frames (a frame takes that many bytes at most while the screen is shown), so a sample with fewer has
+  // lost some, and one with no frames proves nothing: it does not pass.
+  const needed = Math.max(1, Math.floor((result.flood?.bytes ?? 0) / FLOW.frame));
+  check('flood.frames', result.frames.length >= needed && late <= Math.floor(result.frames.length / 10), `${engine}: ${String(late)} of ${String(result.frames.length)} frames took longer than 34 ms (two frames at 60 Hz) during a 16 MB flood (a tenth at most), and the sample holds ${String(result.frames.length)} frames (${String(needed)} at least: ${String(FLOW.frame)} B is the most a frame takes); p50 ${String(round(p50))} ms, p95 ${String(round(p95))} ms, max ${String(round(max))} ms`);
   if (result.longtasks !== null) check('flood.longtask', Math.max(0, ...result.longtasks) <= 120, `${engine}: the longest task was ${String(round(Math.max(0, ...result.longtasks)))} ms (120 ms at most): ${JSON.stringify(result.longtasks.slice(0, 8))}`);
-  note(`flood ${engine}${MODE}: ${String(result.flood.bytes)} B in ${String(round(seconds))} s, ${String(result.frames.length)} frames, ${String(late)} later than 34 ms: p50 ${String(round(p50))} ms, p95 ${String(round(p95))} ms, max ${String(round(max))} ms; ${String(result.writes)} writes${result.longtasks === null ? '' : `, ${String(result.longtasks.length)} long tasks, longest ${String(round(Math.max(0, ...result.longtasks)))} ms`}`);
-  report.numbers[`flood ${engine}`] = { seconds, p50, p95, max, late, frames: result.frames.length, writes: result.writes, longtasks: result.longtasks };
+  note(`flood ${engine}${MODE}: ${String(result.flood?.bytes)} B in ${String(round(seconds))} s, ${String(result.frames.length)} frames, ${String(late)} later than 34 ms: p50 ${String(round(p50))} ms, p95 ${String(round(p95))} ms, max ${String(round(max))} ms; ${String(result.writes)} writes, ${String(settled.acks)} acknowledgements, never more than ${String(settled.maxUnacked)} B delivered and not acknowledged${result.longtasks === null ? '' : `, ${String(result.longtasks.length)} long tasks, longest ${String(round(Math.max(0, ...result.longtasks)))} ms`}`);
+  report.numbers[`flood ${engine}`] = { seconds, p50, p95, max, late, frames: result.frames.length, writes: result.writes, longtasks: result.longtasks, acks: settled.acks, maxUnacked: settled.maxUnacked };
   await page.context().close();
 }
 
@@ -791,19 +1394,28 @@ async function axe(ctx) {
   await sleep(300);
   const running = await run('[data-shell-part="terminalBody"]');
   check('axe.running', running.length === 0, `${engine}: the running terminal, with its input and its output: ${JSON.stringify(running)}`);
-  await typeLine(page, 'exit');
+  await typeLine(page, 'exit 3');
   await sleep(500);
   const ended = await run('[data-shell-part="terminalBody"]');
-  check('axe.ended', ended.length === 0, `${engine}: the terminal, with its ended lane and the exit line in the transcript: ${JSON.stringify(ended)}`);
-  // A second terminal, from the strip's plus, is running: closing it asks.
+  check('axe.ended', ended.length === 0, `${engine}: the terminal, with its ended lane (the exit code) and the exit line in the transcript: ${JSON.stringify(ended)}`);
+  // A second terminal, from the strip's plus, runs a program: closing it asks, and names the program.
   await page.locator('[data-shell-part="sessionAdd"]').click();
   await page.waitForFunction(() => window.__pty.log.created.length === 2);
   await sleep(700);
+  await typeLine(page, 'sleep 30');
   await page.locator('[data-shell-part="sessionClose"]').last().click();
   await page.getByRole('alertdialog').waitFor();
   const question = await run('dialog[role="alertdialog"]');
   check('axe.question', question.length === 0, `${engine}: the question: ${JSON.stringify(question)}`);
   await page.context().close();
+  // A start the host refused: the lane names it and the transcript says where the host looked.
+  const refused = await open(browser, origin, viewport, { query: 'renderer=dom&fail=shell-unavailable' });
+  await refused.addScriptTag({ path: AXE });
+  await startRefused(refused);
+  await perturb(ctx, refused, 'unavailable');
+  const unavailable = await runAxe(refused, '[data-shell-part="terminalBody"]');
+  check('axe.unavailable', unavailable.length === 0, `${engine}: the terminal whose shell could not be started, with its lane and the host's words in the transcript: ${JSON.stringify(unavailable)}`);
+  await refused.context().close();
 }
 
 // ---------------------------------------------------------------------------------------------------- memory
@@ -829,7 +1441,12 @@ async function memory(ctx) {
   const heapBefore = await heap();
   const t0 = Date.now();
   await typeLine(page, 'flood 1000000 80');
-  await page.waitForFunction(() => window.__pty.log.floods.length === 1 && window.__engine.parsed === window.__engine.accepted, null, { timeout: 240_000, polling: 500 });
+  // The shell has written it all, the host has delivered it all, and the page has been given every byte, parsed it and acknowledged it: waited for by what still moves, never by a clock, so a slow machine is waited for and a stuck page is not. First the
+  // host's flood is over and nothing is left in its pty, and then the page has taken in what it was delivered (a few seconds at most, and a page that does not is not waited for long).
+  await quiet(page, (state) => state.floods === 1 && state.waiting === 0, { stall: 10_000, limit: 240_000 });
+  const settled = await quiet(page, (state) => state.acked === state.delivered && state.parsed === state.accepted, { stall: 2500, limit: 60_000 });
+  // The memory is measured of a terminal that took the flood in: the host completed it, nothing is left in its pty, and every byte it delivered was given to the emulator, parsed and acknowledged once. Otherwise there is nothing to measure.
+  check('memory.drained', settled.floods === 1 && settled.waiting === 0 && settled.delivered === settled.accepted && settled.accepted === settled.parsed && settled.parsed === settled.acked, `${engine}: before the memory was measured the host had completed ${String(settled.floods)} of 1 floods and ${String(settled.waiting)} B waited in its pty (none is right), it delivered ${String(settled.delivered)} B, the emulator was given ${String(settled.accepted)}, parsed ${String(settled.parsed)}, and the page acknowledged ${String(settled.acked)} (all four equal is right)`);
   const seconds = (Date.now() - t0) / 1000;
   await sleep(500);
   const rows = await page.evaluate(() => document.querySelectorAll('.xterm-rows > div').length);
@@ -837,11 +1454,13 @@ async function memory(ctx) {
   const firstLine = () => page.evaluate(() => /^(\d{7})/.exec(document.querySelector('.xterm-rows > div')?.textContent ?? '')?.[1] ?? null);
   // Shift+PageUp is the emulator's own key for a page up in its scrollback: a page a press until the top, which stops moving (a wheel moves three lines a notch in Chromium and all of it in WebKit).
   let oldest = await firstLine();
-  for (let step = 0; step < 1400; step += 1) {
+  // The top is where three samples in a row, 50 presses apart, are the same line: one still sample is a frame that was drawn late or a press that was lost, and stopping on it measures a buffer that is not the whole one (seen once in a whole run: 624 lines short).
+  let still = 0;
+  for (let step = 0; step < 1400 && still < 3; step += 1) {
     await page.keyboard.press('Shift+PageUp');
     if (step % 50 === 49) {
       const now = await firstLine();
-      if (now === oldest) break;
+      still = now === oldest ? still + 1 : 0;
       oldest = now;
     }
   }
@@ -851,8 +1470,8 @@ async function memory(ctx) {
   const expected = 1_000_000 + 1 - SCROLLBACK - rows;
   check('memory.cap', oldest !== null && Math.abs(Number(oldest) - expected) <= 3, `${engine}: after 1,000,000 lines the oldest line the emulator kept is ${String(oldest)}, the cap of ${String(SCROLLBACK)} lines and ${String(rows)} rows leaves ${String(expected)}`);
   if (heapBefore !== null && heapAfter !== null) check('memory.heap', heapAfter - heapBefore <= 60 * 1024 * 1024, `${engine}: the JS heap grew ${String(Math.round((heapAfter - heapBefore) / 1048576))} MB over a 1,000,000 line flood (60 MB at most)`);
-  note(`memory ${engine}: 1,000,000 lines (82 MB) in ${String(round(seconds))} s; oldest line kept ${String(oldest)} (expected ${String(expected)}, cap ${String(SCROLLBACK)} lines + ${String(rows)} rows); JS heap ${heapBefore === null ? 'not readable in this engine' : `${String(Math.round(heapBefore / 1048576))} -> ${String(Math.round(heapAfter / 1048576))} MB`}`);
-  report.numbers[`memory ${engine}`] = { seconds, oldest, expected, heapBefore, heapAfter };
+  note(`memory ${engine}: 1,000,000 lines (82 MB) in ${String(round(seconds))} s, ${String(settled.acks)} acknowledgements, never more than ${String(settled.maxUnacked)} B delivered and not acknowledged; oldest line kept ${String(oldest)} (expected ${String(expected)}, cap ${String(SCROLLBACK)} lines + ${String(rows)} rows); JS heap ${heapBefore === null ? 'not readable in this engine' : `${String(Math.round(heapBefore / 1048576))} -> ${String(Math.round(heapAfter / 1048576))} MB`}`);
+  report.numbers[`memory ${engine}`] = { seconds, oldest, expected, heapBefore, heapAfter, acks: settled.acks, maxUnacked: settled.maxUnacked };
   await page.context().close();
 }
 // ---------------------------------------------------------------------------------------------------- paint
@@ -1017,8 +1636,10 @@ async function screenreader(ctx) {
 
 // ---------------------------------------------------------------------------------------------------- screenreader-cost
 /**
- * The mode on costs nothing at rest. The terminal is made as the product makes it (the GPU's renderer while it is on screen), the mode is turned on through the palette by the keyboard, and the two measures of work that the mode
- * off passes, an idle terminal (`idle`) and a hidden panel (`hidden`), are taken again with it on: the same zero counts. The accessibility layer must be there, or the measure says nothing about the mode.
+ * The mode on costs nothing at rest. The terminal is made as the product makes it (the GPU's renderer while it is on screen), the mode is turned on through the palette by the keyboard, and the two measures of work that the mode off passes
+ * are taken again with it on: an idle terminal (`idle`: the same zero counts) and a hidden panel that the shell writes 2 MB to (`hidden`): it takes in every byte, in order, with nothing of the page's document touched; it has no
+ * accessibility layer while it is hidden (an accessibility layer refreshes itself a second after the lines it was given, which must not happen in a hidden panel) and has it again when it is shown; and once everything is in it is at rest,
+ * with no frame, no timer and no change of the document. The accessibility layer must be there when the panel is shown, or the measure says nothing about the mode.
  */
 async function screenreaderCost(ctx) {
   const { browser, origin, viewport, engine } = ctx;
@@ -1038,16 +1659,45 @@ async function screenreaderCost(ctx) {
   const layer = () => page.evaluate(() => document.querySelector('[data-shell-part="terminalScreen"] .xterm-accessibility-tree') !== null);
   const idleLayer = await layer();
   check('screenreader.idle', idleLayer && counts.timeout === 0 && counts.interval === 0 && counts.raf === 0 && counts.fired === 0 && counts.active === baseline, `${engine}: with the mode on (accessibility layer ${idleLayer ? 'there' : 'MISSING'}) an idle terminal started ${String(counts.timeout)} timeouts, ${String(counts.interval)} intervals and asked for ${String(counts.raf)} frames in 3 s, ${String(counts.fired)} callbacks fired, and ${String(counts.active - baseline)} intervals are alive that the panel without a terminal does not have`);
-  const { before, during, cost, drained } = await holdHidden(page, () => perturb(ctx, page, 'hidden'));
-  const hiddenLayer = await layer();
-  check('screenreader.hidden', hiddenLayer && during.raf === 0 && during.timeout === 0 && during.interval === 0 && during.writes === before.writes && during.mutations === 0 && drained.accepted - before.accepted >= 1_900_000 && drained.parsed === drained.accepted, `${engine}: with the mode on (accessibility layer ${hiddenLayer ? 'there' : 'MISSING'}) a hidden panel and 2 MB held: ${String(during.raf)} frames, ${String(during.timeout)} timeouts, ${String(during.interval)} intervals, ${String(during.writes - before.writes)} writes, ${String(during.mutations)} mutations, and ${String(drained.accepted - before.accepted)} of 2,000,000 B drawn when it was shown again (parsed ${String(drained.parsed)} of ${String(drained.accepted)})`);
-  note(`screenreader-cost ${engine}: with the mode on, idle 3 s: ${String(counts.timeout)} timeouts, ${String(counts.interval)} intervals, ${String(counts.raf)} frames, ${String(counts.fired)} callbacks fired; hidden with 2 MB held in ${String(round(cost))} ms of the page's task: ${String(during.raf)} frames, ${String(during.timeout)} timeouts, ${String(during.writes - before.writes)} writes, ${String(during.mutations)} mutations`);
-  report.numbers[`screenreader-cost ${engine}`] = { idle: counts, hidden: { eventsMs: round(cost), ...during } };
+  // What the idle control left running stops here, so that it is not in what the hidden panel is measured for.
+  await page.evaluate(() => { clearInterval(window.__idleTimer); });
+  // The panel is hidden and the shell writes 2 MB: the product takes the emulator out of the mode while it is hidden, and puts it back when it is shown.
+  await page.click('[data-shell-part="panelToggle"]');
+  await sleep(400);
+  const hooks = { cdp: null, perturb: (stage) => perturb(ctx, page, stage) };
+  const run = await flooded(page, FLOODS[0], hooks);
+  const layerHidden = await layer();
+  const rest = await resting(page, hooks.perturb);
+  const layerAtRest = await layer();
+  await page.click('[data-shell-part="panelToggle"]');
+  await sleep(500);
+  const layerShown = await layer();
+  const { before, settled, during, checked } = run;
+  const taken = run.calm.calm && settled.delivered - before.delivered === run.bytes && settled.accepted - before.accepted === run.bytes && settled.acked - before.acked === run.bytes && settled.parsed === settled.accepted && settled.waiting === 0 && settled.paused === false && checked.bad === 0;
+  const still = rest.raf === 0 && rest.timeout === 0 && rest.interval === 0 && rest.fired === 0 && rest.mutations.page === 0 && rest.mutations.xterm === 0;
+  check('screenreader.hidden', !layerHidden && !layerAtRest && layerShown && taken && during.mutations.page <= 2 && still, `${engine}: with the mode on a hidden panel and ${String(run.bytes)} B written by the shell: ${run.calm.calm ? '' : `what came before the burst was still moving after ${String(run.calm.waited)} ms (no baseline to count it from), `}accessibility layer ${layerHidden || layerAtRest ? 'THERE' : 'gone'} while hidden (gone is right) and ${layerShown ? 'there' : 'MISSING'} when shown, delivered ${String(settled.delivered - before.delivered)}, given to the emulator ${String(settled.accepted - before.accepted)} and acknowledged ${String(settled.acked - before.acked)} B (parsed ${String(settled.parsed)} of ${String(settled.accepted)}, ${String(checked.bad)} events out of order), the page's own document changed ${String(during.mutations.page)} times (2 at most: the screen's mark that it has something to scroll to); at rest ${String(rest.raf)} frames, ${String(rest.timeout)} timeouts, ${String(rest.interval)} intervals, ${String(rest.fired)} callbacks, ${String(rest.mutations.page)} changes of the page's document and ${String(rest.mutations.xterm)} of xterm's own`);
+  note(`screenreader-cost ${engine}: with the mode on, idle 3 s: ${String(counts.timeout)} timeouts, ${String(counts.interval)} intervals, ${String(counts.raf)} frames, ${String(counts.fired)} callbacks fired; hidden with ${String(run.bytes)} B written by the shell: ${String(during.raf)} frames, ${String(during.fired)} callbacks in ${String(round(during.busy))} ms, ${String(during.mutations.page)} changes of the page's document; at rest ${String(rest.raf)} frames, ${String(rest.timeout)} timeouts, ${String(rest.mutations.page + rest.mutations.xterm)} changes`);
+  report.numbers[`screenreader-cost ${engine}`] = { idle: counts, hidden: { during, rest } };
   await page.context().close();
 }
 
-const SECTIONS = { geometry, words, keys, close, resize, bundle, hidden, idle, commits, flood, latency, memory, paint, axe, screenreader, 'screenreader-cost': screenreaderCost };
-const wanted = CONTROL === '' ? (process.env.SECTIONS ?? Object.keys(SECTIONS).join(',')).split(',') : [CONTROLS[CONTROL].section];
+const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order };
+/** The two parts the probe is run in, by the units of CI: the sections of the page (what a person sees and does) and those of the data path (what flows, and what it costs). Every section is in one and only one. */
+const PARTS = {
+  view: ['geometry', 'words', 'title', 'ended', 'start', 'keys', 'close', 'resize', 'size', 'bundle', 'paint', 'axe', 'screenreader', 'screenreader-cost'],
+  data: ['hidden', 'idle', 'commits', 'flood', 'latency', 'memory', 'order'],
+};
+{
+  const named = Object.values(PARTS).flat();
+  const problems = [
+    ...Object.keys(SECTIONS).filter((name) => !named.includes(name)).map((name) => `the section ${name} is in no part`),
+    ...named.filter((name, index) => named.indexOf(name) !== index).map((name) => `the section ${name} is in two parts`),
+    ...named.filter((name) => SECTIONS[name] === undefined).map((name) => `a part names the section ${name}, which does not exist`),
+  ];
+  if (problems.length > 0) throw new Error(`PARTS must hold every section once: ${problems.join('; ')}`);
+  if (PART !== '' && PARTS[PART] === undefined) throw new Error(`PART must be one of ${Object.keys(PARTS).join(', ')} or not set, it is ${JSON.stringify(PART)}`);
+}
+const wanted = CONTROL === '' ? (process.env.SECTIONS ?? (PART === '' ? Object.keys(SECTIONS) : PARTS[PART]).join(',')).split(',') : [CONTROLS[CONTROL].section];
 const t0 = Date.now();
 const dist = build('production');
 const needsDev = wanted.includes('commits');

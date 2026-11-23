@@ -52,7 +52,12 @@
   "terminal-controls-body": 120,
   "terminal-controls-work": 120,
   "terminal-controls-cost": 70,
-  "terminal-controls-reader": 65
+  "terminal-controls-reader": 65,
+  "terminal-controls-facts": 130,
+  "terminal-data": 160,
+  "terminal-controls-hidden": 160,
+  "terminal-controls-input": 95,
+  "terminal-controls-close": 90
  },
  "sharedLayoutRuns": [
   {

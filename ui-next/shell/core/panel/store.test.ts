@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { checkInvariants } from './state';
 import { UNLOADED_CAUSE } from './store';
 import { boot, session, tool, type Harness } from './testing';
+import { LIMITS } from './types';
 
 // The panel's model, through its store: open and closed, the size that is remembered, the tools and which one is on screen, the sessions each tool holds and what a plugin leaving does
 // to them. Cases marked "mock" are ported from the design lab's harness (tests/shell-model-harness: ShellStore/unit.cjs "persist: clamp on load and on resize", ShellStore2-unit.cjs "panel
@@ -471,6 +472,137 @@ describe('what a session is doing', () => {
     const other = h.snapshot().sessions.s2;
     h.store.setSessionState('s1', { state: 'running' });
     expect(h.snapshot().sessions.s2).toBe(other);
+  });
+});
+
+describe('retitling a session (the host learns the shell\'s name after the session is open)', () => {
+  it('gives the session its new title and changes nothing else of it, in one change that tells every subscriber once', () => {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [] } });
+    h.store.openSession(session('terminal', 'acme', 'Terminal', { scope: 'dev', state: 'running', route: { plugin: 'acme', contribution: 'item', params: { n: '1' } } }));
+    h.store.openSession(session('terminal', 'host', 'other'));
+    h.tick(5000);
+    const before = h.snapshot();
+    const first = before.sessions.s1;
+    const second = before.sessions.s2;
+    const told = h.notified();
+    expect(h.store.retitleSession('s1', 'zsh')).toEqual({ status: 'done' });
+    const after = h.snapshot();
+    expect(after).not.toBe(before);
+    expect(h.notified()).toBe(told + 1);
+    expect(after.sessions.s1).toEqual({ ...first, title: 'zsh' });
+    expect(after.sessions.s1).not.toBe(first);
+    expect(Object.isFrozen(after.sessions.s1)).toBe(true);
+    // Its state, its time, its place and its choices are as they were: only the title moved.
+    expect(after.sessions.s1).toMatchObject({ id: 's1', tool: 'terminal', plugin: 'acme', scope: 'dev', state: 'running', since: 1_000_000, cause: '', route: { plugin: 'acme', contribution: 'item', params: { n: '1' } } });
+    expect(after.sessions.s2).toBe(second);
+    expect(after.order).toBe(before.order);
+    expect(after.mounted).toBe(before.mounted);
+    expect(after.active).toBe(before.active);
+    expect(after.open).toBe(before.open);
+    expect(after.tool).toBe(before.tool);
+    expect(checkInvariants(after)).toEqual([]);
+  });
+
+  it('keeps the cause and the time of a session that is over, and the session on screen', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'Terminal', { state: 'ended', cause: 'The shell exited.' }));
+    h.store.openSession(session('terminal', 'host', 'other'));
+    h.store.activateSession('s1');
+    h.tick(5000);
+    expect(h.store.retitleSession('s1', 'bash')).toEqual({ status: 'done' });
+    expect(h.snapshot().sessions.s1).toMatchObject({ title: 'bash', state: 'ended', cause: 'The shell exited.', since: 1_000_000 });
+    expect(h.store.selectors.activeSession(h.snapshot(), 'terminal')).toBe('s1');
+  });
+
+  it('cuts the title as a title is cut when a session opens: trimmed, and at the limit', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'Terminal'));
+    h.store.retitleSession('s1', '  zsh \n');
+    expect(h.snapshot().sessions.s1?.title).toBe('zsh');
+    h.store.retitleSession('s1', 'x'.repeat(LIMITS.text + 50));
+    expect(h.snapshot().sessions.s1?.title).toBe('x'.repeat(LIMITS.text));
+    // The cut is what is compared: the same words, however long the title that said them.
+    const told = h.notified();
+    expect(h.store.retitleSession('s1', `${'x'.repeat(LIMITS.text)}y`)).toEqual({ status: 'noop' });
+    expect(h.notified()).toBe(told);
+  });
+
+  it('changes nothing, returns the same snapshot and tells nobody when the title is the one it has (before or after trimming)', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    const before = h.snapshot();
+    const told = h.notified();
+    expect(h.store.retitleSession('s1', 'zsh')).toEqual({ status: 'noop' });
+    expect(h.store.retitleSession('s1', '  zsh  ')).toEqual({ status: 'noop' });
+    expect(h.snapshot()).toBe(before);
+    expect(h.notified()).toBe(told);
+  });
+
+  it('is refused for a session that is not there, and for an empty or a missing title, and tells nobody', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    const before = h.snapshot();
+    const told = h.notified();
+    expect(h.store.retitleSession('nope', 'bash')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.store.retitleSession('constructor', 'bash')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.store.retitleSession('s1', '')).toEqual({ status: 'refused', reason: 'invalid', message: 'A session needs a title.' });
+    expect(h.store.retitleSession('s1', '   ')).toMatchObject({ status: 'refused', reason: 'invalid' });
+    expect(h.store.retitleSession('s1', 42 as unknown as string)).toMatchObject({ status: 'refused', reason: 'invalid' });
+    expect(h.store.retitleSession('s1', undefined as unknown as string)).toMatchObject({ status: 'refused', reason: 'invalid' });
+    expect(h.snapshot()).toBe(before);
+    expect(h.snapshot().sessions.s1?.title).toBe('zsh');
+    expect(h.notified()).toBe(told);
+  });
+
+  it('is refused for a held session (A21: a kept session never changes again), before and after its plugin returns', () => {
+    const h = boot({ hostTools: HOST_TOOLS, plugins: { acme: [] } });
+    h.store.openSession(session('logs', 'acme', 'follows', { state: 'running' }));
+    h.store.syncPlugins([]);
+    const held = h.snapshot().sessions.s1;
+    const before = h.snapshot();
+    const told = h.notified();
+    expect(held?.held).toBe(true);
+    expect(h.store.retitleSession('s1', 'renamed')).toMatchObject({ status: 'refused', reason: 'held' });
+    // The same title is refused too: a held session answers nothing.
+    expect(h.store.retitleSession('s1', 'follows')).toMatchObject({ status: 'refused', reason: 'held' });
+    expect(h.snapshot()).toBe(before);
+    expect(h.notified()).toBe(told);
+    h.store.syncPlugins([{ id: 'acme', tools: [] }]);
+    expect(h.store.retitleSession('s1', 'renamed')).toMatchObject({ status: 'refused', reason: 'held' });
+    expect(h.snapshot().sessions.s1?.title).toBe('follows');
+  });
+
+  it('tells a subscriber once for each retitle that changes something, and for nothing else', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'Terminal'));
+    h.store.openSession(session('terminal', 'host', 'Terminal'));
+    const titles: string[][] = [];
+    h.store.subscribeTo((state) => state.order.map((id) => state.sessions[id]?.title ?? ''), (value) => titles.push(value), (a, b) => a.join() === b.join());
+    const told = h.notified();
+    h.store.retitleSession('s1', 'zsh');
+    expect(h.notified()).toBe(told + 1);
+    h.store.retitleSession('s1', 'zsh');
+    h.store.retitleSession('s1', '');
+    h.store.retitleSession('nope', 'zsh');
+    expect(h.notified()).toBe(told + 1);
+    h.store.retitleSession('s2', 'bash');
+    h.store.retitleSession('s2', 'fish');
+    expect(h.notified()).toBe(told + 3);
+    expect(titles).toEqual([['zsh', 'Terminal'], ['zsh', 'bash'], ['zsh', 'fish']]);
+  });
+
+  it('moves only the retitled session\'s tab: the record of every other session stays the same object', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'a'));
+    h.store.openSession(session('terminal', 'host', 'b'));
+    const other = h.snapshot().sessions.s2;
+    const otherItem = h.store.selectors.sessionItem(h.snapshot(), 's2');
+    const ids = h.store.selectors.sessionIds(h.snapshot(), 'terminal');
+    h.store.retitleSession('s1', 'zsh');
+    expect(h.snapshot().sessions.s2).toBe(other);
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's2')).toBe(otherItem);
+    expect(h.store.selectors.sessionIds(h.snapshot(), 'terminal')).toBe(ids);
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's1')?.name).toBe('zsh');
   });
 });
 

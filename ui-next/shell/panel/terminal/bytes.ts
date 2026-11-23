@@ -34,7 +34,7 @@ export function base64Size(text: string): number {
 /** A slice of `btoa`'s input that stays far under the engines' limit on the arguments of one call. */
 const SLICE = 0x8000;
 
-/** What the user typed or pasted, as the base64 of its UTF-8 bytes: what `WriteSession` takes. */
+/** What the user typed or pasted, as the base64 of its UTF-8 bytes: what `WriteTerminal` takes. */
 export function encodeInput(text: string): string {
   const bytes = new TextEncoder().encode(text);
   const own = bytes as unknown as Base64Bytes;
