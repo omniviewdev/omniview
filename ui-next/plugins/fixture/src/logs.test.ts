@@ -156,7 +156,7 @@ describe('the fixture\'s Logs sessions', () => {
     expect(quiet).toMatchObject({ id: 'item/orders-api/quiet', title: 'orders-api/quiet' });
     const feed = quiet?.open();
     vi.advanceTimersByTime(5_000);
-    expect(feed?.stats()).toEqual({ received: 0, dropped: 0, held: 0 });
+    expect(feed?.stats()).toEqual({ received: 0, dropped: 0, held: 0, live: 0 });
     expect(feed?.getSnapshot().state).toBe('streaming');
     expect(feed?.read(100)).toEqual({ lines: [], dropped: 0, held: 0 });
     void feed?.close();

@@ -1,0 +1,63 @@
+== quiet chromium
+  250 ms  3 lines · 0.0 lines/s · Following
+  501 ms  3 lines · 0.0 lines/s · Following
+  753 ms  3 lines · 0.0 lines/s · Following
+ 1003 ms  3 lines · 0.0 lines/s · Following
+ 1260 ms  3 lines · 0.0 lines/s · Following
+ 1507 ms  3 lines · 0.0 lines/s · Following
+ 1752 ms  3 lines · 0.0 lines/s · Following
+ 2010 ms  3 lines · 0.0 lines/s · Following
+ 2259 ms  3 lines · 0.0 lines/s · Following
+ 2510 ms  3 lines · 0.0 lines/s · Following
+ 2760 ms  3 lines · 0.0 lines/s · Following
+ 3006 ms  3 lines · 0.0 lines/s · Following
+ 3251 ms  3 lines · 0.0 lines/s · Following
+ 3510 ms  3 lines · 0.0 lines/s · Following
+ 3757 ms  3 lines · 0.0 lines/s · Following
+ 4005 ms  3 lines · 0.0 lines/s · Following
+ 4252 ms  3 lines · 0.0 lines/s · Following
+ 4504 ms  3 lines · 0.0 lines/s · Following
+ 4757 ms  3 lines · 0.0 lines/s · Following
+ 5010 ms  3 lines · 0.0 lines/s · Following
+ 5251 ms  3 lines · 0.0 lines/s · Following
+ 5504 ms  3 lines · 0.0 lines/s · Following
+ 5753 ms  3 lines · 0.0 lines/s · Following
+ 6010 ms  3 lines · 0.0 lines/s · Following
+ 6260 ms  3 lines · 0.0 lines/s · Following
+ 6510 ms  3 lines · 0.0 lines/s · Following
+ 6757 ms  3 lines · 0.0 lines/s · Following
+ 7007 ms  3 lines · 0.0 lines/s · Following
+ 7254 ms  3 lines · 0.0 lines/s · Following
+ 7510 ms  3 lines · 0.0 lines/s · Following
+ 7760 ms  3 lines · 0.0 lines/s · Following
+ 8004 ms  3 lines · 0.0 lines/s · Following
+ 8260 ms  3 lines · 0.0 lines/s · Following
+ 8503 ms  3 lines · 0.0 lines/s · Following
+ 8760 ms  3 lines · 0.0 lines/s · Following
+ 9006 ms  3 lines · 0.0 lines/s · Following
+ 9260 ms  3 lines · 0.0 lines/s · Following
+ 9502 ms  3 lines · 0.0 lines/s · Following
+ 9760 ms  3 lines · 0.0 lines/s · Following
+10006 ms  3 lines · 0.0 lines/s · Following
+10260 ms  3 lines · 0.0 lines/s · Following
+10502 ms  3 lines · 0.0 lines/s · Following
+10756 ms  3 lines · 0.0 lines/s · Following
+11003 ms  3 lines · 0.0 lines/s · Following
+11256 ms  3 lines · 0.0 lines/s · Following
+11511 ms  3 lines · 0.0 lines/s · Following
+11760 ms  3 lines · 0.0 lines/s · Following
+12006 ms  3 lines · 0.0 lines/s · Following
+12260 ms  3 lines · 0.0 lines/s · Following
+12511 ms  3 lines · 0.0 lines/s · Following
+12761 ms  3 lines · 0.0 lines/s · Following
+13010 ms  3 lines · 0.0 lines/s · Following
+13260 ms  3 lines · 0.0 lines/s · Following
+13511 ms  3 lines · 0.0 lines/s · Following
+13756 ms  3 lines · 0.0 lines/s · Following
+14008 ms  3 lines · 0.0 lines/s · Following
+14256 ms  3 lines · 0.0 lines/s · Following
+14510 ms  3 lines · 0.0 lines/s · Following
+14752 ms  3 lines · 0.0 lines/s · Following
+15010 ms  3 lines · 0.0 lines/s · Following
+15254 ms  3 lines · 0.0 lines/s · Following
+15503 ms  3 lines · 0.0 lines/s · Following

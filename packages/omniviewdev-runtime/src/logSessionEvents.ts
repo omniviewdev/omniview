@@ -61,8 +61,9 @@ export function PrepareSessionEvents(sessionId: string) {
     onEvent(data) {
       try {
         const event = decodePayload(data);
-        // A kind the SDK does not know (-1, since v0.22.0) and SOURCE_CAUGHT_UP (7, sent only to a reader that asked for replay markers) are read by
-        // no consumer of this buffer: they take no slot among the events it keeps, or the ones that matter would be evicted.
+        // A kind the SDK does not know (-1, since v0.22.0) and SOURCE_CAUGHT_UP (7) take no slot among the events it keeps, or the ones that matter would be evicted. The host's Go lane asks every session for
+        // replay markers, so a plugin that declares a count sends one 7 for each source it opens; the one reader of them, `openLogStream`, subscribes in the turn that creates the session and takes over
+        // before anything was captured here, and a reader that subscribes after the answer and does not read them (the legacy viewer) would lose its own events to a burst of them.
         if (!event || typeof event !== 'object' || !('type' in event) || typeof event.type !== 'number'
           || !Number.isInteger(event.type) || event.type < 0 || event.type > 6) return;
         const entry = { data: event, order: order++ };

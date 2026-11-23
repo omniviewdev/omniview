@@ -43,6 +43,7 @@ const RECONNECTING = 3;
 const RECONNECTED = 4;
 const STREAM_ENDED = 5;
 const SESSION_READY = 6;
+const SOURCE_CAUGHT_UP = 7;
 
 const request: LogStreamRequest = { plugin: 'kubernetes', connection: 'conn-1', resourceKey: 'k8s:/pods', resourceId: 'web-0', target: 'app' };
 
@@ -64,14 +65,14 @@ type ActiveSource = { id: string; labels: Record<string, string> };
 
 /** Opens a stream against a create call the test settles by hand. */
 function open(options?: LogStreamOptions, over: Partial<LogStreamRequest> = {}) {
-  const creation = CancellablePromise.withResolvers<{ id: string; active_sources: ActiveSource[] | null } | null>();
+  const creation = CancellablePromise.withResolvers<{ id: string; active_sources: ActiveSource[] | null; replay_markers?: boolean } | null>();
   transport.create.mockReturnValue(creation.promise);
   const stream = curated.openLogStream({ ...request, ...over }, options);
   return {
     stream,
     creation,
-    created: async (activeSources: ActiveSource[] | null = []): Promise<void> => {
-      creation.resolve({ id: stream.id, active_sources: activeSources });
+    created: async (activeSources: ActiveSource[] | null = [], replayMarkers?: boolean): Promise<void> => {
+      creation.resolve({ id: stream.id, active_sources: activeSources, ...(replayMarkers === undefined ? {} : { replay_markers: replayMarkers }) });
       await settle();
     },
   };
@@ -109,8 +110,8 @@ describe('the entry', () => {
     const { stream } = open();
     expect(Object.keys(stream).sort()).toEqual(['close', 'getSnapshot', 'id', 'pause', 'read', 'resume', 'stats', 'subscribe']);
     expect(stream.id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(stream.getSnapshot()).toEqual({ id: stream.id, state: 'starting', paused: false, cause: undefined, sources: [] });
-    expect(stream.stats()).toEqual({ received: 0, dropped: 0, held: 0 });
+    expect(stream.getSnapshot()).toEqual({ id: stream.id, state: 'starting', paused: false, cause: undefined, sources: [], markers: 'pending' });
+    expect(stream.stats()).toEqual({ received: 0, dropped: 0, held: 0, live: undefined });
     void stream.close();
   });
 
@@ -296,7 +297,7 @@ describe('delivery', () => {
     );
     const [first, second, third, fourth, ...others] = stream.read(10).lines;
     expect(others).toEqual([]);
-    expect(first).toEqual({ seq: 1, source: 'web-0/app', timestamp: '', text: 'line 1', level: undefined, origin: 'current' });
+    expect(first).toEqual({ seq: 1, source: 'web-0/app', timestamp: '', text: 'line 1', level: undefined, origin: 'current', replay: false });
     expect(second).toMatchObject({ timestamp: '2026-11-19T10:00:00.123456789Z', level: 'error', origin: 'system' });
     expect(third).toMatchObject({ level: undefined, origin: 'current' });
     expect(fourth).toMatchObject({ level: 'trace', origin: 'previous', text: '' });
@@ -716,17 +717,13 @@ describe('state', () => {
   });
 });
 
-// SDK v0.22.0: an event kind the SDK does not know arrives as -1 (v0.21.0 sent it as 0, SOURCE_ADDED, with the event's source_id: a phantom source here), and
-// the opt-in kind 7 (SOURCE_CAUGHT_UP) as 7, which the host does not ask for. A reader of the stream ignores both.
+// SDK v0.22.0: an event kind the SDK does not know arrives as -1 (v0.21.0 sent it as 0, SOURCE_ADDED, with the event's source_id: a phantom source here). A reader of the
+// stream ignores it, and the kinds past the ones the SDK names (SOURCE_CAUGHT_UP, 7, is read: see 'replay markers' below).
 describe('an event kind the stream does not read', () => {
   const UNKNOWN = -1;
-  const SOURCE_CAUGHT_UP = 7;
   const unread: ReadonlyArray<readonly [number, string]> = [
     [UNKNOWN, 'phantom'],
     [UNKNOWN, ''],
-    [SOURCE_CAUGHT_UP, 'web-0/app'],
-    [SOURCE_CAUGHT_UP, 'late'],
-    [SOURCE_CAUGHT_UP, ''],
     [8, 'phantom'],
     [8, ''],
   ];
@@ -735,6 +732,8 @@ describe('an event kind the stream does not read', () => {
     vi.useFakeTimers();
     const { stream, created } = open();
     await created();
+    // The answer to the create call says whether markers will come, and that is published with the next change of status: let it be before the snapshot is taken as the stable one.
+    vi.advanceTimersByTime(60);
     const woken = vi.fn();
     stream.subscribe(woken);
     const before = stream.getSnapshot();
@@ -786,7 +785,7 @@ describe('an event kind the stream does not read', () => {
       'web-2/app:removed:',
     ]);
     for (const source of ['web-0/app', 'web-1/app', 'web-2/app', 'phantom', '']) {
-      for (const type of [UNKNOWN, SOURCE_CAUGHT_UP, 8]) {
+      for (const type of [UNKNOWN, 8]) {
         event(stream, type, source, 'x');
       }
     }
@@ -803,7 +802,7 @@ describe('an event kind the stream does not read', () => {
     event(stream, STREAM_ERROR, 'web-1/app', 'Reader denied');
     for (let index = 0; index < 150; index++) {
       event(stream, UNKNOWN, `phantom-${String(index)}`, 'x');
-      event(stream, SOURCE_CAUGHT_UP, `caught-up-${String(index)}`);
+      event(stream, 8, `later-${String(index)}`);
       event(stream, UNKNOWN, '');
     }
     event(stream, STREAM_ENDED, 'web-1/app');
@@ -813,6 +812,378 @@ describe('an event kind the stream does not read', () => {
     expect(snapshot.state).toBe('streaming');
     expect(snapshot.sources.map((source) => `${source.id}:${source.state}`)).toEqual(['web-0/gone:removed', 'web-1/app:ended']);
     void stream.close();
+  });
+});
+
+// SDK v0.22.0 replay markers (S1-host). The host's Go lane asks for them (the runtime sends no parameter of the SDK's), and the backend then says three things: whether markers will come for the session
+// (the answer to the create call: `replay_markers`), which lines are replay (a line's own `replay`), and when a source's replay is over (the event SOURCE_CAUGHT_UP, kind 7, once for each opening of a source). The
+// stream keeps each source in one of three states and counts what a rate may be made of: the lines that are NOT flagged replay and come from a source whose replay is over. It never guesses: no time, no gap, no clock.
+describe('replay markers: what the backend says of a source\'s replay, and the lines a rate may count', () => {
+  const LABELS = { pod: 'web-0', container: 'app', namespace: 'default', node: 'node-1' };
+  /** What the snapshot says of each source's replay: it is published with the next change of status (within 50 ms), so a test lets that pass first. */
+  const replayOf = (stream: LogStream): string[] => {
+    vi.advanceTimersByTime(60);
+    return stream.getSnapshot().sources.map((source) => `${source.id}:${source.replay}`);
+  };
+  /** `count` lines of `source` as the host's JSON carries them, flagged replay or not. */
+  const lines = (stream: LogStream, source: string, count: number, replay: boolean): void => {
+    emit(stream.id, 'lines', JSON.stringify(Array.from({ length: count }, (_, index) => wireLine(index + 1, { source_id: source, ...(replay ? { replay: true } : {}) }))));
+  };
+  /** A session that asked and was accepted, with the sources the answer lists. */
+  const accepted = async (sources: readonly string[], options?: LogStreamOptions) => {
+    vi.useFakeTimers();
+    const opened = open(options);
+    await opened.created(
+      sources.map((id) => ({ id, labels: LABELS })),
+      true,
+    );
+    vi.advanceTimersByTime(60);
+    return opened.stream;
+  };
+
+  describe('what the session says', () => {
+    it('is pending until the answer to the create call, then yes or no, and never changes again', async () => {
+      vi.useFakeTimers();
+      const yes = open();
+      expect(yes.stream.getSnapshot().markers).toBe('pending');
+      await yes.created([], true);
+      vi.advanceTimersByTime(60);
+      expect(yes.stream.getSnapshot().markers).toBe('yes');
+      const absent = open();
+      await absent.created([]);
+      vi.advanceTimersByTime(60);
+      expect(absent.stream.getSnapshot().markers).toBe('no');
+      const refused = open();
+      await refused.created([], false);
+      vi.advanceTimersByTime(60);
+      expect(refused.stream.getSnapshot().markers).toBe('no');
+      // Neither a later line nor a marker's absence changes what the answer said.
+      emit(absent.stream.id, 'lines', batch(1, 3, { replay: true }));
+      vi.advanceTimersByTime(60);
+      expect(absent.stream.getSnapshot().markers).toBe('no');
+      for (const { stream } of [yes, absent, refused]) {
+        void stream.close();
+      }
+    });
+
+    it('starts a source of an accepted session as replaying, and one of a session without markers as unknown: the backend will say nothing more of it', async () => {
+      const marked = await accepted(['a/app', 'b/app']);
+      expect(replayOf(marked)).toEqual(['a/app:replaying', 'b/app:replaying']);
+      // A source first heard of in a line or an event after the answer takes the answer's state too.
+      event(marked, SOURCE_ADDED, 'c/app');
+      lines(marked, 'd/app', 1, false);
+      vi.advanceTimersByTime(60);
+      expect(replayOf(marked)).toEqual(['a/app:replaying', 'b/app:replaying', 'c/app:replaying', 'd/app:replaying']);
+
+      const unmarked = open();
+      await unmarked.created([{ id: 'a/app', labels: {} }]);
+      event(unmarked.stream, SOURCE_ADDED, 'b/app');
+      vi.advanceTimersByTime(60);
+      expect(replayOf(unmarked.stream)).toEqual(['a/app:unknown', 'b/app:unknown']);
+      void marked.close();
+      void unmarked.stream.close();
+    });
+
+    it('turns what it heard before the answer into the answer\'s state: unknown becomes replaying when markers will come, and stays unknown when they will not', async () => {
+      vi.useFakeTimers();
+      const yes = open();
+      event(yes.stream, SOURCE_ADDED, 'a/app');
+      vi.advanceTimersByTime(60);
+      expect(replayOf(yes.stream)).toEqual(['a/app:unknown']);
+      await yes.created([], true);
+      vi.advanceTimersByTime(60);
+      expect(replayOf(yes.stream)).toEqual(['a/app:replaying']);
+
+      const no = open();
+      event(no.stream, SOURCE_ADDED, 'a/app');
+      await no.created([], false);
+      vi.advanceTimersByTime(60);
+      expect(replayOf(no.stream)).toEqual(['a/app:unknown']);
+      void yes.stream.close();
+      void no.stream.close();
+    });
+  });
+
+  describe('the lines a rate may count', () => {
+    it('are none for a session without markers: its lines say nothing of replay, and the stream makes no count of them', async () => {
+      vi.useFakeTimers();
+      const { stream, created } = open();
+      await created([{ id: 'a/app', labels: {} }]);
+      lines(stream, 'a/app', 50, false);
+      expect(stream.stats()).toEqual({ received: 50, dropped: 0, held: 50, live: undefined });
+      // A kind 7 it was never going to get is still the backend's word: nothing else would make this source live.
+      void stream.close();
+    });
+
+    it('are none until a source is caught up, then the lines of that source that are not flagged: the replay is never counted, flagged or not', async () => {
+      const stream = await accepted(['a/app']);
+      lines(stream, 'a/app', 1000, true);
+      lines(stream, 'a/app', 5, false);
+      // Nothing is live yet: the source has not said its replay is over, and a line it sends unflagged before that is not taken for live either.
+      expect(stream.stats().live).toBeUndefined();
+      expect(stream.stats().received).toBe(1005);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      expect(stream.stats().live).toBe(0);
+      lines(stream, 'a/app', 5, false);
+      expect(stream.stats().live).toBe(5);
+      lines(stream, 'a/app', 3, true);
+      expect(stream.stats().live).toBe(5);
+      void stream.close();
+    });
+
+    it('survive an event that overtakes the end of the replay: the host batches lines and sends events at once, so the tail of the replay arrives after the word that it is over', async () => {
+      const stream = await accepted(['a/app']);
+      lines(stream, 'a/app', 50, true);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      // The rest of the replay, flagged, and the first live lines, in one batch.
+      emit(
+        stream.id,
+        'lines',
+        JSON.stringify([
+          ...Array.from({ length: 50 }, (_, index) => wireLine(index, { source_id: 'a/app', replay: true })),
+          ...Array.from({ length: 5 }, (_, index) => wireLine(100 + index, { source_id: 'a/app' })),
+        ]),
+      );
+      expect(stream.stats()).toEqual({ received: 105, dropped: 0, held: 105, live: 5 });
+      void stream.close();
+    });
+
+    it('are counted when the stream accepts them, whoever reads: a stream nobody reads, a paused one, and lines the bound drops all count', async () => {
+      const stream = await accepted(['a/app'], { maxBufferedLines: 10 });
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      stream.pause();
+      lines(stream, 'a/app', 100, false);
+      expect(stream.stats()).toEqual({ received: 100, dropped: 90, held: 10, live: 100 });
+      stream.resume();
+      void stream.close();
+    });
+
+    it('are those of the sources that are caught up, with two sources interleaved: the other one contributes nothing until its own word', async () => {
+      const stream = await accepted(['a/app', 'b/app']);
+      lines(stream, 'a/app', 10, true);
+      lines(stream, 'b/app', 10, true);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      lines(stream, 'a/app', 4, false);
+      lines(stream, 'b/app', 7, false);
+      // b is still replaying: its lines are not the rate, though they are not flagged.
+      expect(stream.stats().live).toBe(4);
+      expect(replayOf(stream)).toEqual(['a/app:live', 'b/app:replaying']);
+      lines(stream, 'b/app', 3, true);
+      event(stream, SOURCE_CAUGHT_UP, 'b/app');
+      lines(stream, 'b/app', 6, false);
+      lines(stream, 'a/app', 1, false);
+      expect(stream.stats().live).toBe(4 + 6 + 1);
+      expect(replayOf(stream)).toEqual(['a/app:live', 'b/app:live']);
+      void stream.close();
+    });
+
+    it('are none for a line that names no source, and none from a source that failed, ended or was removed', async () => {
+      const stream = await accepted(['a/app', 'b/app', 'c/app', 'd/app']);
+      for (const id of ['a/app', 'b/app', 'c/app', 'd/app']) {
+        event(stream, SOURCE_CAUGHT_UP, id);
+      }
+      lines(stream, '', 5, false);
+      expect(stream.stats().live).toBe(0);
+      event(stream, STREAM_ERROR, 'a/app', 'denied');
+      event(stream, STREAM_ENDED, 'b/app');
+      event(stream, SOURCE_REMOVED, 'c/app');
+      lines(stream, 'a/app', 3, false);
+      lines(stream, 'b/app', 3, false);
+      lines(stream, 'c/app', 3, false);
+      expect(stream.stats().live).toBe(0);
+      lines(stream, 'd/app', 3, false);
+      expect(stream.stats().live).toBe(3);
+      // The last source that was live ends: the stream is left with no source whose lines make a rate.
+      event(stream, STREAM_ENDED, 'd/app');
+      expect(stream.stats().live).toBeUndefined();
+      void stream.close();
+    });
+  });
+
+  describe('the marker of a source', () => {
+    it('for a source the stream never heard of makes it known and live: the backend said it, and nothing is guessed about the others', async () => {
+      const stream = await accepted(['a/app']);
+      event(stream, SOURCE_CAUGHT_UP, 'ghost/app');
+      vi.advanceTimersByTime(60);
+      expect(replayOf(stream)).toEqual(['a/app:replaying', 'ghost/app:live']);
+      lines(stream, 'a/app', 4, false);
+      lines(stream, 'ghost/app', 2, false);
+      expect(stream.stats().live).toBe(2);
+      void stream.close();
+    });
+
+    it('a marker that names no source is no marker of any source, and proves nothing about the session', async () => {
+      const stream = await accepted(['a/app']);
+      const before = stream.getSnapshot();
+      event(stream, SOURCE_CAUGHT_UP, '');
+      vi.advanceTimersByTime(100);
+      expect(stream.getSnapshot()).toBe(before);
+      expect(stream.stats().live).toBeUndefined();
+      // Before the answer, a marker of nothing is not the backend's word that markers come: only one that names a source is.
+      vi.useFakeTimers();
+      const pending = open();
+      event(pending.stream, SOURCE_CAUGHT_UP, '');
+      vi.advanceTimersByTime(100);
+      expect(pending.stream.getSnapshot().markers).toBe('pending');
+      void stream.close();
+      void pending.stream.close();
+    });
+
+    it('is not taken back by an answer that says otherwise: a marker is the backend\'s own word, and an answer that contradicts it changes nothing', async () => {
+      vi.useFakeTimers();
+      const { stream, created } = open();
+      event(stream, SOURCE_ADDED, 'a/app');
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      await created([{ id: 'a/app', labels: {} }], false);
+      vi.advanceTimersByTime(60);
+      expect(stream.getSnapshot().markers).toBe('yes');
+      lines(stream, 'a/app', 3, false);
+      expect(stream.stats().live).toBe(3);
+      void stream.close();
+    });
+
+    it('arriving twice changes nothing: the second tells nobody, the snapshot stays, and the count goes on', async () => {
+      const stream = await accepted(['a/app']);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      // The first line of a source moves it from connecting to streaming, and the stream from starting to streaming: those are changes of their own, let them be told first.
+      lines(stream, 'a/app', 3, false);
+      vi.advanceTimersByTime(60);
+      const woken = vi.fn();
+      stream.subscribe(woken);
+      const before = stream.getSnapshot();
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      lines(stream, 'a/app', 2, false);
+      vi.advanceTimersByTime(100);
+      expect(stream.getSnapshot()).toBe(before);
+      expect(woken).not.toHaveBeenCalled();
+      expect(stream.stats().live).toBe(5);
+      void stream.close();
+    });
+
+    it('before the answer to the create call is the backend\'s word that markers are on: the answer then says the same', async () => {
+      vi.useFakeTimers();
+      const { stream, created } = open();
+      event(stream, SOURCE_ADDED, 'a/app');
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      vi.advanceTimersByTime(60);
+      expect(stream.getSnapshot().markers).toBe('yes');
+      expect(replayOf(stream)).toEqual(['a/app:live']);
+      await created([{ id: 'a/app', labels: {} }], true);
+      vi.advanceTimersByTime(60);
+      expect(stream.getSnapshot().markers).toBe('yes');
+      expect(replayOf(stream)).toEqual(['a/app:live']);
+      void stream.close();
+    });
+
+    it('is published once for a burst of sources: 500 caught up are one change', async () => {
+      const stream = await accepted(Array.from({ length: 500 }, (_, index) => `pod-${String(index)}/app`));
+      const woken = vi.fn();
+      stream.subscribe(woken);
+      for (let index = 0; index < 500; index++) {
+        event(stream, SOURCE_CAUGHT_UP, `pod-${String(index)}/app`);
+      }
+      expect(woken).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(50);
+      expect(woken).toHaveBeenCalledTimes(1);
+      expect(stream.getSnapshot().sources.every((source) => source.replay === 'live')).toBe(true);
+      void stream.close();
+    });
+  });
+
+  describe('a source that opens again', () => {
+    it('is replaying again from the word that it reconnects, and live again at its next marker: the replay it delivers again is not counted, and the count goes on from where it was', async () => {
+      const stream = await accepted(['a/app']);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      lines(stream, 'a/app', 20, false);
+      expect(stream.stats().live).toBe(20);
+      event(stream, RECONNECTING, 'a/app', 'Reconnecting (attempt 1/5)');
+      vi.advanceTimersByTime(60);
+      expect(replayOf(stream)).toEqual(['a/app:replaying']);
+      // The only source is not live: there is no rate to tell, and no number to tell it from.
+      expect(stream.stats().live).toBeUndefined();
+      event(stream, RECONNECTED, 'a/app');
+      lines(stream, 'a/app', 1000, true);
+      lines(stream, 'a/app', 4, false);
+      expect(stream.stats().live).toBeUndefined();
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      expect(stream.stats().live).toBe(20);
+      lines(stream, 'a/app', 7, false);
+      expect(stream.stats().live).toBe(27);
+      expect(stream.stats().received).toBe(20 + 1000 + 4 + 7);
+      void stream.close();
+    });
+
+    it('leaves the other sources live and counted while one of them reconnects', async () => {
+      const stream = await accepted(['a/app', 'b/app']);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      event(stream, SOURCE_CAUGHT_UP, 'b/app');
+      event(stream, RECONNECTING, 'a/app');
+      lines(stream, 'a/app', 500, true);
+      lines(stream, 'b/app', 5, false);
+      expect(stream.stats().live).toBe(5);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      lines(stream, 'a/app', 2, false);
+      expect(stream.stats().live).toBe(7);
+      void stream.close();
+    });
+
+    it('is replaying again from the word that it reconnected alone: a burst of events can take the word that it was reconnecting', async () => {
+      const stream = await accepted(['a/app']);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      expect(stream.stats().live).toBe(0);
+      event(stream, RECONNECTED, 'a/app');
+      vi.advanceTimersByTime(60);
+      expect(replayOf(stream)).toEqual(['a/app:replaying']);
+      expect(stream.stats().live).toBeUndefined();
+      void stream.close();
+    });
+
+    it('is replaying again when it is removed and enabled again, and live at its next marker', async () => {
+      const stream = await accepted(['a/app']);
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      event(stream, SOURCE_REMOVED, 'a/app');
+      vi.advanceTimersByTime(60);
+      expect(stream.stats().live).toBeUndefined();
+      event(stream, SOURCE_ADDED, 'a/app');
+      vi.advanceTimersByTime(60);
+      expect(replayOf(stream)).toEqual(['a/app:replaying']);
+      lines(stream, 'a/app', 100, true);
+      expect(stream.stats().live).toBeUndefined();
+      event(stream, SOURCE_CAUGHT_UP, 'a/app');
+      expect(stream.stats().live).toBe(0);
+      lines(stream, 'a/app', 3, false);
+      expect(stream.stats().live).toBe(3);
+      void stream.close();
+    });
+  });
+
+  describe('a source that is never marked', () => {
+    it('stays replaying for as long as it lasts, and is never turned live by the time that passes: the stream says nothing more than "no rate", no error and no cause', async () => {
+      const stream = await accepted(['a/app']);
+      // The interim of a plugin that cannot count a source's replay in time: every line of that opening is flagged, the live ones too, and no event comes.
+      for (let minute = 0; minute < 10; minute++) {
+        lines(stream, 'a/app', 600, true);
+        vi.advanceTimersByTime(60_000);
+      }
+      expect(replayOf(stream)).toEqual(['a/app:replaying']);
+      expect(stream.stats().live).toBeUndefined();
+      expect(stream.getSnapshot()).toMatchObject({ state: 'streaming', cause: undefined, markers: 'yes' });
+      void stream.close();
+    });
+  });
+
+  describe('a line', () => {
+    it('carries the flag the backend gave it, as the backend gave it: only `replay: true` is replay', async () => {
+      const { stream, created } = open();
+      await created([], true);
+      emit(
+        stream.id,
+        'lines',
+        JSON.stringify([wireLine(1), wireLine(2, { replay: true }), wireLine(3, { replay: false }), wireLine(4, { replay: 'true' }), wireLine(5, { replay: 1 })]),
+      );
+      expect(stream.read(10).lines.map((line) => line.replay)).toEqual([false, true, false, false, false]);
+      void stream.close();
+    });
   });
 });
 
@@ -1041,7 +1412,7 @@ describe('what a source is, as the events, the lines and the answer to the creat
     creation.resolve({ id: stream.id, active_sources: [{ id: 'web-0/app', labels }] });
     await settle();
     vi.advanceTimersByTime(60);
-    expect(stream.getSnapshot().sources).toEqual([{ id: 'web-0/app', labels, state: 'reconnecting', message: 'Reconnecting (attempt 1/5)' }]);
+    expect(stream.getSnapshot().sources).toEqual([{ id: 'web-0/app', labels, state: 'reconnecting', message: 'Reconnecting (attempt 1/5)', replay: 'unknown' }]);
     void stream.close();
   });
 
@@ -1054,7 +1425,7 @@ describe('what a source is, as the events, the lines and the answer to the creat
     event(stream, RECONNECTED, 'web-0/app');
     emit(stream.id, 'lines', batch(1, 3));
     vi.advanceTimersByTime(60);
-    expect(stream.getSnapshot().sources).toEqual([{ id: 'web-0/app', labels, state: 'streaming' }]);
+    expect(stream.getSnapshot().sources).toEqual([{ id: 'web-0/app', labels, state: 'streaming', replay: 'unknown' }]);
     void stream.close();
   });
 

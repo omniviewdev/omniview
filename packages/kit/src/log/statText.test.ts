@@ -1,7 +1,7 @@
 // The words of the status strip (the mock's `statText`, S120): how many lines, how fast, where the list is (following, scrolled back, paused), and what was
 // dropped. A pure function of numbers, so the strip's text is one thing the tests pin.
 import { describe, expect, it } from 'vitest';
-import { droppedNote, statText, type StatInput } from './statText';
+import { droppedNote, NO_RATE, statText, type StatInput } from './statText';
 
 const base: StatInput = { shown: 170, total: 170, rate: 0.7, live: true, paused: false, held: 0, following: true, unseen: 0, dropped: 0, unread: 0, capacity: 100_000 };
 const text = (over: Partial<StatInput> = {}) => statText({ ...base, ...over });
@@ -23,6 +23,19 @@ describe('statText', () => {
   it('writes the rate to a tenth, and none when the stream is not live', () => {
     expect(text({ rate: 1234.567 })).toBe('170 lines · 1,234.6 lines/s · Following');
     expect(text({ live: false })).toBe('170 lines');
+  });
+
+  it('says no rate, in the mock\'s words for a rate that is absent, when none is known: not 0.0, which is a source that writes nothing', () => {
+    expect(text({ rate: undefined })).toBe('170 lines · No rate · Following');
+    expect(text({ rate: 0 })).toBe('170 lines · 0.0 lines/s · Following');
+    expect(text({ rate: undefined, following: false, unseen: 2 })).toBe('170 lines · No rate · Scrolled back, 2 new lines');
+    expect(text({ rate: undefined, paused: true, held: 3 })).toBe('170 lines · No rate · Paused, 3 new lines waiting');
+    expect(text({ rate: undefined, dropped: 4 })).toBe('170 lines · No rate · Following · 4 older lines dropped');
+    expect(NO_RATE).toBe('No rate');
+  });
+
+  it('says nothing of the rate, known or not, of a log that is over', () => {
+    expect(text({ rate: undefined, live: false })).toBe('170 lines');
   });
 
   it('says it is scrolled back, with the new lines that came meanwhile', () => {

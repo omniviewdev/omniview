@@ -20,6 +20,11 @@ export type SyntheticFeedOptions = {
    * an id with the label the view shows for it. The feed lists what it is given in its status, as the runtime's stream lists the sources it has heard of. Default: one, `source/main`, and none listed.
    */
   readonly sources?: ReadonlyArray<string | LogFeedSource> | undefined;
+  /**
+   * Whether the producer says which of its lines are live (a stream whose backend marks its replays does; one that does not, says nothing). True, the default: every line the feed makes is live, so `stats().live` counts
+   * them and the strip has a rate. False: the feed has no count of live lines (`live` is undefined) and the strip shows no rate, as it does for a backend that does not mark.
+   */
+  readonly marked?: boolean | undefined;
 };
 
 /** A small seeded generator (mulberry32): a number in [0, 1). */
@@ -47,6 +52,7 @@ export class SyntheticFeed implements LogFeed {
   private readonly sourceIds: readonly string[];
   private listed: readonly LogFeedSource[] | undefined;
   private readonly rate: number;
+  private readonly marked: boolean;
   private readonly maxHeld: number;
   private readonly listeners = new Set<() => void>();
   // The held lines are a ring, the oldest line at index `oldest`: a drop is an overwrite, so a feed that is paused or unread keeps no line it dropped, and a line costs the
@@ -72,6 +78,7 @@ export class SyntheticFeed implements LogFeed {
     this.random = seeded(options.seed ?? 1);
     this.clock = options.clock ?? (() => Date.now());
     this.rate = options.rate ?? 20;
+    this.marked = options.marked ?? true;
     this.maxHeld = Math.max(0, Math.floor(options.maxHeld ?? 100_000));
     this.listed = options.sources?.map((source) => (typeof source === 'string' ? { id: source } : source));
     this.sourceIds = this.listed === undefined || this.listed.length === 0 ? ['source/main'] : this.listed.map((source) => source.id);
@@ -132,7 +139,8 @@ export class SyntheticFeed implements LogFeed {
     return { lines, dropped, held: this.size };
   };
 
-  readonly stats = (): LogFeedStats => ({ received: this.received, dropped: this.droppedTotal, held: this.size });
+  // Every line this feed makes is live, and it counts one when it accepts it, as a stream that marks its replays does: `live` is `received` for a feed that is marked, and not there for one that is not.
+  readonly stats = (): LogFeedStats => ({ received: this.received, dropped: this.droppedTotal, held: this.size, live: this.marked ? this.received : undefined });
 
   readonly pause = (): void => {
     this.set({ ...this.status, paused: true, state: this.status.state === 'streaming' ? 'paused' : this.status.state });

@@ -12,4 +12,13 @@ describe('the invented feed', () => {
     expect(feed.read(2)).toEqual({ lines: [], dropped: 0, held: 0 });
     expect(feed.stats().held).toBe(0);
   });
+
+  it('counts the lines it holds as live, as a stream that marks its replays does, unless it is made as a feed whose producer says nothing', () => {
+    const marked = fakeFeed();
+    marked.push(3);
+    expect(marked.stats()).toEqual({ received: 3, dropped: 0, held: 3, live: 3 });
+    const silent = fakeFeed({ marked: false });
+    silent.push(3);
+    expect(silent.stats()).toEqual({ received: 3, dropped: 0, held: 3, live: undefined });
+  });
 });

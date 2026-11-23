@@ -110,6 +110,8 @@ func (c *controller) ReadResourceLogs(ctx context.Context, pluginID string, opts
 	// Correlate before dispatch without holding the controller lock across RPC.
 	// The selected provider remains the cleanup owner even after replacement.
 	opts.SessionID = uuid.NewString()
+	// A headless read asks for no replay markers, and no window sets a reserved parameter for it.
+	opts.Options.Params = c.laneParams(ctx, opts.SessionID, opts.Options.Params, false)
 	c.mu.Lock()
 	client := c.clients[pluginID]
 	provider, ok := client.(sdklogs.ResourceSessionProvider)

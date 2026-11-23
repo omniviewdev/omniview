@@ -23,7 +23,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsTwice, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsRate, checkLogsTwice, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareDrawn, compareLane, readDrawn } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 import { compareFacts } from './unavailable.mjs';
@@ -216,5 +216,14 @@ if (mode === 'control-fixture-absent') {
   test('the Logs command of a running Pod pressed twice shows its one session: one tab, one SDK session', async () => {
     const { found } = await checkLogsTwice({ browser, baseURL, kubeconfig });
     assert.equal(found.second.tabs.length, 1, 'the second press shows the session, it opens no other');
+  });
+
+  // S1-host: a BUSY Pod's Logs strip (two containers, each with a backlog of 3,000 lines and then 5 a second) never reads a rate above twice the Pod's, and settles near it: the replay the session opens with is never counted, because the plugin says where each
+  // source's replay ends and the strip counts only what the source says is live (logs.mjs, `compareRate`, with its controls in logs.test.mjs; parity.mjs, `checkLogsRate`). It needs the plugin that declares the count (the pin of
+  // this workflow is its first commit): against a plugin that does not, the strip says no rate for ever and this test fails on it. Parity mode only; it makes a Pod of its own, so it comes after the one that does the same.
+  test('the Logs strip of a busy Pod never reads above twice the rate the Pod makes, and settles near it', async () => {
+    const { samples, pod } = await checkLogsRate({ browser, baseURL, kubeconfig });
+    assert.ok(samples.length >= 24, `the strip was read ${String(samples.length)} times`);
+    assert.equal(pod.containers.length, 2);
   });
 }

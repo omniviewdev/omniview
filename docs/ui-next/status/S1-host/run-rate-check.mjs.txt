@@ -1,0 +1,14 @@
+// Runs the cluster check's new rate case (parity.mjs, checkLogsRate) alone against a host on the rig's cluster. Run it from the worktree root.
+import { checkLogsRate, launchBrowser } from '/Users/joshuapare/Repos/omniviewdev/worktrees/s1-host-replay-markers/scripts/ui-next-pods/parity.mjs';
+const browser = await launchBrowser();
+try {
+  const { samples, pod } = await checkLogsRate({ browser, baseURL: process.env.MAIN, kubeconfig: '/tmp/s1host/rig/kubeconfig' });
+  console.log(`PASS ${pod.name}: ${samples.length} samples`);
+  console.log(samples.filter((_, i) => i < 14 || i % 6 === 0).join('\n'));
+} catch (error) {
+  console.log('FAIL', error.message);
+  if (error.details?.samples) console.log(error.details.samples.filter((_, i) => i < 14 || i % 6 === 0).join('\n'));
+  process.exitCode = 1;
+} finally {
+  await browser.close();
+}

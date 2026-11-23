@@ -1,5 +1,5 @@
-import type { LogFeed, LogFeedLine, LogFeedSnapshot, LogFeedSource } from '@omniviewdev/kit';
-import type { LogLine, LogSourceInfo, LogStream, LogStreamSnapshot } from '@omniviewdev/runtime/ui/v1';
+import type { LogFeed, LogFeedLine, LogFeedSnapshot, LogFeedSource, LogFeedStats } from '@omniviewdev/kit';
+import type { LogLine, LogSourceInfo, LogStream, LogStreamSnapshot, LogStreamStats } from '@omniviewdev/runtime/ui/v1';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { LogFeedSnapshotV1, LogFeedV1 } from './v1';
 
@@ -47,6 +47,35 @@ describe('the object `openLogStream` returns', () => {
   });
 });
 
+// S1-host: the count a rate is told from. The runtime's stream counts the lines its backend says are live (not flagged replay, from a source whose replay is over) when it accepts them, and says `undefined` while it has
+// no such count; the kit's view tells the strip's rate from it and reads no time and no gap. The member is optional in the kit's feed, so a plugin's own feed written before it is still a feed (it shows no rate).
+describe('the count a rate is told from', () => {
+  it('is the kit\'s `live`, as the runtime\'s stream gives it: no adapter, no other name', () => {
+    expectTypeOf<LogStreamStats>().toExtend<LogFeedStats>();
+    expectTypeOf<LogStreamStats['live']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<LogFeedStats['live']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<ReturnType<LogStream['stats']>>().toEqualTypeOf<LogStreamStats>();
+    const stats = (given: LogStreamStats): LogFeedStats => given;
+    expect(typeof stats).toBe('function');
+  });
+
+  it('may be absent from a feed a plugin wrote: it is still a feed, and the view then shows no rate', () => {
+    type Older = Omit<LogFeed, 'stats'> & { readonly stats: () => { readonly received: number; readonly dropped: number; readonly held: number } };
+    expectTypeOf<Older>().toExtend<LogFeed>();
+    expectTypeOf<Older>().toExtend<LogFeedV1 extends infer V ? Omit<V, 'getSnapshot' | 'close'> : never>();
+    const older = (feed: Older): LogFeed => feed;
+    expect(typeof older).toBe('function');
+  });
+
+  it('carries the backend\'s own words about replay on the stream\'s lines and sources, and the kit\'s line and source accept them as they are', () => {
+    expectTypeOf<LogLine['replay']>().toEqualTypeOf<boolean>();
+    expectTypeOf<LogSourceInfo['replay']>().toEqualTypeOf<'replaying' | 'live' | 'unknown'>();
+    expectTypeOf<LogStreamSnapshot['markers']>().toEqualTypeOf<'pending' | 'yes' | 'no'>();
+    expectTypeOf<LogLine>().toExtend<LogFeedLine>();
+    expectTypeOf<LogSourceInfo>().toExtend<LogFeedSource>();
+  });
+});
+
 describe('the checks above can fail', () => {
   it('a stream that cannot be read is not a feed, and a feed that cannot be closed is not the contract\'s', () => {
     // @ts-expect-error `read` is the one way lines come out of a feed
@@ -59,6 +88,13 @@ describe('the checks above can fail', () => {
   it('a state the view does not know is not a feed\'s state', () => {
     type Odd = Omit<LogStream, 'getSnapshot'> & { readonly getSnapshot: () => { readonly state: 'idle'; readonly paused: boolean; readonly cause: undefined } };
     // @ts-expect-error `idle` is not one of `starting`, `streaming`, `paused`, `ended`, `failed`
+    const odd = (stream: Odd): LogFeed => stream;
+    expect(typeof odd).toBe('function');
+  });
+
+  it('a count of live lines that is not a number is not the kit\'s', () => {
+    type Odd = Omit<LogStream, 'stats'> & { readonly stats: () => { readonly received: number; readonly dropped: number; readonly held: number; readonly live: string } };
+    // @ts-expect-error the count a rate is told from is a number of lines, or absent
     const odd = (stream: Odd): LogFeed => stream;
     expect(typeof odd).toBe('function');
   });

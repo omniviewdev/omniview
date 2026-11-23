@@ -24,6 +24,11 @@ export type FakeFeed = LogFeedHandle & {
 export type FakeFeedOptions = {
   readonly state?: LogFeedState | undefined;
   readonly sources?: readonly LogFeedSource[] | undefined;
+  /**
+   * Whether the feed's producer says which of its lines are live. True, the default: every line pushed is live and `stats().live` counts it, as a stream that marks its replays does. False: the producer says nothing, `live` is
+   * undefined, and the strip of a view of the feed shows no rate.
+   */
+  readonly marked?: boolean | undefined;
   /** What `close` does; default: nothing. */
   readonly close?: (() => Promise<void> | void) | undefined;
 };
@@ -40,6 +45,7 @@ export function fakeFeed(options: FakeFeedOptions = {}): FakeFeed {
   let seq = 0;
   let woken = false;
   let received = 0;
+  const marked = options.marked ?? true;
 
   const tell = () => {
     for (const listener of [...listeners]) {
@@ -76,7 +82,7 @@ export function fakeFeed(options: FakeFeedOptions = {}): FakeFeed {
       held = held.slice(lines.length);
       return { lines, dropped: 0, held: held.length };
     },
-    stats: (): LogFeedStats => ({ received, dropped: 0, held: held.length }),
+    stats: (): LogFeedStats => ({ received, dropped: 0, held: held.length, live: marked ? received : undefined }),
     pause: () => {
       controls += 1;
       status = { ...status, paused: true, state: status.state === 'streaming' ? 'paused' : status.state };

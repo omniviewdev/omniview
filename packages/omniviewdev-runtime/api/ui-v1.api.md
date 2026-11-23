@@ -282,6 +282,7 @@ export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 export interface LogLine {
     readonly level: LogLevel | undefined;
     readonly origin: LogLineOrigin;
+    readonly replay: boolean;
     readonly seq: number;
     readonly source: string;
     readonly text: string;
@@ -296,8 +297,12 @@ export interface LogSourceInfo {
     readonly id: string;
     readonly labels: Readonly<Record<string, string>>;
     readonly message?: string | undefined;
+    readonly replay: LogSourceReplay;
     readonly state: LogSourceState;
 }
+
+// @public
+export type LogSourceReplay = 'replaying' | 'live' | 'unknown';
 
 // @public
 export type LogSourceState = 'connecting' | 'streaming' | 'reconnecting' | 'ended' | 'failed' | 'removed';
@@ -321,6 +326,9 @@ export interface LogStreamCause {
     readonly source?: string | undefined;
     readonly stage: 'create' | 'session' | 'source';
 }
+
+// @public
+export type LogStreamMarkers = 'pending' | 'yes' | 'no';
 
 // @public
 export interface LogStreamOptions {
@@ -349,6 +357,7 @@ export interface LogStreamRequest {
 export interface LogStreamSnapshot {
     readonly cause: LogStreamCause | undefined;
     readonly id: string;
+    readonly markers: LogStreamMarkers;
     readonly paused: boolean;
     readonly sources: readonly LogSourceInfo[];
     readonly state: LogStreamState;
@@ -361,6 +370,7 @@ export type LogStreamState = 'starting' | 'streaming' | 'paused' | 'ended' | 'fa
 export interface LogStreamStats {
     readonly dropped: number;
     readonly held: number;
+    readonly live: number | undefined;
     readonly received: number;
 }
 

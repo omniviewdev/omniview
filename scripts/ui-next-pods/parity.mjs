@@ -1,10 +1,13 @@
 import { execFile } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
 import { compareCounts, countLines } from './counts.mjs';
 import { compareDeployment, compareDetail, compareGone, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail, goneDeployment } from './detail.mjs';
-import { compareLogs, compareRepress, expectedLogs, LOGS_JOB, LOGS_RUNNING, READY_SECONDS, waitProcessMs, withOwnedPod } from './logs.mjs';
+import { busyPod, busyRate, busyReplayed, compareLogs, compareRate, compareRepress, expectedLogs, LOGS_BUSY, LOGS_JOB, LOGS_RUNNING, readStrip, READY_SECONDS, TELLING_SAMPLES, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
 import { compareSorted, deploymentsByAge, directionOf, opposite, podsByRestarts, sortCanBeTold } from './sort.mjs';
 import { APISERVICE, AVAILABLE_JSONPATH, compareAvailability, compareFacts, refusedRequests } from './unavailable.mjs';
@@ -679,6 +682,85 @@ async function pressTwice({ browser, baseURL, kubeconfig, timeoutMs = 60_000 }) 
     }
 
     return { found, pod };
+  } finally {
+    if (page !== undefined) {
+      await closeLogsTab(page).catch(() => undefined);
+      await page.close().catch(() => undefined);
+    }
+  }
+}
+
+// S1-host: the RATE on the Logs strip of a busy Pod. The Pod is made for the check (`LOGS_BUSY`: two containers, each with a backlog of 3,000 lines at once and then 5 lines a second, never ending; logs.mjs); its page is opened from the list as a person opens
+// it, the header's Logs command is pressed, and the strip's text is recorded in the page every 250 ms from that press until it has told a rate in TELLING_SAMPLES samples (or the deadline passes, which only a source that
+// never says its backlog is delivered reaches). The session replays the Pod's latest 1,000 lines before its live ones: the strip must never read above twice the rate the Pod makes, and must settle near it (logs.mjs,
+// `compareRate`). This is the one check that runs the whole chain: the plugin counts the lines at the head of its stream, the SDK flags them and says when the last is delivered, the host's lane asks for it and hands it on,
+// the runtime keeps each source's state, and the strip counts only what the source says is live. Without the markers the strip says no rate for ever and this check fails on it. The Pod is the check's own, as the press-twice one.
+// Throws ParityError('LOGS_RATE') with what `compareRate` found.
+export async function checkLogsRate(options) {
+  const { kubeconfig } = options;
+  const pod = LOGS_BUSY;
+  const at = ['-n', pod.namespace];
+  return withOwnedPod(
+    {
+      pod,
+      exists: async () => (await kubectl(kubeconfig, ['get', 'pod', pod.name, ...at, '--ignore-not-found', '-o', 'name'])).trim() !== '',
+      create: async () => {
+        // A Pod of two containers cannot be made by `kubectl run`: its manifest goes through a file of the check's own, which is removed whatever happens.
+        const directory = await mkdtemp(path.join(os.tmpdir(), 'logs-busy-'));
+        try {
+          const file = path.join(directory, 'pod.json');
+          await writeFile(file, JSON.stringify(busyPod(pod)));
+          await kubectl(kubeconfig, ['apply', '-f', file]);
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
+      },
+      remove: () => kubectl(kubeconfig, ['delete', 'pod', pod.name, ...at, '--ignore-not-found', '--grace-period=0', '--force', '--wait=false']),
+    },
+    () => readRate(options),
+  );
+}
+
+// The part of the rate case that needs the Pod to be there: wait for it, press its Logs command with a recorder already armed in the page (it starts at the click event, in the capture phase, so the first sample is the press's own),
+// and read the recorder until the strip has told a rate in TELLING_SAMPLES samples. A time is only a deadline here: the verdict is on the samples.
+async function readRate({ browser, baseURL, kubeconfig, timeoutMs = 90_000 }) {
+  const pod = LOGS_BUSY;
+  await kubectl(kubeconfig, ['wait', '--for=condition=Ready', `pod/${pod.name}`, '-n', pod.namespace, `--timeout=${String(READY_SECONDS)}s`], { timeoutMs: waitProcessMs(READY_SECONDS) });
+  let page;
+  try {
+    page = await openPods(browser, baseURL, { timezoneId: 'UTC' });
+    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    await link.waitFor({ timeout: timeoutMs });
+    await link.click();
+    const logs = page.getByRole('button', { name: 'Logs', exact: true }).first();
+    await logs.waitFor({ timeout: timeoutMs });
+    await page.evaluate(() => {
+      window.__strip = [];
+      const read = () => document.querySelector('[role=group][aria-label="Session status"] > span[aria-live]')?.textContent ?? '';
+      document.addEventListener(
+        'click',
+        () => {
+          window.__timer = setInterval(() => window.__strip.push(read()), 250);
+        },
+        { capture: true, once: true },
+      );
+    });
+    await logs.click({ timeout: timeoutMs });
+    const deadline = Date.now() + timeoutMs;
+    let texts = [];
+    do {
+      await page.waitForTimeout(500);
+      texts = await page.evaluate(() => window.__strip);
+    } while (texts.filter((text) => typeof readStrip(text).rate === 'number').length < TELLING_SAMPLES && Date.now() < deadline);
+    await page.evaluate(() => clearInterval(window.__timer));
+    // The samples before the strip is on screen are '' and say nothing: the series starts with the strip.
+    const samples = texts.filter((text) => text !== '');
+    const problems = compareRate(samples, { perSecond: busyRate(pod), replayed: busyReplayed(pod) });
+    if (problems.length > 0) {
+      throw new ParityError('LOGS_RATE', `${pod.namespace}/${pod.name}: ${problems.join('; ')}`, { problems, samples });
+    }
+
+    return { samples, pod };
   } finally {
     if (page !== undefined) {
       await closeLogsTab(page).catch(() => undefined);

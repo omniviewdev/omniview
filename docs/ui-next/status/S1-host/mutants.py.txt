@@ -1,0 +1,64 @@
+import subprocess, sys, shutil, os, re
+root='/Users/joshuapare/Repos/omniviewdev/worktrees/s1-host-replay-markers'
+def run(cwd, cmd):
+    r=subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, shell=True)
+    out=r.stdout+r.stderr
+    m=re.search(r'Tests\s+(?:(\d+) failed \| )?(\d+) passed', out)
+    failed=int(m.group(1) or 0) if m else -1
+    return r.returncode, failed, out
+
+def mutate(label, path, old, new, cwd, cmd, expect=None):
+    full=os.path.join(root,path)
+    src=open(full).read()
+    assert old in src, (label, old[:60])
+    bak='/tmp/s1host/mut/backup.tmp'
+    shutil.copyfile(full,bak)
+    try:
+        open(full,'w').write(src.replace(old,new,1))
+        rc,failed,out=run(os.path.join(root,cwd), cmd)
+        names=sorted(set(re.findall(r'FAIL\s+\S+ > (.+)', out)))
+        status='KILLED' if rc!=0 else 'SURVIVED'
+        print(f'{status:9} {label}: {failed} failed')
+        for n in names[:4]: print('          -', n[:150])
+    finally:
+        shutil.copyfile(bak,full)
+
+if __name__=='__main__':
+    which=sys.argv[1]
+    if which=='runtime':
+        P='packages/omniviewdev-runtime/src/logStream.ts'
+        C='packages/omniviewdev-runtime'
+        T='pnpm exec vitest run src/logStream.test.ts'
+        M=[
+         ('count flagged replay lines as live', "if (!replay && source.replay === 'live' && isGoing(source.state)) {", "if (source.replay === 'live' && isGoing(source.state)) {"),
+         ('count lines of a source that is not live', "if (!replay && source.replay === 'live' && isGoing(source.state)) {", "if (!replay && isGoing(source.state)) {"),
+         ('count lines of a source that ended or was removed', "if (!replay && source.replay === 'live' && isGoing(source.state)) {", "if (!replay && source.replay === 'live') {"),
+         ('a source that ended still makes the rate known', "if (source.replay === 'live' && isGoing(source.state)) {\n        return true;", "if (source.replay === 'live') {\n        return true;"),
+         ('SOURCE_ADDED does not reopen a source', "          reopens(added);\n", ""),
+         ('RECONNECTING does not reopen a source', "          reopens(reconnecting);\n", ""),
+         ('RECONNECTED does not reopen a source', "          reopens(reconnected);\n", ""),
+         ('a marker is not the word that markers are on', "        learnMarkers('yes');\n        const caught", "        const caught"),
+         ('the answer does not turn unknown into replaying', "        if (source.replay === 'unknown') {\n          setReplay(source, 'replaying');", "        if (false as boolean) {\n          setReplay(source, 'replaying');"),
+         ('stats always has a count', "live: hasLiveSource() ? liveLines : undefined", "live: liveLines"),
+         ('the answer can take back yes', "if (markers === next || (markers === 'yes' && next === 'no')) {", "if (markers === next) {"),
+         ('the flag is read loosely', "const replay = raw.replay === true;", "const replay = Boolean(raw.replay);"),
+         ('a source is live by waiting (timer)', "  const learnMarkers = (", "  setTimeout(() => { for (const s of sources.values()) { if (s.replay === 'replaying') { s.replay = 'live'; } } }, 30_000);\n  const learnMarkers = ("),
+         ('the marker for a source is the session wide one', "        if (sourceId === '') {\n          return;\n        }\n        learnMarkers('yes');", "        learnMarkers('yes');"),
+         ('a repeat marker publishes', "    if (source !== UNNAMED && source.replay !== replay) {", "    if (source !== UNNAMED) {"),
+        ]
+        for label,old,new in M: mutate(label,P,old,new,C,T)
+    elif which=='model':
+        P='packages/kit/src/log/logViewModel.ts'
+        C='packages/kit'
+        T='pnpm exec vitest run src/log/logViewModel.test.ts src/log/statText.test.ts'
+        M=[
+         ('the rate is told from received, not live', "this.lastRate = Math.round(((feed.live - base.live) / ((at - base.at) / 1000)) * 10) / 10;", "this.lastRate = Math.round(((feed.received - base.live) / ((at - base.at) / 1000)) * 10) / 10;"),
+         ('no live count reads 0 (known) instead of unknown', "      rate: this.rateKnown ? this.lastRate : undefined,", "      rate: this.lastRate,"),
+         ('a series that was not known starts from 0', "    } else if (!this.rateKnown) {\n      this.startRate(at, feed.live);", "    } else if (!this.rateKnown) {\n      this.startRate(at, 0);"),
+         ('a view that comes back does not restart the series', "    // A view that comes back found the feed going on without it: the lines it held are the feed's past, and the rate is what the feed makes from here on.\n    this.sample(true);", "    // x"),
+         ('every wake restarts the series', "if (this.rateKnown && !fresh && last !== undefined && at - last.at < RATE_WINDOW_MS) {", "if (false as boolean) {"),
+         ('a feed that goes silent keeps its series', "    if (live === undefined) {\n      this.loseRate();\n      return;\n    }", "    if (live === undefined) {\n      return;\n    }"),
+         ('the baseline is not the count now when the rate starts again', "const count = fresh || last === undefined || !this.rateKnown ? live : last.live;", "const count = last === undefined ? live : last.live;"),
+        ]
+        for label,old,new in M: mutate(label,P,old,new,C,T)
+        mutate('no rate said as zero', 'packages/kit/src/log/statText.ts', "parts.push(rate === undefined ? NO_RATE : `${RATE.format(rate)} lines/s`);", "parts.push(`${RATE.format(rate ?? 0)} lines/s`);", C, T)

@@ -85,7 +85,9 @@
   "ui-next/shell/probes/logs-open-probe.mjs": {
     "probe": true,
     "controls": [
-      "fresh"
+      "counted-replay",
+      "no-wait",
+      "timeout-live"
     ]
   },
   "ui-next/shell/probes/logs-probe.mjs": {

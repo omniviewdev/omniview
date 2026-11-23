@@ -422,8 +422,9 @@ func (c *controller) OnPluginStart(pluginID string, _ config.PluginMeta, backend
 					case logs.StreamEventSourceAdded, logs.StreamEventSourceRemoved,
 						logs.StreamEventReconnecting, logs.StreamEventReconnected, logs.StreamEventSessionReady,
 						logs.StreamEventSourceCaughtUp, logs.StreamEventUnknown:
-						// These event types need no additional diagnostics: the host asks for no replay markers, and
-						// handleOutput drops a kind it does not know.
+						// These event types need no additional diagnostics: SOURCE_CAUGHT_UP is the answer to the
+						// replay markers the lane asked for, and reaches the window as the plugin sent it; handleOutput
+						// drops a kind it does not know.
 					}
 				}
 				select {
@@ -638,6 +639,8 @@ func (c *controller) createSessionWithContext(
 		return nil, resourcev2.NewError("INVALID_REQUEST", "Log session ID must be a UUID.")
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", opts.SessionID))
+	// The window sets no reserved parameter; the lane asks for replay markers itself.
+	opts.Options.Params = c.laneParams(ctx, opts.SessionID, opts.Options.Params, true)
 	c.mu.Lock()
 	if _, exists := c.sessionIndex[opts.SessionID]; exists {
 		c.mu.Unlock()
@@ -862,6 +865,8 @@ func (c *controller) UpdateSessionOptions(
 	if err != nil {
 		return nil, err
 	}
+	// An update never asks: acceptance is fixed when the session is created.
+	opts.Params = c.laneParams(ctx, sessionID, opts.Params, false)
 	return client.UpdateSessionOptions(
 		pctx,
 		sessionID,

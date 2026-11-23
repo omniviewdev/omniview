@@ -1,0 +1,35 @@
+Sun Nov 22 18:58:01 CST 2026
+ 18:58:01  up 12 days 11:24,  2 users,  load average: 14.36, 10.85, 18.18
+== rate5 (containers: main)
+6108
+== quiet (containers: main)
+3
+== rate5x2/a total
+6106
+== rate5x2/b total
+6107
+-- last 10s counts
+rate5 since10s: 50
+rate5x2/a since10s: 49
+rate5x2/b since10s: 49
+quiet since10s: 0
+rate5 since10s: 49
+rate5x2/a since10s: 50
+rate5x2/b since10s: 50
+quiet since10s: 0
+rate5 since10s: 49
+rate5x2/a since10s: 49
+rate5x2/b since10s: 49
+quiet since10s: 0
+-- quiet content
+quiet 1
+quiet 2
+quiet 3
+-- rate5 head/tail
+backlog 1
+backlog 6000
+live 1
+live 2
+live 3
+live 157
+live 158

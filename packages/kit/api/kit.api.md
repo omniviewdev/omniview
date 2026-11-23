@@ -502,6 +502,7 @@ export type LogFeedStats = {
     readonly received: number;
     readonly dropped: number;
     readonly held: number;
+    readonly live?: number | undefined;
 };
 
 // @public

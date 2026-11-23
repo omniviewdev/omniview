@@ -96,7 +96,7 @@ describe('the bound (maxHeld)', () => {
       feed.push(lines(feed, at, 100));
     }
 
-    expect(feed.stats()).toEqual({ received: 5 * MAX, dropped: 4 * MAX, held: MAX });
+    expect(feed.stats()).toEqual({ received: 5 * MAX, dropped: 4 * MAX, held: MAX, live: 5 * MAX });
     // The storage, not only the count: a dropped line must not stay referenced.
     expect(feed.stored()).toBeLessThanOrEqual(MAX);
 
@@ -106,6 +106,22 @@ describe('the bound (maxHeld)', () => {
     expect(batch.lines.map((line) => line.text)).toEqual(Array.from({ length: MAX }, (_, index) => `line ${4 * MAX + index}`));
     expect(batch.dropped).toBe(4 * MAX);
     expect(batch.held).toBe(0);
+  });
+
+  it('counts every line it makes as live, as a stream that marks its replays does: `live` is what it accepted, dropped lines included, whoever reads', () => {
+    const feed = new SyntheticFeed({ maxHeld: 10 });
+    feed.push(lines(feed, 0, 25));
+    feed.drop(5);
+    expect(feed.stats()).toEqual({ received: 30, dropped: 20, held: 10, live: 30 });
+    expect(feed.read(100).lines).toHaveLength(10);
+    expect(feed.stats().live).toBe(30);
+  });
+
+  it('has no count of live lines when its producer says nothing (`marked: false`): the lines are received and read, and only the count is absent', () => {
+    const feed = new SyntheticFeed({ marked: false });
+    feed.push(lines(feed, 0, 12));
+    expect(feed.stats()).toEqual({ received: 12, dropped: 0, held: 12, live: undefined });
+    expect(feed.read(100).lines).toHaveLength(12);
   });
 
   it('holds at most maxHeld lines for a reader that never reads, paused or not', () => {
@@ -125,7 +141,7 @@ describe('the bound (maxHeld)', () => {
 
     // Two held, then twelve more: the bound is ten, so the newest ten stay, and the two that were held are among the dropped.
     feed.push(lines(feed, 5, 12));
-    expect(feed.stats()).toEqual({ received: 17, dropped: 4, held: 10 });
+    expect(feed.stats()).toEqual({ received: 17, dropped: 4, held: 10, live: 17 });
     const first = feed.read(4);
     expect(first.lines.map((line) => line.text)).toEqual(['line 7', 'line 8', 'line 9', 'line 10']);
     expect(first.dropped).toBe(4);
@@ -149,7 +165,7 @@ describe('the bound (maxHeld)', () => {
     expect(batch.dropped).toBe(7);
     expect(batch.lines.map((line) => line.seq)).toEqual([9]);
     expect(feed.read(10).dropped).toBe(0);
-    expect(feed.stats()).toEqual({ received: 9, dropped: 7, held: 0 });
+    expect(feed.stats()).toEqual({ received: 9, dropped: 7, held: 0, live: 9 });
   });
 
   // Found by the memory run of the bench (bench/log/memory.mjs): after a million lines had gone through a feed bounded at a million, the page held 4 MB more than before. The ring used
@@ -163,7 +179,7 @@ describe('the bound (maxHeld)', () => {
       expect(feed.read(500).lines).toHaveLength(500);
     }
 
-    expect(feed.stats()).toEqual({ received: 1_000_000, dropped: 0, held: 0 });
+    expect(feed.stats()).toEqual({ received: 1_000_000, dropped: 0, held: 0, live: 1_000_000 });
     expect(feed.stored()).toBeLessThanOrEqual(2048);
   });
 
@@ -217,7 +233,7 @@ describe('driving it', () => {
       // Six seconds pass before the first callback: 300,000 lines are due.
       now += 6000;
       ticks[0]?.();
-      expect(late.stats()).toEqual({ received: 300_000, dropped: 299_000, held: 1000 });
+      expect(late.stats()).toEqual({ received: 300_000, dropped: 299_000, held: 1000, live: 300_000 });
       const batch = late.read(5000);
       expect(batch.dropped).toBe(299_000);
       expect(batch.lines).toHaveLength(1000);
