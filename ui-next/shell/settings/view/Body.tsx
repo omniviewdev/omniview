@@ -41,6 +41,16 @@ function Ready({ headingLevel, model, form, session, memory }: ReadyProps) {
   useEffect(() => {
     layout.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus({ preventScroll: true });
   }, []);
+  // A Body that is mounted anew starts with no secret being typed: the Settings window's Body is keyed by the host's request, so a request for a page remounts it, and the secret's input comes back empty over a vault that still holds what the host refused.
+  useEffect(() => {
+    for (const entry of model.pages) {
+      for (const id of entry.fields) {
+        if (form.field(id)?.secret?.changed === true) {
+          form.revert(id);
+        }
+      }
+    }
+  }, [form, model]);
 
   if (page === undefined) {
     return (

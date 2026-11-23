@@ -32,6 +32,10 @@ The window follows the host's window service (`backend/window/settings.go`): `Op
 
 Apply-on-change (S125): a switch, a select, a stepper or a text field commits when the field model says it does (a text field on Enter or blur), the host validates and either applies or answers with its own words (shown in the row's lane, the typed text kept), and a value that differs from the default offers Reset in the row's trailing slot. There is no Save and no unsaved question. A secret is drawn only for a sensitive setting the host says whether it holds (`Snapshot.Stored`): its value never reaches the page, the field says "Saved" or not, and clearing commits the empty string.
 
+## Staying true to the host
+
+The session shows what the host holds and asks again when that may have changed: on the host's `settings/changed` event, when the page is looked at again (focus, visibility, `online`: `view/Body.tsx`) and when the page's events connection comes back (`onEventsReconnect` in `@omniviewdev/runtime/runtime`: in server mode a dropped socket is reopened and nothing told meanwhile is replayed). Only the answer to the newest question is given to the form; a question that is lost is asked again after waits of 0.5, 1, 2, 4 and 8 s (15.5 s in all, `RETRY_WAITS` in `model/session.ts`), and then the session waits to be told something. At rest it holds no timer. What a host-side revision would let it delete is the brief in `docs/ui-next/status/ST1.md` section 8.
+
 ## Not drawn yet (the next slices, with what each needs)
 
 `appearance.theme` and `terminal.nativeApplication` (pickers: a theme picker with the nine themes' swatches and the native-application chooser that lists what the host finds), developer-only settings, multi-select / colour / date-time types, sections and a search of settings, the Plugins group, AI Tools, Updates and Notifications pages, a setting to focus from a request (`setting=` in the target). Glyphs the kit lacks for the pages and the controls: `paintbrush`, `square-terminal`, `code`, `beaker`, `settings`, `rotate-ccw`: the pages show none, the gear is the kit's `settings-2` and Reset is `undo` until the icons step adds them.

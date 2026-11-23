@@ -1,9 +1,10 @@
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { deferred, SENTINEL } from '../core/fields/testing';
 import { hostSnapshot } from './model/testing';
 import type { HostSnapshot } from './model/types';
 import { mount, settle, teardown, type Mounted } from './testing';
+import { Body } from './view/Body';
 import * as words from './view/words';
 
 // The Settings sheet over the real session, the real form model and the real kit parts, with a host that answers from memory. These tests read what a person reads: which pages there are, which control each setting has, what a
@@ -383,5 +384,38 @@ describe('a secret typed while the other window changes it', () => {
     await settle(m.clock);
     expect(screen.getByText(/Changed elsewhere\. Escape takes it\./)).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(SENTINEL);
+  });
+});
+
+describe('a body that is mounted anew', () => {
+  // The Settings window's body is keyed by the host's request: each request for a page mounts a new one over the same session and form. Whatever the way it comes, a secret that is being typed never outlives the body it was typed in.
+  it('holds no secret text in the form: a refused secret is gone from the vault after any remount', async () => {
+    const m = await mount({ stored: { 'telemetry.auth_value': true, 'telemetry.loki_auth_value': false } });
+    await goTo(m, 'Telemetry');
+    const state = m.session.getState();
+    if (state.phase !== 'ready') {
+      throw new Error('not ready');
+    }
+
+    const { form } = state;
+    m.host.next.commit = async () => Promise.reject(new Error('refused'));
+    form.setValue('telemetry.loki_auth_value', SENTINEL);
+    await act(async () => {
+      await form.commit('telemetry.loki_auth_value');
+    });
+    await settle(m.clock);
+    expect(form.stats().secrets).toBe(1);
+    m.unmount();
+    render(<Body session={m.session} page={m.page} headingLevel="h2" />);
+    await settle(m.clock);
+    expect(form.stats().secrets).toBe(0);
+    expect(form.field('telemetry.loki_auth_value')?.secret).toEqual({ presence: 'unset', changed: false });
+    expect(document.body.innerHTML).not.toContain(SENTINEL);
+    // Enter in the field that reads empty sends nothing.
+    const sent = m.host.calls.commit.length;
+    await act(async () => {
+      await form.commit('telemetry.loki_auth_value');
+    });
+    expect(m.host.calls.commit.length).toBe(sent);
   });
 });

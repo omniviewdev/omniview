@@ -24,3 +24,5 @@ const binding9 = mod["WML"];
 export { binding9 as "WML" };
 const binding10 = mod["Window"];
 export { binding10 as "Window" };
+const binding11 = mod["onEventsReconnect"];
+export { binding11 as "onEventsReconnect" };

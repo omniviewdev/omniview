@@ -18,3 +18,5 @@ export {
   Window,
   WML,
 } from '@wailsio/runtime';
+
+export { onEventsReconnect } from './eventsReconnect';

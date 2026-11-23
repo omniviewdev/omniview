@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as runtime from '../../shell/settings/runtime';
+import { manualClock } from '../../shell/core/fields/testing';
 import { createSettingsSession } from '../../shell/settings/model/session';
 import { fakeHost } from '../../shell/settings/model/testing';
 import { acme } from '../testing';
@@ -15,7 +16,7 @@ import { NO_ROUTE } from './route';
 // The sheet's code reads the runtime's bindings, which jsdom does not have: its session is made over a host in memory.
 vi.mock('../../shell/settings/runtime', async (importOriginal) => ({
   ...(await importOriginal<typeof runtime>()),
-  createSession: () => createSettingsSession({ client: fakeHost().client }),
+  createSession: () => createSettingsSession({ client: fakeHost().client, scheduler: manualClock().scheduler }),
 }));
 
 const entries: readonly PluginEntry[] = [{ id: 'acme', name: 'Acme plugin', phase: 'ready', contribution: acme() }];

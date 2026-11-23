@@ -53,6 +53,8 @@ export type SettingsClient = {
   readonly commit: (values: Readonly<Record<string, unknown>>) => Promise<HostCommit>;
   /** Listens for a change of the host's settings that someone made (this window or another). Answers the function that stops it. */
   readonly onChanged: (listener: () => void) => () => void;
+  /** Listens for the page's events connection coming back after it dropped (server mode: nothing that was told while it was down is replayed). Absent where there is no such connection. Answers the function that stops it. */
+  readonly onReconnect?: ((listener: () => void) => () => void) | undefined;
 };
 
 /** What the host's window service says of the Settings window (`backend/window/types.go`: `SettingsState`): the request to show it (a new `requestId` for each new target) and whether it is shown. */

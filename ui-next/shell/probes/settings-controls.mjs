@@ -591,12 +591,11 @@ export const PERTURBATIONS = {
     section: 'perf',
     parts: ['idle'],
     says: /^perf\.idle\.commits /,
-    fault: 'the page is told of a change every 400 ms, by a clock that is not the page\'s (a worker), so it draws again with no timer of its own',
+    fault: 'the page draws again every 400 ms, on a clock that is not the page\'s (a worker), with nothing changed and no timer of its own (a change told by the host would make the session ask the host, and a question has a deadline timer)',
     plant: {
       js: () => {
         const worker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(1), 400);'], { type: 'text/javascript' })));
-        let flip = 0;
-        worker.onmessage = () => window.__host.change('appearance.density', flip++ % 2 === 0 ? 'compact' : 'comfortable');
+        worker.onmessage = () => window.__redraw();
       },
     },
   },
