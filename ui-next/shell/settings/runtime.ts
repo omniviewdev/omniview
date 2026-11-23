@@ -1,5 +1,6 @@
 import { SettingsService, WindowClient } from '@omniviewdev/runtime/api';
-import { Events } from '@omniviewdev/runtime/runtime';
+import { Events, onEventsReconnect } from '@omniviewdev/runtime/runtime';
+import { pageClock } from './clock';
 import { createSettingsSession, type SettingsSession } from './model/session';
 import type { SettingsClient, SettingsRequest, SettingsWindowClient } from './model/types';
 
@@ -13,6 +14,7 @@ export function runtimeClient(): SettingsClient {
     snapshot: async () => SettingsService.GetSnapshot(HOST),
     validate: async (id, value) => SettingsService.Validate(HOST, id, value),
     commit: async (values) => SettingsService.Commit(HOST, { ...values }),
+    onReconnect: (listener) => onEventsReconnect(listener),
     onChanged: (listener) =>
       Events.On('settings/changed', (event) => {
         // The event is the scope that changed; a plugin's settings are not Settings'.
@@ -26,7 +28,7 @@ export function runtimeClient(): SettingsClient {
 
 /** The session of one opening or of the Settings window's life: over the client the host passed (a fixture's, in a probe) or the runtime's. */
 export function createSession(client: SettingsClient | undefined): SettingsSession {
-  return createSettingsSession({ client: client ?? runtimeClient() });
+  return createSettingsSession({ client: client ?? runtimeClient(), scheduler: pageClock });
 }
 
 function isRequest(value: unknown): value is SettingsRequest {

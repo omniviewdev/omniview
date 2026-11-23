@@ -3,7 +3,7 @@ import { deferred, manualClock, SENTINEL, type ManualClock } from '../../core/fi
 import type { FieldState } from '../../core/fields';
 import { createSettingsSession, type SettingsSession } from './session';
 import { fakeHost, hostSnapshot, type FakeHost } from './testing';
-import type { HostCommit, HostSnapshot } from './types';
+import type { HostCommit, HostSnapshot, SettingsClient } from './types';
 
 // The session is the sheet's whole dealing with the host: it reads the snapshot, makes the form from it, sends what the person changes (one setting at a time, as it is changed), asks the host about a typed value,
 // and follows what changes elsewhere. These tests run the REAL form model over a host that answers from memory (`testing.ts`); nothing here is a mock of the model.
@@ -423,5 +423,200 @@ describe('a secret typed while the other window changes it', () => {
     host.change('editor.fontSize', 18);
     await clock.flush();
     expect(session.elsewhere.getSnapshot()).toEqual({});
+  });
+});
+
+describe('a question the host did not answer', () => {
+  // The host is a client's `snapshot` that can be told to fail; `asks` counts every question the session put to it (the first load is the first).
+  async function rigDown() {
+    const host = fakeHost({ 'editor.fontSize': 14 });
+    const clock = manualClock();
+    const down = { value: false, hang: false };
+    let asks = 0;
+    const client: SettingsClient = {
+      ...host.client,
+      snapshot: async () => {
+        asks += 1;
+        if (down.hang) {
+          return new Promise<HostSnapshot>(() => undefined);
+        }
+
+        if (down.value) {
+          throw new Error('the host did not answer');
+        }
+
+        return host.client.snapshot();
+      },
+    };
+    const session = createSettingsSession({ client, scheduler: clock.scheduler });
+    await clock.flush();
+    return { session, host, clock, down, asks: () => asks };
+  }
+
+  it('asks again after the wait, when the newest question failed, and follows what it finds', async () => {
+    const { session, host, clock, down, asks } = await rigDown();
+    expect(asks()).toBe(1);
+    down.value = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    expect(asks()).toBe(2);
+    down.value = false;
+    await clock.advance(499);
+    expect(asks()).toBe(2);
+    await clock.advance(1);
+    await clock.flush();
+    expect(asks()).toBe(3);
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(18);
+  });
+
+  it('waits 0.5, 1, 2, 4 and 8 seconds, five questions and 15.5 s in all, and then asks no more until it is told something', async () => {
+    const { host, clock, down, asks } = await rigDown();
+    down.value = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    expect(asks()).toBe(2);
+    for (const [wait, total] of [[500, 3], [1000, 4], [2000, 5], [4000, 6], [8000, 7]] as const) {
+      await clock.advance(wait - 1);
+      expect(asks()).toBe(total - 1);
+      await clock.advance(1);
+      await clock.flush();
+      expect(asks()).toBe(total);
+    }
+
+    await clock.advance(300_000);
+    await clock.flush();
+    expect(asks()).toBe(7);
+    // What the host tells next asks again, and with a new budget of waits.
+    host.change('editor.fontSize', 20);
+    await clock.flush();
+    expect(asks()).toBe(8);
+    await clock.advance(500);
+    await clock.flush();
+    expect(asks()).toBe(9);
+  });
+
+  it('never applies an answer older than the newest question, also when the newest one failed: the older answer after the newest failure', async () => {
+    const { session, host, clock, down } = await rigDown();
+    const older = deferred<HostSnapshot>();
+    host.next.snapshot = async () => older.promise;
+    host.change('editor.fontSize', 16);
+    await clock.flush();
+    down.value = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    older.resolve(hostSnapshot({ 'editor.fontSize': 16 }));
+    await clock.flush();
+    // The older answer is what the host held before the change that the failed question was asked for.
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(14);
+    down.value = false;
+    await clock.advance(500);
+    await clock.flush();
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(18);
+  });
+
+  it('counts a question the host does not answer within ten seconds as lost, and asks again after the first wait', async () => {
+    const { session, host, clock, down, asks } = await rigDown();
+    down.hang = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    expect(asks()).toBe(2);
+    await clock.advance(9_999);
+    expect(asks()).toBe(2);
+    down.hang = false;
+    await clock.advance(1);
+    await clock.flush();
+    expect(asks()).toBe(2);
+    await clock.advance(499);
+    expect(asks()).toBe(2);
+    await clock.advance(1);
+    await clock.flush();
+    expect(asks()).toBe(3);
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(18);
+  });
+
+  it('starts no wait for a question that was overtaken, when its own deadline comes', async () => {
+    const { host, clock, down, asks } = await rigDown();
+    down.hang = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    down.hang = false;
+    host.change('editor.fontSize', 20);
+    await clock.flush();
+    expect(asks()).toBe(3);
+    await clock.advance(60_000);
+    await clock.flush();
+    expect(asks()).toBe(3);
+  });
+
+  it('leaves no deadline running when the session is disposed', async () => {
+    const { session, host, clock, down, asks } = await rigDown();
+    down.hang = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    session.dispose();
+    down.hang = false;
+    await clock.advance(60_000);
+    await clock.flush();
+    expect(asks()).toBe(2);
+  });
+
+  it('stops waiting when the session is disposed', async () => {
+    const { session, host, clock, down, asks } = await rigDown();
+    down.value = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    expect(asks()).toBe(2);
+    session.dispose();
+    await clock.advance(60_000);
+    await clock.flush();
+    expect(asks()).toBe(2);
+  });
+
+  it('is taken over by what the host tells while it waits: one question, and no second one when the wait is up', async () => {
+    const { session, host, clock, down, asks } = await rigDown();
+    down.value = true;
+    host.change('editor.fontSize', 18);
+    await clock.flush();
+    down.value = false;
+    host.change('editor.fontSize', 20);
+    await clock.flush();
+    expect(asks()).toBe(3);
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(20);
+    await clock.advance(60_000);
+    await clock.flush();
+    expect(asks()).toBe(3);
+  });
+});
+
+describe('the events connection of the page', () => {
+  it('asks the host again when it comes back, and follows what was told while it was down', async () => {
+    const { session, host, clock } = await rig({ 'editor.fontSize': 14 });
+    // Told while the connection was down: the page heard no event.
+    host.values.set('editor.fontSize', 18);
+    host.reconnect();
+    await clock.flush();
+    expect(host.calls.snapshot).toBe(2);
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(18);
+  });
+
+  it('is listened to for as long as the session lives', async () => {
+    const { session, host } = await rig();
+    expect(host.reconnectListeners()).toBe(1);
+    session.dispose();
+    expect(host.reconnectListeners()).toBe(0);
+  });
+
+  it('asks once more after the first load when the connection came back while it was on its way', async () => {
+    const host = fakeHost({ 'editor.fontSize': 14 });
+    const clock = manualClock();
+    const first = deferred<HostSnapshot>();
+    host.next.snapshot = async () => first.promise;
+    const session = createSettingsSession({ client: host.client, scheduler: clock.scheduler });
+    host.reconnect();
+    host.values.set('editor.fontSize', 18);
+    first.resolve(hostSnapshot({ 'editor.fontSize': 14 }));
+    await clock.flush();
+    expect(host.calls.snapshot).toBe(2);
+    expect(fieldOf(session, 'editor.fontSize').value).toBe(18);
   });
 });

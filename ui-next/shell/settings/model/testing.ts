@@ -155,6 +155,10 @@ export type FakeHost = {
   readonly change: (id: string, value: unknown) => void;
   /** The listeners that are registered now. */
   readonly listeners: () => number;
+  /** The page's events connection came back: what was told while it was down is not replayed. */
+  readonly reconnect: () => void;
+  /** The listeners of the reconnect signal that are registered now. */
+  readonly reconnectListeners: () => number;
   /** What the next validation or commit answers, once. */
   readonly next: { validate?: (id: string, value: unknown) => Promise<HostValidation> | HostValidation; commit?: (values: Readonly<Record<string, unknown>>) => Promise<HostCommit> | HostCommit; snapshot?: () => Promise<HostSnapshot> };
   readonly pendingRestart: Set<string>;
@@ -165,6 +169,7 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
   const values = new Map<string, unknown>(Object.entries(initial));
   const secrets = new Map<string, boolean>(Object.entries(stored));
   const listeners = new Set<() => void>();
+  const reconnects = new Set<() => void>();
   const pendingRestart = new Set<string>();
   const calls: FakeHost['calls'] = { snapshot: 0, validate: [], commit: [] };
   const next: FakeHost['next'] = {};
@@ -226,6 +231,12 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
         listeners.delete(listener);
       };
     },
+    onReconnect: (listener) => {
+      reconnects.add(listener);
+      return () => {
+        reconnects.delete(listener);
+      };
+    },
   };
 
   return {
@@ -239,6 +250,12 @@ export function fakeHost(initial: Readonly<Record<string, unknown>> = {}, stored
       }
     },
     listeners: () => listeners.size,
+    reconnect: () => {
+      for (const listener of [...reconnects]) {
+        listener();
+      }
+    },
+    reconnectListeners: () => reconnects.size,
     next,
     pendingRestart,
   };

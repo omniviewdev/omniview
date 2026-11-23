@@ -80,7 +80,7 @@
 //      and is still applied after a reload; a value the host refuses (`developer.pprof_port` 70000) says the host's words in its lane and the host keeps what it had; Escape closes it and the focus goes back. The window
 //      (`/?screen=settings-window`, what the native window of kind `settings` draws): no shell, no dialog, a caption with Close; `OpenSettings` names its page and shows it, `HideSettings` hides it, a show again asks the host what it
 //      holds now, and Escape, the close chord and Close hide it by asking the host. The two together: a change in one reaches the other within 2 s through the host's `settings/changed`, and a draft typed in the sheet survives a
-//      change of another setting made in the window. The slots: 100 window pages opened and closed one after another all read their rows, and the window service lists the windows it listed before (the realm refuses a 64th LIVE
+//      change of another setting made in the window. The events connection (a window page that is looked at all the while): its socket is dropped, a setting is changed from the host before the runtime opens another one, and the page shows the host's value once it is back, and follows the next change. The slots: 100 window pages opened and closed one after another all read their rows, and the window service lists the windows it listed before (the realm refuses a 64th LIVE
 //      window and retires a closed page after about 3.4 s: INV2). The secrets (the host declares three, in Telemetry): one is saved through the sheet, is said to be saved after a reload, is cleared, and its value is never in the document,
 //      in the host's snapshot or in the host's log. The popups: a tooltip inside the open sheet is shown above it, and a native select takes type-ahead. The log: no page error and no settings error in the host's log.
 //      SEAM_CONTROL=settings runs s alone with every control of SETTINGS_PARTS made in turn; SEAM_CONTROL=<name> makes one, in the part it belongs to alone; SEAM_REMOVE=<name> leaves that control's assertion out, and its perturbation must then pass undetected
@@ -152,6 +152,7 @@ const CONTROLS = {
   'settings-words': /the lane says the host's own words for a value it refuses/,
   'settings-hide': /Escape in the Settings window asks the host to hide it/,
   'settings-reach': /a change made in the Settings window reaches the sheet within 2 s/,
+  'settings-reconnect': /the Settings window follows the host after its events connection comes back/,
   'settings-draft': /a draft typed in the sheet is not replaced by a change made in the window/,
   'settings-slots': /window page 64 of 100 read its rows/,
   'settings-secret-saved': /after a reload the secret row says Saved · hidden/,
@@ -172,6 +173,7 @@ const SETTINGS_PARTS = {
   'settings-words': 'sheet',
   'settings-hide': 'window',
   'settings-reach': 'truth',
+  'settings-reconnect': 'reconnect',
   'settings-draft': 'truth',
   'settings-slots': 'slots',
   'settings-secret-saved': 'secrets',
@@ -4156,6 +4158,68 @@ async function settingsWindow(c) {
 }
 
 /**
+ * Part of s, the events connection of a page that stays looked at (F1 of the review of #662). A server-mode page hears the host on one WebSocket that the runtime opens again after a second when it drops, and nothing that was told while it was
+ * down is replayed: a window page that is looked at all the while (no focus, no visibility change, no event reaches it) was left on the old value until the next change. The test drops the window page's events socket, changes a setting from the
+ * host before the runtime opens another one (what another window does), and the page, which is touched in no other way, shows the host's value once its socket is back (`onEventsReconnect` makes the session ask the host again) and follows the next change.
+ */
+async function settingsReconnect(c) {
+  const { engine, base, asserting } = c;
+  await c.commit({ 'terminal.cursorBlink': true });
+  const windowPage = await c.page(1060, 640);
+  const sockets = [];
+  await windowPage.routeWebSocket(/\/wails\/events/, (ws) => {
+    const server = ws.connectToServer();
+    sockets.push(ws);
+    ws.onMessage((message) => server.send(message));
+    server.onMessage((message) => ws.send(message));
+    server.onClose(() => ws.close());
+  });
+  await windowPage.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
+  await c.show('/settings?category=terminal');
+  const toggle = '[data-settings-row="terminal.cursorBlink"] [role="switch"]';
+  await windowPage.locator(toggle).waitFor({ timeout: 20_000 });
+  const shows = async () => windowPage.locator(toggle).getAttribute('aria-checked');
+  const staleSnapshot = (text) => async (route, id) => (id === SETTINGS_CALLS.snapshot ? answerWith(route, text) : false);
+  // The act, made again under a perturbation and once it is undone: the page's events socket is dropped, the host changes before the runtime opens another one (a second later), and the page is touched in no other way. `wanted` is what the
+  // host holds after it.
+  let wanted = 'true';
+  const outage = async () => {
+    await c.until(10_000, async () => sockets.length > 0);
+    for (const ws of sockets.splice(0)) ws.close({ code: 1006, reason: 'the seam drops the events connection' });
+    wanted = wanted === 'true' ? 'false' : 'true';
+    await c.commit({ 'terminal.cursorBlink': wanted === 'true' });
+  };
+  const follows = async () =>
+    windowPage
+      .waitForFunction(({ selector, value }) => document.querySelector(selector)?.getAttribute('aria-checked') === value, { selector: toggle, value: wanted }, { polling: 50, timeout: 8000 })
+      .then(() => true, () => false);
+  await outage();
+  assert.notEqual(await shows(), wanted, `${engine}: the window page has not heard of a change made while its events connection was down`);
+  // A precondition of the control, in words of its own: the recovery is made before anything is perturbed, so that the perturbation answers a page that has recovered and a second outage that changes the host back is not read as already followed.
+  assert.ok(await follows(), `${engine}: before anything is perturbed, the window page shows the host's value once its events connection is back (it shows ${String(await shows())}, the host holds ${wanted})`);
+  let putBack;
+  await asserting(
+    'settings-reconnect',
+    async () => {
+      // The page asks the host again when its socket is back, and is answered with what the host held before this outage.
+      putBack = await standIn(windowPage, staleSnapshot(JSON.stringify(await c.snapshot())));
+      await outage();
+    },
+    async () => {
+      await putBack();
+      await outage();
+    },
+    async () => {
+      assert.ok(await follows(), `${engine}: the Settings window follows the host after its events connection comes back (it shows ${String(await shows())}, the host holds ${wanted})`);
+    },
+  );
+  // The new socket carries the host's events again.
+  wanted = wanted === 'true' ? 'false' : 'true';
+  await c.commit({ 'terminal.cursorBlink': wanted === 'true' });
+  assert.ok(await follows(), `${engine}: the Settings window follows the next change on its new events connection`);
+}
+
+/**
  * Part of s, the two together: the sheet in one page and the Settings window in another, on one host. A change in either reaches the other through the host's `settings/changed` within 2 s (the milliseconds are reported),
  * and a draft typed in the sheet is not replaced when the window changes another setting.
  */
@@ -4642,7 +4706,7 @@ async function checkSettings(browser, engine, work) {
   const only = SETTINGS_PARTS[CONTROL];
   const started = Date.now();
   try {
-    for (const [name, part] of [['sheet', settingsSheet], ['window', settingsWindow], ['truth', settingsTruth], ['slots', settingsSlots], ['secrets', settingsSecrets], ['popups', settingsPopups]]) {
+    for (const [name, part] of [['sheet', settingsSheet], ['window', settingsWindow], ['truth', settingsTruth], ['reconnect', settingsReconnect], ['slots', settingsSlots], ['secrets', settingsSecrets], ['popups', settingsPopups]]) {
       if (only !== undefined && only !== name) continue;
       const partStarted = Date.now();
       try {

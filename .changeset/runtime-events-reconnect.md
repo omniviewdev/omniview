@@ -1,0 +1,5 @@
+---
+'@omniviewdev/runtime': minor
+---
+
+Add `onEventsReconnect(listener)` to `@omniviewdev/runtime/runtime`: it tells when an events socket of the page opens, which after the first time is when the connection came back. In server mode (a page served to a browser) the host's events travel on one WebSocket that the Wails runtime reopens after a second when it drops, and nothing that was told while it was down is replayed; a consumer that shows what the host holds can ask the host again when the connection returns. Wails states no such fact (it accepts the socket inside its own route and fires no callback), so the page observes it: while somebody listens, the page's `WebSocket` constructor is put behind a `Proxy` whose `construct` returns the real instance and adds one `open` listener to sockets for the events path only; `instanceof`, the prototype, the statics and subclassing are the native ones, and the native constructor is put back when the last listener goes. A native window has no such socket and the signal never fires there.

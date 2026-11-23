@@ -11,7 +11,7 @@
 //   &theme=<id>   the theme the document starts in        &request=<json>   the request the window case starts from (a host that was asked to show Settings, on a page)
 //
 // `window.__host` is the host in memory (its calls, its values, `change`, `listeners()`, `next`); `window.__hold()` makes the NEXT answer of the host wait for `window.__release()`, which is how the probe sees an open before and after
-// the data arrives.
+// the data arrives. `window.__redraw()` draws the page again with nothing changed: the lever of the control that plants a page which draws on a clock of its own (nothing in the product calls it).
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import { Button, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
@@ -126,9 +126,15 @@ Object.assign(windows.client, {
 const control = CASE === 'sheet' ? createSettingsControl({ load: async () => import('../settings/surface'), client }) : undefined;
 Reflect.set(window, '__control', control);
 
-createRoot(document.getElementById('root')!).render(
-  <ThemeProvider themeId={theme}>
-    {CASE === 'window' ? <SettingsWindow client={client} windows={windows.client} /> : <Shell registration={registration} tabs={tabs} renderPage={() => <Behind />} empty={null} settings={control} />}
-    <TooltipHost />
-  </ThemeProvider>,
-);
+const root = createRoot(document.getElementById('root')!);
+const draw = (): void => {
+  root.render(
+    <ThemeProvider themeId={theme}>
+      {CASE === 'window' ? <SettingsWindow client={client} windows={windows.client} /> : <Shell registration={registration} tabs={tabs} renderPage={() => <Behind />} empty={null} settings={control} />}
+      <TooltipHost />
+    </ThemeProvider>,
+  );
+};
+
+draw();
+Reflect.set(window, '__redraw', draw);

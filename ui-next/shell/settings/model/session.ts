@@ -41,7 +41,8 @@ export type SettingsSession = {
 
 export type SessionOptions = {
   readonly client: SettingsClient;
-  readonly scheduler?: Scheduler | undefined;
+  /** The clock the session and its form run on: the page's in a page (`clock.ts`), a manual one in a test. The session waits before it asks the host again when a question was lost, and the form debounces and times its checks. */
+  readonly scheduler: Scheduler;
 };
 
 const LOADING: SessionState = Object.freeze({ phase: 'loading' });
@@ -51,6 +52,13 @@ const NONE: Readonly<Record<string, Json>> = Object.freeze({});
 /** How many times an answer that may be older than the host's value is asked for again before the session gives the screen what it has. */
 const ASKS = 3;
 
+/** How long the host has to answer a question for the snapshot: it reads a local store and answers in milliseconds, so a question that is not answered in ten seconds is lost, and the newest one is asked again (the waits that follow are RETRY_WAITS). */
+const ASK_DEADLINE = 10_000;
+
+/** How long the session waits before it asks again when its newest question was lost: five waits, 15.5 s in all. After the last it asks no more until it is told something (an event, the page looked at again, the events connection back). */
+const RETRY_WAITS = [500, 1000, 2000, 4000, 8000] as const;
+
+
 export function createSettingsSession({ client, scheduler }: SessionOptions): SettingsSession {
   let state: SessionState = LOADING;
   let disposed = false;
@@ -59,9 +67,12 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
   // A change that is on its way to the host, and a counter that moves when one starts and when one ends: a snapshot asked for before or during a change may not hold it, so it is never given to the form.
   let inflight = 0;
   let epoch = 0;
-  // The order the page asked the host for snapshots in, and the newest request whose answer the form has been given: answers can arrive in any order, and an older one that lands after a newer one is not what the host holds.
+  // The questions the page has put to the host for a snapshot, numbered in the order they were asked: only the answer to the NEWEST is given to the form. An older answer that lands after a newer question was asked may hold
+  // less than the host does (it was taken before the change that the newer question was asked for), whether the newer one has answered, is still on its way or was lost.
   let asked = 0;
-  let given = 0;
+  // The waits that have been spent since the newest question was lost, and the one that is running now.
+  let retries = 0;
+  let retryTimer: unknown;
   // The host's values the form was last given, so that a change under a draft can be told from the person's own.
   let applied: Record<string, Json> = {};
   // Settings the host saved and could not apply, and the ones it says wait for a restart.
@@ -183,6 +194,45 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     setNotes(next);
   };
 
+  // The deadlines of the questions that are on their way: cleared when a question is answered, and when the session is disposed.
+  const deadlines = new Set<unknown>();
+  const answered = async (answer: Promise<HostSnapshot>): Promise<HostSnapshot> => {
+    let timer: unknown;
+    const lost = new Promise<never>((_resolve, reject) => {
+      timer = scheduler.setTimeout(() => {
+        deadlines.delete(timer);
+        reject(new Error('the host did not answer in time'));
+      }, ASK_DEADLINE);
+      deadlines.add(timer);
+    });
+    try {
+      return await Promise.race([answer, lost]);
+    } finally {
+      scheduler.clearTimeout(timer);
+      deadlines.delete(timer);
+    }
+  };
+
+  const cancelRetry = (): void => {
+    if (retryTimer !== undefined) {
+      scheduler.clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+  };
+
+  const retryLater = (): void => {
+    const wait = RETRY_WAITS[retries];
+    if (disposed || retryTimer !== undefined || wait === undefined) {
+      return;
+    }
+
+    retries += 1;
+    retryTimer = scheduler.setTimeout(() => {
+      retryTimer = undefined;
+      void refresh(0);
+    }, wait);
+  };
+
   async function refresh(attempt: number): Promise<void> {
     if (disposed || state.phase !== 'ready') {
       return;
@@ -194,15 +244,21 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       return;
     }
 
+    // A question asked now takes over from a wait that is running: it is the newest.
+    cancelRetry();
     const { form } = state;
     const started = epoch;
     asked += 1;
     const mine = asked;
     let snapshot: HostSnapshot;
     try {
-      snapshot = await client.snapshot();
+      snapshot = await answered(client.snapshot());
     } catch {
-      // Settings keeps what it shows: the next change the host tells asks again.
+      // The newest question was lost: what the form shows may not be what the host holds, and no event will say so. Ask again after a wait, a bounded number of times (RETRY_WAITS). A lost question that is not the newest changes nothing.
+      if (mine === asked) {
+        retryLater();
+      }
+
       return;
     }
 
@@ -210,8 +266,8 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       return;
     }
 
-    if (mine < given) {
-      // A newer question was answered first: this answer is older than what the form shows.
+    if (mine !== asked) {
+      // A newer question has been asked since, whatever has become of it: this answer may lack a change made after it was taken, and the form is not given it.
       return;
     }
 
@@ -223,7 +279,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       return;
     }
 
-    given = mine;
+    retries = 0;
     follow(form, modelOf(snapshot));
   }
 
@@ -296,6 +352,20 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
       return;
     }
 
+    retries = 0;
+    if (state.phase === 'ready') {
+      void refresh(0);
+    } else if (state.phase === 'loading') {
+      wantsRefresh = true;
+    }
+  });
+  // The events connection came back (server mode): nothing that was told while it was down is replayed, so the host is asked what it holds now, as for an event.
+  const stopReconnect = client.onReconnect?.(() => {
+    if (disposed) {
+      return;
+    }
+
+    retries = 0;
     if (state.phase === 'ready') {
       void refresh(0);
     } else if (state.phase === 'loading') {
@@ -315,6 +385,7 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
     },
     load,
     refresh: () => {
+      retries = 0;
       void refresh(0);
     },
     announcements: {
@@ -342,6 +413,13 @@ export function createSettingsSession({ client, scheduler }: SessionOptions): Se
 
       disposed = true;
       stop();
+      stopReconnect?.();
+      cancelRetry();
+      for (const timer of deadlines) {
+        scheduler.clearTimeout(timer);
+      }
+
+      deadlines.clear();
       if (state.phase === 'ready') {
         state.form.dispose();
       }
