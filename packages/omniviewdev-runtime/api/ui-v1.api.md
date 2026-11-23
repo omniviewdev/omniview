@@ -48,6 +48,7 @@ export interface AppError {
     suggestions?: string[];
     // (undocumented)
     title: string;
+    tried?: AppErrorShellAttempt[];
     // (undocumented)
     type: string;
 }
@@ -61,6 +62,24 @@ export interface AppErrorAction {
     // (undocumented)
     type: 'navigate' | 'retry' | 'open-url' | 'copy';
 }
+
+// @public
+export interface AppErrorShellAttempt {
+    // (undocumented)
+    detail?: string;
+    // (undocumented)
+    path: string;
+    // (undocumented)
+    reason: AppErrorShellReason;
+    // (undocumented)
+    source: AppErrorShellSource;
+}
+
+// @public
+export type AppErrorShellReason = 'not-found' | 'not-executable' | 'not-a-shell' | 'other';
+
+// @public
+export type AppErrorShellSource = 'requested' | 'environment' | 'account' | 'fallback' | 'other';
 
 // @public (undocumented)
 export interface AuthorityDisclosure {
