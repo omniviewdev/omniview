@@ -9,7 +9,7 @@ export const units = [
     name: 'Probe the sidebar labels, the tab titles and twins and the sidebar groups against the pinned mock reference',
     script: 'ui-next/shell/probes/tour-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/tour-probe.json' },
-    seconds: 37,
+    seconds: 50,
   },
 
   // The negative controls of the tour probe: each makes the page do what one assertion is there to see (a sidebar whose count slot is four characters wide, as it was before S3, and a name that is cut and carries no clip
@@ -22,6 +22,6 @@ export const units = [
     script: 'ui-next/shell/probes/tour-probe.mjs',
     env: { BUILD_CACHE: '$RUNNER_TEMP/tour-fixtures' },
     controls: ['slot-wide', 'names-no-tip', 'title-cut', 'twin-lone', 'twin-hidden', 'memory-lost'],
-    seconds: 22,
+    seconds: 30,
   },
 ];

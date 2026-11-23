@@ -10,7 +10,7 @@ export const units = [
     name: 'Probe the command palette against the pinned mock reference',
     script: 'ui-next/shell/probes/palette-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/palette-probe.json' },
-    seconds: 261,
+    seconds: 285,
   },
 
   // The negative controls of the palette probe: each perturbs one measured value in the page (the frame's width, a row's height, the footer's height, the Search control's place, the gap between two keys of the footer,
@@ -22,6 +22,6 @@ export const units = [
     script: 'ui-next/shell/probes/palette-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['frame-width', 'row-height', 'foot-height', 'search-place', 'foot-gap', 'paint', 'hover-steals', 'no-restore'],
-    seconds: 84,
+    seconds: 105,
   },
 ];

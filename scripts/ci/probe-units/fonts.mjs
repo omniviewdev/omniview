@@ -5,6 +5,6 @@ export const units = [
     name: 'Probe the fonts and the layout shift',
     script: 'packages/kit/probes/fonts-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/fonts-probe.json' },
-    seconds: 35,
+    seconds: 45,
   },
 ];

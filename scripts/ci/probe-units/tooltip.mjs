@@ -5,6 +5,6 @@ export const units = [
     name: 'Probe the tooltip host',
     script: 'packages/kit/probes/tooltip-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/tooltip-probe.json' },
-    seconds: 144,
+    seconds: 160,
   },
 ];

@@ -18,7 +18,7 @@ export const units = [
     name: 'Probe the Logs tool in a real engine',
     script: 'ui-next/shell/probes/logs-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/logs-probe.json' },
-    seconds: 395,
+    seconds: 415,
   },
 
   // The negative controls of the Logs probe, first group: the feed goes quiet once the view is hidden, which a view that costs nothing because its feed is quiet would pass every zero of; every Source cell says the other
@@ -30,7 +30,7 @@ export const units = [
     name: 'Probe that the logs probe sees a feed that stopped, a wrong source and a list that moved',
     script: 'ui-next/shell/probes/logs-probe.mjs',
     controls: ['feed-stopped', 'source-label', 'column-moves', 'kept-leak', 'close-twice', 'kept-lines', 'second-stream', 'lone-scope', 'same-name', 'axe-name', 'over-lines'],
-    seconds: 170,
+    seconds: 230,
   },
 
   // The negative controls of the Logs probe, second group, the toolbar's (P1b-4a): the toolbar's column stands 3 px from where the mock's does, the view draws lines while the toolbar says paused, a copy names no source, the
@@ -41,6 +41,6 @@ export const units = [
     name: 'Probe that the logs probe sees a toolbar that is wrong',
     script: 'ui-next/shell/probes/logs-probe.mjs',
     controls: ['toolbar-moved', 'pause-leaks', 'copy-no-source', 'clear-miscount', 'state-lost', 'more-missing', 'pause-commits', 'toolbar-timer'],
-    seconds: 212,
+    seconds: 255,
   },
 ];

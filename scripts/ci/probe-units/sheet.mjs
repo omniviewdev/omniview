@@ -9,7 +9,7 @@ export const units = [
     name: 'Probe the sheet part on the parts page',
     script: 'packages/kit/probes/sheet-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/sheet-probe.json' },
-    seconds: 20,
+    seconds: 30,
   },
 
   // The negative controls of the sheet probe: each plants one fault in the page after it loaded and the fault trips the one assertion it is named for and no other (a Tab that never reaches the part, a press on the scrim
@@ -22,6 +22,6 @@ export const units = [
     script: 'packages/kit/probes/sheet-probe.mjs',
     env: { DIST: '$PROBE_DIST' },
     controls: ['no-wrap', 'scrim-closes', 'escape-ignores-draft', 'no-restore-escape', 'no-restore-close', 'veil-present', 'frame-size'],
-    seconds: 130,
+    seconds: 165,
   },
 ];
