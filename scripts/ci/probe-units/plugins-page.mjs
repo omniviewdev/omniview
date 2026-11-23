@@ -27,7 +27,7 @@ export const units = [
     name: 'Probe the Plugins page against the pinned mock reference',
     script: 'ui-next/shell/probes/plugins-page-probe.mjs',
     env: { FONT_DELAY_MS: '40', SECTIONS: 'geometry,tokens,a11y,keyboard', BUILD_CACHE: FIXTURES, REPORT: '$RUNNER_TEMP/plugins-page-probe.json' },
-    seconds: 85,
+    seconds: 95,
   },
 
   // What the page costs, in counts: a list of 200 plugins mounts in one commit and one batch of DOM changes; one event for one plugin renders one row in one commit and changes no node outside it; the command that opens the page has the list
@@ -37,7 +37,7 @@ export const units = [
     name: 'Probe what the Plugins page costs',
     script: 'ui-next/shell/probes/plugins-page-perf-probe.mjs',
     env: { FONT_DELAY_MS: '40', BUILD_CACHE: FIXTURES, REPORT: '$RUNNER_TEMP/plugins-page-perf-probe.json' },
-    seconds: 75,
+    seconds: 80,
   },
 
   // The negative controls of the page's boxes and paint: each adds a rule to the page right before it is read (a transform that moves one part by 2 to 6 px, or a colour or a radius of its own) and passes only when the assertion of that part

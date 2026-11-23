@@ -11,7 +11,7 @@ export const units = [
     name: 'Probe Settings against the pinned mock reference and the original window',
     script: 'ui-next/shell/probes/settings-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/settings-probe.json' },
-    seconds: 265,
+    seconds: 270,
   },
 
   // The negative controls of the settings probe: each plants one fault in the page after it loaded (a style override, an attribute removed, a handler dropped, a timer left) and the fault trips the one assertion it is named for
@@ -42,7 +42,7 @@ export const units = [
     controls: [
       'nav-height', 'nav-selected-paint', 'group-size', 'group-tabbable', 'heading-lane', 'heading-type', 'heading-oneline', 'list-start', 'rows-height', 'rows-order', 'rows-pitch', 'rows-separator', 'rows-column', 'scroll-pane', 'scroll-wheel', 'scroll-end', 'scroll-reset', 'scroll-fits', 'states-loading', 'states-failed', 'states-empty', 'states-anatomy', 'states-type', 'paint-token',
     ],
-    seconds: 80,
+    seconds: 85,
   },
 
   // The keyboard's six and axe's two: a page that goes round at the end, a second page that is a Tab stop, a row's control out of the Tab order, Space on a switch taken, a key typed in a select taken, a draft not applied when

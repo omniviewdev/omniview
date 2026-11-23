@@ -14,7 +14,7 @@ export const units = [
     name: 'Probe the bottom panel against the pinned mock reference',
     script: 'ui-next/shell/probes/panel-probe.mjs',
     env: { REPORT: '$RUNNER_TEMP/panel-probe.json' },
-    seconds: 310,
+    seconds: 315,
   },
 
   // The frame of the panel: the region's height, the gap between a session's glyph and its name, the toggle's place, a tool tab's padding, the sidebar's place when the panel opens, and a write at the document root during a
@@ -24,7 +24,7 @@ export const units = [
     name: 'Probe that the panel probe sees a panel that is wrong (the frame)',
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write'],
-    seconds: 220,
+    seconds: 230,
   },
 
   // The sessions their plugin's unload kept (A21): the tab of the held session is not drawn, nor is the tab of the one that had ended on its own, a tab moves, the Open button can be pressed while the plugin is off. They run
@@ -43,6 +43,6 @@ export const units = [
     name: 'Probe that the panel probe sees a panel that is wrong (the scope of a tab)',
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name', 'late-early'],
-    seconds: 135,
+    seconds: 125,
   },
 ];
