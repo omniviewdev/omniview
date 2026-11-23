@@ -108,6 +108,13 @@ type Attached struct {
 	// lost the terminal (Detachment) carries the number of the attachment that ended, so a page knows the event
 	// is its own when the number is the one it holds, and that it is not when it is the number before.
 	Attachment uint64 `json:"attachment"`
+	// NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal, as of the
+	// attach: the lowest number not yet taken. The terminal's input queue is the terminal's and not the page's,
+	// and an attach does not reset it, so the page that attaches continues the sequence from here whatever number
+	// the page before it had reached (a number below it is refused SEQUENCE_STALE). It is at least 1, and 0 for a
+	// terminal that has ended, which takes no input. Calls with sequence 0 are applied in arrival order and do not
+	// move it.
+	NextInputSeq uint64 `json:"next_input_seq"`
 }
 
 // DetachRequest is the second argument of DetachTerminal.
@@ -175,6 +182,9 @@ type Listed struct {
 	// NextOffset is the offset the next output will have and ReplayStart is the oldest offset the host keeps.
 	NextOffset  uint64 `json:"next_offset"`
 	ReplayStart uint64 `json:"replay_start"`
+	// NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal: as for
+	// Attached, 0 for a terminal that has ended.
+	NextInputSeq uint64 `json:"next_input_seq"`
 	// LeaseExpiresUnixMs is when a detached terminal ends, in Unix milliseconds; zero when it is attached.
 	LeaseExpiresUnixMs int64 `json:"lease_expires_unix_ms"`
 	// Ended is set for a terminal that ended while no page was attached: how it ended. Its output is still

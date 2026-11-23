@@ -71,6 +71,16 @@ export class Attached {
      */
     "attachment": number;
 
+    /**
+     * NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal, as of the
+     * attach: the lowest number not yet taken. The terminal's input queue is the terminal's and not the page's,
+     * and an attach does not reset it, so the page that attaches continues the sequence from here whatever number
+     * the page before it had reached (a number below it is refused SEQUENCE_STALE). It is at least 1, and 0 for a
+     * terminal that has ended, which takes no input. Calls with sequence 0 are applied in arrival order and do not
+     * move it.
+     */
+    "next_input_seq": number;
+
     /** Creates a new Attached instance. */
     constructor($$source: Partial<Attached> = {}) {
         if (!("session" in $$source)) {
@@ -87,6 +97,9 @@ export class Attached {
         }
         if (!("attachment" in $$source)) {
             this["attachment"] = 0;
+        }
+        if (!("next_input_seq" in $$source)) {
+            this["next_input_seq"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -696,6 +709,12 @@ export class Listed {
     "replay_start": number;
 
     /**
+     * NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal: as for
+     * Attached, 0 for a terminal that has ended.
+     */
+    "next_input_seq": number;
+
+    /**
      * LeaseExpiresUnixMs is when a detached terminal ends, in Unix milliseconds; zero when it is attached.
      */
     "lease_expires_unix_ms": number;
@@ -738,6 +757,9 @@ export class Listed {
         if (!("replay_start" in $$source)) {
             this["replay_start"] = 0;
         }
+        if (!("next_input_seq" in $$source)) {
+            this["next_input_seq"] = 0;
+        }
         if (!("lease_expires_unix_ms" in $$source)) {
             this["lease_expires_unix_ms"] = 0;
         }
@@ -753,7 +775,7 @@ export class Listed {
         const $$createField4_0 = $$createType10;
         const $$createField5_0 = $$createType10;
         const $$createField6_0 = $$createType11;
-        const $$createField11_0 = $$createType5;
+        const $$createField12_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
             $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
@@ -768,7 +790,7 @@ export class Listed {
             $$parsedSource["size"] = $$createField6_0($$parsedSource["size"]);
         }
         if ("ended" in $$parsedSource) {
-            $$parsedSource["ended"] = $$createField11_0($$parsedSource["ended"]);
+            $$parsedSource["ended"] = $$createField12_0($$parsedSource["ended"]);
         }
         return new Listed($$parsedSource as Partial<Listed>);
     }

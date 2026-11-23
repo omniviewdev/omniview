@@ -155,3 +155,13 @@ run the-policy-allows-attach-terminal . internal/auditgate/policy.json \
 run a-failed-create-ends-a-terminal-another-window-attached-and-released $T backend/pkg/terminal/reattach.go \
   '/^func (m \*Manager) CloseUnlessTakenOver/,/^}/ s/ || s.attachment != 0//' \
   '^TestTheCleanupOfAFailedCreate'
+
+# next_input_seq (asked by the T2b UI): the number a reattached page continues the input sequence from.
+
+run the-input-sequence-is-always-one $T backend/pkg/terminal/ordered.go \
+  '/^func (q \*inputQueue) expects/,/^}/ s/^\treturn q.next$/\treturn 1/' \
+  '^TestAnAttachAndAListSay'
+
+run an-attach-does-not-say-the-input-sequence $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) attachLive/,/^}/ s/NextInputSeq: s.queue.expects()/NextInputSeq: 0/' \
+  '^TestAnAttachAndAListSay'

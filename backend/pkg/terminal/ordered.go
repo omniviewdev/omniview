@@ -98,6 +98,17 @@ func newInputQueue(dev device, limit queueLimits) *inputQueue {
 	return q
 }
 
+// expects is the sequence number the queue takes next: the lowest not yet taken (a call ahead of it that waits
+// has not been taken). It is 0 once the queue is closed: nothing more is taken.
+func (q *inputQueue) expects() uint64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.err != nil {
+		return 0
+	}
+	return q.next
+}
+
 // write applies data to the device. It returns when the write has been applied or refused.
 func (q *inputQueue) write(seq uint64, data []byte) error {
 	o := newOp(opWrite, seq)
