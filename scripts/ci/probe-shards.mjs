@@ -27,7 +27,13 @@
 // THE WHOLE RUN IS VERIFIED. Each shard writes what it ran; the job named `Kit probes` reads them all and compares them with the table of its own checkout: every unit, every control of it, once, passed, in as many shards as the plan
 // made. A plan that was short, a shard that never reported and a unit that dropped out of the matrix are red, whatever the shards' own results said.
 //
-// ADDING A PROBE. Write `<thing>-probe.mjs` in one of PROBE_DIRS and a file for it in scripts/ci/probe-units: a unit for the probe, and one for its negative controls. Run `node scripts/ci/probe-shards.mjs check`: it fails, naming the file,
+// THE BUILDS ARE SHARED (N27). Every process of a shard (a probe is a process, and so is each negative control) is given one BUILD_CACHE, `<runner temp>/probe-builds/<key>`, where the key is the hash of everything that can change what
+// a build makes (scripts/ci/probe-builds.mjs: the tree, the lockfile, node, the build variables). The first process that needs a build of the fixtures makes it there and the others read it (packages/kit/probes/build-cache.mjs), where
+// each used to build its own: about 120 builds of the same fixtures in a full run. That is sound for a control that plants its fault in the loaded page or in what the probe reads of it, which every control does (`plants: 'page'`, a
+// unit of controls says it; docs/ui-next/status/N27.md has the 219 read one by one): the page it loads is the clean build's, as it was. A unit that says `plants: 'build'` (a control that plants its fault in the source, or at build
+// time) is given no shared build and the variables that name one are taken out of its processes' environment (`unset` of a run), so that it builds its own. A build never sees the control: it is not in the environment it is given.
+//
+// ADDING A PROBE. Write `<thing>-probe.mjs` in one of PROBE_DIRS and a file for it in scripts/ci/probe-units: a unit for the probe, and one for its negative controls (`plants`: where they plant their fault). Run `node scripts/ci/probe-shards.mjs check`: it fails, naming the file,
 // for a probe that no unit runs. Put the seconds of the first run of the unit in `seconds` (the summary of its shard prints them), and after its first CI runs set them with `node scripts/ci/probe-seconds.mjs --write` (the 95th percentile of the runner's recent runs). Add the probe and its controls to the manifest to keep them from being deleted unseen. A probe CI is not
 // to run goes in BY_HAND with the reason.
 import { spawn } from 'node:child_process';
@@ -37,6 +43,9 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { pack } from './probe-pack.mjs';
+import { parseBuilds, renderBuilds, shardBuildCache, summariseBuilds } from './probe-builds.mjs';
+
+export { shardBuildCache };
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -225,6 +234,21 @@ export function checkUnits({ units, byHand = BY_HAND, found, exists, manifest = 
     }
     if (unit.env !== undefined && 'NEGATIVE_CONTROL' in unit.env) add(`${where} sets NEGATIVE_CONTROL in env: a negative control is listed in controls, which sets it`);
     if ('paths' in unit) add(`${where} declares paths: units carry no globs since N25, every probe and every control runs on every run (${unit.file})`, unit.file);
+    for (const name of ['BUILD_CACHE', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV']) {
+      if (unit.env !== undefined && name in unit.env) add(`${where} sets ${name} in env: the shard runner gives every process of a shard the shared build directory (BUILD_CACHE), and no unit names a build of its own (${unit.file})`, unit.file);
+    }
+    if (unit.controls === undefined) {
+      if ('plants' in unit) add(`${where} says where its controls plant their fault and has no controls: only a unit of controls plants (${unit.file})`, unit.file);
+    } else if (unit.plants === undefined) {
+      add(
+        `${where} has controls and does not say where they plant their fault (plants): "page" when every control perturbs the loaded page or what the probe reads of it, so that the build the shard shares serves it, or "build" when a control plants its fault in the source or at build time and needs a build of its own (${unit.file})`,
+        unit.file,
+      );
+    } else if (unit.plants !== 'page' && unit.plants !== 'build') {
+      add(`${where} says plants: ${JSON.stringify(unit.plants)}: it is "page" or "build" (${unit.file})`, unit.file);
+    } else if (unit.plants === 'build' && unit.env !== undefined && 'DIST' in unit.env) {
+      add(`${where} plants its faults at build time and sets DIST in env: a control that changes the build needs a build of its own, and must not read one that is shared (${unit.file})`, unit.file);
+    }
     if (unit.controls !== undefined) {
       if (!Array.isArray(unit.controls) || unit.controls.length === 0) {
         add(`${where} has an empty controls list: it would run the probe zero times`);
@@ -300,12 +324,20 @@ export function expandEnv(value, vars, where) {
   });
 }
 
-/** The runs of a unit: one, or one for each of its controls (with NEGATIVE_CONTROL), each with the unit's env expanded from `vars`. */
-export function expandUnit(unit, vars) {
+/** The variables that name a build a probe reads: BUILD_CACHE is the shared directory the runner sets, DIST the kit probes' ui-next build, FIXTURE_DIST and FIXTURE_DIST_DEV a build that exists (a person's run). A unit that plants at build time reads none of them. */
+export const SHARED_BUILD_VARIABLES = ['BUILD_CACHE', 'DIST', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV'];
+
+/**
+ * The runs of a unit: one, or one for each of its controls (with NEGATIVE_CONTROL), each with the unit's env expanded from `vars` and, when the shard has a shared build (`buildCache`), BUILD_CACHE set to it. A unit that plants at
+ * build time (`plants: 'build'`) gets none, and each of its runs says `unset`: the variables that name a build, which the runner takes out of the environment of its process, so that it builds its own and reads no shared one.
+ */
+export function expandUnit(unit, vars, { buildCache } = {}) {
   const where = `the unit "${unit.name}"`;
-  const env = Object.fromEntries(Object.entries(unit.env ?? {}).map(([key, value]) => [key, expandEnv(value, vars, where)]));
-  if (unit.controls === undefined) return [{ label: unit.name, script: unit.script, control: null, env }];
-  return unit.controls.map((control) => ({ label: `${unit.name} (${control})`, script: unit.script, control, env: { ...env, NEGATIVE_CONTROL: control } }));
+  const own = unit.plants === 'build';
+  const env = { ...Object.fromEntries(Object.entries(unit.env ?? {}).map(([key, value]) => [key, expandEnv(value, vars, where)])), ...(buildCache !== undefined && !own ? { BUILD_CACHE: buildCache } : {}) };
+  const unset = own ? { unset: [...SHARED_BUILD_VARIABLES] } : {};
+  if (unit.controls === undefined) return [{ label: unit.name, script: unit.script, control: null, env, ...unset }];
+  return unit.controls.map((control) => ({ label: `${unit.name} (${control})`, script: unit.script, control, env: { ...env, NEGATIVE_CONTROL: control }, ...unset }));
 }
 
 /** Does the unit read the ui-next build in $PROBE_DIST (the shard builds it only then)? */
@@ -365,18 +397,25 @@ function runOne(run, { id, root, env, out, node }) {
     const started = performance.now();
     let tail = '';
     let last = '\n';
+    // The builds the process says it made or read (`probe-build: ...`), a line that arrives in two pieces joined.
+    const builds = [];
+    let carry = '';
     const forward = (chunk) => {
       const text = chunk.toString('utf8');
       if (text === '') return;
       out(text);
       last = text.at(-1);
       tail = (tail + text).slice(-TAIL_BYTES);
+      const lines = (carry + text).split('\n');
+      carry = lines.pop();
+      builds.push(...parseBuilds(lines.join('\n')));
     };
     let settled = false;
     const finish = (code, signal, problem) => {
       if (settled) return;
       settled = true;
       const seconds = (performance.now() - started) / 1000;
+      builds.push(...parseBuilds(carry));
       if (last !== '\n') out('\n');
       out('::endgroup::\n');
       const ok = code === 0 && problem === undefined;
@@ -388,9 +427,12 @@ function runOne(run, { id, root, env, out, node }) {
         if (lines.at(-1) === '') lines.pop();
         out(`Last lines of its output:\n${lines.slice(-TAIL_LINES).map((line) => `  ${line}`).join('\n')}\n`);
       }
-      resolve({ label: run.label, script: run.script, control: run.control, ok, code, signal: signal ?? null, seconds });
+      resolve({ label: run.label, script: run.script, control: run.control, ok, code, signal: signal ?? null, seconds, builds });
     };
-    const child = spawn(node, [path.join(root, run.script)], { cwd: root, env: { ...env, ...run.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    // A unit that plants at build time reads no shared build: the variables that name one are taken out of the shard's environment too, whatever it holds.
+    const childEnv = { ...env, ...run.env };
+    for (const name of run.unset ?? []) delete childEnv[name];
+    const child = spawn(node, [path.join(root, run.script)], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', forward);
     child.stderr.on('data', forward);
     child.on('error', (error) => finish(null, null, `could not start: ${error.message}`));
@@ -398,11 +440,14 @@ function runOne(run, { id, root, env, out, node }) {
   });
 }
 
-/** Runs every run of every unit given, one at a time, to the end: the results are `{ label, unit, script, control, ok, code, signal, seconds }` in order (`unit` is the id of the unit the run belongs to). A failure does not stop the shard. */
-export async function runShard(units, id, { root = REPO_ROOT, env = process.env, out = (text) => process.stdout.write(text), node = process.execPath } = {}) {
+/**
+ * Runs every run of every unit given, one at a time, to the end: the results are `{ label, unit, script, control, ok, code, signal, seconds, builds }` in order (`unit` is the id of the unit the run belongs to; `builds` the builds the
+ * process said it made or read). `buildCache` is the directory the processes of the shard share their builds in (every unit but those that plant at build time is given it). A failure does not stop the shard.
+ */
+export async function runShard(units, id, { root = REPO_ROOT, env = process.env, out = (text) => process.stdout.write(text), node = process.execPath, buildCache } = {}) {
   const results = [];
   for (const unit of units) {
-    for (const run of expandUnit(unit, env)) results.push({ ...(await runOne(run, { id, root, env, out, node })), unit: unit.id });
+    for (const run of expandUnit(unit, env, { buildCache })) results.push({ ...(await runOne(run, { id, root, env, out, node })), unit: unit.id });
   }
   return results;
 }
@@ -699,9 +744,17 @@ export async function main(
     }
     chosen.push(table.get(unitId));
   }
+  let buildCache;
+  try {
+    buildCache = shardBuildCache({ root, env });
+  } catch (error) {
+    err(`probe-shards: cannot name the directory this shard shares its builds in: ${firstLine(error.message)}\n`);
+    return 1;
+  }
+  out(`probe-shards: the processes of shard ${shard} share their builds in ${buildCache}\n`);
   let results;
   try {
-    results = await runShard(chosen, shard, { root, env, out });
+    results = await runShard(chosen, shard, { root, env, out, buildCache });
   } catch (error) {
     err(`probe-shards: ${error.message}\n`);
     return 1;
@@ -709,9 +762,11 @@ export async function main(
   const summary = renderSummary(shard, results);
   const found = driftFindings(shard, results, units, margin);
   const drift = renderDrift(shard, found.rows, found.shard);
-  out(`\n${summary}\n${drift}\n`);
+  const built = renderBuilds(shard, summariseBuilds(results.flatMap((result) => result.builds ?? [])));
+  const builds = built === '' ? '' : `${built}\n`;
+  out(`\n${summary}\n${drift}\n${builds}`);
   for (const line of [...found.warnings, ...found.failures]) out(`${line}\n`);
-  if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\n${drift}\n`);
+  if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\n${drift}\n${builds}`);
   if (env.RUNNER_TEMP) {
     try {
       mkdirSync(env.RUNNER_TEMP, { recursive: true });

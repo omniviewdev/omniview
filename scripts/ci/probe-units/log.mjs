@@ -20,6 +20,7 @@ export const units = [
     script: 'packages/kit/probes/log-probe.mjs',
     env: { DIST: '$PROBE_DIST' },
     controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
+    plants: 'page',
     seconds: 140,
   },
 ];

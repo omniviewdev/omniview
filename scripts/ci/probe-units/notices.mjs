@@ -28,6 +28,7 @@ export const units = [
     controls: [
       'toast-width', 'gap', 'retry-paint', 'no-alert', 'no-live', 'told-twice', 'steals-focus', 'f6-first', 'no-restore', 'sticky-closes', 'no-hold', 'hover-stuck', 'modal-leaks', 'timer-left', 'layout-shift', 'no-avoid', 'covers', 'yield-stop', 'yield-expires', 'yield-drops-focus',
     ],
+    plants: 'page',
     seconds: 245,
   },
 
@@ -42,6 +43,7 @@ export const units = [
     controls: [
       'centre-width', 'centre-row', 'centre-dot', 'centre-bell-number', 'centre-menu-offset', 'centre-no-name', 'centre-escape', 'centre-focus', 'centre-outside', 'centre-two-stops', 'centre-listener-left', 'centre-timer-left', 'centre-second-commit', 'centre-slow-open',
     ],
+    plants: 'page',
     seconds: 210,
   },
 ];

@@ -21,6 +21,7 @@ export const units = [
     script: 'packages/kit/probes/row-menu-probe.mjs',
     env: { DIST: '$PROBE_DIST' },
     controls: ['trigger-not-expanded', 'expanded-twice'],
+    plants: 'page',
     seconds: 5,
   },
 ];

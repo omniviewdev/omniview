@@ -7,7 +7,7 @@
 //                                                                                                                  about 3 minutes for both engines at both viewports at a load of 10 to 20 (the last lines say the seconds of each section)
 //   node ui-next/shell/probes/plugins-page-perf-probe.mjs                                                          the `perf` section on its own, as a probe of its own: CI runs the two as separate units through the wrappers in ui-next/shell/probes (scripts/ci/probe-units/plugins-page.mjs)
 //
-//   FIXTURE_DIST=<dir> FIXTURE_DIST_DEV=<dir>   probe existing builds of the fixture      BUILD_CACHE=<dir>   build once into <dir>/<mode> and read it afterwards (the units of CI: one build for a shard, a run for each unit and control)
+//   FIXTURE_DIST=<dir> FIXTURE_DIST_DEV=<dir>   probe existing builds of the fixture      BUILD_CACHE=<dir>   build once into <dir>/plugins-page-fixture/<mode> and read it afterwards (the shard runner gives every process of a shard the same one: one build for a shard, a run for each unit and control)
 //   ENGINES=webkit,chromium   VIEWPORTS=1440x900,1280x800   (defaults: both of each; `perf` runs at the first viewport only)      SECTIONS=geometry,tokens,a11y,keyboard,perf   (default: all; PARTS=mount,event,open,idle narrows `perf`)
 //   REPORT=<file>   the full report as JSON      SHOTS=<dir>   a picture of the running, failed, disabled and uninstall scenes (WebKit, void, 1440 x 900: plugins-<scene>-webkit-void-1440x900.png)      READINGS=1   keeps our reading of each scene in the report
 //   NEGATIVE_CONTROL=<name>   perturb ONE thing in the page or in the measurement (PERTURBATIONS, below; `CONTROLS=1` lists them) and exit 0 when the assertion the control is named for, and no other, failed (Chromium at 1440 x 900)
@@ -55,10 +55,10 @@
 // Exit code 1 when anything differs. The negative controls (rule 28) are in PERTURBATIONS below, with how to run one and the proof that each depends on its assertion. The waits end when their condition holds and are bounded (WAIT, 30 s) only against a page that
 // never gets there: no assertion of this probe is the time a wait took.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sharedBuild } from '../../../../packages/kit/probes/build-cache.mjs';
 import { ENGINES, launch, normalizeFont, settle } from '../../../../packages/kit/probes/probe-lib.mjs';
 import { AXE, NATIVE_VIEWPORTS, open, serveFixtures, sleep } from '../../probes/harness.mjs';
 import { SELECTED, WORLD } from './world.mjs';
@@ -154,16 +154,8 @@ await build(mergeConfig(loaded.config, { configFile: false, logLevel: 'warn', mo
 function buildFixture(mode) {
   const existing = mode === 'development' ? process.env.FIXTURE_DIST_DEV : process.env.FIXTURE_DIST;
   if (existing !== undefined && existing !== '') return existing;
-  const cache = process.env.BUILD_CACHE;
-  const cached = cache !== undefined && cache !== '';
-  const out = cached ? path.join(cache, mode) : mkdtempSync(path.join(os.tmpdir(), `plugins-probe-fixture-${mode}-`));
-  const stamp = path.join(out, '.built');
-  if (cached && existsSync(stamp)) return out;
-  mkdirSync(out, { recursive: true });
-  // React's development build is chosen by NODE_ENV, which `vite build` sets to production unless it is set; the `next` flavour is chosen by OMNIVIEW_UI.
-  execFileSync(process.execPath, ['--input-type=module', '-e', BUILD, repo, path.join(here, 'fixture.html'), out, mode], { cwd: repo, env: { ...process.env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' });
-  if (cached) writeFileSync(stamp, '');
-  return out;
+  // React's development build is chosen by NODE_ENV, which `vite build` sets to production unless it is set; the `next` flavour is chosen by OMNIVIEW_UI. The build never sees the control the process runs.
+  return sharedBuild({ kind: 'plugins-page-fixture', mode, build: (out, env) => execFileSync(process.execPath, ['--input-type=module', '-e', BUILD, repo, path.join(here, 'fixture.html'), out, mode], { cwd: repo, env: { ...env, OMNIVIEW_UI: 'next', NODE_ENV: mode }, stdio: 'pipe' }) });
 }
 
 const fixtureUrl = (origin, query = '', hash = '#/host/plugins') => `${origin}/shell/plugins-page/probes/fixture.html${query === '' ? '' : `?${query}`}${hash}`;

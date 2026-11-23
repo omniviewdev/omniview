@@ -22,6 +22,7 @@ export const units = [
     script: 'packages/kit/probes/sheet-probe.mjs',
     env: { DIST: '$PROBE_DIST' },
     controls: ['no-wrap', 'scrim-closes', 'escape-ignores-draft', 'no-restore-escape', 'no-restore-close', 'veil-present', 'frame-size'],
+    plants: 'page',
     seconds: 165,
   },
 ];

@@ -15,7 +15,7 @@ export const units = [
   },
 
   // The negative controls of the settings probe: each plants one fault in the page after it loaded (a style override, an attribute removed, a handler dropped, a timer left) and the fault trips the one assertion it is named for
-  // and no other; with ASSERTION_OFF=says the assertion is left out and the fault must pass undetected. Chromium, the section of the fault only. The first control builds the fixture into BUILD_CACHE and the others read it.
+  // and no other; with ASSERTION_OFF=says the assertion is left out and the fault must pass undetected. Chromium, the section of the fault only. The shard's shared build of the fixture serves the probe and every control (the engine sets BUILD_CACHE).
   // The window's seven and the sheet's thirteen: a sidebar of 200 px, a caption of 56, a dialog in the window, a Close that drags, an Escape that never arrives, a hidden window that still paints, a change the host reported that
   // never arrives; a gear with no name, a chord that opens nothing, a dialog that is not modal, a frame of 1000 px or one that is not clamped, a veil, a Tab that never wraps, a scrim that closes, an Escape that ignores a draft,
   // a focus not given back after Escape and after Close, a page forgotten, a tooltip not drawn.
@@ -23,10 +23,11 @@ export const units = [
     id: 'settings-controls-window-sheet',
     name: 'Probe that the settings probe sees a Settings window and a sheet that are wrong',
     script: 'ui-next/shell/probes/settings-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: '$RUNNER_TEMP/settings-fixtures' },
+    env: { FONT_DELAY_MS: '40' },
     controls: [
       'win-sidebar', 'win-caption', 'win-shell', 'win-drag', 'win-escape', 'win-hidden-paints', 'win-sync-dropped', 'sheet-gear-name', 'sheet-open-chord', 'sheet-not-modal', 'sheet-frame-size', 'sheet-no-clamp', 'sheet-veil', 'sheet-no-wrap', 'sheet-scrim-closes', 'sheet-escape-draft', 'sheet-no-restore-escape', 'sheet-no-restore-close', 'sheet-keep-lost', 'sheet-tip-hidden',
     ],
+    plants: 'page',
     seconds: 65,
   },
 
@@ -38,10 +39,11 @@ export const units = [
     id: 'settings-controls-page',
     name: 'Probe that the settings probe sees a Settings page that is wrong',
     script: 'ui-next/shell/probes/settings-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: '$RUNNER_TEMP/settings-fixtures' },
+    env: { FONT_DELAY_MS: '40' },
     controls: [
       'nav-height', 'nav-selected-paint', 'group-size', 'group-tabbable', 'heading-lane', 'heading-type', 'heading-oneline', 'list-start', 'rows-height', 'rows-order', 'rows-pitch', 'rows-separator', 'rows-column', 'scroll-pane', 'scroll-wheel', 'scroll-end', 'scroll-reset', 'scroll-fits', 'states-loading', 'states-failed', 'states-empty', 'states-anatomy', 'states-type', 'paint-token',
     ],
+    plants: 'page',
     seconds: 80,
   },
 
@@ -51,10 +53,11 @@ export const units = [
     id: 'settings-controls-keys',
     name: 'Probe that the settings probe sees a keyboard and a tree of names that are wrong',
     script: 'ui-next/shell/probes/settings-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: '$RUNNER_TEMP/settings-fixtures' },
+    env: { FONT_DELAY_MS: '40' },
     controls: [
       'keys-nav-wrap', 'keys-nav-stops', 'keys-unreachable', 'keys-switch-space', 'keys-select-typeahead', 'keys-draft', 'axe-name', 'axe-contrast',
     ],
+    plants: 'page',
     seconds: 100,
   },
 
@@ -64,10 +67,11 @@ export const units = [
     id: 'settings-controls-perf',
     name: 'Probe that the settings probe sees a Settings that costs too much',
     script: 'ui-next/shell/probes/settings-probe.mjs',
-    env: { FONT_DELAY_MS: '40', BUILD_CACHE: '$RUNNER_TEMP/settings-fixtures' },
+    env: { FONT_DELAY_MS: '40' },
     controls: [
       'perf-open-commits', 'perf-open-slow', 'perf-show-commits', 'perf-key-twice', 'perf-key-rows', 'perf-idle-timer', 'perf-idle-commit', 'perf-closed-node', 'perf-closed-listener', 'perf-closed-timer', 'perf-show-slow',
     ],
+    plants: 'page',
     seconds: 160,
   },
 ];

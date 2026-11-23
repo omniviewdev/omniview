@@ -24,6 +24,7 @@ export const units = [
     name: 'Probe that the panel probe sees a panel that is wrong (the frame)',
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write'],
+    plants: 'page',
     seconds: 220,
   },
 
@@ -34,6 +35,7 @@ export const units = [
     name: 'Probe that the panel probe sees a panel that is wrong (the sessions a plugin kept)',
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled'],
+    plants: 'page',
     seconds: 170,
   },
 
@@ -43,6 +45,7 @@ export const units = [
     name: 'Probe that the panel probe sees a panel that is wrong (the scope of a tab)',
     script: 'ui-next/shell/probes/panel-probe.mjs',
     controls: ['twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name'],
+    plants: 'page',
     seconds: 115,
   },
 ];

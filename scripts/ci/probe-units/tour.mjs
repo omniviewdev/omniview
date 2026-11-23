@@ -15,13 +15,13 @@ export const units = [
   // The negative controls of the tour probe: each makes the page do what one assertion is there to see (a sidebar whose count slot is four characters wide, as it was before S3, and a name that is cut and carries no clip
   // marker, so that the tooltip never has it; a title whose tail is not drawn; a tab that has no twin and draws a scope, and twin tabs that draw none; a sidebar that comes back after a plugin's unload as a tree that
   // remembered nothing would draw it) and passes only when that assertion sees it, Chromium at 1440 x 900, the section of the fault only. With ASSERTION_OFF=<control> the assertion is left out and the fault must pass
-  // undetected. The first control builds the fixtures into BUILD_CACHE and the others read that build.
+  // undetected. The shard's shared build of the fixtures serves the probe and every control (the engine sets BUILD_CACHE).
   {
     id: 'tour-controls',
     name: 'Probe that the tour probe sees a sidebar and a tab strip that are wrong',
     script: 'ui-next/shell/probes/tour-probe.mjs',
-    env: { BUILD_CACHE: '$RUNNER_TEMP/tour-fixtures' },
     controls: ['slot-wide', 'names-no-tip', 'title-cut', 'twin-lone', 'twin-hidden', 'memory-lost'],
+    plants: 'page',
     seconds: 30,
   },
 ];
