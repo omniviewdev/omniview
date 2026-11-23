@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# usage: fetch.sh <run> [attempt]   -> /tmp/n27/jobs/<run>-<attempt>.json and /tmp/n27/logs/<run>-<attempt>/<jobid>.log
+set -euo pipefail
+run="$1"
+attempt="${2:-1}"
+mkdir -p "/tmp/n27/logs/${run}-${attempt}"
+gh api "repos/omniviewdev/omniview/actions/runs/${run}/attempts/${attempt}/jobs?per_page=100" > "/tmp/n27/jobs/${run}-${attempt}.json"
+jq -r '.jobs[] | select(.name | startswith("Kit probes shard ")) | select(.conclusion == "success" or .conclusion == "failure") | .id' "/tmp/n27/jobs/${run}-${attempt}.json" | while read -r job; do
+  f="/tmp/n27/logs/${run}-${attempt}/${job}.log"
+  [ -s "$f" ] || gh api --allow-escape-sequences "repos/omniviewdev/omniview/actions/jobs/${job}/logs" > "$f"
+done

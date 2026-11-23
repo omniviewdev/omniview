@@ -1,0 +1,33 @@
+// parse shard logs -> groups (label, seconds) for the units' runs
+import fs from 'node:fs';
+import path from 'node:path';
+const ts = (line) => { const m = /^(\d{4}-\d\d-\d\dT[\d:.]+)Z /.exec(line); return m ? Date.parse(m[1] + 'Z') : null; };
+export function parseLog(text) {
+  const lines = text.split('\n');
+  const groups = [];
+  let current = null;
+  let inRun = false;
+  let shard, units;
+  for (const line of lines) {
+    const t = ts(line);
+    const body = line.replace(/^\S+Z /, '');
+    if (/^##\[group\]Run (export NODE_OPTIONS|node scripts\/ci\/probe-shards\.mjs run)/.test(body)) { inRun = true; continue; }
+    if (!inRun) continue;
+    if (/^\s+SHARD: /.test(body)) shard = Number(body.split(': ')[1]);
+    if (/^\s+UNITS: /.test(body)) units = body.split(': ')[1].trim();
+    if (body.startsWith('##[group]')) { current = { label: body.slice(9), start: t, lines: [] }; continue; }
+    if (body.startsWith('##[endgroup]')) { if (current) { current.end = t; current.seconds = (t - current.start) / 1000; groups.push(current); current = null; } continue; }
+    if (current) current.lines.push({ t, body });
+  }
+  return { shard, units, groups: groups.filter((g) => !g.label.startsWith('Run ')) };
+}
+if (process.argv[1].endsWith('groups.mjs')) {
+  const [run, job] = process.argv.slice(2);
+  const dir = `/tmp/n27/logs/${run}-1`;
+  const files = job ? [`${job}.log`] : fs.readdirSync(dir);
+  for (const f of files) {
+    const p = parseLog(fs.readFileSync(path.join(dir, f), 'utf8'));
+    console.log(`--- shard ${p.shard} ${p.units}`);
+    for (const g of p.groups) console.log(`${g.seconds.toFixed(1).padStart(6)}  ${g.label.slice(0, 150)}`);
+  }
+}

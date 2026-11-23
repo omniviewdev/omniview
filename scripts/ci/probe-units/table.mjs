@@ -6,6 +6,6 @@ export const units = [
     name: 'Probe the table against the pinned mock reference',
     script: 'packages/kit/probes/table-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/table-probe.json' },
-    seconds: 80,
+    seconds: 75,
   },
 ];

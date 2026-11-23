@@ -1,0 +1,326 @@
+[
+ {
+  "name": "cache: ASSERTION_OFF not a control variable",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "['NEGATIVE_CONTROL', 'ASSERTION_OFF']",
+  "replace": "['NEGATIVE_CONTROL']"
+ },
+ {
+  "name": "cache: withoutControl keeps the control",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "return Object.fromEntries(Object.entries(env).filter(([name]) => !CONTROL_VARIABLES.includes(name)));",
+  "replace": "return { ...env };"
+ },
+ {
+  "name": "cache: an existing build is rebuilt",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "if (asked !== undefined && existsSync(asked)) {",
+  "replace": "if (false) {"
+ },
+ {
+  "name": "cache: late builder keeps its partial",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "    if (existsSync(final)) {\n      rmSync(work, { recursive: true, force: true });\n      return false;",
+  "replace": "    if (existsSync(final)) {\n      return false;"
+ },
+ {
+  "name": "cache: failed build leaves its partial",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "    if (where.shared) rmSync(where.work, { recursive: true, force: true });\n    throw error;",
+  "replace": "    throw error;"
+ },
+ {
+  "name": "cache: kinds share a directory",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "path.join(env.BUILD_CACHE, kind, mode)",
+  "replace": "path.join(env.BUILD_CACHE, mode)"
+ },
+ {
+  "name": "cache: place ignores kind",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "const final = path.join(cache, kind, mode);",
+  "replace": "const final = path.join(cache, mode);"
+ },
+ {
+  "name": "cache: modes share a directory",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "const final = path.join(cache, kind, mode);",
+  "replace": "const final = path.join(cache, kind);"
+ },
+ {
+  "name": "cache: build gets the control",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "build(where.work, withoutControl(env));",
+  "replace": "build(where.work, env);"
+ },
+ {
+  "name": "cache: unshared builds share one directory",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "work: mkdtempSync(path.join(os.tmpdir(), `${kind}-${mode}-`))",
+  "replace": "work: (mkdirSync(path.join(os.tmpdir(), `${kind}-${mode}-fixed`), { recursive: true }), path.join(os.tmpdir(), `${kind}-${mode}-fixed`))"
+ },
+ {
+  "name": "cache: a build that is not whole is published on failure",
+  "file": "packages/kit/probes/build-cache.mjs",
+  "find": "  try {\n    build(where.work, withoutControl(env));\n  } catch (error) {",
+  "replace": "  try {\n    build(where.work, withoutControl(env));\n  } catch (error) {\n    if (where.shared) { try { renameSync(where.work, where.final); } catch {} }"
+ },
+ {
+  "name": "key: file content not read",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "createHash('sha256').update(readFileSync(path.join(root, file))).digest('hex')",
+  "replace": "'x'"
+ },
+ {
+  "name": "key: OMNIVIEW_ not a build prefix",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "['OMNIVIEW_', 'WAILS_', 'VITE_', 'VITEST']",
+  "replace": "['WAILS_', 'VITE_', 'VITEST']"
+ },
+ {
+  "name": "key: node version not in the key",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "hash.update(`probe-build-key ${KEY_VERSION}\\0node ${node}\\0platform",
+  "replace": "hash.update(`probe-build-key ${KEY_VERSION}\\0node x\\0platform"
+ },
+ {
+  "name": "key: platform not in the key",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "\\0platform ${platform}\\0arch ${arch}\\0",
+  "replace": "\\0platform x\\0arch ${arch}\\0"
+ },
+ {
+  "name": "key: arch not in the key",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "\\0arch ${arch}\\0`",
+  "replace": "\\0arch x\\0`"
+ },
+ {
+  "name": "key: root dist is an input",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "const SKIPPED_AT_ROOT = new Set(['dist', 'bin', 'test-results']);",
+  "replace": "const SKIPPED_AT_ROOT = new Set(['bin', 'test-results']);"
+ },
+ {
+  "name": "key: node_modules is an input",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "new Set(['node_modules', '.git'])",
+  "replace": "new Set(['.git'])"
+ },
+ {
+  "name": "key: every variable is an input",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "export const isBuildEnv = (name) => BUILD_ENV_NAMES.includes(name) || BUILD_ENV_PREFIXES.some((prefix) => name.startsWith(prefix));",
+  "replace": "export const isBuildEnv = () => true;"
+ },
+ {
+  "name": "key: NODE_ENV not an input",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "export const BUILD_ENV_NAMES = ['NODE_ENV', ",
+  "replace": "export const BUILD_ENV_NAMES = ["
+ },
+ {
+  "name": "key: paths not hashed",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "hash.update(`file ${file} ${createHash",
+  "replace": "hash.update(`file ${createHash"
+ },
+ {
+  "name": "key: shared directory not under probe-builds",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "'probe-builds', key.slice(0, 16)",
+  "replace": "key.slice(0, 16)"
+ },
+ {
+  "name": "lines: parse is not anchored",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "const BUILD_LINE = /^probe-build: ",
+  "replace": "const BUILD_LINE = /probe-build: "
+ },
+ {
+  "name": "lines: summary counts reads as builds",
+  "file": "scripts/ci/probe-builds.mjs",
+  "find": "    if (build.action === 'built') {",
+  "replace": "    if (build.action !== 'zzz') {"
+ },
+ {
+  "name": "engine: build units get the shared build",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "buildCache !== undefined && !own ?",
+  "replace": "buildCache !== undefined ?"
+ },
+ {
+  "name": "engine: unset list drops DIST",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "['BUILD_CACHE', 'DIST', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV'];",
+  "replace": "['BUILD_CACHE', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV'];"
+ },
+ {
+  "name": "engine: unset list drops BUILD_CACHE",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "['BUILD_CACHE', 'DIST', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV'];",
+  "replace": "['DIST', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV'];"
+ },
+ {
+  "name": "engine: runOne ignores unset",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "for (const name of run.unset ?? []) delete childEnv[name];",
+  "replace": ""
+ },
+ {
+  "name": "engine: check allows a unit without plants",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "} else if (unit.plants === undefined) {",
+  "replace": "} else if (false) {"
+ },
+ {
+  "name": "engine: check allows another plants value",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "} else if (unit.plants !== 'page' && unit.plants !== 'build') {",
+  "replace": "} else if (false) {"
+ },
+ {
+  "name": "engine: check allows plants on a probe",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "if ('plants' in unit) add(`${where} says where",
+  "replace": "if (false) add(`${where} says where"
+ },
+ {
+  "name": "engine: check allows BUILD_CACHE in a unit",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "for (const name of ['BUILD_CACHE', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV']) {",
+  "replace": "for (const name of ['FIXTURE_DIST', 'FIXTURE_DIST_DEV']) {"
+ },
+ {
+  "name": "engine: check allows FIXTURE_DIST in a unit",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "for (const name of ['BUILD_CACHE', 'FIXTURE_DIST', 'FIXTURE_DIST_DEV']) {",
+  "replace": "for (const name of ['BUILD_CACHE']) {"
+ },
+ {
+  "name": "engine: check lets a build unit read DIST",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "} else if (unit.plants === 'build' && unit.env !== undefined && 'DIST' in unit.env) {",
+  "replace": "} else if (false) {"
+ },
+ {
+  "name": "engine: run does not pass the shared directory",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "results = await runShard(chosen, shard, { root, env, out, buildCache });",
+  "replace": "results = await runShard(chosen, shard, { root, env, out });"
+ },
+ {
+  "name": "engine: runShard drops the shared directory",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "expandUnit(unit, env, { buildCache })",
+  "replace": "expandUnit(unit, env)"
+ },
+ {
+  "name": "engine: builds not parsed from output",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "      builds.push(...parseBuilds(lines.join('\\n')));",
+  "replace": ""
+ },
+ {
+  "name": "engine: carry not parsed at the end",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "      builds.push(...parseBuilds(carry));",
+  "replace": ""
+ },
+ {
+  "name": "engine: builds summary not printed",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "  out(`\\n${summary}\\n${drift}\\n${builds}`);",
+  "replace": "  out(`\\n${summary}\\n${drift}\\n`);"
+ },
+ {
+  "name": "engine: builds not in the job summary",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\\n${drift}\\n${builds}`)",
+  "replace": "appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\\n${drift}\\n`)"
+ },
+ {
+  "name": "engine: shardBuildCache not exported",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "export { shardBuildCache };",
+  "replace": ""
+ },
+ {
+  "name": "engine: the shared directory is not told",
+  "file": "scripts/ci/probe-shards.mjs",
+  "find": "  out(`probe-shards: the processes of shard ${shard} share their builds in ${buildCache}\\n`);",
+  "replace": ""
+ },
+ {
+  "name": "unit: a control unit without plants",
+  "file": "scripts/ci/probe-units/tour.mjs",
+  "find": "    plants: 'page',\n",
+  "replace": ""
+ },
+ {
+  "name": "unit: a control unit that plants at build time with DIST",
+  "file": "scripts/ci/probe-units/form.mjs",
+  "find": "    plants: 'page',\n",
+  "replace": "    plants: 'build',\n"
+ },
+ {
+  "name": "unit: a unit sets BUILD_CACHE",
+  "file": "scripts/ci/probe-units/rail.mjs",
+  "find": "env: { REPORT: '$RUNNER_TEMP/rail-probe.json' },",
+  "replace": "env: { REPORT: '$RUNNER_TEMP/rail-probe.json', BUILD_CACHE: '$RUNNER_TEMP/x' },"
+ },
+ {
+  "name": "probe: harness builds with process.env",
+  "file": "ui-next/shell/probes/harness.mjs",
+  "find": "env: { ...env, OMNIVIEW_UI: 'next', NODE_ENV: mode }",
+  "replace": "env: { ...process.env, OMNIVIEW_UI: 'next', NODE_ENV: mode }"
+ },
+ {
+  "name": "probe: settings builds with process.env",
+  "file": "ui-next/shell/probes/settings-lib.mjs",
+  "find": "env: { ...env, OMNIVIEW_UI: 'next', NODE_ENV: mode }",
+  "replace": "env: { ...process.env, OMNIVIEW_UI: 'next', NODE_ENV: mode }"
+ },
+ {
+  "name": "probe: plugins builds with process.env",
+  "file": "ui-next/shell/plugins-page/probes/plugins-probe.mjs",
+  "find": "env: { ...env, OMNIVIEW_UI: 'next', NODE_ENV: mode }",
+  "replace": "env: { ...process.env, OMNIVIEW_UI: 'next', NODE_ENV: mode }"
+ },
+ {
+  "name": "probe: page builds with process.env",
+  "file": "ui-next/page/probes/lib.mjs",
+  "find": "env: { ...env, OMNIVIEW_UI: 'next' }",
+  "replace": "env: { ...process.env, OMNIVIEW_UI: 'next' }"
+ },
+ {
+  "name": "probe: logs-open builds with process.env",
+  "file": "ui-next/shell/probes/logs-open-probe.mjs",
+  "find": "env: { ...env, OMNIVIEW_UI: 'next' }",
+  "replace": "env: { ...process.env, OMNIVIEW_UI: 'next' }"
+ },
+ {
+  "name": "probe: harness builds on its own",
+  "file": "ui-next/shell/probes/harness.mjs",
+  "find": "  return sharedBuild({ kind: 'shell-fixtures', mode, build:",
+  "replace": "  return ((x) => x)({ kind: 'shell-fixtures', mode, build:"
+ },
+ {
+  "name": "build input reads an env the key lacks",
+  "file": "vite.config.ts",
+  "find": "process.env.OMNIVIEW_UI || 'current'",
+  "replace": "process.env.FLAVOUR_X || 'current'",
+  "tests": [
+   "scripts/ci/probe-builds.test.mjs"
+  ]
+ },
+ {
+  "name": "build input reads FONT_DELAY_MS",
+  "file": "vite.config.ts",
+  "find": "process.env.OMNIVIEW_UI || 'current'",
+  "replace": "process.env.FONT_DELAY_MS || 'current'",
+  "tests": [
+   "scripts/ci/probe-builds.test.mjs"
+  ]
+ }
+]

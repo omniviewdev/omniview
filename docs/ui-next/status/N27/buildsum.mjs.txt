@@ -1,0 +1,27 @@
+// The builds of a run (after N27): from the `probe-build:` lines of its shard logs: for each kind and mode how many were built and how many reads reused one, and the seconds a build took on the runner.
+import fs from 'node:fs';
+import path from 'node:path';
+const dirs = process.argv.slice(2);
+const q = (xs, p) => { const s = [...xs].sort((a, b) => a - b); const at = (s.length - 1) * p; const lo = Math.floor(at), hi = Math.ceil(at); return s[lo] + (s[hi] - s[lo]) * (at - lo); };
+const kinds = new Map();
+const perShard = [];
+for (const dir of dirs) for (const f of fs.readdirSync(dir)) {
+  const text = fs.readFileSync(path.join(dir, f), 'utf8');
+  let shard = null, built = 0, reused = 0, secs = 0;
+  for (const line of text.split('\n')) {
+    const body = line.replace(/^\S+Z /, '').replace(/\r$/, '');
+    const s = /^\s+SHARD: (\d+)/.exec(body); if (s) shard = Number(s[1]);
+    const m = /^probe-build: ([a-z0-9-]+)\/([a-z]+) (?:built in ([\d.]+) s \((shared|not shared)\)|reused)$/.exec(body);
+    if (!m) continue;
+    const k = `${m[1]}/${m[2]}`;
+    const e = kinds.get(k) ?? { built: 0, reused: 0, secs: [] };
+    if (m[3] !== undefined) { e.built += 1; e.secs.push(Number(m[3])); built += 1; secs += Number(m[3]); } else { e.reused += 1; reused += 1; }
+    kinds.set(k, e);
+  }
+  perShard.push({ dir: path.basename(dir), job: f.slice(0, 12), shard, built, reused, secs });
+}
+console.log('kind/mode                       built reused  build-s: n  min  median  max   total');
+for (const [k, e] of [...kinds].sort()) console.log(k.padEnd(32), String(e.built).padStart(4), String(e.reused).padStart(6), '   ', e.secs.length ? `${String(e.secs.length).padStart(3)} ${Math.min(...e.secs).toFixed(1).padStart(5)} ${q(e.secs, 0.5).toFixed(1).padStart(6)} ${Math.max(...e.secs).toFixed(1).padStart(5)} ${e.secs.reduce((a, b) => a + b, 0).toFixed(0).padStart(7)}` : '');
+const T = [...kinds.values()].reduce((a, e) => ({ built: a.built + e.built, reused: a.reused + e.reused, secs: a.secs + e.secs.reduce((x, y) => x + y, 0) }), { built: 0, reused: 0, secs: 0 });
+console.log('TOTAL'.padEnd(32), String(T.built).padStart(4), String(T.reused).padStart(6), '   ', T.secs.toFixed(0));
+console.log('\nper shard job: built, reused, build seconds'); for (const s of perShard.sort((a, b) => a.shard - b.shard)) console.log(s.dir, 'shard', s.shard, s.built, s.reused, s.secs.toFixed(1));

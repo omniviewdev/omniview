@@ -1,0 +1,2 @@
+{"main": {"palette-controls\tpaint": {"planted": {"verdict": "detected"}, "off": {"verdict": "not detected", "value": "^paint .* empty: row#0 backgroundColor"}}},
+ "branch": {"palette-controls\tpaint": {"planted": {"verdict": "detected"}, "off": {"verdict": "not detected", "value": "^paint .* empty: row#0 backgroundColor"}}}}

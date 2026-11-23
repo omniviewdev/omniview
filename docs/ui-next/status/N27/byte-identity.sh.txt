@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# N27: is a build the same bytes whoever asks for it? Each kind of fixture, in each mode, is built twice from a clean environment (`env -i`): once plain, once with the knobs of a probe and of a control set
+# (NEGATIVE_CONTROL, ASSERTION_OFF, FONT_DELAY_MS, REPORT, BUILD_CACHE). A shared build is what every process would have built for itself only if the two are identical. Run from the repository root, with the packages built:
+#   bash byte-identity.sh        (docs/ui-next/status/N27/byte-identity.sh.txt, copied without the .txt)
+set -euo pipefail
+R=$PWD
+W=${TMPDIR:-/tmp}/n27-identity
+rm -rf "$W" && mkdir -p "$W"
+
+# The Plugins page probe builds with a script it gives to `node --input-type=module -e`; here it is a file of the tree so that `vite` resolves, removed at the end.
+PLUGINS_BUILD=$R/.n27-plugins-build.mjs
+trap 'rm -f "$PLUGINS_BUILD"' EXIT
+cat > "$PLUGINS_BUILD" <<'SCRIPT'
+import path from 'node:path';
+import { build, loadConfigFromFile, mergeConfig } from 'vite';
+const [repo, input, outDir, mode] = process.argv.slice(2);
+const loaded = await loadConfigFromFile({ command: 'build', mode }, path.join(repo, 'vite.config.ts'));
+await build(mergeConfig(loaded.config, { configFile: false, logLevel: 'warn', mode, build: { outDir, emptyOutDir: true, ...(mode === 'development' ? { minify: false } : {}), rollupOptions: { input: [input] } } }));
+SCRIPT
+
+twice() {
+  local name=$1
+  shift
+  local side out
+  for side in a b; do
+    out=$W/$name-$side
+    if [ "$side" = a ]; then
+      env -i PATH="$PATH" HOME="$HOME" OMNIVIEW_UI=next OUT="$out" "$@" > /dev/null 2>&1
+    else
+      env -i PATH="$PATH" HOME="$HOME" OMNIVIEW_UI=next NEGATIVE_CONTROL=toast-width ASSERTION_OFF=says FONT_DELAY_MS=40 REPORT="$W/report.json" BUILD_CACHE="$W/cache" OUT="$out" "$@" > /dev/null 2>&1
+    fi
+  done
+  if [ -d "$W/$name-a" ] && diff -rq "$W/$name-a" "$W/$name-b" > /dev/null; then
+    echo "IDENTICAL $name ($(find "$W/$name-a" -type f | wc -l | tr -d ' ') files, $(du -sk "$W/$name-a" | cut -f1) KB)"
+  else
+    echo "DIFFERENT $name"
+  fi
+}
+
+twice shell-production sh -c "NODE_ENV=production node $R/ui-next/shell/probes/build-fixture.mjs \$OUT production"
+twice shell-development sh -c "NODE_ENV=development node $R/ui-next/shell/probes/build-fixture.mjs \$OUT development"
+twice settings-production sh -c "NODE_ENV=production node $R/ui-next/shell/probes/settings-build.mjs \$OUT production"
+twice plugins-production sh -c "NODE_ENV=production node $PLUGINS_BUILD $R $R/ui-next/shell/plugins-page/probes/fixture.html \$OUT production"
+twice plugins-development sh -c "NODE_ENV=development node $PLUGINS_BUILD $R $R/ui-next/shell/plugins-page/probes/fixture.html \$OUT development"
+twice page-production sh -c "node $R/ui-next/page/probes/build-fixture.mjs \$OUT"
+twice logs-open-production sh -c "node $R/ui-next/shell/probes/logs-open-build.mjs \$OUT"
+
+rm -f "$PLUGINS_BUILD"

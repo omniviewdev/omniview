@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# waits for the scratch runs, then fetches and analyses everything N27.md needs; prints one compact report
+cd /tmp/n27
+repo=omniviewdev/omniview
+deadline=$(( $(date +%s) + 3300 ))
+for r in "$@"; do
+  while [ "$(gh run view "$r" --repo $repo --json status -q .status 2>/dev/null)" != completed ] && [ "$(date +%s)" -lt $deadline ]; do sleep 50; done
+done
+echo "=== runs"; for r in "$@"; do echo "$r $(gh run view "$r" --repo $repo --json status,conclusion,headBranch,headSha -q '[.status,.conclusion,.headBranch,.headSha[0:8]]|@tsv')"; done
+mkdir -p art
+for r in "$@"; do /tmp/n27/fetch.sh "$r" 1 >/dev/null 2>&1; done
+echo "=== non-success jobs"; for r in "$@"; do jq -r --arg r "$r" '.jobs[] | select(.conclusion != "success") | "\($r) \(.name) \(.conclusion)"' jobs/$r-1.json; done
+echo "=== both ways"
+A=45105580728; B=45106583611
+gh run download $A --repo $repo --name controls-both-ways-engine --dir art/A >/dev/null 2>&1
+gh run download $B --repo $repo --name controls-both-ways-engine --dir art/B >/dev/null 2>&1
+ls art/A art/B 2>&1 | head -6
+if [ -f art/A/controls-both-ways.json ] && [ -f art/B/controls-both-ways.json ]; then OVERRIDES=/tmp/n27/overrides.json node compare.mjs art/A/controls-both-ways.json art/B/controls-both-ways.json art/compare.md; fi
+echo "=== runs stats (validate)"
+node runstats.mjs "$@" 2>&1 | head -12
+echo "=== builds (validate)"
+for r in 45108262719 45108265400; do [ -d logs/$r-1 ] && node buildsum.mjs logs/$r-1 2>&1 | head -14; done
+echo "=== units after (validate c+d) vs before"
+rm -rf after-logs; mkdir -p after-logs; for r in 45108262719 45108265400; do [ -d logs/$r-1 ] && ln -s /tmp/n27/logs/$r-1 after-logs/$r-1; done
+node variance.mjs after-logs/* 2>&1 | head -52
+echo "=== probe-seconds proposal (new layout only)"
+cd ~/Repos/omniviewdev/worktrees/ci-n27-probe-shared-build && node scripts/ci/probe-seconds.mjs --logs /tmp/n27/after-logs --min-samples 1 2>&1 | head -70

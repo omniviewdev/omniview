@@ -9,7 +9,7 @@ export const units = [
     name: 'Probe the log view against the pinned mock reference',
     script: 'packages/kit/probes/log-probe.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/log-probe.json' },
-    seconds: 225,
+    seconds: 190,
   },
 
   // The negative controls of the log view probe: each perturbs one measured value in the page (a row's height, the clock column's width, the filter row's place when a count appears, the strip's height, the copy event,
@@ -20,6 +20,7 @@ export const units = [
     script: 'packages/kit/probes/log-probe.mjs',
     env: { DIST: '$PROBE_DIST' },
     controls: ['row-height', 'time-column', 'filter-shift', 'strip-height', 'copy', 'keys', 'axe', 'source-tip'],
+    plants: 'page',
     seconds: 145,
   },
 ];
