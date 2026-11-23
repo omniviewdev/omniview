@@ -5,6 +5,7 @@ import {
   type Density, type TextSize, type ThemeId, type TokenName,
 } from '@omniviewdev/kit';
 import { guidance, type Guide } from '../content/catalog';
+import { HighlightedCode } from './HighlightedCode';
 import { Preview, type Appearance, type TokenValues } from './Preview';
 import './docs.css';
 
@@ -143,7 +144,7 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
           {edits.length > 0 ? (
             <>
               <p>Copy these declarations to a scoped stylesheet. Replace the selector with your own preview scope.</p>
-              <pre className="export-code" tabIndex={0}><code>{css}</code></pre>
+              <HighlightedCode code={css} fileName="overrides.css" label="CSS overrides" className="export-code" />
               <div className="actions">
                 <CopyButton key={css} text={css} label="Copy CSS overrides" />
                 <a className="action download" href={`data:text/css;charset=utf-8,${encodeURIComponent(css)}`} download={`${part.toLowerCase()}-preview.css`}>Download CSS</a>
@@ -174,7 +175,7 @@ function ExampleSource({ path }: { path: string }) {
                 {result.data.files.map(({ name }, index) => <option key={name} value={index}>{name}</option>)}
               </select>
             </label>
-            <pre tabIndex={0} aria-label={file.name}><code>{file.code}</code></pre>
+            <HighlightedCode code={file.code} fileName={file.name} />
           </>
         ) : <p className="inline-status" role="alert">Example source unavailable.</p>}
     </section>
@@ -284,8 +285,22 @@ function App() {
   const moveFocus = useRef(false);
   const parts = catalog ? Object.keys(catalog.parts) : [];
   const part = requested && parts.includes(requested) ? requested : parts[0];
-  const normalized = query.toLowerCase().replace(/\s+/g, '');
-  const matches = parts.filter((name) => name.toLowerCase().includes(normalized));
+  const terms = query.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const groups = new Map<string, string[]>();
+  let matchCount = 0;
+  for (const name of parts) {
+    const category = guidance[name].category;
+    let matches = groups.get(category);
+    if (!matches) groups.set(category, matches = []);
+    if (terms.length > 0) {
+      const nameKey = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const categoryKey = category.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!terms.every((term) => nameKey.includes(term) || categoryKey.includes(term))) continue;
+    }
+    matches.push(name);
+    matchCount++;
+  }
+  const visibleGroups = Array.from(groups).filter(([, matches]) => matches.length > 0);
 
   useEffect(() => {
     function syncLocation() {
@@ -334,17 +349,25 @@ function App() {
       </header>
       <main id="main" className="shell main-shell" tabIndex={-1}>
         <aside className="sidebar" aria-label="Documentation navigation">
-          <nav aria-label="Components">
+          <nav className="component-finder" aria-label="Components">
             <label className="field">Search components
-              <input type="search" value={query} placeholder="Find a component" onChange={(event) => setQuery(event.target.value)} />
+              <input type="search" value={query} placeholder="Name or category" onChange={(event) => setQuery(event.target.value)} />
             </label>
-            {catalog && (matches.length ? (
-              <ul className="component-links">
-                {matches.map((name) => <li key={name}>
-                  <a href={componentHref(name)} aria-current={part === name ? 'page' : undefined} onClick={(event) => navigate(event, name)}>{name}</a>
-                </li>)}
-              </ul>
-            ) : <p className="inline-status" role="status">No matching components.</p>)}
+            {catalog && <p className="inline-status" role="status">
+              {matchCount === 0 ? 'No matching components.' : terms.length > 0 ? `${matchCount} found` : ''}
+            </p>}
+            {visibleGroups.length > 0 && <div className="finder-results">
+              {visibleGroups.map(([category, matches], index) => (
+                <div className="finder-group" key={category}>
+                  <h2 className="eyebrow" id={`finder-category-${index}`}>{category}</h2>
+                  <ul className="component-links" aria-labelledby={`finder-category-${index}`} role="list">
+                    {matches.map((name) => <li key={name}>
+                      <a href={componentHref(name)} aria-current={part === name ? 'page' : undefined} onClick={(event) => navigate(event, name)}>{name}</a>
+                    </li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>}
           </nav>
           {part && <nav className="on-page" aria-label="On this page">
             <p className="eyebrow">On this page</p>

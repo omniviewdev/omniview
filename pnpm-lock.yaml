@@ -535,12 +535,18 @@ importers:
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5
+      '@types/prismjs':
+        specifier: 1.26.6
+        version: 1.26.6
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
       '@types/react-dom':
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      prismjs:
+        specifier: 1.30.0
+        version: 1.30.0
       storybook:
         specifier: 10.6.5
         version: 10.6.5(@types/react@19.3.0)(prettier@3.9.10)(react@19.3.1)
