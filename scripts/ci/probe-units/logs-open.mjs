@@ -10,7 +10,7 @@ export const units = [
     name: 'Probe the rate on the Logs strip at open',
     script: 'ui-next/shell/probes/logs-open-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/logs-open-probe.json' },
-    seconds: 24,
+    seconds: 25,
   },
 
   // The negative controls of the probe of the rate at open, each the fault one assertion is there to see, run in Chromium with the clean page and the perturbed one side by side, and passing only when the assertion it is named for
@@ -22,6 +22,6 @@ export const units = [
     script: 'ui-next/shell/probes/logs-open-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['counted-replay', 'no-wait', 'timeout-live'],
-    seconds: 36,
+    seconds: 35,
   },
 ];

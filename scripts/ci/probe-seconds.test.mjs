@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 import { DRIFT_FLOOR_SECONDS, DRIFT_RATIO, REPO_ROOT, driftFindings, loadUnits, renderDrift } from './probe-shards.mjs';
-import { ROUND_SECONDS, analyse, collect, collectFiles, main, parseUnitSeconds, pooled, proposeSeconds, quantile, render, setSeconds, summarise, thresholdOf, writeProposals } from './probe-seconds.mjs';
+import { ROUND_SECONDS, analyse, proposeFew, collect, collectFiles, main, parseUnitSeconds, pooled, proposeSeconds, quantile, render, setSeconds, summarise, thresholdOf, writeProposals } from './probe-seconds.mjs';
 
 const stamp = '2026-11-23T01:34:16.3408232Z ';
 /** A shard log as the runner prints it: noise, the Result table, then the drift table of the engine itself (`renderDrift`). */
@@ -136,6 +136,30 @@ test('analyse: a kept unit is printed with its statistics and never proposed or 
   assert.match(render(rows), /\| a \| 6 \| 200 \| 200 \| 200 \| 200 \| 24 \| 24 \(kept\)/);
   assert.equal(rows[0].enough, false, 'writeProposals skips a row that is not enough');
   assert.equal(rows[1].enough, true);
+});
+
+test('proposeFew is the max rounded up to 5 s, plus 15 percent, rounded up to 5 s again', () => {
+  assert.equal(proposeFew(177), 210, '177 -> 180 -> 207 -> 210');
+  assert.equal(proposeFew(100), 115);
+  assert.equal(proposeFew(94), 110, '94 -> 95 -> 109.25 -> 110');
+  assert.equal(proposeFew(175), 205, '175 -> 175 -> 201.25 -> 205');
+});
+
+test('analyse --few-samples max: a unit with 1 to minSamples-1 samples is listed at max + 15 percent, one with none and a kept one are not, and enough samples still use the p95', () => {
+  const samples = new Map([['a', [175]], ['b', [100, 101, 119]], ['c', [60, 61, 62, 63, 64, 65]], ['d', [90]]]);
+  const units = [unit('a', 170), unit('b', 120), unit('c', 70), unit('d', 50), unit('e', 40)];
+  const skip = analyse({ units, samples });
+  assert.deepEqual(skip.map((r) => r.proposed), [170, 120, 65, 50, 40], 'by default a unit with few samples stays as listed');
+  const rows = analyse({ units, samples, few: 'max', keep: ['d'] });
+  assert.deepEqual(rows.map((r) => r.proposed), [proposeFew(175), proposeFew(119), 65, 50, 40]);
+  assert.equal(rows[0].byMax, true);
+  assert.equal(rows[0].enough, true);
+  assert.equal(rows[2].byMax, false);
+  assert.equal(rows[3].enough, false, 'kept');
+  assert.equal(rows[4].enough, false, 'no samples');
+  assert.match(render(rows), /\| a \| 1 \|.*\| 170 \| 205 \(max \+ 15%, few samples\)/);
+  // The thresholds: the max sits well inside the limit after the first run.
+  assert.ok(rows[0].headroomProposed >= 60, `${rows[0].headroomProposed}`);
 });
 
 test('analyse: near is true when the max is within 10 percent of the threshold of the proposed value, and not at the line', () => {
@@ -285,6 +309,16 @@ test('collect reads every attempt of every run once per job, asks for the succes
   for (const args of calls.filter((entry) => entry[0] === 'api' && /logs/.test(entry.join(' ')))) assert.ok(args.includes('--allow-escape-sequences'));
 });
 
+test('collect --with-failed also lists the runs that failed, once each, and by default does not', async () => {
+  const calls = [];
+  await collect({ ask: fakeGh(calls), runs: 2 });
+  assert.deepEqual(calls.filter((args) => args[0] === 'run').map((args) => args[args.indexOf('--status') + 1]), ['success']);
+  const withFailed = [];
+  const result = await collect({ ask: fakeGh(withFailed), runs: 2, failed: true });
+  assert.deepEqual(withFailed.filter((args) => args[0] === 'run').map((args) => args[args.indexOf('--status') + 1]), ['success', 'failure']);
+  assert.equal(result.runs, 2, 'a run listed under both is one');
+});
+
 test('collect with a cache asks for each job log once, across calls', async () => {
   const cache = path.join(mkdtempSync(path.join(tmpdir(), 'probe-seconds-cache-')), 'c');
   const first = [];
@@ -360,6 +394,7 @@ test('main: a bad argument is exit 2 with the usage, and a table that does not l
   assert.equal(await main(['--runs', '0'], { err }), 2);
   assert.equal(await main(['--runs', 'many'], { err }), 2);
   assert.equal(await main(['--nope'], { err }), 2);
+  assert.equal(await main(['--few-samples', 'median'], { err }), 2);
   assert.equal(await main(['--logs', mkdtempSync(path.join(tmpdir(), 'probe-seconds-keep-')), '--keep', 'no-such-unit'], { err }), 2);
   assert.match(text, /--keep names no unit: no-such-unit/);
   assert.equal(await main(['--logs'], { err }), 2);

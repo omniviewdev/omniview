@@ -16,7 +16,7 @@ export const units = [
     name: 'Probe the Terminal tool against the pinned mock reference',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-probe.json' },
-    seconds: 170,
+    seconds: 205,
   },
 
   // The negative controls of the terminal probe, each perturbs one thing in the page after it loaded (or in the fixture) and passes only when the probe sees it, on the assertion that must (Chromium, 1440 x 900; the flood's
@@ -28,7 +28,7 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['lane-border', 'button-size', 'ring-back', 'scrollbar-block', 'scrollbar-stuck', 'f6-trap', 'escape-leaves', 'modal-off', 'resize-chatty'],
-    seconds: 120,
+    seconds: 210,
   },
 
   // The terminal that does work it should not: a frame asked for while the panel is hidden, an interval left running, a component that renders for each chunk, frames that come 45 ms late, a key handler that takes 80 ms.
@@ -38,7 +38,7 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['hidden-frames', 'idle-timer', 'chunk-commit', 'flood-janky', 'echo-slow'],
-    seconds: 120,
+    seconds: 140,
   },
 
   // The terminal that costs what it should not: the emulator's chunk imported before the first terminal, four times the scrollback, a page that holds every event it was sent.
@@ -48,7 +48,7 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['lazy-load', 'big-scrollback', 'leaky-heap'],
-    seconds: 70,
+    seconds: 110,
   },
 
   // The screen reader switch (docs/ui-next/status/T1.md section 16), each in Chromium: an emulator that is never put in the mode the window says it is in, one that is put in it and never taken out, a description that keeps the words of
@@ -59,6 +59,6 @@ export const units = [
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
     controls: ['reader-claims', 'reader-stuck', 'reader-words-stale', 'reader-announce-twice', 'reader-axe', 'reader-hidden-frames', 'reader-idle-timer'],
-    seconds: 65,
+    seconds: 125,
   },
 ];

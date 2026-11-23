@@ -7,6 +7,6 @@ export const units = [
     name: 'Probe the chip, status, missing value, kind tile, quick filters and middle ellipsis against the pinned mock reference',
     script: 'packages/kit/probes/kit-probe-bc.mjs',
     env: { DIST: '$PROBE_DIST', REPORT: '$RUNNER_TEMP/bc-probe.json' },
-    seconds: 245,
+    seconds: 250,
   },
 ];

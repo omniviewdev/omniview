@@ -20,6 +20,9 @@
 //   --logs <dir>       read shard logs saved as files (any depth, every file) instead of asking GitHub
 //   --cache <dir>      keep what was read from each job log, so that a second run asks GitHub only for what is new
 //   --min-samples <n>  fewest samples a unit needs to be proposed or written (default 5)
+//   --few-samples <skip|max>  what to do with a unit that has fewer than --min-samples samples but at least one: `skip` (default) leaves it as listed; `max` lists its MAX observed rounded up to 5 s plus 15%, rounded up to 5 s again,
+//                      so that a new unit sits well under its failure limit after its first run (a p95 of two or three samples is its max anyway, and a bad one)
+//   --with-failed      also read the runs that ended in failure (a unit's seconds are in the log of a shard that failed for another unit; a unit that itself failed is never a sample)
 //   --keep <id,id>     units whose samples are of another unit (its probe or controls changed since): printed, never proposed or written, until enough runs of the new one exist
 //   --write            update `seconds` in the unit files
 //   --root <dir>       another tree than this repository (the tests)
@@ -38,6 +41,11 @@ export const ROUND_SECONDS = 5;
 export const PERCENTILE = 0.95;
 /** A unit whose max is within this share of its threshold is named: its margin did not hold the runner's own spread. */
 export const NEAR_THRESHOLD = 0.1;
+/** A unit with few samples is listed at its max rounded up to ROUND_SECONDS, plus this share. */
+export const FEW_SAMPLES_MARGIN = 0.15;
+
+/** `--few-samples max`: the max seen rounded up to 5 s, plus 15 percent, rounded up to 5 s again. */
+export const proposeFew = (max) => proposeSeconds(proposeSeconds(max) * (1 + FEW_SAMPLES_MARGIN));
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // The log
@@ -108,13 +116,15 @@ export const thresholdOf = (seconds) => seconds + Math.max(DRIFT_FLOOR_SECONDS, 
  * One row for each unit of the table, in the table's order: the statistics of its samples, what it lists, what is proposed (the listed value when it has fewer than `minSamples`), the failure threshold of each and the room under it.
  * `near` is true when the max seen is within NEAR_THRESHOLD of the threshold of the PROPOSED value (of the listed one when nothing is proposed).
  */
-export function analyse({ units, samples, minSamples = DEFAULT_MIN_SAMPLES, keep = [] }) {
+export function analyse({ units, samples, minSamples = DEFAULT_MIN_SAMPLES, keep = [], few = 'skip' }) {
   return units.map((unit) => {
     const stats = summarise(samples.get(unit.id) ?? []);
     const kept = keep.includes(unit.id);
-    const enough = stats.samples >= minSamples && !kept;
-    const proposed = enough ? proposeSeconds(stats.p95) : unit.seconds;
-    const row = { id: unit.id, file: unit.file, ...stats, listed: unit.seconds, proposed, enough, kept };
+    const plenty = stats.samples >= minSamples;
+    const byMax = !plenty && few === 'max' && stats.samples > 0 && !kept;
+    const enough = (plenty || byMax) && !kept;
+    const proposed = enough ? (byMax ? proposeFew(stats.max) : proposeSeconds(stats.p95)) : unit.seconds;
+    const row = { id: unit.id, file: unit.file, ...stats, listed: unit.seconds, proposed, enough, kept, byMax };
     row.thresholdListed = thresholdOf(unit.seconds);
     row.thresholdProposed = thresholdOf(proposed);
     if (stats.samples > 0) {
@@ -143,7 +153,7 @@ export function render(rows, { runs, jobs, skipped, missing = [] } = {}) {
     }
     const change = row.proposed === row.listed ? '' : `${percentChange(row.listed, row.proposed) > 0 ? '+' : ''}${percentChange(row.listed, row.proposed)}%`;
     lines.push(
-      `| ${row.id} | ${row.samples} | ${fixed(row.min)} | ${fixed(row.median)} | ${fixed(row.p95)} | ${fixed(row.max)} | ${row.listed} | ${row.proposed}${row.kept ? ' (kept)' : row.enough ? '' : ' (too few samples)'} | ${change} | ${fixed(row.thresholdListed)} | ${fixed(row.headroomListed)} | ${fixed(row.thresholdProposed)} | ${fixed(row.headroomProposed)} |`,
+      `| ${row.id} | ${row.samples} | ${fixed(row.min)} | ${fixed(row.median)} | ${fixed(row.p95)} | ${fixed(row.max)} | ${row.listed} | ${row.proposed}${row.kept ? ' (kept)' : row.byMax ? ' (max + 15%, few samples)' : row.enough ? '' : ' (too few samples)'} | ${change} | ${fixed(row.thresholdListed)} | ${fixed(row.headroomListed)} | ${fixed(row.thresholdProposed)} | ${fixed(row.headroomProposed)} |`,
     );
   }
   const total = (key) => rows.reduce((sum, row) => sum + row[key], 0);
@@ -241,8 +251,10 @@ export async function pooled(items, width, task) {
  * The samples of the last `runs` successful runs: `{ samples: Map<unit, number[]>, runs, jobs, skipped }`. Every attempt of each run is read (a shard that failed its drift and passed on the re-run gave a sample, the slowest), each
  * shard job once (a re-run that kept a job leaves it in the later attempt under the same id). A job that ended neither green nor red (cancelled, skipped) has no log of units and is not read. `ask(args)` is `gh`.
  */
-export async function collect({ ask = gh, runs = DEFAULT_RUNS, workflow = DEFAULT_WORKFLOW, repo = '{owner}/{repo}', cache, width = 6 } = {}) {
-  const listed = JSON.parse(await ask(['run', 'list', '--workflow', workflow, '--status', 'success', '--limit', String(runs), '--json', 'databaseId,attempt', ...(repo.startsWith('{') ? [] : ['--repo', repo])]));
+export async function collect({ ask = gh, runs = DEFAULT_RUNS, workflow = DEFAULT_WORKFLOW, repo = '{owner}/{repo}', cache, width = 6, failed = false } = {}) {
+  const list = async (status) => JSON.parse(await ask(['run', 'list', '--workflow', workflow, '--status', status, '--limit', String(runs), '--json', 'databaseId,attempt', ...(repo.startsWith('{') ? [] : ['--repo', repo])]));
+  // A run that failed is read too when asked: a shard that failed its drift check or a probe of another unit still printed the seconds of the units that passed.
+  const listed = [...new Map([...(await list('success')), ...(failed ? await list('failure') : [])].map((run) => [run.databaseId, run])).values()];
   const attempts = listed.flatMap((run) => Array.from({ length: run.attempt }, (_, index) => ({ run: run.databaseId, attempt: index + 1 })));
   const jobLists = await pooled(attempts, width, async ({ run, attempt }) => {
     const text = await ask(['api', `repos/${repo}/actions/runs/${run}/attempts/${attempt}/jobs?per_page=100`, '--jq', '[.jobs[] | select(.name | startswith("Kit probes shard ")) | select(.conclusion == "success" or .conclusion == "failure") | .id]']);
@@ -291,15 +303,16 @@ export function collectFiles(dir) {
 // The command
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const USAGE = 'usage: node scripts/ci/probe-seconds.mjs [--runs <n>] [--workflow <file>] [--repo <owner/name>] [--logs <dir>] [--cache <dir>] [--min-samples <n>] [--keep <id,id>] [--write] [--root <dir>]';
+const USAGE = 'usage: node scripts/ci/probe-seconds.mjs [--runs <n>] [--workflow <file>] [--repo <owner/name>] [--logs <dir>] [--cache <dir>] [--min-samples <n>] [--few-samples skip|max] [--with-failed] [--keep <id,id>] [--write] [--root <dir>]';
 
 export async function main(argv = process.argv.slice(2), { out = (text) => process.stdout.write(text), err = (text) => process.stderr.write(text), ask = gh } = {}) {
-  const options = { runs: DEFAULT_RUNS, workflow: DEFAULT_WORKFLOW, repo: '{owner}/{repo}', minSamples: DEFAULT_MIN_SAMPLES, keep: [], write: false, root: REPO_ROOT, logs: undefined, cache: undefined };
+  const options = { runs: DEFAULT_RUNS, workflow: DEFAULT_WORKFLOW, repo: '{owner}/{repo}', minSamples: DEFAULT_MIN_SAMPLES, keep: [], few: 'skip', failed: false, write: false, root: REPO_ROOT, logs: undefined, cache: undefined };
   const wholeNumber = (text) => (/^[1-9]\d*$/.test(text ?? '') ? Number(text) : null);
   for (let i = 0; i < argv.length; i += 1) {
     const word = argv[i];
     const value = argv[i + 1];
     if (word === '--write') options.write = true;
+    else if (word === '--with-failed') options.failed = true;
     else if (word === '--runs' || word === '--min-samples') {
       const n = wholeNumber(value);
       if (n === null) {
@@ -307,6 +320,9 @@ export async function main(argv = process.argv.slice(2), { out = (text) => proce
         return 2;
       }
       options[word === '--runs' ? 'runs' : 'minSamples'] = n;
+      i += 1;
+    } else if (word === '--few-samples' && (value === 'skip' || value === 'max')) {
+      options.few = value;
       i += 1;
     } else if (word === '--keep' && value !== undefined) {
       options.keep = value.split(',').filter((id) => id !== '');
@@ -327,7 +343,7 @@ export async function main(argv = process.argv.slice(2), { out = (text) => proce
   }
   let data;
   try {
-    data = options.logs === undefined ? await collect({ ask, runs: options.runs, workflow: options.workflow, repo: options.repo, cache: options.cache }) : collectFiles(path.resolve(options.logs));
+    data = options.logs === undefined ? await collect({ ask, runs: options.runs, workflow: options.workflow, repo: options.repo, cache: options.cache, failed: options.failed }) : collectFiles(path.resolve(options.logs));
   } catch (error) {
     err(`probe-seconds: ${error.message.split('\n')[0]}\n`);
     return 1;
@@ -339,7 +355,7 @@ export async function main(argv = process.argv.slice(2), { out = (text) => proce
     err(`probe-seconds: --keep names no unit: ${unknownKeep.join(', ')}\n`);
     return 2;
   }
-  const rows = analyse({ units: loaded.units, samples: data.samples, minSamples: options.minSamples, keep: options.keep });
+  const rows = analyse({ units: loaded.units, samples: data.samples, minSamples: options.minSamples, keep: options.keep, few: options.few });
   out(render(rows, { runs: data.runs, jobs: data.jobs, skipped: data.skipped, missing }));
   if (options.write) {
     const changed = writeProposals(rows, options.root);

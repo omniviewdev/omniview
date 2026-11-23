@@ -5,6 +5,6 @@ export const units = [
     id: 'detail',
     name: 'Probe the detail page against the pinned mock reference',
     script: 'ui-next/page/probes/detail-probe.mjs',
-    seconds: 20,
+    seconds: 25,
   },
 ];
