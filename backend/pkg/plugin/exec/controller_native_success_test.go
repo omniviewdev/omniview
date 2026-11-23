@@ -204,7 +204,7 @@ while IFS= read -r ignored; do :; done`)
 
 	for i, selected := range connections {
 		t.Run(selected.Name, func(t *testing.T) {
-			session, createErr := ctrl.CreateSession(invocation.HostContext(ctx), pluginID, selected.ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey, Command: []string{"native-file-apply"}})
+			session, createErr := ctrl.CreateSession(invocation.HostContext(ctx), testOwner, pluginID, selected.ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey, Command: []string{"native-file-apply"}})
 			require.NoError(t, createErr)
 			setupCtx, setupCancel := context.WithTimeout(ctx, 5*time.Second)
 			defer setupCancel()
@@ -220,11 +220,11 @@ while IFS= read -r ignored; do :; done`)
 			case <-setupCtx.Done():
 				t.Fatal("native terminal was not published before setup deadline")
 			}
-			attached, replay, attachErr := ctrl.AttachSession(session.ID)
+			attached, replay, attachErr := ctrl.AttachSession(testOwner, session.ID)
 			require.NoError(t, attachErr)
 			require.True(t, attached.Attached)
 			require.Empty(t, replay)
-			require.NoError(t, ctrl.WriteSession(session.ID, []byte("apply-17\n")))
+			require.NoError(t, ctrl.WriteSession(testOwner, session.ID, []byte("apply-17\n")))
 			var output []byte
 			expected := []byte(payloads[i] + "request:apply-17\n")
 			deadline := time.After(5 * time.Second)
@@ -242,13 +242,13 @@ while IFS= read -r ignored; do :; done`)
 			applied, readErr := os.ReadFile(filepath.Join(selected.Data["directory"].(string), "applied.txt"))
 			require.NoError(t, readErr)
 			require.Equal(t, "apply-17", string(applied))
-			detached, detachErr := ctrl.DetachSession(session.ID)
+			detached, detachErr := ctrl.DetachSession(testOwner, session.ID)
 			require.NoError(t, detachErr)
 			require.False(t, detached.Attached)
-			_, replay, attachErr = ctrl.AttachSession(session.ID)
+			_, replay, attachErr = ctrl.AttachSession(testOwner, session.ID)
 			require.NoError(t, attachErr)
 			require.Equal(t, expected, replay)
-			require.NoError(t, ctrl.CloseSession(session.ID))
+			require.NoError(t, ctrl.CloseSession(testOwner, session.ID))
 			select {
 			case <-process.done:
 				require.NotNil(t, process.command.ProcessState, "native process must be reaped")
@@ -279,7 +279,7 @@ while IFS= read -r ignored; do :; done`)
 	ctrl.mu.RUnlock()
 	require.Zero(t, indexCount)
 	require.Zero(t, inputCount)
-	_, err = ctrl.CreateSession(invocation.HostContext(ctx), pluginID, connections[0].ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey})
+	_, err = ctrl.CreateSession(invocation.HostContext(ctx), testOwner, pluginID, connections[0].ID, sdkexec.SessionOptions{ResourcePlugin: providerID, ResourceKey: resourceKey})
 	var appError *apperror.AppError
 	require.ErrorAs(t, err, &appError)
 	require.Equal(t, apperror.TypePluginNotFound, appError.Type)

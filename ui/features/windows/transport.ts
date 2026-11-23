@@ -5,8 +5,9 @@ import type {
   TabDragPointer,
   TabDragTransport,
 } from '@omniviewdev/base-ui';
-import { WindowClient } from '@omniviewdev/runtime/api';
+import { ExecClient, WindowClient } from '@omniviewdev/runtime/api';
 import { Events } from '@omniviewdev/runtime/runtime';
+import { DRAWER_TAB_DRAG_TYPE } from './dragTypes';
 import { currentWindow } from './identity';
 
 /** Hover and drop events carry the pointer in the target window's client space. */
@@ -71,6 +72,26 @@ class SerialDragChannel {
 }
 
 /**
+ * A drawer tab that is a terminal carries its session, and a window cannot
+ * attach a session that another window holds (docs/ui-next/status/T2c-go.md):
+ * the window that drags it offers the session as the drag begins, before the
+ * window under the pointer can attach it. Anything else has nothing to offer,
+ * and a failed offer does not stop the drag.
+ */
+async function offerDraggedSession(payload: TabDragPayload): Promise<void> {
+  const tab = payload.tab.payload as { variant?: unknown } | undefined;
+  if (payload.dragType !== DRAWER_TAB_DRAG_TYPE || tab?.variant !== 'terminal' || payload.tab.id.startsWith('pending-')) {
+    return;
+  }
+
+  try {
+    await ExecClient.OfferSession(payload.tab.id);
+  } catch (error) {
+    console.warn('[windows] could not offer the session of a terminal that is dragged', payload.tab.id, error);
+  }
+}
+
+/**
  * TabDragTransport over the Go WindowService. The source window streams the
  * pointer in its own client coordinates (webview screen coordinates are not
  * global on WebKitGTK); Go maps it through native window bounds, hit-tests
@@ -84,12 +105,15 @@ export function createWailsTabDragTransport(): TabDragTransport {
     begin(sessionId, payload, pointer: TabDragPointer) {
       const channel = new SerialDragChannel(sessionId);
       channels.set(sessionId, channel);
-      void channel.enqueue(async () => WindowClient.BeginDrag({
-        sessionId,
-        sourceWindow: currentWindow.name,
-        dragType: payload.dragType,
-        payload: JSON.stringify(payload),
-      }));
+      void channel.enqueue(async () => {
+        await offerDraggedSession(payload);
+        await WindowClient.BeginDrag({
+          sessionId,
+          sourceWindow: currentWindow.name,
+          dragType: payload.dragType,
+          payload: JSON.stringify(payload),
+        });
+      });
       channel.enqueueMove(pointer);
     },
 

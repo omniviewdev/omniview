@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { test as base } from '@playwright/test';
 import type { APIRequestContext, BrowserContext, Page, TestInfo } from '@playwright/test';
-import { bindWindowContext, callBinding, commitHostSettings, hostSettingsValues, Service } from './wails';
+import { bindWindowContext, callBinding, callBindingAs, commitHostSettings, hostSettingsValues, Service } from './wails';
 import { ApplicationWorkspace } from './application';
 import { BrowserErrors } from './browser-errors';
 
@@ -49,6 +49,30 @@ async function closeSessions(request: APIRequestContext): Promise<void> {
   const sessions = await callBinding<Array<{ id: string }> | null>(request, Service.exec, 'ListSessions');
   for (const { id } of sessions ?? []) {
     await callBinding(request, Service.exec, 'CloseSession', id);
+  }
+}
+
+type WailsWindow = Window & { _wails?: { clientId?: string } };
+declare const window: WailsWindow;
+
+// The terminals a page opened are held by that page's window and are listed and ended only as that window (the host
+// tells every other client that they do not exist), so what a test's page opened is closed as the page. Best effort: the
+// page may be gone, and what is left is found by closeSessions once its window has been retired.
+async function closePageSessions(page: Page): Promise<void> {
+  try {
+    if (page.isClosed()) {
+      return;
+    }
+    const clientId = await page.evaluate(() => window._wails?.clientId);
+    if (!clientId) {
+      return;
+    }
+    const sessions = await callBindingAs<Array<{ id: string }> | null>(page.request, clientId, Service.exec, 'ListSessions');
+    for (const { id } of sessions ?? []) {
+      await callBindingAs(page.request, clientId, Service.exec, 'CloseSession', id);
+    }
+  } catch {
+    // The next closeSessions finds what is left.
   }
 }
 
@@ -194,6 +218,7 @@ export const test = profileTest.extend<AppFixtures>({
     await page.getByTestId('app-shell').waitFor();
     await page.getByTestId('app-header').getByRole('button', { name: 'home', exact: true }).click();
     await use(page);
+    await closePageSessions(page);
   },
 });
 export { expect } from '@playwright/test';

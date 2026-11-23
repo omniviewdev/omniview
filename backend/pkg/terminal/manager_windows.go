@@ -95,6 +95,22 @@ func (m *Manager) List(_ Owner, _ string) []Listed { return []Listed{} }
 // CloseUnlessTakenOver ends nothing: no session can exist.
 func (m *Manager) CloseUnlessTakenOver(_ string, _ Owner) bool { return false }
 
+// Authorize holds nothing: no session can exist, and the id is not found as on any platform.
+func (m *Manager) Authorize(sessionID string, _ Owner) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+// Claim is not supported: no session can exist.
+func (m *Manager) Claim(sessionID string, _ Owner) error { return apperror.SessionNotFound(sessionID) }
+
+// Offer is not supported: no session can exist.
+func (m *Manager) Offer(sessionID string, _ Owner, _ time.Duration) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+// SessionsOf lists nothing: no session can exist.
+func (m *Manager) SessionsOf(_ Owner) []*sdkexec.Session { return nil }
+
 // Shutdown ends nothing: no session can exist.
 func (m *Manager) Shutdown() {}
 

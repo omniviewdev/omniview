@@ -248,7 +248,7 @@ func (f *anEndedSessionFixture) start(id string) {
 
 func (f *anEndedSessionFixture) startOn(pluginID, id string) {
 	f.t.Helper()
-	session, err := f.ctrl.CreateSession(context.Background(), pluginID, endedFixtureConnection, sdkexec.SessionOptions{ID: id})
+	session, err := f.ctrl.CreateSession(context.Background(), testOwner, pluginID, endedFixtureConnection, sdkexec.SessionOptions{ID: id})
 	require.NoError(f.t, err)
 	require.Equal(f.t, id, session.ID)
 }
@@ -291,13 +291,13 @@ func TestTheOutputOfASessionThatEndedUnattachedReachesTheFirstAttachOnly(t *test
 	fx.endByItself("short")
 	require.Equal(t, []string{"short"}, fx.indexed(), "the controller keeps what the plugin keeps: the session's record")
 
-	session, output, err := fx.ctrl.AttachSession("short")
+	session, output, err := fx.ctrl.AttachSession(testOwner, "short")
 	require.NoError(t, err)
 	require.Equal(t, "short", session.ID)
 	require.Equal(t, "hi\n", string(output))
 	require.Empty(t, fx.indexed(), "the first attach used the record up")
 
-	_, _, err = fx.ctrl.AttachSession("short")
+	_, _, err = fx.ctrl.AttachSession(testOwner, "short")
 	requireSessionNotFound(t, err, "short")
 	require.Equal(t, 1, fx.plugin.callCount("attach"), "the second attach did not trouble the plugin")
 }
@@ -306,13 +306,13 @@ func TestTheOutputOfASessionThatEndedUnattachedReachesTheFirstAttachOnly(t *test
 func TestASessionThatEndedWhileAttachedLeavesNoRecord(t *testing.T) {
 	fx := newEndedSessionFixture(t)
 	fx.start("attached")
-	_, _, err := fx.ctrl.AttachSession("attached")
+	_, _, err := fx.ctrl.AttachSession(testOwner, "attached")
 	require.NoError(t, err)
 	fx.plugin.write("attached", "seen live\n")
 	fx.endByItself("attached")
 	require.Empty(t, fx.indexed())
 
-	_, _, err = fx.ctrl.AttachSession("attached")
+	_, _, err = fx.ctrl.AttachSession(testOwner, "attached")
 	requireSessionNotFound(t, err, "attached")
 	require.Equal(t, 1, fx.plugin.callCount("attach"), "only the live attach reached the plugin")
 }
@@ -322,14 +322,14 @@ func TestASessionThatEndedWhileAttachedLeavesNoRecord(t *testing.T) {
 func TestASessionThatEndedAfterItsWindowDetachedKeepsItsRecord(t *testing.T) {
 	fx := newEndedSessionFixture(t)
 	fx.start("away")
-	_, _, err := fx.ctrl.AttachSession("away")
+	_, _, err := fx.ctrl.AttachSession(testOwner, "away")
 	require.NoError(t, err)
-	_, err = fx.ctrl.DetachSession("away")
+	_, err = fx.ctrl.DetachSession(testOwner, "away")
 	require.NoError(t, err)
 	fx.plugin.write("away", "while away\n")
 	fx.endByItself("away")
 
-	_, output, err := fx.ctrl.AttachSession("away")
+	_, output, err := fx.ctrl.AttachSession(testOwner, "away")
 	require.NoError(t, err)
 	require.Equal(t, "while away\n", string(output))
 	require.Empty(t, fx.indexed())
@@ -346,12 +346,12 @@ func TestTheRecordOfAnEndedSessionExpiresNinetySecondsAfterItsClose(t *testing.T
 	}
 
 	fx.clock.Advance(89 * time.Second)
-	_, output, err := fx.ctrl.AttachSession("early")
+	_, output, err := fx.ctrl.AttachSession(testOwner, "early")
 	require.NoError(t, err, "89 seconds after the close the record is still there")
 	require.Equal(t, "early", string(output))
 
 	fx.clock.Advance(2 * time.Second) // 91 seconds
-	_, _, err = fx.ctrl.AttachSession("late")
+	_, _, err = fx.ctrl.AttachSession(testOwner, "late")
 	requireSessionNotFound(t, err, "late")
 	require.Equal(t, 1, fx.plugin.callCount("attach"), "an expired record does not send the attach to the plugin")
 	require.Equal(t, []string{"swept"}, fx.indexed(), "the lookup removed the record it found expired, and only that one")
@@ -376,10 +376,10 @@ func TestTheThirtyThirdEndedSessionEvictsTheOldest(t *testing.T) {
 	require.Len(t, fx.indexed(), endedSessionLimit)
 	require.NotContains(t, fx.indexed(), ids[0], "the oldest was evicted")
 
-	_, _, err := fx.ctrl.AttachSession(ids[0])
+	_, _, err := fx.ctrl.AttachSession(testOwner, ids[0])
 	requireSessionNotFound(t, err, ids[0])
 	require.Zero(t, fx.plugin.callCount("attach"), "an evicted record does not send the attach to the plugin")
-	_, output, err := fx.ctrl.AttachSession(ids[1])
+	_, output, err := fx.ctrl.AttachSession(testOwner, ids[1])
 	require.NoError(t, err)
 	require.Equal(t, ids[1], string(output))
 }
@@ -414,7 +414,7 @@ func TestUnloadingAPluginClearsItsEndedSessions(t *testing.T) {
 
 	require.NoError(t, fx.ctrl.OnPluginStop(endedFixturePlugin, config.PluginMeta{}))
 	require.Equal(t, []string{"ended-there"}, fx.indexed())
-	_, output, err := fx.ctrl.AttachSession("ended-there")
+	_, output, err := fx.ctrl.AttachSession(testOwner, "ended-there")
 	require.NoError(t, err)
 	require.Equal(t, "there", string(output))
 }
@@ -435,7 +435,7 @@ func TestAnAttachRacingTheCloseOfASessionGetsItsOutputAndLeavesNoRecord(t *testi
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			_, output, attachErr = fx.ctrl.AttachSession(id)
+			_, output, attachErr = fx.ctrl.AttachSession(testOwner, id)
 		}()
 		go func() {
 			defer wg.Done()
@@ -460,12 +460,12 @@ func TestAnEndedSessionTakesNoInput(t *testing.T) {
 	fx.endByItself("over")
 	input := fx.ctrl.inChans[endedFixturePlugin]
 
-	require.NoError(t, fx.ctrl.WriteSession("live", []byte("ls\n")), "a live session takes input")
+	require.NoError(t, fx.ctrl.WriteSession(testOwner, "live", []byte("ls\n")), "a live session takes input")
 	require.Len(t, input, 1)
-	requireSessionNotFound(t, fx.ctrl.WriteSession("over", []byte("ls\n")), "over")
+	requireSessionNotFound(t, fx.ctrl.WriteSession(testOwner, "over", []byte("ls\n")), "over")
 	require.Len(t, input, 1, "nothing was sent to the plugin for the ended session")
-	requireSessionNotFound(t, fx.ctrl.ResizeSession("over", 24, 80), "over")
-	_, err := fx.ctrl.GetSession("over")
+	requireSessionNotFound(t, fx.ctrl.ResizeSession(testOwner, "over", 24, 80), "over")
+	_, err := fx.ctrl.GetSession(testOwner, "over")
 	requireSessionNotFound(t, err, "over")
 	require.Equal(t, []string{"live", "over"}, fx.indexed(), "none of them touched the records")
 }
@@ -477,10 +477,10 @@ func TestClosingAnEndedSessionIsClosedAlready(t *testing.T) {
 	fx.start("over")
 	fx.endByItself("over")
 
-	require.NoError(t, fx.ctrl.CloseSession("over"))
+	require.NoError(t, fx.ctrl.CloseSession(testOwner, "over"))
 	require.Empty(t, fx.indexed())
 	require.Zero(t, fx.plugin.callCount("close"))
-	requireSessionNotFound(t, fx.ctrl.CloseSession("over"), "over") // unknown now: as for any session the host does not know
+	requireSessionNotFound(t, fx.ctrl.CloseSession(testOwner, "over"), "over") // unknown now: as for any session the host does not know
 }
 
 // A detach of an ended session finds nothing, as before, and the record goes.
@@ -489,7 +489,7 @@ func TestDetachingAnEndedSessionFindsNothingAndForgetsIt(t *testing.T) {
 	fx.start("over")
 	fx.endByItself("over")
 
-	_, err := fx.ctrl.DetachSession("over")
+	_, err := fx.ctrl.DetachSession(testOwner, "over")
 	requireSessionNotFound(t, err, "over")
 	require.Empty(t, fx.indexed())
 	require.Zero(t, fx.plugin.callCount("detach"))
@@ -513,7 +513,7 @@ func TestClosingASessionThatJustEndedIsNotAnError(t *testing.T) {
 			fx.start("just-ended")
 			fx.plugin.end("just-ended") // the session has left the plugin; its CLOSE is still on its way
 
-			require.NoError(t, fx.ctrl.CloseSession("just-ended"))
+			require.NoError(t, fx.ctrl.CloseSession(testOwner, "just-ended"))
 			require.Empty(t, fx.indexed())
 			fx.ctrl.dispatchOutput(aCloseSignal("just-ended")) // and then it arrives
 			require.Empty(t, fx.indexed(), "the late CLOSE of a session that was closed made no record")
@@ -527,7 +527,7 @@ func TestAFailedCloseIsStillAnError(t *testing.T) {
 	fx.start("stuck")
 	fx.plugin.closeAnswer = errors.New("CloseSession timed out waiting for session stuck goroutines")
 
-	require.ErrorContains(t, fx.ctrl.CloseSession("stuck"), "timed out")
+	require.ErrorContains(t, fx.ctrl.CloseSession(testOwner, "stuck"), "timed out")
 	require.Equal(t, []string{"stuck"}, fx.indexed())
 }
 
@@ -537,7 +537,7 @@ func TestASessionTheHostClosedLeavesNoRecordWhenItsCloseComes(t *testing.T) {
 	fx := newEndedSessionFixture(t)
 	fx.start("closed")
 	fx.plugin.closeAnswer = errors.New("CloseSession timed out waiting for session closed goroutines")
-	require.Error(t, fx.ctrl.CloseSession("closed"))
+	require.Error(t, fx.ctrl.CloseSession(testOwner, "closed"))
 
 	fx.ctrl.dispatchOutput(aCloseSignal("closed"))
 	require.Empty(t, fx.indexed())
@@ -553,7 +553,7 @@ func TestAnAttachToAPluginThatKeptNothingFindsNothing(t *testing.T) {
 	fx.plugin.write("old", "lost")
 	fx.endByItself("old")
 
-	_, _, err := fx.ctrl.AttachSession("old")
+	_, _, err := fx.ctrl.AttachSession(testOwner, "old")
 	requireSessionNotFound(t, err, "old")
 	require.Equal(t, 1, fx.plugin.callCount("attach"))
 	require.Empty(t, fx.indexed())
@@ -567,13 +567,13 @@ func TestACallAboutASessionThePluginNoLongerHasForgetsItsRecord(t *testing.T) {
 		name string
 		do   func(*controller, string) error
 	}{
-		{"attach", func(c *controller, id string) error { _, _, err := c.AttachSession(id); return err }},
-		{"detach", func(c *controller, id string) error { _, err := c.DetachSession(id); return err }},
+		{"attach", func(c *controller, id string) error { _, _, err := c.AttachSession(testOwner, id); return err }},
+		{"detach", func(c *controller, id string) error { _, err := c.DetachSession(testOwner, id); return err }},
 	} {
 		t.Run(call.name, func(t *testing.T) {
 			fx := newEndedSessionFixture(t)
 			fx.start("gone")
-			_, _, err := fx.ctrl.AttachSession("gone")
+			_, _, err := fx.ctrl.AttachSession(testOwner, "gone")
 			require.NoError(t, err)
 			fx.plugin.end("gone") // attached when it ended: nothing is kept; its CLOSE is still on its way
 

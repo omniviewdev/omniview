@@ -118,7 +118,7 @@ func newTerminalFixture(t *testing.T) *terminalFixture {
 	ctrl.startTerminals(ctx)
 	t.Cleanup(func() {
 		for _, session := range ctrl.terminalManager.ListSessions() {
-			_ = ctrl.CloseSession(session.ID)
+			_ = ctrl.terminalManager.CloseSession(session.ID)
 		}
 		cancel()
 	})
@@ -447,7 +447,7 @@ func TestAWindowRetiredWhileItsTerminalStartsLeavesNoShell(t *testing.T) {
 // through the plugin route under the name "local" (that started one with no owner).
 func TestCreateSessionDoesNotStartALocalTerminal(t *testing.T) {
 	fx := newTerminalFixture(t)
-	_, err := fx.ctrl.CreateSession(context.Background(), "local", "local", execsdk.SessionOptions{Command: shell(t), TTY: true})
+	_, err := fx.ctrl.CreateSession(context.Background(), testOwner, "local", "local", execsdk.SessionOptions{Command: shell(t), TTY: true})
 	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err), "the old route is refused in typed words, not served")
 	assert.Empty(t, fx.ctrl.terminalManager.ListSessions())
 	assert.Zero(t, fx.indexed())
@@ -482,34 +482,36 @@ func TestAShellThatExitsAtOnceLeavesNoIndexEntry(t *testing.T) {
 // Writes and resizes through the wrapper keep their numbers' order, and the busy fact is asked at close time.
 func TestWrapperOrdersInputAndAnswersTheBusyFact(t *testing.T) {
 	fx := newTerminalFixture(t)
-	info := fx.open(fx.page(6), terminal.Options{Cols: 80, Rows: 24})
-	require.NoError(t, fx.wrapper.ResizeTerminal(info.ID, 1, 40, 120))
-	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, 2, []byte("stty size; echo sized-$((1000+2))\n")))
+	page := fx.page(6)
+	ctx := fx.ctx(page)
+	info := fx.open(page, terminal.Options{Cols: 80, Rows: 24})
+	require.NoError(t, fx.wrapper.ResizeTerminal(ctx, info.ID, 1, 40, 120))
+	require.NoError(t, fx.wrapper.WriteTerminal(ctx, info.ID, 2, []byte("stty size; echo sized-$((1000+2))\n")))
 	require.Eventually(t, func() bool { return strings.Contains(fx.output(info.ID), "sized-1002") }, 20*time.Second, 5*time.Millisecond)
 	assert.Contains(t, fx.output(info.ID), "40 120", "the resize numbered 1 came before the write numbered 2")
 
-	busy, err := fx.wrapper.IsBusy(info.ID)
+	busy, err := fx.wrapper.IsBusy(ctx, info.ID)
 	require.NoError(t, err)
 	assert.Equal(t, terminal.StateIdle, busy.State)
 
-	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, 3, []byte("sleep 57\n")))
+	require.NoError(t, fx.wrapper.WriteTerminal(ctx, info.ID, 3, []byte("sleep 57\n")))
 	require.Eventually(t, func() bool {
-		got, askErr := fx.wrapper.IsBusy(info.ID)
+		got, askErr := fx.wrapper.IsBusy(ctx, info.ID)
 		return askErr == nil && got.State == terminal.StateBusy && got.Name == "sleep"
 	}, 10*time.Second, 10*time.Millisecond)
 
 	// A session of a plugin runs elsewhere: the host holds no terminal for it, and says it cannot tell.
 	fx.ctrl.mu.Lock()
-	fx.ctrl.sessionIndex["remote"] = sessionIndex{pluginID: "plugin", connectionID: "c", local: false}
+	fx.ctrl.sessionIndex["remote"] = sessionIndex{pluginID: "plugin", connectionID: "c", local: false, owner: invocation.IdentityOf(page)}
 	fx.ctrl.mu.Unlock()
-	remote, err := fx.wrapper.IsBusy("remote")
+	remote, err := fx.wrapper.IsBusy(ctx, "remote")
 	require.NoError(t, err)
 	assert.Equal(t, terminal.StateUnknown, remote.State)
 	assert.Equal(t, terminal.ReasonRemote, remote.Reason)
-	_, err = fx.wrapper.IsBusy("no-such-session")
+	_, err = fx.wrapper.IsBusy(ctx, "no-such-session")
 	require.Error(t, err)
 
-	require.NoError(t, fx.wrapper.CloseSession(info.ID))
+	require.NoError(t, fx.wrapper.CloseSession(ctx, info.ID))
 	ends := fx.closes(info.ID)
 	require.Len(t, ends, 1)
 	assert.Equal(t, terminal.ClosedByRequest, ends[0].ClosedBy)

@@ -45,6 +45,7 @@ import {
   serializeDrawerTab,
 } from './drawerSlot';
 import { useBottomDrawerWindow } from './windowContext';
+import { offerTerminalSession } from './terminalHandoff';
 import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
@@ -333,6 +334,8 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
 
   const moveTabToNewWindow = React.useCallback(async (tab: BottomDrawerTab, pointer?: WindowClientPoint) => {
     try {
+      // The new window attaches the session when its drawer mounts the tab: this window offers it first.
+      await offerTerminalSession(tab);
       await openWindow({ kind: 'panel', slots: { drawer: buildPanelDrawerSlot(serializeDrawerTab(tab)) }, pointer });
       transferTabOut(tab.id);
     } catch (err) {
@@ -342,6 +345,7 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
 
   const moveTabToWindow = React.useCallback(async (tab: BottomDrawerTab, target: WindowMenuTarget) => {
     try {
+      await offerTerminalSession(tab);
       await deliverTabToWindow(target.name, DRAWER_TAB_DRAG_TYPE, serializeDrawerTab(tab));
       transferTabOut(tab.id);
       WindowClient.Focus(target.name).catch((err: unknown) => {

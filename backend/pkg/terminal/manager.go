@@ -88,9 +88,10 @@ type Manager struct {
 	mu       sync.RWMutex
 	sessions map[string]*session
 	starting map[string]struct{}
-	// ended remembers the ids of the last sessions that ended, oldest first, endedMemory at most, so that an
-	// acknowledgement that arrives after its session is gone is told from one for a session that never was.
-	ended []string
+	// ended remembers the last sessions that ended, oldest first, endedMemory at most, with the window each belonged
+	// to, so that an acknowledgement that arrives after its session is gone is told from one for a session that
+	// never was, and is taken from the window that had it only.
+	ended []endedSession
 	// tombs are the terminals with a page key that ended by themselves while no page was attached, oldest first,
 	// TombstoneLimit at most: the page that comes back finds how they ended and what they wrote.
 	tombs []*tombstone
@@ -102,13 +103,19 @@ type Manager struct {
 	clock clock
 }
 
-// endedMemory is how many ended sessions' ids the manager remembers.
+// endedMemory is how many ended sessions the manager remembers.
 const endedMemory = 256
+
+// endedSession is a session that ended, and the window it belonged to.
+type endedSession struct {
+	id    string
+	owner Owner
+}
 
 // rememberEnded notes that a session ended and forgets the oldest of the last endedMemory. The caller holds
 // m.mu.
-func (m *Manager) rememberEnded(id string) {
-	m.ended = append(m.ended, id)
+func (m *Manager) rememberEnded(id string, owner Owner) {
+	m.ended = append(m.ended, endedSession{id: id, owner: owner})
 	if len(m.ended) > endedMemory {
 		m.ended = slices.Delete(m.ended, 0, len(m.ended)-endedMemory)
 	}
@@ -209,6 +216,9 @@ type session struct {
 	// attachment numbers the attachments of the terminal: 0 for the window that opened it, and one more for
 	// every attach (Attached.Attachment).
 	attachment uint64
+	// offerUntil is when the owner's offer of the session to the next window to claim it runs out (zero: no offer is
+	// open). Claim and Offer (ownership.go) read and write it.
+	offerUntil time.Time
 }
 
 func (s *session) decide(f fate) bool {
@@ -522,7 +532,7 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
 		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
-		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0,
+		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0, offerUntil: time.Time{},
 	}
 	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
 	return s, nil
@@ -649,7 +659,7 @@ func (m *Manager) finish(s *session, readErr error) {
 	m.sink.Closed(s.id, end)
 	m.mu.Lock()
 	delete(m.sessions, s.id)
-	m.rememberEnded(s.id)
+	m.rememberEnded(s.id, s.ownerNow())
 	m.mu.Unlock()
 	s.stopLease()
 	s.cancel()
@@ -754,7 +764,7 @@ func (m *Manager) Ack(sessionID string, n int) error {
 	}
 	m.mu.RLock()
 	s := m.sessions[sessionID]
-	ended := s == nil && slices.Contains(m.ended, sessionID)
+	ended := s == nil && slices.ContainsFunc(m.ended, func(e endedSession) bool { return e.id == sessionID })
 	m.mu.RUnlock()
 	switch {
 	case s != nil && !s.ending.Load():

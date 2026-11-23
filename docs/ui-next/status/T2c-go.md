@@ -1,0 +1,85 @@
+# Status: T2c-go (B-111: a window holds the sessions it opened)
+
+- Agent: TerminalSignals. Ask (lead, 2026-11-23, review of #674 S3): every terminal and exec binding that names a session by its bare id checks that the calling WINDOW holds it; `ListSessions` is the caller's; a non-owner is told not-found; the output and signal events go to the owning window only; say what a plugin UI in the same page can still do and build the real boundary if it is cheap; the legacy UI and the new UI keep working.
+- Worktree: `~/Repos/omniviewdev/worktrees/t2c-terminal-ownership`. Branch: `fix/t2c-terminal-ownership`, on `origin/main` `253ba8da` (T2-go, #674).
+- Owned and changed: `backend/pkg/terminal/{ownership.go,owner.go,types.go,manager.go,reattach.go,manager_windows.go}`, `backend/pkg/plugin/exec/{ownership.go,controller.go,terminal.go,service_wrapper.go}` and their tests, `internal/auditgate/policy.json` + `main_audit_policy_test.go` (`OfferSession`), the regenerated bindings, `packages/omniviewdev-runtime/src/exec.ts` (exports `OfferSession`), the legacy UI's three move-a-tab paths (`ui/providers/BottomDrawer/{terminalHandoff.ts,tabs.tsx}`, `ui/features/windows/{transport.ts,dragTypes.ts,index.ts}`), this file and `T2c-go/mutations.sh.txt`.
+
+## 1. The ask, in one table
+
+| # | Ask | Now |
+|---|---|---|
+| 1 | Bare-id bindings check the calling window | DONE for `GetSession`, `AttachSession`, `DetachSession`, `WriteSession`, `CloseSession`, `ResizeSession`, `WriteTerminal`, `ResizeTerminal`, `IsBusy`, `GetCwd`, `AckTerminal` and the new `OfferSession`: the wrapper names the caller by the identity the realm issued (`callerOf`), the controller asks the terminal manager (`Authorize`) or its session index. Every one takes `ctx` now (the generated TS signatures do not change). |
+| 2 | Non-owner gets not-found, no existence leak | DONE: the same error, in the same words, as for an id that never was (a test compares the two answers for every binding, for another window and for a call that comes from no window). |
+| 3 | `ListSessions` is the caller's | DONE: the sessions the window holds, plus the plugin sessions that no window holds (see 2). `GetSession` reads the same set. |
+| 4 | Events addressed to the owning window | NOT DONE, and cannot be done in this repository on Wails v3.1.0: section 4. |
+| 5 | What a plugin UI in the page can still do; the real boundary | Stated in 3. The shim change is NOT built: it is not a boundary. |
+| 6 | Legacy UI and new UI still work | The new UI creates, attaches and uses its terminals as their window (nothing to change). The legacy cross-window flows are kept by orphans and offers (2); the full vitest suite (6,590 tests) is green. The seam (`r`) was not run here: it runs in CI. |
+| 7 | Two windows, both builds | The two-window tests run in the default and the `-tags server` build; they do not need a browser. |
+
+## 2. The rule
+
+A session belongs to the window that opened it. A local terminal is held by the terminal manager (`Manager.Authorize`): the window that opened it, or the page that attached it with its key (T2-go); a terminal that is detached belongs to nobody until a page attaches it. A session of a plugin is held by the window that created it, as the controller's session index records it.
+
+- **Not found, not forbidden.** A window that does not hold a session is told what is told of an id that never was. A call that comes from no window holds nothing.
+- **A plugin session outlives its window and then belongs to nobody** (`ReleaseOwnedTerminals` orphans it). Any window lists it, reads its facts, ends it (`CloseSession`) and the one that attaches it holds it from then on; it can do nothing else with it (no input, no resize) until it attaches. Ending it is allowed because attaching is, and because a window that is told a session is there and then told it is not found is a contract that lies: the e2e teardown (a client that is not the page that made the session) lists the sessions a retired page left and ends each one, and CI failed on it (`CloseSession failed: 422 session/not-found`) before this. That keeps the legacy restore (`planDrawerRestore`: the main window adopts the sessions that survived a reload; in server mode the reloaded page is a NEW window, so only "attach claims an orphan" finds them). A session made by a call that came from no window is an orphan from the start. Sessions of a window that is still live are not the e2e client's to list or end (it is another window): the e2e `appPage` fixture closes what its page opened as that page (`closePageSessions`: the client id is read from the page, as the seam runner does), and the client `e2e` finds what no window holds.
+- **An offer moves a session between live windows** (`OfferSession`, 60 s, used once). The legacy UI moves a terminal tab in three ways and in all of them the target window attaches the session when its drawer mounts the tab, while the source still holds it: the menu "Move to window", the tear-off to a new window, and the drag to another window. The source offers first, at the point it starts the move (`moveTabToWindow`, `moveTabToNewWindow`, and `createWailsTabDragTransport().begin` for the drag, which is where the library gives a hook). An offer is a right to attach and no access: nobody else can use the session meanwhile, only its holder offers it, and the window that lost the session is told on `DETACHED` (T2-go). The old window's late `DetachSession` (the legacy "handed off" mark exists to avoid it) is now refused, which is harmless.
+- **A tombstone is dismissed by the window that attached it.** T2-go said `CloseSession` dismisses the end of a terminal that ended while detached; at the exec lane it could not (the terminal's CLOSE had taken it out of the index, so the call was not found before it reached the manager). Found by the new tests and fixed: the controller asks the manager, which keeps the end for the window that attached it.
+- **Acknowledging an ended session** is told only to the window that had it (the manager's memory of ended sessions keeps the owner).
+
+Code: `backend/pkg/terminal/ownership.go` (`Authorize`, `Claim`, `Offer`, `SessionsOf`), `backend/pkg/plugin/exec/ownership.go` (`holds`, `visible`, `claimable`, `listable`, `claimSession`, `OfferSession`, `orphanSessionsOf`).
+
+## 3. What a plugin UI in the same page can still do
+
+**Everything its page can.** A window is the only boundary this change draws. A plugin's UI is JavaScript that runs inside the page of a window (`importPlugin.ts` `import()`s the bundle into it), and its calls reach the host through the same Wails runtime with that window's identity: it holds what the page holds, including the local shell (`CreateTerminal`, then `WriteTerminal` on its own terminal), and the key the page keeps in `sessionStorage` (T2-go). Another window's sessions are out of its reach; its own page's are not. This is decision R10 (plugins are trusted code in the host realm), not something this change weakens.
+
+**Is the boundary "do not export the exec calls to the plugin shims"? No, and it is not built.** Checked:
+
+- Nothing shipped imports `ExecClient` from a plugin: the Kubernetes plugin UI (`omniview-plugin-kubernetes` at `d06f24e`) imports `ResourceClient`, `MetricClient` and `DataClient` from `@omniviewdev/runtime/api` and opens its shells through the host's `createExecSession` (the drawer bridge); the containers plugin imports none.
+- But taking a name out of `packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__api.mjs` only changes what a plugin BUILD may name. At run time a plugin gets the whole module: `window.__OMNIVIEW_SHARED__['@omniviewdev/runtime/api']` in dev (`devSharedExporter.ts`), the `shared://` import map in production (`shared_dependencies.ts`), and the raw Wails runtime (`window._wails`, or a POST to `/wails/runtime` by method id) needs no module at all. A shim edit would look like a boundary and would not be one.
+- The real boundary is a separate realm for plugin UI (a sandboxed frame or worker with a message API) whose calls the host tags with the PLUGIN's identity and checks per plugin (the `invocation` package already has host-issued principals). That is a design of its own (R10 puts hostile plugin code out of scope); until it exists, a plugin UI and its page are one trust domain.
+
+## 4. Why the events are still broadcast, and what would fix it
+
+The output, `CLOSE` and `DETACHED` events of a session go to every window by id (and, in server mode, to every connected page). Read in `wails/v3@v3.1.0/pkg/application`:
+
+- Server mode: `WebSocketBroadcaster.DispatchWailsEvent` sends every event to every client (`websocket_server.go:150`); `BrowserWindow.DispatchWailsEvent` is a no-op ("dispatched via WebSocket broadcast, not per-window", `browser_window.go:38`) and `BrowserWindow.EmitEvent` is an app-wide `Event.Emit` (`:42`). There is no per-client send, and `wailsEventListeners` is unexported.
+- Native: `WebviewWindow.EmitEvent` is an app-wide emit with a sender (`webview_window.go:260`). `WebviewWindow.DispatchWailsEvent` reaches one window, but it serializes and runs JS on the main thread (`ExecJS`, as `transport_event_ipc.go` warns), so calling it from a terminal's reader goroutine would pace the shell by the UI thread; and no native window can be run here to prove that nothing regresses in the shipped app.
+
+What this change does about it: a window that learns an id from an event (it can) still cannot attach, type into, resize, close or read the facts of that session. It can read the session's live output while the event bus carries it. To close that: (a) a Wails change (an addressed emit and a per-client send), or (b) a host-owned per-window event route, or (c) a pull stream (`ReadOutput(id, offset)`) with a content-free notification. (a) is the smallest. Not built.
+
+## 5. Verification (macOS, Darwin 27.0.0 arm64)
+
+| Claim | Test | Result |
+|---|---|---|
+| Only the window that holds a session is authorized; every other caller, a caller that is no window and one whose owner cannot be compared are told the same; a detached terminal belongs to nobody until attached | terminal `TestOnlyTheWindowThatOwnsASessionIsAuthorizedForIt` | red against a stub that authorized everyone, green |
+| A window lists only what it holds | terminal `TestAWindowListsOnlyTheSessionsItHolds` | red, green |
+| An offer: only the holder offers, it is no access, it is used once, it runs out, the window that lost the session is told | terminal `TestAnOfferLetsTheNextWindowClaimASessionOnceAndOnlyTheOwnerMakesIt` | red, green |
+| The end of a session and the tombstone of a terminal belong to the window that had them | terminal `TestAnEndedSessionAndTheEndOfAKeyedTerminalAreHeldByTheirLastWindow` | red, green |
+| **Window B and a call from no window can do nothing to window A's terminal by any of the 12 bindings that name a session by its id**: same words as an id that never was, nothing typed reaches the shell, B's close does not end it, B's list is empty | exec `TestAWindowCannotUseTheTerminalOfAnotherWindowByAnyBindingThatNamesItById` | red (against permissive stubs of `Authorize` and `holds`), green; default and `-tags server` |
+| A keyed terminal belongs to the page that attached it, and to no other | exec `TestAKeyedTerminalBelongsToTheWindowThatAttachedItAndToNoOther` | red, green |
+| The move of a tab: offer, attach, the old window refused and told | exec `TestAnOfferLetsTheNextWindowToAttachTheTerminalTakeItAndNoOneElse` | red, green |
+| The end of a terminal that ended while detached is dismissed by the window that attached it (the T2-go gap) | exec `TestTheEndOfATerminalThatEndedWhileDetachedIsDismissedByTheWindowThatAttachedIt` | red, green |
+| Plugin sessions: own, hidden from others, orphaned when the window goes, adopted by the first attach, offered, an offer runs out, the ended record is the creator's | exec `TestASessionOfAPluginBelongsToTheWindowThatCreatedItUntilThatWindowGoesAway`, `TestTheOutputOfAnEndedSessionOfAPluginIsForTheWindowThatCreatedIt` | red, green |
+| The legacy move offers the session of a terminal tab (menu, tear-off, drag) and nothing else, and a failed offer does not stop the move | vitest `terminalHandoff.test.ts`, `transport.test.ts` | red (no `offerTerminalSession`; the transport never offered), green |
+| The existing suites | exec package: default, `-tags server` and `-race`; the audit policy tests; `go vet` for Windows and `-tags server`; `task check:bindings-check`; the full `pnpm test`; both `tsc` projects; eslint on the changed files; the runtime's build and `api:check` | all pass (exec 9.8 s, 9.9 s and 19 s; 6,590 vitest tests). The terminal package: every test passes but `TestTwoHundredDetachedTerminals...`, which failed once ("never wrote enough to fill its ring", 209 s) while the machine was at a load average of 22 to 30; it passed in the runs of #674 and #675 at lower load, and I did not run it again. The ownership tests of the terminal package also pass under `-race`. |
+| Negative controls | `T2c-go/mutations.sh.txt`: 13 faults (the check removed, a claim without an offer, an offer that never runs out, a list of everything, an end with no owner, a plugin session held by every window, a claim that ignores the owner, a window that leaves and orphans nothing, `WriteTerminal` without the check, the dismissal of an end without the check, an offer that gives access, the policy that allows `OfferSession`, and the two TypeScript offers) | **13 of 13 red.** Two did not compile at first (`NOT A DETECTION`, which the script reports as such) and were fixed. The rule that each fault must also pass with its assertion removed (AGENTS rule 28) was not run: a follow-up, as in T2-go. |
+
+## 6. Not verified, and limits (stated, not hidden)
+
+- Events are not addressed (4). A window that knows an id reads that session's live output.
+- The seam check (`r`, the real host in a browser) and the legacy move flows (menu, tear-off, drag) were not run here: the move flows need two native windows. The three call sites are covered by unit tests of the helper and the transport, not by a window. The drag offer is made at the begin of the drag through the transport; a library that begins a drag another way would skip it.
+- An offer is open for 60 s to ANY window that attaches the session (not to a named target: a tear-off does not know its target's identity when it offers). It is used once.
+- A plugin UI in the page holds what the page holds (3).
+- The logs service's bare-id calls (`LogsClient.GetSession`, `CloseSession`, `ListSessions`) are not changed: they are not terminal or exec bindings.
+- Windows: `go vet` only; no session exists there.
+
+## 7. Decisions for the lead
+
+1. **Orphans are adoptable by any window.** It keeps the legacy restore after a server-mode reload (a new window identity); the cost is that a plugin session whose window left is open to the first window that attaches it.
+2. **Offers are open, not addressed, for a minute.** The alternative (an offer to a named window) needs the target's identity before it exists (tear-off) and a way to resolve a window name in the exec lane.
+3. **The events need a Wails change** (or a host event route); say which, and I build it.
+4. **The plugin boundary is a design, not a shim edit** (3).
+
+## 8. Log
+
+- 2026-11-23: read the wrapper, the controller, the terminal manager, the realm and the Wails event paths; found that the bare-id calls take no `ctx`, that plugin sessions have no owner, that the legacy UI moves terminal tabs between windows by attaching them from the target and restores sessions by listing them, and that a tombstone could not be dismissed through the exec lane. Wrote the manager tests and the exec tests against permissive stubs (10 red), then the code. The legacy move paths and the controls came last.

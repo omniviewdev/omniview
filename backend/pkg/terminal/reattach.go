@@ -181,6 +181,7 @@ func (s *session) detachLocked(lease time.Duration, by DetachedBy) (time.Time, *
 	s.detached = true
 	s.attached = false
 	s.owner = nil
+	s.offerUntil = time.Time{}
 	s.flow.hold()
 	s.leaseGen++
 	gen := s.leaseGen
@@ -210,6 +211,7 @@ func (s *session) takeOverLocked(owner Owner) *Detachment {
 	s.owner = owner
 	s.leaseEnd = time.Time{}
 	s.leaseLen = 0
+	s.offerUntil = time.Time{}
 	return replaced
 }
 
@@ -397,6 +399,9 @@ func (m *Manager) Attach(sessionID string, caller Owner, req AttachRequest) (*At
 	if tomb == nil || !tomb.holdsKey(req.PageKey) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
+	m.mu.Lock()
+	tomb.owner = caller
+	m.mu.Unlock()
 	return tomb.attached(req.FromOffset)
 }
 
@@ -550,6 +555,9 @@ type tombstone struct {
 	attachment uint64
 	labels     map[string]string
 	params     map[string]string
+	// owner is the window that holds the end: the one the terminal belonged to when it ended, or the last that
+	// attached it. Only that window may dismiss it. Manager.mu guards it.
+	owner Owner
 }
 
 func (t *tombstone) holdsKey(key string) bool {
@@ -589,7 +597,7 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	until, attachment := s.tombstoneTerms(now)
 	t := &tombstone{
 		id: s.id, key: s.pageKey, info: s.info, ring: frozen, end: end, until: until, attachment: attachment,
-		labels: s.labels, params: s.params,
+		labels: s.labels, params: s.params, owner: s.ownerNow(),
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

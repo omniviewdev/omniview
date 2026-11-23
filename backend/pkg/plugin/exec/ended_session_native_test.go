@@ -154,7 +154,7 @@ func startAShortCommandPlugin(t *testing.T, script string, forwarding bool) *aSh
 func (p *aShortCommandPlugin) create(t *testing.T) string {
 	t.Helper()
 	id := uuid.NewString()
-	session, err := p.ctrl.CreateSession(invocation.HostContext(t.Context()), shortCommandPlugin, shortCommandConnected, sdkexec.SessionOptions{
+	session, err := p.ctrl.CreateSession(invocation.HostContext(t.Context()), testOwner, shortCommandPlugin, shortCommandConnected, sdkexec.SessionOptions{
 		ID: id, ResourcePlugin: shortCommandProvider, ResourceKey: shortCommandResource,
 	})
 	require.NoError(t, err)
@@ -184,13 +184,13 @@ func TestTheOutputOfAShortCommandReachesALateAttach(t *testing.T) {
 		"the short command's session did not say CLOSE")
 	require.Empty(t, plugin.window.wrote(id), "nothing is sent to a window that is not attached: the output waits for it")
 
-	session, output, err := plugin.ctrl.AttachSession(id)
+	session, output, err := plugin.ctrl.AttachSession(testOwner, id)
 	require.NoError(t, err, "the output of a session that ended before the attach is for the first attach")
 	require.Equal(t, id, session.ID)
 	require.Equal(t, "hi\n", string(output))
 	require.Zero(t, plugin.indexed(), "the first attach used the host's record of the session up")
 
-	_, _, err = plugin.ctrl.AttachSession(id)
+	_, _, err = plugin.ctrl.AttachSession(testOwner, id)
 	requireSessionNotFound(t, err, id)
 }
 
@@ -199,16 +199,16 @@ func TestTheOutputOfAShortCommandReachesALateAttach(t *testing.T) {
 func TestACommandWhoseWindowIsAttachedEndsWithoutARecord(t *testing.T) {
 	plugin := startAShortCommandPlugin(t, `IFS= read -r line; printf 'you said %s\n' "$line"`, true)
 	id := plugin.create(t)
-	_, _, err := plugin.ctrl.AttachSession(id)
+	_, _, err := plugin.ctrl.AttachSession(testOwner, id)
 	require.NoError(t, err)
 
-	require.NoError(t, plugin.ctrl.WriteSession(id, []byte("hello\n")))
+	require.NoError(t, plugin.ctrl.WriteSession(testOwner, id, []byte("hello\n")))
 	require.Eventually(t, func() bool { return plugin.window.told("core/exec/signal/CLOSE/" + id) }, shortCommandWait, 5*time.Millisecond,
 		"the session did not say CLOSE")
 	require.Contains(t, plugin.window.wrote(id), "you said hello")
 	require.Zero(t, plugin.indexed())
 
-	_, _, err = plugin.ctrl.AttachSession(id)
+	_, _, err = plugin.ctrl.AttachSession(testOwner, id)
 	requireSessionNotFound(t, err, id)
 }
 
@@ -225,6 +225,6 @@ func TestClosingASessionThatJustEndedInAPluginIsNotAnError(t *testing.T) {
 	}, shortCommandWait, 5*time.Millisecond, "the short command's session did not end")
 	require.Equal(t, 1, plugin.indexed(), "the host has not heard of the end")
 
-	require.NoError(t, plugin.ctrl.CloseSession(id))
+	require.NoError(t, plugin.ctrl.CloseSession(testOwner, id))
 	require.Zero(t, plugin.indexed())
 }

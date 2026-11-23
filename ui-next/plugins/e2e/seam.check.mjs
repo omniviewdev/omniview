@@ -368,8 +368,15 @@ async function startHost(work, port, built = undefined, write = writeAll) {
   throw new Error(`the host did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
 }
 
+/**
+ * The page that a check last opened: the exec calls of this runner are made as THAT page (see `tryBound`), because a window holds the sessions it opened
+ * and the host tells every other window that a session it does not hold does not exist (T2c-go). The runner is not a second window with a window's rights.
+ */
+const watched = { page: undefined };
+
 /** The window as the native app opens it: `/`, no `?screen=`, no URL parameter at all; a hash only where a check names a page or a connection. */
 async function open(page, base, hash = '') {
+  watched.page = page;
   await page.goto(`${base}/${hash}`, { waitUntil: 'load' });
 }
 
@@ -384,9 +391,11 @@ const SOUTH_KEY = 'south-0c3d9e1f42';
 
 /** A call of a bound method of the host, by service and name, as the page's own runtime makes one, whatever the host answers: the status and the text of the answer. */
 async function tryBound(base, service, method, ...args) {
+  // The client id is the window: a page that reloads is a new one, so it is read from the page at each call.
+  const asPage = service === EXEC_SERVICE ? await watched.page?.evaluate(() => window._wails?.clientId).catch(() => undefined) : undefined;
   const response = await fetch(`${base}/wails/runtime`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'seam-check' },
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': asPage ?? 'seam-check' },
     body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `seam-${method}-${Date.now()}`, methodName: `${service}.${method}`, args } }),
   });
   return { status: response.status, text: await response.text() };

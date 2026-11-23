@@ -24,6 +24,4 @@ export {
 } from './windows';
 export { deliverTabToWindow, useTabDeliveries } from './delivery';
 export { WindowTabDragProvider } from './WindowTabDragProvider';
-
-export const PAGE_TAB_DRAG_TYPE = 'omniview/page-tab';
-export const DRAWER_TAB_DRAG_TYPE = 'omniview/drawer-tab';
+export { PAGE_TAB_DRAG_TYPE, DRAWER_TAB_DRAG_TYPE } from './dragTypes';

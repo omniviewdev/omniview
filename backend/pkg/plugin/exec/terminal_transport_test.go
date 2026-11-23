@@ -216,7 +216,8 @@ func TestAStalledClientCannotTakeTheHostsMemory(t *testing.T) {
 	client := fx.withClient()
 	client.stall()
 	fx.ctrl.terminalManager.SetFlowStall(time.Hour) // the watchdog is not what this test is about
-	info := fx.open(fx.page(1), terminal.Options{Command: append(shell(t), "-c", "yes flood-yes")})
+	page := fx.page(1)
+	info := fx.open(page, terminal.Options{Command: append(shell(t), "-c", "yes flood-yes")})
 
 	bound := terminal.FlowHighBytes + 3*terminal.DefaultReadBufferSize
 	require.Never(t, func() bool { return client.held() > bound }, 2*time.Second, 5*time.Millisecond,
@@ -235,7 +236,7 @@ func TestAStalledClientCannotTakeTheHostsMemory(t *testing.T) {
 		return got > before+2*terminal.FlowHighBytes
 	}, 30*time.Second, 5*time.Millisecond, "the stream never went on after the client read again")
 	assert.LessOrEqual(t, client.peak(), terminal.FlowHighBytes+4*terminal.DefaultReadBufferSize, "the most the host ever held")
-	require.NoError(t, fx.ctrl.CloseSession(info.ID))
+	require.NoError(t, fx.wrapper.CloseSession(fx.ctx(page), info.ID))
 }
 
 // A stalled client can still close its terminal: the dying shell is read, the CLOSE is delivered, and
@@ -247,11 +248,12 @@ func TestAStalledClientCanStillCloseItsTerminalAndGetsTheClose(t *testing.T) {
 			client := fx.withClient()
 			client.stall()
 			fx.ctrl.terminalManager.SetFlowStall(time.Hour)
-			info := fx.open(fx.page(1), terminal.Options{Command: append(shell(t), "-c", "yes flood-yes")})
+			page := fx.page(1)
+			info := fx.open(page, terminal.Options{Command: append(shell(t), "-c", "yes flood-yes")})
 			require.Eventually(t, func() bool { return client.held() >= terminal.FlowHighBytes }, 20*time.Second, 5*time.Millisecond)
 
 			begin := time.Now()
-			require.NoError(t, fx.ctrl.CloseSession(info.ID))
+			require.NoError(t, fx.wrapper.CloseSession(fx.ctx(page), info.ID))
 			assert.Less(t, time.Since(begin), 3*time.Second, "closing a session whose client does not read hung")
 			assert.Empty(t, fx.ctrl.terminalManager.ListSessions())
 			client.unstall()

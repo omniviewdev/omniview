@@ -37,7 +37,9 @@ type Controller interface {
 	GetPluginHandlers(plugin string) map[string]exec.Handler
 	GetHandlers() map[string]map[string]exec.Handler
 	GetHandler(plugin, resource string) *exec.Handler
-	CreateSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	// CreateSession starts a session of a plugin for owner, the window that asked (none: a call that came from no
+	// window, and the session belongs to none until a window claims it).
+	CreateSession(ctx context.Context, owner terminal.Owner, plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
 	OpenNativeSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) error
 	GetNativeTerminalSupport() bool
 	// CreateTerminal starts a shell on this machine for owner, a comparable value that names the window
@@ -45,17 +47,19 @@ type Controller interface {
 	// goes away (ReleaseOwnedTerminals).
 	CreateTerminal(ctx context.Context, owner terminal.Owner, opts terminal.Options) (*terminal.Session, error)
 	// WriteTerminal and ResizeTerminal apply input to a local terminal; seq is the caller's sequence
-	// number, or zero.
-	WriteTerminal(sessionID string, seq uint64, data []byte) error
-	ResizeTerminal(sessionID string, seq uint64, rows, cols int) error
+	// number, or zero. Every call below that names a session by its id takes the owner: the window that makes
+	// the call. A session that the owner does not hold is not found, whoever's it is and whether it is there:
+	// see ownership.go.
+	WriteTerminal(owner terminal.Owner, sessionID string, seq uint64, data []byte) error
+	ResizeTerminal(owner terminal.Owner, sessionID string, seq uint64, rows, cols int) error
 	// AckTerminal tells a local terminal that n more bytes of its output were taken in by the caller. A
 	// session that is ending, or is one of the last 256 that ended, answers success: there is nothing left to
 	// credit.
-	AckTerminal(sessionID string, n int) error
+	AckTerminal(owner terminal.Owner, sessionID string, n int) error
 	// IsBusy says whether something other than the shell holds a terminal's foreground.
-	IsBusy(sessionID string) (terminal.Foreground, error)
+	IsBusy(owner terminal.Owner, sessionID string) (terminal.Foreground, error)
 	// GetCwd says which directory a terminal's shell is in now.
-	GetCwd(sessionID string) (terminal.Directory, error)
+	GetCwd(owner terminal.Owner, sessionID string) (terminal.Directory, error)
 	// ReleaseOwnedTerminals is what a window going away does to its local terminals: those with a page key are
 	// detached and kept for their lease, any other is ended.
 	ReleaseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) terminal.Released
@@ -69,13 +73,19 @@ type Controller interface {
 	DetachTerminal(ctx context.Context, owner terminal.Owner, sessionID string, request terminal.DetachRequest) (*terminal.Detached, error)
 	// ListTerminals says which local terminals the owner, or whoever holds the key, may attach.
 	ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed
-	ListSessions() ([]*exec.Session, error)
-	GetSession(sessionID string) (*exec.Session, error)
-	AttachSession(sessionID string) (*exec.Session, []byte, error)
-	DetachSession(sessionID string) (*exec.Session, error)
-	WriteSession(sessionID string, data []byte) error
-	CloseSession(sessionID string) error
-	ResizeSession(sessionID string, rows, cols uint16) error
+	// ListSessions lists the sessions owner holds, and those of a plugin that no window holds.
+	ListSessions(owner terminal.Owner) ([]*exec.Session, error)
+	GetSession(owner terminal.Owner, sessionID string) (*exec.Session, error)
+	// AttachSession returns a session's output. The window that holds the session, or claims it (a session of a
+	// plugin that no window holds, or one its owner offered), attaches it and holds it from then on.
+	AttachSession(owner terminal.Owner, sessionID string) (*exec.Session, []byte, error)
+	DetachSession(owner terminal.Owner, sessionID string) (*exec.Session, error)
+	WriteSession(owner terminal.Owner, sessionID string, data []byte) error
+	CloseSession(owner terminal.Owner, sessionID string) error
+	ResizeSession(owner terminal.Owner, sessionID string, rows, cols uint16) error
+	// OfferSession lets the next window that attaches the session take it over, for a short time: the move of
+	// a tab to another window. Only the window that holds it offers it.
+	OfferSession(owner terminal.Owner, sessionID string) error
 }
 
 const (
@@ -106,6 +116,15 @@ type sessionIndex struct {
 	ended    bool
 	endedAt  time.Time
 	endedSeq uint64
+
+	// owner is the window a session of a plugin belongs to (ownership.go): the one that made it, or the one that
+	// claimed it. None: no window holds it (a call that came from no window made it, or its window went away),
+	// and any window may list it and attach it, which makes that window its owner. A local terminal is held in
+	// the terminal manager, which knows the window it belongs to: this field is not read for it.
+	owner terminal.Owner
+	// offerUntil is when the owner's offer of the session to the next window that attaches it runs out (zero: no
+	// offer is open).
+	offerUntil time.Time
 }
 
 func NewController(
@@ -630,6 +649,7 @@ func (c *controller) GetHandler(
 
 func (c *controller) CreateSession(
 	ctx context.Context,
+	owner terminal.Owner,
 	plugin string,
 	connectionID string,
 	opts exec.SessionOptions,
@@ -679,6 +699,8 @@ func (c *controller) CreateSession(
 		ended:        false,
 		endedAt:      time.Time{},
 		endedSeq:     0,
+		owner:        c.sessionOwner(owner),
+		offerUntil:   time.Time{},
 	}
 	c.mu.Unlock()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
@@ -687,7 +709,8 @@ func (c *controller) CreateSession(
 	return session, nil
 }
 
-func (c *controller) ListSessions() (_ []*exec.Session, err error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ListSessions(owner terminal.Owner) (_ []*exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ListSessions")
 	defer finishOp(span, &err)
 
@@ -707,11 +730,17 @@ func (c *controller) ListSessions() (_ []*exec.Session, err error) {
 		if listErr != nil {
 			return nil, listErr
 		}
-		sessions = append(sessions, clientSessions...)
+		for _, session := range clientSessions {
+			if session != nil && c.listable(session.ID, owner) {
+				sessions = append(sessions, session)
+			}
+		}
 	}
 
-	// add the local terminal sessions
-	sessions = append(sessions, c.terminalManager.ListSessions()...)
+	// add the local terminal sessions the window holds
+	if c.terminalManager != nil {
+		sessions = append(sessions, c.terminalManager.SessionsOf(owner)...)
+	}
 
 	return sessions, nil
 }
@@ -732,6 +761,7 @@ func (c *controller) lookupSession(sessionID string) (sessionIndex, Provider, bo
 }
 
 func (c *controller) GetSession(
+	owner terminal.Owner,
 	sessionID string,
 ) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.GetSession")
@@ -740,7 +770,7 @@ func (c *controller) GetSession(
 
 	c.logger.Debugw(ctx, "GetSession")
 	index, client, ok := c.lookupSession(sessionID)
-	if !ok {
+	if !ok || !c.visible(index, sessionID, owner) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
@@ -757,7 +787,8 @@ func (c *controller) GetSession(
 	)
 }
 
-func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte, err error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) AttachSession(owner terminal.Owner, sessionID string) (_ *exec.Session, _ []byte, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.AttachSession")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
@@ -770,7 +801,13 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
+		if claimErr := c.terminalManager.Claim(sessionID, owner); claimErr != nil {
+			return nil, nil, claimErr
+		}
 		return c.terminalManager.AttachSession(sessionID)
+	}
+	if claimErr := c.claimSession(sessionID, owner); claimErr != nil {
+		return nil, nil, claimErr
 	}
 	if client == nil {
 		return nil, nil, apperror.PluginNotFound(index.pluginID)
@@ -788,14 +825,15 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 	return session, output, err
 }
 
-func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) DetachSession(owner terminal.Owner, sessionID string) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.DetachSession")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "DetachSession")
 	index, client, ok := c.lookupSessionOrEnded(sessionID)
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
@@ -824,6 +862,7 @@ func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error
 }
 
 func (c *controller) WriteSession(
+	owner terminal.Owner,
 	sessionID string,
 	data []byte,
 ) (err error) {
@@ -839,7 +878,7 @@ func (c *controller) WriteSession(
 		inchan = c.inChans[index.pluginID]
 	}
 	c.mu.RUnlock()
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
@@ -858,6 +897,7 @@ func (c *controller) WriteSession(
 }
 
 func (c *controller) CloseSession(
+	owner terminal.Owner,
 	sessionID string,
 ) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.CloseSession")
@@ -866,12 +906,14 @@ func (c *controller) CloseSession(
 
 	index, client, ok := c.lookupSessionOrEnded(sessionID)
 	if !ok {
-		// The end that a terminal leaves when it ended by itself while no page was attached is not in the index (its
-		// CLOSE took the id out) and the terminal manager keeps it: closing it dismisses it. An id that is neither is
-		// not found.
-		if c.terminalManager != nil {
+		// The end that a terminal that ended by itself while no page was attached leaves is dismissed by the window
+		// that holds it: it is not in the index, and the terminal manager keeps it.
+		if c.terminalManager != nil && c.terminalManager.Authorize(sessionID, owner) == nil {
 			return c.terminalManager.CloseSession(sessionID)
 		}
+		return apperror.SessionNotFound(sessionID)
+	}
+	if !c.holds(index, sessionID, owner) && !c.claimable(index, owner) {
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
@@ -903,6 +945,7 @@ func (c *controller) CloseSession(
 }
 
 func (c *controller) ResizeSession(
+	owner terminal.Owner,
 	sessionID string,
 	rows, cols uint16,
 ) (err error) {
@@ -911,7 +954,7 @@ func (c *controller) ResizeSession(
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	index, client, ok := c.lookupSession(sessionID)
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),

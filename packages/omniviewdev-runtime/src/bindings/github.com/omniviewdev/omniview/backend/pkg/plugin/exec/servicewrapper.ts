@@ -40,6 +40,10 @@ export function AckTerminal(sessionID: string, n: number): $CancellablePromise<v
     return $Call.ByID(3740379753, sessionID, n);
 }
 
+/**
+ * AttachSession returns a session's output: for the window that holds it, or that claims it (a session of a plugin
+ * that no window holds, or one its owner offered with OfferSession), which holds it from then on.
+ */
 export function AttachSession(sessionID: string): $CancellablePromise<[exec$0.Session | null, string]> {
     return $Call.ByID(93318075, sessionID).then(($result: any) => {
         $result[0] = $$createType1($result[0]);
@@ -72,6 +76,11 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(1353297556, sessionID);
 }
 
+/**
+ * CreateSession starts a session of a plugin for the window that asks: it belongs to that window until the window
+ * goes away, and then to whichever window attaches it first (T2c-go.md). A call that comes from no window creates
+ * a session that belongs to none.
+ */
 export function CreateSession(plugin: string, connectionID: string, encoded: string): $CancellablePromise<exec$0.Session | null> {
     return $Call.ByID(608251756, plugin, connectionID, encoded).then(($result: any) => {
         return $$createType1($result);
@@ -189,6 +198,11 @@ export function ListPlugins(): $CancellablePromise<string[]> {
     });
 }
 
+/**
+ * ListSessions lists the sessions the calling window holds, and the sessions of plugins that no window holds. Every
+ * call below that names a session by its id answers not-found to a window that does not hold it, as for an id that
+ * never was (T2c-go.md).
+ */
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
         return $$createType17($result);
@@ -206,6 +220,14 @@ export function ListTerminals(pageKey: string): $CancellablePromise<terminal$0.L
     return $Call.ByID(867361533, pageKey).then(($result: any) => {
         return $$createType19($result);
     });
+}
+
+/**
+ * OfferSession lets the next window that attaches the session take it over, within a minute, once: the move of a
+ * tab to another window. Only the window that holds the session offers it; the offer gives no other window access.
+ */
+export function OfferSession(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(405065622, sessionID);
 }
 
 /**

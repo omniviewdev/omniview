@@ -166,29 +166,40 @@ func (c *controller) CreateTerminal(
 	return &info, nil
 }
 
-// WriteTerminal applies input to a local terminal, in the order of its sequence numbers.
+// WriteTerminal applies input to a local terminal, in the order of its sequence numbers, for the window that holds
+// it.
 //
 //nolint:nonamedreturns // The deferred span records the returned error.
-func (c *controller) WriteTerminal(sessionID string, seq uint64, data []byte) (err error) {
+func (c *controller) WriteTerminal(owner terminal.Owner, sessionID string, seq uint64, data []byte) (err error) {
 	_, span := tracer.Start(context.Background(), "exec.WriteTerminal")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
+	if err = c.terminalManager.Authorize(sessionID, owner); err != nil {
+		return err
+	}
 	return c.terminalManager.Write(sessionID, seq, data)
 }
 
-// ResizeTerminal sets the size of a local terminal, in the order of its sequence numbers.
+// ResizeTerminal sets the size of a local terminal, in the order of its sequence numbers, for the window that holds
+// it.
 //
 //nolint:nonamedreturns // The deferred span records the returned error.
-func (c *controller) ResizeTerminal(sessionID string, seq uint64, rows, cols int) (err error) {
+func (c *controller) ResizeTerminal(owner terminal.Owner, sessionID string, seq uint64, rows, cols int) (err error) {
 	_, span := tracer.Start(context.Background(), "exec.ResizeTerminal")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
+	if err = c.terminalManager.Authorize(sessionID, owner); err != nil {
+		return err
+	}
 	return c.terminalManager.Resize(sessionID, seq, rows, cols)
 }
 
-// AckTerminal tells a local terminal that n more bytes of its output were taken in by the client. It runs
-// for every few kilobytes of output, so it opens no span.
-func (c *controller) AckTerminal(sessionID string, n int) error {
+// AckTerminal tells a local terminal that n more bytes of its output were taken in by the client, when the window
+// holds it (or held it when it ended). It runs for every few kilobytes of output, so it opens no span.
+func (c *controller) AckTerminal(owner terminal.Owner, sessionID string, n int) error {
+	if err := c.terminalManager.Authorize(sessionID, owner); err != nil {
+		return err
+	}
 	return c.terminalManager.Ack(sessionID, n)
 }
 
@@ -196,13 +207,13 @@ func (c *controller) AckTerminal(sessionID string, n int) error {
 // plugin runs on another machine: the host holds no terminal for it, so it says unknown.
 //
 //nolint:nonamedreturns // The deferred span records the returned error.
-func (c *controller) IsBusy(sessionID string) (_ terminal.Foreground, err error) {
+func (c *controller) IsBusy(owner terminal.Owner, sessionID string) (_ terminal.Foreground, err error) {
 	_, span := tracer.Start(context.Background(), "exec.IsBusy")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 	var none terminal.Foreground
 	index, _, ok := c.lookupSession(sessionID)
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return none, apperror.SessionNotFound(sessionID)
 	}
 	if !index.local {
@@ -215,13 +226,13 @@ func (c *controller) IsBusy(sessionID string) (_ terminal.Foreground, err error)
 // machine, so it says unknown.
 //
 //nolint:nonamedreturns // The deferred span records the returned error.
-func (c *controller) GetCwd(sessionID string) (_ terminal.Directory, err error) {
+func (c *controller) GetCwd(owner terminal.Owner, sessionID string) (_ terminal.Directory, err error) {
 	_, span := tracer.Start(context.Background(), "exec.GetCwd")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 	var none terminal.Directory
 	index, _, ok := c.lookupSession(sessionID)
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return none, apperror.SessionNotFound(sessionID)
 	}
 	if !index.local {
@@ -230,16 +241,18 @@ func (c *controller) GetCwd(sessionID string) (_ terminal.Directory, err error) 
 	return c.terminalManager.Cwd(sessionID)
 }
 
-// ReleaseOwnedTerminals is what a window going away does to its local terminals: those that have a page key are
-// detached and kept for their lease, any other is ended.
+// ReleaseOwnedTerminals is what a window going away does to what it holds: its local terminals with a page key are
+// detached and kept for their lease, any other is ended, and its sessions of plugins go on with no window that
+// holds them (any window may list and attach them, which is how a page that reloaded finds the ones it had).
 func (c *controller) ReleaseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) terminal.Released {
-	var none terminal.Released
-	if c.terminalManager == nil {
-		return none
+	var released terminal.Released
+	orphaned := c.orphanSessionsOf(owner)
+	if c.terminalManager != nil {
+		released = c.terminalManager.ReleaseOwned(owner, by)
 	}
-	released := c.terminalManager.ReleaseOwned(owner, by)
-	if released.Detached > 0 || released.Ended > 0 {
-		c.logger.Infow(context.Background(), "released the terminals of a window that went away", "detached", released.Detached, "ended", released.Ended)
+	if released.Detached > 0 || released.Ended > 0 || orphaned > 0 {
+		c.logger.Infow(context.Background(), "released the sessions of a window that went away",
+			"detached", released.Detached, "ended", released.Ended, "orphaned", orphaned)
 	}
 	return released
 }

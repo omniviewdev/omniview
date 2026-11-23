@@ -374,6 +374,10 @@ const (
 	// TombstoneLimit is how many terminals that ended while no page was attached the host remembers, so that the
 	// page that comes back can still read how they ended.
 	TombstoneLimit = 16
+	// OfferTTL is how long the owner's offer of a session to the next window that claims it stays open (the move of
+	// a tab to another window): long enough for a window that has to start (a tab torn off to a new window attaches
+	// after the page has loaded), short enough that an offer is not a standing right. It is used once.
+	OfferTTL = time.Minute
 
 	maxIDLength = 128
 )

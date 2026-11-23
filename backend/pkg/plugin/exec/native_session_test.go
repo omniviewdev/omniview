@@ -205,7 +205,7 @@ func TestNativeMissingPluginAndBuiltinSessionUnaffected(t *testing.T) {
 	require.ErrorAs(t, ctrl.OpenNativeSession(context.Background(), "installed-plugin", "selected-connection", nativeSessionOptions()), &appError)
 	require.Equal(t, apperror.TypePluginNotFound, appError.Type)
 	ctrl.clients["installed-plugin"] = provider
-	session, err := ctrl.CreateSession(context.Background(), "installed-plugin", "selected-connection", nativeSessionOptions())
+	session, err := ctrl.CreateSession(context.Background(), testOwner, "installed-plugin", "selected-connection", nativeSessionOptions())
 	require.NoError(t, err)
 	require.Equal(t, "builtin-created", session.ID)
 	require.Contains(t, ctrl.sessionIndex, session.ID)
@@ -343,7 +343,7 @@ func TestExecControllerPreservesHeadlessReferenceAuthority(t *testing.T) {
 		if native {
 			require.NoError(t, ctrl.OpenNativeSession(ctx, "installed-plugin", "selected-connection", nativeSessionOptions()))
 		} else {
-			_, err := ctrl.CreateSession(ctx, "installed-plugin", "selected-connection", nativeSessionOptions())
+			_, err := ctrl.CreateSession(ctx, testOwner, "installed-plugin", "selected-connection", nativeSessionOptions())
 			require.NoError(t, err)
 		}
 		request, ok := invocation.FromContext(provider.context.Context)

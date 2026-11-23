@@ -22,7 +22,7 @@ func newTestController() Controller {
 
 func TestCreateSession_PluginNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.CreateSession(context.Background(), "nonexistent", "conn", exec.SessionOptions{})
+	_, err := ctrl.CreateSession(context.Background(), testOwner, "nonexistent", "conn", exec.SessionOptions{})
 
 	require.Error(t, err)
 	var target *apperror.AppError
@@ -36,7 +36,7 @@ func TestCreateSession_PluginNotFound(t *testing.T) {
 
 func TestGetSession_SessionNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.GetSession("nonexistent-session")
+	_, err := ctrl.GetSession(testOwner, "nonexistent-session")
 
 	require.Error(t, err)
 	var target *apperror.AppError
@@ -50,7 +50,7 @@ func TestGetSession_SessionNotFound(t *testing.T) {
 
 func TestAttachSession_SessionNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, _, err := ctrl.AttachSession("nonexistent-session")
+	_, _, err := ctrl.AttachSession(testOwner, "nonexistent-session")
 
 	require.Error(t, err)
 	var target *apperror.AppError
@@ -64,7 +64,7 @@ func TestAttachSession_SessionNotFound(t *testing.T) {
 
 func TestDetachSession_SessionNotFound(t *testing.T) {
 	ctrl := newTestController()
-	_, err := ctrl.DetachSession("nonexistent-session")
+	_, err := ctrl.DetachSession(testOwner, "nonexistent-session")
 
 	require.Error(t, err)
 	var target *apperror.AppError
@@ -78,7 +78,7 @@ func TestDetachSession_SessionNotFound(t *testing.T) {
 
 func TestWriteSession_SessionNotFound(t *testing.T) {
 	ctrl := newTestController()
-	err := ctrl.WriteSession("nonexistent-session", nil)
+	err := ctrl.WriteSession(testOwner, "nonexistent-session", nil)
 
 	require.Error(t, err)
 	var target *apperror.AppError
@@ -92,7 +92,7 @@ func TestWriteSession_SessionNotFound(t *testing.T) {
 
 func TestCloseSession_SessionNotFound(t *testing.T) {
 	ctrl := newTestController()
-	err := ctrl.CloseSession("nonexistent-session")
+	err := ctrl.CloseSession(testOwner, "nonexistent-session")
 
 	require.Error(t, err)
 	var target *apperror.AppError
@@ -106,7 +106,7 @@ func TestCloseSession_SessionNotFound(t *testing.T) {
 
 func TestResizeSession_SessionNotFound(t *testing.T) {
 	ctrl := newTestController()
-	err := ctrl.ResizeSession("nonexistent-session", 24, 80)
+	err := ctrl.ResizeSession(testOwner, "nonexistent-session", 24, 80)
 
 	require.Error(t, err)
 	var target *apperror.AppError

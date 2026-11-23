@@ -56,6 +56,10 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 	}
 	return nil
 }
+
+// CreateSession starts a session of a plugin for the window that asks: it belongs to that window until the window
+// goes away, and then to whichever window attaches it first (T2c-go.md). A call that comes from no window creates
+// a session that belongs to none.
 func (s *ServiceWrapper) CreateSession(
 	ctx context.Context,
 	plugin, connectionID string,
@@ -68,7 +72,16 @@ func (s *ServiceWrapper) CreateSession(
 		end(&err)
 		return nil, err
 	}
-	return s.Ctrl.CreateSession(s.realmContext(ctx), plugin, connectionID, opts)
+	window, _ := ctx.Value(application.WindowKey).(application.Window)
+	var owner terminal.Owner
+	if window != nil && s.Realm != nil {
+		identity, err := s.terminalOwner(window)
+		if err != nil {
+			return nil, err
+		}
+		owner = identity
+	}
+	return s.Ctrl.CreateSession(s.realmContext(ctx), owner, plugin, connectionID, opts)
 }
 
 // OpenNativeSession accepts only the same bounded resource payload as CreateSession.
@@ -157,44 +170,68 @@ func (s *ServiceWrapper) terminalOwner(window application.Window) (invocation.Wi
 	})
 	return invocation.IdentityOf(window), nil
 }
-func (s *ServiceWrapper) ListSessions() ([]*execsdk.Session, error) {
-	return s.Ctrl.ListSessions()
+
+// callerOf names the window that makes a call that addresses a session by its id: the identity the realm issued for
+// it, which no page can name for another. A call that comes from no window has none and holds nothing. The window is
+// not admitted: one that holds nothing is refused whatever it is, and a window that was retired holds nothing.
+func callerOf(ctx context.Context) terminal.Owner {
+	window, _ := ctx.Value(application.WindowKey).(application.Window)
+	if window == nil {
+		return nil
+	}
+	return invocation.IdentityOf(window)
 }
-func (s *ServiceWrapper) GetSession(sessionID string) (*execsdk.Session, error) {
-	return s.Ctrl.GetSession(sessionID)
+
+// ListSessions lists the sessions the calling window holds, and the sessions of plugins that no window holds. Every
+// call below that names a session by its id answers not-found to a window that does not hold it, as for an id that
+// never was (T2c-go.md).
+func (s *ServiceWrapper) ListSessions(ctx context.Context) ([]*execsdk.Session, error) {
+	return s.Ctrl.ListSessions(callerOf(ctx))
 }
-func (s *ServiceWrapper) AttachSession(sessionID string) (*execsdk.Session, []byte, error) {
-	return s.Ctrl.AttachSession(sessionID)
+func (s *ServiceWrapper) GetSession(ctx context.Context, sessionID string) (*execsdk.Session, error) {
+	return s.Ctrl.GetSession(callerOf(ctx), sessionID)
 }
-func (s *ServiceWrapper) DetachSession(sessionID string) (*execsdk.Session, error) {
-	return s.Ctrl.DetachSession(sessionID)
+
+// AttachSession returns a session's output: for the window that holds it, or that claims it (a session of a plugin
+// that no window holds, or one its owner offered with OfferSession), which holds it from then on.
+func (s *ServiceWrapper) AttachSession(ctx context.Context, sessionID string) (*execsdk.Session, []byte, error) {
+	return s.Ctrl.AttachSession(callerOf(ctx), sessionID)
 }
-func (s *ServiceWrapper) WriteSession(sessionID string, data []byte) error {
-	return s.Ctrl.WriteSession(sessionID, data)
+func (s *ServiceWrapper) DetachSession(ctx context.Context, sessionID string) (*execsdk.Session, error) {
+	return s.Ctrl.DetachSession(callerOf(ctx), sessionID)
 }
-func (s *ServiceWrapper) CloseSession(sessionID string) error {
-	return s.Ctrl.CloseSession(sessionID)
+func (s *ServiceWrapper) WriteSession(ctx context.Context, sessionID string, data []byte) error {
+	return s.Ctrl.WriteSession(callerOf(ctx), sessionID, data)
 }
-func (s *ServiceWrapper) ResizeSession(sessionID string, rows, cols uint16) error {
-	return s.Ctrl.ResizeSession(sessionID, rows, cols)
+func (s *ServiceWrapper) CloseSession(ctx context.Context, sessionID string) error {
+	return s.Ctrl.CloseSession(callerOf(ctx), sessionID)
+}
+func (s *ServiceWrapper) ResizeSession(ctx context.Context, sessionID string, rows, cols uint16) error {
+	return s.Ctrl.ResizeSession(callerOf(ctx), sessionID, rows, cols)
+}
+
+// OfferSession lets the next window that attaches the session take it over, within a minute, once: the move of a
+// tab to another window. Only the window that holds the session offers it; the offer gives no other window access.
+func (s *ServiceWrapper) OfferSession(ctx context.Context, sessionID string) error {
+	return s.Ctrl.OfferSession(callerOf(ctx), sessionID)
 }
 
 // WriteTerminal applies input to a local terminal. seq is the caller's sequence number for the session,
 // counted up from 1, one for each write or resize: calls the transport delivers out of order are applied
 // in sequence order. Zero is "no number": the call is applied in the order it arrived.
-func (s *ServiceWrapper) WriteTerminal(sessionID string, seq uint64, data []byte) error {
-	return s.Ctrl.WriteTerminal(sessionID, seq, data)
+func (s *ServiceWrapper) WriteTerminal(ctx context.Context, sessionID string, seq uint64, data []byte) error {
+	return s.Ctrl.WriteTerminal(callerOf(ctx), sessionID, seq, data)
 }
 
 // ResizeTerminal sets the size of a local terminal; seq is as for WriteTerminal.
-func (s *ServiceWrapper) ResizeTerminal(sessionID string, seq uint64, rows, cols int) error {
-	return s.Ctrl.ResizeTerminal(sessionID, seq, rows, cols)
+func (s *ServiceWrapper) ResizeTerminal(ctx context.Context, sessionID string, seq uint64, rows, cols int) error {
+	return s.Ctrl.ResizeTerminal(callerOf(ctx), sessionID, seq, rows, cols)
 }
 
 // IsBusy says whether something other than the shell holds the terminal's foreground: idle, busy (with
 // the program's name where the platform gives it) or unknown. The UI asks when the user closes a terminal.
-func (s *ServiceWrapper) IsBusy(sessionID string) (terminal.Foreground, error) {
-	return s.Ctrl.IsBusy(sessionID)
+func (s *ServiceWrapper) IsBusy(ctx context.Context, sessionID string) (terminal.Foreground, error) {
+	return s.Ctrl.IsBusy(callerOf(ctx), sessionID)
 }
 
 // ListTerminals says which terminals the calling page may attach: those of its window that have a page key,
@@ -276,8 +313,8 @@ func (s *ServiceWrapper) HasPlugin(pluginID string) bool {
 // GetCwd says which directory a terminal's shell is in now: the shell's own current working directory,
 // read from the system when asked, or why it cannot be read (see terminal.Directory). A session of a plugin
 // runs on another machine and answers unknown.
-func (s *ServiceWrapper) GetCwd(sessionID string) (terminal.Directory, error) {
-	return s.Ctrl.GetCwd(sessionID)
+func (s *ServiceWrapper) GetCwd(ctx context.Context, sessionID string) (terminal.Directory, error) {
+	return s.Ctrl.GetCwd(callerOf(ctx), sessionID)
 }
 
 // AckTerminal tells a terminal that n more bytes of its output were taken in by the client: written into its
@@ -291,6 +328,6 @@ func (s *ServiceWrapper) GetCwd(sessionID string) (terminal.Directory, error) {
 // left to credit and the last acknowledgement of an exiting shell races its CLOSE; an older session is not
 // remembered and is not found, as one that never existed. After an attach the replay is not acknowledged, nor
 // is an event whose offset is below the replay's end: the attach forgot what was owed for it.
-func (s *ServiceWrapper) AckTerminal(sessionID string, n int) error {
-	return s.Ctrl.AckTerminal(sessionID, n)
+func (s *ServiceWrapper) AckTerminal(ctx context.Context, sessionID string, n int) error {
+	return s.Ctrl.AckTerminal(callerOf(ctx), sessionID, n)
 }

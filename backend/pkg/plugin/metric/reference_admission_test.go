@@ -34,7 +34,7 @@ func TestReferenceUtilitiesFailBeforeConnectionWorkWithoutAdmission(t *testing.T
 		{"exec.CreateSession", func(admit hostresource.ReferenceAdmitter) error {
 			ctrl := hostexec.NewController(logging.NewNop(), nil, nil)
 			ctrl.SetReferenceAdmitter(admit)
-			_, err := ctrl.CreateSession(context.Background(), "test", "connection", sdkexec.SessionOptions{Reference: reference, Route: route})
+			_, err := ctrl.CreateSession(context.Background(), "test-window", "test", "connection", sdkexec.SessionOptions{Reference: reference, Route: route})
 			return err
 		}},
 		{"logs.CreateSession", func(admit hostresource.ReferenceAdmitter) error {
@@ -77,7 +77,7 @@ func TestReferenceUtilitiesFailBeforeConnectionWorkWithoutAdmission(t *testing.T
 		})
 	}
 	local := hostexec.NewController(logging.NewNop(), nil, nil)
-	_, err := local.CreateSession(context.Background(), "local", "local", sdkexec.SessionOptions{ResourceData: &resourcev2.Value{Kind: "null"}})
+	_, err := local.CreateSession(context.Background(), "test-window", "local", "local", sdkexec.SessionOptions{ResourceData: &resourcev2.Value{Kind: "null"}})
 	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err))
 	_, err = (&ServiceWrapper{}).Subscribe(context.Background(), "test", "connection", `{"catalog_revision":"frontend-forgery"}`)
 	require.Equal(t, "INVALID_REQUEST", resourcev2.ErrorCode(err))
