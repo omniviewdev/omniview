@@ -222,6 +222,12 @@ func TestDangerousMethodsStayDenied(t *testing.T) {
 		plugin + "/exec.ServiceWrapper.AckTerminal",
 		plugin + "/exec.ServiceWrapper.AttachSession",
 		plugin + "/exec.ServiceWrapper.OpenNativeSession",
+		// Taking over, listing and detaching the terminals of a page that went away: any window that holds a
+		// terminal's id and key reads its history and types into it.
+		plugin + "/exec.ServiceWrapper.AttachTerminal",
+		plugin + "/exec.ServiceWrapper.DetachTerminal",
+		plugin + "/exec.ServiceWrapper.ListTerminals",
+		plugin + "/exec.ServiceWrapper.DetachSession",
 		// Arbitrary file write and native dialogs on the host.
 		"main.AppService.WriteFileContent",
 		"main.AppService.OpenFileSelectionDialog",

@@ -18,11 +18,14 @@ import (
 // on core/exec/signal/CLOSE/<id>, after the last output. The output of a terminal that has a page key, which a
 // page can attach to again after a reload, comes on core/exec/stream/output/<id> instead, as {offset, data}:
 // data is base64 text as before and offset is the number of bytes the terminal wrote before it, so that a replay
-// and the live output join exactly (docs/ui-next/status/T2-go.md).
+// and the live output join exactly (docs/ui-next/status/T2-go.md). When a page loses a terminal it had attached
+// (another page took it over, it detached it, its window went away) one terminal.Detachment says so on
+// core/exec/signal/DETACHED/<id>: the page acts on it when its attachment number is the event's.
 const (
 	localOutputEvent       = "core/exec/stream/stdout/"
 	localOffsetOutputEvent = "core/exec/stream/output/"
 	localCloseEvent        = "core/exec/signal/CLOSE/"
+	localDetachedEvent     = "core/exec/signal/DETACHED/"
 )
 
 // terminalOutput is the payload of a local terminal's stdout event: the bytes the shell wrote, which
@@ -109,6 +112,12 @@ func (s localSink) Closed(sessionID string, end terminal.End) {
 	delete(s.c.sessionIndex, sessionID)
 	s.c.mu.Unlock()
 	s.c.emitLocal(localCloseEvent+sessionID, end)
+}
+
+// Detached tells every window that a page lost a terminal it had attached. It is called by the call that changed
+// hands, with no lock of the manager held.
+func (s localSink) Detached(sessionID string, detachment terminal.Detachment) {
+	s.c.emitLocal(localDetachedEvent+sessionID, detachment)
 }
 
 func (c *controller) emitLocal(name string, data any) {

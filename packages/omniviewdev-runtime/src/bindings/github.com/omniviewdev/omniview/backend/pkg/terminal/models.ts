@@ -63,6 +63,14 @@ export class Attached {
      */
     "ended"?: End | null;
 
+    /**
+     * Attachment is the number of this attachment: the window that opened the terminal held attachment 0, and
+     * every attach that took it, or took it back after a detach, is the next number. An event that says a page
+     * lost the terminal (Detachment) carries the number of the attachment that ended, so a page knows the event
+     * is its own when the number is the one it holds, and that it is not when it is the number before.
+     */
+    "attachment": number;
+
     /** Creates a new Attached instance. */
     constructor($$source: Partial<Attached> = {}) {
         if (!("session" in $$source)) {
@@ -76,6 +84,9 @@ export class Attached {
         }
         if (!("busy" in $$source)) {
             this["busy"] = (new Foreground());
+        }
+        if (!("attachment" in $$source)) {
+            this["attachment"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -795,8 +806,9 @@ export class Probe {
 /**
  * Replay is the output a page needs to show a terminal again: the bytes from Start to End of the session's
  * one sequence of output, and the facts an emulator needs to show them as they were. It describes EXACTLY the
- * output the page does not have: the events that come after the attach continue at End, with no byte lost and
- * none repeated, and an event whose offset is below End is already in Data.
+ * output the page does not have: the events that come after the attach continue at End, with no byte at or
+ * above it lost, and an event that lies below End is already in Data. Such an event may still reach the page after
+ * the answer (an event and a reply travel apart): the page drops EVERY event it has the bytes of, held or live.
  */
 export class Replay {
     /**

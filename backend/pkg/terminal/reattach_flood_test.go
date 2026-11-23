@@ -373,10 +373,14 @@ func TestTwoHundredDetachedTerminalsHoldABoundedStateAndTheirLeasesLeaveNothing(
 
 	heapDetached := heapInUse()
 	rings := heapDetached - heapBefore
-	bound := uint64(count) * uint64(ReplayBytes+2*chunkBytes)
-	assert.LessOrEqual(t, rings, bound+32<<20, "the state of 200 detached terminals is their 200 rings and a little else")
+	// A detached terminal holds its ring (at most ReplayBytes and a chunk, and the chunk being filled) and what
+	// every terminal holds: the stacks of its four goroutines, the 20 KiB it reads into, its pty and its queues.
+	// That is 0.15 MiB, measured; the bound allows 0.1875.
+	const ownBytes = 192 << 10
+	bound := uint64(count) * uint64(ReplayBytes+2*chunkBytes+ownBytes)
+	assert.LessOrEqual(t, rings, bound, "the state of 200 detached terminals is their rings and what each holds besides")
 	assert.Greater(t, rings, uint64(count)*uint64(ReplayBytes-4*chunkBytes), "every ring is full: the bound was reached, not just stayed under")
-	t.Logf("%d detached terminals: heap %d MiB over the baseline (rings bound %d MiB), %d goroutines more than before, %d ring bytes each at most",
+	t.Logf("%d detached terminals: heap %d MiB over the baseline (bound %d MiB), %d goroutines more than before, %d ring bytes each at most",
 		count, rings>>20, bound>>20, runtime.NumGoroutine()-goroutinesBefore, ReplayBytes)
 	assert.LessOrEqual(t, runtime.NumGoroutine()-goroutinesBefore, count*8, "a bounded number of goroutines each")
 	for _, info := range infos {

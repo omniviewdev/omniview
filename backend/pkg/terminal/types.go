@@ -298,10 +298,23 @@ type DeliveryReporter interface {
 // offset is the number of bytes the session wrote before it. The manager calls OutputAt, and not Output, for a
 // terminal that has a page key; any other terminal's output goes to Output as before. Every OutputAt of a
 // session is contiguous with the one before it: offset is the previous offset plus its length.
+//
+// The manager holds a lock an attach waits for while it calls OutputAt, so that the events below the end of an
+// attach's replay are all out before the attach answers: OutputAt must return without waiting for anything an
+// attach does (a queue that takes the event at once, as the exec lane's does).
 type OffsetSink interface {
 	Sink
 	// OutputAt delivers bytes the shell wrote, which start at offset. The slice belongs to the receiver.
 	OutputAt(sessionID string, offset uint64, data []byte)
+}
+
+// DetachmentSink is a Sink that is also told when a page lost a terminal it had attached (Detachment). The
+// call comes from the call that changed hands (Attach, Detach, ReleaseOwned), after it did and with no lock held,
+// so it may be concurrent with the session's output; it must not call back into the Manager for the session.
+type DetachmentSink interface {
+	Sink
+	// Detached says a page lost the terminal and why.
+	Detached(sessionID string, detachment Detachment)
 }
 
 const (

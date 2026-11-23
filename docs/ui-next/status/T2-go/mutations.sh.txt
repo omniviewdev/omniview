@@ -100,10 +100,52 @@ run keyed-output-on-the-old-event $X backend/pkg/plugin/exec/terminal.go \
   's/s.emitOutput(localOffsetOutputEvent+sessionID,/s.emitOutput(localOutputEvent+sessionID,/' \
   '^TestTheOutputEventOfATerminalWithAPageKey'
 
-run a-failed-create-keeps-its-terminal $X backend/pkg/plugin/exec/service_wrapper.go \
-  's/_ = s.Ctrl.CloseSession(session.ID)/_ = session/' \
+run a-failed-create-never-closes-its-terminal $X backend/pkg/plugin/exec/service_wrapper.go \
+  's/^\t\ts.Ctrl.CloseTerminalUnlessTakenOver(session.ID, owner)$/\t\t_ = session/' \
   '^TestAWindowRetiredBetweenTheStartAndTheAnswer'
+
+run a-failed-create-closes-what-another-window-took-over $X backend/pkg/plugin/exec/service_wrapper.go \
+  's/s.Ctrl.CloseTerminalUnlessTakenOver(session.ID, owner)/_ = s.Ctrl.CloseSession(session.ID)/' \
+  '^TestAFailedCreateDoesNotEndATerminalAnotherWindowTookOver'
 
 run an-attach-to-a-retired-window-stays-attached $X backend/pkg/plugin/exec/service_wrapper.go \
   's/s.Ctrl.ReleaseOwnedTerminals(owner, terminal.ClosedByWindow)/_ = owner/' \
   '^TestAWindowRetiredBetweenTheTakeOver'
+
+# The review of #674 (ReviewHost658): S1 to S4 and the tombstone timer.
+
+run detach-by-a-displaced-page-allowed $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) detach(/,/^}/ s/case s.owner != nil \&\& s.owner != caller:/case false:/' \
+  '^TestAPageThatWasDisplaced'
+
+run the-reader-does-not-hold-up-an-attach $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) deliver/,/^}/ s/if s.pageKey != "" {/if false {/' \
+  '^TestAnAttachDoesNotAnswerWhile'
+
+run a-takeover-does-not-tell-the-page-that-held-it $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) takeOverLocked/,/^}/ s/if s.heldLocked() {/if false {/' \
+  '^TestAPageIsToldWhen'
+
+run a-window-retirement-does-not-tell-the-page $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) release/,/^}/ {s/_, left := s.detachLocked(s.lease, DetachedByWindow)/s.detachLocked(s.lease, DetachedByWindow)/;s/return releaseDetached, left/return releaseDetached, nil/;}' \
+  '^TestAPageIsToldWhen'
+
+run a-detach-does-not-tell-the-page $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) Detach(/,/^}/ s/^\tm.told(s, left)$/\t_ = left/' \
+  '^TestAPageIsToldWhen'
+
+run the-attachment-is-not-counted $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) takeOverLocked/,/^}/ s/^\ts.attachment++$/\t_ = 0/' \
+  '^TestAPageIsToldWhen'
+
+run the-tombstone-timer-is-never-armed $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) armTombstoneTimerLocked/,/^}/ s/if m.closing.Load() || len(m.tombs) == 0 {/if true {/' \
+  '^TestTombstonesThatExpired'
+
+run the-shutdown-leaves-the-tombstone-timer $T backend/pkg/terminal/manager.go \
+  's/^\tm.armTombstoneTimerLocked(time.Now())$/\t_ = 0/' \
+  '^TestTombstonesThatExpired'
+
+run the-policy-allows-attach-terminal . internal/auditgate/policy.json \
+  '/exec.ServiceWrapper.AttachTerminal"/ s/"decision": "deny"/"decision": "allow"/' \
+  '^TestDangerousMethodsStayDenied'

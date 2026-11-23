@@ -43,10 +43,15 @@ type pageSink struct {
 	// discard keeps the sizes and no bytes: for a test of many terminals whose memory is what is measured.
 	discard bool
 	bytes   map[string]uint64
+	// departed is what the sink was told of pages that lost a terminal they had attached, in order.
+	departed map[string][]Detachment
 }
 
 func newPageSink() *pageSink {
-	return &pageSink{events: map[string][]event{}, plain: map[string]int{}, ends: map[string][]End{}, bytes: map[string]uint64{}}
+	return &pageSink{
+		events: map[string][]event{}, plain: map[string]int{}, ends: map[string][]End{}, bytes: map[string]uint64{},
+		departed: map[string][]Detachment{},
+	}
 }
 
 // setHook sets what each OutputAt is handed to: the page.
@@ -61,6 +66,13 @@ func (m *Manager) tombstoneCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.tombs)
+}
+
+// tombstoneTimerArmed says whether the manager waits to free the tombstone that expires first.
+func (m *Manager) tombstoneTimerArmed() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.tombTimer != nil
 }
 
 func (p *pageSink) Output(id string, data []byte) {
@@ -87,6 +99,20 @@ func (p *pageSink) Closed(id string, end End) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.ends[id] = append(p.ends[id], end)
+}
+
+// Detached is told when a page lost a terminal it had attached.
+func (p *pageSink) Detached(id string, d Detachment) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.departed[id] = append(p.departed[id], d)
+}
+
+// detachments is every detachment the sink was told of for the session, in order.
+func (p *pageSink) detachments(id string) []Detachment {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]Detachment(nil), p.departed[id]...)
 }
 
 // stream is everything the session wrote, from the events, which must be contiguous: each starts where the one

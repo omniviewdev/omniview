@@ -238,6 +238,58 @@ func TestTheLateRetirementOfTheOldPageDoesNotDetachWhatTheNewPageTookOver(t *tes
 	assert.False(t, gone(info.PID))
 }
 
+// A page that was displaced (a duplicated tab shares the key, and the later attach takes the terminal) is TOLD, on
+// the event of its own, which attachment ended and why, and its DetachTerminal, which its closing tab sends, is
+// refused: the terminal stays with the page that took it over. The detach of the page that owns it and the
+// retirement of its window are told the same way, and the number is the page's own to compare.
+func TestADisplacedPageIsToldAndCannotDetachWhatTheNewPageOwns(t *testing.T) {
+	fx := newTerminalFixture(t)
+	first := fx.page(1)
+	info := fx.mustOpenKeyed(first, keyA, `read x`)
+	second := fx.page(2)
+	attached, err := fx.wrapper.AttachTerminal(fx.ctx(second), info.ID, terminal.AttachRequest{PageKey: keyA})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), attached.Attachment, "the page that opened the terminal held attachment 0")
+
+	detachments := func() []terminal.Detachment {
+		var out []terminal.Detachment
+		for _, event := range fx.eventsOf(info.ID) {
+			if event.name == localDetachedEvent+info.ID {
+				detachment, ok := event.data.(terminal.Detachment)
+				require.True(t, ok, "the payload is a terminal.Detachment")
+				out = append(out, detachment)
+			}
+		}
+		return out
+	}
+	require.Equal(t, []terminal.Detachment{{By: terminal.DetachedByTakeover, Attachment: 0}}, detachments())
+	wire, err := json.Marshal(detachments()[0])
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"by":"taken-over","attachment":0}`, string(wire))
+
+	_, err = fx.wrapper.DetachTerminal(fx.ctx(first), info.ID, terminal.DetachRequest{PageKey: keyA})
+	var app *apperror.AppError
+	require.ErrorAs(t, err, &app)
+	assert.Equal(t, apperror.TypeSessionNotFound, app.Type)
+	assert.True(t, listedAttached(t, fx, second), "the page that took it over still has it")
+	assert.Len(t, detachments(), 1, "and nobody was told of a detach that did not happen")
+
+	_, err = fx.wrapper.DetachTerminal(fx.ctx(second), info.ID, terminal.DetachRequest{})
+	require.NoError(t, err)
+	third := fx.page(3)
+	again, err := fx.wrapper.AttachTerminal(fx.ctx(third), info.ID, terminal.AttachRequest{PageKey: keyA})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), again.Attachment)
+	fx.retire(third)
+	require.Eventually(t, func() bool { return len(detachments()) == 3 }, 20*time.Second, 5*time.Millisecond, "the retirement of its window is told")
+	assert.Equal(t, []terminal.Detachment{
+		{By: terminal.DetachedByTakeover, Attachment: 0},
+		{By: terminal.DetachedByRequest, Attachment: 1},
+		{By: terminal.DetachedByWindow, Attachment: 2},
+	}, detachments())
+	fx.detached(info.ID)
+}
+
 // A window that is already retired is refused: a terminal is not handed to a page nobody can reach, and it stays
 // as it was.
 func TestARetiredWindowCannotListOrAttachAndTheTerminalStaysDetached(t *testing.T) {

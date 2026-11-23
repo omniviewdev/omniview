@@ -56,8 +56,9 @@ type TerminalModes struct {
 
 // Replay is the output a page needs to show a terminal again: the bytes from Start to End of the session's
 // one sequence of output, and the facts an emulator needs to show them as they were. It describes EXACTLY the
-// output the page does not have: the events that come after the attach continue at End, with no byte lost and
-// none repeated, and an event whose offset is below End is already in Data.
+// output the page does not have: the events that come after the attach continue at End, with no byte at or
+// above it lost, and an event that lies below End is already in Data. Such an event may still reach the page after
+// the answer (an event and a reply travel apart): the page drops EVERY event it has the bytes of, held or live.
 type Replay struct {
 	// Start is the offset of the first byte of Data. It is the offset the page asked for (FromOffset) when the
 	// host still has it, and then the page's emulator goes on from where it was. Otherwise it is the oldest
@@ -102,6 +103,11 @@ type Attached struct {
 	// Ended is set when the shell had already ended while no page was attached: Replay is what it wrote, this
 	// is how it ended, and no live output follows. (The CLOSE event of such a terminal went to nobody.)
 	Ended *End `json:"ended,omitempty"`
+	// Attachment is the number of this attachment: the window that opened the terminal held attachment 0, and
+	// every attach that took it, or took it back after a detach, is the next number. An event that says a page
+	// lost the terminal (Detachment) carries the number of the attachment that ended, so a page knows the event
+	// is its own when the number is the one it holds, and that it is not when it is the number before.
+	Attachment uint64 `json:"attachment"`
 }
 
 // DetachRequest is the second argument of DetachTerminal.
@@ -119,6 +125,29 @@ type Detached struct {
 	// before: Unix milliseconds.
 	LeaseMs            int   `json:"lease_ms"`
 	LeaseExpiresUnixMs int64 `json:"lease_expires_unix_ms"`
+}
+
+// DetachedBy says why a page no longer has a terminal it attached.
+type DetachedBy string
+
+const (
+	// DetachedByTakeover: another page attached the terminal, which belongs to that page's window now.
+	DetachedByTakeover DetachedBy = "taken-over"
+	// DetachedByRequest: DetachTerminal was called, by the window that owned the terminal.
+	DetachedByRequest DetachedBy = "requested"
+	// DetachedByWindow: the window that owned the terminal went away.
+	DetachedByWindow DetachedBy = "window-retired"
+)
+
+// Detachment is what the host tells, on core/exec/signal/DETACHED/<id>, when a page lost a terminal it had
+// attached: By says why and Attachment is the number of the attachment that ended (Attached.Attachment; 0 for the
+// window that opened the terminal). It is sent to every window, as every event is, so a page acts on it only
+// when the number is the one it holds: the page that took the terminal over holds the next number. It is told
+// when a page that held the terminal lost it, and not when a terminal that nobody held changed hands, and the end
+// of the terminal is not one: that is the CLOSE event.
+type Detachment struct {
+	By         DetachedBy `json:"by"`
+	Attachment uint64     `json:"attachment"`
 }
 
 // Released is what a window going away did to its terminals: how many it detached (those that have a page key)

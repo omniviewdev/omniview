@@ -216,10 +216,13 @@ func (s *ServiceWrapper) ListTerminals(ctx context.Context, pageKey string) ([]t
 // request.from_offset is the offset of the first byte the page does not have (absent: the page has nothing).
 // The answer's replay is exactly the output from there to replay.end, with the size and the modes that
 // output was written under and the ones now; the terminal's events continue at replay.end, with no byte lost
-// and none repeated, and an event whose offset is below replay.end is already in the replay. The page listens
-// first, then attaches, then drops what the replay covers. It acknowledges what it takes in from events and
-// never the replay. A terminal that ended while no page was attached answers its replay and how it ended.
-// A caller that may not attach is told what is told of a terminal that is not there.
+// at or above it. An event below it is already in the replay, was handed to the transport before the answer,
+// and may still reach the page after it: the page drops every event at or below what it has, held or live. The
+// page listens first, then attaches. It acknowledges what it takes in from events and never the replay. The
+// answer's attachment is the number of this attachment: the page that held the terminal before is told, on
+// core/exec/signal/DETACHED/<id>, that its attachment ended. A terminal that ended while no page was attached
+// answers its replay and how it ended. A caller that may not attach is told what is told of a terminal that
+// is not there.
 func (s *ServiceWrapper) AttachTerminal(ctx context.Context, sessionID string, request terminal.AttachRequest) (*terminal.Attached, error) {
 	window, _ := ctx.Value(application.WindowKey).(application.Window)
 	owner, err := s.terminalOwner(window)
@@ -242,7 +245,10 @@ func (s *ServiceWrapper) AttachTerminal(ctx context.Context, sessionID string, r
 // DetachTerminal leaves a terminal waiting for a page, as the window going away does, without waiting for the
 // realm to notice: a page that is leaving says so, and the shell is held at once. request.lease_ms is how
 // long to keep it (zero: the terminal's own lease; more than thirty minutes is cut to it) and the answer says
-// the lease that applies and when it ends. A terminal that is already detached stays as it is.
+// the lease that applies and when it ends. A terminal that is already detached stays as it is. The window that
+// owns the terminal detaches it; the key detaches only a terminal that no window owns, so that a tab that was
+// displaced by a copy of it (which shares the key) cannot detach what the other tab shows: it is told what is
+// told of a terminal that is not there.
 func (s *ServiceWrapper) DetachTerminal(ctx context.Context, sessionID string, request terminal.DetachRequest) (*terminal.Detached, error) {
 	window, _ := ctx.Value(application.WindowKey).(application.Window)
 	owner, err := s.terminalOwner(window)

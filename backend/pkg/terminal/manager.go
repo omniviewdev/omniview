@@ -82,6 +82,8 @@ type Manager struct {
 	replayBytes int
 	// offsets is the sink as an OffsetSink when it is one: a terminal with a page key is delivered through it.
 	offsets OffsetSink
+	// detachments is the sink as a DetachmentSink when it is one: it is told when a page lost its terminal.
+	detachments DetachmentSink
 
 	mu       sync.RWMutex
 	sessions map[string]*session
@@ -92,6 +94,9 @@ type Manager struct {
 	// tombs are the terminals with a page key that ended by themselves while no page was attached, oldest first,
 	// TombstoneLimit at most: the page that comes back finds how they ended and what they wrote.
 	tombs []*tombstone
+	// tombTimer waits for the tombstone that expires first, to free it: nil when there is none, and once the host
+	// shuts down.
+	tombTimer *time.Timer
 }
 
 // endedMemory is how many ended sessions' ids the manager remembers.
@@ -111,11 +116,12 @@ func (m *Manager) rememberEnded(id string) {
 func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	_, reported := sink.(DeliveryReporter)
 	offsets, _ := sink.(OffsetSink)
+	detachments, _ := sink.(DetachmentSink)
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
-		replayBytes: ReplayBytes, offsets: offsets,
-		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil,
+		replayBytes: ReplayBytes, offsets: offsets, detachments: detachments,
+		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil,
 	}
 	go m.forwardSignals()
 	go m.shutdownWhenDone()
@@ -156,8 +162,13 @@ type session struct {
 	// step under it, and an attach takes its snapshot under it, so the snapshot and the events that follow it
 	// meet at one offset.
 	outMu sync.Mutex
-	ring  *replayRing
-	queue *inputQueue
+	// emitMu orders the hand-over of a read to the sink with an attach, for a terminal that has a page key: the
+	// reader holds it from the moment it numbers a read until the sink has the event, and an attach takes it
+	// first, so that every read the replay holds is out before the attach answers, and none is numbered between
+	// the snapshot and the answer. It is the outermost lock: before Manager.mu, mu and outMu.
+	emitMu sync.Mutex
+	ring   *replayRing
+	queue  *inputQueue
 	// flow is the credit that paces the session's output.
 	flow *flowControl
 
@@ -176,7 +187,7 @@ type session struct {
 	// done is closed when the session is gone: its CLOSE delivered and its resources released.
 	done chan struct{}
 
-	// mu guards what changes as pages come and go. The order of the locks is Manager.mu, mu, outMu, flow.
+	// mu guards what changes as pages come and go. The order of the locks is emitMu, Manager.mu, mu, outMu, flow.
 	mu       sync.Mutex
 	fate     fate
 	attached bool
@@ -190,6 +201,9 @@ type session struct {
 	leaseTimer *time.Timer
 	leaseEnd   time.Time
 	leaseLen   time.Duration
+	// attachment numbers the attachments of the terminal: 0 for the window that opened it, and one more for
+	// every attach (Attached.Attachment).
+	attachment uint64
 }
 
 func (s *session) decide(f fate) bool {
@@ -497,12 +511,13 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: defaultLimits(), Environment: environmentOf(m.probe()),
 			LeaseMs: int(lease / time.Millisecond),
 		},
-		cmd: cmd, master: polled, cancel: cancel, outMu: sync.Mutex{}, ring: newReplayRing(m.replayBytes, Size{Cols: int(cols), Rows: int(rows)}),
+		cmd: cmd, master: polled, cancel: cancel, outMu: sync.Mutex{}, emitMu: sync.Mutex{},
+		ring:  newReplayRing(m.replayBytes, Size{Cols: int(cols), Rows: int(rows)}),
 		queue: nil, flow: m.newCredit(id),
 		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
 		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
-		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0,
+		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0,
 	}
 	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
 	return s, nil
@@ -574,8 +589,7 @@ func (m *Manager) read(s *session) error {
 		if n > 0 {
 			// The event owns its bytes: the read buffer is reused.
 			data := slices.Clone(buf[:n])
-			offset := s.record(data)
-			m.emit(s, offset, data)
+			m.deliver(s, data)
 			if !m.reported {
 				// A sink that returns when the transport has taken the bytes has delivered them.
 				s.flow.delivered(n)
@@ -891,6 +905,9 @@ func (m *Manager) CloseSession(sessionID string) error {
 func (m *Manager) Shutdown() {
 	m.mu.Lock()
 	m.closing.Store(true)
+	// The host is quitting: no page comes back for the end of a terminal, and no timer is left to free it.
+	m.tombs = nil
+	m.armTombstoneTimerLocked(time.Now())
 	m.mu.Unlock()
 	m.awaitLaunches()
 	m.mu.RLock()
