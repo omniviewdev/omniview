@@ -15,10 +15,26 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as terminal$0 from "../../terminal/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as nativeapps$0 from "../../../../internal/nativeapps/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as exec$0 from "../../../../../plugin-sdk/pkg/v1/exec/models.js";
+
+/**
+ * AckTerminal tells a terminal that n more bytes of its output were taken in by the client: written into its
+ * emulator, or deliberately dropped. A terminal UI MUST call it: its first call turns flow on, from then on
+ * only its acknowledgements credit, and it must acknowledge every byte it parses, dropped bytes included.
+ * Without acknowledgements a flood grows the host's memory without bound (a server build with a reader that
+ * keeps up, a native webview that stalls): the transport's credit alone does not bound what Wails retains
+ * after the point where the host credits. A client that never calls it (the legacy terminal) still gets every
+ * byte, paced by what its transport took (docs/ui-next/status/T1-go.md, 2.8.6).
+ */
+export function AckTerminal(sessionID: string, n: number): $CancellablePromise<void> {
+    return $Call.ByID(3740379753, sessionID, n);
+}
 
 export function AttachSession(sessionID: string): $CancellablePromise<[exec$0.Session | null, string]> {
     return $Call.ByID(93318075, sessionID).then(($result: any) => {
@@ -38,9 +54,22 @@ export function CreateSession(plugin: string, connectionID: string, encoded: str
     });
 }
 
-export function CreateTerminal(opts: exec$0.SessionOptions): $CancellablePromise<exec$0.Session | null> {
-    return $Call.ByID(4182196712, opts).then(($result: any) => {
-        return $$createType1($result);
+/**
+ * CreateTerminal starts a shell on this machine for the window that asks. opts names it as for any
+ * session (its id, if the caller chose one so that it can listen first, and its command; empty is the
+ * account's login shell) and launch says where and how it starts: the directory (empty is the user's
+ * home) and the size the pty is opened at before the shell starts. The answer states the shell, the
+ * directory it started in and the size that was applied. Every terminal is paced by credit: the host stops
+ * reading a shell whose client does not take its output (T1-go.md, 2.8.6).
+ * 
+ * The shell belongs to the window and ends with it: when the window closes, or the page it served is
+ * gone (the realm says so for both), the window's terminals are ended, and a tab restored in a new page
+ * says they ended. A call that comes from no window starts nothing: a terminal that nothing could ever
+ * retire would outlive everything.
+ */
+export function CreateTerminal(opts: exec$0.SessionOptions, launch: terminal$0.Launch): $CancellablePromise<terminal$0.Session | null> {
+    return $Call.ByID(4182196712, opts, launch).then(($result: any) => {
+        return $$createType3($result);
     });
 }
 
@@ -50,15 +79,26 @@ export function DetachSession(sessionID: string): $CancellablePromise<exec$0.Ses
     });
 }
 
+/**
+ * GetCwd says which directory a terminal's shell is in now: the shell's own current working directory,
+ * read from the system when asked, or why it cannot be read (see terminal.Directory). A session of a plugin
+ * runs on another machine and answers unknown.
+ */
+export function GetCwd(sessionID: string): $CancellablePromise<terminal$0.Directory> {
+    return $Call.ByID(3534704186, sessionID).then(($result: any) => {
+        return $$createType4($result);
+    });
+}
+
 export function GetHandler(plugin: string, resource: string): $CancellablePromise<exec$0.Handler | null> {
     return $Call.ByID(1779192716, plugin, resource).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType6($result);
     });
 }
 
 export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: exec$0.Handler } }> {
     return $Call.ByID(4033362541).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType8($result);
     });
 }
 
@@ -67,7 +107,7 @@ export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in str
  */
 export function GetNativeTerminalApplications(): $CancellablePromise<nativeapps$0.Application[]> {
     return $Call.ByID(2940999236).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType10($result);
     });
 }
 
@@ -77,7 +117,7 @@ export function GetNativeTerminalSupport(): $CancellablePromise<boolean> {
 
 export function GetPluginHandlers(plugin: string): $CancellablePromise<{ [_ in string]?: exec$0.Handler }> {
     return $Call.ByID(2619212338, plugin).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType7($result);
     });
 }
 
@@ -91,15 +131,25 @@ export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
     return $Call.ByID(3881019319, pluginID);
 }
 
+/**
+ * IsBusy says whether something other than the shell holds the terminal's foreground: idle, busy (with
+ * the program's name where the platform gives it) or unknown. The UI asks when the user closes a terminal.
+ */
+export function IsBusy(sessionID: string): $CancellablePromise<terminal$0.Foreground> {
+    return $Call.ByID(2676831401, sessionID).then(($result: any) => {
+        return $$createType11($result);
+    });
+}
+
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3006426324).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType12($result);
     });
 }
 
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType13($result);
     });
 }
 
@@ -115,18 +165,38 @@ export function ResizeSession(sessionID: string, rows: number, cols: number): $C
     return $Call.ByID(1492965384, sessionID, rows, cols);
 }
 
+/**
+ * ResizeTerminal sets the size of a local terminal; seq is as for WriteTerminal.
+ */
+export function ResizeTerminal(sessionID: string, seq: number, rows: number, cols: number): $CancellablePromise<void> {
+    return $Call.ByID(2152154508, sessionID, seq, rows, cols);
+}
+
 export function WriteSession(sessionID: string, data: string): $CancellablePromise<void> {
     return $Call.ByID(486465741, sessionID, data);
+}
+
+/**
+ * WriteTerminal applies input to a local terminal. seq is the caller's sequence number for the session,
+ * counted up from 1, one for each write or resize: calls the transport delivers out of order are applied
+ * in sequence order. Zero is "no number": the call is applied in the order it arrived.
+ */
+export function WriteTerminal(sessionID: string, seq: number, data: string): $CancellablePromise<void> {
+    return $Call.ByID(3626239967, sessionID, seq, data);
 }
 
 // Private type creation functions
 const $$createType0 = exec$0.Session.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = exec$0.Handler.createFrom;
+const $$createType2 = terminal$0.Session.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = $Create.Map($Create.Any, $$createType2);
-const $$createType5 = $Create.Map($Create.Any, $$createType4);
-const $$createType6 = nativeapps$0.Application.createFrom;
-const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = $Create.Array($Create.Any);
-const $$createType9 = $Create.Array($$createType1);
+const $$createType4 = terminal$0.Directory.createFrom;
+const $$createType5 = exec$0.Handler.createFrom;
+const $$createType6 = $Create.Nullable($$createType5);
+const $$createType7 = $Create.Map($Create.Any, $$createType5);
+const $$createType8 = $Create.Map($Create.Any, $$createType7);
+const $$createType9 = nativeapps$0.Application.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = terminal$0.Foreground.createFrom;
+const $$createType12 = $Create.Array($Create.Any);
+const $$createType13 = $Create.Array($$createType1);

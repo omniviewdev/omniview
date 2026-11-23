@@ -138,5 +138,6 @@ export * as mcprelay from './bindings/github.com/omniviewdev/omniview/internal/m
 export * as registry from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/registry/models';
 export * as ui from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/ui/models';
 export * as utils from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/utils/models';
+export * as terminal from './bindings/github.com/omniviewdev/omniview/backend/pkg/terminal/models';
 export * as time from './bindings/time/models';
 export * as window from './bindings/github.com/omniviewdev/omniview/backend/window/models';

@@ -54,7 +54,7 @@ func TestExplicitInstalledShellAndArguments(t *testing.T) {
 	if _, _, err := Resolve([]string{"/bin/cat"}); err == nil {
 		t.Fatal("unsupported explicit shell silently accepted")
 	}
-	if _, _, err := Resolve([]string{"/missing/shell"}); err == nil {
+	if _, checkErr := Check("/missing/shell"); checkErr == nil {
 		t.Fatal("missing explicit shell silently accepted")
 	}
 }

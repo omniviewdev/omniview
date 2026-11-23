@@ -26,7 +26,7 @@ type Rig = {
 const text = (value: string): string => btoa(value);
 const bytes = (value: string): number[] => [...new TextEncoder().encode(value)];
 
-function rig(options: { readonly auto?: boolean; readonly limit?: number; readonly settleMs?: number; readonly gone?: (error: unknown) => boolean } = {}): Rig {
+function rig(options: { readonly auto?: boolean; readonly limit?: number; readonly settleMs?: number; readonly gone?: (error: unknown) => boolean; readonly size?: false | { readonly cols: number; readonly rows: number } } = {}): Rig {
   const calls: string[] = [];
   const log: Record<string, unknown[][]> = { create: [], write: [], resize: [], close: [] };
   const listeners = new Map<string, Set<(data: unknown) => void>>();
@@ -45,7 +45,7 @@ function rig(options: { readonly auto?: boolean; readonly limit?: number; readon
   };
 
   const transport: ExecTransport = {
-    create: async (id) => answer('create', [id]),
+    create: async (id, size) => answer('create', [id, size.cols, size.rows]),
     write: async (id, data) => answer('write', [id, data]),
     resize: async (id, rows, cols) => answer('resize', [id, rows, cols]),
     close: async (id) => answer('close', [id]),
@@ -68,6 +68,12 @@ function rig(options: { readonly auto?: boolean; readonly limit?: number; readon
   feed.subscribe(() => {
     woken += 1;
   });
+  // The view measuring itself, as the body does when it mounts: the process starts at that size (`size: false` is a view that has not measured).
+  if (options.size !== false) {
+    const size = options.size ?? { cols: 80, rows: 24 };
+    feed.resize(size.cols, size.rows);
+  }
+
   return {
     feed,
     calls,
@@ -115,7 +121,7 @@ describe('starting a session', () => {
   it('names the session itself: the id it asks the backend for is the one its events carry', () => {
     const { feed, of } = rig();
     expect(feed.id).toBe('term-1');
-    expect(of('create')).toEqual([['term-1']]);
+    expect(of('create')).toEqual([['term-1', 80, 24]]);
     expect(streamEvent('term-1', 'stdout')).toBe('core/exec/stream/stdout/term-1');
     expect(signalEvent('term-1', 'CLOSE')).toBe('core/exec/signal/CLOSE/term-1');
   });
@@ -305,46 +311,97 @@ describe('what the user types', () => {
 });
 
 describe('the size of the screen', () => {
-  it('is sent as ROWS then COLUMNS, as the binding takes them (the old terminal had them swapped once, host #54), and a size that was asked for before the process exists is sent the moment it does, with no wait', async () => {
-    const { feed, of, pending } = rig({ auto: false });
+  it('starts the process AT the first size, columns and rows in the call that starts it, and sends no resize after it: the shell lays out its first prompt for the size the view measured', async () => {
+    const { feed, of, pending } = rig({ auto: false, size: false });
+    expect(of('create')).toEqual([]);
     feed.resize(132, 41);
+    expect(of('create')).toEqual([['term-1', 132, 41]]);
+    pending('create')[0]?.resolve();
+    await settle();
+    expect(feed.getSnapshot()).toEqual({ state: 'running' });
+    vi.advanceTimersByTime(1000);
+    await settle();
+    expect(of('resize')).toEqual([]);
+  });
+
+  it('starts at the whole cells of a size that is not whole: a cell is a whole thing', () => {
+    const { feed, of } = rig({ size: false });
+    feed.resize(100.9, 20.2);
+    expect(of('create')).toEqual([['term-1', 100, 20]]);
+  });
+
+  it('does not start the process before it has a size, with every listener in place, and what is typed meanwhile is sent once it runs', async () => {
+    const { feed, of, listeners } = rig({ size: false });
+    feed.write('ls\r');
+    await settle();
+    expect(of('create')).toEqual([]);
+    expect(feed.getSnapshot()).toEqual({ state: 'starting' });
+    expect(listeners()).toBe(4);
+    feed.resize(100, 20);
+    await settle();
+    expect(of('create')).toEqual([['term-1', 100, 20]]);
+    expect(of('write')).toEqual([['term-1', text('ls\r')]]);
+  });
+
+  it('lets a session that never got a size be closed: nothing started, nothing to end, every listener released, and a size that comes later starts nothing', async () => {
+    const { feed, of, listeners } = rig({ size: false });
+    await feed.close();
+    expect(of('create')).toEqual([]);
+    expect(of('close')).toEqual([]);
+    expect(listeners()).toBe(0);
+    feed.resize(100, 20);
+    await settle();
+    expect(of('create')).toEqual([]);
+  });
+
+  it('settles a size that came while the process was starting like any other, and sends it once the process runs and the size has stood still, as one more call: ROWS then COLUMNS, as the binding takes them (the old terminal had them swapped once, host #54)', async () => {
+    const { feed, of, pending } = rig({ auto: false, size: false, settleMs: 10 });
+    feed.resize(132, 41);
+    feed.resize(100, 20);
     expect(of('resize')).toEqual([]);
     pending('create')[0]?.resolve();
     await settle();
-    expect(of('resize')).toEqual([['term-1', 41, 132]]);
-  });
-
-  it('sends the first size of a running session at once and settles every one after it: fifty sizes in a drag are one message when the size stood still', async () => {
-    const { feed, of } = rig({ settleMs: 100 });
-    await settle();
-    feed.resize(100, 20);
+    expect(of('create')).toEqual([['term-1', 132, 41]]);
+    expect(of('resize')).toEqual([]);
+    vi.advanceTimersByTime(20);
     await settle();
     expect(of('resize')).toEqual([['term-1', 20, 100]]);
+  });
+
+  it('starts nothing at a size the host would refuse: a first size past 1,000 cells waits for one it can start at', () => {
+    const { feed, of } = rig({ size: false });
+    feed.resize(1001, 24);
+    expect(of('create')).toEqual([]);
+    feed.resize(1000, 24);
+    expect(of('create')).toEqual([['term-1', 1000, 24]]);
+  });
+
+  it('settles every size after the first: fifty sizes in a drag are one message when the size stood still', async () => {
+    const { feed, of } = rig({ settleMs: 100 });
+    await settle();
     for (let step = 0; step < 50; step += 1) {
       feed.resize(100 + step, 20 + (step % 7));
       vi.advanceTimersByTime(2);
     }
 
-    expect(of('resize')).toHaveLength(1);
+    expect(of('resize')).toEqual([]);
     vi.advanceTimersByTime(100);
     await settle();
-    expect(of('resize')).toEqual([['term-1', 20, 100], ['term-1', 20 + (49 % 7), 149]]);
+    expect(of('resize')).toEqual([['term-1', 20 + (49 % 7), 149]]);
   });
 
   it('restarts the settling for every size: a size that keeps changing is not sent until it stops', async () => {
     const { feed, of } = rig({ settleMs: 100 });
     await settle();
-    feed.resize(100, 20);
-    await settle();
     for (let step = 0; step < 10; step += 1) {
-      vi.advanceTimersByTime(90);
       feed.resize(101 + step, 20);
+      vi.advanceTimersByTime(90);
     }
 
-    expect(of('resize')).toHaveLength(1);
+    expect(of('resize')).toEqual([]);
     vi.advanceTimersByTime(100);
     await settle();
-    expect(of('resize')).toHaveLength(2);
+    expect(of('resize')).toEqual([['term-1', 20, 110]]);
   });
 
   it('keeps ONE call in flight and the newest size wins: the sizes that came while it was out are one more call with the last of them', async () => {
@@ -352,6 +409,7 @@ describe('the size of the screen', () => {
     pending('create')[0]?.resolve();
     await settle();
     feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
     expect(of('resize')).toEqual([['term-1', 20, 100]]);
     feed.resize(110, 21);
     vi.advanceTimersByTime(20);
@@ -363,26 +421,25 @@ describe('the size of the screen', () => {
     expect(of('resize')).toEqual([['term-1', 20, 100], ['term-1', 22, 120]]);
   });
 
-  it('sends nothing for the size it last sent, and nothing that is not a size: below 1 cell, past 65,535, not a number', async () => {
+  it('sends nothing for the size it started at or last sent, and nothing that is not a size: below 1 cell, past 1,000, not a number', async () => {
     const { feed, of } = rig({ settleMs: 10 });
     await settle();
-    feed.resize(100, 20);
-    await settle();
-    feed.resize(100, 20);
-    feed.resize(0, 20);
-    feed.resize(100, 0);
-    feed.resize(70_000, 20);
-    feed.resize(Number.NaN, 20);
-    feed.resize(100, Number.POSITIVE_INFINITY);
+    feed.resize(80, 24);
+    feed.resize(0, 24);
+    feed.resize(80, 0);
+    feed.resize(70_000, 24);
+    feed.resize(Number.NaN, 24);
+    feed.resize(80, Number.POSITIVE_INFINITY);
     vi.advanceTimersByTime(50);
     await settle();
-    expect(of('resize')).toEqual([['term-1', 20, 100]]);
+    expect(of('resize')).toEqual([]);
   });
 
-  it('floors a size that is not whole: a cell is a whole thing', async () => {
-    const { feed, of } = rig();
+  it('floors a later size that is not whole', async () => {
+    const { feed, of } = rig({ settleMs: 10 });
     await settle();
     feed.resize(100.9, 20.2);
+    vi.advanceTimersByTime(20);
     await settle();
     expect(of('resize')).toEqual([['term-1', 20, 100]]);
   });
@@ -392,6 +449,7 @@ describe('the size of the screen', () => {
     pending('create')[0]?.resolve();
     await settle();
     feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
     pending('resize')[0]?.reject(new Error('Failed to resize'));
     await settle();
     expect(warn).toHaveBeenCalled();
@@ -406,7 +464,9 @@ describe('the size of the screen', () => {
     pending('create')[0]?.resolve();
     await settle();
     feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
     feed.resize(110, 21);
+    vi.advanceTimersByTime(20);
     const closing = feed.close();
     pending('resize')[0]?.resolve();
     await settle();
@@ -420,6 +480,7 @@ describe('the size of the screen', () => {
     pending('create')[0]?.resolve();
     await settle();
     feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
     feed.resize(110, 21);
     vi.advanceTimersByTime(20);
     expect(of('resize')).toEqual([['term-1', 20, 100]]);
@@ -565,6 +626,7 @@ describe('closing the session', () => {
     const { feed, emit, of } = rig({ settleMs: 10 });
     await settle();
     feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
     await settle();
     emit(streamEvent('term-1', 'stdout'), text('late'));
     feed.resize(110, 21);

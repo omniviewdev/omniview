@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Negative controls for the fixes of the independent review of #658 (B1 flow-paused close, B2 shutdown
+# hangup, B3 drain cap, S-a environment, S-b stale kill, S-c credit for every client). Each fault puts one
+# fix back to the behaviour the review found, in a scratch copy of ONE file built with `go test -overlay`;
+# the worktree is never touched. Each line printed is RED when the named tests catch the fault, "GREEN
+# (BAD)" when they do not, "NOT APPLIED" when the sed pattern is gone. B1 is a macOS fault (a Linux pty does
+# not wait for output on close): it is green on Linux, as the review found; B3 is a Linux fault.
+set -u
+cd "${ROOT:-$(git rev-parse --show-toplevel)}"
+export GOWORK=off GOTOOLCHAIN=local
+unset CI
+scratch=$(mktemp -d)
+
+run() { # package name file sed-expression test-regex
+	local pkg="$1" name="$2" file="$3" expr="$4" tests="$5"
+	if [ -n "${ONLY:-}" ] && [[ "$name" != *"$ONLY"* ]]; then return; fi
+	local copy="$scratch/$(basename "$file")"
+	sed -E "$expr" "$file" >"$copy"
+	if cmp -s "$file" "$copy"; then
+		echo "NOT APPLIED  $name (pattern not found)"
+		return
+	fi
+	printf '{"Replace":{"%s":"%s"}}' "$PWD/$file" "$copy" >"$scratch/overlay.json"
+	if out=$(go test "$pkg" ${TAGS:+-tags "$TAGS"} -overlay "$scratch/overlay.json" -count=1 -timeout 200s -run "$tests" 2>&1); then
+		echo "GREEN (BAD)  $name"
+	else
+		failed=$(echo "$out" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')
+		if [ -z "$failed" ]; then
+			echo "NOT A DETECTION  $name (no test failed: the build or the setup did)"
+		else
+			echo "RED          $name :: $failed"
+		fi
+	fi
+}
+
+terminal=./backend/pkg/terminal/
+exec=./backend/pkg/plugin/exec/
+mgr=backend/pkg/terminal/manager.go
+env=backend/pkg/terminal/env.go
+flow=backend/pkg/terminal/flow.go
+sink=backend/pkg/plugin/exec/terminal.go
+
+run "$terminal" "B1: closing does not release the pacing (macOS)" "$mgr" 's/^\ts\.flow\.release\(\)$/\t_ = s.flow/' 'TestClosingASessionThatIsPaused'
+run "$terminal" "B2: the shell dies with the host context, no hangup" "$mgr" 's/ctx, cancel := context\.WithCancel\(context\.Background\(\)\)/ctx, cancel := context.WithCancel(m.ctx)/' 'TestAGracefulShutdown'
+run "$terminal" "B2: shutdown ends nothing" "$mgr" 's/^\t\ts\.beginClose\(ClosedByShutdown\)$/\t\t_ = s/' 'TestShutdownEndsEverySession'
+run "$terminal" "B3: no drain cap (Linux)" "$mgr" 's/if !now\.Before\(end\) \{/if false {/; s/if !end\.IsZero\(\) \&\& errors\.Is\(err, os\.ErrDeadlineExceeded\) \&\& !time\.Now\(\)\.Before\(end\) \{/if false {/; s/if deadline\.After\(end\) \{/if false {/' 'TestASessionEndsAfterTheDrainCap'
+run "$terminal" "B3: the cap is not counted" "$mgr" 's/end\.DroppedBytes = s\.dropped/end.DroppedBytes = 0/' 'TestASessionEndsAfterTheDrainCap'
+run "$terminal" "S-b: no kill of the foreground at the grace" "$mgr" '/^\ts\.signalForeground\(syscall\.SIGKILL\)$/d' 'TestTheKillAtTheGrace'
+run "$terminal" "S-b: the kill goes to the group the hangup found" "$mgr" 's/^func \(s \*session\) hangup\(grace time\.Duration\) \{$/func (s *session) hangup(grace time.Duration) {\n\tfound, _ := s.foreground()/; s/^\ts\.signalForeground\(syscall\.SIGKILL\)$/\t_ = syscall.Kill(-found, syscall.SIGKILL)/' 'TestTheKillAtTheGrace'
+run "$terminal" "S-a: WAILS_ variables reach the shell" "$env" 's/"OMNIVIEW_", "PLUGIN_", "WAILS_", /"OMNIVIEW_", "PLUGIN_", /' 'TestTheShellGetsTheLaunchEnvironment'
+run "$terminal" "S-a: the launching terminal's identity reaches the shell" "$env" 's/"ITERM_", "KITTY_", "WEZTERM_", "ALACRITTY_", "GHOSTTY_", "VSCODE_", "LC_TERMINAL"/"LC_TERMINAL"/' 'TestTheShellGetsTheLaunchEnvironment'
+run "$terminal" "S-a: the shell starts from the live process environment" "$mgr" 's/base: shellenv\.LaunchEnvironment,/base: os.Environ,/' 'TestANewManagerStartsShellsFromTheLaunchEnvironment'
+run "$terminal" "S-c: a reporting sink is credited when Output returns" "$mgr" 's/if !m\.reported \{/if true {/' 'TestTheHostStopsReadingAtTheHighMark'
+run "$terminal" "S-c: the client does not take over the credit" "$flow" 's/^\tif f\.explicit \{$/\tif false {/' 'TestCreditComes|TestTheFirstAcknowledgement'
+run "$terminal" "S-c: an attach does not forget the debt" "$flow" 's/^\tf\.unacked = 0$/\tf.unacked = f.unacked/' 'TestCreditComes|TestAnAttachForgets'
+run "$exec" "S-c: the exec sink does not say it reports delivery (credit at Emit return)" "$sink" 's/^func \(s localSink\) ReportsDelivery\(\) \{\}$/func (s localSink) ReportsDeliveryNot() {}/' 'TestAStalledClientCannotTakeTheHostsMemory'
+run "$exec" "S-c: the stdout payload never reports delivery" "$sink" 's/^\tif countsAsDelivery\(\) \{$/\tif false {/' 'TestAStalledClientCannotTakeTheHostsMemory|TestAClientThatNeverAcknowledges'
+TAGS=server run "$exec" "S-c: a server build counts the window's serialization as delivery (the real-host finding)" backend/pkg/plugin/exec/delivery_server.go 's/return serializedForAClientSocket\(\)/return true/' 'TestInAServerBuildOnlyTheSocketWritersSerializationIsDelivery|TestAStalledClientCannotTakeTheHostsMemory'
+TAGS=server run "$exec" "S-c: the socket writer is not recognized (credit never comes)" backend/pkg/plugin/exec/delivery.go 's/strings\.Contains\(function, "\/wsjson\."\) \|\| strings\.HasSuffix\(function, "json\.\(\*Encoder\)\.Encode"\)/strings.Contains(function, "\/never-matches\/")/' 'TestTheSerializationThatWritesAClientSocketIsTheOneThatIsRecognized|TestAClientThatNeverAcknowledges'
+run "$terminal" "S-c watchdog: no ceiling" "$flow" 's/f\.stepped >= FlowStallCeilingBytes/false/; s/min\(FlowStepBytes, FlowStallCeilingBytes-f\.stepped\)/FlowStepBytes/' 'TestTheWatchdogSteps|TestATransportThatNeverCredits'
+run "$terminal" "S-c watchdog: it steps a client that acknowledges" "$flow" 's/if f\.explicit \|\| f\.released \|\| f\.stepped/if f.released || f.stepped/; s/!f\.explicit \&\& f\.stall > 0/f.stall > 0/' 'TestTheWatchdogSteps'
+run "$terminal" "S-c watchdog: it never steps (a freeze at the high mark)" "$flow" 's/^\tif f\.explicit \|\| f\.released \|\| f\.stepped >= FlowStallCeilingBytes \{$/\tif true {/' 'TestTheWatchdogSteps|TestATransportThatNeverCredits'
+rm -rf "$scratch"

@@ -116,7 +116,8 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
     });
     // No configured shell: an empty command lets the backend start the user's login shell.
     const shell = settings['terminal.defaultShell'];
-    ExecClient.CreateTerminal(SessionOptions.createFrom({ command: typeof shell === 'string' && shell.length > 0 ? [shell] : [] }))
+    // The legacy terminal fits itself once it is attached and resizes then, so it asks for no size: zero is the host's default.
+    ExecClient.CreateTerminal(SessionOptions.createFrom({ command: typeof shell === 'string' && shell.length > 0 ? [shell] : [] }), { cols: 0, rows: 0 })
       .then((session) => {
         if (!session) {
           throw new Error('terminal session was not created');

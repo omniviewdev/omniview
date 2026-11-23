@@ -47,7 +47,7 @@ var Terminal = settings.Category{
 				if !ok {
 					return settings.ValidationResult{Code: "shell_type", Message: "Enter a shell executable name or path."}
 				}
-				path, _, err := shellenv.Resolve([]string{val})
+				path, err := shellenv.Check(val)
 				if err != nil {
 					return settings.ValidationResult{Code: "shell_executable", Message: "Choose an executable shell installed on this system."}
 				}

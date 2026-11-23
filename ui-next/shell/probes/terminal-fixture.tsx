@@ -163,8 +163,10 @@ function typed(id: string, pty: Pty, data: string): void {
 }
 
 const transport: ExecTransport = {
-  create: async (id) => {
-    ptys.set(id, { rows: 27, cols: 72, line: '' });
+  create: async (id, size) => {
+    // The pty opens at the size the view measured (the backend's `launch`); the log keeps it as the first size the pty was given.
+    ptys.set(id, { rows: size.rows, cols: size.cols, line: '' });
+    log.resizes.push({ id, rows: size.rows, cols: size.cols, at: performance.now() });
     log.created.push(id);
     setTimeout(() => {
       out(id, `\u001b[90mSynthetic shell: hello, size, colors, flood N [W], exit [code], fail\u001b[0m\r\n${PROMPT}`);

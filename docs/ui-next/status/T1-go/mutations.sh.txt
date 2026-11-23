@@ -1,0 +1,85 @@
+#!/bin/bash
+# Negative controls for T1-go: each fault is put into a SCRATCH copy of one source file and built with
+# `go test -overlay`; the worktree is never edited. A control passes when the test named for it turns red.
+export GOWORK=off GOTOOLCHAIN=local
+WT=/Users/joshuapare/Repos/omniviewdev/worktrees/t1-go-terminal-signals
+M=/tmp/t1go-mut
+rm -rf "$M" && mkdir -p "$M"
+cd "$WT" || exit 2
+
+# name | package | file | sed expression | test regexp
+run() {
+  name="$1"; pkg="$2"; file="$3"; expr="$4"; test="$5"
+  cp "$WT/$file" "$M/$name.go"
+  sed -i '' -e "$expr" "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+  out=$(go test -overlay="$M/$name.json" "$pkg" -run "$test" -count=1 -timeout 150s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E "^--- FAIL" | sed 's/ (.*//' | tr '\n' ' ')
+  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $test"
+  elif [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (no test failed: the build or the setup did)"
+  else echo "CONTROL $name: RED  $failed"; fi
+}
+
+run size-72x27 ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/&pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0}/\&pty.Winsize{Rows: 27, Cols: 72, X: 0, Y: 0}/' \
+  '^TestShellStartsAtTheRequestedSize$|^TestShellStartsAtTheDefaultSizeWhenNoneIsGiven$'
+
+run size-not-validated ./backend/pkg/terminal/ backend/pkg/terminal/errors.go \
+  's/case value < 0 || value > MaxDimension:/case false:/' \
+  '^TestStartRefusesAnAbsurdSizeBeforeAnythingStarts$'
+
+run end-never-signaled ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/case status.signal != 0:/case false:/' \
+  '^TestKilledBySignalsIsTypedWithNameAndNumber$'
+
+run end-exit-code-dropped ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/return End{Reason: EndExited, ExitCode: \&code,/return End{Reason: EndExited, ExitCode: nil,/' \
+  '^TestExitedWithACodeIsTypedAndFollowsTheLastOutput$|^TestExitedWithCodeZeroStatesZero$'
+
+run close-always-by-request ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/s.beginClose(by)$/s.beginClose(ClosedByRequest)/' \
+  '^TestClosedByTheWindowIsTypedAndEndsEveryShellOfTheOwnerOnly$'
+
+run foreground-always-idle ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/if foreground == shellGroup {/if true {/' \
+  '^TestForegroundIsIdleForAShellAtItsPromptBusyForAProgramAndNotBusyForABackgroundJob$'
+
+run foreground-background-job-busy ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/foreground > 0$/foreground > 0 \&\& false/' \
+  '^TestForegroundIsIdleForAShellAtItsPromptBusyForAProgramAndNotBusyForABackgroundJob$'
+
+run shell-identity-empty ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/Shell: Shell{Path: abs, Name: shellenv.Name(path)}/Shell: Shell{Path: "", Name: ""}/' \
+  '^TestTheAnswerNamesTheShellAndTheDirectoryItStartedIn$'
+
+run cwd-unstated ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/Cwd: home, Cols:/Cwd: "", Cols:/' \
+  '^TestTheAnswerNamesTheShellAndTheDirectoryItStartedIn$'
+
+run duplicate-id-allowed ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/if _, taken := m.sessions\[id\]; taken {/if _, taken := m.sessions[id]; taken \&\& false {/' \
+  '^TestASessionIdInUseIsRefusedAndTheFirstShellIsKept$'
+
+run queue-order-ignored ./backend/pkg/terminal/ backend/pkg/terminal/ordered.go \
+  's/case o.seq > q.next:/case false:/' \
+  '^TestQueueHoldsAnOperationThatArrivesAheadOfItsPredecessor$|^TestQueueRefusesASequenceNumberTooFarAhead$'
+
+run queue-unbounded ./backend/pkg/terminal/ backend/pkg/terminal/ordered.go \
+  's/if q.pending >= q.limit.ops || q.bytes >= q.limit.bytes {/if false {/' \
+  '^TestFloodingASessionIsRefusedTypedWhileTheShellDoesNotRead$|^TestQueueRefusesWhenItHoldsAsManyBytesAsItMay$'
+
+run master-not-closed-on-end ./backend/pkg/terminal/ backend/pkg/terminal/manager.go \
+  's/^\t_ = s.master.Close()$/\t_ = 0/' \
+  '^TestASessionWhoseShellDoesNotReadDoesNotBlockAnother$'
+
+run retire-subscriber-noop ./backend/pkg/plugin/exec/ backend/pkg/plugin/exec/service_wrapper.go \
+  's/s.Ctrl.CloseOwnedTerminals(key, terminal.ClosedByWindow)/_ = key/' \
+  '^TestANativeWindowClosingEndsItsTerminals$|^TestHundredTerminalsAcrossTwentyRetiredPagesLeaveNoShellAlive$'
+
+run create-unowned ./backend/pkg/plugin/exec/ backend/pkg/plugin/exec/service_wrapper.go \
+  's/session, err := s.Ctrl.CreateTerminal(ctx, owner, terminal.Options{/session, err := s.Ctrl.CreateTerminal(ctx, nil, terminal.Options{/' \
+  '^TestANativeWindowClosingEndsItsTerminals$'
+
+echo CONTROLS-DONE

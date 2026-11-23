@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Negative controls for the owner-ruling items of T1-go (login environment, TERM and friends, cwd,
+# hangup, flow control, untouched bytes). Each fault is applied with sed to a scratch copy of ONE file
+# and built with `go test -overlay`; the worktree is never touched. Run from anywhere in the worktree
+# (the file is kept as .txt: drop the suffix or `bash` it). Each line printed is RED when the named
+# tests catch the fault, "GREEN (BAD)" when they do not, "NOT APPLIED" when the sed pattern is gone.
+set -u
+cd "$(git rev-parse --show-toplevel)"
+export GOWORK=off GOTOOLCHAIN=local
+unset CI
+scratch=$(mktemp -d)
+
+run() { # name file sed-expression test-regex
+	local name="$1" file="$2" expr="$3" tests="$4"
+	local copy="$scratch/$(basename "$file")"
+	sed -E "$expr" "$file" >"$copy"
+	if cmp -s "$file" "$copy"; then
+		echo "NOT APPLIED  $name (pattern not found)"
+		return
+	fi
+	printf '{"Replace":{"%s":"%s"}}' "$PWD/$file" "$copy" >"$scratch/overlay.json"
+	if out=$(go test ./backend/pkg/terminal/ -overlay "$scratch/overlay.json" -count=1 -timeout 150s -run "$tests" 2>&1); then
+		echo "GREEN (BAD)  $name"
+	else
+		failed=$(echo "$out" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')
+		if [ -z "$failed" ]; then
+			echo "NOT A DETECTION  $name (no test failed: the build or the setup did)"
+		else
+			echo "RED          $name :: $failed"
+		fi
+	fi
+}
+
+env=backend/pkg/terminal/env.go
+mgr=backend/pkg/terminal/manager.go
+flow=backend/pkg/terminal/flow.go
+emu='TestTheShellIsToldItRuns|TestTerminalEnvironment'
+
+run "no TERM_PROGRAM marker" "$env" '/"TERM_PROGRAM=Omniview",/d' "$emu"
+run "no COLORTERM" "$env" '/"COLORTERM=truecolor",/d' "$emu"
+run "the user's locale is overridden" "$env" 's/if !localeSet \{/if !localeSet || true {/' "$emu"
+run "no default UTF-8 locale" "$env" 's/if !localeSet \{/if !localeSet \&\& false {/' "$emu"
+run "not a login shell" "$mgr" 's/path, args, err := m\.resolve\(opts.Command\)/path, args, err := func() (string, []string, error) { p, a, e := m.resolve(opts.Command); return p, slices.DeleteFunc(a, func(x string) bool { return x == "-l" }), e }()/' 'TestTheShellIsALoginShell'
+run "cwd option ignored" "$mgr" 's/cmd.Dir = dir/cmd.Dir = ""/' 'TestTheShellStartsWhere'
+run "cwd fact always unknown" "$mgr" 's/path, err := processCwd\(s.cmd.Process.Pid\)/path, err := "", errors.ErrUnsupported/' 'TestTheShellStartsWhere'
+run "close kills at once, no hangup" "$mgr" 's/go s.hangup\(HangupGrace\)/s.cancel()/' 'TestClosingHangs'
+run "hangup never escalates" "$mgr" 's/timer := time.NewTimer\(grace\)/timer := time.NewTimer(time.Hour)/' 'TestClosingHangsUpAtOnce'
+run "flow control never pauses" "$mgr" 's/s\.flow\.wait\(s\.exited\)/_ = s.flow/' 'TestFlowControlStops'
+run "acknowledgements never credited" "$flow" 's/f.unacked = max\(0, f.unacked-n\)/f.unacked = f.unacked/' 'TestFlowControlStops'
+run "bytes decoded on the way" "$mgr" 's|data := slices.Clone\(buf\[:n\]\)|data := []byte(strings.ToValidUTF8(string(buf[:n]), "?"))|; s|^\t"slices"$|\t"slices"; "strings"|' 'TestAMultibyteCharacter'
+run "a byte lost in every read" "$mgr" 's|data := slices.Clone\(buf\[:n\]\)|data := slices.Clone(buf[:n-1])|' 'TestTenMebibytes/flow_control_false'
+rm -rf "$scratch"

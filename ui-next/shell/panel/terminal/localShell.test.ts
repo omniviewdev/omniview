@@ -16,8 +16,8 @@ function rig(): Rig {
   const listeners = new Map<string, Set<(event: { readonly data: unknown }) => void>>();
   const client = {
     calls,
-    CreateTerminal: async (options: unknown) => {
-      calls.push(['CreateTerminal', options]);
+    CreateTerminal: async (options: unknown, launch: unknown) => {
+      calls.push(['CreateTerminal', options, launch]);
       return Promise.resolve(null);
     },
     WriteSession: async (id: string, data: string) => {
@@ -53,10 +53,10 @@ function rig(): Rig {
 }
 
 describe('the transport of the host\'s own shell', () => {
-  it('starts a login shell of this machine on a pty, under the id the feed chose: a tty, and no command, so the backend picks the user\'s own shell', async () => {
+  it('starts a login shell of this machine on a pty, under the id the feed chose, AT the size the view measured: a tty and no command, so the backend picks the user\'s own shell, and a launch of the columns and the rows and nothing else', async () => {
     const { client, events } = rig();
-    await localShellTransport({ client, events }).create('term-1');
-    expect(client.calls).toEqual([['CreateTerminal', { id: 'term-1', tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' }]]);
+    await localShellTransport({ client, events }).create('term-1', { cols: 132, rows: 41 });
+    expect(client.calls).toEqual([['CreateTerminal', { id: 'term-1', tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' }, { cols: 132, rows: 41 }]]);
   });
 
   it('writes, resizes and closes by the session\'s id, and takes rows BEFORE columns, as the binding does', async () => {
@@ -106,6 +106,8 @@ describe('the target of the host\'s own shell', () => {
     expect(target.resource).toBeUndefined();
     expect(client.calls).toEqual([]);
     const feed = target.open();
+    expect(client.calls).toEqual([]);
+    feed.resize(132, 41);
     expect(client.calls.map((call) => call[0])).toEqual(['CreateTerminal']);
     expect(events.count()).toBe(4);
     void feed.close();
