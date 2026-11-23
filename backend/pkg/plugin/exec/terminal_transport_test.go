@@ -178,6 +178,14 @@ func (c *mailboxClient) held() int {
 	return c.pendingData
 }
 
+// peak is the most shell output the host ever held for the client at one time. Emit writes it under the
+// lock, so it is read under the lock.
+func (c *mailboxClient) peak() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.maxPendingData
+}
+
 func (c *mailboxClient) received(id string) (int, []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -226,7 +234,7 @@ func TestAStalledClientCannotTakeTheHostsMemory(t *testing.T) {
 		got, _ := client.received(info.ID)
 		return got > before+2*terminal.FlowHighBytes
 	}, 30*time.Second, 5*time.Millisecond, "the stream never went on after the client read again")
-	assert.LessOrEqual(t, client.maxPendingData, terminal.FlowHighBytes+4*terminal.DefaultReadBufferSize, "the most the host ever held")
+	assert.LessOrEqual(t, client.peak(), terminal.FlowHighBytes+4*terminal.DefaultReadBufferSize, "the most the host ever held")
 	require.NoError(t, fx.ctrl.CloseSession(info.ID))
 }
 

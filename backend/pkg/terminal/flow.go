@@ -7,8 +7,9 @@ import (
 
 // flowControl is the credit that paces one terminal, and it is the only pacing there is: a shell that
 // writes faster than its client takes the output is held in its own write (the kernel's pty buffer is the
-// only buffer left), so no client, whatever it does or fails to do, makes the host hold more than a bounded
-// amount for it.
+// only buffer left), so the host never has more than a bounded amount of output delivered and not
+// credited. That bounds what the terminal manager hands on, not what the transport keeps after the point
+// where it credits: docs/ui-next/status/T1-go.md, 2.8.6, has the measured cases.
 //
 // The host counts the bytes it delivered and nobody has credited. At FlowHighBytes it stops reading the
 // pty; it reads again once the count is down to FlowLowBytes. Credit comes from one source at a time:
@@ -25,9 +26,10 @@ import (
 // transport it does not own, and an inference can fail in the one way that matters: a transport that
 // serializes where the host does not look would never credit, and every terminal would freeze at the high
 // mark. When no credit has come for stall, the watchdog gives a step (FlowStepBytes), and it gives at most
-// FlowStallCeilingBytes in all until real credit comes again, so a client that really has stalled still
-// costs the host a bounded amount (the high mark plus the ceiling) and one whose credit does not come
-// trickles instead of freezing, with a warning in the log.
+// FlowStallCeilingBytes in all until real credit comes again, so what a client that really has stalled has
+// not been credited for is at most the high mark plus the ceiling, and a terminal whose credit does not
+// come trickles instead of freezing, with a warning in the log. The watchdog only pauses the read: it
+// drops nothing.
 //
 // reset forgets the debt (an attach hands the client the ring, so what was in flight before is moot), and
 // release ends the pacing for good (the session is closing and the shell must be read to finish exiting).

@@ -25,8 +25,9 @@ type Launch struct {
 	// user's home. Anything else is refused, naming the field.
 	Cwd string `json:"cwd,omitempty"`
 	// There is no flow-control option: every terminal is paced by credit (FlowHighBytes, FlowLowBytes), so
-	// that no client, whatever it does, can make the host hold more than that for it. See Manager.Ack and
-	// Manager.Delivered for where credit comes from.
+	// the host never has more than that delivered and not credited for a client. That bounds what the
+	// terminal manager hands on, not what the transport keeps after it credits (docs/ui-next/status/T1-go.md,
+	// 2.8.6). See Manager.Ack and Manager.Delivered for where credit comes from.
 }
 
 // Options is what the manager starts a terminal from. CreateTerminal builds it from the SDK's session
@@ -285,8 +286,9 @@ const (
 
 	// FlowStall, FlowStepBytes and FlowStallCeilingBytes are the watchdog of a pause on the transport's
 	// credit (flowControl): after FlowStall without credit it gives FlowStepBytes, and at most
-	// FlowStallCeilingBytes until real credit comes again. A client that stopped reading costs the host the
-	// high mark plus the ceiling, at most; a transport whose credit never comes trickles instead of freezing.
+	// FlowStallCeilingBytes until real credit comes again. It only pauses the read and drops nothing: what a
+	// client that stopped reading has not been credited for is at most the high mark plus the ceiling, and a
+	// transport whose credit never comes trickles instead of freezing.
 	FlowStall             = 2 * time.Second
 	FlowStepBytes         = FlowLowBytes
 	FlowStallCeilingBytes = 8 << 20
