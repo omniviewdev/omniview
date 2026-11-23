@@ -1977,6 +1977,9 @@ async function checkProcess(browser, engine, binary, work) {
     // The host's health check finds it (up to 30 s) and the window is told.
     await entries.nth(1).waitFor();
     await page.getByRole('button', { name: 'Seam Fixture, stopped' }).waitFor({ timeout: 75_000 });
+    // What the window was told is what this reader recorded, not what the page shows: the host sends `plugin/unloaded` and, a few ms later on the same socket, `plugin/state_change` (`Recovering`), and the button above is
+    // drawn on the first, so the second may not be recorded yet when it appears. The assertions below read the record once both frames are in it, in whichever order the reader saw them.
+    await waitUntil('the window to be told the crash (plugin/unloaded) and the phase (plugin/state_change, Recovering)', () => told().length > 0 && frames.slice(mark).some((frame) => frame.name === 'plugin/state_change' && frame.data?.to === 'Recovering'), 15_000);
     assert.match(host.output(), /plugin lifecycle transition.*"from": "Running", "to": "Recovering", "reason": "crash detected"/, `${engine}: the host says it detected the crash`);
     assert.equal(told()[0]?.pluginID, OK, `${engine}: the first plugin/unloaded names the plugin`);
     assert.equal(told()[0]?.cause, 'crashed', `${engine}: and says it crashed`);
