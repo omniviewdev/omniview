@@ -1,6 +1,6 @@
-# Omniview Kit documentation pilot
+# Omniview Kit component reference
 
-This private workspace builds a standalone Button reference, Storybook workshop, and static agent documentation for `@omniviewdev/kit`. It does not ship with the desktop app or change the plugin API.
+This private workspace builds the interactive component reference, Storybook workshop, and static agent documentation for `@omniviewdev/kit`. It does not ship with the desktop app or change the plugin API.
 
 ## Run the complete preview
 
@@ -12,7 +12,9 @@ pnpm --filter @omniviewdev/kit-docs build
 pnpm --filter @omniviewdev/kit-docs preview --host 127.0.0.1
 ```
 
-Open the URL printed by Vite. The page links to the Button workshop at `./storybook/?path=/story/kit-button--primary` and the agent index at `./llms.txt`. Follow the index for revision-specific Markdown and token data. Preview token changes are local experiments, not a persisted Kit theme.
+Open the URL printed by Vite. Select a component from the catalog or link directly, for example `./?component=DataTable`. Each page connects its live examples with their source, appearance controls, and Storybook stories. Preview token changes are local experiments, not a persisted Kit theme.
+
+For tools that do not render JavaScript, start at `./llms.txt`. Follow its pinned links to find component guidance, API declarations, examples, and token data for the same Kit revision.
 
 For authoring, run `pnpm --filter @omniviewdev/kit-docs dev` for the page or `pnpm --filter @omniviewdev/kit-docs storybook` for the workshop. Use the complete build to check links across both surfaces.
 

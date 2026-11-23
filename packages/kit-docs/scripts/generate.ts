@@ -1,15 +1,16 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { COLOR_ROLE_GROUPS, TOKEN_PREFIX } from '../../kit/tokens/manifest.ts';
 import {
   DEFAULT_DENSITY, DEFAULT_TEXT_SIZE, DEFAULT_THEME_ID, DENSITIES, TEXT_SIZES, THEMES, TOKEN_NAMES,
 } from '../../kit/src/generated/tokenNames.ts';
-import { buttonContent, buttonExampleCode, primaryButtonExample } from '../content/button.ts';
+import { guidance } from '../content/catalog.ts';
+import { exampleSources, kitInputs, type ExampleSource, type SourceFile } from './exampleSources.ts';
 
-const docs = fileURLToPath(new URL('..', import.meta.url));
+const docs = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const kit = resolve(docs, '../kit');
 const output = join(docs, 'public');
 const git = (...args: string[]) => execFileSync('git', args, { cwd: docs, encoding: 'utf8' }).trim();
@@ -90,22 +91,6 @@ function apiDeclarations(report: string) {
   return entries;
 }
 
-function examplesFor(part: string) {
-  const folder = `src/components/${part}`;
-  return readdirSync(join(kit, folder)).filter((file) => file.endsWith('.examples.tsx')).sort().flatMap((file) => {
-    const path = `${folder}/${file}`;
-    const ast = read(path);
-    return ast.statements.flatMap((statement) => {
-      if (!ts.isVariableStatement(statement) || !statement.modifiers?.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword)) return [];
-      return statement.declarationList.declarations.map((declaration) => {
-        if (!ts.isIdentifier(declaration.name)) throw new Error(`Expected a named example in ${path}`);
-        const line = ast.getLineAndCharacterOfPosition(statement.getStart(ast)).line + 1;
-        return { name: declaration.name.text, path, code: statement.getText(ast), url: source(path, line) };
-      });
-    });
-  });
-}
-
 const appExample = `import { Stack, Text, ThemeProvider } from '@omniviewdev/kit';
 import '@omniviewdev/kit/styles.css';
 
@@ -148,8 +133,14 @@ function tokenArtifacts() {
   };
 }
 
-function typecheck(snippets: Map<string, string>) {
-  const files = new Map([...snippets].map(([name, code]) => [join(docs, 'content', `${name}.tsx`), code]));
+function typecheck(bundles: ReadonlyMap<string, SourceFile[]>) {
+  const files = new Map<string, string>();
+  const directories = new Set<string>();
+  for (const [name, bundle] of bundles) {
+    const directory = join(docs, 'content', '.copyable', name);
+    for (let path = directory; path !== docs; path = dirname(path)) directories.add(path);
+    for (const file of bundle) files.set(join(directory, file.name), file.code);
+  }
   const options: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2023,
     module: ts.ModuleKind.ESNext,
@@ -158,21 +149,25 @@ function typecheck(snippets: Map<string, string>) {
     strict: true,
     exactOptionalPropertyTypes: true,
     noUnusedLocals: true,
+    allowImportingTsExtensions: true,
+    verbatimModuleSyntax: true,
     noUncheckedSideEffectImports: true,
     skipLibCheck: true,
     noEmit: true,
     types: ['vite/client'],
   };
   const host = ts.createCompilerHost(options);
-  const { fileExists, readFile, getSourceFile } = host;
+  const { directoryExists, fileExists, readFile, getSourceFile } = host;
   host.getCurrentDirectory = () => docs;
+  host.directoryExists = (path) => directories.has(path) || directoryExists?.(path) === true;
   host.fileExists = (path) => files.has(path) || fileExists(path);
   host.readFile = (path) => files.get(path) ?? readFile(path);
   host.getSourceFile = (path, target, onError, fresh) => {
     const code = files.get(path);
     return code === undefined ? getSourceFile(path, target, onError, fresh) : ts.createSourceFile(path, code, target);
   };
-  const diagnostics = ts.getPreEmitDiagnostics(ts.createProgram([...files.keys()], options, host));
+  const roots = [...files.keys()].filter((path) => !path.endsWith('.css'));
+  const diagnostics = ts.getPreEmitDiagnostics(ts.createProgram(roots, options, host));
   if (diagnostics.length) {
     throw new Error(`Copyable examples failed typecheck (build @omniviewdev/kit first):\n${ts.formatDiagnosticsWithColorAndContext(diagnostics, host)}`);
   }
@@ -183,17 +178,53 @@ function generate(check: boolean) {
   const report = readKit('api/kit.api.md');
   const api = apiDeclarations(report);
   const files = new Map<string, string>();
-  const snippets = new Map([['styling', appExample]]);
+  const snippets = new Map<string, SourceFile[]>([['styling', [{ name: 'App.tsx', code: appExample }]]]);
   const parts = publicParts();
-  const curated: Partial<Record<string, { name: string; imports: string }>> = {
-    Chip: { name: 'WithCount', imports: "import { Chip } from '@omniviewdev/kit';" },
-    IconButton: { name: 'Secondary', imports: "import { IconButton } from '@omniviewdev/kit';" },
-    MissingValue: { name: 'WithReason', imports: "import { MissingValue } from '@omniviewdev/kit';" },
-    TextInput: { name: 'Idle', imports: "import { Field, TextInput } from '@omniviewdev/kit';\nimport { useState } from 'react';" },
-    Toggle: { name: 'Idle', imports: "import { Field, Toggle } from '@omniviewdev/kit';\nimport { useState } from 'react';" },
+  const revisionPath = `revisions/${revision}`;
+  const foundations = join(docs, 'content', 'foundations.tsx');
+  const examples = exampleSources([
+    ...kitInputs(kit),
+    { group: 'Stack', path: foundations, exportName: 'StackDefault', name: 'Default' },
+    { group: 'Text', path: foundations, exportName: 'TextDefault', name: 'Default' },
+  ], kit);
+  const parityParents: Record<string, string> = { DataTableParity: 'DataTable', LogViewParity: 'LogView' };
+  const examplesByPart = new Map(parts.map((part) => [part, [] as ExampleSource[]]));
+  const examplePath = ({ group, name }: ExampleSource) => `examples/${group}/${name}.json`;
+  for (const example of examples) {
+    const owner = parityParents[example.group] ?? example.group;
+    const list = examplesByPart.get(owner);
+    if (!list) throw new Error(`Example group ${example.group} has no public component`);
+    const path = examplePath(example);
+    if (files.has(path)) throw new Error(`Duplicate example ${example.group}.${example.name}`);
+    list.push(example);
+    snippets.set(`${example.group}.${example.name}`, example.files);
+    files.set(path, JSON.stringify({ files: example.files }, null, 2) + '\n');
+  }
+  for (const [group, part] of Object.entries(parityParents)) {
+    if (!examplesByPart.get(part)?.some((example) => example.group === group)) {
+      throw new Error(`Missing parity examples for ${part}`);
+    }
+  }
+  for (const part of Object.keys(guidance)) {
+    if (!examplesByPart.has(part)) throw new Error(`Guidance has no public component: ${part}`);
+  }
+  const curated: Record<string, string> = {
+    Button: 'Primary',
+    Chip: 'WithCount',
+    IconButton: 'Secondary',
+    MissingValue: 'WithReason',
+    TextInput: 'Idle',
+    Toggle: 'Idle',
   };
   const page = (part: string) => `components/${part.toLowerCase()}.md`;
   const pinned = `Kit source revision: [\`${revision}\`](https://github.com/omniviewdev/omniview/tree/${revision}/packages/kit).`;
+  const catalogue = (prefix: string) => JSON.stringify({
+    revision,
+    parts: Object.fromEntries([...examplesByPart].map(([part, list]) => [
+      part,
+      { examples: list.map((example) => ({ group: example.group, name: example.name, source: `${prefix}${examplePath(example)}` })) },
+    ])),
+  }, null, 2) + '\n';
 
   for (const part of parts) {
     const barrel = `src/components/${part}/index.ts`;
@@ -203,33 +234,36 @@ function generate(check: boolean) {
       if (!entry) throw new Error(`Public export ${name} is missing from the Kit API report`);
       return entry;
     });
-    const examples = examplesFor(part);
-    const lines = [`# ${part}`, pinned];
-    if (part === 'Button') lines.push(buttonContent.summary, `## Usage\n\n${buttonContent.guidance.map((line) => `- ${line}`).join('\n')}`);
-    const standalone = curated[part];
-    const selection = part === 'Button' ? primaryButtonExample : standalone?.name;
-    if (selection !== undefined) {
-      const example = examples.find(({ name }) => name === selection);
-      if (!example) throw new Error(`Missing copyable example ${part}.${selection}`);
-      if (part === 'Button') {
-        const raw = readKit(example.path);
-        for (const button of examples) snippets.set(`Button.${button.name}`, buttonExampleCode(raw, button.name));
-      } else if (standalone) {
-        snippets.set(`${part}.${selection}`, `${standalone.imports}\n\n${example.code}`);
-      }
-      const code = snippets.get(`${part}.${selection}`);
-      if (!code) throw new Error(`Missing snippet ${part}.${selection}`);
-      lines.push(`## Copyable example: ${selection}\n\n${codeFence(code, 'tsx')}\n\n[Example source](${example.url})`);
+    const guide = guidance[part];
+    if (!guide) throw new Error(`Missing guidance for public component ${part}`);
+    const list = examplesByPart.get(part) ?? [];
+    const regular = list.filter(({ group }) => group === part);
+    const preferred = curated[part] ?? (regular.some(({ name }) => name === 'Default') ? 'Default' : regular[0]?.name);
+    const primary = regular.find(({ name }) => name === preferred);
+    if (!primary) throw new Error(`Missing copyable example for ${part}${preferred ? `.${preferred}` : ''}`);
+    const location = (example: ExampleSource) => {
+      const bundle = `../${examplePath(example)}`;
+      if (example.path === foundations) return `[${example.name}](${bundle})`;
+      const url = source(relative(kit, example.path), example.line);
+      return `[${example.name}](${url}) · [Copyable files](${bundle})`;
+    };
+    const lines = [
+      `# ${part}`,
+      pinned,
+      guide.summary,
+      `## Usage\n\n${guide.guidance.map((line) => `- ${line}`).join('\n')}`,
+    ];
+    if (guide.tokens.length) {
+      lines.push(`## Tokens\n\n${guide.tokens.map(({ name, label, property }) => `- \`${name}\` — ${label} (\`${property}\`)`).join('\n')}`);
     }
+    lines.push(`## Copyable example: ${primary.name}\n\nUse the [styling setup](../styling.md).${primary.files.length > 1 ? ' Save these files in the same directory.' : ''}\n\n${primary.files.map(({ name, code }) => `\`${name}\`\n\n${codeFence(code, name.split('.').at(-1))}`).join('\n\n')}\n\n[Download example bundle](../${examplePath(primary)})`);
     lines.push(`## Public API\n\nImport ${names(exports)} from \`@omniviewdev/kit\`. This declaration excerpt is for reference; see the [full API report](../api.md) for referenced types.\n\n${codeFence(declarations.join('\n\n'))}\n\n[Public exports source](${source(barrel)})`);
-    if (examples.length) {
-      lines.push(`## Kit examples\n\nThese are the real Kit examples, exposed via \`@omniviewdev/kit/examples\` for development and documentation only.\n\n${examples.map(({ name, path, url }) => `- [${name}](${url})${basename(path).includes('.parity.') ? ' (parity)' : ''}`).join('\n')}`);
-    }
+    lines.push(`## Examples\n\n${list.map((example) => `- ${location(example)}${example.group !== part ? ' (parity)' : ''}`).join('\n')}`);
     files.set(page(part), `${lines.join('\n\n')}\n`);
   }
 
   typecheck(snippets);
-  const index = (prefix: string) => `# Omniview Kit\n\n> Public components, styling and typed examples for @omniviewdev/kit.\n\n${pinned}\n\n## Reference\n\n- [Styling guide](${prefix}styling.md): stylesheet, theme provider and cascade.\n- [Token index](${prefix}tokens.md): CSS custom property names.\n- [Machine-readable tokens](${prefix}tokens.json): token names and groups.\n- [Public API report](${prefix}api.md): exact exported declarations.\n\n## Components\n\n${parts.map((part) => `- [${part}](${prefix}${page(part)})`).join('\n')}\n`;
+  const index = (prefix: string) => `# Omniview Kit\n\n> Public components, styling and typed examples for @omniviewdev/kit.\n\n${pinned}\n\n## Reference\n\n- [Styling guide](${prefix}styling.md): stylesheet, theme provider and cascade.\n- [Token index](${prefix}tokens.md): CSS custom property names.\n- [Machine-readable tokens](${prefix}tokens.json): token names and groups.\n- [Public API report](${prefix}api.md): exact exported declarations.\n- [Machine-readable example catalog](${prefix}catalog.json): component groups and copyable source bundles.\n\n## Components\n\n${parts.map((part) => `- [${part}](${prefix}${page(part)})`).join('\n')}\n`;
   const tokens = tokenArtifacts();
   files.set('llms.txt', index(''));
   files.set('styling.md', stylingGuide());
@@ -237,14 +271,21 @@ function generate(check: boolean) {
   files.set('tokens.json', tokens.json);
   files.set('api.md', report);
 
-  const revisionPath = `revisions/${revision}`;
-  const componentDir = join(output, revisionPath, 'components');
-  const stale = existsSync(componentDir) ? readdirSync(componentDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-    .map((entry) => `components/${entry.name}`).filter((path) => !files.has(path))
-    .map((path) => `${revisionPath}/${path}`) : [];
+  files.set('catalog.json', catalogue(''));
+  const stale: string[] = [];
+  for (const directory of ['components', 'examples']) {
+    const path = join(output, revisionPath, directory);
+    if (!existsSync(path)) continue;
+    const extension = directory === 'components' ? '.md' : '.json';
+    for (const entry of readdirSync(path, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(extension)) continue;
+      const artifact = relative(join(output, revisionPath), join(entry.parentPath, entry.name));
+      if (!files.has(artifact)) stale.push(`${revisionPath}/${artifact}`);
+    }
+  }
   const outputs = [...files].map(([path, text]): [string, string] => [`${revisionPath}/${path}`, text]);
   outputs.push(['llms.txt', index(`${revisionPath}/`)]);
+  outputs.push(['catalog.json', catalogue(`${revisionPath}/`)]);
   for (const [path, text] of outputs) {
     const target = join(output, path);
     if (existsSync(target) && readFileSync(target, 'utf8') === text) continue;
@@ -257,7 +298,7 @@ function generate(check: boolean) {
   }
   if (check && stale.length) throw new Error(`Generated docs differ. Run node scripts/generate.ts.\n${stale.join('\n')}`);
   for (const path of stale) rmSync(join(output, path));
-  console.log(`${check ? 'Checked' : 'Generated'} ${outputs.length} Kit docs at ${revision.slice(0, 12)}; typechecked ${snippets.size} examples.`);
+  console.log(`${check ? 'Checked' : 'Generated'} ${outputs.length} Kit docs at ${revision.slice(0, 12)}; typechecked ${examples.length} example bundles and styling setup.`);
 }
 
 const args = process.argv.slice(2);

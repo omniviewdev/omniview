@@ -1,17 +1,46 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   DEFAULT_DENSITY, DEFAULT_TEXT_SIZE, DEFAULT_THEME_ID, DENSITIES, TEXT_SIZES, THEMES,
-  type Density, type TextSize, type ThemeId,
+  type Density, type TextSize, type ThemeId, type TokenName,
 } from '@omniviewdev/kit';
-import { examples } from '@omniviewdev/kit/examples';
-import { buttonContent, buttonExampleCode, primaryButtonExample } from '../content/button';
-import buttonSource from '../../kit/src/components/Button/Button.examples.tsx?raw';
-import { Preview, tokens, type Appearance, type PreviewToken, type TokenValues } from './Preview';
+import { guidance, type Guide } from '../content/catalog';
+import { Preview, type Appearance, type TokenValues } from './Preview';
 import './docs.css';
 
-const buttonExamples = examples.Button;
-const exampleNames = Object.keys(buttonExamples);
+type Example = { group: string; name: string; source: string };
+type Catalog = { revision: string; parts: Record<string, { examples: Example[] }> };
+type SourceFile = { name: string; code: string };
+
+async function fetchJSON<T>(path: string, signal: AbortSignal): Promise<T> {
+  const response = await fetch(path, { signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+function useJSON<T>(path: string) {
+  const [result, setResult] = useState<{ data: T } | { error: true }>();
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchJSON<T>(path, controller.signal).then(
+      (data) => { if (!controller.signal.aborted) setResult({ data }); },
+      () => { if (!controller.signal.aborted) setResult({ error: true }); },
+    );
+    return () => controller.abort();
+  }, [path]);
+  return result;
+}
+
+const displayName = (name: string) => name
+  .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+  .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+  .replace(/([a-zA-Z])(\d)/g, '$1 $2');
+
+function readComponent() {
+  return new URLSearchParams(window.location.search).get('component');
+}
+
+const componentHref = (part: string) => `?component=${encodeURIComponent(part)}`;
 const defaultAppearance: Appearance = { theme: DEFAULT_THEME_ID, density: DEFAULT_DENSITY, textSize: DEFAULT_TEXT_SIZE };
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -31,12 +60,14 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function Inspector({ resolved, overrides, setOverrides }: {
+function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
+  part: string;
+  tokens: Guide['tokens'];
   resolved: TokenValues;
   overrides: TokenValues;
   setOverrides: (values: TokenValues) => void;
 }) {
-  const [tokenName, setTokenName] = useState<PreviewToken>(tokens[0].name);
+  const [tokenName, setTokenName] = useState<TokenName>(tokens[0].name);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const token = tokens.find(({ name }) => name === tokenName)!;
@@ -61,12 +92,12 @@ function Inspector({ resolved, overrides, setOverrides }: {
       <p className="eyebrow"><span>02</span> Styling</p>
       <h2 id="tokens-title">Token inspector</h2>
       <p className="section-intro">Read live token values and try overrides. Changes stay inside the preview; they never update the documentation theme.</p>
-      <a className="text-link" href="#button-preview">Back to live preview ↑</a>
+      <a className="text-link" href="#live-preview">Back to live preview ↑</a>
       <div className="inspector panel">
         <form className="token-form" onSubmit={apply}>
-          <label className="field">Button token
+          <label className="field">{part} token
             <select value={tokenName} onChange={(event) => {
-              const name = event.target.value as PreviewToken;
+              const name = event.target.value as TokenName;
               setTokenName(name);
               setDraft(overrides[name] ?? '');
               setError('');
@@ -115,7 +146,7 @@ function Inspector({ resolved, overrides, setOverrides }: {
               <pre className="export-code" tabIndex={0}><code>{css}</code></pre>
               <div className="actions">
                 <CopyButton key={css} text={css} label="Copy CSS overrides" />
-                <a className="action download" href={`data:text/css;charset=utf-8,${encodeURIComponent(css)}`} download="button-preview.css">Download CSS</a>
+                <a className="action download" href={`data:text/css;charset=utf-8,${encodeURIComponent(css)}`} download={`${part.toLowerCase()}-preview.css`}>Download CSS</a>
               </div>
             </>
           ) : <p className="empty-state">No overrides. Add a CSS value to see a scoped export here.</p>}
@@ -125,13 +156,165 @@ function Inspector({ resolved, overrides, setOverrides }: {
   );
 }
 
-function App() {
-  const [example, setExample] = useState<string>(primaryButtonExample);
-  const [appearance, setAppearance] = useState(defaultAppearance);
+function ExampleSource({ path }: { path: string }) {
+  const result = useJSON<{ files: SourceFile[] }>(`./${path}`);
+  const [fileIndex, setFileIndex] = useState(0);
+  const file = result && 'data' in result ? result.data.files[fileIndex] : undefined;
+  return (
+    <section className="source" aria-label="Example source">
+      <div className="source-heading">
+        <p className="eyebrow">Example source</p>
+        {file && <CopyButton key={file.name} text={file.code} label={`Copy ${file.name}`} />}
+      </div>
+      {!result ? <p className="inline-status" role="status">Loading example source…</p>
+        : file && 'data' in result ? (
+          <>
+            <label className="field source-file">Source file
+              <select value={fileIndex} onChange={(event) => setFileIndex(Number(event.target.value))}>
+                {result.data.files.map(({ name }, index) => <option key={name} value={index}>{name}</option>)}
+              </select>
+            </label>
+            <pre tabIndex={0} aria-label={file.name}><code>{file.code}</code></pre>
+          </>
+        ) : <p className="inline-status" role="alert">Example source unavailable.</p>}
+    </section>
+  );
+}
+
+function ComponentDoc({ part, revision, examples, appearance, setAppearance }: {
+  part: string;
+  revision: string;
+  examples: Example[];
+  appearance: Appearance;
+  setAppearance: (value: Appearance) => void;
+}) {
+  const guide = guidance[part];
+  const [exampleIndex, setExampleIndex] = useState(() => {
+    const standard = examples.findIndex(({ group, name }) => group === part && name === 'Default');
+    if (standard >= 0) return standard;
+    const primary = examples.findIndex(({ group, name }) => group === part && name === 'Primary');
+    return primary >= 0 ? primary : 0;
+  });
   const [overrides, setOverrides] = useState<TokenValues>({});
   const [resolved, setResolved] = useState<TokenValues>({});
-  const Example = buttonExamples[example];
-  const tsx = buttonExampleCode(buttonSource, example);
+  const example = examples[exampleIndex];
+  const story = `kit-${example.group.toLowerCase()}--${displayName(example.name).toLowerCase().replaceAll(' ', '-')}`;
+  const revisionPath = `./revisions/${revision}`;
+  const regularOptions: { index: number; name: string }[] = [];
+  const parityOptions: { index: number; name: string }[] = [];
+  examples.forEach(({ group, name }, index) => {
+    (group === part ? regularOptions : parityOptions).push({ index, name });
+  });
+
+  return (
+    <article className="doc">
+      <div className="hero">
+        <p className="eyebrow"><span>Components</span> <span className="divider" aria-hidden="true">/</span> {guide.category}</p>
+        <h1 id="component-title" tabIndex={-1}>{part}</h1>
+        <p className="summary">{guide.summary}</p>
+        <code className="package-tag">@omniviewdev/kit</code>
+        <nav className="doc-links" aria-label={`${part} references`}>
+          <a className="text-link" href={`${revisionPath}/components/${part.toLowerCase()}.md`}>Component Markdown</a>
+          <a className="text-link" href={`${revisionPath}/styling.md`}>Styling guide</a>
+          <a className="text-link" href={`${revisionPath}/api.md`}>API report</a>
+        </nav>
+      </div>
+      <section id="playground" className="section" aria-labelledby="playground-title">
+        <p className="eyebrow"><span>01</span> Examples</p>
+        <h2 id="playground-title">Playground</h2>
+        <p className="section-intro">Try the same {part} examples that ship with Kit. Use the controls to explore their states and appearance.</p>
+        <a className="text-link" href={`./storybook/?path=/story/${story}`}>Open {displayName(example.name)} in Storybook <span aria-hidden="true">↗</span></a>
+        <div className="playground panel">
+          <div className="toolbar">
+            <label className="field">Example
+              <select value={exampleIndex} onChange={(event) => setExampleIndex(Number(event.target.value))}>
+                <optgroup label="Component examples">
+                  {regularOptions.map(({ index, name }) => <option key={index} value={index}>{displayName(name)}</option>)}
+                </optgroup>
+                {parityOptions.length > 0 && <optgroup label="Parity examples">
+                  {parityOptions.map(({ index, name }) => <option key={index} value={index}>{displayName(name)}</option>)}
+                </optgroup>}
+              </select>
+            </label>
+            <label className="field">Theme
+              <select value={appearance.theme} onChange={(event) => setAppearance({ ...appearance, theme: event.target.value as ThemeId })}>
+                {THEMES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            </label>
+            <label className="field">Density
+              <select value={appearance.density} onChange={(event) => setAppearance({ ...appearance, density: event.target.value as Density })}>
+                {DENSITIES.map((density) => <option key={density} value={density}>{density[0].toUpperCase() + density.slice(1)}</option>)}
+              </select>
+            </label>
+            <label className="field">Text size
+              <select value={appearance.textSize} onChange={(event) => setAppearance({ ...appearance, textSize: event.target.value as TextSize })}>
+                {TEXT_SIZES.map((size) => <option key={size} value={size}>{size}%</option>)}
+              </select>
+            </label>
+          </div>
+          <div id="live-preview" className="canvas">
+            <span className="canvas-badge" aria-hidden="true"><span /> Live preview</span>
+            <Preview part={part} group={example.group} name={example.name} appearance={appearance} overrides={overrides} onReadTokens={setResolved} />
+          </div>
+          <ExampleSource key={example.source} path={example.source} />
+        </div>
+      </section>
+      {guide.tokens.length > 0 && <Inspector part={part} tokens={guide.tokens} resolved={resolved} overrides={overrides} setOverrides={setOverrides} />}
+      <section id="usage" className="section" aria-labelledby="usage-title">
+        <p className="eyebrow"><span>{guide.tokens.length ? '03' : '02'}</span> Patterns</p>
+        <h2 id="usage-title">Usage guidance</h2>
+        <ul className="guidance">
+          {guide.guidance.map((tip) => <li key={tip}>{tip}</li>)}
+        </ul>
+      </section>
+      <footer className="doc-footer">
+        <span>Omniview Kit · Component documentation</span>
+        <a href="#main">Back to top ↑</a>
+      </footer>
+    </article>
+  );
+}
+
+function App() {
+  const result = useJSON<Catalog>('./catalog.json');
+  const catalog = result && 'data' in result ? result.data : undefined;
+  const [requested, setRequested] = useState(readComponent);
+  const [query, setQuery] = useState('');
+  const [appearance, setAppearance] = useState(defaultAppearance);
+  const moveFocus = useRef(false);
+  const parts = catalog ? Object.keys(catalog.parts) : [];
+  const part = requested && parts.includes(requested) ? requested : parts[0];
+  const normalized = query.toLowerCase().replace(/\s+/g, '');
+  const matches = parts.filter((name) => name.toLowerCase().includes(normalized));
+
+  useEffect(() => {
+    function syncLocation() {
+      setRequested(readComponent());
+    }
+    window.addEventListener('popstate', syncLocation);
+    return () => window.removeEventListener('popstate', syncLocation);
+  }, []);
+
+  useEffect(() => {
+    document.title = part ? `${part} · Omniview Kit` : 'Omniview Kit';
+    if (moveFocus.current) {
+      moveFocus.current = false;
+      document.getElementById('component-title')?.focus();
+    }
+  }, [part, requested]);
+
+  function navigate(event: MouseEvent<HTMLAnchorElement>, name: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    event.preventDefault();
+    if (requested === name) {
+      document.getElementById('component-title')?.focus();
+      return;
+    }
+    history.pushState(null, '', componentHref(name));
+    moveFocus.current = true;
+    setRequested(name);
+  }
+
   return (
     <>
       <a className="skip-link" href="#main">Skip to content</a>
@@ -144,82 +327,35 @@ function App() {
             <span>Omniview <strong>Kit</strong></span>
           </a>
           <nav className="resource-links" aria-label="Resources">
-            <a href="./storybook/?path=/story/kit-button--primary">Storybook <span aria-hidden="true">↗</span></a>
+            <a href="./storybook/">Storybook <span aria-hidden="true">↗</span></a>
             <a href="./llms.txt">llms.txt <span aria-hidden="true">↗</span></a>
           </nav>
         </div>
       </header>
       <main id="main" className="shell main-shell" tabIndex={-1}>
         <aside className="sidebar" aria-label="Documentation navigation">
-          <p className="eyebrow">Components</p>
-          <a className="current" href="#main" aria-current="page"><span aria-hidden="true">◈</span> Button</a>
-          <nav className="on-page" aria-label="On this page">
+          <nav aria-label="Components">
+            <label className="field">Search components
+              <input type="search" value={query} placeholder="Find a component" onChange={(event) => setQuery(event.target.value)} />
+            </label>
+            {catalog && (matches.length ? (
+              <ul className="component-links">
+                {matches.map((name) => <li key={name}>
+                  <a href={componentHref(name)} aria-current={part === name ? 'page' : undefined} onClick={(event) => navigate(event, name)}>{name}</a>
+                </li>)}
+              </ul>
+            ) : <p className="inline-status" role="status">No matching components.</p>)}
+          </nav>
+          {part && <nav className="on-page" aria-label="On this page">
             <p className="eyebrow">On this page</p>
             <a href="#playground">Playground</a>
-            <a href="#tokens">Token inspector</a>
+            {guidance[part].tokens.length > 0 && <a href="#tokens">Token inspector</a>}
             <a href="#usage">Usage guidance</a>
-          </nav>
+          </nav>}
         </aside>
-        <article className="doc">
-          <div className="hero">
-            <p className="eyebrow"><span>Components</span> <span className="divider" aria-hidden="true">/</span> Actions</p>
-            <h1>Button</h1>
-            <p className="summary">{buttonContent.summary}</p>
-            <code className="package-tag">@omniviewdev/kit</code>
-          </div>
-          <section id="playground" className="section" aria-labelledby="playground-title">
-            <p className="eyebrow"><span>01</span> Examples</p>
-            <h2 id="playground-title">Playground</h2>
-            <p className="section-intro">Try the same Button examples that ship with Kit. Hover, press, or use Tab to explore the live states.</p>
-            <div className="playground panel">
-              <div className="toolbar">
-                <label className="field">Example
-                  <select value={example} onChange={(event) => setExample(event.target.value)}>
-                    {exampleNames.map((name) => <option key={name} value={name}>{name.replace(/([a-z])([A-Z])/g, '$1 $2')}</option>)}
-                  </select>
-                </label>
-                <label className="field">Theme
-                  <select value={appearance.theme} onChange={(event) => setAppearance({ ...appearance, theme: event.target.value as ThemeId })}>
-                    {THEMES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-                  </select>
-                </label>
-                <label className="field">Density
-                  <select value={appearance.density} onChange={(event) => setAppearance({ ...appearance, density: event.target.value as Density })}>
-                    {DENSITIES.map((density) => <option key={density} value={density}>{density[0].toUpperCase() + density.slice(1)}</option>)}
-                  </select>
-                </label>
-                <label className="field">Text size
-                  <select value={appearance.textSize} onChange={(event) => setAppearance({ ...appearance, textSize: event.target.value as TextSize })}>
-                    {TEXT_SIZES.map((size) => <option key={size} value={size}>{size}%</option>)}
-                  </select>
-                </label>
-              </div>
-              <div id="button-preview" className="canvas">
-                <span className="canvas-badge" aria-hidden="true"><span /> Live preview</span>
-                <Preview appearance={appearance} overrides={overrides} onReadTokens={setResolved}><Example /></Preview>
-              </div>
-              <div className="source">
-                <div className="source-heading">
-                  <span className="eyebrow">Example source <span className="source-format">TSX</span></span>
-                  <CopyButton key={example} text={tsx} label="Copy TSX" />
-                </div>
-                <pre tabIndex={0}><code>{tsx}</code></pre>
-              </div>
-            </div>
-          </section>
-          <Inspector resolved={resolved} overrides={overrides} setOverrides={setOverrides} />
-          <section id="usage" className="section" aria-labelledby="usage-title">
-            <p className="eyebrow"><span>03</span> Patterns</p>
-            <h2 id="usage-title">Usage guidance</h2>
-            <ul className="guidance">
-              {buttonContent.guidance.map((tip) => <li key={tip}>{tip}</li>)}
-            </ul>
-          </section>
-          <footer className="doc-footer">
-            <span>Omniview Kit · Component documentation</span>
-            <a href="#main">Back to top ↑</a>
-          </footer>
-        </article>
+        {!result ? <p className="load-status" role="status">Loading the component catalog…</p>
+          : catalog && part ? <ComponentDoc key={part} part={part} revision={catalog.revision} examples={catalog.parts[part].examples} appearance={appearance} setAppearance={setAppearance} />
+          : <p className="load-status" role="alert">Component catalog unavailable.</p>}
       </main>
     </>
   );

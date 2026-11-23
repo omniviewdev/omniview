@@ -45,7 +45,7 @@ const preview: Preview = {
       },
     },
   },
-  parameters: { layout: 'centered' },
+  parameters: { layout: 'padded' },
   decorators: [
     (Story, { globals }) => (
       <ThemeProvider
