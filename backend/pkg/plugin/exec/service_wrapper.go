@@ -219,9 +219,10 @@ func (s *ServiceWrapper) GetCwd(sessionID string) (terminal.Directory, error) {
 // Without acknowledgements a flood grows the host's memory without bound (a server build with a reader that
 // keeps up, a native webview that stalls): the transport's credit alone does not bound what Wails retains
 // after the point where the host credits. A client that never calls it (the legacy terminal) still gets every
-// byte, paced by what its transport took (docs/ui-next/status/T1-go.md, 2.8.6). A session that has ended or is
-// ending takes the acknowledgement and answers success, because there is nothing left to credit and the last
-// acknowledgement of an exiting shell races its CLOSE; only a session that never existed is not found.
+// byte, paced by what its transport took (docs/ui-next/status/T1-go.md, 2.8.6). A session that is ending, or
+// is one of the last 256 that ended, takes the acknowledgement and answers success, because there is nothing
+// left to credit and the last acknowledgement of an exiting shell races its CLOSE; an older session is not
+// remembered and is not found, as one that never existed.
 func (s *ServiceWrapper) AckTerminal(sessionID string, n int) error {
 	return s.Ctrl.AckTerminal(sessionID, n)
 }

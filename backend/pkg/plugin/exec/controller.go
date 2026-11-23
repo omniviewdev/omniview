@@ -47,7 +47,8 @@ type Controller interface {
 	WriteTerminal(sessionID string, seq uint64, data []byte) error
 	ResizeTerminal(sessionID string, seq uint64, rows, cols int) error
 	// AckTerminal tells a local terminal that n more bytes of its output were taken in by the caller. A
-	// session that has ended or is ending answers success: there is nothing left to credit.
+	// session that is ending, or is one of the last 256 that ended, answers success: there is nothing left to
+	// credit.
 	AckTerminal(sessionID string, n int) error
 	// IsBusy says whether something other than the shell holds a terminal's foreground.
 	IsBusy(sessionID string) (terminal.Foreground, error)

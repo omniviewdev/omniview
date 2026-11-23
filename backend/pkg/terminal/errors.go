@@ -82,9 +82,14 @@ func IDInUse(id string) error {
 		"ALREADY_EXISTS")
 }
 
+// maxShellDetail is the most bytes of the sentence of a shell refusal: the list in the problem has every path,
+// and a sentence of three long paths must not make the runtime reject the whole problem (its limit is 4,096).
+const maxShellDetail = 2048
+
 // shellUnavailableError is the refusal of a shell that is not there, with the shells that were tried, one entry
-// each: the problem a caller reads, plus the list, so that it draws one path to a line without reading the
-// sentence. Its text is the problem as JSON, as AppError's is, so that the list crosses the binding with it.
+// each, as tokens: the problem a caller reads, plus the list, so that it draws one path to a line in its own
+// words without reading the sentence. Its text is the problem as JSON, as AppError's is, so that the list
+// crosses the binding with it.
 type shellUnavailableError struct {
 	*apperror.AppError
 	Tried []shellenv.Attempt `json:"tried"`
@@ -105,7 +110,7 @@ func (p *shellUnavailableError) Unwrap() error { return p.AppError }
 func shellError(err error) error {
 	switch {
 	case errors.Is(err, shellenv.ErrUnavailable):
-		problem := coded(apperror.WrapWithDetail(err, TypeShellUnavailable, http.StatusUnprocessableEntity, "Shell not found", err.Error()),
+		problem := coded(apperror.WrapWithDetail(err, TypeShellUnavailable, http.StatusUnprocessableEntity, "Shell not found", shellenv.Bound(err.Error(), maxShellDetail)),
 			"SHELL_UNAVAILABLE")
 		var unavailable *shellenv.UnavailableError
 		if errors.As(err, &unavailable) {

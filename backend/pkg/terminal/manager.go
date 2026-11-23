@@ -90,6 +90,15 @@ type Manager struct {
 // endedMemory is how many ended sessions' ids the manager remembers.
 const endedMemory = 256
 
+// rememberEnded notes that a session ended and forgets the oldest of the last endedMemory. The caller holds
+// m.mu.
+func (m *Manager) rememberEnded(id string) {
+	m.ended = append(m.ended, id)
+	if len(m.ended) > endedMemory {
+		m.ended = slices.Delete(m.ended, 0, len(m.ended)-endedMemory)
+	}
+}
+
 // NewManager makes a manager whose events go to sink. Its sessions end when ctx ends, the way a close
 // ends them (Shutdown): the host's application context is cancelled first when it quits.
 func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
@@ -574,10 +583,7 @@ func (m *Manager) finish(s *session, readErr error) {
 	m.sink.Closed(s.id, end)
 	m.mu.Lock()
 	delete(m.sessions, s.id)
-	m.ended = append(m.ended, s.id)
-	if len(m.ended) > endedMemory {
-		m.ended = slices.Delete(m.ended, 0, len(m.ended)-endedMemory)
-	}
+	m.rememberEnded(s.id)
 	m.mu.Unlock()
 	s.cancel()
 	close(s.done)
@@ -671,9 +677,10 @@ func (m *Manager) Resize(sessionID string, seq uint64, rows, cols int) error {
 // Ack tells the host that the client has taken in n more bytes of the session's output. The first call
 // makes the client's acknowledgements the only credit that paces the session (see flowControl): it reports
 // what the client parsed, which is stronger than what the transport took, and a client that stops
-// acknowledging pauses the shell at the high mark. A session that has ended, or is ending, takes the
-// acknowledgement and credits nothing: the client's last acknowledgement of a shell that exited races the
-// CLOSE it is answering. Only a session that never was is not found.
+// acknowledging pauses the shell at the high mark. A session that is ending, or that is one of the last
+// endedMemory that ended, takes the acknowledgement and credits nothing: the client's last acknowledgement of
+// a shell that exited races the CLOSE it is answering. An older session is not remembered and is not found,
+// as one that never was.
 func (m *Manager) Ack(sessionID string, n int) error {
 	if n < 0 {
 		return invalidError("bytes must not be negative.")

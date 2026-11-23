@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // ErrUnavailable is why Resolve refuses when no shell can start; ErrUnsupported, why it refuses a
@@ -24,12 +25,60 @@ var (
 	ErrUnsupported = errors.New("unsupported terminal shell")
 )
 
-// Attempt is one shell Resolve tried and why it did not start: where the path came from (the shell asked for,
-// $SHELL, the account's shell, the fallback), the path as it was given, and the reason in a few words.
+// The tokens of an Attempt. A caller maps them to its own words; the sentence of the refusal is the host's own.
+const (
+	// SourceRequested is the shell the caller asked for (the user's setting), SourceEnvironment is $SHELL,
+	// SourceAccount is the account's shell, SourceFallback is the shell the host falls back to.
+	SourceRequested   = "requested"
+	SourceEnvironment = "environment"
+	SourceAccount     = "account"
+	SourceFallback    = "fallback"
+
+	// ReasonNotFound is a path that does not resolve to a file, ReasonNotExecutable one the host may not run,
+	// ReasonNotAShell a program that is not a shell the host starts, and ReasonOther anything else, with the
+	// system's own words in Detail.
+	ReasonNotFound      = "not-found"
+	ReasonNotExecutable = "not-executable"
+	ReasonNotAShell     = "not-a-shell"
+	ReasonOther         = "other"
+)
+
+// maxDetail is the most bytes of the system's words an Attempt keeps.
+const maxDetail = 512
+
+// Attempt is one shell Resolve tried and why it did not start, as tokens: where the path came from (Source),
+// the path as it was given, and the reason (Reason, with Detail holding the system's words for ReasonOther).
 type Attempt struct {
 	Source string `json:"source"`
 	Path   string `json:"path"`
 	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// words says the attempt in the host's sentence: the shell asked for "/x/zsh": not found.
+func (a Attempt) words() string {
+	var source, reason string
+	switch a.Source {
+	case SourceRequested:
+		source = "the shell asked for"
+	case SourceEnvironment:
+		source = "$SHELL"
+	case SourceAccount:
+		source = "the account's shell"
+	default:
+		source = "the fallback"
+	}
+	switch a.Reason {
+	case ReasonNotFound:
+		reason = "not found"
+	case ReasonNotExecutable:
+		reason = "not executable"
+	case ReasonNotAShell:
+		reason = "not a shell the host starts"
+	default:
+		reason = a.Detail
+	}
+	return fmt.Sprintf("%s %s: %s", source, strconv.Quote(a.Path), reason)
 }
 
 // UnavailableError is the refusal when no shell can start, with every attempt that was made, in the order it
@@ -42,12 +91,25 @@ type UnavailableError struct {
 func (e *UnavailableError) Error() string {
 	parts := make([]string, 0, len(e.Tried))
 	for _, attempt := range e.Tried {
-		parts = append(parts, fmt.Sprintf("%s %s: %s", attempt.Source, strconv.Quote(attempt.Path), attempt.Reason))
+		parts = append(parts, attempt.words())
 	}
 	return fmt.Sprintf("%s: tried %s", ErrUnavailable.Error(), strings.Join(parts, "; "))
 }
 
 func (e *UnavailableError) Unwrap() error { return ErrUnavailable }
+
+// Bound cuts text to at most limit bytes at a character boundary, ending in an ellipsis when it cut.
+func Bound(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	const ellipsis = "…"
+	cut := max(limit-len(ellipsis), 0)
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + ellipsis
+}
 
 // Default returns an installed shell, consulting the account when SHELL is absent.
 func Default() string {
@@ -59,7 +121,7 @@ func Default() string {
 
 // source is one place a shell can come from, in the order Resolve tries them.
 type source struct {
-	label string
+	token string
 	shell func() string
 }
 
@@ -69,16 +131,16 @@ type source struct {
 func sources(requested, environment string, account func() string) []source {
 	if runtime.GOOS == "windows" {
 		return []source{
-			{label: "the shell asked for", shell: func() string { return requested }},
-			{label: "the default", shell: func() string { return "powershell.exe" }},
+			{token: SourceRequested, shell: func() string { return requested }},
+			{token: SourceFallback, shell: func() string { return "powershell.exe" }},
 		}
 	}
 	return []source{
-		{label: "the shell asked for", shell: func() string { return requested }},
-		{label: "$SHELL", shell: func() string { return environment }},
-		{label: "the account's shell", shell: account},
-		{label: "the fallback", shell: func() string { return "/bin/bash" }},
-		{label: "the fallback", shell: func() string { return "/bin/sh" }},
+		{token: SourceRequested, shell: func() string { return requested }},
+		{token: SourceEnvironment, shell: func() string { return environment }},
+		{token: SourceAccount, shell: account},
+		{token: SourceFallback, shell: func() string { return "/bin/bash" }},
+		{token: SourceFallback, shell: func() string { return "/bin/sh" }},
 	}
 }
 
@@ -106,14 +168,15 @@ func choose(requested, environment string, account func() string, lookup func(st
 		}
 		path, lookErr := lookup(shell)
 		if lookErr != nil {
-			tried = append(tried, Attempt{Source: candidate.label, Path: shell, Reason: reason(lookErr)})
+			token, detail := reasonOf(lookErr)
+			tried = append(tried, Attempt{Source: candidate.token, Path: shell, Reason: token, Detail: detail})
 			continue
 		}
 		if useErr := usable(path); useErr != nil {
 			if index == 0 {
 				return choice{path: "", from: index, tried: tried, refused: true}
 			}
-			tried = append(tried, Attempt{Source: candidate.label, Path: shell, Reason: "not a shell the host starts"})
+			tried = append(tried, Attempt{Source: candidate.token, Path: shell, Reason: ReasonNotAShell, Detail: ""})
 			continue
 		}
 		return choice{path: path, from: index, tried: tried, refused: false}
@@ -121,15 +184,15 @@ func choose(requested, environment string, account func() string, lookup func(st
 	return choice{path: "", from: -1, tried: tried, refused: false}
 }
 
-// reason is why a shell did not resolve, in a few words.
-func reason(err error) string {
+// reasonOf is why a shell did not resolve: the token and, for ReasonOther, the system's own words.
+func reasonOf(err error) (string, string) {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return "not found"
+		return ReasonNotFound, ""
 	case errors.Is(err, fs.ErrPermission):
-		return "not executable"
+		return ReasonNotExecutable, ""
 	default:
-		return err.Error()
+		return ReasonOther, Bound(err.Error(), maxDetail)
 	}
 }
 

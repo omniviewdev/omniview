@@ -80,7 +80,13 @@ export { jsonToValue, valueToJSON } from '../resource/v2/value';
 
 // What the runtime's errors are called and how to read one.
 export { ErrorTypes } from '../errors/types';
-export type { AppError, AppErrorAction } from '../errors/types';
+export type {
+  AppError,
+  AppErrorAction,
+  AppErrorShellAttempt,
+  AppErrorShellReason,
+  AppErrorShellSource,
+} from '../errors/types';
 export { isCancelledError, parseAppError } from '../errors/parseAppError';
 
 // The log viewer's data contract (P1b-1): opens a log session for a target and returns a framework-free store of its lines and its status, with the

@@ -1,4 +1,10 @@
-import type { AppError, AppErrorAction, AppErrorShellAttempt } from './types';
+import type {
+  AppError,
+  AppErrorAction,
+  AppErrorShellAttempt,
+  AppErrorShellReason,
+  AppErrorShellSource,
+} from './types';
 import { ErrorTypes } from './types';
 import { navigateActivePage } from '../context/windows/activePageNavigator';
 import type { DiagnosticAction, NotificationOptions } from '../activity/types';
@@ -24,6 +30,10 @@ const resourceCodes: Record<string, readonly [string, number, AppError['recovery
   PROVIDER_ERROR: [ErrorTypes.RESOURCE_PROVIDER_ERROR, 502, 'none'],
   INTERNAL: [ErrorTypes.INTERNAL, 500, 'none'],
 };
+
+/** The tokens a terminal's SHELL_UNAVAILABLE problem uses (backend/pkg/terminal, internal/shellenv); any other token is 'other'. */
+const shellSources: readonly AppErrorShellSource[] = ['requested', 'environment', 'account', 'fallback'];
+const shellReasons: readonly AppErrorShellReason[] = ['not-found', 'not-executable', 'not-a-shell'];
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null
@@ -108,9 +118,14 @@ function decode(error: unknown, depth: number): AppError | undefined {
       result.tried = parsed.tried
         .map((item): AppErrorShellAttempt | undefined => {
           const attempt = record(item);
-          return attempt && text(attempt.source, 256) && text(attempt.path, 4096) && text(attempt.reason, 512)
-            ? { source: attempt.source, path: attempt.path, reason: attempt.reason }
-            : undefined;
+          if (!attempt || !text(attempt.path, 4096)) return undefined;
+          const source =
+            shellSources.find((token) => token === attempt.source) ?? ('other' as const);
+          const reason =
+            shellReasons.find((token) => token === attempt.reason) ?? ('other' as const);
+          const entry: AppErrorShellAttempt = { source, path: attempt.path, reason };
+          if (text(attempt.detail, 512)) entry.detail = attempt.detail;
+          return entry;
         })
         .filter((item): item is AppErrorShellAttempt => item !== undefined)
         .slice(0, 16);

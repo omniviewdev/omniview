@@ -5,11 +5,18 @@ export interface AppErrorAction {
   target?: string;
 }
 
-/** A shell the host tried to start for a terminal and why it did not (code SHELL_UNAVAILABLE): where its path came from, the path, and the reason in a few words. */
+/** Where a shell that a terminal tried came from. A token this runtime does not know is 'other'. */
+export type AppErrorShellSource = 'requested' | 'environment' | 'account' | 'fallback' | 'other';
+
+/** Why a shell that a terminal tried did not start. A token this runtime does not know is 'other'. */
+export type AppErrorShellReason = 'not-found' | 'not-executable' | 'not-a-shell' | 'other';
+
+/** A shell the host tried to start for a terminal and why it did not (code SHELL_UNAVAILABLE), as tokens that the caller maps to words: where its path came from, the path, the reason, and for 'other' the system's own words. */
 export interface AppErrorShellAttempt {
-  source: string;
+  source: AppErrorShellSource;
   path: string;
-  reason: string;
+  reason: AppErrorShellReason;
+  detail?: string;
 }
 
 /** Structured error matching the Go apperror.AppError JSON shape. */
