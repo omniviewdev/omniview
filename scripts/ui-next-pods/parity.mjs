@@ -37,10 +37,11 @@ export async function readPage(page) {
     const status = body?.querySelector('[role=status]') ?? null;
     const message = state === null || state === 'ready' ? '' : read(body?.querySelector('[role=alert]')) || status?.getAttribute('aria-label') || read(status);
     const count = text(root?.querySelector('[data-ov-part=footer] [data-ov-cluster=lead]')) || null;
-    // The shell's scope lane: one face for each scope, drawn `<what>: <value>` (the face's last element holds two spans, the word and the text).
+    // The shell's scope lane: one face for each scope, drawn `<what>: <value>`: the glyph, then an element that holds two spans, the word and the text. A face the host made a control (HM1) is a button with a chevron after that element, so it
+    // is the second child, which is the last of a face that is only text.
     const faces = [...document.querySelectorAll('[data-shell-part=lane] [data-shell-part=scopeFace]')].map((face) => ({
-      what: text(face.lastElementChild?.firstElementChild).replace(/:$/, ''),
-      value: text(face.lastElementChild?.lastElementChild),
+      what: text(face.children[1]?.firstElementChild).replace(/:$/, ''),
+      value: text(face.children[1]?.lastElementChild),
     }));
     const lane = faces.find((face) => face.what === 'Connection')?.value ?? null;
     const table = root?.querySelector('table') ?? null;

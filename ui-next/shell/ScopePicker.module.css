@@ -1,0 +1,223 @@
+/* The popup of a scope face that has a picker (HM1). The browser's own popover (`popover="auto"`: the top layer, so no ancestor clips it and no z-index is needed), fixed at the coordinates the component measured once when it
+   opened (--_left: its left edge; --_edge: its top edge below the face, or its bottom edge from the bottom of the window above it; --_max: the most height it may take). 320 px wide (240 at least, 360 at most, and 16 px less than the
+   window), 360 px tall at most: the list is the one thing that scrolls. The surface is the palette's frame. The shell's own metrics are the exceptions to the closed scales that the chapter names: the 320 px popup, its 32 px
+   input row, its 26 px rows and their 16 px columns are sizes, not spacing. */
+@layer ov.shell {
+  .popup {
+    position: fixed;
+    inset: auto;
+    left: var(--_left, 0px);
+    top: var(--_edge, 0px);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    inline-size: 320px;
+    min-inline-size: 240px;
+    max-inline-size: min(360px, calc(100vw - 16px));
+    max-block-size: var(--_max, 360px);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    box-shadow: var(--ov-shadow-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    cursor: default;
+  }
+
+  /* Above its face the popup hangs from its bottom edge, so a list that gets shorter stays against the face. */
+  .popup[data-side='above'] {
+    top: auto;
+    bottom: var(--_edge, 0px);
+  }
+
+  /* The author's `display` above would show a popover the browser has already hidden (a press outside) until the component has unmounted it. */
+  .popup:not(:popover-open) {
+    display: none;
+  }
+
+  /* ---- the input row: a 16 px glyph and the field, 32 px high ---- */
+  .search {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    block-size: 32px;
+    padding-inline: var(--ov-spacing-16);
+  }
+
+  .lead {
+    display: inline-flex;
+    flex: 0 0 16px;
+    align-items: center;
+    justify-content: center;
+    color: var(--ov-icon);
+  }
+
+  /* No focus ring: the popup is the context the focus is in, the caret and the active option are the cue, as in the palette. */
+  .input {
+    flex: 1 1 auto;
+    align-self: stretch;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--ov-fg);
+    caret-color: var(--ov-fg-editor);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    outline: 0;
+  }
+
+  .input::placeholder {
+    color: var(--ov-fg-muted);
+    opacity: 1;
+  }
+
+  /* ---- the heading: the picker's title, muted, 12 px ---- */
+  .heading {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    box-sizing: border-box;
+    block-size: 24px;
+    padding-inline: var(--ov-spacing-16);
+    border-block-start: 1px solid var(--ov-border-popup);
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* ---- the list: the scroll owner ---- */
+  .body {
+    flex: 1 1 auto;
+    box-sizing: border-box;
+    min-block-size: 0;
+    padding: 0 var(--ov-spacing-8) var(--ov-spacing-8);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .note {
+    margin: 0;
+    padding: var(--ov-spacing-8);
+    color: var(--ov-fg-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .list {
+    min-inline-size: 0;
+  }
+
+  /* ---- an option: 26 px at least, and taller when it has a reason. The mark, the glyph, the name and the state share one line; the reason is a second, under the name. ---- */
+  .option {
+    --_sub: var(--ov-fg-muted);
+
+    display: grid;
+    grid-template-columns: 16px 16px minmax(0, 1fr) auto;
+    align-content: center;
+    align-items: center;
+    column-gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-block-size: 26px;
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg);
+    cursor: default;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* The active option is the one fill, shared by the keyboard and the pointer. */
+  .option[data-active] {
+    --_sub: var(--ov-fg-editor);
+
+    background-color: var(--ov-selection-active);
+  }
+
+  /* A fill is not drawn in forced colours: the active option is an outline there. */
+  @media (forced-colors: active) {
+    .option[data-active] {
+      outline: 2px solid currentcolor;
+      outline-offset: -2px;
+    }
+  }
+
+  .mark {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: center;
+    color: var(--ov-fg);
+  }
+
+  .icon {
+    grid-column: 2;
+    grid-row: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ov-icon);
+  }
+
+  .label {
+    grid-column: 3;
+    grid-row: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .label b {
+    font-weight: 600;
+  }
+
+  .state {
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
+    min-inline-size: 0;
+  }
+
+  .reason {
+    grid-column: 3 / -1;
+    grid-row: 2;
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--_sub);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Said by assistive technology and never drawn: the live region. */
+  .hidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

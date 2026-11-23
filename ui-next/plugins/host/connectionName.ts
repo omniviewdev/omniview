@@ -1,4 +1,4 @@
-import { clip, LIMITS, type Face, type Route } from '../../shell';
+import { clip, LIMITS, type Face, type Route, type ShellLaneFace, type ShellScopeFace, type ShellScopePicker } from '../../shell';
 
 // The ONE place a route's connection KEY becomes something a person reads (C1g). A route carries a connection by a key: the plugin's own id for it (`kind-kind-57a082bd74`), which the tab model compares and a plugin's
 // calls use and which nobody is meant to read. The NAME a person knows the connection by is what the plugin's page says in its scope lane (`FrameV1.scope`). The shell says the name, and where no name is known it says
@@ -50,6 +50,26 @@ export function laneNameOf(lane: unknown): string | null | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * The lane a page published, as the shell draws it (HM1): each face the contract has, copied member by member (a plugin's own object is never handed on, so a plugin cannot give a face a picker or any other member the shell reads), and the one
+ * face that says the connection (the one `laneNameOf` reads: the marked face, else a face labelled Connection) made a control by the picker `pick` makes of it, from the glyph and the text the face says (`undefined`: no picker, the face stays text).
+ * A face that is not valid is left out, as `laneNameOf` leaves it out. `undefined` when the page published no lane.
+ */
+export function laneFor(lane: readonly ShellScopeFace[] | undefined, pick: ((face: Pick<ShellScopeFace, 'icon' | 'text'>) => ShellScopePicker | undefined) | undefined): readonly ShellLaneFace[] | undefined {
+  if (!Array.isArray(lane)) {
+    return undefined;
+  }
+
+  const faces = (lane as readonly unknown[]).filter(isFace);
+  const marked = faces.find((face) => face.role === 'connection');
+  const legacy = marked ?? faces.find((face) => face.label.trim().toLowerCase() === FACE_LABEL && textOf(face.text) !== undefined);
+  return faces.map((face): ShellLaneFace => {
+    const copy: ShellScopeFace = { label: face.label, icon: face.icon as ShellScopeFace['icon'], text: face.text, ...(face.role === 'connection' ? { role: 'connection' as const } : {}) };
+    const picker = face === legacy ? pick?.(copy) : undefined;
+    return picker === undefined ? copy : { ...copy, picker };
+  });
 }
 
 /**

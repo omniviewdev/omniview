@@ -15,6 +15,7 @@ import {
   LOGS_TOOL,
   LOGS_TOOL_ID,
   LogsBody,
+  normaliseRoute,
   platformOf,
   TERMINAL_TOOL,
   TERMINAL_TOOL_ID,
@@ -31,6 +32,7 @@ import {
   type RailChoice,
   type Route,
   type SettingsControl,
+  type ShellLaneFace,
   type ShellRail,
   type ShellRegistration,
   type ShellSidebar,
@@ -44,9 +46,12 @@ import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
-import { ConnectionNames, laneNameOf } from './connectionName';
-import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginSource } from './contributions';
-import { HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
+import { ConnectionNames, laneFor, laneNameOf } from './connectionName';
+import { createConnectionActions, createConnectionsStore, pickerOf, type ConnectionsApi, type ConnectionsState, type HostConnections } from './connections';
+import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
+import { homeGroupsOf } from './homeModel';
+import { homePage } from './homePage';
+import { HOME_PAGE_ID, HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
 import { homeEntriesOf, NoTabs } from './NoTabs';
 import { createHostNotices, type HostNotices } from './notices';
@@ -63,6 +68,7 @@ import { NO_PARAMS, type HostRoute } from './route';
 
 // The Plugins page is the host's own page (ch16 S9): one registration, and a test or a probe registers another in its place.
 registerHostPage(pluginsPage);
+registerHostPage(homePage);
 
 // The host of contributed pages: given what each installed plugin's interface came to (`PluginStore`), it drives the shell's tab model with them. A tab is a route in a plugin; the model asks
 // the host what a route is called (`contributions.ts`) and the host draws each mounted tab's page, the list page for the plugin's contribution, or the kit's collection state where there
@@ -106,6 +112,8 @@ export type PluginHostProps = {
   readonly savedNotices?: LoadedNotices | undefined;
   /** What the Terminal tool starts and loads. Default: the host's own shell and the emulator's lazy chunk; a probe or a test gives a synthetic shell and a fake emulator (`shell/panel/terminal`). */
   readonly terminals?: TerminalsOptions | undefined;
+  /** What the window reads and starts of its plugins' connections: the runtime's calls and events (`connections/`). Absent: the window has no connection data, the scope chip stays text, and Home and the palette list no connection (a test of another part). */
+  readonly connections?: ConnectionsApi | undefined;
 };
 
 type Host = {
@@ -139,26 +147,70 @@ type Host = {
   readonly notices: HostNotices;
   /** Settings: whether the sheet is open and where it was left. The sheet's code is a lazy chunk, fetched when it is first asked for (`shell/settings/host.ts`). */
   readonly settings: SettingsControl;
+  /** The connections of the plugins and what choosing one does (HM1; `connections/`). Absent: the window has no connection API. */
+  readonly connections: HostConnections | undefined;
 };
+
+/** The window's connections: the store over the runtime's calls (kept current for as long as the window is on screen: `attach`), and the actions that choose one. The store lists the plugins that are ready. */
+function makeConnections(api: ConnectionsApi | undefined, tabs: TabsStore, plugins: PluginSource): HostConnections | undefined {
+  if (api === undefined) {
+    return undefined;
+  }
+
+  const store = createConnectionsStore(api, { plugins: () => plugins.getSnapshot().flatMap((entry) => (entry.phase === 'ready' ? [entry.id] : [])) });
+  return { store, actions: createConnectionActions({ tabs, plugins, connections: store }) };
+}
+
+/**
+ * What a route of a plugin that names no connection is completed from (HM1; `contributions.ts`, `complete`): the keys of the connections the window knows for the plugin, and the one the plugin was last shown in in this window. Absent: the
+ * window has no connection data.
+ */
+function choiceOf(connections: HostConnections | undefined, routes: Published<Route>, plugin: string): PluginChoice | undefined {
+  if (connections === undefined) {
+    return undefined;
+  }
+
+  const last = routes.get(plugin);
+  return { keys: connections.store.getSnapshot().connections.flatMap((connection) => (connection.plugin === plugin ? [connection.key] : [])), last: last === undefined ? undefined : connectionOf(last) };
+}
+
+/**
+ * Where each plugin was last shown, from the tabs a restored session brought back, in strip order and with the tab that was on screen last so that it wins. A saved tab holds its connection in its route, which is where the session already
+ * keeps the scope of a window (`shell/session`, the `tabs` part of the document), so the connection a plugin was last used in comes back with the window and nothing else is saved for it.
+ */
+function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
+  const state = tabs.getSnapshot();
+  for (const id of [...state.order, ...(state.active === null ? [] : [state.active])]) {
+    const route = state.tabs[id]?.location.route;
+    if (route !== undefined && route.plugin !== HOST_PLUGIN) {
+      routes.publish(route.plugin, route);
+    }
+  }
+}
 
 /**
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
   const names = new ConnectionNames();
-  const contributions = createContributions({ plugins, frames, names });
+  const routes = new Published<Route>();
+  // The connections are made after the tab model, whose open they drive, and the contributions the model asks read them: a reference closes the circle.
+  const known: { current: HostConnections | undefined } = { current: undefined };
+  const contributions = createContributions({ plugins, frames, names, choice: (plugin) => choiceOf(known.current, routes, plugin) });
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
   const logs = createLogStreams(store);
   // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again.
   const terminals = createTerminals(store, terminalOptions, { screenReader: restored?.terminalScreenReader });
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
-  const routes = new Published<Route>();
   const panelHosts = panelHostsOf(logs);
+  const connections = makeConnections(connectionsApi, tabs, plugins);
+  known.current = connections;
+  seedRoutes(tabs, routes);
   const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator), saved });
   const settings = createSettingsControl({ load: async () => import('../../shell/settings/surface'), openWindow: openSettingsWindow });
   return {
@@ -180,9 +232,10 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce } }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce } }),
     notices,
     settings,
+    connections,
   };
 }
 
@@ -219,10 +272,15 @@ type FrameInputs = {
   readonly railPlugin: string | undefined;
   /** What the sidebar's data hook of the plugin on the rail answered: nothing until it does, and the contribution's skeleton stands. */
   readonly nodes: readonly SidebarNodeV1[] | null | undefined;
+  /** The scope lane the page on screen published, as the shell draws it: its connection face a control when the window knows the plugin's connections (HM1; `connectionName.ts`, `laneFor`). */
+  readonly lane: readonly ShellLaneFace[] | undefined;
 };
 
 /** The page of a contribution a route names, as the host draws it: the plugin's own first page for one it does not have. */
 const pageOf = (contribution: ContributionV1, route: Route): string => (Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home);
+
+/** What the window reads where it has no connection API: nothing, ever. */
+const ABSENT = { subscribe: (): (() => void) => () => undefined, getSnapshot: (): undefined => undefined };
 
 /**
  * What the shell draws around the tab on screen. The island, the lane and the landmarks follow the tab on screen: while its plugin is loading (or a tab is on its way, from a link, or from a
@@ -231,7 +289,7 @@ const pageOf = (contribution: ContributionV1, route: Route): string => (Object.h
  * plugin has settled once they are held (`held`): reserved empty, chosen when the last plugin has said what it is, so a plugin that registers late moves no entry that is drawn. With no plugin
  * that contributes there is nothing to reserve for and nothing to show: the frame is bare.
  */
-function registrationOf({ entries, coming, waiting, held, route, frame, rail, failed, railPlugin, nodes }: FrameInputs): ShellRegistration {
+function registrationOf({ entries, coming, waiting, held, route, lane, rail, failed, railPlugin, nodes }: FrameInputs): ShellRegistration {
   const active = route === undefined ? undefined : entries.find((candidate) => candidate.id === route.plugin);
   const loading = entries.find((candidate) => candidate.phase === 'loading');
 
@@ -257,7 +315,7 @@ function registrationOf({ entries, coming, waiting, held, route, frame, rail, fa
   const holding = held ? { held: true as const } : {};
   if (route?.plugin === HOST_PLUGIN) {
     // A page of the host's own (the Plugins page) draws its own list beside its detail: the frame has the rail, no sidebar track and no scope lane, and the page is its own scroll owner. It is no plugin's, so no entry of the rail is current.
-    return { plugin: { name: 'Omniview' }, layout: 'pane', rail: railData === undefined ? undefined : { ...railData, current: undefined }, ...holding };
+    return { plugin: { name: 'Omniview' }, layout: hostPageOf(route)?.layout ?? 'pane', rail: railData === undefined ? undefined : { ...railData, current: undefined }, ...holding };
   }
 
   if (route === undefined || active === undefined) {
@@ -286,14 +344,20 @@ function registrationOf({ entries, coming, waiting, held, route, frame, rail, fa
     // A detail page is a document: the page scrolls, header and body together (ch16 S15). A list owns its own scrolling.
     layout: page?.kind === 'detail' ? 'document' : 'pane',
     sidebar,
-    scope: frame?.scope,
+    scope: lane,
   };
 }
 
-type EmptyInputs = Pick<FrameInputs, 'entries' | 'coming'> & Pick<PluginHostProps, 'inventory' | 'onRetryInventory'> & { readonly onOpen: (plugin: string) => void };
+type EmptyInputs = Pick<FrameInputs, 'entries' | 'coming'> &
+  Pick<PluginHostProps, 'inventory' | 'onRetryInventory'> & {
+    readonly onOpen: (plugin: string) => void;
+    /** What the window has read of the connections of its plugins (HM1). Absent: the window has no connection API, and the empty window lists none. */
+    readonly connections: ConnectionsState | undefined;
+    readonly onOpenConnection: (plugin: string, key: string, event: ModifierEvent | undefined) => void;
+  };
 
 /** What the island shows while there is no tab: the plugins' own states, in the host's words; and once they have settled, the empty window (decision A17). */
-function emptyOf({ entries, coming, inventory, onRetryInventory, onOpen }: EmptyInputs): ReactNode {
+function emptyOf({ entries, coming, inventory, onRetryInventory, onOpen, connections, onOpenConnection }: EmptyInputs): ReactNode {
   if (entries.length === 0) {
     if (inventory === 'failed') {
       return <PlaceholderPage title="Plugins" state={{ kind: 'failed', message: 'The list of installed plugins could not be read.', retry: onRetryInventory }} />;
@@ -307,7 +371,8 @@ function emptyOf({ entries, coming, inventory, onRetryInventory, onOpen }: Empty
     return <PlaceholderPage title={loading?.name ?? 'Plugins'} state={{ kind: 'loading' }} />;
   }
 
-  return <NoTabs entries={homeEntriesOf(entries)} onOpen={onOpen} />;
+  const read = connections === undefined ? 'ready' : connections.loaded ? (connections.failed ? 'failed' : 'ready') : 'loading';
+  return <NoTabs entries={homeEntriesOf(entries)} onOpen={onOpen} groups={homeGroupsOf(entries, connections?.connections ?? [])} connections={read} onOpenConnection={onOpenConnection} />;
 }
 
 type ListProps = {
@@ -416,6 +481,10 @@ type HostPageProps = {
   readonly panelHosts: (plugin: string) => PanelHostV1;
   /** The window's plugin store, for a page of the host's own (`hostPages.ts`). */
   readonly source: PluginSource;
+  /** The window's connections: what it knows of them and what choosing one does. Absent: it has no connection API. */
+  readonly connections: HostConnections | undefined;
+  /** Opens a plugin at its first page, for the Home page's rows. */
+  readonly openPlugin: (plugin: string, event: ModifierEvent | undefined) => void;
 };
 
 /**
@@ -423,7 +492,7 @@ type HostPageProps = {
  * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
  * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
  */
-function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts, source }: HostPageProps) {
+function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts, source, connections, openPlugin }: HostPageProps) {
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
@@ -434,7 +503,7 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
   if (hosted !== undefined) {
     return (
       <ContributionBoundary name={`host page ${hosted.id}`} resetKey={hosted.id} fallback={(retry) => <PlaceholderPage title={hosted.title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}>
-        <hosted.Page tabs={tabs} tabId={tabId} plugins={source} onRetry={onRetry} />
+        <hosted.Page tabs={tabs} tabId={tabId} plugins={source} onRetry={onRetry} connections={connections} openPlugin={openPlugin} />
       </ContributionBoundary>
     );
   }
@@ -580,9 +649,9 @@ function terminalBodyOf(terminals: Terminals, session: PanelSession, visible: bo
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
@@ -618,6 +687,9 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
   // The palette remembers the places the user goes to and keeps its list up to date while it is open, for as long as the window is on screen. Closed, it costs nothing.
   useEffect(() => host.palette.attach(), [host]);
+
+  // The connections stay current for as long as the window is on screen: read once, then again when the host says one changed or one started (`connections/store.ts`). Absent: nothing is read.
+  useEffect(() => host.connections?.store.attach(), [host]);
 
   // The toasts follow the window: a modal (the palette) holds them back, and a plugin that leaves or a tab that moves makes every notice ask again what its actions can do. Nothing runs while nothing changes.
   // The toasts' timers are held while a modal dialog is open: the palette, and the question a close of a running terminal asks.
@@ -699,6 +771,29 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const frame = useSyncExternalStore(frames.subscribe, () => (key === undefined ? undefined : frames.get(key)));
   const published = useSyncExternalStore(nodes.subscribe, () => (shown === undefined ? undefined : nodes.get(shown.id)));
 
+  // The connections the window knows (HM1), and the scope lane of the page on screen with its connection face made a control: the picker is the host's, made from the state of the plugin's connections, and what it chooses is the tab's change of connection (`actions.switchTab`).
+  const hostConnections = host.connections;
+  const knownConnections = useSyncExternalStore(hostConnections?.store.subscribe ?? ABSENT.subscribe, hostConnections?.store.getSnapshot ?? ABSENT.getSnapshot);
+  const lane = laneFor(
+    frame?.scope,
+    hostConnections === undefined || knownConnections === undefined || route === undefined || activeId === null
+      ? undefined
+      : (face) =>
+        pickerOf({
+          plugin: route.plugin,
+          connections: knownConnections.connections,
+          named: connectionOf(route),
+          text: face.text.trim() === '' ? undefined : face.text,
+          icon: face.icon,
+          onOpen: () => {
+            void hostConnections.store.refresh();
+          },
+          onChoose: (key) => {
+            void hostConnections.actions.switchTab(activeId, key);
+          },
+        }),
+  );
+
   const choose = (id: string, event: ModifierEvent | undefined): void => {
     if (railPlugin !== undefined) {
       // The model's result is the answer: a destination that wants a window of its own (there is none) or that would discard unsaved changes (no page reports a draft yet) changes nothing.
@@ -721,6 +816,30 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     if (home !== undefined) {
       tabs.open({ route: home }, { how: 'smart', source: 'home' });
     }
+  };
+
+  // Home's rows: a plugin opens at its first page. A plugin with two or more connections and none used opens Home (`contributions.ts`, `complete`): when Home is already what is on screen that would change nothing, so the person is taken to the
+  // plugin's connections instead, which is what the row was for, and told so.
+  const openPlugin = (plugin: string, event: ModifierEvent | undefined): void => {
+    const input = host.contributions.home?.(plugin);
+    const home = input === undefined ? undefined : normaliseRoute(input);
+    if (home === undefined) {
+      return;
+    }
+
+    const target = host.contributions.complete?.(home, { from: route, source: 'home' }) ?? home;
+    if (target.plugin === HOST_PLUGIN && route?.plugin === HOST_PLUGIN && route.contribution === HOME_PAGE_ID) {
+      // The rows of a Home that is kept but not on screen are drawn too, under a page that is not displayed: the first row of the page that is.
+      [...document.querySelectorAll<HTMLElement>('[data-home-part="connection"]')].find((row) => row.dataset.homePlugin === plugin && row.closest<HTMLElement>('[data-page-slot]')?.style.display !== 'none')?.focus();
+      host.notices.announcer.polite.announce(`Choose one of the connections of ${entries.find((candidate) => candidate.id === plugin)?.name ?? plugin}.`);
+      return;
+    }
+
+    tabs.open({ route: home }, { how: dispositionOf(event, { platform }), source: 'home' });
+  };
+
+  const openConnection = (plugin: string, key: string, event: ModifierEvent | undefined): void => {
+    void hostConnections?.actions.go(plugin, key, { how: dispositionOf(event, { platform }), source: 'home' });
   };
 
   // A plugin that did not load has no sidebar to show: choosing its entry opens its page, which names what happened and offers the Retry (as its row of the empty window does), and the rail's current
@@ -810,7 +929,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         </ContributionBoundary>
       ) : null}
       <Shell
-        registration={registrationOf({ entries, coming, waiting, held, route, frame, rail, failed, railPlugin, nodes: published })}
+        registration={registrationOf({ entries, coming, waiting, held, route, lane, frame, rail, failed, railPlugin, nodes: published })}
         tabs={tabs}
         renderPage={(tab: PageTab) => (
           <HostPage
@@ -826,10 +945,12 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
             onRetry={onRetry}
             onRetryInventory={onRetryInventory}
             panelHosts={panelHosts}
+            connections={hostConnections}
+            openPlugin={openPlugin}
             source={plugins}
           />
         )}
-        empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open })}
+        empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open, connections: knownConnections, onOpenConnection: openConnection })}
         onChoose={choose}
         onSidebarOpen={host.reportSidebarOpen}
         onSelectRail={selectRail}

@@ -1,6 +1,7 @@
 import type { IconName } from '@omniviewdev/kit';
 import type { ReactNode } from 'react';
-import type { Route, TabId, TabsStore } from '../../shell';
+import type { ModifierEvent, Route, TabId, TabsStore } from '../../shell';
+import type { HostConnections } from './connections';
 import type { PluginSource } from './contributions';
 
 // The pages the HOST itself offers, as tabs: the Plugins page today (ch16 S9: Settings, Plugins and Developer Tools are app-wide singleton tabs, rendered by the host through the same contract as any plugin, the plugin id `host`).
@@ -9,6 +10,10 @@ import type { PluginSource } from './contributions';
 
 /** The plugin id every host page's route carries. */
 export const HOST_PLUGIN = 'host';
+
+/** The id of the Home page among the host's pages (`homePage.tsx`), and the route that opens it. */
+export const HOME_PAGE_ID = 'home';
+export const HOME_ROUTE: Route = { plugin: HOST_PLUGIN, contribution: HOME_PAGE_ID, params: {} };
 
 /** What the window gives a host page when it draws it in a tab. */
 export type HostPageProps = {
@@ -19,6 +24,10 @@ export type HostPageProps = {
   readonly plugins: PluginSource;
   /** The window's Retry for a plugin that is not there. */
   readonly onRetry: (id: string) => void;
+  /** Opens a plugin at its own first page, the way the window does for the plugin's entry in the empty window (the model's disposition from the event). */
+  readonly openPlugin: (plugin: string, event: ModifierEvent | undefined) => void;
+  /** What the window knows of the connections of its plugins and what choosing one does (`connections/`). Absent: the window has none (a test of another part), and a page that lists them lists none. */
+  readonly connections?: HostConnections | undefined;
 };
 
 export type HostPageDefinition = {
@@ -29,6 +38,12 @@ export type HostPageDefinition = {
   readonly icon: IconName;
   /** The page, drawn in the tab. */
   readonly Page: (props: HostPageProps) => ReactNode;
+  /**
+   * Whether the page is one tab in the whole window (ch16 S9, S26): Plugins is. Absent: it is. `false` is an ordinary tab, of which several may exist (Home), and the palette's command for it opens a new tab every time, as the design lab's does (`openHostPage`, `plain: 'new'`).
+   */
+  readonly singleton?: boolean | undefined;
+  /** Who scrolls the page (the shell's `layout`): `pane` (the default) when the page owns its scrolling, as the Plugins page does with its two lists; `document` when the island scrolls it as a whole, as the design lab's Home is. */
+  readonly layout?: 'document' | 'pane' | undefined;
 };
 
 const pages = new Map<string, HostPageDefinition>();

@@ -1,57 +1,8 @@
-/* The empty window (decision A17): the mock's Home page in the island, a document that scrolls as a whole. Host composition: every rule sits in ov.shell, above the kit's parts. */
+/* The empty window (decision A17): the Home page in the island, a document that scrolls as a whole. Host composition: every rule sits in ov.shell, above the kit's parts. */
 @layer ov.shell {
-  .home {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ov-spacing-12);
+  /* The empty window has always stood 12 px inside the island's own 12 px (the mock's Home stands at the island's inset alone, and so does the page in a tab): its title, its line and its first section stay where they were. */
+  .window {
     box-sizing: border-box;
-    max-inline-size: 640px;
     padding: var(--ov-spacing-12);
-  }
-
-  .section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ov-spacing-8);
-  }
-
-  .list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--ov-spacing-2);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    gap: var(--ov-spacing-8);
-    box-sizing: border-box;
-    inline-size: 100%;
-    margin: 0;
-    padding: var(--ov-spacing-4) var(--ov-spacing-8);
-    border: 0;
-    border-radius: var(--ov-radius-control);
-    background-color: transparent;
-    color: var(--ov-fg);
-    text-align: start;
-    cursor: default;
-  }
-
-  /* The chevron is the last thing on the row: it goes to the end. */
-  .row > :last-child {
-    margin-inline-start: auto;
-    color: var(--ov-icon-chevron);
-  }
-
-  .row:hover {
-    background-color: var(--ov-hover-row);
-  }
-
-  .row:focus-visible {
-    outline: 2px solid var(--ov-accent);
-    outline-offset: -2px;
   }
 }

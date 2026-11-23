@@ -26,6 +26,8 @@ import { openable } from '../contract/admit';
 import { readKeywords } from '../contract/sidebarKeywords';
 import type { ContributionV1, FrameV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { laneNameOf } from './connectionName';
+import type { HostConnections } from './connections';
+import { faceOf } from './connections/words';
 import { connectionOf, routeKey, type PluginSource } from './contributions';
 import { allHostPages, HOST_PLUGIN } from './hostPages';
 import { commandOf, providersOf, runCommand } from './paletteProviders';
@@ -82,6 +84,8 @@ export type HostPaletteDeps = {
   readonly panelHosts?: ((plugin: string) => PanelHostV1) | undefined;
   /** Hears the rows a plugin's provider answered that were left out, and why: a problem for its author, said once for each. Default: the console. */
   readonly report?: ((problem: PaletteProblem) => void) | undefined;
+  /** What the window knows of the connections of its plugins and what choosing one does (HM1). Absent: the window has none, and no row offers one. */
+  readonly connections?: HostConnections | undefined;
 };
 
 /** A thing a plugin's provider did that the palette did not take: which provider (`<plugin>:<its own id>`), and a sentence for the plugin's author. */
@@ -469,7 +473,8 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
     { id: 'host.tab.next', title: 'Next tab', context: 'Tabs', icon: 'arrow-right', unavailable: others, run: () => outcomeOf(tabs.next()) },
     { id: 'host.tab.previous', title: 'Previous tab', context: 'Tabs', icon: 'arrow-left', unavailable: others, run: () => outcomeOf(tabs.previous()) },
   );
-  // The host's own pages (the Plugins page): each opens in its singleton tab wherever the person is (ch16 S9, S26), and is shown, as any other tab, if it is already open.
+  // The host's own pages (Plugins, Home): Plugins opens in its singleton tab wherever the person is (ch16 S9, S26) and is shown, as any other tab, if it is already open; Home is an ordinary tab and the command opens a new one every
+  // time, as the design lab's does (`openHostPage`, `plain: 'new'`, shell-regions.js).
   for (const page of allHostPages()) {
     commands.push({
       id: `host.${page.id}`,
@@ -477,7 +482,7 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
       context: 'Window',
       icon: page.icon,
       run: () => {
-        const opened = tabs.open({ route: { plugin: HOST_PLUGIN, contribution: page.id } }, { how: 'smart', source: 'command' });
+        const opened = tabs.open({ route: { plugin: HOST_PLUGIN, contribution: page.id } }, { how: page.singleton === false ? 'new' : 'smart', source: 'command' });
         return opened.status === 'refused' ? { ok: false, reason: opened.message } : true;
       },
     });
@@ -490,6 +495,43 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
 function activeRoute(tabs: TabsStore): Route | undefined {
   const state = tabs.getSnapshot();
   return state.active === null ? undefined : state.tabs[state.active]?.location.route;
+}
+
+/** The command a connection's row runs: the plugin and the connection's key are its argument. */
+const GO_CONNECTION = 'host.connection.go';
+
+/**
+ * A row for each connection of each plugin that is ready (HM1): found by its NAME, saying the plugin and the state it is in, and by the words "connection" and "switch". Choosing one runs `host.connection.go`: the tab on screen goes to it when
+ * the tab is the plugin's, else a tab opens at the plugin's first page in it, and a connection that is not connected is started first, with the palette saying why when it cannot be. A palette narrowed to one connection lists none: they are
+ * what that chip chose from.
+ */
+function connectionsOf({ plugins, connections }: HostPaletteDeps, scope: PaletteScope): PaletteCandidate[] {
+  if (connections === undefined || scope.scope !== null) {
+    return [];
+  }
+
+  const rail = new Map(railOf(plugins.getSnapshot()).map((entry) => [entry.id, entry]));
+  return connections.store.getSnapshot().connections.flatMap((connection, order): PaletteCandidate[] => {
+    const entry = rail.get(connection.plugin);
+    if (entry === undefined || (scope.plugin !== null && scope.plugin !== connection.plugin)) {
+      return [];
+    }
+
+    return [
+      {
+        id: `${connection.plugin}:${connection.key}`,
+        kind: 'command',
+        noun: 'Connection',
+        title: connection.name,
+        context: placesOf([entry.label, faceOf(connection.state).word]),
+        icon: 'server',
+        tone: 'neutral',
+        keywords: wordsOf([entry.label, 'connection', 'switch connection', 'go to connection']),
+        command: { id: GO_CONNECTION, arg: { plugin: connection.plugin, connection: connection.key } },
+        order,
+      },
+    ];
+  });
 }
 
 /**
@@ -536,6 +578,19 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
         return found.unavailable === undefined ? found.run() : { ok: false, reason: found.unavailable };
       }
 
+      // A connection's row: the host starts the connection when it is not connected and goes to it, and the palette says why when it could not (the row is inert while it runs; a failure leaves the palette open for another choice).
+      if (command.id === GO_CONNECTION) {
+        // The argument is the row's own: `{ plugin, connection }`, copied and frozen by the model, and read here as data again because the plugin that was listed may have left.
+        const given: Readonly<Record<string, unknown>> | undefined = typeof command.arg === 'object' && command.arg !== null && !Array.isArray(command.arg) ? (command.arg as Readonly<Record<string, unknown>>) : undefined;
+        const target = given?.plugin;
+        const connection = given?.connection;
+        if (deps.connections === undefined || typeof target !== 'string' || typeof connection !== 'string') {
+          return { ok: false, reason: 'This command is not available.' };
+        }
+
+        return deps.connections.actions.goOrSwitch(target, connection).then((result): PaletteCommandOutcome => (result.ok ? true : { ok: false, reason: result.reason }));
+      }
+
       // A command a plugin's row names, by the id the plugin and the command make together: the plugin may have left since the row was listed.
       const plugin = commandOf(plugins.getSnapshot(), command.id);
       if (plugin === undefined) {
@@ -567,6 +622,7 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
   const sources: readonly PaletteSource[] = [
     { id: 'host:pages', ...OWN, title: 'Pages', section: 'goto', match: (_query, scope) => pagesOf(deps, scope, tell) },
     { id: 'host:tabs', ...OWN, title: 'Tabs', section: 'tabs', match: (_query, scope) => tabsOf(deps, scope.plugin) },
+    { id: 'host:connections', ...OWN, title: 'Connections', section: 'goto', match: (_query, scope) => connectionsOf(deps, scope) },
     {
       id: 'host:commands',
       ...OWN,
@@ -724,6 +780,8 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
         refresh();
       }),
       nodes.subscribe(refresh),
+      // A connection that connects, fails or appears while the palette is open changes its rows: the state each says.
+      ...(deps.connections === undefined ? [] : [deps.connections.store.subscribe(refresh)]),
       ...(frames === undefined ? [] : [frames.subscribe(refresh)]),
     ];
     return () => {

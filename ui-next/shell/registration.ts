@@ -1,4 +1,4 @@
-import type { IconName } from '@omniviewdev/kit';
+import type { IconName, StatusRole } from '@omniviewdev/kit';
 
 // What the tab on screen tells the shell about its plugin's frame: the seed of the contribution contract (decision R11, plan 2.4). Plain data. The shell
 // reads it and knows nothing of the plugin behind it; a plugin never reaches into the shell's DOM (ch16 S1). Every field is one line
@@ -62,6 +62,48 @@ export type ShellScopeFace = {
   readonly role?: 'connection' | undefined;
 };
 
+/** What one option of a face's picker says of its state: the word, and the role of the kit's `Status` that draws its glyph (design 13 SR1: a state is never colour alone). */
+export type ShellPickerState = {
+  readonly role: StatusRole;
+  readonly word: string;
+};
+
+/** One thing a face's picker offers. Its id is the host's own and is never drawn. */
+export type ShellPickerOption = {
+  readonly id: string;
+  /** What a person reads: the name. */
+  readonly label: string;
+  readonly state: ShellPickerState;
+  /** Why the last attempt to use it failed, in one line under the label. Absent: none failed, or none is known. */
+  readonly reason?: string | undefined;
+  /** An attempt to use it is running: the row says so, is not chosen again, and the picker stays open until the attempt ends. */
+  readonly busy?: boolean | undefined;
+};
+
+/**
+ * What makes a face a control (HM1): a list the person picks from, with the words it needs. The shell draws the face as a button with a chevron, opens the list under it (type to filter, the arrows and Home and
+ * End to move, Enter to choose, Escape to close) and tells the host what was chosen; the host decides what that does. The shell knows nothing of what the options are: a name, a state and an id.
+ */
+export type ShellScopePicker = {
+  /** Names the list and its landmark ("Connections"). */
+  readonly title: string;
+  /** What the empty input says ("Search connections"). */
+  readonly placeholder: string;
+  /** What the list says when there is nothing to pick ("No connections"). */
+  readonly empty: string;
+  readonly icon: IconName;
+  readonly options: readonly ShellPickerOption[];
+  /** The option the face says now. Absent: none is known. The list opens on it. */
+  readonly current: string | undefined;
+  /** The picker opened: the host may read again what it knows. */
+  readonly onOpen?: (() => void) | undefined;
+  /** An option was chosen. The picker stays open while the option is busy and closes when it is the current one. */
+  readonly onChoose: (id: string) => void;
+};
+
+/** A face as the shell draws it: the plugin's (`ShellScopeFace`) and, for the face the host made a control, its picker. A plugin never supplies one: the host copies the members it reads. */
+export type ShellLaneFace = ShellScopeFace & { readonly picker?: ShellScopePicker | undefined };
+
 /** One entry of the window's rail: a place whose sidebar the window can show. The shell knows it by its id, its name and its glyph, and nothing of what stands behind it. */
 export type ShellRailEntry = {
   /** What the host is told when the entry is chosen. */
@@ -93,8 +135,8 @@ export type ShellRegistration = {
   readonly rail?: ShellRail;
   /** Absent: no sidebar, no track. */
   readonly sidebar?: ShellSidebar;
-  /** The scope lane above the page, at most 2 faces (ch16 S10). Absent or empty: no lane, no 40 px. */
-  readonly scope?: readonly ShellScopeFace[];
+  /** The scope lane above the page, at most 2 faces (ch16 S10). Absent or empty: no lane, no 40 px. A face with a picker is a control (HM1). */
+  readonly scope?: readonly ShellLaneFace[];
   /**
    * Who scrolls the page (ch12 section 5; the mock's `AWS.page(id, render, { layout })`). `document` (the default): the shell's page scrolls, the
    * content flows at its natural height. `pane`: the page owns its scrolling (a collection view), so the shell scrolls nothing: the content fills

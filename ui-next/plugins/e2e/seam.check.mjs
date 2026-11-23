@@ -96,6 +96,19 @@
 //      `plugins-page-<state>-webkit-void-1440x900.png`. SEAM_ONLY=plugins-page runs t alone; SEAM_CONTROL=plugins-page runs it alone with every perturbation of its controls (PAGE_CONTROLS) made in turn just before the assertion each must trip (one run
 //      serves them all); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
 //
+//   u  the connections (HM1), over the real host, on a host of its own whose plugin `fixture-f-conn` has a PROCESS that serves two connections (`north` starts in about 300 ms; `south` starts as the file `connection-mode` next to the plugin's binary says:
+//      none, `unauthorized` or `unreachable`, which the host answers with a 422). Four windows, each with nothing saved. A: the empty window is Home and lists both connections as the host says them (Disconnected: nothing was started); rule R4: the
+//      plugin's entry, with two connections and none used, opens a Home tab and no Items tab, and on Home it moves the focus to the plugin's connections; Home starts north (the start is held on its way: Connecting… on the row and no tab) and opens it in a
+//      tab (Items; the chip is named Connection: north and the rows are north's) and says Connected; the chip's picker lists north (current, Connected) and south (Disconnected), type-to-filter says `No matches for "zz"`, Enter on south says Connecting…
+//      on its row and then the picker closes with the focus on the chip, the chip and the rows are south's, no tab opened and Back does not return to north (the history entry was replaced). B: a Logs session started from the page's row through the host's
+//      panel handle (decision A21) is still in the panel after the tab's connection changed, its card says Streaming and its lines keep coming, and closing it frees the plugin's feed. C: the palette has a row for each connection (`Connection: south,
+//      Seam Connections · Disconnected`), found by its name, `switch` and `connection`; Enter has the host start it (the row is inert meanwhile) and moves the tab on screen to it; the command Home ranks first for `home` and opens a new Home tab each time.
+//      D: a start the host refuses (south, `unauthorized`) says Needs sign-in and the host's sentence on the picker's row (the picker stays open, the tab stays on north, choosing north closes it), on Home's row (no tab opens) and in the palette (its footer
+//      names the row and the reason, the row is inert while the host works and not after, Escape closes it with the window as it was); with the file gone the same choice starts south and goes to it, and `unreachable` says Not responding with its sentence.
+//      Nothing in the window can stop a connection, so the check stops south as the host's operator (`StopConnection`) before each part that needs a start; the failed starts are the 422s of the allow-list. The plugin's process ends with the host's.
+//      SEAM_ONLY=connections runs u alone; SEAM_CONTROL=connections runs it alone with every perturbation of its controls (CONNECTIONS_CONTROLS) made in turn just before the assertion each must trip (one run serves them all); SEAM_CONTROL=<one of
+//      them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
+//
 //   r  the Terminal tool on the host's own shell (T1, T2a), over the real host. Before the first terminal the emulator's code is not requested (no request for its chunk while the panel is open and says `No terminals`); `New terminal` starts a
 //      shell of this machine (the host lists exactly one session), the code is fetched then, the emulator takes the keyboard (the person who pressed the button types) and a command with a known output is run: what the shell printed,
 //      read from the host's own replay of the session (`AttachSession`: the GPU draws on a canvas, there is no text in the page), holds the output line of `echo SEAM_$((6*7))` and not only its echo. The session's tab is called by the shell
@@ -128,7 +141,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from 'playwright';
 import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
-import { buildProcess, writeAll, writePlugin } from '../fixture/build.mjs';
+import { buildConnectionsProcess, buildProcess, CONNECTIONS_ID, writeAll, writeConnectionsPlugin, writePlugin } from '../fixture/build.mjs';
 import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -244,20 +257,41 @@ const PAGE_CONTROLS = {
   'uninstall-gone': /Uninstall: the row and the rail entry leave on the host's event while the call is still open/,
   'second-list': /the second window's list lost the row with no reload/,
 };
+// The negative controls of scenario u, the connections (HM1). As in n, p and t each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no other. What a control
+// adds to a page is markup that is nothing of the product's (`data-decoy`), or the change of one attribute or of the focus; it never replaces a node the page owns, so the scenario goes on over the page it perturbed. One run serves them all
+// (SEAM_CONTROL=connections); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
+const CONNECTIONS_CONTROLS = {
+  'home-disconnected': /Home lists the plugin's two connections by name, both Disconnected/,
+  'r4-home': /opens a tab titled Home and no Items tab/,
+  'home-connecting': /Home says Connecting… on the row that was pressed/,
+  'north-opens': /the three rows of the tab are north's/,
+  'chip-options': /the picker lists the plugin's connections: north \(the current one, Connected\) and south \(Disconnected\)/,
+  'chip-no-match': /type-to-filter with no match lists no connection/,
+  'chip-focus': /the picker closes and the focus is on the chip/,
+  'chip-replaced': /Back does not return to north/,
+  'session-stays': /the Logs session started from north is still in the panel after the tab's connection changed/,
+  'lines-grow': /the session's line count keeps growing after the switch/,
+  'palette-row': /the name finds the connection's row/,
+  'home-first': /the palette's Home command ranks first for home/,
+  'fail-chip': /a start the host refused says Needs sign-in with its reason, on the row of the picker/,
+  'fail-home': /Home says Needs sign-in on the row of south, with the reason under its name/,
+  'fail-palette': /a start the host refused leaves the palette open with a notice that names the row and the reason/,
+};
 const FAILED_GROUP = 'failed-load';
 const PAGE_GROUP = 'plugins-page';
+const CONNECTIONS_GROUP = 'connections';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
 const REMOVE = process.env.SEAM_REMOVE ?? '';
-// SEAM_ONLY=plugins-page runs scenario t alone, with no perturbation, held to the allow-list of failed requests as in a full run.
+// SEAM_ONLY=plugins-page runs scenario t alone, and SEAM_ONLY=connections scenario u alone, with no perturbation, held to the allow-list of failed requests as in a full run.
 const ONLY = process.env.SEAM_ONLY ?? '';
-if (ONLY !== '' && ONLY !== PAGE_GROUP) {
-  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}`);
+if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP) {
+  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP} or ${CONNECTIONS_GROUP}`);
 }
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), SETTINGS_GROUP].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 async function freePort() {
@@ -331,6 +365,10 @@ const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
 const PLUGIN_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin.ServiceWrapper';
 const PROCESS_SERVICE = 'github.com/omniviewdev/omniview/internal/processinfo.Service';
 const SETTINGS_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/settings.Binding';
+const RESOURCE_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
+/** The keys the connections fixture's plugin gives its two connections (`fixture/connections-process/main.go`): a route carries them, and no window draws them. */
+const NORTH_KEY = 'north-57a082bd74';
+const SOUTH_KEY = 'south-0c3d9e1f42';
 
 /** A call of a bound method of the host, by service and name, as the page's own runtime makes one, whatever the host answers: the status and the text of the answer. */
 async function tryBound(base, service, method, ...args) {
@@ -400,6 +438,11 @@ const RUNTIME_ALLOW = [
     phases: ['plugins-page'],
     reason: 'scenario t presses Enable on a plugin whose binary has lost its execute bit: the second call of Enable, ReloadPlugin, is refused with the load failure, which is the half-done state the scenario asserts (the host answers 422)',
     test: (failure) => failure.status === 422 && failure.asked.includes(`"methodID":${String(methodIdOf(PLUGIN_SERVICE, 'ReloadPlugin'))},`) && failure.answered.includes('omniview:plugin/load-failed'),
+  },
+  {
+    phases: [CONNECTIONS_GROUP],
+    reason: "scenario u makes the start of south fail on purpose, with the connections fixture's file `connection-mode` (`unauthorized`, `unreachable`): the host answers StartConnection for it with a 422 (the class of the refusal is in the body), and the window says the refusal on the row, which is what the scenario asserts",
+    test: (failure) => failure.status === 422 && failure.asked.includes(`"methodID":${String(methodIdOf(RESOURCE_SERVICE, 'StartConnection'))},`) && failure.asked.includes(SOUTH_KEY) && ['omniview:resource/unauthorized', 'omniview:connection/failed'].some((type) => failure.answered.includes(type)),
   },
 ];
 
@@ -700,7 +743,7 @@ async function checkRail(page, base, engine) {
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
 
   // One entry for each plugin that contributes, in the declared order; the window opened on the first, and its entry is the current one.
-  const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
+  const entries = page.getByRole('group', { name: 'Plugins', exact: true }).getByRole('button');
   // The plugins that contribute, in their declared order, then the ones that did not load (the old-shell bundle, the plugin with no bundle), by name, each named for what happened.
   assert.deepEqual(
     await entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
@@ -1095,7 +1138,7 @@ async function checkPalette(page, base, engine) {
   await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
   assert.deepEqual(
     await dialog.getByRole('option').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label'))),
-    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs', 'Command: Plugins, Window'],
+    [`Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Next tab, Tabs', 'Command: Previous tab, Tabs', 'Command: Plugins, Window', 'Command: Home, Window'],
     `${engine}: the commands are the host's, and only those`,
   );
   await shot('commands');
@@ -1914,7 +1957,7 @@ async function checkProcess(browser, engine, binary, work) {
 
     if (REMOVE !== name) await assertion();
   };
-  const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
+  const entries = page.getByRole('group', { name: 'Plugins', exact: true }).getByRole('button');
   const railNames = async () => entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
   const strip = page.getByRole('tablist', { name: 'Open tabs' });
   const pageTabs = async () => strip.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.textContent));
@@ -2267,7 +2310,7 @@ async function checkFailedLoad(browser, engine, binary, work) {
     });
   });
   const { asserting, verdict } = withControls(FAILED_GROUP, FAILED_CONTROLS);
-  const entries = page.getByRole('group', { name: 'Plugins' }).getByRole('button');
+  const entries = page.getByRole('group', { name: 'Plugins', exact: true }).getByRole('button');
   const railNames = async () => entries.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
   const strip = page.getByRole('tablist', { name: 'Open tabs' });
   const pageTabs = async () => strip.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => tab.textContent));
@@ -2644,12 +2687,12 @@ function methodIdOf(service, method) {
 const PLUGIN_CALLS = new Map(['ReloadPlugin', 'RetryFailedPlugin', 'SetPluginEnabled', 'UninstallPlugin'].map((method) => [methodIdOf(PLUGIN_SERVICE, method), method]));
 
 /**
- * Holds the next call `target` makes of `method` of the host's plugin service, so that what the page shows while a call is open is a state that lasts and can be read (the host answers in tens of milliseconds). `before`: the call waits on its way
- * to the host, which has done nothing, so the page can say only that its work is going on. `after`: the host has done it and its answer waits, so the host's events have been told and the page must have followed them with its call still open.
- * `held()` says the call is held; `release()` lets it go on and gives the page back as it was.
+ * Holds the next call `target` makes of `method` of the host's plugin service (or of `service`: scenario u holds the resource service's `StartConnection`), so that what the page shows while a call is open is a state that lasts and can be
+ * read (the host answers in tens of milliseconds). `before`: the call waits on its way to the host, which has done nothing, so the page can say only that its work is going on. `after`: the host has done it and its answer waits, so the
+ * host's events have been told and the page must have followed them with its call still open. `held()` says the call is held; `release()` lets it go on and gives the page back as it was.
  */
-async function holdCall(target, method, when) {
-  const methodID = methodIdOf(PLUGIN_SERVICE, method);
+async function holdCall(target, method, when, service = PLUGIN_SERVICE) {
+  const methodID = methodIdOf(service, method);
   const gate = Promise.withResolvers();
   const done = Promise.withResolvers();
   let held = false;
@@ -3343,6 +3386,649 @@ async function checkPluginsPage(browser, engine, binary, work) {
 }
 
 /**
+ * u. The connections (HM1: the scope chip's picker, Home and the palette), over the real host, on a host of its own whose plugin `fixture-f-conn` (Seam Connections) has a PROCESS that serves two connections: `north`, which starts in
+ * about 300 ms, and `south`, whose start is what the file `connection-mode` next to the plugin's binary says (no file: it starts; `unauthorized` and `unreachable`: the host answers the start with a 422). The window never starts a
+ * connection by itself: a person chooses one, the HOST starts it (`StartConnection`, held on its way wherever the check must read a state that lasts: `Connecting…` is a few milliseconds long otherwise) and the window says what became of
+ * it where the person chose. Four windows over the one host, each opened with nothing saved: A (Home, rule R4, the chip's picker), B (a Logs session started from the page stays when the tab's connection changes: decision A21), C (the
+ * palette) and D (a start that fails, from the chip, from Home and from the palette, then the start that works, then the other failure). Nothing in the window can stop a connection, so the check does, as the host's operator
+ * (`StopConnection`): `south` is Disconnected again before each part that needs a start. Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withControls`; CONNECTIONS_CONTROLS).
+ */
+async function checkConnectionsAndHome(browser, engine, binary, work) {
+  const dir = await mkdtemp(path.join(work, `connections-${engine}-`));
+  const host = await startHost(dir, await freePort(), undefined, async (plugins) => [await writeConnectionsPlugin(plugins, binary)]);
+  const exited = new Promise((resolve) => host.child.once('exit', resolve));
+  const { asserting, verdict } = withControls(CONNECTIONS_GROUP, CONNECTIONS_CONTROLS);
+  const errors = [];
+  const windows = [];
+  const modeFile = path.join(stateRoot(dir), 'plugins', CONNECTIONS_ID, 'connection-mode');
+  const startId = methodIdOf(RESOURCE_SERVICE, 'StartConnection');
+  const northRows = ['orders-api', 'ledger-sync', 'billing-sync'].map((name) => [name, 'north']);
+  const southRows = ['harbor-gate', 'tide-table', 'keel-check'].map((name) => [name, 'south']);
+  /** What the window says of a start that the host refused, by the class of the refusal: the word of the state and the one line of the reason (the host's own sentence for the class, never the plugin's text). */
+  const NEEDS_SIGN_IN = { state: 'Needs sign-in', reason: 'The provider requires authentication.' };
+  const NOT_RESPONDING = { state: 'Not responding', reason: 'The server did not answer.' };
+  let mac = false;
+  let pluginPid;
+
+  /** What the host says of each connection of the plugin (`GetAllConnectionStates`), by name: the readiness word. The window must agree with it. */
+  const readiness = async () => {
+    const answer = await callBound(host.base, RESOURCE_SERVICE, 'GetAllConnectionStates');
+    return Object.fromEntries((answer[CONNECTIONS_ID] ?? []).map((state) => [state.connection.name, state.readiness]));
+  };
+  /** What the next start of `south` does: the file the plugin reads on every start (`connections-process/main.go`). `ok` is no file. */
+  const southStarts = async (mode) => {
+    if (mode === 'ok') await rm(modeFile, { force: true });
+    else await writeFile(modeFile, `${mode}\n`);
+  };
+  /** Nothing in the window can stop a connection, so the check does it as the host's operator: `south` is Disconnected again, and the window follows the host's event. */
+  const stopSouth = async () => callBound(host.base, RESOURCE_SERVICE, 'StopConnection', CONNECTIONS_ID, SOUTH_KEY);
+  /** A window with nothing saved, opened as the native app opens one (`/`, no hash), and what it asks of the host: the starts, each the plugin and the connection `StartConnection` was called with, in the order it asks. */
+  const windowOf = async () => {
+    const page = await freshPage(browser, host.base);
+    windows.push(page);
+    page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+    const starts = [];
+    page.on('request', (request) => {
+      if (!request.url().endsWith('/wails/runtime')) return;
+      try {
+        const { args } = JSON.parse(request.postData() ?? 'null') ?? {};
+        if (args?.methodID === startId) starts.push(args.args);
+      } catch {
+        // not a call
+      }
+    });
+    await open(page, host.base);
+    await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+    return { page, starts };
+  };
+  /** The next `StartConnection` the page makes is held on its way to the host: the window has said Connecting… (it says it at once) and the host has done nothing, so what the page shows is a state that lasts. */
+  const holdStart = async (target) => holdCall(target, 'StartConnection', 'before', RESOURCE_SERVICE);
+  const strip = (target) => target.getByRole('tablist', { name: 'Open tabs' });
+  const tabsOf = async (target) => strip(target).getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => ({ title: tab.textContent ?? '', name: tab.getAttribute('aria-label') ?? '', selected: tab.getAttribute('aria-selected') === 'true' })));
+  const tabShape = (tabs) => tabs.map(({ title, name, selected }) => [title, name, selected]);
+  const chip = (target, name) => target.getByRole('button', { name: `Connection: ${name}`, exact: true });
+  const focused = async (target) => target.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName ?? '');
+  /** The rows of the page that is on screen, as a person reads them: the name, the one line of the reason under it, the word of the state at the end, and whether a start is under way. */
+  const homeRows = async (target) =>
+    target
+      .locator('[data-home-part="connection"]')
+      .filter({ visible: true })
+      .evaluateAll((rows) =>
+        rows.map((row) => {
+          const lines = [...row.querySelectorAll('[data-ov-clip]')].map((line) => line.textContent ?? '');
+          return { name: lines[0] ?? '', state: row.querySelector('[data-ov-role]')?.textContent?.trim() ?? '', reason: lines[1] ?? '', busy: row.getAttribute('aria-busy') === 'true' };
+        }),
+      );
+  const homeRow = (target, name) => target.locator('[data-home-part="connection"]', { has: target.getByText(name, { exact: true }) }).filter({ visible: true });
+  /** The rows of the Items page on screen: the name and the connection each says. */
+  const itemsShown = async (target) => target.locator('[data-shell-region="island"] tbody tr').filter({ visible: true }).evaluateAll((rows) => rows.map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent ?? '')));
+  const picker = (target) => target.locator('[data-shell-part="picker"]');
+  const field = (target) => picker(target).getByRole('combobox', { name: 'Connections' });
+  /** The options of the picker as a person reads them: the name, the word of the state, the reason, whether it is the current one (the dot and `aria-selected`), and whether a start is under way (`aria-disabled`). */
+  const optionsOf = async (target) =>
+    picker(target)
+      .getByRole('option')
+      .evaluateAll((options) =>
+        options.map((option) => ({
+          name: option.querySelector('[data-ov-clip]')?.textContent ?? '',
+          state: option.querySelector('[data-shell-part="pickerState"]')?.textContent?.trim() ?? '',
+          reason: option.querySelector('[data-shell-part="pickerReason"]')?.textContent ?? '',
+          current: option.getAttribute('aria-selected') === 'true',
+          mark: option.firstElementChild?.textContent ?? '',
+          busy: option.getAttribute('aria-disabled') === 'true',
+        })),
+      );
+  /**
+   * Opens the picker of the chip: pressed with the pointer (the first time, where a person's first press is) or with the keys (the chip is a Tab stop: Enter opens it). A tooltip that a focused tab shows hangs below the strip, over the lane, and
+   * takes a press that was meant for the chip, as it would for a person who had used the palette with the keys and then the pointer, so the keys are the way that does not depend on where the pointer or the focus last was.
+   */
+  const openPicker = async (target, name, how = 'keys') => {
+    if (how === 'pointer') {
+      await chip(target, name).click();
+    } else {
+      await chip(target, name).focus();
+      await target.keyboard.press('Enter');
+    }
+
+    await field(target).waitFor();
+  };
+  const palette = (target) => target.getByRole('dialog', { name: 'Search' });
+  const openPalette = async (target) => {
+    await target.keyboard.press(`${mac ? 'Meta' : 'Control'}+KeyK`);
+    await palette(target).waitFor();
+  };
+  /** The palette's row of a connection, by the id the host gives it (`<plugin>:<key>`), which does not change when the row's words do. */
+  const rowOf = (target, key) => palette(target).locator(`[data-palette-row$="|${CONNECTIONS_ID}:${key}"]`);
+  const footOf = async (target) => (await palette(target).locator('[data-palette-part="foot"]').innerText()).replace(/\s+/g, ' ').trim();
+  /** The keys of the plugin's connections that a page draws, in its text or in an attribute that names or describes an element (an accessible name, a title, a tooltip, a placeholder): a key is the plugin's id for a connection, which a route carries and nobody reads. */
+  const keysDrawn = async (target) =>
+    target.evaluate((keys) => {
+      const named = ['aria-label', 'title', 'alt', 'placeholder', 'data-ov-tip'];
+      const drawn = [document.body.innerText, ...[...document.querySelectorAll('*')].flatMap((node) => named.flatMap((name) => (node.hasAttribute(name) ? [node.getAttribute(name) ?? ''] : [])))].join('\n');
+      return keys.filter((key) => drawn.includes(key));
+    }, [NORTH_KEY, SOUTH_KEY]);
+  /** What a control adds to a page: markup that is nothing of the product's (`data-decoy`), put in the first element `selector` finds (at its end, or at its start with `where`), and taken out again. */
+  const plant = async (target, selector, html, where = 'beforeend') => target.locator(selector).first().evaluate((element, [markup, place]) => element.insertAdjacentHTML(place, markup), [html, where]);
+  const unplant = async (target) => target.evaluate(() => document.querySelectorAll('[data-decoy]').forEach((element) => element.remove()));
+  const DECOY_ROW = '<button type="button" data-home-part="connection" data-decoy><span data-ov-clip>decoy</span><span data-ov-role="healthy">Connected</span></button>';
+  const DECOY_OPTION = '<div role="option" aria-selected="false" data-decoy><span></span><span data-ov-clip>decoy</span><span data-shell-part="pickerState">Connected</span></div>';
+
+  try {
+    // Window A: Home, rule R4 and the chip's picker. -----------------------------------------------------------------------------------------------------------
+    const { page, starts } = await windowOf();
+    mac = await page.evaluate(() => navigator.platform.includes('Mac'));
+    const pluginButton = page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: 'Seam Connections', exact: true });
+    // The plugin runs a process the host names (`processinfo`: its pid, with the executable it runs), so that the check can say that nothing of it is left when the host is gone.
+    const owned = (await callBound(host.base, PROCESS_SERVICE, 'GetSnapshot')).processes.find((candidate) => candidate.key === `plugin:${CONNECTIONS_ID}`);
+    assert.ok(owned?.ownership === 'verified' && owned.identity?.pid > 0 && owned.identity.executable.endsWith(`/plugins/${CONNECTIONS_ID}/bin/plugin`), `${engine}: the host names the connections plugin's process, with the executable it runs: ${JSON.stringify(owned)}`);
+    pluginPid = owned.identity.pid;
+
+    // 1. THE EMPTY WINDOW IS HOME: nothing was saved, so no tab is open and the page is Home, which lists the plugin's connections by name with the state each is in, and the host's state is what it says (nothing was started).
+    await Promise.all([homeRow(page, 'north').waitFor({ timeout: 30_000 }), homeRow(page, 'south').waitFor({ timeout: 30_000 })]);
+    assert.equal(await page.getByRole('heading', { level: 1, name: 'Home', exact: true }).count(), 1, `${engine}: a window with nothing saved shows Home`);
+    assert.equal(await page.getByText('No tabs are open.', { exact: true }).count(), 1, `${engine}: and says that no tab is open`);
+    assert.deepEqual(await tabsOf(page), [], `${engine}: and no tab is open`);
+    assert.equal(await page.getByRole('region', { name: 'Connections', exact: true }).getByRole('heading', { level: 3 }).count(), 0, `${engine}: the plugin is the only one that has connections, so its group has no label of its own`);
+    await asserting(
+      'home-disconnected',
+      async () => plant(page, '[aria-label="Connections"] [role="group"]', DECOY_ROW),
+      async () => unplant(page),
+      async () => {
+        assert.deepEqual(
+          await homeRows(page),
+          [
+            { name: 'north', state: 'Disconnected', reason: '', busy: false },
+            { name: 'south', state: 'Disconnected', reason: '', busy: false },
+          ],
+          `${engine}: Home lists the plugin's two connections by name, both Disconnected (what the host says before any start)`,
+        );
+      },
+    );
+    assert.deepEqual(await readiness(), { north: 'DISCONNECTED', south: 'DISCONNECTED' }, `${engine}: the host says Disconnected for both before any start`);
+    assert.deepEqual(await keysDrawn(page), [], `${engine}: the key of a connection is in nothing Home draws: no text, no accessible name, no tooltip`);
+    assert.deepEqual(starts, [], `${engine}: a window that is only looked at starts nothing`);
+
+    // 2. RULE R4: the plugin has two connections and none was used in this window, so its entry names no connection to open and the page that opens is Home, where they are listed: never the plugin's page on one of them chosen for the person.
+    await pluginButton.click();
+    await strip(page).getByRole('tab', { name: 'Home', exact: true }).waitFor({ timeout: 15_000 });
+    await page.getByText('No tabs are open.', { exact: true }).waitFor({ state: 'detached' });
+    // A tab that must NOT open cannot be waited for: the Home tab is there, and the window is given a moment in which the plugin's own page would have opened beside it.
+    await page.waitForTimeout(300);
+    await asserting(
+      'r4-home',
+      async () => plant(page, '[role="tablist"][aria-label="Open tabs"]', '<div role="tab" aria-label="Items, north" aria-selected="false" data-decoy>Items</div>'),
+      async () => unplant(page),
+      async () => {
+        assert.deepEqual((await tabsOf(page)).map((tab) => [tab.title, tab.selected]), [['Home', true]], `${engine}: pressing the plugin in a window with two connections and none used opens a tab titled Home and no Items tab (the plugin does not land on an arbitrary connection)`);
+      },
+    );
+    assert.deepEqual(starts, [], `${engine}: and the window started nothing`);
+    assert.deepEqual(await readiness(), { north: 'DISCONNECTED', south: 'DISCONNECTED' }, `${engine}: and neither did the host`);
+    // Home is what is on screen now, so the plugin's entry cannot open it again: it takes the person to the plugin's connections, the first of them, and opens no tab.
+    await pluginButton.click();
+    await waitUntil('the focus to be on a connection of the plugin', async () => page.evaluate(() => document.activeElement?.matches('[data-home-part="connection"][data-home-plugin="fixture-f-conn"]') === true), 10_000);
+    assert.equal(await page.evaluate(() => document.activeElement?.textContent?.startsWith('north') ?? false), true, `${engine}: the plugin's entry on Home gives the focus to the first connection of the plugin`);
+    assert.deepEqual((await tabsOf(page)).map((tab) => tab.title), ['Home'], `${engine}: and opens no tab`);
+
+    // 3. HOME starts a connection and opens it: the row that is pressed says Connecting… for as long as the host takes (the start is held on its way), no tab opens meanwhile, and then a tab Items opens in north with the chip named after it; Home's row says Connected.
+    const startingNorth = await holdStart(page);
+    await homeRow(page, 'north').click();
+    await waitUntil('the window to ask the host to start north', startingNorth.held, 15_000);
+    await asserting(
+      'home-connecting',
+      async () => plant(page, '[aria-label="Connections"] [role="group"]', DECOY_ROW),
+      async () => unplant(page),
+      async () => {
+        assert.deepEqual(
+          await homeRows(page),
+          [
+            { name: 'north', state: 'Connecting…', reason: '', busy: true },
+            { name: 'south', state: 'Disconnected', reason: '', busy: false },
+          ],
+          `${engine}: Home says Connecting… on the row that was pressed and nothing of the other while the host starts the connection`,
+        );
+        assert.deepEqual((await tabsOf(page)).map((tab) => tab.title), ['Home'], `${engine}: Home says Connecting… and no tab opens while the host starts the connection`);
+      },
+    );
+    assert.deepEqual(starts, [[CONNECTIONS_ID, NORTH_KEY]], `${engine}: the window asked the host for one thing: to start north`);
+    await startingNorth.release();
+    await strip(page).getByRole('tab', { name: 'Items, north', exact: true }).waitFor({ timeout: 30_000 });
+    await chip(page, 'north').waitFor({ timeout: 30_000 });
+    await page.locator('[data-shell-region="island"] tbody tr').nth(2).waitFor({ timeout: 30_000 });
+    await asserting(
+      'north-opens',
+      async () => plant(page, '[data-shell-region="island"] tbody', '<tr data-decoy><td>harbor-gate</td><td>south</td></tr>'),
+      async () => unplant(page),
+      async () => {
+        assert.deepEqual(tabShape(await tabsOf(page)), [['Home', 'Home', false], ['Items', 'Items, north', true]], `${engine}: a tab Items opens in north, beside Home and on screen`);
+        assert.equal(await chip(page, 'north').count(), 1, `${engine}: the lane's chip of the tab that opened is named Connection: north`);
+        assert.deepEqual(await itemsShown(page), northRows, `${engine}: and the three rows of the tab are north's`);
+      },
+    );
+    await strip(page).getByRole('tab', { name: 'Home', exact: true }).click();
+    await waitUntil('Home to say that north is connected', async () => (await homeRows(page))[0]?.state === 'Connected', 15_000);
+    assert.deepEqual(
+      await homeRows(page),
+      [
+        { name: 'north', state: 'Connected', reason: '', busy: false },
+        { name: 'south', state: 'Disconnected', reason: '', busy: false },
+      ],
+      `${engine}: Home's row of north now says Connected, and south's still Disconnected`,
+    );
+    assert.deepEqual(await readiness(), { north: 'CONNECTED', south: 'DISCONNECTED' }, `${engine}: and the host agrees`);
+    // Rule R4 again, from the other end: north was used in this window, so the plugin's entry opens the connection it was last used in, which is the tab that shows it, and opens no second one.
+    await pluginButton.click();
+    await waitUntil('the tab of north to be on screen', async () => (await tabsOf(page)).find((tab) => tab.selected)?.name === 'Items, north', 10_000);
+    assert.equal((await tabsOf(page)).length, 2, `${engine}: the plugin's entry, with a connection used in this window, shows the tab of that connection and opens no tab`);
+
+    // 4. THE CHIP: its picker lists the plugin's connections with their states, narrows as the person types, and Enter on a connection that is not connected has the host start it (Connecting… on the row, held on its way) and then moves THIS tab
+    // to it: the picker closes with the focus on the chip, the chip and the rows are south's, no tab was opened and the change replaced the tab's history entry (Back does not return to north).
+    await openPicker(page, 'north', 'pointer');
+    assert.equal(await field(page).evaluate((element) => element === document.activeElement), true, `${engine}: the picker's field has the keyboard when it opens`);
+    assert.equal(await picker(page).getByRole('listbox', { name: 'Connections' }).count(), 1, `${engine}: the picker is a listbox named Connections`);
+    await asserting(
+      'chip-options',
+      async () => plant(page, '[data-shell-part="picker"] [role="listbox"]', DECOY_OPTION),
+      async () => unplant(page),
+      async () => {
+        assert.deepEqual(
+          await optionsOf(page),
+          [
+            { name: 'north', state: 'Connected', reason: '', current: true, mark: '•', busy: false },
+            { name: 'south', state: 'Disconnected', reason: '', current: false, mark: '', busy: false },
+          ],
+          `${engine}: the picker lists the plugin's connections: north (the current one, Connected) and south (Disconnected)`,
+        );
+      },
+    );
+    assert.deepEqual(await keysDrawn(page), [], `${engine}: and the key of a connection is in nothing the picker draws`);
+    await page.keyboard.type('zz', { delay: 20 });
+    await waitUntil('the list to be narrowed to nothing', async () => (await optionsOf(page)).length === 0, 10_000);
+    await asserting(
+      'chip-no-match',
+      async () => plant(page, '[data-shell-part="picker"] [role="listbox"]', DECOY_OPTION),
+      async () => unplant(page),
+      async () => {
+        assert.deepEqual(await optionsOf(page), [], `${engine}: type-to-filter with no match lists no connection`);
+        assert.equal(await picker(page).locator('[data-shell-part="pickerNote"]').textContent(), 'No matches for "zz"', `${engine}: type-to-filter with no match says No matches for "zz"`);
+      },
+    );
+    await field(page).fill('');
+    await page.keyboard.type('sou', { delay: 20 });
+    await waitUntil('the list to be narrowed to south', async () => (await optionsOf(page)).length === 1, 10_000);
+    assert.deepEqual((await optionsOf(page)).map((option) => [option.name, option.state]), [['south', 'Disconnected']], `${engine}: typing sou leaves one option, south`);
+    const switching = await holdStart(page);
+    await page.keyboard.press('Enter');
+    await waitUntil('the window to ask the host to start south', switching.held, 15_000);
+    assert.deepEqual(await optionsOf(page), [{ name: 'south', state: 'Connecting…', reason: '', current: false, mark: '', busy: true }], `${engine}: Enter on south: the row says Connecting… while the host starts it`);
+    assert.equal(await picker(page).count(), 1, `${engine}: the picker stays open while the host starts the connection`);
+    assert.equal(await chip(page, 'north').count(), 1, `${engine}: and the tab stays on north: the chip still says north`);
+    assert.deepEqual(await itemsShown(page), northRows, `${engine}: and the rows are still north's`);
+    assert.deepEqual(starts, [[CONNECTIONS_ID, NORTH_KEY], [CONNECTIONS_ID, SOUTH_KEY]], `${engine}: the window asked the host for one thing more: to start south`);
+    await switching.release();
+    await picker(page).waitFor({ state: 'detached', timeout: 30_000 });
+    await chip(page, 'south').waitFor({ timeout: 30_000 });
+    await page.locator('[data-shell-region="island"] tbody tr').nth(2).waitFor({ timeout: 30_000 });
+    await waitUntil('the focus to be on the chip', async () => (await focused(page)) === 'Connection: south', 5_000).catch(() => undefined);
+    await asserting(
+      'chip-focus',
+      async () => page.evaluate(() => document.activeElement?.blur()),
+      async () => chip(page, 'south').focus(),
+      async () => {
+        assert.equal(await focused(page), 'Connection: south', `${engine}: the picker closes and the focus is on the chip, which is named Connection: south`);
+      },
+    );
+    assert.deepEqual(await itemsShown(page), southRows, `${engine}: the rows of the tab are south's`);
+    assert.deepEqual(tabShape(await tabsOf(page)), [['Home', 'Home', false], ['Items', 'Items, south', true]], `${engine}: the tab count did not change: the tab went to south and none opened`);
+    assert.deepEqual(await readiness(), { north: 'CONNECTED', south: 'CONNECTED' }, `${engine}: the host started south`);
+    const back = page.getByRole('button', { name: 'Back', exact: true });
+    await asserting(
+      'chip-replaced',
+      async () => back.evaluate((element) => element.removeAttribute('aria-disabled')),
+      async () => back.evaluate((element) => element.setAttribute('aria-disabled', 'true')),
+      async () => {
+        assert.equal(await back.getAttribute('aria-disabled'), 'true', `${engine}: Back does not return to north: the change replaced the history entry of the tab, so there is no earlier page`);
+      },
+    );
+    // Back says why it does nothing and stays a control (`aria-disabled`), so a press is made as a keyboard or a pointer would, which the browser's own check for an enabled button would not allow.
+    await back.click({ force: true });
+    await page.waitForTimeout(300);
+    assert.equal(await chip(page, 'south').count(), 1, `${engine}: and pressing Back leaves the tab on south`);
+    await page.close();
+
+    // Window B: a Logs session started from the page, in the host's panel, stays when the tab's connection changes (decision A21). ---------------------------------------------------------------
+    const { page: second, starts: startsB } = await windowOf();
+    // Both connections are connected now: a press on one starts nothing.
+    await homeRow(second, 'north').waitFor({ timeout: 30_000 });
+    await waitUntil('Home to say that both connections are connected', async () => (await homeRows(second)).every((row) => row.state === 'Connected') && (await homeRows(second)).length === 2, 15_000);
+    await homeRow(second, 'north').click();
+    await strip(second).getByRole('tab', { name: 'Items, north', exact: true }).waitFor({ timeout: 30_000 });
+    await second.locator('[data-shell-region="island"] tbody tr').nth(2).waitFor({ timeout: 30_000 });
+    assert.deepEqual(startsB, [], `${engine}: a connection that is connected is opened and not started again`);
+    // 7. The name of a row is a button that asks the host's panel for the item's Logs session (the page's `ContextV1.panel`).
+    await second.getByRole('button', { name: 'orders-api', exact: true }).click();
+    const log = second.locator('[data-log-session] [role="grid"]');
+    await log.waitFor({ timeout: 30_000 });
+    const lines = async () => Number((await log.getAttribute('aria-rowcount')) ?? 0);
+    await waitUntil('the stream to have written 30 lines', async () => (await lines()) >= 30, 30_000);
+    const sessionTab = second.getByRole('tablist', { name: 'Logs sessions' }).getByRole('tab', { name: 'orders-api/app', exact: true });
+    const counters = async () => second.evaluate(() => ({ ...Reflect.get(window, '__fixtureLogs') }));
+    /** The card of the session's tab (hover): the host's own words for a log session. A tooltip the pointer left on its way is a popover too, so the card is the one that has a State in it. */
+    const cardOf = async () => {
+      await sessionTab.hover();
+      const card = second.locator('[popover]:popover-open').filter({ hasText: 'State' });
+      await card.waitFor();
+      const text = await card.innerText();
+      await second.mouse.move(2, 2);
+      return text;
+    };
+    assert.equal(await sessionTab.count(), 1, `${engine}: the panel's Logs tool has the session of the row, named by the item and its source`);
+    const firstCard = await cardOf();
+    assert.match(firstCard, /Logs[\s\S]*Item orders-api[\s\S]*State\s+Streaming/, `${engine}: and its card says what the host says of a log session that streams (${JSON.stringify(firstCard)})`);
+    const opening = await counters();
+    assert.deepEqual([opening.opened, opening.closed], [1, 0], `${engine}: the plugin opened one feed and closed none`);
+    const written = await lines();
+    await openPicker(second, 'north');
+    await second.keyboard.type('sou', { delay: 20 });
+    await second.keyboard.press('Enter');
+    await picker(second).waitFor({ state: 'detached', timeout: 30_000 });
+    await chip(second, 'south').waitFor({ timeout: 30_000 });
+    await second.locator('[data-shell-region="island"] tbody tr').nth(2).waitFor({ timeout: 30_000 });
+    assert.deepEqual(await itemsShown(second), southRows, `${engine}: the tab went to south while its Logs session was running`);
+    await asserting(
+      'session-stays',
+      async () => second.locator('[role="tablist"][aria-label="Logs sessions"] [role="tab"]').first().evaluate((element) => element.setAttribute('aria-hidden', 'true')),
+      async () => second.locator('[role="tablist"][aria-label="Logs sessions"] [role="tab"]').first().evaluate((element) => element.removeAttribute('aria-hidden')),
+      async () => {
+        assert.equal(await sessionTab.count(), 1, `${engine}: the Logs session started from north is still in the panel after the tab's connection changed`);
+        const card = await cardOf();
+        assert.match(card, /State\s+Streaming/, `${engine}: the Logs session started from north is still in the panel after the tab's connection changed: its card still says Streaming (${JSON.stringify(card)})`);
+        assert.deepEqual(await counters(), opening, `${engine}: the Logs session started from north is still in the panel after the tab's connection changed: its feed was not closed and none was opened again`);
+      },
+    );
+    await asserting(
+      'lines-grow',
+      async () => second.getByRole('button', { name: 'Pause log updates' }).click(),
+      async () => second.getByRole('button', { name: 'Pause log updates' }).click(),
+      async () => {
+        const first = await lines();
+        await waitUntil('the session to write 15 more lines', async () => (await lines()) >= first + 15, 10_000).catch(() => undefined);
+        assert.ok((await lines()) >= Math.max(first, written) + 15, `${engine}: the session's line count keeps growing after the switch (${String(written)} lines before it, ${String(first)} then ${String(await lines())} after: the stream makes 20 a second)`);
+      },
+    );
+    await sessionTab.focus();
+    await second.keyboard.press('Delete');
+    await second.getByText('No log sessions').waitFor({ timeout: 15_000 });
+    await waitUntil('every listener on the feed to be gone', async () => (await counters()).listeners === 0, 15_000);
+    assert.deepEqual(await counters(), { opened: 1, closed: 1, listeners: 0 }, `${engine}: closing the session frees the plugin's feed and every listener on it`);
+    await second.close();
+
+    // Window C: the palette. -------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    const { page: third } = await windowOf();
+    await homeRow(third, 'north').click();
+    await strip(third).getByRole('tab', { name: 'Items, north', exact: true }).waitFor({ timeout: 30_000 });
+    await chip(third, 'north').waitFor({ timeout: 30_000 });
+    await stopSouth();
+    // 6. With the tab on north the palette is narrowed to it (a chip for the plugin and one for the connection): the connection's chip is taken off, as a person widens a search, and the name finds the row of the other connection.
+    await openPalette(third);
+    await third.keyboard.press('Backspace');
+    await third.keyboard.type('south', { delay: 20 });
+    const southRow = rowOf(third, SOUTH_KEY);
+    await southRow.waitFor({ timeout: 15_000 });
+    await waitUntil('the palette to say that south is Disconnected', async () => (await southRow.getAttribute('aria-label')) === 'Connection: south, Seam Connections · Disconnected', 15_000);
+    await asserting(
+      'palette-row',
+      async () => southRow.evaluate((element) => element.setAttribute('aria-label', 'Connection: south, Seam Connections · Connected')),
+      async () => southRow.evaluate((element) => element.setAttribute('aria-label', 'Connection: south, Seam Connections · Disconnected')),
+      async () => {
+        assert.equal(await southRow.getAttribute('aria-label'), 'Connection: south, Seam Connections · Disconnected', `${engine}: the name finds the connection's row: Connection: south, with the plugin and the state it is in`);
+        assert.equal(await southRow.getAttribute('aria-selected'), 'true', `${engine}: and it is the active row`);
+      },
+    );
+    assert.deepEqual(await keysDrawn(third), [], `${engine}: and the key of a connection is in nothing the palette draws`);
+    const connectionRows = async () => palette(third).locator('[data-palette-row*="|host:connections|"]').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')));
+    for (const word of ['switch', 'connection']) {
+      await palette(third).getByRole('combobox').fill('');
+      await third.keyboard.type(word, { delay: 20 });
+      await waitUntil(`both connections to be listed for ${word}`, async () => (await connectionRows()).length === 2, 10_000);
+      assert.deepEqual(await connectionRows(), ['Connection: north, Seam Connections · Connected', 'Connection: south, Seam Connections · Disconnected'], `${engine}: the word ${word} finds both connections`);
+    }
+    await palette(third).getByRole('combobox').fill('');
+    await third.keyboard.type('south', { delay: 20 });
+    await southRow.waitFor();
+    const runningSouth = await holdStart(third);
+    await third.keyboard.press('Enter');
+    await waitUntil('the window to ask the host to start south', runningSouth.held, 15_000);
+    assert.equal(await southRow.getAttribute('data-inert'), '', `${engine}: while the host starts the connection the palette's row is inert`);
+    assert.equal(await southRow.getAttribute('aria-disabled'), 'true', `${engine}: and says so to assistive technology`);
+    assert.equal(await palette(third).count(), 1, `${engine}: and the palette stays open`);
+    await runningSouth.release();
+    await palette(third).waitFor({ state: 'detached', timeout: 30_000 });
+    await chip(third, 'south').waitFor({ timeout: 30_000 });
+    await third.locator('[data-shell-region="island"] tbody tr').nth(2).waitFor({ timeout: 30_000 });
+    assert.deepEqual(tabShape(await tabsOf(third)), [['Items', 'Items, south', true]], `${engine}: Enter on the row switched the tab on screen to south (no tab opened)`);
+    assert.deepEqual(await itemsShown(third), southRows, `${engine}: and its rows are south's`);
+    // Home is a command, and it opens a NEW Home tab each time. Every chip is taken off (the plugin's page narrows the palette to the plugin and to its connection), so that the other rows that say home are there to be ranked.
+    const homeCommand = 'Command: Home, Window';
+    const homeSearch = async () => {
+      await openPalette(third);
+      await third.keyboard.press('Backspace');
+      await third.keyboard.press('Backspace');
+      await third.keyboard.type('home', { delay: 20 });
+      await palette(third).getByRole('option', { name: homeCommand, exact: true }).waitFor({ timeout: 15_000 });
+    };
+    await homeSearch();
+    await asserting(
+      'home-first',
+      async () => plant(third, '[data-palette-part="results"] [role="listbox"]', '<div role="option" aria-label="Plugin home: decoy" aria-selected="false" data-decoy>decoy</div>', 'afterbegin'),
+      async () => unplant(third),
+      async () => {
+        const rows = await palette(third).getByRole('option').evaluateAll((options) => options.map((option) => [option.getAttribute('aria-label'), option.getAttribute('aria-selected')]));
+        assert.deepEqual(rows[0], [homeCommand, 'true'], `${engine}: the palette's Home command ranks first for home, and is the active row`);
+      },
+    );
+    await third.keyboard.press('Enter');
+    await palette(third).waitFor({ state: 'detached', timeout: 15_000 });
+    await waitUntil('2 tabs to be open', async () => (await tabsOf(third)).length === 2, 10_000);
+    assert.deepEqual((await tabsOf(third)).filter((tab) => tab.selected).map((tab) => tab.name), ['Home'], `${engine}: the command Home opens a Home tab, and it is on screen`);
+    // A Home tab is open now, and its own row (`Tab: Home`) ranks above the command for the same word: from the tab of south the arrow keys take the command, and it opens a second Home tab.
+    await strip(third).getByRole('tab', { name: 'Items, south', exact: true }).click();
+    await homeSearch();
+    const command = palette(third).getByRole('option', { name: homeCommand, exact: true });
+    for (let press = 0; press < 4 && (await command.getAttribute('aria-selected')) !== 'true'; press += 1) await third.keyboard.press('ArrowDown');
+    assert.equal(await command.getAttribute('aria-selected'), 'true', `${engine}: the arrow keys take the command Home when the row of the Home tab that is open ranks above it`);
+    await third.keyboard.press('Enter');
+    await palette(third).waitFor({ state: 'detached', timeout: 15_000 });
+    await waitUntil('3 tabs to be open', async () => (await tabsOf(third)).length === 3, 10_000);
+    assert.deepEqual((await tabsOf(third)).filter((tab) => tab.selected).map((tab) => tab.name), ['Home'], `${engine}: the command Home opens a second Home tab, and it is on screen`);
+    assert.deepEqual((await tabsOf(third)).map((tab) => tab.name).toSorted(), ['Home', 'Home', 'Items, south'], `${engine}: the command opened a new Home tab each time, and the tab of south is still there`);
+    await third.close();
+
+    // Window D: a start that fails, from the chip, from Home and from the palette; then the start that works; then the other failure. ----------------------------------------------------------------
+    const { page: fourth, starts: startsD } = await windowOf();
+    await homeRow(fourth, 'north').click();
+    await strip(fourth).getByRole('tab', { name: 'Items, north', exact: true }).waitFor({ timeout: 30_000 });
+    // A Home tab beside it, from the palette's command, so that Home's part is read in a tab that stays.
+    await openPalette(fourth);
+    await fourth.keyboard.type('home', { delay: 20 });
+    await palette(fourth).getByRole('option', { name: homeCommand, exact: true }).waitFor({ timeout: 15_000 });
+    await fourth.keyboard.press('Enter');
+    await palette(fourth).waitFor({ state: 'detached', timeout: 15_000 });
+    await strip(fourth).getByRole('tab', { name: 'Home', exact: true }).waitFor({ timeout: 15_000 });
+    await strip(fourth).getByRole('tab', { name: 'Items, north', exact: true }).click();
+    await chip(fourth, 'north').waitFor({ timeout: 30_000 });
+    await fourth.locator('[data-shell-region="island"] tbody tr').nth(2).waitFor({ timeout: 30_000 });
+    await stopSouth();
+    await southStarts('unauthorized');
+    const tabsBefore = tabShape(await tabsOf(fourth));
+    assert.deepEqual(tabsBefore, [['Items', 'Items, north', true], ['Home', 'Home', false]], `${engine}: the window has the tab of north and a Home tab`);
+
+    // 5. A START THAT FAILS, from the chip: the row says what the host said in the window's words and the reason, the picker stays open, the tab stays on north, and choosing north, which is connected, closes it: the person is not stuck.
+    await openPicker(fourth, 'north');
+    await waitUntil('the picker to say that south is Disconnected', async () => (await optionsOf(fourth)).find((option) => option.name === 'south')?.state === 'Disconnected', 15_000);
+    await fourth.keyboard.type('sou', { delay: 20 });
+    await waitUntil('the list to be narrowed to south', async () => (await optionsOf(fourth)).length === 1, 10_000);
+    const refusedByChip = await holdStart(fourth);
+    await fourth.keyboard.press('Enter');
+    await waitUntil('the window to ask the host to start south', refusedByChip.held, 15_000);
+    await refusedByChip.release();
+    await waitUntil('the row to say how the start failed', async () => (await optionsOf(fourth))[0]?.state === NEEDS_SIGN_IN.state, 15_000);
+    await asserting(
+      'fail-chip',
+      async () => plant(fourth, '[data-shell-part="picker"] [role="listbox"]', DECOY_OPTION),
+      async () => unplant(fourth),
+      async () => {
+        assert.deepEqual(
+          await optionsOf(fourth),
+          [{ name: 'south', state: NEEDS_SIGN_IN.state, reason: NEEDS_SIGN_IN.reason, current: false, mark: '', busy: false }],
+          `${engine}: a start the host refused says Needs sign-in with its reason, on the row of the picker`,
+        );
+        assert.equal(await picker(fourth).count(), 1, `${engine}: a start the host refused leaves the picker open`);
+        assert.equal(await chip(fourth, 'north').count(), 1, `${engine}: a start the host refused leaves the tab on north: the chip still says north`);
+        assert.deepEqual(await itemsShown(fourth), northRows, `${engine}: a start the host refused leaves the rows of the tab north's`);
+      },
+    );
+    assert.equal(await picker(fourth).locator('[data-shell-part="pickerLive"]').textContent(), `south: ${NEEDS_SIGN_IN.reason}`, `${engine}: and the picker says it aloud, by the name and the reason`);
+    assert.deepEqual(startsD, [[CONNECTIONS_ID, SOUTH_KEY]], `${engine}: the window asked the host to start south, once`);
+    assert.deepEqual(await readiness(), { north: 'CONNECTED', south: 'FAILED' }, `${engine}: and the host says south failed`);
+    await field(fourth).fill('');
+    await waitUntil('the whole list to be back', async () => (await optionsOf(fourth)).length === 2, 10_000);
+    await fourth.keyboard.press('Enter');
+    await picker(fourth).waitFor({ state: 'detached', timeout: 15_000 });
+    assert.equal(await focused(fourth), 'Connection: north', `${engine}: choosing north, which is connected, closes the picker with the focus on the chip: the person is not stuck`);
+    assert.deepEqual(tabShape(await tabsOf(fourth)), tabsBefore, `${engine}: and the tabs are as they were`);
+
+    // The same from Home, in its tab: the row of south says Connecting…, then the class of the failure and the reason under the name, and no tab opens.
+    await strip(fourth).getByRole('tab', { name: 'Home', exact: true }).click();
+    await homeRow(fourth, 'south').waitFor({ timeout: 15_000 });
+    const refusedByHome = await holdStart(fourth);
+    await homeRow(fourth, 'south').click();
+    await waitUntil('the window to ask the host to start south', refusedByHome.held, 15_000);
+    assert.deepEqual((await homeRows(fourth)).map(({ name, state, busy }) => [name, state, busy]), [['north', 'Connected', false], ['south', 'Connecting…', true]], `${engine}: Home says Connecting… on the row of south while the host starts it`);
+    await refusedByHome.release();
+    await waitUntil('Home to say how the start failed', async () => (await homeRows(fourth))[1]?.state === NEEDS_SIGN_IN.state, 15_000);
+    await asserting(
+      'fail-home',
+      async () => plant(fourth, '[aria-label="Connections"] [role="group"]', DECOY_ROW),
+      async () => unplant(fourth),
+      async () => {
+        assert.deepEqual(
+          await homeRows(fourth),
+          [
+            { name: 'north', state: 'Connected', reason: '', busy: false },
+            { name: 'south', state: NEEDS_SIGN_IN.state, reason: NEEDS_SIGN_IN.reason, busy: false },
+          ],
+          `${engine}: Home says Needs sign-in on the row of south, with the reason under its name`,
+        );
+        assert.deepEqual(tabShape(await tabsOf(fourth)), [['Items', 'Items, north', false], ['Home', 'Home', true]], `${engine}: Home says Needs sign-in on the row of south and opens no tab`);
+      },
+    );
+    assert.deepEqual(startsD, [[CONNECTIONS_ID, SOUTH_KEY], [CONNECTIONS_ID, SOUTH_KEY]], `${engine}: Home asked the host to start south, once`);
+
+    // And from the palette, with the tab of north on screen: Enter on the row of south leaves the palette open with a notice that names the row and the reason, the row is inert while the host works and not after, and Escape closes it with the window as it was.
+    await strip(fourth).getByRole('tab', { name: 'Items, north', exact: true }).click();
+    await chip(fourth, 'north').waitFor({ timeout: 30_000 });
+    await openPalette(fourth);
+    await fourth.keyboard.press('Backspace');
+    await fourth.keyboard.type('south', { delay: 20 });
+    const refusedRow = rowOf(fourth, SOUTH_KEY);
+    await refusedRow.waitFor({ timeout: 15_000 });
+    await waitUntil('the row to say Needs sign-in', async () => (await refusedRow.getAttribute('aria-label')) === `Connection: south, Seam Connections · ${NEEDS_SIGN_IN.state}`, 15_000);
+    const refusedByPalette = await holdStart(fourth);
+    await fourth.keyboard.press('Enter');
+    await waitUntil('the window to ask the host to start south', refusedByPalette.held, 15_000);
+    assert.equal(await refusedRow.getAttribute('data-inert'), '', `${engine}: while the host works on it the row of south is inert`);
+    await refusedByPalette.release();
+    await waitUntil('the palette to say why', async () => (await footOf(fourth)) === `south: ${NEEDS_SIGN_IN.reason}`, 15_000);
+    await asserting(
+      'fail-palette',
+      async () => plant(fourth, '[data-palette-part="foot"]', '<span data-decoy>Run</span>'),
+      async () => unplant(fourth),
+      async () => {
+        assert.equal(await footOf(fourth), `south: ${NEEDS_SIGN_IN.reason}`, `${engine}: a start the host refused leaves the palette open with a notice that names the row and the reason`);
+        assert.equal(await palette(fourth).count(), 1, `${engine}: a start the host refused leaves the palette open`);
+        assert.equal(await refusedRow.getAttribute('data-inert'), null, `${engine}: and the row is not inert any more: another choice can be made`);
+      },
+    );
+    assert.deepEqual(startsD.length, 3, `${engine}: the palette asked the host to start south, once`);
+    await fourth.keyboard.press('Escape');
+    await palette(fourth).waitFor({ state: 'detached', timeout: 15_000 });
+    assert.deepEqual(tabShape(await tabsOf(fourth)), tabsBefore, `${engine}: Escape closes the palette with the window as it was: the tabs`);
+    assert.equal(await chip(fourth, 'north').count(), 1, `${engine}: and the tab still on north`);
+    assert.deepEqual(await itemsShown(fourth), northRows, `${engine}: with north's rows`);
+
+    // The reason is gone: the file is removed and south is chosen again from the chip. It starts (Connecting…, then connected), and the tab goes to it.
+    await southStarts('ok');
+    await openPicker(fourth, 'north');
+    await fourth.keyboard.type('sou', { delay: 20 });
+    await waitUntil('the list to be narrowed to south', async () => (await optionsOf(fourth)).length === 1, 10_000);
+    assert.deepEqual((await optionsOf(fourth)).map((option) => [option.name, option.state, option.reason]), [['south', NEEDS_SIGN_IN.state, NEEDS_SIGN_IN.reason]], `${engine}: the row still says how the last start failed until the person chooses it again`);
+    const retrying = await holdStart(fourth);
+    await fourth.keyboard.press('Enter');
+    await waitUntil('the window to ask the host to start south', retrying.held, 15_000);
+    assert.deepEqual((await optionsOf(fourth)).map((option) => [option.name, option.state, option.busy]), [['south', 'Connecting…', true]], `${engine}: chosen again, the row says Connecting…`);
+    await retrying.release();
+    await picker(fourth).waitFor({ state: 'detached', timeout: 30_000 });
+    await chip(fourth, 'south').waitFor({ timeout: 30_000 });
+    await fourth.locator('[data-shell-region="island"] tbody tr').nth(2).waitFor({ timeout: 30_000 });
+    await waitUntil('the focus to be on the chip', async () => (await focused(fourth)) === 'Connection: south', 5_000).catch(() => undefined);
+    assert.equal(await focused(fourth), 'Connection: south', `${engine}: the start that works closes the picker with the focus on the chip`);
+    assert.deepEqual(await itemsShown(fourth), southRows, `${engine}: and the tab went to south`);
+    assert.deepEqual(await readiness(), { north: 'CONNECTED', south: 'CONNECTED' }, `${engine}: the host says both are connected`);
+    await strip(fourth).getByRole('tab', { name: 'Home', exact: true }).click();
+    await waitUntil('Home to say that south is connected', async () => (await homeRows(fourth))[1]?.state === 'Connected', 15_000);
+    assert.deepEqual((await homeRows(fourth)).map(({ state, reason }) => [state, reason]), [['Connected', ''], ['Connected', '']], `${engine}: Home says Connected for both, and no reason is left under south`);
+    assert.equal(startsD.length, 4, `${engine}: the start that works was one start`);
+
+    // The other failure: south is stopped and does not answer. The words are the class's, and the person is not stuck.
+    await strip(fourth).getByRole('tab', { name: 'Items, south', exact: true }).click();
+    await openPicker(fourth, 'south');
+    await fourth.keyboard.type('nor', { delay: 20 });
+    await waitUntil('the list to be narrowed to north', async () => (await optionsOf(fourth)).length === 1, 10_000);
+    await fourth.keyboard.press('Enter');
+    await picker(fourth).waitFor({ state: 'detached', timeout: 30_000 });
+    await chip(fourth, 'north').waitFor({ timeout: 30_000 });
+    await stopSouth();
+    await southStarts('unreachable');
+    await openPicker(fourth, 'north');
+    await waitUntil('the picker to say that south is Disconnected', async () => (await optionsOf(fourth)).find((option) => option.name === 'south')?.state === 'Disconnected', 15_000);
+    await fourth.keyboard.type('sou', { delay: 20 });
+    await waitUntil('the list to be narrowed to south', async () => (await optionsOf(fourth)).length === 1, 10_000);
+    await fourth.keyboard.press('Enter');
+    await waitUntil('the row to say how the start failed', async () => (await optionsOf(fourth))[0]?.state === NOT_RESPONDING.state, 15_000);
+    assert.deepEqual(
+      await optionsOf(fourth),
+      [{ name: 'south', state: NOT_RESPONDING.state, reason: NOT_RESPONDING.reason, current: false, mark: '', busy: false }],
+      `${engine}: a server that does not answer says Not responding with its reason, on the row of the picker`,
+    );
+    assert.equal(await chip(fourth, 'north').count(), 1, `${engine}: and the tab stays on north`);
+    assert.equal(startsD.length, 5, `${engine}: the window asked the host to start south once more, and it was refused`);
+    await field(fourth).fill('');
+    await waitUntil('the whole list to be back', async () => (await optionsOf(fourth)).length === 2, 10_000);
+    await fourth.keyboard.press('Enter');
+    await picker(fourth).waitFor({ state: 'detached', timeout: 15_000 });
+    assert.equal(await focused(fourth), 'Connection: north', `${engine}: choosing north closes the picker with the focus on the chip`);
+    await southStarts('ok');
+    await fourth.close();
+    assert.deepEqual(errors, [], `${engine}: the whole scenario wrote no page error`);
+
+    // Nothing of the plugin is left when the host is: its process ends with the host's, and the file that made south fail is gone.
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await waitUntil("the plugin's process to end with the host", async () => !alive(pluginPid), 10_000);
+    await assert.rejects(stat(modeFile), { code: 'ENOENT' }, `${engine}: the file that makes south fail is not left behind`);
+    console.log(`${engine}: the connections: Home lists them, a rule for a plugin with two and none used, the chip's picker, Home and the palette start a connection and say how it went (a start refused for sign-in and for a server that does not answer is said on the row, in the picker, in Home and in the palette), and a Logs session of the host's panel stays when the tab's connection changes`);
+    verdict(engine);
+  } finally {
+    await rm(modeFile, { force: true });
+    for (const target of windows) await target.close().catch(() => undefined);
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    if (pluginPid !== undefined && alive(pluginPid)) process.kill(pluginPid, 'SIGKILL');
+  }
+}
+
+/**
  * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
  * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
  * back. Then what is saved is made unusable in the ways that matter, through the window service the shell uses: a tab of a plugin that is not installed (the tab stays, and says so), a session of a
@@ -3399,7 +4085,7 @@ async function checkSession(browser, getHost, restart, engine) {
   // Two tabs of two plugins, the second's (a page that fails by design: its bundle has its own copy of the kit, which is how the check knows whose it is) on screen, the rail and the sidebar on the second.
   await openFirstPlugin(page);
   await page.getByRole('tab', { name: 'Items' }).waitFor({ timeout: 30_000 });
-  await page.getByRole('group', { name: 'Plugins' }).getByRole('button').nth(1).click();
+  await page.getByRole('group', { name: 'Plugins', exact: true }).getByRole('button').nth(1).click();
   await page.getByRole('treeitem', { name: 'Things' }).click();
   await page.getByRole('treeitem', { name: 'Items' }).click();
   await page.getByRole('alert').waitFor();
@@ -5953,6 +6639,9 @@ try {
   /** The fixture's process, built once for every host scenario n starts (the Go build is the one thing in this check that is not about a page). */
   let processBinary;
   const processFixture = async () => (processBinary ??= await buildProcess(path.join(work, 'process-binary')));
+  /** The connections fixture's process (scenario u), built once for every host scenario u starts. */
+  let connectionsBinary;
+  const connectionsFixture = async () => (connectionsBinary ??= await buildConnectionsProcess(path.join(work, 'connections-binary')));
 
   // ENGINES=webkit (or chromium) runs one engine, for a developer who is chasing one.
   for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
@@ -6007,6 +6696,18 @@ try {
         // Scenario t alone: clean under SEAM_ONLY, and under SEAM_CONTROL with the perturbations of the controls asked for, saying for each whether its own assertion saw it (`checkPluginsPage`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
         try {
           await phase(PAGE_GROUP, name, async () => checkPluginsPage(browser, name, await processFixture(), work));
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
+      if (ONLY === CONNECTIONS_GROUP || CONTROL === CONNECTIONS_GROUP || CONNECTIONS_CONTROLS[CONTROL] !== undefined) {
+        // Scenario u alone: clean under SEAM_ONLY, and under SEAM_CONTROL with the perturbations of the controls asked for, saying for each whether its own assertion saw it (`checkConnectionsAndHome`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
+        try {
+          await phase(CONNECTIONS_GROUP, name, async () => checkConnectionsAndHome(browser, name, await connectionsFixture(), work));
         } catch (error) {
           console.error(String(error?.message ?? error));
           process.exitCode = 1;
@@ -6111,7 +6812,8 @@ try {
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
       await phase('plugins-page', name, async () => checkPluginsPage(browser, name, await processFixture(), work));
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen)`);
+      await phase(CONNECTIONS_GROUP, name, async () => checkConnectionsAndHome(browser, name, await connectionsFixture(), work));
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen), the connections (the chip's picker, Home and the palette start a connection and say how it went, a start the host refuses is said where it was chosen, a Logs session of the host's panel stays when the tab's connection changes)`);
     } finally {
       await browser.close();
     }

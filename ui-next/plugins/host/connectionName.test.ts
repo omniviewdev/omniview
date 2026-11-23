@@ -5,7 +5,7 @@ import { restoreTabs, STATE_VERSION } from '../../shell/core/tabs';
 import { createTabsStore, type Face, type Route, type ShellScopeFace } from '../../shell';
 import type { FrameV1 } from '../contract/v1';
 import { acme } from '../testing';
-import { ConnectionNames, laneNameOf, pathSaid, restoredFace, said } from './connectionName';
+import { ConnectionNames, laneFor, laneNameOf, pathSaid, restoredFace, said } from './connectionName';
 import { createContributions, routeKey, type PluginSource } from './contributions';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -261,6 +261,7 @@ describe('the files that read a route\'s connection parameter', () => {
 
   const ALLOWED: Readonly<Record<string, string>> = {
     'plugins/host/connectionName.ts': 'the naming module: a saved face holds the key of its route, and the key is taken out of it here',
+    'plugins/host/connections/actions.ts': 'changes a tab\'s connection and opens a plugin\'s first page in one: the route it makes carries the key the person chose, and a tab already in that connection is left alone',
     'plugins/host/contributions.ts': 'makes a face from a route: the key is the scope\'s id and never a label; `complete` opens a page in the connection of the tab it is opened from',
     'plugins/host/PluginHost.tsx': 'tells a page\'s hook the connection it is read in, opens a link, and carries the connection of the plugin a sidebar was last shown for',
     'plugins/host/palette.ts': 'opens a place in the connection it was last used in, and compares a chip\'s id with the key: what is drawn is the name',
@@ -455,5 +456,46 @@ describe('what a plugin\'s lane and a saved face can hold that is not a name (C1
 
     const state = tabs.getSnapshot();
     expect(state.order.map((id) => tabs.selectors.identity(state, id)?.name)).toEqual([`Widgets, ${NAME}`, `Gadgets, ${NAME}`]);
+  });
+});
+
+// The lane as the shell draws it (HM1): every face copied member by member, and the face that says the connection made a control by the picker the host makes of it.
+describe('the lane the shell draws', () => {
+  const picker = { title: 'Connections', placeholder: 'Search connections', empty: 'No connections', icon: 'server' as const, options: [], current: undefined, onChoose: () => undefined };
+
+  it('gives the picker to the marked face only, whatever its label, and to no other', () => {
+    const lane = laneFor(
+      [
+        { label: 'Scope', icon: 'folder-tree', text: 'Everything' },
+        { label: 'Where', icon: 'server', text: 'north', role: 'connection' },
+      ],
+      () => picker,
+    );
+
+    expect(lane?.map((face) => face.picker !== undefined)).toEqual([false, true]);
+  });
+
+  it('reads a plugin built before the marker by the face labelled Connection, and offers the maker that face\'s glyph and text', () => {
+    const seen: Array<{ icon: string; text: string }> = [];
+    const lane = laneFor([{ label: 'Connection', icon: 'server', text: 'north' }], (face) => {
+      seen.push(face);
+      return picker;
+    });
+
+    expect(lane?.[0]?.picker).toBe(picker);
+    expect(seen[0]).toMatchObject({ icon: 'server', text: 'north' });
+  });
+
+  it('never hands on a plugin\'s own object: a member a plugin adds to a face (a picker of its own) is not drawn', () => {
+    const smuggled = { label: 'Connection', icon: 'server', text: 'north', role: 'connection', picker: { ...picker, title: 'Mine' }, extra: 1 } as unknown as ShellScopeFace;
+    const lane = laneFor([smuggled], undefined);
+
+    expect(lane).toEqual([{ label: 'Connection', icon: 'server', text: 'north', role: 'connection' }]);
+  });
+
+  it('leaves a face that is not valid out, makes no picker without a maker, and is none when the page published no lane', () => {
+    expect(laneFor([{ label: 'x' } as unknown as ShellScopeFace, { label: 'Connection', icon: 'server', text: 'a', role: 'connection' }], undefined)?.length).toBe(1);
+    expect(laneFor([{ label: 'Connection', icon: 'server', text: 'a', role: 'connection' }], undefined)?.[0]?.picker).toBeUndefined();
+    expect(laneFor(undefined, () => picker)).toBeUndefined();
   });
 });

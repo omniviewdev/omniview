@@ -15,6 +15,7 @@
 //   fixture-b-dup      the negative control: the same plugin with its OWN copy of the kit, whose `useTheme` has no provider and throws
 //   fixture-c-old      a bundle of the old shell: it imports the old UI library, which the new shell does not serve, and must be refused unrun
 //   fixture-d-missing  a plugin whose `assets/` holds no bundle
+// A fifth plugin, `fixture-f-conn` (Seam Connections), is written only on request (`writeConnectionsPlugin`, see below): it has a process of its own, with a `resource` capability and two connections.
 import { execFile } from 'node:child_process';
 import { chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -43,6 +44,12 @@ export const PLUGINS = {
   'fixture-c-old': { variant: 'old', name: 'Seam Fixture Old' },
   'fixture-d-missing': { variant: 'missing', name: 'Seam Fixture Missing' },
 };
+
+// The connections plugin is NOT in `PLUGINS`, and `writeAll` does not write it: the seam check installs every plugin of `PLUGINS` in most scenarios and counts rail entries, palette sections and plugins, so a
+// plugin added there would change what they see. It has a process (`./connections-process`, built by `buildConnectionsProcess`) with a `resource` capability and two connections (`north` and `south`), and a
+// check that wants it writes it itself with `writeConnectionsPlugin(root, binary)` (scenario u of the seam check, `checkConnectionsAndHome`, does). Its bundle is `src/entry-connections.tsx`; the name of each row of its one page opens that item's Logs session in the host's panel.
+export const CONNECTIONS_ID = 'fixture-f-conn';
+const CONNECTIONS = { variant: 'connections', name: 'Seam Connections', rail: { label: 'Seam Connections', order: 30 } };
 
 const bareName = (source) => (source.startsWith('@') ? source.split('/').slice(0, 2).join('/') : source.split('/')[0]);
 
@@ -139,7 +146,7 @@ async function buildBundle(id, variant, directory, rail) {
       cssCodeSplit: false,
       sourcemap: false,
       rollupOptions: {
-        input: old ? OLD_ENTRY : path.join(here, 'src/entry.tsx'),
+        input: old ? OLD_ENTRY : path.join(here, variant === 'connections' ? 'src/entry-connections.tsx' : 'src/entry.tsx'),
         external,
         output: { entryFileNames: 'assets/entry.js', chunkFileNames: 'assets/[name].js', assetFileNames: 'assets/[name].[ext]', format: 'system' },
         preserveEntrySignatures: 'exports-only',
@@ -149,9 +156,12 @@ async function buildBundle(id, variant, directory, rail) {
   return readDependencies(await readFile(path.join(directory, 'assets/entry.js'), 'utf8')) ?? [];
 }
 
-/** `backend` is whether the plugin has a process: the capabilities are what tells the host to start one (`settings` is the one the SDK serves with no code of the plugin's). */
-function manifest(id, name, backend) {
-  const capabilities = backend ? ['  - settings', '  - ui'] : ['  - ui'];
+/**
+ * `backend` is whether the plugin has a process: the capabilities are what tells the host to start one (`settings` is the one the SDK serves with no code of the plugin's). `resource` is a capability the plugin's
+ * process serves itself: the connections fixture's.
+ */
+function manifest(id, name, backend, resource = false) {
+  const capabilities = backend ? [...(resource ? ['  - resource'] : []), '  - settings', '  - ui'] : ['  - ui'];
   return [`id: ${id}`, 'version: 0.0.1', `name: ${name}`, 'description: Fixture plugin of the new UI seam', 'license: Apache-2.0', 'author:', '  name: Omniview', 'capabilities:', ...capabilities, ''].join('\n');
 }
 
@@ -166,16 +176,35 @@ export async function buildProcess(directory) {
   return binary;
 }
 
+/** Builds the connections fixture's process (`./connections-process`) to `<directory>/plugin` and answers its path, as `buildProcess` does for the fixture's own. */
+export async function buildConnectionsProcess(directory) {
+  await mkdir(directory, { recursive: true });
+  const binary = path.join(directory, 'plugin');
+  await promisify(execFile)('go', ['build', '-o', binary, './ui-next/plugins/fixture/connections-process'], { cwd: repository, env: { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '' } });
+  return binary;
+}
+
 /**
  * Builds one plugin into `<root>/<id>/` and answers the dependencies its bundle declares (empty when it has none). With `binary` (the path `buildProcess` answered) the plugin has a process: `bin/plugin`
  * and the capability that makes the host start it.
  */
 export async function writePlugin(root, id, binary = undefined) {
-  const { variant, name, rail } = PLUGINS[id];
+  return install(root, id, PLUGINS[id], binary, false);
+}
+
+/**
+ * Builds the connections plugin (`fixture-f-conn`) into `<root>/fixture-f-conn/`: its bundle, and with `binary` (the path `buildConnectionsProcess` answered) `bin/plugin` and the capabilities `resource`, `settings`
+ * and `ui`. Without a binary it is a plugin with no process, which lists no connections. Its `connection-mode` file (next to `bin/`) is the check's to write.
+ */
+export async function writeConnectionsPlugin(root, binary = undefined) {
+  return install(root, CONNECTIONS_ID, CONNECTIONS, binary, true);
+}
+
+async function install(root, id, { variant, name, rail }, binary, resource) {
   const directory = path.join(root, id);
   await rm(directory, { recursive: true, force: true });
   await mkdir(path.join(directory, 'assets'), { recursive: true });
-  await writeFile(path.join(directory, 'plugin.yaml'), manifest(id, name, binary !== undefined));
+  await writeFile(path.join(directory, 'plugin.yaml'), manifest(id, name, binary !== undefined, resource));
   if (binary !== undefined) {
     await mkdir(path.join(directory, 'bin'), { recursive: true });
     await copyFile(binary, path.join(directory, 'bin', 'plugin'));

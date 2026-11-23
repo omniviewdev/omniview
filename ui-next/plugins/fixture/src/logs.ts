@@ -273,6 +273,23 @@ export function logTargetsOf(item: LogItem): readonly LogTargetV1[] {
   }));
 }
 
+/** The stream a row of the connections fixture's list opens (`connection-pages.tsx`): it goes on and never ends, the same lines every run. */
+const ROW_SPEC: Spec = { source: 'app', command: 'Logs', rate: 20, seed: 11 };
+
+/**
+ * The session of one item of a connection, as the connections fixture's page hands it to the host: the tab says `<item>/app`, the scope is the connection's NAME and the id holds it, so two connections that list one item name are
+ * two sessions. The item has no page of its own in that plugin, so the card has no link to follow.
+ */
+export function connectionLogTargetOf(connection: string, name: string): LogTargetV1 {
+  return {
+    id: `connection/${connection}/${name}/${ROW_SPEC.source}`,
+    title: `${name}/${ROW_SPEC.source}`,
+    scope: connection,
+    resource: { label: `Item ${name}`, kind: 'Item' },
+    open: () => feedOf(ROW_SPEC),
+  };
+}
+
 /**
  * The commands of an item's menu that open its sessions. A host that has no panel handle (one that predates `ctx.panel`) cannot show them: the commands say so, as a plugin's must (P1b-3b's spec).
  */
