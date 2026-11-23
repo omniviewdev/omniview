@@ -54,15 +54,23 @@ func control(master *os.File, fn func(fd int) error) error {
 	return inner
 }
 
-// ptyDevice is a session's input as the input queue sees it.
-type ptyDevice struct{ master *os.File }
+// ptyDevice is a session's input as the input queue sees it. applied is told of every size the terminal took,
+// once it has, so that the replay can say which size each of its bytes was written for.
+type ptyDevice struct {
+	master  *os.File
+	applied func(rows, cols uint16)
+}
 
 func (d ptyDevice) Write(p []byte) (int, error) { return d.master.Write(p) }
 
 func (d ptyDevice) Resize(rows, cols uint16) error {
-	return control(d.master, func(fd int) error {
+	err := control(d.master, func(fd int) error {
 		return unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, &unix.Winsize{Row: rows, Col: cols, Xpixel: 0, Ypixel: 0})
 	})
+	if err == nil && d.applied != nil {
+		d.applied(rows, cols)
+	}
+	return err
 }
 
 // foregroundGroup reads the foreground process group of the pty from its master.

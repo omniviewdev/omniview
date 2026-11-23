@@ -41,7 +41,8 @@ type Controller interface {
 	OpenNativeSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) error
 	GetNativeTerminalSupport() bool
 	// CreateTerminal starts a shell on this machine for owner, a comparable value that names the window
-	// that opened it: the terminal ends with that window (CloseOwnedTerminals).
+	// that opened it: the terminal ends with that window, or, with a page key, is detached when the window
+	// goes away (ReleaseOwnedTerminals).
 	CreateTerminal(ctx context.Context, owner terminal.Owner, opts terminal.Options) (*terminal.Session, error)
 	// WriteTerminal and ResizeTerminal apply input to a local terminal; seq is the caller's sequence
 	// number, or zero.
@@ -55,8 +56,16 @@ type Controller interface {
 	IsBusy(sessionID string) (terminal.Foreground, error)
 	// GetCwd says which directory a terminal's shell is in now.
 	GetCwd(sessionID string) (terminal.Directory, error)
-	// CloseOwnedTerminals ends the local terminals of owner and returns how many it ended.
-	CloseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) int
+	// ReleaseOwnedTerminals is what a window going away does to its local terminals: those with a page key are
+	// detached and kept for their lease, any other is ended.
+	ReleaseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) terminal.Released
+	// AttachTerminal takes a local terminal over for owner and hands it the output it lacks, in one step that is
+	// ordered with the terminal's events (terminal.Manager.Attach).
+	AttachTerminal(ctx context.Context, owner terminal.Owner, sessionID string, request terminal.AttachRequest) (*terminal.Attached, error)
+	// DetachTerminal leaves a local terminal waiting for a page for a lease.
+	DetachTerminal(ctx context.Context, owner terminal.Owner, sessionID string, request terminal.DetachRequest) (*terminal.Detached, error)
+	// ListTerminals says which local terminals the owner, or whoever holds the key, may attach.
+	ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
 	AttachSession(sessionID string) (*exec.Session, []byte, error)

@@ -336,10 +336,10 @@ func TestClosedByTheWindowIsTypedAndEndsEveryShellOfTheOwnerOnly(t *testing.T) {
 	free, err := m.Start(Options{Command: []string{sh(t)}}, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, 3, m.CloseOwned("window-1", ClosedByWindow))
+	assert.Equal(t, Released{Detached: 0, Ended: 3}, m.ReleaseOwned("window-1", ClosedByWindow))
 	for _, info := range mine {
 		ends := rec.closes(info.ID)
-		require.Len(t, ends, 1, "delivered when CloseOwned returns")
+		require.Len(t, ends, 1, "delivered when ReleaseOwned returns")
 		assert.Equal(t, EndClosed, ends[0].Reason)
 		assert.Equal(t, ClosedByWindow, ends[0].ClosedBy)
 		requireGone(t, info.PID, "a shell of the retired window")
@@ -349,8 +349,8 @@ func TestClosedByTheWindowIsTypedAndEndsEveryShellOfTheOwnerOnly(t *testing.T) {
 		assert.False(t, gone(info.PID))
 		assert.Empty(t, rec.closes(info.ID))
 	}
-	assert.Zero(t, m.CloseOwned("window-1", ClosedByWindow), "ending a window's shells twice ends none twice")
-	assert.Zero(t, m.CloseOwned(nil, ClosedByWindow), "no owner is no owner")
+	assert.Equal(t, Released{Detached: 0, Ended: 0}, m.ReleaseOwned("window-1", ClosedByWindow), "ending a window's shells twice ends none twice")
+	assert.Equal(t, Released{Detached: 0, Ended: 0}, m.ReleaseOwned(nil, ClosedByWindow), "no owner is no owner")
 }
 
 // The pty is the session's: when it fails under a shell that is still running, the session says it

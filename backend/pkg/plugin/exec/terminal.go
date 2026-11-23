@@ -15,10 +15,14 @@ import (
 
 // A local terminal's events go to every window, under the names the exec lane uses for any session:
 // the shell's output as bytes on core/exec/stream/stdout/<id>, and how it ended as one terminal.End
-// on core/exec/signal/CLOSE/<id>, after the last output.
+// on core/exec/signal/CLOSE/<id>, after the last output. The output of a terminal that has a page key, which a
+// page can attach to again after a reload, comes on core/exec/stream/output/<id> instead, as {offset, data}:
+// data is base64 text as before and offset is the number of bytes the terminal wrote before it, so that a replay
+// and the live output join exactly (docs/ui-next/status/T2-go.md).
 const (
-	localOutputEvent = "core/exec/stream/stdout/"
-	localCloseEvent  = "core/exec/signal/CLOSE/"
+	localOutputEvent       = "core/exec/stream/stdout/"
+	localOffsetOutputEvent = "core/exec/stream/output/"
+	localCloseEvent        = "core/exec/signal/CLOSE/"
 )
 
 // terminalOutput is the payload of a local terminal's stdout event: the bytes the shell wrote, which
@@ -33,9 +37,19 @@ const (
 // it keeps (Event.ToJSON, in the dispatch worker, which never waits for a socket), and that one is not
 // delivery.
 type terminalOutput struct {
-	data      []byte
-	delivered func()
-	once      sync.Once
+	data []byte
+	// offset is where data lies in the terminal's output, and positioned says the event carries it: it does for
+	// a terminal that has a page key, and its payload is then an object, not the bytes alone.
+	offset     uint64
+	positioned bool
+	delivered  func()
+	once       sync.Once
+}
+
+// positionedOutput is the payload of the output event of a terminal with a page key.
+type positionedOutput struct {
+	Offset uint64 `json:"offset"`
+	Data   []byte `json:"data"`
 }
 
 // Bytes is the output.
@@ -44,11 +58,14 @@ func (o *terminalOutput) Bytes() []byte { return o.data }
 // deliver reports the delivery once, whichever serialization comes first.
 func (o *terminalOutput) deliver() { o.once.Do(o.delivered) }
 
-// MarshalJSON is the base64 text a byte slice serializes as, and, when this serialization is the one that
-// is delivery in this build, the delivery report.
+// MarshalJSON is the base64 text a byte slice serializes as, or the object that carries it with its offset, and,
+// when this serialization is the one that is delivery in this build, the delivery report.
 func (o *terminalOutput) MarshalJSON() ([]byte, error) {
 	if countsAsDelivery() {
 		o.deliver()
+	}
+	if o.positioned {
+		return json.Marshal(positionedOutput{Offset: o.offset, Data: o.data})
 	}
 	return json.Marshal(o.data)
 }
@@ -62,13 +79,25 @@ type localSink struct{ c *controller }
 func (s localSink) ReportsDelivery() {}
 
 func (s localSink) Output(sessionID string, data []byte) {
-	out := &terminalOutput{data: data, delivered: func() { s.c.terminalManager.Delivered(sessionID, len(data)) }, once: sync.Once{}}
+	s.emitOutput(localOutputEvent+sessionID, sessionID, 0, false, data)
+}
+
+// OutputAt is the output of a terminal that has a page key, with its offset.
+func (s localSink) OutputAt(sessionID string, offset uint64, data []byte) {
+	s.emitOutput(localOffsetOutputEvent+sessionID, sessionID, offset, true, data)
+}
+
+func (s localSink) emitOutput(event, sessionID string, offset uint64, positioned bool, data []byte) {
+	out := &terminalOutput{
+		data: data, offset: offset, positioned: positioned,
+		delivered: func() { s.c.terminalManager.Delivered(sessionID, len(data)) }, once: sync.Once{},
+	}
 	if s.c.events == nil {
 		s.c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")
 		out.deliver() // there is no transport to wait for
 		return
 	}
-	if cancelled := s.c.events.Emit(localOutputEvent+sessionID, out); cancelled {
+	if cancelled := s.c.events.Emit(event, out); cancelled {
 		out.deliver() // an event a hook cancelled is never serialized: the credit does not wait for it
 	}
 }
@@ -192,14 +221,50 @@ func (c *controller) GetCwd(sessionID string) (_ terminal.Directory, err error) 
 	return c.terminalManager.Cwd(sessionID)
 }
 
-// CloseOwnedTerminals ends the local terminals of owner, as its window going away does.
-func (c *controller) CloseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) int {
+// ReleaseOwnedTerminals is what a window going away does to its local terminals: those that have a page key are
+// detached and kept for their lease, any other is ended.
+func (c *controller) ReleaseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) terminal.Released {
+	var none terminal.Released
 	if c.terminalManager == nil {
-		return 0
+		return none
 	}
-	ended := c.terminalManager.CloseOwned(owner, by)
-	if ended > 0 {
-		c.logger.Infow(context.Background(), "ended the terminals of a closed window", "count", ended)
+	released := c.terminalManager.ReleaseOwned(owner, by)
+	if released.Detached > 0 || released.Ended > 0 {
+		c.logger.Infow(context.Background(), "released the terminals of a window that went away", "detached", released.Detached, "ended", released.Ended)
 	}
-	return ended
+	return released
+}
+
+// AttachTerminal takes a local terminal over for owner and hands it the output it lacks.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) AttachTerminal(
+	ctx context.Context, owner terminal.Owner, sessionID string, request terminal.AttachRequest,
+) (_ *terminal.Attached, err error) {
+	_, span := tracer.Start(ctx, "exec.AttachTerminal")
+	defer finishOp(span, &err)
+	span.SetAttributes(attribute.String("session_id", sessionID))
+	return c.terminalManager.Attach(sessionID, owner, request)
+}
+
+// DetachTerminal leaves a local terminal waiting for a page for a lease.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) DetachTerminal(
+	ctx context.Context, owner terminal.Owner, sessionID string, request terminal.DetachRequest,
+) (_ *terminal.Detached, err error) {
+	_, span := tracer.Start(ctx, "exec.DetachTerminal")
+	defer finishOp(span, &err)
+	span.SetAttributes(attribute.String("session_id", sessionID))
+	detached, err := c.terminalManager.Detach(sessionID, owner, request)
+	if err != nil {
+		return nil, err
+	}
+	return &detached, nil
+}
+
+// ListTerminals says which local terminals the owner, or whoever holds the key, may attach. It opens no span:
+// a page asks it once as it loads.
+func (c *controller) ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed {
+	return c.terminalManager.List(owner, pageKey)
 }

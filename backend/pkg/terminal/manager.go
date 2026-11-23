@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -78,6 +77,11 @@ type Manager struct {
 	// flowStall is how long a pause on the transport's credit waits before the watchdog steps
 	// (flowControl); a field so that a test can state it. SetFlowStall sets it before sessions start.
 	flowStall time.Duration
+	// replayBytes is how much of a terminal's output its replay ring keeps (ReplayBytes): a field, so that a test
+	// can state it.
+	replayBytes int
+	// offsets is the sink as an OffsetSink when it is one: a terminal with a page key is delivered through it.
+	offsets OffsetSink
 
 	mu       sync.RWMutex
 	sessions map[string]*session
@@ -85,6 +89,9 @@ type Manager struct {
 	// ended remembers the ids of the last sessions that ended, oldest first, endedMemory at most, so that an
 	// acknowledgement that arrives after its session is gone is told from one for a session that never was.
 	ended []string
+	// tombs are the terminals with a page key that ended by themselves while no page was attached, oldest first,
+	// TombstoneLimit at most: the page that comes back finds how they ended and what they wrote.
+	tombs []*tombstone
 }
 
 // endedMemory is how many ended sessions' ids the manager remembers.
@@ -103,10 +110,12 @@ func (m *Manager) rememberEnded(id string) {
 // ends them (Shutdown): the host's application context is cancelled first when it quits.
 func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	_, reported := sink.(DeliveryReporter)
+	offsets, _ := sink.(OffsetSink)
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
-		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil,
+		replayBytes: ReplayBytes, offsets: offsets,
+		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil,
 	}
 	go m.forwardSignals()
 	go m.shutdownWhenDone()
@@ -135,13 +144,20 @@ type session struct {
 	command []string
 	labels  map[string]string
 	params  map[string]string
-	owner   Owner
+	// pageKey is the key the terminal was opened with, empty when it has none: a terminal with a key outlives its
+	// window. lease is how long it is kept once it is detached.
+	pageKey string
+	lease   time.Duration
 
 	cmd    *exec.Cmd
 	master *os.File
 	cancel context.CancelFunc
-	buffer *sdkexec.OutputBuffer
-	queue  *inputQueue
+	// outMu orders the output: the offset of a read, the replay ring and the credit counted for the read are one
+	// step under it, and an attach takes its snapshot under it, so the snapshot and the events that follow it
+	// meet at one offset.
+	outMu sync.Mutex
+	ring  *replayRing
+	queue *inputQueue
 	// flow is the credit that paces the session's output.
 	flow *flowControl
 
@@ -160,9 +176,20 @@ type session struct {
 	// done is closed when the session is gone: its CLOSE delivered and its resources released.
 	done chan struct{}
 
+	// mu guards what changes as pages come and go. The order of the locks is Manager.mu, mu, outMu, flow.
 	mu       sync.Mutex
 	fate     fate
 	attached bool
+	// owner is the window the terminal belongs to: none while it is detached. detached says no page is attached
+	// and the lease is running: leaseGen numbers the leases, so that a timer that fires for a lease that was
+	// ended (an attach came first) finds it was, leaseTimer is the running one, leaseEnd is when it ends and
+	// leaseLen is how long it is.
+	owner      Owner
+	detached   bool
+	leaseGen   uint64
+	leaseTimer *time.Timer
+	leaseEnd   time.Time
+	leaseLen   time.Duration
 }
 
 func (s *session) decide(f fate) bool {
@@ -187,6 +214,12 @@ func (s *session) beginClose(by ClosedBy) {
 	if !s.decide(fate{set: true, closedBy: by, failure: nil}) {
 		return
 	}
+	s.startClose()
+}
+
+// startClose is what follows the decision that the host ends the shell: the session is on its way out, the
+// pacing stops, and the shell is hung up.
+func (s *session) startClose() {
 	s.ending.Store(true)
 	// A session whose client stopped taking its output is paused for credit. A dying shell has to be read
 	// to finish exiting (on macOS a process cannot exit while the pty it holds has output nobody reads, and
@@ -327,7 +360,8 @@ func (m *Manager) ListSessions() []*sdkexec.Session {
 }
 
 // Start starts a shell on a pty of the size asked for and returns what the host knows about it. The
-// session belongs to owner and ends with it (CloseOwned); a nil owner is none.
+// session belongs to owner: it ends with it, or, when it was opened with a page key, is detached and kept
+// for its lease (ReleaseOwned); a nil owner is none.
 func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	if !m.admitLaunch() {
 		return Session{}, startError(errShuttingDown)
@@ -337,11 +371,15 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
+	lease, err := resolveKeep(opts)
+	if err != nil {
+		return Session{}, err
+	}
 	id, err := m.reserve(opts.ID, owner)
 	if err != nil {
 		return Session{}, err
 	}
-	s, err := m.launch(id, opts, cols, rows, owner)
+	s, err := m.launch(id, opts, cols, rows, owner, lease)
 	if err != nil {
 		m.mu.Lock()
 		delete(m.starting, id)
@@ -364,8 +402,8 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 
 // reserve takes an id for a session that is about to start, so that two starts cannot share it.
 func (m *Manager) reserve(requested string, owner Owner) (string, error) {
-	if owner != nil && !reflect.TypeOf(owner).Comparable() {
-		return "", invalidError("the owner of a terminal must be comparable.")
+	if err := checkOwner(owner); err != nil {
+		return "", err
 	}
 	if len(requested) > maxIDLength {
 		return "", invalidError(fmt.Sprintf("id must be at most %d bytes; got %d.", maxIDLength, len(requested)))
@@ -382,6 +420,8 @@ func (m *Manager) reserve(requested string, owner Owner) (string, error) {
 	if _, taken := m.starting[id]; taken {
 		return "", IDInUse(id)
 	}
+	// A new terminal takes the id of one that ended and was kept: that one is superseded.
+	m.dropTombstoneLocked(id)
 	m.starting[id] = struct{}{}
 	return id, nil
 }
@@ -407,7 +447,7 @@ func startDirectory(requested string) (string, error) {
 }
 
 // launch starts the process on a pty that already has its size.
-func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner) (*session, error) {
+func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner, lease time.Duration) (*session, error) {
 	path, args, err := m.resolve(opts.Command)
 	if err != nil {
 		return nil, shellError(err)
@@ -450,17 +490,21 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 		abs = path
 	}
 	s := &session{
-		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params), owner: owner,
+		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params),
+		pageKey: opts.PageKey, lease: lease,
 		info: Session{
 			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
 			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: defaultLimits(), Environment: environmentOf(m.probe()),
+			LeaseMs: int(lease / time.Millisecond),
 		},
-		cmd: cmd, master: polled, cancel: cancel, buffer: sdkexec.NewDefaultOutputBuffer(), queue: nil, flow: m.newCredit(id),
+		cmd: cmd, master: polled, cancel: cancel, outMu: sync.Mutex{}, ring: newReplayRing(m.replayBytes, Size{Cols: int(cols), Rows: int(rows)}),
+		queue: nil, flow: m.newCredit(id),
 		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
 		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
+		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0,
 	}
-	s.queue = newInputQueue(ptyDevice{master: polled}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
+	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
 	return s, nil
 }
 
@@ -530,13 +574,12 @@ func (m *Manager) read(s *session) error {
 		if n > 0 {
 			// The event owns its bytes: the read buffer is reused.
 			data := slices.Clone(buf[:n])
-			s.flow.sent(n)
-			m.sink.Output(s.id, data)
+			offset := s.record(data)
+			m.emit(s, offset, data)
 			if !m.reported {
 				// A sink that returns when the transport has taken the bytes has delivered them.
 				s.flow.delivered(n)
 			}
-			s.buffer.Append(data)
 		}
 		if err != nil {
 			if !end.IsZero() && errors.Is(err, os.ErrDeadlineExceeded) && !time.Now().Before(end) {
@@ -577,14 +620,19 @@ func (m *Manager) finish(s *session, readErr error) {
 		end.DrainCapped = true
 		end.DroppedBytes = s.dropped
 	}
+	end.LastOffset = s.next()
 	s.queue.close(apperror.SessionNotFound(s.id))
 	// Closing the master wakes a write that is still blocked in the kernel.
 	_ = s.master.Close()
+	// What a page that comes back needs of a terminal that ended by itself is kept before its CLOSE goes out and
+	// before its id is free.
+	m.keepTombstone(s, end)
 	m.sink.Closed(s.id, end)
 	m.mu.Lock()
 	delete(m.sessions, s.id)
 	m.rememberEnded(s.id)
 	m.mu.Unlock()
+	s.stopLease()
 	s.cancel()
 	close(s.done)
 	m.log.Debugw(context.Background(), "session terminated", "session", s.id, "reason", end.Reason)
@@ -796,7 +844,7 @@ func (m *Manager) AttachSession(sessionID string) (*sdkexec.Session, []byte, err
 	if err != nil {
 		return nil, nil, err
 	}
-	data := s.buffer.GetAll()
+	data := s.retained()
 	s.flow.reset()
 	s.mu.Lock()
 	s.attached = true
@@ -823,32 +871,15 @@ func (m *Manager) DetachSession(sessionID string) (*sdkexec.Session, error) {
 func (m *Manager) CloseSession(sessionID string) error {
 	s, err := m.live(sessionID)
 	if err != nil {
+		if m.dropTombstone(sessionID) {
+			// The page that has read how a terminal ended dismisses it.
+			return nil
+		}
 		return err
 	}
 	s.beginClose(ClosedByRequest)
 	m.awaitGone([]*session{s})
 	return nil
-}
-
-// CloseOwned ends every running session of owner, as the owner's window going away does, and returns
-// how many it ended. When it returns they are gone.
-func (m *Manager) CloseOwned(owner Owner, by ClosedBy) int {
-	if owner == nil || !reflect.TypeOf(owner).Comparable() {
-		return 0
-	}
-	var owned []*session
-	m.mu.RLock()
-	for _, s := range m.sessions {
-		if s.owner == owner && !s.ending.Load() {
-			owned = append(owned, s)
-		}
-	}
-	m.mu.RUnlock()
-	for _, s := range owned {
-		s.beginClose(by)
-	}
-	m.awaitGone(owned)
-	return len(owned)
 }
 
 // Shutdown ends every session the way a close does (SIGHUP to the foreground group and the shell, SIGKILL

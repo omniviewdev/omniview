@@ -6,6 +6,204 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * AttachRequest is the second argument of AttachTerminal.
+ */
+export class AttachRequest {
+    /**
+     * PageKey is the key the terminal was opened with. A window that opened the terminal itself and is still
+     * its owner (a native window that reloaded in place keeps its identity) needs no key.
+     */
+    "page_key"?: string;
+
+    /**
+     * FromOffset is the offset of the first byte the page does not have: the offset and length of the last
+     * event it took in. Absent, the page has nothing and gets all the host kept.
+     */
+    "from_offset"?: number | null;
+
+    /** Creates a new AttachRequest instance. */
+    constructor($$source: Partial<AttachRequest> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new AttachRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): AttachRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new AttachRequest($$parsedSource as Partial<AttachRequest>);
+    }
+}
+
+/**
+ * Attached is the answer of AttachTerminal.
+ */
+export class Attached {
+    /**
+     * Session is what the host said when the terminal started, so that a page that lost it has it again. Its
+     * Cols and Rows are the size the terminal STARTED at; the size now is Replay.Size.
+     */
+    "session": Session;
+
+    /**
+     * Replay is the output to show and where the live output continues.
+     */
+    "replay": Replay;
+
+    /**
+     * Cwd and Busy are the directory the shell is in and what holds the terminal, as of the attach.
+     */
+    "cwd": Directory;
+    "busy": Foreground;
+
+    /**
+     * Ended is set when the shell had already ended while no page was attached: Replay is what it wrote, this
+     * is how it ended, and no live output follows. (The CLOSE event of such a terminal went to nobody.)
+     */
+    "ended"?: End | null;
+
+    /** Creates a new Attached instance. */
+    constructor($$source: Partial<Attached> = {}) {
+        if (!("session" in $$source)) {
+            this["session"] = (new Session());
+        }
+        if (!("replay" in $$source)) {
+            this["replay"] = (new Replay());
+        }
+        if (!("cwd" in $$source)) {
+            this["cwd"] = (new Directory());
+        }
+        if (!("busy" in $$source)) {
+            this["busy"] = (new Foreground());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Attached instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Attached {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType1;
+        const $$createField2_0 = $$createType2;
+        const $$createField3_0 = $$createType3;
+        const $$createField4_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("session" in $$parsedSource) {
+            $$parsedSource["session"] = $$createField0_0($$parsedSource["session"]);
+        }
+        if ("replay" in $$parsedSource) {
+            $$parsedSource["replay"] = $$createField1_0($$parsedSource["replay"]);
+        }
+        if ("cwd" in $$parsedSource) {
+            $$parsedSource["cwd"] = $$createField2_0($$parsedSource["cwd"]);
+        }
+        if ("busy" in $$parsedSource) {
+            $$parsedSource["busy"] = $$createField3_0($$parsedSource["busy"]);
+        }
+        if ("ended" in $$parsedSource) {
+            $$parsedSource["ended"] = $$createField4_0($$parsedSource["ended"]);
+        }
+        return new Attached($$parsedSource as Partial<Attached>);
+    }
+}
+
+/**
+ * ClosedBy says who asked the host to end a session.
+ */
+export enum ClosedBy {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * ClosedByRequest: a caller closed the session (the user pressed Close).
+     */
+    ClosedByRequest = "request",
+
+    /**
+     * ClosedByWindow: the window that owned the session went away.
+     */
+    ClosedByWindow = "window",
+
+    /**
+     * ClosedByShutdown: the host is shutting down.
+     */
+    ClosedByShutdown = "shutdown",
+
+    /**
+     * ClosedByDetachTimeout: no page attached again before the lease of a terminal its page left ran out. (The
+     * word the exec lane's SDK uses for the same end.)
+     */
+    ClosedByDetachTimeout = "detach-timeout",
+};
+
+/**
+ * DetachRequest is the second argument of DetachTerminal.
+ */
+export class DetachRequest {
+    /**
+     * PageKey is the key the terminal was opened with, or absent for the window that owns it.
+     */
+    "page_key"?: string;
+
+    /**
+     * LeaseMs is how long to keep the terminal, in milliseconds. Zero is the terminal's own lease (what it
+     * was opened with, or LeaseDefault); above LeaseMax is cut to it, and the answer says what applies.
+     */
+    "lease_ms"?: number;
+
+    /** Creates a new DetachRequest instance. */
+    constructor($$source: Partial<DetachRequest> = {}) {
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DetachRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DetachRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DetachRequest($$parsedSource as Partial<DetachRequest>);
+    }
+}
+
+/**
+ * Detached is the answer of DetachTerminal.
+ */
+export class Detached {
+    /**
+     * LeaseMs is the lease that applies, and LeaseExpiresUnixMs is when the terminal ends if no page attaches
+     * before: Unix milliseconds.
+     */
+    "lease_ms": number;
+    "lease_expires_unix_ms": number;
+
+    /** Creates a new Detached instance. */
+    constructor($$source: Partial<Detached> = {}) {
+        if (!("lease_ms" in $$source)) {
+            this["lease_ms"] = 0;
+        }
+        if (!("lease_expires_unix_ms" in $$source)) {
+            this["lease_expires_unix_ms"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Detached instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Detached {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Detached($$parsedSource as Partial<Detached>);
+    }
+}
+
+/**
  * Directory is the fact "where is the shell now": its current working directory, read from the system
  * when asked (`/proc/<pid>/cwd` on Linux, `proc_info` on macOS), so a new terminal can open here and a
  * tab can show the directory. It is a snapshot.
@@ -35,6 +233,103 @@ export class Directory {
         return new Directory($$parsedSource as Partial<Directory>);
     }
 }
+
+/**
+ * End says how a session ended, as typed fields. Which fields are set depends on Reason:
+ * exited has ExitCode, signaled has Signal and SignalNumber, closed has ClosedBy, failed has
+ * Failure. It is the payload of the session's one CLOSE event, which follows the last output.
+ */
+export class End {
+    "reason": EndReason;
+
+    /**
+     * ExitCode is the shell's exit status. A pointer, because zero is a status.
+     */
+    "exit_code"?: number | null;
+
+    /**
+     * Signal is the name of the signal that killed the shell (`SIGTERM`), SignalNumber its number.
+     */
+    "signal"?: string;
+    "signal_number"?: number;
+    "core_dumped"?: boolean;
+    "closed_by"?: ClosedBy;
+    "failure"?: Failure | null;
+
+    /**
+     * DrainCapped says the host stopped reading at the drain cap although the pty was still open and
+     * written to: a process of the shell's session (a background job) holds it. What that process writes
+     * after the cap is not delivered.
+     */
+    "drain_capped"?: boolean;
+
+    /**
+     * DroppedBytes is how many bytes the host read after the cap and discarded: a lower bound, because
+     * what the process writes after the host closes the pty is lost to the kernel and cannot be counted.
+     */
+    "dropped_bytes"?: number;
+
+    /**
+     * LastOffset is one past the last byte of output the session wrote: the length of its output, in the numbering
+     * that the events of a terminal with a page key and Replay.End use. A page that has taken in LastOffset bytes
+     * has it all.
+     */
+    "last_offset": number;
+
+    /** Creates a new End instance. */
+    constructor($$source: Partial<End> = {}) {
+        if (!("reason" in $$source)) {
+            this["reason"] = EndReason.$zero;
+        }
+        if (!("last_offset" in $$source)) {
+            this["last_offset"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new End instance from a string or object.
+     */
+    static createFrom($$source: any = {}): End {
+        const $$createField6_0 = $$createType7;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("failure" in $$parsedSource) {
+            $$parsedSource["failure"] = $$createField6_0($$parsedSource["failure"]);
+        }
+        return new End($$parsedSource as Partial<End>);
+    }
+}
+
+/**
+ * EndReason says how a session ended. It is the one field every End has.
+ */
+export enum EndReason {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * EndExited: the shell exited by itself; ExitCode is its status.
+     */
+    EndExited = "exited",
+
+    /**
+     * EndSignaled: a signal the host did not send killed the shell; Signal names it.
+     */
+    EndSignaled = "signaled",
+
+    /**
+     * EndClosed: the host ended the session; ClosedBy says who asked.
+     */
+    EndClosed = "closed",
+
+    /**
+     * EndFailed: the pty or the wait for the shell failed; Failure says where.
+     */
+    EndFailed = "failed",
+};
 
 /**
  * Environment says where a shell's environment came from.
@@ -68,7 +363,7 @@ export class Environment {
      * Creates a new Environment instance from a string or object.
      */
     static createFrom($$source: any = {}): Environment {
-        const $$createField1_0 = $$createType0;
+        const $$createField1_0 = $$createType8;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("probe" in $$parsedSource) {
             $$parsedSource["probe"] = $$createField1_0($$parsedSource["probe"]);
@@ -76,6 +371,63 @@ export class Environment {
         return new Environment($$parsedSource as Partial<Environment>);
     }
 }
+
+/**
+ * Failure is what went wrong when a session failed.
+ */
+export class Failure {
+    "stage": FailureStage;
+
+    /**
+     * Message is the system's own words, for a person to read. Nothing branches on it.
+     */
+    "message": string;
+
+    /** Creates a new Failure instance. */
+    constructor($$source: Partial<Failure> = {}) {
+        if (!("stage" in $$source)) {
+            this["stage"] = FailureStage.$zero;
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Failure instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Failure {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Failure($$parsedSource as Partial<Failure>);
+    }
+}
+
+/**
+ * FailureStage says where a session failed.
+ */
+export enum FailureStage {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * StageRead: reading the shell's output failed while the shell was running.
+     */
+    StageRead = "read",
+
+    /**
+     * StageWait: waiting for the shell's status failed.
+     */
+    StageWait = "wait",
+
+    /**
+     * StagePty: the pty closed while the shell was still running.
+     */
+    StagePty = "pty",
+};
 
 /**
  * Foreground is the fact "what holds the terminal now". It is a snapshot: it can change the moment
@@ -137,6 +489,25 @@ export class Launch {
      * user's home. Anything else is refused, naming the field.
      */
     "cwd"?: string;
+
+    /**
+     * PageKey makes the terminal outlive the page that opened it, and is how a page that comes back finds it: the
+     * page makes one random key (a UUID in its sessionStorage serves), gives it here for every terminal it opens
+     * and gives it again to ListTerminals and AttachTerminal after a reload. A terminal with a key is not ended
+     * when its window goes away: it is detached and kept for LeaseMs (docs/ui-next/status/T2-go.md), its output
+     * carries an offset, and what the shell wrote while the page was away is replayed on attach. A terminal
+     * without one ends with its window, as before, and cannot be attached again. The key is the page's secret:
+     * whoever has it may attach, nothing lists it, and it is 16 to 128 printable ASCII characters (anything else
+     * is refused, naming the field).
+     */
+    "page_key"?: string;
+
+    /**
+     * LeaseMs is how long the terminal is kept for a page that comes back once its page is gone, in
+     * milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something only
+     * with a PageKey.
+     */
+    "lease_ms"?: number;
 
     /** Creates a new Launch instance. */
     constructor($$source: Partial<Launch> = {}) {
@@ -211,6 +582,16 @@ export class Limits {
     "flow_step_bytes": number;
     "flow_stall_ceiling_bytes": number;
 
+    /**
+     * ReplayBytes is how much of a terminal's output the host keeps to replay for a page that attaches again
+     * (whole chunks, so a little less than this at times): enough for the whole credit window of a client that
+     * acknowledges, so that its attach has no gap. LeaseDefaultMs and LeaseMaxMs are the lease of a detached
+     * terminal (Launch.LeaseMs) and the most a caller may ask for.
+     */
+    "replay_bytes": number;
+    "lease_default_ms": number;
+    "lease_max_ms": number;
+
     /** Creates a new Limits instance. */
     constructor($$source: Partial<Limits> = {}) {
         if (!("max_dimension" in $$source)) {
@@ -249,6 +630,15 @@ export class Limits {
         if (!("flow_stall_ceiling_bytes" in $$source)) {
             this["flow_stall_ceiling_bytes"] = 0;
         }
+        if (!("replay_bytes" in $$source)) {
+            this["replay_bytes"] = 0;
+        }
+        if (!("lease_default_ms" in $$source)) {
+            this["lease_default_ms"] = 0;
+        }
+        if (!("lease_max_ms" in $$source)) {
+            this["lease_max_ms"] = 0;
+        }
 
         Object.assign(this, $$source);
     }
@@ -259,6 +649,117 @@ export class Limits {
     static createFrom($$source: any = {}): Limits {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new Limits($$parsedSource as Partial<Limits>);
+    }
+}
+
+/**
+ * Listed is one terminal of ListTerminals: what a page that comes back needs to match it with a tab.
+ */
+export class Listed {
+    "id": string;
+    "created_at": string;
+    "pid": number;
+    "shell": Shell;
+
+    /**
+     * Labels and Params are what the page attached when it opened the terminal.
+     */
+    "labels": { [_ in string]?: string };
+    "params": { [_ in string]?: string };
+
+    /**
+     * Size is the size now.
+     */
+    "size": Size;
+
+    /**
+     * Attached says a window has the terminal; false: it is detached and ends at LeaseExpiresUnixMs unless a
+     * page attaches before.
+     */
+    "attached": boolean;
+
+    /**
+     * NextOffset is the offset the next output will have and ReplayStart is the oldest offset the host keeps.
+     */
+    "next_offset": number;
+    "replay_start": number;
+
+    /**
+     * LeaseExpiresUnixMs is when a detached terminal ends, in Unix milliseconds; zero when it is attached.
+     */
+    "lease_expires_unix_ms": number;
+
+    /**
+     * Ended is set for a terminal that ended while no page was attached: how it ended. Its output is still
+     * there to attach to, until its lease would have run out.
+     */
+    "ended"?: End | null;
+
+    /** Creates a new Listed instance. */
+    constructor($$source: Partial<Listed> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = 0;
+        }
+        if (!("shell" in $$source)) {
+            this["shell"] = (new Shell());
+        }
+        if (!("labels" in $$source)) {
+            this["labels"] = {};
+        }
+        if (!("params" in $$source)) {
+            this["params"] = {};
+        }
+        if (!("size" in $$source)) {
+            this["size"] = (new Size());
+        }
+        if (!("attached" in $$source)) {
+            this["attached"] = false;
+        }
+        if (!("next_offset" in $$source)) {
+            this["next_offset"] = 0;
+        }
+        if (!("replay_start" in $$source)) {
+            this["replay_start"] = 0;
+        }
+        if (!("lease_expires_unix_ms" in $$source)) {
+            this["lease_expires_unix_ms"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Listed instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Listed {
+        const $$createField3_0 = $$createType9;
+        const $$createField4_0 = $$createType10;
+        const $$createField5_0 = $$createType10;
+        const $$createField6_0 = $$createType11;
+        const $$createField11_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("shell" in $$parsedSource) {
+            $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
+        }
+        if ("labels" in $$parsedSource) {
+            $$parsedSource["labels"] = $$createField4_0($$parsedSource["labels"]);
+        }
+        if ("params" in $$parsedSource) {
+            $$parsedSource["params"] = $$createField5_0($$parsedSource["params"]);
+        }
+        if ("size" in $$parsedSource) {
+            $$parsedSource["size"] = $$createField6_0($$parsedSource["size"]);
+        }
+        if ("ended" in $$parsedSource) {
+            $$parsedSource["ended"] = $$createField11_0($$parsedSource["ended"]);
+        }
+        return new Listed($$parsedSource as Partial<Listed>);
     }
 }
 
@@ -288,6 +789,99 @@ export class Probe {
     static createFrom($$source: any = {}): Probe {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new Probe($$parsedSource as Partial<Probe>);
+    }
+}
+
+/**
+ * Replay is the output a page needs to show a terminal again: the bytes from Start to End of the session's
+ * one sequence of output, and the facts an emulator needs to show them as they were. It describes EXACTLY the
+ * output the page does not have: the events that come after the attach continue at End, with no byte lost and
+ * none repeated, and an event whose offset is below End is already in Data.
+ */
+export class Replay {
+    /**
+     * Start is the offset of the first byte of Data. It is the offset the page asked for (FromOffset) when the
+     * host still has it, and then the page's emulator goes on from where it was. Otherwise it is the oldest
+     * offset the host still has, which is above FromOffset (bytes were dropped between them, and the page
+     * starts its emulator afresh) or, with no FromOffset, the start of the ring, a position where the output
+     * is not inside an escape sequence or a UTF-8 sequence.
+     */
+    "start": number;
+
+    /**
+     * End is where the live output continues.
+     */
+    "end": number;
+
+    /**
+     * Data is the output from Start to End, untouched.
+     */
+    "data": string;
+
+    /**
+     * StartSize is the size the output at Start was written for and StartModes are the modes in force at
+     * Start: an emulator that starts at Start is set to them first. Size and Modes are the size and the modes
+     * now, after Data; the replay itself brings an emulator from StartModes to Modes, and Size is what it is
+     * resized to when the replay is in.
+     */
+    "start_size": Size;
+    "start_modes": TerminalModes;
+    "size": Size;
+    "modes": TerminalModes;
+
+    /** Creates a new Replay instance. */
+    constructor($$source: Partial<Replay> = {}) {
+        if (!("start" in $$source)) {
+            this["start"] = 0;
+        }
+        if (!("end" in $$source)) {
+            this["end"] = 0;
+        }
+        if (!("data" in $$source)) {
+            this["data"] = "";
+        }
+        if (!("start_size" in $$source)) {
+            this["start_size"] = (new Size());
+        }
+        if (!("start_modes" in $$source)) {
+            this["start_modes"] = (new TerminalModes());
+        }
+        if (!("size" in $$source)) {
+            this["size"] = (new Size());
+        }
+        if (!("modes" in $$source)) {
+            this["modes"] = (new TerminalModes());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Replay instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Replay {
+        const $$createField2_0 = $Create.ByteSlice;
+        const $$createField3_0 = $$createType11;
+        const $$createField4_0 = $$createType12;
+        const $$createField5_0 = $$createType11;
+        const $$createField6_0 = $$createType12;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("data" in $$parsedSource) {
+            $$parsedSource["data"] = $$createField2_0($$parsedSource["data"]);
+        }
+        if ("start_size" in $$parsedSource) {
+            $$parsedSource["start_size"] = $$createField3_0($$parsedSource["start_size"]);
+        }
+        if ("start_modes" in $$parsedSource) {
+            $$parsedSource["start_modes"] = $$createField4_0($$parsedSource["start_modes"]);
+        }
+        if ("size" in $$parsedSource) {
+            $$parsedSource["size"] = $$createField5_0($$parsedSource["size"]);
+        }
+        if ("modes" in $$parsedSource) {
+            $$parsedSource["modes"] = $$createField6_0($$parsedSource["modes"]);
+        }
+        return new Replay($$parsedSource as Partial<Replay>);
     }
 }
 
@@ -329,6 +923,12 @@ export class Session {
      */
     "environment": Environment;
 
+    /**
+     * LeaseMs is how long the terminal is kept for its page once the page is gone, in milliseconds. Zero: it
+     * has no page key and ends with its window.
+     */
+    "lease_ms": number;
+
     /** Creates a new Session instance. */
     constructor($$source: Partial<Session> = {}) {
         if (!("id" in $$source)) {
@@ -358,6 +958,9 @@ export class Session {
         if (!("environment" in $$source)) {
             this["environment"] = (new Environment());
         }
+        if (!("lease_ms" in $$source)) {
+            this["lease_ms"] = 0;
+        }
 
         Object.assign(this, $$source);
     }
@@ -366,9 +969,9 @@ export class Session {
      * Creates a new Session instance from a string or object.
      */
     static createFrom($$source: any = {}): Session {
-        const $$createField3_0 = $$createType1;
-        const $$createField7_0 = $$createType2;
-        const $$createField8_0 = $$createType3;
+        const $$createField3_0 = $$createType9;
+        const $$createField7_0 = $$createType13;
+        const $$createField8_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
             $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
@@ -427,6 +1030,34 @@ export class Shell {
 }
 
 /**
+ * Size is the size of a terminal in cells.
+ */
+export class Size {
+    "cols": number;
+    "rows": number;
+
+    /** Creates a new Size instance. */
+    constructor($$source: Partial<Size> = {}) {
+        if (!("cols" in $$source)) {
+            this["cols"] = 0;
+        }
+        if (!("rows" in $$source)) {
+            this["rows"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Size instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Size {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Size($$parsedSource as Partial<Size>);
+    }
+}
+
+/**
  * State is the answer to "is something other than the shell in the foreground of the terminal?".
  * It has three values on purpose: a platform that cannot tell says so instead of guessing.
  */
@@ -453,6 +1084,87 @@ export enum State {
 };
 
 /**
+ * TerminalModes are the input modes the programs of a terminal have switched on, read from its output by the
+ * host (the program that set them is not asked): what an emulator that starts from a replay needs to be told
+ * before the replay, because the bytes that set them may be older than the replay. The host reads the modes of
+ * every terminal it runs, so Known is always true here.
+ */
+export class TerminalModes {
+    "known": boolean;
+
+    /**
+     * AltScreen is the alternate screen (?47, ?1047, ?1049).
+     */
+    "alt_screen": boolean;
+
+    /**
+     * BracketedPaste is ?2004, ApplicationCursor is ?1 (cursor keys send SS3 sequences), FocusEvents is ?1004
+     * and CursorHidden is ?25 reset.
+     */
+    "bracketed_paste": boolean;
+    "application_cursor": boolean;
+    "focus_events": boolean;
+    "cursor_hidden": boolean;
+
+    /**
+     * MouseTracking is a set of the Mouse bits above and MouseEncoding is one of the encodings.
+     */
+    "mouse_tracking": number;
+    "mouse_encoding": number;
+
+    /**
+     * KittyKeyboard is the stack of the kitty keyboard protocol's flags of the screen that is showing, bottom
+     * first, at most 16 entries; empty when the protocol is not in use.
+     */
+    "kitty_keyboard": number[];
+
+    /** Creates a new TerminalModes instance. */
+    constructor($$source: Partial<TerminalModes> = {}) {
+        if (!("known" in $$source)) {
+            this["known"] = false;
+        }
+        if (!("alt_screen" in $$source)) {
+            this["alt_screen"] = false;
+        }
+        if (!("bracketed_paste" in $$source)) {
+            this["bracketed_paste"] = false;
+        }
+        if (!("application_cursor" in $$source)) {
+            this["application_cursor"] = false;
+        }
+        if (!("focus_events" in $$source)) {
+            this["focus_events"] = false;
+        }
+        if (!("cursor_hidden" in $$source)) {
+            this["cursor_hidden"] = false;
+        }
+        if (!("mouse_tracking" in $$source)) {
+            this["mouse_tracking"] = 0;
+        }
+        if (!("mouse_encoding" in $$source)) {
+            this["mouse_encoding"] = 0;
+        }
+        if (!("kitty_keyboard" in $$source)) {
+            this["kitty_keyboard"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new TerminalModes instance from a string or object.
+     */
+    static createFrom($$source: any = {}): TerminalModes {
+        const $$createField8_0 = $$createType15;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("kitty_keyboard" in $$parsedSource) {
+            $$parsedSource["kitty_keyboard"] = $$createField8_0($$parsedSource["kitty_keyboard"]);
+        }
+        return new TerminalModes($$parsedSource as Partial<TerminalModes>);
+    }
+}
+
+/**
  * UnknownReason says why a Foreground or a Directory is unknown.
  */
 export enum UnknownReason {
@@ -477,10 +1189,27 @@ export enum UnknownReason {
      * ReasonRemote: the session runs on another machine; the host holds no terminal for it.
      */
     ReasonRemote = "remote",
+
+    /**
+     * ReasonEnded: the terminal ended; there is no shell to ask.
+     */
+    ReasonEnded = "ended",
 };
 
 // Private type creation functions
-const $$createType0 = Probe.createFrom;
-const $$createType1 = Shell.createFrom;
-const $$createType2 = Limits.createFrom;
-const $$createType3 = Environment.createFrom;
+const $$createType0 = Session.createFrom;
+const $$createType1 = Replay.createFrom;
+const $$createType2 = Directory.createFrom;
+const $$createType3 = Foreground.createFrom;
+const $$createType4 = End.createFrom;
+const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = Failure.createFrom;
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = Probe.createFrom;
+const $$createType9 = Shell.createFrom;
+const $$createType10 = $Create.Map($Create.Any, $Create.Any);
+const $$createType11 = Size.createFrom;
+const $$createType12 = TerminalModes.createFrom;
+const $$createType13 = Limits.createFrom;
+const $$createType14 = Environment.createFrom;
+const $$createType15 = $Create.Array($Create.Any);

@@ -32,6 +32,9 @@ const (
 	TypeStartFailed = "omniview:terminal/start-failed"
 	// TypeUnsupported (code UNSUPPORTED, 501): this build cannot run local terminals (Windows).
 	TypeUnsupported = "omniview:terminal/unsupported"
+	// TypeNotReattachable (code NOT_REATTACHABLE, 409): the terminal was opened without a page key, so it ends with
+	// its window and cannot be attached or detached.
+	TypeNotReattachable = "omniview:terminal/not-reattachable"
 )
 
 // The causes behind those errors, for errors.Is.
@@ -43,6 +46,9 @@ var (
 	ErrIDInUse       = errors.New("terminal session id is in use")
 	ErrInvalid       = errors.New("invalid terminal option")
 )
+
+// ErrNotReattachable is the cause behind NOT_REATTACHABLE.
+var ErrNotReattachable = errors.New("terminal was opened without a page key")
 
 func coded(err *apperror.AppError, code string) *apperror.AppError {
 	err.Code = code
@@ -80,6 +86,14 @@ func IDInUse(id string) error {
 	return coded(apperror.WrapWithDetail(ErrIDInUse, apperror.TypeResourceConflict, http.StatusConflict,
 		"Session id in use", fmt.Sprintf("A terminal session with id %q exists.", id)),
 		"ALREADY_EXISTS")
+}
+
+// notReattachableError is the refusal to attach or detach a terminal that was opened without a page key.
+func notReattachableError(id string) error {
+	return coded(apperror.WrapWithDetail(ErrNotReattachable, TypeNotReattachable, http.StatusConflict,
+		"Terminal cannot be attached",
+		fmt.Sprintf("Terminal %q was opened without a page key: it ends with its window and cannot be detached or attached.", id)),
+		"NOT_REATTACHABLE")
 }
 
 // maxShellDetail is the most bytes of the sentence of a shell refusal: the list in the problem has every path,
