@@ -180,6 +180,16 @@ export default function UpdatesSettingsPage() {
 
   return <section>
     <h1>Updates</h1>
+    <label>Automatic updates <Switch checked={settings['general.automatic_updates'] === true} onCheckedChange={(checked) => {
+      void commit({ 'general.automatic_updates': checked }).then(result => {
+        if (!result.applied || result.uncertain) {
+          setError(result.message ?? 'Could not apply setting');
+        }
+      }).catch((err: unknown) => {
+        setError(String(err));
+      });
+    }} /></label>
+    <p>Check for and prepare updates at startup and every six hours. Restart to apply an update.</p>
     {status?.version && <p>Current version: {status.version}</p>}
     <p role='status'>Status: {state === 'unconfigured' ? 'not configured' : state}</p>
     {status?.availableVersion && <p>Available version: {status.availableVersion}</p>}

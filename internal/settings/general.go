@@ -9,6 +9,13 @@ var General = settings.Category{
 	Description: "General settings for the application",
 	Icon:        "LuSettings2",
 	Settings: map[string]settings.Setting{
+		"automatic_updates": {
+			ID:          "automatic_updates",
+			Type:        settings.Toggle,
+			Label:       "Automatic updates",
+			Default:     true,
+			Description: "Check for and prepare application updates in the background.",
+		},
 		// Language setting
 		"language": {
 			ID:          "language",

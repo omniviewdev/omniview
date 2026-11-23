@@ -26,6 +26,7 @@ type UpdateService struct {
 	channel          string
 	root             string
 	configured       bool
+	automaticUpdates func() bool
 	mu               sync.Mutex
 	flow             sync.Mutex
 	identityMu       sync.Mutex
@@ -70,8 +71,8 @@ type ChannelList struct {
 	Error   string          `json:"error"`
 }
 
-func newUpdateService(app *application.App, channel, root, version string) *UpdateService {
-	s := &UpdateService{updater: app.Updater, channel: channel, root: root}
+func newUpdateService(app *application.App, channel, root, version string, automaticUpdates func() bool) *UpdateService {
+	s := &UpdateService{updater: app.Updater, channel: channel, root: root, automaticUpdates: automaticUpdates}
 	provider, err := feed.NewProvider(channel, root, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "updater disabled: %v\n", err)
@@ -95,7 +96,7 @@ func (s *UpdateService) ServiceStartup(ctx context.Context, _ application.Servic
 	}
 	ctx, s.cancel = context.WithCancel(ctx)
 	go func() {
-		s.check(ctx)
+		s.checkAutomatically(ctx)
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
 		for {
@@ -103,7 +104,7 @@ func (s *UpdateService) ServiceStartup(ctx context.Context, _ application.Servic
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				s.check(ctx)
+				s.checkAutomatically(ctx)
 			}
 		}
 	}()
@@ -121,6 +122,12 @@ func (s *UpdateService) ServiceShutdown() error {
 	s.identities = nil
 	s.identityMu.Unlock()
 	return nil
+}
+
+func (s *UpdateService) checkAutomatically(ctx context.Context) {
+	if s.automaticUpdates() {
+		_ = s.check(ctx)
+	}
 }
 
 func (s *UpdateService) check(ctx context.Context) error {

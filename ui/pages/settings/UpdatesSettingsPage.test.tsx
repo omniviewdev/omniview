@@ -65,6 +65,14 @@ describe('UpdatesSettingsPage channels', () => {
   });
   afterEach(cleanup);
 
+  it('saves the automatic update preference', async () => {
+    render(<UpdatesSettingsPage />);
+    fireEvent.click(screen.getByLabelText('Automatic updates'));
+    await waitFor(() => {
+      expect(mocks.commit).toHaveBeenCalledWith({ 'general.automatic_updates': true });
+    });
+  });
+
   it('retries failed channel index discovery and restores feature channels', async () => {
     mocks.showFeatures = true;
     let attempts = 0;

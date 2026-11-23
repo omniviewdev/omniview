@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -41,6 +42,39 @@ func TestUpdateServiceUnconfigured(t *testing.T) {
 	}
 	if got := s.Status(); got.Channel != releasechannel.Stable || got.SwitchTarget != "" {
 		t.Fatalf("Status: %+v", got)
+	}
+}
+
+func TestAutomaticUpdateSetting(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.NotFound(w, nil)
+	}))
+	defer server.Close()
+	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public().(ed25519.PublicKey)
+	provider, err := feed.NewProviderWithConfig("stable", t.TempDir(), nil, server.URL, []ed25519.PublicKey{key}, server.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := wailsupdater.New(updateTestHost{})
+	if err := u.Init(wailsupdater.Config{CurrentVersion: "1.0.0", Platform: "linux", Arch: "amd64", Providers: []wailsupdater.Provider{provider}, Window: wailsupdater.WindowNone}); err != nil {
+		t.Fatal(err)
+	}
+	enabled := false
+	s := &UpdateService{updater: u, configured: true, automaticUpdates: func() bool { return enabled }}
+	s.checkAutomatically(context.Background())
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("disabled automatic check made %d requests", got)
+	}
+	_ = s.Check()
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("manual check made %d requests", got)
+	}
+	enabled = true
+	s.checkAutomatically(context.Background())
+	if got := requests.Load(); got != 2 {
+		t.Fatalf("enabled automatic check made %d requests", got)
 	}
 }
 

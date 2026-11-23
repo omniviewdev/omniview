@@ -3,6 +3,8 @@
 The release workflows publish signed feeds and payloads to the self-hosted update service. GitHub Releases and Homebrew remain separate distribution channels. Nightly and promoted feature releases activate automatically after validation; stable releases require approval in the update portal. Feature releases do not create GitHub Releases or Homebrew casks.
 Release builds require `UPDATER_PUBLIC_KEYS` to be a non-empty JSON array of lowercase 64-hex Ed25519 public keys. Invalid trust configuration fails the build.
 
+The desktop checks for and prepares updates at startup and every six hours by default. Users can turn off automatic updates in Settings → Updates. Manual checks remain available. Turning automatic updates on takes effect at the next scheduled check or application startup. A prepared update requires an explicit restart.
+
 Run with Node.js and these environment variables:
 
 - `UPDATER_SIGNING_KEYS`: JSON array of lowercase 64-hex Ed25519 seeds. Every configured key signs the same manifest bytes; the service requires its configured public-key set to match exactly.

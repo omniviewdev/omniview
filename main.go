@@ -725,7 +725,10 @@ func main() {
 
 	// Create the AppService
 	appService := NewAppService(profile.Descriptor)
-	updateService := newUpdateService(app, profile.Descriptor.Channel, stateDir.Root(), version.Version)
+	updateService := newUpdateService(app, profile.Descriptor.Channel, stateDir.Root(), version.Version, func() bool {
+		enabled, _ := coreSettings.CategoryValues("general")["automatic_updates"].(bool)
+		return enabled
+	})
 
 	// Create the bootstrap service that wraps startup/shutdown logic
 	bootstrapSvc := &bootstrap.Service{
