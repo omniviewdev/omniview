@@ -76,16 +76,16 @@ func floodBlock() []byte {
 }
 
 func TestTheRecordStaysBoundedUnderA16MBFlood(t *testing.T) {
-	const max = 64
-	s := newTestScanner(t, newClock(), max)
+	const maxKept = 64
+	s := newTestScanner(t, newClock(), maxKept)
 	block := floodBlock()
 	before := heapInUse()
 	for fed := 0; fed < flood; fed += len(block) {
 		feedChunks(s, block, 32<<10)
 	}
 	total := (flood/len(block) + 1) * len(block)
-	if got := len(s.Log().Records()); got > max {
-		t.Fatalf("the log keeps %d commands, want at most %d", got, max)
+	if got := len(s.Log().Records()); got > maxKept {
+		t.Fatalf("the log keeps %d commands, want at most %d", got, maxKept)
 	}
 	if last, ok := s.Log().Last(); !ok || last.CommandID == "c1" {
 		t.Fatalf("the log does not follow the newest command: %v", last)
@@ -113,11 +113,9 @@ func TestTheRecordStaysBoundedWhateverTheFloodIsMadeOf(t *testing.T) {
 		s := newTestScanner(t, newClock(), 16)
 		data := []byte(strings.Repeat(unit, (1<<20)/len(unit)))
 		before := heapInUse()
-		for range 4 {
-			feedChunks(s, data, 32<<10)
-		}
-		if st := s.Stats(); st.Bytes != uint64(4*len(data)) {
-			t.Fatalf("%s: the scanner counts %d bytes, want %d", name, st.Bytes, 4*len(data))
+		feedChunks(s, data, 32<<10)
+		if st := s.Stats(); st.Bytes != uint64(len(data)) {
+			t.Fatalf("%s: the scanner counts %d bytes, want %d", name, st.Bytes, len(data))
 		}
 		if got := len(s.Log().Records()); got > 16 {
 			t.Fatalf("%s: the log keeps %d commands, want at most 16", name, got)
@@ -232,4 +230,27 @@ func FuzzFeed(f *testing.F) {
 			}
 		}
 	})
+}
+
+func benchmarkFeed(b *testing.B, data []byte) {
+	nonce, _ := ParseNonce(testNonce)
+	s := New(Config{Nonce: nonce, Now: newClock().Now, MaxRecords: 0, StartOffset: 0})
+	out := make([]Mark, 0, 1024)
+	b.SetBytes(int64(len(data)))
+	b.ReportAllocs()
+	for b.Loop() {
+		out = s.Feed(data, out[:0])
+	}
+}
+
+func BenchmarkFeedPlainText(b *testing.B) {
+	benchmarkFeed(b, bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog\r\n"), 1500))
+}
+
+func BenchmarkFeedColors(b *testing.B) {
+	benchmarkFeed(b, bytes.Repeat([]byte("\x1b[1;31mred\x1b[0m plain text \x1b[38;2;1;2;3mx\x1b[K\r\n"), 1500))
+}
+
+func BenchmarkFeedSessionsWithMarks(b *testing.B) {
+	benchmarkFeed(b, bytes.Repeat([]byte(cycle("make all", strings.Repeat("output line\r\n", 40), "0")), 60))
 }

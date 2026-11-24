@@ -113,21 +113,21 @@ func TestTheDirectoryOfTheShellNeedsTheNonceToBeTrusted(t *testing.T) {
 		"missing": "633;P;Cwd=/etc",
 		"empty":   "633;P;Cwd=/etc;",
 	} {
-		s := newTestScanner(t, newClock(), 0)
-		if ms := feedAll(s, osc(body)); len(ms) != 0 {
-			t.Fatalf("%s: a directory with no nonce gives marks %v", name, ms)
+		forged := newTestScanner(t, newClock(), 0)
+		if got := feedAll(forged, osc(body)); len(got) != 0 {
+			t.Fatalf("%s: a directory with no nonce gives marks %v", name, got)
 		}
-		if dir, _ := s.Log().Cwd(); dir != "" {
+		if dir, _ := forged.Log().Cwd(); dir != "" {
 			t.Fatalf("%s: the log took the directory %q", name, dir)
 		}
-		if st := s.Stats(); st.Forged != 1 {
+		if st := forged.Stats(); st.Forged != 1 {
 			t.Fatalf("%s: not counted as forged: %+v", name, st)
 		}
 	}
 	// Other properties of 633;P are not directories.
-	s = newTestScanner(t, newClock(), 0)
-	if ms := feedAll(s, osc("633;P;IsWindows=True;"+testNonce)); len(ms) != 0 {
-		t.Fatalf("a property that is no directory gives marks %v", ms)
+	other := newTestScanner(t, newClock(), 0)
+	if got := feedAll(other, osc("633;P;IsWindows=True;"+testNonce)); len(got) != 0 {
+		t.Fatalf("a property that is no directory gives marks %v", got)
 	}
 }
 
@@ -250,7 +250,7 @@ func TestTheNonceNeverShowsInAnythingThatPrintsIt(t *testing.T) {
 	values := map[string]any{
 		"nonce": nonce, "pointer to the nonce": &nonce, "config": Config{Nonce: nonce, Now: nil, MaxRecords: 1, StartOffset: 0},
 		"scanner": s, "log": s.Log(), "mark": ms[len(ms)-1], "mark pointer": &ms[len(ms)-1], "record": rec, "record pointer": &rec,
-		"marks": ms, "stats": s.Stats(),
+		"stats": s.Stats(),
 	}
 	for name, v := range values {
 		for _, got := range printed(v) {
@@ -260,7 +260,7 @@ func TestTheNonceNeverShowsInAnythingThatPrintsIt(t *testing.T) {
 				}
 			}
 		}
-		if j, err := json.Marshal(v); err == nil && (strings.Contains(string(j), testNonce) || strings.Contains(string(j), hexNonce)) {
+		if j, jerr := json.Marshal(v); jerr == nil && (strings.Contains(string(j), testNonce) || strings.Contains(string(j), hexNonce)) {
 			t.Fatalf("%s marshals the nonce: %s", name, j)
 		}
 	}

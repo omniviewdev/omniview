@@ -208,7 +208,7 @@ func TestAnOutputMarkInsideARunningCommandDoesNotEndIt(t *testing.T) {
 		t.Fatalf("a mark in the output of a command changed it: %v running=%v", s.Log().Records(), running)
 	}
 	feedAll(s, osc("133;D;0"))
-	if _, running := s.Log().Running(); running {
+	if _, still := s.Log().Running(); still {
 		t.Fatal("the command is still running after its end")
 	}
 }
