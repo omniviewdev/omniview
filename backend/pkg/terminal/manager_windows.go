@@ -75,6 +75,11 @@ func (m *Manager) DetachSession(_ string) (*sdkexec.Session, error) { return nil
 // CloseSession is not supported.
 func (m *Manager) CloseSession(_ string) error { return unsupportedError() }
 
+// CloseOwned ends nothing: no session can exist, and the id is not found as on any platform.
+func (m *Manager) CloseOwned(sessionID string, _ Owner) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
 // ReleaseOwned releases nothing: no session can exist.
 func (m *Manager) ReleaseOwned(_ Owner, _ ClosedBy) Released { return Released{Detached: 0, Ended: 0} }
 

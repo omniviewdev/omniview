@@ -912,8 +912,8 @@ func (c *controller) CloseSession(
 	if !ok {
 		// The end that a terminal that ended by itself while no page was attached leaves is dismissed by the window
 		// that holds it: it is not in the index, and the terminal manager keeps it.
-		if c.terminalManager != nil && c.terminalManager.Authorize(sessionID, owner) == nil {
-			return c.terminalManager.CloseSession(sessionID)
+		if c.terminalManager != nil {
+			return c.terminalManager.CloseOwned(sessionID, owner)
 		}
 		return apperror.SessionNotFound(sessionID)
 	}
@@ -923,7 +923,7 @@ func (c *controller) CloseSession(
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.CloseSession(sessionID)
+		return c.terminalManager.CloseOwned(sessionID, owner)
 	}
 	if index.ended {
 		// It ended by itself and no window attached: there is nothing to close. The output the plugin kept is for an attach

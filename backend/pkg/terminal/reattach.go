@@ -285,6 +285,7 @@ func (m *Manager) ReleaseOwned(owner Owner, by ClosedBy) Released {
 			m.told(s, left)
 			done.Detached++
 		case releaseEnd:
+			m.hookBeforeEnd(s.id)
 			s.beginClose(by)
 			ending = append(ending, s)
 			done.Ended++
@@ -405,6 +406,7 @@ func (m *Manager) Attach(sessionID string, caller Owner, req AttachRequest) (*At
 	}
 	// The window that attached its end holds it from now on, and only once the attach is answered: one that is refused
 	// for its offset takes nothing from the window that holds it.
+	m.hookBeforeTransfer(sessionID)
 	m.mu.Lock()
 	tomb.owner = caller
 	m.mu.Unlock()

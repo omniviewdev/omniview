@@ -81,6 +81,7 @@ func TestAWindowListsOnlyTheSessionsItHolds(t *testing.T) {
 // an offer.
 func TestAnOfferLetsTheNextWindowClaimASessionOnceAndOnlyTheOwnerMakesIt(t *testing.T) {
 	m, sink := newPageManager(t)
+	clock := withFakeClock(m)
 	info, err := m.Start(Options{Command: []string{sh(t), "-c", `sleep 30`}}, "wA")
 	require.NoError(t, err)
 
@@ -97,7 +98,9 @@ func TestAnOfferLetsTheNextWindowClaimASessionOnceAndOnlyTheOwnerMakesIt(t *test
 
 	require.NoError(t, m.Claim(info.ID, "wB"), "the owner claims its own session")
 	require.NoError(t, m.Offer(info.ID, "wB", 50*time.Millisecond))
-	time.Sleep(150 * time.Millisecond)
+	clock.Advance(50*time.Millisecond - time.Nanosecond)
+	require.NoError(t, m.Authorize(info.ID, "wB"), "an offer that is still open changes nothing")
+	clock.Advance(time.Nanosecond)
 	notFound(t, m.Claim(info.ID, "wC"), info.ID)
 	require.NoError(t, m.Authorize(info.ID, "wB"), "an offer that ran out changes nothing")
 }

@@ -101,6 +101,14 @@ type Manager struct {
 	// clock is the time that the leases and the tombstones are kept in: the wall clock, unless a test sets another
 	// before it starts a terminal (clock.go).
 	clock clock
+	// beforeEnd is set by a test, and by nothing else (it is nil in the host): it runs at the instant between a call's
+	// decision to end a terminal and the end itself, when a claim, an offer or a retirement that lands must find the
+	// terminal as that decision left it. A test holds the call there to force that order (hookBeforeEnd).
+	beforeEnd func(id string)
+	// beforeTransfer is set by a test, and by nothing else: it runs between an attach's read of the end that a terminal
+	// that ended by itself left and the transfer of that end to the window that attaches it, when a dismissal that lands
+	// must find the end still held by the window that held it (hookBeforeTransfer).
+	beforeTransfer func(id string)
 }
 
 // endedMemory is how many ended sessions the manager remembers.
@@ -132,10 +140,19 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
+		beforeEnd: nil, beforeTransfer: nil,
 	}
 	go m.forwardSignals()
 	go m.shutdownWhenDone()
 	return m
+}
+
+// hookBeforeTransfer runs the test's hold at the instant before the end of a terminal is handed to the window that
+// attaches it (Manager.beforeTransfer).
+func (m *Manager) hookBeforeTransfer(id string) {
+	if m.beforeTransfer != nil {
+		m.beforeTransfer(id)
+	}
 }
 
 // fate is what decides how a session is told to have ended: the first of the shell's own end, a

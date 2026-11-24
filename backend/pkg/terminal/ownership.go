@@ -63,7 +63,7 @@ func (m *Manager) Authorize(sessionID string, owner Owner) error {
 // holdsEndedLocked says whether owner holds what is left of a session that ended: the tombstone of a terminal
 // that ended by itself, or the memory of one that ended. The caller holds m.mu.
 func (m *Manager) holdsEndedLocked(id string, owner Owner) bool {
-	now := time.Now()
+	now := m.clock.Now()
 	for _, t := range m.tombs {
 		if t.id == id && now.Before(t.until) {
 			return t.owner != nil && t.owner == owner
@@ -91,7 +91,7 @@ func (m *Manager) Offer(sessionID string, owner Owner, ttl time.Duration) error 
 	if !s.heldBy(owner) || s.fate.set || s.ending.Load() {
 		return apperror.SessionNotFound(sessionID)
 	}
-	s.offerUntil = time.Now().Add(ttl)
+	s.offerUntil = m.clock.Now().Add(ttl)
 	return nil
 }
 
@@ -111,7 +111,7 @@ func (m *Manager) Claim(sessionID string, owner Owner) error {
 	case s.heldBy(owner):
 		s.mu.Unlock()
 		return nil
-	case s.offerOpenLocked(time.Now()) && !s.fate.set && !s.ending.Load():
+	case s.offerOpenLocked(m.clock.Now()) && !s.fate.set && !s.ending.Load():
 		replaced := s.takeOverLocked(owner)
 		s.mu.Unlock()
 		m.told(s, replaced)
@@ -119,6 +119,33 @@ func (m *Manager) Claim(sessionID string, owner Owner) error {
 	default:
 		s.mu.Unlock()
 		return apperror.SessionNotFound(sessionID)
+	}
+}
+
+// CloseOwned ends a session at the request of the window that holds it, or dismisses the end that a terminal that ended
+// by itself left for the window that attached it, and when it returns the session is gone (CloseSession). Any other
+// caller is told what is told of an id that never was.
+func (m *Manager) CloseOwned(sessionID string, owner Owner) error {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return err
+	}
+	s, err := m.live(sessionID)
+	if err != nil {
+		if m.dropTombstone(sessionID) {
+			return nil
+		}
+		return err
+	}
+	m.hookBeforeEnd(sessionID)
+	s.beginClose(ClosedByRequest)
+	m.awaitGone([]*session{s})
+	return nil
+}
+
+// hookBeforeEnd runs the test's hold at the instant before an end (Manager.beforeEnd).
+func (m *Manager) hookBeforeEnd(id string) {
+	if m.beforeEnd != nil {
+		m.beforeEnd(id)
 	}
 }
 
