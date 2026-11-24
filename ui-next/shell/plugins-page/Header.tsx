@@ -1,4 +1,4 @@
-import { Button, Chip, IconButton, Status, Text, menuTrigger, useMenu, type IconName, type MenuItem } from '@omniviewdev/kit';
+import { Button, Chip, IconButton, ProgressBar, Status, Text, menuTrigger, useMenu, type IconName, type MenuItem } from '@omniviewdev/kit';
 import { Fragment, useLayoutEffect, useRef } from 'react';
 import type { Availability } from './core/availability';
 import type { PluginsModel, RowView } from './core/model';
@@ -144,9 +144,7 @@ function Progress({ word, name, claim, leave }: ProgressProps) {
   return (
     <div ref={group} className={styles.progress} role="group" aria-label={label} aria-busy="true" tabIndex={-1} data-pl-part="head-progress">
       <span className={styles.progressLabel}>{word}</span>
-      <div className={styles.track} role="progressbar" aria-label={label} aria-valuetext={word}>
-        <span className={styles.fill} />
-      </div>
+      <ProgressBar label={label} value="indeterminate" valueText={word} indeterminateMotion="sweep" />
     </div>
   );
 }

@@ -310,7 +310,7 @@ const ROLES = [
   { key: 'prog', selector: '[data-pl-part="head-progress"]', paint: ['border-radius'] },
   { key: 'progLabel', selector: '[data-pl-part="head-progress"] > span', ink: true, text: true, paint: TYPE },
   { key: 'progBar', selector: '[data-pl-part="head-progress"] > [role="progressbar"]', paint: BOX },
-  { key: 'progFill', selector: '[data-pl-part="head-progress"] > [role="progressbar"] > span', paint: BOX },
+  { key: 'progFill', selector: '[data-pl-part="head-progress"] > [role="progressbar"] > [data-ov-part="fill"]', paint: BOX },
   { key: 'meta', selector: '[data-pl-part="head-meta"]' },
   { key: 'chipVersion', selector: '[data-pl-part="head-version"]', ink: true, text: true, paint: [...TYPE, ...BOX, 'padding'] },
   { key: 'chipOrigin', selector: '[data-pl-part="head-origin"]' },

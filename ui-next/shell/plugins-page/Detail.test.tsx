@@ -316,7 +316,10 @@ describe('work under way', () => {
     const progress = part('head-progress');
     expect(progress).not.toBeNull();
     expect(part('slot-primary')?.contains(progress)).toBe(true);
-    expect(part('slot-primary')?.contains(screen.getByRole('progressbar', { name: 'Reloading Alpha' }))).toBe(true);
+    const bar = screen.getByRole('progressbar', { name: 'Reloading Alpha' });
+    expect(part('slot-primary')?.contains(bar)).toBe(true);
+    expect(bar.getAttribute('aria-valuetext')).toBe('Reloading…');
+    expect(bar.getAttribute('aria-valuenow')).toBeNull();
     expect(progress?.textContent).toBe('Reloading…');
     expect(screen.queryByRole('button', { name: 'Reload' })).toBeNull();
     expect(document.activeElement).toBe(progress);
@@ -379,7 +382,9 @@ describe('work under way', () => {
     await open([inventoryEntry('alpha', { phase: 'Starting' })]);
 
     expect(part('head-progress')?.textContent).toBe('Starting…');
-    expect(screen.getByRole('progressbar', { name: 'Starting Alpha' })).toBeTruthy();
+    const bar = screen.getByRole('progressbar', { name: 'Starting Alpha' });
+    expect(bar.getAttribute('aria-valuetext')).toBe('Starting…');
+    expect(bar.getAttribute('aria-valuenow')).toBeNull();
   });
 });
 

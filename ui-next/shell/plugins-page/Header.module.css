@@ -153,42 +153,4 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  .track {
-    flex: 0 0 4px;
-    inline-size: 100%;
-    min-inline-size: 0;
-    block-size: 4px;
-    overflow: hidden;
-    border-radius: var(--ov-radius-mark);
-    background-color: var(--ov-progress-track);
-  }
-
-  .fill {
-    display: block;
-    inline-size: 40%;
-    block-size: 100%;
-    border-radius: var(--ov-radius-mark);
-    background-color: var(--ov-accent);
-    animation: sweep 1.4s linear infinite;
-  }
-
-  @keyframes sweep {
-    from {
-      transform: translateX(-100%);
-    }
-
-    to {
-      transform: translateX(250%);
-    }
-  }
-
-  /* Reduced motion: the bar stands still, as stripes that say work is under way. */
-  @media (prefers-reduced-motion: reduce) {
-    .fill {
-      inline-size: 100%;
-      background-image: repeating-linear-gradient(90deg, var(--ov-accent) 0 8px, var(--ov-progress-track) 8px 16px);
-      animation: none;
-    }
-  }
 }

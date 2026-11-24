@@ -37,14 +37,14 @@ describe('PageOperationView, while the work runs', () => {
     expect(phase.hasAttribute('data-ov-clip')).toBe(true);
   });
 
-  it('draws the 4 px track as a progress bar that is named and valued, in whole percent', () => {
-    render(view());
+  it('reports measured progress by name and rounds the fractional record to whole percent', () => {
+    render(view({ progress: 0.396 }));
     const bar = screen.getByRole('progressbar', { name: 'Scale orders-api' });
     expect(bar.getAttribute('aria-valuemin')).toBe('0');
     expect(bar.getAttribute('aria-valuemax')).toBe('100');
     expect(bar.getAttribute('aria-valuenow')).toBe('40');
     expect(bar.getAttribute('aria-valuetext')).toBe('Scaling orders-api: 2 of 5 replicas');
-    expect(bar.firstElementChild?.getAttribute('style')).toContain('--_p: 40');
+    expect(bar.getAttribute('data-ov-part')).toBe('progress-bar');
   });
 
   it('keeps progress between 0 and 100', () => {
@@ -59,6 +59,7 @@ describe('PageOperationView, while the work runs', () => {
     const bar = screen.getByRole('progressbar');
     expect(bar.hasAttribute('aria-valuenow')).toBe(false);
     expect(bar.getAttribute('data-ov-indeterminate')).toBe('true');
+    expect(bar.getAttribute('data-ov-motion')).toBe('stripe');
   });
 
   it('draws no bar when it has no progress to show, and still holds the track\'s 4 px so nothing moves', () => {
@@ -300,11 +301,6 @@ describe('the PageOperation stylesheet', () => {
     expect(rule('.track[aria-hidden=\'true\']').visibility).toBe('hidden');
   });
 
-  it('draws the bar as the mock does: 4 px, rounded, on the progress track colour, filled with the accent to --_p percent', () => {
-    expect(rule('.bar')).toMatchObject({ height: '4px', overflow: 'hidden', 'border-radius': 'var(--ov-radius-mark)', 'background-color': 'var(--ov-progress-track)' });
-    expect(rule('.fill')).toMatchObject({ display: 'block', height: '100%', 'background-color': 'var(--_bar)', width: 'calc(var(--_p, 0) * 1%)' });
-  });
-
   it('lets a finished sentence take the track\'s place on up to two lines, centred in the same 28 px cell', () => {
     expect(rule('.notify[data-ov-ended] > .main')).toMatchObject({ 'grid-template-rows': '32px', 'margin-block': '-2px' });
     expect(rule('.notify[data-ov-ended] .phase')).toMatchObject({ display: '-webkit-box', '-webkit-line-clamp': '2', 'line-clamp': '2', 'white-space': 'normal', 'align-self': 'center' });
@@ -313,15 +309,6 @@ describe('the PageOperation stylesheet', () => {
 
   it('keeps the actions on one line at the end of the cell, 8 px apart', () => {
     expect(rule('.actions')).toMatchObject({ display: 'flex', 'flex-wrap': 'nowrap', 'justify-content': 'flex-end', 'align-items': 'center', gap: 'var(--ov-spacing-8)', 'block-size': 'var(--ov-control-height)' });
-  });
-
-  it('stripes an indeterminate bar, and replaces the stripe with a still pattern under reduced motion', () => {
-    expect(rule('.bar[data-ov-indeterminate=\'true\'] > .fill').animation).toMatch(/stripe/);
-    expect(declarationsOf(css, '.bar[data-ov-indeterminate=\'true\'] > .fill', 'prefers-reduced-motion').animation).toBe('none');
-  });
-
-  it('paints a paused bar in the secondary text colour', () => {
-    expect(rule('.bar[data-ov-paused=\'true\']')['--_bar']).toBe('var(--ov-fg-secondary)');
   });
 
   it('uses only tokens for colour and type, and no hex colour', () => {

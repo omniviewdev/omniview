@@ -24,6 +24,7 @@ import * as middleEllipsisModule from '../components/MiddleEllipsis/MiddleEllips
 import * as missingValueModule from '../components/MissingValue/MissingValue.examples';
 import * as numberInputModule from '../components/NumberInput/NumberInput.examples';
 import * as pageHeaderModule from '../components/PageHeader/PageHeader.examples';
+import * as progressBarModule from '../components/ProgressBar/ProgressBar.examples';
 import * as quickFiltersModule from '../components/QuickFilters/QuickFilters.examples';
 import * as rovingGroupModule from '../components/RovingGroup/RovingGroup.examples';
 import * as searchFieldModule from '../components/SearchField/SearchField.examples';
@@ -65,6 +66,7 @@ export const partExamples = {
   MissingValue: missingValueModule,
   NumberInput: numberInputModule,
   PageHeader: pageHeaderModule,
+  ProgressBar: progressBarModule,
   QuickFilters: quickFiltersModule,
   RovingGroup: rovingGroupModule,
   SearchField: searchFieldModule,

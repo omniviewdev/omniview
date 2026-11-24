@@ -25,6 +25,7 @@ export * from './components/MiddleEllipsis';
 export * from './components/MissingValue';
 export * from './components/NumberInput';
 export * from './components/PageHeader';
+export * from './components/ProgressBar';
 export * from './components/QuickFilters';
 export * from './components/RovingGroup';
 export * from './components/SearchField';
