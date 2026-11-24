@@ -43,7 +43,7 @@ while (reports.length === 0 && Date.now() - t0 < budget) {
   const procs = psAll();
   const mine = descendants(process.pid, procs).filter((p) => p.pid !== host.child.pid && !descendants(host.child.pid, procs).some((q) => q.pid === p.pid));
   const wk = procs.filter((p) => !before.has(p.pid) && /WebKit\.(WebContent|Networking|GPU)/.test(p.command));
-  browserSamples.push({ t: +((Date.now() - t0) / 1000).toFixed(1), browserRSS: +(rssOf(mine) + rssOf(wk)).toFixed(1) });
+  browserSamples.push({ t: +((Date.now() - t0) / 1000).toFixed(1), browserRSS: +(rssOf(mine) + rssOf(wk)).toFixed(1), hostRSS: +rssOf(procs.filter((p) => p.pid === host.child.pid)).toFixed(1) });
 }
 const result = { args: { transport, scenario, state, seconds, browser: browserName, ack, build: 'server' }, report: reports[0] || null, hostSamples, notes, browserSamples, logs: logs.slice(-5) };
 
