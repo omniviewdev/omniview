@@ -39,7 +39,7 @@ func (headlessWindow) Activate()            {}
 func (headlessWindow) Hide()                {}
 func (headlessWindow) IsVisible() bool      { return false }
 func (headlessWindow) SetPosition(int, int) {}
-func (headlessWindow) Bounds() Bounds       { return Bounds{} }
+func (headlessWindow) Bounds() Bounds       { return Bounds{X: 0, Y: 0, Width: 0, Height: 0} }
 
 // Close does what the closing hooks of createWindow do for a window that exists: the settings window hides instead
 // of closing unless the host is shutting down, any other window closes and the window service is told. The service
