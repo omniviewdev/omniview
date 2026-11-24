@@ -1,0 +1,14 @@
+-rwxr-xr-x  1 joshuapare  staff  69011282 Nov 24 09:47 /tmp/b110/Omniview-server-fixed2
+ 9:47  up 14 days,  2:15, 1 user, load averages: 7.17 6.91 10.76
+=== fast.mjs, real host server build: this branch (second head), 30 s
+5s rss=93 heapAlloc=30 nextGC=40 | c1:rx 74.9 MiB/s total 368.9 MiB  | loopback 0 MB/s out
+10s rss=94 heapAlloc=27 nextGC=39 | c1:rx 46.4 MiB/s total 765.7 MiB  | loopback 0 MB/s out
+15s rss=94 heapAlloc=31 nextGC=39 | c1:rx 68.7 MiB/s total 1071.0 MiB  | loopback 0 MB/s out
+20s rss=94 heapAlloc=25 nextGC=40 | c1:rx 87.8 MiB/s total 1475.7 MiB  | loopback 0 MB/s out
+25s rss=94 heapAlloc=33 nextGC=40 | c1:rx 90.6 MiB/s total 1921.3 MiB  | loopback 0 MB/s out
+30s rss=95 heapAlloc=29 nextGC=40 | c1:rx 88.1 MiB/s total 2458.5 MiB  | loopback 0 MB/s out
+rss start 67 descendants left 0
+host log lines mentioning websocket: 0
+write-error lines: 0
+ 9:48  up 14 days,  2:16, 1 user, load averages: 7.74 7.13 10.67
+B110-E2E2-DONE

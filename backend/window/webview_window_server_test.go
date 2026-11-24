@@ -41,6 +41,23 @@ func (inertSink) windowBoundsChanged(string, Bounds)   {}
 func (inertSink) shutdownStarted() bool                { return false }
 func (inertSink) windowClosed(string)                  {}
 
+// recordingSink records what the window service would be told: a window that
+// closed, and one that hid. A headless window reports on the caller's
+// goroutine, so a test reads the record after the call returns.
+type recordingSink struct {
+	inertSink
+	closed []string
+	hidden []string
+}
+
+func (s *recordingSink) windowClosed(name string) { s.closed = append(s.closed, name) }
+
+func (s *recordingSink) windowVisibilityChanged(name string, visible bool) {
+	if !visible {
+		s.hidden = append(s.hidden, name)
+	}
+}
+
 func loopbackPort(t *testing.T) int {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -123,8 +140,9 @@ func theServerApplication(t *testing.T) (*application.App, int) {
 	return serverProcess.app, serverProcess.port
 }
 
-// eventsKept emits count events of size bytes, waits until the last one has
-// passed every transport, and returns how much the live heap grew.
+// eventsKept connects a client to the event socket, emits count events of size
+// bytes, waits until the last one has reached the client (so it has passed
+// every transport) and returns how much the live heap grew.
 func eventsKept(t *testing.T, app *application.App, port, count, size int) int64 {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -136,6 +154,41 @@ func eventsKept(t *testing.T, app *application.App, port, count, size int) int64
 	defer func() { _ = conn.CloseNow() }()
 	conn.SetReadLimit(1 << 20)
 
+	registered, done := make(chan struct{}), make(chan struct{})
+	failed := make(chan error, 1)
+	go func() {
+		seenProbe := false
+		for {
+			_, message, readErr := conn.Read(ctx)
+			if readErr != nil {
+				failed <- readErr
+				return
+			}
+			switch {
+			case bytes.Contains(message, []byte("b110.done")):
+				close(done)
+				return
+			case !seenProbe && bytes.Contains(message, []byte("b110.probe")):
+				seenProbe = true
+				close(registered)
+			}
+		}
+	}()
+
+	// The server registers a client after it has answered the upgrade, and an
+	// event emitted before that does not reach the client: emit a probe until
+	// one arrives. The wait ends with the probe, not with the time.
+	for waiting := true; waiting; {
+		app.Event.Emit("b110.probe", "probe")
+		select {
+		case <-registered:
+			waiting = false
+		case readErr := <-failed:
+			t.Fatalf("read the event socket before the probe: %v", readErr)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
 	payload := strings.Repeat("x", size)
 	before := liveHeap()
 	for range count {
@@ -145,14 +198,10 @@ func eventsKept(t *testing.T, app *application.App, port, count, size int) int64
 	// Events pass the transports in send order, the windows first and then the
 	// sockets, so the end marker on the socket means every payload event has
 	// been through every window.
-	for {
-		_, message, readErr := conn.Read(ctx)
-		if readErr != nil {
-			t.Fatalf("read the event socket before the end marker: %v", readErr)
-		}
-		if bytes.Contains(message, []byte("b110.done")) {
-			break
-		}
+	select {
+	case <-done:
+	case readErr := <-failed:
+		t.Fatalf("read the event socket before the end marker: %v", readErr)
 	}
 	return int64(liveHeap()) - int64(before)
 }
@@ -169,14 +218,45 @@ func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
 	second := host.createWindow(windowSpec{Name: name, Kind: KindWorkspace, Width: 800, Height: 600}, inertSink{})
 	wailsWindow{window: serverProcess.main}.Activate()
 	second.Activate()
-	for _, registered := range []string{MainWindowName, name} {
-		if _, found := app.Window.GetByName(registered); !found {
-			t.Fatalf("window %q is not in the registry of the application", registered)
-		}
+	if _, found := app.Window.GetByName(MainWindowName); !found {
+		t.Fatal("the main window is not in the registry of the application")
 	}
 
 	if grown := eventsKept(t, app, port, b110Events, b110EventBytes); grown > b110HeapBound {
 		t.Fatalf("the heap grew by %d MiB after %d events of %d KiB: a window of the server build keeps the events it was given (bound %d MiB)",
 			grown>>20, b110Events, b110EventBytes>>10, b110HeapBound>>20)
+	}
+}
+
+// A window of the window service has no platform window in the server build,
+// and Wails' Close returns at once for a window that did not run: the service
+// must still hear that the window closed, or it keeps the entry and the saved
+// state of a window that is gone.
+func TestClosingAWindowOfTheServerBuildTellsTheWindowService(t *testing.T) {
+	app, _ := theServerApplication(t)
+	host := &wailsWindowHost{app: app, template: serverWindowTemplate()}
+	name := fmt.Sprintf("closing-%d", serverProcess.windows.Add(1))
+	sink := &recordingSink{}
+	closing := host.createWindow(windowSpec{Name: name, Kind: KindWorkspace, Width: 800, Height: 600}, sink)
+
+	closing.Close()
+
+	if len(sink.closed) != 1 || sink.closed[0] != name || len(sink.hidden) != 0 {
+		t.Fatalf("after Close the window service was told closed=%v hidden=%v, want closed=[%s] and nothing hidden", sink.closed, sink.hidden, name)
+	}
+}
+
+// The settings window hides instead of closing, as it does when it exists.
+func TestClosingTheSettingsWindowOfTheServerBuildHidesItInsteadOfClosing(t *testing.T) {
+	app, _ := theServerApplication(t)
+	host := &wailsWindowHost{app: app, template: serverWindowTemplate()}
+	name := fmt.Sprintf("settings-%d", serverProcess.windows.Add(1))
+	sink := &recordingSink{}
+	settings := host.createWindow(windowSpec{Name: name, Kind: KindSettings, Width: 800, Height: 600}, sink)
+
+	settings.Close()
+
+	if len(sink.hidden) != 1 || sink.hidden[0] != name || len(sink.closed) != 0 {
+		t.Fatalf("after Close the window service was told closed=%v hidden=%v, want hidden=[%s] and nothing closed", sink.closed, sink.hidden, name)
 	}
 }

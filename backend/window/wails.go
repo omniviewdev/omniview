@@ -56,6 +56,9 @@ type wailsWindowHost struct {
 }
 
 func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) nativeWindow {
+	if !runsNativeWindows {
+		return newHeadlessWindow(spec, sink)
+	}
 	options := h.template
 	options.Name = spec.Name
 	// The frontend asks Wails for its window name; a URL query would be lost

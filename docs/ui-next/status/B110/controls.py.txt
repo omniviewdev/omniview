@@ -2,16 +2,15 @@
 # B-110 negative controls (docs/ui-next/status/B110.md). Run from the repository root:
 #   python3 docs/ui-next/status/B110/controls.py.txt
 # Every control is a fault in a SCRATCH copy of one file (go test -overlay): the worktree is not edited. For each one the
-# script runs the test twice: with the fault (the test named for it must fail by its own assertion, with the message
-# written here, and not by a panic, a timeout or a build error) and with the fault and the assertion removed (the same
-# test must then pass: nothing else catches the fault; rule 28 of docs/ui-next/AGENTS.md).
+# script runs the test named for it twice: with the fault (it must fail by its own assertion, with the message written
+# here, and not by a panic, a timeout or a build error) and with the fault and the assertions that catch it switched off
+# in a scratch copy of the test (it must then pass: nothing else catches the fault; rule 28 of docs/ui-next/AGENTS.md).
 import json, os, subprocess, sys, tempfile
 
 ROOT = os.getcwd()
 SERVER = "backend/window/webview_window_server.go"
 WAILS = "backend/window/wails.go"
 TEST = "backend/window/webview_window_server_test.go"
-TARGET = "TestEventsAreNotRetainedByTheWindowsOfTheServerBuild"
 
 FACTORY = """	window := application.NewWindow(options)
 	app.Window.Add(window)
@@ -26,11 +25,11 @@ def read(path):
 
 def replaced(text, old, new):
     if text.count(old) != 1:
-        sys.exit("control cannot be built: %r is in the file %d times" % (old[:60], text.count(old)))
+        sys.exit("control cannot be built: %r is in the file %d times" % (old[:70], text.count(old)))
     return text.replace(old, new)
 
 CONTROLS = [
-    # name, file, fault, assertion that catches it, message the failure must carry
+    # name, file, fault, test named for it, assertions that catch it (switched off for the second run), message of the failure
     ("C1 the server build runs the windows it creates (the behaviour of main)", SERVER,
      lambda s: replaced(s, FACTORY, "	return app.Window.NewWithOptions(options)\n"),
      HEAP_ASSERTION, "keeps the events it was given"),
@@ -45,41 +44,38 @@ CONTROLS = [
      REGISTRY_ASSERTION, "is not in the registry of the application"),
 ]
 
-def run(overlay_files, label):
+def run(overlay_files, target):
     scratch = tempfile.mkdtemp(prefix="b110-control-")
     replace = {}
     for path, text in overlay_files.items():
-        target = os.path.join(scratch, path.replace("/", "__"))
-        with open(target, "w") as handle:
+        copy = os.path.join(scratch, path.replace("/", "__"))
+        with open(copy, "w") as handle:
             handle.write(text)
-        replace[os.path.join(ROOT, path)] = target
+        replace[os.path.join(ROOT, path)] = copy
     overlay = os.path.join(scratch, "overlay.json")
     with open(overlay, "w") as handle:
         json.dump({"Replace": replace}, handle)
     env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="local")
     done = subprocess.run(
-        ["go", "test", "-tags", "server", "-overlay=" + overlay, "-run", "^" + TARGET + "$", "-count=1", "-v", "./backend/window/"],
+        ["go", "test", "-tags", "server", "-overlay=" + overlay, "-run", "^" + target + "$", "-count=1", "-v", "./backend/window/"],
         cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
     return done.returncode, done.stdout + done.stderr
 
 failed = 0
-for name, path, fault, assertion, message in CONTROLS:
+for name, path, fault, target, catching, message in CONTROLS:
     faulty = fault(read(path))
-    code, out = run({path: faulty}, name)
-    caught = code != 0 and ("--- FAIL: " + TARGET) in out and message in out and "panic:" not in out and "timed out" not in out
-    print("%-78s with the fault:      %s" % (name, "RED by its assertion" if caught else "NOT RED AS NAMED (exit %d)" % code))
+    code, out = run({path: faulty}, target)
+    caught = code != 0 and ("--- FAIL: " + target) in out and message in out and "panic:" not in out and "timed out" not in out
+    print("%-86s with the fault:      %s" % (name, "RED by its assertion" if caught else "NOT RED AS NAMED (exit %d)" % code))
     if not caught:
         failed += 1
         print(out[-1500:])
-    # The assertion is switched off by making its condition false, in a scratch copy of the test.
-    if "found := " in assertion:
-        off = assertion.replace("; !found", "; false && !found")
-    else:
-        off = assertion.replace("; grown >", "; false && grown >")
-    switched_off = replaced(read(TEST), assertion, off)
-    code, out = run({path: faulty, TEST: switched_off}, name)
-    passed = code == 0 and ("--- PASS: " + TARGET) in out
-    print("%-78s fault, assertion off: %s" % ("", "passes (nothing else catches it)" if passed else "STILL FAILS (exit %d)" % code))
+    switched_off = read(TEST)
+    for old, new in catching:
+        switched_off = replaced(switched_off, old, new)
+    code, out = run({path: faulty, TEST: switched_off}, target)
+    passed = code == 0 and ("--- PASS: " + target) in out
+    print("%-86s fault, assertion off: %s" % ("", "passes (nothing else catches it)" if passed else "STILL FAILS (exit %d)" % code))
     if not passed:
         failed += 1
         print(out[-1500:])
