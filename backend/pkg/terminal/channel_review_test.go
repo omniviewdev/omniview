@@ -205,17 +205,22 @@ func (c *armingClock) AfterFunc(d time.Duration, f func()) timer {
 // m5. The pump arms its timer for what is left of the stall, computed from a reading of the clock. A clock that moves between
 // the reading and the registration puts the timer after the stall by as much, and a test that moves the clock once never gets
 // it fired: the release is postponed for ever. After the timer is armed the deadline is looked at again.
+//
+// The deadline is the stamp of the page's last progress and the stall, so the sender's first stamp is settled before the clock is
+// armed to move, as in the test of the timer armed for the deadline (S5 of the review of PR 704): the child writes a small head and
+// waits for the gate, and the flood begins once the sender is parked in the first frame of the head.
 func TestAChannelClockThatMovesWhileThePumpArmsItsTimerDoesNotPostponeTheStall(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	clock := &armingClock{fakeClock: newFakeClock(), mu: sync.Mutex{}, onArm: nil}
 	m.clock = clock
 	hold := newGate(t)
-	info := m.startChannel(t, countingScript(-1, hold), Options{})
+	info := m.startChannel(t, headGateFlood("head", hold), Options{})
 	s := m.chanOf(t, info)
 	f := newFakeChannel(t)
 	f.park(1)
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
+	waitSenderParked(t, f)
 	// What the attach left in the pump's wake is taken out (the pump is in a read of the shell, not in a wait), so that nothing but
 	// the clock can end the wait it makes next.
 	select {

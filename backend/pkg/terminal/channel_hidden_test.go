@@ -73,6 +73,7 @@ func TestAChildNeverBlocksWhenNoReaderTakesAFrame(t *testing.T) {
 	before := heapInUse()
 	hold.release(t)
 	waitHost(t, s, page, "the pump never waited for a page that was alive", func(st channelStats) bool { return st.waits >= 1 })
+	waitSenderParked(t, f) // the stamp of the page's first progress is settled before the clock moves
 
 	clock.Advance(m.channel.stall) // the page made no progress for the stall: it is asleep
 	ring := uint64(m.channel.ring)
@@ -132,7 +133,7 @@ func TestAPageThatWakesGetsAGapOfExactlyWhatTheRingOverwroteThenTheExactSequence
 	// The page goes to sleep once the sender is parked in its first frame of output: a sender that is late would find the ring
 	// overwritten by then and begin with the gap, and the frame that the gap follows would not be this one. The frame is read here,
 	// as the transport holds it, and its length is what the page has when it wakes.
-	require.Eventually(t, func() bool { begun, _ := f.counts(); return begun >= 2 }, settle, time.Millisecond, "the sender began its first frame of output")
+	waitSenderParked(t, f)
 	first := f.lastSendFrame()
 	require.GreaterOrEqual(t, len(first), 9, "a frame of output has its type and its offset")
 	require.Equal(t, wOutput, first[0], "the frame that the parked Send holds is output")
@@ -254,6 +255,7 @@ func TestTheStallIsDecidedByTheClockAndNotBeforeIt(t *testing.T) {
 	page.waitReady()
 	hold.release(t)
 	held := waitHost(t, s, page, "the pump never waited for a page that was alive", func(st channelStats) bool { return st.waits >= 1 })
+	waitSenderParked(t, f) // the stamp of the page's first progress is settled before the clock moves
 	waits, written := held.waits, held.end
 
 	clock.Advance(m.channel.stall - time.Millisecond)

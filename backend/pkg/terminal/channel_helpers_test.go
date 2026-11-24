@@ -594,6 +594,17 @@ func waitHost(t *testing.T, s *session, page *chanPage, failure string, ok func(
 	}
 }
 
+// waitSenderParked waits, for at most settle, until the stream's sender has begun its first frame of output: the second Send of a
+// transport that took the ready frame and parks the next. The sender stamps the progress of the page when it first sees output and
+// before it hands the frame over, and nothing stamps again while the page takes nothing, so from here on the deadline of a stall is
+// settled and a clock that a test moves is moved by exactly what the test says. A test that moves the clock before this decides a
+// deadline that the stamp of a sender that is late, on a machine that is busy, can move (S5 of the review of PR 704).
+func waitSenderParked(t *testing.T, f *fakeChannel) {
+	t.Helper()
+	require.Eventually(t, func() bool { begun, _ := f.counts(); return begun >= 2 }, settle, time.Millisecond,
+		"the sender never began its first frame of output: the stamp of the page's first progress is not settled")
+}
+
 func (p *chanPage) waitReady() *readyWire {
 	p.t.Helper()
 	return p.waitFor("the ready frame", func(s pageState) bool { return s.ready != nil }).ready
