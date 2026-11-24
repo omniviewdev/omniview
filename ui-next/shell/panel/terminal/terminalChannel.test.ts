@@ -1072,3 +1072,173 @@ describe('the stream a page opens', () => {
     expect(opened).toEqual([]);
   });
 });
+
+describe('the errors that leave the channel', () => {
+  /** An error of the host that echoes the capability in every place an error has: its words, its detail, its title, a typed field, and a cause. */
+  const echoing = (extra: Record<string, unknown> = {}): Error =>
+    Object.assign(new Error(`failed for ${CAP}`, { cause: new Error(`cause ${CAP}`) }), {
+      type: 'omniview:internal',
+      title: `Failed ${CAP}`,
+      status: 500,
+      detail: `the call failed for ${CAP}`,
+      ...extra,
+    });
+
+  const rejection = async (call: Promise<unknown>): Promise<unknown> =>
+    call.then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+
+  const calls: ReadonlyArray<readonly [string, string, (channels: TerminalChannels) => Promise<unknown>]> = [
+    ['close', 'CloseChannelTerminal', async (channels) => channels.close('t1')],
+    ['dismiss', 'DismissChannelTerminal', async (channels) => channels.dismiss('t1')],
+    ['busy', 'ChannelTerminalBusy', async (channels) => channels.busy('t1')],
+    ['list', 'ListChannelTerminals', async (channels) => channels.list()],
+    ['listed', 'ListChannelTerminals', async (channels) => channels.listed('t1')],
+    ['create', 'CreateTerminal', async (channels) => channels.create('t2', { cols: 80, rows: 24 })],
+  ];
+
+  it.each(calls)('%s rejects with an error that holds no capability anywhere: not in its words, its fields, its cause, its text, nor anything logged', async (_name, binding, call) => {
+    const logged: unknown[] = [];
+    for (const method of ['warn', 'error', 'log', 'info', 'debug'] as const) {
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+    }
+
+    try {
+      const r = rig({ saved: { t1: CAP } });
+      r.answers.fails[binding] = echoing();
+      const error = await rejection(call(r.channels));
+      expect(error).toBeInstanceOf(Error);
+      const failure = error as Error;
+      expect(failure.message).not.toContain(CAP);
+      expect(failure.cause).toBeUndefined();
+      const text = JSON.stringify([failure.message, String(error), r.channels.describe(error), Object.getOwnPropertyNames(failure).map((key) => (failure as unknown as Record<string, unknown>)[key]), failure.stack === undefined ? '' : failure.stack, logged]);
+      expect(text).not.toContain(CAP);
+      expect(text).not.toContain('CANARY');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it.each(calls.filter(([name]) => name !== 'create' && name !== 'list' && name !== 'listed'))('%s keeps what a reader of errors needs: isGone, the code and the shells tried survive the wrapping', async (_name, binding, call) => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.fails[binding] = echoing({ type: 'omniview:session/not-found', code: 'SHELL_UNAVAILABLE', tried: [{ source: 'account', path: `/bin/${CAP}`, reason: 'not-found' }] });
+    const error = await rejection(call(r.channels));
+    expect(r.channels.isGone(error)).toBe(true);
+    expect(r.channels.codeOf(error)).toBe('SHELL_UNAVAILABLE');
+    expect(r.channels.triedOf(error)).toHaveLength(1);
+    expect(JSON.stringify(r.channels.triedOf(error))).not.toContain(CAP);
+    expect(r.channels.describe(error)).not.toContain(CAP);
+    expect(r.channels.describe(error).length).toBeGreaterThan(0);
+  });
+
+  it('create keeps the code and the shells tried of a refusal, and not the capability', async () => {
+    const r = rig();
+    r.answers.fails.CreateTerminal = echoing({ type: 'omniview:terminal/shell-unavailable', code: 'SHELL_UNAVAILABLE', tried: [{ source: 'account', path: '/bin/zsh', reason: 'not-found' }] });
+    const error = await rejection(r.channels.create('t1', { cols: 80, rows: 24 }));
+    expect(r.channels.codeOf(error)).toBe('SHELL_UNAVAILABLE');
+    expect(r.channels.triedOf(error)).toEqual([{ source: 'account', path: '/bin/zsh', reason: 'not-found' }]);
+  });
+});
+
+describe('what a mutation of the channel would change', () => {
+  const opened = (saved: Record<string, string> = { t1: CAP }) => {
+    const r = rig({ saved });
+    const c = connected(r);
+    c.socket.open();
+    return { r, ...c };
+  };
+
+  it('closes the stream for an output whose offset is not a safe integer', () => {
+    const { socket, said } = opened();
+    socket.deliver(frame(0x82, Uint8Array.of(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff), bytesOf(1)));
+    expect(said.map((one) => one[0])).toEqual(['closed']);
+  });
+
+  it('closes the stream for a gap of more than its 16 bytes, as for one of less', () => {
+    const { socket, said } = opened();
+    socket.deliver(frame(0x83, u64(1), u64(2), bytesOf(0)));
+    expect(said.map((one) => one[0])).toEqual(['closed']);
+  });
+
+  it('keeps a resize inside 1 to 1,000 whatever it is given', () => {
+    const { socket, link } = opened();
+    link.resize(0, 5000);
+    link.resize(-7, Number.NaN);
+    expect(Array.from(socket.sent[1] ?? [])).toEqual([0x03, 0x00, 0x01, 0x03, 0xe8]);
+    expect(Array.from(socket.sent[2] ?? [])).toEqual([0x03, 0x00, 0x01, 0x00, 0x01]);
+  });
+
+  it('keeps an acknowledgement inside a u32 whatever it is given', () => {
+    const { socket, link } = opened();
+    link.ack(-5);
+    link.ack(2 ** 33);
+    expect(Array.from(socket.sent[1] ?? [])).toEqual([0x04, 0, 0, 0, 0]);
+    expect(Array.from(socket.sent[2] ?? [])).toEqual([0x04, 0xff, 0xff, 0xff, 0xff]);
+  });
+
+  it('sends nothing for an empty input', () => {
+    const { socket, link } = opened();
+    link.input(new Uint8Array());
+    expect(socket.sent).toHaveLength(1);
+  });
+
+  it('asks the host for at most 1,024 capabilities at a time, and for all of them', async () => {
+    const saved = Object.fromEntries(Array.from({ length: 2_500 }, (_, index) => [`t${String(index)}`, `cap${String(index).padStart(20, '0')}`]));
+    const r = rig({ saved });
+    r.answers.list = (capabilities) => capabilities.map((cap) => ({ id: `t${String(Number(cap.slice(3)))}` }));
+    const answer = await r.channels.list();
+    expect(r.calls.map((call) => (call[1] as string[]).length)).toEqual([1024, 1024, 452]);
+    expect(answer).toHaveLength(2_500);
+    expect(r.writes).toEqual([]);
+  });
+
+  it('answers only the terminals it asked about, whatever else the host lists', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.list = () => [{ id: 't1' }, { id: 'stranger' }];
+    await expect(r.channels.list()).resolves.toEqual([{ id: 't1' }]);
+  });
+
+  it('does not overwrite a capability it holds with one a slot read later holds, and takes in the others', async () => {
+    const r = rig();
+    const channels = await loadTerminalChannels({ ...r.deps, saved: { t1: CAP_2 }, storage: { read: async () => Promise.resolve(JSON.stringify({ t1: CAP, t2: CAP_3 })), write: r.storage.write } });
+    channels.connect('t1', undefined, recorder().events);
+    channels.connect('t2', undefined, recorder().events);
+    r.sockets[0]?.open();
+    r.sockets[1]?.open();
+    expect(attachJson(socketOf(r, 0))).toEqual({ v: 1, cap: CAP_2 });
+    expect(attachJson(socketOf(r, 1))).toEqual({ v: 1, cap: CAP_3 });
+  });
+
+  it('attaches at once on a stream that is open already', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const socket = new FakeSocket();
+    socket.readyState = 1;
+    const channels = createTerminalChannels({ ...r.deps, saved: { t1: CAP }, openStream: () => socket });
+    channels.connect('t1', undefined, recorder().events);
+    expect(socket.sent).toHaveLength(1);
+    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP });
+  });
+
+  it('does not forget a newer capability when an older stream is told not found', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    const old = connected(r);
+    old.socket.open();
+    r.answers.create = () => ({ id: 't1', cap: CAP_2 });
+    await r.channels.create('t1', { cols: 80, rows: 24 });
+    await turns();
+    const writes = r.writes.length;
+    old.socket.deliver(frame(0x86));
+    await turns();
+    expect(r.writes).toHaveLength(writes);
+    const next = recorder();
+    r.channels.connect('t1', undefined, next.events);
+    const socket = socketOf(r, 1);
+    socket.open();
+    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP_2 });
+    expect(next.said).toEqual([]);
+  });
+});
