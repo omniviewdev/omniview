@@ -75,6 +75,11 @@ func (m *Manager) DetachSession(_ string) (*sdkexec.Session, error) { return nil
 // CloseSession is not supported.
 func (m *Manager) CloseSession(_ string) error { return unsupportedError() }
 
+// CloseOwned ends nothing: no session can exist, and the id is not found as on any platform.
+func (m *Manager) CloseOwned(sessionID string, _ Owner) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
 // ReleaseOwned releases nothing: no session can exist.
 func (m *Manager) ReleaseOwned(_ Owner, _ ClosedBy) Released { return Released{Detached: 0, Ended: 0} }
 
@@ -95,8 +100,61 @@ func (m *Manager) List(_ Owner, _ string) []Listed { return []Listed{} }
 // CloseUnlessTakenOver ends nothing: no session can exist.
 func (m *Manager) CloseUnlessTakenOver(_ string, _ Owner) bool { return false }
 
+// Authorize holds nothing: no session can exist, and the id is not found as on any platform.
+func (m *Manager) Authorize(sessionID string, _ Owner) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+// Claim is not supported: no session can exist.
+func (m *Manager) Claim(sessionID string, _ Owner) error { return apperror.SessionNotFound(sessionID) }
+
+// Offer is not supported: no session can exist.
+func (m *Manager) Offer(sessionID string, _ Owner, _ time.Duration) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+// SessionsOf lists nothing: no session can exist.
+func (m *Manager) SessionsOf(_ Owner) []*sdkexec.Session { return nil }
+
 // Shutdown ends nothing: no session can exist.
 func (m *Manager) Shutdown() {}
 
 // SetFlowStall does nothing: no session can exist.
 func (m *Manager) SetFlowStall(_ time.Duration) {}
+
+// Revoke is not supported: no session can exist.
+func (m *Manager) Revoke(sessionID string, _ Owner) error { return apperror.SessionNotFound(sessionID) }
+
+// The calls that name a terminal by its id for the window that holds it: no session can exist, and the id is not found.
+
+func (m *Manager) WriteOwned(sessionID string, _ Owner, _ uint64, _ []byte) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) ResizeOwned(sessionID string, _ Owner, _ uint64, _, _ int) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) AckOwned(sessionID string, _ Owner, _ int) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) BusyOwned(sessionID string, _ Owner) (Foreground, error) {
+	return Foreground{}, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) CwdOwned(sessionID string, _ Owner) (Directory, error) {
+	return Directory{}, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) GetOwned(sessionID string, _ Owner) (*sdkexec.Session, error) {
+	return nil, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) DetachOwned(sessionID string, _ Owner) (*sdkexec.Session, error) {
+	return nil, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) AttachOwned(sessionID string, _ Owner) (*sdkexec.Session, []byte, error) {
+	return nil, nil, apperror.SessionNotFound(sessionID)
+}

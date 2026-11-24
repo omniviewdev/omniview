@@ -112,6 +112,8 @@ Who can call them. Every bound method can be called by the page's own code, and 
 
 Proposed fix (NOT in this PR: it changes the T1 surface, for keyed terminals only, and nothing creates a keyed terminal before T2b): (1) for a keyed terminal, `WriteSession`, `WriteTerminal`, `ResizeTerminal`, `AckTerminal`, `CloseSession`, `IsBusy`, `GetCwd`, `DetachSession` and `AttachSession` require the caller's window to own it (they take the `ctx` the new calls have; a page that does not own the terminal attaches first, which needs the key); (2) `ListSessions` and `GetSession` leave out the keyed terminals of other windows; (3) the output events of a keyed terminal go to the owner's window only, which needs an emit addressed to a window, and server mode has one bus and filters by topic. With (1) and (2) the key keeps a stranger from typing and from reading the history; with (3) also from reading the live output. A plugin UI inside the owner's page stays inside the page's trust whatever is done. Recommended: (1) and (2) with T2b.
 
+**Update (T2c-go, `T2c-go.md`):** (1) and (2) are built, for EVERY session and not only keyed terminals: each bare-id binding takes the calling window and answers not-found to a window that does not hold the session, and `ListSessions` and `GetSession` are the window's own (plus the plugin sessions no window holds). (3) is not built: Wails v3.1.0 has no addressed emit and no per-client send (`T2c-go.md` section 4). So what the table above says of the bare-id calls is no longer true; what it says of the broadcast events still is.
+
 ## 3. What works where
 
 | | macOS arm64 | Linux | Windows |

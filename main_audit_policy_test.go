@@ -228,6 +228,9 @@ func TestDangerousMethodsStayDenied(t *testing.T) {
 		plugin + "/exec.ServiceWrapper.DetachTerminal",
 		plugin + "/exec.ServiceWrapper.ListTerminals",
 		plugin + "/exec.ServiceWrapper.DetachSession",
+		// The right to take a live session over: the owner's offer of it to the next window that attaches it.
+		plugin + "/exec.ServiceWrapper.OfferSession",
+		plugin + "/exec.ServiceWrapper.RevokeSession",
 		// Arbitrary file write and native dialogs on the host.
 		"main.AppService.WriteFileContent",
 		"main.AppService.OpenFileSelectionDialog",

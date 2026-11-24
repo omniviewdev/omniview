@@ -53,6 +53,9 @@ type RuntimeCall = {
 /**
  * Calls a Go binding over the server-mode runtime endpoint, the same way the
  * frontend does. Used to set up and tear down backend state around a test.
+ * The call is made as the client `e2e`, which is a window of its own: the host
+ * holds the terminals and exec sessions a window opened for that window alone
+ * (use callBindingAs to act as the page that opened them).
  */
 export async function callBinding<T = unknown>(
   request: APIRequestContext,
@@ -60,8 +63,22 @@ export async function callBinding<T = unknown>(
   method: string,
   ...args: unknown[]
 ): Promise<T> {
+  return callBindingAs<T>(request, 'e2e', service, method, ...args);
+}
+
+/**
+ * The same call, made as the window that has the given client id (a page's
+ * `window._wails.clientId`).
+ */
+export async function callBindingAs<T = unknown>(
+  request: APIRequestContext,
+  clientId: string,
+  service: ServiceFile,
+  method: string,
+  ...args: unknown[]
+): Promise<T> {
   const response = await request.post('/wails/runtime', {
-    headers: { 'x-wails-client-id': 'e2e' },
+    headers: { 'x-wails-client-id': clientId },
     data: { object: 0, method: 0, args: { 'call-id': `e2e-${Date.now()}`, methodID: methodId(service, method), args } },
   });
   if (!response.ok()) {

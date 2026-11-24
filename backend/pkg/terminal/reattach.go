@@ -181,6 +181,7 @@ func (s *session) detachLocked(lease time.Duration, by DetachedBy) (time.Time, *
 	s.detached = true
 	s.attached = false
 	s.owner = nil
+	s.offerUntil = time.Time{}
 	s.flow.hold()
 	s.leaseGen++
 	gen := s.leaseGen
@@ -210,6 +211,7 @@ func (s *session) takeOverLocked(owner Owner) *Detachment {
 	s.owner = owner
 	s.leaseEnd = time.Time{}
 	s.leaseLen = 0
+	s.offerUntil = time.Time{}
 	return replaced
 }
 
@@ -248,14 +250,18 @@ const (
 )
 
 // release is what a window going away does to a terminal it owns: a terminal with a page key is detached (and
-// the page that held it is to be told: the second result), any other is to be ended.
-func (s *session) release(owner Owner) (releaseResult, *Detachment) {
+// the page that held it is to be told: the second result), any other is to be ended, with by as the reason. The end is
+// decided here, under the lock that read the owner: a window that claims the terminal after this is refused (Claim,
+// which does not take a terminal whose end is decided), and one that claimed it before is its owner and this finds
+// nothing of its own. The caller ends it (startClose).
+func (s *session) release(owner Owner, by ClosedBy) (releaseResult, *Detachment) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.owner == nil || s.owner != owner || s.fate.set || s.ending.Load() {
 		return releaseNone, nil
 	}
 	if s.pageKey == "" {
+		s.fate = fate{set: true, closedBy: by, failure: nil}
 		return releaseEnd, nil
 	}
 	_, left := s.detachLocked(s.lease, DetachedByWindow)
@@ -278,12 +284,13 @@ func (m *Manager) ReleaseOwned(owner Owner, by ClosedBy) Released {
 	}
 	var ending []*session
 	for _, s := range m.sessionList() {
-		switch result, left := s.release(owner); result {
+		switch result, left := s.release(owner, by); result {
 		case releaseDetached:
 			m.told(s, left)
 			done.Detached++
 		case releaseEnd:
-			s.beginClose(by)
+			m.hookBeforeEnd(s.id)
+			s.startClose()
 			ending = append(ending, s)
 			done.Ended++
 		case releaseNone:
@@ -397,7 +404,25 @@ func (m *Manager) Attach(sessionID string, caller Owner, req AttachRequest) (*At
 	if tomb == nil || !tomb.holdsKey(req.PageKey) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
-	return tomb.attached(req.FromOffset)
+	attached, err := tomb.attached(req.FromOffset)
+	if err != nil {
+		return nil, err
+	}
+	// The window that attached its end holds it from now on, and only once the attach is answered: one that is refused
+	// for its offset takes nothing from the window that holds it. The transfer is one step with the check that the end is
+	// still kept: the window that held it may have dismissed it (CloseOwned) since the end was read, and then there is
+	// nothing to hold, and the attach is told so. A dismissal after this step finds the end held by the caller instead.
+	m.hookBeforeTransfer(sessionID)
+	m.mu.Lock()
+	kept := slices.Contains(m.tombs, tomb)
+	if kept {
+		tomb.owner = caller
+	}
+	m.mu.Unlock()
+	if !kept {
+		return nil, apperror.SessionNotFound(sessionID)
+	}
+	return attached, nil
 }
 
 func (m *Manager) attachLive(s *session, caller Owner, req AttachRequest) (*Attached, error) {
@@ -550,6 +575,9 @@ type tombstone struct {
 	attachment uint64
 	labels     map[string]string
 	params     map[string]string
+	// owner is the window that holds the end: the one the terminal belonged to when it ended, or the last that
+	// attached it. Only that window may dismiss it. Manager.mu guards it.
+	owner Owner
 }
 
 func (t *tombstone) holdsKey(key string) bool {
@@ -589,7 +617,7 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	until, attachment := s.tombstoneTerms(now)
 	t := &tombstone{
 		id: s.id, key: s.pageKey, info: s.info, ring: frozen, end: end, until: until, attachment: attachment,
-		labels: s.labels, params: s.params,
+		labels: s.labels, params: s.params, owner: s.ownerNow(),
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

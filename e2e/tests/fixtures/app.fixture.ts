@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { test as base } from '@playwright/test';
 import type { APIRequestContext, BrowserContext, Page, TestInfo } from '@playwright/test';
-import { bindWindowContext, callBinding, commitHostSettings, hostSettingsValues, Service } from './wails';
+import { bindWindowContext, callBinding, callBindingAs, commitHostSettings, hostSettingsValues, Service } from './wails';
 import { ApplicationWorkspace } from './application';
 import { BrowserErrors } from './browser-errors';
 
@@ -45,10 +45,48 @@ async function attachErrors(testInfo: TestInfo, records: BrowserErrors, name = '
   await testInfo.attach(name, { path, contentType: 'application/json' });
 }
 
+// A session that the host listed and then does not find is gone, or a page took it over meanwhile (an orphan is
+// adopted by the first window that attaches it, and the page of the next test restores the sessions it lists): for a
+// cleanup either way is closed, whoever holds it now is that page's.
+const SESSION_NOT_FOUND = 'omniview:session/not-found';
+
 async function closeSessions(request: APIRequestContext): Promise<void> {
   const sessions = await callBinding<Array<{ id: string }> | null>(request, Service.exec, 'ListSessions');
   for (const { id } of sessions ?? []) {
-    await callBinding(request, Service.exec, 'CloseSession', id);
+    try {
+      await callBinding(request, Service.exec, 'CloseSession', id);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes(SESSION_NOT_FOUND)) {
+        throw error;
+      }
+    }
+  }
+}
+
+type WailsWindow = Window & { _wails?: { clientId?: string } };
+declare const window: WailsWindow;
+
+// The terminals a page opened are held by that page's window and are listed and ended only as that window (the host
+// tells every other client that they do not exist), so what a test's page opened is closed as the page. Best effort: the
+// page may be gone, and then what it held stays: a keyed terminal waits for its lease, any other ends with the window
+// when the realm retires it. closeSessions (the client e2e) cannot reach a window's sessions: only those no window holds.
+async function closePageSessions(page: Page): Promise<void> {
+  try {
+    if (page.isClosed()) {
+      return;
+    }
+
+    const clientId = await page.evaluate(() => window._wails?.clientId);
+    if (!clientId) {
+      return;
+    }
+
+    const sessions = await callBindingAs<Array<{ id: string }> | null>(page.request, clientId, Service.exec, 'ListSessions');
+    for (const { id } of sessions ?? []) {
+      await callBindingAs(page.request, clientId, Service.exec, 'CloseSession', id);
+    }
+  } catch {
+    // The next closeSessions finds what is left.
   }
 }
 
@@ -65,6 +103,7 @@ const profileTest = base.extend<ProfileFixtures>({
     const contexts: BrowserContext[] = [];
     const workspaces: ApplicationWorkspace[] = [];
     const operations: Array<Promise<unknown>> = [];
+    const pages: Page[] = [];
     const records = new BrowserErrors();
     let closing = false;
     const open = async (name: string, options: ProfileOptions = {}): Promise<OpenProfile> => {
@@ -82,6 +121,7 @@ const profileTest = base.extend<ProfileFixtures>({
           collectErrors(page, records); 
         });
         const page = await context.newPage();
+        pages.push(page);
         await bindWindowContext(page, 'main');
         await closeSessions(page.request);
         await page.goto('/');
@@ -105,6 +145,12 @@ const profileTest = base.extend<ProfileFixtures>({
         } catch (error) {
           failures.push(error); 
         }
+      }
+
+      // The terminals a profile page opened are held by that page's window and are visible only as that window: they are closed
+      // as the page, before its context closes (a closed page has nothing to ask as).
+      for (const page of pages) {
+        await closePageSessions(page);
       }
 
       for (const context of contexts) {
@@ -194,6 +240,7 @@ export const test = profileTest.extend<AppFixtures>({
     await page.getByTestId('app-shell').waitFor();
     await page.getByTestId('app-header').getByRole('button', { name: 'home', exact: true }).click();
     await use(page);
+    await closePageSessions(page);
   },
 });
 export { expect } from '@playwright/test';

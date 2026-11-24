@@ -368,8 +368,15 @@ async function startHost(work, port, built = undefined, write = writeAll) {
   throw new Error(`the host did not answer in 60 s:\n${lines.join('').slice(-2000)}`);
 }
 
+/**
+ * The page that a check last opened: the exec calls of this runner are made as THAT page (see `tryBound`), because a window holds the sessions it opened
+ * and the host tells every other window that a session it does not hold does not exist (T2c-go). The runner is not a second window with a window's rights.
+ */
+const watched = { page: undefined };
+
 /** The window as the native app opens it: `/`, no `?screen=`, no URL parameter at all; a hash only where a check names a page or a connection. */
 async function open(page, base, hash = '') {
+  watched.page = page;
   await page.goto(`${base}/${hash}`, { waitUntil: 'load' });
 }
 
@@ -384,9 +391,11 @@ const SOUTH_KEY = 'south-0c3d9e1f42';
 
 /** A call of a bound method of the host, by service and name, as the page's own runtime makes one, whatever the host answers: the status and the text of the answer. */
 async function tryBound(base, service, method, ...args) {
+  // The client id is the window: a page that reloads is a new one, so it is read from the page at each call.
+  const asPage = service === EXEC_SERVICE ? await watched.page?.evaluate(() => window._wails?.clientId).catch(() => undefined) : undefined;
   const response = await fetch(`${base}/wails/runtime`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'seam-check' },
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': asPage ?? 'seam-check' },
     body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `seam-${method}-${Date.now()}`, methodName: `${service}.${method}`, args } }),
   });
   return { status: response.status, text: await response.text() };
@@ -5488,13 +5497,21 @@ async function keepCopies(page) {
   });
 }
 
-/** What the whole buffer of the emulator holds, scrollback and screen, read as a person copies it: select all, copy. */
+/**
+ * What the whole buffer of the emulator holds, scrollback and screen, read as a person copies it: select all, copy. The emulator drops a selection when it is typed into, when its rows change and when the program on it switches between the
+ * normal and the alternate screen (xterm.js, `SelectionService`), and a copy of no selection puts nothing on the clipboard. A read that is made while the shell's output is still arriving (the Enter that ends a program on the alternate
+ * screen) can have its select all undone by the switch before its copy: no copy then ever comes, and a wait for one runs out. So the two chords are pressed again, every two seconds, until a copy has come. Nothing is cleared between the
+ * rounds: a copy that was only slow lands in the same place, and the last one is read.
+ */
 async function bufferOf(page, mac) {
+  const deadline = Date.now() + 15_000;
   await page.evaluate(() => { window.__copied.length = 0; });
-  await page.keyboard.press(mac ? 'Meta+a' : 'Control+Shift+A');
-  await page.keyboard.press(mac ? 'Meta+c' : 'Control+Shift+C');
-  await waitUntil('the copy of the buffer', () => page.evaluate(() => window.__copied.length > 0), 15_000);
-  return page.evaluate(() => window.__copied.at(-1));
+  for (;;) {
+    await page.keyboard.press(mac ? 'Meta+a' : 'Control+Shift+A');
+    await page.keyboard.press(mac ? 'Meta+c' : 'Control+Shift+C');
+    if (await holdsWithin(() => page.evaluate(() => window.__copied.length > 0), 2_000)) return page.evaluate(() => window.__copied.at(-1));
+    if (Date.now() > deadline) throw new Error('timed out after 15000 ms waiting for the copy of the buffer');
+  }
 }
 
 const lineIn = (text, line) => text.split('\n').some((row) => row.trimEnd() === line);
@@ -7112,8 +7129,10 @@ async function checkTerminalReattach(page, base, engine) {
   await typeLine(page, 'echo WHILE_DETACHED_$((6*7))');
   for (let turn = 0; turn < 45; turn += 1) await afterFrames(page);
   assert.equal(wire.of('WriteTerminal').length, wrote, `${engine}: the page sends nothing to a terminal it let go: what was typed made no WriteTerminal`);
-  assert.equal(/WHILE_DETACHED_42/.test(await plainTranscriptOf(base, first)), false, `${engine}: what was typed while the terminal was detached never reached the shell`);
-  assert.equal((await busyOf(base, first)).state, 'idle', `${engine}: the shell is still at its prompt for the host`);
+  // A terminal that nobody holds is nobody's to read (T2c-go: its replay, `AttachSession`, and `IsBusy` are refused as for a terminal that is not there, whoever asks) and the host reads nothing of it while it is detached: the listing, which the key opens,
+  // says the length of its output has not moved, and its shell is still a process of this machine.
+  assert.equal((await entryOf())?.next_offset, kept.next_offset, `${engine}: what was typed while the terminal was detached produced no output that the host read`);
+  assert.doesNotThrow(() => process.kill(pid, 0), `${engine}: the shell is still there for the host`);
   const taken = await reloadToTerminals([first], 'a reload while the terminal was detached');
   const retaken = await untilLine(page, mac, 'AFTER_RACE_42', 'the earlier output in the emulator that took the detached terminal back', 60_000);
   assert.ok(lineIn(retaken, 'MARK_ONE_42') && lineIn(retaken, `PID_${String(pid)}`), `${engine}: the scrollback of the page that took the detached terminal back holds what the shell wrote before it was let go`);
@@ -7149,6 +7168,9 @@ async function checkTerminalReattach(page, base, engine) {
   assert.ok(sinceOf(wire, 'CloseSession', second, two.startedAt).length >= 1, `${engine}: the page asked the host to end it with CloseSession`);
   names = await tabLabelsOf(page);
   assert.equal(names.length, 1, `${engine}: one tab is left`);
+  // The saved window is written a quiet 400 ms after the tab is closed, and a reload that comes sooner finds the tab of a terminal that is gone (`bash (2), ended`, with the words of a terminal that is gone): the reload of (2a) waits for the
+  // host to hold the window without it.
+  await waitUntil('the host to hold the saved window without the tab that was closed', async () => !String((await callHost(base, 'GetState', 'main')).session ?? '').includes(second), 30_000);
   note('two terminals', `both came back ${(two.took / 1000).toFixed(2)} s after the reload began, in their order, each with its own shell (pids ${String(pid)} and ${String(pidB)}); closing the second ended it`);
 
   // (2a) A reload in the middle of a flood (3,000,000 lines, about 26 MB through the pty: longer than the reload takes whatever the machine's speed): the host holds the shell at its mark while nobody acknowledges, the new page's attach gives it the replay (which it

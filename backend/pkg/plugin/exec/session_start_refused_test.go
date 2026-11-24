@@ -114,7 +114,7 @@ func TestASessionStartRefusedBecauseTheProviderIsClosingIsNotRetried(t *testing.
 			// The plugin is stopping: its manager is closed, and the host has not been told yet.
 			manager.Close()
 
-			session, err := ctrl.CreateSession(ctx, pluginID, connectionID, start.options)
+			session, err := ctrl.CreateSession(ctx, testOwner, pluginID, connectionID, start.options)
 			require.Nil(t, session)
 			require.Error(t, err)
 

@@ -37,7 +37,13 @@ type Controller interface {
 	GetPluginHandlers(plugin string) map[string]exec.Handler
 	GetHandlers() map[string]map[string]exec.Handler
 	GetHandler(plugin, resource string) *exec.Handler
-	CreateSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	// CreateSession starts a session of a plugin for owner, the window that asked (none: a call that came from no
+	// window, and the session belongs to none until a window claims it).
+	CreateSession(ctx context.Context, owner terminal.Owner, plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	// GuardSessionCreate notes that a session of a plugin is being made for owner, and returns the context to make it with and the
+	// function that ends the note. A retirement of owner that comes while the note stands (ReleaseOwnedTerminals) is not lost: the
+	// session is recorded as no window's (ownership.go: createGuard). The caller guards before it admits the window.
+	GuardSessionCreate(ctx context.Context, owner terminal.Owner) (context.Context, func())
 	OpenNativeSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) error
 	GetNativeTerminalSupport() bool
 	// CreateTerminal starts a shell on this machine for owner, a comparable value that names the window
@@ -45,17 +51,19 @@ type Controller interface {
 	// goes away (ReleaseOwnedTerminals).
 	CreateTerminal(ctx context.Context, owner terminal.Owner, opts terminal.Options) (*terminal.Session, error)
 	// WriteTerminal and ResizeTerminal apply input to a local terminal; seq is the caller's sequence
-	// number, or zero.
-	WriteTerminal(sessionID string, seq uint64, data []byte) error
-	ResizeTerminal(sessionID string, seq uint64, rows, cols int) error
+	// number, or zero. Every call below that names a session by its id takes the owner: the window that makes
+	// the call. A session that the owner does not hold is not found, whoever's it is and whether it is there:
+	// see ownership.go.
+	WriteTerminal(owner terminal.Owner, sessionID string, seq uint64, data []byte) error
+	ResizeTerminal(owner terminal.Owner, sessionID string, seq uint64, rows, cols int) error
 	// AckTerminal tells a local terminal that n more bytes of its output were taken in by the caller. A
 	// session that is ending, or is one of the last 256 that ended, answers success: there is nothing left to
 	// credit.
-	AckTerminal(sessionID string, n int) error
+	AckTerminal(owner terminal.Owner, sessionID string, n int) error
 	// IsBusy says whether something other than the shell holds a terminal's foreground.
-	IsBusy(sessionID string) (terminal.Foreground, error)
+	IsBusy(owner terminal.Owner, sessionID string) (terminal.Foreground, error)
 	// GetCwd says which directory a terminal's shell is in now.
-	GetCwd(sessionID string) (terminal.Directory, error)
+	GetCwd(owner terminal.Owner, sessionID string) (terminal.Directory, error)
 	// ReleaseOwnedTerminals is what a window going away does to its local terminals: those with a page key are
 	// detached and kept for their lease, any other is ended.
 	ReleaseOwnedTerminals(owner terminal.Owner, by terminal.ClosedBy) terminal.Released
@@ -69,13 +77,22 @@ type Controller interface {
 	DetachTerminal(ctx context.Context, owner terminal.Owner, sessionID string, request terminal.DetachRequest) (*terminal.Detached, error)
 	// ListTerminals says which local terminals the owner, or whoever holds the key, may attach.
 	ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed
-	ListSessions() ([]*exec.Session, error)
-	GetSession(sessionID string) (*exec.Session, error)
-	AttachSession(sessionID string) (*exec.Session, []byte, error)
-	DetachSession(sessionID string) (*exec.Session, error)
-	WriteSession(sessionID string, data []byte) error
-	CloseSession(sessionID string) error
-	ResizeSession(sessionID string, rows, cols uint16) error
+	// ListSessions lists the sessions owner holds, and those of a plugin that no window holds.
+	ListSessions(owner terminal.Owner) ([]*exec.Session, error)
+	GetSession(owner terminal.Owner, sessionID string) (*exec.Session, error)
+	// AttachSession returns a session's output. The window that holds the session, or claims it (a session of a
+	// plugin that no window holds, or one its owner offered), attaches it and holds it from then on.
+	AttachSession(owner terminal.Owner, sessionID string) (*exec.Session, []byte, error)
+	DetachSession(owner terminal.Owner, sessionID string) (*exec.Session, error)
+	WriteSession(owner terminal.Owner, sessionID string, data []byte) error
+	CloseSession(owner terminal.Owner, sessionID string) error
+	ResizeSession(owner terminal.Owner, sessionID string, rows, cols uint16) error
+	// OfferSession lets the next window that attaches the session take it over, for a short time: the move of
+	// a tab to another window. Only the window that holds it offers it.
+	OfferSession(owner terminal.Owner, sessionID string) error
+	// RevokeSession takes back an offer of OfferSession: the move of a tab that did not happen. Only the window that holds the
+	// session revokes it, and an offer that is not open is nothing to take back.
+	RevokeSession(owner terminal.Owner, sessionID string) error
 }
 
 const (
@@ -106,6 +123,20 @@ type sessionIndex struct {
 	ended    bool
 	endedAt  time.Time
 	endedSeq uint64
+
+	// owner is the window a session of a plugin belongs to (ownership.go): the one that made it, or the one that
+	// claimed it. None: no window holds it (a call that came from no window made it, or its window went away),
+	// and any window may list it and attach it, which makes that window its owner. A local terminal is held in
+	// the terminal manager, which knows the window it belongs to: this field is not read for it.
+	owner terminal.Owner
+	// offerUntil is when the owner's offer of the session to the next window that attaches it runs out (zero: no
+	// offer is open).
+	offerUntil time.Time
+	// gate orders the calls to the plugin that act for the window that holds the session (shared, from their check of the
+	// window to the plugin's answer) against a claim by another window (exclusive): the claim waits for the call that was on its
+	// way, and the calls that come after it are refused (holdGate, claimSession). It comes before c.mu. A record that was not made
+	// by CreateSession has none, and its calls are not ordered against a claim.
+	gate *sync.RWMutex
 }
 
 func NewController(
@@ -120,6 +151,10 @@ func NewController(
 		mu:               sync.RWMutex{},
 		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
+		creating:         make(map[terminal.Owner]map[*createGuard]struct{}),
+		beforeSend:       nil,
+		claimWaiting:     nil,
+		beforeGate:       nil,
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -143,9 +178,20 @@ type controller struct {
 	mu           sync.RWMutex
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
-	inChans      map[string]chan exec.StreamInput
-	handlerMap   map[string]map[string]exec.Handler
-	streams      map[string]execProviderStream
+	// creating holds, for each window, the sessions of plugins being made for it (ownership.go: createGuard).
+	creating map[terminal.Owner]map[*createGuard]struct{}
+	// beforeSend is set by a test, and by nothing else: it runs in sendHeld, holding c.mu, once the window is known to hold the session
+	// and before the input is offered to the plugin, so that a test can place a claim after the window was checked and before the input is sent.
+	beforeSend func(sessionID string)
+	// claimWaiting is set by a test, and by nothing else: claimSession calls it when a window's claim has to wait for a call that is on its
+	// way to the plugin for the window that holds the session.
+	claimWaiting func(sessionID string)
+	// beforeGate is set by a test, and by nothing else: gated calls it before a call takes the session's gate, after the call's first check
+	// of the window.
+	beforeGate func(sessionID string)
+	inChans    map[string]chan exec.StreamInput
+	handlerMap map[string]map[string]exec.Handler
+	streams    map[string]execProviderStream
 
 	// Publication and retirement share this outer lock. Never acquire it with mu held.
 	outputMu sync.Mutex
@@ -630,6 +676,7 @@ func (c *controller) GetHandler(
 
 func (c *controller) CreateSession(
 	ctx context.Context,
+	owner terminal.Owner,
 	plugin string,
 	connectionID string,
 	opts exec.SessionOptions,
@@ -648,6 +695,14 @@ func (c *controller) CreateSession(
 	ctx, err = c.admitSessionReference(ctx, plugin, connectionID, opts)
 	if err != nil {
 		return nil, err
+	}
+	// A caller that did not guard (the wrapper does, before it admits the window) is guarded here, from now on.
+	guard, _ := ctx.Value(createGuardKey{}).(*createGuard)
+	if guard == nil || guard.owner != owner {
+		var endGuard func()
+		ctx, endGuard = c.GuardSessionCreate(ctx, owner)
+		defer endGuard()
+		guard, _ = ctx.Value(createGuardKey{}).(*createGuard)
 	}
 
 	var session *exec.Session
@@ -679,6 +734,9 @@ func (c *controller) CreateSession(
 		ended:        false,
 		endedAt:      time.Time{},
 		endedSeq:     0,
+		owner:        c.publishedOwner(owner, guard),
+		offerUntil:   time.Time{},
+		gate:         new(sync.RWMutex),
 	}
 	c.mu.Unlock()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
@@ -687,7 +745,8 @@ func (c *controller) CreateSession(
 	return session, nil
 }
 
-func (c *controller) ListSessions() (_ []*exec.Session, err error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ListSessions(owner terminal.Owner) (_ []*exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.ListSessions")
 	defer finishOp(span, &err)
 
@@ -707,11 +766,17 @@ func (c *controller) ListSessions() (_ []*exec.Session, err error) {
 		if listErr != nil {
 			return nil, listErr
 		}
-		sessions = append(sessions, clientSessions...)
+		for _, session := range clientSessions {
+			if session != nil && c.listable(session.ID, owner) {
+				sessions = append(sessions, session)
+			}
+		}
 	}
 
-	// add the local terminal sessions
-	sessions = append(sessions, c.terminalManager.ListSessions()...)
+	// add the local terminal sessions the window holds
+	if c.terminalManager != nil {
+		sessions = append(sessions, c.terminalManager.SessionsOf(owner)...)
+	}
 
 	return sessions, nil
 }
@@ -732,6 +797,7 @@ func (c *controller) lookupSession(sessionID string) (sessionIndex, Provider, bo
 }
 
 func (c *controller) GetSession(
+	owner terminal.Owner,
 	sessionID string,
 ) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.GetSession")
@@ -740,14 +806,19 @@ func (c *controller) GetSession(
 
 	c.logger.Debugw(ctx, "GetSession")
 	index, client, ok := c.lookupSession(sessionID)
-	if !ok {
+	if ok && index.local {
+		return c.terminalManager.GetOwned(sessionID, owner)
+	}
+	if !ok || !c.visible(index, sessionID, owner) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
-	if index.local {
-		return c.terminalManager.GetSession(sessionID)
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSession, func(i sessionIndex) bool { return c.visible(i, sessionID, owner) })
+	if !ok {
+		return nil, apperror.SessionNotFound(sessionID)
 	}
+	defer release()
 	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
@@ -757,7 +828,8 @@ func (c *controller) GetSession(
 	)
 }
 
-func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte, err error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) AttachSession(owner terminal.Owner, sessionID string) (_ *exec.Session, _ []byte, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.AttachSession")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
@@ -770,8 +842,18 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.AttachSession(sessionID)
+		return c.terminalManager.AttachOwned(sessionID, owner)
 	}
+	if claimErr := c.claimSession(sessionID, owner); claimErr != nil {
+		return nil, nil, claimErr
+	}
+	// The window holds the session now; it is held from here to the plugin's answer, and the output is handed to the window
+	// that holds it then (a window that lost the session in between is refused).
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSessionOrEnded, func(i sessionIndex) bool { return c.holds(i, sessionID, owner) })
+	if !ok {
+		return nil, nil, apperror.SessionNotFound(sessionID)
+	}
+	defer release()
 	if client == nil {
 		return nil, nil, apperror.PluginNotFound(index.pluginID)
 	}
@@ -788,21 +870,27 @@ func (c *controller) AttachSession(sessionID string) (_ *exec.Session, _ []byte,
 	return session, output, err
 }
 
-func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error) {
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) DetachSession(owner terminal.Owner, sessionID string) (_ *exec.Session, err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.DetachSession")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	c.logger.Debugw(ctx, "DetachSession")
 	index, client, ok := c.lookupSessionOrEnded(sessionID)
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.DetachSession(sessionID)
+		return c.terminalManager.DetachOwned(sessionID, owner)
 	}
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSessionOrEnded, func(i sessionIndex) bool { return c.holds(i, sessionID, owner) })
+	if !ok {
+		return nil, apperror.SessionNotFound(sessionID)
+	}
+	defer release()
 	if index.ended {
 		// A window that never attached has nothing to detach from, as after the CLOSE of any session; it is also done with
 		// the output the plugin kept for it.
@@ -824,6 +912,7 @@ func (c *controller) DetachSession(sessionID string) (_ *exec.Session, err error
 }
 
 func (c *controller) WriteSession(
+	owner terminal.Owner,
 	sessionID string,
 	data []byte,
 ) (err error) {
@@ -834,30 +923,71 @@ func (c *controller) WriteSession(
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	ok = ok && !index.ended
-	var inchan chan exec.StreamInput
-	if ok && !index.local {
-		inchan = c.inChans[index.pluginID]
-	}
 	c.mu.RUnlock()
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.Write(sessionID, 0, data)
-	}
-	if inchan == nil {
-		return apperror.SessionNotFound(sessionID)
+		return c.terminalManager.WriteOwned(sessionID, owner, 0, data)
 	}
 	c.logger.Debugw(ctx, "Writing to session")
-	return c.safeSend(inchan, exec.StreamInput{
-		SessionID: sessionID,
-		Data:      data,
-	})
+	return c.writeToPlugin(owner, sessionID, data)
 }
 
+// pluginInputSlice is how long input that a plugin does not take waits, holding the controller's read lock, before the
+// window is checked again.
+const pluginInputSlice = 20 * time.Millisecond
+
+// writeToPlugin hands input to the plugin of a session for the window that holds it. Who holds the session is read, and
+// the input is sent, in one step under c.mu (sendHeld): a window that lost the session a moment ago does not type into
+// it after the window that took it. A plugin that is slow to take input is waited for in slices, and at the end of each the
+// window is checked again, so that a claim (which takes c.mu) is not held up by a plugin that takes no input and the input
+// of a window that no longer holds the session is refused, not sent.
+func (c *controller) writeToPlugin(owner terminal.Owner, sessionID string, data []byte) error {
+	input := exec.StreamInput{SessionID: sessionID, Data: data}
+	for {
+		sent, err := c.sendHeld(owner, sessionID, input)
+		if sent || err != nil {
+			return err
+		}
+	}
+}
+
+// sendHeld sends input to the plugin's input channel for the window that holds the session, for at most pluginInputSlice.
+// It reports false, with no error, when the plugin did not take the input in that time.
+func (c *controller) sendHeld(owner terminal.Owner, sessionID string, input exec.StreamInput) (bool, error) {
+	// The channel is closed, and removed from c.inChans, under c.mu (OnPluginStop): it is never closed while it is held here.
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	index, ok := c.sessionIndex[sessionID]
+	if !ok || index.ended || index.local || !c.holds(index, sessionID, owner) {
+		return false, apperror.SessionNotFound(sessionID)
+	}
+	ch := c.inChans[index.pluginID]
+	if ch == nil {
+		return false, apperror.SessionNotFound(sessionID)
+	}
+	if c.beforeSend != nil {
+		c.beforeSend(sessionID)
+	}
+	timer := time.NewTimer(pluginInputSlice)
+	defer timer.Stop()
+	select {
+	case ch <- input:
+		return true, nil
+	case <-timer.C:
+		return false, nil
+	}
+}
+
+// CloseSession ends a session for the window that holds it (or, for a session of a plugin that no window holds, any
+// window that may list it). The window is checked twice: early, on a copy of the record, so that a window that has
+// no business with the session is told so before anything is asked of the plugin; and again, in one step with the
+// decision to end it (commitClose), because a window can take the session in between.
 func (c *controller) CloseSession(
+	owner terminal.Owner,
 	sessionID string,
 ) (err error) {
 	ctx, span := tracer.Start(context.Background(), "exec.CloseSession")
@@ -866,43 +996,48 @@ func (c *controller) CloseSession(
 
 	index, client, ok := c.lookupSessionOrEnded(sessionID)
 	if !ok {
-		// The end that a terminal leaves when it ended by itself while no page was attached is not in the index (its
-		// CLOSE took the id out) and the terminal manager keeps it: closing it dismisses it. An id that is neither is
-		// not found.
+		// The end that a terminal that ended by itself while no page was attached leaves is dismissed by the window
+		// that holds it: it is not in the index, and the terminal manager keeps it.
 		if c.terminalManager != nil {
-			return c.terminalManager.CloseSession(sessionID)
+			return c.terminalManager.CloseOwned(sessionID, owner)
 		}
+		return apperror.SessionNotFound(sessionID)
+	}
+	if !c.holds(index, sessionID, owner) && !c.claimable(index, owner) {
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.CloseSession(sessionID)
+		return c.terminalManager.CloseOwned(sessionID, owner)
 	}
 	if index.ended {
 		// It ended by itself and no window attached: there is nothing to close. The output the plugin kept is for an attach
 		// that nobody will make now, and goes with the plugin's own limits.
-		c.forgetSession(sessionID)
-		return nil
+		_, err = c.commitClose(sessionID, owner)
+		return err
 	}
 	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}
-	c.closeStarted(sessionID)
-	err = client.CloseSession(
-		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
-		sessionID,
-	)
+	pluginCtx := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
+	if done, commitErr := c.commitClose(sessionID, owner); commitErr != nil || done {
+		return commitErr
+	}
+	err = client.CloseSession(pluginCtx, sessionID)
 	if err == nil || sessionGone(err) {
 		// A session that ended by itself in the instant before the host heard of it is closed: plugin-sdk v0.22.1 answers
 		// not-found to a close that comes then. That is what the caller asked for, and no failure.
 		c.forgetSession(sessionID)
 		return nil
 	}
+	// Any other answer is the plugin's, and the end stays decided: a close that timed out still ends the session, and its
+	// CLOSE is its end.
 	return err
 }
 
 func (c *controller) ResizeSession(
+	owner terminal.Owner,
 	sessionID string,
 	rows, cols uint16,
 ) (err error) {
@@ -911,14 +1046,19 @@ func (c *controller) ResizeSession(
 	span.SetAttributes(attribute.String("session_id", sessionID))
 
 	index, client, ok := c.lookupSession(sessionID)
-	if !ok {
+	if !ok || !c.holds(index, sessionID, owner) {
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.Resize(sessionID, 0, int(rows), int(cols))
+		return c.terminalManager.ResizeOwned(sessionID, owner, 0, int(rows), int(cols))
 	}
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSession, func(i sessionIndex) bool { return c.holds(i, sessionID, owner) })
+	if !ok {
+		return apperror.SessionNotFound(sessionID)
+	}
+	defer release()
 	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}

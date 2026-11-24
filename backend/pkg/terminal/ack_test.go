@@ -42,7 +42,7 @@ func TestTheManagerRemembersOnlyTheLastEndedSessions(t *testing.T) {
 	m, _ := newTestManager(t)
 	for i := range endedMemory + 10 {
 		m.mu.Lock()
-		m.rememberEnded(fmt.Sprintf("ended-%d", i))
+		m.rememberEnded(fmt.Sprintf("ended-%d", i), "w")
 		m.mu.Unlock()
 	}
 	require.NoError(t, m.Ack(fmt.Sprintf("ended-%d", endedMemory+9), 1), "the newest")

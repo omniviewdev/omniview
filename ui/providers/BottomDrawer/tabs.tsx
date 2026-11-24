@@ -45,6 +45,7 @@ import {
   serializeDrawerTab,
 } from './drawerSlot';
 import { useBottomDrawerWindow } from './windowContext';
+import { offerTerminalSession, revokeTerminalSession } from './terminalHandoff';
 import { devToolsChannel } from '@/features/devtools/events';
 import { pluginLogChannel } from '@/features/pluginlogs/events';
 import { Events } from '@omniviewdev/runtime/runtime';
@@ -332,22 +333,38 @@ const BottomDrawerTabs: React.FC<Props> = ({ resizeControls }) => {
   // ===================================== MOVING TABS ===================================== //
 
   const moveTabToNewWindow = React.useCallback(async (tab: BottomDrawerTab, pointer?: WindowClientPoint) => {
+    let offered = false;
     try {
+      // The new window attaches the session when its drawer mounts the tab: this window offers it first.
+      await offerTerminalSession(tab);
+      offered = true;
       await openWindow({ kind: 'panel', slots: { drawer: buildPanelDrawerSlot(serializeDrawerTab(tab)) }, pointer });
       transferTabOut(tab.id);
     } catch (err) {
+      // The tab did not move: the offer is taken back (a failed offer has nothing to take back).
+      if (offered) {
+        await revokeTerminalSession(tab);
+      }
+
       showAppError(notify, err, 'Failed to move the tab to a new window');
     }
   }, [transferTabOut, notify]);
 
   const moveTabToWindow = React.useCallback(async (tab: BottomDrawerTab, target: WindowMenuTarget) => {
+    let offered = false;
     try {
+      await offerTerminalSession(tab);
+      offered = true;
       await deliverTabToWindow(target.name, DRAWER_TAB_DRAG_TYPE, serializeDrawerTab(tab));
       transferTabOut(tab.id);
       WindowClient.Focus(target.name).catch((err: unknown) => {
         console.error(`[drawer] failed to focus window "${target.name}"`, err);
       });
     } catch (err) {
+      if (offered) {
+        await revokeTerminalSession(tab);
+      }
+
       showAppError(notify, err, `Failed to move the tab to ${target.label}`);
     }
   }, [transferTabOut, notify]);

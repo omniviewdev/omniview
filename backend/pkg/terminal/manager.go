@@ -88,9 +88,10 @@ type Manager struct {
 	mu       sync.RWMutex
 	sessions map[string]*session
 	starting map[string]struct{}
-	// ended remembers the ids of the last sessions that ended, oldest first, endedMemory at most, so that an
-	// acknowledgement that arrives after its session is gone is told from one for a session that never was.
-	ended []string
+	// ended remembers the last sessions that ended, oldest first, endedMemory at most, with the window each belonged
+	// to, so that an acknowledgement that arrives after its session is gone is told from one for a session that
+	// never was, and is taken from the window that had it only.
+	ended []endedSession
 	// tombs are the terminals with a page key that ended by themselves while no page was attached, oldest first,
 	// TombstoneLimit at most: the page that comes back finds how they ended and what they wrote.
 	tombs []*tombstone
@@ -100,15 +101,33 @@ type Manager struct {
 	// clock is the time that the leases and the tombstones are kept in: the wall clock, unless a test sets another
 	// before it starts a terminal (clock.go).
 	clock clock
+	// beforeEnd is set by a test, and by nothing else (it is nil in the host): it runs at the instant between a call's
+	// decision to end a terminal and the end itself, when a claim, an offer or a retirement that lands must find the
+	// terminal as that decision left it. A test holds the call there to force that order (hookBeforeEnd).
+	beforeEnd func(id string)
+	// beforeTransfer is set by a test, and by nothing else: it runs between an attach's read of the end that a terminal
+	// that ended by itself left and the transfer of that end to the window that attaches it, when a dismissal that lands
+	// must find the end still held by the window that held it (hookBeforeTransfer).
+	beforeTransfer func(id string)
+	// afterAdmit is set by a test, and by nothing else: it runs between a window's input being taken in (the check of who holds
+	// the terminal and the hand-over to its input queue) and the call that waits for it to be applied, when a claim that lands
+	// must find the terminal as the call left it (hookAfterAdmit).
+	afterAdmit func(id string)
 }
 
-// endedMemory is how many ended sessions' ids the manager remembers.
+// endedMemory is how many ended sessions the manager remembers.
 const endedMemory = 256
+
+// endedSession is a session that ended, and the window it belonged to.
+type endedSession struct {
+	id    string
+	owner Owner
+}
 
 // rememberEnded notes that a session ended and forgets the oldest of the last endedMemory. The caller holds
 // m.mu.
-func (m *Manager) rememberEnded(id string) {
-	m.ended = append(m.ended, id)
+func (m *Manager) rememberEnded(id string, owner Owner) {
+	m.ended = append(m.ended, endedSession{id: id, owner: owner})
 	if len(m.ended) > endedMemory {
 		m.ended = slices.Delete(m.ended, 0, len(m.ended)-endedMemory)
 	}
@@ -125,10 +144,26 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
+		beforeEnd: nil, beforeTransfer: nil, afterAdmit: nil,
 	}
 	go m.forwardSignals()
 	go m.shutdownWhenDone()
 	return m
+}
+
+// hookBeforeTransfer runs the test's hold at the instant before the end of a terminal is handed to the window that
+// attaches it (Manager.beforeTransfer).
+func (m *Manager) hookBeforeTransfer(id string) {
+	if m.beforeTransfer != nil {
+		m.beforeTransfer(id)
+	}
+}
+
+// hookAfterAdmit runs the test's hold at the instant after a window's input was taken in (Manager.afterAdmit).
+func (m *Manager) hookAfterAdmit(id string) {
+	if m.afterAdmit != nil {
+		m.afterAdmit(id)
+	}
 }
 
 // fate is what decides how a session is told to have ended: the first of the shell's own end, a
@@ -209,6 +244,9 @@ type session struct {
 	// attachment numbers the attachments of the terminal: 0 for the window that opened it, and one more for
 	// every attach (Attached.Attachment).
 	attachment uint64
+	// offerUntil is when the owner's offer of the session to the next window to claim it runs out (zero: no offer is
+	// open). Claim and Offer (ownership.go) read and write it.
+	offerUntil time.Time
 }
 
 func (s *session) decide(f fate) bool {
@@ -330,6 +368,11 @@ func (s *session) hasExited() bool {
 func (s *session) snapshot() *sdkexec.Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.snapshotLocked()
+}
+
+// snapshotLocked is snapshot for a caller that holds s.mu.
+func (s *session) snapshotLocked() *sdkexec.Session {
 	return &sdkexec.Session{
 		ID: s.id, Command: slices.Clone(s.command), Labels: nonNil(s.labels), Params: nonNil(s.params),
 		Attached: s.attached, CreatedAt: s.info.CreatedAt,
@@ -522,7 +565,7 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
 		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
-		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0,
+		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0, offerUntil: time.Time{},
 	}
 	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
 	return s, nil
@@ -649,7 +692,7 @@ func (m *Manager) finish(s *session, readErr error) {
 	m.sink.Closed(s.id, end)
 	m.mu.Lock()
 	delete(m.sessions, s.id)
-	m.rememberEnded(s.id)
+	m.rememberEnded(s.id, s.ownerNow())
 	m.mu.Unlock()
 	s.stopLease()
 	s.cancel()
@@ -754,7 +797,7 @@ func (m *Manager) Ack(sessionID string, n int) error {
 	}
 	m.mu.RLock()
 	s := m.sessions[sessionID]
-	ended := s == nil && slices.Contains(m.ended, sessionID)
+	ended := s == nil && slices.ContainsFunc(m.ended, func(e endedSession) bool { return e.id == sessionID })
 	m.mu.RUnlock()
 	switch {
 	case s != nil && !s.ending.Load():

@@ -173,7 +173,7 @@ func TestATerminalWithAPageKeySurvivesItsPageAndTheNextPageFindsItByItsKey(t *te
 	assert.Equal(t, have, attached.Replay.End, "the page had everything")
 	assert.Nil(t, attached.Ended)
 
-	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, 1, []byte("abc\n")))
+	require.NoError(t, fx.wrapper.WriteTerminal(fx.ctx(second), info.ID, 1, []byte("abc\n")))
 	require.Eventually(t, func() bool { text, _ := fx.positioned(info.ID); return strings.Contains(text, "got:abc\r\n") }, 20*time.Second, 5*time.Millisecond)
 	text, contiguous := fx.positioned(info.ID)
 	assert.True(t, contiguous)
@@ -298,9 +298,9 @@ func TestAReloadedPageContinuesTheInputSequenceFromTheNumberTheHostSays(t *testi
 	fx := newTerminalFixture(t)
 	first := fx.page(1)
 	info := fx.mustOpenKeyed(first, keyA, `stty -echo; cat`)
-	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, 1, []byte("one\n")))
-	require.NoError(t, fx.wrapper.ResizeTerminal(info.ID, 2, 30, 100))
-	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, 3, []byte("two\n")))
+	require.NoError(t, fx.wrapper.WriteTerminal(fx.ctx(first), info.ID, 1, []byte("one\n")))
+	require.NoError(t, fx.wrapper.ResizeTerminal(fx.ctx(first), info.ID, 2, 30, 100))
+	require.NoError(t, fx.wrapper.WriteTerminal(fx.ctx(first), info.ID, 3, []byte("two\n")))
 	require.Eventually(t, func() bool { text, _ := fx.positioned(info.ID); return strings.Contains(text, "two\r\n") }, 20*time.Second, 5*time.Millisecond)
 
 	fx.retire(first)
@@ -314,10 +314,10 @@ func TestAReloadedPageContinuesTheInputSequenceFromTheNumberTheHostSays(t *testi
 	assert.Equal(t, uint64(4), attached.NextInputSeq, "and so does the attach")
 
 	var stale *apperror.AppError
-	require.ErrorAs(t, fx.wrapper.WriteTerminal(info.ID, 1, []byte("x\n")), &stale)
+	require.ErrorAs(t, fx.wrapper.WriteTerminal(fx.ctx(second), info.ID, 1, []byte("x\n")), &stale)
 	assert.Equal(t, "SEQUENCE_STALE", stale.Code, "a page that started again at 1 is refused")
-	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, attached.NextInputSeq, []byte("three\n")))
-	require.NoError(t, fx.wrapper.ResizeTerminal(info.ID, attached.NextInputSeq+1, 24, 80))
+	require.NoError(t, fx.wrapper.WriteTerminal(fx.ctx(second), info.ID, attached.NextInputSeq, []byte("three\n")))
+	require.NoError(t, fx.wrapper.ResizeTerminal(fx.ctx(second), info.ID, attached.NextInputSeq+1, 24, 80))
 	require.Eventually(t, func() bool { text, _ := fx.positioned(info.ID); return strings.Contains(text, "three\r\n") }, 20*time.Second, 5*time.Millisecond)
 	assert.Equal(t, uint64(6), fx.listed(second, keyA)[0].NextInputSeq)
 }

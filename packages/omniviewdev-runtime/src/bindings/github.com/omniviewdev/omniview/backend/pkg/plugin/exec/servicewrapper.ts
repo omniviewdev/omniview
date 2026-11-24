@@ -40,6 +40,14 @@ export function AckTerminal(sessionID: string, n: number): $CancellablePromise<v
     return $Call.ByID(3740379753, sessionID, n);
 }
 
+/**
+ * AttachSession returns a session's output: for the window that holds it, or that claims it (a session of a plugin
+ * that no window holds, or one its owner offered with OfferSession), which holds it from then on. A claim can make a
+ * window the owner of a session, and a window that holds a session has to be one the realm knows, so that its
+ * retirement releases what it holds: the window is admitted here and not only when it opens a terminal of its own. A
+ * call that comes from no window, or from one the realm refuses, claims nothing and is told what is told of an id that
+ * never was.
+ */
 export function AttachSession(sessionID: string): $CancellablePromise<[exec$0.Session | null, string]> {
     return $Call.ByID(93318075, sessionID).then(($result: any) => {
         $result[0] = $$createType1($result[0]);
@@ -72,6 +80,12 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(1353297556, sessionID);
 }
 
+/**
+ * CreateSession starts a session of a plugin for the window that asks: it belongs to that window until the window
+ * goes away, and then to whichever window attaches it first (T2c-go.md). A call that comes from no window creates
+ * a session that belongs to none. A window that retires while the plugin makes the session leaves it to none as well
+ * (createGuard).
+ */
 export function CreateSession(plugin: string, connectionID: string, encoded: string): $CancellablePromise<exec$0.Session | null> {
     return $Call.ByID(608251756, plugin, connectionID, encoded).then(($result: any) => {
         return $$createType1($result);
@@ -189,6 +203,11 @@ export function ListPlugins(): $CancellablePromise<string[]> {
     });
 }
 
+/**
+ * ListSessions lists the sessions the calling window holds, and the sessions of plugins that no window holds. Every
+ * call below that names a session by its id answers not-found to a window that does not hold it, as for an id that
+ * never was (T2c-go.md).
+ */
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
         return $$createType17($result);
@@ -209,6 +228,14 @@ export function ListTerminals(pageKey: string): $CancellablePromise<terminal$0.L
 }
 
 /**
+ * OfferSession lets the next window that attaches the session take it over, within a minute, once: the move of a
+ * tab to another window. Only the window that holds the session offers it; the offer gives no other window access.
+ */
+export function OfferSession(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(405065622, sessionID);
+}
+
+/**
  * OpenNativeSession accepts only the same bounded resource payload as CreateSession.
  * Executables and launch commands are never accepted from the frontend.
  */
@@ -225,6 +252,15 @@ export function ResizeSession(sessionID: string, rows: number, cols: number): $C
  */
 export function ResizeTerminal(sessionID: string, seq: number, rows: number, cols: number): $CancellablePromise<void> {
     return $Call.ByID(2152154508, sessionID, seq, rows, cols);
+}
+
+/**
+ * RevokeSession takes back the offer that OfferSession made: the move of a tab that did not happen (the drop was refused,
+ * or the window that was to take it went away). Only the window that holds the session revokes it; an offer that is not
+ * open is nothing to take back, and no error.
+ */
+export function RevokeSession(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(4044647630, sessionID);
 }
 
 export function WriteSession(sessionID: string, data: string): $CancellablePromise<void> {
