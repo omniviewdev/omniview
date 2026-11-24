@@ -888,10 +888,6 @@ func (c *controller) WriteSession(
 	c.mu.RLock()
 	index, ok := c.sessionIndex[sessionID]
 	ok = ok && !index.ended
-	var inchan chan exec.StreamInput
-	if ok && !index.local {
-		inchan = c.inChans[index.pluginID]
-	}
 	c.mu.RUnlock()
 	if !ok || !c.holds(index, sessionID, owner) {
 		return apperror.SessionNotFound(sessionID)
@@ -901,14 +897,51 @@ func (c *controller) WriteSession(
 	if index.local {
 		return c.terminalManager.WriteOwned(sessionID, owner, 0, data)
 	}
-	if inchan == nil {
-		return apperror.SessionNotFound(sessionID)
-	}
 	c.logger.Debugw(ctx, "Writing to session")
-	return c.safeSend(inchan, exec.StreamInput{
-		SessionID: sessionID,
-		Data:      data,
-	})
+	return c.writeToPlugin(owner, sessionID, data)
+}
+
+// pluginInputSlice is how long input that a plugin does not take waits, holding the controller's read lock, before the
+// window is checked again.
+const pluginInputSlice = 20 * time.Millisecond
+
+// writeToPlugin hands input to the plugin of a session for the window that holds it. Who holds the session is read, and
+// the input is sent, in one step under c.mu (sendHeld): a window that lost the session a moment ago does not type into
+// it after the window that took it. A plugin that is slow to take input is waited for in slices, and at the end of each the
+// window is checked again, so that a claim (which takes c.mu) is not held up by a plugin that takes no input and the input
+// of a window that no longer holds the session is refused, not sent.
+func (c *controller) writeToPlugin(owner terminal.Owner, sessionID string, data []byte) error {
+	input := exec.StreamInput{SessionID: sessionID, Data: data}
+	for {
+		sent, err := c.sendHeld(owner, sessionID, input)
+		if sent || err != nil {
+			return err
+		}
+	}
+}
+
+// sendHeld sends input to the plugin's input channel for the window that holds the session, for at most pluginInputSlice.
+// It reports false, with no error, when the plugin did not take the input in that time.
+func (c *controller) sendHeld(owner terminal.Owner, sessionID string, input exec.StreamInput) (bool, error) {
+	// The channel is closed, and removed from c.inChans, under c.mu (OnPluginStop): it is never closed while it is held here.
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	index, ok := c.sessionIndex[sessionID]
+	if !ok || index.ended || index.local || !c.holds(index, sessionID, owner) {
+		return false, apperror.SessionNotFound(sessionID)
+	}
+	ch := c.inChans[index.pluginID]
+	if ch == nil {
+		return false, apperror.SessionNotFound(sessionID)
+	}
+	timer := time.NewTimer(pluginInputSlice)
+	defer timer.Stop()
+	select {
+	case ch <- input:
+		return true, nil
+	case <-timer.C:
+		return false, nil
+	}
 }
 
 // CloseSession ends a session for the window that holds it (or, for a session of a plugin that no window holds, any

@@ -368,6 +368,11 @@ func (s *session) hasExited() bool {
 func (s *session) snapshot() *sdkexec.Session {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.snapshotLocked()
+}
+
+// snapshotLocked is snapshot for a caller that holds s.mu.
+func (s *session) snapshotLocked() *sdkexec.Session {
 	return &sdkexec.Session{
 		ID: s.id, Command: slices.Clone(s.command), Labels: nonNil(s.labels), Params: nonNil(s.params),
 		Attached: s.attached, CreatedAt: s.info.CreatedAt,

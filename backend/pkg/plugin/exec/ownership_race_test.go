@@ -533,3 +533,45 @@ func TestTheRetirementOfAnotherWindowWhileASessionIsMadeLeavesItToItsWindow(t *t
 	requireSessionNotFound(t, err, "mine")
 	require.NoError(t, fx.wrapper.WriteSession(fx.as(a), "mine", []byte("x")))
 }
+
+// Input that the plugin has not taken when the session changes hands is not let in after the new holder's claim: the window
+// that held the session asked while it held it, and the call is refused when it comes to be sent after the claim (CodeRabbit).
+// The input of the window that holds it is sent as before.
+func TestInputThatThePluginHasNotTakenWhenASessionChangesHandsIsRefusedAndNeverSentAfterTheClaim(t *testing.T) {
+	fx := newOwnershipRaceFixture(t)
+	inputs := make(chan execsdk.StreamInput) // unbuffered: the plugin takes input when it reads, and not before
+	fx.ctrl.mu.Lock()
+	fx.ctrl.inChans[endedFixturePlugin] = inputs
+	fx.ctrl.mu.Unlock()
+	fx.make("wA", "moving")
+	require.NoError(t, fx.ctrl.OfferSession("wA", "moving"))
+
+	started := make(chan struct{})
+	typed := make(chan error, 1)
+	go func() {
+		close(started)
+		typed <- fx.ctrl.WriteSession("wA", "moving", []byte("A1"))
+	}()
+	<-started
+	_, _, err := fx.ctrl.AttachSession("wB", "moving")
+	require.NoError(t, err, "B claims the session that A offered")
+
+	received := make(chan string, 8)
+	go func() {
+		for input := range inputs {
+			received <- string(input.Data)
+		}
+		close(received)
+	}()
+	requireSessionNotFound(t, <-typed, "moving")
+	require.NoError(t, fx.ctrl.WriteSession("wB", "moving", []byte("B1")))
+	fx.ctrl.mu.Lock()
+	delete(fx.ctrl.inChans, endedFixturePlugin)
+	fx.ctrl.mu.Unlock()
+	close(inputs)
+	var all []string
+	for word := range received {
+		all = append(all, word)
+	}
+	assert.Equal(t, []string{"B1"}, all, "the plugin has B's input and none of A's, which was not taken when B claimed")
+}
