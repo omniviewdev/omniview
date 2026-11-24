@@ -71,12 +71,7 @@ export type TerminalsOptions = {
   /** Where the emulator's code comes from. Default: the lazy chunk. A test gives a fake emulator. */
   readonly load?: EngineLoader | undefined;
   /**
-   * The key of this window for the host's terminals (T2-go): given to every terminal the host's own shell starts, it is what lets this window, once it has been reloaded, ask the host for the terminals that were left
-   * and attach to them. Absent: the terminals have no key, end with their window and cannot be found again (a probe, a window of the T2a kind).
-   */
-  readonly pageKey?: string | undefined;
-  /**
-   * What the window asks the host for, once, when it attaches: the targets of the terminals that were left for it (the host's own shell lists them by `pageKey`). Each is opened as a session: a saved tab whose id is the
+   * What the window asks the host for, once, when it attaches: the targets of the terminals this page holds a capability for (the host's own shell lists them through the channel). Each is opened as a session: a saved tab whose id is the
    * target's `sessionId` is given its feed again, and a terminal that runs and has no saved tab gets a tab of its own, neither of them shown or focused. A terminal that had already ended (`TerminalTarget.ended`) is given
    * only to a saved tab that holds its id: the host keeps it listed for the rest of its lease even after the person closed its tab, so one that no tab holds is skipped, not opened and not said. A rejection is one warning
    * on the console and nothing else: the saved tabs stay ended, which is also what an app restart looks like (the host lists no terminal that is gone). Absent: nothing is asked.
@@ -87,12 +82,6 @@ export type TerminalsOptions = {
    * shell makes it with the page's key), after the host has been asked who holds it. Absent: a terminal this window lost cannot be taken back.
    */
   readonly reattach?: ((session: string) => TerminalTarget) | undefined;
-  /**
-   * The page's events coming back after a gap (T2d): called with a listener, it calls it each time the page's events connection opens (the first time too, when it was subscribed before) and answers what stops it. The
-   * window subscribes when it attaches and stops when it stops, and on each signal asks every feed that can rejoin to (a feed that is not running, or not held by this page, does nothing) and every feed this page lost who
-   * holds its terminal (the tab that took it may have gone while the events were down). In a native window the signal never fires. Absent: nothing is listened to.
-   */
-  readonly reconnect?: ((listener: () => void) => () => void) | undefined;
 };
 
 /** What the window restored of the tool's own state (`shell/session`). Nothing restored is the tool as it starts. */
@@ -106,9 +95,8 @@ export type Terminals = {
   /** The store the panel is given: the host's own, with a close that asks first for a terminal that runs. */
   readonly store: PanelStore;
   /**
-   * Starts listening to the panel, asks the host for the terminals that were left for this window (`TerminalsOptions.restore`, once for the life of the window, however many times it attaches), listens for the page going
-   * away and for its events coming back after a gap (`TerminalsOptions.reconnect`). Returns what stops it (the window is going): a terminal that has a key is left to live out its lease, and the others are closed. A
-   * terminal whose tab the person closes is closed.
+   * Starts listening to the panel, asks the host for the terminals that were left for this window (`TerminalsOptions.restore`, once for the life of the window, however many times it attaches) and listens for the page going
+   * away. Returns what stops it (the window is going): a terminal that can be left is left to live out its lease, and the others are closed. A terminal whose tab the person closes is closed.
    */
   readonly attach: () => () => void;
   /** Takes the keys of a terminal that has the focus from the window: Command K clears it, and is also the palette's chord. Returns what stops listening. It must be called before the window's own listeners are added: a key goes to them in that order. */
@@ -128,7 +116,7 @@ export type Terminals = {
 
 /** The registry, the guard and the answers of the Terminal tool over a window's panel store. */
 export function createTerminals(store: PanelStore, options: TerminalsOptions = {}, restored: TerminalsRestored = {}): Terminals {
-  const { pageKey, restore, reattach, reconnect } = options;
+  const { restore, reattach } = options;
   const sessions = createTerminalSessions(store, { reattach });
   const screenReader = createScreenReaderChoice(restored.screenReader);
   // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
@@ -230,16 +218,12 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     store: guard.guard(store),
     attach: () => {
       const stop = sessions.attach();
-      // The page going away (a reload, a closed tab, a navigation: `pagehide`) leaves the shells that have a key to the host's lease at once, instead of waiting for the host to notice that the page is gone.
+      // The page going away (a reload, a closed tab, a navigation: `pagehide`) leaves the terminals to the host's lease at once, instead of waiting for the host to notice that the page is gone.
       const hide = (): void => {
         sessions.leave();
       };
 
       window.addEventListener('pagehide', hide);
-      // The events that were told while the connection was down are lost to the page: each feed that can rejoin asks the host for what it missed. The signal runs inside the event of a socket, so it never throws.
-      const unlisten = reconnect?.(() => {
-        sessions.rejoin();
-      });
       attached += 1;
       findTerminals();
       openFound();
@@ -252,7 +236,6 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         on = false;
         attached -= 1;
         window.removeEventListener('pagehide', hide);
-        unlisten?.();
         stop();
       };
     },
@@ -273,7 +256,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     newSession: {
       label: NEW_TERMINAL,
       start: () => {
-        sessions.open(options.target?.() ?? localShellTarget(undefined, pageKey), { focus: true });
+        sessions.open(options.target?.() ?? localShellTarget(), { focus: true });
       },
     },
     empty: TERMINAL_EMPTY,

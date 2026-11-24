@@ -1948,11 +1948,11 @@ describe('the end of a terminal this page lost', () => {
 
   it('writes what the host says after it, once, when the lease runs out while this page is still there: the scrollback tells both', async () => {
     const { feed, engine, frame } = await shown();
-    feed.set({ state: 'ended', detached: { by: 'requested' } });
+    feed.set({ state: 'ended', detached: { by: 'taken-over' } });
     frame();
     feed.set({ exit: { closedBy: 'detach-timeout' } });
     frame();
-    expect(engine().text()).toBe('\u001b[0m\r\n\u001b[90m[Detached]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[Process closed: no tab took it back in time]\u001b[0m\r\n');
+    expect(engine().text()).toBe('\u001b[0m\r\n\u001b[90m[Taken over by another tab]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[Process closed: no tab took it back in time]\u001b[0m\r\n');
     feed.wake();
     frame();
     expect(engine().writes).toHaveLength(2);
@@ -1972,7 +1972,7 @@ describe('the end of a terminal this page lost', () => {
 
   it('keeps input off', async () => {
     const { feed, engine } = await shown();
-    feed.set({ state: 'ended', detached: { by: 'window-retired' } });
+    feed.set({ state: 'ended', detached: { by: 'taken-over' } });
     expect(engine().inputs.at(-1)).toBe(false);
   });
 });

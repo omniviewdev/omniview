@@ -315,7 +315,7 @@ describe('a stream that dropped and was connected again', () => {
     vi.advanceTimersByTime(250);
     expect(w.channels.streams()).toHaveLength(2);
     const again = w.stream();
-    again.ready({ start: 5_000, end: 5_040 });
+    again.ready({ start: 5_000, end: 5_040, lost: 4_900 });
     again.output(5_000, sequence(5_000, 40));
     again.output(5_040, sequence(5_040, 25));
     await w.drain();

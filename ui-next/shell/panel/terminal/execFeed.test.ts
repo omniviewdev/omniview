@@ -80,7 +80,7 @@ const readText = (feed: TerminalFeedHandle, max?: number): string => feed.read(m
 function replayOf(feed: TerminalFeedHandle): TerminalReplay {
   const replay = feed.takeReplay?.();
   expect(replay, 'the feed has a replay to give').toBeDefined();
-  return replay as TerminalReplay;
+  return replay!;
 }
 
 /** The feed connects again after `ms`: the stream it opened. */
@@ -138,7 +138,7 @@ describe('making a terminal', () => {
 
   it('opens its stream once the host made the terminal, asking from offset 0, and is running when the host says ready, named by its shell', async () => {
     const created = Promise.withResolvers<unknown>();
-    const r = rig({ channels: { create: () => created.promise } });
+    const r = rig({ channels: { create: async () => created.promise } });
     r.feed.resize(80, 24);
     await turns();
     expect(r.channels.streams()).toHaveLength(0);
@@ -169,7 +169,7 @@ describe('making a terminal', () => {
   });
 
   it('fails when the host refused to make the terminal, in its words and its code, and opens no stream and takes no later size', async () => {
-    const r = rig({ channels: { create: () => Promise.reject(Object.assign(new Error('no pty for you'), { code: 'RESOURCE_EXHAUSTED' })) } });
+    const r = rig({ channels: { create: async () => Promise.reject(Object.assign(new Error('no pty for you'), { code: 'RESOURCE_EXHAUSTED' })) } });
     r.feed.resize(80, 24);
     await turns();
     expect(r.feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'start', message: 'no pty for you', code: 'RESOURCE_EXHAUSTED' } });
@@ -187,7 +187,7 @@ describe('making a terminal', () => {
     ];
     const refusal = (extra: Record<string, unknown>): Error => Object.assign(new Error('shell executable unavailable: tried /opt/bin/fish: not found'), { code: 'SHELL_UNAVAILABLE' }, extra);
     const failure = async (extra: Record<string, unknown>) => {
-      const r = rig({ channels: { create: () => Promise.reject(refusal(extra)) } });
+      const r = rig({ channels: { create: async () => Promise.reject(refusal(extra)) } });
       r.feed.resize(80, 24);
       await turns();
       return r.feed.getSnapshot();
@@ -358,7 +358,7 @@ describe('what the user types', () => {
 
   it('waits for the stream to be ready when it is typed before: while the terminal is being made, and before `ready`, and goes after the acknowledgement of nothing, in order', async () => {
     const created = Promise.withResolvers<unknown>();
-    const r = rig({ channels: { create: () => created.promise } });
+    const r = rig({ channels: { create: async () => created.promise } });
     r.feed.resize(80, 24);
     r.feed.write('ec');
     await turns();
@@ -503,14 +503,15 @@ describe('the size of the screen', () => {
     expect(again.sent()).toEqual([{ kind: 'ack', bytes: 0 }, { kind: 'resize', cols: 120, rows: 40 }]);
   });
 
-  it('is taken for the one the host has when the host says another at `ready`: what it says is in force', async () => {
+  it('is brought back to the size the screen has when the host says another at `ready`: whoever held the terminal meanwhile may have changed it, and the host\'s own is what is in force until then', async () => {
     const r = await running();
     r.stream().drop();
     reconnect(r);
     r.stream().ready({ size: { cols: 132, rows: 50 } });
-    r.feed.resize(132, 50);
+    expect(r.stream().sent().filter((frame) => frame.kind === 'resize')).toEqual([{ kind: 'resize', cols: 80, rows: 24 }]);
+    r.feed.resize(80, 24);
     vi.advanceTimersByTime(100);
-    expect(r.stream().sent().filter((frame) => frame.kind === 'resize')).toEqual([]);
+    expect(r.stream().sent().filter((frame) => frame.kind === 'resize')).toHaveLength(1);
   });
 
   it('is ignored once the session is over', async () => {
@@ -1058,7 +1059,7 @@ describe('a terminal another page took (`taken-over`)', () => {
     });
 
     it('never attaches and never throws: a question that fails is one warning, said once, and changes nothing', async () => {
-      const r = await lost(() => Promise.reject(new Error('host away')));
+      const r = await lost(async () => Promise.reject(new Error('host away')));
       await r.feed.refresh?.();
       await r.feed.refresh?.();
       expect(r.warn).toHaveBeenCalledTimes(1);
@@ -1068,7 +1069,7 @@ describe('a terminal another page took (`taken-over`)', () => {
 
     it('shares the question that is out with a second call', async () => {
       const gate = Promise.withResolvers<unknown>();
-      const r = await lost(() => gate.promise);
+      const r = await lost(async () => gate.promise);
       const one = r.feed.refresh?.();
       const two = r.feed.refresh?.();
       gate.resolve({ id: 'term-1', attached: false });
@@ -1115,8 +1116,7 @@ describe('closing the feed', () => {
     r.feed.resize(90, 30);
     const first = r.feed.close();
     const second = r.feed.close();
-    expect(second).toBe(first);
-    await first;
+    await Promise.all([first, second]);
     expect(r.channels.of('close')).toEqual([{ kind: 'close', id: 'term-1' }]);
     expect(r.channels.of('dismiss')).toEqual([]);
     expect(r.stream().closedByFeed()).toBe(true);
@@ -1182,7 +1182,7 @@ describe('closing the feed', () => {
 
   it('waits for the terminal to be made when it is closed meanwhile, then ends it, and never connects a stream', async () => {
     const created = Promise.withResolvers<unknown>();
-    const r = rig({ channels: { create: () => created.promise } });
+    const r = rig({ channels: { create: async () => created.promise } });
     r.feed.resize(80, 24);
     await turns();
     const closing = r.feed.close();
@@ -1197,7 +1197,7 @@ describe('closing the feed', () => {
   it('has nothing to end for a feed that never made a terminal, nor one whose start failed', async () => {
     const never = rig();
     await never.feed.close();
-    const failed = rig({ channels: { create: () => Promise.reject(new Error('no')) } });
+    const failed = rig({ channels: { create: async () => Promise.reject(new Error('no')) } });
     failed.feed.resize(80, 24);
     await turns();
     await failed.feed.close();
@@ -1214,18 +1214,18 @@ describe('closing the feed', () => {
   });
 
   it('is no error when the host says the terminal is not there: it ended meanwhile', async () => {
-    const r = await running({}, { channels: { close: () => Promise.reject(goneError()) } });
+    const r = await running({}, { channels: { close: async () => Promise.reject(goneError()) } });
     await expect(r.feed.close()).resolves.toBeUndefined();
-    const dismissed = await running({}, { channels: { dismiss: () => Promise.reject(goneError()) } });
+    const dismissed = await running({}, { channels: { dismiss: async () => Promise.reject(goneError()) } });
     dismissed.stream().ended();
     await expect(dismissed.feed.close()).resolves.toBeUndefined();
   });
 
-  it('rejects, once, with any other refusal of the host: the registry logs it', async () => {
-    const r = await running({}, { channels: { close: () => Promise.reject(new Error('host on fire')) } });
-    const closing = r.feed.close();
-    await expect(closing).rejects.toThrow('host on fire');
-    expect(r.feed.close()).toBe(closing);
+  it('rejects with any other refusal of the host, and asks it once: the registry logs it', async () => {
+    const r = await running({}, { channels: { close: async () => Promise.reject(new Error('host on fire')) } });
+    await expect(r.feed.close()).rejects.toThrow('host on fire');
+    await expect(r.feed.close()).rejects.toThrow('host on fire');
+    expect(r.channels.of('close')).toHaveLength(1);
   });
 
   it('does not end what the page left for the page that comes back, and does not close the stream before the detach went', async () => {
@@ -1284,9 +1284,9 @@ describe('what runs in the terminal', () => {
   });
 
   it('is idle for a terminal the host says is not there, and unknown for a question that failed', async () => {
-    const gone = await running({}, { channels: { busy: () => Promise.reject(goneError()) } });
+    const gone = await running({}, { channels: { busy: async () => Promise.reject(goneError()) } });
     expect(await gone.feed.busy?.()).toEqual({ state: 'idle' });
-    const failed = await running({}, { channels: { busy: () => Promise.reject(new Error('x')) } });
+    const failed = await running({}, { channels: { busy: async () => Promise.reject(new Error('x')) } });
     expect(await failed.feed.busy?.()).toEqual({ state: 'unknown' });
   });
 
