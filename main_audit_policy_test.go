@@ -228,6 +228,13 @@ func TestDangerousMethodsStayDenied(t *testing.T) {
 		plugin + "/exec.ServiceWrapper.DetachTerminal",
 		plugin + "/exec.ServiceWrapper.ListTerminals",
 		plugin + "/exec.ServiceWrapper.DetachSession",
+		// The channel terminal's calls: whoever holds a capability reads the history of the terminal, types into it and ends it
+		// (its stream is /wails/stream/ws, which the gateway denies as a path; the five calls that name it are denied here).
+		plugin + "/exec.ServiceWrapper.CloseChannelTerminal",
+		plugin + "/exec.ServiceWrapper.ChannelTerminalBusy",
+		plugin + "/exec.ServiceWrapper.ChannelTerminalCwd",
+		plugin + "/exec.ServiceWrapper.ListChannelTerminals",
+		plugin + "/exec.ServiceWrapper.DismissChannelTerminal",
 		// Arbitrary file write and native dialogs on the host.
 		"main.AppService.WriteFileContent",
 		"main.AppService.OpenFileSelectionDialog",

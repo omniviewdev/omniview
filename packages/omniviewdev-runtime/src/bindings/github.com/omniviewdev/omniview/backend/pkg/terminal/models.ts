@@ -135,6 +135,118 @@ export class Attached {
 }
 
 /**
+ * ChannelListed is one terminal of ListChannels: what a page that comes back needs to match it with a tab, for a
+ * capability it holds. It never holds the capability, and it names the terminal by its id, which is a label.
+ */
+export class ChannelListed {
+    "id": string;
+    "created_at": string;
+    "pid": number;
+    "shell": Shell;
+
+    /**
+     * Labels and Params are what the page attached when it opened the terminal.
+     */
+    "labels": { [_ in string]?: string };
+    "params": { [_ in string]?: string };
+
+    /**
+     * Size is the size now.
+     */
+    "size": Size;
+
+    /**
+     * Attached says a stream holds the terminal; false: it is detached and ends at LeaseExpiresUnixMs unless a stream
+     * shows its capability before.
+     */
+    "attached": boolean;
+
+    /**
+     * NextOffset is the offset the next output will have and ReplayStart is the oldest offset the host keeps.
+     */
+    "next_offset": number;
+    "replay_start": number;
+
+    /**
+     * LeaseExpiresUnixMs is when a detached terminal ends, in Unix milliseconds; zero when it is attached.
+     */
+    "lease_expires_unix_ms": number;
+
+    /**
+     * Ended is set for a terminal that ended and is kept until it is dismissed or its lease would have run out: how it
+     * ended. Its output is still there to attach to.
+     */
+    "ended"?: End | null;
+
+    /** Creates a new ChannelListed instance. */
+    constructor($$source: Partial<ChannelListed> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("pid" in $$source)) {
+            this["pid"] = 0;
+        }
+        if (!("shell" in $$source)) {
+            this["shell"] = (new Shell());
+        }
+        if (!("labels" in $$source)) {
+            this["labels"] = {};
+        }
+        if (!("params" in $$source)) {
+            this["params"] = {};
+        }
+        if (!("size" in $$source)) {
+            this["size"] = (new Size());
+        }
+        if (!("attached" in $$source)) {
+            this["attached"] = false;
+        }
+        if (!("next_offset" in $$source)) {
+            this["next_offset"] = 0;
+        }
+        if (!("replay_start" in $$source)) {
+            this["replay_start"] = 0;
+        }
+        if (!("lease_expires_unix_ms" in $$source)) {
+            this["lease_expires_unix_ms"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ChannelListed instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ChannelListed {
+        const $$createField3_0 = $$createType6;
+        const $$createField4_0 = $$createType7;
+        const $$createField5_0 = $$createType7;
+        const $$createField6_0 = $$createType8;
+        const $$createField11_0 = $$createType5;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("shell" in $$parsedSource) {
+            $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
+        }
+        if ("labels" in $$parsedSource) {
+            $$parsedSource["labels"] = $$createField4_0($$parsedSource["labels"]);
+        }
+        if ("params" in $$parsedSource) {
+            $$parsedSource["params"] = $$createField5_0($$parsedSource["params"]);
+        }
+        if ("size" in $$parsedSource) {
+            $$parsedSource["size"] = $$createField6_0($$parsedSource["size"]);
+        }
+        if ("ended" in $$parsedSource) {
+            $$parsedSource["ended"] = $$createField11_0($$parsedSource["ended"]);
+        }
+        return new ChannelListed($$parsedSource as Partial<ChannelListed>);
+    }
+}
+
+/**
  * ClosedBy says who asked the host to end a session.
  */
 export enum ClosedBy {
@@ -316,7 +428,7 @@ export class End {
      * Creates a new End instance from a string or object.
      */
     static createFrom($$source: any = {}): End {
-        const $$createField6_0 = $$createType7;
+        const $$createField6_0 = $$createType10;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("failure" in $$parsedSource) {
             $$parsedSource["failure"] = $$createField6_0($$parsedSource["failure"]);
@@ -387,7 +499,7 @@ export class Environment {
      * Creates a new Environment instance from a string or object.
      */
     static createFrom($$source: any = {}): Environment {
-        const $$createField1_0 = $$createType8;
+        const $$createField1_0 = $$createType11;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("probe" in $$parsedSource) {
             $$parsedSource["probe"] = $$createField1_0($$parsedSource["probe"]);
@@ -533,6 +645,16 @@ export class Launch {
      */
     "lease_ms"?: number;
 
+    /**
+     * Channel makes the terminal a channel terminal: it is reached by the capability that the answer of CreateTerminal
+     * carries (Session.Cap, once) and by one stream for each terminal (docs/ui-next/terminal-channel-protocol.md), it
+     * has no window and no event, and it is invisible to every call that names a terminal by its id. The stream that
+     * holds it is its holder: when that stream ends the terminal is kept for LeaseMs, and a stream that shows the
+     * capability takes it over. The host never lets a page that sleeps block the shell (Limits.ChannelRingBytes).
+     * It excludes PageKey, which is the events lane's.
+     */
+    "channel"?: boolean;
+
     /** Creates a new Launch instance. */
     constructor($$source: Partial<Launch> = {}) {
 
@@ -616,6 +738,21 @@ export class Limits {
     "lease_default_ms": number;
     "lease_max_ms": number;
 
+    /**
+     * ChannelRingBytes is how much output a channel terminal keeps whatever its page does; ChannelHighBytes and
+     * ChannelLowBytes are the marks between which the shell is paced while its page is alive; ChannelStallMs is how long
+     * a page may make no progress before the shell is let go; ChannelInflightBytes is the most a page that acknowledges
+     * holds unacknowledged; ChannelFrameBytes is the largest output frame and ChannelMaxInputBytes the largest input
+     * frame (the channel's protocol is in docs/ui-next/terminal-channel-protocol.md).
+     */
+    "channel_ring_bytes": number;
+    "channel_high_bytes": number;
+    "channel_low_bytes": number;
+    "channel_stall_ms": number;
+    "channel_inflight_bytes": number;
+    "channel_frame_bytes": number;
+    "channel_max_input_bytes": number;
+
     /** Creates a new Limits instance. */
     constructor($$source: Partial<Limits> = {}) {
         if (!("max_dimension" in $$source)) {
@@ -662,6 +799,27 @@ export class Limits {
         }
         if (!("lease_max_ms" in $$source)) {
             this["lease_max_ms"] = 0;
+        }
+        if (!("channel_ring_bytes" in $$source)) {
+            this["channel_ring_bytes"] = 0;
+        }
+        if (!("channel_high_bytes" in $$source)) {
+            this["channel_high_bytes"] = 0;
+        }
+        if (!("channel_low_bytes" in $$source)) {
+            this["channel_low_bytes"] = 0;
+        }
+        if (!("channel_stall_ms" in $$source)) {
+            this["channel_stall_ms"] = 0;
+        }
+        if (!("channel_inflight_bytes" in $$source)) {
+            this["channel_inflight_bytes"] = 0;
+        }
+        if (!("channel_frame_bytes" in $$source)) {
+            this["channel_frame_bytes"] = 0;
+        }
+        if (!("channel_max_input_bytes" in $$source)) {
+            this["channel_max_input_bytes"] = 0;
         }
 
         Object.assign(this, $$source);
@@ -773,10 +931,10 @@ export class Listed {
      * Creates a new Listed instance from a string or object.
      */
     static createFrom($$source: any = {}): Listed {
-        const $$createField3_0 = $$createType9;
-        const $$createField4_0 = $$createType10;
-        const $$createField5_0 = $$createType10;
-        const $$createField6_0 = $$createType11;
+        const $$createField3_0 = $$createType6;
+        const $$createField4_0 = $$createType7;
+        const $$createField5_0 = $$createType7;
+        const $$createField6_0 = $$createType8;
         const $$createField12_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
@@ -897,9 +1055,9 @@ export class Replay {
      */
     static createFrom($$source: any = {}): Replay {
         const $$createField2_0 = $Create.ByteSlice;
-        const $$createField3_0 = $$createType11;
+        const $$createField3_0 = $$createType8;
         const $$createField4_0 = $$createType12;
-        const $$createField5_0 = $$createType11;
+        const $$createField5_0 = $$createType8;
         const $$createField6_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
@@ -965,6 +1123,13 @@ export class Session {
      */
     "lease_ms": number;
 
+    /**
+     * Cap is the terminal's capability, set only in the answer of CreateTerminal for a channel terminal (Launch.Channel):
+     * 32 random bytes of the host's, base64url, one for the terminal. It is the only way to reach the terminal, it is
+     * answered once, and nothing lists it, logs it, puts it in an event, a URL or an error.
+     */
+    "cap"?: string;
+
     /** Creates a new Session instance. */
     constructor($$source: Partial<Session> = {}) {
         if (!("id" in $$source)) {
@@ -1005,7 +1170,7 @@ export class Session {
      * Creates a new Session instance from a string or object.
      */
     static createFrom($$source: any = {}): Session {
-        const $$createField3_0 = $$createType9;
+        const $$createField3_0 = $$createType6;
         const $$createField7_0 = $$createType13;
         const $$createField8_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
@@ -1239,12 +1404,12 @@ const $$createType2 = Directory.createFrom;
 const $$createType3 = Foreground.createFrom;
 const $$createType4 = End.createFrom;
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = Failure.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = Probe.createFrom;
-const $$createType9 = Shell.createFrom;
-const $$createType10 = $Create.Map($Create.Any, $Create.Any);
-const $$createType11 = Size.createFrom;
+const $$createType6 = Shell.createFrom;
+const $$createType7 = $Create.Map($Create.Any, $Create.Any);
+const $$createType8 = Size.createFrom;
+const $$createType9 = Failure.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = Probe.createFrom;
 const $$createType12 = TerminalModes.createFrom;
 const $$createType13 = Limits.createFrom;
 const $$createType14 = Environment.createFrom;

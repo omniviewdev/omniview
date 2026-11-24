@@ -80,6 +80,9 @@ type Manager struct {
 	// replayBytes is how much of a terminal's output its replay ring keeps (ReplayBytes): a field, so that a test
 	// can state it.
 	replayBytes int
+	// channel are the numbers of a channel terminal's ring and pacing (ChannelRingBytes and the others): a field, so
+	// that a test can state them. Nothing else changes them, and a test sets them before it starts a terminal.
+	channel channelLimits
 	// offsets is the sink as an OffsetSink when it is one: a terminal with a page key is delivered through it.
 	offsets OffsetSink
 	// detachments is the sink as a DetachmentSink when it is one: it is told when a page lost its terminal.
@@ -123,7 +126,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
-		replayBytes: ReplayBytes, offsets: offsets, detachments: detachments,
+		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
 	}
 	go m.forwardSignals()
@@ -416,7 +419,11 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 		s.beginClose(ClosedByShutdown)
 	}
 	m.log.Debugw(context.Background(), "session started", "session", id, "shell", s.info.Shell.Path, "cols", cols, "rows", rows)
-	return s.info, nil
+	info := s.info
+	if opts.Channel {
+		info.Cap = stubCapability // STUB of the red commit: the next commit replaces it with the capability the host mints
+	}
+	return info, nil
 }
 
 // reserve takes an id for a session that is about to start, so that two starts cannot share it.
