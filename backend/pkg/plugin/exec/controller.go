@@ -69,6 +69,17 @@ type Controller interface {
 	DetachTerminal(ctx context.Context, owner terminal.Owner, sessionID string, request terminal.DetachRequest) (*terminal.Detached, error)
 	// ListTerminals says which local terminals the owner, or whoever holds the key, may attach.
 	ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed
+	// ServeTerminalChannel serves one stream of the terminal channel until it ends (terminal.Manager.ServeChannel). The
+	// stream names its terminal by a capability, never by an id, and uses no window.
+	ServeTerminalChannel(ch terminal.Channel)
+	// CloseChannelTerminal, ChannelTerminalBusy, ChannelTerminalCwd, ListChannelTerminals and DismissChannelTerminal are
+	// the calls that name a channel terminal by its capability. Each answers one not-found for a capability that opens
+	// nothing, whatever the reason.
+	CloseChannelTerminal(capability string) error
+	ChannelTerminalBusy(capability string) (terminal.Foreground, error)
+	ChannelTerminalCwd(capability string) (terminal.Directory, error)
+	ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error)
+	DismissChannelTerminal(capability string) error
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
 	AttachSession(sessionID string) (*exec.Session, []byte, error)

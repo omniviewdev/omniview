@@ -286,3 +286,51 @@ func (c *controller) DetachTerminal(
 func (c *controller) ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed {
 	return c.terminalManager.List(owner, pageKey)
 }
+
+// ServeTerminalChannel serves one stream of the terminal channel until it ends: the stream's first frame names the
+// terminal by its capability, and the connection is the terminal's holder for as long as it lasts. It opens no span: a
+// stream lives as long as a page does.
+func (c *controller) ServeTerminalChannel(ch terminal.Channel) { c.terminalManager.ServeChannel(ch) }
+
+// CloseChannelTerminal ends the channel terminal that the capability names. The capability is never an attribute of
+// the span, and the answer for a capability that opens nothing holds nothing the caller sent.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) CloseChannelTerminal(capability string) (err error) {
+	_, span := tracer.Start(context.Background(), "exec.CloseChannelTerminal")
+	defer finishOp(span, &err)
+	return c.terminalManager.CloseChannel(capability)
+}
+
+// ChannelTerminalBusy says whether something other than the shell holds the foreground of a channel terminal.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ChannelTerminalBusy(capability string) (_ terminal.Foreground, err error) {
+	_, span := tracer.Start(context.Background(), "exec.ChannelTerminalBusy")
+	defer finishOp(span, &err)
+	return c.terminalManager.ChannelBusy(capability)
+}
+
+// ChannelTerminalCwd says which directory the shell of a channel terminal is in now.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ChannelTerminalCwd(capability string) (_ terminal.Directory, err error) {
+	_, span := tracer.Start(context.Background(), "exec.ChannelTerminalCwd")
+	defer finishOp(span, &err)
+	return c.terminalManager.ChannelCwd(capability)
+}
+
+// ListChannelTerminals lists the channel terminals of the capabilities given, and only those, in the order given. It
+// opens no span: a page asks it once as it loads.
+func (c *controller) ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error) {
+	return c.terminalManager.ListChannels(capabilities)
+}
+
+// DismissChannelTerminal forgets the end that a channel terminal left.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) DismissChannelTerminal(capability string) (err error) {
+	_, span := tracer.Start(context.Background(), "exec.DismissChannelTerminal")
+	defer finishOp(span, &err)
+	return c.terminalManager.DismissChannel(capability)
+}

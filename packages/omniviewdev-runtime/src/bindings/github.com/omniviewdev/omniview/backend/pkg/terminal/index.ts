@@ -4,6 +4,7 @@
 export {
     AttachRequest,
     Attached,
+    ChannelListed,
     ClosedBy,
     DetachRequest,
     Detached,
