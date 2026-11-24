@@ -1,0 +1,283 @@
+goroutine 84603 [running]:
+runtime/pprof.writeGoroutineStacks({0x105c3e6a8, 0x66e0f4ab00f0})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/pprof/pprof.go:816 +0x6c
+runtime/pprof.writeGoroutine({0x105c3e6a8?, 0x66e0f4ab00f0?}, 0x808080808080803f?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/pprof/pprof.go:779 +0x2c
+runtime/pprof.(*Profile).WriteTo(0x105cd4a50?, {0x105c3e6a8?, 0x66e0f4ab00f0?}, 0xc?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/pprof/pprof.go:405 +0x144
+net/http/pprof.handler.ServeHTTP({0x66e0f4126011, 0x9}, {0x105c499f8, 0x66e0f4ab00f0}, 0x66e0f51f6a00)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/pprof/pprof.go:272 +0x434
+net/http/pprof.Index({0x105c499f8?, 0x66e0f4ab00f0?}, 0x66e0f5aeda98?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/pprof/pprof.go:391 +0xb0
+net/http.HandlerFunc.ServeHTTP(0x105d03000?, {0x105c499f8?, 0x66e0f4ab00f0?}, 0x1042f3290?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:2362 +0x38
+net/http.(*ServeMux).ServeHTTP(0x0?, {0x105c499f8, 0x66e0f4ab00f0}, 0x66e0f51f6a00)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:2927 +0x194
+net/http.serverHandler.ServeHTTP({0x66e0f4c46100?}, {0x105c499f8?, 0x66e0f4ab00f0?}, 0x1?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:3440 +0xb0
+net/http.(*conn).serve(0x66e0f4e32d80, {0x105c4b1a0, 0x66e0f4d8a210})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:2161 +0x5a0
+created by net/http.(*Server).Serve in goroutine 43
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:3608 +0x3e8
+
+goroutine 1 [syscall, locked to thread]:
+github.com/wailsapp/wails/v3/pkg/application._Cfunc_run()
+	_cgo_gotypes.go:809 +0x2c
+github.com/wailsapp/wails/v3/pkg/application.(*macosApp).run(0x66e0f4cee130)
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application_darwin.go:346 +0x198
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run(0x66e0f4c2f708)
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:802 +0x448
+main.run(0x66e0f4c2f708, 0x66e0f4c31100, {0x66e0f394c00c?, 0x66e0f4cee0d0?})
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/native.go:24 +0x12c
+main.main()
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/main.go:92 +0x704
+
+goroutine 43 [IO wait]:
+internal/poll.runtime_pollWait(0x133a74200, 0x72)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/netpoll.go:351 +0xa0
+internal/poll.(*pollDesc).wait(0x66e0f4d90000?, 0x105d20190?, 0x0)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_poll_runtime.go:84 +0x28
+internal/poll.(*pollDesc).waitRead(...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Accept(0x66e0f4d90000)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_unix.go:618 +0x210
+net.(*netFD).accept(0x66e0f4d90000)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/fd_unix.go:149 +0x28
+net.(*TCPListener).accept(0x66e0f4d98000)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/tcpsock_posix.go:159 +0x24
+net.(*TCPListener).Accept(0x66e0f4d98000)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/tcpsock.go:387 +0x2c
+net/http.(*Server).Serve(0x66e0f4d88000, {0x105c49c08, 0x66e0f4d98000})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:3578 +0x2a8
+net/http.(*Server).ListenAndServe(0x66e0f4d88000)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:3489 +0x80
+net/http.ListenAndServe(...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:3840
+main.main.func2()
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/main.go:65 +0x78
+created by main.main in goroutine 1
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/main.go:65 +0x2b4
+
+goroutine 44 [select]:
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).forwardSignals(0x66e0f4b6b9e0)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:985 +0xe8
+created by github.com/omniviewdev/omniview/backend/pkg/terminal.NewManager in goroutine 1
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:129 +0x220
+
+goroutine 45 [chan receive (nil chan)]:
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).shutdownWhenDone(0x66e0f4b6b9e0)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:959 +0x30
+created by github.com/omniviewdev/omniview/backend/pkg/terminal.NewManager in goroutine 1
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:130 +0x268
+
+goroutine 50 [syscall]:
+os/signal.signal_recv()
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/sigqueue.go:149 +0x104
+os/signal.loop()
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/signal/signal_unix.go:23 +0x1c
+created by os/signal.Notify.func2.1 in goroutine 44
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/signal/signal.go:164 +0x28
+
+goroutine 49 [select]:
+github.com/wailsapp/wails/v3/pkg/application.(*HTTPTransport).cleanupChunks(0x66e0f4b9b080, 0x66e0f39e7960, 0x0?)
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/transport_http.go:110 +0xec
+created by github.com/wailsapp/wails/v3/pkg/application.(*HTTPTransport).Start in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/transport_http.go:101 +0x210
+
+goroutine 66 [IO wait]:
+internal/poll.runtime_pollWait(0x133a74600, 0x72)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/netpoll.go:351 +0xa0
+internal/poll.(*pollDesc).wait(0x66e0f4c31200?, 0x1040c01b4?, 0x0)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_poll_runtime.go:84 +0x28
+internal/poll.(*pollDesc).waitRead(...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Accept(0x66e0f4c31200)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_unix.go:618 +0x210
+net.(*netFD).accept(0x66e0f4c31200)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/fd_unix.go:149 +0x28
+net.(*TCPListener).accept(0x66e0f4c46600)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/tcpsock_posix.go:159 +0x24
+net.(*TCPListener).Accept(0x66e0f4c46600)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/tcpsock.go:387 +0x2c
+net/http.(*Server).Serve(0x66e0f4d88140, {0x105c49c08, 0x66e0f4c46600})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:3578 +0x2a8
+net/http.Serve(...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:3042
+main.(*probe).startWS.func1()
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/transport_ws.go:33 +0x74
+created by main.(*probe).startWS in goroutine 1
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/transport_ws.go:33 +0x130
+
+goroutine 93 [select]:
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).forwardSignals(0x66e0f4f0a120)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:985 +0xe8
+created by github.com/omniviewdev/omniview/backend/pkg/terminal.NewManager in goroutine 1
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:129 +0x220
+
+goroutine 94 [chan receive]:
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).shutdownWhenDone(0x66e0f4f0a120)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:959 +0x30
+created by github.com/omniviewdev/omniview/backend/pkg/terminal.NewManager in goroutine 1
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:130 +0x268
+
+goroutine 95 [select]:
+github.com/omniviewdev/omniview/backend/pkg/plugin/exec.(*controller).runMux(0x66e0f3baa460)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/plugin/exec/controller.go:278 +0xa8
+created by github.com/omniviewdev/omniview/backend/pkg/plugin/exec.(*controller).ServiceStartup in goroutine 1
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/plugin/exec/controller.go:205 +0x110
+
+goroutine 178 [chan receive]:
+main.(*probe).sample(0x66e0f4c31100)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/probe.go:393 +0x244
+created by main.(*Probe).Create.func1 in goroutine 60
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/probe.go:158 +0x68
+
+goroutine 108 [chan receive]:
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1.1()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:715 +0x40
+created by github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:713 +0x214
+
+goroutine 109 [chan receive]:
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1.2()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:721 +0x40
+created by github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:719 +0x25c
+
+goroutine 110 [chan receive]:
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1.3()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:727 +0x40
+created by github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:725 +0x2a4
+
+goroutine 111 [chan receive]:
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1.4()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:733 +0x40
+created by github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:731 +0x2ec
+
+goroutine 112 [chan receive]:
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1.5()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:739 +0x40
+created by github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:737 +0x334
+
+goroutine 113 [chan receive]:
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1.6()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:745 +0x40
+created by github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:743 +0x37c
+
+goroutine 114 [chan receive]:
+github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1.7()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:752 +0x48
+created by github.com/wailsapp/wails/v3/pkg/application.(*App).Run.func1 in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/application.go:750 +0x3c4
+
+goroutine 62 [select]:
+os/exec.(*Cmd).watchCtx(0x66e0f4b22000, 0x66e0f4a942a0)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/exec/exec.go:808 +0x74
+created by os/exec.(*Cmd).Start in goroutine 60
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/exec/exec.go:794 +0x6ac
+
+goroutine 116 [chan receive]:
+github.com/wailsapp/wails/v3/internal/signal.(*SignalHandler).Start.func1()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/internal/signal/signal.go:35 +0x38
+created by github.com/wailsapp/wails/v3/internal/signal.(*SignalHandler).Start in goroutine 1
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/internal/signal/signal.go:33 +0xbc
+
+goroutine 64 [syscall]:
+syscall.syscalln(0x1040df1a0, {0x66e0f4e07558, 0x6, 0x6})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/sys_darwin.go:27 +0x20
+syscall.syscall6(0x90010100000000?, 0x1339dd1a8?, 0x1084b4ac8?, 0x90?, 0x66e0f3a00808?, 0x66e0f4b00000?, 0x66e0f4e075f8?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/syscall/syscall_darwin.go:407 +0x28
+syscall.wait4(0x66e0f4e07628?, 0x10413985c?, 0x90?, 0x105c266b8?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/syscall/zsyscall_darwin_arm64.go:44 +0x4c
+syscall.Wait4(0x0?, 0x66e0f4e07664, 0x0?, 0x0?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/syscall/syscall_bsd.go:144 +0x28
+os.(*Process).pidWait.func1(...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/exec_unix.go:64
+os.ignoringEINTR2[...](...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/file_posix.go:273
+os.(*Process).pidWait(0x66e0f3a6c300)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/exec_unix.go:63 +0x9c
+os.(*Process).wait(0x0?)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/exec_unix.go:28 +0x24
+os.(*Process).Wait(...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/exec.go:347
+os/exec.(*Cmd).Wait(0x66e0f4b22000)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/os/exec/exec.go:944 +0x34
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).wait(0x66e0f4b6b9e0, 0x66e0f4c3c008)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:533 +0x28
+created by github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).Start in goroutine 60
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:412 +0x260
+
+goroutine 65 [sync.Cond.Wait]:
+sync.runtime_notifyListWait(0x66e0f4d98290, 0x28)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/sema.go:617 +0x194
+sync.(*Cond).Wait(0x66e0f4d98280)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/sync/cond.go:71 +0xa4
+github.com/wailsapp/wails/v3/pkg/application.(*streamSession).enqueue(0x66e0f4a000b0, 0x66e0f4a42000, 0x1, 0x0, {0x66e0f57da000, 0x409, 0x409}, 0x1)
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/stream_session.go:159 +0x1cc
+github.com/wailsapp/wails/v3/pkg/application.(*StreamConn).Send(...)
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/stream.go:238
+main.(*streamConn).send(0x66e0f4ab0000?, {0x66e0f57da000?, 0x66e0f49cedd8?, 0x104130b74?})
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/transport_stream.go:13 +0x6c
+main.(*chanSink).Output(0x66e0f3e80808?, {0x66e0f3a601a0?, 0x66e0f49cee58?}, {0x66e0f57d5000, 0x400, 0x400})
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/probe.go:272 +0x214
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).emit(0x66e0f4c3c008?, 0x66e0f57d5000?, 0x400?, {0x66e0f57d5000?, 0x400?, 0x400?})
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/reattach.go:139 +0x6c
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).deliver(0x66e0f4b6b9e0, 0x66e0f4c3c008, {0x66e0f57d5000, 0x400, 0x400})
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/reattach.go:129 +0x100
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).read(0x66e0f4b6b9e0, 0x66e0f4c3c008)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:597 +0x250
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).pump(0x66e0f4b6b9e0, 0x66e0f4c3c008)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:565 +0x24
+created by github.com/omniviewdev/omniview/backend/pkg/terminal.(*Manager).Start in goroutine 60
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/manager.go:413 +0x2b0
+
+goroutine 171 [select]:
+github.com/wailsapp/wails/v3/pkg/application.(*streamManager).reap(0x66e0f3b73970)
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/stream.go:908 +0xb8
+created by github.com/wailsapp/wails/v3/pkg/application.(*streamManager).sessionWithAdmission.func1 in goroutine 181
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/stream.go:804 +0x68
+
+goroutine 63 [select]:
+github.com/omniviewdev/omniview/backend/pkg/terminal.(*inputQueue).run(0x66e0f4f8e120)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/ordered.go:234 +0x8c
+created by github.com/omniviewdev/omniview/backend/pkg/terminal.newInputQueue in goroutine 60
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/backend/pkg/terminal/ordered.go:97 +0x184
+
+goroutine 176 [sync.Cond.Wait]:
+sync.runtime_notifyListWait(0x66e0f4d983d0, 0x15c7)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/sema.go:617 +0x194
+sync.(*Cond).Wait(0x66e0f4d983c0)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/sync/cond.go:71 +0xa4
+github.com/wailsapp/wails/v3/pkg/application.(*StreamConn).Receive(0x66e0f4a42000)
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/stream.go:295 +0x98
+main.(*probe).serve(0x66e0f4c31100, 0x66e0f4ab0000, 0x66e0f5229f30)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/probe.go:329 +0x38
+main.(*probe).handleStream(0x66e0f4c31100, 0x66e0f4a42000)
+	/Users/joshuapare/Repos/omniviewdev/worktrees/spike-terminal-channel/spike/terminalchannel/transport_stream.go:40 +0x16c
+github.com/wailsapp/wails/v3/pkg/application.(*streamSession).open.func1()
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/stream_session.go:368 +0x5c
+created by github.com/wailsapp/wails/v3/pkg/application.(*streamSession).open in goroutine 174
+	/Users/joshuapare/go/pkg/mod/github.com/wailsapp/wails/v3@v3.1.0/pkg/application/stream_session.go:360 +0x518
+
+goroutine 84604 [IO wait]:
+internal/poll.runtime_pollWait(0x133a74400, 0x72)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/runtime/netpoll.go:351 +0xa0
+internal/poll.(*pollDesc).wait(0x66e0f48a2000?, 0x66e0f4c46121?, 0x0)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_poll_runtime.go:84 +0x28
+internal/poll.(*pollDesc).waitRead(...)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0x66e0f48a2000, {0x66e0f4c46121, 0x1, 0x1})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/internal/poll/fd_unix.go:170 +0x22c
+net.(*netFD).Read(0x66e0f48a2000, {0x66e0f4c46121?, 0x66e0f49066a0?, 0x66e0f5a80008?})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/fd_posix.go:68 +0x28
+net.(*conn).Read(0x66e0f3e821e0, {0x66e0f4c46121?, 0x105d2c980?, 0xfffffffffffffffc?})
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/net.go:196 +0x34
+net/http.(*connReader).backgroundRead(0x66e0f4c46100)
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:742 +0x38
+created by net/http.(*connReader).startBackgroundRead in goroutine 84603
+	/opt/homebrew/Cellar/go/1.27.4/libexec/src/net/http/server.go:738 +0xc0
