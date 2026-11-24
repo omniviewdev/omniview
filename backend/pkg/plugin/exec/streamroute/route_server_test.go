@@ -67,6 +67,7 @@ var route struct {
 	once    sync.Once
 	port    int
 	wrapper *hostexec.ServiceWrapper
+	app     *application.App
 }
 
 func loopbackPort(t *testing.T) int {
@@ -113,7 +114,7 @@ func theRoute(t *testing.T) (int, *hostexec.ServiceWrapper) {
 		app.HandleStream(hostexec.TerminalStreamName, hostexec.TerminalStreamHandler(controller))
 		go func() { _ = app.Run() }()
 		waitServing(t, port)
-		route.port, route.wrapper = port, wrapper
+		route.port, route.wrapper, route.app = port, wrapper, app
 	})
 	if route.wrapper == nil {
 		t.Fatal("the application did not start in an earlier test")

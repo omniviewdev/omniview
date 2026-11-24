@@ -10,7 +10,8 @@
 #      every named test must pass, which shows that nothing else of that test catches the fault.
 # The faults are the ones a careless change would make; each is the smallest edit that breaks the property. Other tests of the
 # package may catch the same fault as well: a control says that the named test does, by that assertion, and that it is the only
-# thing in that test that does.
+# thing in that test that does. (Control 37 is the one fault that is in a test file: the host never writes a capability to the window
+# service, so the fault is the harness of the guard doing what the old document advised, and the guard must see it.)
 import json
 import os
 import re
@@ -76,6 +77,8 @@ NO_OWNER = "TestAChannelTerminalTakesNoOwner"
 LIST_SNAPSHOT = "TestAChannelListedIsNotTakenOfATerminalThatEndedBeforeItsSnapshot"
 IDLE_STREAM = "TestAStreamThatSendsNothingIsClosedWhenTheFirstFrameWaitIsOverAndNotBefore"
 IDLE_STREAM_STOPPED = "TestAStreamThatShowsItsCapabilityInTimeIsNotClosedWhenTheFirstFrameWaitIsOver"
+WINDOW_STATE = "TestNoWindowStateCallReturnsTheCapabilityOfAChannelTerminalAtAnyStepOfItsLife"
+WINDOW_STATE_TEST = STREAMROUTE + "/route_window_state_test.go"
 
 # number, what the fault is, file, the edits (each: the text it replaces, once, and the text it puts there), then the checks: for
 # each package the tests named for the fault with a part of the message of the assertion that must fail, and the guards (names in
@@ -249,6 +252,13 @@ CONTROLS = [
     (36, "the wait for the first frame is not stopped once the first frame has come: it closes a stream that attached in time", SERVE,
      [("\tfirst, err := ch.Recv()\n\tidle.Stop()\n", "\tfirst, err := ch.Recv()\n\t_ = idle\n")],
      [(TERMINAL, [(IDLE_STREAM_STOPPED, "the stream closed before the page saw the line it typed")], ["first-frame-wait-stopped"])]),
+
+    # The capability is not in the window state (S3 of the review of PR 704): a guard that is green from the start, so the proof is that
+    # a harness that does what the old document advised (a slot of the window service holds id -> cap) makes it red by its assertion.
+    (37, "the capability is saved in a slot of the window service, as the old document advised: any window and any caller can read it", WINDOW_STATE_TEST,
+     [("\tstate.know(info.Cap)\n",
+       "\tstate.know(info.Cap)\n\trequire.NoError(t, state.service.SaveState(window.MainWindowName, \"terminals\", `{\"`+info.ID+`\":\"`+info.Cap+`\"}`))\n")],
+     [(STREAMROUTE, [(WINDOW_STATE, "holds the capability of a channel terminal")], ["no-window-state-holds-the-capability"])]),
 ]
 
 
