@@ -7121,8 +7121,10 @@ async function checkTerminalReattach(page, base, engine) {
   await typeLine(page, 'echo WHILE_DETACHED_$((6*7))');
   for (let turn = 0; turn < 45; turn += 1) await afterFrames(page);
   assert.equal(wire.of('WriteTerminal').length, wrote, `${engine}: the page sends nothing to a terminal it let go: what was typed made no WriteTerminal`);
-  assert.equal(/WHILE_DETACHED_42/.test(await plainTranscriptOf(base, first)), false, `${engine}: what was typed while the terminal was detached never reached the shell`);
-  assert.equal((await busyOf(base, first)).state, 'idle', `${engine}: the shell is still at its prompt for the host`);
+  // A terminal that nobody holds is nobody's to read (T2c-go: its replay, `AttachSession`, and `IsBusy` are refused as for a terminal that is not there, whoever asks) and the host reads nothing of it while it is detached: the listing, which the key opens,
+  // says the length of its output has not moved, and its shell is still a process of this machine.
+  assert.equal((await entryOf())?.next_offset, kept.next_offset, `${engine}: what was typed while the terminal was detached produced no output that the host read`);
+  assert.doesNotThrow(() => process.kill(pid, 0), `${engine}: the shell is still there for the host`);
   const taken = await reloadToTerminals([first], 'a reload while the terminal was detached');
   const retaken = await untilLine(page, mac, 'AFTER_RACE_42', 'the earlier output in the emulator that took the detached terminal back', 60_000);
   assert.ok(lineIn(retaken, 'MARK_ONE_42') && lineIn(retaken, `PID_${String(pid)}`), `${engine}: the scrollback of the page that took the detached terminal back holds what the shell wrote before it was let go`);
