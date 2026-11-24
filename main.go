@@ -872,7 +872,7 @@ func main() {
 	mainWindowOptions.Height = DefaultWebviewHeight
 	mainWindowOptions.MinWidth = MinWebviewWidth
 	mainWindowOptions.MinHeight = MinWebviewHeight
-	mainWindow := app.Window.NewWithOptions(mainWindowOptions)
+	mainWindow := window.NewWebviewWindow(app, mainWindowOptions)
 	if runtimeReady != nil {
 		mainWindow.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
 			runtimeReady()

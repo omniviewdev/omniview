@@ -89,7 +89,7 @@ func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) na
 		options.InitialPosition = application.WindowXY
 		options.X, options.Y = spec.Position.X, spec.Position.Y
 	}
-	window := h.app.Window.NewWithOptions(options)
+	window := NewWebviewWindow(h.app, options)
 	wireFocusAndVisibility(window, spec.Name, sink)
 	wireBoundsTracking(window, spec.Name, sink)
 	if spec.Kind == KindSettings {
