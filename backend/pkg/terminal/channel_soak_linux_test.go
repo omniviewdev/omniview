@@ -29,7 +29,7 @@ func soakSeconds(t *testing.T) int {
 	t.Helper()
 	raw := os.Getenv("TERMINAL_CHANNEL_SOAK_SECONDS")
 	if raw == "" {
-		t.Skip("set TERMINAL_CHANNEL_SOAK_SECONDS (60) inside a `docker run --cpus 2` container: a flood for a minute is a CPU burner (docs/ui-next/status/T3-channel.md)")
+		t.Skip("set TERMINAL_CHANNEL_SOAK_SECONDS (60) inside a `docker run --cpus 2` container: a flood for a minute is a CPU burner (the status file of T3-channel has the command and the numbers)")
 	}
 	seconds, err := strconv.Atoi(raw)
 	require.NoError(t, err)
