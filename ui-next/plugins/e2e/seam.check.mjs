@@ -5497,13 +5497,21 @@ async function keepCopies(page) {
   });
 }
 
-/** What the whole buffer of the emulator holds, scrollback and screen, read as a person copies it: select all, copy. */
+/**
+ * What the whole buffer of the emulator holds, scrollback and screen, read as a person copies it: select all, copy. The emulator drops a selection when it is typed into, when its rows change and when the program on it switches between the
+ * normal and the alternate screen (xterm.js, `SelectionService`), and a copy of no selection puts nothing on the clipboard. A read that is made while the shell's output is still arriving (the Enter that ends a program on the alternate
+ * screen) can have its select all undone by the switch before its copy: no copy then ever comes, and a wait for one runs out. So the two chords are pressed again, every two seconds, until a copy has come. Nothing is cleared between the
+ * rounds: a copy that was only slow lands in the same place, and the last one is read.
+ */
 async function bufferOf(page, mac) {
+  const deadline = Date.now() + 15_000;
   await page.evaluate(() => { window.__copied.length = 0; });
-  await page.keyboard.press(mac ? 'Meta+a' : 'Control+Shift+A');
-  await page.keyboard.press(mac ? 'Meta+c' : 'Control+Shift+C');
-  await waitUntil('the copy of the buffer', () => page.evaluate(() => window.__copied.length > 0), 15_000);
-  return page.evaluate(() => window.__copied.at(-1));
+  for (;;) {
+    await page.keyboard.press(mac ? 'Meta+a' : 'Control+Shift+A');
+    await page.keyboard.press(mac ? 'Meta+c' : 'Control+Shift+C');
+    if (await holdsWithin(() => page.evaluate(() => window.__copied.length > 0), 2_000)) return page.evaluate(() => window.__copied.at(-1));
+    if (Date.now() > deadline) throw new Error('timed out after 15000 ms waiting for the copy of the buffer');
+  }
 }
 
 const lineIn = (text, line) => text.split('\n').some((row) => row.trimEnd() === line);
@@ -7160,6 +7168,9 @@ async function checkTerminalReattach(page, base, engine) {
   assert.ok(sinceOf(wire, 'CloseSession', second, two.startedAt).length >= 1, `${engine}: the page asked the host to end it with CloseSession`);
   names = await tabLabelsOf(page);
   assert.equal(names.length, 1, `${engine}: one tab is left`);
+  // The saved window is written a quiet 400 ms after the tab is closed, and a reload that comes sooner finds the tab of a terminal that is gone (`bash (2), ended`, with the words of a terminal that is gone): the reload of (2a) waits for the
+  // host to hold the window without it.
+  await waitUntil('the host to hold the saved window without the tab that was closed', async () => !String((await callHost(base, 'GetState', 'main')).session ?? '').includes(second), 30_000);
   note('two terminals', `both came back ${(two.took / 1000).toFixed(2)} s after the reload began, in their order, each with its own shell (pids ${String(pid)} and ${String(pidB)}); closing the second ended it`);
 
   // (2a) A reload in the middle of a flood (3,000,000 lines, about 26 MB through the pty: longer than the reload takes whatever the machine's speed): the host holds the shell at its mark while nobody acknowledges, the new page's attach gives it the replay (which it
