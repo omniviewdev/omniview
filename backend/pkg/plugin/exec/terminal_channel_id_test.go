@@ -96,7 +96,7 @@ func TestCreateTerminalForAChannelRefusesTheIDOfARecordedPluginSession(t *testin
 
 // Two creates of one id at once, from the two lanes and from one: the plugin has made its session and holds its answer; four
 // channel creates of the id come at the same instant, and one makes the terminal; the plugin's answer is then refused. One winner.
-func TestTwoCreatesOfOneIDAtOnceHaveOneWinnerWhateverLaneTheyComeFrom(t *testing.T) {
+func TestTwoCreatesOfOneIDAtOnceFromAChannelAndAPluginHaveOneWinner(t *testing.T) {
 	fx := newTerminalFixture(t)
 	plugin := newAPluginThatHoldsItsAnswer()
 	fx.install("plugin", plugin)

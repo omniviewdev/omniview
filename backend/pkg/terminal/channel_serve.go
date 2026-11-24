@@ -458,6 +458,7 @@ func (s *session) admitFrom(c *channelConn, o *op) bool {
 			s.channel.refused.Add(1)
 			return false
 		}
+		s.channel.roomWaits.Add(1)
 		select {
 		case <-room:
 		case <-c.gone:

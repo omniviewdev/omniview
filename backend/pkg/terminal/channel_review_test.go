@@ -44,6 +44,10 @@ func TestTheNewHoldersInputWaitsForRoomInTheQueueAndIsNeverDropped(t *testing.T)
 	b := m.attach(t, info.Cap, nil)
 	b.waitReady()
 	b.input("B1\n")
+	// B's input has reached the queue's admission and found it full (a host that waits for room counts a wait, one that drops the
+	// input counts a refusal): only then does the write that holds the queue return.
+	require.Eventually(t, func() bool { st := s.channelStats(); return st.roomWaits >= 1 || st.refused >= 1 }, settle, time.Millisecond,
+		"the new holder's input found the queue full")
 	dev.openAll()
 	require.Eventually(t, func() bool { return s.channelStats().refused > 0 || contains(dev.log(), "w:B1\n") }, settle, time.Millisecond,
 		"the new holder's input was applied or refused")
@@ -57,7 +61,7 @@ func TestTheNewHoldersInputWaitsForRoomInTheQueueAndIsNeverDropped(t *testing.T)
 
 // M1, the other way: a stream whose input waits for room and then loses the terminal is refused, once, and what it waited to type
 // never reaches the shell; the stream that took the terminal from it is applied, in its turn.
-func TestAStreamThatLosesTheTerminalWhileItsInputWaitsIsRefusedAndTheNewHoldersIsApplied(t *testing.T) {
+func TestAFormerHolderWhoseInputWaitsForRoomIsRefusedAndTheNewHoldersIsApplied(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	info := m.startChannel(t, `sleep 600`, Options{})
 	s := m.chanOf(t, info)
@@ -70,9 +74,13 @@ func TestAStreamThatLosesTheTerminalWhileItsInputWaitsIsRefusedAndTheNewHoldersI
 	b := m.attach(t, info.Cap, nil)
 	b.waitReady()
 	b.input("B1\n")
+	require.Eventually(t, func() bool { st := s.channelStats(); return st.roomWaits >= 1 || st.refused >= 1 }, settle, time.Millisecond,
+		"B's input found the queue full, before the terminal is taken from it")
 	c := m.attach(t, info.Cap, nil)
 	c.waitReady()
 	c.input("C1\n")
+	require.Eventually(t, func() bool { st := s.channelStats(); return st.roomWaits >= 2 || st.refused >= 2 }, settle, time.Millisecond,
+		"C's input found the queue full, before the write that holds it returns")
 	dev.openAll()
 	require.Eventually(t, func() bool { return contains(dev.log(), "w:C1\n") || s.channelStats().refused >= 2 }, settle, time.Millisecond,
 		"the last holder's input was applied or refused")
@@ -90,7 +98,7 @@ func TestAStreamThatLosesTheTerminalWhileItsInputWaitsIsRefusedAndTheNewHoldersI
 // the bookkeeping said was sent (nothing yet), so a page that acknowledged everything it was given stayed in debt for the frame:
 // the credit was lost, and a page that acknowledges at its window waits for ever. Forced order: the frame is parked in the
 // transport, the page acknowledges it and the host has finished with the acknowledgement, and only then does the Send return.
-func TestAnAcknowledgementThatArrivesBeforeTheSendReturnsIsKept(t *testing.T) {
+func TestAChannelAcknowledgementThatArrivesBeforeTheSendReturnsIsKept(t *testing.T) {
 	m, _ := newChannelManager(t, func(l *channelLimits) {
 		smallChannel(l)
 		l.inflight = 1 << 20
@@ -109,11 +117,15 @@ func TestAnAcknowledgementThatArrivesBeforeTheSendReturnsIsKept(t *testing.T) {
 	require.Eventually(t, func() bool { begun, _ := f.counts(); return begun >= 2 }, settle, time.Millisecond, "the first frame of output is in the transport")
 	first := uint64(len(f.lastSendFrame()) - outputHeaderBytes)
 
+	// The host waits in Recv for the page's next frame: a call of Recv that begins after the page sends its acknowledgement is the host
+	// having finished with it, and the count cannot mean the host's first entry into Recv.
+	require.Eventually(t, func() bool { return f.recvWaiting() == 1 }, settle, time.Millisecond, "the host waits for the page's next frame")
 	calls := f.recvCalls()
 	f.pageSend(ackFrame(uint32(first))) //nolint:gosec // A frame is at most 64 KiB.
 	require.Eventually(t, func() bool { return f.recvCalls() > calls }, settle, time.Millisecond, "the host finished with the acknowledgement")
 	f.release()
 	require.Eventually(t, func() bool { return s.channelStats().sentBytes == total }, settle, time.Millisecond, "the page was given everything")
+	require.Eventually(t, func() bool { return f.recvWaiting() == 1 }, settle, time.Millisecond, "the host waits for the page's next frame again")
 	calls = f.recvCalls()
 	f.pageSend(ackFrame(uint32(total - first))) //nolint:gosec // The sequence is a few kilobytes.
 	require.Eventually(t, func() bool { return f.recvCalls() > calls }, settle, time.Millisecond, "the host finished with the second acknowledgement")
@@ -125,12 +137,16 @@ func TestAnAcknowledgementThatArrivesBeforeTheSendReturnsIsKept(t *testing.T) {
 }
 
 // M3. A page that acknowledges when it holds a whole window of unacknowledged bytes, and a window that is not a whole number of
-// frames: after the first frame the credit that is left is less than the next frame, and a sender that sends only whole frames
+// frames: after the first frames the credit that is left is less than the next frame, and a sender that sends only whole frames
 // waits for an acknowledgement that the page will not make until it has more. The output is split to the credit that is left.
-func TestAReaderThatAcknowledgesExactlyTheWindowIsNotDeadlockedByAFrameThatDoesNotFitTheRest(t *testing.T) {
+// Forced: the page turns the window on before any output exists, and all the output waits in the ring, more than the credit, when
+// the first frame is let through.
+func TestAChannelReaderThatAcknowledgesExactlyTheWindowIsNotDeadlockedByAFrameThatDoesNotFitTheRest(t *testing.T) {
 	const window = 100_000 // less than two frames of 64 KiB
 	m, _ := newChannelManager(t, func(l *channelLimits) {
 		smallChannel(l)
+		l.ring = 1 << 20 // holds all of the output: nothing is overwritten while the first frame is held
+		l.high = 1 << 20 // the pump is not paced: the ring fills while the first frame is held
 		l.inflight = window
 	})
 	withFakeClock(m)
@@ -138,9 +154,20 @@ func TestAReaderThatAcknowledgesExactlyTheWindowIsNotDeadlockedByAFrameThatDoesN
 	const lines = 60000
 	total := countingLen(lines)
 	info := m.startChannel(t, countingScript(lines, hold), Options{})
-	page := m.attachAcking(t, info.Cap, nil, window)
+	s := m.chanOf(t, info)
+	f := newFakeChannel(t)
+	f.park(1) // the first frame of output is held in the transport, and the ring fills meanwhile
+	page := m.attachOn(t, f, info.Cap, nil, window)
 	page.waitReady()
+	// The first acknowledgement turns the window on: the page makes it (of nothing) before the shell has written a byte.
+	require.Eventually(t, func() bool { return f.recvWaiting() == 1 }, settle, time.Millisecond, "the host waits for the page's next frame")
+	calls := f.recvCalls()
+	page.ack(0)
+	require.Eventually(t, func() bool { return f.recvCalls() > calls }, settle, time.Millisecond, "the host finished with the acknowledgement")
 	hold.release(t)
+	require.Eventually(t, func() bool { begun, _ := f.counts(); return begun >= 2 }, settle, time.Millisecond, "the first frame of output is in the transport")
+	require.Eventually(t, func() bool { return s.channelStats().end == total }, settle, time.Millisecond, "all of the output waits in the ring, which is more than the credit")
+	f.release()
 
 	guarded(t, "split-to-credit", func() {
 		got := page.waitBytes(int(total)) //nolint:gosec // The sequence is a few hundred kilobytes.
@@ -178,7 +205,7 @@ func (c *armingClock) AfterFunc(d time.Duration, f func()) timer {
 // m5. The pump arms its timer for what is left of the stall, computed from a reading of the clock. A clock that moves between
 // the reading and the registration puts the timer after the stall by as much, and a test that moves the clock once never gets
 // it fired: the release is postponed for ever. After the timer is armed the deadline is looked at again.
-func TestAClockThatMovesWhileThePumpArmsItsTimerDoesNotPostponeTheStall(t *testing.T) {
+func TestAChannelClockThatMovesWhileThePumpArmsItsTimerDoesNotPostponeTheStall(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	clock := &armingClock{fakeClock: newFakeClock(), mu: sync.Mutex{}, onArm: nil}
 	m.clock = clock
@@ -207,7 +234,7 @@ func TestAClockThatMovesWhileThePumpArmsItsTimerDoesNotPostponeTheStall(t *testi
 // m6. fmt does not call the methods of a field that is not exported: it prints what the field holds. A struct that holds a
 // capability printed it, whatever the capability's own String and Format say. No verb prints the capability of a struct that
 // holds one: the state of a channel terminal, the kept end of one, and a copy of it.
-func TestNoVerbPrintsTheCapabilityOfAStructThatHoldsIt(t *testing.T) {
+func TestNoVerbPrintsTheCapabilityOfAChannelStructThatHoldsIt(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	running := m.startChannel(t, `sleep 600`, Options{})
 	state := m.chanOf(t, running).channel

@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+# T3-channel negative controls (docs/ui-next/status/T3-channel.md; rule 28 of docs/ui-next/AGENTS.md). Run from the repository root:
+#   python3 docs/ui-next/status/T3-channel/mutate.py.txt [control number ...]
+#
+# Every control is a fault in a SCRATCH copy of one non-test source file (go test -overlay): the worktree is not edited. For each
+# control the script runs the tests named for it twice:
+#   1. with the fault: every named test must fail, by an assertion of its own (a testify "Error Trace" and the message written
+#      here), no other test of the run may fail, and nothing may panic, time out or fail to build;
+#   2. with the fault and the assertions that catch it switched off (guarded() in the tests reads TERMINAL_CHANNEL_CONTROL_OFF):
+#      every named test must pass, which shows that nothing else of that test catches the fault.
+# The faults are the ones a careless change would make; each is the smallest edit that breaks the property. Other tests of the
+# package may catch the same fault as well: a control says that the named test does, by that assertion, and that it is the only
+# thing in that test that does.
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.getcwd()
+TERMINAL = "backend/pkg/terminal"
+EXEC = "backend/pkg/plugin/exec"
+OFF = "TERMINAL_CHANNEL_CONTROL_OFF"
+
+CHANNEL = TERMINAL + "/channel.go"
+SERVE = TERMINAL + "/channel_serve.go"
+PACE = TERMINAL + "/channel_pace.go"
+RING = TERMINAL + "/replay.go"
+MANAGER = TERMINAL + "/manager.go"
+ORDERED = TERMINAL + "/ordered.go"
+CONTROLLER = EXEC + "/controller.go"
+
+BY_CAP = "TestEveryCallThatNamesAChannelTerminalByItsCapabilityAnswersTheOneNotFoundForAnyThatOpensNothing"
+BY_ID = "TestAChannelTerminalIsInvisibleToEveryCallThatNamesATerminalByItsId"
+EXEC_BY_ID = "TestAChannelTerminalIsInvisibleToEveryBindingThatNamesATerminalByItsId"
+FIRST_FRAME = "TestTheFirstFrameIsTheAttachAndAnythingElseGetsTheOneNotFoundAndTheStreamCloses"
+ENDED = "TestTheEndOfATerminalIsSentAfterItsLastOutputAndTheStreamClosesAndTheCapabilityStaysValidUntilDismissed"
+EXEC_EVENTS = "TestAChannelTerminalSendsNoEventOfTheEventsLane"
+NO_READER = "TestAChildNeverBlocksWhenNoReaderTakesAFrame"
+NO_STREAM = "TestTheShellIsNeverHeldWhileNoStreamHoldsIt"
+WAKES = "TestAPageThatWakesGetsAGapOfExactlyWhatTheRingOverwroteThenTheExactSequence"
+STALL = "TestTheStallIsDecidedByTheClockAndNotBeforeIt"
+OLDER = "TestAReattachOlderThanTheRingSaysExactlyHowMuchWasLost"
+TAKEN_INPUT = "TestInputThatWasTakenInBeforeAHandoverIsAppliedBeforeTheNewHoldersAndNothingAfterIt"
+TAKEN_RESIZE = "TestAResizeThatWasTakenInBeforeAHandoverIsAppliedBeforeTheNewHoldersAndNothingAfterIt"
+WAITS_FOR_ROOM = "TestTheNewHoldersInputWaitsForRoomInTheQueueAndIsNeverDropped"
+LOSES_WHILE_WAITING = "TestAFormerHolderWhoseInputWaitsForRoomIsRefusedAndTheNewHoldersIsApplied"
+EARLY_ACK = "TestAChannelAcknowledgementThatArrivesBeforeTheSendReturnsIsKept"
+WINDOW_ACK = "TestAChannelReaderThatAcknowledgesExactlyTheWindowIsNotDeadlockedByAFrameThatDoesNotFitTheRest"
+POSTPONED = "TestAChannelClockThatMovesWhileThePumpArmsItsTimerDoesNotPostponeTheStall"
+FORMATTED = "TestNoVerbPrintsTheCapabilityOfAChannelStructThatHoldsIt"
+CHANNEL_ID_1 = "TestCreateSessionRefusesTheIDOfAChannelTerminalAndNoPluginIsAsked"
+CHANNEL_ID_2 = "TestAPluginSessionThatAnswersTheIDOfAChannelTerminalMadeMeanwhileIsRefusedAndClosed"
+CHANNEL_ID_3 = "TestTwoCreatesOfOneIDAtOnceFromAChannelAndAPluginHaveOneWinner"
+CHANNEL_ID_4 = "TestAnIDThatAChannelTerminalIsBeingMadeWithIsHeldAgainstEveryLane"
+IN_USE = "the refusal is the one CreateTerminal gives for an id in use"
+CHANNEL_FRAME_1 = "TestAPluginFrameUnderTheIDOfAChannelTerminalIsDropped"
+CHANNEL_FRAME_2 = "TestAPluginsCloseUnderTheIDOfAChannelTerminalNeitherEndsItNorReachesAWindow"
+
+# number, what the fault is, file, the edits (each: the text it replaces, once, and the text it puts there), then the checks: for
+# each package the tests named for the fault with a part of the message of the assertion that must fail, and the guards (names in
+# the tests) that catch it.
+CONTROLS = [
+    (1, "the capability is compared by its first 16 bytes: a near miss opens the terminal", CHANNEL,
+     [("subtle.ConstantTimeCompare([]byte(*c.secret), want) == 1",
+       "subtle.ConstantTimeCompare([]byte(*c.secret)[:16], want[:min(16, len(want))]) == 1")],
+     [(TERMINAL, [(BY_CAP, "An error is expected but got nil")], ["wrong-cap-opens-nothing", "the-answer-holds-nothing-sent"])]),
+
+    (2, "a terminal that is closing opens nothing, but says so in other words than the others (the answer is an oracle)", CHANNEL,
+     [("\tif s == nil || s.ending.Load() {\n\t\treturn nil, ChannelNotFound()\n\t}\n\treturn s, nil\n",
+       "\tif s != nil && s.ending.Load() {\n\t\treturn nil, fmt.Errorf(\"the terminal is closing\")\n\t}\n\tif s == nil {\n\t\treturn nil, ChannelNotFound()\n\t}\n\treturn s, nil\n")],
+     [(TERMINAL, [(BY_CAP, "one answer, whatever the reason")], ["wrong-cap-opens-nothing"])]),
+
+    (3, "a stream whose capability opens nothing is answered by a frame that is not the bare not-found (the first frame is an oracle)", SERVE,
+     [("\tdefault:\n\t\trefuseChannel(ch)\n", "\tdefault:\n\t\t_ = ch.Send([]byte{frameNotFound, 0})\n")],
+     [(TERMINAL, [(FIRST_FRAME, "the not-found frame, with no payload")], ["one-not-found"])]),
+
+    (4, "the calls that name a terminal by its id reach a channel terminal (the manager's live() no longer refuses it)", MANAGER,
+     [("if s == nil || s.ending.Load() || s.channel != nil {", "if s == nil || s.ending.Load() {")],
+     [(TERMINAL, [(BY_ID, "An error is expected but got nil")], ["legacy-invisible"]),
+      (EXEC, [(EXEC_BY_ID, None)], ["exec-legacy-invisible"])]),
+
+    (5, "the end of a channel terminal is also sent as a CLOSE of the events lane", MANAGER,
+     [("\tif s.channel != nil {\n\t\tm.channelEnded(s, end)\n\t} else {\n\t\tm.sink.Closed(s.id, end)\n\t}\n",
+       "\tif s.channel != nil {\n\t\tm.channelEnded(s, end)\n\t}\n\tm.sink.Closed(s.id, end)\n")],
+     [(TERMINAL, [(ENDED, "no CLOSE event")], ["no-legacy-event"]),
+      (EXEC, [(EXEC_EVENTS, None)], ["exec-no-legacy-event"])]),
+
+    (6, "a stream that was displaced can still type: input of a stream is admitted without asking who holds the terminal", SERVE,
+     [("if s.channel.holder != c || s.fate.set || s.ending.Load() {", "if s.fate.set || s.ending.Load() {")],
+     [(TERMINAL, [(TAKEN_INPUT, "A's input after the handover was read"), (TAKEN_RESIZE, "A's resize after the handover was read")],
+       ["decide-and-act"])]),
+
+    (7, "the handover drops what the stream that gave the terminal away had taken in (and the new holder's input with it)", SERVE,
+     [("\t\told.displace()\n\t}\n\ts.channel.holder = c\n", "\t\told.displace()\n\t\ts.queue.close(errNotClaimable)\n\t}\n\ts.channel.holder = c\n")],
+     [(TERMINAL, [(TAKEN_INPUT, "B's input is behind A's"), (TAKEN_RESIZE, "B's resize is behind A's")], ["decide-and-act"])]),
+
+    (8, "the stall never releases the pump: a page that sleeps holds the shell for ever", PACE,
+     [("if idle := s.clock.Now().Sub(progress); idle >= m.channel.stall {", "if idle := s.clock.Now().Sub(progress); false && idle >= m.channel.stall {")],
+     [(TERMINAL, [(NO_READER, "the child never wrote 20 rings"), (STALL, "the stall let the pump go")],
+       ["stall-release", "child-not-blocked"])]),
+
+    (9, "the stall releases the pump at half of it, before the clock says so", PACE,
+     [("if idle := s.clock.Now().Sub(progress); idle >= m.channel.stall {", "if idle := s.clock.Now().Sub(progress); idle >= m.channel.stall/2 {")],
+     [(TERMINAL, [(STALL, "the pump looked again and waited again")], ["stall-not-early"])]),
+
+    (10, "a terminal that no stream holds holds the pump (the legacy hold of a detached reader)", PACE,
+     [("\t\tif holder == nil {\n\t\t\tif ch.paused {\n\t\t\t\tch.noHolderReleases.Add(1)\n\t\t\t}\n\t\t\tch.paused, ch.stalled = false, false\n\t\t\treturn\n\t\t}\n",
+       "\t\tif holder == nil {\n\t\t\tselect {\n\t\t\tcase <-ch.wake:\n\t\t\t\tcontinue\n\t\t\tcase <-s.exited:\n\t\t\t\treturn\n\t\t\t}\n\t\t}\n")],
+     [(TERMINAL, [(NO_STREAM, "the child never wrote 20 rings")], ["no-holder-no-wait"])]),
+
+    (11, "the ring does not count the bytes it overwrites", RING,
+     [("\t\tr.overwritten += offset(len(head.data))\n", "")],
+     [(TERMINAL, [(NO_READER, "what it overwrote is counted"), (NO_STREAM, "what it overwrote is counted")], ["ring-counts"])]),
+
+    (12, "the ring keeps the wrong bytes: the last byte of everything written to it is changed", RING,
+     [("\t\ttail.data = append(tail.data, p[:n]...)\n",
+       "\t\ttail.data = append(tail.data, p[:n]...)\n\t\tif n > 0 {\n\t\t\ttail.data[len(tail.data)-1] ^= 0x01\n\t\t}\n")],
+     [(TERMINAL, [(NO_READER, "the ring holds the newest"), (NO_STREAM, "the ring holds the newest")], ["newest-bytes"])]),
+
+    (13, "the gap frame says it ends one byte before the output goes on", SERVE,
+     [("return sd.send(gapFrame(next.from, next.to), next)", "return sd.send(gapFrame(next.from, next.to-1), next)")],
+     [(TERMINAL, [(WAKES, "from the end of what was sent to the first byte the ring still has")], ["gap-frame", "lost-counted"])]),
+
+    (14, "the stream counts one byte more lost than its gap says", SERVE,
+     [("c.lost.Add(step.to - step.from)", "c.lost.Add(step.to - step.from + 1)")],
+     [(TERMINAL, [(WAKES, "what was delivered and what was lost are all of the output")], ["lost-counted"])]),
+
+    (15, "ready says one byte more is lost than the ring dropped of what the page asked for", SERVE,
+     [("lost = view.start - *from", "lost = view.start - *from + 1")],
+     [(TERMINAL, [(OLDER, "how much of what the page asked for is gone")], ["lost-exact"])]),
+
+    # The findings of the review of 6052c031.
+    (16, "M1: a queue that is full refuses the input of the stream that holds the terminal instead of making it wait for room", ORDERED,
+     [("if q.err == nil && q.full(o) {", "if false && q.err == nil && q.full(o) {")],
+     [(TERMINAL, [(WAITS_FOR_ROOM, "the new holder's input was applied, after the write that held the queue"),
+                  (LOSES_WHILE_WAITING, "the stream that holds the terminal now is applied")], ["new-holder-input-waits"])]),
+
+    (17, "M2: an acknowledgement is cut down to the bytes whose Send has returned (an early one is lost)", SERVE,
+     [("c.acked.Store(min(c.acked.Load()+uint64(n), c.begun.Load()))", "c.acked.Store(min(c.acked.Load()+uint64(n), c.sentBytes.Load()))")],
+     [(TERMINAL, [(EARLY_ACK, "the page acknowledged all it was given")], ["early-ack-kept"])]),
+
+    (18, "M3: the output is sent in whole frames only, so a frame that does not fit the credit that is left waits for credit the page will not give", SERVE,
+     [("\treturn int(min(room, uint64(lim.frame))), true //nolint:gosec // The limit is a positive number of bytes, and the result is at most a frame.\n",
+       "\treturn lim.frame, room >= uint64(lim.frame)\n")],
+     [(TERMINAL, [(WINDOW_ACK, "the page never saw")], ["split-to-credit"])]),
+
+    (19, "M4: the id check of every lane ignores the channel terminals (those being made and those the manager holds)", CONTROLLER,
+     [("\treturn c.channelMaking[id] || (c.terminalManager != nil && c.terminalManager.HoldsID(id))\n", "\treturn false\n")],
+     [(EXEC, [(CHANNEL_ID_1, IN_USE), (CHANNEL_ID_2, IN_USE), (CHANNEL_ID_3, IN_USE), (CHANNEL_ID_4, IN_USE)], ["channel-id-held"])]),
+
+    (20, "m5: the pump does not look at the deadline again once its timer is armed, so a clock that moved postpones the release for ever", PACE,
+     [("\tif !s.clock.Now().Before(deadline) {\n\t\treturn true\n\t}\n", "")],
+     [(TERMINAL, [(POSTPONED, "the stall let the pump go, though the clock moved while its timer was armed")], ["stall-not-postponed"])]),
+
+    (21, "m6: the capability keeps a plain copy of the secret in the struct that holds it, which fmt prints", CHANNEL,
+     [("type capability struct{ secret *string }", "type capability struct {\n\tsecret *string\n\tplain  string\n}"),
+      ("\treturn capability{secret: &secret}, nil\n", "\treturn capability{secret: &secret, plain: secret}, nil\n")],
+     [(TERMINAL, [(FORMATTED, "with %v")], ["struct-redacts-capability"])]),
+
+    # The finding of the second review (of 20a54f7a): a plugin's frames under the id of a channel terminal.
+    (22, "A: the output of a plugin under the id of a channel terminal is delivered (the dispatch does not ask whether a channel terminal holds the id)", CONTROLLER,
+     [("\tchannelHeld := c.channelHoldsLocked(output.SessionID)\n", "\tchannelHeld := false\n")],
+     [(EXEC, [(CHANNEL_FRAME_1, "nothing of a plugin goes out under the id of a channel terminal")], ["channel-id-frames-dropped"])]),
+
+    (23, "A: the CLOSE of a plugin under the id of a channel terminal is decided in the record's critical section without asking whether a channel terminal holds the id", EXEC + "/ended_session.go",
+     [("heldByAnother(record, recorded, pluginID, c.channelHoldsLocked(sessionID))", "heldByAnother(record, recorded, pluginID, false)")],
+     [(EXEC, [(CHANNEL_FRAME_2, "the decision is taken with the record, in one step")], ["channel-id-frames-dropped"])]),
+]
+
+
+def read(path):
+    with open(os.path.join(ROOT, path)) as handle:
+        return handle.read()
+
+
+def replaced(text, old, new):
+    if text.count(old) != 1:
+        sys.exit("control cannot be built: %r is in the file %d times" % (old[:80], text.count(old)))
+    return text.replace(old, new)
+
+
+def run(package, tests, overlay_files, off):
+    scratch = tempfile.mkdtemp(prefix="t3-control-")
+    replace = {}
+    for path, text in overlay_files.items():
+        copy = os.path.join(scratch, path.replace("/", "__"))
+        with open(copy, "w") as handle:
+            handle.write(text)
+        replace[os.path.join(ROOT, path)] = copy
+    overlay = os.path.join(scratch, "overlay.json")
+    with open(overlay, "w") as handle:
+        json.dump({"Replace": replace}, handle)
+    env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="local")
+    env.pop(OFF, None)
+    if off:
+        env[OFF] = ",".join(off)
+    done = subprocess.run(
+        ["go", "test", "-overlay=" + overlay, "-run", "^(" + "|".join(tests) + ")$", "-count=1", "-timeout", "300s", "-v",
+         "./" + package + "/"],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    return done.returncode, done.stdout + done.stderr
+
+
+def block(out, name):
+    start = out.find("=== RUN   " + name)
+    end = out.find("--- FAIL: " + name)
+    return out[start:end] if 0 <= start < end else out
+
+
+def red_as_named(out, named):
+    failed = set(re.findall(r"^--- FAIL: (\w+)", out, re.M))
+    if failed != {test for test, _ in named}:
+        return False, "failed %s, named %s" % (sorted(failed), sorted(test for test, _ in named))
+    for marker in ("panic:", "test timed out", "[build failed]", "[setup failed]"):
+        if marker in out:
+            return False, "the run has %r: not an assertion" % marker
+    for test, message in named:
+        text = block(out, test)
+        if "Error Trace:" not in text:
+            return False, "%s failed without a testify assertion" % test
+        if message is not None and message not in text:
+            return False, "%s failed, but not with %r" % (test, message)
+    return True, ""
+
+
+def main():
+    chosen = {int(arg) for arg in sys.argv[1:]}
+    bad = 0
+    for number, what, path, edits, checks in CONTROLS:
+        if chosen and number not in chosen:
+            continue
+        faulty = read(path)
+        for old, new in edits:
+            faulty = replaced(faulty, old, new)
+        print("C%-2d %s" % (number, what), flush=True)
+        for package, named, guards in checks:
+            tests = [test for test, _ in named]
+            code, out = run(package, tests, {path: faulty}, [])
+            ok, why = red_as_named(out, named)
+            print("      %-8s with the fault: %s" % (package.split("/")[-1], "RED by its assertion: %s" % ", ".join(tests) if ok else "NOT AS NAMED (%s)" % why), flush=True)
+            if not ok:
+                bad += 1
+                print(out[-2500:])
+            code, out = run(package, tests, {path: faulty}, guards)
+            passed = code == 0 and all(("--- PASS: " + test) in out for test in tests)
+            print("      %-8s fault, %s off: %s" % ("", ", ".join(guards), "passes (nothing else of the test catches it)" if passed else "STILL FAILS (exit %d)" % code), flush=True)
+            if not passed:
+                bad += 1
+                print(out[-2500:])
+    print("controls not as named:", bad)
+    sys.exit(1 if bad else 0)
+
+
+main()

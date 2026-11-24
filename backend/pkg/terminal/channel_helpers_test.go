@@ -90,6 +90,8 @@ type fakeChannel struct {
 	sends, taken int
 	// recvs counts the Recv calls begun: when it goes up, the host has finished with the frame it took before.
 	recvs int
+	// waiting is how many Recv calls wait for a frame now: the host is inside its read of the page's next frame.
+	waiting int
 	// lastSend is the frame of the latest Send that began, whether or not it returned.
 	lastSend []byte
 	// gate decides what a Send does from the gateFrom-th on: pass, park until release, or pass one for each token.
@@ -103,7 +105,7 @@ type fakeChannel struct {
 func newFakeChannel(t testing.TB) *fakeChannel {
 	t.Helper()
 	f := &fakeChannel{
-		mu: sync.Mutex{}, toPage: nil, read: 0, toHost: nil, sends: 0, taken: 0, recvs: 0, lastSend: nil, gate: gateOpen, gateFrom: 0, tokens: 0, closed: false, done: make(chan struct{}),
+		mu: sync.Mutex{}, toPage: nil, read: 0, toHost: nil, sends: 0, taken: 0, recvs: 0, waiting: 0, lastSend: nil, gate: gateOpen, gateFrom: 0, tokens: 0, closed: false, done: make(chan struct{}),
 	}
 	f.cond = sync.NewCond(&f.mu)
 	t.Cleanup(func() { _ = f.Close() })
@@ -139,7 +141,9 @@ func (f *fakeChannel) Recv() ([]byte, error) {
 	defer f.mu.Unlock()
 	f.recvs++
 	for len(f.toHost) == 0 && !f.closed {
+		f.waiting++
 		f.cond.Wait()
+		f.waiting--
 	}
 	if f.closed {
 		return nil, errFakeClosed
@@ -206,6 +210,14 @@ func (f *fakeChannel) recvCalls() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.recvs
+}
+
+// recvWaiting says how many Recv calls wait for a frame: with it at one the host has finished with every frame it took, and the
+// next call of Recv that begins is the host having finished with the frame the page sends now.
+func (f *fakeChannel) recvWaiting() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.waiting
 }
 
 // allFrames is every frame the host sent that the transport took, in order.

@@ -124,6 +124,8 @@ type channelState struct {
 	// progress, noHolderReleases the times it was let go because nobody held the terminal, admitted the inputs the stream that
 	// holds the terminal had taken in and refused those of a stream that does not.
 	waits, stallReleases, noHolderReleases, admitted, refused atomic.Uint64
+	// roomWaits counts the times an input of the stream that holds the terminal waited for room in the queue.
+	roomWaits atomic.Uint64
 }
 
 func newChannelState(channel bool, secret capability) *channelState {
@@ -133,7 +135,7 @@ func newChannelState(channel bool, secret capability) *channelState {
 	return &channelState{
 		capability: secret, holder: nil, holderPtr: atomic.Pointer[channelConn]{}, ended: atomic.Pointer[End]{}, wake: make(chan struct{}, 1),
 		paused: false, stalled: false, waits: atomic.Uint64{}, stallReleases: atomic.Uint64{}, noHolderReleases: atomic.Uint64{},
-		admitted: atomic.Uint64{}, refused: atomic.Uint64{},
+		admitted: atomic.Uint64{}, refused: atomic.Uint64{}, roomWaits: atomic.Uint64{},
 	}
 }
 
@@ -185,6 +187,7 @@ type channelStats struct {
 	waits, stallReleases          uint64
 	noHolderReleases              uint64
 	admitted, refused             uint64
+	roomWaits                     uint64
 }
 
 func (s *session) channelStats() channelStats {
@@ -206,6 +209,7 @@ func (s *session) channelStats() channelStats {
 	}
 	st.waits, st.stallReleases, st.noHolderReleases = ch.waits.Load(), ch.stallReleases.Load(), ch.noHolderReleases.Load()
 	st.admitted, st.refused = ch.admitted.Load(), ch.refused.Load()
+	st.roomWaits = ch.roomWaits.Load()
 	return st
 }
 
