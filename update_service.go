@@ -48,6 +48,7 @@ type UpdateService struct {
 	releaseURL               string
 	lastCheckedAt            string
 	unsupportedReason        string
+	version                  string
 	cancel                   context.CancelFunc
 }
 
@@ -97,7 +98,7 @@ type ChannelList struct {
 
 func newUpdateService(app *application.App, channel, root, version string, updateMode func() string, listActiveWork func() []ActiveWork) *UpdateService {
 	s := &UpdateService{
-		updater: app.Updater, channel: channel, root: root,
+		updater: app.Updater, channel: channel, root: root, version: version,
 		updateMode: updateMode, listActiveWork: listActiveWork, modeChanged: make(chan struct{}, 1),
 	}
 	if reason := buildUnsupportedReason(); reason != "" {
@@ -307,7 +308,7 @@ func (s *UpdateService) Status() UpdateStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return UpdateStatus{
-		State: state, Version: s.updater.CurrentVersion(), AvailableVersion: s.availableVersion,
+		State: state, Version: s.version, AvailableVersion: s.availableVersion,
 		Error: s.lastError, Channel: s.channel, SwitchTarget: s.switchTarget,
 		Canceled: s.canceled, ReleaseURL: s.releaseURL, LastCheckedAt: s.lastCheckedAt,
 		UnsupportedReason: s.unsupportedReason,
