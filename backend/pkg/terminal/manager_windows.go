@@ -124,3 +124,37 @@ func (m *Manager) SetFlowStall(_ time.Duration) {}
 
 // Revoke is not supported: no session can exist.
 func (m *Manager) Revoke(sessionID string, _ Owner) error { return apperror.SessionNotFound(sessionID) }
+
+// The calls that name a terminal by its id for the window that holds it: no session can exist, and the id is not found.
+
+func (m *Manager) WriteOwned(sessionID string, _ Owner, _ uint64, _ []byte) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) ResizeOwned(sessionID string, _ Owner, _ uint64, _, _ int) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) AckOwned(sessionID string, _ Owner, _ int) error {
+	return apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) BusyOwned(sessionID string, _ Owner) (Foreground, error) {
+	return Foreground{}, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) CwdOwned(sessionID string, _ Owner) (Directory, error) {
+	return Directory{}, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) GetOwned(sessionID string, _ Owner) (*sdkexec.Session, error) {
+	return nil, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) DetachOwned(sessionID string, _ Owner) (*sdkexec.Session, error) {
+	return nil, apperror.SessionNotFound(sessionID)
+}
+
+func (m *Manager) AttachOwned(sessionID string, _ Owner) (*sdkexec.Session, []byte, error) {
+	return nil, nil, apperror.SessionNotFound(sessionID)
+}

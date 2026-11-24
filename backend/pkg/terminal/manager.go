@@ -109,6 +109,10 @@ type Manager struct {
 	// that ended by itself left and the transfer of that end to the window that attaches it, when a dismissal that lands
 	// must find the end still held by the window that held it (hookBeforeTransfer).
 	beforeTransfer func(id string)
+	// afterAdmit is set by a test, and by nothing else: it runs between a window's input being taken in (the check of who holds
+	// the terminal and the hand-over to its input queue) and the call that waits for it to be applied, when a claim that lands
+	// must find the terminal as the call left it (hookAfterAdmit).
+	afterAdmit func(id string)
 }
 
 // endedMemory is how many ended sessions the manager remembers.
@@ -140,7 +144,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
-		beforeEnd: nil, beforeTransfer: nil,
+		beforeEnd: nil, beforeTransfer: nil, afterAdmit: nil,
 	}
 	go m.forwardSignals()
 	go m.shutdownWhenDone()
@@ -152,6 +156,13 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 func (m *Manager) hookBeforeTransfer(id string) {
 	if m.beforeTransfer != nil {
 		m.beforeTransfer(id)
+	}
+}
+
+// hookAfterAdmit runs the test's hold at the instant after a window's input was taken in (Manager.afterAdmit).
+func (m *Manager) hookAfterAdmit(id string) {
+	if m.afterAdmit != nil {
+		m.afterAdmit(id)
 	}
 }
 

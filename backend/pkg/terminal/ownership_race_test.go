@@ -3,13 +3,19 @@
 package terminal
 
 import (
+	"fmt"
 	"math/rand/v2"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
+
+	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 )
 
 // THE RACES OF OWNERSHIP IN THE MANAGER (T2c-go.md, CodeRabbit on #677).
@@ -390,4 +396,173 @@ func TestAnOfferIsTakenBackByTheWindowThatMadeItAndByNoOtherAndOnlyOnce(t *testi
 	require.NoError(t, m.Offer(info.ID, "wA", OfferTTL), "and it can be offered again")
 	require.NoError(t, m.Claim(info.ID, "wB"))
 	notFound(t, m.Revoke(info.ID, "wA"), info.ID)
+}
+
+// 5. THE CALLS THAT NAME A TERMINAL BY ITS ID: WHO HOLDS IT AND WHAT THE CALL DOES ARE ONE STEP.
+//
+// A call that read who holds the terminal, let go of the lock and then acted, lets a window that has just lost the terminal
+// (an offer that was used) type into it, resize it or credit its flow after the window that took it has begun to. The
+// decision is taken under the session's lock, in the same step as the hand-over of the call to the terminal's input queue
+// (which orders it with the other input, and which the new holder's input then follows), and what the call does after that is
+// the call of a window that held the terminal when it asked. Manager.afterAdmit holds a call in the instant after the
+// decision, to place a claim there.
+
+// sizeOf is the size the terminal of the session has.
+func (m *Manager) sizeOf(t *testing.T, id string) (int, int) {
+	t.Helper()
+	var winsize *unix.Winsize
+	require.NoError(t, control(m.session(t, id).master, func(fd int) error {
+		var err error
+		winsize, err = unix.IoctlGetWinsize(fd, unix.TIOCGWINSZ)
+		return err
+	}))
+	return int(winsize.Row), int(winsize.Col)
+}
+
+// Input that was taken in while its window held the terminal is applied before the input of the window that claims the
+// terminal in the next instant, and the window that gave the terminal away types nothing into it afterwards.
+func TestInputThatWasTakenInBeforeAClaimIsAppliedBeforeTheNewHoldersAndNothingAfterIt(t *testing.T) {
+	m, sink := newPageManager(t)
+	info := m.startKeyed(t, `stty -echo; cat`, "wA", Options{})
+	require.NoError(t, m.Offer(info.ID, "wA", OfferTTL))
+	var claimErr, bErr error
+	m.afterAdmit = func(id string) {
+		m.afterAdmit = nil
+		claimErr = m.Claim(id, "wB")
+		bErr = m.WriteOwned(id, "wB", 0, []byte("B1\n"))
+	}
+
+	require.NoError(t, m.WriteOwned(info.ID, "wA", 0, []byte("A1\n")), "A held the terminal when it typed")
+	require.NoError(t, claimErr)
+	require.NoError(t, bErr)
+	sink.waitFor(t, info.ID, "B1\r\n")
+	out := sink.waitFor(t, info.ID, "A1\r\n")
+	assert.Less(t, strings.Index(out, "A1"), strings.Index(out, "B1"), "what A typed was in line before B's claim, and B's input follows it: %q", out)
+
+	notFound(t, m.WriteOwned(info.ID, "wA", 0, []byte("A2\n")), info.ID)
+	require.NoError(t, m.WriteOwned(info.ID, "wB", 0, []byte("B2\n")))
+	assert.NotContains(t, sink.waitFor(t, info.ID, "B2\r\n"), "A2", "A no longer holds the terminal: nothing it types reaches it")
+}
+
+// The same for the size of the terminal: the resize that was taken in first is applied first, so the size the terminal ends
+// with is the new holder's, and the window that gave the terminal away resizes nothing afterwards.
+func TestAResizeThatWasTakenInBeforeAClaimIsAppliedBeforeTheNewHoldersAndNothingAfterIt(t *testing.T) {
+	m, _ := newPageManager(t)
+	info := m.startKeyed(t, `stty -echo; cat`, "wA", Options{})
+	require.NoError(t, m.Offer(info.ID, "wA", OfferTTL))
+	var claimErr, bErr error
+	m.afterAdmit = func(id string) {
+		m.afterAdmit = nil
+		claimErr = m.Claim(id, "wB")
+		bErr = m.ResizeOwned(id, "wB", 0, 41, 101)
+	}
+
+	require.NoError(t, m.ResizeOwned(info.ID, "wA", 0, 31, 91), "A held the terminal when it resized")
+	require.NoError(t, claimErr)
+	require.NoError(t, bErr)
+	rows, cols := m.sizeOf(t, info.ID)
+	assert.Equal(t, 41, rows, "the size is the new holder's")
+	assert.Equal(t, 101, cols)
+
+	notFound(t, m.ResizeOwned(info.ID, "wA", 0, 32, 92), info.ID)
+	rows, cols = m.sizeOf(t, info.ID)
+	assert.Equal(t, 41, rows, "and A's later resize did nothing")
+	assert.Equal(t, 101, cols)
+}
+
+// Every call that names a terminal by its id answers the window that holds it and is told what is told of an id that never
+// was by every other, before the offer is used and after: nothing of a terminal is open to the window that gave it away.
+func TestEveryCallThatNamesATerminalByItsIdAnswersTheWindowThatHoldsItAndNoOther(t *testing.T) {
+	m, _ := newPageManager(t)
+	info := m.startPlain(t, "wA")
+	calls := map[string]func(owner Owner) error{
+		"WriteOwned":  func(o Owner) error { return m.WriteOwned(info.ID, o, 0, []byte("x")) },
+		"ResizeOwned": func(o Owner) error { return m.ResizeOwned(info.ID, o, 0, 30, 90) },
+		"AckOwned":    func(o Owner) error { return m.AckOwned(info.ID, o, 1) },
+		"BusyOwned":   func(o Owner) error { _, err := m.BusyOwned(info.ID, o); return err },
+		"CwdOwned":    func(o Owner) error { _, err := m.CwdOwned(info.ID, o); return err },
+		"GetOwned":    func(o Owner) error { _, err := m.GetOwned(info.ID, o); return err },
+		"DetachOwned": func(o Owner) error { _, err := m.DetachOwned(info.ID, o); return err },
+	}
+	holds := func(holder Owner, other ...Owner) {
+		t.Helper()
+		for name, call := range calls {
+			require.NoError(t, call(holder), "%s for the window that holds the terminal", name)
+			for _, stranger := range other {
+				notFound(t, call(stranger), info.ID)
+			}
+		}
+	}
+	holds("wA", "wB", nil, []int{1})
+
+	notFound(t, m.AckOwned("no-such-session", "wA", 1), "no-such-session")
+	_, err := m.GetOwned("no-such-session", "wA")
+	notFound(t, err, "no-such-session")
+	_, _, err = m.AttachOwned(info.ID, "wB")
+	notFound(t, err, info.ID)
+	require.NoError(t, m.Offer(info.ID, "wA", OfferTTL))
+	_, _, err = m.AttachOwned(info.ID, []int{1})
+	notFound(t, err, info.ID)
+	attached, data, err := m.AttachOwned(info.ID, "wB")
+	require.NoError(t, err, "B takes the terminal that A offered, by attaching it")
+	assert.Equal(t, info.ID, attached.ID)
+	assert.NotNil(t, data)
+
+	holds("wB", "wA", nil)
+	_, _, err = m.AttachOwned(info.ID, "wA")
+	notFound(t, err, info.ID)
+	_, _, err = m.AttachOwned(info.ID, "wB")
+	require.NoError(t, err, "the holder attaches again")
+}
+
+// Input from the window that is giving a terminal away and the claim of it at the same moment, many times, with the calls
+// held in the instant after the decision by the scheduler: whatever the order, the terminal has everything A typed before
+// anything B typed, and A is told not found from the first call that comes after the claim.
+func TestInputOfAWindowThatGivesATerminalAwayAndTheClaimOfItAtOnceKeepTheirOrder(t *testing.T) {
+	m, sink := newPageManager(t)
+	var seed atomic.Uint64
+	m.afterAdmit = func(string) { jitter(rand.New(rand.NewPCG(seed.Add(1), 3))) }
+	rng := rand.New(rand.NewPCG(11, 17))
+	for round := range 25 {
+		id := fmt.Sprintf("hand-over-%d", round)
+		m.startKeyed(t, `stty -echo; cat`, "wA", Options{ID: id})
+		require.NoError(t, m.Offer(id, "wA", OfferTTL))
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(2)
+		delay := rand.New(rand.NewPCG(rng.Uint64(), 1))
+		go func() {
+			defer wg.Done()
+			<-start
+			for i := range 200 {
+				if err := m.WriteOwned(id, "wA", 0, fmt.Appendf(nil, "A%03d\n", i)); err != nil {
+					assert.Equal(t, apperror.SessionNotFound(id).Error(), err.Error(), "A is refused as an id that never was")
+					return
+				}
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			jitter(delay)
+			assert.NoError(t, m.Claim(id, "wB"))
+			for i := range 20 {
+				assert.NoError(t, m.WriteOwned(id, "wB", 0, fmt.Appendf(nil, "B%03d\n", i)))
+			}
+		}()
+		close(start)
+		wg.Wait()
+
+		sink.waitFor(t, id, "B019\r\n")
+		firstB := -1
+		for at, word := range strings.Fields(sink.raw(id)) {
+			switch {
+			case strings.HasPrefix(word, "B") && firstB < 0:
+				firstB = at
+			case strings.HasPrefix(word, "A") && firstB >= 0:
+				require.Failf(t, "A typed into a terminal after B had begun to", "round %d: %q after B's first word", round, word)
+			}
+		}
+		require.NoError(t, m.CloseSession(id))
+	}
 }

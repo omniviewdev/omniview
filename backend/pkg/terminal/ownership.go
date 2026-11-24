@@ -227,3 +227,71 @@ func (m *Manager) Revoke(sessionID string, owner Owner) error {
 	s.offerUntil = time.Time{}
 	return nil
 }
+
+// WriteOwned applies input to a terminal for the window that holds it (the check of the window and the hand-over to the
+// terminal's input queue, which orders it with the other input, are one step under the session's lock).
+func (m *Manager) WriteOwned(sessionID string, owner Owner, seq uint64, data []byte) error {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return err
+	}
+	m.hookAfterAdmit(sessionID)
+	return m.Write(sessionID, seq, data)
+}
+
+// ResizeOwned sets the size of a terminal for the window that holds it, as WriteOwned applies input.
+func (m *Manager) ResizeOwned(sessionID string, owner Owner, seq uint64, rows, cols int) error {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return err
+	}
+	m.hookAfterAdmit(sessionID)
+	return m.Resize(sessionID, seq, rows, cols)
+}
+
+// AckOwned credits a terminal with the bytes the window that holds it took in.
+func (m *Manager) AckOwned(sessionID string, owner Owner, n int) error {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return err
+	}
+	return m.Ack(sessionID, n)
+}
+
+// BusyOwned says what holds the foreground of a terminal, to the window that holds it.
+func (m *Manager) BusyOwned(sessionID string, owner Owner) (Foreground, error) {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return Foreground{}, err
+	}
+	return m.Busy(sessionID)
+}
+
+// CwdOwned says which directory a terminal's shell is in, to the window that holds it.
+func (m *Manager) CwdOwned(sessionID string, owner Owner) (Directory, error) {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return Directory{}, err
+	}
+	return m.Cwd(sessionID)
+}
+
+// GetOwned is the facts of a terminal, for the window that holds it.
+func (m *Manager) GetOwned(sessionID string, owner Owner) (*sdkexec.Session, error) {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return nil, err
+	}
+	return m.GetSession(sessionID)
+}
+
+// DetachOwned marks a terminal as not attached, for the window that holds it (the legacy DetachSession).
+func (m *Manager) DetachOwned(sessionID string, owner Owner) (*sdkexec.Session, error) {
+	if err := m.Authorize(sessionID, owner); err != nil {
+		return nil, err
+	}
+	return m.DetachSession(sessionID)
+}
+
+// AttachOwned claims a terminal for the window (it holds it, or its owner offered it) and returns its output (the legacy
+// AttachSession).
+func (m *Manager) AttachOwned(sessionID string, owner Owner) (*sdkexec.Session, []byte, error) {
+	if err := m.Claim(sessionID, owner); err != nil {
+		return nil, nil, err
+	}
+	return m.AttachSession(sessionID)
+}

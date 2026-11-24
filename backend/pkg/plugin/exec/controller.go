@@ -788,14 +788,14 @@ func (c *controller) GetSession(
 
 	c.logger.Debugw(ctx, "GetSession")
 	index, client, ok := c.lookupSession(sessionID)
+	if ok && index.local {
+		return c.terminalManager.GetOwned(sessionID, owner)
+	}
 	if !ok || !c.visible(index, sessionID, owner) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
-	if index.local {
-		return c.terminalManager.GetSession(sessionID)
-	}
 	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
@@ -819,10 +819,7 @@ func (c *controller) AttachSession(owner terminal.Owner, sessionID string) (_ *e
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		if claimErr := c.terminalManager.Claim(sessionID, owner); claimErr != nil {
-			return nil, nil, claimErr
-		}
-		return c.terminalManager.AttachSession(sessionID)
+		return c.terminalManager.AttachOwned(sessionID, owner)
 	}
 	if claimErr := c.claimSession(sessionID, owner); claimErr != nil {
 		return nil, nil, claimErr
@@ -857,7 +854,7 @@ func (c *controller) DetachSession(owner terminal.Owner, sessionID string) (_ *e
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.DetachSession(sessionID)
+		return c.terminalManager.DetachOwned(sessionID, owner)
 	}
 	if index.ended {
 		// A window that never attached has nothing to detach from, as after the CLOSE of any session; it is also done with
@@ -902,7 +899,7 @@ func (c *controller) WriteSession(
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.Write(sessionID, 0, data)
+		return c.terminalManager.WriteOwned(sessionID, owner, 0, data)
 	}
 	if inchan == nil {
 		return apperror.SessionNotFound(sessionID)
@@ -984,7 +981,7 @@ func (c *controller) ResizeSession(
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
 	if index.local {
-		return c.terminalManager.Resize(sessionID, 0, int(rows), int(cols))
+		return c.terminalManager.ResizeOwned(sessionID, owner, 0, int(rows), int(cols))
 	}
 	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)

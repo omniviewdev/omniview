@@ -174,10 +174,7 @@ func (c *controller) WriteTerminal(owner terminal.Owner, sessionID string, seq u
 	_, span := tracer.Start(context.Background(), "exec.WriteTerminal")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
-	if err = c.terminalManager.Authorize(sessionID, owner); err != nil {
-		return err
-	}
-	return c.terminalManager.Write(sessionID, seq, data)
+	return c.terminalManager.WriteOwned(sessionID, owner, seq, data)
 }
 
 // ResizeTerminal sets the size of a local terminal, in the order of its sequence numbers, for the window that holds
@@ -188,19 +185,13 @@ func (c *controller) ResizeTerminal(owner terminal.Owner, sessionID string, seq 
 	_, span := tracer.Start(context.Background(), "exec.ResizeTerminal")
 	defer finishOp(span, &err)
 	span.SetAttributes(attribute.String("session_id", sessionID))
-	if err = c.terminalManager.Authorize(sessionID, owner); err != nil {
-		return err
-	}
-	return c.terminalManager.Resize(sessionID, seq, rows, cols)
+	return c.terminalManager.ResizeOwned(sessionID, owner, seq, rows, cols)
 }
 
 // AckTerminal tells a local terminal that n more bytes of its output were taken in by the client, when the window
 // holds it (or held it when it ended). It runs for every few kilobytes of output, so it opens no span.
 func (c *controller) AckTerminal(owner terminal.Owner, sessionID string, n int) error {
-	if err := c.terminalManager.Authorize(sessionID, owner); err != nil {
-		return err
-	}
-	return c.terminalManager.Ack(sessionID, n)
+	return c.terminalManager.AckOwned(sessionID, owner, n)
 }
 
 // IsBusy says whether something other than the shell holds a terminal's foreground. A session of a
@@ -213,13 +204,16 @@ func (c *controller) IsBusy(owner terminal.Owner, sessionID string) (_ terminal.
 	span.SetAttributes(attribute.String("session_id", sessionID))
 	var none terminal.Foreground
 	index, _, ok := c.lookupSession(sessionID)
-	if !ok || !c.holds(index, sessionID, owner) {
+	if !ok {
 		return none, apperror.SessionNotFound(sessionID)
 	}
-	if !index.local {
-		return terminal.UnknownForeground(terminal.ReasonRemote), nil
+	if index.local {
+		return c.terminalManager.BusyOwned(sessionID, owner)
 	}
-	return c.terminalManager.Busy(sessionID)
+	if !c.holds(index, sessionID, owner) {
+		return none, apperror.SessionNotFound(sessionID)
+	}
+	return terminal.UnknownForeground(terminal.ReasonRemote), nil
 }
 
 // GetCwd says which directory a terminal's shell is in now. A session of a plugin runs on another
@@ -232,13 +226,16 @@ func (c *controller) GetCwd(owner terminal.Owner, sessionID string) (_ terminal.
 	span.SetAttributes(attribute.String("session_id", sessionID))
 	var none terminal.Directory
 	index, _, ok := c.lookupSession(sessionID)
-	if !ok || !c.holds(index, sessionID, owner) {
+	if !ok {
 		return none, apperror.SessionNotFound(sessionID)
 	}
-	if !index.local {
-		return terminal.Directory{Path: "", Reason: terminal.ReasonRemote}, nil
+	if index.local {
+		return c.terminalManager.CwdOwned(sessionID, owner)
 	}
-	return c.terminalManager.Cwd(sessionID)
+	if !c.holds(index, sessionID, owner) {
+		return none, apperror.SessionNotFound(sessionID)
+	}
+	return terminal.Directory{Path: "", Reason: terminal.ReasonRemote}, nil
 }
 
 // ReleaseOwnedTerminals is what a window going away does to what it holds: its local terminals with a page key are
