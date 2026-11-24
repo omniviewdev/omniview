@@ -1,6 +1,6 @@
 import { useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MenuHost, ThemeProvider } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import '@omniviewdev/kit/styles.css';
 import { guidance } from '../content/catalog';
 import { groups } from '../content/registry';
@@ -45,9 +45,33 @@ function ExampleCanvas({ update }: { update: PreviewUpdate }) {
 
 const root = createRoot(document.getElementById('root')!);
 
-// Register before the iframe load event tells the parent to send its first update.
-window.addEventListener('message', (event: MessageEvent<PreviewUpdate>) => {
+function render(update?: PreviewUpdate) {
+  root.render(
+    <>
+      <TooltipHost />
+      {update && <ExampleCanvas update={update} />}
+    </>,
+  );
+}
+
+function handleMessage(event: MessageEvent<PreviewUpdate>) {
   if (event.source === parent && event.origin === origin && event.data?.type === 'kit-preview:update') {
-    root.render(<ExampleCanvas update={event.data} />);
+    render(event.data);
   }
-});
+}
+
+function cleanup() {
+  window.removeEventListener('message', handleMessage);
+  window.removeEventListener('pagehide', handlePageHide);
+  root.unmount();
+}
+
+function handlePageHide(event: PageTransitionEvent) {
+  if (!event.persisted) cleanup();
+}
+
+// Register before the iframe load event tells the parent to send its first update.
+window.addEventListener('message', handleMessage);
+window.addEventListener('pagehide', handlePageHide);
+import.meta.hot?.dispose(cleanup);
+render();

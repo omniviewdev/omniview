@@ -66,6 +66,21 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
+// Stylesheets can use a token as one component of a shorthand. Validate the
+// token itself, not the full declaration that happens to consume it.
+function tokenValueProperty(name: TokenName) {
+  if (name === '--ov-font-features') return 'font-feature-settings';
+  if (name.startsWith('--ov-font-')) return 'font-family';
+  if (name === '--ov-text-scale') return 'scale';
+  if (name.startsWith('--ov-fs-')) return 'font-size';
+  if (name.startsWith('--ov-lh-')) return 'line-height';
+  if (name.startsWith('--ov-radius-')) return 'border-top-left-radius';
+  if (name.startsWith('--ov-shadow-')) return 'box-shadow';
+  if (name.startsWith('--ov-spacing-') || name === '--ov-row-pad') return 'padding-top';
+  if (name.endsWith('-height') || name === '--ov-row-target') return 'height';
+  return 'color';
+}
+
 function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
   part: string;
   tokens: Guide['tokens'];
@@ -77,6 +92,7 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
+  const valueProperty = tokenValueProperty(tokenName);
   const token = tokens.find(({ name }) => name === tokenName)!;
   const active = overrides[tokenName];
   const value = resolved[tokenName];
@@ -86,8 +102,8 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
   function apply(event: FormEvent) {
     event.preventDefault();
     const next = draft.trim();
-    if (!next || /[;{}]/.test(next) || !CSS.supports(token.property, next)) {
-      setError(`Enter a valid CSS ${token.property} value.`);
+    if (!next || /[;{}]/.test(next) || !CSS.supports(valueProperty, next)) {
+      setError(`Enter a valid CSS ${valueProperty} value.`);
       return;
     }
     setOverrides({ ...overrides, [tokenName]: next });
@@ -110,16 +126,17 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
               setError('');
             }} />
           </Field>
-          <p className="token-role">{token.label}</p>
+          <p className="token-role">{token.label} — used in <code>{token.property}</code>.</p>
+          <p className="token-role">Override input accepts a CSS <code>{valueProperty}</code> value.</p>
           <div className="token-reading">
             <span>{active === undefined ? 'Current value' : 'Overridden value'}</span>
             <output className="token-value" aria-live="polite">
-              {token.property === 'color' && value && <span className="swatch" style={{ backgroundColor: value }} aria-hidden="true" />}
+              {valueProperty === 'color' && value && <span className="swatch" style={{ backgroundColor: value }} aria-hidden="true" />}
               <code>{value || '—'}</code>
             </output>
           </div>
           <Field label="Override value" layout="stacked" message={error ? { kind: 'error', text: error } : undefined}>
-            <TextInput value={draft} placeholder={token.property === 'color' ? '#74e1b0' : '8px'} onCommit={() => formRef.current?.requestSubmit()} onValueChange={(value) => {
+            <TextInput value={draft} placeholder={value || undefined} onCommit={() => formRef.current?.requestSubmit()} onValueChange={(value) => {
               setDraft(value);
               setError('');
             }} />

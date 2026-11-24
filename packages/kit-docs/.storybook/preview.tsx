@@ -7,11 +7,33 @@ import {
   TEXT_SIZES,
   THEMES,
   ThemeProvider,
+  TooltipHost,
 } from '@omniviewdev/kit';
 import '@omniviewdev/kit/styles.css';
 import type { Preview } from '@storybook/react-vite';
+import { createRoot } from 'react-dom/client';
 
 const preview: Preview = {
+  beforeAll: () => {
+    // Docs pages can render several stories in the same preview document.
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    root.render(<TooltipHost />);
+
+    function cleanup() {
+      window.removeEventListener('pagehide', handlePageHide);
+      root.unmount();
+      container.remove();
+    }
+
+    function handlePageHide(event: PageTransitionEvent) {
+      if (!event.persisted) cleanup();
+    }
+
+    window.addEventListener('pagehide', handlePageHide);
+    return cleanup;
+  },
   initialGlobals: {
     theme: DEFAULT_THEME_ID,
     density: DEFAULT_DENSITY,
