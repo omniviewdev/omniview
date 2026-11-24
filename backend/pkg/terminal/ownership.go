@@ -125,24 +125,59 @@ func (m *Manager) Claim(sessionID string, owner Owner) error {
 // CloseOwned ends a session at the request of the window that holds it, or dismisses the end that a terminal that ended
 // by itself left for the window that attached it, and when it returns the session is gone (CloseSession). Any other
 // caller is told what is told of an id that never was.
+//
+// Who holds the session is read and the end is decided in one step, under the session's lock: a window that lost the
+// terminal to another (an offer that was used) a moment ago does not end what the other holds, and a claim that comes
+// after the decision is refused (Claim), because a terminal whose end is decided is nobody's to take. A caller that
+// checked first and closed after would end the terminal of whichever window had taken it in between.
 func (m *Manager) CloseOwned(sessionID string, owner Owner) error {
-	if err := m.Authorize(sessionID, owner); err != nil {
-		return err
+	if !validCaller(owner) {
+		return apperror.SessionNotFound(sessionID)
 	}
 	s, err := m.live(sessionID)
 	if err != nil {
-		if m.dropTombstone(sessionID) {
+		if m.dismissEnded(sessionID, owner) {
 			return nil
 		}
 		return err
 	}
-	m.hookBeforeEnd(sessionID)
-	s.beginClose(ClosedByRequest)
+	s.mu.Lock()
+	if !s.heldBy(owner) {
+		s.mu.Unlock()
+		return apperror.SessionNotFound(sessionID)
+	}
+	// A shell that ended by itself in the meantime already has its fate: its own end stands, and this call waits for it.
+	decided := !s.fate.set
+	if decided {
+		s.fate = fate{set: true, closedBy: ClosedByRequest, failure: nil}
+	}
+	s.mu.Unlock()
+	if decided {
+		m.hookBeforeEnd(sessionID)
+		s.startClose()
+	}
 	m.awaitGone([]*session{s})
 	return nil
 }
 
-// hookBeforeEnd runs the test's hold at the instant before an end (Manager.beforeEnd).
+// dismissEnded forgets the end that a terminal that ended by itself left, when owner is the window that holds it (the
+// one the terminal belonged to when it ended, or the last that attached the end), and says whether it did. The window
+// is read and the end is forgotten in one step, under m.mu, where Attach hands the end to another window.
+func (m *Manager) dismissEnded(id string, owner Owner) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := m.clock.Now()
+	at := slices.IndexFunc(m.tombs, func(t *tombstone) bool {
+		return t.id == id && now.Before(t.until) && t.owner != nil && t.owner == owner
+	})
+	if at < 0 {
+		return false
+	}
+	m.tombs = slices.Delete(m.tombs, at, at+1)
+	return true
+}
+
+// hookBeforeEnd runs the test's hold at the instant between the decision to end a terminal and the end (Manager.beforeEnd).
 func (m *Manager) hookBeforeEnd(id string) {
 	if m.beforeEnd != nil {
 		m.beforeEnd(id)
