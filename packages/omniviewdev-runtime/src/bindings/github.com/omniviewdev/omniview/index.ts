@@ -9,6 +9,7 @@ export {
 };
 
 export {
+    ActiveWork,
     ChannelList,
     ChannelOption,
     FileDialogOptions,

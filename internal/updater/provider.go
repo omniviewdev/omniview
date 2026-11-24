@@ -20,7 +20,9 @@ import (
 	"golang.org/x/mod/semver"
 )
 
-const feedBase = "https://updates.omniview.dev"
+// feedBaseURL is the signed feed origin. Release builds keep the default; local lifecycle tests set it with -ldflags -X.
+var feedBaseURL = "https://updates.omniview.dev"
+
 const maxEnvelope = 1 << 20
 const defaultDownloadTimeout = 2 * time.Hour
 
@@ -85,7 +87,7 @@ func NewProvider(channel, stateRoot string, logger *log.Logger) (*Provider, erro
 	if err != nil {
 		return nil, err
 	}
-	return NewProviderWithConfig(channel, stateRoot, logger, feedBase, keys, http.DefaultClient)
+	return NewProviderWithConfig(channel, stateRoot, logger, feedBaseURL, keys, http.DefaultClient)
 }
 
 // NewProviderWithConfig constructs a provider using the supplied feed and trust configuration.

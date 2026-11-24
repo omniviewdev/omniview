@@ -9,6 +9,25 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+/**
+ * ActiveWork lists the work that a restart would end.
+ */
+export function ActiveWork(): $CancellablePromise<$models.ActiveWork[]> {
+    return $Call.ByID(2854355727).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * Cancel stops the running check or download.
+ */
+export function Cancel(): $CancellablePromise<void> {
+    return $Call.ByID(4198371898);
+}
+
+/**
+ * Check looks for an update now. Automatic mode also downloads and prepares it.
+ */
 export function Check(): $CancellablePromise<void> {
     return $Call.ByID(688929688);
 }
@@ -20,19 +39,29 @@ export function DeleteChannelData(channel: string, stateIdentity: string): $Canc
     return $Call.ByID(1463867170, channel, stateIdentity);
 }
 
+/**
+ * Download prepares the update that a previous check found.
+ */
+export function Download(): $CancellablePromise<void> {
+    return $Call.ByID(137313328);
+}
+
 export function ListChannels(): $CancellablePromise<$models.ChannelList> {
     return $Call.ByID(696511440).then(($result: any) => {
-        return $$createType0($result);
+        return $$createType2($result);
     });
 }
 
-export function Restart(): $CancellablePromise<void> {
-    return $Call.ByID(3205679179);
+/**
+ * Restart applies the prepared update. Active work blocks it unless the caller confirms.
+ */
+export function Restart(restartDespiteActiveWork: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3205679179, restartDespiteActiveWork);
 }
 
 export function Status(): $CancellablePromise<$models.UpdateStatus> {
     return $Call.ByID(1095988866).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
     });
 }
 
@@ -41,5 +70,7 @@ export function SwitchChannel(target: string, copyCurrentData: boolean): $Cancel
 }
 
 // Private type creation functions
-const $$createType0 = $models.ChannelList.createFrom;
-const $$createType1 = $models.UpdateStatus.createFrom;
+const $$createType0 = $models.ActiveWork.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.ChannelList.createFrom;
+const $$createType3 = $models.UpdateStatus.createFrom;

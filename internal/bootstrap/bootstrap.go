@@ -18,11 +18,12 @@ import (
 	logging "github.com/omniviewdev/plugin-sdk/log"
 )
 
-const settingsChangedEvent = "settings/changed"
+// SettingsChangedEvent tells listeners that a settings scope changed.
+const SettingsChangedEvent = "settings/changed"
 
 func init() {
 	// Invalidation only: setting values can contain credentials.
-	application.RegisterEvent[settingsservice.Scope](settingsChangedEvent)
+	application.RegisterEvent[settingsservice.Scope](SettingsChangedEvent)
 }
 
 // Service wraps the startup/shutdown logic that was previously in the
@@ -85,7 +86,7 @@ func (b *Service) attachSettingsEffects(ctx context.Context) {
 	})
 	b.Settings.SetChangeHandler(func(scope settingsservice.Scope) {
 		if app := application.Get(); app != nil {
-			app.Event.Emit(settingsChangedEvent, scope)
+			app.Event.Emit(SettingsChangedEvent, scope)
 		}
 	})
 }
