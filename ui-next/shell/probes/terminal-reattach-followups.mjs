@@ -1,29 +1,36 @@
-// The follow-ups of the reattach probe (T2d): what the panel does with its saved open flag after a reload, taking back a terminal whose taker has gone, and what the page does when its events come back after a gap (the rejoin by offset,
-// the rejoin when the host's ring no longer reaches back, the terminal that is not there any more). The sections run in a real xterm against the probe's own T2-go host (terminal-host.mjs, terminal-reattach.mjs says how), in both engines
-// at both viewports. This file knows nothing of the probe's own internals: terminal-reattach.mjs hands it `check`, `note`, `runAxe` and the helpers of its sections, and adds its sections, its parts and its negative controls to its own.
+// The follow-ups of the reattach probe (T2d): what the panel does with its saved open flag after a reload, taking back a terminal whose taker has gone (what a tab learns by asking the host, and what it does not learn without
+// asking), and what the page does when its stream to a terminal is lost and comes back (the reconnect from the offset it has, the reconnect when the host's ring no longer reaches back, the terminal that is not there any more). The
+// sections run in a real xterm against the probe's own terminal-channel host (terminal-host.mjs, terminal-reattach.mjs says how), in both engines at both viewports. This file knows nothing of the probe's own internals:
+// terminal-reattach.mjs hands it `check`, `note`, `runAxe` and the helpers of its sections, and adds its sections, its parts and its negative controls to its own.
 //
 // Each assertion has its own controls, each ONE fault, which trip only it:
 //   restore-open        a saved OPEN panel comes back open with its saved tool, its saved active session and its height; a saved CLOSED panel stays closed and, when it is opened, is on the tool and at the height it was left at, before another tool is chosen (restore.open)
-//   reattach-takeback   a tab that lost its terminal to another tab and whose taker then went (the host says a LATER attachment `requested` or `window-retired`) says so, has a real button that takes it back (Tab reaches it, Enter presses it, a
-//                       visible ring), makes ONE attach, runs again in the same place with its earlier output and the keyboard in it, with the lane no higher than before; while the taker lives, also when a third tab took it from the taker, there is
-//                       no button and the old sentence (reattach.takeback); axe finds nothing in the lane with the button (reattach.axe-free)
-//   reattach-rejoin     the page's events come back after a gap: it asks for the output it has by offset, once, and the numbered lines are in order with no gap and no duplicate across the blip, only live bytes are acknowledged, and the input
-//                       numbers go on from the number of the new answer (reattach.rejoin)
-//   reattach-rejoin-gap the host's ring no longer reaches back to what the page has: the screen is reset and brought to the ring by a replay, and the lines are in order from the first of the replay to the end (reattach.rejoin-gap)
-//   reattach-gone       the terminal vanished while the page was away: the tab says it is not there any more, and the page does not attach again however often the events come back (reattach.gone)
-//   reattach-rejoin-keys  a key typed while a late replay is being written (the fixture holds the end of the emulator's writes, so that the replay takes as many frames as the probe lets pass) is queued and reaches the shell once, in
-//                       order, after the replay, none lost; what the emulator answers to a query in the replayed bytes reaches the shell never (reattach.rejoin-keys)
-//   reattach-rejoin-acks  an acknowledgement that is in flight when the answer of the rejoin comes is refused after it, and what the page credits after the attach is the live bytes taken after it and nothing else (reattach.rejoin-acks)
-//   reattach-takeback-guard  a tab whose free flag is stale (a third tab holds the terminal and the host said nothing to it) presses Take it back: it asks the host who holds the terminal and attaches nothing, the button goes, the lane
+//   reattach-takeback   a tab that lost its terminal to another tab and whose taker then went says so once it has asked the host (a visible tab asks when it is shown, when it gets the focus and every few seconds: the probe waits for
+//                       the question and never provokes it), has a real button that takes it back (Tab reaches it, Enter presses it, a visible ring), makes ONE new stream that attaches with no offset, runs again in the same place with
+//                       its earlier output and the keyboard in it, with the lane no higher than before; while the taker lives, also when a third tab took the terminal from the taker, there is no button and the old sentence (reattach.takeback);
+//                       axe finds nothing in the lane with the button (reattach.axe-free)
+//   reattach-reconnect  the stream of a terminal is lost and comes back: the page connects ONCE more, with the offset it has applied up to, the host continues exactly there, the numbered lines are in order with no gap and no
+//                       duplicate across the blip, the screen is not reset, every byte of output the new stream sent (the replay included, never a gap) is acknowledged, and what is typed afterwards reaches the shell (reattach.reconnect)
+//   reattach-reconnect-gap  the host's ring no longer reaches back to what the page has (`ready.lost` is more than nothing): the screen is reset and brought to the ring by a replay, and the lines are in order from the first of the replay to the end (reattach.reconnect-gap)
+//   reattach-gone       the terminal vanished while the page was away: the host answers its one `not-found`, the page says the terminal is not there any more and does not connect again (reattach.gone)
+//   reattach-reconnect-keys  a key typed while a late replay is being written (the fixture holds the end of the emulator's writes, so that the replay takes as many frames as the probe lets pass) is queued and reaches the shell once, in
+//                       order, after the replay, none lost; what the emulator answers to a query in the replayed bytes reaches the shell never (reattach.reconnect-keys)
+//   reattach-reconnect-acks  an acknowledgement that was in flight on the stream that was lost reaches the host late, after the page's new stream has taken the terminal, and counts for nothing: what is credited after the new
+//                       attach is the bytes the new stream sent and nothing else (reattach.reconnect-acks)
+//   reattach-takeback-guard  a tab whose free flag is stale (a third tab holds the terminal and the tab has not asked since) presses Take it back: it asks the host who holds the terminal and attaches nothing, the button goes, the lane
 //                       says the terminal is taken over again and the third tab goes on typing (reattach.takeback-guard)
-//   reattach-takeback-offline  a tab whose events were down when the tab that took the terminal let it go shows the button once the events are back (it asks the host), and does not while the tab that took it still holds it (reattach.takeback-offline)
+//   reattach-takeback-offline  a tab that could not reach the host when the tab that took the terminal let it go is told nothing and shows what it showed, and shows the button once the host can be asked again (reattach.takeback-offline)
 
-/** The lines of the flood of the blips, and the bytes they are: a flood that is still running when the events stop reaching the page, and when the host runs out of credit. */
+/** The lines of the flood of the blips, and the bytes they are: a flood that is still running when the stream is lost, and that the host's backlog stops. */
 const LINES = 60_000;
 const TOTAL = LINES * 82;
 const IMAGE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 /** What a program asks the terminal in the bytes the host kept: where the cursor is, and what the terminal is. The emulator answers both, and an answer to bytes of a replay is nobody's to send. */
 const QUERIES = '\u001b[6n\u001b[c';
+/** What the shell writes while no page is there: more than a chunk of the host's ring holds, so that the ring can be trimmed past the bytes a page has. Plain lines: no escape, no number. */
+const FILLER = 'filler of the ring\r\n'.repeat(10_000);
+/** What the shell writes after the page has joined again: bytes that are live whatever the page did before. */
+const TAIL = 'after the join\r\n';
 
 /** The words of the lane of a tab that lost its terminal: while the tab that took it lives, once it has gone, and for a terminal that is not there any more. */
 const FREE = Object.freeze({
@@ -31,13 +38,14 @@ const FREE = Object.freeze({
   closed: 'The tab that took this terminal has closed',
   lease: 'The shell keeps running until its lease ends',
   gone: /not there any more/i,
+  lost: /connection to the terminal was lost/i,
   taken: 'Taken over by another tab',
 });
 
 export const FOLLOWUP_PARTS = {
   'reattach-d': ['restore-open'],
   'reattach-e': ['reattach-takeback', 'reattach-takeback-guard', 'reattach-takeback-offline'],
-  'reattach-f': ['reattach-rejoin', 'reattach-rejoin-gap', 'reattach-gone', 'reattach-rejoin-keys', 'reattach-rejoin-acks'],
+  'reattach-f': ['reattach-reconnect', 'reattach-reconnect-gap', 'reattach-gone', 'reattach-reconnect-keys', 'reattach-reconnect-acks'],
 };
 
 /** The negative controls of the follow-ups, in the shape of the probe's own table (see terminal-reattach.mjs). A `query` is a control of the fixture page, a `host` one of the far end, a `stage` and an `after` one of the page the probe plants. */
@@ -45,37 +53,38 @@ export const FOLLOWUP_CONTROLS = {
   // The saved panel comes back with the flag the other way: a restore that forgot that the panel was open, and one that forgot that it was closed.
   'restore-forgets-open': { assertion: 'restore.open', section: 'restore-open', engines: ['chromium'], query: 'control=restore-forgets-open' },
   'restore-forgets-closed': { assertion: 'restore.open', section: 'restore-open', engines: ['chromium'], query: 'control=restore-forgets-closed' },
-  // The host does not say that the tab that took the terminal has gone, so that no button appears; the button, once pressed, attaches twice.
-  'taker-gone-ignored': { assertion: 'reattach.takeback', section: 'reattach-takeback', engines: ['chromium'], host: { faults: { takerSilent: true } } },
+  // The host's list says that a stream holds a terminal nobody holds, so that no button appears once the taker has gone; and a button that, once pressed, attaches twice.
+  'taker-gone-ignored': { assertion: 'reattach.takeback', section: 'reattach-takeback', engines: ['chromium'], host: { faults: { attachedStuck: true } } },
   'take-back-twice': { assertion: 'reattach.takeback', section: 'reattach-takeback', engines: ['chromium'], stage: 'press', after: (page) => page.evaluate(() => { window.__link.arm(true); }) },
   // A violation that exists only in the lane of a tab that can be taken back: an image with no text alternative, planted once the lane with its button is drawn (the pattern of `axe-failed`).
   'free-axe': { assertion: 'reattach.axe-free', section: 'reattach-takeback', engines: ['chromium'], stage: 'free', after: (page) => page.evaluate((src) => { const image = document.createElement('img'); image.src = src; document.querySelector('[data-shell-part="terminalLane"]').append(image); }, IMAGE) },
-  // A rejoin that starts over from the first byte, one that is given nothing of what was missed, and one that acknowledges the replay.
-  'rejoin-from-zero': { assertion: 'reattach.rejoin', section: 'reattach-rejoin', engines: ['chromium'], query: 'control=rejoin-from-zero' },
-  'rejoin-drops-missed': { assertion: 'reattach.rejoin', section: 'reattach-rejoin', engines: ['chromium'], host: { faults: { missedDropped: true } } },
-  'rejoin-acks-replay': { assertion: 'reattach.rejoin', section: 'reattach-rejoin', engines: ['chromium'], query: 'control=ack-replay' },
+  // A reconnect that starts over from the first byte, one whose replay lacks its last bytes, and one whose page never credits the replay (the host's window then stalls once the replay is more than it).
+  'rejoin-from-zero': { assertion: 'reattach.reconnect', section: 'reattach-reconnect', engines: ['chromium'], query: 'control=rejoin-from-zero' },
+  'reconnect-drops-missed': { assertion: 'reattach.reconnect', section: 'reattach-reconnect', engines: ['chromium'], host: { faults: { replayGap: true } } },
+  'reconnect-replay-unacked': { assertion: 'reattach.reconnect', section: 'reattach-reconnect', engines: ['chromium'], query: 'control=replay-unacked' },
   // The host's ring no longer reaches back, and the host says that its replay starts where the page is.
-  'gap-hidden': { assertion: 'reattach.rejoin-gap', section: 'reattach-rejoin-gap', engines: ['chromium'], host: { faults: { gapHidden: true } } },
-  // A terminal that is gone is answered with a plain server error, which the page may try again at every signal.
+  'gap-hidden': { assertion: 'reattach.reconnect-gap', section: 'reattach-reconnect-gap', engines: ['chromium'], host: { faults: { gapHidden: true } } },
+  // A terminal that is gone is answered by closing the stream with no word, as a transient failure is: the page cannot tell it from a blip, connects again three times and gives up in the words of a lost connection.
   'gone-keeps-attaching': { assertion: 'reattach.gone', section: 'reattach-gone', engines: ['chromium'], host: { faults: { goneTransient: true } } },
   // A screen that drops what is typed while it writes a replay, and an engine that gives what the emulator answers to a query as keys.
-  'keys-dropped': { assertion: 'reattach.rejoin-keys', section: 'reattach-rejoin-keys', engines: ['chromium'], query: 'control=keys-dropped' },
-  'replies-as-keys': { assertion: 'reattach.rejoin-keys', section: 'reattach-rejoin-keys', engines: ['chromium'], query: 'control=replies-as-keys' },
-  // The acknowledgement that was in flight when the attach was answered is taken by the host after it: the stale count is credited after the attach, as a page that restored it would credit it.
-  'ack-stale-restore': { assertion: 'reattach.rejoin-acks', section: 'reattach-rejoin-acks', engines: ['chromium'], stage: 'ack-release', after: (page) => page.evaluate(() => { window.__acks.accept(); }) },
-  // The host's list never says that a page holds a terminal, so that a page that presses Take it back on a stale flag is told that nobody holds the terminal, and attaches (as a button that does not ask would).
+  'keys-dropped': { assertion: 'reattach.reconnect-keys', section: 'reattach-reconnect-keys', engines: ['chromium'], query: 'control=keys-dropped' },
+  'replies-as-keys': { assertion: 'reattach.reconnect-keys', section: 'reattach-reconnect-keys', engines: ['chromium'], query: 'control=replies-as-keys' },
+  // The acknowledgement that was in flight on the lost stream is taken by the host after the new attach and credited to the new holder (a host that credits by terminal and not by stream).
+  'ack-stale-restore': { assertion: 'reattach.reconnect-acks', section: 'reattach-reconnect-acks', engines: ['chromium'], host: { faults: { acksStale: true } } },
+  // The host's list never says that a stream holds a terminal, so that a page that presses Take it back on a stale flag is told that nobody holds the terminal, and attaches (as a button that does not ask would).
   'takeback-unguarded': { assertion: 'reattach.takeback-guard', section: 'reattach-takeback-guard', engines: ['chromium'], host: { faults: { attachedHidden: true } } },
-  // The host's list fails from the moment the events come back, so that a page that missed the word that the tab that took the terminal had gone cannot learn it (as a page that never asks when its events come back).
+  // The host's list fails again once the tab can reach the host, so that a page that missed that the tab that took the terminal had gone cannot learn it (as a page that never asks).
   'refresh-skipped': { assertion: 'reattach.takeback-offline', section: 'reattach-takeback-offline', engines: ['chromium'], stage: 'offline', after: (page) => page.evaluate(() => { window.__link.failLists(true); }) },
 };
 
 /**
  * @param {{ check: Function, note: Function, runAxe: Function, helpers: Record<string, any> }} deps
- *   `helpers` are the helpers of terminal-reattach.mjs: `world`, `start`, `reveal`, `until`, `moving`, `sleep`, `perturbed`, `tabsOf`, `laneOf`, `bodyOf`, `rowsOf`, `typeLine`, `windowsOf`, `slotOf`, `wroteBy` and `AXE`.
+ *   `helpers` are the helpers of terminal-reattach.mjs: `world`, `start`, `reveal`, `until`, `moving`, `perturbed`, `tabsOf`, `laneOf`, `bodyOf`, `rowsOf`, `typeLine`, `slotOf`, `wroteBy` and `AXE`.
  */
 export function createFollowupSections({ check, note, runAxe, helpers }) {
-  const { world, start, reveal, until, moving, sleep, perturbed, tabsOf, laneOf, bodyOf, rowsOf, typeLine, windowsOf, slotOf, wroteBy, AXE } = helpers;
+  const { world, start, reveal, until, moving, perturbed, tabsOf, laneOf, bodyOf, rowsOf, typeLine, slotOf, wroteBy, AXE } = helpers;
   const sections = {};
+  const HELLO = /hello from the synthetic shell/;
 
   /** The panel as the person sees it: how high it is (0 when it is closed), the tool on screen and the session on screen. */
   const panelNow = async (page) =>
@@ -117,6 +126,20 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
         }),
       ]),
     );
+
+  /** How many times the page has asked the host who holds the terminals it knows (`ListChannelTerminals`, answered or failed). */
+  const listedBy = async (page) => page.evaluate(() => window.__link.state().listed);
+
+  /**
+   * The page asks the host once more, and what it made of the answer is on screen. A visible tab asks when it is shown, when it gets the focus and every few seconds, so this waits for the question (a count of the page's
+   * own) and never makes it.
+   */
+  const asked = async (page, ms = 20_000) => {
+    const before = await listedBy(page);
+    const count = await until(async () => listedBy(page), (now) => now > before, ms);
+    await frames(page);
+    return count - before;
+  };
 
   /** The page loads again: its window and its panel are there, and the terminals it held are attached to it again (`attaches` of them), so that what is read next is what the restore made of the saved session. */
   const reloaded = async (page, host, attaches) => {
@@ -194,7 +217,7 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
     }
   };
 
-  /** The tab that took the terminal has gone: the tab that lost it can take it back. While the taker lives there is no button. */
+  /** The tab that took the terminal has gone: the tab that lost it can take it back once it has asked the host. While the taker lives there is no button. */
   sections['reattach-takeback'] = async (ctx) => {
     const { engine, vp } = ctx;
     const BODY = '[data-shell-part="terminalBody"]';
@@ -204,30 +227,31 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const a = await w.open();
       await start(a);
       await typeLine(a, 'hello');
-      await sleep(500);
+      await until(async () => rowsOf(a), (rows) => rows.some((row) => HELLO.test(row)), 8000);
       const id = host.ids()[0];
-      const owner = windowsOf(host)[0];
+      const own = host.state(id)?.holder;
       const tabs = await tabsOf(a);
       const buttons = async () => a.getByRole('button', { name: /take it back/i }).count();
       const laneHeight = async () => a.evaluate(() => document.querySelector('[data-shell-part="terminalLane"]')?.getBoundingClientRect().height ?? 0);
 
-      // The tab that took it, and then the tab that took it from the tab that took it: the first lives on while the second does.
+      // The tab that took it, and then the tab that took it from the tab that took it: the first has nothing more to hold, the second does.
       const b = await w.open();
-      await until(() => host.state(id)?.holder, (holder) => holder === 1, 8000);
-      const taken = await until(async () => laneOf(a), (text) => text.includes('Taken over by another tab'), 8000);
+      const holderB = await until(() => host.state(id)?.holder, (holder) => holder !== null && holder !== own, 8000);
+      const taken = await until(async () => laneOf(a), (text) => text.includes(FREE.taken), 8000);
       const heightTaken = await laneHeight();
       const buttonsTaken = await buttons();
       const c = await w.open();
-      await until(() => host.state(id)?.holder, (holder) => holder === 2, 8000);
-      await sleep(700);
+      await until(() => host.state(id)?.holder, (holder) => holder !== null && holder !== holderB, 8000);
+      // The first taker goes while the third tab holds the terminal; the page asks the host after both, and the host says that a stream holds it.
+      const listedBefore = await listedBy(a);
+      await b.goto('about:blank');
+      await until(async () => listedBy(a), (count) => count > listedBefore, 20_000);
+      await frames(a);
       const third = await laneOf(a);
       const buttonsThird = await buttons();
-      await b.goto('about:blank');
-      await sleep(900);
-      const buttonsAfterFirst = await buttons();
-      // The tab that holds it now goes: nobody has it, and its lease runs.
+      // The tab that holds it now goes: nobody has it, its lease runs, and the page learns it by asking.
       await c.goto('about:blank');
-      const free = await until(buttons, (count) => count >= 1, 4000);
+      const free = await until(buttons, (count) => count >= 1, 20_000);
       const laneFree = await laneOf(a);
       const heightFree = await laneHeight();
 
@@ -235,7 +259,7 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       let reached = 0;
       const trail = [];
       let viaF6 = false;
-      let again = 0;
+      let again = [];
       let moved = { tabs: null, lane: null, earlier: false, keyboard: false, typed: 0 };
       await a.addScriptTag({ path: AXE });
       const focusOf = async () =>
@@ -294,36 +318,35 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const axeFree = await runAxe(a, BODY);
 
       if (free >= 1) {
-        // Enter presses it: one attach, and the tab runs again where it was, with what it had shown and the keyboard in it.
+        // Enter presses it: one new stream that attaches with no offset, and the tab runs again where it was, with what it had shown and the keyboard in it.
+        const mark = host.log.attaches.length;
         await perturbed(ctx, a, 'press');
         await a.keyboard.press('Enter');
-        await until(() => host.log.attaches.filter((entry) => entry.window === owner).length, (count) => count >= 1, 6000);
-        await sleep(900);
-        again = host.log.attaches.filter((entry) => entry.window === owner).length;
-        const rowsBack = await until(async () => rowsOf(a), (rows) => rows.some((row) => /hello from the synthetic shell/.test(row)), 4000);
+        await until(() => host.log.attaches.length, (count) => count > mark, 8000);
+        const rowsBack = await until(async () => rowsOf(a), (rows) => rows.some((row) => HELLO.test(row)), 4000);
+        // The screen shows the earlier output, which the new stream's replay brought: whatever the press made has been made by now.
+        again = host.log.attaches.slice(mark).filter((entry) => entry.id === id || entry.id === null);
         const keyboard = await until(async () => a.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') === true), (is) => is, 4000);
         await a.keyboard.type('hello');
         await a.keyboard.press('Enter');
-        await sleep(600);
-        const rowsTyped = await rowsOf(a);
+        const rowsTyped = await until(async () => rowsOf(a), (rows) => rows.filter((row) => HELLO.test(row)).length >= 2, 6000);
         moved = {
           tabs: await tabsOf(a),
           lane: await laneOf(a),
-          earlier: rowsBack.some((row) => /hello from the synthetic shell/.test(row)),
+          earlier: rowsBack.some((row) => HELLO.test(row)),
           keyboard,
-          typed: rowsTyped.filter((row) => /hello from the synthetic shell/.test(row)).length,
+          typed: rowsTyped.filter((row) => HELLO.test(row)).length,
         };
       }
 
       const heightOk = Math.abs(heightFree - heightTaken) <= 0.5;
       check(
         'reattach.takeback',
-        taken.includes('Taken over by another tab') &&
+        taken.includes(FREE.taken) &&
           FREE.old.test(taken) &&
           buttonsTaken === 0 &&
           FREE.old.test(third) &&
           buttonsThird === 0 &&
-          buttonsAfterFirst === 0 &&
           free === 1 &&
           laneFree.includes(FREE.closed) &&
           laneFree.includes(FREE.lease) &&
@@ -331,39 +354,43 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           element.tag === 'BUTTON' &&
           reached > 0 &&
           element.ringed &&
-          again === 1 &&
+          again.length === 1 &&
+          again[0].from_offset === null &&
+          again[0].id === id &&
           JSON.stringify(moved.tabs) === JSON.stringify(tabs) &&
           moved.lane === '' &&
           moved.earlier &&
           moved.keyboard &&
           moved.typed >= 2,
-        `${engine} ${vp}: while the tab that took the terminal lives the lane says ${JSON.stringify(taken)} and has ${String(buttonsTaken)} buttons (none is right), after a third tab took it from that tab ${JSON.stringify(third)} and ${String(buttonsThird)}, after the first taker went ${String(buttonsAfterFirst)}; when the tab that holds it went it has ${String(free)} button (one is right) and the lane says ${JSON.stringify(laneFree)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right), ${String(heightFree)} px high where it was ${String(heightTaken)}; the button is a ${String(element.tag)} (BUTTON), Tab reaches it in ${String(reached)} presses (0 is never; the focus went ${JSON.stringify(trail)}; F6 then Shift+Tab reaches it: ${String(viaF6)}), its ring is ${element.ringed ? 'visible' : 'NOT visible'}; Enter made ${String(again)} attach (one is right), the tab is ${JSON.stringify(moved.tabs)} where it was ${JSON.stringify(tabs)}, its lane says ${JSON.stringify(moved.lane)} (nothing is right: it runs), it shows its earlier output: ${String(moved.earlier)}, the keyboard is in the terminal: ${String(moved.keyboard)}, and ${String(moved.typed)} lines answer what was typed (2 or more)`,
+        `${engine} ${vp}: while the tab that took the terminal lives the lane says ${JSON.stringify(taken)} and has ${String(buttonsTaken)} buttons (none is right), after a third tab took it from that tab and the first taker went, and the page asked the host, ${JSON.stringify(third)} and ${String(buttonsThird)}; when the tab that holds it went it has ${String(free)} button (one is right) and the lane says ${JSON.stringify(laneFree)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right), ${String(heightFree)} px high where it was ${String(heightTaken)}; the button is a ${String(element.tag)} (BUTTON), Tab reaches it in ${String(reached)} presses (0 is never; the focus went ${JSON.stringify(trail)}; F6 then Shift+Tab reaches it: ${String(viaF6)}), its ring ${element.ringed ? 'shows' : 'does NOT show'} (focus-visible ${String(element.focusVisible)}); Enter made ${String(again.length)} attach(es) (one is right) with the offset ${JSON.stringify(again[0]?.from_offset ?? null)} (null: a new stream that has nothing), the tabs are ${JSON.stringify(moved.tabs) === JSON.stringify(tabs) ? 'the same' : 'DIFFERENT'}, the lane says ${JSON.stringify(moved.lane)} (nothing), the earlier output is ${moved.earlier ? 'back' : 'NOT back'}, the keyboard is ${moved.keyboard ? '' : 'NOT '}in the screen, and typed hello was answered ${String(moved.typed)} time(s) on screen (2 or more)`,
       );
       check('reattach.axe-free', axeFree.length === 0, `${engine} ${vp}: the tab that can be taken back, with its lane and its button: ${JSON.stringify(axeFree)}`);
-      note(`reattach takeback ${engine} ${vp}: no button while the taker lived, a button ${String(reached)} Tab presses from the tab once the last taker went, one attach, the lane ${String(heightFree)} px high where it was ${String(heightTaken)}`);
+      note(`reattach takeback ${engine} ${vp}: no button while the taker lived, a button ${String(reached)} Tab presses from the tab once the last taker went and the page asked, one attach with no offset, the lane ${String(heightFree)} px high where it was ${String(heightTaken)}`);
     } finally {
       await w.close();
     }
   };
 
   /**
-   * A page with a terminal in the middle of a flood of numbered lines, whose events have stopped reaching it (what the host tells meanwhile is lost to it for good) and whose host has used up its credit and stopped reading: the page has
-   * the output up to `applied`. Answers the page, the terminal, the page's window, `applied`, which calls are the page's numbered ones and the last number it gave its input.
+   * A page with a terminal in the middle of a flood of numbered lines whose stream is lost (what the host sends meanwhile is lost to it) while the host's backlog has stopped the flood: the page has the output up to `applied`. The
+   * emulator's parse callbacks are held while the flood runs, so that the page acknowledges nothing and the host's window and its backlog are what stop it, and are let go once the stream is cut. Answers the page, the terminal and `applied`.
    */
   async function flooded(w) {
     const { host } = w;
     const page = await w.open();
     await start(page);
     const id = host.ids()[0];
-    const me = windowsOf(host)[0];
+    await page.evaluate(() => {
+      window.__gate.close();
+    });
     await typeLine(page, `flood ${String(LINES)} 80`);
     await until(() => host.state(id)?.end ?? 0, (end) => end >= 400_000, 30_000);
-    const heard = await page.evaluate(() => window.__link.down());
-    const applied = heard[id];
-    const numbered = (entry) => entry.window === me && (entry.method === 'WriteTerminal' || entry.method === 'ResizeTerminal');
-    const lastNumber = Math.max(0, ...host.log.calls.filter(numbered).map((entry) => entry.seq));
     await until(() => host.state(id)?.paused === true, (paused) => paused, 15_000);
-    return { page, id, me, applied, numbered, lastNumber };
+    const heard = await page.evaluate(() => window.__link.down());
+    await page.evaluate(() => {
+      window.__gate.open();
+    });
+    return { page, id, applied: heard[id] };
   }
 
   /** The flood has been written whole by the host and parsed whole by the page: nothing is waiting in the pty, the host reads again, and the emulator has every line. */
@@ -377,68 +404,98 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
     );
   }
 
+  /** The page has been given everything the host has of the terminal and has parsed it, with nothing held: the emulator's screen is what the host wrote. */
+  async function caughtUp(w, page, id) {
+    const { host } = w;
+    await moving(
+      async () => {
+        const now = await page.evaluate((terminal) => ({ delivered: window.__link.state().delivered[terminal] ?? 0, accepted: window.__engine.accepted, parsed: window.__engine.parsed, held: window.__gate.held() }), id);
+        return { ...now, end: host.state(id)?.end ?? 0 };
+      },
+      (now) => now.delivered === now.end && now.parsed === now.accepted && now.held === 0,
+      { limit: 30_000 },
+    );
+  }
+
   /**
-   * A blip of the page's events in the middle of a flood of numbered lines: the events stop reaching the page, the host runs on until its credit is used up (and, for `trim`, until its ring no longer reaches back to what the page
-   * has), another tab types (the number the input queue takes next is not the one the page has counted), and the events come back. Answers what the page did.
+   * The stream of a page is lost in the middle of a flood of numbered lines (`flooded`): the host runs the flood on into its ring with nobody to wait for (and, for `trim`, until its ring no longer reaches back to what the page has),
+   * and the page's transport comes back; the page connects again by itself. Answers what the page did.
    */
   async function blip(w, { trim }) {
     const { host } = w;
-    const { page, id, me, applied, numbered, lastNumber } = await flooded(w);
-    const trimmed = trim ? host.trimRing(id, applied) : null;
-    host.strayWrite(id);
+    const { page, id, applied } = await flooded(w);
+    let trimmed = null;
+    if (trim) {
+      await until(() => host.state(id)?.end ?? 0, (end) => end > applied + 300_000, 5000);
+      trimmed = host.trimRing(id, applied);
+    }
+
     const mark = host.log.attaches.length;
     await page.evaluate(() => {
       window.__link.up();
     });
     await until(() => host.log.attaches.length, (count) => count > mark, 8000);
-    const attach = host.log.attaches.at(-1);
-    const attaches = host.log.attaches.slice(mark).filter((entry) => entry.window === me && entry.id === id).length;
+    const attach = host.log.attaches[mark];
     await finished(w, page, id);
-    const end = host.state(id).end;
-    // The attach makes the host forget what it was owed: what the page credits from then on is for what the host sent after the replay, and nothing else.
-    const credited = (later) => host.log.acks.filter((entry) => entry.window === me && entry.id === id && (entry.attachesAt > mark) === later).reduce((sum, entry) => sum + entry.bytes, 0);
-    const acked = await until(() => credited(true), (sum) => sum === end - attach.end, 5000);
-    const ackedBefore = credited(false);
     const lines = await page.evaluate(() => window.__engine.lines);
-    // What is typed after the blip is numbered from the number of the new answer, and its echo on the screen says that the host applied it.
+    const screen = await rowsOf(page);
+    // What the shell writes now is live whatever the page did before, and what is typed reaches the shell through the new stream.
+    host.append(id, TAIL);
     await typeLine(page, 'hello');
-    const rows = await until(async () => rowsOf(page), (shown) => shown.some((row) => /hello from the synthetic shell/.test(row)), 8000);
-    const calls = host.log.calls.slice(attach.callsAt).filter(numbered);
-    return { id, applied, lastNumber, trimmed, attach, attaches, end, acked, ackedBefore, lines, calls, numbers: calls.map((entry) => entry.seq), rows };
+    await until(async () => rowsOf(page), (rows) => rows.some((row) => HELLO.test(row)), 8000);
+    await caughtUp(w, page, id);
+    const end = host.state(id).end;
+    // The page acknowledges every byte of output the new stream sent, the replay included (the host counts it against its window), and never a gap: here the ring has what the page asked for, so no gap came.
+    const expected = end - attach.start;
+    const credited = () => host.log.acks.filter((entry) => entry.id === id && entry.attachesAt > mark).reduce((sum, entry) => sum + entry.bytes, 0);
+    const acked = await until(credited, (sum) => sum >= expected, 5000);
+    return {
+      id,
+      applied,
+      trimmed,
+      attach,
+      attaches: host.log.attaches.slice(mark).filter((entry) => entry.id === id).length,
+      end,
+      expected,
+      acked,
+      lines,
+      screen,
+      typed: wroteBy(host, attach.writesAt),
+    };
   }
 
-  /** The events come back after a gap and the host still has what the page is missing: the page asks for it by offset, once, and goes on. */
-  sections['reattach-rejoin'] = async (ctx) => {
+  /** The stream is lost and the host still has what the page is missing: the page connects once more from the offset it has, and goes on. */
+  sections['reattach-reconnect'] = async (ctx) => {
     const { engine, vp } = ctx;
     const w = await world(ctx);
     try {
       const r = await blip(w, { trim: false });
       const { attach, lines } = r;
       check(
-        'reattach.rejoin',
+        'reattach.reconnect',
         typeof r.applied === 'number' &&
+          attach.outcome === 'ready' &&
           attach.from_offset === r.applied &&
-          attach.start <= r.applied &&
+          attach.start === r.applied &&
+          attach.lost === 0 &&
+          attach.bytes > 0 &&
           r.attaches === 1 &&
           lines.last === LINES - 1 &&
           lines.gaps.length === 0 &&
           lines.dups.length === 0 &&
           lines.resets === 0 &&
-          r.acked === r.end - attach.end &&
-          attach.next_input_seq > r.lastNumber + 1 &&
-          r.numbers.length > 0 &&
-          r.numbers.every((number, index) => number === attach.next_input_seq + index) &&
-          r.calls.every((entry) => entry.outcome === 'applied'),
-        `${engine} ${vp}: the page had applied the output up to ${String(r.applied)} when its events stopped and asked for it from ${String(attach.from_offset)} (the same, in ${String(r.attaches)} attach: one is right) and the host's replay started at ${String(attach.start)}, ${String(r.applied - attach.start)} B below it (at or below is right: the host answers from the boundary of the chunk that holds the offset, and the page skips what it has); the emulator was given ${String(lines.count)} numbered lines ending at ${String(lines.last)} (${String(LINES - 1)} is the last) with ${JSON.stringify(lines.gaps.slice(0, 3))} gaps, ${JSON.stringify(lines.dups.slice(0, 3))} duplicates and ${String(lines.resets)} resets (none of the three is right: the output goes on); after the attach the page acknowledged ${String(r.acked)} B (${String(r.ackedBefore)} B before it) and the host sent ${String(r.end - attach.end)} B after the replay (equal is right: the replay's bytes are never credited, the live ones always); another tab had taken a number, so the answer said ${String(attach.next_input_seq)} where the page had counted ${String(r.lastNumber + 1)}, and the calls after it were numbered ${JSON.stringify(r.numbers)} (from ${String(attach.next_input_seq)}, one by one, all applied)`,
+          r.acked === r.expected &&
+          r.typed === 'hello\r',
+        `${engine} ${vp}: the page had applied the output up to ${String(r.applied)} when its stream was lost and asked for it from ${String(attach.from_offset)} (the same), in ${String(r.attaches)} attach (one is right), and the host's answer started at ${String(attach.start)} (exactly there: it still had the bytes) with ${String(attach.lost)} lost (none) and ${String(attach.bytes)} B to catch up; the emulator was given ${String(lines.count)} numbered lines ending at ${String(lines.last)} (${String(LINES - 1)} is the last) with ${JSON.stringify(lines.gaps.slice(0, 3))} gaps, ${JSON.stringify(lines.dups.slice(0, 3))} duplicates and ${String(lines.resets)} resets (none of the three is right: the output goes on); the page acknowledged ${String(r.acked)} B on the new stream where it was sent ${String(r.expected)} B (equal is right: all of them, the replay included), and what was typed afterwards reached the shell as ${JSON.stringify(r.typed)} (${JSON.stringify('hello\r')})`,
       );
-      note(`reattach rejoin ${engine} ${vp}: the events stopped at ${String(r.applied)} B, the page asked for the output from there once (a replay of ${String(attach.end - attach.start)} B that began ${String(r.applied - attach.start)} B below it, at a chunk boundary of the host's ring), ${String(lines.count)} lines in order to ${String(lines.last)}, ${String(r.acked)} B acknowledged, the input went on from ${String(attach.next_input_seq)}`);
+      note(`reattach reconnect ${engine} ${vp}: the stream was lost at ${String(r.applied)} B, the page asked for the output from there once (${String(attach.bytes)} B to catch up, no reset), ${String(lines.count)} lines in order to ${String(lines.last)}, ${String(r.acked)} B acknowledged`);
     } finally {
       await w.close();
     }
   };
 
-  /** The events come back after a gap and the host's ring no longer reaches back: the screen is brought to the ring by a replay. */
-  sections['reattach-rejoin-gap'] = async (ctx) => {
+  /** The stream is lost and the host's ring no longer reaches back: the screen is brought to the ring by a replay. */
+  sections['reattach-reconnect-gap'] = async (ctx) => {
     const { engine, vp } = ctx;
     const w = await world(ctx);
     try {
@@ -446,11 +503,12 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const { attach, lines } = r;
       const last = String(LINES - 1).padStart(7, '0');
       check(
-        'reattach.rejoin-gap',
+        'reattach.reconnect-gap',
         typeof r.applied === 'number' &&
           r.trimmed > r.applied &&
           attach.from_offset === r.applied &&
           attach.start === r.trimmed &&
+          attach.lost === r.trimmed - r.applied &&
           r.attaches === 1 &&
           lines.resets === 1 &&
           attach.firstLine !== null &&
@@ -458,16 +516,19 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           lines.gaps.length === 0 &&
           lines.dups.length === 0 &&
           lines.last === LINES - 1 &&
-          r.rows.some((row) => row.startsWith(last)),
-        `${engine} ${vp}: the page had applied the output up to ${String(r.applied)} and asked for it from ${String(attach.from_offset)}, and the host's ring started at ${String(r.trimmed)} (past it) and said its replay started at ${String(attach.start)} (the ring's start is right: the gap is stated); the screen was reset ${String(lines.resets)} time(s) (once is right) and its first numbered line was ${String(lines.first)} where the replay's first whole line is ${String(attach.firstLine)}; from there ${String(lines.count)} lines ended at ${String(lines.last)} (${String(LINES - 1)}) with ${JSON.stringify(lines.gaps.slice(0, 3))} gaps and ${JSON.stringify(lines.dups.slice(0, 3))} duplicates (none is right), ${String(r.attaches)} attach (one), and the screen shows the last line ${String(last)}: ${String(r.rows.some((row) => row.startsWith(last)))}`,
+          r.screen.some((row) => row.startsWith(last)),
+        `${engine} ${vp}: the page had applied the output up to ${String(r.applied)} and asked for it from ${String(attach.from_offset)}, and the host's ring started at ${String(r.trimmed)} (past it) and said its replay starts at ${String(attach.start)} with ${String(attach.lost)} lost (the ring's start and ${String(r.trimmed - r.applied)} are right: the gap is stated); the screen was reset ${String(lines.resets)} time(s) (once is right) and its first numbered line was ${String(lines.first)} where the replay's first whole line is ${String(attach.firstLine)}; from there ${String(lines.count)} lines ended at ${String(lines.last)} (${String(LINES - 1)}) with ${JSON.stringify(lines.gaps.slice(0, 3))} gaps and ${JSON.stringify(lines.dups.slice(0, 3))} duplicates (none is right), ${String(r.attaches)} attach (one), and the screen shows the last line ${last}: ${String(r.screen.some((row) => row.startsWith(last)))}`,
       );
-      note(`reattach rejoin-gap ${engine} ${vp}: the ring started at ${String(r.trimmed)} past the ${String(r.applied)} B the page had, the screen was reset once and brought to the ring (first line ${String(lines.first)}), ${String(lines.last)} the last`);
+      note(`reattach reconnect-gap ${engine} ${vp}: the ring started at ${String(r.trimmed)} past the ${String(r.applied)} B the page had (${String(attach.lost)} lost), the screen was reset once and brought to the ring (first line ${String(lines.first)}), ${String(lines.last)} the last`);
     } finally {
       await w.close();
     }
   };
 
-  /** The terminal vanished while the page was away: the tab says it is not there any more, and the page does not loop attaches however often its events come back. */
+  /**
+   * The terminal vanished while the page was away. The host answers a stream that shows the capability of a terminal it does not have with its one `not-found`, and the page says that the terminal is not there any more and does not
+   * connect again. (A host that closed the stream with no word, as a transient failure does, would be connected to again three times, after 250 ms, 1 s and 4 s, and then given up in the words of a lost connection: the control.)
+   */
   sections['reattach-gone'] = async (ctx) => {
     const { engine, vp } = ctx;
     const w = await world(ctx);
@@ -476,65 +537,58 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const page = await w.open();
       await start(page);
       await typeLine(page, 'hello');
-      await sleep(500);
+      await until(async () => rowsOf(page), (rows) => rows.some((row) => HELLO.test(row)), 8000);
       const id = host.ids()[0];
-      const me = windowsOf(host)[0];
-      await page.evaluate(() => window.__link.down());
+      const mark = host.log.attaches.length;
+      // The terminal is gone with no word and the stream that held it ends: the page connects again by itself.
       host.vanish(id);
-      const mark = host.log.calls.length;
-      await page.evaluate(() => {
-        window.__link.up();
-      });
-      // The connection flaps: its events come back twice more.
-      for (let again = 0; again < 2; again += 1) {
-        await sleep(500);
-        await page.evaluate(() => {
-          window.__link.signal();
-        });
-      }
-
-      await sleep(1200);
-      const attaches = host.log.calls.slice(mark).filter((entry) => entry.window === me && entry.method === 'AttachTerminal' && entry.id === id);
-      const words = `${await laneOf(page)} ${await bodyOf(page)}`;
+      const words = await until(
+        async () => `${await laneOf(page)} ${await bodyOf(page)}`,
+        (text) => FREE.gone.test(text) || FREE.lost.test(text),
+        20_000,
+      );
+      const attaches = host.log.attaches.slice(mark);
       check(
         'reattach.gone',
-        attaches.length === 1 && FREE.gone.test(words),
-        `${engine} ${vp}: the terminal vanished while the page was away; its events came back three times and the page attached ${String(attaches.length)} time(s) (once is right: it is not there any more, and that is the end) and the tab says ${JSON.stringify(words.slice(0, 200))} (it says the terminal is not there any more)`,
+        attaches.length === 1 && attaches[0].outcome === 'not-found' && FREE.gone.test(words),
+        `${engine} ${vp}: the terminal vanished while the page was away; the page made ${String(attaches.length)} attach(es) (one is right: it is not there any more, and that is the end), answered ${JSON.stringify(attaches.map((entry) => entry.outcome))} (not-found) and the tab says ${JSON.stringify(words.slice(0, 200))} (it says the terminal is not there any more)`,
       );
-      note(`reattach gone ${engine} ${vp}: one attach for three signals, and the tab says ${JSON.stringify(words.slice(0, 80))}`);
+      note(`reattach gone ${engine} ${vp}: one attach, answered not-found, and the tab says ${JSON.stringify(words.slice(0, 80))}`);
     } finally {
       await w.close();
     }
   };
 
   /**
-   * A key is typed while a late replay is being written. The host's ring no longer reaches back to what the page has, so the page is brought to the ring by a replay, and the fixture holds the end of the emulator's writes: the replay
-   * takes as many frames as the probe lets pass, and it holds a program's questions to the terminal. The key is queued and reaches the shell once, in order, after the replay; what the emulator answers to the questions reaches it never.
+   * A key is typed while a late replay is being written. The host's ring no longer reaches back to what the page has (the shell wrote more than the ring keeps while the stream was lost), so the page is brought to the ring by a replay that
+   * holds a program's questions to the terminal, and the fixture holds the end of the emulator's writes: the replay takes as many frames as the probe lets pass. The key is queued and reaches the shell once, in order, after the replay;
+   * what the emulator answers to the questions reaches it never.
    */
-  sections['reattach-rejoin-keys'] = async (ctx) => {
+  sections['reattach-reconnect-keys'] = async (ctx) => {
     const { engine, vp } = ctx;
     const w = await world(ctx);
     try {
       const { host } = w;
-      const { page, id, me, applied } = await flooded(w);
-      // The page has been given everything the host delivered and has parsed it: the screen lets the emulator parse what it was given before it begins a replay, so nothing live may be left to be written when this one comes.
-      await until(
-        async () => page.evaluate((terminal) => window.__engine.accepted >= (window.__link.state().delivered[terminal] ?? 0) && window.__engine.parsed === window.__engine.accepted, id),
-        (idle) => idle,
-        15_000,
-      );
+      const page = await w.open();
+      await start(page);
+      await typeLine(page, 'hello');
+      await until(async () => rowsOf(page), (rows) => rows.some((row) => HELLO.test(row)), 8000);
+      const id = host.ids()[0];
+      await caughtUp(w, page, id);
+      // The stream is lost; the shell writes more than the ring needs to keep, and the ring forgets what the page has; a program's questions are in what is left.
+      const heard = await page.evaluate(() => window.__link.down());
+      const applied = heard[id];
+      host.append(id, FILLER);
       const trimmed = host.trimRing(id, applied);
       host.plant(id, QUERIES);
       const resets = await page.evaluate(() => window.__engine.lines.resets);
       const mark = host.log.attaches.length;
       await page.evaluate(() => {
         window.__gate.close();
-      });
-      await page.evaluate(() => {
         window.__link.up();
       });
       await until(() => host.log.attaches.length, (count) => count > mark, 8000);
-      const attach = host.log.attaches.length > mark ? host.log.attaches.at(-1) : undefined;
+      const attach = host.log.attaches.length > mark ? host.log.attaches[mark] : undefined;
       // The replay is being written: the emulator was reset for it (the screen's own first write of a replay), it has been given that write, and the screen has not been told that it parsed it.
       const begun = await until(async () => page.evaluate(() => ({ resets: window.__engine.lines.resets, held: window.__gate.held() })), (now) => now.resets > resets && now.held >= 1, 8000);
       const held = begun.held;
@@ -546,15 +600,16 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       await page.evaluate(() => {
         window.__gate.open();
       });
-      if (attach !== undefined) await until(() => wroteBy(host, me, attach.writesAt), (text) => text.length >= 3, 6000);
-      await finished(w, page, id);
-      const shell = attach === undefined ? '' : wroteBy(host, me, attach.writesAt);
+      if (attach !== undefined) await until(() => wroteBy(host, attach.writesAt), (text) => text.length >= 3, 6000);
+      await caughtUp(w, page, id);
+      const shell = attach === undefined ? '' : wroteBy(host, attach.writesAt);
       const replies = await page.evaluate(() => window.__gate.replies());
       check(
-        'reattach.rejoin-keys',
+        'reattach.reconnect-keys',
         attach !== undefined &&
           trimmed > applied &&
           attach.start === trimmed &&
+          attach.lost > 0 &&
           begun.resets > resets &&
           held >= 1 &&
           keys >= before.keys + 3 &&
@@ -562,19 +617,20 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           meanwhile.writes === before.writes &&
           shell === 'ab\r' &&
           replies >= 1,
-        `${engine} ${vp}: the host's ring started at ${String(trimmed)} past the ${String(applied)} B the page had, so the page was brought to it by a replay that starts at ${String(attach?.start)} and holds ${JSON.stringify(QUERIES)}; with the end of the emulator's writes held (${String(held)} held, ${String(meanwhile.held)} still when the keys were typed) 'ab' and Enter were typed: ${String(keys - before.keys)} keys reached the emulator (3 is right) and the page made ${String(meanwhile.writes - before.writes)} calls to the shell while the replay was being written (none is right: the keys wait for it); once it was written the shell was sent ${JSON.stringify(shell)} (${JSON.stringify('ab\r')} is right: once, in order, none lost, and none of what the emulator answered to the questions: it answered ${String(replies)} time(s))`,
+        `${engine} ${vp}: the host's ring started at ${String(trimmed)} past the ${String(applied)} B the page had, so the page was brought to it by a replay that starts at ${String(attach?.start)} (${String(attach?.lost)} lost) and holds ${JSON.stringify(QUERIES)}; with the end of the emulator's writes held (${String(held)} held, ${String(meanwhile.held)} still when the keys were typed) 'ab' and Enter were typed: ${String(keys - before.keys)} keys reached the emulator (3 is right) and the page made ${String(meanwhile.writes - before.writes)} calls to the shell while the replay was being written (none is right: the keys wait for it); once it was written the shell was sent ${JSON.stringify(shell)} (${JSON.stringify('ab\r')} is right: once, in order, none lost, and none of what the emulator answered to the questions), and the emulator answered ${String(replies)} time(s) (at least once is right: the questions were asked)`,
       );
-      note(`reattach rejoin-keys ${engine} ${vp}: the replay was held while 'ab' and Enter were typed, and the shell was sent ${JSON.stringify(shell)} once it was written; the emulator answered ${String(replies)} time(s) and none of it reached the shell`);
+      note(`reattach reconnect-keys ${engine} ${vp}: the replay was held while 'ab' and Enter were typed, and the shell was sent ${JSON.stringify(shell)} once it was written; the emulator answered ${String(replies)} time(s) and none of it reached the shell`);
     } finally {
       await w.close();
     }
   };
 
   /**
-   * An acknowledgement is in flight when the answer of the rejoin comes, and the connection that carries it drops: the host never gets it. The attach made the host forget what it was owed, so the page does not credit that count
-   * again: what it credits after the attach is the live bytes taken after it, and nothing else.
+   * Acknowledgements are in flight on the stream of a page when the stream is lost: the connection that carried them is gone and the host never gets them in time. The page connects again from the offset it has, and the
+   * acknowledgements of the old stream reach the host late, after the new stream has taken the terminal (a half-open connection): they count for nothing, and what is credited after the new attach is the bytes the new stream sent
+   * and nothing else (the page does not credit the new stream for what the old one delivered, either).
    */
-  sections['reattach-rejoin-acks'] = async (ctx) => {
+  sections['reattach-reconnect-acks'] = async (ctx) => {
     const { engine, vp } = ctx;
     const w = await world(ctx);
     try {
@@ -582,43 +638,46 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const page = await w.open();
       await start(page);
       const id = host.ids()[0];
-      const me = windowsOf(host)[0];
-      // The page's acknowledgements are held from here: the next one is in flight with no answer, and the page makes no other while it is (one call is out at a time), so the host's credit runs out.
+      // The page's acknowledgements are held from here: they are in flight with no word, so the host's credit runs out.
       await page.evaluate(() => {
         window.__acks.hold();
       });
       await typeLine(page, `flood ${String(LINES)} 80`);
       const inFlight = await until(async () => page.evaluate(() => window.__acks.held()), (count) => count >= 1, 15_000);
       await until(() => host.state(id)?.paused === true, (paused) => paused, 15_000);
-      // Every event the host delivered is in the emulator: what is given to it from here is what the host sends after the attach.
+      // Every byte the host delivered is in the emulator: what is given to it from here is what the host sends after the new attach.
       const baseline = await until(
         async () => page.evaluate((terminal) => ({ accepted: window.__engine.accepted, delivered: window.__link.state().delivered[terminal] ?? 0 }), id),
         (now) => now.delivered > 0 && now.accepted >= now.delivered,
         15_000,
       );
+      // The stream is lost with its acknowledgements in flight, and the page connects again by itself from the offset it has.
+      const heard = await page.evaluate(() => window.__link.down());
+      const applied = heard[id];
       const mark = host.log.attaches.length;
-      // The events come back with nothing lost to the page: it asks for what it may have missed, and the host answers while the acknowledgement is still out.
       await page.evaluate(() => {
-        window.__link.signal();
+        window.__link.up();
       });
       await until(() => host.log.attaches.length, (count) => count > mark, 8000);
-      const attach = host.log.attaches.length > mark ? host.log.attaches.at(-1) : undefined;
-      // The page has the answer when it has been given bytes that the host sent after it: nothing is given to the emulator while the call is out.
+      const attach = host.log.attaches.length > mark ? host.log.attaches[mark] : undefined;
+      // The page has the answer when it has been given bytes that the host sent after it.
       const taken = await until(async () => page.evaluate(() => window.__engine.accepted), (bytes) => bytes > baseline.accepted + 100_000, 15_000);
-      await perturbed(ctx, page, 'ack-release');
+      // The late acknowledgements of the old stream reach the host now, with those the new stream has held meanwhile, which are its own and are let go.
       await page.evaluate(() => {
+        window.__acks.accept();
         window.__acks.release();
       });
       await finished(w, page, id);
       const end = host.state(id).end;
-      const credited = () => host.log.acks.filter((entry) => entry.window === me && entry.id === id && entry.attachesAt > mark).reduce((sum, entry) => sum + entry.bytes, 0);
-      const acked = attach === undefined ? 0 : await until(credited, (sum) => sum >= end - attach.end, 5000);
+      const credited = () => host.log.acks.filter((entry) => entry.id === id && entry.attachesAt > mark).reduce((sum, entry) => sum + entry.bytes, 0);
+      const expected = attach === undefined ? 0 : end - attach.start;
+      const acked = attach === undefined ? 0 : await until(credited, (sum) => sum >= expected, 5000);
       check(
-        'reattach.rejoin-acks',
-        inFlight >= 1 && attach !== undefined && taken > baseline.accepted + 100_000 && acked === end - attach.end,
-        `${engine} ${vp}: ${String(inFlight)} acknowledgement(s) were in flight when the page asked for what it may have missed (one is right) and the host's answer came (${attach === undefined ? 'it never did' : `the replay ended at ${String(attach.end)}`}); the page was given ${String(taken - baseline.accepted)} B after it; the connection dropped under the acknowledgement, and after the attach the page credited ${String(acked)} B where the host sent ${String(attach === undefined ? 0 : end - attach.end)} B after the replay (equal is right: the count that was refused is not credited again)`,
+        'reattach.reconnect-acks',
+        inFlight >= 1 && attach !== undefined && attach.from_offset === applied && attach.lost === 0 && taken > baseline.accepted + 100_000 && acked === expected,
+        `${engine} ${vp}: ${String(inFlight)} acknowledgement(s) were in flight when the stream was lost (one or more is right) and the page connected again from ${String(attach?.from_offset)} (the ${String(applied)} B it had); the page was given ${String(taken - baseline.accepted)} B by the new stream; the old stream's acknowledgements reached the host after the new attach, and the host was credited ${String(acked)} B where the new stream sent ${String(expected)} B (equal is right: what the old stream had acknowledged is credited to nobody)`,
       );
-      note(`reattach rejoin-acks ${engine} ${vp}: an acknowledgement was in flight when the attach was answered and was refused after it; ${String(acked)} B credited after the attach, the ${String(attach === undefined ? 0 : end - attach.end)} B the host sent`);
+      note(`reattach reconnect-acks ${engine} ${vp}: ${String(inFlight)} acknowledgement(s) were in flight when the stream was lost and reached the host late; ${String(acked)} B credited after the new attach, the ${String(expected)} B the new stream sent`);
     } finally {
       await w.close();
     }
@@ -626,7 +685,8 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
 
   /**
    * A tab that lost its terminal presses Take it back on a flag that is stale: the tab that took it has gone, so the button came, and a third tab has taken the terminal since, with no word to this one (the host says nothing when a tab
-   * attaches a terminal that nobody holds). The page asks the host who holds it and attaches nothing: the button goes, the lane says that the terminal is taken over, and the third tab goes on.
+   * attaches a terminal that nobody holds, and the page has not asked since: its questions fail until the press). The page asks the host who holds it and attaches nothing: the button goes, the lane says that the terminal is
+   * taken over, and the third tab goes on.
    */
   sections['reattach-takeback-guard'] = async (ctx) => {
     const { engine, vp } = ctx;
@@ -636,55 +696,60 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const a = await w.open();
       await start(a);
       await typeLine(a, 'hello');
-      await until(async () => rowsOf(a), (rows) => rows.some((row) => /hello from the synthetic shell/.test(row)), 8000);
+      await until(async () => rowsOf(a), (rows) => rows.some((row) => HELLO.test(row)), 8000);
       const id = host.ids()[0];
-      const owner = windowsOf(host)[0];
+      const own = host.state(id)?.holder;
       const buttons = async () => a.getByRole('button', { name: /take it back/i }).count();
-      const own = (list) => list.filter((entry) => entry.window === owner).length;
-      // The tab that took the terminal goes: the page is told, and has the button.
+      // The tab that took the terminal goes: the page asks, and has the button.
       const b = await w.open();
-      await until(() => host.state(id)?.holder, (holder) => holder === 1, 8000);
+      const holderB = await until(() => host.state(id)?.holder, (holder) => holder !== null && holder !== own, 8000);
       await until(async () => laneOf(a), (text) => text.includes(FREE.taken), 8000);
       await b.goto('about:blank');
-      await until(buttons, (count) => count >= 1, 8000);
-      // A third tab takes the terminal that nobody holds, and the host tells nobody: the button is still there, and is not true.
+      await until(buttons, (count) => count >= 1, 20_000);
+      // From here the page cannot ask the host: a third tab takes the terminal that nobody holds, and the host tells nobody: the button is still there, and is not true.
+      await a.evaluate(() => {
+        window.__link.failLists(true);
+      });
       const c = await w.open();
-      await until(() => host.state(id)?.holder, (holder) => holder === 2, 8000);
-      const windowC = host.log.attaches.filter((entry) => entry.window !== owner).at(-1)?.window;
+      const holderC = await until(() => host.state(id)?.holder, (holder) => holder !== null && holder !== holderB, 8000);
       await reveal(c);
       await c.waitForSelector('.xterm-helper-textarea', { timeout: 8000 });
       const stale = await buttons();
-      const listsBefore = own(host.log.lists);
-      const attachesBefore = own(host.log.attaches);
-      await a.getByRole('button', { name: /take it back/i }).click();
+      const listsBefore = host.log.lists.length;
+      const attachesBefore = host.log.attaches.length;
+      const writesBefore = host.log.writes.length;
+      // The host can be asked again in the very task of the press, so that no question of the page's own comes between the two.
+      await a.evaluate(() => {
+        window.__link.failLists(false);
+        document.querySelector('[data-shell-part="terminalTakeBack"]')?.click();
+      });
       // The page asks the host who holds the terminal, and the button goes.
-      await until(() => own(host.log.lists), (count) => count > listsBefore, 8000);
+      await until(() => host.log.lists.length, (count) => count > listsBefore, 8000);
       const left = await until(buttons, (count) => count === 0, 8000);
       await frames(a);
       const lane = await laneOf(a);
-      const asks = own(host.log.lists) - listsBefore;
-      const attaches = own(host.log.attaches) - attachesBefore;
+      const asks = host.log.lists.length - listsBefore;
+      const attaches = host.log.attaches.length - attachesBefore;
       const holder = host.state(id)?.holder;
       // The tab that holds it goes on: what it types reaches the shell.
       await typeLine(c, 'hello');
-      const rows = await until(async () => rowsOf(c), (shown) => shown.some((row) => /hello from the synthetic shell/.test(row)), 8000);
-      const typed = windowC === undefined ? '' : wroteBy(host, windowC);
+      const rows = await until(async () => rowsOf(c), (shown) => shown.some((row) => HELLO.test(row)), 8000);
+      const typed = wroteBy(host, writesBefore);
       const laneC = await laneOf(c);
       check(
         'reattach.takeback-guard',
-        windowC !== undefined &&
-          stale === 1 &&
+        stale === 1 &&
           asks >= 1 &&
           attaches === 0 &&
           left === 0 &&
           lane.includes(FREE.taken) &&
           FREE.old.test(lane) &&
           !lane.includes(FREE.closed) &&
-          holder === 2 &&
+          holder === holderC &&
           typed.includes('hello') &&
-          rows.some((row) => /hello from the synthetic shell/.test(row)) &&
+          rows.some((row) => HELLO.test(row)) &&
           laneC === '',
-        `${engine} ${vp}: the button was still there when the tab that holds the terminal now had taken it with no word to this tab (${String(stale)} button: one is right); once pressed the page asked the host ${String(asks)} time(s) (once or more is right) and made ${String(attaches)} attach(es) (none is right: it is not its to take), the button ${left === 0 ? 'went' : 'is still there'}, the lane says ${JSON.stringify(lane)} (the terminal is taken over again: ${JSON.stringify(FREE.taken)}), the host's holder is ${String(holder)} (2, the third tab's), the third tab typed ${JSON.stringify(typed)} and its screen ${rows.some((row) => /hello from the synthetic shell/.test(row)) ? 'shows' : 'does NOT show'} the answer, with its lane ${JSON.stringify(laneC)} (empty: it was not taken from)`,
+        `${engine} ${vp}: the button was still there when the tab that holds the terminal now had taken it with no word to this tab (${String(stale)} button: one is right); once pressed the page asked the host ${String(asks)} time(s) (once or more is right) and made ${String(attaches)} attach(es) (none is right: it is not its to take), the button ${left === 0 ? 'went' : 'is still there'}, the lane says ${JSON.stringify(lane)} (the terminal is taken over again: ${JSON.stringify(FREE.taken)}), the host's holder is stream ${String(holder)} (${String(holderC)}, the third tab's), the third tab typed ${JSON.stringify(typed)} and its screen ${rows.some((row) => HELLO.test(row)) ? 'shows' : 'does NOT show'} the answer, with its lane ${JSON.stringify(laneC)} (empty)`,
       );
       note(`reattach takeback-guard ${engine} ${vp}: the press asked the host ${String(asks)} time(s), attached ${String(attaches)} time(s), the button went and the third tab went on`);
     } finally {
@@ -693,8 +758,8 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
   };
 
   /**
-   * A tab whose events were down when the tab that took its terminal let it go. It was told nothing, and when its events come back it asks the host who holds the terminal: with the taker gone it shows the button, and with the taker
-   * still there (the events were down for a moment) it shows what it showed.
+   * A tab that could not reach the host when the tab that took its terminal let it go. It was told nothing and shows what it showed (its questions fail, and the transport of its streams is down); once the host can be asked again
+   * the page asks, the host says that nobody holds the terminal, and the tab shows the button. It attaches nothing: only a press takes the terminal back.
    */
   sections['reattach-takeback-offline'] = async (ctx) => {
     const { engine, vp } = ctx;
@@ -704,56 +769,40 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const a = await w.open();
       await start(a);
       await typeLine(a, 'hello');
-      await until(async () => rowsOf(a), (rows) => rows.some((row) => /hello from the synthetic shell/.test(row)), 8000);
+      await until(async () => rowsOf(a), (rows) => rows.some((row) => HELLO.test(row)), 8000);
       const id = host.ids()[0];
-      const owner = windowsOf(host)[0];
+      const own = host.state(id)?.holder;
       const buttons = async () => a.getByRole('button', { name: /take it back/i }).count();
-      const listed = async () => a.evaluate(() => window.__link.state().listed);
-      const dropped = async () => a.evaluate(() => window.__link.state().dropped);
       const b = await w.open();
-      await until(() => host.state(id)?.holder, (holder) => holder === 1, 8000);
+      await until(() => host.state(id)?.holder, (holder) => holder !== null && holder !== own, 8000);
       await until(async () => laneOf(a), (text) => text.includes(FREE.taken), 8000);
+      const attachesBefore = host.log.attaches.length;
 
-      // 1. The events are down for a moment while the tab that took the terminal still holds it: the page asks who holds it, and nothing changes.
-      const listed0 = await listed();
+      // 1. The page cannot reach the host, and the tab that took the terminal goes meanwhile: the page is told nothing and shows what it showed, though it asked.
       await a.evaluate(() => {
         window.__link.down();
+        window.__link.failLists(true);
       });
-      await a.evaluate(() => {
-        window.__link.up();
-      });
-      const asked = await until(listed, (count) => count > listed0, 8000);
-      await frames(a);
-      const laneHeld = await laneOf(a);
-      const buttonsHeld = await buttons();
-
-      // 2. The events go down again and the tab that took the terminal goes while they are down: the page is told nothing, and shows what it showed.
-      await a.evaluate(() => {
-        window.__link.down();
-      });
-      const dropped0 = await dropped();
       await b.goto('about:blank');
       await until(() => host.state(id)?.holder, (holder) => holder === null, 8000);
-      await until(dropped, (count) => count > dropped0, 8000);
+      const triedDown = await asked(a);
       const laneDown = await laneOf(a);
       const buttonsDown = await buttons();
 
-      // 3. The events come back: the page asks the host, and the host says that nobody holds the terminal.
-      await perturbed(ctx, a, 'offline');
-      const listed1 = await listed();
+      // 2. The host can be reached again: the page asks, and the host says that nobody holds the terminal.
+      const listed1 = await listedBy(a);
       await a.evaluate(() => {
         window.__link.up();
+        window.__link.failLists(false);
       });
-      const freed = await until(buttons, (count) => count >= 1, 8000);
+      await perturbed(ctx, a, 'offline');
+      const freed = await until(buttons, (count) => count >= 1, 20_000);
       const laneFreed = await laneOf(a);
-      const asks = (await listed()) - listed1;
-      const attaches = host.log.attaches.filter((entry) => entry.window === owner).length;
+      const asks = (await listedBy(a)) - listed1;
+      const attaches = host.log.attaches.length - attachesBefore;
       check(
         'reattach.takeback-offline',
-        asked > listed0 &&
-          buttonsHeld === 0 &&
-          laneHeld.includes(FREE.taken) &&
-          FREE.old.test(laneHeld) &&
+        triedDown >= 1 &&
           buttonsDown === 0 &&
           laneDown.includes(FREE.taken) &&
           FREE.old.test(laneDown) &&
@@ -762,9 +811,9 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           laneFreed.includes(FREE.lease) &&
           asks >= 1 &&
           attaches === 0,
-        `${engine} ${vp}: with the events down for a moment and the tab that took the terminal still holding it the page asked the host (${String(asked - listed0)} call(s)) and the lane says ${JSON.stringify(laneHeld)} with ${String(buttonsHeld)} buttons (the old words and none is right); with the events down while that tab went the lane says ${JSON.stringify(laneDown)} with ${String(buttonsDown)} buttons (the same: it was told nothing); once they were back it asked the host ${String(asks)} time(s) (once or more) and has ${String(freed)} button (one is right) and the lane says ${JSON.stringify(laneFreed)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right); it made ${String(attaches)} attach(es) (none: only a press takes the terminal back)`,
+        `${engine} ${vp}: with the host out of reach while the tab that took the terminal went the page tried to ask ${String(triedDown)} time(s) and the lane says ${JSON.stringify(laneDown)} with ${String(buttonsDown)} buttons (the old words and none is right: it was told nothing); once the host could be reached it asked ${String(asks)} time(s) (once or more) and has ${String(freed)} button (one is right) and the lane says ${JSON.stringify(laneFreed)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right); it made ${String(attaches)} attach(es) (none: only a press takes the terminal back)`,
       );
-      note(`reattach takeback-offline ${engine} ${vp}: no button while the taker held the terminal, none while the events were down when it went, one once they were back and the page had asked the host (${String(asks)} call(s))`);
+      note(`reattach takeback-offline ${engine} ${vp}: no button while the host could not be reached when the taker went, one once it could and the page had asked (${String(asks)} call(s)), no attach`);
     } finally {
       await w.close();
     }
