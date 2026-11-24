@@ -20,6 +20,7 @@ const u64 = (value: number): Uint8Array => {
   new DataView(bytes.buffer).setBigUint64(0, BigInt(value));
   return bytes;
 };
+
 const joined = (...parts: readonly Uint8Array[]): Uint8Array => {
   const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
   let at = 0;
@@ -30,6 +31,7 @@ const joined = (...parts: readonly Uint8Array[]): Uint8Array => {
 
   return out;
 };
+
 const frame = (type: number, ...parts: readonly Uint8Array[]): Uint8Array => joined(Uint8Array.of(type), ...parts);
 const jsonOf = (value: unknown): Uint8Array => encoder.encode(JSON.stringify(value));
 const bytesOf = (...values: number[]): Uint8Array => Uint8Array.from(values);
@@ -66,12 +68,6 @@ class FakeSocket implements ChannelSocket {
     this.readyState = 3;
   }
 
-  private fire(type: string, event: Event): void {
-    for (const listener of [...(this.listeners.get(type) ?? [])]) {
-      listener(event);
-    }
-  }
-
   open(): void {
     this.readyState = 1;
     this.fire('open', new Event('open'));
@@ -95,6 +91,12 @@ class FakeSocket implements ChannelSocket {
   fail(): void {
     this.fire('error', new Event('error'));
   }
+
+  private fire(type: string, event: Event): void {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) {
+      listener(event);
+    }
+  }
 }
 
 type Calls = Array<readonly [string, ...unknown[]]>;
@@ -103,7 +105,7 @@ type Answers = {
   /** What `CreateTerminal` answers. */
   create: () => unknown;
   /** What each call rejects with, by name, when it does. */
-  fails: Record<string, unknown>;
+  fails: Record<string, Error>;
   /** What `ListChannelTerminals` answers, given the capabilities. */
   list: (capabilities: readonly string[]) => unknown;
   busy: unknown;
@@ -121,9 +123,9 @@ type Rig = {
   readonly deps: Parameters<typeof createTerminalChannels>[0];
 };
 
-type RigOptions = { readonly saved?: Record<string, string>; readonly writeFails?: unknown };
+type RigOptions = { readonly saved?: Record<string, string>; readonly writeFails?: Error };
 
-const notFound = (): Error & Record<string, unknown> => Object.assign(new Error('not found'), { type: 'omniview:session/not-found', title: 'Not found', status: 404, detail: 'The terminal was not found.' });
+const notFound = (): Error => Object.assign(new Error('not found'), { type: 'omniview:session/not-found', title: 'Not found', status: 404, detail: 'The terminal was not found.' });
 
 function rig(options: RigOptions = {}): Rig {
   const sockets: FakeSocket[] = [];
@@ -140,11 +142,12 @@ function rig(options: RigOptions = {}): Rig {
   const call = async (name: string, ...args: unknown[]): Promise<unknown> => {
     calls.push([name, ...args]);
     if (name in answers.fails) {
-      return Promise.reject(answers.fails[name] as Error);
+      return Promise.reject(answers.fails[name]);
     }
 
     return Promise.resolve(name === 'CreateTerminal' ? answers.create() : name === 'ListChannelTerminals' ? answers.list(args[0] as string[]) : name === 'ChannelTerminalBusy' ? answers.busy : undefined);
   };
+
   const client: ChannelClient = {
     CreateTerminal: async (opts, launch) => call('CreateTerminal', opts, launch),
     CloseChannelTerminal: async (cap) => call('CloseChannelTerminal', cap),
@@ -156,7 +159,7 @@ function rig(options: RigOptions = {}): Rig {
     read: async () => Promise.resolve(undefined),
     write: async (text) => {
       writes.push(text);
-      return options.writeFails === undefined ? Promise.resolve() : Promise.reject(options.writeFails as Error);
+      return options.writeFails === undefined ? Promise.resolve() : Promise.reject(options.writeFails);
     },
   };
   const deps = {
@@ -351,9 +354,9 @@ describe('the frames the host sends', () => {
     const { socket, said } = opened();
     socket.deliver(frame(0x82, u64(0x0102030405), encoder.encode('hi\r\n')));
     socket.deliver(frame(0x82, u64(0), bytesOf(0xff)));
-    expect(said).toEqual([
-      ['output', 0x0102030405, encoder.encode('hi\r\n')],
-      ['output', 0, bytesOf(0xff)],
+    expect(said.map(([name, offset, bytes]) => [name, offset, Array.from(bytes as Uint8Array)])).toEqual([
+      ['output', 0x0102030405, Array.from(encoder.encode('hi\r\n'))],
+      ['output', 0, [0xff]],
     ]);
   });
 
@@ -394,7 +397,9 @@ describe('the end of a stream', () => {
     ['ended', (socket) => socket.deliver(frame(0x84, jsonOf({ reason: 'exited', last_offset: 0 })))],
     ['takenOver', (socket) => socket.deliver(frame(0x85))],
     ['notFound', (socket) => socket.deliver(frame(0x86))],
-    ['closed', (socket) => socket.drop()],
+    ['closed', (socket) => {
+      socket.drop(); 
+    }],
   ];
 
   it.each(ends)('is told as %s, once, and nothing is told after it: no frame, no second end, and nothing is sent', (name, end) => {
@@ -445,7 +450,9 @@ describe('the end of a stream', () => {
     ['a gap that is too short', (socket) => socket.deliver(frame(0x83, u64(1)))],
     ['a ready that is not JSON', (socket) => socket.deliver(frame(0x81, encoder.encode('{nope')))],
     ['an ended that is not JSON', (socket) => socket.deliver(frame(0x84, encoder.encode('')))],
-    ['a message that is text', (socket) => socket.deliverText('hello')],
+    ['a message that is text', (socket) => {
+      socket.deliverText('hello'); 
+    }],
   ])('is closed, once, by %s, and the stream is let go', (_name, bad) => {
     const r = rig({ saved: { t1: CAP } });
     const { socket, said } = connected(r);
@@ -490,11 +497,18 @@ describe('a terminal the page holds no capability for', () => {
     link.resize(80, 24);
     link.ack(1);
     link.detach();
-    link.close();
     expect(link.pending()).toBe(0);
     await turns();
     expect(said).toEqual([['notFound']]);
     expect(r.opened).toEqual([]);
+  });
+
+  it('says nothing when the feed closed the link before it was told: no event follows a close', async () => {
+    const r = rig();
+    const { said, events } = recorder();
+    r.channels.connect('t1', undefined, events).close();
+    await turns();
+    expect(said).toEqual([]);
   });
 
   it('answers every call as the host answers a capability that opens nothing, and does not call the host', async () => {
@@ -725,7 +739,7 @@ describe('listing the terminals', () => {
   it('does not forget a capability that was made while the host was answering', async () => {
     const r = rig({ saved: { t1: CAP } });
     let answer: (value: unknown) => void = () => undefined;
-    r.answers.list = () =>
+    r.answers.list = async () =>
       new Promise((resolve) => {
         answer = resolve;
       });
@@ -962,17 +976,21 @@ describe('the capability, which nothing says', () => {
   let console_: Array<readonly unknown[]>;
   beforeEach(() => {
     console_ = [];
+    const note = (...args: unknown[]): void => {
+      console_.push(args);
+    };
+
     for (const method of ['warn', 'error', 'log', 'info', 'debug'] as const) {
-      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
-        console_.push(args);
-      });
+      vi.spyOn(console, method).mockImplementation(note);
     }
   });
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  const echoing = (text: string) => ({ type: 'omniview:internal', title: 'Failed', status: 500, detail: `the call failed for ${text}` });
+  const messageOfError = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+  const echoing = (text: string) => Object.assign(new Error('failed'), { type: 'omniview:internal', title: 'Failed', status: 500, detail: `the call failed for ${text}` });
 
   it('is in no note, no error and no console text, whatever fails and whatever the place echoes of it', async () => {
     const r = rig({ writeFails: new Error(`cannot save ${JSON.stringify({ t1: CAP })}`) });
@@ -1005,14 +1023,14 @@ describe('the capability, which nothing says', () => {
     expect(said.every((sentence) => sentence.length > 0)).toBe(true);
   });
 
-  it('is not in the error of a failed creation either', async () => {
+  it('is not in the error of a creation whose answer the page cannot keep', async () => {
     const r = rig();
-    r.answers.create = () => ({ id: 't1', cap: CAP, shell: 7 });
-    r.answers.fails.CreateTerminal = echoing(CAP);
+    r.answers.create = () => ({ id: 't1', cap: `${CAP} with a space` });
     const error = await r.channels.create('t1', { cols: 80, rows: 24 }).then(
       () => undefined,
       (failure: unknown) => failure,
     );
-    expect(r.channels.describe(error)).not.toContain(CAP);
+    expect(error).toBeInstanceOf(Error);
+    expect(JSON.stringify([messageOfError(error), r.channels.describe(error)])).not.toContain(CAP);
   });
 });

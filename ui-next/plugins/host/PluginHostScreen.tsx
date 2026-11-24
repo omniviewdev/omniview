@@ -1,10 +1,11 @@
 import { ActivityProvider } from '@omniviewdev/runtime';
 import { WindowClient } from '@omniviewdev/runtime/api';
-import { Events, onEventsReconnect, Window } from '@omniviewdev/runtime/runtime';
+import { Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
-import { attachLocalTerminal, loadPageKey, restoreLocalTerminals, terminalKeyStorage, type TerminalsOptions } from '../../shell/panel/terminal';
+import { attachLocalTerminal, restoreLocalTerminals, type TerminalsOptions } from '../../shell/panel/terminal';
+import { loadAppTerminalChannels } from '../../shell/panel/terminal/terminalChannel';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
@@ -45,19 +46,13 @@ const loadWindowSession = async (): Promise<LoadedSession> => loadSession(window
 const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(noticesStorage({ client: WindowClient, name: windowName }));
 
 /**
- * This window's terminal page key, read beside its session and from the same place, in a slot of its own (`shell/panel/terminal/pageKey.ts`): the secret that gives the terminals this window starts to the page that comes back after
- * a reload. It never rejects either, and is bounded like the session's read: a key that cannot be read or saved is a key that lives as long as the page, with a note on the console.
- */
-const loadWindowPageKey = async (): Promise<string> => loadPageKey(terminalKeyStorage({ client: WindowClient, name: windowName }));
-
-/**
  * The screen of contributed pages as the window mounts it: the installed plugins, their interfaces loading in a bounded pool beside the first paint (the
  * shell never waits for a plugin), the address, and the providers a plugin's hooks read through the host: the QueryClient and the theme are mounted above
  * by the entry, the activity provider here. A plugin that has no interface, or whose interface fails, is a state of its own tab, not of this screen.
  * Closing the window is the app's own window's to do: a browser tab has none, so the host is told of none there and the close chord does nothing.
  *
  * The window's saved session is read beside all of that, and the host is drawn once it has: its tabs, the rail's choice and the panel are the first frame, so nothing is drawn and then moved. The read
- * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good. The window's terminal page key is read with it, so that the host's terminals are made with it from their first press.
+ * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good. The capabilities of the window's terminals are read with it (`loadAppTerminalChannels`: a slot of their own, never failing and bounded like the session's read), so that the terminals the window left are found from the first frame.
  */
 export function PluginHostScreen() {
   const [store] = useState(() => new PluginStore());
@@ -73,11 +68,11 @@ export function PluginHostScreen() {
 
   useEffect(() => {
     let current = true;
-    void Promise.all([loadWindowSession(), loadWindowNotices(), loadWindowPageKey()]).then(([session, notices, pageKey]) => {
+    void Promise.all([loadWindowSession(), loadWindowNotices(), loadAppTerminalChannels()]).then(([session, notices, channels]) => {
       if (current) {
-        // The Terminal tool starts its shells under the key and, when the window attaches, asks the host for the ones this window left (`restoreLocalTerminals`). A terminal another tab took over is attached again under the key
-        // (`attachLocalTerminal`), and the page's events coming back after a gap is told to its feeds (`onEventsReconnect`: in a native window it never fires).
-        setLoaded({ session, notices, terminals: { pageKey, restore: async () => restoreLocalTerminals(pageKey), reattach: (id) => attachLocalTerminal(pageKey, id), reconnect: onEventsReconnect } });
+        // When the window attaches, the Terminal tool asks the host for the terminals this window left (`restoreLocalTerminals`), and a terminal another tab took over is attached again (`attachLocalTerminal`), both
+        // through the page's channels, which hold the capabilities. A stream that drops is connected again by its own feed, so there is no signal to forward.
+        setLoaded({ session, notices, terminals: { restore: async () => restoreLocalTerminals(channels), reattach: (id) => attachLocalTerminal(id, undefined, channels) } });
       }
     });
     return () => {

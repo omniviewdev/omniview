@@ -40,7 +40,7 @@ const feed = { name: 'a feed' } as unknown as TerminalFeedHandle;
 const made = (): Options => {
   const last = vi.mocked(createExecFeed).mock.calls.at(-1)?.[0];
   expect(last, 'a feed was made').toBeDefined();
-  return last as Options;
+  return last!;
 };
 
 beforeEach(() => {
