@@ -162,6 +162,7 @@ let firstAck: (() => void) | undefined;
 const leak: Uint8Array[] = [];
 
 class FixtureSocket implements ChannelSocket {
+  readonly id = String((socketSerial += 1));
   binaryType: 'arraybuffer' | 'blob' = 'arraybuffer';
   readyState = 0;
   bufferedAmount = 0;
@@ -179,7 +180,6 @@ class FixtureSocket implements ChannelSocket {
   private retired: Backend | undefined;
   private first = true;
   private lastArrival = Promise.resolve();
-  readonly id = String((socketSerial += 1));
 
   constructor(open: (socket: FixtureSocket) => Backend | undefined) {
     sockets.set(this.id, this);
@@ -208,12 +208,6 @@ class FixtureSocket implements ChannelSocket {
     this.handlers[type].delete(listener);
   }
 
-  private emit(type: 'open' | 'message' | 'close' | 'error', event: Event): void {
-    for (const listener of [...this.handlers[type]]) {
-      listener(event);
-    }
-  }
-
   /** What the host sent, in order, each frame in a task of its own. */
   push(item: { readonly frame: Uint8Array } | { readonly close: true }): void {
     this.inbox.push(item);
@@ -222,6 +216,147 @@ class FixtureSocket implements ChannelSocket {
       macrotask(() => {
         this.drain();
       });
+    }
+  }
+
+  /** The probe drops the stream: the transport is gone, and the host sees the stream end. */
+  drop(): void {
+    this.backend?.close();
+    this.retired = this.backend;
+    this.backend = undefined;
+    this.inbox.length = 0;
+    this.over();
+  }
+
+  /** What the page sends: the page's own faults first, then the order of the stream, after the time the frame takes to arrive. */
+  send(data: Uint8Array<ArrayBuffer>): void {
+    if (this.readyState !== 1) {
+      return;
+    }
+
+    const type = data[0];
+    if (this.first) {
+      this.first = false;
+      // `?control=rejoin-from-zero`: an attach that says where the page is says 0.
+      if (control === 'rejoin-from-zero') {
+        const request = JSON.parse(new TextDecoder().decode(data.subarray(1))) as { from_offset?: number };
+        if (request.from_offset !== undefined) {
+          request.from_offset = 0;
+          const bytes = new TextEncoder().encode(JSON.stringify(request));
+          data = new Uint8Array(1 + bytes.length);
+          data[0] = FRAME.attach;
+          data.set(bytes, 1);
+        }
+      }
+
+      this.forward(data);
+      // Armed by the probe's control `take-back-twice`, once, just before the press: the attach is made once more, as a button that attaches twice would make it.
+      if (link.twice) {
+        link.twice = false;
+        const extra = new FixtureSocket((socket) => openBackend(socket));
+        extra.push = () => undefined;
+        macrotask(() => {
+          extra.send(new Uint8Array(data));
+        });
+      }
+
+      return;
+    }
+
+    if (type === FRAME.ack) {
+      let bytes = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(1);
+      if (this.withheld > 0 && bytes > 0) {
+        const kept = Math.min(bytes, this.withheld);
+        this.withheld -= kept;
+        bytes -= kept;
+        if (bytes === 0) {
+          return;
+        }
+
+        const rewritten = new Uint8Array(5);
+        rewritten[0] = FRAME.ack;
+        new DataView(rewritten.buffer).setUint32(1, bytes);
+        data = rewritten;
+      }
+
+      // `?control=ack-on-receipt`: what the page acknowledges is ignored; the acknowledgement is made on receipt.
+      if (control === 'ack-on-receipt' && bytes > 0) {
+        return;
+      }
+
+      // `?control=flow-late`: the first acknowledgement, of nothing, waits until the emulator was given a byte.
+      if (control === 'flow-late' && bytes === 0 && credit.acks.length === 0 && stats.accepted === 0) {
+        firstAck = () => {
+          this.sendAck(0);
+        };
+
+        return;
+      }
+
+      this.record(bytes);
+      if (acks.holding) {
+        acks.held.push({ socket: this, frame: new Uint8Array(data) });
+        return;
+      }
+    }
+
+    // `?control=leave-lost`: the page never says it is leaving.
+    if (type === FRAME.detach && control === 'leave-lost') {
+      return;
+    }
+
+    if (type === FRAME.input || type === FRAME.resize) {
+      if (type === FRAME.input) {
+        link.writes += 1;
+      }
+
+      calls.push({ kind: type === FRAME.input ? 'write' : 'resize', size: data.length - 1, at: performance.now(), entry: undefined });
+    }
+
+    this.forward(new Uint8Array(data));
+  }
+
+  /** Hands a frame to the far end, in order, after the time a frame takes to arrive. The frame is the host's from here on. */
+  forward(frame: Uint8Array): void {
+    const backend = this.backend ?? (acks.accepting ? this.retired : undefined);
+    if (backend === undefined) {
+      return;
+    }
+
+    const call = frame[0] === FRAME.input || frame[0] === FRAME.resize ? calls.at(-1) : undefined;
+    const deliver = (): void => {
+      backend.send(frame);
+      if (call !== undefined && localHost !== undefined) {
+        call.entry = localHost.log.frames.at(-1);
+      }
+    };
+
+    if (net.latency > 0) {
+      const wait = Math.random() * net.latency;
+      this.lastArrival = this.lastArrival.then(
+        async () =>
+          new Promise<void>((resolve) => {
+            setTimeout(() => {
+              deliver();
+              resolve();
+            }, wait);
+          }),
+      );
+    } else {
+      deliver();
+    }
+  }
+
+  close(): void {
+    this.backend?.close();
+    this.backend = undefined;
+    this.readyState = 3;
+    sockets.delete(this.id);
+  }
+
+  private emit(type: 'open' | 'message' | 'close' | 'error', event: Event): void {
+    for (const listener of [...this.handlers[type]]) {
+      listener(event);
     }
   }
 
@@ -279,7 +414,7 @@ class FixtureSocket implements ChannelSocket {
 
       // `?control=ack-on-receipt`: the page's acknowledgement is made as the frame is delivered, and not when it is parsed.
       if (control === 'ack-on-receipt' && offset >= this.readyEnd) {
-        this.sendAck(size, true);
+        this.sendAck(size);
       }
 
       // `?control=replay-unacked`: the page never acknowledges the replay (what it acknowledges of the first bytes it was sent is kept back), though the host counts every frame it sent, the replay included, against its window.
@@ -304,18 +439,9 @@ class FixtureSocket implements ChannelSocket {
     this.emit('close', new Event('close'));
   }
 
-  /** The probe drops the stream: the transport is gone, and the host sees the stream end. */
-  drop(): void {
-    this.backend?.close();
-    this.retired = this.backend;
-    this.backend = undefined;
-    this.inbox.length = 0;
-    this.over();
-  }
-
-  private sendAck(bytes: number, synthetic: boolean): void {
+  private sendAck(bytes: number): void {
     this.record(bytes);
-    this.forward(this.frameOfAck(bytes), synthetic);
+    this.forward(this.frameOfAck(bytes));
   }
 
   private frameOfAck(bytes: number): Uint8Array {
@@ -330,134 +456,6 @@ class FixtureSocket implements ChannelSocket {
     credit.acked += bytes;
     credit.ackState.push({ id: this.terminal ?? '', count: bytes, at: performance.now(), exists: this.ready, delivered: localHost?.log.delivered ?? credit.received, accepted: stats.accepted, parsed: stats.parsed, after: credit.acked });
   }
-
-  /** What the page sends: the page's own faults first, then the order of the stream, after the time the frame takes to arrive. */
-  send(data: Uint8Array<ArrayBuffer>): void {
-    if (this.readyState !== 1) {
-      return;
-    }
-
-    const type = data[0];
-    if (this.first) {
-      this.first = false;
-      // `?control=rejoin-from-zero`: an attach that says where the page is says 0.
-      if (control === 'rejoin-from-zero') {
-        const request = JSON.parse(new TextDecoder().decode(data.subarray(1))) as { from_offset?: number };
-        if (request.from_offset !== undefined) {
-          request.from_offset = 0;
-          const bytes = new TextEncoder().encode(JSON.stringify(request));
-          data = new Uint8Array(1 + bytes.length);
-          data[0] = FRAME.attach;
-          data.set(bytes, 1);
-        }
-      }
-
-      this.forward(data, false);
-      // Armed by the probe's control `take-back-twice`, once, just before the press: the attach is made once more, as a button that attaches twice would make it.
-      if (link.twice) {
-        link.twice = false;
-        const extra = new FixtureSocket((socket) => openBackend(socket));
-        extra.push = () => undefined;
-        macrotask(() => {
-          extra.send(new Uint8Array(data));
-        });
-      }
-
-      return;
-    }
-
-    if (type === FRAME.ack) {
-      let bytes = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(1);
-      if (this.withheld > 0 && bytes > 0) {
-        const kept = Math.min(bytes, this.withheld);
-        this.withheld -= kept;
-        bytes -= kept;
-        if (bytes === 0) {
-          return;
-        }
-
-        const rewritten = new Uint8Array(5);
-        rewritten[0] = FRAME.ack;
-        new DataView(rewritten.buffer).setUint32(1, bytes);
-        data = rewritten;
-      }
-
-      // `?control=ack-on-receipt`: what the page acknowledges is ignored; the acknowledgement is made on receipt.
-      if (control === 'ack-on-receipt' && bytes > 0) {
-        return;
-      }
-
-      // `?control=flow-late`: the first acknowledgement, of nothing, waits until the emulator was given a byte.
-      if (control === 'flow-late' && bytes === 0 && credit.acks.length === 0 && stats.accepted === 0) {
-        const held = new Uint8Array(data);
-        firstAck = () => {
-          this.sendAck(0, false);
-          void held;
-        };
-        return;
-      }
-
-      this.record(bytes);
-      if (acks.holding) {
-        acks.held.push({ socket: this, frame: new Uint8Array(data) });
-        return;
-      }
-    }
-
-    // `?control=leave-lost`: the page never says it is leaving.
-    if (type === FRAME.detach && control === 'leave-lost') {
-      return;
-    }
-
-    if (type === FRAME.input || type === FRAME.resize) {
-      if (type === FRAME.input) {
-        link.writes += 1;
-      }
-
-      calls.push({ kind: type === FRAME.input ? 'write' : 'resize', size: data.length - 1, at: performance.now(), entry: undefined });
-    }
-
-    this.forward(new Uint8Array(data), false);
-  }
-
-  /** Hands a frame to the far end, in order, after the time a frame takes to arrive. The frame is the host's from here on. */
-  forward(frame: Uint8Array, synthetic: boolean): void {
-    void synthetic;
-    const backend = this.backend ?? (acks.accepting ? this.retired : undefined);
-    if (backend === undefined) {
-      return;
-    }
-
-    const call = frame[0] === FRAME.input || frame[0] === FRAME.resize ? calls.at(-1) : undefined;
-    const deliver = (): void => {
-      backend.send(frame);
-      if (call !== undefined && localHost !== undefined) {
-        call.entry = localHost.log.frames.at(-1);
-      }
-    };
-
-    if (net.latency > 0) {
-      const wait = Math.random() * net.latency;
-      this.lastArrival = this.lastArrival.then(
-        async () =>
-          new Promise<void>((resolve) => {
-            setTimeout(() => {
-              deliver();
-              resolve();
-            }, wait);
-          }),
-      );
-    } else {
-      deliver();
-    }
-  }
-
-  close(): void {
-    this.backend?.close();
-    this.backend = undefined;
-    this.readyState = 3;
-    sockets.delete(this.id);
-  }
 }
 
 /** Opens the far end of a stream: the page's own host, or the probe's, through its binding. */
@@ -471,7 +469,14 @@ function openBackend(socket: FixtureSocket): Backend | undefined {
         socket.push({ close: true });
       },
     );
-    return { send: (frame) => stream.send(frame), close: () => stream.close() };
+    return {
+      send: (frame) => {
+        stream.send(frame);
+      },
+      close: () => {
+        stream.close();
+      },
+    };
   }
 
   if (streamBinding === undefined) {
@@ -519,10 +524,7 @@ Object.assign(window, {
   },
 });
 
-const openStream = (name: string): ChannelSocket => {
-  void name;
-  return new FixtureSocket((socket) => openBackend(socket));
-};
+const openStream = (): ChannelSocket => new FixtureSocket((socket) => openBackend(socket));
 
 // ---- the host's calls ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -638,7 +640,7 @@ if (shared) {
         for (const held of acks.held.splice(0)) {
           // A frame that was in flight when its stream went is lost with it; the probe's fault makes the host take it late, from the stream it was on.
           if (acks.accepting) {
-            held.socket.forward(held.frame, true);
+            held.socket.forward(held.frame);
           }
         }
       },
