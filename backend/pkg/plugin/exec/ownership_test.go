@@ -42,13 +42,13 @@ func bareIDCalls(fx *terminalFixture, typed string) map[string]func(ctx context.
 	}
 }
 
-// notFoundOf asserts that err is the session-not-found error and hands it back, for the tests that compare its words.
-func notFoundOf(t *testing.T, err error, what string) *apperror.AppError {
-	t.Helper()
-	var app *apperror.AppError
-	require.ErrorAs(t, err, &app, what)
-	require.Equal(t, apperror.TypeSessionNotFound, app.Type, what)
-	return app
+// wordsOf is what an error says, with the id it names put as ID, so that the answers for two ids can be compared. Nothing
+// says "": a call that was not refused has no words, and it is not the words of a refusal.
+func wordsOf(err error, id string) string {
+	if err == nil {
+		return ""
+	}
+	return strings.ReplaceAll(err.Error(), id, "ID")
 }
 
 func requireNotFound(t *testing.T, err error, what string) {
@@ -91,10 +91,10 @@ func TestAWindowCannotUseTheTerminalOfAnotherWindowByAnyBindingThatNamesItById(t
 	}
 	for name, call := range calls {
 		for who, ctx := range map[string]context.Context{"another window": ctxB, "no window": context.Background()} {
-			theirs := notFoundOf(t, call(ctx, info.ID), name+" by "+who)
-			never := notFoundOf(t, call(ctx, missing), name+" of an id that never was")
-			assert.Equal(t, strings.ReplaceAll(never.Error(), missing, "ID"), strings.ReplaceAll(theirs.Error(), info.ID, "ID"),
-				"%s by %s: the same words as for an id that never was", name, who)
+			theirs, never := call(ctx, info.ID), call(ctx, missing)
+			requireNotFound(t, theirs, name+" by "+who)
+			requireNotFound(t, never, name+" of an id that never was")
+			assert.Equal(t, wordsOf(never, missing), wordsOf(theirs, info.ID), "%s by %s: the same words as for an id that never was", name, who)
 		}
 	}
 

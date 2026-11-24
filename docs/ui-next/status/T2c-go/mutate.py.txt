@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+# Negative controls of T2c-go (docs/ui-next/AGENTS.md, rule 28: a control must trip the assertion it is named for, and the same fault must pass undetected
+# when that assertion is removed). One fault at a time is put into a SCRATCH copy of a source file (Go: `go test -overlay`, the worktree is never edited;
+# TypeScript: the file is swapped in place for the vitest run and put back, however the script ends) and the tests named for it are run twice:
+#   1. THE FAULT. The tests must pass without it (the baseline of the group, run first); with it, at least one test named for the fault must fail, and the run
+#      must be a run of tests: a build error, a setup failure, a panic or a timeout is NOT A DETECTION, and so is a failure of a test that is not named for it.
+#   2. THE FAULT WITH ITS ASSERTIONS REMOVED. Every assertion that tripped in the first run is removed from a scratch copy of the test file (the statement
+#      `require.X(t, args)` or `notFound(t, args)` becomes `_ = []any{args}`, so that what its arguments call still runs; `expect(x).y(z)` becomes `void (x)`),
+#      round by round until nothing trips, and the run must PASS. A fault that still fails after that is caught by something that is not an assertion, or by an
+#      assertion the control is not named for: the control proves nothing and the run says so.
+# Usage (from the worktree root; ROOT=<path> names another; ONLY=<regexp> runs the controls whose name matches; ROUNDS=<n> bounds the removal rounds, 16):
+#   python3 docs/ui-next/status/T2c-go/mutate.py.txt
+# Needs go (GOWORK=off GOTOOLCHAIN=local are set here) and, for the TypeScript controls, pnpm and a built `packages/` (task packages). It runs one test run at a time.
+import atexit, json, os, re, shutil, signal, subprocess, sys, tempfile, time
+
+ROOT = os.path.realpath(os.environ.get('ROOT', os.getcwd()))
+ONLY = re.compile(os.environ.get('ONLY', '.'))
+ROUNDS = int(os.environ.get('ROUNDS', '16'))
+SCRATCH = tempfile.mkdtemp(prefix='t2c-mut-')
+ENV = dict(os.environ, GOWORK='off', GOTOOLCHAIN='local', GOFLAGS='', CI='')
+atexit.register(lambda: shutil.rmtree(SCRATCH, ignore_errors=True))
+
+T, X = './backend/pkg/terminal/', './backend/pkg/plugin/exec/'
+TO, TR, TM, TT = 'backend/pkg/terminal/ownership.go', 'backend/pkg/terminal/reattach.go', 'backend/pkg/terminal/manager.go', 'backend/pkg/terminal/types.go'
+XO, XC, XT, XW = 'backend/pkg/plugin/exec/ownership.go', 'backend/pkg/plugin/exec/controller.go', 'backend/pkg/plugin/exec/terminal.go', 'backend/pkg/plugin/exec/service_wrapper.go'
+UT, UH = 'ui/features/windows/transport.ts', 'ui/providers/BottomDrawer/terminalHandoff.ts'
+UTT, UHT = 'ui/features/windows/transport.test.ts', 'ui/providers/BottomDrawer/__tests__/terminalHandoff.test.ts'
+
+# (name, kind, [(file, old text, new text)], tests, expect). Go: tests is a -run pattern and expect the top-level tests of which one must fail; TypeScript: tests is
+# the list of vitest files and expect the titles (a substring of the full name) of which one must fail. The text to replace must be there once or more; the first is replaced.
+CONTROLS = [
+ # ---- who holds a session (the first push of T2c-go) ----
+ ('authorize-never-refuses', 'go', [(TO, '\tif !held {', '\tif false && !held {')], (T, '^TestOnlyTheWindowThatOwnsASession'), ['TestOnlyTheWindowThatOwnsASessionIsAuthorizedForIt']),
+ ('a-claim-needs-no-offer', 'go', [(TO, 'case s.offerOpenLocked(m.clock.Now()) && !s.fate.set && !s.ending.Load():', 'case true:')], (T, '^TestAnOfferLetsTheNext'), ['TestAnOfferLetsTheNextWindowClaimASessionOnceAndOnlyTheOwnerMakesIt']),
+ ('an-offer-never-runs-out', 'go', [(TO, 'return !s.offerUntil.IsZero() && now.Before(s.offerUntil)', 'return !s.offerUntil.IsZero()')], (T, '^TestAnOfferLetsTheNext'), ['TestAnOfferLetsTheNextWindowClaimASessionOnceAndOnlyTheOwnerMakesIt']),
+ ('an-offer-reads-the-wall-clock', 'go', [(TO, 's.offerUntil = m.clock.Now().Add(ttl)', 's.offerUntil = time.Now().Add(ttl)')], (T, '^TestAnOfferLetsTheNext'), ['TestAnOfferLetsTheNextWindowClaimASessionOnceAndOnlyTheOwnerMakesIt']),
+ ('a-window-lists-every-session', 'go', [(TO, 'held := s.heldBy(owner) && !s.ending.Load()', 'held := !s.ending.Load()')], (T, '^TestAWindowListsOnlyTheSessionsItHolds'), ['TestAWindowListsOnlyTheSessionsItHolds']),
+ ('the-end-of-a-terminal-has-no-owner', 'go', [(TR, '\t\ttomb.owner = caller\n\t}\n\tm.mu.Unlock()', '\t\t_ = caller\n\t}\n\tm.mu.Unlock()')], (T, '^TestAnEndedSessionAndTheEndOfAKeyed'), ['TestAnEndedSessionAndTheEndOfAKeyedTerminalAreHeldByTheirLastWindow']),
+ ('a-refused-attach-takes-the-end', 'go', [(TR, '\tattached, err := tomb.attached(req.FromOffset)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n', '\tattached, err := tomb.attached(req.FromOffset)\n\tif err != nil {\n\t\tm.mu.Lock()\n\t\ttomb.owner = caller\n\t\tm.mu.Unlock()\n\t\treturn nil, err\n\t}\n')], (T, '^TestARefusedAttachOfAnEndedTerminal'), ['TestARefusedAttachOfAnEndedTerminalDoesNotTakeItFromTheWindowThatHoldsIt']),
+ ('a-session-of-a-plugin-is-held-by-every-window', 'go', [(XO, 'return index.owner != nil && index.owner == owner', 'return true')], (X, '^TestASessionOfAPluginBelongsTo|^TestTheOutputOfAnEnded'), ['TestASessionOfAPluginBelongsToTheWindowThatCreatedItUntilThatWindowGoesAway', 'TestTheOutputOfAnEndedSessionOfAPluginIsForTheWindowThatCreatedIt']),
+ ('a-claim-ignores-the-owner', 'go', [(XO, 'case index.owner == nil || (!index.offerUntil.IsZero() && now.Before(index.offerUntil)):', 'case index.owner == nil || now.IsZero() || true:')], (X, '^TestASessionOfAPluginBelongsTo|^TestTheOutputOfAnEnded'), ['TestASessionOfAPluginBelongsToTheWindowThatCreatedItUntilThatWindowGoesAway', 'TestTheOutputOfAnEndedSessionOfAPluginIsForTheWindowThatCreatedIt']),
+ ('a-window-that-leaves-orphans-nothing', 'go', [(XO, 'if !index.local && index.owner != nil && index.owner == owner {', 'if false {')], (X, '^TestASessionOfAPluginBelongsTo|^TestAWindowEndsTheSessionsItLists'), ['TestASessionOfAPluginBelongsToTheWindowThatCreatedItUntilThatWindowGoesAway', 'TestAWindowEndsTheSessionsItListsThatNoWindowHoldsAndNoOtherWindows']),
+ ('write-terminal-skips-the-check', 'go', [(XT, 'if err = c.terminalManager.Authorize(sessionID, owner); err != nil {', 'if false {')], (X, '^TestAWindowCannotUseTheTerminal'), ['TestAWindowCannotUseTheTerminalOfAnotherWindowByAnyBindingThatNamesItById']),
+ ('the-offer-gives-access', 'go', [(XO, 'return c.holds(index, sessionID, owner) || c.claimable(index, owner)', 'return true || c.claimable(index, owner)')], (X, '^TestASessionOfAPluginBelongsTo'), ['TestASessionOfAPluginBelongsToTheWindowThatCreatedItUntilThatWindowGoesAway']),
+ ('the-policy-allows-offer-session', 'go', [('internal/auditgate/policy.json', 'exec.ServiceWrapper.OfferSession", "decision": "deny"', 'exec.ServiceWrapper.OfferSession", "decision": "allow"')], ('.', '^TestDangerousMethodsStayDenied'), ['TestDangerousMethodsStayDenied']),
+ ('the-end-of-an-unheld-session-is-refused', 'go', [(XC, 'if !c.holds(index, sessionID, owner) && !c.claimable(index, owner) {', 'if !c.holds(index, sessionID, owner) {')], (X, '^TestAWindowEndsTheSessionsItLists'), ['TestAWindowEndsTheSessionsItListsThatNoWindowHoldsAndNoOtherWindows']),
+ ('a-claim-does-not-admit-the-window', 'go', [(XW, 'owner, err := s.terminalOwner(window)\n\tif err != nil {\n\t\treturn nil, nil, apperror.SessionNotFound(sessionID)', '_ = window\n\towner, err := callerOf(ctx), error(nil)\n\tif err != nil {\n\t\treturn nil, nil, apperror.SessionNotFound(sessionID)')], (X, '^TestAWindowThatClaimsASession'), ['TestAWindowThatClaimsASessionWithItsFirstCallIsReleasedWithItWhenItRetires']),
+ # ---- 1. the publication of a session and the retirement of its window ----
+ ('the-publication-never-asks-the-realm-again', 'go', [(XW, '\tif _, admitErr := s.Realm.AdmitWindow(window); admitErr != nil {\n\t\ts.Ctrl.ReleaseOwnedTerminals(owner, terminal.ClosedByWindow)\n\t}\n\treturn session, nil', '\treturn session, nil')], (X, '^TestASessionOfAPluginIsLeftToNoWindow'), ['TestASessionOfAPluginIsLeftToNoWindowWhenItsWindowRetiresWhileThePluginMakesItAndWhenItRetiresAfter']),
+ ('the-publication-orphans-a-live-window', 'go', [(XW, '\tif _, admitErr := s.Realm.AdmitWindow(window); admitErr != nil {\n\t\ts.Ctrl.ReleaseOwnedTerminals(owner, terminal.ClosedByWindow)\n\t}\n\treturn session, nil', '\ts.Ctrl.ReleaseOwnedTerminals(owner, terminal.ClosedByWindow)\n\treturn session, nil')], (X, '^TestASessionOfAPluginIsHeldByItsWindowFromTheInstant'), ['TestASessionOfAPluginIsHeldByItsWindowFromTheInstantItIsVisible']),
+ # ---- 2. the check of who may end a session and its end (a session of a plugin) ----
+ ('a-close-is-checked-only-on-the-early-copy', 'go', [(XC, '\tif done, commitErr := c.commitClose(sessionID, owner); commitErr != nil || done {\n\t\treturn commitErr\n\t}\n', '')], (X, '^TestAWindowThatLostASessionWhile|^TestAWindowDoesNotEndASessionNoWindowHeld'), ['TestAWindowThatLostASessionWhileItsCloseWasOnItsWayDoesNotEndIt', 'TestAWindowDoesNotEndASessionNoWindowHeldWhenAnotherAdoptedItAfterTheCheck']),
+ ('the-commit-of-a-close-reads-no-owner', 'go', [(XO, 'case index.local || !c.visible(index, sessionID, owner):', 'case index.local:')], (X, '^TestAWindowThatLostASessionWhile|^TestAWindowDoesNotEndASessionNoWindowHeld'), ['TestAWindowThatLostASessionWhileItsCloseWasOnItsWayDoesNotEndIt', 'TestAWindowDoesNotEndASessionNoWindowHeldWhenAnotherAdoptedItAfterTheCheck']),
+ ('the-decision-to-end-a-session-is-not-written', 'go', [(XO, '\tindex.closing = true\n\tc.sessionIndex[sessionID] = index\n\treturn false, nil', '\treturn false, nil')], (X, '^TestASessionOfAPluginWhoseEndIsDecided|^TestASessionWhoseCloseTheHost'), ['TestASessionOfAPluginWhoseEndIsDecidedCannotBeClaimedByAnotherWindow', 'TestASessionWhoseCloseTheHostCouldNotCarryOutIsStillBeingClosedAndIsNotHandedToAnotherWindow']),
+ ('a-claim-takes-a-session-whose-end-is-decided', 'go', [(XO, '\tcase index.closing:\n\t\treturn apperror.SessionNotFound(sessionID)\n', '')], (X, '^TestASessionOfAPluginWhoseEndIsDecided|^TestASessionWhoseCloseTheHost'), ['TestASessionOfAPluginWhoseEndIsDecidedCannotBeClaimedByAnotherWindow', 'TestASessionWhoseCloseTheHostCouldNotCarryOutIsStillBeingClosedAndIsNotHandedToAnotherWindow']),
+ # ---- 2. the end of a terminal at the request of a window, and the end a terminal leaves ----
+ ('a-close-of-a-terminal-reads-no-owner', 'go', [(TO, '\tif !s.heldBy(owner) {\n\t\ts.mu.Unlock()\n\t\treturn apperror.SessionNotFound(sessionID)\n\t}\n\t// A shell that ended', '\t// A shell that ended')], (T, '^TestAWindowThatGaveATerminalAway'), ['TestAWindowThatGaveATerminalAwayDoesNotEndItAndOneThatEndsItBeforeTheClaimWins']),
+ ('the-end-of-a-terminal-is-decided-after-its-owner-is-read', 'go', [(TO, '\t\ts.fate = fate{set: true, closedBy: ClosedByRequest, failure: nil}\n', '')], (T, '^TestAWindowThatGaveATerminalAway'), ['TestAWindowThatGaveATerminalAwayDoesNotEndItAndOneThatEndsItBeforeTheClaimWins']),
+ ('a-terminal-whose-end-is-decided-can-still-be-claimed', 'go', [(TO, 'case s.offerOpenLocked(m.clock.Now()) && !s.fate.set && !s.ending.Load():', 'case s.offerOpenLocked(m.clock.Now()):')], (T, '^TestAWindowThatGaveATerminalAway|^TestARetiringWindow'), ['TestAWindowThatGaveATerminalAwayDoesNotEndItAndOneThatEndsItBeforeTheClaimWins', 'TestARetiringWindowEndsTheTerminalItHeldAndNeverOneItGaveAway']),
+ ('the-dismissal-of-an-end-reads-no-owner', 'go', [(TO, 'return t.id == id && now.Before(t.until) && t.owner != nil && t.owner == owner', 'return t.id == id && now.Before(t.until)')], (T, '^TestTheWindowThatTookTheEnd'), ['TestTheWindowThatTookTheEndOfATerminalIsTheOneThatDismissesIt']),
+ ('the-end-is-handed-over-though-it-was-dismissed', 'go', [(TR, 'kept := slices.Contains(m.tombs, tomb)', 'kept := true')], (T, '^TestTheWindowThatTookTheEnd'), ['TestTheWindowThatTookTheEndOfATerminalIsTheOneThatDismissesIt']),
+ # ---- 3. a window going away: the end of a terminal it holds is decided under the lock that reads who holds it ----
+ ('a-retirement-decides-no-end-under-the-lock', 'go', [(TR, '\t\ts.fate = fate{set: true, closedBy: by, failure: nil}\n', '')], (T, '^TestARetiringWindow'), ['TestARetiringWindowEndsTheTerminalItHeldAndNeverOneItGaveAway']),
+ ('a-retirement-ends-a-terminal-it-does-not-hold', 'go', [(TR, 'if s.owner == nil || s.owner != owner || s.fate.set || s.ending.Load() {\n\t\treturn releaseNone, nil', 'if s.owner == nil || s.fate.set || s.ending.Load() {\n\t\treturn releaseNone, nil')], (T, '^TestARetiringWindow'), ['TestARetiringWindowEndsTheTerminalItHeldAndNeverOneItGaveAway']),
+ # ---- the move of a tab in the old UI ----
+ ('a-drag-offers-as-it-begins', 'ts', [(UT, '      void channel.enqueue(async () => {\n        await WindowClient.BeginDrag({', '      void channel.enqueue(async () => {\n        if (channel.tabToOffer) await offerTerminalSession(channel.tabToOffer).catch(() => undefined);\n        await WindowClient.BeginDrag({')], [UTT], ['offers nothing as the drag begins or moves']),
+ ('a-drop-reaches-the-target-before-the-offer', 'ts', [(UT, '        if (channel.tabToOffer) {\n          try {', '        const early = WindowClient.EndDrag(sessionId, pointer.clientX, pointer.clientY);\n        void early;\n        if (channel.tabToOffer) {\n          try {')], [UTT], ['offers the session once when the tab is dropped']),
+ ('a-failed-offer-at-a-drop-does-not-stop-it', 'ts', [(UT, "            await WindowClient.CancelDrag(sessionId).catch((cancelError: unknown) => {\n              console.error('[windows] CancelDrag failed', cancelError);\n            });\n            return null;", '            void error;')], [UTT], ['cancels the drag and does not drop it when the offer fails']),
+ ('a-cancelled-drag-offers', 'ts', [(UT, 'void channel.enqueue(async () => WindowClient.CancelDrag(sessionId));', 'void channel.enqueue(async () => {\n        if (channel.tabToOffer) await offerTerminalSession(channel.tabToOffer);\n        await WindowClient.CancelDrag(sessionId);\n      });')], [UTT], ['offers nothing for a drag that is cancelled']),
+ ('a-page-tab-is-offered', 'ts', [(UT, "payload.dragType !== DRAWER_TAB_DRAG_TYPE || typeof drawerTab?.variant !== 'string'", "typeof drawerTab?.variant !== 'string'")], [UTT], ['offers nothing for']),
+ ('a-rejected-drop-is-reported-accepted', 'ts', [(UT, 'return result?.accepted ? {', 'return result ? {')], [UTT], ['resolves null when no window accepted the tab']),
+ ('an-expired-terminal-is-offered', 'ts', [(UH, " && tab.properties?.status !== 'expired'", '')], [UTT, UHT], ['offers nothing for', 'offers nothing for a tab that has no session to offer']),
+ ('a-failed-offer-of-a-move-is-swallowed', 'ts', [(UH, '  await ExecClient.OfferSession(tab.id);', '  await ExecClient.OfferSession(tab.id).catch(() => undefined);')], [UHT], ['rejects']),
+ ('a-move-offers-nothing', 'ts', [(UH, '  await ExecClient.OfferSession(tab.id);', '  await Promise.resolve(tab.id);')], [UHT], ['offers the session of a terminal tab']),
+]
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def read(path):
+    with open(os.path.join(ROOT, path), encoding='utf-8') as f: return f.read()
+
+def run(cmd, cwd=ROOT, env=ENV, timeout=1500):
+    p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors='replace', timeout=timeout)
+    return p.returncode, p.stdout + p.stderr
+
+# ---- Go ----
+
+def go_test(pkg, pattern, overlay):
+    cmd = ['go', 'test'] + (['-overlay=' + overlay] if overlay else []) + [pkg, '-run', pattern, '-count=1', '-timeout', '300s', '-v']
+    return run(cmd)
+
+def go_built(out): return '[build failed]' not in out and '[setup failed]' not in out
+def go_failed(out): return re.findall(r'^--- FAIL: (\S+)', out, re.M)
+
+def scan_close(text, i):
+    """The index of the bracket that closes the one at text[i] (Go: strings, raw strings, runes and comments are skipped), or -1."""
+    pairs = {'(': ')', '[': ']', '{': '}'}
+    stack, n = [], len(text)
+    while i < n:
+        c = text[i]
+        if c in '"\'`':
+            q = c; i += 1
+            while i < n and text[i] != q:
+                i += 2 if (text[i] == '\\' and q != '`') else 1
+        elif text.startswith('//', i):
+            i = text.find('\n', i)
+            if i < 0: return -1
+        elif text.startswith('/*', i):
+            i = text.find('*/', i)
+            if i < 0: return -1
+            i += 1
+        elif c in pairs: stack.append(pairs[c])
+        elif c in ')]}':
+            if not stack or stack.pop() != c: return -1
+            if not stack: return i
+        i += 1
+    return -1
+
+def go_neutralize(text, line):
+    """Replaces the assertion that the failure at `line` (1-based) belongs to: the call statement `f(t, args)` (or `f(args)`, a closure of the test that asserts) that starts on that line,
+    or above it with no block opened in between, and holds it. Its arguments stay evaluated. None if there is none."""
+    lines = text.split('\n')
+    offsets = [0]
+    for l in lines: offsets.append(offsets[-1] + len(l) + 1)
+    for start in range(line, max(0, line - 60), -1):
+        m = re.match(r'^(\s*)([A-Za-z_][\w.]*)\(', lines[start - 1])
+        if not m or m.group(2) in ('t.Run', 'go', 'defer', 'func'): continue
+        open_at = offsets[start - 1] + m.end(2)
+        close_at = scan_close(text, open_at)
+        if close_at < 0 or text[close_at + 1:text.find('\n', close_at)].strip(): continue
+        if offsets[line - 1] > close_at: continue
+        if '{' in text[offsets[start - 1]:offsets[line - 1]]: continue
+        args = text[open_at + 1:close_at]
+        args = re.sub(r'^\s*t\s*(,\s*|$)', '', args, count=1)
+        # A closure of the test stays used when its last call goes (`declared and not used` is a build error); a package function and a method need no mention.
+        kept = m.group(2) + (', ' if args.strip() else '') if '.' not in m.group(2) else ''
+        return text[:offsets[start - 1]] + m.group(1) + '_ = []any{' + kept + args + '} // assertion removed' + text[close_at + 1:], start
+    return None, 0
+
+def go_traces(out):
+    """The test-level frame of each failed assertion: (file, line), from `Error Trace:` (the last frame inside a _test.go file is the test's own)."""
+    found = []
+    for block in re.findall(r'Error Trace:\s+(.*?)\n\s*Error:', out, re.S):
+        frames = [(f, int(n)) for f, n in re.findall(r'(\S+\.go):(\d+)', block)]
+        frames = [fr for fr in frames if fr[0].endswith('_test.go')]
+        if frames and frames[-1] not in found: found.append(frames[-1])
+    return found
+
+def prepare(name, edits):
+    """Writes the scratch copies of the files the fault changes and returns {original: copy}, or why it did not apply."""
+    copies = {}
+    for file, old, new in edits:
+        path = copies.get(file) or os.path.join(SCRATCH, name, file.replace('/', '__'))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        text = open(path, encoding='utf-8').read() if file in copies else read(file)
+        if old not in text: return None, f'{file}: the text to replace is not there'
+        if old == new: return None, f'{file}: the fault changes nothing'
+        with open(path, 'w', encoding='utf-8') as f: f.write(text.replace(old, new, 1))
+        copies[file] = path
+    return copies, None
+
+def overlay_file(name, copies, tag):
+    path = os.path.join(SCRATCH, name, f'overlay-{tag}.json')
+    with open(path, 'w') as f: json.dump({'Replace': {os.path.join(ROOT, k): v for k, v in copies.items()}}, f)
+    return path
+
+def go_control(name, edits, target, expect, baselines):
+    pkg, pattern = target
+    if (pkg, pattern) not in baselines:
+        code, out = go_test(pkg, pattern, None)
+        failed = go_failed(out)
+        baselines[(pkg, pattern)] = None if code == 0 else f'the baseline is red or does not build: {" ".join(failed) or "no test ran"}'
+    if baselines[(pkg, pattern)]: return baselines[(pkg, pattern)], None
+    copies, why = prepare(name, edits)
+    if why: return 'FAULT NOT APPLIED: ' + why, None
+    code, out = go_test(pkg, pattern, overlay_file(name, copies, 'fault'))
+    failed = go_failed(out)
+    if code == 0: return 'UNDETECTED (the tests passed with the fault)', None
+    if not go_built(out): return 'NOT A DETECTION (the build or the setup failed): ' + (re.findall(r'^\S+\.go:\d+:\d+: .*$', out, re.M) or [''])[0], None
+    if not failed: return 'NOT A DETECTION (no test failed: a panic or a timeout)', None
+    if not set(failed) & set(expect): return 'NOT NAMED FOR IT (the failing tests are ' + ', '.join(failed) + ')', None
+    detected = 'RED ' + ', '.join(failed)
+    # the same fault, with the assertions that tripped removed
+    removed = []
+    for _ in range(ROUNDS):
+        traces = go_traces(out)
+        if not traces: return detected, 'CONVERSE NOT APPLICABLE: a failure that is not a testify assertion: ' + ', '.join(failed)
+        for file, line in traces:
+            rel = os.path.relpath(file, ROOT) if os.path.isabs(file) else file
+            path = copies.get(rel)
+            text = open(path, encoding='utf-8').read() if path else read(rel)
+            fixed, at = go_neutralize(text, line)
+            if fixed is None: return detected, f'CONVERSE NOT APPLICABLE: {rel}:{line} is not an assertion statement'
+            path = path or os.path.join(SCRATCH, name, rel.replace('/', '__'))
+            with open(path, 'w', encoding='utf-8') as f: f.write(fixed)
+            copies[rel] = path
+            removed.append(f'{rel}:{at}')
+        code, out = go_test(pkg, pattern, overlay_file(name, copies, 'converse'))
+        if code == 0: return detected, f'NOT DETECTED with its {len(removed)} assertion(s) removed, as it must be [' + ', '.join(removed) + ']'
+        if not go_built(out): return detected, 'CONVERSE BROKEN (the build failed after the removal): ' + (re.findall(r'^\S+\.go:\d+:\d+: .*$', out, re.M) or [''])[0]
+    return detected, f'CONVERSE STILL RED after {ROUNDS} rounds ({len(removed)} removed)'
+
+# ---- TypeScript ----
+
+RESTORE = {}
+
+def restore_all(*_):
+    for path, text in list(RESTORE.items()):
+        try:
+            with open(path, 'w', encoding='utf-8') as f: f.write(text)
+            del RESTORE[path]
+        except OSError as e: print(f'THE FILE {path} WAS NOT RESTORED: {e}', flush=True)
+
+atexit.register(restore_all)
+for sig in (signal.SIGINT, signal.SIGTERM): signal.signal(sig, lambda s, f: (restore_all(), sys.exit(130)))
+
+def vitest(files):
+    out_json = os.path.join(SCRATCH, 'vitest.json')
+    if os.path.exists(out_json): os.remove(out_json)
+    code, out = run(['pnpm', 'exec', 'vitest', 'run', *files, '--reporter=json', '--outputFile=' + out_json])
+    try: data = json.load(open(out_json))
+    except (OSError, ValueError): return code, [], out
+    failures = []
+    for file in data.get('testResults', []):
+        for test in file.get('assertionResults', []):
+            if test.get('status') == 'failed': failures.append((test.get('fullName', test.get('title', '')), '\n'.join(test.get('failureMessages', []))))
+    if code != 0 and not failures and not data.get('numFailedTests'): return code, None, out
+    return code, failures, out
+
+def ts_scan_close(text, i):
+    pairs = {'(': ')', '[': ']', '{': '}'}
+    stack, n = [], len(text)
+    while i < n:
+        c = text[i]
+        if c in '"\'`':
+            q = c; i += 1
+            while i < n and text[i] != q: i += 2 if text[i] == '\\' else 1
+        elif text.startswith('//', i):
+            i = text.find('\n', i)
+            if i < 0: return -1
+        elif text.startswith('/*', i):
+            i = text.find('*/', i)
+            if i < 0: return -1
+            i += 1
+        elif c in pairs: stack.append(pairs[c])
+        elif c in ')]}':
+            if not stack or stack.pop() != c: return -1
+            if not stack: return i
+        i += 1
+    return -1
+
+def ts_neutralize(text, line):
+    """Replaces the `expect(x)...;` statement that starts on `line` or above it and holds it: `void (x);`, or `await (x).then(...)` when it is a `rejects` or `resolves` one."""
+    lines = text.split('\n')
+    offsets = [0]
+    for l in lines: offsets.append(offsets[-1] + len(l) + 1)
+    for start in range(line, max(0, line - 40), -1):
+        m = re.match(r'^(\s*)(await\s+)?expect\(', lines[start - 1])
+        if not m: continue
+        open_at = offsets[start - 1] + lines[start - 1].index('expect(') + len('expect')
+        close_at = ts_scan_close(text, open_at)
+        if close_at < 0: continue
+        end = close_at + 1
+        depth_end = -1
+        i = end
+        while i < len(text):  # the rest of the chain: .rejects.toThrow(...) and the like, up to the `;`
+            if text[i] == ';': depth_end = i; break
+            if text[i] in '([{': 
+                j = ts_scan_close(text, i)
+                if j < 0: break
+                i = j
+            i += 1
+        if depth_end < 0 or offsets[line - 1] > depth_end: continue
+        chain = text[end:depth_end]
+        arg = text[open_at + 1:close_at]
+        if '.rejects' in chain or '.resolves' in chain: body = f'{m.group(2) or ""}Promise.resolve({arg}).then(() => undefined, () => undefined);'
+        else: body = f'void ({arg});'
+        return text[:offsets[start - 1]] + m.group(1) + body + ' // assertion removed' + text[depth_end + 1:], start
+    return None, 0
+
+def ts_trips(messages, files):
+    found = []
+    for file in files:
+        for m in re.finditer(re.escape(file) + r':(\d+):\d+', messages):
+            if (file, int(m.group(1))) not in found: found.append((file, int(m.group(1))))
+    return found
+
+def ts_control(name, edits, files, expect):
+    base_code, base_fail, base_out = vitest(files)
+    if base_code != 0: return f'the baseline is red or does not run: {base_out[-200:]}', None
+    changed = {}
+    try:
+        for file, old, new in edits:
+            path = os.path.join(ROOT, file)
+            text = changed.get(file) or read(file)
+            if old not in text: return f'FAULT NOT APPLIED: {file}: the text to replace is not there', None
+            RESTORE.setdefault(path, read(file))
+            changed[file] = text.replace(old, new, 1)
+            with open(path, 'w', encoding='utf-8') as f: f.write(changed[file])
+        code, failed, out = vitest(files)
+        if code == 0: return 'UNDETECTED (the tests passed with the fault)', None
+        if failed is None or not failed: return 'NOT A DETECTION (vitest failed before a test did: the setup)', None
+        names = [n for n, _ in failed]
+        if not any(e in n for n in names for e in expect): return 'NOT NAMED FOR IT (the failing tests are ' + '; '.join(names) + ')', None
+        detected = 'RED ' + '; '.join(names)
+        removed = []
+        for _ in range(ROUNDS):
+            trips = []
+            for _name, messages in failed: trips += [t for t in ts_trips(messages, files) if t not in trips]
+            if not trips: return detected, 'CONVERSE NOT APPLICABLE: a failure that is not an assertion of the test file'
+            for file, line in trips:
+                path = os.path.join(ROOT, file)
+                RESTORE.setdefault(path, read(file))
+                fixed, at = ts_neutralize(open(path, encoding='utf-8').read(), line)
+                if fixed is None: return detected, f'CONVERSE NOT APPLICABLE: {file}:{line} is not an expect statement'
+                with open(path, 'w', encoding='utf-8') as f: f.write(fixed)
+                removed.append(f'{file}:{at}')
+            code, failed, out = vitest(files)
+            if code == 0: return detected, f'NOT DETECTED with its {len(removed)} assertion(s) removed, as it must be [' + ', '.join(removed) + ']'
+            if failed is None or not failed: return detected, 'CONVERSE BROKEN (vitest failed before a test did)'
+        return detected, f'CONVERSE STILL RED after {ROUNDS} rounds ({len(removed)} removed)'
+    finally:
+        restore_all()
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+def main():
+    baselines, problems, count = {}, [], 0
+    for name, kind, edits, target, expect in CONTROLS:
+        if not ONLY.search(name): continue
+        count += 1
+        started = time.time()
+        try:
+            detected, converse = go_control(name, edits, target, expect, baselines) if kind == 'go' else ts_control(name, edits, target, expect)
+        except subprocess.TimeoutExpired:
+            detected, converse = 'NOT A DETECTION (the run timed out)', None
+        if not (detected.startswith('RED') and converse is not None and converse.startswith('NOT DETECTED with its')): problems.append(name)
+        print(f'CONTROL {name} ({time.time() - started:.0f} s): {detected}\n    {converse or "-"}', flush=True)
+    print(f'\n{count - len(problems)} of {count} controls are detected by the assertion they are named for and pass undetected with that assertion removed')
+    if problems:
+        print('PROBLEMS: ' + ', '.join(problems))
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
