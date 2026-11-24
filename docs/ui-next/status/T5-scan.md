@@ -25,7 +25,7 @@ One scanner, as the issue binds: a leaf package with the SDK's API shape, so tha
 
 ## Log
 
-- 2026-11-24 `d568e6e8db` (red): the tests against a stub with the final API and no behaviour. All 44 tests fail by their own assertions (for example `the marks have the kinds [], want [5 5 1 2 3 4]`, `the log keeps 0 commands, want 3`, `the scanner counts 0 bytes, want ...`, `"": error <nil>, want ErrBadNonce`); the tests that would pass on a stub by nature (bounded, unchanged, allocation-free, strings-are-not-marks, concurrent read) carry a check that a stub which reads nothing cannot satisfy. `TestTheNonceIsComparedInConstantTime` came with the green commit (it reads the source).
+- 2026-11-24 `d568e6e8db` (red): the tests against a stub with the final API and no behaviour. All 44 tests fail by their own assertions (for example `the marks have the kinds [], want [5 5 1 2 3 4]`, `the log keeps 0 commands, want 3`, `the scanner counts 0 bytes, want ...`, `"": error <nil>, want ErrBadNonce`); the tests that would pass on a stub by nature (bounded, unchanged, allocation-free, strings-are-not-marks, concurrent read) carry a check that a stub which reads nothing cannot satisfy.
 - 2026-11-24 green: the scanner, the log and the nonce.
 
 ## Verification
@@ -40,13 +40,12 @@ Linux amd64, Go 1.27.4 (`PATH=$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.2
 
 ## Negative controls (AGENTS 28)
 
-`docs/ui-next/status/T5-scan/mutations.sh.txt`, run from the worktree (`bash docs/ui-next/status/T5-scan/mutations.sh.txt [name]`). Each fault is in a scratch copy under `go test -overlay`; the worktree is never edited. Half 1: the tests that go red are exactly the ones named. Half 2: with those tests skipped, the same fault passes (nothing else sees it). All eleven, both halves, on this head:
+`docs/ui-next/status/T5-scan/mutations.sh.txt`, run from the worktree (`bash docs/ui-next/status/T5-scan/mutations.sh.txt [name]`). Each fault is in a scratch copy under `go test -overlay`; the worktree is never edited. Half 1: the tests that go red are exactly the ones named. Half 2: with those tests skipped, the same fault passes (nothing else sees it). All ten, both halves, on this head:
 
 | Control (the fault) | Red in (half 1) | Without them (half 2) |
 |---|---|---|
 | nonce-not-checked (`verified` always true) | `TestAForgedDirectoryNeverChangesTheTrustedOne`, `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne`, `TestAWrongOrMissingNonceNeverGivesACommandLine`, `TestNoNonceInTheConfigTrustsNothing`, `TestTheDirectoryOfTheShellNeedsTheNonceToBeTrusted` | pass |
 | empty-nonce-trusted (no `len(nonce) > 0` guard) | `TestNoNonceInTheConfigTrustsNothing` | pass |
-| nonce-compared-with-equals (`==` for `ConstantTimeCompare`) | `TestTheNonceIsComparedInConstantTime` (reads the source of `verified` through `go:embed`, which `-overlay` replaces) | pass |
 | forged-directory-accepted-as-trusted (an OSC 7 writes the trusted slot) | `TestAForgedDirectoryNeverChangesTheTrustedOne`, `TestOSC7GivesTheDirectoryDecodedAndUnverified` | pass |
 | line-taken-after-the-start | `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne` | pass |
 | scanner-changes-a-byte (blanks the bytes of an OSC in `p`) | `FuzzFeed`, `TestTheScannerNeverChangesAByte` | pass |
@@ -58,6 +57,7 @@ Linux amd64, Go 1.27.4 (`PATH=$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.2
 
 ## Not verified
 
+- The constant-time compare of the nonce (`crypto/subtle` in `verified`, `osc.go`) is held by review, not by a test: timing is not observable in a unit test, and a test that reads the source is not allowed here.
 - No real shell, no real prompt framework (p10k, starship, oh-my-zsh): the foreign sequences are written from what each is documented to print, not recorded. The seam fixtures are step 7.
 - Not wired: no manager, no event, no page, no `integration` fact; the scanner has not seen a real pty.
 - The `-race` run does not cover the manager's reader and a client reading the log together (there is no manager here); the test reads the log from four goroutines while one feeds.

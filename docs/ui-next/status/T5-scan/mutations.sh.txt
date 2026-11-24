@@ -46,10 +46,6 @@ run empty-nonce-trusted backend/pkg/terminal/marks/osc.go \
   's/return len(s.nonce) > 0 \&\& /return /' \
   'TestNoNonceInTheConfigTrustsNothing'
 
-run nonce-compared-with-equals backend/pkg/terminal/marks/osc.go \
-  's/return len(s.nonce) > 0 \&\& subtle.ConstantTimeCompare(given, s.nonce) == 1/return len(s.nonce) > 0 \&\& subtle.ConstantTimeEq(0, 0) == 1 \&\& string(given) == string(s.nonce)/' \
-  'TestTheNonceIsComparedInConstantTime'
-
 run forged-directory-accepted-as-trusted backend/pkg/terminal/marks/log.go \
   's/	if trusted {/	if true {/' \
   'TestAForgedDirectoryNeverChangesTheTrustedOne TestOSC7GivesTheDirectoryDecodedAndUnverified'
