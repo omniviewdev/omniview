@@ -737,3 +737,31 @@ func TestACallToThePluginIsRefusedWhenTheWindowLostTheSessionBetweenItsFirstChec
 		})
 	}
 }
+
+// aRealmWhoseWindowRetiresAfterItsAdmission admits the window and the window retires in the instant after: a retirement that a
+// wrapper that subscribes to the realm's signal only after the admission never hears (CodeRabbit on #677: the first call).
+type aRealmWhoseWindowRetiresAfterItsAdmission struct {
+	WindowRealm
+	window *terminalNativeWindow
+}
+
+func (r aRealmWhoseWindowRetiresAfterItsAdmission) AdmitWindow(window application.Window) (*invocation.Scope, error) {
+	scope, err := r.WindowRealm.AdmitWindow(window)
+	r.window.closes()
+	return scope, err
+}
+
+// The wrapper subscribes to the realm's retirement signal before it admits the window, so a window that retires between the
+// admission and the end of the first call (the first call of the wrapper is the one that subscribes) marks the guard of the
+// session being made, and the session is left to no window.
+func TestASessionIsLeftToNoWindowWhenItsWindowRetiresRightAfterItsAdmissionOnTheFirstCall(t *testing.T) {
+	fx := newOwnershipRaceFixture(t)
+	a, b := fx.window(1), fx.window(2)
+	fx.wrapper = &ServiceWrapper{Ctrl: fx.ctrl, Realm: aRealmWhoseWindowRetiresAfterItsAdmission{WindowRealm: fx.realm, window: a}}
+
+	require.NoError(t, (<-fx.createAsync(a, "first-call")).err)
+
+	assert.Equal(t, []string{"first-call"}, fx.listedTo(b), "no window holds it: any window lists it")
+	_, _, err := fx.ctrl.AttachSession(terminal.Owner(invocation.IdentityOf(b)), "first-call")
+	require.NoError(t, err, "and the first to attach holds it")
+}
