@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -383,4 +384,21 @@ func TestAnOfferIsUsedOnceAndAnEndedSessionIsHeldByNoneWhateverTheOrder(t *testi
 			assert.Empty(t, fx.indexed(), "round %d", round)
 		}
 	}
+}
+
+// A local terminal through the wrapper, as the window sees it: the window that offered it and lost it to the window that
+// attached it does not end it, and the window that holds it does. (The terminal manager decides who ends a terminal in
+// one step, and its tests force the order; this is the path a page takes to it.)
+func TestAWindowThatGaveALocalTerminalAwayCannotEndItAndTheWindowThatHoldsItCan(t *testing.T) {
+	fx := newTerminalFixture(t)
+	a, b := fx.page(1), fx.page(2)
+	info := fx.open(a, terminal.Options{Command: append(shell(t), "-c", "stty -echo; cat")})
+	require.NoError(t, fx.wrapper.OfferSession(fx.ctx(a), info.ID))
+	_, _, err := fx.wrapper.AttachSession(fx.ctx(b), info.ID)
+	require.NoError(t, err, "B claims what A offered")
+
+	requireNotFound(t, fx.wrapper.CloseSession(fx.ctx(a), info.ID), "A gave it away")
+	assert.False(t, gone(info.PID), "A's close did not end it")
+	require.NoError(t, fx.wrapper.CloseSession(fx.ctx(b), info.ID), "B holds it")
+	require.Eventually(t, func() bool { return gone(info.PID) }, 20*time.Second, 5*time.Millisecond)
 }

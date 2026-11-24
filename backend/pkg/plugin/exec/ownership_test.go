@@ -98,7 +98,10 @@ func TestAWindowCannotUseTheTerminalOfAnotherWindowByAnyBindingThatNamesItById(t
 		}
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	// What B typed would reach the shell before this line does (every call is answered once its bytes are written, and the
+	// shell reads them in order): once the shell has printed the line, it has printed everything that was sent before it.
+	require.NoError(t, fx.wrapper.WriteTerminal(ctxA, info.ID, 0, []byte("sentinel\n")))
+	require.Eventually(t, func() bool { return strings.Contains(fx.output(info.ID), "sentinel") }, 20*time.Second, 5*time.Millisecond)
 	assert.NotContains(t, fx.output(info.ID), "evil", "what B typed never reached the shell")
 	assert.False(t, gone(info.PID), "B's close did not end it")
 	assert.Equal(t, []string{info.ID}, listedIDs(ctxA, t, fx))
