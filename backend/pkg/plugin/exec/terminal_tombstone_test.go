@@ -20,10 +20,14 @@ import (
 func TestCloseSessionDismissesTheEndOfATerminalThatEndedWhileDetached(t *testing.T) {
 	fx := newTerminalFixture(t)
 	first, second := fx.page(1), fx.page(2)
-	info := fx.mustOpenKeyed(first, keyA, `printf 'up\n'; sleep 1; exit 0`)
+	info := fx.mustOpenKeyed(first, keyA, `stty -echo; printf 'up\n'; read x; exit 0`)
 	require.Eventually(t, func() bool { text, _ := fx.positioned(info.ID); return strings.Contains(text, "up\r\n") }, 20*time.Second, 5*time.Millisecond)
 	fx.retire(first)
 	fx.detached(info.ID)
+	// The shell ends when it has read this line, so that it ends while detached whatever the machine does (a sleep in
+	// the script would race the detach). The answer is not what the test is about: a line that ends its shell may be
+	// answered session-not-found after the end (terminal.endTheShellWith).
+	_ = fx.wrapper.WriteTerminal(info.ID, 1, []byte("go\n"))
 	require.Eventually(t, func() bool {
 		listed := fx.listed(second, keyA)
 		return len(listed) == 1 && listed[0].Ended != nil

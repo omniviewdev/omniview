@@ -470,7 +470,7 @@ func TestATerminalThatEndsWhileNoPageIsAttachedLeavesItsEndAndItsOutputForThePag
 	sink.waitFor(t, info.ID, "bye\r\n")
 	m.ReleaseOwned("w1", ClosedByWindow)
 	quiet(t, m, info.ID)
-	require.NoError(t, m.Write(info.ID, 0, []byte("go\n")))
+	m.endTheShellWith(info.ID, 0, "go\n")
 
 	require.Eventually(t, func() bool {
 		listed := m.List(nil, testKey)
@@ -516,7 +516,7 @@ func TestTheHostRemembersABoundedNumberOfTerminalsThatEndedAndOnlyThoseThatEnded
 	}
 	m.ReleaseOwned("w1", ClosedByWindow)
 	for _, info := range infos {
-		require.NoError(t, m.Write(info.ID, 0, []byte("go\n")))
+		m.endTheShellWith(info.ID, 0, "go\n")
 		sink.waitEnd(t, info.ID)
 	}
 	listed := m.List(nil, testKey)
@@ -548,9 +548,7 @@ func TestATombstoneIsKeptForTheLeaseTheTerminalWasDetachedWith(t *testing.T) {
 	detached, err := m.Detach(info.ID, "w1", DetachRequest{LeaseMs: 60000})
 	require.NoError(t, err)
 	assert.Equal(t, 60000, detached.LeaseMs)
-	// The shell reads the line and ends. The answer to this call is not what the test is about: a call whose input
-	// ends its shell may be answered after the end, as session-not-found.
-	_ = m.Write(info.ID, 0, []byte("go\n"))
+	m.endTheShellWith(info.ID, 0, "go\n")
 	sink.waitEnd(t, info.ID)
 	listed := m.List(nil, testKey)
 	require.Len(t, listed, 1)

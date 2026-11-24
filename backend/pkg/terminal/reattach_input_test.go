@@ -68,12 +68,22 @@ func (s *session) heldOps() int {
 	return len(s.queue.held)
 }
 
+// endTheShellWith writes the line that a shell waiting in read x ends on. A test that ends a shell this way does not
+// look at the answer to that call, because the host cannot make it certain: the shell can read its line, end, and
+// close the input queue before the thread that handed the line to the kernel has run again, and the call is then
+// answered session-not-found although the line was delivered. Reproduced under CPU starvation: a refused write
+// followed by the terminal ending by itself with status 0 (2 failures in 60 runs of one test; CI failed the same way
+// at the write to a second terminal). A test waits for the end, which is what the line is for.
+func (m *Manager) endTheShellWith(id string, seq uint64, line string) {
+	_ = m.Write(id, seq, []byte(line))
+}
+
 // A terminal that ended while no page was attached takes no input, and says so with 0, listed and attached.
 func TestATerminalThatEndedTakesNoInputAndSaysSo(t *testing.T) {
 	m, sink := newPageManager(t)
 	info := m.startKeyed(t, `stty -echo; printf 'bye\n'; read x; exit 0`, "w1", Options{})
 	sink.waitFor(t, info.ID, "bye\r\n")
-	require.NoError(t, m.Write(info.ID, 1, []byte("go\n")))
+	m.endTheShellWith(info.ID, 1, "go\n")
 	sink.waitEnd(t, info.ID)
 	require.Eventually(t, func() bool {
 		listed := m.List(nil, testKey)
