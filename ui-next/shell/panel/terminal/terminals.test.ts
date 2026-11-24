@@ -1044,6 +1044,16 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       stop();
     });
 
+    it('asks every 5 seconds and no sooner', async () => {
+      const { stop, refresh } = taken();
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(refresh).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(LOST_REFRESH_MS).toBe(5_000);
+      stop();
+    });
+
     it('asks when the page becomes visible and when the window gets the focus', async () => {
       const { stop, refresh } = taken();
       window.dispatchEvent(new Event('focus'));
@@ -1080,11 +1090,13 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
 
     it('stops everything when the window detaches', async () => {
-      const { stop, refresh } = taken();
+      const { r, stop, refresh } = taken();
+      const asked = vi.spyOn(r.terminals.sessions, 'refreshLost');
       stop();
       await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS * 3);
       window.dispatchEvent(new Event('focus'));
       document.dispatchEvent(new Event('visibilitychange'));
+      expect(asked).not.toHaveBeenCalled();
       expect(refresh).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
     });
