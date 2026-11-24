@@ -4,6 +4,7 @@ import { Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
+import { loadPageKey, restoreLocalTerminals, terminalKeyStorage, type TerminalsOptions } from '../../shell/panel/terminal';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
@@ -44,13 +45,19 @@ const loadWindowSession = async (): Promise<LoadedSession> => loadSession(window
 const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(noticesStorage({ client: WindowClient, name: windowName }));
 
 /**
+ * This window's terminal page key, read beside its session and from the same place, in a slot of its own (`shell/panel/terminal/pageKey.ts`): the secret that gives the terminals this window starts to the page that comes back after
+ * a reload. It never rejects either, and is bounded like the session's read: a key that cannot be read or saved is a key that lives as long as the page, with a note on the console.
+ */
+const loadWindowPageKey = async (): Promise<string> => loadPageKey(terminalKeyStorage({ client: WindowClient, name: windowName }));
+
+/**
  * The screen of contributed pages as the window mounts it: the installed plugins, their interfaces loading in a bounded pool beside the first paint (the
  * shell never waits for a plugin), the address, and the providers a plugin's hooks read through the host: the QueryClient and the theme are mounted above
  * by the entry, the activity provider here. A plugin that has no interface, or whose interface fails, is a state of its own tab, not of this screen.
  * Closing the window is the app's own window's to do: a browser tab has none, so the host is told of none there and the close chord does nothing.
  *
  * The window's saved session is read beside all of that, and the host is drawn once it has: its tabs, the rail's choice and the panel are the first frame, so nothing is drawn and then moved. The read
- * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good.
+ * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good. The window's terminal page key is read with it, so that the host's terminals are made with it from their first press.
  */
 export function PluginHostScreen() {
   const [store] = useState(() => new PluginStore());
@@ -58,7 +65,7 @@ export function PluginHostScreen() {
   const [openSettingsWindow] = useState(() => (isNativeWindow() ? showSettingsWindow : undefined));
   const inventory = useInstalledPlugins();
   const link = useHashLink();
-  const [loaded, setLoaded] = useState<{ readonly session: LoadedSession; readonly notices: LoadedNotices } | undefined>(undefined);
+  const [loaded, setLoaded] = useState<{ readonly session: LoadedSession; readonly notices: LoadedNotices; readonly terminals: TerminalsOptions } | undefined>(undefined);
 
   // What the host says of a plugin that stops (`plugin/unloaded`: its process crashed, it is reloading, uninstalled or turned off) and of one that runs again (`plugin/state_change`): the store drops what the
   // window drew from the plugin and loads it again from its files, with no reload of the window (decision A21, P1b3c-01). The inventory above only ever adds.
@@ -66,9 +73,10 @@ export function PluginHostScreen() {
 
   useEffect(() => {
     let current = true;
-    void Promise.all([loadWindowSession(), loadWindowNotices()]).then(([session, notices]) => {
+    void Promise.all([loadWindowSession(), loadWindowNotices(), loadWindowPageKey()]).then(([session, notices, pageKey]) => {
       if (current) {
-        setLoaded({ session, notices });
+        // The Terminal tool starts its shells under the key and, when the window attaches, asks the host for the ones this window left (`restoreLocalTerminals`).
+        setLoaded({ session, notices, terminals: { pageKey, restore: async () => restoreLocalTerminals(pageKey) } });
       }
     });
     return () => {
@@ -104,6 +112,7 @@ export function PluginHostScreen() {
           session={loaded.session}
           savedNotices={loaded.notices}
           connections={productionApi}
+          terminals={loaded.terminals}
         />
       )}
     </ActivityProvider>

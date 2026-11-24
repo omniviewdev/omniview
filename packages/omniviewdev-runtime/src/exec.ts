@@ -3,9 +3,9 @@ import { Session, type SessionOptions } from './bindings/github.com/omniviewdev/
 import { encodeRequestJSON } from './resource/v2/requestJSON';
 
 export {
-  AckTerminal, AttachSession, CloseSession, CreateTerminal, DetachSession, GetHandler,
+  AckTerminal, AttachSession, AttachTerminal, CloseSession, CreateTerminal, DetachSession, DetachTerminal, GetHandler,
   GetHandlers, GetNativeTerminalSupport, GetPluginHandlers, GetSession, HasPlugin, IsBusy, ListPlugins,
-  ListSessions, ResizeSession, ResizeTerminal, WriteSession, WriteTerminal,
+  ListSessions, ListTerminals, ResizeSession, ResizeTerminal, WriteSession, WriteTerminal,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';
 
 /** Wails receives exact JSON text; the public SDK-shaped API remains typed. */

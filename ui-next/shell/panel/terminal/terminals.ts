@@ -70,6 +70,18 @@ export type TerminalsOptions = {
   readonly target?: (() => TerminalTarget) | undefined;
   /** Where the emulator's code comes from. Default: the lazy chunk. A test gives a fake emulator. */
   readonly load?: EngineLoader | undefined;
+  /**
+   * The key of this window for the host's terminals (T2-go): given to every terminal the host's own shell starts, it is what lets this window, once it has been reloaded, ask the host for the terminals that were left
+   * and attach to them. Absent: the terminals have no key, end with their window and cannot be found again (a probe, a window of the T2a kind).
+   */
+  readonly pageKey?: string | undefined;
+  /**
+   * What the window asks the host for, once, when it attaches: the targets of the terminals that were left for it (the host's own shell lists them by `pageKey`). Each is opened as a session: a saved tab whose id is the
+   * target's `sessionId` is given its feed again, and a terminal that runs and has no saved tab gets a tab of its own, neither of them shown or focused. A terminal that had already ended (`TerminalTarget.ended`) is given
+   * only to a saved tab that holds its id: the host keeps it listed for the rest of its lease even after the person closed its tab, so one that no tab holds is skipped, not opened and not said. A rejection is one warning
+   * on the console and nothing else: the saved tabs stay ended, which is also what an app restart looks like (the host lists no terminal that is gone). Absent: nothing is asked.
+   */
+  readonly restore?: (() => Promise<readonly TerminalTarget[]>) | undefined;
 };
 
 /** What the window restored of the tool's own state (`shell/session`). Nothing restored is the tool as it starts. */
@@ -82,7 +94,10 @@ export type Terminals = {
   readonly sessions: TerminalSessions;
   /** The store the panel is given: the host's own, with a close that asks first for a terminal that runs. */
   readonly store: PanelStore;
-  /** Starts listening to the panel; returns what stops it (the window is going: every process is closed). */
+  /**
+   * Starts listening to the panel, asks the host for the terminals that were left for this window (`TerminalsOptions.restore`, once for the life of the window, however many times it attaches) and listens for the page going
+   * away. Returns what stops it (the window is going): a terminal that has a key is left to live out its lease, and the others are closed. A terminal whose tab the person closes is closed.
+   */
   readonly attach: () => () => void;
   /** Takes the keys of a terminal that has the focus from the window: Command K clears it, and is also the palette's chord. Returns what stops listening. It must be called before the window's own listeners are added: a key goes to them in that order. */
   readonly takeKeys: () => () => void;
@@ -103,6 +118,54 @@ export type Terminals = {
 export function createTerminals(store: PanelStore, options: TerminalsOptions = {}, restored: TerminalsRestored = {}): Terminals {
   const sessions = createTerminalSessions(store);
   const screenReader = createScreenReaderChoice(restored.screenReader);
+  const { pageKey, restore } = options;
+  // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
+  // and how many attaches are on.
+  let asked = false;
+  let waiting: readonly TerminalTarget[] | undefined;
+  let attached = 0;
+
+  /**
+   * Opens what the host listed, when a window is attached: the saved tab of each terminal gets its feed again, and a terminal that runs and that no tab holds gets a tab of its own, in the strip and not on screen (a
+   * restored terminal must not cover the page). A terminal that had already ended is opened only for a saved tab that still holds its id (the panel has a session of it now: the person may have closed the tab since it
+   * was saved, even while the host was being asked), and is otherwise skipped before anything is attached at the host: closing the tab of an ended terminal does not dismiss it there, so it would come back with every reload.
+   */
+  const openFound = (): void => {
+    const targets = waiting;
+    if (targets === undefined || attached === 0) {
+      return;
+    }
+
+    waiting = undefined;
+    for (const target of targets) {
+      const held = target.sessionId !== undefined && Object.hasOwn(store.getSnapshot().sessions, target.sessionId);
+      if (target.ended === true && !held) {
+        continue;
+      }
+
+      sessions.open(target, { reveal: false });
+    }
+  };
+
+  /** Asks the host, once, for the terminals left for this window. An answer that comes while no window is attached waits for the next one; one that never comes, or is a refusal, leaves the saved tabs as they are. */
+  const findTerminals = (): void => {
+    if (asked || restore === undefined) {
+      return;
+    }
+
+    asked = true;
+    void (async () => {
+      try {
+        waiting = await restore();
+      } catch (error) {
+        console.warn('[panel] the terminals left for this window could not be found again', error);
+        return;
+      }
+
+      openFound();
+    })();
+  };
+
   const guard = createCloseGuard({
     // Only a terminal asks: a session of another tool closes as it always did. A terminal whose feed can say what runs in it is asked at the moment of the close (the host's `IsBusy`: one call, no polling), and asks
     // only when something runs, the host cannot tell, or typing may have started a program that its answer does not know (an `idle` is true of the moment the host looked); one that cannot say is asked the general question at once.
@@ -153,7 +216,29 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     screenReader,
     sessions,
     store: guard.guard(store),
-    attach: sessions.attach,
+    attach: () => {
+      const stop = sessions.attach();
+      // The page going away (a reload, a closed tab, a navigation: `pagehide`) leaves the shells that have a key to the host's lease at once, instead of waiting for the host to notice that the page is gone.
+      const hide = (): void => {
+        sessions.leave();
+      };
+
+      window.addEventListener('pagehide', hide);
+      attached += 1;
+      findTerminals();
+      openFound();
+      let on = true;
+      return () => {
+        if (!on) {
+          return;
+        }
+
+        on = false;
+        attached -= 1;
+        window.removeEventListener('pagehide', hide);
+        stop();
+      };
+    },
     takeKeys: () => {
       const platform = platformOf(navigator);
       const listener = (event: KeyboardEvent) => {
@@ -171,7 +256,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     newSession: {
       label: NEW_TERMINAL,
       start: () => {
-        sessions.open(options.target?.() ?? localShellTarget(), { focus: true });
+        sessions.open(options.target?.() ?? localShellTarget(undefined, pageKey), { focus: true });
       },
     },
     empty: TERMINAL_EMPTY,

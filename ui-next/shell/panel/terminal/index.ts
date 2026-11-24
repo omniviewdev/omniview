@@ -6,3 +6,6 @@ export type { ScreenReaderChoice } from './screenReader';
 export { TERMINAL_TOOL, TERMINAL_TOOL_ID } from './tool';
 export type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './feed';
 export type { Engine, EngineLoader, EngineOptions } from './engine';
+export { loadPageKey, terminalKeyStorage } from './pageKey';
+export type { KeyStorage, KeyStorageOptions } from './pageKey';
+export { restoreLocalTerminals } from './localShell';

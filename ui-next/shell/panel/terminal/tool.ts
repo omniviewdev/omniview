@@ -24,7 +24,7 @@ export const NEW_TERMINAL = 'New terminal';
 export const TERMINAL_EMPTY = { title: 'No terminals', hint: 'Start a shell in this window. A session stays available when you switch tabs.' } as const;
 
 /**
- * What the body of a session that has no feed says: the session is over and what it held is gone (it was restored from the last run: the host keeps no output across a restart, and reattaching to a shell that
- * is still running is a later slice), and the way to a shell is the one that starts a new one.
+ * What the body of a session that has no feed says: the session is over and what it held is gone. It was restored from the last run, and the host listed no terminal for it when the window came back (T2-go): the host keeps
+ * no terminal across a restart, and one that no window held for its lease (a few minutes) was ended. The way to a shell is the one that starts a new one.
  */
-export const TERMINAL_GONE = { title: 'The earlier output is gone', hint: 'This terminal ended when Omniview restarted. Start a new terminal to continue.' } as const;
+export const TERMINAL_GONE = { title: 'The earlier output is gone', hint: 'This terminal is not running any more: Omniview restarted, or this window was away for longer than a terminal is kept. Start a new terminal to continue.' } as const;

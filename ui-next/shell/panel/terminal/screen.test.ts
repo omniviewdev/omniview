@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Platform } from '../../core/chords';
 import type { EngineAppearance } from './engine';
+import type { TerminalModes, TerminalReplay } from './feed';
 import { FLOW, HIDDEN_TICK_MS, SCROLLBACK, clearScreenIn, createScreen, type TerminalScreen } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
-import { fakeEngineLoader, fakeTerminalFeed, type FakeEngine, type FakeEngineLoader, type FakeTerminalFeed } from './testing';
+import { fakeEngineLoader, fakeTerminalFeed, type FakeEngine, type FakeEngineLoader, type FakeEngineOptions, type FakeTerminalFeed } from './testing';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It loads the emulator when the session is first SHOWN and not before, draws what the feed
 // holds one frame at a time and never more than the emulator can parse, follows the size of its host (one measure per frame, and a message to the feed only for a size that changed, and only once the GPU renderer is in
@@ -41,11 +42,56 @@ type Rig = {
   readonly reader: ScreenReaderChoice;
   readonly readerListeners: () => number;
   readonly fonts: { readonly release: () => void; readonly asked: () => readonly string[] };
+  /** A reattached feed's replay arrives (the attach was still being answered when the screen asked), and the feed tells its listeners. */
+  readonly arrive: (replay: TerminalReplay) => void;
+  /** How many times the screen asked the feed to make a full-screen program paint again. */
+  readonly redraws: () => number;
+  /** How many replays the screen has taken from the feed. */
+  readonly takes: () => number;
 };
 
-function rig(options: { readonly platform?: Platform; readonly deferred?: boolean; readonly auto?: boolean; readonly fontsHeld?: boolean; readonly rendererReady?: Promise<void>; readonly copy?: (text: string) => Promise<boolean>; readonly screenReader?: boolean; readonly defaultTimer?: boolean } = {}): Rig {
-  const feed = fakeTerminalFeed();
-  const loader = fakeEngineLoader({ deferred: options.deferred === true, auto: options.auto ?? true, rendererReady: options.rendererReady });
+type RigOptions = {
+  readonly platform?: Platform;
+  readonly deferred?: boolean;
+  readonly auto?: boolean;
+  readonly fontsHeld?: boolean;
+  readonly rendererReady?: Promise<void>;
+  readonly copy?: (text: string) => Promise<boolean>;
+  readonly screenReader?: boolean;
+  readonly defaultTimer?: boolean;
+  /** The queries the emulator answers when it parses them (`FakeEngineOptions.answers`). */
+  readonly answers?: FakeEngineOptions['answers'];
+  /**
+   * The feed was reattached: it has `takeReplay` and holds `replay` until its reader takes it, and reads nothing before (what `takeReplay` is for, feed.ts). Without a `replay` the attach is still being answered, until `arrive`.
+   * `redraw: false` is a feed that cannot make a program paint again.
+   */
+  readonly reattach?: { readonly replay?: TerminalReplay; readonly redraw?: boolean };
+};
+
+function rig(options: RigOptions = {}): Rig {
+  const base = fakeTerminalFeed();
+  let held: TerminalReplay | undefined = options.reattach?.replay;
+  let attaching = options.reattach !== undefined && held === undefined;
+  let takes = 0;
+  let redraws = 0;
+  const reattachedFeed: FakeTerminalFeed = {
+    ...base,
+    read: (max) => (held === undefined && !attaching ? base.read(max) : { chunks: [], bytes: 0 }),
+    takeReplay: () => {
+      const found = held;
+      held = undefined;
+      if (found !== undefined) {
+        takes += 1;
+      }
+
+      return found;
+    },
+    ...(options.reattach?.redraw === false ? {} : { redraw: () => {
+      redraws += 1;
+    } }),
+  };
+  const feed = options.reattach === undefined ? base : reattachedFeed;
+  const loader = fakeEngineLoader({ deferred: options.deferred === true, auto: options.auto ?? true, rendererReady: options.rendererReady, answers: options.answers });
   const host = document.createElement('div');
   const queue: Array<(() => void) | undefined> = [];
   let asked = 0;
@@ -170,6 +216,13 @@ function rig(options: { readonly platform?: Platform; readonly deferred?: boolea
         resolve(); 
       }); 
     }, asked: () => fontsAsked },
+    arrive: (replay) => {
+      held = replay;
+      attaching = false;
+      base.wake();
+    },
+    redraws: () => redraws,
+    takes: () => takes,
   };
 }
 
@@ -1306,5 +1359,558 @@ describe('screen reader mode', () => {
     r.screen.mount(r.host);
     await r.settle();
     expect(r.readerListeners()).toBe(0);
+  });
+});
+
+// A terminal the page took back after a reload (T2-go 2.4 rules 4 to 6; `takeReplay` in feed.ts). The feed gives the bytes the host kept, the size and the modes they were written under, and the size and the modes in force at
+// their end, and it reads nothing until the screen has taken them. The screen brings a fresh emulator to where the host's terminal is, never lets what the emulator answers to the queries in those bytes reach the shell,
+// acknowledges none of them, and goes on with the live output. The words for what the page lost, and for what it is taking back, are state.test.ts's.
+
+const NO_MODES: TerminalModes = { altScreen: false, bracketedPaste: false, applicationCursor: false, focusEvents: false, cursorHidden: false, mouseTracking: 0, mouseEncoding: 0, kittyKeyboard: [] };
+
+/** A full reset in band (RIS): the first thing a replay writes. */
+const RESET = '\u001bc';
+
+/**
+ * What makes a fresh emulator draw its cursor, written right after the reset when the bytes start on the normal screen: a switch to the alternate screen and straight back. xterm draws no cursor before its first focus,
+ * its first key or a switch of screen, and a restored terminal is none of them; the bounce clears nothing. It is not written when the bytes start on the alternate screen: the switch to it did that, and a bounce would
+ * take the emulator off the screen it is on.
+ */
+const CURSOR = '\u001b[?47h\u001b[?47l';
+
+const replayOf = (data: string | Uint8Array, patch: Partial<TerminalReplay> = {}): TerminalReplay => {
+  const kept = typeof data === 'string' ? bytesOf(data) : data;
+  return { data: kept, startSize: { cols: 80, rows: 24 }, startModes: NO_MODES, size: { cols: 80, rows: 24 }, modes: NO_MODES, end: kept.length, ...patch };
+};
+
+/** What the emulator was given as bytes: the replay's slices and the live output, not the reset and the modes (text). */
+const bytesWritten = (engine: FakeEngine): readonly Uint8Array[] => engine.writes.filter((data): data is Uint8Array => typeof data !== 'string');
+
+const lengthOf = (parts: readonly Uint8Array[]): number => parts.reduce((sum, part) => sum + part.length, 0);
+
+const joined = (parts: readonly Uint8Array[]): Uint8Array => {
+  const out = new Uint8Array(lengthOf(parts));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+
+  return out;
+};
+
+/** Mounts and shows a screen over a feed that was reattached, and lets the emulator come; the first frame is the test's. */
+async function reattached(replay: TerminalReplay | undefined, options: RigOptions = {}): Promise<Rig> {
+  const r = rig({ ...options, reattach: { ...options.reattach, ...(replay === undefined ? {} : { replay }) } });
+  r.screen.mount(r.host);
+  r.screen.show();
+  await r.settle();
+  return r;
+}
+
+describe('a replay: a terminal the page took back after a reload', () => {
+  it('is applied before any live byte: the emulator is reset, it is written what the host kept, and then what came after, in order', async () => {
+    const r = rig({ reattach: { replay: replayOf('kept 1\r\nkept 2\r\n') } });
+    r.screen.mount(r.host);
+    r.feed.push('live 1\r\n');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept 1\r\nkept 2\r\nlive 1\r\n`);
+    expect(r.engine().resets()).toBe(1);
+    expect(r.takes()).toBe(1);
+  });
+
+  it('is applied once, however often the screen is hidden and shown: the emulator keeps what it was brought to', async () => {
+    const r = await reattached(replayOf('kept'));
+    r.frame();
+    r.screen.hide();
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.feed.push('live');
+    r.frame();
+    expect(r.takes()).toBe(1);
+    expect(r.engine().resets()).toBe(1);
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}keptlive`);
+  });
+
+  it('sizes the emulator to the size the kept bytes were written under before the first byte is written: they are parsed at that size, from the first one', async () => {
+    const r = await reattached(replayOf('kept', { startSize: { cols: 100, rows: 30 } }), { auto: false });
+    r.frame();
+    expect(r.engine().writes).toHaveLength(2);
+    expect(r.engine().writeSizes).toEqual([[100, 30], [100, 30]]);
+    expect(r.engine().resizes).toEqual([[100, 30]]);
+  });
+
+  it('does not resize an emulator that is the size the bytes were written under already', async () => {
+    const r = await reattached(replayOf('kept', { startSize: { cols: 80, rows: 24 } }), { auto: false });
+    r.frame();
+    expect(r.engine().resizes).toEqual([]);
+  });
+
+  it('sizes the emulator to the size the host\'s terminal has only when the last slice is parsed, and then to what the panel measures', async () => {
+    const r = await reattached(replayOf('kept', { startSize: { cols: 100, rows: 30 }, size: { cols: 120, rows: 40 } }), { auto: false });
+    r.engine().measured({ cols: 90, rows: 20 });
+    r.frame();
+    expect(r.engine().resizes).toEqual([[100, 30]]);
+    r.engine().complete();
+    expect(r.engine().resizes).toEqual([[100, 30], [120, 40], [90, 20]]);
+    expect(r.feed.sizes()).toEqual([[80, 24], [90, 20]]);
+  });
+
+  it('does not follow the panel while the replay is written: the emulator keeps the size the bytes were written under until the last of them is parsed, and takes the measure then', async () => {
+    const r = await reattached(replayOf('kept', { startSize: { cols: 100, rows: 30 }, size: { cols: 120, rows: 40 } }), { auto: false });
+    r.frame();
+    r.engine().measured({ cols: 90, rows: 20 });
+    r.resized();
+    expect(r.engine().resizes).toEqual([[100, 30]]);
+    expect(r.feed.sizes()).toEqual([[80, 24]]);
+    r.engine().complete();
+    expect(r.engine().resizes).toEqual([[100, 30], [120, 40], [90, 20]]);
+    expect(r.feed.sizes()).toEqual([[80, 24], [90, 20]]);
+  });
+
+  describe('the modes the bytes were written under', () => {
+    it.each<[string, Partial<TerminalModes>, string]>([
+      ['no mode', {}, ''],
+      ['the alternate screen', { altScreen: true }, '\u001b[?1049h'],
+      ['mouse clicks', { mouseTracking: 1 }, '\u001b[?1000h'],
+      ['mouse drags', { mouseTracking: 2 }, '\u001b[?1002h'],
+      ['any mouse motion', { mouseTracking: 4 }, '\u001b[?1003h'],
+      ['every kind of mouse tracking, the smallest first', { mouseTracking: 7 }, '\u001b[?1000h\u001b[?1002h\u001b[?1003h'],
+      ['the UTF-8 mouse encoding', { mouseEncoding: 1 }, '\u001b[?1005h'],
+      ['the SGR mouse encoding', { mouseEncoding: 2 }, '\u001b[?1006h'],
+      ['the urxvt mouse encoding', { mouseEncoding: 3 }, '\u001b[?1015h'],
+      ['bracketed paste', { bracketedPaste: true }, '\u001b[?2004h'],
+      ['application cursor keys', { applicationCursor: true }, '\u001b[?1h'],
+      ['focus events', { focusEvents: true }, '\u001b[?1004h'],
+      ['a hidden cursor', { cursorHidden: true }, '\u001b[?25l'],
+      ['the keyboard protocol\'s flags, one push for each, the bottom of the stack first', { kittyKeyboard: [1, 5, 9] }, '\u001b[>1u\u001b[>5u\u001b[>9u'],
+      [
+        'all of them, the alternate screen first (the keyboard stack is the screen\'s own)',
+        { altScreen: true, mouseTracking: 2, mouseEncoding: 2, bracketedPaste: true, applicationCursor: true, focusEvents: true, cursorHidden: true, kittyKeyboard: [1, 5] },
+        '\u001b[?1049h\u001b[?1002h\u001b[?1006h\u001b[?2004h\u001b[?1h\u001b[?1004h\u001b[?25l\u001b[>1u\u001b[>5u',
+      ],
+    ])('are switched on by the first write, right after the reset and the cursor: %s', async (_name, modes, expected) => {
+      const r = await reattached(replayOf('kept', { startModes: { ...NO_MODES, ...modes } }));
+      r.frame();
+      // The cursor is made to draw by the bounce through the alternate screen, which a replay that starts on it has no use for.
+      const cursor = modes.altScreen === true ? '' : CURSOR;
+      expect(r.engine().writes[0]).toBe(`${RESET}${cursor}${expected}`);
+      expect(r.engine().text()).toBe(`${RESET}${cursor}${expected}kept`);
+    });
+
+    it('are the ones at the START of the bytes: what is in force at their end is in the bytes already, and is not switched on again', async () => {
+      const modes: TerminalModes = { ...NO_MODES, altScreen: true, mouseTracking: 7, bracketedPaste: true, kittyKeyboard: [3] };
+      const r = await reattached(replayOf('kept', { modes }));
+      r.frame();
+      expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept`);
+    });
+
+    it('are all in the first write, with the reset, and the bytes are the next: a replay of one slice is two writes', async () => {
+      const r = await reattached(replayOf('kept', { startModes: { ...NO_MODES, bracketedPaste: true } }));
+      r.frame();
+      expect(r.engine().writes).toEqual([`${RESET}${CURSOR}\u001b[?2004h`, bytesOf('kept')]);
+    });
+  });
+
+  describe('the cursor: xterm draws none before its first focus, key or switch of screen, and an emulator that was only written to is in that state', () => {
+    const ALT: TerminalModes = { ...NO_MODES, altScreen: true };
+
+    it('is made to draw by the bounce right after the reset, which clears nothing, before the bytes: the first write is the reset and the bounce, the next is the bytes', async () => {
+      const r = await reattached(replayOf('kept'));
+      r.frame();
+      expect(r.engine().writes).toEqual([`${RESET}${CURSOR}`, bytesOf('kept')]);
+    });
+
+    it.each([
+      ['starts and ends on the normal screen: the shell is at its prompt', NO_MODES, NO_MODES, true],
+      ['starts and ends on the alternate screen: a full-screen program is on screen, and a bounce would take the emulator off its screen', ALT, ALT, false],
+      ['starts on the alternate screen and leaves it in the bytes: the switch to it drew the cursor', ALT, NO_MODES, false],
+      ['starts on the normal screen and goes to the alternate in the bytes: the bounce is on the empty normal screen, before them', NO_MODES, ALT, true],
+    ])('is decided by the screen the bytes START on, which is the one the reset leaves the emulator on: a replay that %s', async (_name, startModes, modes, bounced) => {
+      const r = await reattached(replayOf('kept', { startModes, modes }));
+      r.frame();
+      expect(r.engine().text()).toBe(`${RESET}${bounced ? CURSOR : '\u001b[?1049h'}kept`);
+    });
+
+    it('is written once for a replay of many slices, and the bytes are the replay\'s own, whole and in order: the bounce is not one of them', async () => {
+      const kept = Uint8Array.from({ length: FLOW.slice * 2 + 3 }, (_, index) => index & 0xff);
+      const r = await reattached(replayOf(kept));
+      r.frame();
+      expect(r.engine().writes.filter((data) => typeof data === 'string')).toEqual([`${RESET}${CURSOR}`]);
+      expect(joined(bytesWritten(r.engine()))).toEqual(kept);
+    });
+
+    it('is written for a replay with no bytes too, and the live output follows it', async () => {
+      const r = rig({ reattach: { replay: replayOf('') } });
+      r.screen.mount(r.host);
+      r.feed.push('live');
+      r.screen.show();
+      await r.settle();
+      r.frame();
+      expect(r.engine().text()).toBe(`${RESET}${CURSOR}live`);
+    });
+
+    it('is not acknowledged and not counted: the feed is told of the live bytes alone, each when it is parsed', async () => {
+      const r = rig({ auto: false, reattach: { replay: replayOf('kept') } });
+      r.screen.mount(r.host);
+      r.feed.push('live!');
+      r.screen.show();
+      await r.settle();
+      r.frame();
+      r.engine().complete();
+      expect(r.feed.acks()).toEqual([]);
+      r.frame();
+      r.engine().complete();
+      expect(r.feed.acks()).toEqual([5]);
+    });
+
+    it('is parsed while what the emulator says is muted: an answer the emulator gave to the bounce is not heard, and a key typed after the replay is', async () => {
+      const r = await reattached(replayOf('kept'), { answers: [['\u001b[?47l', 'what the emulator said']] });
+      r.frame();
+      expect(r.engine().emitted).toEqual(['what the emulator said']);
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().type('ls\r');
+      expect(r.feed.typed()).toEqual(['ls\r']);
+    });
+
+    it('leaves the join with the live output alone: nothing is written between the last byte the host kept and the first live byte, so an escape sequence or a character that the cut falls inside is the emulator\'s to finish (the host cuts at the end of a read, not at the end of a sequence)', async () => {
+      const kept = Uint8Array.from([...bytesOf('plain \u001b[3'), 0xe2, 0x82]);
+      const live = Uint8Array.from([0xac, ...bytesOf('1mred')]);
+      const r = rig({ reattach: { replay: replayOf(kept) } });
+      r.screen.mount(r.host);
+      r.feed.push(live);
+      r.screen.show();
+      await r.settle();
+      r.frame();
+      expect(r.engine().writes).toEqual([`${RESET}${CURSOR}`, kept, live]);
+    });
+  });
+
+  it('writes what the host kept in slices of at most a slice, in order and whole, and takes no more of it in a frame than a frame\'s share: the next frame goes on', async () => {
+    const kept = Uint8Array.from({ length: FLOW.frame * 2 + FLOW.slice + 17 }, (_, index) => index & 0xff);
+    const r = await reattached(replayOf(kept));
+    r.frame();
+    expect(lengthOf(bytesWritten(r.engine()))).toBe(FLOW.frame);
+    r.frame();
+    expect(lengthOf(bytesWritten(r.engine()))).toBe(FLOW.frame * 2);
+    r.frame();
+    const slices = bytesWritten(r.engine());
+    expect(slices.length).toBeGreaterThanOrEqual(Math.ceil(kept.length / FLOW.slice));
+    for (const slice of slices) {
+      expect(slice.length).toBeLessThanOrEqual(FLOW.slice);
+    }
+
+    expect(joined(slices)).toEqual(kept);
+    // Applied: no frame is asked for at rest.
+    const asked = r.frames().asked;
+    r.frame();
+    expect(r.frames().asked).toBe(asked);
+  });
+
+  it('is applied to a screen that is hidden too, a hidden share at a time: it only parses, it measures nothing and tells the feed no size', async () => {
+    const kept = new Uint8Array(FLOW.hiddenFrame * 2 + 5);
+    const r = await reattached(replayOf(kept));
+    r.screen.hide();
+    const sizes = r.feed.sizes().length;
+    r.frame();
+    expect(lengthOf(bytesWritten(r.engine()))).toBe(FLOW.hiddenFrame);
+    r.frame();
+    r.frame();
+    expect(lengthOf(bytesWritten(r.engine()))).toBe(kept.length);
+    expect(r.engine().resets()).toBe(1);
+    expect(r.engine().writes[0]).toBe(`${RESET}${CURSOR}`);
+    expect(r.feed.sizes()).toHaveLength(sizes);
+    expect(r.engine().renderers).toEqual(['gpu', 'dom']);
+  });
+
+  it('takes no more of it than the emulator can parse, as it does of live output: it stops at the bound of what is accepted and not parsed, and goes on as the emulator parses', async () => {
+    const pieces = FLOW.high / FLOW.slice;
+    const kept = new Uint8Array(FLOW.high + FLOW.slice * 3);
+    const r = await reattached(replayOf(kept), { auto: false });
+    for (let frame = 0; frame < pieces * 2; frame += 1) {
+      r.frame();
+    }
+
+    expect(lengthOf(bytesWritten(r.engine()))).toBe(FLOW.high);
+    r.engine().complete();
+    for (let frame = 0; frame < pieces * 2; frame += 1) {
+      r.frame();
+    }
+
+    expect(lengthOf(bytesWritten(r.engine()))).toBe(kept.length);
+  });
+
+  it('acknowledges none of it, and every byte that is live after it, once, when it is parsed', async () => {
+    const r = rig({ auto: false, reattach: { replay: replayOf('kept '.repeat(40)) } });
+    r.screen.mount(r.host);
+    r.feed.push('live!');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([]);
+    r.frame();
+    expect(r.feed.acks()).toEqual([]);
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([5]);
+  });
+
+  it('reads no live output until the last slice of the replay is parsed, and writes it then: what is live is the emulator\'s after the replay, and the size it has by then', async () => {
+    const r = rig({ auto: false, reattach: { replay: replayOf('kept') } });
+    r.screen.mount(r.host);
+    r.feed.push('live');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept`);
+    expect(r.feed.reads()).toBe(0);
+    r.engine().complete();
+    r.frame();
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}keptlive`);
+  });
+
+  it('applies a replay with no bytes: the emulator is reset, sized and put in the modes, and the live output goes on', async () => {
+    const startModes = { ...NO_MODES, bracketedPaste: true };
+    const r = rig({ reattach: { replay: replayOf('', { startModes, startSize: { cols: 100, rows: 30 }, size: { cols: 100, rows: 30 } }) } });
+    r.screen.mount(r.host);
+    r.feed.push('live');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}\u001b[?2004hlive`);
+    expect(r.engine().resizes).toEqual([[100, 30], [80, 24]]);
+  });
+
+  it('waits for a replay that is not here yet: it reads nothing, and applies it when it comes, before the live output the feed held meanwhile', async () => {
+    const r = await reattached(undefined);
+    r.frame();
+    expect(r.engine().writes).toEqual([]);
+    expect(r.takes()).toBe(0);
+    r.feed.push('live\r\n');
+    r.arrive(replayOf('kept\r\n'));
+    r.frame();
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept\r\nlive\r\n`);
+    expect(r.takes()).toBe(1);
+  });
+
+  it('writes how the process ended after the replay, as it does after live output: a terminal that ended while no page was there is shown with its output and its end', async () => {
+    const r = rig({ reattach: { replay: replayOf('bye\r\n') } });
+    r.feed.set({ state: 'ended', exit: { code: 0 } });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}bye\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 0]\u001b[0m\r\n`);
+  });
+
+  it('lets go of a replay in the middle when the screen is disposed: the callbacks that come after change nothing', async () => {
+    const r = await reattached(replayOf(new Uint8Array(FLOW.slice * 2), { startSize: { cols: 100, rows: 30 }, size: { cols: 80, rows: 24 } }), { auto: false });
+    r.frame();
+    const resizes = [...r.engine().resizes];
+    const sizes = [...r.feed.sizes()];
+    r.screen.dispose();
+    r.engine().complete();
+    expect(r.engine().resizes).toEqual(resizes);
+    expect(r.feed.sizes()).toEqual(sizes);
+    expect(r.redraws()).toBe(0);
+  });
+
+  describe('what the emulator says while it is replayed', () => {
+    const QUERY = '\u001b[6n';
+    const REPLY = '\u001b[12;7R';
+
+    it('is not heard: the emulator answers the queries in the bytes it is replayed, and none of its answers reaches the feed (the program that asked is long past)', async () => {
+      const r = await reattached(replayOf(`a${QUERY}b${QUERY}`), { answers: [[QUERY, REPLY]] });
+      r.frame();
+      expect(r.engine().emitted).toEqual([REPLY, REPLY]);
+      expect(r.feed.typed()).toEqual([]);
+    });
+
+    it('is heard again once the replay is parsed: a query in the live output is answered to the shell, and so is a key', async () => {
+      const r = rig({ answers: [[QUERY, REPLY]], reattach: { replay: replayOf(`old${QUERY}`) } });
+      r.screen.mount(r.host);
+      r.feed.push(`live${QUERY}`);
+      r.screen.show();
+      await r.settle();
+      r.frame();
+      expect(r.engine().emitted).toEqual([REPLY, REPLY]);
+      expect(r.feed.typed()).toEqual([REPLY]);
+      r.engine().type('ls\r');
+      expect(r.feed.typed()).toEqual([REPLY, 'ls\r']);
+    });
+
+    it('is muted from the first byte of the replay until the callback of its LAST slice has fired, and not a byte longer', async () => {
+      const r = await reattached(replayOf(new Uint8Array(FLOW.slice * 2 + 1)), { auto: false });
+      r.frame();
+      r.engine().type('while the first slice is accepted');
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().complete(r.engine().pendingWrites() - 1);
+      r.engine().type('with only the last slice left');
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().complete();
+      r.engine().type('after');
+      expect(r.feed.typed()).toEqual(['after']);
+    });
+
+    it('is heard before the replay is taken, and by a screen that has no replay at all: nothing is muted that nobody replays', async () => {
+      const r = rig();
+      r.screen.mount(r.host);
+      r.screen.show();
+      await r.settle();
+      r.engine().type('ls\r');
+      expect(r.feed.typed()).toEqual(['ls\r']);
+      const late = await reattached(undefined);
+      late.engine().type('ls\r');
+      expect(late.feed.typed()).toEqual(['ls\r']);
+    });
+  });
+
+  describe('making a full-screen program paint again', () => {
+    it('is asked of the feed when the size the panel has is the size the host\'s terminal has: a size that did not change sends nothing, and the program would not know that it must paint over the bytes it was replayed', async () => {
+      const r = await reattached(replayOf('kept', { size: { cols: 80, rows: 24 } }));
+      r.frame();
+      expect(r.redraws()).toBe(1);
+      expect(r.feed.sizes()).toEqual([[80, 24]]);
+    });
+
+    it('is not asked when the panel has another size: the feed tells the host the size, the host resizes the terminal, and the program paints by itself', async () => {
+      const r = await reattached(replayOf('kept', { size: { cols: 120, rows: 40 } }));
+      r.engine().measured({ cols: 100, rows: 30 });
+      r.resized();
+      r.frame();
+      expect(r.redraws()).toBe(0);
+      expect(r.feed.sizes()).toEqual([[80, 24], [100, 30]]);
+      expect(r.engine().size()).toEqual({ cols: 100, rows: 30 });
+    });
+
+    it('waits for the first measure when the renderer is not in place yet: nothing is told before it, and the program is made to paint when the size is told', async () => {
+      const ready = Promise.withResolvers<void>();
+      const r = await reattached(replayOf('kept'), { rendererReady: ready.promise });
+      r.frame();
+      expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept`);
+      expect(r.redraws()).toBe(0);
+      expect(r.feed.sizes()).toEqual([]);
+      ready.resolve();
+      await r.settle();
+      expect(r.feed.sizes()).toEqual([[80, 24]]);
+      expect(r.redraws()).toBe(1);
+    });
+
+    it('waits until the screen is shown when it was hidden for the replay: nothing is measured while it is hidden', async () => {
+      const r = await reattached(replayOf('kept'));
+      r.screen.hide();
+      r.frame();
+      expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept`);
+      expect(r.redraws()).toBe(0);
+      r.screen.show();
+      await r.settle();
+      expect(r.redraws()).toBe(1);
+    });
+
+    it('is asked once: a later measure of the same size asks nothing', async () => {
+      const r = await reattached(replayOf('kept'));
+      r.frame();
+      r.resized();
+      r.engine().measured({ cols: 90, rows: 20 });
+      r.resized();
+      r.engine().measured({ cols: 80, rows: 24 });
+      r.resized();
+      expect(r.redraws()).toBe(1);
+    });
+
+    it('is not asked of a feed that cannot: the replay is applied all the same', async () => {
+      const r = await reattached(replayOf('kept'), { reattach: { redraw: false } });
+      r.frame();
+      expect(r.redraws()).toBe(0);
+      expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept`);
+    });
+
+    it('is not asked of a feed that is over: a terminal that ended while no page held it is shown with its output and its end, and there is no program to paint', async () => {
+      const r = rig({ reattach: { replay: replayOf('bye\r\n') } });
+      r.feed.set({ state: 'ended', exit: { code: 0 } });
+      r.screen.mount(r.host);
+      r.screen.show();
+      await r.settle();
+      r.frame();
+      expect(r.engine().text()).toContain('bye');
+      expect(r.redraws()).toBe(0);
+    });
+
+    it('is not asked of a feed that lost the terminal to another tab meanwhile: the program is the other tab\'s, and it must not be made to paint by this one', async () => {
+      const r = await reattached(replayOf('kept'));
+      r.screen.hide();
+      r.frame();
+      r.feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+      r.screen.show();
+      await r.settle();
+      expect(r.redraws()).toBe(0);
+    });
+  });
+});
+
+describe('the end of a terminal this page lost', () => {
+  async function shown() {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    return r;
+  }
+
+  it('writes the words the lane says as the last line, muted, once: the shell lives on, so it is not a process that ended', async () => {
+    const { feed, engine, frame } = await shown();
+    feed.push('typed\r\n');
+    feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+    frame();
+    expect(engine().text()).toBe('typed\r\n\u001b[0m\r\n\u001b[90m[Taken over by another tab]\u001b[0m\r\n');
+    feed.wake();
+    frame();
+    expect(engine().writes).toHaveLength(2);
+  });
+
+  it('writes what the host says after it, once, when the lease runs out while this page is still there: the scrollback tells both', async () => {
+    const { feed, engine, frame } = await shown();
+    feed.set({ state: 'ended', detached: { by: 'requested' } });
+    frame();
+    feed.set({ exit: { closedBy: 'detach-timeout' } });
+    frame();
+    expect(engine().text()).toBe('\u001b[0m\r\n\u001b[90m[Detached]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[Process closed: no tab took it back in time]\u001b[0m\r\n');
+    feed.wake();
+    frame();
+    expect(engine().writes).toHaveLength(2);
+  });
+
+  it('keeps input off', async () => {
+    const { feed, engine } = await shown();
+    feed.set({ state: 'ended', detached: { by: 'window-retired' } });
+    expect(engine().inputs.at(-1)).toBe(false);
+  });
+});
+
+describe('a start that no shell answered, with the shells the host tried', () => {
+  it('writes the typed words and then one muted line for each shell it tried, in order, instead of its prose: the paths can be read and copied, one to a line', async () => {
+    const r = rig();
+    r.feed.set({
+      state: 'failed',
+      cause: {
+        stage: 'start',
+        code: 'SHELL_UNAVAILABLE',
+        message: 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none": not executable',
+        tried: [
+          { source: 'requested', path: '/bin/zsh', reason: 'not-found' },
+          { source: 'environment', path: '/opt/none', reason: 'not-executable' },
+        ],
+      },
+    });
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().text()).toBe(
+      '\u001b[0m\r\n\u001b[90m[No shell could be started]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[tried the shell asked for /bin/zsh: not found]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[tried $SHELL /opt/none: not executable]\u001b[0m\r\n',
+    );
   });
 });

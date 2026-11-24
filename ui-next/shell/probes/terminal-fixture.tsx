@@ -66,7 +66,9 @@ import type { EngineLoader } from '../panel/terminal/engine';
 import { signalEvent, streamEvent } from '../panel/terminal/execFeed';
 import type { TerminalTarget } from '../panel/terminal/feed';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
-import { localShellTarget, type EventsLike } from '../panel/terminal/localShell';
+import { localShellTarget, restoreLocalTerminals, type EventsLike } from '../panel/terminal/localShell';
+import { loadPageKey, terminalKeyStorage } from '../panel/terminal/pageKey';
+import { loadSession, windowStorage, type WindowState } from '../session';
 
 /** A program that holds the terminal's foreground besides the shell, until it ends (`sleep N`). */
 type Job = { readonly name: string; readonly timer: ReturnType<typeof setTimeout> };
@@ -100,11 +102,19 @@ type Pty = {
   applying: boolean;
   /** What lets go of the calls the host is slow with, when the pty closes. */
   holds: Set<() => void>;
+  /** The page key the terminal was made with (T2-go 2.1): a terminal with one sends `output` events with offsets, and `offset` is the bytes it has written so far. */
+  key: string | null;
+  offset: number;
 };
 
 const params = new URLSearchParams(window.location.search);
 const control = params.get('control');
 const shellName = (params.get('shell') ?? 'zsh').replace(/[^A-Za-z0-9._-]/g, '') || 'zsh';
+/** `?host=shared`: the far end is the probe's own host (terminal-host.mjs), which outlives this page and is shared by the others of the browser context. `?lines=1` keeps the numbered lines of a flood the emulator is given. */
+const shared = params.get('host') === 'shared';
+const trackLines = shared || params.get('lines') === '1';
+/** `?key=off`: the page gives its terminals no key, as a page that could not make one would: a terminal with no key ends with its page and is never listed (T2-go 2.1). */
+const keyed = params.get('key') !== 'off';
 const failure = params.get('fail');
 const busyMode = params.get('busy');
 const ptys = new Map<string, Pty>();
@@ -124,6 +134,9 @@ const LIMITS = {
   flow_stall_ceiling_bytes: 8_388_608,
   hangup_grace_ms: 1500,
   drain_cap_ms: 3000,
+  replay_bytes: 1_310_720,
+  lease_default_ms: 300_000,
+  lease_max_ms: 1_800_000,
 } as const;
 
 /** The most the host reads from the pty at once: an event of the host is the bytes of one read (T1-go.md 2.2). */
@@ -182,6 +195,8 @@ const notFound = (id: string): Error => refusal({ type: SESSION_NOT_FOUND, title
  * are looked for where the emulator was given them, and `bad` counts the ones that were not where they belong. `measure` is the size the emulator would fit to the host now, which is the one a renderer in place gives.
  */
 type Order = { readonly base: number; readonly events: number; checked: number; bad: number; first: { k: number; at: number; got: number } | null };
+/** The numbered lines of a flood (`0000042 xxx`) as the emulator was given them: the last number, how many, and where one was skipped or repeated. */
+type Lines = { last: number; count: number; carry: string; gaps: Array<{ after: number; got: number }>; dups: Array<{ after: number; got: number }>; resets: number };
 const stats = {
   writes: 0,
   accepted: 0,
@@ -191,6 +206,7 @@ const stats = {
   renderers: [] as string[],
   engines: 0,
   order: null as Order | null,
+  lines: (trackLines ? { last: -1, count: 0, carry: '', gaps: [], dups: [], resets: 0 } : null) as Lines | null,
   grid: (): { cols: number; rows: number } => ({ cols: 0, rows: 0 }),
   measure: (): { cols: number; rows: number } | null => null,
 };
@@ -215,6 +231,10 @@ const log = {
   created: [] as string[],
   /** The ids the host refused to start (`?fail=`). */
   refused: [] as string[],
+  /** What every create call carried of its launch: the page key and the lease. */
+  launches: [] as Array<{ id: string; pageKey: string | undefined; leaseMs: number | undefined }>,
+  /** The terminals this page was asked to detach (`DetachTerminal`). */
+  detached: [] as string[],
   writes: [] as string[],
   /** The size the pty was opened at by the create call and every size the host applied after it, in the order it applied them. */
   resizes: [] as Array<{ id: string; rows: number; cols: number; at: number }>,
@@ -298,7 +318,7 @@ function pump(id: string): void {
       }
 
       if (item.kind === 'close') {
-        emit(signalEvent(id, 'CLOSE'), item.payload);
+        emit(signalEvent(id, 'CLOSE'), { ...(item.payload as Record<string, unknown>), last_offset: pty.offset });
         continue;
       }
 
@@ -306,7 +326,13 @@ function pump(id: string): void {
       pty.unacked += item.size;
       log.maxUnacked = Math.max(log.maxUnacked, pty.unacked);
       log.delivered += item.size;
-      emit(streamEvent(id, 'stdout'), item.encoded);
+      if (pty.key === null) {
+        emit(streamEvent(id, 'stdout'), item.encoded);
+      } else {
+        emit(`core/exec/stream/output/${id}`, { offset: pty.offset, data: item.encoded });
+      }
+
+      pty.offset += item.size;
       if (control === 'draw-hidden') {
         document.body.dataset.delivered = String(log.delivered);
       }
@@ -628,7 +654,13 @@ function run(id: string, pty: Pty, command: string): void {
       finish(id, { ...exited(0), drain_capped: true, dropped_bytes: 4096 });
       return;
     case 'fail':
-      emit(signalEvent(id, 'ERROR'), { title: 'Connection lost', message: 'The shell stopped answering' });
+      // A terminal with a key ends with a typed failure, as the host says it (T1-go.md 2.2: the end is the CLOSE event); the `ERROR` signal is the old way and is only heard for a terminal with no key.
+      if (pty.key === null) {
+        emit(signalEvent(id, 'ERROR'), { title: 'Connection lost', message: 'The shell stopped answering' });
+      } else {
+        finish(id, { reason: 'failed', failure: { stage: 'read', message: 'The shell stopped answering' } });
+      }
+
       return;
     default:
       out(id, `synthetic: command not found: ${word}\r\n`);
@@ -821,7 +853,7 @@ async function input(kind: 'write' | 'resize', id: string, seq: number, size: nu
 }
 
 /** `CreateTerminal`: the pty opens at the size the view measured, and the answer is the session (`terminal.Session`). A host that cannot start one says why, typed (`?fail=`). */
-async function create(id: string, size: { readonly cols: number; readonly rows: number }): Promise<unknown> {
+async function create(id: string, size: { readonly cols: number; readonly rows: number; readonly page_key?: string | undefined; readonly lease_ms?: number | undefined }): Promise<unknown> {
   if (failure === 'shell-unavailable') {
     log.refused.push(id);
     throw refusal(UNAVAILABLE);
@@ -832,9 +864,15 @@ async function create(id: string, size: { readonly cols: number; readonly rows: 
     throw refusal(START_FAILED);
   }
 
+  // A page key is 16 to 128 visible ASCII characters (T2-go 2.1): any other is refused, naming it, and nothing starts.
+  log.launches.push({ id, pageKey: size.page_key, leaseMs: size.lease_ms });
+  if (size.page_key !== undefined && !/^[\x21-\x7e]{16,128}$/.test(size.page_key)) {
+    throw refusal({ type: 'omniview:resource/invalid-request', title: 'Invalid request', status: 400, detail: 'page_key: a page key is 16 to 128 visible ASCII characters, no space', code: 'INVALID_REQUEST' });
+  }
+
   // `?control=size-off`: the host opens the pty one column wider than it was asked to.
   const cols = control === 'size-off' ? size.cols + 1 : size.cols;
-  ptys.set(id, { rows: size.rows, cols, line: '', job: undefined, gone: false, queue: [], head: 0, waiting: 0, unacked: 0, explicit: false, paused: false, pumping: false, roomWaiters: [], emptyWaiters: [], next: 1, early: new Map(), applying: false, holds: new Set() });
+  ptys.set(id, { rows: size.rows, cols, line: '', job: undefined, gone: false, queue: [], head: 0, waiting: 0, unacked: 0, explicit: false, paused: false, pumping: false, roomWaiters: [], emptyWaiters: [], next: 1, early: new Map(), applying: false, holds: new Set(), key: size.page_key ?? null, offset: 0 });
   log.resizes.push({ id, rows: size.rows, cols: size.cols, at: performance.now() });
   log.created.push(id);
   const first = new Promise<void>((resolve) => {
@@ -857,6 +895,7 @@ async function create(id: string, size: { readonly cols: number; readonly rows: 
     rows: size.rows,
     environment: { source: 'launch', probe: { state: 'ok' } },
     limits: LIMITS,
+    lease_ms: size.page_key === undefined ? 0 : LIMITS.lease_default_ms,
   };
 }
 
@@ -910,8 +949,8 @@ function resizing(id: string, rows: number, cols: number): (pty: Pty) => void {
  * The host's exec bindings, as the transport of the host's own shell calls them. The page numbers its input calls and sends them with `WriteTerminal` and `ResizeTerminal`, each at once, and the host puts them in the order of their
  * numbers. `WriteSession` and `ResizeSession` are the old calls: nothing makes them any more, and a page that does gets an error from them and leaves its call in `log.legacy`, which the probe asserts is empty.
  */
-const client = {
-  CreateTerminal: async (options: { readonly id: string }, launch: { readonly cols: number; readonly rows: number }) => create(options.id, launch),
+const localClient = {
+  CreateTerminal: async (options: { readonly id: string }, launch: { readonly cols: number; readonly rows: number; readonly page_key?: string | undefined; readonly lease_ms?: number | undefined }) => create(options.id, launch),
   WriteTerminal: async (id: string, seq: number, data: string) => {
     // `?control=seq-gap`: a number is missing from the fourth call on. `?control=legacy-write`: the old call is made as well.
     if (control === 'legacy-write') {
@@ -946,7 +985,107 @@ const client = {
   },
   AckTerminal: ack,
   IsBusy: busy,
+  // The terminals of this page live in it and end with it, so a reloaded page finds none: the T2-go host, with its ring, its leases and its tombstones, is `?host=shared`.
+  ListTerminals: async (): Promise<unknown[]> => Promise.resolve([]),
+  AttachTerminal: async (id: string): Promise<never> => Promise.reject(notFound(id)),
+  DetachTerminal: async (id: string) => {
+    log.detached.push(id);
+    return Promise.resolve({ lease_ms: LIMITS.lease_default_ms, lease_expires_unix_ms: Date.now() + LIMITS.lease_default_ms });
+  },
 };
+
+/**
+ * `?host=shared`: the host's calls go to the probe's host (terminal-host.mjs) through the binding `window.__host`, and what the host emits comes back through `window.__hostEmit`. A page load is a window of its own (`windowId`), as
+ * a page of server mode is: the host retires it when the page goes away. The host keeps the terminals, the window's state (the page key and the saved session) and the rest of the far end; the page keeps none of it.
+ * The page-side negative controls of the reattach assertions are in the calls below: `key-in-url` (the page puts its key in the address), `ack-replay` (it credits the replay), `seq-restart` (the answer of the attach hands the
+ * page 1 for the number the input queue takes next), `leave-lost` (the page never says it is leaving), and in the window's state `no-session` and `key-regen` (the session and the key are never kept).
+ */
+type HostBinding = (windowId: string, method: string, args: readonly unknown[]) => Promise<unknown>;
+
+/** The probe's host (`?host=shared`): Playwright gives its binding to every page of the browser context. */
+const injected: unknown = Reflect.get(window, '__host');
+const hostBinding = typeof injected === 'function' ? (injected as HostBinding) : undefined;
+const windowId = globalThis.crypto.randomUUID();
+const hostCall = async (method: string, ...args: unknown[]): Promise<unknown> => {
+  if (hostBinding === undefined) {
+    throw new Error('the probe did not give this page its host (window.__host)');
+  }
+
+  return hostBinding(windowId, method, args);
+};
+
+type Launch = { readonly cols: number; readonly rows: number; readonly page_key?: string | undefined; readonly lease_ms?: number | undefined };
+type Attach = { readonly page_key?: string | undefined; readonly from_offset?: number | undefined };
+const remoteClient = {
+  CreateTerminal: async (options: { readonly id: string }, launch: Launch) => {
+    if (control === 'key-in-url' && launch.page_key !== undefined) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search === '' ? '?' : `${window.location.search}&`}k=${launch.page_key}`);
+    }
+
+    return hostCall('CreateTerminal', options, launch);
+  },
+  ListTerminals: async (pageKey: string) => hostCall('ListTerminals', pageKey),
+  AttachTerminal: async (id: string, request: Attach) => {
+    const answer = (await hostCall('AttachTerminal', id, request)) as { readonly replay: { readonly data: string } };
+    if (control === 'ack-replay') {
+      void hostCall('AckTerminal', id, base64Size(answer.replay.data));
+    }
+
+    return control === 'seq-restart' ? { ...answer, next_input_seq: 1 } : answer;
+  },
+  // A page that is going away says so with a request that outlives it (`keepalive`): a call made through the binding is dropped with the page in Chromium. The host's own does the same (T2b explore, 2.4).
+  DetachTerminal: async (id: string, request: { readonly page_key?: string | undefined; readonly lease_ms?: number | undefined }) => {
+    // `?control=leave-lost` is the negative control of the page that never says it is going; `?detach=off` is the scenario of a page that dies without saying it (a tab that was killed): the host notices later.
+    if (control === 'leave-lost' || params.get('detach') === 'off') {
+      return Promise.resolve({ lease_ms: 0, lease_expires_unix_ms: 0 });
+    }
+
+    const beacon: unknown = Reflect.get(window, '__hostBeacon');
+    if (typeof beacon !== 'string') {
+      return hostCall('DetachTerminal', id, request);
+    }
+
+    const response = await fetch(beacon, { method: 'POST', keepalive: true, body: JSON.stringify({ windowId, method: 'DetachTerminal', args: [id, request] }) });
+    // The probe's own server answers `{ answer }` or `{ message }` (the error as the host's envelope text).
+    const body = (await response.json()) as { readonly answer?: unknown; readonly message?: string };
+    if (!response.ok) {
+      throw new Error(body.message ?? 'DetachTerminal was refused');
+    }
+
+    return body.answer;
+  },
+  WriteTerminal: async (id: string, seq: number, data: string) => hostCall('WriteTerminal', id, seq, data),
+  ResizeTerminal: async (id: string, seq: number, rows: number, cols: number) => hostCall('ResizeTerminal', id, seq, rows, cols),
+  CloseSession: async (id: string) => hostCall('CloseSession', id),
+  AckTerminal: async (id: string, bytes: number) => hostCall('AckTerminal', id, bytes),
+  IsBusy: async (id: string) => hostCall('IsBusy', id),
+};
+
+const client = shared ? remoteClient : localClient;
+
+/** The host's window service as the generated binding has it (`GetState`, `SaveState`): the slots of each window. `?host=shared` keeps them in the probe's host, which outlives the page, as the host's own state root does. */
+const slots = new Map<string, Record<string, string | undefined>>();
+const sharedState: WindowState = {
+  GetState: async (name) => (await hostCall('GetState', name)) as Record<string, string | undefined>,
+  SaveState: async (name, slot, json) => {
+    if ((control === 'no-session' && slot === 'session') || (control === 'key-regen' && slot === 'terminal-page-key')) {
+      return;
+    }
+
+    await hostCall('SaveState', name, slot, json);
+  },
+};
+const localState: WindowState = {
+  GetState: async (name) => Promise.resolve({ ...slots.get(name) }),
+  SaveState: async (name, slot, json) => {
+    slots.set(name, { ...slots.get(name), [slot]: json });
+    return Promise.resolve();
+  },
+};
+const windowState = shared ? sharedState : localState;
+if (shared) {
+  Object.assign(window, { __hostEmit: emit, __windowId: windowId });
+}
 
 const events: EventsLike = {
   On: (name, listener) => {
@@ -963,8 +1102,11 @@ const events: EventsLike = {
   },
 };
 
-/** The product's own target for the host's shell (its tab is `Terminal` until the answer names the shell), over the invented far end. */
-const target = (): TerminalTarget => localShellTarget({ client, events });
+/** The page key the Terminal tool starts its terminals under: read from the window's state when the page mounts (`loadPageKey`, as the host's own screen reads it), and none for `?key=off`. */
+let pageKey: string | undefined;
+
+/** The product's own target for the host's shell (its tab is `Terminal` until the answer names the shell), over the invented far end, under the page's key. */
+const target = (): TerminalTarget => localShellTarget({ client, events }, pageKey);
 
 /** Burns the main thread for `ms` milliseconds: what a janky renderer or a slow handler does, for the probe's negative controls. */
 const burn = (ms: number): void => {
@@ -990,6 +1132,42 @@ let swapped: (() => void) | undefined;
 /** What `?control=input-serial` holds: the keys typed while a call was waiting for its answer, in the order they were typed, and whether they are being let go. */
 const typedWaiting: Array<() => void> = [];
 let letting = false;
+const latin1 = new TextDecoder('latin1');
+
+/** The numbered lines of a flood as the emulator is given them: each is the one after the last (a number skipped is a gap, one repeated a duplicate), and a full reset, which a replay begins with, starts the count again. */
+function trackLine(lines: Lines, data: Uint8Array | string): void {
+  if (typeof data === 'string') {
+    if (data.includes('\u001bc')) {
+      Object.assign(lines, { last: -1, carry: '' });
+      lines.resets += 1;
+    }
+
+    return;
+  }
+
+  const parts = (lines.carry + latin1.decode(data)).split('\r\n');
+  lines.carry = parts.pop() ?? '';
+  for (const part of parts) {
+    const found = /^(\d{7}) x/.exec(part);
+    if (found === null) {
+      continue;
+    }
+
+    const number = Number(found[1]);
+    if (lines.last >= 0 && number <= lines.last) {
+      lines.dups.push({ after: lines.last, got: number });
+      continue;
+    }
+
+    if (lines.last >= 0 && number !== lines.last + 1) {
+      lines.gaps.push({ after: lines.last, got: number });
+    }
+
+    lines.count += 1;
+    lines.last = number;
+  }
+}
+
 const load: EngineLoader = async () => {
   const create = await loadXtermEngine();
   return (options) => {
@@ -1007,6 +1185,10 @@ const load: EngineLoader = async () => {
           stats.lastWriteAt = performance.now();
           if (typeof data !== 'string') {
             checkOrder(data);
+          }
+
+          if (stats.lines !== null) {
+            trackLine(stats.lines, data);
           }
 
           stats.accepted += size;
@@ -1159,7 +1341,20 @@ function ChunkCounter() {
 }
 
 const root = document.getElementById('root');
-if (root !== null) {
+
+/** The page is drawn once the window's session has been read (`?host=shared`: the real session, from the window's state), as the host's own screen draws it. */
+async function mount(): Promise<void> {
+  if (root === null) {
+    return;
+  }
+
+  if (shared) {
+    await hostCall('hello');
+  }
+
+  pageKey = keyed ? await loadPageKey(terminalKeyStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
+  const key = pageKey;
+  const session = shared ? await loadSession(windowStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
   createRoot(root).render(
     <ThemeProvider>
       <Profiler
@@ -1175,9 +1370,12 @@ if (root !== null) {
           link={{ plugin: params.get('plugin') ?? undefined, page: undefined, connection: undefined, params: {} }}
           onRetry={() => undefined}
           onRetryInventory={() => undefined}
-          terminals={{ target, load }}
+          session={session}
+          terminals={{ target, load, pageKey: key, restore: key === undefined ? undefined : async () => restoreLocalTerminals(key, { client, events }) }}
         />
       </Profiler>
     </ThemeProvider>,
   );
 }
+
+void mount();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TerminalFeedCause, TerminalFeedSnapshot } from './feed';
+import type { TerminalFeedCause, TerminalFeedSnapshot, TerminalShellAttempt } from './feed';
 import { causeSentence, closeQuestionOf, drainLine, exitLine, failureLines, laneOf, sessionStateOf, stateWords } from './state';
 
 // What a feed says about itself, as the panel's session says it, and the words the tab, the card, the status lane and the transcript use for it (ch16 S116's state table; the mock's `sessionWords`,
@@ -195,5 +195,183 @@ describe('the question a close asks (S115, L12: a close with a process running a
 
   it('does not ask for a session that has no feed: nothing runs in it', () => {
     expect(closeQuestionOf(undefined)).toBeUndefined();
+  });
+});
+
+// A terminal that outlives the page (T2-go): the page may lose a terminal that still runs (another tab took it, its owner let it go, its window went away), the host may close one that no page took back before its lease
+// ran out, and a page that comes back is taking a terminal over. Each is said in words, in the lane, in the transcript, on the card and as the tab's cause; one place decides them, and a snapshot may carry both what the
+// page lost and how the process ended: the words follow the later fact.
+const TAKEN = 'Taken over by another tab';
+const TAKEN_NOTE = 'Input is off. The shell keeps running in the tab that took it.';
+const LEASE_NOTE = 'Input is off. The shell keeps running until its lease ends.';
+const LEASE_RAN_OUT = 'Closed: no tab took it back in time';
+const lost = (by: 'taken-over' | 'requested' | 'window-retired', extra: Partial<TerminalFeedSnapshot> = {}): TerminalFeedSnapshot => snap('ended', { detached: { by }, ...extra });
+
+describe('a terminal this page lost, and one the host closed when no tab took it back', () => {
+  it('says who has it, or that it was detached, and not that it ended: the shell is still running', () => {
+    expect(stateWords(lost('taken-over'))).toBe(TAKEN);
+    expect(stateWords(lost('requested'))).toBe('Detached');
+    expect(stateWords(lost('window-retired'))).toBe('Detached with its window');
+    // A word this page does not know is a plain detachment.
+    expect(stateWords(lost('something-new' as never))).toBe('Detached');
+  });
+
+  it('says that the lease ran out when the host closed a terminal that no tab took back in time', () => {
+    expect(stateWords(snap('ended', { exit: { closedBy: 'detach-timeout' } }))).toBe(LEASE_RAN_OUT);
+  });
+
+  it('follows the later fact when the snapshot has both: the end the host says is what the terminal came to after this page lost it, and a loss that says nothing of how it ended is the words of the loss', () => {
+    expect(stateWords(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toBe(LEASE_RAN_OUT);
+    expect(stateWords(lost('taken-over', { exit: { closedBy: 'detach-timeout' } }))).toBe(LEASE_RAN_OUT);
+    expect(stateWords(lost('taken-over', { exit: { code: 0 } }))).toBe('Exited with code 0');
+    expect(stateWords(lost('window-retired', { exit: { signal: 'SIGHUP' } }))).toBe('Ended by SIGHUP');
+    expect(stateWords(lost('taken-over', { exit: {} }))).toBe(TAKEN);
+  });
+
+  it('says nothing of a loss before the session ended: a fact of a session that is not over is not its end', () => {
+    expect(stateWords(snap('running', { detached: { by: 'taken-over' } }))).toBe('Connected');
+    expect(stateWords(snap('failed', { detached: { by: 'taken-over' }, cause: { stage: 'session', message: 'x' } }))).toBe('Failed');
+  });
+
+  it('says Reattaching while the page takes a terminal back, which is a start that already knows its program, and Connecting for a first start, which does not', () => {
+    expect(stateWords(snap('starting', { program: 'zsh' }))).toBe('Reattaching');
+    expect(stateWords(snap('starting'))).toBe('Connecting');
+    expect(stateWords(snap('starting', { program: '  ' }))).toBe('Connecting');
+    expect(stateWords(snap('running', { program: 'zsh' }))).toBe('Connected');
+  });
+
+  describe('in the lane under the screen', () => {
+    it('says who took the terminal, and that the shell keeps running there', () => {
+      expect(laneOf(lost('taken-over'))).toEqual({ words: TAKEN, note: TAKEN_NOTE });
+    });
+
+    it('says that it was detached, or detached with its window, and that the shell keeps running until its lease ends', () => {
+      expect(laneOf(lost('requested'))).toEqual({ words: 'Detached', note: LEASE_NOTE });
+      expect(laneOf(lost('window-retired'))).toEqual({ words: 'Detached with its window', note: LEASE_NOTE });
+    });
+
+    it('says that the lease ran out with the words of any other end: the process is over, and its output stays readable', () => {
+      expect(laneOf(snap('ended', { exit: { closedBy: 'detach-timeout' } }))).toEqual({ words: LEASE_RAN_OUT, note: 'Input is off. Its output stays readable here.' });
+    });
+
+    it('follows the later fact: a terminal this page lost and that then ended is over, so the shell no longer keeps running anywhere', () => {
+      const ended = { words: LEASE_RAN_OUT, note: 'Input is off. Its output stays readable here.' };
+      expect(laneOf(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toEqual(ended);
+      expect(laneOf(lost('taken-over', { exit: { code: 2 } }))).toEqual({ words: 'Exited with code 2', note: 'Input is off. Its output stays readable here.' });
+      expect(laneOf(lost('taken-over', { exit: {} }))).toEqual({ words: TAKEN, note: TAKEN_NOTE });
+    });
+
+    it('says Reattaching while the terminal is taken back, and nothing more', () => {
+      expect(laneOf(snap('starting', { program: 'zsh' }))).toEqual({ words: 'Reattaching', note: '' });
+      expect(laneOf(snap('starting'))).toEqual({ words: 'Connecting', note: '' });
+    });
+  });
+
+  describe('as the last line of the transcript', () => {
+    it('is the words of the lane in brackets, with no process that ended: the process did not', () => {
+      expect(exitLine(lost('taken-over'))).toBe(`[${TAKEN}]`);
+      expect(exitLine(lost('requested'))).toBe('[Detached]');
+      expect(exitLine(lost('window-retired'))).toBe('[Detached with its window]');
+    });
+
+    it('says that the process was closed when no tab took it back in time', () => {
+      expect(exitLine(snap('ended', { exit: { closedBy: 'detach-timeout' } }))).toBe('[Process closed: no tab took it back in time]');
+    });
+
+    it('follows the later fact', () => {
+      expect(exitLine(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toBe('[Process closed: no tab took it back in time]');
+      expect(exitLine(lost('taken-over', { exit: { code: 1 } }))).toBe('[Process exited with code 1]');
+      expect(exitLine(lost('taken-over', { exit: {} }))).toBe(`[${TAKEN}]`);
+    });
+
+    it('is nothing before the session ended', () => {
+      expect(exitLine(snap('running', { detached: { by: 'taken-over' } }))).toBe('');
+    });
+  });
+
+  describe('as the tab\'s cause, which the card prints as its reason', () => {
+    it('is the sentence of the lane while the shell runs on: an end that is no failure, and one a person is told the reason of', () => {
+      expect(sessionStateOf(lost('taken-over'))).toEqual({ state: 'ended', cause: TAKEN_NOTE });
+      expect(sessionStateOf(lost('requested'))).toEqual({ state: 'ended', cause: LEASE_NOTE });
+      expect(sessionStateOf(lost('window-retired'))).toEqual({ state: 'ended', cause: LEASE_NOTE });
+    });
+
+    it('is nothing once the process is over, whatever this page lost before: there is no shell left to keep running', () => {
+      expect(sessionStateOf(snap('ended', { exit: { closedBy: 'detach-timeout' } }))).toEqual({ state: 'ended', cause: '' });
+      expect(sessionStateOf(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toEqual({ state: 'ended', cause: '' });
+      expect(sessionStateOf(lost('taken-over', { exit: { code: 0 } }))).toEqual({ state: 'ended', cause: '' });
+    });
+
+    it('is nothing for a session that is taken back: it has not ended', () => {
+      expect(sessionStateOf(snap('starting', { program: 'zsh' }))).toEqual({ state: 'starting', cause: '' });
+    });
+  });
+
+  describe('a session that ends this way closes with no question, as every session that has ended does', () => {
+    it.each([
+      ['taken over', lost('taken-over')],
+      ['detached', lost('requested')],
+      ['detached with its window', lost('window-retired')],
+      ['closed when no tab took it back in time', snap('ended', { exit: { closedBy: 'detach-timeout' } })],
+    ])('when it was %s', (_name, snapshot) => {
+      expect(closeQuestionOf(snapshot)).toBeUndefined();
+      expect(closeQuestionOf(snapshot, { state: 'busy', name: 'vim' })).toBeUndefined();
+    });
+  });
+});
+
+describe('the shells the host tried, when no shell could be started (host #672: `AppError.tried`)', () => {
+  const detail = 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none/sh": not executable';
+  const failed = (tried: TerminalShellAttempt[] | undefined, message = detail) =>
+    snap('failed', { cause: { stage: 'start', code: 'SHELL_UNAVAILABLE', message, ...(tried === undefined ? {} : { tried }) } });
+  const attempt = (source: string, path: string, reason: string, said?: string): TerminalShellAttempt => ({ source, path, reason, ...(said === undefined ? {} : { detail: said }) });
+
+  it('writes the typed words and then one line for each shell, in the order the host tried them, in the words of each token', () => {
+    expect(
+      failureLines(
+        failed([
+          attempt('requested', '/bin/zsh', 'not-found'),
+          attempt('environment', '/opt/none/sh', 'not-executable'),
+          attempt('account', '/usr/bin/fish', 'not-a-shell'),
+          attempt('fallback', '/bin/sh', 'other', 'permission denied'),
+        ]),
+      ),
+    ).toEqual([
+      '[No shell could be started]',
+      '[tried the shell asked for /bin/zsh: not found]',
+      '[tried $SHELL /opt/none/sh: not executable]',
+      '[tried the account\'s shell /usr/bin/fish: not a shell Omniview starts]',
+      '[tried the fallback /bin/sh: permission denied]',
+    ]);
+  });
+
+  it('says "failed" for an attempt that failed for another reason and told none', () => {
+    expect(failureLines(failed([attempt('fallback', '/bin/sh', 'other')]))).toEqual(['[No shell could be started]', '[tried the fallback /bin/sh: failed]']);
+    expect(failureLines(failed([attempt('fallback', '/bin/sh', 'other', '  ')]))).toEqual(['[No shell could be started]', '[tried the fallback /bin/sh: failed]']);
+    expect(failureLines(failed([attempt('fallback', '/bin/sh', '')]))).toEqual(['[No shell could be started]', '[tried the fallback /bin/sh: failed]']);
+  });
+
+  it('says "a shell" for a source it does not know, and gives a reason it does not know as the token it was given', () => {
+    expect(failureLines(failed([attempt('somewhere', '/bin/x', 'not-found')]))).toEqual(['[No shell could be started]', '[tried a shell /bin/x: not found]']);
+    expect(failureLines(failed([attempt('requested', '/bin/x', 'permission-denied')]))).toEqual(['[No shell could be started]', '[tried the shell asked for /bin/x: permission-denied]']);
+    expect(failureLines(failed([attempt('requested', '', 'not-found')]))).toEqual(['[No shell could be started]', '[tried the shell asked for: not found]']);
+  });
+
+  it('has the host\'s prose in a line of its own when it listed no attempt: the list is the prose, said one to a line', () => {
+    expect(failureLines(failed(undefined))).toEqual(['[No shell could be started]', `[${detail}]`]);
+    expect(failureLines(failed([]))).toEqual(['[No shell could be started]', `[${detail}]`]);
+  });
+
+  it('keeps the host\'s sentence as the reason of the card and the note of the lane, whether or not it listed the shells', () => {
+    const tried = [attempt('requested', '/bin/zsh', 'not-found')];
+    const sentence = `No shell could be started. ${detail}.`;
+    expect(sessionStateOf(failed(tried))).toEqual({ state: 'failed', cause: sentence });
+    expect(sessionStateOf(failed(undefined))).toEqual({ state: 'failed', cause: sentence });
+    expect(laneOf(failed(tried))).toEqual({ words: 'Failed to start', note: sentence });
+    expect(causeSentence({ stage: 'start', code: 'SHELL_UNAVAILABLE', message: detail, tried })).toBe(sentence);
+  });
+
+  it('lists nothing for a failure that did not happen at the start, whatever it carries', () => {
+    expect(failureLines(snap('failed', { cause: { stage: 'session', message: 'x', tried: [attempt('requested', '/bin/zsh', 'not-found')] } }))).toEqual([]);
   });
 });

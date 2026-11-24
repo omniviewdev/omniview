@@ -135,4 +135,70 @@ export const units = [
     plants: 'page',
     seconds: 100,
   },
+
+  // A terminal survives a reload of the page (T2-go, T2b), the probe's own far end holding the host for the whole browser context (terminal-host.mjs, terminal-reattach.mjs). Three units of the probe, which no unit passes half a shard
+  // for (216 s): the key, the saved session and a reload under a flood; a query in a replay, the modes of a program and the size after a reload; and a terminal another tab took, a lease, a saved tab whose terminal is gone, the
+  // page that is going away, a shell that ended while no page held it, and the numbers of the input; and, with the key, the session and the exact join, axe on a terminal that another tab took and on one that is reattaching. WebKit and Chromium at both viewports (axe at the first). The seconds are the laptop's at load under 10 (33 s, 38 s and 101 s, builds shared) times about 2.5, until a runner has measured them.
+  {
+    id: 'terminal-reattach',
+    name: 'Probe that a terminal survives a reload of the page: the key, the session and an exact join',
+    script: 'ui-next/shell/probes/terminal-reattach-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-probe.json' },
+    seconds: 85,
+  },
+  {
+    id: 'terminal-reattach-b',
+    name: 'Probe that a terminal survives a reload of the page: the replay, its modes and its size',
+    script: 'ui-next/shell/probes/terminal-reattach-b-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-b-probe.json' },
+    seconds: 95,
+  },
+  {
+    id: 'terminal-reattach-c',
+    name: 'Probe that a terminal survives a reload of the page: who holds it, how it ends and its input',
+    script: 'ui-next/shell/probes/terminal-reattach-c-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-c-probe.json' },
+    seconds: 200,
+  },
+
+  // The reattach assertions' faults (T2b), each in Chromium at one viewport, in four units by what they cost: the page puts its key in the address, the window's state never keeps the key, nor the session, and a replay with a gap
+  // (the first); an event the replay holds delivered again at the offset the page expects, a page that credits the replay, a reply to a query of the replay that reaches the shell, modes the host lost and a resize the pty ignores
+  // (the second); a takeover nobody is told of, a new holder's own takeover named with its own number and a lease that runs out in silence (the third); and a host that lists a terminal it no longer has, a tombstone it lists
+  // as a terminal that runs, a page that never says it is leaving and a number of the input that is lost on the way (the fourth).
+  {
+    id: 'terminal-controls-reattach',
+    name: 'Probe that the reattach probe sees a key and a session that are lost',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['key-in-url', 'key-regen', 'no-session', 'replay-gap'],
+    plants: 'page',
+    seconds: 100,
+  },
+  {
+    id: 'terminal-controls-reattach-b',
+    name: 'Probe that the reattach probe sees a join, a replay and a size that are wrong',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['dup-offset', 'ack-replay', 'unmuted-reply', 'modes-lost', 'resize-ignored'],
+    plants: 'page',
+    seconds: 90,
+  },
+  {
+    id: 'terminal-controls-reattach-c',
+    name: 'Probe that the reattach probe sees a takeover and a lease that are wrong',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['no-detached', 'own-number', 'lease-silent'],
+    plants: 'page',
+    seconds: 120,
+  },
+  {
+    id: 'terminal-controls-reattach-d',
+    name: 'Probe that the reattach probe sees a list, a tombstone, a leave and an input that are wrong',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['list-ghost', 'tombstone-adopted', 'detached-axe', 'leave-lost', 'seq-restart'],
+    plants: 'page',
+    seconds: 60,
+  },
 ];

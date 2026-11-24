@@ -10,11 +10,17 @@ export type TerminalFeedState = 'starting' | 'running' | 'ended' | 'failed';
 /** Where a failure happened: the session could not start, it broke after it ran, or what the user typed could not be delivered. */
 export type TerminalFeedStage = 'start' | 'session' | 'input';
 
-/** Why a session failed: where, in the producer's own words, and its typed code when it has one (`SHELL_UNAVAILABLE`: no shell could be started). Nothing branches on the words; the code is what the host reads. */
-export type TerminalFeedCause = { readonly stage: TerminalFeedStage; readonly message: string; readonly code?: string | undefined };
+/**
+ * Why a session failed: where, in the producer's own words, its typed code when it has one (`SHELL_UNAVAILABLE`: no shell could be started) and, for that code, the shells the host tried, in the order it tried them.
+ * Nothing branches on the words; the code is what the host reads, and the tokens of an attempt are mapped to words by `state.ts`.
+ */
+export type TerminalFeedCause = { readonly stage: TerminalFeedStage; readonly message: string; readonly code?: string | undefined; readonly tried?: readonly TerminalShellAttempt[] | undefined };
 
-/** Who ended a process the host ended: a close that was asked for, the window the shell belonged to, or the host quitting. */
-export type TerminalClosedBy = 'request' | 'window' | 'shutdown';
+/** One shell the host tried to start (host PR #672, `AppError.tried`): where it came from (`requested`, `environment`, `account`, `fallback`), its path, why it was not used (`not-found`, `not-executable`, `not-a-shell`, `other`) and the system's words for `other`. The tokens are the host's: one this page does not know is shown as it was given. */
+export type TerminalShellAttempt = { readonly source: string; readonly path: string; readonly reason: string; readonly detail?: string | undefined };
+
+/** Who ended a process the host ended: a close that was asked for, the window the shell belonged to, the host quitting, or the lease of a terminal that no page held running out (T2-go). */
+export type TerminalClosedBy = 'request' | 'window' | 'shutdown' | 'detach-timeout';
 
 /** How a process ended, when its producer says: the exit code, the signal that ended it, or who closed it, and what the host did with the output of a program that kept the terminal open. */
 export type TerminalExit = {
@@ -38,6 +44,40 @@ export type TerminalBusy =
   | { readonly state: 'busy'; readonly name?: string | undefined }
   | { readonly state: 'unknown' };
 
+/** A size in cells. */
+export type TerminalSize = { readonly cols: number; readonly rows: number };
+
+/** The modes a terminal is in at an offset of its output (T2-go `TerminalModes`): what a reattach has to switch back on before it writes the bytes. `mouseTracking` is bits (1 click, 2 drag, 4 any motion), `mouseEncoding` is 0 X10, 1 UTF-8, 2 SGR, 3 urxvt. */
+export type TerminalModes = {
+  readonly altScreen: boolean;
+  readonly bracketedPaste: boolean;
+  readonly applicationCursor: boolean;
+  readonly focusEvents: boolean;
+  readonly cursorHidden: boolean;
+  readonly mouseTracking: number;
+  readonly mouseEncoding: number;
+  /** The flag stack of the keyboard protocol of the screen showing, bottom first. */
+  readonly kittyKeyboard: readonly number[];
+};
+
+/**
+ * What a page that reattached to a terminal is given to bring a fresh emulator to where the terminal is: the bytes the host still kept, the size and the modes they were written under (`startSize`, `startModes`)
+ * and the size and modes in force at their end (`size`, `modes`). The reader takes it once, before any live output, applies it with the emulator's replies to queries MUTED (they must not reach the shell), and
+ * acknowledges none of it (T2-go 2.4, rules 4 and 6).
+ */
+export type TerminalReplay = {
+  readonly data: Uint8Array;
+  readonly startSize: TerminalSize;
+  readonly startModes: TerminalModes;
+  readonly size: TerminalSize;
+  readonly modes: TerminalModes;
+  /** The offset after the last byte of `data`: the live output continues there. */
+  readonly end: number;
+};
+
+/** Why a session is no longer held by this page though its process lives on: another page took it (`taken-over`), the owner let it go (`requested`) or the owner's window went away (`window-retired`). */
+export type TerminalDetached = { readonly by: 'taken-over' | 'requested' | 'window-retired' };
+
 /** The status of a feed: the same object until something in it changes. */
 export type TerminalFeedSnapshot = {
   readonly state: TerminalFeedState;
@@ -47,6 +87,8 @@ export type TerminalFeedSnapshot = {
   readonly exit?: TerminalExit | undefined;
   /** The program the session runs, as its producer names it (`zsh`), when it says. It names the tab, and the card's shell. */
   readonly program?: string | undefined;
+  /** Set when this page lost a terminal that still runs (T2-go `DETACHED`): the state is `ended` for this page, the process is not. Input is off; nothing more comes. */
+  readonly detached?: TerminalDetached | undefined;
 };
 
 /** What the process wrote since the last read, oldest first: its bytes (an escape sequence may be cut between two chunks, the emulator keeps its state). */
@@ -92,6 +134,20 @@ export type TerminalFeedHandle = {
   /** What runs in the session besides its shell, asked now. A producer that cannot tell leaves it out, and a close asks. A producer that tells and cannot count the typing (`inputs`) is asked about all the same, but its `idle` is read as `unknown`. */
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
   readonly close: () => Promise<void> | void;
+  /**
+   * A replay waiting for the reader (a reattach): taken once, before any live output is read; `read` returns nothing until it is taken. A producer that has no reattach leaves it out.
+   */
+  readonly takeReplay?: (() => TerminalReplay | undefined) | undefined;
+  /**
+   * The page is going away (`pagehide`, the window is retired): a terminal that has a key is DETACHED, not closed, so that its shell lives on for its lease and the page that comes back finds it. A feed with no
+   * key, and a feed this page no longer holds, does nothing here (and is closed by the caller as before). Fire and forget.
+   */
+  readonly leave?: (() => void) | undefined;
+  /**
+   * Makes a full-screen program draw itself again: the size is sent one cell off and then as it is, as two numbered calls, so that the pty signals a change twice (a replay brings an emulator to the bytes the program wrote
+   * and the program must paint over them). A reader calls it after a replay when the size the host has is the size the screen already is, which a plain resize would not send. A producer that cannot leaves it out.
+   */
+  readonly redraw?: (() => void) | undefined;
 };
 
 /** What opens a terminal session: plain data and one function. Who supplies it (the host's own shell today) is not the registry's business. */
@@ -110,4 +166,14 @@ export type TerminalTarget = {
   readonly resource?: { readonly label: string; readonly kind?: string | undefined; readonly icon?: string | undefined; readonly route?: RouteInput | undefined } | undefined;
   /** Starts the process. Called once, when the session opens. */
   readonly open: () => TerminalFeedHandle;
+  /**
+   * The id of the panel session this target opens, which is also the id of its terminal: a session that comes back after a reload has the id it was saved with, so the registry finds the saved tab and gives it
+   * its feed again instead of making a second one. Absent: the registry makes an id (a producer with nothing to reattach).
+   */
+  readonly sessionId?: string | undefined;
+  /**
+   * The terminal's shell had already ended when the host listed it: the host keeps its output for the rest of its lease, and the registry gives it only to a tab the person still has (a saved tab that holds its id).
+   * One that no tab holds is not brought back (a tab that was closed would otherwise return with the next reload). Absent: the terminal runs.
+   */
+  readonly ended?: boolean | undefined;
 };

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { createPanelStore, HOST, UNLOADED_CAUSE, type PanelStore } from '../../core/panel';
-import type { TerminalTarget } from './feed';
-import { fakeTerminalFeed, type FakeTerminalFeed } from './testing';
+import { createPanelStore, HOST, PANEL_VERSION, restorePanel, RESTORED_CAUSE, UNLOADED_CAUSE, type PanelState, type PanelStore } from '../../core/panel';
+import type { TerminalFeedHandle, TerminalTarget } from './feed';
+import { fakeTerminalFeed, type FakeTerminalFeed, type FakeTerminalFeedOptions } from './testing';
 import { createTerminalSessions, type TerminalSessions } from './TerminalSessions';
 import { TERMINAL_TOOL } from './tool';
 
@@ -21,10 +21,10 @@ type Harness = {
 let clock = 1_000;
 let counter = 0;
 
-function harness(options: { readonly plugins?: readonly string[] } = {}): Harness {
+function harness(options: { readonly plugins?: readonly string[]; readonly initial?: PanelState | undefined } = {}): Harness {
   clock = 1_000;
   counter = 0;
-  const store = createPanelStore({ now: () => clock, newId: () => `store-${String(++counter)}` });
+  const store = createPanelStore({ initial: options.initial, now: () => clock, newId: () => `store-${String(++counter)}` });
   store.registerTool(TERMINAL_TOOL);
   store.syncPlugins((options.plugins ?? []).map((id) => ({ id, tools: [] })));
   const warn = vi.fn<(message: string, error?: unknown) => void>();
@@ -632,5 +632,389 @@ describe('the members a feed must have', () => {
     const feed = fakeTerminalFeed();
     expect('busy' in feed).toBe(false);
     expect(sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => feed })).toBeDefined();
+  });
+});
+
+// ---- a window that was reloaded (T2-go): the terminals its saved tabs belonged to are found again -----------------------------------------------------------------------------------------------------------
+
+type SavedTab = { readonly id: string; readonly title: string; readonly tool?: string; readonly plugin?: string };
+
+/**
+ * The panel a reloaded window starts from: what the last run saved, read back by the real restore, so each session is `ended` with the words of a restore and none has a feed. `active` is the session the person
+ * had on screen.
+ */
+function savedPanel(tabs: readonly SavedTab[], active?: string): PanelState {
+  const restored = restorePanel(
+    {
+      version: PANEL_VERSION,
+      open: false,
+      height: null,
+      tool: 'terminal',
+      active: active === undefined ? {} : { terminal: active },
+      sessions: tabs.map((tab) => ({ id: tab.id, tool: tab.tool ?? 'terminal', plugin: tab.plugin ?? HOST, title: tab.title, scope: '' })),
+    },
+    { now: 500 },
+  );
+  if (!restored.ok) {
+    throw new Error(restored.detail);
+  }
+
+  return restored.state;
+}
+
+/** The feed of a terminal that has a key: besides being closed it can be LEFT (`left` counts it), which holds the shell for its lease so that the page that comes back finds it. */
+const keyedFeed = (options: FakeTerminalFeedOptions = {}): FakeTerminalFeed => fakeTerminalFeed({ ...options, leave: true });
+
+/** A keyed feed whose `leave` does what the test says: the supplier's fault. */
+const failing = (leave: () => unknown): FakeTerminalFeed => ({ ...keyedFeed(), leave });
+
+/** What a producer hands the registry for a terminal that may have a tab already: the id of its terminal is the id of its session. */
+const terminalOf = (feed: TerminalFeedHandle, sessionId: string | undefined, patch: Partial<TerminalTarget> = {}): TerminalTarget => ({ plugin: HOST, id: 'local', title: 'Terminal', sessionId, open: () => feed, ...patch });
+
+describe('a saved tab that gets its terminal back (a window that was reloaded: T2-go)', () => {
+  const zsh = (id: string): SavedTab => ({ id, title: 'zsh' });
+
+  it('gives the feed to the saved session that has the id the target names: it is that session\'s feed, and no second session is made', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a'), { id: 'term-b', title: 'bash' }]) });
+    const feed = keyedFeed();
+    const opened = r.sessions.open(terminalOf(feed, 'term-b'));
+    expect(opened?.id).toBe('term-b');
+    expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a', 'term-b']);
+    expect(r.sessions.feedOf('term-b')).toBe(feed);
+    expect(r.sessions.feedOf('term-a')).toBeUndefined();
+    expect(r.sessions.recordOf('term-b')).toMatchObject({ id: 'local', plugin: HOST, snapshot: { state: 'running' } });
+  });
+
+  it('keeps its place in the strip and the title the person saw, whatever the target calls itself: two shells of one name come back as the twins they were', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a'), zsh('term-b'), { id: 'term-c', title: 'bash' }]) });
+    const names = () => r.store.selectors.sessionIds(r.store.getSnapshot(), 'terminal').map((id) => r.store.selectors.sessionItem(r.store.getSnapshot(), id)?.name);
+    expect(names()).toEqual(['zsh', 'zsh (2)', 'bash']);
+    // Found in the opposite order, and under the name the host gives a terminal before its shell has said which it is.
+    for (const id of ['term-c', 'term-b', 'term-a']) {
+      r.sessions.open(terminalOf(fakeTerminalFeed(), id, { title: 'Terminal' }));
+    }
+
+    expect(r.store.getSnapshot().order).toEqual(['term-a', 'term-b', 'term-c']);
+    expect(names()).toEqual(['zsh', 'zsh (2)', 'bash']);
+  });
+
+  it('lets the state flow from ended through starting and running to the end, one change of the panel for each: the same write as for any session, and the words of the restore go with the first', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const read = () => r.store.getSnapshot().sessions['term-a'];
+    expect(read()).toMatchObject({ state: 'ended', cause: RESTORED_CAUSE, since: 500 });
+    const seen: Array<readonly [string | undefined, string | undefined, number | undefined]> = [];
+    r.store.subscribe(() => {
+      seen.push([read()?.state, read()?.cause, read()?.since]);
+    });
+    const feed = keyedFeed({ state: 'starting' });
+    r.sessions.open(terminalOf(feed, 'term-a'));
+    clock = 2_000;
+    feed.set({ state: 'running' });
+    clock = 3_000;
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    expect(seen).toEqual([
+      ['starting', '', 1_000],
+      ['running', '', 2_000],
+      ['ended', '', 3_000],
+    ]);
+  });
+
+  it('says what the feed says at once when the terminal is running already: the tab goes from ended to running with no start in between', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const seen: string[] = [];
+    r.store.subscribe(() => {
+      seen.push(r.store.getSnapshot().sessions['term-a']?.state ?? 'gone');
+    });
+    r.sessions.open(terminalOf(keyedFeed(), 'term-a'));
+    expect(seen).toEqual(['running']);
+  });
+
+  it('says how a terminal ended while no page held it, in the host\'s words and not the restore\'s: the tab is ended, and its cause is the feed\'s', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const feed = keyedFeed({ state: 'ended' });
+    feed.set({ exit: { code: 3 } });
+    r.sessions.open(terminalOf(feed, 'term-a'));
+    expect(r.store.getSnapshot().sessions['term-a']).toMatchObject({ state: 'ended', cause: '' });
+    expect(r.sessions.recordOf('term-a')?.snapshot).toMatchObject({ state: 'ended', exit: { code: 3 } });
+  });
+
+  it('fails the tab with the cause as a sentence when the terminal could not be taken back', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const feed = keyedFeed({ state: 'failed' });
+    feed.set({ cause: { stage: 'session', message: 'It is not there any more' } });
+    r.sessions.open(terminalOf(feed, 'term-a'));
+    expect(r.store.getSnapshot().sessions['term-a']).toMatchObject({ state: 'failed', cause: 'The terminal stopped. It is not there any more.' });
+  });
+
+  it('knows the feed before the panel hears of the first change: whoever listens to the panel finds the feed of the session it was told about', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const feed = keyedFeed();
+    const found: Array<TerminalFeedHandle | undefined> = [];
+    r.store.subscribe(() => {
+      found.push(r.sessions.feedOf('term-a'));
+    });
+    r.sessions.open(terminalOf(feed, 'term-a'));
+    expect(found).toEqual([feed]);
+  });
+
+  it('names the tab as a new terminal is named when the feed says which program it runs, and keeps the title the person saw while it says the same', () => {
+    const named = (status: { readonly program?: string | undefined }): string | undefined => status.program;
+    const r = harness({ initial: savedPanel([zsh('term-a'), { id: 'term-b', title: 'Terminal' }]) });
+    const same = keyedFeed();
+    same.set({ program: 'zsh' });
+    r.sessions.open(terminalOf(same, 'term-a', { retitle: named }));
+    const early = keyedFeed();
+    early.set({ program: 'bash' });
+    r.sessions.open(terminalOf(early, 'term-b', { retitle: named }));
+    const title = (id: string) => r.store.getSnapshot().sessions[id]?.title;
+    expect(title('term-a')).toBe('zsh');
+    expect(title('term-b')).toBe('bash');
+    same.set({ program: 'fish' });
+    expect(title('term-a')).toBe('fish');
+  });
+
+  it('moves nothing the person sees: the tab on screen stays on screen, the panel stays shut, and no terminal asks for the keyboard', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a'), zsh('term-b'), zsh('term-c')], 'term-b') });
+    const before = r.store.getSnapshot();
+    expect(r.store.selectors.activeSession(before, 'terminal')).toBe('term-b');
+    for (const id of ['term-c', 'term-a', 'term-b']) {
+      r.sessions.open(terminalOf(keyedFeed(), id));
+    }
+
+    const after = r.store.getSnapshot();
+    expect(r.store.selectors.activeSession(after, 'terminal')).toBe('term-b');
+    expect(after.open).toBe(false);
+    expect(after.active).toEqual(before.active);
+    expect(after.tool).toBe(before.tool);
+    for (const id of ['term-a', 'term-b', 'term-c']) {
+      expect(r.sessions.takeFocus(id)).toBe(false);
+    }
+  });
+
+  it('leaves the panel as the person has it when they opened it before the terminals were found: the tab they are looking at stays on screen', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a'), zsh('term-b')], 'term-a') });
+    r.store.activateSession('term-b');
+    r.store.show();
+    r.sessions.open(terminalOf(keyedFeed(), 'term-a'));
+    expect(r.store.selectors.activeSession(r.store.getSnapshot(), 'terminal')).toBe('term-b');
+    expect(r.store.getSnapshot().open).toBe(true);
+  });
+
+  it('opens a new session with the id of the terminal when no tab was saved for it (the saved document was lost): the terminal is found all the same, and is not shown when it is told not to', () => {
+    const r = harness();
+    const first = r.sessions.open(r.target().target);
+    const feed = keyedFeed();
+    const opened = r.sessions.open(terminalOf(feed, 'lost-1'), { reveal: false });
+    expect(opened?.id).toBe('lost-1');
+    expect(r.sessions.feedOf('lost-1')).toBe(feed);
+    const after = r.store.getSnapshot();
+    expect(after.sessions['lost-1']).toMatchObject({ tool: 'terminal', plugin: HOST, state: 'running' });
+    expect(after.order).toEqual([first?.id, 'lost-1']);
+    expect(r.store.selectors.activeSession(after, 'terminal')).toBe(first?.id);
+    expect(r.sessions.takeFocus('lost-1')).toBe(false);
+  });
+
+  it('does not open the panel for a terminal that is found again when none was saved for it: the page stays as it is', () => {
+    const r = harness();
+    r.sessions.open(terminalOf(keyedFeed(), 'lost-1'), { reveal: false });
+    expect(r.store.getSnapshot().open).toBe(false);
+    expect(r.store.getSnapshot().active).toEqual({});
+  });
+
+  it('makes the session of a NEW terminal the id of the terminal as well, and shows it as it does any session the person starts: the panel opens on it and the keyboard goes in when its screen is ready', () => {
+    const r = harness();
+    const opened = r.sessions.open(terminalOf(keyedFeed(), 'fresh-1'), { focus: true });
+    expect(opened?.id).toBe('fresh-1');
+    const state = r.store.getSnapshot();
+    expect(state.open).toBe(true);
+    expect(r.store.selectors.activeSession(state, 'terminal')).toBe('fresh-1');
+    expect(r.sessions.takeFocus('fresh-1')).toBe(true);
+  });
+
+  it('starts nothing for an id that belongs to a session of another tool, or of another plugin: it says so, and the sessions stay as they were', () => {
+    const r = harness({ plugins: ['acme'], initial: savedPanel([{ id: 'log-1', title: 'build', tool: 'logs' }, { id: 'item-1', title: 'web', plugin: 'acme' }, zsh('term-a')]) });
+    const open = vi.fn(() => keyedFeed());
+    const before = r.store.getSnapshot();
+    expect(r.sessions.open({ ...terminalOf(keyedFeed(), 'log-1'), open })).toBeUndefined();
+    expect(r.sessions.open({ ...terminalOf(keyedFeed(), 'item-1'), open })).toBeUndefined();
+    expect(open).not.toHaveBeenCalled();
+    expect(r.warn).toHaveBeenCalledTimes(2);
+    expect(r.store.getSnapshot()).toBe(before);
+  });
+
+  it('starts nothing for a saved tab of a plugin that is not live: its tabs wait for it', () => {
+    const r = harness({ initial: savedPanel([{ id: 'item-1', title: 'web', plugin: 'acme' }]) });
+    const open = vi.fn(() => fakeTerminalFeed());
+    expect(r.sessions.open({ plugin: 'acme', id: 'item', title: 'web', sessionId: 'item-1', open })).toBeUndefined();
+    expect(open).not.toHaveBeenCalled();
+    expect(r.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts no second process for a terminal this registry holds already: the second open is refused, says so, and leaves the first feed alone', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const first = keyedFeed();
+    r.sessions.open(terminalOf(first, 'term-a'));
+    const open = vi.fn(() => keyedFeed());
+    expect(r.sessions.open({ ...terminalOf(first, 'term-a'), open })).toBeUndefined();
+    expect(open).not.toHaveBeenCalled();
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    expect(r.sessions.feedOf('term-a')).toBe(first);
+    expect(first.closed()).toBe(0);
+  });
+
+  it('refuses a session id that is not an id, before anything starts: white space, or a number', () => {
+    const r = harness();
+    const open = vi.fn(() => keyedFeed());
+    for (const bad of ['', '   ', 7]) {
+      expect(r.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', sessionId: bad as unknown as string, open })).toBeUndefined();
+    }
+
+    expect(open).not.toHaveBeenCalled();
+    expect(r.warn).toHaveBeenCalledTimes(3);
+  });
+
+  it('lets go of the feed and leaves the saved tab as it was when the feed cannot be listened to: the terminal is closed, and the tab stays ended', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const feed = keyedFeed();
+    const deaf = {
+      ...feed,
+      subscribe: () => {
+        throw new Error('deaf');
+      },
+    };
+    expect(r.sessions.open(terminalOf(deaf, 'term-a'))).toBeUndefined();
+    expect(feed.closed()).toBe(1);
+    expect(r.store.getSnapshot().sessions['term-a']).toMatchObject({ state: 'ended', cause: RESTORED_CAUSE });
+    expect(r.sessions.feedOf('term-a')).toBeUndefined();
+    expect(r.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns nothing, and holds nothing, when a listener of the panel closes the tab as its state is written', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    r.store.subscribe(() => {
+      r.store.closeSession('term-a');
+    });
+    const feed = keyedFeed();
+    expect(r.sessions.open(terminalOf(feed, 'term-a'))).toBeUndefined();
+    expect(feed.closed()).toBe(1);
+    expect(feed.listeners()).toBe(0);
+    expect(r.sessions.feedOf('term-a')).toBeUndefined();
+  });
+
+  it('closes the terminal, and does not leave it, when the person closes the tab that came back: closing a tab is ending the shell', () => {
+    const r = harness({ initial: savedPanel([zsh('term-a')]) });
+    const feed = keyedFeed();
+    r.sessions.open(terminalOf(feed, 'term-a'));
+    r.store.closeSession('term-a');
+    expect(feed.closed()).toBe(1);
+    expect(feed.left()).toBe(0);
+    expect(feed.listeners()).toBe(0);
+    expect(r.sessions.feedOf('term-a')).toBeUndefined();
+  });
+
+  it('closes the process, and keeps the tab as it was, when the plugin of a tab that came back unloads: the rules of a session are the same for a tab that was saved (A21)', () => {
+    const r = harness({ plugins: ['acme'], initial: savedPanel([{ id: 'item-1', title: 'web', plugin: 'acme' }]) });
+    const feed = keyedFeed();
+    r.sessions.open({ plugin: 'acme', id: 'item', title: 'web', sessionId: 'item-1', open: () => feed });
+    expect(r.store.getSnapshot().sessions['item-1']?.state).toBe('running');
+    r.store.syncPlugins([]);
+    expect(feed.closed()).toBe(1);
+    expect(feed.left()).toBe(0);
+    expect(r.store.getSnapshot().sessions['item-1']).toMatchObject({ state: 'ended', cause: UNLOADED_CAUSE, held: true });
+  });
+});
+
+describe('a window that goes away (T2-go: a terminal with a key is left to live out its lease, any other is closed)', () => {
+  it('tells every feed that can be left that the page is going, once, and closes nothing: the shell lives on, and the tab stays as it is', () => {
+    const r = harness();
+    const one = keyedFeed();
+    const two = keyedFeed();
+    r.sessions.open(terminalOf(one, 'term-one'));
+    r.sessions.open(terminalOf(two, 'term-two'));
+    r.sessions.leave();
+    r.sessions.leave();
+    expect(one.left()).toBe(1);
+    expect(two.left()).toBe(1);
+    expect(one.closed() + two.closed()).toBe(0);
+    expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-one', 'term-two']);
+  });
+
+  it('does not touch a feed that cannot be left: the page may come back, and a shell that was closed cannot', () => {
+    const r = harness();
+    const keyed = keyedFeed();
+    const plain = fakeTerminalFeed();
+    r.sessions.open(terminalOf(keyed, 'term-one'));
+    r.sessions.open(terminalOf(plain, undefined));
+    r.sessions.leave();
+    expect(keyed.left()).toBe(1);
+    expect(plain.closed()).toBe(0);
+    expect(plain.listeners()).toBe(1);
+  });
+
+  it('does not leave a feed it closed already: the plugin\'s unload ended it', () => {
+    const r = harness({ plugins: ['acme'] });
+    const feed = keyedFeed();
+    r.sessions.open({ plugin: 'acme', id: 'item', title: 'web', sessionId: 'term-one', open: () => feed });
+    r.store.syncPlugins([]);
+    r.sessions.leave();
+    expect(feed.closed()).toBe(1);
+    expect(feed.left()).toBe(0);
+  });
+
+  it('says so, and goes on with the others, when a feed cannot be left: a `leave` that throws and one that rejects are the supplier\'s', async () => {
+    const r = harness();
+    const throwing = failing(() => {
+      throw new Error('threw');
+    });
+    const rejecting = failing(async () => Promise.reject(new Error('no')));
+    const fine = keyedFeed();
+    for (const [index, feed] of [throwing, rejecting, fine].entries()) {
+      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
+    }
+
+    r.sessions.leave();
+    expect(fine.left()).toBe(1);
+    await vi.waitFor(() => {
+      expect(r.warn).toHaveBeenCalledTimes(2);
+    });
+    expect(r.warn).toHaveBeenCalledWith(expect.stringContaining('host could not let go of the terminal'), expect.any(Error));
+  });
+
+  it('leaves the feeds that can be left, and closes the others, when the registry is detached (the window unmounts)', () => {
+    const r = harness();
+    const keyed = keyedFeed();
+    const plain = fakeTerminalFeed();
+    r.sessions.open(terminalOf(keyed, 'term-one'));
+    r.sessions.open(terminalOf(plain, undefined));
+    r.detach();
+    expect(keyed.left()).toBe(1);
+    expect(keyed.closed()).toBe(0);
+    expect(keyed.listeners()).toBe(0);
+    expect(plain.closed()).toBe(1);
+    expect(plain.listeners()).toBe(0);
+    expect(r.sessions.feedOf('term-one')).toBeUndefined();
+  });
+
+  it('leaves a feed once however it ends: one the page left by going away is not left again, and not closed, when the registry is detached after', () => {
+    const r = harness();
+    const feed = keyedFeed();
+    r.sessions.open(terminalOf(feed, 'term-one'));
+    r.sessions.leave();
+    r.detach();
+    expect(feed.left()).toBe(1);
+    expect(feed.closed()).toBe(0);
+    expect(feed.listeners()).toBe(0);
+  });
+
+  it('releases the entry and says so when a feed cannot be left as the registry is detached: no feed outlives its window', () => {
+    const r = harness();
+    const feed = failing(() => {
+      throw new Error('threw');
+    });
+    r.sessions.open(terminalOf(feed, 'term-one'));
+    r.detach();
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    expect(feed.listeners()).toBe(0);
+    expect(r.sessions.feedOf('term-one')).toBeUndefined();
   });
 });
