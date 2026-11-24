@@ -313,7 +313,12 @@ func TestTheStringsOfAMarkAndARecordDoNotShowTheCommandLine(t *testing.T) {
 		t.Fatalf("%d marks, want 4", len(ms))
 	}
 	rec := only(t, s)
-	for _, v := range []any{ms[3], &ms[3], rec, &rec} {
+	// The start mark is the one that carries the line: it must be there for the check to mean anything.
+	start := ms[2]
+	if !strings.Contains(start.CommandLine, "secret-command") || !strings.Contains(rec.CommandLine, "secret-command") {
+		t.Fatalf("the start mark and the record do not carry the line: %q %q", start.CommandLine, rec.CommandLine)
+	}
+	for _, v := range []any{start, &start, rec, &rec} {
 		for _, f := range []string{"%v", "%+v", "%#v", "%s"} {
 			if got := sprintf(f, v); strings.Contains(got, "secret-command") || got == "" {
 				t.Fatalf("%s of %T is %q", f, v, got)

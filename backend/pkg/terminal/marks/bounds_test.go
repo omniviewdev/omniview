@@ -3,6 +3,7 @@ package marks
 import (
 	"bytes"
 	"math/rand/v2"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -218,8 +219,11 @@ func FuzzFeed(f *testing.F) {
 		if bytes.Equal(data, []byte(sessionStream())) && len(wholeMarks) != 6 {
 			t.Fatalf("the session gives %d marks, want 6", len(wholeMarks))
 		}
-		if len(wholeMarks) != len(halfMarks) {
-			t.Fatalf("a cut at %d changes the marks: %d against %d", cut, len(wholeMarks), len(halfMarks))
+		if !reflect.DeepEqual(wholeMarks, halfMarks) {
+			t.Fatalf("a cut at %d changes the marks:\n whole %v\n halves %v", cut, wholeMarks, halfMarks)
+		}
+		if !reflect.DeepEqual(whole.Log().Records(), halves.Log().Records()) || whole.Stats() != halves.Stats() {
+			t.Fatalf("a cut at %d changes the records or the stats", cut)
 		}
 		for _, m := range wholeMarks {
 			if strings.ContainsAny(m.Cwd, "\x00\x01\x02\x03\x04\x05\x06\a\b\t\n\v\f\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f") {

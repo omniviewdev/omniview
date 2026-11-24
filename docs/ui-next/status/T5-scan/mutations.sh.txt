@@ -7,9 +7,9 @@
 # Run from anywhere in the worktree:  bash docs/ui-next/status/T5-scan/mutations.sh.txt [control-name]
 export GOWORK=off GOTOOLCHAIN=local
 WT=$(git rev-parse --show-toplevel) || exit 2
-M=${TMPDIR:-/tmp}/t5scan-mut
 PKG=./backend/pkg/terminal/marks/
-rm -rf "$M" && mkdir -p "$M"
+M=$(mktemp -d "${TMPDIR:-/tmp}/t5scan-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
 only="${1:-}"
 bad=0
@@ -51,8 +51,8 @@ run forged-directory-accepted-as-trusted backend/pkg/terminal/marks/log.go \
   'TestAForgedDirectoryNeverChangesTheTrustedOne TestOSC7GivesTheDirectoryDecodedAndUnverified'
 
 run line-taken-after-the-start backend/pkg/terminal/marks/log.go \
-  's/isOpen(r) \&\& r.State != StateRunning/isOpen(r)/' \
-  'TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne'
+  's/	case r.State != StateRunning:/	default:/' \
+  'TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand'
 
 run scanner-changes-a-byte backend/pkg/terminal/marks/scanner.go \
   's/out = s.step(p\[i\], base+uint64(i), out)/out = s.step(p[i], base+uint64(i), out); if s.state == stateOSC { p[i] = 0x20 }/' \
@@ -73,6 +73,10 @@ run control-bytes-kept-in-a-directory backend/pkg/terminal/marks/osc.go \
 run nonce-printed-by-the-scanner backend/pkg/terminal/marks/scanner.go \
   's/marks.Scanner{offset=%d marks=%d}", s.off.Load(), s.marks.Load())/marks.Scanner{offset=%d marks=%d nonce=%s}", s.off.Load(), s.marks.Load(), s.nonce)/' \
   'TestTheNonceNeverShowsInAnythingThatPrintsIt'
+
+run pending-line-dropped backend/pkg/terminal/marks/log.go \
+  's/		l.pending = line/		_ = line/' \
+  'TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand'
 
 run directory-allocates-on-every-read backend/pkg/terminal/marks/log.go \
   's/if string(dir) != \*slot {/if true {/' \

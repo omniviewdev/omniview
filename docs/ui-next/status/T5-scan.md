@@ -36,18 +36,18 @@ Linux amd64, Go 1.27.4 (`PATH=$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.2
 - golangci-lint v2.15.0 (installed into a temporary `GOBIN`), the CI form of `N24-L2.md`: 0 issues on the diff.
 - The 16 MB flood (genuine and forged marks, 32 KiB reads): the log keeps at most 64 of the commands it is set to, the heap grows by under 4 MiB (the test's bound), and every byte is counted. A 1 MB OSC (a command line, a directory, a prompt option) is dropped, counted once in `Stats.Oversize`, and the next command is read; the same megabyte as a title is skipped and not counted.
 - Split at every byte offset gives the same marks, records and stats (every single cut, every byte alone, every pair of cuts of a short command); 200 random streams are never changed and the offset equals the bytes fed; `FuzzFeed` (seeds only run in `go test`) checks no change, cut-independence, no control byte in a directory and the limits.
-- Allocations per read, `testing.AllocsPerRun`: 0 for plain text, SGR colors, titles and other OSC, DCS, a repeated OSC 7 and OSC 633;P; at most 1 for a read cut inside a sequence and for a whole command (its id). Benchmarks (`go test -bench . ./backend/pkg/terminal/marks/`, one machine, x86-64, 16 threads): plain text 13 GB/s, 0 allocs; ESC-dense text (4 sequences every 66 bytes) about 105 MB/s, 0 allocs; whole commands with marks about 175 MB/s, about 3 allocs per command (its id, its command line, and the log's growth until it is full). The SDK's X4a target (>= 1 GB/s with all consumers) is met for text and not for ESC-dense output: a CSI fast path inside the tokenizer is left to X4a, which merges the two tokenizers.
+- Allocations per read, `testing.AllocsPerRun`: 0 for plain text, SGR colors, titles and other OSC, DCS, a repeated OSC 7 and OSC 633;P; at most 1 for a read cut inside a sequence and for a whole command (its id). Benchmarks (`go test -bench . ./backend/pkg/terminal/marks/`, one machine, x86-64, 16 threads, `-benchtime 300x`, load average 5.45 / 8.86 / 9.69 (1, 5, 15 min, `uptime`) before and 5.34 / 8.78 / 9.66 after: a shared machine, so read them as orders of magnitude): plain text 12.3 GB/s, 0 allocs; ESC-dense text (4 sequences every 66 bytes) about 94 MB/s, 0 allocs; whole commands with marks about 162 MB/s, about 3 allocs per command (its id, its command line, and the log's growth until it is full). The SDK's X4a target (>= 1 GB/s with all consumers) is met for text and not for ESC-dense output: a CSI fast path inside the tokenizer is left to X4a, which merges the two tokenizers.
 
 ## Negative controls (AGENTS 28)
 
-`docs/ui-next/status/T5-scan/mutations.sh.txt`, run from the worktree (`bash docs/ui-next/status/T5-scan/mutations.sh.txt [name]`). Each fault is in a scratch copy under `go test -overlay`; the worktree is never edited. Half 1: the tests that go red are exactly the ones named. Half 2: with those tests skipped, the same fault passes (nothing else sees it). All 24, both halves, on this head (the first ten from the first pass, the last fourteen from the independent review, each a guard no test noticed):
+`docs/ui-next/status/T5-scan/mutations.sh.txt`, run from the worktree (`bash docs/ui-next/status/T5-scan/mutations.sh.txt [name]`). Each fault is in a scratch copy under `go test -overlay`; the worktree is never edited. Half 1: the tests that go red are exactly the ones named. Half 2: with those tests skipped, the same fault passes (nothing else sees it). All 25, both halves, on this head (the first ten from the first pass, the next fourteen from the independent review, the last from CodeRabbit, each a guard no test noticed):
 
 | Control (the fault) | Red in (half 1) | Without them (half 2) |
 |---|---|---|
 | nonce-not-checked (`verified` always true) | `TestAForgedDirectoryNeverChangesTheTrustedOne`, `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne`, `TestANonceAfterOtherBytesIsRefused`, `TestAWrongOrMissingNonceNeverGivesACommandLine`, `TestNoNonceInTheConfigTrustsNothing`, `TestTheDirectoryOfTheShellNeedsTheNonceToBeTrusted` | pass |
 | empty-nonce-trusted (no `len(nonce) > 0` guard) | `TestNoNonceInTheConfigTrustsNothing` | pass |
 | forged-directory-accepted-as-trusted (an OSC 7 writes the trusted slot) | `TestAForgedDirectoryNeverChangesTheTrustedOne`, `TestOSC7GivesTheDirectoryDecodedAndUnverified` | pass |
-| line-taken-after-the-start | `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne` | pass |
+| line-taken-after-the-start | `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne`, `TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand` | pass |
 | scanner-changes-a-byte (blanks the bytes of an OSC in `p`) | `FuzzFeed`, `TestTheScannerNeverChangesAByte` | pass |
 | record-unbounded (no eviction) | `TestACommandIsFoundByAnOffsetInIt`, `TestTheLogDefaultIsBounded`, `TestTheLogKeepsTheNewestCommandsAndIdsGoOn`, `TestTheRecordStaysBoundedUnderA16MBFlood`, `TestTheRecordStaysBoundedWhateverTheFloodIsMadeOf` | pass |
 | state-lost-between-reads (ground state at the end of `Feed`) | `FuzzFeed`, `TestMarksAreTheSameWhenTheStreamIsSplitAtEveryOffset` | pass |
@@ -66,6 +66,7 @@ Linux amd64, Go 1.27.4 (`PATH=$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.2
 | nonce-matched-by-suffix | `TestANonceAfterOtherBytesIsRefused` | pass |
 | nonce-matched-by-prefix | `TestANonceAfterOtherBytesIsRefused`, `TestAWrongOrMissingNonceNeverGivesACommandLine` | pass |
 | nonce-text-prints-value / nonce-gostring-prints-value | `TestTheNonceTextAndGoFormsNeverPrintTheValue` | pass |
+| pending-line-dropped (a verified line with no command open is dropped) | `TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand` | pass |
 
 ## Not verified
 
