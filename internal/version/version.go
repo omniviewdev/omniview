@@ -7,7 +7,7 @@ import (
 )
 
 // sourceCompatibilityVersion describes capabilities in development and nightly builds.
-const sourceCompatibilityVersion = "0.35.2"
+const sourceCompatibilityVersion = "0.37.0"
 
 var (
 	Version     = "0.0.0-dev"
