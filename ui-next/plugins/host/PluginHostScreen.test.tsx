@@ -1,7 +1,8 @@
+import { onEventsReconnect } from '@omniviewdev/runtime/runtime';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TerminalsOptions } from '../../shell';
-import { restoreLocalTerminals } from '../../shell/panel/terminal/localShell';
+import { attachLocalTerminal, restoreLocalTerminals } from '../../shell/panel/terminal/localShell';
 import { PAGE_KEY_SLOT } from '../../shell/panel/terminal/pageKey';
 import { PluginHostScreen } from './PluginHostScreen';
 
@@ -53,9 +54,10 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   Window: { Name: async () => Promise.resolve('main'), Close: async () => Promise.resolve() },
   Events: { On: () => () => undefined },
+  onEventsReconnect: vi.fn(),
 }));
 
-vi.mock('../../shell/panel/terminal/localShell', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), restoreLocalTerminals: vi.fn() }));
+vi.mock('../../shell/panel/terminal/localShell', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), restoreLocalTerminals: vi.fn(), attachLocalTerminal: vi.fn() }));
 
 vi.mock('./useInstalledPlugins', () => ({ useInstalledPlugins: () => world.inventory }));
 
@@ -71,6 +73,8 @@ const SAVED_KEY = 'a-key-saved-by-an-earlier-page';
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   vi.mocked(restoreLocalTerminals).mockReset();
+  vi.mocked(attachLocalTerminal).mockReset();
+  vi.mocked(onEventsReconnect).mockReset();
 });
 
 afterEach(() => {
@@ -142,6 +146,30 @@ describe('the page key the screen gives the Terminal tool', () => {
     await expect(drawn()?.terminals?.restore?.()).resolves.toBe(found);
     expect(restoreLocalTerminals).toHaveBeenCalledTimes(1);
     expect(restoreLocalTerminals).toHaveBeenCalledWith(SAVED_KEY);
+  });
+
+  it('comes with a way to attach a terminal again that this window lost to another tab, which attaches it under the window\'s key, when it is asked and not before', async () => {
+    world.slots.set(PAGE_KEY_SLOT, JSON.stringify(SAVED_KEY));
+    const target = { plugin: 'host', id: 'local', title: 'zsh', sessionId: 'term-7', open: vi.fn() };
+    vi.mocked(attachLocalTerminal).mockReturnValue(target);
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    expect(attachLocalTerminal).not.toHaveBeenCalled();
+    expect(drawn()?.terminals?.reattach?.('term-7')).toBe(target);
+    expect(attachLocalTerminal).toHaveBeenCalledTimes(1);
+    expect(attachLocalTerminal).toHaveBeenCalledWith(SAVED_KEY, 'term-7');
+  });
+
+  it('comes with the page\'s events reconnection signal as the runtime has it, for the Terminal tool to listen to: the screen does not subscribe to it itself', async () => {
+    world.slots.set(PAGE_KEY_SLOT, JSON.stringify(SAVED_KEY));
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    expect(drawn()?.terminals?.reconnect).toBe(onEventsReconnect);
+    expect(onEventsReconnect).not.toHaveBeenCalled();
   });
 
   it('is handed to the host as one set of options for the life of the window, however often the screen is drawn', async () => {

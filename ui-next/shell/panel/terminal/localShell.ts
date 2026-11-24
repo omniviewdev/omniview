@@ -112,20 +112,31 @@ export function localShellTarget(deps: LocalShellDeps = REAL, pageKey?: string):
 }
 
 /**
- * The terminals a page that reloaded finds again: those the host lists for its key, one target for each, in the order the host gave them. A target's `sessionId` is its terminal's id (the saved tab that has the same
- * id is the one that shows it), its title is the shell it runs, and `open` takes the terminal over instead of starting a process. A terminal whose shell ended while no page held it is listed with how it ended: its target
- * says `ended` (and says nothing for a terminal that runs), because the host keeps such a terminal until its lease runs out even after the page closed it, and the registry gives it only to a saved tab that still holds its
- * id. Nothing is attached by the listing. Rejects when the host refuses the listing, with its error: the page says so, and starts with what it saved.
+ * The target of one terminal the host holds for the page's key (docs/ui-next/status/T2-go.md): its `sessionId` is the terminal's id (the saved tab that has the same id is the one that shows it), its title is the shell it
+ * runs (`Terminal` when the host names none), and `open` takes the terminal over instead of starting a process, each time it is opened: a tab that takes a terminal back after another tab had it opens such a feed. Nothing is
+ * attached by making the target.
  */
-export async function restoreLocalTerminals(pageKey: string, deps: LocalShellDeps = REAL): Promise<readonly TerminalTarget[]> {
+export function attachLocalTerminal(pageKey: string, id: string, program?: string, deps: LocalShellDeps = REAL): TerminalTarget {
   const transport = localShellTransport(deps);
-  return listedOf(await transport.list(pageKey)).map(({ id, program, ended }) => ({
+  return {
     plugin: HOST,
     id: 'local',
     title: program ?? 'Terminal',
     retitle,
     sessionId: id,
-    ...(ended === true ? { ended: true } : {}),
     open: () => createExecFeed({ transport, pageKey, attach: program === undefined ? { id } : { id, program } }),
+  };
+}
+
+/**
+ * The terminals a page that reloaded finds again: those the host lists for its key, one target for each (`attachLocalTerminal`), in the order the host gave them. A terminal whose shell ended while no page held it is
+ * listed with how it ended: its target says `ended` (and says nothing for a terminal that runs), because the host keeps such a terminal until its lease runs out even after the page closed it, and the registry gives it
+ * only to a saved tab that still holds its id. Nothing is attached by the listing. Rejects when the host refuses the listing, with its error: the page says so, and starts with what it saved.
+ */
+export async function restoreLocalTerminals(pageKey: string, deps: LocalShellDeps = REAL): Promise<readonly TerminalTarget[]> {
+  const transport = localShellTransport(deps);
+  return listedOf(await transport.list(pageKey)).map(({ id, program, ended }) => ({
+    ...attachLocalTerminal(pageKey, id, program, deps),
+    ...(ended === true ? { ended: true } : {}),
   }));
 }

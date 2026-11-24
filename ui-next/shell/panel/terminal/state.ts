@@ -5,8 +5,9 @@ import type { TerminalBusy, TerminalFeedCause, TerminalFeedSnapshot, TerminalShe
 // What the producer knows about how the process ended, and about what runs in it, is optional and read in ONE place each below: a producer that says nothing is the same code path as one that says everything, with
 // less to print. The host's own shell says how it ended (its code, its signal, who closed it) and why it could not start (a typed code: no shell could be started), docs/ui-next/status/T2a.md. Pure: the registry
 // calls it, the card, the lane and the transcript word it.
-// A terminal that outlives the page (T2-go) adds two facts, read in the same places: what this page lost of a terminal that still runs (`detached`: another tab took it, its owner let it go, its window went away) and the lease
-// of a terminal that no tab took back running out (`closedBy: 'detach-timeout'`). A snapshot may carry both, and the words follow the later fact: how the process ended, when its producer says, is what it came to.
+// A terminal that outlives the page (T2-go) adds two facts, read in the same places: what this page lost of a terminal that still runs (`detached`: another tab took it, its owner let it go, its window went away, and, once
+// the tab that took it has closed too, that nobody holds it and this page may take it back: `free`, T2d) and the lease of a terminal that no tab took back running out (`closedBy: 'detach-timeout'`). A snapshot may carry
+// both, and the words follow the later fact: how the process ended, when its producer says, is what it came to.
 
 const NOT_TOLD = 'The producer gave no reason.';
 
@@ -89,15 +90,20 @@ function endedBy(snapshot: TerminalFeedSnapshot): string {
 const LEASE_NOTE = 'Input is off. The shell keeps running until its lease ends.';
 
 /**
- * What this page lost, when it lost a terminal that still runs (T2-go `DETACHED`): who has it now, or that it was detached, and why input is off. Nothing for a snapshot that has not ended, for one that lost nothing, and
- * for one whose process is over: a page that lost a terminal still hears how it ended, and that is the later fact, which `endedBy` says.
+ * What this page lost, when it lost a terminal that still runs (T2-go `DETACHED`): who has it now, or that it was detached, or that the tab that took it has closed and nobody holds it (T2d: this page may take it back), and why
+ * input is off. Nothing for a snapshot that has not ended, for one that lost nothing, and for one whose process is over: a page that lost a terminal still hears how it ended, and that is the later fact, which `endedBy` says.
  */
 function lossOf(snapshot: TerminalFeedSnapshot): { readonly words: string; readonly note: string } | undefined {
   if (snapshot.state !== 'ended' || snapshot.detached === undefined || endedBy(snapshot) !== '') {
     return undefined;
   }
 
-  const { by } = snapshot.detached;
+  const { by, free } = snapshot.detached;
+  if (free === true) {
+    // The lane reads as the one sentence, the words and then the note: the tab that took the terminal has closed, and the shell keeps running until its lease ends.
+    return { words: 'The tab that took this terminal has closed.', note: 'The shell keeps running until its lease ends.' };
+  }
+
   if (by === 'taken-over') {
     return { words: 'Taken over by another tab', note: 'Input is off. The shell keeps running in the tab that took it.' };
   }
@@ -108,8 +114,8 @@ function lossOf(snapshot: TerminalFeedSnapshot): { readonly words: string; reado
 
 /**
  * What a session is doing, in the mock's words for a terminal: Connecting (a first start) or Reattaching (a terminal the page is taking back: its program is known before the host has answered, where a first start learns
- * it from the answer), Connected, Ended (S116: Exited with code N when the producer said so; Taken over by another tab, Detached or Detached with its window for a terminal this page lost), Failed (to start). A session
- * with no feed has ended.
+ * it from the answer), Connected, Ended (S116: Exited with code N when the producer said so; Taken over by another tab, Detached, Detached with its window, or that the tab that took it has closed, for a terminal this page
+ * lost), Failed (to start). A session with no feed has ended.
  */
 export function stateWords(snapshot: TerminalFeedSnapshot | undefined): string {
   switch (snapshot?.state) {

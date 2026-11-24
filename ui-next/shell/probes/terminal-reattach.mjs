@@ -5,7 +5,9 @@
 // still holds the terminal until the host notices it is gone, a new holder's own takeover is announced with the number of the window it displaced, a program that is given the size it has draws nothing, and (host #675) the
 // answer of an attach and each entry of the list say which input number the queue takes next (the list's is stale when another tab writes before the page attaches). A call a page makes as it goes away is a keepalive request
 // (the binding is dropped with the page in Chromium).
-// This file knows nothing of the probe's own internals: terminal-probe.mjs hands it `check`, `note`, `report` and `runAxe`, and adds its sections, its parts and its negative controls to its own.
+// This file knows nothing of the probe's own internals: terminal-probe.mjs hands it `check`, `note`, `report` and `runAxe`, and adds its sections, its parts and its negative controls to its own. The sections of T2d (the saved open flag
+// of the panel, taking a terminal back with the guard of its button and what a tab that was offline learns, the rejoin by offset, the rejoin past the host's ring, the keys typed while a late replay is written, the acknowledgement in
+// flight, a terminal that is not there any more) are in terminal-reattach-followups.mjs and are added to these here, with their parts and controls.
 //
 // Each section has ONE assertion, so that a control trips only that one:
 //   reattach-key        the page key is made once, kept in the window's state, never in the address, and every create carries it, before and after a reload (reattach.key)
@@ -24,6 +26,7 @@
 //   reattach-axe        axe-core finds no violation in a terminal that another tab took (the ended tab, its lane and its note), nor, in the same page, in the tab that is reattaching while the host holds the answer of its attach (reattach.axe)
 import { AXE } from './harness.mjs';
 import { createHost, serveContext } from './terminal-host.mjs';
+import { createFollowupSections, FOLLOWUP_CONTROLS, FOLLOWUP_PARTS } from './terminal-reattach-followups.mjs';
 
 /** The words the screen writes in the lane for each way a terminal is lost (state.ts), and for a saved tab whose terminal is gone. */
 export const WORDS = Object.freeze({
@@ -39,6 +42,8 @@ export const REATTACH_PARTS = {
   'reattach-a': ['reattach-key', 'reattach-restore', 'reattach-exact', 'reattach-axe'],
   'reattach-b': ['reattach-muted', 'reattach-modes', 'reattach-size'],
   'reattach-c': ['reattach-detached', 'reattach-lease', 'reattach-restart', 'reattach-tombstone', 'reattach-leave', 'reattach-seq'],
+  // T2d (terminal-reattach-followups.mjs): the saved open flag, taking a terminal back, the rejoin by offset, the rejoin past the ring, a terminal that is not there any more.
+  ...FOLLOWUP_PARTS,
 };
 
 /**
@@ -76,6 +81,7 @@ export const REATTACH_CONTROLS = {
   'tombstone-adopted': { assertion: 'reattach.tombstone', section: 'reattach-tombstone', engines: ['chromium'], host: { faults: { tombstoneUnmarked: true } } },
   // axe finds a violation in the lane of a terminal that another tab took: an image with no text alternative, planted once the lane is drawn (the pattern of `axe-failed`).
   'detached-axe': { assertion: 'reattach.axe', section: 'reattach-axe', engines: ['chromium'], stage: 'taken', after: (page) => page.evaluate(() => { const image = document.createElement('img'); image.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; document.querySelector('[data-shell-part="terminalLane"]').append(image); }) },
+  ...FOLLOWUP_CONTROLS,
 };
 
 const sleep = async (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -159,7 +165,7 @@ async function start(page) {
   await sleep(400);
 }
 
-/** The panel of a page that loaded again comes back closed (a restored terminal must not cover the page: S116): a person opens it, and so does this. */
+/** The panel of a page that loaded again comes back as it was left (T2d: its open flag, its tool, its session and its height are restored); one that was left closed stays closed, and a person opens it, and so does this. */
 async function reveal(page) {
   await page.waitForSelector('[data-shell-part="panelToggle"]');
   const shown = await page.evaluate(() => (document.querySelector('[data-shell-part="panel"]')?.getBoundingClientRect().height ?? 0) > 0);
@@ -781,6 +787,9 @@ export function createReattachSections({ check, note, report, runAxe }) {
       await w.close();
     }
   };
+
+  // The follow-ups (terminal-reattach-followups.mjs) are given what they need of this file, and run as the sections above do.
+  Object.assign(sections, createFollowupSections({ check, note, runAxe, helpers: { world, start, reveal, until, moving, sleep, perturbed, tabsOf, laneOf, bodyOf, rowsOf, typeLine, windowsOf, slotOf, wroteBy, AXE } }));
 
   // A control proves an assertion at one viewport: what it plants does not depend on the size of the window.
   for (const [name, section] of Object.entries(sections)) {

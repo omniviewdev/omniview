@@ -51,6 +51,27 @@ describe('what the session writes', () => {
       expect(text).not.toContain(word);
     }
   });
+
+  it('holds, for a panel that is open with sessions, everything its restore needs to bring it back as it was: open, the height, the tool, the session each tool was on and the identity of each session (T2d)', () => {
+    const panel = bootPanel({ hostTools: [tool('logs', 'Logs', 20)], plugins: { cloud: [] } });
+    panel.store.openSession(panelSession('logs', 'cloud', 'worker', { scope: 'north' }));
+    panel.store.openSession(panelSession('logs', 'cloud', 'sidecar', { scope: 'north' }));
+    panel.store.activateSession('s1');
+    panel.store.resize({ size: 333 });
+
+    const document = serialiseSession({ tabs: bootTabs({ home: false }).state(), panel: panel.snapshot(), rail: null, terminalScreenReader: false });
+    expect(document.panel).toEqual({
+      version: 1,
+      open: true,
+      height: 333,
+      tool: 'logs',
+      active: { logs: 's1' },
+      sessions: [
+        { id: 's1', tool: 'logs', plugin: 'cloud', title: 'worker', scope: 'north' },
+        { id: 's2', tool: 'logs', plugin: 'cloud', title: 'sidecar', scope: 'north' },
+      ],
+    });
+  });
 });
 
 describe('a text that is read', () => {

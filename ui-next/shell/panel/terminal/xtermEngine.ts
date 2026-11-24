@@ -38,6 +38,12 @@ function themeOf(appearance: EngineAppearance): ITheme {
 /** The pitch of a row the host wants, in pixels: the font's size times the multiple it asked for. */
 const pitchOf = (appearance: EngineAppearance): number => Math.round(appearance.fontSize * appearance.lineHeight);
 
+/**
+ * The events at the emulator's input after which it sends, inside the event itself, what the person did: a key (the keydown it takes the special keys and Enter from, and the keypress it takes a character from), text that a
+ * keyboard or an input method inserted with no key (input), and a paste.
+ */
+const PERSON_EVENTS: Readonly<Record<string, true>> = { keydown: true, keypress: true, input: true, paste: true };
+
 export function createXtermEngine(options: EngineOptions): Engine {
   injectStyles();
   const { appearance } = options;
@@ -72,6 +78,21 @@ export function createXtermEngine(options: EngineOptions): Engine {
   let disposed = false;
   let element: HTMLElement | undefined;
   let pitch = pitchOf(appearance);
+  /** An input method's commit is on its way to the listeners from a timer of the emulator's: see `personDid`. */
+  let committing = false;
+
+  /**
+   * Whether what the emulator sends now is what the person did, and not what it says by itself. The emulator sends both through one event and knows inside which is which (its own flag for input), which its public interface does
+   * not show. What it sends for the person it sends inside the event at its input that the person caused (`PERSON_EVENTS`), so the page's current event is one of those while it does; what it says by itself (the answer to a
+   * query it parses, a report of its focus) it says while it parses, which is from a timer or a write, or inside a focus event, and never inside one of those. The text an input method commits when its composition ends is sent
+   * outside any event, from a timer the emulator sets in its own handler of that event, and `committing` covers that timer (see `open`); the text of a key an input method took without composing (`keyCode` 229, a virtual
+   * keyboard) is sent from a timer of the emulator's too, and is not covered: it is not the person's here. Nor is what the mouse sends (a report of a click, the arrows a wheel turns into in a full-screen program): it is dropped
+   * with the answers while a replay is applied, as it refers to a screen the replay is about to replace.
+   */
+  const personDid = (): boolean => {
+    const current = window.event;
+    return committing || (current !== undefined && Object.hasOwn(PERSON_EVENTS, current.type));
+  };
 
   /**
    * The height of the cell the emulator draws now, or nothing before it has drawn: the height of its screen over its rows. The screen element is there under both renderers (the DOM renderer's own rows are gone
@@ -115,6 +136,13 @@ export function createXtermEngine(options: EngineOptions): Engine {
       element = host;
       terminal.open(host);
       calibrate();
+      // This listener comes after the emulator's own for the same event, so the timer it sets comes after the emulator's, and the commit is sent while `committing` is set.
+      terminal.textarea?.addEventListener('compositionend', () => {
+        committing = true;
+        setTimeout(() => {
+          committing = false;
+        }, 0);
+      });
     },
 
     measure: () => {
@@ -133,7 +161,9 @@ export function createXtermEngine(options: EngineOptions): Engine {
     },
 
     onData: (listener) => {
-      const subscription = terminal.onData(listener);
+      const subscription = terminal.onData((data) => {
+        listener(data, personDid());
+      });
       return () => {
         subscription.dispose();
       };

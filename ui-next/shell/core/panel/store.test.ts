@@ -348,7 +348,7 @@ describe('a session', () => {
     expect(checkInvariants(h.snapshot())).toEqual([]);
   });
 
-  it('does not open the panel when it is told not to (S116: a restored, adopted or retried session never covers the page)', () => {
+  it('does not open the panel when it is told not to (S116: a session that is restored, adopted or retried is not revealed: it opens no panel and moves nothing)', () => {
     const h = boot({ hostTools: HOST_TOOLS });
     h.store.openSession(session('terminal', 'host', 'zsh'), { reveal: false });
     expect(h.snapshot()).toMatchObject({ open: false, tool: null, mounted: [] });

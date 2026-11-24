@@ -76,7 +76,14 @@ export type TerminalReplay = {
 };
 
 /** Why a session is no longer held by this page though its process lives on: another page took it (`taken-over`), the owner let it go (`requested`) or the owner's window went away (`window-retired`). */
-export type TerminalDetached = { readonly by: 'taken-over' | 'requested' | 'window-retired' };
+export type TerminalDetached = {
+  readonly by: 'taken-over' | 'requested' | 'window-retired';
+  /**
+   * The tab that took the terminal has gone too (the host said `requested` or `window-retired` of a later attachment than this page's): nobody holds the terminal now and its lease runs, so this page may take it back
+   * (T2d). Absent while another tab still holds it, and once the terminal has ended.
+   */
+  readonly free?: boolean | undefined;
+};
 
 /** The status of a feed: the same object until something in it changes. */
 export type TerminalFeedSnapshot = {
@@ -148,6 +155,18 @@ export type TerminalFeedHandle = {
    * and the program must paint over them). A reader calls it after a replay when the size the host has is the size the screen already is, which a plain resize would not send. A producer that cannot leaves it out.
    */
   readonly redraw?: (() => void) | undefined;
+  /**
+   * The page's events came back after a gap (the connection dropped and opened again: whatever was told meanwhile is lost to the page for good): ask the host for the output this page has not got, by offset, and go on. The
+   * output continues where it was when the host still has it; when the host's ring no longer reaches back to it the screen is brought to the host's ring by a replay (`takeReplay`) as a terminal that is taken over. A terminal
+   * the host no longer has ends the session in words. Does nothing for a feed that is not running, that is not held by this page or that has no key. A producer that cannot leaves it out.
+   */
+  readonly rejoin?: (() => void) | undefined;
+  /**
+   * Asks the host who holds a terminal this page LOST (`ListTerminals` by the page's key, no attach): a terminal that is not attached now makes `detached.free` true (the tab that took it released it while this page was not
+   * listening, or just now), one that is attached makes it false, and one the host does not list is left as it is. It never attaches, never takes the terminal over and never throws. It is how a page that missed the host's
+   * `DETACHED` event (its events connection was down) learns, and how a take-back checks that the terminal is still free before it attaches. A feed that is not lost, or that has no key, does nothing. A producer that cannot leaves it out.
+   */
+  readonly refresh?: (() => Promise<void>) | undefined;
 };
 
 /** What opens a terminal session: plain data and one function. Who supplies it (the host's own shell today) is not the registry's business. */

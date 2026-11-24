@@ -24,10 +24,13 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly acks: () => readonly number[];
   /** Tells the listeners without changing anything: what a feed does when held output became readable. */
   readonly wake: () => void;
-  /** How many times `leave` was called, and `redraw`. */
+  /** How many times `leave` was called, and `redraw`, and `rejoin` (the page's events came back after a gap). */
   readonly left: () => number;
   readonly redraws: () => number;
-  /** The reader took the replay. */
+  readonly rejoins: () => number;
+  /** A replay arrives now, as when a rejoin found that the host's ring no longer reaches back to what the screen has: the next `takeReplay` gives it once, `read` gives nothing until it is taken, the output held and unread is dropped (it is older), and the listeners are told. Throws, before anything changes, on a feed that has no `takeReplay` (made with neither `rejoin` nor `replay`). */
+  readonly offerReplay: (replay: TerminalReplay) => void;
+  /** The reader took the replay that was offered last (or the one the feed was made with). */
   readonly replayTaken: () => boolean;
 };
 
@@ -37,12 +40,14 @@ export type FakeTerminalFeedOptions = {
   readonly close?: (() => Promise<void> | void) | undefined;
   /** What the feed answers when it is asked what runs in it; default: the feed cannot tell (it has no such member). */
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
-  /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`). */
+  /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`, unless `rejoin` says it has). */
   readonly replay?: TerminalReplay | undefined;
   /** The feed has a `leave` (it started a terminal with a key, which outlives its page), counted by `left`. Default: it has none. */
   readonly leave?: boolean | undefined;
   /** The feed has a `redraw`, counted by `redraws`. Default: it has none. */
   readonly redraw?: boolean | undefined;
+  /** The feed has a `rejoin`, counted by `rejoins`, and a `takeReplay` that can be given a replay at any time (`offerReplay`), as a feed that has a key does. Default: it has neither. */
+  readonly rejoin?: boolean | undefined;
 };
 
 /** A feed that is `running` (or in the state asked for) and holds nothing. */
@@ -59,9 +64,12 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   /** The calls of the typing that the feed took: what `inputs` says. */
   let taken = 0;
   const sizes: Array<readonly [number, number]> = [];
-  let replayTaken = false;
+  /** The replay the reader has not taken: the one the feed was made with, or one offered since. */
+  let waiting = options.replay;
+  let offered = options.replay === undefined ? 0 : 1;
   let left = 0;
   let redraws = 0;
+  let rejoins = 0;
 
   const tell = () => {
     for (const listener of [...listeners]) {
@@ -69,14 +77,26 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     }
   };
 
-  /** The reader takes the replay once: the second call finds none. */
+  /** The reader takes the replay that waits, once: the second call finds none. */
   const takeReplay = (): TerminalReplay | undefined => {
-    if (replayTaken) {
-      return undefined;
+    const replay = waiting;
+    waiting = undefined;
+    return replay;
+  };
+
+  const offerReplay = (replay: TerminalReplay) => {
+    // A feed with no `takeReplay` has nobody to give the replay to: offering one is a mistake of the test, and it is made before anything changes.
+    if (options.replay === undefined && options.rejoin !== true) {
+      throw new Error('this fake feed has no `takeReplay`: make it with `rejoin: true` or a `replay` before offering it one');
     }
 
-    replayTaken = true;
-    return options.replay;
+    waiting = replay;
+    offered += 1;
+    // What the feed held and nobody read is older than the replay and would be written after it: it is dropped, as a real feed drops it.
+    held = [];
+    // A replay is something the reader must come for, whether or not a wake-up is pending: it is told at once.
+    woken = true;
+    tell();
   };
 
   const leave = () => {
@@ -85,6 +105,10 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
 
   const redraw = () => {
     redraws += 1;
+  };
+
+  const rejoin = () => {
+    rejoins += 1;
   };
 
   return {
@@ -105,7 +129,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       reads += 1;
       woken = false;
       // A feed that holds a replay gives no live output before the reader has taken it (T2-go 2.4: the replay is written first, with the emulator's replies muted).
-      if (options.replay !== undefined && !replayTaken) {
+      if (waiting !== undefined) {
         return { chunks: [], bytes: 0 };
       }
 
@@ -141,12 +165,15 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       acks.push(bytes);
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
-    ...(options.replay === undefined ? {} : { takeReplay }),
+    ...(options.replay === undefined && options.rejoin !== true ? {} : { takeReplay }),
     ...(options.leave === true ? { leave } : {}),
     ...(options.redraw === true ? { redraw } : {}),
+    ...(options.rejoin === true ? { rejoin } : {}),
     left: () => left,
     redraws: () => redraws,
-    replayTaken: () => replayTaken,
+    rejoins: () => rejoins,
+    offerReplay,
+    replayTaken: () => offered > 0 && waiting === undefined,
     listeners: () => subscribed,
     closed: () => closed,
     reads: () => reads,
@@ -194,8 +221,10 @@ export type FakeEngine = Engine & {
   readonly clears: () => number;
   readonly selectAlls: () => number;
   readonly focuses: () => number;
-  /** What the user typed. */
+  /** What the user typed (or pasted): it reaches the listeners as the person's (`user`). */
   readonly type: (data: string) => void;
+  /** What the emulator says by itself, with no one typing (a focus report, an answer it was not asked for by a query it parsed): it reaches the listeners as the emulator's own, not the person's. */
+  readonly say: (data: string) => void;
   /** Selects text (or clears the selection with `''`) and tells the listeners. */
   readonly select: (text: string) => void;
   /** The program rang the bell: tells the listeners. */
@@ -238,7 +267,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   const writeSizes: Array<readonly [number, number]> = [];
   const emitted: string[] = [];
   const answers = config.answers ?? [];
-  const dataListeners = new Set<(data: string) => void>();
+  const dataListeners = new Set<(data: string, user: boolean) => void>();
   const selectionListeners = new Set<() => void>();
   const bellListeners = new Set<() => void>();
   let keys: ((event: KeyboardEvent) => boolean) | undefined;
@@ -252,10 +281,10 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   let focuses = 0;
   let focused = false;
 
-  const emit = (data: string) => {
+  const emit = (data: string, user: boolean) => {
     emitted.push(data);
     for (const listener of [...dataListeners]) {
-      listener(data);
+      listener(data, user);
     }
   };
 
@@ -267,7 +296,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
     for (const [query, reply] of answers) {
       for (let at = text.indexOf(query); at !== -1; at = text.indexOf(query, at + query.length)) {
-        emit(reply);
+        emit(reply, false);
       }
     }
   };
@@ -380,7 +409,10 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       disposed += 1;
     },
     type: (data) => {
-      emit(data);
+      emit(data, true);
+    },
+    say: (data) => {
+      emit(data, false);
     },
     select: (text) => {
       selected = text;
@@ -470,18 +502,23 @@ export function fakeEngineLoader(config: FakeEngineOptions & { readonly deferred
 // tombstone), until `CloseSession` dismisses it. Every event goes to every window, as on the real host. A window is a `HostPage`: its events can be held (`hold`) and released, to put an event of the host on the far
 // side of the answer of a call, as the field showed (7 in 2,051 reattaches: an event the replay holds reaches the page after the answer). The host's input queue counts the numbered calls and refuses a number it has
 // passed (`SEQUENCE_STALE`), so a page that numbers from 1 after a reattach is seen; the answers to an attach and to a list state the number the queue takes next (`next_input_seq`, host #675: at least 1 while the terminal
-// runs, 0 once it ended), the list's as of the list and the attach's as of the attach, since the window that holds the terminal can write between the two.
+// runs, 0 once it ended), the list's as of the list and the attach's as of the attach, since the window that holds the terminal can write between the two. An attach may ask from an offset (`from_offset`: the page has the output
+// below it), and is answered from there, or, when the ring has moved past it, from the oldest byte kept; a window whose events connection drops (`disconnect`) loses what the host emits meanwhile for good, and asks again
+// (T2d); a window that attaches the terminal it holds is told of its own takeover (`DETACHED`, with the old number).
 
 /** An input call the page made, with the number it carried: a write as the text the host's pty would read, a size as the binding takes it (rows, then columns). */
 export type HostInput =
   | { readonly kind: 'write'; readonly seq: number; readonly text: string }
   | { readonly kind: 'resize'; readonly seq: number; readonly rows: number; readonly cols: number };
 
+/** What the host answered to an attach: the window, the offset the page asked from, and where the replay starts and ends (the live output continues at `end`). */
+export type HostReplay = { readonly page: number; readonly from: number | undefined; readonly start: number; readonly end: number };
+
 /** A call about the life of a terminal that a window made, in the order they reached the host. `page` is the index of the window (0 is the one the host starts with). */
 export type HostCall =
   | { readonly kind: 'create'; readonly page: number; readonly pageKey: string | undefined }
   | { readonly kind: 'list'; readonly page: number; readonly pageKey: string }
-  | { readonly kind: 'attach'; readonly page: number; readonly pageKey: string }
+  | { readonly kind: 'attach'; readonly page: number; readonly pageKey: string; readonly fromOffset: number | undefined }
   | { readonly kind: 'detach'; readonly page: number; readonly pageKey: string }
   | { readonly kind: 'close'; readonly page: number };
 
@@ -509,6 +546,10 @@ export type HostPage = {
   readonly die: () => void;
   /** How many events wait in this window's wire. */
   readonly queued: () => number;
+  /** The connection of this window's events drops: every event the host emits meanwhile is lost to it for good (nothing is replayed to a socket that was down), while its calls still work. */
+  readonly disconnect: () => void;
+  /** The connection comes back: events are delivered again from now on. */
+  readonly reconnect: () => void;
 };
 
 export type CreditHost = {
@@ -549,6 +590,8 @@ export type CreditHost = {
   readonly kept: () => { readonly start: number; readonly end: number };
   /** Every call about the life of the terminal that reached the host, in order. */
   readonly calls: () => readonly HostCall[];
+  /** Every answer to an attach, in order: the window, the offset it asked from (none: all the host kept), and the offsets [start, end) of the replay. */
+  readonly replays: () => readonly HostReplay[];
   /** The number the host's input queue expects next. */
   readonly nextInput: () => number;
 };
@@ -562,6 +605,8 @@ export type CreditHostOptions = {
   readonly ring?: number;
   /** The close of a terminal whose shell ended by itself dismisses it, as the host's contract says. Default: no, as the real host (it answers not-found and the terminal stays listed until its lease runs out). */
   readonly dismissEnded?: boolean;
+  /** The host keeps its ring in chunks of this many bytes: an attach from an offset is answered from the start of the chunk that holds it, never from before the oldest byte kept. Default: 1, the offset itself, as the host says. */
+  readonly chunk?: number;
 };
 
 function base64Of(bytes: Uint8Array): string {
@@ -578,11 +623,13 @@ const noModes = (): HostModes => ({ known: true, alt_screen: false, bracketed_pa
 /** What the shell has yet to write: a count of the sequence, or the bytes of a text. */
 type Segment = { readonly kind: 'count'; left: number } | { readonly kind: 'bytes'; readonly data: Uint8Array; at: number };
 
-/** One window's events: what listens, and what waits while the wire is held. */
+/** One window's events: what listens, what waits while the wire is held, and whether the connection is down. */
 type Wire = {
   readonly listeners: Map<string, Set<(data: unknown) => void>>;
   readonly queue: Array<readonly [string, unknown]>;
   holding: boolean;
+  /** The connection of the page's events is down: what the host emits meanwhile is lost to this window for good (nothing is replayed to a socket that was down), while its calls still work. */
+  offline: boolean;
   dead: boolean;
 };
 
@@ -598,7 +645,9 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
   const readSize = options.read ?? 20_480;
   const ringLimit = options.ring ?? 1_310_720;
   const dismissEnded = options.dismissEnded ?? false;
+  const chunk = options.chunk ?? 1;
   const wires: Wire[] = [];
+  const replays: HostReplay[] = [];
   const acks: number[] = [];
   const inputs: HostInput[] = [];
   const calls: HostCall[] = [];
@@ -632,10 +681,10 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
     }
   };
 
-  /** Every event goes to every window, as it does on the real host; a window whose wire is held keeps it for later. */
+  /** Every event goes to every window, as it does on the real host; a window whose wire is held keeps it for later, and one whose connection is down loses it for good. */
   const emit = (name: string, data: unknown) => {
     for (const wire of wires) {
-      if (wire.dead) {
+      if (wire.dead || wire.offline) {
         continue;
       }
 
@@ -742,16 +791,27 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
 
   const sessionInfo = (id: string): Record<string, unknown> => ({ id, pid: 4242, shell: { path: '/bin/sh', name: 'sh' }, cwd: '/home/u', cols: 80, rows: 24, lease_ms: key === undefined ? 0 : 300_000 });
 
-  /** What a page needs of the terminal as it is now: the bytes the host kept and the sizes and modes they were written under, and where the live output continues. */
-  const replayNow = (): Record<string, unknown> => {
-    const data = new Uint8Array(ringBytes);
-    let at = 0;
+  /**
+   * What a page needs of the terminal as it is now: the bytes the host kept from `start` to the end, the sizes and the modes they were written under, and where the live output continues. A page that asks from an offset the
+   * host still has is answered from that offset rounded down to a chunk of the ring (`chunk`; never before the oldest byte kept); one that asks from none, or from an offset the ring has moved past, from the oldest byte kept,
+   * which is above the offset it asked for (the gap the page is told of). The sizes and the modes are those of the start of the ring: right for a page that starts from there, and not read by one that continues.
+   */
+  const replayFrom = (from: number | undefined): { readonly wire: Record<string, unknown>; readonly start: number; readonly end: number } => {
+    const oldest = ring[0]?.offset ?? delivered;
+    const start = from === undefined || from < oldest ? oldest : Math.max(oldest, from - (from % chunk));
+    const data = new Uint8Array(delivered - start);
     for (const kept of ring) {
-      data.set(kept.bytes, at);
-      at += kept.bytes.length;
+      const cut = Math.max(0, start - kept.offset);
+      if (cut < kept.bytes.length) {
+        data.set(kept.bytes.subarray(cut), kept.offset + cut - start);
+      }
     }
 
-    return { start: ring[0]?.offset ?? delivered, end: delivered, data: base64Of(data), start_size: { ...startSize }, start_modes: { ...modesStart }, size: { ...size }, modes: { ...modesNow } };
+    return {
+      start,
+      end: delivered,
+      wire: { start, end: delivered, data: base64Of(data), start_size: { ...startSize }, start_modes: { ...modesStart }, size: { ...size }, modes: { ...modesNow } },
+    };
   };
 
   /** The input queue: a numbered call is refused when the number was passed, as the host refuses a number it applied or gave up. Number 0 is no number: arrival order. */
@@ -766,7 +826,7 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
   };
 
   const open = (index: number): HostPage => {
-    const wire: Wire = { listeners: new Map(), queue: [], holding: false, dead: false };
+    const wire: Wire = { listeners: new Map(), queue: [], holding: false, offline: false, dead: false };
     wires.push(wire);
     const transport: ExecTransport = {
       create: async (id, area, launch) => {
@@ -809,18 +869,20 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
         ]);
       },
       attach: async (id, request) => {
-        calls.push({ kind: 'attach', page: index, pageKey: request.pageKey });
-        if (request.fromOffset !== undefined) {
-          throw new Error('this host does not model from_offset: a fresh emulator asks for none');
-        }
-
+        calls.push({ kind: 'attach', page: index, pageKey: request.pageKey, fromOffset: request.fromOffset });
         if (session !== id || key === undefined || key !== request.pageKey) {
           throw notThere(id);
         }
 
+        const from = request.fromOffset;
+        if (from !== undefined && from > delivered) {
+          throw Object.assign(new Error(`from_offset ${String(from)} is past the end of the output, ${String(delivered)}.`), { code: 'INVALID_REQUEST' });
+        }
+
         if (ended === undefined) {
-          // The page that held the terminal is told, with the number of the attachment that ended; the new page holds the next one. A terminal nobody held tells nobody.
-          if (!detached && owner !== undefined && owner !== index) {
+          // The page that held the terminal is told, with the number of the attachment that ended; the new page holds the next one. A window that attaches the terminal it holds itself (a page that asks again after a gap in its
+          // events) is told of its own takeover too, with the old number. A terminal nobody held tells nobody.
+          if (!detached && owner !== undefined) {
             emit(`core/exec/signal/DETACHED/${id}`, { by: 'taken-over', attachment });
           }
 
@@ -832,9 +894,11 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
           paused = false;
         }
 
+        const replay = replayFrom(from);
+        replays.push({ page: index, from, start: replay.start, end: replay.end });
         const answer: Record<string, unknown> = {
           session: sessionInfo(id),
-          replay: replayNow(),
+          replay: replay.wire,
           cwd: { path: '/home/u' },
           busy: { state: 'idle' },
           attachment,
@@ -953,6 +1017,13 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
         }
       },
       queued: () => wire.queue.length,
+      disconnect: () => {
+        wire.offline = true;
+        wire.queue.length = 0;
+      },
+      reconnect: () => {
+        wire.offline = false;
+      },
     };
   };
 
@@ -1009,6 +1080,7 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
     holder: () => ({ attachment, detached, owner }),
     kept: () => ({ start: ring[0]?.offset ?? delivered, end: delivered }),
     calls: () => calls,
+    replays: () => replays,
     nextInput: () => nextInput,
   };
 }

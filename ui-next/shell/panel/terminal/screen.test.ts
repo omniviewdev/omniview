@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Platform } from '../../core/chords';
 import type { EngineAppearance } from './engine';
 import type { TerminalModes, TerminalReplay } from './feed';
-import { FLOW, HIDDEN_TICK_MS, SCROLLBACK, clearScreenIn, createScreen, type TerminalScreen } from './screen';
+import { FLOW, HELD_TYPING, HIDDEN_TICK_MS, SCROLLBACK, clearScreenIn, createScreen, type TerminalScreen } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngine, type FakeEngineLoader, type FakeEngineOptions, type FakeTerminalFeed } from './testing';
 
@@ -48,6 +48,8 @@ type Rig = {
   readonly redraws: () => number;
   /** How many replays the screen has taken from the feed. */
   readonly takes: () => number;
+  /** How many times the screen asked the feed for a replay (`takeReplay`), whether or not it had one. */
+  readonly asks: () => number;
 };
 
 type RigOptions = {
@@ -63,21 +65,24 @@ type RigOptions = {
   readonly answers?: FakeEngineOptions['answers'];
   /**
    * The feed was reattached: it has `takeReplay` and holds `replay` until its reader takes it, and reads nothing before (what `takeReplay` is for, feed.ts). Without a `replay` the attach is still being answered, until `arrive`.
+   * `late: true` is a feed that reads live output from the start and is given a replay LATER, by `arrive` (a rejoin whose gap the host's ring no longer covers): it reads nothing while that replay waits, as every feed does.
    * `redraw: false` is a feed that cannot make a program paint again.
    */
-  readonly reattach?: { readonly replay?: TerminalReplay; readonly redraw?: boolean };
+  readonly reattach?: { readonly replay?: TerminalReplay; readonly redraw?: boolean; readonly late?: boolean };
 };
 
 function rig(options: RigOptions = {}): Rig {
   const base = fakeTerminalFeed();
   let held: TerminalReplay | undefined = options.reattach?.replay;
-  let attaching = options.reattach !== undefined && held === undefined;
+  let attaching = options.reattach !== undefined && held === undefined && options.reattach.late !== true;
   let takes = 0;
+  let asks = 0;
   let redraws = 0;
   const reattachedFeed: FakeTerminalFeed = {
     ...base,
     read: (max) => (held === undefined && !attaching ? base.read(max) : { chunks: [], bytes: 0 }),
     takeReplay: () => {
+      asks += 1;
       const found = held;
       held = undefined;
       if (found !== undefined) {
@@ -223,6 +228,7 @@ function rig(options: RigOptions = {}): Rig {
     },
     redraws: () => redraws,
     takes: () => takes,
+    asks: () => asks,
   };
 }
 
@@ -1082,6 +1088,75 @@ describe('the keys', () => {
     expect(other.feed.typed()).toEqual([]);
   });
 
+  // A terminal that takes no input has nothing to type in, but the emulator still takes the Tab that reaches its input and cancels it: the focus would stay in the screen for ever, with the lane's controls after it out of reach
+  // (WCAG 2.1.1, a keyboard trap). So Tab is the browser's then, and the emulator neither handles it nor stops it: with Option too, which is how Safari reaches a button (it leaves them out of the Tab order otherwise). Tab of a
+  // terminal that takes input is the shell's (completion), with Option or without: F6 is the way out of that one.
+  const TAB = { key: 'Tab', code: 'Tab' } as const;
+  const SHIFT_TAB = { key: 'Tab', code: 'Tab', shiftKey: true } as const;
+  const ALT_TAB = { key: 'Tab', code: 'Tab', altKey: true } as const;
+  const ALT_SHIFT_TAB = { key: 'Tab', code: 'Tab', altKey: true, shiftKey: true } as const;
+  const TABS = [TAB, SHIFT_TAB, ALT_TAB, ALT_SHIFT_TAB] as const;
+  const GIVEN_AWAY = { handled: false, defaultPrevented: false } as const;
+  const KEPT = { handled: true, defaultPrevented: false } as const;
+
+  it.each([
+    ['ended', { state: 'ended' }],
+    ['ended with an exit', { state: 'ended', exit: { code: 0 } }],
+    ['failed', { state: 'failed', cause: { stage: 'session', message: 'x' } }],
+  ] as const)('gives Tab and Shift Tab, with Option or without, to the browser when the session has %s, on a Mac and elsewhere: the emulator does not handle the key and does not stop it, so the focus moves on to the lane\'s controls', async (_name, patch) => {
+    for (const platform of ['mac', 'other'] as const) {
+      const { engine, feed } = await shown(platform);
+      feed.set(patch);
+      for (const tab of TABS) {
+        expect(engine().key(tab)).toEqual(GIVEN_AWAY);
+      }
+
+      expect(feed.typed()).toEqual([]);
+    }
+  });
+
+  it.each([['starting'], ['running']] as const)('keeps Tab and Shift Tab, with Option or without, for the shell while the session is %s, on a Mac and elsewhere: the emulator handles the key, and completion is the shell\'s', async (state) => {
+    for (const platform of ['mac', 'other'] as const) {
+      const { engine, feed } = await shown(platform);
+      feed.set({ state });
+      for (const tab of TABS) {
+        expect(engine().key(tab)).toEqual(KEPT);
+      }
+    }
+  });
+
+  it('gives away only Tab and Shift Tab, with Option or without: with Control or Command, or with any other key, a session that takes no input answers as it did', async () => {
+    const mac = await shown();
+    mac.feed.set({ state: 'ended' });
+    expect(mac.engine().key({ ...TAB, ctrlKey: true })).toEqual(KEPT);
+    expect(mac.engine().key({ ...ALT_TAB, ctrlKey: true })).toEqual(KEPT);
+    expect(mac.engine().key({ ...SHIFT_TAB, ctrlKey: true })).toEqual(KEPT);
+    expect(mac.engine().key({ ...TAB, metaKey: true })).toEqual(GIVEN_AWAY);
+    expect(mac.engine().key({ key: 'a', code: 'KeyA' })).toEqual(KEPT);
+    expect(mac.engine().key({ key: 'a', code: 'KeyA', altKey: true })).toEqual(KEPT);
+    expect(mac.engine().key({ key: 'Enter', code: 'Enter' })).toEqual(KEPT);
+    expect(mac.engine().key({ key: 'Escape', code: 'Escape' })).toEqual(KEPT);
+    expect(mac.engine().key({ key: 'F6', code: 'F6' })).toEqual(GIVEN_AWAY);
+    const other = await shown('other');
+    other.feed.set({ state: 'ended' });
+    expect(other.engine().key({ ...TAB, ctrlKey: true })).toEqual(KEPT);
+    expect(other.engine().key({ ...ALT_TAB, ctrlKey: true })).toEqual(KEPT);
+    expect(other.engine().key({ ...SHIFT_TAB, ctrlKey: true })).toEqual(GIVEN_AWAY);
+    expect(other.engine().key({ ...TAB, metaKey: true })).toEqual(GIVEN_AWAY);
+    expect(other.engine().key({ key: 'a', code: 'KeyA', altKey: true })).toEqual(KEPT);
+  });
+
+  it('asks the session each time, not once: Tab is the browser\'s from the moment the session ends and the shell\'s again when its input is on again', async () => {
+    const { engine, feed } = await shown();
+    expect(engine().key(TAB)).toEqual(KEPT);
+    feed.set({ state: 'ended' });
+    expect(engine().key(TAB)).toEqual(GIVEN_AWAY);
+    feed.set({ state: 'running' });
+    expect(engine().key(TAB)).toEqual(KEPT);
+    feed.set({ state: 'failed', cause: { stage: 'session', message: 'x' } });
+    expect(engine().key(SHIFT_TAB)).toEqual(GIVEN_AWAY);
+  });
+
   it('shows the bell on the screen, for each bell, and makes no sound: the host element changes its name for the one animation', async () => {
     const { engine, host } = await shown();
     expect(host.getAttribute('data-bell')).toBeNull();
@@ -1745,13 +1820,13 @@ describe('a replay: a terminal the page took back after a reload', () => {
     it('is muted from the first byte of the replay until the callback of its LAST slice has fired, and not a byte longer', async () => {
       const r = await reattached(replayOf(new Uint8Array(FLOW.slice * 2 + 1)), { auto: false });
       r.frame();
-      r.engine().type('while the first slice is accepted');
+      r.engine().say('while the first slice is accepted');
       expect(r.feed.typed()).toEqual([]);
       r.engine().complete(r.engine().pendingWrites() - 1);
-      r.engine().type('with only the last slice left');
+      r.engine().say('with only the last slice left');
       expect(r.feed.typed()).toEqual([]);
       r.engine().complete();
-      r.engine().type('after');
+      r.engine().say('after');
       expect(r.feed.typed()).toEqual(['after']);
     });
 
@@ -1883,6 +1958,18 @@ describe('the end of a terminal this page lost', () => {
     expect(engine().writes).toHaveLength(2);
   });
 
+  it('writes that the tab that took the terminal has closed as a line of its own after the line that said another tab took it, once: the scrollback tells what happened in order, and the terminal may be taken back (T2d)', async () => {
+    const { feed, engine, frame } = await shown();
+    feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+    frame();
+    feed.set({ detached: { by: 'taken-over', free: true } });
+    frame();
+    expect(engine().text()).toBe('\u001b[0m\r\n\u001b[90m[Taken over by another tab]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[The tab that took this terminal has closed.]\u001b[0m\r\n');
+    feed.wake();
+    frame();
+    expect(engine().writes).toHaveLength(2);
+  });
+
   it('keeps input off', async () => {
     const { feed, engine } = await shown();
     feed.set({ state: 'ended', detached: { by: 'window-retired' } });
@@ -1912,5 +1999,374 @@ describe('a start that no shell answered, with the shells the host tried', () =>
     expect(r.engine().text()).toBe(
       '\u001b[0m\r\n\u001b[90m[No shell could be started]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[tried the shell asked for /bin/zsh: not found]\u001b[0m\r\n\u001b[0m\r\n\u001b[90m[tried $SHELL /opt/none: not executable]\u001b[0m\r\n',
     );
+  });
+});
+
+// A replay that comes LATE (T2d): a terminal whose events were lost while the page was away (the connection dropped and opened again) asks the host for what it has not got, and when the host's ring no longer reaches back to
+// it, the screen is brought to the host's ring by a replay, as a terminal that is taken over is. The emulator already holds output then. The screen asks the feed for a replay on every pump, and applies the one it is given as the
+// first one is applied (the reset, the cursor, the modes, the bytes with what the emulator says muted, the size), and goes on with the live bytes after it; it acknowledges none of it, and a hidden screen applies it too.
+describe('a replay that comes late: a rejoin whose gap the host\'s ring no longer covers, while the emulator holds output', () => {
+  const QUERY = '\u001b[6n';
+  const REPLY = '\u001b[12;7R';
+
+  /** A screen over a feed that reads live output from the start and is given a replay later; the first output is drawn. */
+  async function drawn(options: RigOptions = {}, first = 'first\r\n'): Promise<Rig> {
+    const r = rig({ ...options, reattach: { ...options.reattach, late: true } });
+    r.screen.mount(r.host);
+    r.feed.push(first);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    return r;
+  }
+
+  it('is applied as the first one is applied: the reset, the cursor and the bytes, in order, then what is live, after the writes already made, which stay as they were (the reset in it is what replaces what the emulator holds: the real emulator\'s tests show that)', async () => {
+    const r = await drawn();
+    const before = [...r.engine().writes];
+    expect(r.engine().text()).toBe('first\r\n');
+    r.arrive(replayOf('second\r\n'));
+    r.feed.push('live\r\n');
+    r.frame();
+    expect(r.engine().writes.slice(0, before.length)).toEqual(before);
+    expect(r.engine().text()).toBe(`first\r\n${RESET}${CURSOR}second\r\nlive\r\n`);
+    expect(r.engine().resets()).toBe(1);
+    expect(r.takes()).toBe(1);
+  });
+
+  it('is applied to the emulator the screen has: none is made, none is thrown away', async () => {
+    const r = await drawn();
+    r.arrive(replayOf('second'));
+    r.frame();
+    expect(r.loader.engines).toHaveLength(1);
+    expect(r.engine().disposed()).toBe(0);
+  });
+
+  it('resets again for a second replay: a screen that took one when it started takes another, and each begins with its own reset, the live bytes between them staying where they were drawn', async () => {
+    const r = rig({ reattach: { replay: replayOf('kept 1\r\n') } });
+    r.screen.mount(r.host);
+    r.feed.push('live 1\r\n');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    expect(r.engine().resets()).toBe(1);
+    r.arrive(replayOf('kept 2\r\n'));
+    r.feed.push('live 2\r\n');
+    r.frame();
+    expect(r.engine().resets()).toBe(2);
+    expect(r.takes()).toBe(2);
+    expect(r.engine().text()).toBe(`${RESET}${CURSOR}kept 1\r\nlive 1\r\n${RESET}${CURSOR}kept 2\r\nlive 2\r\n`);
+  });
+
+  it('is asked of the feed on every pump, with output or none, and not only until the first live byte: it costs a call of a function', async () => {
+    const r = await drawn();
+    const asked = r.asks();
+    expect(asked).toBeGreaterThanOrEqual(1);
+    for (let turn = 1; turn <= 3; turn += 1) {
+      r.feed.push(`more ${String(turn)}`);
+      r.frame();
+      expect(r.asks()).toBe(asked + turn);
+    }
+  });
+
+  it('is applied with what the emulator says muted, and what it says of the live bytes before and after it is the shell\'s: an answer to a query in the replay never reaches the shell', async () => {
+    const r = await drawn({ answers: [[QUERY, REPLY]] }, `ask${QUERY}`);
+    expect(r.feed.typed()).toEqual([REPLY]);
+    r.arrive(replayOf(`old${QUERY}${QUERY}`));
+    r.frame();
+    expect(r.engine().emitted).toEqual([REPLY, REPLY, REPLY]);
+    expect(r.feed.typed()).toEqual([REPLY]);
+    r.feed.push(`live${QUERY}`);
+    r.frame();
+    expect(r.feed.typed()).toEqual([REPLY, REPLY]);
+    r.engine().type('ls\r');
+    expect(r.feed.typed()).toEqual([REPLY, REPLY, 'ls\r']);
+  });
+
+  it('acknowledges none of it, and every live byte, before and after it, once, when it is parsed', async () => {
+    const r = await drawn({ auto: false }, 'live!');
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([5]);
+    r.arrive(replayOf('kept '.repeat(40)));
+    r.frame();
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([5]);
+    r.feed.push('more');
+    r.frame();
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([5, 4]);
+  });
+
+  it('reads no live byte while it is being applied, and goes on with the live bytes the feed has after the last of it is parsed', async () => {
+    const r = await drawn({ auto: false });
+    r.engine().complete();
+    r.arrive(replayOf(new Uint8Array(FLOW.slice * 2 + 1)));
+    r.frame();
+    const reads = r.feed.reads();
+    r.feed.push('after');
+    r.frame();
+    expect(r.feed.reads()).toBe(reads);
+    expect(r.engine().text().endsWith('after')).toBe(false);
+    r.engine().complete();
+    r.frame();
+    expect(r.engine().text().endsWith('after')).toBe(true);
+  });
+
+  it('is applied by a hidden screen too, a hidden share at a time, and it only parses: it measures nothing, tells the feed no size and does not make the GPU renderer come back', async () => {
+    const r = await drawn();
+    r.screen.hide();
+    const sizes = r.feed.sizes().length;
+    const renderers = [...r.engine().renderers];
+    const kept = new Uint8Array(FLOW.hiddenFrame * 2 + 5);
+    r.arrive(replayOf(kept));
+    r.frame();
+    expect(lengthOf(bytesWritten(r.engine()).slice(1))).toBe(FLOW.hiddenFrame);
+    r.frame();
+    r.frame();
+    expect(lengthOf(bytesWritten(r.engine()).slice(1))).toBe(kept.length);
+    expect(r.engine().resets()).toBe(1);
+    expect(r.feed.sizes()).toHaveLength(sizes);
+    expect(r.engine().renderers).toEqual(renderers);
+  });
+
+  it('waits until the emulator has parsed what it already holds, and then is applied: the answer to a query still being parsed when the replay came is the shell\'s', async () => {
+    const r = await drawn({ auto: false, answers: [[QUERY, REPLY]] }, 'ask');
+    r.engine().complete();
+    r.feed.push(`now${QUERY}`);
+    r.frame();
+    expect(r.engine().pendingWrites()).toBe(1);
+    r.arrive(replayOf('second'));
+    r.frame();
+    expect(r.takes()).toBe(1);
+    expect(r.engine().resets()).toBe(0);
+    expect(r.feed.typed()).toEqual([]);
+    r.engine().complete();
+    expect(r.feed.typed()).toEqual([REPLY]);
+    r.frame();
+    expect(r.engine().resets()).toBe(1);
+    expect(r.engine().text()).toBe(`asknow${QUERY}${RESET}${CURSOR}second`);
+  });
+
+  it('takes one at a time: a second replay that comes while the first is being applied waits in the feed until the first is parsed, and each is applied whole', async () => {
+    const r = await drawn({ auto: false });
+    r.engine().complete();
+    r.arrive(replayOf('one'));
+    r.frame();
+    expect(r.takes()).toBe(1);
+    r.arrive(replayOf('two'));
+    r.frame();
+    r.frame();
+    expect(r.takes()).toBe(1);
+    expect(r.engine().resets()).toBe(1);
+    r.engine().complete();
+    r.frame();
+    expect(r.takes()).toBe(2);
+    r.engine().complete();
+    expect(r.engine().resets()).toBe(2);
+    expect(r.engine().text()).toBe(`first\r\n${RESET}${CURSOR}one${RESET}${CURSOR}two`);
+  });
+
+  it('tells the feed the size the panel has when the host has another, once the replay is parsed, even though it told it before: the host\'s terminal and the emulator must be the same size', async () => {
+    const r = await drawn();
+    expect(r.feed.sizes()).toEqual([[80, 24]]);
+    r.arrive(replayOf('second', { startSize: { cols: 120, rows: 40 }, size: { cols: 120, rows: 40 } }));
+    r.frame();
+    expect(r.engine().size()).toEqual({ cols: 80, rows: 24 });
+    expect(r.feed.sizes()).toEqual([[80, 24], [80, 24]]);
+    expect(r.redraws()).toBe(0);
+  });
+
+  it('makes a full-screen program paint again when the host has the size the panel has, and tells the feed nothing: a size that did not change sends nothing', async () => {
+    const r = await drawn();
+    r.arrive(replayOf('second', { size: { cols: 80, rows: 24 } }));
+    r.frame();
+    expect(r.feed.sizes()).toEqual([[80, 24]]);
+    expect(r.redraws()).toBe(1);
+  });
+});
+
+// What the person types while a replay is applied (T2d fix round). The emulator's answers to the queries in the replay are dropped (what it says is muted: the program that asked them is long past), and a key the person types in
+// that window is not one of them. The engine says which of what it sends is the person's (`user`): the screen keeps that, in order, and sends it through the same path as any typing when the last slice of the replay is parsed, so
+// that the host numbers it after the replay; what the emulator says by itself is never sent. What is kept is bounded (`HELD_TYPING`).
+describe('what the person types while a replay is applied', () => {
+  const QUERY = '\u001b[6n';
+  const REPLY = '\u001b[12;7R';
+
+  /** Three slices of bytes: with the write of the reset, four writes. */
+  const big = (): TerminalReplay => replayOf(new Uint8Array(FLOW.slice * 2 + 1));
+
+  /** A screen in the middle of the FIRST replay of a terminal the page took back: its writes are accepted, and none is parsed until the test says so. */
+  async function midway(options: RigOptions = {}, replay: TerminalReplay = big()): Promise<Rig> {
+    const r = await reattached(replay, { ...options, auto: false });
+    r.frame();
+    expect(r.takes()).toBe(1);
+    expect(r.engine().pendingWrites()).toBeGreaterThan(0);
+    return r;
+  }
+
+  /** A screen in the middle of a LATE replay: it drew some output and parsed it, was then given the replay, and its writes are accepted, and none is parsed until the test says so. */
+  async function midwayLate(options: RigOptions = {}, replay: TerminalReplay = big()): Promise<Rig> {
+    const r = rig({ ...options, auto: false, reattach: { late: true } });
+    r.screen.mount(r.host);
+    r.feed.push('first\r\n');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.engine().complete();
+    r.arrive(replay);
+    r.frame();
+    expect(r.takes()).toBe(1);
+    expect(r.engine().pendingWrites()).toBeGreaterThan(0);
+    return r;
+  }
+
+  describe.each([
+    ['the first replay of a terminal the page took back', midway],
+    ['a replay that comes late', midwayLate],
+  ] as const)('in %s', (_name, begin) => {
+    it('keeps a key typed between the slices and sends it once, after the replay is applied, in order with the keys typed after it: none is sent while the replay is being applied', async () => {
+      const r = await begin();
+      r.engine().type('a');
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().complete(r.engine().pendingWrites() - 1);
+      r.engine().type('b');
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['a', 'b']);
+      r.engine().type('c');
+      expect(r.feed.typed()).toEqual(['a', 'b', 'c']);
+      r.frame();
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('never sends what the emulator says by itself, while the replay is applied or after: an answer between two keys is dropped, and the keys keep their order', async () => {
+      const r = await begin();
+      r.engine().type('l');
+      r.engine().say(REPLY);
+      r.engine().type('s');
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['l', 's']);
+      expect(r.engine().emitted).toContain(REPLY);
+    });
+
+    it('drops the answers the emulator gives to the queries in the replay, as it did, and keeps the key typed meanwhile', async () => {
+      const r = await begin({ answers: [[QUERY, REPLY]] }, replayOf(`ask${QUERY}more${QUERY}`));
+      r.engine().type('ls');
+      r.engine().complete();
+      expect(r.engine().emitted.filter((data) => data === REPLY)).toHaveLength(2);
+      expect(r.feed.typed()).toEqual(['ls']);
+    });
+
+    it('keeps Enter between the slices as it keeps the keys before it: the line is sent whole, and in order, once the replay is applied', async () => {
+      const r = await begin();
+      r.engine().type('l');
+      r.engine().type('s');
+      r.engine().complete(r.engine().pendingWrites() - 1);
+      r.engine().type('\r');
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['l', 's', '\r']);
+    });
+
+    it('keeps the bytes a Mac IDE sends for Option with an arrow in the order the keys came: the key handler does not send them past what was typed before', async () => {
+      const r = await begin();
+      r.engine().type('a');
+      expect(r.engine().key({ key: 'ArrowLeft', code: 'ArrowLeft', altKey: true })).toEqual({ handled: false, defaultPrevented: true });
+      r.engine().type('b');
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['a', '\u001bb', 'b']);
+    });
+
+    it('sends nothing when the terminal takes no input by the time the replay is applied: what was kept is dropped with it', async () => {
+      const r = await begin();
+      r.engine().type('a');
+      r.feed.set({ state: 'ended' });
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual([]);
+    });
+
+    it('is dropped with the screen: a screen that is gone sends nothing when the callbacks that come after it are called', async () => {
+      const r = await begin();
+      r.engine().type('a');
+      r.screen.dispose();
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual([]);
+    });
+
+    it('keeps it for the replay it came in, and for no other: what is typed while a second replay is applied is sent after the second, and the first is not sent again', async () => {
+      const r = await begin();
+      r.engine().type('a');
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['a']);
+      r.arrive(big());
+      r.frame();
+      expect(r.takes()).toBe(2);
+      r.engine().type('b');
+      expect(r.feed.typed()).toEqual(['a']);
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['a', 'b']);
+    });
+
+    it('sends what a replay with no bytes kept after the write of its reset: the last write of the replay is the one the typing waits for', async () => {
+      const r = await begin({}, replayOf(''));
+      r.engine().type('a');
+      expect(r.feed.typed()).toEqual([]);
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual(['a']);
+    });
+
+    it('keeps at most HELD_TYPING characters, the start of what was typed: what does not fit is refused, and so is all that comes after it, so that what is sent has no hole in it', async () => {
+      const r = await begin();
+      const start = 'a'.repeat(HELD_TYPING - 2);
+      r.engine().type(start);
+      r.engine().type('bcd');
+      r.engine().type('e');
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual([start]);
+    });
+
+    it('keeps what fits to the last character, and starts counting again for the next replay', async () => {
+      const r = await begin();
+      const whole = 'a'.repeat(HELD_TYPING - 1);
+      r.engine().type(whole);
+      r.engine().type('b');
+      r.engine().type('c');
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual([whole, 'b']);
+      r.arrive(big());
+      r.frame();
+      r.engine().type('d');
+      r.engine().complete();
+      expect(r.feed.typed()).toEqual([whole, 'b', 'd']);
+    });
+  });
+
+  it('sends a key typed while the replay waits for the emulator to parse what it holds at once, as before: it is not being applied yet', async () => {
+    const r = rig({ auto: false, reattach: { late: true } });
+    r.screen.mount(r.host);
+    r.feed.push('first');
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    r.arrive(replayOf('second'));
+    r.frame();
+    expect(r.takes()).toBe(1);
+    expect(r.engine().resets()).toBe(0);
+    r.engine().type('k');
+    expect(r.feed.typed()).toEqual(['k']);
+    r.engine().complete();
+    r.frame();
+    expect(r.engine().resets()).toBe(1);
+    r.engine().complete();
+    expect(r.feed.typed()).toEqual(['k']);
+  });
+
+  it('sends what is typed when no replay is being applied at once, as it always was, whether or not a replay came before', async () => {
+    const r = await midway();
+    r.engine().complete();
+    r.engine().type('a');
+    r.engine().type('b');
+    expect(r.feed.typed()).toEqual(['a', 'b']);
   });
 });

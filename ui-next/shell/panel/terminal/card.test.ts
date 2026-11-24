@@ -82,6 +82,22 @@ describe('the card of a terminal that outlives the page', () => {
     expect(seen({ state: 'ended', detached: { by: 'taken-over' }, exit: { code: 0 } }).state).toMatchObject({ label: 'Exited with code 0', reason: '' });
   });
 
+  it('says that the tab that took the terminal has closed, with the sentence that the shell keeps running until its lease ends as its reason, and still names the shell (T2d: the page may take it back)', () => {
+    const snapshot: TerminalFeedSnapshot = { state: 'ended', program: 'zsh', detached: { by: 'taken-over', free: true } };
+    expect(terminalCardOf(record(snapshot))).toMatchObject({ facts: [['Shell', 'zsh']], state: { label: 'The tab that took this terminal has closed.' } });
+    expect(seen(snapshot).state).toMatchObject({ label: 'The tab that took this terminal has closed.', reason: 'The shell keeps running until its lease ends.' });
+  });
+
+  it('keeps the card of a terminal that another tab still holds as it was, whether `free` is absent or false', () => {
+    for (const detached of [{ by: 'taken-over' }, { by: 'taken-over', free: false }] as const) {
+      expect(seen({ state: 'ended', detached }).state).toMatchObject({ label: 'Taken over by another tab', reason: 'Input is off. The shell keeps running in the tab that took it.' });
+    }
+  });
+
+  it('says how the process ended once the host says so, whatever the page lost before, with no reason', () => {
+    expect(seen({ state: 'ended', detached: { by: 'taken-over', free: true }, exit: { closedBy: 'detach-timeout' } }).state).toMatchObject({ label: 'Closed: no tab took it back in time', reason: '' });
+  });
+
   it('keeps the host\'s sentence as the reason of a start that no shell answered, whether or not the host listed the shells it tried', () => {
     const message = 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found';
     const sentence = `No shell could be started. ${message}.`;

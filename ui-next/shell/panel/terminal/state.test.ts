@@ -320,6 +320,68 @@ describe('a terminal this page lost, and one the host closed when no tab took it
   });
 });
 
+// A terminal whose taker has gone (T2d, `detached.free`): the tab that took the terminal from this page has closed (the host said `requested` or `window-retired` of that later attachment), so nobody holds it and its lease
+// runs, and this page may take it back (a button in the lane: `TerminalBody`). The words say so in place of "taken over", in the lane, the transcript, the card and the tab's cause; how the process ended, when the host
+// says so, is still the later fact.
+const FREE = 'The tab that took this terminal has closed.';
+const FREE_NOTE = 'The shell keeps running until its lease ends.';
+const freed = (extra: Partial<TerminalFeedSnapshot> = {}): TerminalFeedSnapshot => snap('ended', { detached: { by: 'taken-over', free: true }, ...extra });
+
+describe('a terminal whose taker has gone (T2d: the tab that took it has closed, so this page may take it back)', () => {
+  it('says in the lane that the tab that took the terminal has closed', () => {
+    expect(laneOf(freed()).words).toBe(FREE);
+  });
+
+  it('says in the lane, after it, that the shell keeps running until its lease ends', () => {
+    expect(laneOf(freed()).note).toBe(FREE_NOTE);
+  });
+
+  it('reads, in the lane, as the one sentence: the words and the note with a space between them', () => {
+    const lane = laneOf(freed());
+    expect(`${lane.words} ${lane.note}`).toBe('The tab that took this terminal has closed. The shell keeps running until its lease ends.');
+  });
+
+  it('says the same in the last line of the transcript, muted, with no process that ended: the process did not', () => {
+    expect(exitLine(freed())).toBe(`[${FREE}]`);
+  });
+
+  it('says the same on the card as its state, and the sentence after it as its reason: the shell keeps running until its lease ends', () => {
+    expect(stateWords(freed())).toBe(FREE);
+    expect(sessionStateOf(freed())).toEqual({ state: 'ended', cause: FREE_NOTE });
+  });
+
+  it('leaves the words of a terminal that another tab still holds as they were: taken over, with no tab that has gone', () => {
+    for (const detached of [{ by: 'taken-over' }, { by: 'taken-over', free: false }, { by: 'taken-over', free: undefined }] as const) {
+      const snapshot = snap('ended', { detached });
+      expect(laneOf(snapshot)).toEqual({ words: TAKEN, note: TAKEN_NOTE });
+      expect(exitLine(snapshot)).toBe(`[${TAKEN}]`);
+      expect(stateWords(snapshot)).toBe(TAKEN);
+      expect(sessionStateOf(snapshot)).toEqual({ state: 'ended', cause: TAKEN_NOTE });
+    }
+  });
+
+  it('follows the later fact when the host then says how it ended: the lease ran out, the shell exited, a signal ended it', () => {
+    expect(laneOf(freed({ exit: { closedBy: 'detach-timeout' } }))).toEqual({ words: LEASE_RAN_OUT, note: 'Input is off. Its output stays readable here.' });
+    expect(exitLine(freed({ exit: { closedBy: 'detach-timeout' } }))).toBe('[Process closed: no tab took it back in time]');
+    expect(stateWords(freed({ exit: { code: 0 } }))).toBe('Exited with code 0');
+    expect(laneOf(freed({ exit: { signal: 'SIGHUP' } })).words).toBe('Ended by SIGHUP');
+    expect(sessionStateOf(freed({ exit: { code: 0 } }))).toEqual({ state: 'ended', cause: '' });
+    // An end that says nothing of how the process ended is not a later fact.
+    expect(laneOf(freed({ exit: {} })).words).toBe(FREE);
+  });
+
+  it('says nothing of a taker that has gone before the session ended: a fact of a session that is not over is not its end', () => {
+    expect(stateWords(snap('running', { detached: { by: 'taken-over', free: true } }))).toBe('Connected');
+    expect(laneOf(snap('running', { detached: { by: 'taken-over', free: true } }))).toEqual({ words: '', note: '' });
+    expect(exitLine(snap('running', { detached: { by: 'taken-over', free: true } }))).toBe('');
+  });
+
+  it('closes with no question, as every session that has ended does', () => {
+    expect(closeQuestionOf(freed())).toBeUndefined();
+    expect(closeQuestionOf(freed(), { state: 'busy', name: 'vim' })).toBeUndefined();
+  });
+});
+
 describe('the shells the host tried, when no shell could be started (host #672: `AppError.tried`)', () => {
   const detail = 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none/sh": not executable';
   const failed = (tried: TerminalShellAttempt[] | undefined, message = detail) =>

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HOST } from '../../core/panel';
-import { localShellTarget, localShellTransport, restoreLocalTerminals, type ExecClientLike, type EventsLike } from './localShell';
+import { attachLocalTerminal, localShellTarget, localShellTransport, restoreLocalTerminals, type ExecClientLike, type EventsLike } from './localShell';
 
 // The host's own shell as a feed: `ExecClient.CreateTerminal` starts the user's login shell on a pty of this machine (backend/pkg/terminal/manager.go), and the session is read and written through the exec lane's
 // events and calls. What is tested here is the mapping of the feed's transport onto the binding, as it is: the call and its arguments, the call number of an input call (the feed's, passed on as it is: the host
@@ -457,5 +457,51 @@ describe('the terminals a page finds again after a reload', () => {
   it('says why when the host refuses to list: the call fails with the host\'s error, for the page to say, and nothing is guessed', async () => {
     const { client, events } = rig({ listFails: new Error('Forbidden') });
     await expect(restoreLocalTerminals(KEY, { client, events })).rejects.toThrow('Forbidden');
+  });
+});
+
+describe('the target of one terminal the page takes over (`attachLocalTerminal`, T2d: take it back)', () => {
+  it('is the target of that terminal: the session id is its id, the title is its shell (`Terminal` when it names none), the tab is named as any other is, and nothing is said of how it ended', () => {
+    const { client, events } = rig();
+    const named = attachLocalTerminal(KEY, 'a', 'zsh', { client, events });
+    expect(named).toMatchObject({ plugin: HOST, id: 'local', title: 'zsh', sessionId: 'a' });
+    expect(named.retitle?.({ state: 'running', program: 'bash' })).toBe('bash');
+    expect(named.scope).toBeUndefined();
+    expect(named.resource).toBeUndefined();
+    expect(named).not.toHaveProperty('ended');
+    expect(attachLocalTerminal(KEY, 'b', undefined, { client, events })).toMatchObject({ title: 'Terminal', sessionId: 'b' });
+    // Making a target touches nothing.
+    expect(client.calls).toEqual([]);
+    expect(events.count()).toBe(0);
+  });
+
+  it('opens a feed that takes the terminal over, each time it is opened: it listens to the three events first, makes the one call that attaches it with the key and no offset, and starts no process', () => {
+    const { client, events } = rig();
+    const target = attachLocalTerminal(KEY, 'a', 'zsh', { client, events });
+    const feed = target.open();
+    expect(events.count()).toBe(3);
+    expect(client.calls).toEqual([['AttachTerminal', 'a', { page_key: KEY }]]);
+    expect(client.calls[0]?.[2]).toStrictEqual({ page_key: KEY });
+    expect(feed.getSnapshot()).toEqual({ state: 'starting', program: 'zsh' });
+    const again = target.open();
+    expect(client.calls.filter((call) => call[0] === 'AttachTerminal')).toHaveLength(2);
+    expect(again).not.toBe(feed);
+    expect(client.calls.map((call) => call[0])).not.toContain('CreateTerminal');
+    void feed.close();
+    void again.close();
+  });
+
+  it('is the target that `restoreLocalTerminals` builds for each listed terminal, with `ended` added for one the host lists as ended', async () => {
+    const ended = { reason: 'exited', exit_code: 7, last_offset: 5 };
+    const { client, events } = rig({ listed: [listedTerminal('a', 'zsh'), { ...listedTerminal('b'), ended }] });
+    const targets = await restoreLocalTerminals(KEY, { client, events });
+    for (const [index, id, program] of [[0, 'a', 'zsh'], [1, 'b', undefined]] as const) {
+      const built = attachLocalTerminal(KEY, id, program, { client, events });
+      expect(targets[index]).toMatchObject({ plugin: built.plugin, id: built.id, title: built.title, sessionId: built.sessionId });
+      expect(targets[index]?.retitle).toBe(built.retitle);
+    }
+
+    expect(targets[0]).not.toHaveProperty('ended');
+    expect(targets[1]).toHaveProperty('ended', true);
   });
 });

@@ -24,7 +24,13 @@ import { createHeldOutput } from './heldOutput';
 //     the answer gives the replay (the reader takes it once, before any live output), the number of the page's attachment, where the live output continues and the number the terminal's input takes next (an answer for a
 //     terminal that runs that cannot state it is no answer: the count could not continue); the held events are then applied by offset, in order. Only
 //     live bytes the reader read are acknowledged. The page is told when it loses the terminal (`DETACHED` with its number): the session ends for it, nothing is sent for the terminal any more (it must not detach or close
-//     what another page shows), and the end of the terminal is still heard, to say why it ended. `leave` detaches the terminal for the page that comes back; `redraw` makes a full-screen program draw itself again;
+//     what another page shows), and the end of the terminal is still heard, to say why it ended; so is the loss of the terminal by the tab that took it (a later number: `requested` or `window-retired` say that tab has
+//     gone, and the terminal is `free` to take back; `taken-over` says a third tab holds it). `leave` detaches the terminal for the page that comes back; `redraw` makes a full-screen program draw itself again; `rejoin` asks
+//     the host again, by the same call and from the offset the feed has, when the page's events came back after a gap: the output the host still has continues the feed's (the host may start below the offset, and the feed
+//     skips what it has), and output it no longer has is a replay for a fresh emulator, which `takeReplay` gives at any time. The host forgets what it was owed at the attach, so what the reader acknowledges next for what it
+//     had been given before, and for what the answer carried, is not passed on; and the count of input calls continues from the host's number, or from the feed's own when calls it sent are still on their way;
+//     every acknowledgement is sent under the generation of the attachment it is for, so that the answer or the refusal of one sent before an attach is not taken for what is owed after it; `refresh` asks the host, by
+//     the listing and nothing more, who holds a terminal this page lost, for a page that missed the host's word of it (its events were down);
 //   - a close ends the process exactly once, and every listener is released on every way out (docs/ui-next/optimisations.md HLT-28).
 //
 // What a backend is, as far as this file is concerned, is `ExecTransport`: the host's local shell is `localShell.ts`, and a plugin's exec target is another transport over the same feed.
@@ -51,8 +57,9 @@ export type ExecTransport = {
   /** The terminals the backend holds for a page key: its own answer (`ListTerminals`), which `listedOf` reads. */
   readonly list: (pageKey: string) => Promise<unknown>;
   /**
-   * Takes a terminal that outlived its page over (`AttachTerminal`): the answer has the replay of the output the backend kept, the number of this attachment, and how it ended when it had ended while no page held it. The feed
-   * reads it. The terminal's events continue where the replay ends.
+   * Takes a terminal that outlived its page over (`AttachTerminal`): the answer has the replay of the output the backend kept (from `fromOffset` when it still has it, or from the oldest byte it kept), the number of this
+   * attachment, and how it ended when it had ended while no page held it. The feed reads it. The terminal's events continue where the replay ends. A page whose events were away asks again for the terminal it holds, by
+   * this call, from the offset it has (`rejoin`).
    */
   readonly attach: (id: string, request: ExecAttachRequest) => Promise<unknown>;
   /** Leaves a terminal for the page that comes back (`DetachTerminal`): the backend holds it for its lease instead of ending it. */
@@ -154,6 +161,8 @@ const CLOSED_BY: readonly unknown[] = ['request', 'window', 'shutdown', 'detach-
 const OUTPUT_GAP = 'Some of the terminal\'s output did not arrive.';
 /** What the session says when the host answered the call that takes a terminal over with something the page cannot join the live output to. */
 const UNREADABLE_ATTACH = 'The terminal could not be taken over: the host\'s answer was not understood.';
+/** What the session says when a page that asked again for its terminal after its events were away is told that the host does not have it: the host ended it meanwhile, and nothing the page heard could have said so. */
+const TERMINAL_GONE = 'The terminal is not there any more: the host ended it while this window was away.';
 
 /** The platform's `crypto`, which every engine the app runs in has, and a test environment may not. */
 const platform: { readonly crypto?: Crypto | undefined } = globalThis;
@@ -333,9 +342,10 @@ const DETACHED_BY: ReadonlyArray<TerminalDetached['by']> = ['taken-over', 'reque
 
 /**
  * What the event that says a page lost a terminal carries (T2-go 2.3): why, and the number of the attachment that ended. Nothing without a number is a loss this page can tell is its own. A reason this page does not
- * know is read as a release (`requested`): the terminal is no longer held, and that is what the page must act on.
+ * know is read as a release (`requested`) for the loss of this page's own terminal: it is no longer held, and that is what the page must act on. `known` says whether the page recognised the reason: a token it does not
+ * know says nothing of what became of the tab that took the terminal later, and is not a release of it.
  */
-function detachmentOf(data: unknown): { readonly by: TerminalDetached['by']; readonly attachment: number } | undefined {
+function detachmentOf(data: unknown): { readonly by: TerminalDetached['by']; readonly attachment: number; readonly known: boolean } | undefined {
   if (typeof data !== 'object' || data === null) {
     return undefined;
   }
@@ -346,7 +356,8 @@ function detachmentOf(data: unknown): { readonly by: TerminalDetached['by']; rea
   }
 
   const by: unknown = Reflect.get(data, 'by');
-  return { by: DETACHED_BY.find((token) => token === by) ?? 'requested', attachment };
+  const known = DETACHED_BY.find((token) => token === by);
+  return { by: known ?? 'requested', attachment, known: known !== undefined };
 }
 
 /** A size the host states: whole cells, at least one in each direction. Anything else is no size. */
@@ -389,6 +400,8 @@ function modesOf(value: unknown): TerminalModes {
 /** What the host answered as a replay (`terminal.Replay`), kept as it came: the text is decoded when the reader takes it. */
 type HeldReplay = {
   readonly text: string;
+  /** Where the first byte of `text` lies in the terminal's output: the text holds the bytes from here to `end`. */
+  readonly start: number;
   readonly end: number;
   readonly startSize: Size;
   readonly startModes: TerminalModes;
@@ -411,10 +424,16 @@ type Attached = {
   readonly nextInputSeq: number;
 };
 
+/** The text is base64 as the host writes it: whole groups of four characters of the alphabet, and padding, of one or two characters, only at the end. */
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+
+const isBase64 = (text: string): boolean => text.length % 4 === 0 && BASE64.test(text);
+
 /**
- * The answer to the call that takes a terminal over, read. Nothing is guessed: an answer without a replay that says where the live output continues, the text of its bytes and the sizes, or without the number of
- * the attachment, cannot be joined exactly (there is no offset to drop duplicates by, no number to know a loss by), and is no answer. Nor is the answer for a terminal that runs and does not state, as a whole number of at
- * least 1, the number its input queue takes next: the count of input calls could not continue (from 1 the calls would be refused as stale). The number is read here and nowhere else.
+ * The answer to the call that takes a terminal over, read. Nothing is guessed: an answer without a replay that says where its bytes lie in the terminal's output and where the live output continues (the text holds exactly the
+ * bytes from `start` to `end`, and is base64 from its first character to its last: all of it is read here, before anything is published, so that no payload that cannot be decoded reaches the reader), the sizes, or without
+ * the number of the attachment, cannot be joined exactly (there is no offset to drop duplicates by, no number to know a loss by), and is no answer. Nor is the answer for a terminal that runs and does not state, as a
+ * whole number of at least 1, the number its input queue takes next: the count of input calls could not continue (from 1 the calls would be refused as stale). The number is read here and nowhere else.
  */
 function attachedOf(answer: unknown): Attached | undefined {
   if (typeof answer !== 'object' || answer === null) {
@@ -427,18 +446,19 @@ function attachedOf(answer: unknown): Attached | undefined {
     return undefined;
   }
 
+  const start = finite(Reflect.get(replay, 'start'));
   const end = finite(Reflect.get(replay, 'end'));
   const text: unknown = Reflect.get(replay, 'data');
   const startSize = sizeOfWire(Reflect.get(replay, 'start_size'));
   const size = sizeOfWire(Reflect.get(replay, 'size'));
-  if (end === undefined || !Number.isSafeInteger(end) || end < 0 || typeof text !== 'string' || !Number.isInteger(base64Size(text)) || startSize === undefined || size === undefined) {
+  if (start === undefined || end === undefined || !Number.isSafeInteger(end) || !Number.isSafeInteger(start) || start < 0 || typeof text !== 'string' || !isBase64(text) || base64Size(text) !== end - start || startSize === undefined || size === undefined) {
     return undefined;
   }
 
   const base = {
     program: programOf(Reflect.get(answer, 'session')),
     attachment,
-    replay: { text, end, startSize, startModes: modesOf(Reflect.get(replay, 'start_modes')), size, modes: modesOf(Reflect.get(replay, 'modes')) },
+    replay: { text, start, end, startSize, startModes: modesOf(Reflect.get(replay, 'start_modes')), size, modes: modesOf(Reflect.get(replay, 'modes')) },
   };
   const ended: unknown = Reflect.get(answer, 'ended');
   if (typeof ended === 'object' && ended !== null) {
@@ -451,10 +471,42 @@ function attachedOf(answer: unknown): Attached | undefined {
 }
 
 /**
- * One terminal of what the host lists for a page key (`terminal.Listed`, T2-go 2.2), as far as the page needs it: its id, the shell it runs, and `ended` when the host lists how it ended: its shell ended while no page held it,
- * and the host keeps it, with its output, for the rest of its lease. `ended` is left out for a terminal that runs.
+ * The pieces of base64 text that hold the bytes of `text` from the `skip`-th on, `skip` being less than the bytes the text holds: four characters are three bytes, so a cut between two groups keeps the rest of the text as
+ * it is, and a cut inside a group makes the bytes of that one group that follow the cut a piece of their own and the rest of the text another. Nothing else is decoded.
  */
-export type ListedTerminal = { readonly id: string; readonly program?: string | undefined; readonly ended?: boolean | undefined };
+function afterBytes(text: string, skip: number): readonly string[] {
+  if (skip === 0) {
+    return [text];
+  }
+
+  const group = Math.floor(skip / 3) * 4;
+  const inside = skip % 3;
+  if (inside === 0) {
+    return [text.slice(group)];
+  }
+
+  // At most two bytes follow the cut inside its group: `btoa` takes them as a string of one character each.
+  const piece = btoa(String.fromCharCode(...decodeBase64(text.slice(group, group + 4)).subarray(inside)));
+  const rest = text.slice(group + 4);
+  return rest === '' ? [piece] : [piece, rest];
+}
+
+/** The result of a session that ended, named by the shell it ran when it is known. */
+function withProgram(result: TerminalFeedSnapshot, program: string | undefined): TerminalFeedSnapshot {
+  return result.state === 'ended' && program !== undefined ? { ...result, program } : result;
+}
+
+/**
+ * One terminal of what the host lists for a page key (`terminal.Listed`, T2-go 2.2), as far as the page needs it: its id, the shell it runs, whether a window holds it now (`attached`, when the host says), and `ended` when
+ * the host lists how it ended: its shell ended while no page held it, and the host keeps it, with its output, for the rest of its lease. `ended` is left out for a terminal that runs.
+ */
+export type ListedTerminal = {
+  readonly id: string;
+  readonly program?: string | undefined;
+  /** Whether a window holds the terminal now. A terminal that this page lost, and that no window holds, is free (`refresh`). Left out when the host does not say. */
+  readonly attached?: boolean | undefined;
+  readonly ended?: boolean | undefined;
+};
 
 /** The terminals the host listed for the page's key, in the order it gave them (by creation). What is not a terminal (no id) is left out, and an answer that is not a list lists none. */
 export function listedOf(answer: unknown): readonly ListedTerminal[] {
@@ -474,8 +526,14 @@ export function listedOf(answer: unknown): readonly ListedTerminal[] {
     }
 
     const program = programOf(item);
+    const attached: unknown = Reflect.get(item, 'attached');
     const ended: unknown = Reflect.get(item, 'ended');
-    terminals.push({ id: terminal, ...(program === undefined ? {} : { program }), ...(typeof ended === 'object' && ended !== null ? { ended: true } : {}) });
+    terminals.push({
+      id: terminal,
+      ...(program === undefined ? {} : { program }),
+      ...(typeof attached === 'boolean' ? { attached } : {}),
+      ...(typeof ended === 'object' && ended !== null ? { ended: true } : {}),
+    });
   }
 
   return terminals;
@@ -498,8 +556,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const settleMs = options.settleMs ?? SETTLE_MS;
   const held = createHeldOutput();
   const listeners = new Set<() => void>();
-  /** The listeners of the session but the one for its end. */
+  /** The listeners of the session but the ones for the loss of the terminal and for its end. */
   const stops: Array<() => void> = [];
+  /** The listener for the loss of the terminal: a terminal this page lost goes on listening to it, to learn when the tab that took it has gone (T2d). */
+  let stopDetached: (() => void) | undefined;
   /** The listener for the end of the session: a terminal this page lost goes on listening to it, to learn how it ended. */
   let stopEnd: (() => void) | undefined;
   /** The timers of the calls that wait to be sent again. */
@@ -544,12 +604,30 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let next = 0;
   /** The number of the attachment this page holds: 0 for the page that started the terminal; for one that took it over, the answer's, and unknown until it comes. */
   let attachment: number | undefined = attachTo === undefined ? 0 : undefined;
-  /** What was heard while the call that takes the terminal over was out, in the order it came: the page knows neither its number nor where the replay ends until the answer says (T2-go 2.4, rules 2, 3 and 8). */
+  /** What was heard while the call that takes the terminal over was out (the first attach, or a rejoin), in the order it came: the page knows neither its number nor where the replay ends until the answer says (T2-go 2.4, rules 2, 3 and 8). */
   let heard: Heard[] | undefined = attachTo === undefined ? undefined : [];
   /** The replay the host answered, for the reader to take: `read` gives nothing until it has (T2-go 2.4, rule 4). */
   let awaiting: HeldReplay | undefined;
   /** The page left the terminal for the page that comes back (`leave`): it is no longer this page's to write to, to size or to end. */
   let left = false;
+  /**
+   * What the reader was given and has not acknowledged yet: the output held unread, and the output read and not yet parsed. A rejoin has to know it, since the host forgets what it was owed at the attach (T2-go 2.4, rule 6).
+   * Only a feed with a key counts it.
+   */
+  let outstanding = 0;
+  /**
+   * After a rejoin: how many of the bytes the reader acknowledges next are bytes the host owes no credit for, so that they are not passed on: everything the reader was given before the answer, and the bytes the answer
+   * carried that the feed lacked. The bytes the host delivered after the attach are its debt, and are credited as the reader parses them.
+   */
+  let forgiven = 0;
+  /**
+   * The generation of the attachment: it goes up with every successful attach and rejoin. An acknowledgement is sent under the generation it is for, and the answer or the refusal of one sent under an older generation says
+   * nothing of what is owed now: the host's debt started again at the attach (T2d).
+   */
+  let generation = 0;
+  /** The call that asks who holds a terminal this page lost, while it is out (`refresh`): a second call shares it. */
+  let refreshing: Promise<void> | undefined;
+  let warnedRefresh = false;
 
   const closed = (): boolean => closing !== undefined;
 
@@ -569,7 +647,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
   };
 
-  /** Lets go of every listener but the one for the end of the session. */
+  /** Lets go of the listeners of the output (and, for a feed with no key, of the errors of the process): the only ones a session this page lost no longer needs. */
   const releaseOutput = () => {
     for (const stop of stops.splice(0)) {
       stop();
@@ -578,6 +656,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
   const release = () => {
     releaseOutput();
+    stopDetached?.();
+    stopDetached = undefined;
     stopEnd?.();
     stopEnd = undefined;
   };
@@ -620,8 +700,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const roomForCall = (): boolean => live() && calls < WINDOW_CALLS;
 
   /**
-   * The way out of a session that ended or failed: nothing is listened to, nothing is waited for, what was written stays readable. Once. A terminal this page lost keeps the listener for its end (`listening`): it is
-   * told how the terminal ended, and lets that go too.
+   * The way out of a session that ended or failed: nothing is listened to, nothing is waited for, what was written stays readable. Once. A terminal this page lost keeps the listeners for its loss and its end
+   * (`listening`): it is told how the terminal ended, and when the tab that took it has gone, and lets those go too.
    */
   const over = (result: TerminalFeedSnapshot, listening = false) => {
     if (closed() || finished()) {
@@ -696,24 +776,56 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     next += event.length;
+    outstanding += event.length;
     held.push(event.text);
     wake();
   };
 
-  /** This page lost the terminal: another page took it, or it was detached. It is no longer this page's to write to, to size or to end; the state is `ended` for this page, and the listener for the end of the terminal stays. */
+  /** This page lost the terminal: another page took it, or it was detached. It is no longer this page's to write to, to size or to end; the state is `ended` for this page, and the listeners for the loss of the terminal and for its end stay. */
   const lost = (by: TerminalDetached['by']) => {
     const program = status.program;
     over(program === undefined ? { state: 'ended', detached: { by } } : { state: 'ended', program, detached: { by } }, true);
   };
 
+  /** Makes a terminal this page lost free, or held again: the snapshot changes, and the listeners are told, only when that changes something. */
+  const setFree = (free: boolean) => {
+    const current = status.detached;
+    if (current === undefined || (current.free === true) === free) {
+      return;
+    }
+
+    status = { ...status, detached: free ? { by: current.by, free } : { by: current.by } };
+    tell();
+  };
+
+  /**
+   * An event of a LATER holder's number, heard by a page that lost the terminal: the tab that took it has let go of it or has gone (the host says `requested` when the tab detached it, and `window-retired` when its window
+   * went away: a browser that does not deliver the detach of a closing tab is told some seconds later), so nobody holds the terminal and it may be taken back (`free`); or a third tab took it from that one
+   * (`taken-over`), and it is held again. Only a reason the page recognises says either: a token it does not know changes nothing. An event of the number this page held, or of an earlier one, is the loss it already knows.
+   * The host sends nothing when a tab attaches a terminal that is already free, so `free` may be stale (`refresh` asks the host): taking the terminal back is an attach, and the host answers it.
+   */
+  const afterLoss = (event: { readonly by: TerminalDetached['by']; readonly attachment: number; readonly known: boolean }) => {
+    if (attachment === undefined || event.attachment <= attachment || !event.known) {
+      return;
+    }
+
+    setFree(event.by !== 'taken-over');
+  };
+
   /** The loss of a terminal, when it is this page's: every window gets the event, and the number of the attachment that ENDED says whose it is (T2-go 2.4, rule 8). Another page's loss is not this page's business. */
   const applyDetached = (data: unknown) => {
-    if (closed() || finished() || attachment === undefined) {
+    if (closed() || attachment === undefined) {
       return;
     }
 
     const event = detachmentOf(data);
-    if (event?.attachment === attachment) {
+    if (event === undefined) {
+      return;
+    }
+
+    if (status.detached !== undefined) {
+      afterLoss(event);
+    } else if (event.attachment === attachment) {
       lost(event.by);
     }
   };
@@ -723,18 +835,21 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       return;
     }
 
-    if (status.detached === undefined) {
+    const detached = status.detached;
+    if (detached === undefined) {
       over(endOf(data));
       return;
     }
 
-    // The page lost this terminal and went on listening for its end: that is how it ended, if the host says (the lease it was lost to ran out, or the shell exited), and the last listener goes.
-    const end = endOf(data);
+    // The page lost this terminal and went on listening for its end: that is how it ended, if the host says (the lease it was lost to ran out, or the shell exited), and nobody can take it back now. The last listeners go.
+    const { exit } = endOf(data);
     release();
-    if (end.exit !== undefined) {
-      status = { ...status, exit: end.exit };
-      tell();
+    if (exit === undefined && detached.free !== true) {
+      return;
     }
+
+    status = { ...status, detached: { by: detached.by }, ...(exit === undefined ? {} : { exit }) };
+    tell();
   };
 
   /** A listener of an event the page may have to hold: while the call that takes the terminal over is out, the event waits for the answer, in the order it came. */
@@ -814,9 +929,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
    * flow control on (it is made with the process, with nothing owed yet). A count the backend refuses once flow is on stays owed and goes again: with the next count the reader gives, or, when no output comes to carry
    * it (the host may be paused for exactly that credit, and a shell that is paused says nothing more), after `ACK_RETRY_MS` by itself, one wait at a time, until the host takes it, the feed is closed, or the session is
    * over or gone. A backend that refuses the FIRST call has no flow control to turn on (or would not): its transport's credit paces the shell, and a call for every parsed byte would help nobody, so none is made again.
+   * None is made while a call that takes the terminal over is out: what the reader acknowledges then is for bytes the attach makes the host forget. A call is sent under the generation of the attachment it is for, and the
+   * answer or the refusal of one sent under an older generation is discarded: the host's debt started again at the attach, so the count it carried is neither owed again nor sent again.
    */
   const sendAck = () => {
-    if (acking || stopped || closed() || left || !created || status.state !== 'running' || (flowOn && owed === 0)) {
+    if (acking || stopped || closed() || left || !created || heard !== undefined || status.state !== 'running' || (flowOn && owed === 0)) {
       return;
     }
 
@@ -825,6 +942,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     const bytes = owed;
     owed = 0;
     acking = true;
+    const sentUnder = generation;
     transport.ack(id, bytes).then(
       () => {
         acking = false;
@@ -833,6 +951,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       },
       (error: unknown) => {
         acking = false;
+        if (sentUnder !== generation) {
+          // An attach since forgot what this count was for: it is not owed again and not sent again, and the refusal says nothing of what is owed now. What the reader parsed since is for the new attachment, and goes at once.
+          sendAck();
+          return;
+        }
+
         if (closed() || transport.isGone(error)) {
           stopped = true;
           return;
@@ -945,28 +1069,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     );
   };
 
-  /** What the host answered to the call that took the terminal over, applied (T2-go 2.4, rules 3 to 8). */
-  const takeOver = (taken: Attached) => {
-    attachment = taken.attachment;
-    const program = taken.program ?? status.program;
-    const named = (result: TerminalFeedSnapshot): TerminalFeedSnapshot => (result.state === 'ended' && program !== undefined ? { ...result, program } : result);
-    awaiting = taken.replay;
-    if (taken.ended !== undefined) {
-      // The terminal had ended while no page held it: how it ended is what the page shows, with its output (the replay), and nothing live follows. `CloseSession` dismisses what the host kept of it.
-      heard = undefined;
-      over(named(endOf(taken.ended)));
-      return;
-    }
-
-    next = taken.replay.end;
-    delivered = taken.replay.size;
-    // The terminal's input queue is the terminal's, and an attach does not reset it: the count continues from the number the answer states, which is current as of the attach (a listing's is older, since the window that held
-    // the terminal can write between the list and the attach).
-    nextSeq = taken.nextInputSeq;
-
-    // What came while the call was out, in the order it came: what the replay holds is dropped, what continues it is applied, a loss of the terminal that is this page's ends the session, and so does the end of the
-    // terminal. The session is named by the host's answer meanwhile, so that whatever it comes to carries the name.
-    status = program === undefined ? { state: 'starting' } : { state: 'starting', program };
+  /**
+   * What came while the call that takes the terminal over was out (the first attach, or a rejoin), in the order it came: what the answer holds is dropped, what continues it is applied, a loss of the terminal that is this
+   * page's ends the session, and so does the end of the terminal.
+   */
+  const applyHeard = () => {
     const events = heard ?? [];
     heard = undefined;
     for (const event of events) {
@@ -978,7 +1085,31 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         applyEnd(event.data);
       }
     }
+  };
 
+  /** What the host answered to the call that took the terminal over, applied (T2-go 2.4, rules 3 to 8). */
+  const takeOver = (taken: Attached) => {
+    attachment = taken.attachment;
+    generation += 1;
+    const program = taken.program ?? status.program;
+    awaiting = taken.replay;
+    if (taken.ended !== undefined) {
+      // The terminal had ended while no page held it: how it ended is what the page shows, with its output (the replay), and nothing live follows. `CloseSession` dismisses what the host kept of it.
+      heard = undefined;
+      over(withProgram(endOf(taken.ended), program));
+      return;
+    }
+
+    next = taken.replay.end;
+    delivered = taken.replay.size;
+    // The terminal's input queue is the terminal's, and an attach does not reset it: the count continues from the number the answer states, which is current as of the attach (a listing's is older, since the window that held
+    // the terminal can write between the list and the attach).
+    nextSeq = taken.nextInputSeq;
+
+    // What came while the call was out, in the order it came: what the replay holds is dropped, what continues it is applied, a loss of the terminal that is this page's ends the session, and so does the end of the
+    // terminal. The session is named by the host's answer meanwhile, so that whatever it comes to carry the name.
+    status = program === undefined ? { state: 'starting' } : { state: 'starting', program };
+    applyHeard();
     if (status.state === 'starting') {
       status = program === undefined ? { state: 'running' } : { state: 'running', program };
       tell();
@@ -1018,6 +1149,139 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   };
 
   /**
+   * What the host answered to the call that asks for what a gap in the page's events lost (`rejoin`), applied. The replay holds the bytes the host kept from `replay.start`, the live output continues at `replay.end`, and the
+   * NEW number of the attachment replaces this page's: the host tells the window of its own takeover too (`DETACHED` with the old number), which is not a loss and is dropped by the number. Two ways to join what the feed has:
+   *   - the host still has what the feed lacks (`start <= next`; it may start below the offset that was asked for, at a boundary of its ring): the bytes the feed has are skipped and the rest is output like any other, held for
+   *     the reader in order, with no replay;
+   *   - the host's ring has moved past it (`start > next`): the output the feed held and nobody read is older than the replay and is dropped, and the reader is handed the replay, for a fresh emulator.
+   * The host forgot what it was owed at the attach, so the bytes the reader is given before the answer and the bytes the answer carried are `forgiven`: their acknowledgements are not passed on, and the live bytes after the
+   * replay are credited as they are parsed. The count of input calls continues from the host's number, or from the feed's own when calls it sent are still on their way (a number is never used twice). A terminal that ended
+   * meanwhile delivers what it missed and then ends the session as for a first attach.
+   */
+  const rejoined = (taken: Attached) => {
+    const { replay } = taken;
+    const gap = replay.start > next;
+    const missed = gap ? 0 : replay.end - next;
+    // The text was read whole with the answer (`attachedOf`), so it can be cut.
+    const tail = missed > 0 ? afterBytes(replay.text, next - replay.start) : [];
+
+    attachment = taken.attachment;
+    generation += 1;
+    delivered = replay.size;
+    // What the reader acknowledged while the call was out was for bytes the attach made the host forget, and so is a count the host refused: none of it is owed.
+    owed = 0;
+    if (gap) {
+      outstanding = Math.max(0, outstanding - held.bytes());
+      held.clear();
+      awaiting = replay;
+      forgiven = outstanding;
+      // The reader must come for a replay whether or not a wake-up is pending.
+      woken = true;
+    } else {
+      forgiven = outstanding + missed;
+      for (const piece of tail) {
+        held.push(piece);
+      }
+
+      outstanding += missed;
+    }
+
+    next = replay.end;
+    if (taken.ended !== undefined) {
+      heard = undefined;
+      over(withProgram(endOf(taken.ended), taken.program ?? status.program));
+      return;
+    }
+
+    nextSeq = Math.max(nextSeq, taken.nextInputSeq);
+    applyHeard();
+    if (gap) {
+      tell();
+    } else if (missed > 0) {
+      wake();
+    }
+
+    flush();
+    sendAck();
+  };
+
+  /**
+   * The page's events came back after a gap: whatever the host said meanwhile is lost to this window for good, and nothing says how much. The feed asks again for the terminal it holds, from the offset it has (T2-go 2.4:
+   * `from_offset` is the first byte the page does not have), by the call that takes a terminal over. Output, loss and end are held while the call is out and applied after the answer. Only for a terminal that runs and that
+   * this page holds, one call at a time: anything else has nothing to ask for. The host's refusal for a terminal it no longer has ends the session in words (it ended while the page was away), and any other refusal in the host's.
+   */
+  const rejoin = () => {
+    if (key === undefined || left || closed() || status.state !== 'running' || heard !== undefined) {
+      return;
+    }
+
+    heard = [];
+    transport.attach(id, { pageKey: key, fromOffset: next }).then(
+      (answer: unknown) => {
+        if (closed() || left || status.state !== 'running') {
+          heard = undefined;
+          return;
+        }
+
+        const taken = attachedOf(answer);
+        if (taken === undefined || taken.replay.end < next) {
+          heard = undefined;
+          over({ state: 'failed', cause: { stage: 'session', message: UNREADABLE_ATTACH } });
+          return;
+        }
+
+        rejoined(taken);
+      },
+      (error: unknown) => {
+        heard = undefined;
+        if (!closed() && !left && status.state === 'running') {
+          over({ state: 'failed', cause: transport.isGone(error) ? { stage: 'session', message: TERMINAL_GONE } : causeOf('session', error) });
+        }
+      },
+    );
+  };
+
+  /**
+   * Asks the host who holds a terminal this page LOST, by the page's listing (`ListTerminals`) and nothing more: it never attaches, never takes the terminal over and never throws. A terminal that no window holds is `free`
+   * (the tab that took it released it while this page was not listening: its events connection was down, or the host's word of it came before the page asked), and one that a window holds is not; a terminal the host lists
+   * as ended is not free either, since nobody can take it back. A terminal the host does not list, an entry that does not say, and a call that fails change nothing (a failure is said once). Only for a lost terminal whose end is
+   * not known, and one call at a time: a second call shares the one that is out.
+   */
+  const refresh = async (): Promise<void> => {
+    if (key === undefined || closed() || status.detached === undefined || status.exit !== undefined) {
+      return;
+    }
+
+    refreshing ??= (async () => {
+      try {
+        // The call is made inside the promise, so that a transport that throws instead of rejecting is a failure like any other.
+        const answer = await new Promise<unknown>((resolve) => {
+          resolve(transport.list(key));
+        });
+        // What the page learned meanwhile stands: a feed that was closed, or whose terminal ended, has nothing to change.
+        if (closed() || status.detached === undefined || status.exit !== undefined) {
+          return;
+        }
+
+        const entry = listedOf(answer).find((one) => one.id === id);
+        if (entry?.ended === true) {
+          setFree(false);
+        } else if (entry?.attached !== undefined) {
+          setFree(!entry.attached);
+        }
+      } catch (error) {
+        if (!warnedRefresh) {
+          warnedRefresh = true;
+          warn('[terminal] the host could not say who holds the terminal this page lost', error);
+        }
+      } finally {
+        refreshing = undefined;
+      }
+    })();
+    await refreshing;
+  };
+
+  /**
    * The page is going away, and its terminal is left for the page that comes back: detached, not closed. Once, while this page holds a running terminal that has a key; fire and forget. Every listener is let go and
    * nothing is sent from now on, and a `close` after it does not end the process, which is what the page that comes back finds.
    */
@@ -1039,7 +1303,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     })();
   };
 
-  /** The reader takes what the host kept of the terminal's output, once, before any live output: decoded now, since a terminal that is never shown costs the text it holds and no more. */
+  /** The reader takes the replay that waits, once, before any live output: what the host kept of the terminal's output when the page took it over, or, after a rejoin, the host's ring when it no longer reaches back to what the feed has. Decoded now, since a terminal that is never shown costs the text it holds and no more. */
   const takeReplay = (): TerminalReplay | undefined => {
     const replay = awaiting;
     if (replay === undefined || closed()) {
@@ -1081,7 +1345,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }),
     );
   } else {
-    stops.push(transport.on(streamEvent(id, 'output'), hearing('output', applyPositioned)), transport.on(signalEvent(id, 'DETACHED'), hearing('detached', applyDetached)));
+    stops.push(transport.on(streamEvent(id, 'output'), hearing('output', applyPositioned)));
+    stopDetached = transport.on(signalEvent(id, 'DETACHED'), hearing('detached', applyDetached));
   }
 
   stopEnd = transport.on(signalEvent(id, 'CLOSE'), hearing('end', applyEnd));
@@ -1119,7 +1384,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         return;
       }
 
-      owed += count;
+      outstanding = Math.max(0, outstanding - count);
+      // The first bytes the reader acknowledges after a rejoin are the ones the attach made the host forget: they are not passed on (T2-go 2.4, rule 6).
+      const forgotten = Math.min(forgiven, count);
+      forgiven -= forgotten;
+      owed += count - forgotten;
       sendAck();
     },
 
@@ -1176,8 +1445,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     redraw,
 
-    ...(key === undefined ? {} : { leave }),
-    ...(attachTo === undefined ? {} : { takeReplay }),
+    // A terminal with a key can be left for the page that comes back, asked again for what a gap in the page's events lost (`rejoin`), asked who holds it once this page lost it (`refresh`), and handed a replay at any time: after a reload, and after a gap that the host's ring no longer reaches back over.
+    ...(key === undefined ? {} : { leave, rejoin, refresh, takeReplay }),
 
     close: async () => {
       if (closing !== undefined) {

@@ -82,6 +82,17 @@ export type TerminalsOptions = {
    * on the console and nothing else: the saved tabs stay ended, which is also what an app restart looks like (the host lists no terminal that is gone). Absent: nothing is asked.
    */
   readonly restore?: (() => Promise<readonly TerminalTarget[]>) | undefined;
+  /**
+   * What attaches the terminal of a session again (T2d): the target for the session's id, which `TerminalSessions.takeBack` opens when the person takes back a terminal another tab took over and has left (the host's own
+   * shell makes it with the page's key), after the host has been asked who holds it. Absent: a terminal this window lost cannot be taken back.
+   */
+  readonly reattach?: ((session: string) => TerminalTarget) | undefined;
+  /**
+   * The page's events coming back after a gap (T2d): called with a listener, it calls it each time the page's events connection opens (the first time too, when it was subscribed before) and answers what stops it. The
+   * window subscribes when it attaches and stops when it stops, and on each signal asks every feed that can rejoin to (a feed that is not running, or not held by this page, does nothing) and every feed this page lost who
+   * holds its terminal (the tab that took it may have gone while the events were down). In a native window the signal never fires. Absent: nothing is listened to.
+   */
+  readonly reconnect?: ((listener: () => void) => () => void) | undefined;
 };
 
 /** What the window restored of the tool's own state (`shell/session`). Nothing restored is the tool as it starts. */
@@ -95,8 +106,9 @@ export type Terminals = {
   /** The store the panel is given: the host's own, with a close that asks first for a terminal that runs. */
   readonly store: PanelStore;
   /**
-   * Starts listening to the panel, asks the host for the terminals that were left for this window (`TerminalsOptions.restore`, once for the life of the window, however many times it attaches) and listens for the page going
-   * away. Returns what stops it (the window is going): a terminal that has a key is left to live out its lease, and the others are closed. A terminal whose tab the person closes is closed.
+   * Starts listening to the panel, asks the host for the terminals that were left for this window (`TerminalsOptions.restore`, once for the life of the window, however many times it attaches), listens for the page going
+   * away and for its events coming back after a gap (`TerminalsOptions.reconnect`). Returns what stops it (the window is going): a terminal that has a key is left to live out its lease, and the others are closed. A
+   * terminal whose tab the person closes is closed.
    */
   readonly attach: () => () => void;
   /** Takes the keys of a terminal that has the focus from the window: Command K clears it, and is also the palette's chord. Returns what stops listening. It must be called before the window's own listeners are added: a key goes to them in that order. */
@@ -116,9 +128,9 @@ export type Terminals = {
 
 /** The registry, the guard and the answers of the Terminal tool over a window's panel store. */
 export function createTerminals(store: PanelStore, options: TerminalsOptions = {}, restored: TerminalsRestored = {}): Terminals {
-  const sessions = createTerminalSessions(store);
+  const { pageKey, restore, reattach, reconnect } = options;
+  const sessions = createTerminalSessions(store, { reattach });
   const screenReader = createScreenReaderChoice(restored.screenReader);
-  const { pageKey, restore } = options;
   // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
   // and how many attaches are on.
   let asked = false;
@@ -224,6 +236,10 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       };
 
       window.addEventListener('pagehide', hide);
+      // The events that were told while the connection was down are lost to the page: each feed that can rejoin asks the host for what it missed. The signal runs inside the event of a socket, so it never throws.
+      const unlisten = reconnect?.(() => {
+        sessions.rejoin();
+      });
       attached += 1;
       findTerminals();
       openFound();
@@ -236,6 +252,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         on = false;
         attached -= 1;
         window.removeEventListener('pagehide', hide);
+        unlisten?.();
         stop();
       };
     },
