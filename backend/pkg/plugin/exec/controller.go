@@ -321,6 +321,7 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 	c.mu.RLock()
 	stream, active := c.streams[output.pluginID]
 	record, recorded := c.sessionIndex[output.SessionID]
+	channelHeld := c.channelHoldsLocked(output.SessionID)
 	c.mu.RUnlock()
 	if !active || stream.done != output.done || stream.ctx.Err() != nil {
 		// Output from a replaced or stopped provider stream is discarded.
@@ -329,10 +330,10 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
 		return
 	}
-	if heldByAnother(record, recorded, output.pluginID) {
-		// The host routes by session id, and this id is recorded for another session: a terminal of this host (it
-		// has no plugin) or a session of another plugin. A plugin speaks for the sessions it made, so the frame is
-		// not that session's.
+	if heldByAnother(record, recorded, output.pluginID, channelHeld) {
+		// The host routes by session id, and this id is held by another session: recorded for a terminal of this host (it
+		// has no plugin) or a session of another plugin, or held by a channel terminal (it has no record). A plugin speaks
+		// for the sessions it made, so the frame is not that session's.
 		c.logger.Warnw(context.Background(), "dropped output of a session id the plugin does not hold",
 			"pluginID", output.pluginID, "sessionID", output.SessionID)
 		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
@@ -750,12 +751,12 @@ func (c *controller) channelHoldsLocked(id string) bool {
 	return c.channelMaking[id] || (c.terminalManager != nil && c.terminalManager.HoldsID(id))
 }
 
-// heldByAnother says a frame from plugin names a session id the host recorded for another session: a terminal of this
-// host (its record has no plugin) or a session of another plugin. A plugin speaks for the sessions it made. A frame
-// whose id has no record is nobody's yet and is delivered: output and the end of a session can come before the host
-// has recorded it.
-func heldByAnother(record sessionIndex, recorded bool, pluginID string) bool {
-	return recorded && record.pluginID != pluginID
+// heldByAnother says a frame from plugin names a session id that another session holds: the host recorded it for a terminal of
+// this host (its record has no plugin) or for a session of another plugin, or a channel terminal holds it (it has no record: the
+// caller asks channelHoldsLocked, under the lock it read the record under). A plugin speaks for the sessions it made. A frame
+// whose id nobody holds is nobody's yet and is delivered: output and the end of a session can come before the host has recorded it.
+func heldByAnother(record sessionIndex, recorded bool, pluginID string, channelHeld bool) bool {
+	return channelHeld || (recorded && record.pluginID != pluginID)
 }
 
 // closeRefusedSession ends the session a plugin made with an id the host holds for another session. It is closed with
