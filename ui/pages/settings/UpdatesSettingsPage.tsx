@@ -34,7 +34,9 @@ function statusText(status: Status | undefined, state: string): string {
     case 'installing': return `Preparing ${version}`;
     case 'ready': return `Update ${version} is ready. Restart to apply it.`;
     case 'error': return 'Update failed';
-    case 'unconfigured': return status?.unsupportedReason || 'Updates are not available in this build.';
+    case 'unconfigured':
+      // Go sends an empty reason, not a missing one.
+      return status?.unsupportedReason === undefined || status.unsupportedReason === '' ? 'Updates are not available in this build.' : status.unsupportedReason;
     default: return 'Loading…';
   }
 }
@@ -77,6 +79,7 @@ export default function UpdatesSettingsPage() {
       setError(String(err));
     });
   };
+
   const canListChannels = Boolean(status) && status?.state !== 'unconfigured';
   React.useEffect(() => {
     if (!canListChannels) {

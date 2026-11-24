@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   call: vi.fn(), commit: vi.fn(), confirm: vi.fn(), openURL: vi.fn(), showFeatures: false, current: 'stable',
-  updateMode: 'automatic' as string | undefined,
+  updateMode: 'automatic',
   progressListener: undefined as ((event: { data: unknown }) => void) | undefined,
 }));
 vi.mock('@wailsio/runtime', () => ({
@@ -15,9 +15,10 @@ vi.mock('@wailsio/runtime', () => ({
         mocks.progressListener = listener;
       }
 
-      return () => {};
+      return () => undefined;
     }),
   },
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- Wails runtime API name
   Browser: { OpenURL: mocks.openURL },
 }));
 vi.mock('@omniviewdev/runtime', () => ({

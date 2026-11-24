@@ -11,12 +11,12 @@ export function useUpdateStatus(): { status?: UpdateStatus; error: string; progr
   const [progress, setProgress] = React.useState<DownloadProgress>();
 
   const refresh = React.useCallback(async () => {
-    try {
-      setStatus(await Call.ByName(`${updateServiceName}.Status`) as UpdateStatus);
+    return Call.ByName(`${updateServiceName}.Status`).then((value: unknown) => {
+      setStatus(value as UpdateStatus);
       setError('');
-    } catch (err) {
+    }).catch((err: unknown) => {
       setError(String(err));
-    }
+    });
   }, []);
 
   React.useEffect(() => {
@@ -30,20 +30,18 @@ export function useUpdateStatus(): { status?: UpdateStatus; error: string; progr
   }, [refresh]);
 
   React.useEffect(() => {
+    // A new download starts from zero, not from the last download's progress.
+    const offStarted = Events.On('wails:updater:download-started', () => {
+      setProgress(undefined);
+    });
     const offProgress = Events.On('wails:updater:download-progress', (event) => {
       setProgress(event.data as DownloadProgress);
     });
     return () => {
+      offStarted();
       offProgress();
     };
   }, []);
 
-  const downloading = status?.state === 'downloading';
-  React.useEffect(() => {
-    if (!downloading) {
-      setProgress(undefined);
-    }
-  }, [downloading]);
-
-  return { status, error, progress: downloading ? progress : undefined, refresh };
+  return { status, error, progress: status?.state === 'downloading' ? progress : undefined, refresh };
 }

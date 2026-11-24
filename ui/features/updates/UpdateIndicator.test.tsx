@@ -2,8 +2,11 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ call: vi.fn(), openSettings: vi.fn(), status: {} as Record<string, unknown> }));
-vi.mock('@wailsio/runtime', () => ({ Call: { ByName: mocks.call }, Events: { On: vi.fn(() => () => {}) } }));
+const mocks = vi.hoisted(() => {
+  const status: Record<string, unknown> = {};
+  return { call: vi.fn(), openSettings: vi.fn(), status };
+});
+vi.mock('@wailsio/runtime', () => ({ Call: { ByName: mocks.call }, Events: { On: vi.fn(() => () => undefined) } }));
 vi.mock('@omniviewdev/runtime', () => ({ openSettings: mocks.openSettings, useConfirmationModal: () => ({ show: vi.fn() }) }));
 vi.mock('@omniviewdev/base-ui', () => ({
   Button: ({ children, ...props }: React.ComponentProps<'button'>) => <button {...props}>{children}</button>,
