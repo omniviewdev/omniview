@@ -49,6 +49,7 @@ type UpdateService struct {
 	lastCheckedAt            string
 	unsupportedReason        string
 	version                  string
+	restartFailure           string
 	cancel                   context.CancelFunc
 }
 
@@ -128,6 +129,7 @@ func newUpdateService(app *application.App, channel, root, version string, updat
 		return s
 	}
 	s.configured = true
+	s.recoverFromFailedRestart()
 	return s
 }
 
@@ -267,10 +269,10 @@ func (s *UpdateService) recordResult(err error) {
 	defer s.mu.Unlock()
 	switch {
 	case err == nil:
-		s.lastError = ""
+		s.lastError = s.restartFailure
 	case errors.Is(err, context.Canceled):
 		s.canceled = true
-		s.lastError = ""
+		s.lastError = s.restartFailure
 	default:
 		s.lastError = err.Error()
 	}
@@ -636,7 +638,58 @@ func (s *UpdateService) Restart(restartDespiteActiveWork bool) error {
 	if !restartDespiteActiveWork && len(s.ActiveWork()) > 0 {
 		return errActiveWorkBlocksRestart
 	}
-	return s.updater.Restart(context.Background())
+	s.mu.Lock()
+	target := s.availableVersion
+	switching := s.switchTarget != ""
+	s.mu.Unlock()
+	// A channel switch starts another profile, which never reads this record.
+	recorded := s.root != "" && target != "" && !switching
+	if recorded {
+		if err := os.WriteFile(filepath.Join(s.root, restartTargetFile), []byte(target), 0o600); err != nil {
+			return fmt.Errorf("record update restart: %w", err)
+		}
+	}
+	if err := s.updater.Restart(context.Background()); err != nil {
+		if recorded {
+			_ = os.Remove(filepath.Join(s.root, restartTargetFile))
+		}
+		return err
+	}
+	return nil
+}
+
+// restartTargetFile holds the version that the last restart tried to start.
+// skippedVersionFile holds a version that the Wails helper rolled back, so
+// the updater does not offer it again.
+const (
+	restartTargetFile  = "update-restart-target"
+	skippedVersionFile = "update-skipped-version"
+)
+
+// recoverFromFailedRestart detects a restart that the Wails helper rolled
+// back: the running version differs from the recorded restart target. That
+// version is skipped from then on; a newer release is still offered.
+func (s *UpdateService) recoverFromFailedRestart() {
+	if s.root == "" {
+		return
+	}
+	targetPath := filepath.Join(s.root, restartTargetFile)
+	skippedPath := filepath.Join(s.root, skippedVersionFile)
+	if target, err := os.ReadFile(targetPath); err == nil {
+		if removeErr := os.Remove(targetPath); removeErr != nil {
+			log.Printf("remove update restart record: %v", removeErr)
+		}
+		if string(target) != s.version {
+			if writeErr := os.WriteFile(skippedPath, target, 0o600); writeErr != nil {
+				log.Printf("record skipped update: %v", writeErr)
+			}
+			s.restartFailure = fmt.Sprintf("Omniview %s did not start, so Omniview kept %s. This update is skipped; a newer one will be offered.", target, s.version)
+			s.lastError = s.restartFailure
+		}
+	}
+	if skipped, err := os.ReadFile(skippedPath); err == nil && len(skipped) > 0 {
+		s.updater.SkipVersion(string(skipped))
+	}
 }
 
 // removeIsolatedProfile deletes through a pinned directory, never its pathname.

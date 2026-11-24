@@ -449,3 +449,52 @@ func TestSwitchChannelDownloadsAndSeeds(t *testing.T) {
 		t.Fatalf("switch while ready: %v", err)
 	}
 }
+
+func TestRolledBackRestartSkipsThatVersion(t *testing.T) {
+	root := t.TempDir()
+	newService := func() (*UpdateService, *feedRequestCounts) {
+		_, provider, requests := newSignedFeedFixture(t, testNightlyNext, "nightly", root)
+		s := &UpdateService{
+			updater: newTestUpdater(t, provider, testNightlyCurrent), provider: provider, configured: true,
+			channel: "nightly", root: root, version: testNightlyCurrent, modeChanged: make(chan struct{}, 1),
+			updateMode: func() string { return coresettings.UpdateModeAutomatic },
+		}
+		s.recoverFromFailedRestart()
+		return s, requests
+	}
+	if err := os.WriteFile(filepath.Join(root, restartTargetFile), []byte(testNightlyNext), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, requests := newService()
+	if _, err := os.Stat(filepath.Join(root, restartTargetFile)); !os.IsNotExist(err) {
+		t.Fatalf("restart record kept: %v", err)
+	}
+	s.runScheduledCheck(context.Background(), coresettings.UpdateModeAutomatic)
+	status := s.Status()
+	if status.State != string(wailsupdater.StateUpToDate) || requests.payload.Load() != 0 || !strings.Contains(status.Error, "did not start") {
+		t.Fatalf("after rollback: %+v, payload %d", status, requests.payload.Load())
+	}
+	// The skip survives the next start, which has no restart record.
+	s, requests = newService()
+	s.runScheduledCheck(context.Background(), coresettings.UpdateModeAutomatic)
+	if status := s.Status(); status.State != string(wailsupdater.StateUpToDate) || requests.payload.Load() != 0 || status.Error != "" {
+		t.Fatalf("next start: %+v, payload %d", status, requests.payload.Load())
+	}
+}
+
+func TestSuccessfulRestartSkipsNothing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, restartTargetFile), []byte(testNightlyCurrent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, provider, requests := newSignedFeedFixture(t, testNightlyNext, "nightly", root)
+	s := &UpdateService{updater: newTestUpdater(t, provider, testNightlyCurrent), provider: provider, configured: true, channel: "nightly", root: root, version: testNightlyCurrent}
+	s.recoverFromFailedRestart()
+	if _, err := os.Stat(filepath.Join(root, skippedVersionFile)); !os.IsNotExist(err) {
+		t.Fatalf("successful restart recorded a skip: %v", err)
+	}
+	s.runScheduledCheck(context.Background(), coresettings.UpdateModeAutomatic)
+	if status := s.Status(); status.State != string(wailsupdater.StateReady) || requests.payload.Load() != 1 || status.Error != "" {
+		t.Fatalf("after successful restart: %+v", status)
+	}
+}
