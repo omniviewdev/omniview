@@ -55,3 +55,24 @@ export async function offerTerminalSession(tab: OfferableTab): Promise<void> {
 
   await ExecClient.OfferSession(tab.id);
 }
+
+/**
+ * Takes back the offer of {@link offerTerminalSession} when the tab did not move
+ * after all (the drop was refused or failed, or the window that was to receive
+ * the tab could not be opened or reached). An offer that stays open is open for
+ * a minute to any window that knows the session id.
+ *
+ * It runs in a failure path and never rejects: a failed revoke is logged, and
+ * the offer runs out by itself.
+ */
+export async function revokeTerminalSession(tab: OfferableTab): Promise<void> {
+  if (!hasTerminalSessionToOffer(tab)) {
+    return;
+  }
+
+  try {
+    await ExecClient.RevokeSession(tab.id);
+  } catch (error) {
+    console.warn('[terminal] could not take back the offer of a session; it runs out by itself', tab.id, error);
+  }
+}

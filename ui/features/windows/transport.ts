@@ -7,7 +7,7 @@ import type {
 } from '@omniviewdev/base-ui';
 import { WindowClient } from '@omniviewdev/runtime/api';
 import { Events } from '@omniviewdev/runtime/runtime';
-import { hasTerminalSessionToOffer, offerTerminalSession } from '@/providers/BottomDrawer/terminalHandoff';
+import { hasTerminalSessionToOffer, offerTerminalSession, revokeTerminalSession } from '@/providers/BottomDrawer/terminalHandoff';
 import { DRAWER_TAB_DRAG_TYPE } from './dragTypes';
 import { currentWindow } from './identity';
 
@@ -145,7 +145,18 @@ export function createWailsTabDragTransport(): TabDragTransport {
           }
         }
 
-        return WindowClient.EndDrag(sessionId, pointer.clientX, pointer.clientY);
+        // The tab moves only when a window accepts it: for any other end of the drop the offer (made above, or this tab
+        // has none) is taken back. When the offer failed, the drop returned above and there is nothing to take back.
+        let accepted = false;
+        try {
+          const dropped = await WindowClient.EndDrag(sessionId, pointer.clientX, pointer.clientY);
+          accepted = Boolean(dropped?.accepted);
+          return dropped;
+        } finally {
+          if (channel.tabToOffer && !accepted) {
+            await revokeTerminalSession(channel.tabToOffer);
+          }
+        }
       });
       return result?.accepted ? { targetInstanceId: result.targetInstanceId } : null;
     },
