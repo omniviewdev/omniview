@@ -81,7 +81,7 @@ def run(name, src_from, src_to, must):
         return False
     status = "RED as named" if built and not missing and not extra else ("RED but not only the named" if built and not missing else "NOT RED / DID NOT BUILD")
     print(f"{name}: {status}\n   failed: {failed}\n   named but green: {missing}\n   failed but not named: {extra}")
-    return built and not missing
+    return built and not missing and not extra
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(MUTATIONS)
