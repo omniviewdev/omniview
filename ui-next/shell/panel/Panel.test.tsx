@@ -326,11 +326,22 @@ describe('what a session tab draws, and is named by (SCT1, TI1, WCAG 2.5.3)', ()
 });
 
 describe('the empty state of a tool', () => {
-  it('says the generic words, and offers the button that starts a session, when the owner of the tool has a way to start one', () => {
-    mount({ open: true });
-    expect(screen.getByText('No sessions')).toBeInTheDocument();
-    expect(screen.getByText('A session of this tool appears here when you start one.')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'New shell' }).length).toBeGreaterThan(0);
+  it('says what can appear when there are no tools, with no command in the status', () => {
+    mount({ open: true, tools: [] });
+    const status = within(screen.getByRole('tabpanel', { name: 'Panel' })).getByRole('status');
+    expect(within(status).getByText('No tools')).toBeInTheDocument();
+    expect(within(status).getByText('Tools appear here when a plugin brings one.')).toBeInTheDocument();
+    expect(within(status).queryByRole('button')).toBeNull();
+  });
+
+  it('says the generic words and starts one session from the empty state command', async () => {
+    const { user } = mount({ open: true });
+    const status = within(screen.getByRole('tabpanel', { name: 'Terminal' })).getByRole('status');
+    expect(within(status).getByText('No sessions')).toBeInTheDocument();
+    expect(within(status).getByText('A session of this tool appears here when you start one.')).toBeInTheDocument();
+    await user.click(within(status).getByRole('button', { name: 'New shell' }));
+    expect(screen.getAllByRole('tab', { name: 'zsh' })).toHaveLength(1);
+    expect(status).not.toBeInTheDocument();
   });
 
   // Owner decision A20: sessions of the Logs tool start from a resource, never from the panel. Its owner words the empty state itself, says how a session arrives, and has no way to start one:
@@ -338,12 +349,12 @@ describe('the empty state of a tool', () => {
   it('says the words its owner gave it, and has no button and no `+` when the owner offers no way to start a session', async () => {
     const { user } = mount({ open: true, emptyOf: (tool) => (tool === 'logs' ? { title: 'No log sessions', hint: 'Open logs from a resource to follow them here.' } : undefined) });
     await user.click(tab('Logs'));
-    expect(screen.getByText('No log sessions')).toBeInTheDocument();
-    expect(screen.getByText('Open logs from a resource to follow them here.')).toBeInTheDocument();
+    const deck = within(screen.getByRole('tabpanel', { name: 'Logs' }));
+    const status = within(deck.getByRole('status'));
+    expect(status.getByText('No log sessions')).toBeInTheDocument();
+    expect(status.getByText('Open logs from a resource to follow them here.')).toBeInTheDocument();
     expect(screen.queryByText('No sessions')).not.toBeInTheDocument();
-    const deck = region().querySelector<HTMLElement>('[data-shell-part="panelDeck"]');
-    expect(deck).not.toBeNull();
-    expect(within(deck ?? region()).queryAllByRole('button')).toEqual([]);
+    expect(deck.queryAllByRole('button')).toEqual([]);
     expect(screen.queryByRole('button', { name: /^New / })).not.toBeInTheDocument();
   });
 

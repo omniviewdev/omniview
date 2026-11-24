@@ -105,10 +105,8 @@
     display: none;
   }
 
-  /* An empty state: a glyph, what is missing, how to get it, the one action. Centred in the body, 12 px of air (the mock's `.panel__empty`). The region is the size container, and the stack in it
-     is what the container query restyles. Under 112 px of room (a panel under 177 px high: the minimum is 120, which leaves 79 px under the header) the stack does not fit as a column, and the
-     mock's `justify-content: center` would cut both ends of it off, the top one out of reach of any scroll: the stack then lies in one row (the glyph, the words and the button side by side), which
-     takes 28 px, and wraps when the panel is narrow. The stack is centred by its `auto` margin while there is room and gives way when there is none, and the region scrolls. */
+  /* The empty region owns scrolling and 12 px of inset (the mock's `.panel__empty`). Auto margins centre the contents while they fit, then give way to scrolling. Under 112 px of room
+     (the 120 px minimum panel leaves 79 px under the header before insets), lay out the contents in a wrapping row. Centring an overflowing column instead would put its start out of reach. */
   .empty {
     display: flex;
     flex: 1 1 auto;
@@ -119,27 +117,15 @@
     overflow-x: hidden;
     overflow-y: auto;
     container-type: size;
-    color: var(--ov-fg-muted);
   }
 
-  .emptyStack {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--ov-spacing-12);
-    min-inline-size: 0;
+  .empty > [data-ov-part='empty-state'] {
     margin: auto;
-    text-align: center;
-  }
-
-  .emptyStack > p {
-    margin-block: 0;
   }
 
   @container (max-height: 111px) {
-    .emptyStack {
+    .empty > [data-ov-part='empty-state'] {
       flex-flow: row wrap;
-      justify-content: center;
       gap: var(--ov-spacing-8) var(--ov-spacing-12);
     }
   }

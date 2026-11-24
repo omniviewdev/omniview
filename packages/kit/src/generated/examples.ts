@@ -7,6 +7,7 @@ import * as collectionFooterModule from '../components/CollectionFooter/Collecti
 import * as dataTableModule from '../components/DataTable/DataTable.examples';
 import * as dataTableParityModule from '../components/DataTable/DataTable.parity.examples';
 import * as dataViewModule from '../components/DataView/DataView.examples';
+import * as emptyStateModule from '../components/EmptyState/EmptyState.examples';
 import * as fieldModule from '../components/Field/Field.examples';
 import * as hoverCardModule from '../components/HoverCard/HoverCard.examples';
 import * as iconModule from '../components/Icon/Icon.examples';
@@ -46,6 +47,7 @@ export const partExamples = {
   DataTable: dataTableModule,
   DataTableParity: dataTableParityModule,
   DataView: dataViewModule,
+  EmptyState: emptyStateModule,
   Field: fieldModule,
   HoverCard: hoverCardModule,
   Icon: iconModule,

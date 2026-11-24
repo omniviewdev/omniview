@@ -1,0 +1,34 @@
+@layer ov.components {
+  .root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-inline-size: 0;
+    color: var(--ov-fg-muted);
+    text-align: center;
+    white-space: normal;
+  }
+
+  .root[data-ov-compact] {
+    gap: var(--ov-spacing-12);
+  }
+
+  .icon {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+  }
+
+  .root:not([data-ov-compact]) > .icon {
+    inline-size: 40px;
+    block-size: 40px;
+    color: var(--ov-icon);
+  }
+
+  .root:not([data-ov-compact]) > [data-ov-part='hint'] {
+    max-inline-size: 64ch;
+  }
+}

@@ -230,6 +230,22 @@ export function EmptyBody(input: {
 }): JSX.Element;
 
 // @public
+export function EmptyState(input: EmptyStateProps): JSX.Element;
+
+// @public (undocumented)
+export type EmptyStateProps = {
+    readonly icon: IconName;
+    readonly title: string;
+    readonly hint: string;
+    readonly compact?: boolean | undefined;
+    readonly action?: {
+        readonly label: string;
+        readonly icon?: IconName | undefined;
+        readonly onSelect: () => void;
+    } | undefined;
+} & DataAttributes;
+
+// @public
 export function ErrorBody(input: {
     readonly title: string;
     readonly message?: string | undefined;

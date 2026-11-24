@@ -68,6 +68,8 @@ describe('an empty history', () => {
     const empty = dialog().querySelector('[data-notices-part="centreEmpty"]');
     expect(empty?.textContent).toContain('No notifications');
     expect(empty?.textContent).toContain('Messages from plugins and operations you start appear here.');
+    expect(within(dialog()).queryByRole('status')).toBeNull();
+    expect(empty?.hasAttribute('aria-live')).toBe(false);
     expect(within(dialog()).queryByRole('list')).toBeNull();
     expect(empty?.querySelector('button')).toBeNull();
   });
@@ -559,6 +561,7 @@ describe('the Filter menu and the mute of a source', () => {
     expect(empty?.textContent).toContain('No matching notifications');
     expect(empty?.textContent).toContain('Nothing matches the source you chose.');
     await m.user.click(within(empty as HTMLElement).getByRole('button', { name: 'Clear filters' }));
+    expect(empty).not.toBeInTheDocument();
     expect(titles()).toEqual(['Snapshot created']);
     expect(tool('Filter')).toHaveFocus();
   });

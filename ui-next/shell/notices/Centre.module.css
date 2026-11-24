@@ -1,6 +1,6 @@
 /* The notification centre (ch16 S80, S81, O4, O5; the mock's `.statuspopover` and `.panel-header` (shell-widgets.css, base.css), `.fbc*` (shell-feedback.css) and the centre row of `.notify` (shell-notify.css)). Host
    composition, so every rule sits in ov.shell, above the kit's parts. The shell's own metrics are the exceptions to the closed scales that the chapter names: the 420 px popover and its 480 px, the 40 px least height of a
-   row and the 44 px its title reserves on the inline end for the dismiss control (24 px, an 8 px gap and the 12 px inset), the 16 px glyph column, the 6 px unread mark, the 40 px glyph box of an empty state. Closed scales for
+   row and the 44 px its title reserves on the inline end for the dismiss control (24 px, an 8 px gap and the 12 px inset), the 16 px glyph column, and the 6 px unread mark. Closed scales for
    everything else: spacing 2 to 24, type 12 and 13 at weight 400 and 600, radius 4 and 8, --ov-* roles. No geometry transition and no motion: nothing here moves. Logical properties throughout, so a right-to-left text
    truncates and aligns at its own end. */
 @layer ov.shell {
@@ -173,44 +173,10 @@
     padding: var(--ov-spacing-8) var(--ov-spacing-12);
   }
 
-  /* An empty state, in one voice: the title says what is not there, one sentence says what appears here and when, and there may be the one button that leads out. */
-  .empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--ov-spacing-8);
-    box-sizing: border-box;
+  /* Place the kit's empty state at the top of the scroll region where the list would start. */
+  .scroll > [data-notices-part='centreEmpty'] {
     min-block-size: 96px;
     padding: var(--ov-spacing-24) var(--ov-spacing-12);
-    color: var(--ov-fg-muted);
-    text-align: center;
-    white-space: normal;
-  }
-
-  .bigicon {
-    display: grid;
-    flex-shrink: 0;
-    place-items: center;
-    inline-size: 40px;
-    block-size: 40px;
-    color: var(--ov-icon);
-  }
-
-  .emptyTitle {
-    margin: 0;
-    color: var(--ov-fg);
-    font-size: var(--ov-fs-13);
-    font-weight: 600;
-    line-height: var(--ov-lh-16);
-  }
-
-  .emptyHint {
-    max-inline-size: 64ch;
-    margin: 0;
-    font-size: var(--ov-fs-12);
-    font-weight: 400;
-    line-height: var(--ov-lh-16);
   }
 
   /* A row: the title is one button across it, 40 px least. The kit's buttons in it are the kit's. */

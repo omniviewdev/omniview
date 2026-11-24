@@ -1,0 +1,62 @@
+[
+  {
+    "engine": "webkit",
+    "width": 1280,
+    "height": 800,
+    "examples": [
+      "EmptyState/CompactWithAction",
+      "EmptyState/NoAction"
+    ],
+    "elements": [
+      15,
+      9
+    ],
+    "mutations": 0,
+    "frameP95Ms": 18
+  },
+  {
+    "engine": "webkit",
+    "width": 1440,
+    "height": 900,
+    "examples": [
+      "EmptyState/CompactWithAction",
+      "EmptyState/NoAction"
+    ],
+    "elements": [
+      15,
+      9
+    ],
+    "mutations": 0,
+    "frameP95Ms": 17
+  },
+  {
+    "engine": "chromium",
+    "width": 1280,
+    "height": 800,
+    "examples": [
+      "EmptyState/CompactWithAction",
+      "EmptyState/NoAction"
+    ],
+    "elements": [
+      15,
+      9
+    ],
+    "mutations": 0,
+    "frameP95Ms": 16.700000000000045
+  },
+  {
+    "engine": "chromium",
+    "width": 1440,
+    "height": 900,
+    "examples": [
+      "EmptyState/CompactWithAction",
+      "EmptyState/NoAction"
+    ],
+    "elements": [
+      15,
+      9
+    ],
+    "mutations": 0,
+    "frameP95Ms": 16.799999999999955
+  }
+]

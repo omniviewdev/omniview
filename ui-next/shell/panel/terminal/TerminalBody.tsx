@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { platformOf } from '../../core/chords';
 import type { Session } from '../../core/panel';
-import { EmptyState } from '../EmptyState';
 import { copyToClipboard } from '../logs/clipboard';
+import { PanelEmpty } from '../PanelEmpty';
 import { toggleChordText } from '../words';
 import { readAppearance, SWATCH_ROLES } from './appearance';
 import type { EngineLoader } from './engine';
@@ -102,7 +102,7 @@ type TerminalBodyProps = {
 export function TerminalBody({ sessions, session, visible, load, screenReader, name }: TerminalBodyProps) {
   const feed = sessions.feedOf(session.id);
   if (feed === undefined) {
-    return <EmptyState icon={TERMINAL_ICON} title={TERMINAL_GONE.title} hint={TERMINAL_GONE.hint} />;
+    return <PanelEmpty icon={TERMINAL_ICON} title={TERMINAL_GONE.title} hint={TERMINAL_GONE.hint} />;
   }
 
   return <TerminalView sessions={sessions} session={session} feed={feed} visible={visible} load={load ?? loadXtermEngine} screenReader={screenReader} name={name} />;
