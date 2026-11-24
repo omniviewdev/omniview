@@ -147,6 +147,7 @@ func NewController(
 		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
 		creating:         make(map[terminal.Owner]map[*createGuard]struct{}),
+		beforeSend:       nil,
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -171,7 +172,10 @@ type controller struct {
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
 	// creating holds, for each window, the sessions of plugins being made for it (ownership.go: createGuard).
-	creating   map[terminal.Owner]map[*createGuard]struct{}
+	creating map[terminal.Owner]map[*createGuard]struct{}
+	// beforeSend is set by a test, and by nothing else: it runs in sendHeld, holding c.mu, once the window is known to hold the session
+	// and before the input is offered to the plugin, so that a test can place a claim after the window was checked and before the input is sent.
+	beforeSend func(sessionID string)
 	inChans    map[string]chan exec.StreamInput
 	handlerMap map[string]map[string]exec.Handler
 	streams    map[string]execProviderStream
@@ -933,6 +937,9 @@ func (c *controller) sendHeld(owner terminal.Owner, sessionID string, input exec
 	ch := c.inChans[index.pluginID]
 	if ch == nil {
 		return false, apperror.SessionNotFound(sessionID)
+	}
+	if c.beforeSend != nil {
+		c.beforeSend(sessionID)
 	}
 	timer := time.NewTimer(pluginInputSlice)
 	defer timer.Stop()

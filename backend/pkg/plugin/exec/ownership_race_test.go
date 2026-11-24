@@ -546,13 +546,12 @@ func TestInputThatThePluginHasNotTakenWhenASessionChangesHandsIsRefusedAndNeverS
 	fx.make("wA", "moving")
 	require.NoError(t, fx.ctrl.OfferSession("wA", "moving"))
 
-	started := make(chan struct{})
+	inside := make(chan struct{})
+	var once sync.Once
+	fx.ctrl.beforeSend = func(string) { once.Do(func() { close(inside) }) }
 	typed := make(chan error, 1)
-	go func() {
-		close(started)
-		typed <- fx.ctrl.WriteSession("wA", "moving", []byte("A1"))
-	}()
-	<-started
+	go func() { typed <- fx.ctrl.WriteSession("wA", "moving", []byte("A1")) }()
+	<-inside // A has been checked, and the plugin does not take its input: the claim lands after the check
 	_, _, err := fx.ctrl.AttachSession("wB", "moving")
 	require.NoError(t, err, "B claims the session that A offered")
 
