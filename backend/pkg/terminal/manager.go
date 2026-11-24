@@ -96,7 +96,10 @@ type Manager struct {
 	tombs []*tombstone
 	// tombTimer waits for the tombstone that expires first, to free it: nil when there is none, and once the host
 	// shuts down.
-	tombTimer *time.Timer
+	tombTimer timer
+	// clock is the time that the leases and the tombstones are kept in: the wall clock, unless a test sets another
+	// before it starts a terminal (clock.go).
+	clock clock
 }
 
 // endedMemory is how many ended sessions' ids the manager remembers.
@@ -121,7 +124,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, offsets: offsets, detachments: detachments,
-		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil,
+		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
 	}
 	go m.forwardSignals()
 	go m.shutdownWhenDone()
@@ -198,9 +201,11 @@ type session struct {
 	owner      Owner
 	detached   bool
 	leaseGen   uint64
-	leaseTimer *time.Timer
+	leaseTimer timer
 	leaseEnd   time.Time
 	leaseLen   time.Duration
+	// clock is the manager's: a lease runs on it.
+	clock clock
 	// attachment numbers the attachments of the terminal: 0 for the window that opened it, and one more for
 	// every attach (Attached.Attachment).
 	attachment uint64
@@ -505,7 +510,7 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	}
 	s := &session{
 		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params),
-		pageKey: opts.PageKey, lease: lease,
+		pageKey: opts.PageKey, lease: lease, clock: m.clock,
 		info: Session{
 			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
 			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: defaultLimits(), Environment: environmentOf(m.probe()),
@@ -907,7 +912,7 @@ func (m *Manager) Shutdown() {
 	m.closing.Store(true)
 	// The host is quitting: no page comes back for the end of a terminal, and no timer is left to free it.
 	m.tombs = nil
-	m.armTombstoneTimerLocked(time.Now())
+	m.armTombstoneTimerLocked(m.clock.Now())
 	m.mu.Unlock()
 	m.awaitLaunches()
 	m.mu.RLock()

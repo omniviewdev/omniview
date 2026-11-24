@@ -185,8 +185,8 @@ func (s *session) detachLocked(lease time.Duration, by DetachedBy) (time.Time, *
 	s.leaseGen++
 	gen := s.leaseGen
 	s.leaseLen = lease
-	s.leaseEnd = time.Now().Add(lease)
-	s.leaseTimer = time.AfterFunc(lease, func() { s.expire(gen) })
+	s.leaseEnd = s.clock.Now().Add(lease)
+	s.leaseTimer = s.clock.AfterFunc(lease, func() { s.expire(gen) })
 	return s.leaseEnd, left
 }
 
@@ -500,7 +500,7 @@ func (m *Manager) List(caller Owner, key string) []Listed {
 			out = append(out, listed)
 		}
 	}
-	now := time.Now()
+	now := m.clock.Now()
 	for _, t := range tombs {
 		if t.holdsKey(key) && now.Before(t.until) {
 			out = append(out, t.listed())
@@ -585,7 +585,7 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	s.outMu.Lock()
 	frozen := s.ring.freeze()
 	s.outMu.Unlock()
-	now := time.Now()
+	now := m.clock.Now()
 	until, attachment := s.tombstoneTerms(now)
 	t := &tombstone{
 		id: s.id, key: s.pageKey, info: s.info, ring: frozen, end: end, until: until, attachment: attachment,
@@ -634,14 +634,14 @@ func (m *Manager) armTombstoneTimerLocked(now time.Time) {
 			first = t.until
 		}
 	}
-	m.tombTimer = time.AfterFunc(max(first.Sub(now), 0), m.expireTombstones)
+	m.tombTimer = m.clock.AfterFunc(max(first.Sub(now), 0), m.expireTombstones)
 }
 
 // expireTombstones is what the timer does: free the tombstones whose lease is over, and wait for the next.
 func (m *Manager) expireTombstones() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := time.Now()
+	now := m.clock.Now()
 	m.pruneTombstonesLocked(now)
 	m.armTombstoneTimerLocked(now)
 }
@@ -653,7 +653,7 @@ func (m *Manager) find(id string) (*session, *tombstone) {
 	if s := m.sessions[id]; s != nil {
 		return s, nil
 	}
-	now := time.Now()
+	now := m.clock.Now()
 	for _, t := range m.tombs {
 		if t.id == id && now.Before(t.until) {
 			return nil, t

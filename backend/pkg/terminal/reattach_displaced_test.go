@@ -174,32 +174,40 @@ func TestAnAttachDoesNotAnswerWhileAReadItsReplayHoldsIsOnItsWayToTheSink(t *tes
 }
 
 // A tombstone is freed when its lease is over, by a timer, not by the next terminal that ends; the one timer is
-// the manager's own, waits for the tombstone that expires first, and does not outlive the manager.
+// the manager's own, waits for the tombstone that expires first, and does not outlive the manager. Time is the
+// test's: a lease of seconds that the test waits for in real time is overtaken by a busy machine, and the shells here
+// end by themselves, because a shell that ends when the test writes to it makes the answer to that write race with
+// its end.
 func TestTombstonesThatExpiredAreFreedByATimerAndTheTimerStopsWithTheManager(t *testing.T) {
 	m, sink := newPageManager(t)
-	short := m.startKeyed(t, `stty -echo; printf 'up\n'; read x; exit 0`, "w1", Options{LeaseMs: 2000})
-	sink.waitFor(t, short.ID, "up\r\n")
-	require.NoError(t, m.Write(short.ID, 0, []byte("go\n")))
+	clock := withFakeClock(m)
+
+	// The end is kept before its CLOSE goes out (finish), so there is nothing to wait for after the CLOSE.
+	short := m.startKeyed(t, `exit 0`, "w1", Options{LeaseMs: 2000})
 	sink.waitEnd(t, short.ID)
-	require.Eventually(t, func() bool { return m.tombstoneCount() == 1 }, 10*time.Second, 5*time.Millisecond,
-		"the shell ended by itself and left its end")
+	assert.Equal(t, 1, m.tombstoneCount(), "the shell ended by itself and left its end")
+	assert.Equal(t, 1, clock.pending(), "the manager's one timer waits for it")
+
+	// Nothing else happens: no list, no attach, no other terminal ends. Time passes, and the timer frees it.
+	clock.Advance(2*time.Second - time.Millisecond)
+	assert.Equal(t, 1, m.tombstoneCount(), "not before its lease is over")
 	assert.True(t, m.tombstoneTimerArmed())
-
-	// Nothing else happens: no list, no attach, no other terminal ends.
-	require.Eventually(t, func() bool { return m.tombstoneCount() == 0 }, 10*time.Second, 20*time.Millisecond,
-		"the tombstone is freed when its lease is over")
+	clock.Advance(time.Millisecond)
+	assert.Zero(t, m.tombstoneCount(), "freed when its lease is over")
 	assert.False(t, m.tombstoneTimerArmed(), "and no timer waits for what is gone")
+	assert.Zero(t, clock.pending())
 
-	long := m.startKeyed(t, `stty -echo; printf 'up\n'; read x; exit 0`, "w2", Options{LeaseMs: 60000})
-	sink.waitFor(t, long.ID, "up\r\n")
-	require.NoError(t, m.Write(long.ID, 0, []byte("go\n")))
+	long := m.startKeyed(t, `exit 0`, "w2", Options{LeaseMs: 60000})
 	sink.waitEnd(t, long.ID)
-	require.Eventually(t, func() bool { return m.tombstoneCount() == 1 }, 10*time.Second, 5*time.Millisecond)
+	assert.Equal(t, 1, m.tombstoneCount())
 	assert.True(t, m.tombstoneTimerArmed(), "the timer waits for the tombstone of a lease of a minute")
+	clock.Advance(59*time.Second + 999*time.Millisecond)
+	assert.Equal(t, 1, m.tombstoneCount(), "and a lease of a minute is a minute")
 
 	m.Shutdown()
 	assert.False(t, m.tombstoneTimerArmed(), "the shutdown stops it")
 	assert.Zero(t, m.tombstoneCount(), "and the host that quits keeps nothing")
+	assert.Zero(t, clock.pending(), "and no timer is left")
 }
 
 // The cleanup of a create that failed because its window was retired meanwhile ends the terminal that create made

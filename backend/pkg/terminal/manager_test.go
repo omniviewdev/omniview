@@ -212,22 +212,37 @@ func TestStartRefusesAnAbsurdSizeBeforeAnythingStarts(t *testing.T) {
 	require.NoError(t, err, "the largest size is a size")
 }
 
+// The size the shell sees is what `stty size` prints: "rows cols" and a line end. It is told from what the terminal
+// echoes of what is typed, and from the shell's prompt, by that shape and by a marker that the shell computes after it.
+// The echo of a line that was typed ahead of the shell comes before its prompt on a busy machine and after it on an
+// idle one, so a test that looks for the answer at the start of a line finds the second answer only on the idle one
+// (seen in CI: the transcript was "stty size\r\n# 33 117\r\n").
+var sizeAnswer = regexp.MustCompile(`(\d+) (\d+)\r\n`)
+
 func TestResizeAppliesInOrderAndRefusesWhatIsNotASize(t *testing.T) {
 	m, rec := newTestManager(t)
 	info, err := m.Start(Options{Command: []string{sh(t)}, Cols: 80, Rows: 24}, nil)
 	require.NoError(t, err)
-	require.NoError(t, m.Write(info.ID, 0, []byte("echo ready-$((1000+12))\n")))
-	rec.waitFor(t, info.ID, "ready-1012")
+	say := func(line, marker string) string {
+		t.Helper()
+		require.NoError(t, m.Write(info.ID, 0, []byte(line+"\n")))
+		return rec.waitFor(t, info.ID, marker)
+	}
+	answers := func(text string) []string {
+		var out []string
+		for _, found := range sizeAnswer.FindAllStringSubmatch(text, -1) {
+			out = append(out, found[1]+" "+found[2])
+		}
+		return out
+	}
+	say("echo ready-$((1000+12))", "ready-1012")
 	require.NoError(t, m.Resize(info.ID, 0, 33, 117))
-	require.NoError(t, m.Write(info.ID, 0, []byte("stty size\n")))
-	rec.waitFor(t, info.ID, "\n33 117")
+	assert.Equal(t, []string{"33 117"}, answers(say("stty size; echo end-$((40+1))", "end-41")), "the shell sees the size that was asked for")
 	for _, bad := range [][2]int{{0, 80}, {24, 0}, {-1, 80}, {MaxDimension + 1, 80}, {24, MaxDimension + 1}} {
 		resizeErr := m.Resize(info.ID, 0, bad[0], bad[1])
 		require.ErrorIs(t, resizeErr, ErrInvalid, "rows %d cols %d", bad[0], bad[1])
 	}
-	require.NoError(t, m.Write(info.ID, 0, []byte("stty size\n")))
-	require.Eventually(t, func() bool { return strings.Count(rec.text(info.ID), "\n33 117") >= 2 }, 20*time.Second, 5*time.Millisecond,
-		"a refused resize leaves the size as it was")
+	assert.Equal(t, []string{"33 117", "33 117"}, answers(say("stty size; echo end-$((40+2))", "end-42")), "a refused resize leaves the size as it was")
 }
 
 func openDescriptors(t *testing.T) int {

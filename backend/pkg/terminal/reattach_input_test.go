@@ -49,7 +49,8 @@ func TestAnAttachAndAListSayWhichInputSequenceNumberTheTerminalTakesNext(t *test
 	// A call ahead of the number waits for its predecessors: the terminal still takes the lower number next.
 	ahead := make(chan error, 1)
 	go func() { ahead <- m.Write(info.ID, 7, []byte("g\n")) }()
-	time.Sleep(200 * time.Millisecond)
+	queued := m.session(t, info.ID)
+	require.Eventually(t, func() bool { return queued.heldOps() == 1 }, 20*time.Second, 5*time.Millisecond, "the call ahead of its number is held")
 	assert.Equal(t, uint64(5), m.List("w2", "")[0].NextInputSeq, "a call that waits has not been taken")
 	require.NoError(t, m.Write(info.ID, 5, []byte("e\n")))
 	require.NoError(t, m.Write(info.ID, 6, []byte("f\n")))
@@ -58,6 +59,13 @@ func TestAnAttachAndAListSayWhichInputSequenceNumberTheTerminalTakesNext(t *test
 
 	sink.waitFor(t, info.ID, "a\r\n")
 	sink.waitFor(t, info.ID, "g\r\n")
+}
+
+// heldOps is how many sequenced calls wait in the terminal's input queue for a predecessor that has not come.
+func (s *session) heldOps() int {
+	s.queue.mu.Lock()
+	defer s.queue.mu.Unlock()
+	return len(s.queue.held)
 }
 
 // A terminal that ended while no page was attached takes no input, and says so with 0, listed and attached.
