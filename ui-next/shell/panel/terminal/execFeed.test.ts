@@ -854,7 +854,7 @@ describe('a stream that dropped', () => {
       expect(readText(r.feed)).toBe('z');
     });
 
-    it('credits the host for the bytes it dropped unread, and for no byte of the replay, and not twice for what the reader already had', async () => {
+    it('credits the host for the bytes it dropped unread and for the replay as it arrives, and not twice for what the reader already had', async () => {
       const r = await running();
       r.stream().output(0, 'abcd');
       r.feed.read();
@@ -870,7 +870,7 @@ describe('a stream that dropped', () => {
       // The reader parsed the four bytes of the old stream it had been given, and now parses what the new stream delivered.
       r.feed.ack(4);
       r.feed.ack(2);
-      expect(again.acks()).toEqual([0, 2]);
+      expect(again.acks()).toEqual([0, 2, 2]);
     });
   });
 
@@ -909,7 +909,7 @@ describe('a stream that drops in the middle of the replay of a terminal that had
     r.stream().ready({ start: 0, end: 6, ended: { reason: 'exited', exit_code: 4 } });
     r.stream().output(0, 'abc');
     r.stream().drop();
-    expect(r.feed.getSnapshot().state).toBe('starting');
+    expect(r.feed.getSnapshot().state).toBe('running');
     expect(reconnect(r).fromOffset).toBeUndefined();
     r.stream().ready({ start: 0, end: 6, ended: { reason: 'exited', exit_code: 4 } });
     r.stream().output(0, 'abcdef');
