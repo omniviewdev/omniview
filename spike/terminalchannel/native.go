@@ -25,9 +25,14 @@ func run(app *application.App, p *probe, query string) error {
 	if os.Getenv("PROBE_ACTIVE") != "" {
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 			p.win.Show()
+			if os.Getenv("PROBE_TOP") != "" {
+				p.win.SetSize(900, 600)
+				p.win.SetAlwaysOnTop(true)
+			}
 			p.win.Focus()
 		})
 	}
+	p.keepAlive()
 	return app.Run()
 }
 

@@ -1,0 +1,12 @@
+B-110 re-check, 2026-11-24, macOS 27.0.1, load 8 to 9. The reviewer's own driver (followup-e457/js/fast.mjs) and Go reader (wsclient): an UNKEYED terminal (stdout events), no acks, one Go websocket reader at /wails/events.
+== the REAL host, server build of origin/main b015ceb5 (go build -tags production,server .), 30 s:
+5s rss=1577 heapAlloc=1454 | rx 86.6 MiB/s total 446.8 MiB
+10s rss=3413 heapAlloc=2138 | rx 94.7 MiB/s total 904.4 MiB
+15s rss=4880 heapAlloc=4604 | rx 73.2 MiB/s total 1324.5 MiB
+20s rss=6308 heapAlloc=4314 | rx 79.3 MiB/s total 1724.5 MiB
+25s rss=7750 heapAlloc=5274 | rx 76.0 MiB/s total 2118.5 MiB
+30s rss=9523 heapAlloc=7882 | rx 83.0 MiB/s total 2524.2 MiB      (rss start 67 MiB)
+== the SAME client against the PROBE's server build (same exec controller and wrapper, same events path, no window), 25 s:
+5s rss=76 | rx 82.0 total 358 ; 10s rss=77 | total 788 ; 15s rss=77 | total 1216 ; 20s rss=77 | total 1653 ; 25s rss=78 | total 2089 MiB
+== heap profile of the real host at 10 s (rss 3,096 MiB): 1,321 of 1,351 MiB in use = fmt.Sprintf, cum 1,329 MiB under
+   mailbox.(*Mailbox).drain <- (*WebviewWindow).DispatchWailsEvent <- (*EventIPCTransport).DispatchWailsEvent <- (*EventManager).dispatch

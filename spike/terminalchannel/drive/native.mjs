@@ -22,13 +22,25 @@ host.onLine((l) => { if (l.startsWith('REPORT ')) reports.push(JSON.parse(l.slic
 let exited = false; host.child.on('exit', () => { exited = true; });
 const t0 = Date.now();
 const budget = (seconds + Number(args.slack || 60)) * 1000;
-while (!exited && Date.now() - t0 < budget) await sleep(500);
+const { rssOf, webkitServicePids } = await import('./lib.mjs');
+const driverSamples = [];
+const before = webkitServicePids();
+let nextSample = 0;
+while (!exited && Date.now() - t0 < budget && !(reports.length && Date.now() - t0 > 1000)) {
+  await sleep(500);
+  if (Date.now() - t0 >= nextSample) {
+    nextSample += 5000;
+    const procs = psAll();
+    const wk = procs.filter((p) => !before.has(p.pid) && /WebKit\.(WebContent|Networking|GPU)/.test(p.command));
+    driverSamples.push({ t: +((Date.now() - t0) / 1000).toFixed(1), hostRSS: +rssOf(procs.filter((p) => p.pid === host.child.pid)).toFixed(1), webkitRSS: +rssOf(wk).toFixed(1) });
+  }
+}
 const kids = exited ? [] : descendants(host.child.pid).map((p) => p.pid);
 if (!exited) { host.child.kill('SIGTERM'); await sleep(2500); if (host.child.exitCode === null) host.child.kill('SIGKILL'); }
 await sleep(500);
 const alive = kids.filter((pid) => { try { process.kill(pid, 0); return true; } catch { return false; } });
 for (const pid of alive) { try { process.kill(pid, 'SIGKILL'); } catch (_) { /* gone */ } }
-const result = { args: { transport, scenario, state, seconds, ack, build: 'native' }, report: reports[0] || null, hostSamples, notes, leftover: alive, tail: host.lines.slice(-4) };
+const result = { args: { transport, scenario, state, seconds, ack, build: 'native' }, report: reports[0] || null, hostSamples, driverSamples, notes, leftover: alive, tail: host.lines.slice(-4) };
 const text = JSON.stringify(result);
 if (outFile) fs.appendFileSync(outFile, text + '\n'); else console.log(text);
 process.exit(result.report ? 0 : 3);

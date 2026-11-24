@@ -23,6 +23,7 @@ const PROBE = 'main.Probe.';
 const EXEC = 'github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.';
 const call = (name, ...args) => Call.ByName(name, ...args);
 const note = (m) => { if (q.get('notes') === '0') return; call(PROBE + 'Note', m).catch(() => {}); };
+setInterval(() => note('vis ' + document.visibilityState + ' hidden=' + document.hidden + ' focus=' + document.hasFocus() + ' t=' + Math.round(performance.now())), 2000);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 const unb64 = (s) => { const bin = atob(s); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };

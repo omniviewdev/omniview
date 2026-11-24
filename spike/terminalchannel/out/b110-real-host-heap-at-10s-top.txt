@@ -1,0 +1,23 @@
+File: Omniview-server
+Type: inuse_space
+Time: 2026-11-24 08:23:37 CST
+Showing nodes accounting for 1340.65MB, 99.20% of 1351.42MB total
+Dropped 63 nodes (cum <= 6.76MB)
+      flat  flat%   sum%        cum   cum%
+ 1321.49MB 97.78% 97.78%  1321.49MB 97.78%  fmt.Sprintf
+   12.24MB  0.91% 98.69%    12.24MB  0.91%  github.com/go-enry/go-enry/v2/data.map.init.6
+    6.92MB  0.51% 99.20%     6.92MB  0.51%  github.com/wailsapp/wails/v3/pkg/application.(*WebviewWindow).ExecJS
+         0     0% 99.20%    13.74MB  1.02%  github.com/go-enry/go-enry/v2/data.init
+         0     0% 99.20%  1329.41MB 98.37%  github.com/wailsapp/wails/v3/internal/mailbox.(*Mailbox[go.shape.*uint8]).drain
+         0     0% 99.20%     6.92MB  0.51%  github.com/wailsapp/wails/v3/pkg/application.(*App).dispatchOnMainThread
+         0     0% 99.20%  1329.41MB 98.37%  github.com/wailsapp/wails/v3/pkg/application.(*EventIPCTransport).DispatchWailsEvent
+         0     0% 99.20%  1329.41MB 98.37%  github.com/wailsapp/wails/v3/pkg/application.(*EventManager).dispatch
+         0     0% 99.20%  1329.41MB 98.37%  github.com/wailsapp/wails/v3/pkg/application.(*WebviewWindow).DispatchWailsEvent
+         0     0% 99.20%     6.92MB  0.51%  github.com/wailsapp/wails/v3/pkg/application.(*WebviewWindow).drainEventQueue
+         0     0% 99.20%     6.92MB  0.51%  github.com/wailsapp/wails/v3/pkg/application.(*WebviewWindow).enqueueEventJS
+         0     0% 99.20%     6.92MB  0.51%  github.com/wailsapp/wails/v3/pkg/application.InvokeAsync (inline)
+         0     0% 99.20%     6.92MB  0.51%  github.com/wailsapp/wails/v3/pkg/application.InvokeAsync.func1
+         0     0% 99.20%  1329.41MB 98.37%  github.com/wailsapp/wails/v3/pkg/application.NewWailsEventProcessor.func1
+         0     0% 99.20%    14.24MB  1.05%  runtime.doInit (inline)
+         0     0% 99.20%    14.24MB  1.05%  runtime.doInit1
+         0     0% 99.20%    16.74MB  1.24%  runtime.main
