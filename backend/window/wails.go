@@ -167,6 +167,11 @@ type wailsWindow struct {
 }
 
 func (w wailsWindow) Activate() {
+	if !runsNativeWindows {
+		// Show runs a window that has not run, and Wails then queues every
+		// event for it (B-110).
+		return
+	}
 	if w.window.IsMinimised() {
 		w.window.UnMinimise()
 	}

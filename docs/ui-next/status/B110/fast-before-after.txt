@@ -1,0 +1,26 @@
+-rwxr-xr-x  1 joshuapare  staff  68994098 Nov 24 09:24 /tmp/b110/Omniview-server-fixed
+-rwxr-xr-x  1 joshuapare  staff  68977490 Nov 24 09:24 /tmp/b110/Omniview-server-main
+ 9:24  up 14 days,  1:51, 1 user, load averages: 23.17 39.47 27.82
+=== fast.mjs, real host server build: main (reviewer's Go reader, no acks, unkeyed terminal), 30 s
+5s rss=1880 heapAlloc=1742 nextGC=1869 | c1:rx 69.8 MiB/s total 408.5 MiB  | loopback 0 MB/s out
+10s rss=3641 heapAlloc=2482 nextGC=4277 | c1:rx 99.2 MiB/s total 986.2 MiB  | loopback 0 MB/s out
+15s rss=5176 heapAlloc=4886 nextGC=5259 | c1:rx 80.2 MiB/s total 1411.5 MiB  | loopback 0 MB/s out
+20s rss=6708 heapAlloc=5879 nextGC=7959 | c1:rx 72.2 MiB/s total 1775.5 MiB  | loopback 0 MB/s out
+25s rss=6984 heapAlloc=6618 nextGC=7959 | c1:rx 70.3 MiB/s total 2053.5 MiB  | loopback 0 MB/s out
+30s rss=8271 heapAlloc=7358 nextGC=9791 | c1:rx 83.4 MiB/s total 2440.5 MiB  | loopback 0 MB/s out
+rss start 66 descendants left 0
+host log lines mentioning websocket: 0
+write-error lines: 0
+ 9:24  up 14 days,  1:52, 1 user, load averages: 17.94 36.11 27.13
+=== fast.mjs, real host server build: fixed (reviewer's Go reader, no acks, unkeyed terminal), 30 s
+5s rss=95 heapAlloc=23 nextGC=39 | c1:rx 86.6 MiB/s total 341.3 MiB  | loopback 0 MB/s out
+10s rss=95 heapAlloc=33 nextGC=40 | c1:rx 84.5 MiB/s total 772.3 MiB  | loopback 0 MB/s out
+15s rss=96 heapAlloc=21 nextGC=40 | c1:rx 84.9 MiB/s total 1198.8 MiB  | loopback 0 MB/s out
+20s rss=96 heapAlloc=29 nextGC=40 | c1:rx 83.0 MiB/s total 1630.6 MiB  | loopback 0 MB/s out
+25s rss=96 heapAlloc=28 nextGC=40 | c1:rx 87.6 MiB/s total 2000.5 MiB  | loopback 0 MB/s out
+30s rss=96 heapAlloc=26 nextGC=40 | c1:rx 88.3 MiB/s total 2534.4 MiB  | loopback 0 MB/s out
+rss start 68 descendants left 0
+host log lines mentioning websocket: 0
+write-error lines: 0
+ 9:25  up 14 days,  1:53, 1 user, load averages: 13.52 32.47 26.25
+B110-E2E-DONE

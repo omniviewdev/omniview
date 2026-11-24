@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -75,44 +77,45 @@ func liveHeap() uint64 {
 	return stats.HeapAlloc
 }
 
-// TestEventsAreNotRetainedByTheWindowsOfTheServerBuild creates the windows the
-// way the host does (the main window before Run, a window of the window
-// service while the application runs), asks them to show, emits events and
-// reads the heap once the last event has passed every transport.
-func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
-	port := loopbackPort(t)
-	app := application.New(application.Options{
-		Name:   "omniview-b110",
-		Server: application.ServerOptions{Host: "127.0.0.1", Port: port},
-		Assets: application.AssetOptions{Handler: http.NotFoundHandler()},
-	})
-	template := application.WebviewWindowOptions{Width: 800, Height: 600}
-	mainOptions := template
-	mainOptions.Name = MainWindowName
-	mainWindow := NewWebviewWindow(app, mainOptions)
+// A process has one Wails application, and it ends with the process.
+var (
+	serverApplicationOnce sync.Once
+	serverApplication     *application.App
+	serverApplicationPort int
+	serverMainWindow      *application.WebviewWindow
+	serverSecondWindows   atomic.Int32
+)
 
-	stopped := make(chan error, 1)
-	go func() { stopped <- app.Run() }()
-	t.Cleanup(func() {
-		app.Quit()
-		select {
-		case <-stopped:
-		case <-time.After(30 * time.Second):
-			t.Error("the application did not stop")
-		}
-	})
-	waitServing(t, port)
+var serverWindowTemplate = application.WebviewWindowOptions{Width: 800, Height: 600}
 
-	host := &wailsWindowHost{app: app, template: template}
-	second := host.createWindow(windowSpec{Name: "second", Kind: KindWorkspace, Width: 800, Height: 600}, inertSink{})
-	wailsWindow{window: mainWindow}.Activate()
-	second.Activate()
-	for _, name := range []string{MainWindowName, "second"} {
-		if _, found := app.Window.GetByName(name); !found {
-			t.Fatalf("window %q is not in the registry of the application", name)
-		}
+// theServerApplication starts the application the way main.go does: the main
+// window is created before Run and is the first window of the registry.
+func theServerApplication(t *testing.T) (*application.App, int) {
+	t.Helper()
+	serverApplicationOnce.Do(func() {
+		port := loopbackPort(t)
+		app := application.New(application.Options{
+			Name:   "omniview-b110",
+			Server: application.ServerOptions{Host: "127.0.0.1", Port: port},
+			Assets: application.AssetOptions{Handler: http.NotFoundHandler()},
+		})
+		mainOptions := serverWindowTemplate
+		mainOptions.Name = MainWindowName
+		serverMainWindow = NewWebviewWindow(app, mainOptions)
+		go func() { _ = app.Run() }()
+		waitServing(t, port)
+		serverApplication, serverApplicationPort = app, port
+	})
+	if serverApplication == nil {
+		t.Fatal("the application did not start in an earlier test")
 	}
+	return serverApplication, serverApplicationPort
+}
 
+// eventsKept emits count events of size bytes, waits until the last one has
+// passed every transport, and returns how much the live heap grew.
+func eventsKept(t *testing.T, app *application.App, port, count, size int) int64 {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/wails/events", port), nil)
@@ -122,9 +125,9 @@ func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
 	defer conn.CloseNow()
 	conn.SetReadLimit(1 << 20)
 
-	payload := strings.Repeat("x", b110EventBytes)
+	payload := strings.Repeat("x", size)
 	before := liveHeap()
-	for range b110Events {
+	for range count {
 		app.Event.Emit("b110.payload", payload)
 	}
 	app.Event.Emit("b110.done", "done")
@@ -140,9 +143,28 @@ func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
 			break
 		}
 	}
-	after := liveHeap()
+	return int64(liveHeap()) - int64(before)
+}
 
-	if grown := int64(after) - int64(before); grown > b110HeapBound {
+// TestEventsAreNotRetainedByTheWindowsOfTheServerBuild creates the windows the
+// way the host does (the main window before Run, a window of the window
+// service while the application runs), asks them to show, emits events and
+// reads the heap once the last event has passed every transport.
+func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
+	app, port := theServerApplication(t)
+
+	host := &wailsWindowHost{app: app, template: serverWindowTemplate}
+	name := fmt.Sprintf("second-%d", serverSecondWindows.Add(1))
+	second := host.createWindow(windowSpec{Name: name, Kind: KindWorkspace, Width: 800, Height: 600}, inertSink{})
+	wailsWindow{window: serverMainWindow}.Activate()
+	second.Activate()
+	for _, registered := range []string{MainWindowName, name} {
+		if _, found := app.Window.GetByName(registered); !found {
+			t.Fatalf("window %q is not in the registry of the application", registered)
+		}
+	}
+
+	if grown := eventsKept(t, app, port, b110Events, b110EventBytes); grown > b110HeapBound {
 		t.Fatalf("the heap grew by %d MiB after %d events of %d KiB: a window of the server build keeps the events it was given (bound %d MiB)",
 			grown>>20, b110Events, b110EventBytes>>10, b110HeapBound>>20)
 	}
