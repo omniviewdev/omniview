@@ -5,6 +5,7 @@ import {
   createLogStreams,
   createTerminals,
   createPanelStore,
+  createPorts,
   createRailChoice,
   createSettingsControl,
   createTabsStore,
@@ -17,6 +18,9 @@ import {
   LogsBody,
   normaliseRoute,
   platformOf,
+  PORTS_TOOL,
+  PORTS_TOOL_ID,
+  revealPortsTool,
   TERMINAL_TOOL,
   TERMINAL_TOOL_ID,
   Shell,
@@ -29,6 +33,8 @@ import {
   type PanelBindings,
   type PanelSession,
   type PanelStore,
+  type Ports,
+  type PortsDeps,
   type RailChoice,
   type Route,
   type SettingsControl,
@@ -63,6 +69,9 @@ import { createHostPalette, type HostPalette } from './palette';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
 import { panelHostsOf } from './panelHost';
 import { attachPanelTools, badgesOf, cancelFailed, resolverOf, subjectOpener } from './panelTools';
+import { openExternal } from './openExternal';
+import { portNamesOf } from './portNames';
+import type { PortForwardNetwork, PortForwarding } from './portForward';
 import { useGuardedDefinition, useGuardedSource } from './pageFailures';
 import { pageMemoryOf } from './pageMemory';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -124,6 +133,16 @@ export type PluginHostProps = {
    * asks the host to cancel a task and keeps that a record was read. The screen gives it the runtime provider's records. Absent: no plugin reports anything, and both tools list only what the window itself knows.
    */
   readonly activity?: ActivityFeed | undefined;
+  /**
+   * How the window reaches the host's networker for a page's port forward, `ctx.panel.ports.forward`, and for the `stop` of the forward it answers (`portForward.ts`): the runtime's typed start and its close of a forward by its id, which the screen
+   * binds. Absent: the window has no port-forward service, and the handle a page is given has no `ports` member, as a host that predates it (a test of another part).
+   */
+  readonly networker?: PortForwardNetwork | undefined;
+  /**
+   * What the Ports tool is given beyond what the runtime gives it itself (`shell/panel/ports`): the host's calls and events, the clipboard, the names of connections, the way to open an address. Absent: the runtime's own, the names the window
+   * knows for its connections, and the host's own way of opening an address (`openExternal.ts`). A test or a probe gives a fake host.
+   */
+  readonly ports?: Partial<PortsDeps> | undefined;
 };
 
 type Host = {
@@ -144,8 +163,10 @@ type Host = {
   readonly logs: LogStreams;
   /** The Terminal tool: the feeds of its sessions, the dialog of its close question and the panel's answers for it (`shell/panel/terminal`). */
   readonly terminals: Terminals;
-  /** What `ctx.panel` is for each plugin: the Logs registry, bound to the plugin that asks (`panelHost.ts`). */
-  readonly panelHosts: (plugin: string) => PanelHostV1;
+  /** The Ports tool: the store of the forwards the host reports, its body, and the way to show it (`shell/panel/ports`). It asks the host for nothing until its body is on screen. */
+  readonly ports: Ports;
+  /** What `ctx.panel` is for each plugin and each connection a page of it is read in: the Logs registry and the port-forward start, bound to the plugin that asks and to the page's connection (`panelHost.ts`). */
+  readonly panelHosts: (plugin: string, connection?: string) => PanelHostV1;
   /** The plugin the user chose on the rail, as the session saves it. The component's own state is the source; this is what the session listens to. */
   readonly rail: RailChoice;
   readonly contributions: Contributions;
@@ -220,7 +241,7 @@ function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, portsOptions: Partial<PortsDeps> | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -235,9 +256,21 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again.
   const terminals = createTerminals(store, terminalOptions, { screenReader: restored?.terminalScreenReader });
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
-  const panelHosts = panelHostsOf(logs);
+  // A page forwards a port where the window has a networker to ask: the Ports tool is shown once a forward has started.
+  const forwarding: PortForwarding | undefined =
+    networker === undefined
+      ? undefined
+      : {
+        ...networker,
+        revealPortsTool: () => {
+          revealPortsTool(store);
+        },
+      };
+  const panelHosts = panelHostsOf(logs, forwarding);
   const connections = makeConnections(connectionsApi, tabs, plugins);
   known.current = connections;
+  // A forward's connection is named by what the window knows of its connections, and an address is opened with the window's own way; what a test gives wins.
+  const ports = createPorts(store, { openExternal, names: portNamesOf(connections?.store, names), ...portsOptions });
   seedRoutes(tabs, routes);
   const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator), saved });
   // The Problems and Operations tools read the window's producers: its plugins, its connections and the activity service's records. Without a feed there are none of the last (a window of a test, or of a part that reports nothing).
@@ -263,6 +296,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     panel: store,
     logs,
     terminals,
+    ports,
     panelHosts,
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
@@ -520,8 +554,8 @@ type HostPageProps = {
   readonly inventory: PluginHostProps['inventory'];
   readonly onRetry: (id: string) => void;
   readonly onRetryInventory: () => void;
-  /** What each plugin asks of the bottom panel: its `ctx.panel`. */
-  readonly panelHosts: (plugin: string) => PanelHostV1;
+  /** What each plugin asks of the bottom panel in the connection the page is read in: its `ctx.panel`. */
+  readonly panelHosts: (plugin: string, connection?: string) => PanelHostV1;
   /** The window's plugin store, for a page of the host's own (`hostPages.ts`). */
   readonly source: PluginSource;
   /** The window's connections: what it knows of them and what choosing one does. Absent: it has no connection API. */
@@ -604,9 +638,9 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
         fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
       >
         {found?.kind === 'detail' ? (
-          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id)} />
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id, connection)} />
         ) : (
-          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id)} memory={memory} />
+          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, connection)} memory={memory} />
         )}
       </ContributionBoundary>
     </LinkProvider>
@@ -692,9 +726,18 @@ function terminalBodyOf(terminals: Terminals, session: PanelSession, visible: bo
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity }: PluginHostProps) {
+/** The body of the host's Ports tool, in a boundary of its own so that a body that throws loses that tool and no other (`shell/panel/ports`). */
+function portsBodyOf(ports: Ports): ReactElement {
+  return (
+    <ContributionBoundary name="ports tool" fallback={(retry) => <ErrorBody title="Couldn't show Ports" onRetry={retry} />}>
+      {ports.bodyOf()}
+    </ContributionBoundary>
+  );
+}
+
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, ports: portsOptions }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, portsOptions));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
@@ -940,13 +983,14 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
   // The panel. What each plugin that is ready brings to it is registered in a layout effect, in the commit the plugin turned ready in, so a tool does not arrive a frame after the interface it
   // belongs to; a plugin that goes away takes its tools and sessions with it in the same transaction (PO1).
-  const { panel, logs, terminals, panelHosts } = host;
+  const { panel, logs, terminals, ports, panelHosts } = host;
   // The Logs tool is the host's: it is in the strip whatever the plugins are (the sessions that plugins open in it show when their plugin is ready). Registered before the plugins are, in the
   // first layout effect, so the strip is never drawn without it; registering it again changes nothing.
   useLayoutEffect(() => {
     panel.registerTool(LOGS_TOOL);
     panel.registerTool(TERMINAL_TOOL);
-    // Problems and Operations are the host's tools too (ch16 S114): singletons, in the strip whatever the plugins are, after Terminal and Logs by their orders.
+    // Ports, Problems and Operations are the host's tools too (ch16 S114): singletons, in the strip whatever the plugins are, between and after Terminal and Logs by their orders.
+    panel.registerTool(PORTS_TOOL);
     panel.registerTool(PROBLEMS_TOOL);
     panel.registerTool(OPERATIONS_TOOL);
   }, [panel]);
@@ -987,8 +1031,12 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
         return toolId === LOGS_TOOL_ID ? LOGS_EMPTY : undefined;
       },
-      // Problems and Operations have no sessions (S114): the host draws their bodies, only while the tool is on screen, each in a boundary of its own so a body that throws loses that tool and no other.
+      // Ports, Problems and Operations have no sessions (S114): the host draws their bodies, only while the tool is on screen, each in a boundary of its own so a body that throws loses that tool and no other.
       renderTool: (toolId) => {
+        if (toolId === PORTS_TOOL_ID) {
+          return portsBodyOf(ports);
+        }
+
         if (toolId === PROBLEMS_TOOL_ID) {
           return (
             <ContributionBoundary name="problems tool" fallback={(retry) => <ErrorBody title="Couldn't show Problems" onRetry={retry} />}>
@@ -1024,7 +1072,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         },
       }),
     }),
-    [panel, logs, terminals, entries, tabs, platform, host],
+    [panel, logs, terminals, ports, entries, tabs, platform, host],
   );
 
   const sidebar = shown?.phase === 'ready' ? shown.contribution.sidebar : undefined;
@@ -1032,7 +1080,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     <>
       {shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
         <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={nodes} />}>
-          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id)} />
+          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, connectionOf(railRoute))} />
         </ContributionBoundary>
       ) : null}
       <Shell

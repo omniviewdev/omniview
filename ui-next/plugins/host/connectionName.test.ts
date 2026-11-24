@@ -79,6 +79,63 @@ describe('the names a window has learned', () => {
   });
 });
 
+describe('hearing that a learned name changed', () => {
+  it('tells a listener when a connection is named, and when its name is another, and not when it is learned again as it is', () => {
+    const names = new ConnectionNames();
+    let told = 0;
+    names.subscribe(() => {
+      told += 1;
+    });
+    names.learn('acme', KEY, NAME);
+    expect(told).toBe(1);
+    names.learn('acme', KEY, NAME);
+    names.learn('acme', KEY, `  ${NAME}  `);
+    expect(told).toBe(1);
+    names.learn('acme', KEY, 'renamed');
+    expect(told).toBe(2);
+    expect(names.get('acme', KEY)).toBe('renamed');
+  });
+
+  it('tells it with the name already there to be read', () => {
+    const names = new ConnectionNames();
+    let heard: string | undefined;
+    names.subscribe(() => {
+      heard = names.get('acme', KEY);
+    });
+    names.learn('acme', KEY, NAME);
+    expect(heard).toBe(NAME);
+  });
+
+  it('tells nobody of a name that is empty: an empty name is none', () => {
+    const names = new ConnectionNames();
+    let told = 0;
+    names.subscribe(() => {
+      told += 1;
+    });
+    names.learn('acme', KEY, '  ');
+    expect(told).toBe(0);
+  });
+
+  it('is a subscription for each call: one that was taken off is not told, and the one made with the same function is, until it is taken off too', () => {
+    const names = new ConnectionNames();
+    let told = 0;
+    const listener = (): void => {
+      told += 1;
+    };
+
+    const first = names.subscribe(listener);
+    const second = names.subscribe(listener);
+    names.learn('acme', KEY, NAME);
+    expect(told).toBe(2);
+    first();
+    names.learn('acme', KEY, 'renamed');
+    expect(told).toBe(3);
+    second();
+    names.learn('acme', KEY, 'again');
+    expect(told).toBe(3);
+  });
+});
+
 describe('said', () => {
   it('puts the name where the LAST qualifier is the key, leaves the rest as they are, and leaves the key out when no name is known', () => {
     expect(said(['east', KEY], KEY, NAME)).toEqual(['east', NAME]);

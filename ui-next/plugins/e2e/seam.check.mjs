@@ -171,6 +171,21 @@
 //      once a find is made, a find after a reload finds a line of the replayed scrollback, and with 1,000,000 lines flooding in the bar answers the pointer (while the shell has not printed its last line), counts right at the end and the shell still takes what is typed (more than 20,000 matches say `20,000+`). The context menu opens on a right click, Shift+F10 and the Menu key (Copy not available with nothing selected and saying why, Paste, Select all, Clear, Find: each does what it says, the clipboard is the page's own stub), Escape closes it and gives the keyboard back, and a program that has the mouse gets
 //      the right click and no menu opens unless Shift is held. A web address in the output says `Follow link (cmd + click)` (`ctrl` elsewhere) when the pointer is on it and is followed by that modifier and a click as exactly one call of the runtime's `Browser.OpenURL` (the Browser object, method 0, the address as its argument), which the check intercepts and answers 200 so that the host never opens a browser on this machine; a plain click, a `javascript:` line and a `file:` line make none. The same for a hyperlink the program writes (OSC 8, printed by the real shell: the words show one address, the program names another): the hover, a plain click that makes no call, the modifier and a click that makes one, and a `javascript:` and a `file:` hyperlink that make none; and no link ever calls `window.open` or asks a question (`confirm`, `alert`, `prompt`: the page's own are watched and no dialog opens). No request fails in the phase.
 //
+//   w  the Ports tool (PF1, `checkPorts`), over the real host, on a host of its own whose plugin `fixture-g-ports` (Seam Ports) has a PROCESS that serves one connection (`harbor`) and forwards a local port to a TCP server of its own (it sends `PF1-FIXTURE-HELLO` to every
+//      connection and sends back what it is sent). One window with nothing saved, opened at the plugin's page before its connection is started: the tool, which has not been on screen, holds no handler of the host's port-forward events and asks for no list of forwards, though the
+//      host's operator starts the connection (`StartConnection`) and the window hears it (`connection/status`). The press of the page's button asks the host once (`StartResourcePortForwardingSession`, in the page's own plugin and connection) and the page says
+//      `Forward session <id> on 127.0.0.1:<local>` (the place that the row's mapping says); the Ports tool is revealed with exactly one row, the forward the host lists: its resource, the mapping `127.0.0.1:<local> → :8080/TCP`, the connection by its NAME (its id is nowhere on screen) and Running, with one handler for each of the five host
+//      events it follows and one call for the list. A client of the check's own (Node's `net`) connects to `127.0.0.1:<local>`: the first line is `PF1-FIXTURE-HELLO` and a line it writes comes back. Open in browser is one call of the runtime's `Browser.OpenURL` (the Browser
+//      object, method 0, `http://127.0.0.1:<local>`), which the check intercepts with `page.route` and answers 200 so that the host never opens a browser on this machine, and never `window.open`; Copy address puts `127.0.0.1:<local>` on the clipboard (the page's own stub) and says
+//      `Address copied`; the row's menu (a right click, Shift+F10) offers the same three and runs them, one at a time (what each item caused is read from where each record stood just before it was chosen, and what Copy caused is read before Open is chosen: Copy writes the address to the clipboard once and asks the runtime to open nothing, Open makes one call that opens it and writes nothing to the clipboard, and neither uses window.open, a question or a window of the browser; the menu's Stop is the one that stops the second forward below). A reload brings the row back from the host's list as it was, with one call for the list, and a second forward started from the page is a second row that the host's `created`
+//      event made, with no call for the list. The page's second button asks for the local port its last answer gave: the host cannot give it twice and refuses it (a 422 that RUNTIME_ALLOW names), the page says `Refused PROVIDER_ERROR:` and one plain line, and nothing else changes: no second row, nothing more in the host's list, no `created` event, and the forward that holds the port still carries. The page's Stop ends a forward the page started (the page says `Stopped forward <id>`, the row and the host's list lose it and its port refuses a connection), and a second press says the same and asks the host nothing. Stop in the tool: with the call held on its way the row says Stopping, its Stop waits and a second press asks the host nothing; with the host's answer held after it closed the forward, the row leaves with the host's `closed` event, the host no longer lists it and
+//      its local port refuses a connection; with no forward left the tool says so; with the panel hidden it holds no handler of the host's events, and a forward started then shows it again. Then the plugin's process is killed by the pid the host names (its binary loses its
+//      execute bit, so that the host's recovery cannot start it again; the signal is a precondition that no control perturbs and no SEAM_REMOVE leaves out: after the binary lost its execute bit (the reading does not depend on it) the host names the pid again, with the start identity it had and the binary this run installed, and nothing is awaited between that reading and the signal): the host finds it on its
+//      next health check (up to 30 s) and the row says Stopped and `Its plugin stopped.`, its Stop is disabled with that reason and a press asks the host nothing, Open in browser and Copy address are disabled, and its local port refuses a connection. What the check itself fails at is the scenario's: no request
+//      fails in the phase (the phase's own guard, whose control is runtime-4xx), no route of the check fails (a held call that cannot be let go is kept with the engine's own error), and the page raises no error but the one a reload makes of a call it cuts (only while the page is being replaced, and only a message
+//      that says a call was cut). SEAM_ONLY=ports runs w alone; SEAM_CONTROL=ports runs it alone with every perturbation of its controls (PORTS_CONTROLS) made in turn just before the assertion each must trip (one run serves them all: the host finds a killed process on its next
+//      health check, up to 30 s); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
+//
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
 //
@@ -179,14 +194,14 @@
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from 'playwright';
 import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
-import { buildConnectionsProcess, buildProcess, CONNECTIONS_ID, writeAll, writeConnectionsPlugin, writePlugin } from '../fixture/build.mjs';
+import { AGAIN_LABEL, buildConnectionsProcess, buildPortsProcess, buildProcess, CONNECTIONS_ID, FORWARD_LABEL, PORTS_CONNECTION_KEY, PORTS_CONNECTION_NAME, PORTS_ID, STOP_LABEL, TARGET_GREETING, TARGET_ID, TARGET_PORT, writeAll, writeConnectionsPlugin, writePlugin, writePortsPlugin } from '../fixture/build.mjs';
 import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -377,24 +392,85 @@ const PT_CONTROLS = {
   'conn-cleared': /a connection that answers again leaves the Problems tool and its count/,
   'pt-page-error': /the whole scenario wrote no page error and no console error/,
 };
+// The negative controls of scenario w, the Ports tool (PF1). As in n, p, t, u and v each is a perturbation made just before the assertion that must see it and undone right after, and the assertion must fail with ITS words and no other. A perturbation is a fault planted in what the
+// assertion reads, never in the product: a decoy in the page (`data-decoy`), the change of one attribute, a handler that is nothing of the page's in the runtime's table of handlers, a call that the page is made to make, a server of the check's own on a port, an error that the page is made to raise, a route
+// that is made to fail, or a record of what was seen that is forged; it never replaces a node the page owns, so the scenario goes on over the page it perturbed. What a control adds to a record that the check keeps (the calls its route took, the page's errors, the route's failures) it takes out again by what it
+// added, never by place and never by emptying the record, so that what the product did on its own is still there for the assertion that runs after the control. A precondition is not an assertion and has no control: the signal that kills the plugin is one (it is checked again at the moment of the kill, and
+// SEAM_REMOVE does not leave it out). One run serves them all (SEAM_CONTROL=ports: the host finds a killed process on its next health check, up to 30 s); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
+const PORTS_CONTROLS = {
+  'handlers-rest': /the tool holds no handler of the host's port-forward events before it is on screen/,
+  'calls-rest': /the window asks the host for no list of forwards before the tool is on screen/,
+  'start-wire': /the press of the page's button asks the host once to start a forward, in the page's own plugin and connection/,
+  'page-says': /the page says which forward the host started/,
+  'tool-revealed': /the Ports tool is revealed by the first forward: the panel is open on it with its table/,
+  'one-row': /the tool lists exactly one forward/,
+  'host-lists': /the host lists the forward the row shows/,
+  'row-resource': /the row names the resource that was forwarded/,
+  'row-mapping': /the row's mapping is the loopback address of the local port the host chose/,
+  'page-where': /the page says where the forward is: the host and the port of the Ports row's mapping/,
+  'row-connection': /the row names the connection by its name, and its id is nowhere the tool draws/,
+  'row-status': /the row says Running/,
+  'handlers-shown': /the tool holds one handler for each of the five host events it follows while it is on screen/,
+  'calls-shown': /the tool reads the host's list once when it comes on screen/,
+  'tcp-greeting': /a client of the local port is greeted by the target/,
+  'tcp-echo': /a client of the local port gets back what it writes/,
+  'open-call': /Open in browser makes one call of the runtime's Browser\.OpenURL/,
+  'open-not-window': /Open in browser never uses window\.open/,
+  'copy-clipboard': /Copy address puts the forward's address on the clipboard, once/,
+  'copy-announced': /Copy address is announced as Address copied/,
+  'menu-pointer': /a right click on the row opens a menu of the three actions/,
+  'menu-keyboard': /Shift\+F10 on a button of the row opens a menu of the three actions/,
+  'menu-copies': /the menu's Copy address writes the forward's address to the clipboard once/,
+  'menu-copy-no-open': /the menu's Copy address asks the runtime to open nothing/,
+  'menu-opens': /the menu's Open in browser asks the runtime to open the forward's address once/,
+  'menu-open-no-copy': /the menu's Open in browser writes nothing to the clipboard/,
+  'menu-not-window': /the menu's actions never use window\.open/,
+  'reload-row': /after a reload the row is back from the host's list as it was/,
+  'reload-list': /the reloaded window asks the host for its list of forwards once/,
+  'second-row': /a second forward started from the page is a second row/,
+  'refused-says': /the page says that a forward of the same port again is refused, by the host's class and in one plain line/,
+  'refused-asked': /the page's second button asks the host once for a forward on the local port that its last answer gave/,
+  'refused-no-row': /a forward that was refused is no forward/,
+  'refused-port-kept': /the forward that holds the port goes on carrying after another was refused the same port/,
+  'page-stop-says': /the page says that it stopped the forward it started/,
+  'page-stop-leaves': /a forward that the page stopped leaves the tool and the host's list/,
+  'page-stop-port': /the local port of a forward that the page stopped refuses a connection/,
+  'page-stop-again-says': /a second press of the page's Stop leaves what the page says as it was/,
+  'page-stop-again-asks': /a second press of the page's Stop asks the host nothing/,
+  'stop-leaves': /a forward the host has closed leaves the list with the host's closed event/,
+  'stop-port': /the local port of a forward that was stopped refuses a connection/,
+  'stop-stopping': /a Stop whose call has not reached the host shows Stopping/,
+  'empty-state': /with no forward left the tool says so/,
+  'handlers-hidden': /the tool holds no handler of the host's port-forward events once the panel is hidden/,
+  'tool-revealed-again': /the Ports tool is revealed again by a forward started while the panel is hidden/,
+  'calls-again': /the tool reads the host's list once when a forward brings it back on screen/,
+  'pid-own': /the process the host names is the ports plugin's own/,
+  'killed-row': /a forward whose plugin stopped says Stopped and why/,
+  'killed-stop': /the Stop of a forward whose plugin stopped is disabled with its reason/,
+  'killed-others': /Open in browser and Copy address of a forward whose plugin stopped are disabled/,
+  'killed-port': /the local port of a forward whose plugin stopped refuses a connection/,
+  'route-quiet': /no route of the check failed/,
+  'page-clean': /the whole scenario wrote no page error/,
+};
 const FAILED_GROUP = 'failed-load';
 const PAGE_GROUP = 'plugins-page';
 const CONNECTIONS_GROUP = 'connections';
 const PT_GROUP = 'problems-operations';
+const PORTS_GROUP = 'ports';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
 const REMOVE = process.env.SEAM_REMOVE ?? '';
-// SEAM_ONLY=plugins-page runs scenario t alone, SEAM_ONLY=connections scenario u alone and SEAM_ONLY=problems-operations scenario v alone, with no perturbation, held to the allow-list of failed requests as in a full run. SEAM_ONLY=settings-slots runs the slots part of
+// SEAM_ONLY=plugins-page runs scenario t alone, SEAM_ONLY=connections scenario u alone, SEAM_ONLY=problems-operations scenario v alone and SEAM_ONLY=ports scenario w alone, with no perturbation, held to the allow-list of failed requests as in a full run. SEAM_ONLY=settings-slots runs the slots part of
 // scenario s alone, clean (the 100 Settings window pages), for the one who works on it: it is the only part of s that opens and closes a window 100 times, and what a slow runner does to it is the thing to look at.
 const SETTINGS_SLOTS = 'settings-slots';
 const ONLY = process.env.SEAM_ONLY ?? '';
-if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== PT_GROUP && ONLY !== SETTINGS_SLOTS) {
-  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP}, ${PT_GROUP} or ${SETTINGS_SLOTS}`);
+if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== PT_GROUP && ONLY !== PORTS_GROUP && ONLY !== SETTINGS_SLOTS) {
+  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP}, ${PT_GROUP}, ${PORTS_GROUP} or ${SETTINGS_SLOTS}`);
 }
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== PT_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), SETTINGS_GROUP].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== PT_GROUP && CONTROL !== PORTS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined && PORTS_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 // A control's name belongs to one table. The dispatch at the end of this file runs the scenario of the first group that holds the name, so a name that two tables held would run one scenario and never the other: `page-error` was the control of the Logs scenario
@@ -407,9 +483,10 @@ for (const [table, names] of [
   ['PAGE_CONTROLS', Object.keys(PAGE_CONTROLS)],
   ['CONNECTIONS_CONTROLS', Object.keys(CONNECTIONS_CONTROLS)],
   ['PT_CONTROLS', Object.keys(PT_CONTROLS)],
+  ['PORTS_CONTROLS', Object.keys(PORTS_CONTROLS)],
   ['SETTINGS_PARTS', Object.keys(SETTINGS_PARTS)],
   ['the watch over failed requests', [RUNTIME_CONTROL]],
-  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PT_GROUP]],
+  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PT_GROUP, PORTS_GROUP]],
 ]) {
   for (const name of names) NAMED_ONCE.set(name, [...(NAMED_ONCE.get(name) ?? []), table]);
 }
@@ -491,6 +568,7 @@ const PROCESS_SERVICE = 'github.com/omniviewdev/omniview/internal/processinfo.Se
 const SETTINGS_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/settings.Binding';
 const RESOURCE_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
 const ACTIVITY_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/activity.FrontendService';
+const NETWORKER_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/networker.ServiceWrapper';
 /** The keys the connections fixture's plugin gives its two connections (`fixture/connections-process/main.go`): a route carries them, and no window draws them. */
 const NORTH_KEY = 'north-57a082bd74';
 const SOUTH_KEY = 'south-0c3d9e1f42';
@@ -566,6 +644,11 @@ const PAGE_LABELS = new WeakMap();
  * it was issued to: after a reconnect, even one at once, the page's activity session is one the host no longer knows. What the scenario did to a page's socket is part of what it staged, and this is where its consequence for the activity provider is allowed.
  */
 const STAGED_PAGES = new WeakSet();
+/**
+ * The calls that a scenario makes the host refuse on purpose, by the id the runtime gives each call (scenario w: the request of the ports fixture's second button for a local port that is in use). An allowance names a refusal by the call it answers, so that the same refusal of any
+ * other call, which the phase never meant to cause, stays a failure.
+ */
+const REFUSED_ON_PURPOSE = new Set();
 const RUNTIME_ALLOW = [
   {
     phases: null,
@@ -591,6 +674,15 @@ const RUNTIME_ALLOW = [
     phases: [PT_GROUP],
     reason: "scenario v makes south of the connections fixture unreachable (its file `connection-mode` says `unreachable-path`) and the window starts it ONCE while it is, from the row of the Problems tool (the failure that makes the row is the check's own call of the host, which is a request of no page and which this allow-list never sees): the host answers that StartConnection with a 422 (`omniview:connection/failed`: the class of the failure is in the body), and the window says it in a sticky error toast, which is what the scenario asserts",
     test: (failure) => failure.status === 422 && failure.asked.includes(`"methodID":${String(methodIdOf(RESOURCE_SERVICE, 'StartConnection'))},`) && failure.asked.includes(SOUTH_KEY) && failure.answered.includes('omniview:connection/failed'),
+  },
+  {
+    phases: [PORTS_GROUP],
+    reason: "scenario w presses the ports fixture's second button, which asks the host for a forward on the local port that the first forward holds: the plugin's forwarder cannot listen on it and the host answers StartResourcePortForwardingSession with a 422 whose class is PROVIDER_ERROR (it states no more: measured on the real host), and the page says the refusal, which is what the scenario asserts. Only the answer to that one call is allowed, by the id the scenario recorded for it (REFUSED_ON_PURPOSE): a start of any other forward that is refused the same way stays a failure",
+    test: (failure) =>
+      failure.status === 422 &&
+      [...REFUSED_ON_PURPOSE].some((callId) => failure.asked.includes(`"call-id":"${callId}"`)) &&
+      (failure.asked.includes(`"methodName":"${NETWORKER_SERVICE}.StartResourcePortForwardingSession"`) || failure.asked.includes(`"methodID":${String(methodIdOf(NETWORKER_SERVICE, 'StartResourcePortForwardingSession'))},`)) &&
+      failure.answered.includes('"cause":{"code":"PROVIDER_ERROR"'),
   },
   {
     phases: ['terminal-followups'],
@@ -995,9 +1087,9 @@ async function checkPanel(page, base, engine) {
   await toggle.click();
   await region.waitFor({ state: 'visible' });
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${engine}: the toggle is pressed once it is open`);
-  // The host's own tools come first: Terminal, which the panel opens on, then Logs, then Problems and Operations (PT1: the host's singleton tools, orders 30 and 40); then one tool for each plugin that contributes, in the order of the rail and in the plugin's own words.
+  // The host's own tools come first: Terminal, which the panel opens on, then Logs, Ports, Problems and Operations (PF1: the Ports tool, order 25; PT1: the host's singleton tools Problems and Operations, orders 30 and 40); then one tool for each plugin that contributes, in the order of the rail and in the plugin's own words.
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Terminal', 'Logs', 'Problems 2', 'Operations', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Terminal, Logs, Problems (with the count of its two errors: this host's plugins that cannot load, by design) and Operations tools, then the tool of each plugin that contributes, in the order of the rail (the first plugin's, then the copy's)`);
+  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Terminal', 'Logs', 'Ports', 'Problems 2', 'Operations', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Terminal, Logs, Ports, Problems (with the count of its two errors: this host's plugins that cannot load, by design) and Operations tools, then the tool of each plugin that contributes, in the order of the rail (the first plugin's, then the copy's)`);
   assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the Terminal tool is on screen`);
   await page.getByText('No terminals', { exact: true }).waitFor();
   await tools.nth(1).click();
@@ -1005,8 +1097,8 @@ async function checkPanel(page, base, engine) {
   await page.getByText('No log sessions').waitFor();
   assert.equal(await page.locator('[data-shell-part="sessionAdd"]').count(), 0, `${engine}: the Logs tool has no \`+\` (decision A20)`);
   // The rail's first plugin brings the tool the rest of this scenario uses.
-  await tools.nth(4).click();
-  assert.equal(await tools.nth(4).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
+  await tools.nth(5).click();
+  assert.equal(await tools.nth(5).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
   await page.getByText('No sessions').waitFor();
   // The tool's `+` starts a stream; three in turn: running, ended and failed.
   const add = page.getByRole('button', { name: 'New stream' }).first();
@@ -1066,30 +1158,30 @@ async function checkPanelLate(page, base, engine) {
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
   const names = async () => (await tools.allTextContents()).map((text) => text.trim());
   // The copy is ready and the first plugin is not: the strip has the host's tools and the copy's.
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]')].map((tab) => tab.textContent.trim()).join('|') === 'Terminal|Logs|Problems 2|Operations|Streams copy', null, { timeout: 30_000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]')].map((tab) => tab.textContent.trim()).join('|') === 'Terminal|Logs|Ports|Problems 2|Operations|Streams copy', null, { timeout: 30_000 });
   assert.equal(held.length > 0, true, `${engine}: the first plugin's bundle was asked for and is held`);
   // The person is on the copy's tool, with a stream open in it.
-  await tools.nth(4).click();
+  await tools.nth(5).click();
   await page.getByRole('button', { name: 'New stream' }).first().click();
   const stream = page.locator('[data-fixture="stream"][data-session="stream-alpha"]');
   await stream.waitFor();
   const body = await stream.elementHandle();
   const lines = () => stream.evaluate((element) => Number(element.getAttribute('data-lines')));
   const linesBefore = await lines();
-  const copyBefore = (await tools.nth(4).boundingBox())?.x ?? NaN;
-  assert.equal(await tools.nth(4).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is on screen before the first plugin arrives`);
+  const copyBefore = (await tools.nth(5).boundingBox())?.x ?? NaN;
+  assert.equal(await tools.nth(5).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is on screen before the first plugin arrives`);
 
   // The first plugin's bundle is let through: it finishes after the copy.
   released = true;
   for (const route of held.splice(0)) await route.continue();
-  await page.waitForFunction(() => document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]').length === 6, null, { timeout: 30_000 });
-  assert.deepEqual(await names(), ['Terminal', 'Logs', 'Problems 2', 'Operations', 'Streams', 'Streams copy'], `${engine}: the first plugin took its place in the strip, in the order of the rail, though it finished after the copy`);
-  assert.equal(await tools.nth(5).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is still the one on screen`);
-  assert.equal(await tools.nth(4).getAttribute('aria-selected'), 'false', `${engine}: and the tool that arrived did not take the panel`);
+  await page.waitForFunction(() => document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]').length === 7, null, { timeout: 30_000 });
+  assert.deepEqual(await names(), ['Terminal', 'Logs', 'Ports', 'Problems 2', 'Operations', 'Streams', 'Streams copy'], `${engine}: the first plugin took its place in the strip, in the order of the rail, though it finished after the copy`);
+  assert.equal(await tools.nth(6).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is still the one on screen`);
+  assert.equal(await tools.nth(5).getAttribute('aria-selected'), 'false', `${engine}: and the tool that arrived did not take the panel`);
   assert.equal(await page.getByRole('tab', { name: 'stream-alpha', selected: true }).count(), 1, `${engine}: the stream is still the session on screen`);
   assert.equal(await body.evaluate((element) => element.isConnected), true, `${engine}: and its body is the same element, not drawn again`);
   assert.ok((await lines()) >= linesBefore, `${engine}: and its count did not start again (${String(linesBefore)} lines, then ${String(await lines())})`);
-  const moved = ((await tools.nth(5).boundingBox())?.x ?? NaN) - copyBefore;
+  const moved = ((await tools.nth(6).boundingBox())?.x ?? NaN) - copyBefore;
   console.log(`${engine}: the copy's tab moved ${moved.toFixed(1)} px to the right when the first plugin's tab arrived ahead of it; the tool, the stream and the body on screen did not change`);
   // The window settles: with every plugin loaded and no tab open it is the empty window, which lists the plugins to open.
   await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
@@ -4994,7 +5086,7 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
   };
 
   try {
-    // 1. NOTHING IS WRONG. Two healthy plugins and no connection in trouble: the panel opens on Terminal, the strip has the host's four tools and the plugin's, no tab carries a count or a dot, both tools are empty and the host holds no record.
+    // 1. NOTHING IS WRONG. Two healthy plugins and no connection in trouble: the panel opens on Terminal, the strip has the host's five tools (Terminal, Logs, Ports, Problems, Operations) and the plugin's, no tab carries a count or a dot, both tools are empty and the host holds no record.
     await open(page, host.base);
     await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
     const first = await processOf(OK);
@@ -5002,8 +5094,8 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
     await toggle.click();
     await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
     await strip.getByRole('tab', { name: 'Streams', exact: true }).waitFor({ timeout: 30_000 });
-    assert.deepEqual((await toolsSay()).map((tool) => tool.name), ['Terminal', 'Logs', 'Problems', 'Operations', 'Streams'], `${engine}: the strip draws the host's four tools and the plugin's, none of them with a count or a dot in its name`);
-    assert.deepEqual((await toolsSay()).map((tool) => tool.badge), ['none', 'none', 'none', 'none', 'none'], `${engine}: and no tab draws a badge`);
+    assert.deepEqual((await toolsSay()).map((tool) => tool.name), ['Terminal', 'Logs', 'Ports', 'Problems', 'Operations', 'Streams'], `${engine}: the strip draws the host's five tools and the plugin's, none of them with a count or a dot in its name`);
+    assert.deepEqual((await toolsSay()).map((tool) => tool.badge), ['none', 'none', 'none', 'none', 'none', 'none'], `${engine}: and no tab draws a badge`);
     assert.deepEqual(await records(), [], `${engine}: the host holds no activity record before a plugin reports anything`);
     await select('problems');
     await waitUntil('the Problems tool to say that nothing is wrong', async () => (await emptyWords())[0] === 'No problems', 10_000);
@@ -5552,7 +5644,7 @@ async function checkSession(browser, getHost, restart, engine) {
   await toggleOf(page).click();
   await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  await tools.nth(5).click();
+  await tools.nth(6).click();
   await page.getByRole('separator', { name: 'Resize panel' }).focus();
   for (let press = 0; press < 3; press += 1) await page.keyboard.press('ArrowUp');
   const left = await look(page);
@@ -10227,6 +10319,1361 @@ async function checkTerminalFindMenu(page, base, engine) {
   console.log(`terminal-find ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// w: the Ports tool (PF1). The real host, a plugin whose PROCESS forwards a local port to a TCP server of its own, and clients of the check's own that connect to what the forward listens on.
+
+/** The calls of the host's networker that a page makes by the id the bindings carry (`$Call.ByID`): the 32-bit FNV-1a hash of the method's full name (`methodIdOf`). */
+const NETWORKER_IDS = new Map(['ListAllPortForwardSessions', 'ClosePortForwardSession', 'GetPortForwardSession', 'StartResourcePortForwardingSession'].map((method) => [methodIdOf(NETWORKER_SERVICE, method), method]));
+
+/**
+ * The call of the host's networker that a request of a page makes, or `undefined` for any other request: the method, the call's own id and its arguments. The runtime's typed start (`StartResourcePortForwardingSession`) is made by name (`Call.ByName`), the other calls
+ * of the tool by the id the bindings carry.
+ */
+function networkerCallOf(request) {
+  if (request.method() !== 'POST') return undefined;
+  let body;
+  try {
+    body = JSON.parse(request.postData() ?? 'null');
+  } catch {
+    return undefined;
+  }
+
+  const asked = body?.args;
+  const byName = typeof asked?.methodName === 'string' && asked.methodName.startsWith(`${NETWORKER_SERVICE}.`) ? asked.methodName.slice(NETWORKER_SERVICE.length + 1) : undefined;
+  const method = byName ?? NETWORKER_IDS.get(asked?.methodID);
+  return method === undefined ? undefined : { method, callId: String(asked['call-id'] ?? ''), args: Array.isArray(asked.args) ? asked.args : [] };
+}
+
+/** The host's two events on forwards (the payload of each is the session), and the three that the Ports tool follows besides: the two of the plugin lifecycle that the window always hears, and a connection's change of status. */
+const PORT_EVENTS = { created: 'core/networker/portforward/created', closed: 'core/networker/portforward/closed' };
+const PORTS_FOLLOWS = [PORT_EVENTS.created, PORT_EVENTS.closed, 'plugin/unloaded', 'plugin/state_change', 'connection/status'];
+/** One handler for each of the five events. */
+const ONE_EACH = Object.fromEntries(PORTS_FOLLOWS.map((name) => [name, 1]));
+
+/**
+ * Makes the runtime's table of event handlers countable. `@wailsio/runtime` keeps the handlers of a page in a Map of its own (an event's name to the array of its handlers: `eventListeners`, which it never exposes). The first time anything sets a key of a Map to an array
+ * whose first member is a handler for that very name (an object that carries the name and a function), the Map is kept in `window.__listeners` and `Map.prototype.set` is put back as it was: from then on nothing of the page is touched, and a count is a read. It is made at
+ * every load of the page.
+ */
+async function keepListeners(page) {
+  await page.addInitScript(() => {
+    const original = Map.prototype.set;
+    Map.prototype.set = function set(key, value) {
+      if (typeof key === 'string' && Array.isArray(value) && value.length > 0 && value[0]?.eventName === key && typeof value[0]?.callback === 'function') {
+        window.__listeners = this;
+        Map.prototype.set = original;
+      }
+
+      return original.call(this, key, value);
+    };
+  });
+}
+
+/** How many handlers the page holds for each of these events. */
+async function listenersOf(page, names) {
+  return page.evaluate((list) => Object.fromEntries(list.map((name) => [name, window.__listeners?.get(name)?.length ?? 0])), names);
+}
+
+/** A handler that is nothing of the page's, put in the runtime's table (a subscription that was never taken off: the fault a control plants), and taken out again. */
+async function plantListener(page, name) {
+  await page.evaluate((event) => {
+    const table = window.__listeners;
+    table.set(event, [...(table.get(event) ?? []), { eventName: event, callback: () => undefined, maxCallbacks: -1, decoy: true, dispatch: () => false }]);
+  }, name);
+}
+
+async function unplantListeners(page) {
+  await page.evaluate(() => {
+    const table = window.__listeners;
+    for (const [name, list] of [...table]) {
+      const kept = list.filter((one) => one.decoy !== true);
+      if (kept.length === 0) table.delete(name);
+      else table.set(name, kept);
+    }
+  });
+}
+
+/**
+ * A call of the host's networker made by the page itself, as its runtime makes one (the id the bindings carry, the client id the runtime holds): the fault a control plants in a page that must not make it. Its call id starts with `seam-plant`, which is how the check forgets it.
+ */
+async function plantCall(page, method, ...args) {
+  return page.evaluate(
+    async ({ id, list, tag }) => {
+      const response = await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': tag, methodID: id, args: list } }) });
+      return response.status;
+    },
+    { id: methodIdOf(NETWORKER_SERVICE, method), list: args, tag: `seam-plant-${method}` },
+  );
+}
+
+/**
+ * What a client of a local port gets, as a person's tool would: it connects, reads the first line the other end sends, writes `line` and reads the line that comes back, and ends. A line is whole when its line feed has come (what is read is kept across chunks, so a line feed that comes in a chunk of its
+ * own still ends its line); what follows the last line feed is a line that was never finished, and the other end closing does not finish it: a forward that loses the last byte of what it carries gets no credit for the rest. Both are '' when no whole line came before the other end closed. It settles when the
+ * conversation is over; the bound is the check's, for an end that never answers.
+ */
+function talkToPort(port, line) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect({ host: '127.0.0.1', port });
+    socket.setEncoding('utf8');
+    let received = '';
+    let wrote = false;
+    const wholeLines = () => received.split('\n').slice(0, -1);
+    const bound = setTimeout(() => {
+      socket.destroy();
+      reject(new Error(`the client of port ${String(port)} got no answer in 30 s (it had received ${JSON.stringify(received)})`));
+    }, 30_000);
+    socket.on('data', (chunk) => {
+      received += chunk;
+      const lines = wholeLines();
+      if (!wrote && lines.length > 0) {
+        wrote = true;
+        socket.write(`${line}\n`);
+      }
+
+      if (wrote && lines.length > 1) socket.end();
+    });
+    socket.on('close', () => {
+      clearTimeout(bound);
+      const [greeting = '', echo = ''] = wholeLines();
+      resolve({ greeting, echo });
+    });
+    socket.on('error', (error) => {
+      // The other end went away after it said what it had to: the conversation is over, and `close` follows.
+      if (error.code === 'ECONNRESET' || error.code === 'EPIPE') return;
+      clearTimeout(bound);
+      reject(error);
+    });
+  });
+}
+
+/** What connecting to a port of the loopback comes to: `connected`, or the code of the error (`ECONNREFUSED` for a port that nothing listens on). */
+function connectOutcome(port) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: '127.0.0.1', port });
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve('connected');
+    });
+    socket.once('error', (error) => {
+      resolve(error.code ?? String(error.message));
+    });
+  });
+}
+
+/**
+ * A TCP server of the check's own on the loopback, for a perturbation: it sends `greeting` and a line feed to every connection and then does what `echo` says: `'line'` sends back each line it is sent as it came, and `'unfinished'` sends back the line without the line feed that ends it and closes the
+ * connection (what a forward that loses the last byte of what it carries gives back). `port` is the port it takes (0: any).
+ */
+async function listenLikeTarget(greeting, echo, port = 0) {
+  const clients = new Set();
+  const server = net.createServer((socket) => {
+    clients.add(socket);
+    socket.on('close', () => clients.delete(socket));
+    socket.on('error', () => undefined);
+    socket.write(`${greeting}\n`);
+    if (echo === 'line') socket.pipe(socket);
+    else socket.on('data', (data) => socket.end(String(data).replace(/\n$/, '')));
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', resolve);
+  });
+  return {
+    port: server.address().port,
+    close: async () => {
+      for (const socket of clients) socket.destroy();
+      await new Promise((resolve) => {
+        server.close(resolve);
+      });
+    },
+  };
+}
+
+/**
+ * A route of the page whose handler's failure is the scenario's. Playwright gives the rejection of an asynchronous handler to nobody: the process of the check gets an unhandled rejection (it ends with none of the cleanup of its `finally`) and the call the handler was dealing with is never answered, so the
+ * page waits on it. Here the failure is caught and kept in `failures`, for the scenario to say with the engine's own error (the wait for a hold and its release say it at once, and the assertion `route-quiet` at the end).
+ */
+async function routeAndReport(page, pattern, handler, failures) {
+  await page.route(pattern, async (route) => {
+    try {
+      await handler(route);
+    } catch (error) {
+      failures.push(error);
+    }
+  });
+}
+
+/** The real path of a file, which is what the operating system reports for a process that runs it (a temporary directory may be reached through a link); the path as it was given when there is none to resolve. */
+async function resolved(file) {
+  return realpath(file).catch(() => file);
+}
+
+/** Takes `item` out of `list` when it is there, and nothing else: the place of an item that is not in the list is -1, which `splice` would take for the last one. */
+function takeOut(list, item) {
+  const at = list.indexOf(item);
+  if (at >= 0) list.splice(at, 1);
+}
+
+/**
+ * w. The Ports tool (PF1: the forwards of ports the host reports), over the real host, on a host of its own whose plugin `fixture-g-ports` (Seam Ports) has a PROCESS that serves one connection (`harbor`) and forwards a local port to a TCP server of its own (it sends
+ * `PF1-FIXTURE-HELLO` to every connection and sends back what it is sent). One window with nothing saved, opened at the plugin's page before its connection is started: the tool, which has not been on screen, holds no handler of the host's port-forward events and has made no
+ * call for the list of forwards, though the host's operator starts the connection (`StartConnection`) and the window hears it (`connection/status`). The press of the page's button asks the host once (`StartResourcePortForwardingSession`, in the page's own plugin and connection)
+ * and the page says `Forward session <id> on 127.0.0.1:<local>` (the place that the row's mapping says); the Ports tool is revealed with exactly one row, the forward the host lists: its resource, the mapping `127.0.0.1:<local> → :8080/TCP`, the connection by its NAME (its id is nowhere on screen) and Running, with one handler for each of
+ * the five host events it follows and one call for the list. A client of the check's own (Node's `net`) connects to `127.0.0.1:<local>`: the first line is `PF1-FIXTURE-HELLO` and a line it writes comes back. Open in browser is one call of the runtime's `Browser.OpenURL` (the
+ * Browser object, 9, its method 0, `http://127.0.0.1:<local>`), which the check intercepts with `page.route` and answers 200 so that the host never opens a browser on this machine, and never `window.open`; Copy address puts `127.0.0.1:<local>` on the clipboard (the page's
+ * own stub) and says `Address copied`; the row's menu (a right click, Shift+F10) offers the same three and runs them, one at a time (what each item caused is read from where each record stood just before it was chosen, and what Copy caused is read before Open is chosen: Copy writes the address to the clipboard once and asks the runtime to open nothing, Open makes one call that opens it and writes nothing to the clipboard, and neither uses window.open, a question or a window of the browser; the menu's Stop is the one that stops the second forward below). A reload brings the row back from the host's list as it was, with one call for the list, and a second forward started from the page is a second row that the host's
+ * `created` event made, with no call for the list. The page's second button asks for the local port its last answer gave: the host cannot give it twice and refuses it (a 422 that RUNTIME_ALLOW names), the page says `Refused PROVIDER_ERROR:` and one plain line, and nothing else changes: no second row, nothing more in the host's list, no `created` event, and the forward that holds the port still carries. The page's Stop ends a forward the page started (the page says `Stopped forward <id>`, the row and the host's list lose it and its port refuses a connection), and a second press says the same and asks the host nothing. Stop in the tool: with the call held on its way the row says Stopping, its Stop waits and a second press asks the host nothing; with the host's answer held after it closed the forward, the row leaves with the host's `closed` event, the host no
+ * longer lists it and its local port refuses a connection; with no forward left the tool says so; with the panel hidden it holds no handler of the host's events. A forward started while the panel is hidden shows the tool again; then the plugin's
+ * process is killed by the pid the host names (its binary loses its execute bit, so that the host's recovery cannot start it again; the signal is a precondition that no control perturbs and no SEAM_REMOVE leaves out: after the binary lost its execute bit (the reading does not depend on it) the host names the pid
+ * again, with the start identity it had and the binary this run installed, and nothing is awaited between that reading and the signal): the host finds it on its next health check (up to 30 s) and the row says Stopped and `Its plugin stopped.`, its Stop is disabled with that reason and a press asks the host nothing, Open in browser and Copy address are disabled, and its local port refuses a connection.
+ * Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withControls`; PORTS_CONTROLS). No assertion waits for a time: each waits for the state it reads (a call the check holds, an event of the host, a row, a count of frames drawn). What the check itself fails at is the
+ * scenario's: no request fails in the phase (the phase's own guard, whose control is `runtime-4xx`), no route of the check fails (`route-quiet`: a held call that cannot be let go is kept with the engine's own error, and its wait and its release say it), and the page raises no error but the one a reload makes of
+ * a call it cuts (`page-clean`: from the call of the reload to the commit of the new document, and only a message that says a call was cut; an error at any other time is the scenario's, whatever it says).
+ */
+async function checkPorts(browser, engine, binary, work) {
+  const dir = await mkdtemp(path.join(work, `ports-${engine}-`));
+  const host = await startHost(dir, await freePort(), undefined, async (plugins) => [await writePortsPlugin(plugins, binary)]);
+  const exited = new Promise((resolve) => host.child.once('exit', resolve));
+  const { asserting, verdict } = withControls(PORTS_GROUP, PORTS_CONTROLS);
+  const pageAddress = `#/${PORTS_ID}/targets?connection=${PORTS_CONNECTION_KEY}`;
+  const line = 'PF1-SEAM-LINE';
+  const DECOY_ROW = '<tr data-ports-part="row" data-decoy data-ports-id="decoy" data-ports-state="running"></tr>';
+  const decoyRowOf = (id) => `<tr data-ports-part="row" data-decoy data-ports-id="${id}" data-ports-state="running"></tr>`;
+  let page;
+  /** The server of the check's own that a perturbation puts where the forward's port is, or in front of the client of it. */
+  let planted;
+
+  try {
+    // The allowance for the refused start is narrow (RUNTIME_ALLOW): the answer to the one call that this scenario records as refused on purpose, a 422 of class PROVIDER_ERROR, and nothing else. What it covers and what it does not is asked of the entry itself, with failures made for the purpose, before anything runs.
+    const refusedEntry = RUNTIME_ALLOW.find((entry) => entry.phases?.includes(PORTS_GROUP));
+    const refusedStart = (callId, method = 'StartResourcePortForwardingSession') => ({
+      status: 422,
+      asked: JSON.stringify({ object: 0, method: 0, args: { 'call-id': callId, methodName: `${NETWORKER_SERVICE}.${method}`, args: [PORTS_ID, PORTS_CONNECTION_KEY, '{}'] } }),
+      answered: '{"message":"{\\"code\\":\\"PROVIDER_ERROR\\",\\"title\\":\\"\\",\\"message\\":\\"\\"}","cause":{"code":"PROVIDER_ERROR","title":"","message":""},"kind":"RuntimeError"}',
+    });
+    REFUSED_ON_PURPOSE.add('probe-on-purpose');
+    const covers = [
+      refusedEntry.test(refusedStart('probe-on-purpose')),
+      refusedEntry.test(refusedStart('probe-another-call')),
+      refusedEntry.test(refusedStart('probe-on-purpose', 'ClosePortForwardSession')),
+      refusedEntry.test({ ...refusedStart('probe-on-purpose'), status: 500 }),
+      refusedEntry.test({ ...refusedStart('probe-on-purpose'), answered: '{"message":"another answer"}' }),
+    ];
+    REFUSED_ON_PURPOSE.delete('probe-on-purpose');
+    covers.push(refusedEntry.test(refusedStart('probe-on-purpose')));
+    assert.deepEqual(covers, [true, false, false, false, false, false], `${engine}: the allowance for the refused start covers the answer to the call that was recorded as refused on purpose, and not another start refused the same way, another method, another status, another answer, or that call once it is not recorded`);
+    page = await freshPage(browser, host.base);
+    PAGE_LABELS.set(page, "the window of scenario w, opened at the ports plugin's page");
+    // The page's errors, each with where it came from. A reload cuts the calls that the page it replaces has in flight, and an engine may say so as an error of that page (WebKit does: `Load failed`): that error, and only that, is the one that comes while the page is being replaced, from the call of
+    // the reload (`replacing`) to the commit of the new document, and says that a call was cut. An error at any other time, whatever it says (a call that failed after the plugin was killed says the same words), is the page's own, and so is every error of the new document.
+    const errors = [];
+    let replacing = false;
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) replacing = false;
+    });
+    page.on('pageerror', (error) => {
+      errors.push({ message: `pageerror: ${error.message}`, cut: replacing && CUT_BY_A_RELOAD.test(error.message) });
+    });
+    // Nothing may open in the browser itself: every window the page opens and every question it asks is kept (the dialogs are dismissed, so that a page that asks one does not wait for an answer).
+    const popups = [];
+    page.context().on('page', (popup) => popups.push(popup));
+    const dialogs = [];
+    page.on('dialog', async (dialog) => {
+      dialogs.push(`${dialog.type()}: ${dialog.message()}`);
+      await dialog.dismiss();
+    });
+    // What the window hears of the host: the frames of its events socket that the tool follows, as the host sent them (the frames of every socket the page has had: a reload makes another).
+    const frames = [];
+    page.on('websocket', (socket) => {
+      socket.on('framereceived', ({ payload }) => {
+        try {
+          const message = JSON.parse(String(payload));
+          if (typeof message?.name === 'string' && PORTS_FOLLOWS.includes(message.name)) frames.push({ name: message.name, data: message.data });
+        } catch {
+          // not an event
+        }
+      });
+    });
+    // What the window asks of the host's networker, in the order it asks.
+    const calls = [];
+    page.on('request', (request) => {
+      const call = networkerCallOf(request);
+      if (call !== undefined) calls.push(call);
+    });
+    await spoofPlatform(page);
+    await keepClipboardOnEveryLoad(page);
+    await watchWindowOpens(page);
+    await keepListeners(page);
+    // The host's call that opens an address is intercepted and answered 200 with nothing: the host never opens a browser on this machine, whatever the page does (as in r6). The same route holds a call of the networker where the check asks (`hold`): there is one route, so that nothing the page asks
+    // passes it unseen. What the route fails to do is the scenario's (`routeAndReport`): a call it held is never asked of the host again (a Stop that the host has done is not done twice), and the hold says why, to whoever waits for it or lets it go.
+    const opened = [];
+    const holds = [];
+    const routeFailures = [];
+    await routeAndReport(
+      page,
+      '**/wails/runtime',
+      async (route) => {
+        const text = route.request().method() === 'POST' ? (route.request().postData() ?? '') : '';
+        const call = openUrlCallOf(text);
+        if (call !== undefined) {
+          opened.push(call);
+          await route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
+          return;
+        }
+
+        const asked = networkerCallOf(route.request());
+        const held = asked === undefined ? undefined : holds.find((candidate) => !candidate.taken && candidate.method === asked.method && candidate.match(asked));
+        if (held === undefined) {
+          await route.continue();
+          return;
+        }
+
+        held.taken = true;
+        held.route = route;
+        try {
+          if (held.when === 'before') {
+            held.held = true;
+            await held.gate.promise;
+            await route.continue();
+          } else {
+            const response = await route.fetch();
+            held.held = true;
+            await held.gate.promise;
+            await route.fulfill({ response });
+          }
+        } catch (error) {
+          held.failure = error;
+          throw error;
+        } finally {
+          held.done.resolve();
+        }
+      },
+      routeFailures,
+    );
+    /**
+     * The next call of `method` of the host's networker that the page makes (and that `match` takes) is held, as `holdCall` holds one: `before` it reaches the host, or `after` the host has done it and answered. `held()` says whether it is held, and when the route failed (before the call was held, or when
+     * it was let go) it says why instead, with the engine's own error, so that a wait for the hold ends with that error and not with a time out. `release()` lets the call go on, settles when the route has dealt with it and says the same error. `routeOf()` is the route the call is held in, for a control.
+     */
+    const hold = (method, when, match = () => true) => {
+      const entry = { method, when, match, taken: false, held: false, failure: undefined, route: undefined, gate: Promise.withResolvers(), done: Promise.withResolvers() };
+      holds.push(entry);
+      return {
+        held: () => {
+          if (entry.failure !== undefined) throw entry.failure;
+          return entry.held;
+        },
+        routeOf: () => entry.route,
+        release: async () => {
+          entry.gate.resolve();
+          await entry.done.promise;
+          holds.splice(holds.indexOf(entry), 1);
+          if (entry.failure !== undefined) throw entry.failure;
+        },
+      };
+    };
+
+    /** Frames drawn with nothing asked of the page: the wait of a check that something does not happen, counted in frames and not in time. */
+    const settle = async (count = 45) => {
+      for (let turn = 0; turn < count; turn += 1) await afterFrames(page);
+    };
+    /** What a control adds to the page: markup that is nothing of the product's (`data-decoy`), put at the end of the first element `selector` finds, and taken out again. */
+    const plant = async (selector, html) => page.locator(selector).first().evaluate((element, markup) => element.insertAdjacentHTML('beforeend', markup), html);
+    const unplant = async () => page.evaluate(() => document.querySelectorAll('[data-decoy]').forEach((element) => element.remove()));
+    /** The calls a control made the page make are forgotten, as the failure that `runtime-4xx` plants is. */
+    const forgetPlanted = () => {
+      for (let at = calls.length - 1; at >= 0; at -= 1) if (calls[at].callId.startsWith('seam-plant')) calls.splice(at, 1);
+    };
+    /** Whether a call is one that a control made the page make (`plantCall`): the id its call carries starts with `seam-plant`. */
+    const isPlantedCall = (asked) => asked.callId.startsWith('seam-plant');
+    /**
+     * A perturbation that changes one attribute of an element of the page (`value` null takes the attribute off) and its undo, which puts back what the attribute was when the control changed it: never what the assertion expects of it, so that a page that was not as expected stays so for the assertion
+     * that runs after the control.
+     */
+    const attributeFault = (locator, name, value) => {
+      let was = null;
+      const set = async (next) => locator.evaluate((element, [attribute, to]) => (to === null ? element.removeAttribute(attribute) : element.setAttribute(attribute, to)), [name, next]);
+      return {
+        perturb: async () => {
+          was = await locator.getAttribute(name);
+          await set(value);
+        },
+        undo: async () => set(was),
+      };
+    };
+    /**
+     * A window.open that the page is made to have called, as a record in the check's own net (`watchWindowOpens`: nothing is opened), and the undo that takes out that record and no other: what the product did on its own stays in the record for the assertion that runs after the control.
+     */
+    const windowOpenFault = {
+      perturb: async () =>
+        page.evaluate(() => {
+          window.__plantedOpen = ['https://example.com/'];
+          window.__opens.push(window.__plantedOpen);
+        }),
+      undo: async () =>
+        page.evaluate(() => {
+          const at = window.__opens.indexOf(window.__plantedOpen);
+          if (at >= 0) window.__opens.splice(at, 1);
+          delete window.__plantedOpen;
+        }),
+    };
+    /**
+     * A write to the clipboard that the page is made to have done, as a record in the check's own net (`keepClipboardOnEveryLoad`: nothing is copied), with words of the control's own, and the undo that takes out that record by those words and no other: whatever the product wrote stays in the
+     * clipboard's history for the assertion that runs after the control, however late it was written.
+     */
+    const clipboardFault = (control) => {
+      const words = `planted by the control ${control}`;
+      return {
+        perturb: async () => page.evaluate((planted) => window.__copied.push(planted), words),
+        undo: async () =>
+          page.evaluate((planted) => {
+            const at = window.__copied.lastIndexOf(planted);
+            if (at >= 0) window.__copied.splice(at, 1);
+          }, words),
+      };
+    };
+    /** A call of Browser.OpenURL that the route is made to have taken, as a record of its own in the check's list of them (`opened`), and the undo that takes out that very record and no other: the calls the product made stay in the list, however late they were made. */
+    const openFault = () => {
+      const forged = { shape: 'runtime', object: 9, method: 0, url: 'http://127.0.0.1:1' };
+      return {
+        perturb: async () => {
+          opened.push(forged);
+        },
+        undo: async () => {
+          takeOut(opened, forged);
+        },
+      };
+    };
+    /**
+     * A fault in the words of the page's one status line (`Forward session <id> on <host>:<port>`), made in the text node the page owns without replacing it, so that the page's next words still find their node: `from` in what the line says becomes `to`, `whileThere` is asked while it is so (the
+     * assertion that reads another part of the same line must pass then: the fault is in one part of the line and in no other) and the undo puts back the words the line had.
+     */
+    const statusFault = (from, to, whileThere) => {
+      let had = '';
+      return {
+        perturb: async () => {
+          had = await page.getByText(/^Forward session /).evaluate(
+            (element, [before, after]) => {
+              const node = element.firstChild;
+              if (node === null || node.nodeType !== Node.TEXT_NODE) throw new Error("the page's status line is not one text node");
+              const text = node.nodeValue ?? '';
+              node.nodeValue = text.replace(before, after);
+              return text;
+            },
+            [from, to],
+          );
+          await whileThere();
+        },
+        undo: async () =>
+          page.getByText(/^Forward session /).evaluate((element, text) => {
+            element.firstChild.nodeValue = text;
+          }, had),
+      };
+    };
+    const listCalls = (from = 0) => calls.slice(from).filter((call) => call.method === 'ListAllPortForwardSessions').length;
+    /**
+     * The page's button is pressed with the host's answer to the start held until the window has heard the host's created event: the tool comes on screen when the answer arrives, and what it reads then (one list, with no event that overtakes the read and makes it
+     * ask again) must not depend on which of the two reaches the window first. The press is made with the tool out of sight, so the event finds no handler and the list is what tells the tool of the forward.
+     */
+    const startAndHear = async () => {
+      const starting = hold('StartResourcePortForwardingSession', 'after');
+      const toldAt = frames.length;
+      await forwardButton.click();
+      await waitUntil('the host to have started the forward (its answer is held)', () => starting.held(), 30_000);
+      await waitUntil('the window to be told that the forward was created (core/networker/portforward/created)', () => frames.slice(toldAt).some((frame) => frame.name === PORT_EVENTS.created), 30_000);
+      await settle(10);
+      await starting.release();
+      await page.getByText(/^Forward session /).first().waitFor({ timeout: 30_000 });
+    };
+    /** The fault that makes the page ask for the list: the call is made by the page itself, and the check waits until it has seen it on the wire (the event of a request is not ordered with the answer the page's script gets), so that what undoes it forgets it. */
+    const plantList = async () => {
+      const had = calls.length;
+      await plantCall(page, 'ListAllPortForwardSessions');
+      await waitUntil('the call that the control made the page make to be seen on the wire', () => calls.length > had, 15_000);
+    };
+    /** The forwards the host lists now, as the host states them (the list is the host's: every forward of every window and plugin). */
+    const listed = async () => (await callBound(host.base, NETWORKER_SERVICE, 'ListAllPortForwardSessions')) ?? [];
+
+    const forwardButton = page.getByRole('button', { name: FORWARD_LABEL, exact: true });
+    const stopButton = page.getByRole('button', { name: STOP_LABEL, exact: true });
+    const againButton = page.getByRole('button', { name: AGAIN_LABEL, exact: true });
+    const toggle = page.locator('[data-shell-part="panelToggle"]');
+    const body = page.locator('[data-shell-part="portsBody"]');
+    const table = page.getByRole('table', { name: 'Forwarded ports' });
+    const footer = page.locator('[data-ports-part="footer"]');
+    const live = page.locator('[data-ports-part="live"]');
+    const rowEl = (id) => page.locator(`[data-ports-part="row"][data-ports-id="${id}"]`);
+    const rowButton = (id, action) => rowEl(id).locator(`[data-ports-action="${action}"]`);
+    const menu = page.getByRole('menu');
+    /** The rows of the table as a person reads them: the forward, what each cell says (each a list, so that a second thing in a cell is seen), and for each action whether it is disabled and the reason it gives. */
+    const rowsNow = async () =>
+      page.locator('[data-ports-part="row"]').evaluateAll((rows) =>
+        rows.map((row) => {
+          const text = (node) => (node.textContent ?? '').trim();
+          const action = (name) => {
+            const button = row.querySelector(`[data-ports-action="${name}"]`);
+            return button === null ? null : { disabled: button.getAttribute('aria-disabled') === 'true', reason: document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent ?? '' };
+          };
+          return {
+            id: row.getAttribute('data-ports-id'),
+            state: row.getAttribute('data-ports-state'),
+            resources: [...row.querySelectorAll('td[data-ports-part="resource"] [data-ov-full]')].map((node) => node.getAttribute('data-ov-full') ?? ''),
+            reasons: [...row.querySelectorAll('[data-ports-part="reason"]')].map(text),
+            mappings: [...row.querySelectorAll('[data-ports-part="mapping"]')].map(text),
+            connections: [...row.querySelectorAll('td[data-ports-part="connection"]')].map(text),
+            statuses: [...row.querySelectorAll('td[data-ports-part="status"]')].map(text),
+            stop: action('stop'),
+            open: action('open'),
+            copy: action('copy'),
+          };
+        }),
+      );
+    /** Whether `wanted` is in what the tool draws: its text and every attribute that names or describes an element (an accessible name, a title, a tip). */
+    const drawnIn = async (wanted) =>
+      body.evaluate((root, key) => {
+        const named = ['aria-label', 'title', 'alt', 'placeholder', 'data-ov-tip', 'data-ov-menu-label'];
+        const drawn = [root.innerText, ...[root, ...root.querySelectorAll('*')].flatMap((node) => named.flatMap((name) => (node.hasAttribute(name) ? [node.getAttribute(name) ?? ''] : [])))].join('\n');
+        return drawn.includes(key);
+      }, wanted);
+    const menuItems = async () => menu.getByRole('menuitem').evaluateAll((items) => items.map((item) => [item.getAttribute('aria-label') ?? (item.textContent ?? '').trim(), item.getAttribute('aria-disabled') === 'true']));
+    const THREE = [['Stop', false], ['Open in browser', false], ['Copy address', false]];
+    const openMenuByPointer = async (id) => {
+      await rowEl(id).click({ button: 'right' });
+      await menu.first().waitFor({ timeout: 15_000 });
+    };
+    const closeMenu = async () => {
+      await page.keyboard.press('Escape');
+      await waitUntil('the menu to close', async () => (await menu.count()) === 0, 10_000);
+    };
+    /** The Ports tool is on screen: the panel is open and the tool is the one selected in its strip, and its table is drawn once. */
+    const revealed = async (what) => {
+      const state = await panelStateOf(page);
+      const tables = await table.count();
+      assert.deepEqual([state.open, state.tool, tables], [true, 'Ports', 1], `${engine}: ${what} (${JSON.stringify(state)}, ${String(tables)} tables)`);
+    };
+
+    // The window is opened at the plugin's page before the connection is started. The plugin's process is the host's to name, and the host lists its one connection.
+    await open(page, host.base, pageAddress);
+    await forwardButton.waitFor({ timeout: 30_000 });
+    await waitUntil("the host to name the ports plugin's process and to list its connection", async () => {
+      const named = (await callBound(host.base, PROCESS_SERVICE, 'GetSnapshot')).processes.some((candidate) => candidate.key === `plugin:${PORTS_ID}` && candidate.ownership === 'verified');
+      const states = (await callBound(host.base, RESOURCE_SERVICE, 'GetAllConnectionStates'))[PORTS_ID] ?? [];
+      return named && states.some((state) => state.connection.name === PORTS_CONNECTION_NAME);
+    }, 30_000);
+    await waitUntil("the window to hold its own handlers of the plugin lifecycle's events", async () => page.evaluate(() => (window.__listeners?.get('plugin/unloaded')?.length ?? 0) > 0), 30_000);
+
+    // 0. THE TOOL HAS NOT BEEN ON SCREEN: it holds no handler of the host's events and asks for no list, though the host's operator starts the connection and the window hears it.
+    await asserting(
+      'handlers-rest',
+      async () => plantListener(page, PORT_EVENTS.created),
+      async () => unplantListeners(page),
+      async () => {
+        const held = await listenersOf(page, [PORT_EVENTS.created, PORT_EVENTS.closed]);
+        assert.deepEqual(held, { [PORT_EVENTS.created]: 0, [PORT_EVENTS.closed]: 0 }, `${engine}: the tool holds no handler of the host's port-forward events before it is on screen (${JSON.stringify(held)})`);
+      },
+    );
+    const connected = (frame) => frame.name === 'connection/status' && frame.data?.pluginID === PORTS_ID && frame.data?.connectionID === PORTS_CONNECTION_KEY && frame.data?.status === 'CONNECTED';
+    const startedAt = frames.length;
+    const operator = await callBound(host.base, RESOURCE_SERVICE, 'StartConnection', PORTS_ID, PORTS_CONNECTION_KEY);
+    assert.equal(operator.status, 'CONNECTED', `${engine}: the host's operator started the plugin's connection (${JSON.stringify(operator).slice(0, 300)})`);
+    await waitUntil('the window to be told that the connection is connected (connection/status)', () => frames.slice(startedAt).some(connected), 30_000);
+    await settle();
+    await asserting(
+      'calls-rest',
+      plantList,
+      async () => {
+        forgetPlanted();
+      },
+      async () => {
+        const asked = listCalls();
+        assert.equal(asked, 0, `${engine}: the window asks the host for no list of forwards before the tool is on screen, though the host told it that a connection changed (${String(asked)} calls)`);
+      },
+    );
+
+    // 1. THE PAGE FORWARDS A PORT: the press asks the host once, the page says which forward the host started, and the Ports tool is revealed with exactly one row, the forward the host lists.
+    const before = await listenersOf(page, PORTS_FOLLOWS);
+    const pressedAt = calls.length;
+    await startAndHear();
+    await page.getByText(/^Forward session /).first().waitFor({ timeout: 30_000 });
+    await waitUntil('the host to list the forward', async () => (await listed()).length === 1, 30_000);
+    await waitUntil('the tool to list the forward', async () => (await rowsNow()).length === 1, 30_000);
+    await holdsWithin(async () => (await rowsNow())[0]?.connections[0] === PORTS_CONNECTION_NAME, 15_000);
+    await settle();
+    const hostRows = await listed();
+    const session = hostRows[0];
+    const id1 = session.id;
+    const local = session.local_port;
+    const mapping = `127.0.0.1:${String(local)} → :${String(TARGET_PORT)}/TCP`;
+    await asserting(
+      'start-wire',
+      async () => {
+        calls.push({ method: 'StartResourcePortForwardingSession', callId: 'seam-plant-start', args: [PORTS_ID, PORTS_CONNECTION_KEY, '{}'] });
+      },
+      async () => {
+        forgetPlanted();
+      },
+      async () => {
+        const made = calls.slice(pressedAt).filter((call) => call.method === 'StartResourcePortForwardingSession');
+        const request = made.length === 1 ? JSON.parse(String(made[0].args[2])) : undefined;
+        const asked = [made.length, made[0]?.args.slice(0, 2), request?.local_port, request?.remote_port, request?.protocol, request?.connection_type, request?.connection?.plugin_id, request?.connection?.connection_id, request?.connection?.resource_id];
+        assert.deepEqual(asked, [1, [PORTS_ID, PORTS_CONNECTION_KEY], 0, TARGET_PORT, 'TCP', 'RESOURCE', PORTS_ID, PORTS_CONNECTION_KEY, TARGET_ID], `${engine}: the press of the page's button asks the host once to start a forward, in the page's own plugin and connection, for the target's port and a free local port (${JSON.stringify(made)})`);
+      },
+    );
+    // What the page says of a forward it started is ONE line, `Forward session <id> on <host>:<port>`: `page-says` reads its id and `page-where` its place, so that each fails for its own part of the words. Each control changes only its own part of that one line, in place (no line is added), and
+    // asks the other assertion while the fault is there: it must pass then.
+    const sessionOf = (text) => /^Forward session ([0-9a-f-]{36})(?: |$)/.exec(text)?.[1];
+    const placeOf = (text) => /^Forward session \S+ on (\S+)$/.exec(text)?.[1] ?? text;
+    const readsId = async () => {
+      const words = await page.getByText(/^Forward session /).allTextContents();
+      assert.deepEqual(words.map(sessionOf), [id1], `${engine}: the page says which forward the host started: Forward session and the id of the one forward the host lists, once (${JSON.stringify(words)})`);
+    };
+    const readsPlace = async () => {
+      const [row] = await rowsNow();
+      const said = (await page.getByText(/^Forward session /).allTextContents()).map(placeOf);
+      const shown = [(row?.mappings[0] ?? '').split(' → ')[0]];
+      assert.deepEqual(said, shown, `${engine}: the page says where the forward is: the host and the port of the Ports row's mapping (the page says ${JSON.stringify(said)}, the row's mapping begins ${JSON.stringify(shown)})`);
+    };
+    const idFault = statusFault(id1, '00000000-0000-4000-8000-000000000000', readsPlace);
+    await asserting('page-says', idFault.perturb, idFault.undo, readsId);
+    const unrevealed = attributeFault(toggle, 'aria-pressed', 'false');
+    await asserting(
+      'tool-revealed',
+      unrevealed.perturb,
+      unrevealed.undo,
+      async () => revealed('the Ports tool is revealed by the first forward: the panel is open on it with its table'),
+    );
+    await asserting(
+      'one-row',
+      async () => plant('[data-ports-part="table"] tbody', DECOY_ROW),
+      unplant,
+      async () => {
+        const rows = await rowsNow();
+        const count = ((await footer.textContent()) ?? '').trim();
+        assert.deepEqual([rows.length, count], [1, '1 forward'], `${engine}: the tool lists exactly one forward: one row, and its footer counts 1 forward (${JSON.stringify([rows.map((row) => row.id), count])})`);
+      },
+    );
+    await asserting(
+      'host-lists',
+      async () => {
+        hostRows[0] = { ...session, state: 'FAILED' };
+      },
+      async () => {
+        hostRows[0] = session;
+      },
+      async () => {
+        const [one] = hostRows;
+        const said = [hostRows.length, one?.id, one?.state, one?.protocol, one?.local_port > 0, one?.remote_port, one?.connection_type, one?.connection?.plugin_id, one?.connection?.connection_id, one?.connection?.resource_id];
+        assert.deepEqual(said, [1, id1, 'ACTIVE', 'TCP', true, TARGET_PORT, 'RESOURCE', PORTS_ID, PORTS_CONNECTION_KEY, TARGET_ID], `${engine}: the host lists the forward the row shows: the one session, active, TCP, to the target's port, of the plugin and its connection (${JSON.stringify(one)})`);
+      },
+    );
+    await asserting(
+      'row-resource',
+      async () => plant('td[data-ports-part="resource"]', '<span data-ov-full="decoy" data-decoy></span>'),
+      unplant,
+      async () => {
+        const [row] = await rowsNow();
+        assert.deepEqual(row?.resources, [TARGET_ID], `${engine}: the row names the resource that was forwarded (${JSON.stringify(row?.resources)})`);
+      },
+    );
+    await asserting(
+      'row-mapping',
+      async () => plant('td[data-column="mapping"]', '<span data-ports-part="mapping" data-decoy>127.0.0.1:1 → :1/TCP</span>'),
+      unplant,
+      async () => {
+        const [row] = await rowsNow();
+        assert.deepEqual(row?.mappings, [mapping], `${engine}: the row's mapping is the loopback address of the local port the host chose, an arrow and the target's port and protocol (${JSON.stringify(row?.mappings)})`);
+      },
+    );
+    const placeFault = statusFault(`127.0.0.1:${String(local)}`, '127.0.0.1:1', readsId);
+    await asserting('page-where', placeFault.perturb, placeFault.undo, readsPlace);
+    await asserting(
+      'row-connection',
+      async () => plant('td[data-ports-part="connection"]', `<span data-decoy>${PORTS_CONNECTION_KEY}</span>`),
+      unplant,
+      async () => {
+        const [row] = await rowsNow();
+        const idDrawn = await drawnIn(PORTS_CONNECTION_KEY);
+        assert.deepEqual([row?.connections, idDrawn], [[PORTS_CONNECTION_NAME], false], `${engine}: the row names the connection by its name, and its id is nowhere the tool draws (${JSON.stringify([row?.connections, idDrawn])})`);
+      },
+    );
+    await asserting(
+      'row-status',
+      async () => plant('td[data-ports-part="status"]', '<span data-decoy>Failed</span>'),
+      unplant,
+      async () => {
+        const [row] = await rowsNow();
+        assert.deepEqual([row?.statuses, row?.state], [['Running'], 'running'], `${engine}: the row says Running (${JSON.stringify([row?.statuses, row?.state])})`);
+      },
+    );
+    await asserting(
+      'handlers-shown',
+      async () => plantListener(page, PORT_EVENTS.closed),
+      async () => unplantListeners(page),
+      async () => {
+        const after = await listenersOf(page, PORTS_FOLLOWS);
+        const gained = Object.fromEntries(PORTS_FOLLOWS.map((name) => [name, after[name] - before[name]]));
+        assert.deepEqual(gained, ONE_EACH, `${engine}: the tool holds one handler for each of the five host events it follows while it is on screen (it gained ${JSON.stringify(gained)})`);
+      },
+    );
+    await asserting(
+      'calls-shown',
+      plantList,
+      async () => {
+        forgetPlanted();
+      },
+      async () => {
+        const asked = listCalls(pressedAt);
+        assert.equal(asked, 1, `${engine}: the tool reads the host's list once when it comes on screen and makes no call after it while nothing changes (${String(asked)} calls)`);
+      },
+    );
+
+    // 2. REAL TRAFFIC: a client of the local port reaches the target through the forward.
+    let target = local;
+    await asserting(
+      'tcp-greeting',
+      async () => {
+        planted = await listenLikeTarget('NOT-THE-FIXTURE', 'line');
+        target = planted.port;
+      },
+      async () => {
+        target = local;
+        await planted.close();
+        planted = undefined;
+      },
+      async () => {
+        const said = await talkToPort(target, line);
+        assert.equal(said.greeting, TARGET_GREETING, `${engine}: a client of the local port is greeted by the target: the first line is ${TARGET_GREETING} (${JSON.stringify(said)})`);
+      },
+    );
+    await asserting(
+      'tcp-echo',
+      async () => {
+        planted = await listenLikeTarget(TARGET_GREETING, 'unfinished');
+        target = planted.port;
+      },
+      async () => {
+        target = local;
+        await planted.close();
+        planted = undefined;
+      },
+      async () => {
+        const said = await talkToPort(target, line);
+        assert.equal(said.echo, line, `${engine}: a client of the local port gets back what it writes: the target echoes the line (${JSON.stringify(said)})`);
+      },
+    );
+
+    // 3. THE ACTIONS: Open in browser is one call of the runtime's Browser.OpenURL (intercepted), Copy address is the clipboard and its words, and the row's menu offers and runs the same three.
+    await rowButton(id1, 'open').click();
+    await waitUntil("the call that opens the forward's address (intercepted)", () => opened.length > 0, 15_000);
+    await settle(10);
+    // What a control adds to a record that the check keeps (the calls the route took, the clipboard's history), it takes out again by what it added and not by place or by count: whatever the product made of its own stays there for the assertion that runs after the control, however late it was made.
+    const forgedOpen = openFault();
+    await asserting(
+      'open-call',
+      forgedOpen.perturb,
+      forgedOpen.undo,
+      async () => {
+        const made = opened.map((call) => [call.shape, call.object, call.method, call.url]);
+        assert.deepEqual(made, [['runtime', 9, 0, `http://127.0.0.1:${String(local)}`]], `${engine}: Open in browser makes one call of the runtime's Browser.OpenURL (the Browser object, 9, its method 0) carrying the forward's address over http (${JSON.stringify(opened)})`);
+      },
+    );
+    await asserting(
+      'open-not-window',
+      windowOpenFault.perturb,
+      windowOpenFault.undo,
+      async () => {
+        const asked = { opens: await page.evaluate(() => window.__opens), questions: await page.evaluate(() => window.__questions), dialogs, popups: popups.length };
+        assert.deepEqual(asked, { opens: [], questions: [], dialogs: [], popups: 0 }, `${engine}: Open in browser never uses window.open, a question of the browser or a window of the browser itself (${JSON.stringify(asked)})`);
+      },
+    );
+    await rowButton(id1, 'copy').click();
+    await waitUntil('the address to reach the clipboard', async () => page.evaluate(() => window.__copied.length > 0), 15_000);
+    await waitUntil('the tool to say that it copied', async () => ((await live.textContent()) ?? '').includes('Address copied'), 15_000);
+    const copyFault = clipboardFault('copy-clipboard');
+    await asserting(
+      'copy-clipboard',
+      copyFault.perturb,
+      copyFault.undo,
+      async () => {
+        const copied = await page.evaluate(() => window.__copied);
+        assert.deepEqual(copied, [`127.0.0.1:${String(local)}`], `${engine}: Copy address puts the forward's address on the clipboard, once (${JSON.stringify(copied)})`);
+      },
+    );
+    await asserting(
+      'copy-announced',
+      async () => plant('[data-ports-part="live"]', "<span data-decoy>Couldn't copy the address</span>"),
+      unplant,
+      async () => {
+        const said = ((await live.textContent()) ?? '').trim();
+        assert.equal(said, 'Address copied', `${engine}: Copy address is announced as Address copied (the tool's live region says ${JSON.stringify(said)})`);
+      },
+    );
+    await openMenuByPointer(id1);
+    await asserting(
+      'menu-pointer',
+      async () => plant('[role="menu"]', '<div role="menuitem" aria-label="Restart" data-decoy></div>'),
+      unplant,
+      async () => {
+        const items = await menuItems();
+        assert.deepEqual(items, THREE, `${engine}: a right click on the row opens a menu of the three actions of its buttons, in their order, none disabled (${JSON.stringify(items)})`);
+      },
+    );
+    await closeMenu();
+    await rowButton(id1, 'stop').focus();
+    await page.keyboard.press('Shift+F10');
+    await menu.first().waitFor({ timeout: 15_000 });
+    await asserting(
+      'menu-keyboard',
+      async () => plant('[role="menu"]', '<div role="menuitem" aria-label="Restart" data-decoy></div>'),
+      unplant,
+      async () => {
+        const items = await menuItems();
+        assert.deepEqual(items, THREE, `${engine}: Shift+F10 on a button of the row opens a menu of the three actions of its buttons, in their order, none disabled (${JSON.stringify(items)})`);
+      },
+    );
+    await closeMenu();
+    // The menu's items do what the buttons do, one at a time, and what each item caused is read from where each record stood just before it was chosen, so that whatever an earlier assertion or control left in a record (the clipboard's history, the calls the route took, the page's own windows and
+    // questions) is never read here, and an effect of the first item is never taken for the second's: what Copy caused is read before Open is chosen, and what Open caused is counted from where the calls and the clipboard stood when it was chosen.
+    const atCopy = {
+      copied: await page.evaluate(() => window.__copied.length),
+      opened: opened.length,
+      windowOpens: await page.evaluate(() => window.__opens.length),
+      questions: await page.evaluate(() => window.__questions.length),
+      dialogs: dialogs.length,
+      popups: popups.length,
+    };
+    const address = `127.0.0.1:${String(local)}`;
+    await openMenuByPointer(id1);
+    await menu.getByRole('menuitem', { name: 'Copy address', exact: true }).click();
+    await waitUntil("the menu's Copy address to reach the clipboard", async () => (await page.evaluate(() => window.__copied.length)) > atCopy.copied, 15_000);
+    await settle(10);
+    const menuCopyFault = clipboardFault('menu-copies');
+    await asserting(
+      'menu-copies',
+      menuCopyFault.perturb,
+      menuCopyFault.undo,
+      async () => {
+        const written = (await page.evaluate(() => window.__copied)).slice(atCopy.copied);
+        assert.deepEqual(written, [address], `${engine}: the menu's Copy address writes the forward's address to the clipboard once (what it wrote: ${JSON.stringify(written)})`);
+      },
+    );
+    const menuCopyOpens = openFault();
+    await asserting(
+      'menu-copy-no-open',
+      menuCopyOpens.perturb,
+      menuCopyOpens.undo,
+      async () => {
+        const made = opened.slice(atCopy.opened).map((call) => [call.shape, call.object, call.method, call.url]);
+        assert.deepEqual(made, [], `${engine}: the menu's Copy address asks the runtime to open nothing (what it asked for: ${JSON.stringify(made)})`);
+      },
+    );
+    const atOpen = { copied: await page.evaluate(() => window.__copied.length), opened: opened.length };
+    await openMenuByPointer(id1);
+    await menu.getByRole('menuitem', { name: 'Open in browser', exact: true }).click();
+    await waitUntil("the call that the menu's Open in browser makes (intercepted)", () => opened.length > atOpen.opened, 15_000);
+    await settle(10);
+    const menuOpenFault = openFault();
+    await asserting(
+      'menu-opens',
+      menuOpenFault.perturb,
+      menuOpenFault.undo,
+      async () => {
+        const made = opened.slice(atOpen.opened).map((call) => [call.shape, call.object, call.method, call.url]);
+        assert.deepEqual(made, [['runtime', 9, 0, `http://${address}`]], `${engine}: the menu's Open in browser asks the runtime to open the forward's address once: one call of Browser.OpenURL (the Browser object, 9, its method 0) carrying the address over http (what it made: ${JSON.stringify(made)})`);
+      },
+    );
+    const menuOpenCopies = clipboardFault('menu-open-no-copy');
+    await asserting(
+      'menu-open-no-copy',
+      menuOpenCopies.perturb,
+      menuOpenCopies.undo,
+      async () => {
+        const written = (await page.evaluate(() => window.__copied)).slice(atOpen.copied);
+        assert.deepEqual(written, [], `${engine}: the menu's Open in browser writes nothing to the clipboard (what it wrote: ${JSON.stringify(written)})`);
+      },
+    );
+    await asserting(
+      'menu-not-window',
+      windowOpenFault.perturb,
+      windowOpenFault.undo,
+      async () => {
+        const added = {
+          opens: (await page.evaluate(() => window.__opens)).slice(atCopy.windowOpens),
+          questions: (await page.evaluate(() => window.__questions)).slice(atCopy.questions),
+          dialogs: dialogs.slice(atCopy.dialogs),
+          popups: popups.length - atCopy.popups,
+        };
+        assert.deepEqual(added, { opens: [], questions: [], dialogs: [], popups: 0 }, `${engine}: the menu's actions never use window.open, a question of the browser or a window of the browser itself (what they added: ${JSON.stringify(added)})`);
+      },
+    );
+
+    // 4. A RELOAD brings the row back from the host's list as it was, and a second forward started from the page is a second row.
+    const rowBefore = await rowsNow();
+    await waitUntil('the host to hold the saved window with the panel open on the Ports tool', async () => {
+      const panel = JSON.parse(String((await callHost(host.base, 'GetState', 'main')).session ?? 'null'))?.panel;
+      return panel?.open === true && panel.tool === 'ports';
+    }, 30_000);
+    const reloadedAt = calls.length;
+    replacing = true;
+    await page.reload({ waitUntil: 'load' });
+    await waitUntil('the panel to come back open on the Ports tool', async () => {
+      const state = await panelStateOf(page);
+      return state.open && state.tool === 'Ports';
+    }, 30_000);
+    await waitUntil("the row to come back from the host's list, with its connection named", async () => {
+      const rows = await rowsNow();
+      return rows.length === 1 && rows[0].connections[0] === PORTS_CONNECTION_NAME;
+    }, 30_000);
+    await settle();
+    await asserting(
+      'reload-row',
+      async () => plant('td[data-ports-part="resource"]', '<span data-ov-full="decoy" data-decoy></span>'),
+      unplant,
+      async () => {
+        const rowAfter = await rowsNow();
+        assert.deepEqual(rowAfter, rowBefore, `${engine}: after a reload the row is back from the host's list as it was: the same forward, resource, mapping, connection and state (${JSON.stringify(rowAfter)})`);
+      },
+    );
+    await asserting(
+      'reload-list',
+      plantList,
+      async () => {
+        forgetPlanted();
+      },
+      async () => {
+        const asked = listCalls(reloadedAt);
+        assert.equal(asked, 1, `${engine}: the reloaded window asks the host for its list of forwards once (${String(asked)} calls)`);
+      },
+    );
+    const secondAt = calls.length;
+    await forwardButton.click();
+    await waitUntil('the host to list the second forward', async () => (await listed()).length === 2, 30_000);
+    await waitUntil('the tool to list two forwards', async () => (await rowsNow()).length === 2, 30_000);
+    await holdsWithin(async () => (await rowsNow()).every((row) => row.connections[0] === PORTS_CONNECTION_NAME), 15_000);
+    await settle();
+    const second = (await listed()).find((one) => one.id !== id1);
+    const id2 = second.id;
+    const local2 = second.local_port;
+    await asserting(
+      'second-row',
+      async () => plant('[data-ports-part="table"] tbody', DECOY_ROW),
+      unplant,
+      async () => {
+        const rows = await rowsNow();
+        const count = ((await footer.textContent()) ?? '').trim();
+        const told = frames.filter((frame) => frame.name === PORT_EVENTS.created && frame.data?.id === id2).length;
+        const said = [rows.map((row) => row.id), rows.map((row) => row.statuses.join('')), new Set(rows.flatMap((row) => row.mappings)).size, count, told, listCalls(secondAt)];
+        assert.deepEqual(said, [[id1, id2], ['Running', 'Running'], 2, '2 forwards', 1, 0], `${engine}: a second forward started from the page is a second row, after the first, and the host's created event told the window, which made no call for the list (${JSON.stringify(said)})`);
+      },
+    );
+
+    // 4b. THE SAME PORT AGAIN: the page's second button asks for the local port that its last answer gave, which the second forward holds. The host cannot give a port twice and refuses (a 422 that RUNTIME_ALLOW names); nothing the tool or the host holds changes,
+    // and the forward that holds the port goes on carrying.
+    const againAt = calls.length;
+    const refusedAt = frames.length;
+    await againButton.click();
+    await page.getByText(/^Refused /).first().waitFor({ timeout: 30_000 });
+    await settle(10);
+    const hostRefused = await listed();
+    const refusal = ((await page.getByText(/^Refused /).allTextContents())[0] ?? '').trim();
+    // The call the host refused is the one this press made, and it is the only one the phase allows to be refused so (RUNTIME_ALLOW): its id is recorded. A second start in this window is not one the scenario meant, and is not recorded.
+    const startsRefused = calls.slice(againAt).filter((call) => call.method === 'StartResourcePortForwardingSession');
+    if (startsRefused.length === 1) REFUSED_ON_PURPOSE.add(startsRefused[0].callId);
+    // The code is the host's own class (measured on the real host: a local port that is in use arrives as PROVIDER_ERROR, with no more of the host's words), and what follows it is one plain line: no braces, no quotes, no backslash, no line feed.
+    const codeOf = (text) => /^Refused ([A-Z_]+): [^{}"\\\n]+$/.exec(text)?.[1] ?? text;
+    await asserting(
+      'refused-says',
+      async () => plant('body', '<span data-decoy>Refused CONFLICT: {"code":"CONFLICT"}</span>'),
+      unplant,
+      async () => {
+        const said = await page.getByText(/^Refused /).allTextContents();
+        assert.deepEqual(said.map(codeOf), ['PROVIDER_ERROR'], `${engine}: the page says that a forward of the same port again is refused, by the host's class and in one plain line (${JSON.stringify(said)})`);
+      },
+    );
+    await asserting(
+      'refused-asked',
+      async () => {
+        calls.push({ method: 'StartResourcePortForwardingSession', callId: 'seam-plant-start-again', args: [PORTS_ID, PORTS_CONNECTION_KEY, '{}'] });
+      },
+      async () => {
+        forgetPlanted();
+      },
+      async () => {
+        const made = calls.slice(againAt).filter((call) => call.method === 'StartResourcePortForwardingSession');
+        const request = made.length === 1 ? JSON.parse(String(made[0].args[2])) : undefined;
+        const asked = [made.length, request?.local_port, request?.remote_port, request?.connection?.resource_id];
+        assert.deepEqual(asked, [1, local2, TARGET_PORT, TARGET_ID], `${engine}: the page's second button asks the host once for a forward on the local port that its last answer gave, for the target's port (${JSON.stringify(made)})`);
+      },
+    );
+    await asserting(
+      'refused-no-row',
+      async () => plant('[data-ports-part="table"] tbody', DECOY_ROW),
+      unplant,
+      async () => {
+        const rows = await rowsNow();
+        const count = ((await footer.textContent()) ?? '').trim();
+        const created = frames.slice(refusedAt).filter((frame) => frame.name === PORT_EVENTS.created).length;
+        const said = [rows.map((row) => row.id), count, hostRefused.map((one) => one.id).toSorted(), created, listCalls(againAt)];
+        assert.deepEqual(said, [[id1, id2], '2 forwards', [id1, id2].toSorted(), 0, 0], `${engine}: a forward that was refused is no forward: no second row, nothing more in the host's list, no created event and no call for the list (${JSON.stringify(said)})`);
+      },
+    );
+    let kept = local2;
+    await asserting(
+      'refused-port-kept',
+      async () => {
+        planted = await listenLikeTarget('NOT-THE-FIXTURE', 'line');
+        kept = planted.port;
+      },
+      async () => {
+        kept = local2;
+        await planted.close();
+        planted = undefined;
+      },
+      async () => {
+        const said = await talkToPort(kept, line);
+        assert.deepEqual([said.greeting, said.echo], [TARGET_GREETING, line], `${engine}: the forward that holds the port goes on carrying after another was refused the same port: a client of it is greeted and gets its line back (${JSON.stringify(said)})`);
+      },
+    );
+
+    // 4c. THE PAGE STOPS WHAT IT STARTED: a forward started from the page is the page's last answer, and the page's Stop ends it: the row and the host's list lose it and its port refuses a connection. A second press is the first's outcome (the contract: the host is asked once), so what the page says
+    // does not change and the host is not asked again (it answers a session it no longer has with a 422, which no entry of RUNTIME_ALLOW takes).
+    await forwardButton.click();
+    await waitUntil('the host to list the forward that the page then stops', async () => (await listed()).length === 3, 30_000);
+    await waitUntil('the tool to list three forwards', async () => (await rowsNow()).length === 3, 30_000);
+    await holdsWithin(async () => (await rowsNow()).every((row) => row.connections[0] === PORTS_CONNECTION_NAME), 15_000);
+    await page.getByText(/^Forward session /).first().waitFor({ timeout: 30_000 });
+    await settle();
+    const pageStopped = (await listed()).find((one) => one.id !== id1 && one.id !== id2);
+    const pageStopId = pageStopped.id;
+    const pageStopLocal = pageStopped.local_port;
+    const pageStopAt = calls.length;
+    const pageClosedAt = frames.length;
+    await stopButton.click();
+    await page.getByText(/^Stopped forward /).first().waitFor({ timeout: 30_000 });
+    await waitUntil('the row of the forward that the page stopped to leave the tool', async () => (await rowsNow()).every((row) => row.id !== pageStopId), 30_000);
+    await holdsWithin(async () => (await connectOutcome(pageStopLocal)) === 'ECONNREFUSED', 15_000);
+    await settle(10);
+    const hostStopped = await listed();
+    await asserting(
+      'page-stop-says',
+      async () => plant('body', '<span data-decoy>Stopped forward decoy</span>'),
+      unplant,
+      async () => {
+        const said = await page.getByText(/^Stopped forward /).allTextContents();
+        assert.deepEqual(said, [`Stopped forward ${pageStopId}`], `${engine}: the page says that it stopped the forward it started: Stopped forward and the id of the forward the host listed (${JSON.stringify(said)})`);
+      },
+    );
+    await asserting(
+      'page-stop-leaves',
+      async () => plant('[data-ports-part="table"] tbody', decoyRowOf(pageStopId)),
+      unplant,
+      async () => {
+        const rows = await rowsNow();
+        const count = ((await footer.textContent()) ?? '').trim();
+        const closed = frames.slice(pageClosedAt).filter((frame) => frame.name === PORT_EVENTS.closed && frame.data?.id === pageStopId).length;
+        const said = [rows.map((row) => row.id), count, hostStopped.map((one) => one.id).toSorted(), closed];
+        assert.deepEqual(said, [[id1, id2], '2 forwards', [id1, id2].toSorted(), 1], `${engine}: a forward that the page stopped leaves the tool and the host's list, and the host's closed event told the window (${JSON.stringify(said)})`);
+      },
+    );
+    await asserting(
+      'page-stop-port',
+      async () => {
+        planted = await listenLikeTarget(TARGET_GREETING, 'line', pageStopLocal);
+      },
+      async () => {
+        await planted.close();
+        planted = undefined;
+      },
+      async () => {
+        const outcome = await connectOutcome(pageStopLocal);
+        assert.equal(outcome, 'ECONNREFUSED', `${engine}: the local port of a forward that the page stopped refuses a connection (connecting to ${String(pageStopLocal)} came to ${outcome})`);
+      },
+    );
+    await stopButton.click({ force: true });
+    await settle(10);
+    await asserting(
+      'page-stop-again-says',
+      async () => plant('body', '<span data-decoy>Stop refused NOT_FOUND: The plugin is not there.</span>'),
+      unplant,
+      async () => {
+        const said = await page.getByText(/^(?:Stopped forward|Stop refused) /).allTextContents();
+        assert.deepEqual(said, [`Stopped forward ${pageStopId}`], `${engine}: a second press of the page's Stop leaves what the page says as it was (${JSON.stringify(said)})`);
+      },
+    );
+    await asserting(
+      'page-stop-again-asks',
+      async () => {
+        calls.push({ method: 'ClosePortForwardSession', callId: 'seam-plant-close', args: [pageStopId] });
+      },
+      async () => {
+        forgetPlanted();
+      },
+      async () => {
+        const asked = calls.slice(pageStopAt).filter((call) => call.method === 'ClosePortForwardSession').length;
+        assert.equal(asked, 1, `${engine}: a second press of the page's Stop asks the host nothing: the host was asked once to close the forward, by the first press (${String(asked)} calls)`);
+      },
+    );
+
+    // 5. STOP. The second forward is stopped from its row's menu, whose Stop does what the button does (the last forward below is stopped with the button): the host's answer is held after the host has closed it, so what the window does is read from the host's event and not from the answer.
+    const closing = hold('ClosePortForwardSession', 'after');
+    const stoppedAt = frames.length;
+    await openMenuByPointer(id2);
+    await menu.getByRole('menuitem', { name: 'Stop', exact: true }).click();
+    await waitUntil('the host to have closed the second forward (its answer is held)', () => closing.held(), 30_000);
+    await waitUntil('the window to be told that the second forward is closed (core/networker/portforward/closed)', () => frames.slice(stoppedAt).some((frame) => frame.name === PORT_EVENTS.closed && frame.data?.id === id2), 30_000);
+    await waitUntil('the row of the forward that was closed to leave the list', async () => (await rowsNow()).every((row) => row.id !== id2), 30_000);
+    await settle(10);
+    const hostAfter = await listed();
+    await asserting(
+      'stop-leaves',
+      async () => plant('[data-ports-part="table"] tbody', decoyRowOf(id2)),
+      unplant,
+      async () => {
+        const rows = await rowsNow();
+        const told = frames.slice(stoppedAt).filter((frame) => frame.name === PORT_EVENTS.closed && frame.data?.id === id2).length;
+        const said = [closing.held(), told, rows.map((row) => row.id), hostAfter.map((one) => one.id)];
+        assert.deepEqual(said, [true, 1, [id1], [id1]], `${engine}: a forward the host has closed leaves the list with the host's closed event while the call is still open, and the host no longer lists it (${JSON.stringify(said)})`);
+      },
+    );
+    await closing.release();
+    await settle(10);
+    await holdsWithin(async () => (await connectOutcome(local2)) === 'ECONNREFUSED', 15_000);
+    await asserting(
+      'stop-port',
+      async () => {
+        planted = await listenLikeTarget(TARGET_GREETING, 'line', local2);
+      },
+      async () => {
+        await planted.close();
+        planted = undefined;
+      },
+      async () => {
+        const outcome = await connectOutcome(local2);
+        assert.equal(outcome, 'ECONNREFUSED', `${engine}: the local port of a forward that was stopped refuses a connection (connecting to ${String(local2)} came to ${outcome})`);
+      },
+    );
+    // The last forward: the Stop is held on its way to the host, which has been asked nothing, so that what the row says is a state that lasts.
+    const asking = hold('ClosePortForwardSession', 'before');
+    const askedAt = calls.length;
+    await rowButton(id1, 'stop').click();
+    await waitUntil('the Stop of the last forward to be on its way to the host (held)', () => asking.held(), 30_000);
+    await rowButton(id1, 'stop').click({ force: true });
+    await settle(10);
+    await asserting(
+      'stop-stopping',
+      async () => plant('td[data-ports-part="status"]', '<span data-decoy>Running</span>'),
+      unplant,
+      async () => {
+        const [row] = await rowsNow();
+        const asked = calls.slice(askedAt).filter((call) => call.method === 'ClosePortForwardSession').length;
+        const said = [row?.state, row?.statuses, row?.stop, asked];
+        assert.deepEqual(said, ['stopping', ['Stopping'], { disabled: true, reason: 'Waiting for the stop to finish.' }, 1], `${engine}: a Stop whose call has not reached the host shows Stopping, its Stop waits with its reason and a second press asks the host nothing (${JSON.stringify(said)})`);
+      },
+    );
+    await asking.release();
+    await waitUntil('the tool to say that no forward is left', async () => (await rowsNow()).length === 0, 30_000);
+    await settle(10);
+    await asserting(
+      'empty-state',
+      async () => plant('[data-shell-part="portsBody"]', `<table><tbody>${DECOY_ROW}</tbody></table>`),
+      unplant,
+      async () => {
+        const said = [(await rowsNow()).length, await body.getByText('No forwarded ports', { exact: true }).count(), await body.getByText('Forward a port of a resource to this computer.', { exact: true }).count(), ((await footer.textContent()) ?? '').trim()];
+        assert.deepEqual(said, [0, 1, 1, '0 forwards'], `${engine}: with no forward left the tool says so, and how one arrives (${JSON.stringify(said)})`);
+      },
+    );
+
+    // 6. THE PANEL HIDDEN: the tool holds no handler of the host's events (the five it held are gone), and a forward started then shows it again.
+    const shownNow = await listenersOf(page, PORTS_FOLLOWS);
+    await toggle.click();
+    await waitUntil('the panel to be hidden', async () => !(await panelStateOf(page)).open, 15_000);
+    await holdsWithin(async () => (await listenersOf(page, [PORT_EVENTS.created]))[PORT_EVENTS.created] === 0, 15_000);
+    await asserting(
+      'handlers-hidden',
+      async () => plantListener(page, PORT_EVENTS.closed),
+      async () => unplantListeners(page),
+      async () => {
+        const now = await listenersOf(page, PORTS_FOLLOWS);
+        const gone = Object.fromEntries(PORTS_FOLLOWS.map((name) => [name, shownNow[name] - now[name]]));
+        const left = [now[PORT_EVENTS.created], now[PORT_EVENTS.closed]];
+        assert.deepEqual([gone, left], [ONE_EACH, [0, 0]], `${engine}: the tool holds no handler of the host's port-forward events once the panel is hidden: the five it held are gone, and no other, and none is left of the host's two events (it let go of ${JSON.stringify(gone)}; ${JSON.stringify(left)} are left of created and closed)`);
+      },
+    );
+    const thirdAt = calls.length;
+    await startAndHear();
+    await waitUntil('the host to list the third forward', async () => (await listed()).length === 1, 30_000);
+    await waitUntil('the Ports tool to come on screen with the forward', async () => (await rowsNow()).length === 1, 30_000);
+    await holdsWithin(async () => (await rowsNow())[0]?.connections[0] === PORTS_CONNECTION_NAME, 15_000);
+    await settle();
+    const third = (await listed())[0];
+    const id3 = third.id;
+    const local3 = third.local_port;
+    const mapping3 = `127.0.0.1:${String(local3)} → :${String(TARGET_PORT)}/TCP`;
+    const hiddenAgain = attributeFault(toggle, 'aria-pressed', 'false');
+    await asserting(
+      'tool-revealed-again',
+      hiddenAgain.perturb,
+      hiddenAgain.undo,
+      async () => revealed('the Ports tool is revealed again by a forward started while the panel is hidden: the panel is open on it with its table'),
+    );
+    await asserting(
+      'calls-again',
+      plantList,
+      async () => {
+        forgetPlanted();
+      },
+      async () => {
+        const asked = listCalls(thirdAt);
+        assert.equal(asked, 1, `${engine}: the tool reads the host's list once when a forward brings it back on screen and makes no call after it (${String(asked)} calls)`);
+      },
+    );
+
+    // 7. THE PLUGIN IS KILLED: by the pid the host names (never a pattern), its binary made not executable first so that the host's recovery cannot start it again.
+    const installed = await resolved(path.join(stateRoot(dir), 'plugins', PORTS_ID, 'bin', 'plugin'));
+    const processOf = async () => (await callBound(host.base, PROCESS_SERVICE, 'GetSnapshot')).processes.find((candidate) => candidate.key === `plugin:${PORTS_ID}`);
+    const owned = await processOf();
+    assert.ok(owned?.ownership === 'verified' && owned.identity?.pid > 0, `${engine}: the host names the ports plugin's process: ${JSON.stringify(owned)}`);
+    const { pid, executable, startIdentity } = owned.identity;
+    await asserting(
+      'pid-own',
+      async () => {
+        owned.identity.executable = '/usr/local/bin/node';
+      },
+      async () => {
+        owned.identity.executable = executable;
+      },
+      async () => {
+        const runs = await resolved(owned.identity.executable);
+        assert.equal(runs, installed, `${engine}: the process the host names is the ports plugin's own: it runs the binary this run installed (${owned.identity.executable})`);
+      },
+    );
+    // The signal is a precondition and not an assertion: no control perturbs it and SEAM_REMOVE does not leave it out. It goes to a process only if the host names that process again now (a second reading, never the record that a control changed and put back), with the start identity it had and the
+    // binary this run installed, so that the check never signals a process that is not this run's plugin, whatever the observation above was made to see. The binary loses its execute bit BEFORE that reading (the reading does not depend on it: the host reports the executable that a process runs, and a path is resolved
+    // with no need of the file's own permissions), so that the reading, the probe that the process is there and the signal follow one another with nothing awaited between them: a process that ended while the check waited could have had its pid given to another.
+    await chmod(path.join(stateRoot(dir), 'plugins', PORTS_ID, 'bin', 'plugin'), 0o644);
+    const again = (await processOf())?.identity;
+    const runsNow = again === undefined ? undefined : await resolved(again.executable);
+    assert.deepEqual([again?.pid, again?.startIdentity, runsNow], [pid, startIdentity, installed], `${engine}: refusing to signal process ${String(pid)}: it is not the process of this run's ports plugin (the host names ${JSON.stringify(again)} now, and this run installed ${installed})`);
+    process.kill(pid, 0);
+    const killedAt = frames.length;
+    process.kill(pid, 'SIGKILL');
+    await waitUntil(`the host to see process ${String(pid)} end`, () => host.output().includes(`id=${String(pid)} error="signal: killed"`), 15_000);
+    // The host's health check finds it (up to 30 s) and says so: the window is told that the plugin stopped, and the tool says it of the forward.
+    await waitUntil('the window to be told that the plugin stopped (plugin/unloaded, crashed)', () => frames.slice(killedAt).some((frame) => frame.name === 'plugin/unloaded' && frame.data?.pluginID === PORTS_ID && frame.data?.cause === 'crashed'), 75_000);
+    await waitUntil('the row of the forward to say that its plugin stopped', async () => (await rowsNow()).every((row) => row.state === 'stopped'), 30_000);
+    await settle(10);
+    await asserting(
+      'killed-row',
+      async () => plant('td[data-ports-part="status"]', '<span data-decoy>Running</span>'),
+      unplant,
+      async () => {
+        const rows = await rowsNow();
+        const said = [rows.length, rows[0]?.id, rows[0]?.state, rows[0]?.statuses, rows[0]?.reasons, rows[0]?.mappings, rows[0]?.connections, rows[0]?.resources];
+        assert.deepEqual(said, [1, id3, 'stopped', ['Stopped'], ['Its plugin stopped.'], [mapping3], [PORTS_CONNECTION_NAME], [TARGET_ID]], `${engine}: a forward whose plugin stopped says Stopped and why: its plugin stopped, and it is still listed (${JSON.stringify(said)})`);
+      },
+    );
+    const stopEnabled = attributeFault(rowButton(id3, 'stop'), 'aria-disabled', null);
+    await asserting(
+      'killed-stop',
+      stopEnabled.perturb,
+      stopEnabled.undo,
+      async () => {
+        const [row] = await rowsNow();
+        const pressedAfter = calls.length;
+        await rowButton(id3, 'stop').click({ force: true });
+        await settle(10);
+        const asked = calls.slice(pressedAfter).filter((call) => call.method === 'ClosePortForwardSession').length;
+        const said = [row?.stop, asked];
+        assert.deepEqual(said, [{ disabled: true, reason: 'Its plugin stopped.' }, 0], `${engine}: the Stop of a forward whose plugin stopped is disabled with its reason, and a press asks the host nothing (${JSON.stringify(said)})`);
+      },
+    );
+    const openEnabled = attributeFault(rowButton(id3, 'open'), 'aria-disabled', null);
+    await asserting(
+      'killed-others',
+      openEnabled.perturb,
+      openEnabled.undo,
+      async () => {
+        const [row] = await rowsNow();
+        const said = [row?.open, row?.copy];
+        const disabled = { disabled: true, reason: 'The forward must be running.' };
+        assert.deepEqual(said, [disabled, disabled], `${engine}: Open in browser and Copy address of a forward whose plugin stopped are disabled: the forward must be running (${JSON.stringify(said)})`);
+      },
+    );
+    await asserting(
+      'killed-port',
+      async () => {
+        planted = await listenLikeTarget(TARGET_GREETING, 'line', local3);
+      },
+      async () => {
+        await planted.close();
+        planted = undefined;
+      },
+      async () => {
+        const outcome = await connectOutcome(local3);
+        assert.equal(outcome, 'ECONNREFUSED', `${engine}: the local port of a forward whose plugin stopped refuses a connection (connecting to ${String(local3)} came to ${outcome})`);
+      },
+    );
+    const hostLast = await listed();
+    // A route of the check that fails is the scenario's failure. The control makes one fail for real, on a call of its own: the call is held after the host has answered it, the control answers it itself and lets the hold go, and the answer that the route then gives fails with the engine's own error (the
+    // route is already handled), as it does when the page is gone.
+    // The control's failure is the one object that the hold says (`holding.release()` rejects with the very object that the route keeps in `routeFailures`): that object is the only one the control takes out again, whatever else the route recorded meanwhile.
+    let doomed = [];
+    await asserting(
+      'route-quiet',
+      async () => {
+        const holding = hold('ListAllPortForwardSessions', 'after', isPlantedCall);
+        const answered = plantCall(page, 'ListAllPortForwardSessions');
+        await waitUntil('the call that the control made the page make to be held, after the host answered it', () => holding.held(), 15_000);
+        await holding.routeOf().fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+        const failure = await holding.release().then(
+          () => undefined,
+          (error) => error,
+        );
+        await waitUntil('the failure of the route to be kept', () => failure !== undefined && routeFailures.includes(failure), 15_000);
+        await answered;
+        doomed = [failure];
+      },
+      async () => {
+        for (const failure of doomed) takeOut(routeFailures, failure);
+        forgetPlanted();
+      },
+      async () => {
+        const failed = routeFailures.map((failure) => String(failure?.message ?? failure));
+        assert.deepEqual(failed, [], `${engine}: no route of the check failed: every call it held, answered or let through was dealt with, and a route that cannot deal with its call says why here (${JSON.stringify(failed)})`);
+      },
+    );
+    // The error the control makes the page raise has words of its own, and the record with those words is the only one it takes out again: an error that the page raises on its own while the control waits stays for the assertion. The words begin with those of a call that failed (`Failed to fetch`),
+    // which the exemption for a reload would take for a cut call if the error came while the page was being replaced; it comes outside that time, and the assertion counts it.
+    const PLANTED_ERROR = 'planted by the control page-clean';
+    let raised;
+    await asserting(
+      'page-clean',
+      async () => {
+        await page.evaluate((words) => {
+          setTimeout(() => {
+            throw new TypeError(`Failed to fetch (${words})`);
+          }, 0);
+        }, PLANTED_ERROR);
+        await waitUntil('the page to report the error that the control made it raise', () => errors.some((error) => error.message.includes(PLANTED_ERROR)), 15_000);
+        raised = errors.find((error) => error.message.includes(PLANTED_ERROR));
+      },
+      async () => {
+        takeOut(errors, raised);
+      },
+      async () => {
+        const own = errors.filter((error) => !error.cut).map((error) => error.message);
+        assert.deepEqual(own, [], `${engine}: the whole scenario wrote no page error, but the calls that a reload cut in the page it replaced (an error at any other time is the scenario's, whatever it says; ${String(errors.length - own.length)} were cut)`);
+      },
+    );
+    console.log(`${engine}: the Ports tool showed four forwards of the plugin (127.0.0.1:${String(local)}, :${String(local2)}, :${String(pageStopLocal)} and :${String(local3)}) from the host's list and ${String(frames.length)} of its events, a client reached the target through the first, the page said ${JSON.stringify(refusal)} when it asked for the port the second one held, the page stopped a forward it started (its port refused a connection), and the row of the last said Stopped when the plugin's process ${String(pid)} was killed (the host then lists ${String(hostLast.length)} forwards); the page raised ${String(errors.length)} errors, ${String(errors.filter((error) => error.cut).length)} of them a call that the reload cut`);
+    verdict(engine);
+  } finally {
+    await planted?.close();
+    if (page !== undefined && !page.isClosed()) await page.close();
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+  }
+}
+
 let host;
 try {
   const port = await freePort();
@@ -10258,6 +11705,9 @@ try {
   /** The connections fixture's process (scenario u), built once for every host scenario u starts. */
   let connectionsBinary;
   const connectionsFixture = async () => (connectionsBinary ??= await buildConnectionsProcess(path.join(work, 'connections-binary')));
+  /** The ports fixture's process (scenario w), built once for every host scenario w starts. */
+  let portsBinary;
+  const portsFixture = async () => (portsBinary ??= await buildPortsProcess(path.join(work, 'ports-binary')));
 
   // ENGINES=webkit (or chromium) runs one engine, for a developer who is chasing one.
   for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
@@ -10336,6 +11786,18 @@ try {
         // Scenario v alone: clean under SEAM_ONLY, and under SEAM_CONTROL with the controls asked for, saying for each whether its own assertion saw it (`checkProblemsOperations`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
         try {
           await phase(PT_GROUP, name, async () => checkProblemsOperations(browser, name, { fixture: await processFixture(), connections: await connectionsFixture() }, work));
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
+      if (ONLY === PORTS_GROUP || CONTROL === PORTS_GROUP || PORTS_CONTROLS[CONTROL] !== undefined) {
+        // Scenario w alone: clean under SEAM_ONLY, and under SEAM_CONTROL with the perturbations of the controls asked for, saying for each whether its own assertion saw it (`checkPorts`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
+        try {
+          await phase(PORTS_GROUP, name, async () => checkPorts(browser, name, await portsFixture(), work));
         } catch (error) {
           console.error(String(error?.message ?? error));
           process.exitCode = 1;
@@ -10453,7 +11915,8 @@ try {
       await phase('plugins-page', name, async () => checkPluginsPage(browser, name, await processFixture(), work));
       await phase(CONNECTIONS_GROUP, name, async () => checkConnectionsAndHome(browser, name, await connectionsFixture(), work));
       await phase(PT_GROUP, name, async () => checkProblemsOperations(browser, name, { fixture: await processFixture(), connections: await connectionsFixture() }, work));
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen), the connections (the chip's picker, Home and the palette start a connection and say how it went, a start the host refuses is said where it was chosen, a Logs session of the host's panel stays when the tab's connection changes), the Problems and Operations tools (a plugin whose process is killed, an alert, a connection that does not answer and a failed task are each a row, with the tab's count or dot, live from the host's events; each row leaves when it stops being true and goes to its plugin or connection; a task's progress follows the plugin's own reports; the dot of an unread failure is cleared by the host's own mark)`);
+      await phase(PORTS_GROUP, name, async () => checkPorts(browser, name, await portsFixture(), work));
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen), the connections (the chip's picker, Home and the palette start a connection and say how it went, a start the host refuses is said where it was chosen, a Logs session of the host's panel stays when the tab's connection changes), the Problems and Operations tools (a plugin whose process is killed, an alert, a connection that does not answer and a failed task are each a row, with the tab's count or dot, live from the host's events; each row leaves when it stops being true and goes to its plugin or connection; a task's progress follows the plugin's own reports; the dot of an unread failure is cleared by the host's own mark), the Ports tool (a forward the page starts is a row, reached by a client of its local port, opened and copied through the host's call and the clipboard, stopped with the host's closed event, hidden with no handler left, and said Stopped when its plugin's process is killed)`);
     } finally {
       await browser.close();
     }

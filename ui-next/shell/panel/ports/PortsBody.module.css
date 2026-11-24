@@ -1,0 +1,207 @@
+/* The body of the Ports tool (docs/ui-next/status/PF1.md, section 1.1; the mock's `H.dataView` of the Ports tool and its table, base.css 1220 to 1260 and 1304 to 1309): one table in the panel's body, with the count of the forwards as its footer. The kit's
+   DataTable is not used: it fixes every row to one height (it is a virtual list) and gives a row no trigger for a menu, and this table has rows of one line and of two (a forward that says why in a second line) and a menu for a row. Its
+   numbers are the table's own: a row is 24 px (16 and 4 above and below), a cell is inset 10 px and the first and the last 12 px, the header is 25 px, the text is the UI face at 13 and 16, the mapping the code face at 13 and 16. Host
+   composition, so every rule sits in ov.shell. Every colour is a token. */
+@layer ov.shell {
+  /* The body takes all the room the panel gives it, as the Logs and the Terminal bodies do: a column of the one scroller and the footer. */
+  .ports {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The scroller: the table's, and the one that scrolls. A skeleton has nothing to scroll to and is cut. */
+  .scroll {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .scroll[data-loading] {
+    overflow: hidden;
+  }
+
+  /* A row is the density token or what its text needs, whichever is more, so a larger text size grows rows and clips nothing (the kit's table does the same). The columns are the mock's fit, with no script: a column of a box, a state or a
+     command asks for 1% and so takes what its content needs, never wraps and never shrinks; the two columns of text share the rest and give way with an ellipsis. */
+  .table {
+    --_row-height: max(var(--ov-row-height), calc(var(--ov-lh-16) + 2 * var(--ov-row-pad)));
+
+    inline-size: 100%;
+    min-inline-size: 480px;
+    border-collapse: separate;
+    border-spacing: 0;
+    text-align: start;
+  }
+
+  .head,
+  .cell {
+    box-sizing: border-box;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact), and the inset of a cell, 10 px, is the one value outside the spacing scale (design 13; the kit's table says the same) */
+    padding: var(--ov-row-pad) 10px;
+    white-space: nowrap;
+  }
+
+  .head:first-child,
+  .cell:first-child {
+    padding-inline-start: var(--ov-spacing-12);
+  }
+
+  .head:last-child,
+  .cell:last-child {
+    padding-inline-end: var(--ov-spacing-12);
+  }
+
+  /* The header is sticky to the top of the scroller and paints the panel's plane over the rows that pass under it. */
+  .head {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    block-size: var(--ov-table-header-height);
+    border-block-end: 1px solid var(--ov-border-subtle);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg-muted);
+    font-weight: 400;
+    text-align: start;
+  }
+
+  .cell {
+    block-size: var(--_row-height);
+    vertical-align: middle;
+  }
+
+  /* A cell is one line of 16 px, and a box in it that sits on the baseline lifts the line above 16 px when its baseline is not the strut's: the state is the kit's inline-flex, aligned by its middle, and the mapping is a span in the code face,
+     whose 16 px box has another font's ascent and descent. A row of 24 px came to 25 px in both engines. A box aligned to the top of its line takes no part in the baseline, so the line is the strut's and the row is its 16 px and the 4 above and below. */
+  .cell[data-column='status'] > * {
+    vertical-align: top;
+  }
+
+  .cell[data-column='mapping'] > span {
+    vertical-align: top;
+  }
+
+  /* The columns are the mock's fit (`fitSolve`, in the mock's core.js), with no script. FIXED columns are their content: Mapping, Status and the commands, and Connection while no forward names one (a column of dashes is a fixed column in the mock
+     too). Each asks for 1%, which in a table with an automatic layout over a text that does not wrap is the width of its content; it neither wraps nor shrinks. FLEXIBLE columns are Resource and, once a forward names a connection, Connection:
+     they ask for no width, so the automatic layout gives each the widest line of its content and, when the table is wider than all of them, shares the extra in proportion to those widths, which is the mock's
+     `nat + (avail - natural) * nat / total`. Resource is pinned to the start of the scroller (the mock's `pinned: ['resource']`), so that a panel too narrow for the table scrolls the other columns under it. None is a share of the table: a
+     Connection column of 40% put Mapping at 620 px where the mock's stands at 888. The head of Resource is above the other heads and above the pinned cells. */
+  .head[data-column='resource'] {
+    inset-inline-start: 0;
+    z-index: 2;
+    min-inline-size: 160px;
+  }
+
+  .head:is([data-column='mapping'], [data-column='status'], [data-column='actions']),
+  .cell:is([data-column='mapping'], [data-column='status'], [data-column='actions']) {
+    inline-size: 1%;
+  }
+
+  /* A column of dashes is a fixed column: Connection is fitted to its content while no forward names a connection. */
+  .table:not([data-ports-names]) :is(.head, .cell)[data-column='connection'] {
+    inline-size: 1%;
+  }
+
+  /* Once a forward names one it is a flexible column, with a floor that is a measure of text (the mock's 72 px, `FIT_FLOOR.text`) and the two 10 px insets of its cell. */
+  .table[data-ports-names] .head[data-column='connection'] {
+    min-inline-size: 92px;
+  }
+
+  /* What a flexible cell shows sits in a box whose least is zero and whose most is its content: a track of `minmax(0, max-content)`. The column then asks for the room its names need, which is its weight in the share of the extra, and gives it back
+     when the table is narrower, down to the floor of its head, the names being cut in the box. A box that held its content to a width of zero would weigh nothing, and one with the content's own least would never give the room back. */
+  .fit {
+    display: grid;
+    grid-template-columns: minmax(0, max-content);
+  }
+
+  /* The pinned cell paints the panel's plane over the cells that scroll under it. It has no z-index: the sticky head, above it, is what the rows pass under when the table scrolls down. Its width is capped as the mock caps the natural width of a text
+     cell (240 px of text and the insets of the cell, 12 and 10): a cap on the cell, which the automatic layout reads as the most the column asks for and the column's width is not held to, and not on its content, which shows as much of a name as
+     the column has room for. A name wider than the cap asks for no more than that, so it does not take the room of the Connection column (a name of 236 characters left it at its floor). */
+  .cell[data-column='resource'] {
+    position: sticky;
+    inset-inline-start: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the mock's cap of a text cell (`--cell-max`, 240 px) and the insets of this cell: a measure of text, which has no token */
+    max-inline-size: calc(240px + var(--ov-spacing-12) + 10px);
+    background-color: var(--ov-bg-island);
+  }
+
+  /* The name of a connection is cut where the mock cuts a text cell (240 px), in the box that holds it: a long name does not take the room of the Resource column. */
+  .cell[data-column='connection'] .clipped {
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the mock's cap of a text cell (`--cell-max`): a measure of text, which has no token */
+    max-inline-size: 240px;
+  }
+
+  /* A cell that holds the row's commands gives back its block padding: a command is the row target (24 px) and the row is 24 px. */
+  .cell[data-column='actions'] {
+    padding-block: 0;
+  }
+
+  /* Where Open in browser would stand for a forward that is not offered it: the box is kept, so Stop and Copy address stand where they do in every other row. */
+  .slot {
+    display: block;
+    flex: none;
+    inline-size: var(--ov-row-target);
+    block-size: var(--ov-row-target);
+  }
+
+  /* The text that clips as a block: it takes the width of its cell and is cut with an ellipsis. */
+  .clipped {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The host gives the focus to the scroller when it puts away the menu of a row that was opened with the pointer, and no row has the keyboard to give it back to; and the body takes it while the list is read again after Try again. The ring is the
+     shell's own (2 px of the accent, inset, as the tree's rows and the bell have), drawn inside the element: a ring on its outer edge reads as a frame around the whole table, bleeding out of the panel. */
+  .scroll:focus-visible,
+  .ports:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* The hint of the empty state, and of the state that could not read the list, is the secondary text of the design (12 and 16, muted), where the kit's compact state sets its hint at the body size, 13. The kit draws it in `ov.components`, and this
+     layer is the later. KIT FOLLOW-UP: a secondary-size option on the kit's empty state (the compact state with the caption hint, the default unchanged) would own this, and this rule, which reaches the kit's `data-ov-part` hook, would go. */
+  .ports [data-ov-part='hint'] {
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .mono {
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-13);
+    line-height: var(--ov-lh-16);
+  }
+
+  /* The second line of the Resource cell: a fact the window states about the forward, in the muted 12 and 16 of the secondary line (the mock's `.secondary`). It makes its row two lines, 40 px. */
+  .reason {
+    display: block;
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A word that names a column or says what happened to a person who cannot see the table: read and never drawn. It takes no room and holds no focus. */
+  .hidden,
+  .live {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
