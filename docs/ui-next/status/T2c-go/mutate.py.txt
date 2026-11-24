@@ -2,15 +2,21 @@
 # Negative controls of T2c-go (docs/ui-next/AGENTS.md, rule 28: a control must trip the assertion it is named for, and the same fault must pass undetected
 # when that assertion is removed). One fault at a time is put into a SCRATCH copy of a source file (Go: `go test -overlay`, the worktree is never edited;
 # TypeScript: the file is swapped in place for the vitest run and put back, however the script ends) and the tests named for it are run twice:
-#   1. THE FAULT. The tests must pass without it (the baseline of the group, run first); with it, at least one test named for the fault must fail, and the run
-#      must be a run of tests: a build error, a setup failure, a panic or a timeout is NOT A DETECTION, and so is a failure of a test that is not named for it.
+#   0. THE BASELINE. The tests of the group must be GREEN before the fault, and the run must name what it ran (Go: the package, the pattern and the tests that passed; TypeScript: each
+#      test file and its tests): a baseline that is red, or that ran none of a file, is no baseline and the control is not run. After the control the baseline is run ONCE MORE
+#      to prove that the state was put back (TypeScript: the tests of the files; the `git status --porcelain` of the files the control touches and their text must also be the
+#      same as before; Go: the overlay never touches the tree, so the baseline of each group is repeated once at the end of the run).
+#   1. THE FAULT. With it, at least one test named for the fault must fail, and ONLY tests named for it may fail (Go: every failing top-level test is named in the control;
+#      TypeScript: the full name of every failing test contains one of the control's strings): `NOT NAMED ONLY (also failing: ...)` otherwise. The run must also be a run of
+#      tests: a build error, a setup failure, a panic or a timeout is NOT A DETECTION.
 #   2. THE FAULT WITH ITS ASSERTIONS REMOVED. Every assertion that tripped in the first run is removed from a scratch copy of the test file (the statement
 #      `require.X(t, args)` or `notFound(t, args)` becomes `_ = []any{args}`, so that what its arguments call still runs; `expect(x).y(z)` becomes `void (x)`),
 #      round by round until nothing trips, and the run must PASS. A fault that still fails after that is caught by something that is not an assertion, or by an
-#      assertion the control is not named for: the control proves nothing and the run says so.
+#      assertion the control is not named for: the control proves nothing and the run says so. After EVERY round the same rule as 1 holds: a test that is not named
+#      for the fault and fails in a round is `CONVERSE: an unrelated test failed (...)`, a problem.
 # Usage (from the worktree root; ROOT=<path> names another; ONLY=<regexp> runs the controls whose name matches; ROUNDS=<n> bounds the removal rounds, 16):
 #   python3 docs/ui-next/status/T2c-go/mutate.py.txt
-# Needs go (GOWORK=off GOTOOLCHAIN=local are set here) and, for the TypeScript controls, pnpm and a built `packages/` (task packages). It runs one test run at a time.
+# Needs go (GOWORK=off GOTOOLCHAIN=local are set here) and, for the TypeScript controls, pnpm, git and a built `packages/` (task packages). It runs one test run at a time.
 import atexit, json, os, re, shutil, signal, subprocess, sys, tempfile, time
 
 ROOT = os.path.realpath(os.environ.get('ROOT', os.getcwd()))
@@ -19,6 +25,8 @@ ROUNDS = int(os.environ.get('ROUNDS', '16'))
 SCRATCH = tempfile.mkdtemp(prefix='t2c-mut-')
 ENV = dict(os.environ, GOWORK='off', GOTOOLCHAIN='local', GOFLAGS='', CI='')
 atexit.register(lambda: shutil.rmtree(SCRATCH, ignore_errors=True))
+NOTES = {}  # name of a control -> what its baseline ran, printed with its verdict
+RAN = {}  # (package, pattern) of a Go group -> the number of tests its baseline ran
 
 T, X = './backend/pkg/terminal/', './backend/pkg/plugin/exec/'
 TO, TR, TM, TT = 'backend/pkg/terminal/ownership.go', 'backend/pkg/terminal/reattach.go', 'backend/pkg/terminal/manager.go', 'backend/pkg/terminal/types.go'
@@ -63,15 +71,23 @@ CONTROLS = [
  ('a-retirement-decides-no-end-under-the-lock', 'go', [(TR, '\t\ts.fate = fate{set: true, closedBy: by, failure: nil}\n', '')], (T, '^TestARetiringWindow'), ['TestARetiringWindowEndsTheTerminalItHeldAndNeverOneItGaveAway']),
  ('a-retirement-ends-a-terminal-it-does-not-hold', 'go', [(TR, 'if s.owner == nil || s.owner != owner || s.fate.set || s.ending.Load() {\n\t\treturn releaseNone, nil', 'if s.owner == nil || s.fate.set || s.ending.Load() {\n\t\treturn releaseNone, nil')], (T, '^TestARetiringWindow'), ['TestARetiringWindowEndsTheTerminalItHeldAndNeverOneItGaveAway']),
  # ---- the move of a tab in the old UI ----
- ('a-drag-offers-as-it-begins', 'ts', [(UT, '      void channel.enqueue(async () => {\n        await WindowClient.BeginDrag({', '      void channel.enqueue(async () => {\n        if (channel.tabToOffer) await offerTerminalSession(channel.tabToOffer).catch(() => undefined);\n        await WindowClient.BeginDrag({')], [UTT], ['offers nothing as the drag begins or moves']),
- ('a-drop-reaches-the-target-before-the-offer', 'ts', [(UT, '        if (channel.tabToOffer) {\n          try {', '        const early = WindowClient.EndDrag(sessionId, pointer.clientX, pointer.clientY);\n        void early;\n        if (channel.tabToOffer) {\n          try {')], [UTT], ['offers the session once when the tab is dropped']),
+ ('a-drag-offers-as-it-begins', 'ts', [(UT, '      void channel.enqueue(async () => {\n        await WindowClient.BeginDrag({', '      void channel.enqueue(async () => {\n        if (channel.tabToOffer) await offerTerminalSession(channel.tabToOffer).catch(() => undefined);\n        await WindowClient.BeginDrag({')], [UTT], ['offers nothing as the drag begins or moves', 'offers the session once when the tab is dropped', 'offers a drag that lasts longer than the offer stays open', 'offers nothing for a drag that is cancelled', 'takes the offer back when no window accepted the tab']),
+ ('a-drop-reaches-the-target-before-the-offer', 'ts', [(UT, '        if (channel.tabToOffer) {\n          try {', '        const early = WindowClient.EndDrag(sessionId, pointer.clientX, pointer.clientY);\n        void early;\n        if (channel.tabToOffer) {\n          try {')], [UTT], ['offers the session once when the tab is dropped', 'offers a drag that lasts longer than the offer stays open', 'cancels the drag and does not drop it when the offer fails', 'takes the offer back when no window accepted the tab', 'resolves null when no window accepted the tab']),
  ('a-failed-offer-at-a-drop-does-not-stop-it', 'ts', [(UT, "            await WindowClient.CancelDrag(sessionId).catch((cancelError: unknown) => {\n              console.error('[windows] CancelDrag failed', cancelError);\n            });\n            return null;", '            void error;')], [UTT], ['cancels the drag and does not drop it when the offer fails']),
  ('a-cancelled-drag-offers', 'ts', [(UT, 'void channel.enqueue(async () => WindowClient.CancelDrag(sessionId));', 'void channel.enqueue(async () => {\n        if (channel.tabToOffer) await offerTerminalSession(channel.tabToOffer);\n        await WindowClient.CancelDrag(sessionId);\n      });')], [UTT], ['offers nothing for a drag that is cancelled']),
- ('a-page-tab-is-offered', 'ts', [(UT, "payload.dragType !== DRAWER_TAB_DRAG_TYPE || typeof drawerTab?.variant !== 'string'", "typeof drawerTab?.variant !== 'string'")], [UTT], ['offers nothing for']),
- ('a-rejected-drop-is-reported-accepted', 'ts', [(UT, 'return result?.accepted ? {', 'return result ? {')], [UTT], ['resolves null when no window accepted the tab']),
- ('an-expired-terminal-is-offered', 'ts', [(UH, " && tab.properties?.status !== 'expired'", '')], [UTT, UHT], ['offers nothing for', 'offers nothing for a tab that has no session to offer']),
+ ('a-page-tab-is-offered', 'ts', [(UT, "payload.dragType !== DRAWER_TAB_DRAG_TYPE || typeof drawerTab?.variant !== 'string'", "typeof drawerTab?.variant !== 'string'")], [UTT], ['offers nothing for', 'revokes nothing for a page tab']),
+ ('a-rejected-drop-is-reported-accepted', 'ts', [(UT, 'return result?.accepted ? {', 'return result ? {')], [UTT], ['resolves null when no window accepted the tab', 'takes the offer back when no window accepted the tab', 'does not let a failed revoke change what the drop resolves: null for a refused drop']),
+ ('an-expired-terminal-is-offered', 'ts', [(UH, " && tab.properties?.status !== 'expired'", '')], [UTT, UHT], ['offers nothing for', 'offers nothing for a tab that has no session to offer', 'revokes nothing for a terminal whose session has expired', 'revokes nothing for a tab that has no live session to offer', 'is decided for a terminal whose session has expired']),
  ('a-failed-offer-of-a-move-is-swallowed', 'ts', [(UH, '  await ExecClient.OfferSession(tab.id);', '  await ExecClient.OfferSession(tab.id).catch(() => undefined);')], [UHT], ['rejects']),
- ('a-move-offers-nothing', 'ts', [(UH, '  await ExecClient.OfferSession(tab.id);', '  await Promise.resolve(tab.id);')], [UHT], ['offers the session of a terminal tab']),
+ ('a-move-offers-nothing', 'ts', [(UH, '  await ExecClient.OfferSession(tab.id);', '  await Promise.resolve(tab.id);')], [UHT], ['offers the session of a terminal tab', 'rejects with the error of the host when the offer fails']),
+ # ---- the offer is taken back when the move does not happen (a refused or failed drop; the helper that revokes) ----
+ ('a-refused-drop-keeps-its-offer', 'ts', [(UT, 'accepted = Boolean(dropped?.accepted);', 'accepted = true;')], [UTT], ['takes the offer back when no window accepted the tab', 'does not let a failed revoke change what the drop resolves: null for a refused drop']),
+ ('a-failed-drop-keeps-its-offer', 'ts', [(UT, '          return dropped;\n        } finally {', '          return dropped;\n        } catch (error) {\n          accepted = true;\n          throw error;\n        } finally {')], [UTT], ['takes the offer back when the drop fails', 'does not let a failed revoke change what the drop resolves: the error of the drop']),
+ ('an-accepted-drop-revokes', 'ts', [(UT, 'if (channel.tabToOffer && !accepted) {', 'if (channel.tabToOffer) {')], [UTT], ['offers the session once when the tab is dropped']),
+ ('a-failed-offer-revokes', 'ts', [(UT, '            await WindowClient.CancelDrag(sessionId).catch((cancelError: unknown) => {\n', '            await revokeTerminalSession(channel.tabToOffer);\n            await WindowClient.CancelDrag(sessionId).catch((cancelError: unknown) => {\n')], [UTT], ['cancels the drag and does not drop it when the offer fails']),
+ ('a-failed-revoke-changes-the-drop', 'ts', [(UH, "    console.warn('[terminal] could not take back the offer of a session; it runs out by itself', tab.id, error);", '    throw error;')], [UTT, UHT], ['does not let a failed revoke change what the drop resolves', 'never rejects']),
+ ('a-revoke-needs-no-session', 'ts', [(UH, '  if (!hasTerminalSessionToOffer(tab)) {\n    return;\n  }\n\n  try {\n    await ExecClient.RevokeSession', '  try {\n    await ExecClient.RevokeSession')], [UHT], ['revokes nothing for a tab that has no live session']),
+ ('a-revoke-revokes-nothing', 'ts', [(UH, '    await ExecClient.RevokeSession(tab.id);', '    await Promise.resolve(tab.id);')], [UTT, UHT], ['takes back the offer of the session of a terminal tab', 'takes the offer back when no window accepted the tab', 'takes the offer back when the drop fails', 'does not let a failed revoke change what the drop resolves', 'never rejects']),
 ]
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -169,8 +185,11 @@ def go_control(name, edits, target, expect, baselines):
     if (pkg, pattern) not in baselines:
         code, out = go_test(pkg, pattern, None)
         failed = go_failed(out)
-        baselines[(pkg, pattern)] = None if code == 0 else f'the baseline is red or does not build: {" ".join(failed) or "no test ran"}'
+        baselines[(pkg, pattern)] = None if code == 0 else f'BASELINE RED BEFORE THE FAULT (red or does not build): {" ".join(failed) or "no test ran"}'
+        RAN[(pkg, pattern)] = len(re.findall(r'^--- PASS: ', out, re.M))
+        if code == 0 and not RAN[(pkg, pattern)]: baselines[(pkg, pattern)] = 'BASELINE RAN NO TEST (the pattern matches none)'
     if baselines[(pkg, pattern)]: return baselines[(pkg, pattern)], None
+    NOTES[name] = f'baseline green before the fault: {pkg} -run {pattern} ({RAN[(pkg, pattern)]} tests)'
     copies, why = prepare(name, edits)
     if why: return 'FAULT NOT APPLIED: ' + why, None
     code, out = go_test(pkg, pattern, overlay_file(name, copies, 'fault'))
@@ -179,6 +198,8 @@ def go_control(name, edits, target, expect, baselines):
     if not go_built(out): return 'NOT A DETECTION (the build or the setup failed): ' + (re.findall(r'^\S+\.go:\d+:\d+: .*$', out, re.M) or [''])[0], None
     if not failed: return 'NOT A DETECTION (no test failed: a panic or a timeout)', None
     if not set(failed) & set(expect): return 'NOT NAMED FOR IT (the failing tests are ' + ', '.join(failed) + ')', None
+    others = [t for t in failed if t not in expect]
+    if others: return 'NOT NAMED ONLY (also failing: ' + ', '.join(others) + ')', None
     detected = 'RED ' + ', '.join(failed)
     # the same fault, with the assertions that tripped removed
     removed = []
@@ -198,6 +219,9 @@ def go_control(name, edits, target, expect, baselines):
         code, out = go_test(pkg, pattern, overlay_file(name, copies, 'converse'))
         if code == 0: return detected, f'NOT DETECTED with its {len(removed)} assertion(s) removed, as it must be [' + ', '.join(removed) + ']'
         if not go_built(out): return detected, 'CONVERSE BROKEN (the build failed after the removal): ' + (re.findall(r'^\S+\.go:\d+:\d+: .*$', out, re.M) or [''])[0]
+        failed = go_failed(out)
+        unrelated = [t for t in failed if t not in expect]
+        if unrelated: return detected, 'CONVERSE: an unrelated test failed (' + ', '.join(unrelated) + ')'
     return detected, f'CONVERSE STILL RED after {ROUNDS} rounds ({len(removed)} removed)'
 
 # ---- TypeScript ----
@@ -215,17 +239,19 @@ atexit.register(restore_all)
 for sig in (signal.SIGINT, signal.SIGTERM): signal.signal(sig, lambda s, f: (restore_all(), sys.exit(130)))
 
 def vitest(files):
+    """(exit code, the failed tests as [(full name, messages)], the output, what ran as [(file, number of tests)]); the failures are None when vitest failed before a test did."""
     out_json = os.path.join(SCRATCH, 'vitest.json')
     if os.path.exists(out_json): os.remove(out_json)
     code, out = run(['pnpm', 'exec', 'vitest', 'run', *files, '--reporter=json', '--outputFile=' + out_json])
     try: data = json.load(open(out_json))
-    except (OSError, ValueError): return code, [], out
-    failures = []
+    except (OSError, ValueError): return code, [], out, []
+    failures, ran = [], []
     for file in data.get('testResults', []):
+        ran.append((os.path.relpath(os.path.realpath(file.get('name', '')), ROOT), len(file.get('assertionResults', []))))
         for test in file.get('assertionResults', []):
             if test.get('status') == 'failed': failures.append((test.get('fullName', test.get('title', '')), '\n'.join(test.get('failureMessages', []))))
-    if code != 0 and not failures and not data.get('numFailedTests'): return code, None, out
-    return code, failures, out
+    if code != 0 and not failures and not data.get('numFailedTests'): return code, None, out, ran
+    return code, failures, out, ran
 
 def ts_scan_close(text, i):
     pairs = {'(': ')', '[': ']', '{': '}'}
@@ -285,42 +311,74 @@ def ts_trips(messages, files):
             if (file, int(m.group(1))) not in found: found.append((file, int(m.group(1))))
     return found
 
-def ts_control(name, edits, files, expect):
-    base_code, base_fail, base_out = vitest(files)
-    if base_code != 0: return f'the baseline is red or does not run: {base_out[-200:]}', None
+def ts_not_named(names, expect):
+    """The tests among `names` (full names) whose name contains none of the control's strings."""
+    return [n for n in names if not any(e in n for e in expect)]
+
+def ts_baseline(files):
+    """(what the baseline ran, None) when it is green and ran tests of every file, else (None, why)."""
+    code, _failed, out, ran = vitest(files)
+    if code != 0: return None, f'the baseline is red or does not run: {out[-200:]}'
+    count = {file: n for file, n in ran}
+    missing = [f for f in files if not count.get(f)]
+    if missing: return None, 'the baseline ran no test of ' + ', '.join(missing)
+    return ', '.join(f'{f} ({count[f]} tests)' for f in files), None
+
+def ts_porcelain(files):
+    return run(['git', 'status', '--porcelain', '--', *files])[1]
+
+def ts_fault(name, edits, files, expect):
     changed = {}
-    try:
-        for file, old, new in edits:
+    for file, old, new in edits:
+        path = os.path.join(ROOT, file)
+        text = changed.get(file) or read(file)
+        if old not in text: return f'FAULT NOT APPLIED: {file}: the text to replace is not there', None
+        RESTORE.setdefault(path, read(file))
+        changed[file] = text.replace(old, new, 1)
+        with open(path, 'w', encoding='utf-8') as f: f.write(changed[file])
+    code, failed, out, _ran = vitest(files)
+    if code == 0: return 'UNDETECTED (the tests passed with the fault)', None
+    if failed is None or not failed: return 'NOT A DETECTION (vitest failed before a test did: the setup)', None
+    names = [n for n, _ in failed]
+    others = ts_not_named(names, expect)
+    if len(others) == len(names): return 'NOT NAMED FOR IT (the failing tests are ' + '; '.join(names) + ')', None
+    if others: return 'NOT NAMED ONLY (also failing: ' + '; '.join(others) + ')', None
+    detected = 'RED ' + '; '.join(names)
+    removed = []
+    for _ in range(ROUNDS):
+        trips = []
+        for _name, messages in failed: trips += [t for t in ts_trips(messages, files) if t not in trips]
+        if not trips: return detected, 'CONVERSE NOT APPLICABLE: a failure that is not an assertion of the test file'
+        for file, line in trips:
             path = os.path.join(ROOT, file)
-            text = changed.get(file) or read(file)
-            if old not in text: return f'FAULT NOT APPLIED: {file}: the text to replace is not there', None
             RESTORE.setdefault(path, read(file))
-            changed[file] = text.replace(old, new, 1)
-            with open(path, 'w', encoding='utf-8') as f: f.write(changed[file])
-        code, failed, out = vitest(files)
-        if code == 0: return 'UNDETECTED (the tests passed with the fault)', None
-        if failed is None or not failed: return 'NOT A DETECTION (vitest failed before a test did: the setup)', None
-        names = [n for n, _ in failed]
-        if not any(e in n for n in names for e in expect): return 'NOT NAMED FOR IT (the failing tests are ' + '; '.join(names) + ')', None
-        detected = 'RED ' + '; '.join(names)
-        removed = []
-        for _ in range(ROUNDS):
-            trips = []
-            for _name, messages in failed: trips += [t for t in ts_trips(messages, files) if t not in trips]
-            if not trips: return detected, 'CONVERSE NOT APPLICABLE: a failure that is not an assertion of the test file'
-            for file, line in trips:
-                path = os.path.join(ROOT, file)
-                RESTORE.setdefault(path, read(file))
-                fixed, at = ts_neutralize(open(path, encoding='utf-8').read(), line)
-                if fixed is None: return detected, f'CONVERSE NOT APPLICABLE: {file}:{line} is not an expect statement'
-                with open(path, 'w', encoding='utf-8') as f: f.write(fixed)
-                removed.append(f'{file}:{at}')
-            code, failed, out = vitest(files)
-            if code == 0: return detected, f'NOT DETECTED with its {len(removed)} assertion(s) removed, as it must be [' + ', '.join(removed) + ']'
-            if failed is None or not failed: return detected, 'CONVERSE BROKEN (vitest failed before a test did)'
-        return detected, f'CONVERSE STILL RED after {ROUNDS} rounds ({len(removed)} removed)'
-    finally:
-        restore_all()
+            fixed, at = ts_neutralize(open(path, encoding='utf-8').read(), line)
+            if fixed is None: return detected, f'CONVERSE NOT APPLICABLE: {file}:{line} is not an expect statement'
+            with open(path, 'w', encoding='utf-8') as f: f.write(fixed)
+            removed.append(f'{file}:{at}')
+        code, failed, out, _ran = vitest(files)
+        if code == 0: return detected, f'NOT DETECTED with its {len(removed)} assertion(s) removed, as it must be [' + ', '.join(removed) + ']'
+        if failed is None or not failed: return detected, 'CONVERSE BROKEN (vitest failed before a test did)'
+        unrelated = ts_not_named([n for n, _ in failed], expect)
+        if unrelated: return detected, 'CONVERSE: an unrelated test failed (' + '; '.join(unrelated) + ')'
+    return detected, f'CONVERSE STILL RED after {ROUNDS} rounds ({len(removed)} removed)'
+
+def ts_control(name, edits, files, expect):
+    ran, why = ts_baseline(files)
+    if why: return 'BASELINE RED BEFORE THE FAULT: ' + why, None
+    NOTES[name] = 'baseline green before the fault: ' + ran
+    touched = sorted(set(files) | {file for file, _old, _new in edits})
+    status_before, text_before = ts_porcelain(touched), {f: read(f) for f in touched}
+    try: detected, converse = ts_fault(name, edits, files, expect)
+    finally: restore_all()
+    status_after = ts_porcelain(touched)
+    altered = [f for f in touched if read(f) != text_before[f]]
+    if status_after != status_before or altered:
+        return detected, f'STATE NOT RESTORED: git status --porcelain was {status_before!r} and is {status_after!r}; the text of {", ".join(altered) or "no file"} differs'
+    _ran, why = ts_baseline(files)
+    if why: return detected, 'BASELINE RED AFTER THE CONTROL: ' + why
+    NOTES[name] += '; green again after the control, git status of the files unchanged'
+    return detected, converse
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -335,8 +393,17 @@ def main():
         except subprocess.TimeoutExpired:
             detected, converse = 'NOT A DETECTION (the run timed out)', None
         if not (detected.startswith('RED') and converse is not None and converse.startswith('NOT DETECTED with its')): problems.append(name)
-        print(f'CONTROL {name} ({time.time() - started:.0f} s): {detected}\n    {converse or "-"}', flush=True)
-    print(f'\n{count - len(problems)} of {count} controls are detected by the assertion they are named for and pass undetected with that assertion removed')
+        print(f'CONTROL {name} ({time.time() - started:.0f} s): {detected}\n    {converse or "-"}' + (f'\n    {NOTES[name]}' if name in NOTES else ''), flush=True)
+        if converse is not None and converse.startswith('STATE NOT RESTORED'):
+            print('THE STATE OF THE TREE IS NOT WHAT IT WAS: STOPPING, no later control can be trusted', file=sys.stderr, flush=True)
+            sys.exit(2)
+    # the baseline of every Go group, once more: the overlay must have left the tree as it was
+    for (pkg, pattern), why in baselines.items():
+        if why: continue
+        code, out = go_test(pkg, pattern, None)
+        print(f'baseline of {pkg} -run {pattern} after the run: ' + (f'green again, {len(re.findall(r"^--- PASS: ", out, re.M))} tests' if code == 0 else 'RED: ' + ' '.join(go_failed(out))), flush=True)
+        if code != 0: problems.append(f'baseline-after {pkg} {pattern}')
+    print(f'\n{count - len([p for p in problems if not p.startswith("baseline-after")])} of {count} controls are detected by the assertion they are named for and pass undetected with that assertion removed')
     if problems:
         print('PROBLEMS: ' + ', '.join(problems))
         sys.exit(1)
