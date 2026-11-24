@@ -45,10 +45,21 @@ async function attachErrors(testInfo: TestInfo, records: BrowserErrors, name = '
   await testInfo.attach(name, { path, contentType: 'application/json' });
 }
 
+// A session that the host listed and then does not find is gone, or a page took it over meanwhile (an orphan is
+// adopted by the first window that attaches it, and the page of the next test restores the sessions it lists): for a
+// cleanup either way is closed, whoever holds it now is that page's.
+const SESSION_NOT_FOUND = 'omniview:session/not-found';
+
 async function closeSessions(request: APIRequestContext): Promise<void> {
   const sessions = await callBinding<Array<{ id: string }> | null>(request, Service.exec, 'ListSessions');
   for (const { id } of sessions ?? []) {
-    await callBinding(request, Service.exec, 'CloseSession', id);
+    try {
+      await callBinding(request, Service.exec, 'CloseSession', id);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes(SESSION_NOT_FOUND)) {
+        throw error;
+      }
+    }
   }
 }
 
