@@ -1,6 +1,8 @@
 # Before any tag that ships `exec.v2`
 
 > **Copy for the terminal handoff** (2026-11-24) of `docs/exec-before-any-tag.md` on the branch `feature/exec-v2` of `omniviewdev/plugin-sdk` (head `8726f24c` when copied), byte for byte except this line (its relative links to the SDK's own docs were removed). The file in plugin-sdk is the authority.
+>
+> **Read item B1.3 with `exec-lane-k8s-proof.md`, section 4.4: its recommendation "PROCESS for a Success" was tried on a real cluster and is contradicted.** After a kubelet or containerd restart the API server sends an explicit Success for a command that did not exit 0 (8 of 8 sessions), so reporting PROCESS for a Success would print a false exit 0 for a killed command. The spike's recommendation: do not adopt it; keep an arm for "ended normally, the command's status not known" (`Exited{0, TRANSPORT}` or an arm without a code); a non-zero status stays PROCESS; `Lost` is for a broken leg. The gate's text below is unchanged.
 
 This page keeps, verbatim and not edited, the conditions that the independent review of head `ed6f26f8445c2e756de5506882c3927e9f228b47` of the exec v2 contract (`proto/exec/v2/exec.proto`, `pkg/v1/exec`), by `ReviewSdk87`, sets before **any** tag that ships `exec.v2`: a stable tag cut from `main` ships the contract for good. The file and line references (`exec.proto:1268`, `docs/exec.md:121`, `limits.go:102`, ...) are to that head, not to the tree you are reading, and the page is a record of the review: it does not say which of its conditions have been met since.
 
