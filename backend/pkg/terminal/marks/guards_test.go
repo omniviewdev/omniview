@@ -174,3 +174,31 @@ func TestTheNonceTextAndGoFormsNeverPrintTheValue(t *testing.T) {
 		}
 	}
 }
+
+func TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand(t *testing.T) {
+	for name, data := range map[string]string{
+		"E then C":     osc("633;E;ls;"+testNonce) + osc("133;C"),
+		"E then A":     osc("633;E;ls;"+testNonce) + osc("133;A") + osc("133;C"),
+		"after an end": cycle("pwd", "x", "0") + osc("633;E;ls;"+testNonce) + osc("133;C"),
+	} {
+		s := newTestScanner(t, newClock(), 0)
+		ms := feedAll(s, data)
+		last, rec := ms[len(ms)-1], s.Log().Records()
+		got := rec[len(rec)-1]
+		if last.CommandLine != "ls" || last.Trust != TrustNonce || got.CommandLine != "ls" || got.Trust != TrustNonce {
+			t.Fatalf("%s: the line is lost: mark %+v record %v", name, last, got)
+		}
+	}
+	// A line is the line of one command: the next one does not inherit it.
+	s := newTestScanner(t, newClock(), 0)
+	feedAll(s, osc("633;E;ls;"+testNonce)+osc("133;C")+osc("133;D;0")+osc("133;A")+osc("133;C"))
+	if recs := s.Log().Records(); len(recs) != 2 || recs[1].CommandLine != "" || recs[1].Trust != TrustUnverified {
+		t.Fatalf("the next command took the line: %v", recs)
+	}
+	// A line that comes while a command runs is dropped, not kept for the next one.
+	s = newTestScanner(t, newClock(), 0)
+	feedAll(s, osc("133;A")+osc("133;C")+osc("633;E;rm;"+testNonce)+osc("133;D;0")+osc("133;A")+osc("133;C"))
+	if recs := s.Log().Records(); len(recs) != 2 || recs[0].CommandLine != "" || recs[1].CommandLine != "" {
+		t.Fatalf("a line in a running command was kept: %v", recs)
+	}
+}
