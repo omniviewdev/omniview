@@ -149,7 +149,7 @@ CONTROLS = [
 
     # The findings of the review of 6052c031.
     (16, "M1: a queue that is full refuses the input of the stream that holds the terminal instead of making it wait for room", ORDERED,
-     [("if q.err == nil && q.full(o) {", "if false && q.err == nil && q.full(o) {")],
+     [("if q.err == nil && q.fullFor(o) {", "if false && q.err == nil && q.fullFor(o) {")],
      [(TERMINAL, [(WAITS_FOR_ROOM, "the new holder's input was applied, after the write that held the queue"),
                   (LOSES_WHILE_WAITING, "the stream that holds the terminal now is applied")], ["new-holder-input-waits"])]),
 
@@ -167,7 +167,7 @@ CONTROLS = [
      [(EXEC, [(CHANNEL_ID_1, IN_USE), (CHANNEL_ID_2, IN_USE), (CHANNEL_ID_3, IN_USE), (CHANNEL_ID_4, IN_USE)], ["channel-id-held"])]),
 
     (20, "m5: the pump does not look at the deadline again once its timer is armed, so a clock that moved postpones the release for ever", PACE,
-     [("\tif !s.clock.Now().Before(deadline) {\n\t\treturn true\n\t}\n", "")],
+     [("left := deadline.Sub(s.clock.Now())", "left := delay")],
      [(TERMINAL, [(POSTPONED, "the stall let the pump go, though the clock moved while its timer was armed")], ["stall-not-postponed"])]),
 
     (21, "m6: the capability keeps a plain copy of the secret in the struct that holds it, which fmt prints", CHANNEL,
