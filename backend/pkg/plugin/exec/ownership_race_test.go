@@ -488,3 +488,48 @@ func TestASessionWhoseEndIsDecidedIsNotListedReadOrEndedByAWindowThatDoesNotHold
 		require.NoError(t, fx.ctrl.WriteSession("wA", "mine", []byte("x")))
 	})
 }
+
+// forgettingRealm is a realm that has forgotten its retired windows: it admits whatever it is asked about. The real one keeps a
+// closed window for a minute and then admits it again (window_realm.go), and a plugin has no deadline for making a session.
+type forgettingRealm struct{ WindowRealm }
+
+func (forgettingRealm) AdmitWindow(application.Window) (*invocation.Scope, error) {
+	return invocation.NewScope(invocation.TrustedUI), nil
+}
+
+// A window that retired long before the plugin answered (longer than the realm remembers it) leaves its session to no
+// window all the same (CodeRabbit): the controller keeps the retirement for as long as a session is being made for the
+// window, and does not ask the realm, which may have forgotten. Another window that retires meanwhile changes nothing for it.
+func TestASessionIsLeftToNoWindowWhenItsWindowRetiredLongerAgoThanTheRealmRemembers(t *testing.T) {
+	fx := newOwnershipRaceFixture(t)
+	fx.wrapper = &ServiceWrapper{Ctrl: fx.ctrl, Realm: forgettingRealm{WindowRealm: fx.realm}}
+	a, b := fx.window(1), fx.window(2)
+	fx.plugin.createGate = newGate()
+	made := fx.createAsync(a, "late")
+	<-fx.plugin.createGate.entered
+
+	fx.ctrl.ReleaseOwnedTerminals(invocation.IdentityOf(a), terminal.ClosedByWindow) // what the realm announces when A retires
+	close(fx.plugin.createGate.release)
+	require.NoError(t, (<-made).err)
+
+	assert.Equal(t, []string{"late"}, fx.listedTo(b), "no window holds it: any window lists it")
+	_, _, err := fx.wrapper.AttachSession(fx.as(b), "late")
+	require.NoError(t, err, "and the first to attach holds it")
+}
+
+func TestTheRetirementOfAnotherWindowWhileASessionIsMadeLeavesItToItsWindow(t *testing.T) {
+	fx := newOwnershipRaceFixture(t)
+	a, b, c := fx.window(1), fx.window(2), fx.window(3)
+	fx.plugin.createGate = newGate()
+	made := fx.createAsync(a, "mine")
+	<-fx.plugin.createGate.entered
+
+	fx.ctrl.ReleaseOwnedTerminals(invocation.IdentityOf(b), terminal.ClosedByWindow) // B retires; it has nothing here
+	close(fx.plugin.createGate.release)
+	require.NoError(t, (<-made).err)
+
+	assert.Empty(t, fx.listedTo(c), "the session is still A's")
+	_, _, err := fx.wrapper.AttachSession(fx.as(c), "mine")
+	requireSessionNotFound(t, err, "mine")
+	require.NoError(t, fx.wrapper.WriteSession(fx.as(a), "mine", []byte("x")))
+}
