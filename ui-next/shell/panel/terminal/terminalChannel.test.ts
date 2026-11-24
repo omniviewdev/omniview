@@ -1066,7 +1066,7 @@ describe('the stream a page opens', () => {
 
   it('uses the runtime stream in the app window', () => {
     const { opened, scope } = browser('wails:');
-    const native = vi.fn(() => ({}) as ChannelSocket);
+    const native = vi.fn((): ChannelSocket => new FakeSocket());
     streamOpener({ ...scope, webkit: { messageHandlers: { external: { postMessage: () => undefined } } } }, native)('terminal');
     expect(native).toHaveBeenCalledWith('terminal');
     expect(opened).toEqual([]);

@@ -2,6 +2,7 @@ import { ExecClient, WindowClient } from '@omniviewdev/runtime/api';
 import { Window } from '@omniviewdev/runtime/runtime';
 import { parseAppError } from '@omniviewdev/runtime/ui/v1';
 import { Stream } from '@wailsio/runtime';
+import { isNativeWindow } from '../../core/native';
 import { resolveWindowName, type WindowState } from '../../session';
 import type { ChannelEvents, ChannelLaunch, ChannelLink, TerminalChannels } from './channel';
 
@@ -651,9 +652,29 @@ export async function loadTerminalChannels(deps: ChannelDeps): Promise<TerminalC
   return load(createCore(deps));
 }
 
-/** The stream of a page: the Wails runtime's. */
-export function streamOpener(_scope: unknown, native: (name: string) => ChannelSocket): (name: string) => ChannelSocket {
-  return (name) => native(name);
+/** What of the page's global object the stream's opener reads. */
+type StreamScope = {
+  readonly location: { readonly protocol: string; readonly host: string };
+  readonly WebSocket: new (url: string) => unknown;
+};
+
+/**
+ * How the page opens a stream. In the app's own window it is the Wails runtime's `Stream`, over the native bridge. In a browser (server mode) the host serves the page and the page carries its own bundle of the runtime, not the
+ * host's `/wails/runtime.js`: the prelude the host puts in front of that script is what makes `Stream` a WebSocket of the host's stream route there (`stream_prelude_server.go` of Wails), and without it the runtime falls back to
+ * its HTTP poll. So in a browser the page opens that route itself, as the prelude does: by name only (the name is in the address, and carries nothing secret), binary frames as array buffers.
+ */
+export function streamOpener(scope: unknown, native: (name: string) => ChannelSocket): (name: string) => ChannelSocket {
+  if (isNativeWindow(scope)) {
+    return (name) => native(name);
+  }
+
+  const { location, WebSocket: Socket } = scope as StreamScope;
+  return (name) => {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new Socket(`${protocol}//${location.host}/wails/stream/ws?name=${encodeURIComponent(name)}`) as ChannelSocket;
+    socket.binaryType = 'arraybuffer';
+    return socket;
+  };
 }
 
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
@@ -663,7 +684,7 @@ let app: Core | undefined;
 
 /** The page's own channels: the host's `ExecClient`, the Wails stream, and the slot of this window. Made when first asked for; its capabilities are those of this page until `loadAppTerminalChannels` has read the slot. */
 const appCore = (): Core => {
-  app ??= createCore({ client: ExecClient, openStream: (name) => Stream(name), storage: capabilityStorage({ client: WindowClient, name: windowName }) });
+  app ??= createCore({ client: ExecClient, openStream: streamOpener(window, (name) => Stream(name)), storage: capabilityStorage({ client: WindowClient, name: windowName }) });
   return app;
 };
 
