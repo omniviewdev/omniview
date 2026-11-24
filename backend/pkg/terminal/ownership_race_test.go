@@ -423,7 +423,9 @@ func (m *Manager) sizeOf(t *testing.T, id string) (int, int) {
 // terminal in the next instant, and the window that gave the terminal away types nothing into it afterwards.
 func TestInputThatWasTakenInBeforeAClaimIsAppliedBeforeTheNewHoldersAndNothingAfterIt(t *testing.T) {
 	m, sink := newPageManager(t)
-	info := m.startKeyed(t, `stty -echo; cat`, "wA", Options{})
+	// The shell is up (the terminal does not echo) before anything is typed: what is typed before is echoed by the line discipline.
+	info := m.startKeyed(t, `stty -echo; printf 'up\n'; cat`, "wA", Options{})
+	sink.waitFor(t, info.ID, "up")
 	require.NoError(t, m.Offer(info.ID, "wA", OfferTTL))
 	var claimErr, bErr error
 	m.afterAdmit = func(id string) {
@@ -525,7 +527,10 @@ func TestInputOfAWindowThatGivesATerminalAwayAndTheClaimOfItAtOnceKeepTheirOrder
 	rng := rand.New(rand.NewPCG(11, 17))
 	for round := range 25 {
 		id := fmt.Sprintf("hand-over-%d", round)
-		m.startKeyed(t, `stty -echo; cat`, "wA", Options{ID: id})
+		// The shell is up (the terminal does not echo) before anything is typed: what is typed before is echoed by the line
+		// discipline, and the echo of A's first line comes after B's words on a machine that starts the shell late.
+		m.startKeyed(t, `stty -echo; printf 'up\n'; cat`, "wA", Options{ID: id})
+		sink.waitFor(t, id, "up")
 		require.NoError(t, m.Offer(id, "wA", OfferTTL))
 		start := make(chan struct{})
 		var wg sync.WaitGroup
