@@ -153,6 +153,8 @@ type Setup = {
   readonly panelHosts?: (plugin: string) => PanelHostV1;
   /** The Terminal tool's screen reader switch: what the command toggles and where it says the result. */
   readonly terminalScreenReader?: HostPaletteDeps['terminalScreenReader'];
+  /** Opens Settings: the window's own, or the sheet. Present, the palette offers the Settings command. */
+  readonly openSettings?: () => void;
 };
 
 /** What a test holds of the palette it built: the palette and its store, the tab store, what the plugins and the published values are, and the handles that change them. */
@@ -196,7 +198,7 @@ function build(setup: Setup = {}): World {
     },
   });
   const watched = watching(setup.tabs === undefined ? tabs : setup.tabs(tabs));
-  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader });
+  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader, openSettings: setup.openSettings });
   return {
     palette,
     store: palette.store,
@@ -293,7 +295,7 @@ describe('the pages source', () => {
     ).toEqual([
       { kind: 'home', noun: 'Plugin home', title: 'Beta', context: 'Overview', icon: 'server', tone: 'neutral', word: '', route: { plugin: 'beta', contribution: 'overview', params: {} }, plugin: 'host' },
       { kind: 'home', noun: 'Plugin home', title: 'Acme', context: 'Widgets', icon: 'layers', tone: 'neutral', word: '', route: { plugin: 'acme', contribution: 'widgets', params: {} }, plugin: 'host' },
-      { kind: 'home', noun: 'Plugin home', title: 'Gamma plugin', context: '', icon: 'box', tone: 'neutral', word: 'Degraded', route: { plugin: 'gamma', contribution: HOME_PAGE, params: {} }, plugin: 'host' },
+      { kind: 'home', noun: 'Plugin home', title: 'Gamma plugin', context: '', icon: 'package', tone: 'neutral', word: 'Degraded', route: { plugin: 'gamma', contribution: HOME_PAGE, params: {} }, plugin: 'host' },
       { kind: 'home', noun: 'Plugin home', title: 'Delta plugin', context: '', icon: 'status-error', tone: 'neutral', word: 'Degraded', route: { plugin: 'delta', contribution: HOME_PAGE, params: {} }, plugin: 'host' },
     ]);
   });
@@ -1294,6 +1296,14 @@ describe('the commands', () => {
     });
   });
 
+  it('offers Settings with the mock\'s gear when the window can open it', () => {
+    const w = build({ platform: 'mac', openSettings: vi.fn() });
+    w.open(at('acme', 'widgets'));
+    w.store.open({ kind: 'commands' });
+    const row = rowTitled(w, 'Settings');
+    expect({ context: row.context.text, icon: row.tile?.icon, kind: row.kind, command: row.action.type === 'run' ? row.action.command.id : row.action.type }).toEqual({ context: 'Window', icon: 'settings', kind: 'command', command: 'host.settings.open' });
+  });
+
   it('finds the screen reader switch by the words a person would type for it, and offers it whichever platform: the chords are not its own', () => {
     for (const platform of ['mac', 'other'] as const) {
       const w = build({ platform, panel: createPanelStore(), terminalScreenReader: { toggle: () => true, say: vi.fn() } });
@@ -1486,7 +1496,7 @@ describe('what the palette opens with', () => {
     nameConnection(w, routeAt('plain', 'widgets', 'north'), 'north');
     w.open(at('plain', 'widgets', 'north'));
 
-    expect(w.palette.opening().scope).toMatchObject([{ kind: 'plugin', label: 'Plain', icon: 'box' }, { kind: 'scope', id: 'north' }]);
+    expect(w.palette.opening().scope).toMatchObject([{ kind: 'plugin', label: 'Plain', icon: 'package' }, { kind: 'scope', id: 'north' }]);
   });
 
   it('takes the place and no chips from a tab that has no scope', () => {

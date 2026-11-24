@@ -248,6 +248,12 @@ describe('the page', () => {
     expect(within(detail()).getByRole('heading', { level: 2, name: 'Alpha' })).toBeInTheDocument();
   });
 
+  it('is a tab with the mock\'s puzzle glyph', async () => {
+    const { tabs, tabId } = await mount(four);
+
+    expect(tabs.selectors.face(tabs.getSnapshot(), tabId)?.icon).toBe('puzzle');
+  });
+
   it('shows the plugin whose row is chosen in the detail, and keeps the choice in the memory of its tab', async () => {
     const { tabs, tabId, user } = await mount(four);
 

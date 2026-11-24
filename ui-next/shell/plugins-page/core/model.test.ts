@@ -486,7 +486,7 @@ describe('what the window says of a plugin\'s interface is what the page says', 
     const detach = model.attach();
     await settle();
 
-    expect(model.row('beta')?.tile).toEqual({ icon: 'box', accent: undefined });
+    expect(model.row('beta')?.tile).toEqual({ icon: 'package', accent: undefined });
 
     entries.set([{ id: 'beta', name: 'Beta', phase: 'ready', contribution: acme({ rail: { label: 'Beta', icon: 'server', order: 1 } }) }]);
 

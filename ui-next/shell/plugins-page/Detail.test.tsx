@@ -169,7 +169,7 @@ describe('the header', () => {
     expect(cell?.children).toHaveLength(1);
     expect(cell?.firstElementChild).toHaveAttribute('data-size', '28');
     expect(cell?.firstElementChild).not.toHaveAttribute('data-accent');
-    expect(cell?.querySelector('svg')).toHaveAttribute('data-ov-glyph', 'box');
+    expect(cell?.querySelector('svg')).toHaveAttribute('data-ov-glyph', 'package');
 
     act(() => {
       h.entries.set([{ id: 'alpha', name: 'Alpha', phase: 'ready', contribution: acme({ rail: { label: 'Alpha', icon: 'server', order: 1 } }) }]);
@@ -217,6 +217,24 @@ describe('the actions are the model\'s', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(h.actions.reload).toHaveBeenCalledWith('alpha');
+  });
+
+  it.each([
+    ['Retry', { phase: 'Failed' }, 'rotate-cw'],
+    ['Enable', { enabled: false, phase: 'Installed' }, 'power'],
+    ['Start', { phase: 'Stopped' }, 'play'],
+  ] as const)('draws the mock\'s glyph on the %s verb', async (verb, state, glyph) => {
+    await open([inventoryEntry('alpha', state)]);
+
+    expect(screen.getByRole('button', { name: verb }).querySelector('svg')).toHaveAttribute('data-ov-glyph', glyph);
+  });
+
+  it('draws the crossed-out power button on Disable in the More menu', async () => {
+    await open([inventoryEntry('alpha')]);
+
+    menuItems();
+
+    expect(screen.getByRole('menuitem', { name: 'Disable', hidden: true }).querySelector('svg')).toHaveAttribute('data-ov-glyph', 'power-off');
   });
 
   it('Disable and Uninstall are in the More menu: Disable calls the model, Uninstall calls the page', async () => {

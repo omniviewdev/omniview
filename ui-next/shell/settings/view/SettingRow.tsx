@@ -166,7 +166,7 @@ export function SettingRow({ form, session, id }: SettingRowProps) {
         trailing={
           modified ? (
             <IconButton
-              icon="undo"
+              icon="rotate-ccw"
               label={resetLabel(field.label)}
               variant="ghost"
               size="row"

@@ -38,7 +38,7 @@ The session shows what the host holds and asks again when that may have changed:
 
 ## Not drawn yet (the next slices, with what each needs)
 
-`appearance.theme` and `terminal.nativeApplication` (pickers: a theme picker with the nine themes' swatches and the native-application chooser that lists what the host finds), developer-only settings, multi-select / colour / date-time types, sections and a search of settings, the Plugins group, AI Tools, Updates and Notifications pages, a setting to focus from a request (`setting=` in the target). Glyphs the kit lacks for the pages and the controls: `paintbrush`, `square-terminal`, `code`, `beaker`, `settings`, `rotate-ccw`: the pages show none, the gear is the kit's `settings-2` and Reset is `undo` until the icons step adds them.
+`appearance.theme` and `terminal.nativeApplication` (pickers: a theme picker with the nine themes' swatches and the native-application chooser that lists what the host finds), developer-only settings, multi-select / colour / date-time types, sections and a search of settings, the Plugins group, AI Tools, Updates and Notifications pages, a setting to focus from a request (`setting=` in the target).
 
 ## Checks
 

@@ -28,6 +28,7 @@ export type IconName =
   | 'arrow-right'
   | 'arrow-up'
   | 'arrow-up-wide-narrow'
+  | 'beaker'
   | 'bell'
   | 'bell-off'
   | 'blocks'
@@ -45,6 +46,7 @@ export type IconName =
   | 'clipboard-check'
   | 'clock'
   | 'close'
+  | 'code'
   | 'columns'
   | 'copy'
   | 'cpu'
@@ -70,14 +72,21 @@ export type IconName =
   | 'loader-circle'
   | 'minus'
   | 'network'
+  | 'package'
+  | 'paintbrush'
   | 'panel-bottom'
   | 'pause'
   | 'play'
   | 'plus'
+  | 'power'
+  | 'power-off'
+  | 'puzzle'
   | 'refresh'
   | 'regex'
   | 'repeat'
   | 'rocket'
+  | 'rotate-ccw'
+  | 'rotate-cw'
   | 'ruler'
   | 'scaling'
   | 'scroll-text'
@@ -85,10 +94,12 @@ export type IconName =
   | 'search-x'
   | 'server'
   | 'server-cog'
+  | 'settings'
   | 'settings-2'
   | 'shield'
   | 'shield-check'
   | 'split'
+  | 'square-terminal'
   | 'status-error'
   | 'status-info'
   | 'status-success'
@@ -136,6 +147,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   'arrow-up': { box: 16, layers: [{ d: 'M12.354 6.346C12.549 6.542 12.549 6.858 12.354 7.054 12.158 7.249 11.842 7.249 11.646 7.054L8.5 3.907 8.5 13.507C8.5 13.783 8.276 14.007 8 14.007 7.724 14.007 7.5 13.783 7.5 13.507L7.5 3.907 4.354 7.054C4.158 7.249 3.842 7.249 3.646 7.054 3.451 6.858 3.451 6.542 3.646 6.346L7.646 2.346 8 1.993 8.354 2.346 12.354 6.346Z', fill: 'ink', evenodd: true }] },
   /* Lucide arrow-up-wide-narrow (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuArrowUpWideNarrow. */
   'arrow-up-wide-narrow': { box: 24, layers: [{ d: 'M3 8l4-4 4 4M7 4v16M11 12h10M11 16h7M11 20h4', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide beaker (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuBeaker. */
+  beaker: { box: 24, layers: [{ d: 'M4.5 3h15M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3M6 14h12', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI toolwindows/notifications.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuBell. */
   bell: { box: 16, layers: [{ d: 'M6.957 14.458H9.049C8.993 14.587 8.912 14.706 8.811 14.808C8.596 15.022 8.306 15.142 8.003 15.142C7.7 15.142 7.41 15.022 7.195 14.808C7.094 14.706 7.013 14.587 6.957 14.458Z', stroke: 'ink', width: 0.916 }, { d: 'M3.947 8.224C3.982 8.154 4 8.078 4 8V6C4 4.293 4.571 3.185 5.324 2.5C6.088 1.805 7.087 1.502 8.001 1.5H8.009C8.923 1.502 9.919 1.805 10.68 2.5C11.431 3.184 12 4.292 12 6V8C12 8.078 12.018 8.154 12.053 8.224L13.849 11.816C14.006 12.131 13.778 12.5 13.427 12.5H2.573C2.222 12.5 1.994 12.131 2.151 11.816L3.947 8.224Z', stroke: 'ink', join: 'round' }] },
   /* Lucide bell-off (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuBellOff. */
@@ -170,6 +183,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   clock: { box: 16, layers: [{ d: 'M1.5 8A6.5 6.5 0 1 0 14.5 8A6.5 6.5 0 1 0 1.5 8ZM8 5V8L10.5 9.5', stroke: 'ink', cap: 'round', join: 'round' }] },
   /* Int UI general/close_dark.svg. Copyright 2000-2025 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuX. */
   close: { box: 16, layers: [{ d: 'M3.5 12.5L12.5 3.5M12.5 12.5L3.5 3.5', stroke: 'ink', cap: 'round' }] },
+  /* Lucide code (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuCode. */
+  code: { box: 24, layers: [{ d: 'M16 18L22 12L16 6M8 6L2 12L8 18', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide columns-3 (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuColumns3. */
   columns: { box: 24, layers: [{ d: 'M5 3H19A2 2 0 0 1 21 5V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3ZM9 3v18M15 3v18', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI general/copy_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuCopy. */
@@ -220,6 +235,10 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   minus: { box: 16, layers: [{ d: 'M1 7.5C1 7.776 1.224 8 1.5 8L13.5 8C13.776 8 14 7.776 14 7.5C14 7.224 13.776 7 13.5 7L1.5 7C1.224 7 1 7.224 1 7.5Z', fill: 'ink', evenodd: true }] },
   /* Lucide network (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuNetwork. */
   network: { box: 24, layers: [{ d: 'M17 16H21A1 1 0 0 1 22 17V21A1 1 0 0 1 21 22H17A1 1 0 0 1 16 21V17A1 1 0 0 1 17 16ZM3 16H7A1 1 0 0 1 8 17V21A1 1 0 0 1 7 22H3A1 1 0 0 1 2 21V17A1 1 0 0 1 3 16ZM10 2H14A1 1 0 0 1 15 3V7A1 1 0 0 1 14 8H10A1 1 0 0 1 9 7V3A1 1 0 0 1 10 2ZM5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3M12 12V8', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide package (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPackage. */
+  package: { box: 24, layers: [{ d: 'M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73zM12 22V12M3.3 7l7.703 4.734a2 2 0 0 0 1.994 0L20.7 7M7.5 4.27l9 5.15', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide paintbrush (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPaintbrush. */
+  paintbrush: { box: 24, layers: [{ d: 'M14.622 17.897l-10.68-2.913M18.376 2.622a1 1 0 1 1 3.002 3.002L17.36 9.643a.5.5 0 0 0 0 .707l.944.944a2.41 2.41 0 0 1 0 3.408l-.944.944a.5.5 0 0 1-.707 0L8.354 7.348a.5.5 0 0 1 0-.707l.944-.944a2.41 2.41 0 0 1 3.408 0l.944.944a.5.5 0 0 0 .707 0zM9 8c-1.804 2.71-3.97 3.46-6.583 3.948a.507.507 0 0 0-.302.819l7.32 8.883a1 1 0 0 0 1.185.204C12.735 20.405 16 16.792 16 15', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide panel-bottom (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPanelBottom. */
   'panel-bottom': { box: 24, layers: [{ d: 'M5 3H19A2 2 0 0 1 21 5V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V5A2 2 0 0 1 5 3ZM3 15h18', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI run/pause_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPause. */
@@ -228,6 +247,12 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   play: { box: 16, layers: [{ d: 'M13.5 7.134C14.167 7.519 14.167 8.481 13.5 8.866L4.5 14.062C3.833 14.447 3 13.966 3 13.196L3 2.804C3 2.034 3.833 1.553 4.5 1.938L13.5 7.134Z', fill: '#253627', stroke: 'success' }] },
   /* Int UI general/add_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPlus. */
   plus: { box: 16, layers: [{ d: 'M7.5 1C7.776 1 8 1.224 8 1.5V7H13.5C13.776 7 14 7.224 14 7.5C14 7.776 13.776 8 13.5 8H8V13.5C8 13.776 7.776 14 7.5 14C7.224 14 7 13.776 7 13.5V8H1.5C1.224 8 1 7.776 1 7.5C1 7.224 1.224 7 1.5 7H7V1.5C7 1.224 7.224 1 7.5 1Z', fill: 'ink', evenodd: true }] },
+  /* Lucide power (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPower. */
+  power: { box: 24, layers: [{ d: 'M12 2v10M18.4 6.6a9 9 0 1 1-12.77.04', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide power-off (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPowerOff. */
+  'power-off': { box: 24, layers: [{ d: 'M18.36 6.64A9 9 0 0 1 20.77 15M6.16 6.16a9 9 0 1 0 12.68 12.68M12 2v4M2 2l20 20', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide puzzle (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuPuzzle. */
+  puzzle: { box: 24, layers: [{ d: 'M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Int UI general/refresh_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuRefreshCw, LuRefreshCcw. */
   refresh: { box: 16, layers: [{ d: 'M2.5 9V8C2.5 4.962 4.962 2.5 8 2.5 9.107 2.5 10.137 2.827 11 3.389M5 12.611C5.863 13.173 6.893 13.5 8 13.5 11.038 13.5 13.5 11.038 13.5 8V7M.5 7.5L2.5 9.5 4.5 7.5M11.5 8.5L13.5 6.5 15.5 8.5', stroke: 'ink', cap: 'round' }] },
   /* Lucide regex (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuRegex. */
@@ -236,6 +261,10 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   repeat: { box: 24, layers: [{ d: 'M17 2l4 4-4 4M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v1a4 4 0 0 1-4 4H3', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide rocket (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuRocket. */
   rocket: { box: 24, layers: [{ d: 'M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09zM12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2zM9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide rotate-ccw (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuRotateCcw. */
+  'rotate-ccw': { box: 24, layers: [{ d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Lucide rotate-cw (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuRotateCw. */
+  'rotate-cw': { box: 24, layers: [{ d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide ruler (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuRuler. */
   ruler: { box: 24, layers: [{ d: 'M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0ZM14.5 12.5l2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide scaling (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuScaling. */
@@ -250,6 +279,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   server: { box: 24, layers: [{ d: 'M4 2H20A2 2 0 0 1 22 4V8A2 2 0 0 1 20 10H4A2 2 0 0 1 2 8V4A2 2 0 0 1 4 2ZM4 14H20A2 2 0 0 1 22 16V20A2 2 0 0 1 20 22H4A2 2 0 0 1 2 20V16A2 2 0 0 1 4 14ZM6 6L6.01 6M6 18L6.01 18', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide server-cog (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuServerCog. */
   'server-cog': { box: 24, layers: [{ d: 'M9 12A3 3 0 1 0 15 12A3 3 0 1 0 9 12ZM4.5 10H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-.5M4.5 14H4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2h-.5M6 6h.01M6 18h.01M15.7 13.4l-.9-.3M9.2 10.9l-.9-.3M10.6 15.7l.3-.9M13.6 15.7l-.4-1M10.8 9.3l-.4-1M8.3 13.6l1-.4M14.7 10.8l1-.4M13.4 8.3l-.3.9', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Int UI general/settings_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuSettings. Written with relative coordinates (the mock's 2,616 bytes of absolute path data are 1,677 here). */
+  settings: { box: 16, layers: [{ d: 'M3.227 4.37c-.305.399-.56.838-.757 1.306l.84 1.418c.331.559.331 1.253 0 1.812l-.84 1.418c.197.468.452.907.757 1.306l1.646-.018c.649-.007 1.25.34 1.568.906l.808 1.435c.247.031.499.047.755.047c.256 0 .508-.016.755-.047l.808-1.435c.318-.566.919-.913 1.568-.906l1.647.018c.304-.399.559-.838.756-1.306l-.84-1.418c-.331-.559-.331-1.253 0-1.812l.84-1.418c-.197-.468-.452-.907-.756-1.306l-1.647.018c-.649.007-1.25-.34-1.568-.906l-.808-1.435c-.247-.031-.499-.047-.755-.047c-.256 0-.508.016-.755.047l-.808 1.435c-.318.566-.919.913-1.568.906l-1.646-.018zM10.655 8c0 1.464-1.187 2.651-2.651 2.651c-1.464 0-2.651-1.187-2.651-2.651c0-1.464 1.187-2.651 2.651-2.651c1.464 0 2.651 1.187 2.651 2.651zM4.884 3.388c.284.003.547-.149.686-.397l.868-1.542c.111-.197.302-.339.526-.372c.339-.051.687-.077 1.04-.077c.354 0 .701.026 1.04.077c.224.033.415.175.526.372l.868 1.542c.139.248.403.4.687.397l1.769-.02c.226-.002.443.092.584.269c.432.541.785 1.147 1.043 1.802c.082.21.055.446-.06.64l-.902 1.525c-.145.244-.145.548 0 .792l.902 1.525c.115.194.142.43.06.64c-.258.655-.611 1.261-1.043 1.802c-.141.177-.358.271-.584.269l-1.769-.02c-.284-.003-.548.149-.687.397l-.868 1.542c-.111.197-.302.339-.526.372c-.339.051-.686.077-1.04.077c-.353 0-.701-.026-1.04-.077c-.224-.033-.415-.175-.526-.372l-.868-1.542c-.139-.248-.402-.4-.686-.397l-1.77.02c-.225.002-.443-.092-.584-.269c-.432-.541-.785-1.147-1.043-1.802c-.082-.21-.055-.446.06-.64l.902-1.525c.145-.244.145-.548 0-.792l-.902-1.525c-.115-.194-.142-.43-.06-.64c.258-.655.611-1.261 1.043-1.802c.141-.177.359-.271.584-.269l1.77.02zM9.655 8c0 .912-.739 1.651-1.651 1.651c-.912 0-1.651-.739-1.651-1.651c0-.912.739-1.651 1.651-1.651c.912 0 1.651.739 1.651 1.651z', fill: 'ink', evenodd: true }] },
   /* Lucide settings-2 (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuSettings2. */
   'settings-2': { box: 24, layers: [{ d: 'M20 7h-9M14 17H5M14 17A3 3 0 1 0 20 17A3 3 0 1 0 14 17ZM4 7A3 3 0 1 0 10 7A3 3 0 1 0 4 7Z', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide shield (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuShield. */
@@ -258,6 +289,14 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   'shield-check': { box: 24, layers: [{ d: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1zM9 12l2 2 4-4', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
   /* Lucide split (ISC; the glyphs Lucide derives from Feather carry Feather's MIT notice, see NOTICE). Mock key: LuSplit. */
   split: { box: 24, layers: [{ d: 'M16 3h5v5M8 3H3v5M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3M15 9l6-6', stroke: 'ink', width: 2, cap: 'round', join: 'round' }] },
+  /* Int UI fileTypes/shell_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuSquareTerminal, LuTerminal. The screen's fill is a literal of the artwork. */
+  'square-terminal': {
+    box: 16,
+    layers: [
+      { d: 'M3 2.5H13A1.5 1.5 0 0 1 14.5 4V12A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12V4A1.5 1.5 0 0 1 3 2.5Z', fill: '#43454A', stroke: 'ink' },
+      { d: 'M4 6L6 8L4 10M7.5 10.5H11.5', stroke: 'ink', width: 1.2 },
+    ],
+  },
   /* Int UI status/error_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: IntUiError. */
   'status-error': {
     box: 16,

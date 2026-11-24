@@ -45,7 +45,7 @@ export type HostNotices = NoticesBindings & {
  */
 export function failureNotice(store: NoticesStore, plugin: string, error: unknown, retry: () => void): void {
   console.error(`[notices] a command of ${plugin} failed`, error);
-  store.forSource(plugin).fromError(parseAppError(error), { actions: [{ id: 'again', label: 'Retry', icon: 'refresh', primary: true, run: retry }] });
+  store.forSource(plugin).fromError(parseAppError(error), { actions: [{ id: 'again', label: 'Retry', icon: 'rotate-cw', primary: true, run: retry }] });
 }
 
 /** The route of the tab on screen: the same object until the tab moves. */

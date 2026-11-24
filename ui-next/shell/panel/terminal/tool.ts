@@ -1,4 +1,4 @@
-import { isIconName, type IconName } from '@omniviewdev/kit';
+import type { IconName } from '@omniviewdev/kit';
 import type { ToolInput } from '../../core/panel';
 
 // The Terminal tool of the host (ch16 section H; the mock's `def('terminal', { title: 'Terminal', icon: 'LuSquareTerminal', kind: 'sessions', order: 10, ... })`): the one tool of the host that starts its own
@@ -7,12 +7,8 @@ import type { ToolInput } from '../../core/panel';
 /** The panel's id for the tool: a host tool's id has no colon (a plugin's is `<plugin>:<tool>`). */
 export const TERMINAL_TOOL_ID = 'terminal';
 
-/**
- * The glyph of the tool: the mock's `LuSquareTerminal` (icons.js:253). The kit's registry does not have it yet (an icons step follows, status/T1.md lists it), so until it does the tab, the card and the empty state
- * draw the nearest glyph it has, a chevron (the caret of a prompt); the day the registry knows the name this is the name, with nothing else to change.
- */
-const WANTED_ICON = 'square-terminal';
-export const TERMINAL_ICON: IconName = isIconName(WANTED_ICON) ? WANTED_ICON : 'chevron-right';
+/** The glyph of the tool: the mock's `LuSquareTerminal` (icons.js:253), the kit's `square-terminal`: drawn by the tab, the card and the empty state. */
+export const TERMINAL_ICON: IconName = 'square-terminal';
 
 /** What the panel registers for it: the mock's words, glyph and place (Terminal 10, Logs 20, Problems 30, Operations 40): the first tool, and so the one the panel shows while nobody chose another. */
 export const TERMINAL_TOOL: ToolInput = { id: TERMINAL_TOOL_ID, label: 'Terminal', icon: TERMINAL_ICON, order: 10 };
