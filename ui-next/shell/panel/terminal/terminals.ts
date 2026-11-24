@@ -234,9 +234,27 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         }
       };
 
-      document.addEventListener('visibilitychange', ask);
+      // The interval exists only while a terminal is lost and the page is visible: an idle terminal runs no timer.
+      let timer: ReturnType<typeof setInterval> | undefined;
+      const arm = (): void => {
+        const wanted = document.visibilityState === 'visible' && sessions.hasLost();
+        if (wanted && timer === undefined) {
+          timer = setInterval(ask, LOST_REFRESH_MS);
+        } else if (!wanted && timer !== undefined) {
+          clearInterval(timer);
+          timer = undefined;
+        }
+      };
+
+      const shown = (): void => {
+        arm();
+        ask();
+      };
+
+      document.addEventListener('visibilitychange', shown);
       window.addEventListener('focus', ask);
-      const timer = setInterval(ask, LOST_REFRESH_MS);
+      const stopStore = store.subscribe(arm);
+      const stopFeeds = sessions.subscribeFeeds(arm);
       attached += 1;
       findTerminals();
       openFound();
@@ -249,9 +267,14 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         on = false;
         attached -= 1;
         window.removeEventListener('pagehide', hide);
-        document.removeEventListener('visibilitychange', ask);
+        document.removeEventListener('visibilitychange', shown);
         window.removeEventListener('focus', ask);
-        clearInterval(timer);
+        stopStore();
+        stopFeeds();
+        if (timer !== undefined) {
+          clearInterval(timer);
+        }
+
         stop();
       };
     },

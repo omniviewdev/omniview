@@ -1044,6 +1044,39 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       stop();
     });
 
+    it('runs no timer while nothing is lost, arms one when a feed is taken over, and clears it when the terminal ends or is taken back', async () => {
+      const r = reloaded({ reattach: (id) => found(id, again) });
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
+      const again = keyedFeed({ state: 'starting' });
+      const stop = r.terminals.attach();
+      expect(vi.getTimerCount()).toBe(0);
+      r.terminals.sessions.open(found('term-a', feed));
+      expect(vi.getTimerCount()).toBe(0);
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+      expect(vi.getTimerCount()).toBe(1);
+      feed.set({ exit: { code: 0 } });
+      expect(vi.getTimerCount()).toBe(0);
+      feed.set({ exit: undefined });
+      expect(vi.getTimerCount()).toBe(1);
+      feed.set({ detached: { by: 'taken-over', free: true } });
+      await r.terminals.sessions.takeBack('term-a');
+      expect(r.terminals.sessions.feedOf('term-a')).toBe(again);
+      expect(vi.getTimerCount()).toBe(0);
+      stop();
+    });
+
+    it('runs no timer while the page is hidden, and arms it when it shows', () => {
+      const { stop } = taken();
+      expect(vi.getTimerCount()).toBe(1);
+      visibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(vi.getTimerCount()).toBe(0);
+      visibility('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(vi.getTimerCount()).toBe(1);
+      stop();
+    });
+
     it('asks every 5 seconds and no sooner', async () => {
       const { stop, refresh } = taken();
       await vi.advanceTimersByTimeAsync(4_999);
