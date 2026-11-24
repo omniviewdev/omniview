@@ -400,6 +400,9 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
+	if opts.Channel && owner != nil {
+		return Session{}, invalidError("a channel terminal belongs to no window: it takes no owner.")
+	}
 	secret, err := mintCapability(opts.Channel)
 	if err != nil {
 		return Session{}, startError(err)

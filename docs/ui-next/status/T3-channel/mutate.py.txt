@@ -29,6 +29,8 @@ PACE = TERMINAL + "/channel_pace.go"
 RING = TERMINAL + "/replay.go"
 MANAGER = TERMINAL + "/manager.go"
 ORDERED = TERMINAL + "/ordered.go"
+TOMBS = TERMINAL + "/reattach.go"
+TYPES = TERMINAL + "/types.go"
 CONTROLLER = EXEC + "/controller.go"
 
 BY_CAP = "TestEveryCallThatNamesAChannelTerminalByItsCapabilityAnswersTheOneNotFoundForAnyThatOpensNothing"
@@ -59,6 +61,16 @@ CHANNEL_FRAME_1 = "TestAPluginFrameUnderTheIDOfAChannelTerminalIsDropped"
 CHANNEL_FRAME_2 = "TestAPluginsCloseUnderTheIDOfAChannelTerminalNeitherEndsItNorReachesAWindow"
 NOWHERE = "TestTheCapabilityAppearsNowhereInALogAnEventAnErrorAFrameOrASpan"
 SLOW_PAGE = "TestASlowButAlivePageGetsEveryByteAndTheShellIsSlowedToItsPace"
+STRADDLE = "TestAChannelOutputFrameNeverStraddlesTheEndOfTheReplay"
+LANES_1 = "TestAChannelTerminalsThatEndCannotEvictTheEndOfAnEventsLaneTerminal"
+LANES_2 = "TestEventsLaneTerminalsThatEndCannotEvictTheEndOfAChannelTerminal"
+MONOTONIC = "TestAChannelStreamsProgressKeepsTheMonotonicReadingOfTheClock"
+TIMER_DEADLINE = "TestAChannelStallTimerIsArmedForTheDeadlineWhenTheClockMovesPartwayWhileItIsArmed"
+QUEUE_ROOM = "TestAChannelInputThatDoesNotFitTheRoomLeftInTheQueueWaitsForIt"
+END_COPY_LISTED = "TestAChannelListedEndIsACopyThatNoCallerCanChange"
+END_COPY_UNIT = "TestAnEndsCopyShareNothingWithTheEnd"
+NO_OWNER = "TestAChannelTerminalTakesNoOwner"
+LIST_SNAPSHOT = "TestAChannelListedIsNotTakenOfATerminalThatEndedBeforeItsSnapshot"
 
 # number, what the fault is, file, the edits (each: the text it replaces, once, and the text it puts there), then the checks: for
 # each package the tests named for the fault with a part of the message of the assertion that must fail, and the guards (names in
@@ -187,6 +199,42 @@ CONTROLS = [
     (26, "the pump never holds the shell for a page that is alive and behind (the high mark is never acted on): the child runs ahead of the page", PACE,
      [("if backlog <= uint64(m.channel.high) {", "if true || backlog <= uint64(m.channel.high) {")],
      [(TERMINAL, [(SLOW_PAGE, "the shell is held for a page that is alive and behind: the pump waits for it")], ["backpressure-while-alive"])]),
+
+    # The faults of the host that the review of PR 704 found.
+    (27, "an output frame may begin in the replay and end past the end that the ready frame says (the sender does not cut at it)", SERVE,
+     [("parts, to = s.ring.slices(pos, cutAtReplayEnd(limit, pos, c.replayEnd))", "parts, to = s.ring.slices(pos, limit)")],
+     [(TERMINAL, [(STRADDLE, "begins in the replay and ends in the live output")], ["replay-live-split"])]),
+
+    (28, "the ends of the channel terminals and of the events lane share one oldest-first limit", TOMBS,
+     [("\tm.trimTombstonesLocked(!t.capability.none())\n",
+       "\tif len(m.tombs) > TombstoneLimit {\n\t\tm.tombs = slices.Delete(m.tombs, 0, len(m.tombs)-TombstoneLimit)\n\t}\n")],
+     [(TERMINAL, [(LANES_1, "the end of the events lane's terminal is still there for its page"),
+                  (LANES_2, "the end of the channel terminal is still there for its capability")], ["tombstone-lanes"])]),
+
+    (29, "the stamp of a page's progress has no monotonic reading (it is made from UnixNano)", SERVE,
+     [("\treturn c.began.Add(time.Duration(c.progressAt.Load()))\n", "\treturn time.Unix(0, c.began.UnixNano()+c.progressAt.Load())\n")],
+     [(TERMINAL, [(MONOTONIC, "the stamp of the last progress has the monotonic reading")], ["monotonic-progress"])]),
+
+    (30, "the stall timer is not armed again when the clock moved while it was being registered (it waits for a delay computed before)", PACE,
+     [("\t\tif delay-left <= timerSlack {\n", "\t\tif true {\n")],
+     [(TERMINAL, [(TIMER_DEADLINE, "its timer was armed for a moment later than the deadline")], ["stall-timer-deadline"])]),
+
+    (31, "an input that does not fit the room that is left of the queue is admitted while less than the bound is pending", ORDERED,
+     [("\treturn q.pending >= q.limit.ops || (len(o.data) > 0 && q.bytes > 0 && q.bytes+len(o.data) > q.limit.bytes)\n", "\treturn q.full(o)\n")],
+     [(TERMINAL, [(QUEUE_ROOM, "512 KiB are pending, and 1 MiB more does not fit")], ["queue-bound"])]),
+
+    (32, "the end that a list shows shares its exit status with the kept one (the copy does not copy it)", TYPES,
+     [("\tif e.ExitCode != nil {\n\t\tcode := *e.ExitCode\n\t\te.ExitCode = &code\n\t}\n", "")],
+     [(TERMINAL, [(END_COPY_LISTED, "what the caller changed is its own copy"), (END_COPY_UNIT, "the exit status of the copy is a copy")],
+       ["end-is-a-copy"])]),
+
+    (33, "the manager accepts an owner for a channel terminal", MANAGER,
+     [("\tif opts.Channel && owner != nil {\n", "\tif false && opts.Channel && owner != nil {\n")],
+     [(TERMINAL, [(NO_OWNER, "a channel terminal takes no owner")], ["channel-takes-no-owner"])]),
+
+    (34, "a listing says a terminal is running although it ended between the test and the snapshot", CHANNEL,
+     [("\t}, !s.ending.Load()\n", "\t}, true\n")],
+     [(TERMINAL, [(LIST_SNAPSHOT, "a snapshot taken once the terminal has ended is not an entry of a running terminal")], ["list-after-snapshot"])]),
 ]
 
 

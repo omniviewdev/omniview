@@ -119,8 +119,14 @@ func (m *Manager) ChannelCwd(_ string) (Directory, error) {
 	return none, unsupportedError()
 }
 
-// ListChannels lists nothing: no channel terminal can exist. It is an empty list, as on any platform, and not none.
-func (m *Manager) ListChannels(_ []string) ([]ChannelListed, error) { return []ChannelListed{}, nil }
+// ListChannels lists nothing: no channel terminal can exist. It is an empty list, as on any platform, and not none, for a request that
+// is valid; one that is longer than a page holds is refused as it is everywhere.
+func (m *Manager) ListChannels(presented []string) ([]ChannelListed, error) {
+	if err := checkListedCaps(len(presented)); err != nil {
+		return nil, err
+	}
+	return []ChannelListed{}, nil
+}
 
 // HoldsID says no terminal is held: none can exist.
 func (m *Manager) HoldsID(_ string) bool { return false }

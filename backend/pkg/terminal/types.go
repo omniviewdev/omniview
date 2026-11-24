@@ -242,6 +242,14 @@ type End struct {
 // clone is a copy of the end that shares nothing with it: its pointers are copies too, so that a caller that changes what it was
 // given changes its own copy.
 func (e End) clone() End {
+	if e.ExitCode != nil {
+		code := *e.ExitCode
+		e.ExitCode = &code
+	}
+	if e.Failure != nil {
+		failure := *e.Failure
+		e.Failure = &failure
+	}
 	return e
 }
 

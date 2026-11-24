@@ -582,7 +582,7 @@ func (t *tombstone) attached(from *uint64) (*Attached, error) {
 		return nil, err
 	}
 	return &Attached{
-		Session: t.info, Replay: view.replay(), Cwd: Directory{Path: "", Reason: ReasonEnded}, Busy: UnknownForeground(ReasonEnded), Ended: new(t.end),
+		Session: t.info, Replay: view.replay(), Cwd: Directory{Path: "", Reason: ReasonEnded}, Busy: UnknownForeground(ReasonEnded), Ended: t.endCopy(),
 		Attachment: t.attachment, NextInputSeq: 0,
 	}, nil
 }
@@ -591,13 +591,20 @@ func (t *tombstone) listed() Listed {
 	return Listed{
 		ID: t.id, CreatedAt: t.info.CreatedAt, PID: t.info.PID, Shell: t.info.Shell, Labels: nonNil(t.labels), Params: nonNil(t.params),
 		Size: t.ring.size(t.ring.end), Attached: false, NextOffset: t.ring.end, ReplayStart: t.ring.start(), NextInputSeq: 0,
-		LeaseExpiresUnixMs: t.until.UnixMilli(), Ended: new(t.end),
+		LeaseExpiresUnixMs: t.until.UnixMilli(), Ended: t.endCopy(),
 	}
 }
 
-// keepTombstone remembers how a terminal ended, when a page may be waiting to read it: the terminal has a key and
-// its shell ended by itself (a close of the host's has nothing to tell). The oldest tombstone goes when there
-// are TombstoneLimit, and each is freed by a timer when its lease is over.
+// endCopy is how the tombstone ended, as a copy that shares nothing with it: what a caller does to what it was given is its own.
+func (t *tombstone) endCopy() *End {
+	end := t.end.clone()
+	return &end
+}
+
+// keepTombstone remembers how a terminal ended, when a page may be waiting to read it: the terminal has a key or is a channel
+// terminal, and its shell ended by itself (a close of the host's has nothing to tell). The ends of each lane are kept under a budget
+// of the lane's own (TombstoneLimit for the events lane's, ChannelTombstoneLimit for the channel terminals'): the oldest of the lane
+// goes when it has more, and neither lane takes what the other is owed. Each is freed by a timer when its lease is over.
 func (m *Manager) keepTombstone(s *session, end End) {
 	if (s.pageKey == "" && s.channel == nil) || end.Reason == EndClosed {
 		return
@@ -615,10 +622,34 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	defer m.mu.Unlock()
 	m.pruneTombstonesLocked(now)
 	m.tombs = append(m.tombs, t)
-	if len(m.tombs) > TombstoneLimit {
-		m.tombs = slices.Delete(m.tombs, 0, len(m.tombs)-TombstoneLimit)
-	}
+	m.trimTombstonesLocked(!t.capability.none())
 	m.armTombstoneTimerLocked(now)
+}
+
+// trimTombstonesLocked keeps the ends of one lane (the channel terminals', or the events lane's) at the budget of that lane, the
+// oldest first, and leaves the other lane's alone. The tombstones are in the order they were kept in. The caller holds m.mu.
+func (m *Manager) trimTombstonesLocked(channel bool) {
+	limit, held := TombstoneLimit, 0
+	if channel {
+		limit = ChannelTombstoneLimit
+	}
+	inLane := func(t *tombstone) bool { return !t.capability.none() == channel }
+	for _, t := range m.tombs {
+		if inLane(t) {
+			held++
+		}
+	}
+	excess := held - limit
+	if excess <= 0 {
+		return
+	}
+	m.tombs = slices.DeleteFunc(m.tombs, func(t *tombstone) bool {
+		if excess > 0 && inLane(t) {
+			excess--
+			return true
+		}
+		return false
+	})
 }
 
 // tombstoneTerms are when the tombstone of the terminal is forgotten and the number of its last attachment. The

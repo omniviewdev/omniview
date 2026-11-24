@@ -297,8 +297,8 @@ func (m *Manager) ChannelCwd(presented string) (Directory, error) {
 // order given, and none for a capability that opens nothing. It answers for the capabilities it is given and no other: nothing
 // enumerates. At most MaxListedCaps are taken.
 func (m *Manager) ListChannels(presented []string) ([]ChannelListed, error) {
-	if len(presented) > MaxListedCaps {
-		return nil, invalidError(fmt.Sprintf("capabilities holds at most %d entries; got %d.", MaxListedCaps, len(presented)))
+	if err := checkListedCaps(len(presented)); err != nil {
+		return nil, err
 	}
 	out := make([]ChannelListed, 0, len(presented))
 	for _, one := range presented {
@@ -319,8 +319,9 @@ func (m *Manager) ListChannels(presented []string) ([]ChannelListed, error) {
 	return out, nil
 }
 
-// channelListed is the terminal as the page that holds its capability sees it in a list, and whether it is still running when the
-// snapshot is taken: an entry taken of a terminal that ended meanwhile is not an entry of a running one.
+// channelListed is the terminal as the page that holds its capability sees it in a list, and whether it was still running when the
+// snapshot was taken: the test that the terminal is running is made again after the snapshot, so that a shell that ended between the
+// first test and the snapshot is not listed as running with the offset it wrote last.
 func (s *session) channelListed() (ChannelListed, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -334,7 +335,7 @@ func (s *session) channelListed() (ChannelListed, bool) {
 	return ChannelListed{
 		ID: s.id, CreatedAt: s.info.CreatedAt, PID: s.info.PID, Shell: s.info.Shell, Labels: nonNil(s.labels), Params: nonNil(s.params),
 		Size: size, Attached: s.channel.holder != nil, NextOffset: next, ReplayStart: first, LeaseExpiresUnixMs: expires, Ended: nil,
-	}, true
+	}, !s.ending.Load()
 }
 
 // channelListed is the kept end of a channel terminal as a list shows it.
@@ -342,7 +343,7 @@ func (t *tombstone) channelListed() ChannelListed {
 	return ChannelListed{
 		ID: t.id, CreatedAt: t.info.CreatedAt, PID: t.info.PID, Shell: t.info.Shell, Labels: nonNil(t.labels), Params: nonNil(t.params),
 		Size: t.ring.size(t.ring.end), Attached: false, NextOffset: t.ring.end, ReplayStart: t.ring.start(),
-		LeaseExpiresUnixMs: t.until.UnixMilli(), Ended: new(t.end),
+		LeaseExpiresUnixMs: t.until.UnixMilli(), Ended: t.endCopy(),
 	}
 }
 

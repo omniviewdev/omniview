@@ -70,7 +70,7 @@ func (m *Manager) mustWait(s *session, holder *channelConn) (time.Time, bool) {
 		ch.paused = true
 	}
 	// More than the mark waits unsent: the pump waits while the page makes progress, and no longer than the stall since it did.
-	progress := time.Unix(0, holder.progressAt.Load())
+	progress := holder.lastProgress()
 	if idle := s.clock.Now().Sub(progress); idle >= m.channel.stall {
 		if !ch.stalled {
 			ch.stalled = true
@@ -83,16 +83,35 @@ func (m *Manager) mustWait(s *session, holder *channelConn) (time.Time, bool) {
 	return progress.Add(m.channel.stall), true
 }
 
+// timerSlack is how late a timer may be armed without being armed again: what passes between reading a clock that does not stand still
+// and registering a timer on it.
+const timerSlack = time.Millisecond
+
 // sleepUntilProgress waits for the sender to say that the page made progress, or for the deadline of the stall on the manager's
-// clock, whichever is first. It says false if the shell ended meanwhile. The clock is looked at again once the timer is armed: a
-// clock that moved between the reading the timer was armed from and its registration has put the timer after the deadline, and a
-// deadline that is already behind is not waited for.
+// clock, whichever is first. It says false if the shell ended meanwhile. A timer waits for a delay, which is computed from a reading
+// of the clock, and a clock that moved between the reading and the registration has put the timer later than the deadline by as much:
+// the clock is looked at again once the timer is armed, a deadline that is already behind is not waited for, and a timer that is late
+// by more than the slack is armed again for what is left.
 func (s *session) sleepUntilProgress(deadline time.Time) bool {
-	timer := s.clock.AfterFunc(deadline.Sub(s.clock.Now()), s.channel.signalPump)
-	defer timer.Stop()
-	if !s.clock.Now().Before(deadline) {
+	delay := deadline.Sub(s.clock.Now())
+	if delay <= 0 {
 		return true
 	}
+	timer := s.clock.AfterFunc(delay, s.channel.signalPump)
+	for {
+		left := deadline.Sub(s.clock.Now())
+		if left <= 0 {
+			timer.Stop()
+			return true
+		}
+		if delay-left <= timerSlack {
+			break
+		}
+		timer.Stop()
+		delay = left
+		timer = s.clock.AfterFunc(delay, s.channel.signalPump)
+	}
+	defer timer.Stop()
 	select {
 	case <-s.channel.wake:
 		return true

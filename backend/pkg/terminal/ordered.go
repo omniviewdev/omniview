@@ -145,7 +145,7 @@ func (q *inputQueue) admit(o *op) error {
 func (q *inputQueue) admitOrWait(o *op) (<-chan struct{}, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if q.err == nil && q.full(o) {
+	if q.err == nil && q.fullFor(o) {
 		if q.changed == nil {
 			q.changed = make(chan struct{})
 		}
@@ -157,6 +157,14 @@ func (q *inputQueue) admitOrWait(o *op) (<-chan struct{}, error) {
 // full says the queue has no room for the operation: too many operations pending, or, for a call that carries bytes, too many bytes.
 func (q *inputQueue) full(o *op) bool {
 	return q.pending >= q.limit.ops || (len(o.data) > 0 && q.bytes >= q.limit.bytes)
+}
+
+// fullFor is full for a caller that waits for room: an input that does not fit the room that is left waits for it, so that the bytes
+// pending never pass the bound. (full lets an input in whenever less than the bound is pending, which is the rule of the queue of the
+// events lane, whose calls are refused and sent again, and lets a queue hold nearly twice its bound.) A queue that holds no bytes takes
+// any input: it never waits for room it cannot have.
+func (q *inputQueue) fullFor(o *op) bool {
+	return q.pending >= q.limit.ops || (len(o.data) > 0 && q.bytes > 0 && q.bytes+len(o.data) > q.limit.bytes)
 }
 
 // roomLocked tells whoever waits for room that it may have grown, or that the queue is closed. The caller holds q.mu.

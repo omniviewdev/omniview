@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -65,5 +66,8 @@ func ChannelNotFound() error {
 
 // checkListedCaps refuses a list of capabilities longer than a page holds: the same answer on every platform.
 func checkListedCaps(n int) error {
+	if n > MaxListedCaps {
+		return invalidError(fmt.Sprintf("capabilities holds at most %d entries; got %d.", MaxListedCaps, n))
+	}
 	return nil
 }

@@ -148,9 +148,16 @@ type channelConn struct {
 	sent, begun, sentBytes, acked, lost atomic.Uint64
 	// ackSeen says the page acknowledged at least once: from then on it holds no more than ChannelInflightBytes unacknowledged.
 	ackSeen atomic.Bool
-	// progressAt is the clock's time of the last progress: a frame the transport took, an acknowledgement, the moment the stream
-	// took the terminal, or the moment output came for a sender that had none to send. UnixNano of the manager's clock.
+	// began is the clock's time when the stream was made, with the clock's monotonic reading when it has one, and progressAt is the
+	// time of the last progress as the nanoseconds since began: a frame the transport took, an acknowledgement, the moment the stream
+	// took the terminal, or the moment output came for a sender that had none to send. A stamp made from UnixNano has no monotonic
+	// reading, and a wall clock that is set back would make the last progress lie in the future.
+	began      time.Time
 	progressAt atomic.Int64
+	// replayEnd is where the replay ended when the stream took the terminal (the end that the ready frame says): no output frame
+	// begins below it and ends above it, so that the page, which writes what is below it muted, tells the replay from the live
+	// output. It is set once, by claim, before the sender starts.
+	replayEnd uint64
 	// displaced says another stream took the terminal; stopped says this one's frames are no longer read: the sender ends.
 	displaced, stopped atomic.Bool
 	// gone is closed when another stream takes the terminal: an input of this stream that waits for room in the queue looks again.
@@ -165,8 +172,8 @@ type channelConn struct {
 func newChannelConn(ch Channel, clk clock) *channelConn {
 	return &channelConn{
 		ch: ch, clock: clk, sent: atomic.Uint64{}, begun: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
-		ackSeen: atomic.Bool{}, progressAt: atomic.Int64{}, displaced: atomic.Bool{}, stopped: atomic.Bool{}, gone: make(chan struct{}), goneOnce: sync.Once{},
-		wake: make(chan struct{}, 1), finished: make(chan struct{}),
+		ackSeen: atomic.Bool{}, began: clk.Now(), progressAt: atomic.Int64{}, replayEnd: 0, displaced: atomic.Bool{}, stopped: atomic.Bool{},
+		gone: make(chan struct{}), goneOnce: sync.Once{}, wake: make(chan struct{}, 1), finished: make(chan struct{}),
 	}
 }
 
@@ -178,10 +185,12 @@ func (c *channelConn) signal() {
 }
 
 // progress notes that the page is alive: now, on the manager's clock.
-func (c *channelConn) progress() { c.progressAt.Store(c.clock.Now().UnixNano()) }
+func (c *channelConn) progress() { c.progressAt.Store(int64(c.clock.Now().Sub(c.began))) }
 
-// lastProgress is the time of the last progress.
-func (c *channelConn) lastProgress() time.Time { return time.Unix(0, c.progressAt.Load()) }
+// lastProgress is the time of the last progress, with the monotonic reading of the clock the stream was made on.
+func (c *channelConn) lastProgress() time.Time {
+	return c.began.Add(time.Duration(c.progressAt.Load()))
+}
 
 // displace is what the stream that takes the terminal does to the one that held it: its sender is told, in its own time, and
 // sends the frame that says so after the frame it may be parked in.
@@ -321,6 +330,7 @@ func (s *session) claim(c *channelConn, from *uint64) (replayView, error) {
 	view, err := s.ring.view(from)
 	if err == nil {
 		c.sent.Store(view.start)
+		c.replayEnd = view.end
 	}
 	s.outMu.Unlock()
 	if err != nil {
@@ -524,7 +534,7 @@ func (s *session) nextStep(c *channelConn, lim channelLimits) senderStep {
 	var parts [][]byte
 	var to uint64
 	if credit && pos >= start && pos < end {
-		parts, to = s.ring.slices(pos, limit)
+		parts, to = s.ring.slices(pos, cutAtReplayEnd(limit, pos, c.replayEnd))
 	}
 	s.outMu.Unlock()
 	switch {
@@ -552,6 +562,15 @@ func creditLeft(c *channelConn, lim channelLimits) (int, bool) {
 		return 0, false
 	}
 	return int(min(room, uint64(lim.frame))), true //nolint:gosec // The limit is a positive number of bytes, and the result is at most a frame.
+}
+
+// cutAtReplayEnd is the most that a frame beginning at pos may take: no more than limit, and, while pos is below the end of the
+// replay, no more than what is left of the replay.
+func cutAtReplayEnd(limit int, pos, replayEnd uint64) int {
+	if pos >= replayEnd {
+		return limit
+	}
+	return int(min(uint64(limit), replayEnd-pos)) //nolint:gosec // The result is at most limit.
 }
 
 // advance is the stream having been handed a frame: its cursor moves, that is progress, and the pump may have room.
