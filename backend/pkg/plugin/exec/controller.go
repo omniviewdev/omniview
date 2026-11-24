@@ -40,6 +40,10 @@ type Controller interface {
 	// CreateSession starts a session of a plugin for owner, the window that asked (none: a call that came from no
 	// window, and the session belongs to none until a window claims it).
 	CreateSession(ctx context.Context, owner terminal.Owner, plugin, connectionID string, opts exec.SessionOptions) (*exec.Session, error)
+	// GuardSessionCreate notes that a session of a plugin is being made for owner, and returns the context to make it with and the
+	// function that ends the note. A retirement of owner that comes while the note stands (ReleaseOwnedTerminals) is not lost: the
+	// session is recorded as no window's (ownership.go: createGuard). The caller guards before it admits the window.
+	GuardSessionCreate(ctx context.Context, owner terminal.Owner) (context.Context, func())
 	OpenNativeSession(ctx context.Context, plugin, connectionID string, opts exec.SessionOptions) error
 	GetNativeTerminalSupport() bool
 	// CreateTerminal starts a shell on this machine for owner, a comparable value that names the window
@@ -142,6 +146,7 @@ func NewController(
 		mu:               sync.RWMutex{},
 		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
+		creating:         make(map[terminal.Owner]map[*createGuard]struct{}),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -165,9 +170,11 @@ type controller struct {
 	mu           sync.RWMutex
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
-	inChans      map[string]chan exec.StreamInput
-	handlerMap   map[string]map[string]exec.Handler
-	streams      map[string]execProviderStream
+	// creating holds, for each window, the sessions of plugins being made for it (ownership.go: createGuard).
+	creating   map[terminal.Owner]map[*createGuard]struct{}
+	inChans    map[string]chan exec.StreamInput
+	handlerMap map[string]map[string]exec.Handler
+	streams    map[string]execProviderStream
 
 	// Publication and retirement share this outer lock. Never acquire it with mu held.
 	outputMu sync.Mutex
@@ -672,6 +679,14 @@ func (c *controller) CreateSession(
 	if err != nil {
 		return nil, err
 	}
+	// A caller that did not guard (the wrapper does, before it admits the window) is guarded here, from now on.
+	guard, _ := ctx.Value(createGuardKey{}).(*createGuard)
+	if guard == nil || guard.owner != owner {
+		var endGuard func()
+		ctx, endGuard = c.GuardSessionCreate(ctx, owner)
+		defer endGuard()
+		guard, _ = ctx.Value(createGuardKey{}).(*createGuard)
+	}
 
 	var session *exec.Session
 	c.mu.RLock()
@@ -702,7 +717,7 @@ func (c *controller) CreateSession(
 		ended:        false,
 		endedAt:      time.Time{},
 		endedSeq:     0,
-		owner:        c.sessionOwner(owner),
+		owner:        c.publishedOwner(owner, guard),
 		offerUntil:   time.Time{},
 	}
 	c.mu.Unlock()

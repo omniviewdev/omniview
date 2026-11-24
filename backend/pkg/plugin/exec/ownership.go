@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"context"
 	"time"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
@@ -150,6 +151,9 @@ func (c *controller) orphanSessionsOf(owner terminal.Owner) int {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	for guard := range c.creating[owner] {
+		guard.retired = true
+	}
 	orphaned := 0
 	for id, index := range c.sessionIndex {
 		if !index.local && index.owner != nil && index.owner == owner {
@@ -180,4 +184,55 @@ func (c *controller) RevokeSession(owner terminal.Owner, sessionID string) error
 	index.offerUntil = time.Time{}
 	c.sessionIndex[sessionID] = index
 	return nil
+}
+
+// createGuard stands for a session of a plugin that is being made for a window. The window can retire while the plugin makes it
+// (the plugin has no deadline), and the retirement, which came before the session was recorded, found nothing of the window's
+// to orphan: the session would be recorded as the retired window's, and nobody could list it, claim it or end it. The retirement
+// (orphanSessionsOf) marks every guard of the window, under c.mu, and the session is recorded as no window's when its guard was
+// marked, whatever the realm remembers of the window by then: the realm forgets a closed window after a minute. The guard is
+// registered before the window is admitted, so a retirement that comes after the admission, at any moment until the session is
+// recorded, is seen here, and one before it is refused by the realm.
+type createGuard struct {
+	owner terminal.Owner
+	// retired says the window retired while the session was being made. c.mu guards it.
+	retired bool
+}
+
+type createGuardKey struct{}
+
+// GuardSessionCreate notes that a session of a plugin is being made for owner, and returns the context to make it with and the
+// function that ends the note (call it when the session is recorded or the call failed).
+func (c *controller) GuardSessionCreate(ctx context.Context, owner terminal.Owner) (context.Context, func()) {
+	guard := &createGuard{owner: owner, retired: false}
+	if terminal.ValidOwner(owner) {
+		c.mu.Lock()
+		if c.creating[owner] == nil {
+			c.creating[owner] = make(map[*createGuard]struct{})
+		}
+		c.creating[owner][guard] = struct{}{}
+		c.mu.Unlock()
+	}
+	return context.WithValue(ctx, createGuardKey{}, guard), func() { c.endGuard(guard) }
+}
+
+func (c *controller) endGuard(guard *createGuard) {
+	if !terminal.ValidOwner(guard.owner) {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.creating[guard.owner], guard)
+	if len(c.creating[guard.owner]) == 0 {
+		delete(c.creating, guard.owner)
+	}
+}
+
+// publishedOwner is the window a session that has just been made is recorded for: owner, unless it retired meanwhile, and no
+// window when it is no window. The caller holds c.mu.
+func (c *controller) publishedOwner(owner terminal.Owner, guard *createGuard) terminal.Owner {
+	if guard != nil && guard.retired {
+		return nil
+	}
+	return c.sessionOwner(owner)
 }
