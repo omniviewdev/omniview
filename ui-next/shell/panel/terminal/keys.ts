@@ -23,13 +23,17 @@ export type KeyEventLike = {
  * What the terminal does with a key:
  *   `terminal`  the emulator processes it: it is typing, or a chord the shell keeps (S52)
  *   `leave`     the terminal does not take it and does not stop it, so the window's regions move the focus on (F6: A14, never trap the user; Escape is NOT a way out, programs need it)
- *   `app`       a chord of the window (a Command chord on a Mac, a Control Shift chord elsewhere): the terminal does not take it
+ *   `app`       a chord of the window (a Command chord on a Mac, a Control Shift chord elsewhere): the terminal does not take it and does not stop it. So are Shift F10 and the Menu key, which open the context menu: the menu's host in the
+ *               window reads them, and ignores a key that was cancelled, which is what the emulator does to a key it handles (it would send an escape sequence)
  *   `copy`      the selection goes to the clipboard
  *   `paste`     the platform pastes through the emulator's paste event, so the terminal must not also send the key
  *   `selectAll` the output is selected: Command A on a Mac (VS Code binds it there and nowhere else, "as it may conflict with shell hotkeys"), Control Shift A elsewhere (GNOME Terminal and Windows Terminal)
  *   `clear`     the screen and the scrollback are cleared: Command K on a Mac, where VS Code and JetBrains both take it while the terminal has the focus (it is also the window's palette chord: the terminal's wins there)
+ *   `find`      the find over the output opens: Command F on a Mac, Control F and Control Shift F elsewhere (VS Code and JetBrains bind Control F, the written spec Control Shift F: both are taken, and the shell loses Control F,
+ *               as VS Code's does)
+ *   `findNext`  a find steps: F3 on every platform, Command G on a Mac; with Shift, `findPrevious`. They stay the terminal's (F3) or the window's (Command G) unless the find bar takes them
  */
-export type TerminalKey = 'terminal' | 'leave' | 'app' | 'copy' | 'paste' | 'selectAll' | 'clear';
+export type TerminalKey = 'terminal' | 'leave' | 'app' | 'copy' | 'paste' | 'selectAll' | 'clear' | 'find' | 'findNext' | 'findPrevious';
 
 const MODIFIERS: Readonly<Record<string, true>> = { Shift: true, Control: true, Alt: true, Meta: true, AltGraph: true, CapsLock: true, Fn: true, FnLock: true, OS: true, Hyper: true, Super: true, Dead: true, Process: true, Unidentified: true };
 
@@ -47,6 +51,16 @@ export function keyOf(event: KeyEventLike, platform: Platform, selected: boolean
     return 'leave';
   }
 
+  // The keys that open the context menu (Shift F10, the Menu key) are the menu host's to read: the terminal neither takes them nor stops them. The host ignores them with Control, Option or Command, and so does this.
+  if (!event.ctrlKey && !event.altKey && !event.metaKey && (event.key === 'ContextMenu' || event.code === 'ContextMenu' || (event.shiftKey && (event.key === 'F10' || event.code === 'F10')))) {
+    return 'app';
+  }
+
+  // F3 steps a find on every platform, and Shift F3 goes back.
+  if (event.code === 'F3' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    return event.shiftKey ? 'findPrevious' : 'findNext';
+  }
+
   if (platform === 'mac') {
     if (event.metaKey) {
       if (event.code === 'KeyC') {
@@ -57,14 +71,24 @@ export function keyOf(event: KeyEventLike, platform: Platform, selected: boolean
         return 'paste';
       }
 
-      // Select all and clear are the terminal's own on a Mac.
-      if (!event.shiftKey && !event.altKey && !event.ctrlKey) {
-        if (event.code === 'KeyA') {
-          return 'selectAll';
+      // Select all, clear and find are the terminal's own on a Mac, and Command G steps the find (Shift goes back).
+      if (!event.altKey && !event.ctrlKey) {
+        if (!event.shiftKey) {
+          if (event.code === 'KeyA') {
+            return 'selectAll';
+          }
+
+          if (event.code === 'KeyK') {
+            return 'clear';
+          }
+
+          if (event.code === 'KeyF') {
+            return 'find';
+          }
         }
 
-        if (event.code === 'KeyK') {
-          return 'clear';
+        if (event.code === 'KeyG') {
+          return event.shiftKey ? 'findPrevious' : 'findNext';
         }
       }
 
@@ -94,6 +118,11 @@ export function keyOf(event: KeyEventLike, platform: Platform, selected: boolean
 
     if (event.shiftKey && event.code === 'KeyA') {
       return 'selectAll';
+    }
+
+    // Control F finds, with Shift or without (VS Code and JetBrains bind it, and the written spec says Control Shift F).
+    if (event.code === 'KeyF') {
+      return 'find';
     }
 
     // Control with Shift is the window's; Control without it is the shell's.

@@ -1,0 +1,33 @@
+@layer ov.shell {
+  /* The find bar (the design mock's find bar, the written spec's FBR1): a popup-coloured box floating over the top left of the screen, 8 px from the top and 12 px from the start, with 4 px of padding and 4 px between
+     its parts, so the field and the row of buttons are one group. It COVERS the screen and does not push it: it is out of the flow, so the emulator's cells never change when it opens. It sits in the body's
+     main column, which is the positioning context (`TerminalBody.module.css`), after the screen and before the status lane, and the lane is at the bottom, so it never covers it. The popup's own tokens paint it:
+     the plane, the edge, the radius and the shadow of every popup. It has no width of its own: it is as wide as its parts add up to, and its cap keeps the same 12 px free on the other side, so it stays inside
+     a narrow panel, where the field gives way (`.field`). */
+  .bar {
+    position: absolute;
+    inset-block-start: var(--ov-spacing-8);
+    inset-inline-start: var(--ov-spacing-12);
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    box-sizing: border-box;
+    max-inline-size: calc(100% - 2 * var(--ov-spacing-12));
+    padding: var(--ov-spacing-4);
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    box-shadow: var(--ov-shadow-popup);
+  }
+
+  /* The field's box (the design mock's: 280 px and no least width): the kit's field fills it, and its count lane is inside its trailing end. Its WIDTH is set, and not only its flex basis. WebKit sizes a box that is
+     positioned absolutely, as the bar is, from the preferred widths of its parts: a part with no width has its content's widest line there, and a flex basis is not read. The kit's field is an input and a lane of 100 px,
+     wider than 280, so with `flex: 0 1 280px` alone the bar was 562 px in WebKit where its parts add up to 482, and 80 px of it stood empty after Close find (Chromium reads the basis and drew 482). The width and the
+     basis say the same (`FindBar.css.test.tsx` holds them to it), and the box still shrinks when the bar is held to the panel's width (the cap above): a narrow panel makes the field narrower. */
+  .field {
+    display: flex;
+    flex: 0 1 280px;
+    inline-size: 280px;
+    min-inline-size: 0;
+  }
+}

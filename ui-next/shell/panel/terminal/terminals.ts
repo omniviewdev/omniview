@@ -93,6 +93,11 @@ export type TerminalsOptions = {
    * holds its terminal (the tab that took it may have gone while the events were down). In a native window the signal never fires. Absent: nothing is listened to.
    */
   readonly reconnect?: ((listener: () => void) => () => void) | undefined;
+  /**
+   * What opens an address outside the app (T3a): the window's own way to do it (the system browser, through the runtime), which the Terminal tool calls with the address of a link a person followed in a terminal's output. The tool draws
+   * a link only when it was given one (`TerminalSessions.canOpenExternal`: no dead link), and gives it only http and https addresses; a way that throws or rejects is one warning on the console and nothing else. Absent: no link is drawn.
+   */
+  readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
 };
 
 /** What the window restored of the tool's own state (`shell/session`). Nothing restored is the tool as it starts. */
@@ -128,8 +133,8 @@ export type Terminals = {
 
 /** The registry, the guard and the answers of the Terminal tool over a window's panel store. */
 export function createTerminals(store: PanelStore, options: TerminalsOptions = {}, restored: TerminalsRestored = {}): Terminals {
-  const { pageKey, restore, reattach, reconnect } = options;
-  const sessions = createTerminalSessions(store, { reattach });
+  const { pageKey, restore, reattach, reconnect, openExternal } = options;
+  const sessions = createTerminalSessions(store, { reattach, openExternal });
   const screenReader = createScreenReaderChoice(restored.screenReader);
   // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
   // and how many attaches are on.

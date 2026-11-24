@@ -119,3 +119,77 @@ describe('the sequences of a Mac IDE terminal', () => {
     expect(sequenceOf(arrow('ArrowLeft', { ctrlKey: true }), 'other')).toBeUndefined();
   });
 });
+
+// Find, the steps of a find, and the context menu's keys (T3a). VS Code and JetBrains both bind Command F on a Mac and Control F elsewhere to the find of the terminal, and the written spec (S52) says Control Shift F: the host takes
+// both, so the shell loses Control F (VS Code lists it among the commands that skip the shell, and says so). F3 and Shift F3 step a find on every platform, and Command G and Command Shift G on a Mac. Shift F10 and the Menu key open the
+// context menu, and the menu's host in the window reads them: they are the window's, so that the terminal neither takes nor stops them.
+
+describe('find', () => {
+  it('is Command F on a Mac, and no other chord with F there: Control F stays the shell\'s (it moves forward a character), and Command Shift F and Command Option F are the window\'s', () => {
+    expect(keyOf(key('KeyF', { metaKey: true }), 'mac', false)).toBe('find');
+    expect(keyOf(key('KeyF', { metaKey: true }), 'mac', true)).toBe('find');
+    expect(keyOf(key('KeyF', { ctrlKey: true }), 'mac', false)).toBe('terminal');
+    expect(keyOf(key('KeyF', { metaKey: true, shiftKey: true }), 'mac', false)).toBe('app');
+    expect(keyOf(key('KeyF', { metaKey: true, altKey: true }), 'mac', false)).toBe('app');
+    expect(keyOf(key('KeyF'), 'mac', false)).toBe('terminal');
+    expect(keyOf(key('KeyF', { altKey: true }), 'mac', false)).toBe('terminal');
+  });
+
+  it('is Control F and Control Shift F elsewhere: VS Code and JetBrains bind the first, the written spec the second, and both are the find; Control Alt F, Alt F, Command F and plain F are not', () => {
+    expect(keyOf(key('KeyF', { ctrlKey: true }), 'other', false)).toBe('find');
+    expect(keyOf(key('KeyF', { ctrlKey: true }), 'other', true)).toBe('find');
+    expect(keyOf(key('KeyF', { ctrlKey: true, shiftKey: true }), 'other', false)).toBe('find');
+    expect(keyOf(key('KeyF', { ctrlKey: true, altKey: true }), 'other', false)).toBe('terminal');
+    expect(keyOf(key('KeyF', { altKey: true }), 'other', false)).toBe('terminal');
+    expect(keyOf(key('KeyF', { metaKey: true }), 'other', false)).toBe('app');
+    expect(keyOf(key('KeyF'), 'other', false)).toBe('terminal');
+    expect(keyOf(key('KeyF', { shiftKey: true }), 'other', false)).toBe('terminal');
+  });
+
+  it('is not a find while an input method composes, and Control Alt F with a layout\'s AltGr on Windows is a character', () => {
+    expect(keyOf({ ...key('KeyF', { metaKey: true }), isComposing: true }, 'mac', false)).toBe('terminal');
+    expect(keyOf({ ...key('KeyF', { ctrlKey: true }), keyCode: 229 }, 'other', false)).toBe('terminal');
+    expect(keyOf({ ...key('KeyF', { ctrlKey: true, altKey: true }), getModifierState: (name: string) => name === 'AltGraph' }, 'other', false)).toBe('terminal');
+  });
+});
+
+describe('the steps of a find', () => {
+  it.each(['mac', 'other'] as const)('are F3 and Shift F3 on %s: next and previous', (platform) => {
+    expect(keyOf(key('F3', { key: 'F3' }), platform, false)).toBe('findNext');
+    expect(keyOf(key('F3', { key: 'F3', shiftKey: true }), platform, false)).toBe('findPrevious');
+  });
+
+  it.each(['mac', 'other'] as const)('are not F3 with Control, Option or Command on %s: those chords are as they were (the window\'s with Command, the shell\'s otherwise)', (platform) => {
+    expect(keyOf(key('F3', { key: 'F3', ctrlKey: true }), platform, false)).toBe('terminal');
+    expect(keyOf(key('F3', { key: 'F3', altKey: true }), platform, false)).toBe('terminal');
+    expect(keyOf(key('F3', { key: 'F3', metaKey: true }), platform, false)).toBe('app');
+  });
+
+  it('are Command G and Command Shift G on a Mac: next and previous (VS Code: Command G, secondary F3)', () => {
+    expect(keyOf(key('KeyG', { metaKey: true }), 'mac', false)).toBe('findNext');
+    expect(keyOf(key('KeyG', { metaKey: true, shiftKey: true }), 'mac', false)).toBe('findPrevious');
+    expect(keyOf(key('KeyG', { metaKey: true, altKey: true }), 'mac', false)).toBe('app');
+    expect(keyOf(key('KeyG', { ctrlKey: true }), 'mac', false)).toBe('terminal');
+    expect(keyOf(key('KeyG'), 'mac', false)).toBe('terminal');
+  });
+
+  it('are not Control G elsewhere: it is the shell\'s (it aborts a search in readline), and Control Shift G is the window\'s', () => {
+    expect(keyOf(key('KeyG', { ctrlKey: true }), 'other', false)).toBe('terminal');
+    expect(keyOf(key('KeyG', { ctrlKey: true, shiftKey: true }), 'other', false)).toBe('app');
+  });
+});
+
+describe('the keys of the context menu', () => {
+  it.each(['mac', 'other'] as const)('are Shift F10 and the Menu key on %s, and the window\'s: the terminal neither takes them nor stops them, so the menu\'s host sees the event (a key the terminal handles is cancelled)', (platform) => {
+    expect(keyOf(key('F10', { key: 'F10', shiftKey: true }), platform, false)).toBe('app');
+    expect(keyOf(key('ContextMenu', { key: 'ContextMenu' }), platform, false)).toBe('app');
+    expect(keyOf(key('ContextMenu', { key: 'ContextMenu', shiftKey: true }), platform, false)).toBe('app');
+  });
+
+  it.each(['mac', 'other'] as const)('are no other F10 on %s: F10 alone and with Option stay the terminal\'s, and a Menu key with a modifier the menu\'s host ignores stays as it was', (platform) => {
+    expect(keyOf(key('F10', { key: 'F10' }), platform, false)).toBe('terminal');
+    expect(keyOf(key('F10', { key: 'F10', shiftKey: true, ctrlKey: true }), platform, false)).toBe(platform === 'mac' ? 'terminal' : 'app');
+    expect(keyOf(key('F10', { key: 'F10', shiftKey: true, altKey: true }), platform, false)).toBe('terminal');
+    expect(keyOf(key('ContextMenu', { key: 'ContextMenu', altKey: true }), platform, false)).toBe('terminal');
+  });
+});

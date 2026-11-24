@@ -36,10 +36,65 @@ export type EngineOptions = {
    * parses, and it puts a second copy of the visible rows in the document.
    */
   readonly screenReaderMode: boolean;
+  /**
+   * The most matches a find highlights and counts: `FIND_LIMIT` when it is absent. The emulator's search counts from the oldest line down and stops at the limit, so a find that has more matches than this is `capped`, and
+   * the matches nearest the bottom are the ones that are not counted. A test gives a small one.
+   */
+  readonly findLimit?: number | undefined;
 };
 
 /** The renderer: the DOM's own (`dom`) or the GPU's (`gpu`), which falls back to the first by itself when its context is lost. */
 export type EngineRenderer = 'dom' | 'gpu';
+
+/** The three switches of a find bar: how the query is read. */
+export type FindOptions = {
+  readonly caseSensitive: boolean;
+  readonly regex: boolean;
+  readonly wholeWord: boolean;
+};
+
+/**
+ * Where a find stands, told to whoever listens (`Finder.onChange`) after each step and when the output changes under it. `index` is the 0-based position of the match the screen is on among the matches counted (-1 for none:
+ * no match, no query, or the match is not among those counted); `count` is how many matches are counted; `capped` is true when there are more matches than the find highlights (`FIND_LIMIT`), so that the count is a floor.
+ */
+export type FindState = {
+  readonly index: number;
+  readonly count: number;
+  readonly capped: boolean;
+};
+
+/**
+ * A find over what the emulator holds: the screen and the scrollback, a replayed one included. Matches are highlighted, the current one is selected and scrolled to, and `onChange` tells where the find stands. A query that is
+ * not a pattern (a regular expression that does not parse) throws nothing: it finds nothing.
+ */
+export type Finder = {
+  /** The next match after the current one. A query that is not the one of the last call starts at the current match, so that the match stays while the query is typed (an incremental find). */
+  readonly next: (query: string, options: FindOptions) => void;
+  /** The match before the current one. */
+  readonly previous: (query: string, options: FindOptions) => void;
+  /** The highlights and the selected match are gone. */
+  readonly clear: () => void;
+  /** Returns what stops it. */
+  readonly onChange: (listener: (state: FindState) => void) => () => void;
+};
+
+/** A link the pointer is on: its address, and where its first cell is, in the pixels of the viewport (the top left corner of the cell), for a tooltip. */
+export type LinkHover = {
+  readonly uri: string;
+  readonly x: number;
+  readonly y: number;
+};
+
+/**
+ * What the host does with the links in the output: the web addresses the emulator finds in the text, and the hyperlinks a program writes (OSC 8, which the emulator offers for the schemes http and https only). The emulator
+ * opens nothing itself and asks nothing: a click is given to `activate` as it came (the host tests the modifier, as VS Code and JetBrains ask for Command or Control, and the scheme), whichever kind of link it is on, and `hover`
+ * tells where the pointer is on a link, and is told `undefined` when it leaves. The handler that is set when the pointer acts is the one that hears it, so a handler that was replaced hears nothing more, though the pointer was
+ * on a link when it went.
+ */
+export type LinkHandler = {
+  readonly activate: (uri: string, event: MouseEvent) => void;
+  readonly hover: (hover: LinkHover | undefined) => void;
+};
 
 export type Engine = {
   /** Draws the screen inside `host`, which is laid out and visible when this is called. */
@@ -62,7 +117,7 @@ export type Engine = {
    * `preventDefault` for a key it handles itself.
    */
   readonly setKeys: (handler: (event: KeyboardEvent) => boolean) => void;
-  /** New colours and font on the live emulator: nothing is created again. */
+  /** New colours and font on the live emulator: nothing is created again. A find that is up is drawn again in the new colours, keeping its current match and where the screen is scrolled to. */
   readonly setAppearance: (appearance: EngineAppearance) => void;
   /** Whether typing reaches the feed. An ended terminal takes none. */
   readonly setInput: (on: boolean) => void;
@@ -85,6 +140,25 @@ export type Engine = {
   readonly selectAll: () => void;
   /** The program rang the bell (BEL). Returns what stops listening. The host draws it: the emulator makes no sound. */
   readonly onBell: (listener: () => void) => () => void;
+  /**
+   * The find over what the emulator holds. The code that finds is loaded the first time this is asked for (a terminal nobody searches costs none of it), and every later call gives the same finder. It never rejects: a
+   * code that cannot be loaded is a finder that finds nothing.
+   */
+  readonly find: () => Promise<Finder>;
+  /** Whether the program in the terminal has the mouse (mouse reporting is on): a click then goes to the program and not to a selection. */
+  readonly mouseReporting: () => boolean;
+  /** Pastes `text` as the person's own input, as a paste into the screen is: line breaks become carriage returns, and a program that asked for bracketed paste gets the text between its markers. */
+  readonly paste: (text: string) => void;
+  /**
+   * Sets these attributes on the element that takes the keys (and removes those an earlier call set that are not in these): the context menu's host reads its trigger's attributes, and its keyboard path works only when the
+   * trigger is that element, because the emulator's input is an editor to it.
+   */
+  readonly decorateInput: (attributes: Readonly<Record<string, string>>) => void;
+  /**
+   * The links in the output are given to `handler` (an address becomes a link the pointer can hover and click, and so does a hyperlink a program writes); `undefined` makes the printed addresses no links, and a click on a hyperlink
+   * then does nothing. The emulator's own way of opening a link (a question, then a window) is never used, with a handler or without.
+   */
+  readonly setLinks: (handler: LinkHandler | undefined) => void;
   readonly dispose: () => void;
 };
 
@@ -93,6 +167,9 @@ export type EngineLoader = () => Promise<(options: EngineOptions) => Engine>;
 
 /** A full reset (RIS), in band: the first thing a replay writes, so that the emulator parses it in order with the bytes after it. */
 export const FULL_RESET = '\u001bc';
+
+/** The most matches a find highlights and counts: VS Code's value (the search addon's own is 1,000). */
+export const FIND_LIMIT = 20_000;
 
 /**
  * The two sequences that make a fresh emulator draw its cursor: a switch to the alternate screen and straight back. xterm 6.0.0 draws no cursor (not the hollow one of a terminal without the focus either) until its first

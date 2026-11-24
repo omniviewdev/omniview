@@ -15,6 +15,8 @@
 //   exit [code]     prints "logout" and ends: `exited`, with the code (default 0)         kill     ends: `signaled`, SIGKILL (9)        segv     ends: `signaled`, SIGSEGV (11), core dumped
 //   quit            ends: `closed`, by the host quitting (`shutdown`)                       orphan   ends: `exited` 0, and the host says a program kept the terminal open and it dropped 4,096 bytes
 //   fail            ends the session with an error signal
+//   known           prints six lines of words that a find counts (`window.__known`)          dense [N [K]]   prints N lines (5,200) of K (6) occurrences of one word: more matches than a find shows
+//   urls            prints an address that is a link and three lines that are not (`window.__urls`)     mouse-on / mouse-off   a program that asks for the mouse (every button, SGR encoding), and gives it back
 //   (anything else) prints "synthetic: command not found: <word>"
 // A close the page asks for ends with `closed`, by `request`.
 //
@@ -47,6 +49,11 @@
 //                   start-typed   the host's plain start failure carries the code of a missing shell (`start.failed`)
 //                   keys-dropped  a screen that drops what is typed while it writes a replay: the keys are lost before the screen sees them (`reattach.rejoin-keys`)
 //                   replies-as-keys the engine cannot tell what the emulator answers to a query from what the user typed, and gives its answers as keys (`reattach.rejoin-keys`)
+//                   known-short   `known` prints four of its six lines (`find.count`)       cap-short   `dense` writes a thousand lines, which hold fewer matches than a find shows (`find.cap`)
+//                   search-eager  the page asks for the find's lazy chunk when it loads (`find.lazy`)       idle-commits   a component renders ten times a second (`find.idle`)
+//                   mouse-never   the shell's `mouse-on` never asks for the mouse (`menu.mouse`)       open-twice   the stub of `openExternal` records each call twice (`links.activate`)
+//                   open-given    the window gives `openExternal` although `?openExternal=off` says it cannot (`links.activate`)
+//                   reopen-forgets the finder looks for nothing once it was cleared: a bar that is opened again does not search the text it kept (`find.keys`)
 //
 // `window.__pty` is what the probe reads and drives: `log` (what was created, refused, written, resized, closed, asked of `IsBusy`, what each input call was (`calls`: its kind, its number, its bytes, the instant the page made it, its place in the order
 // of arrival, the instant the host applied it, its place in the order of application, and the instant it answered) and which old calls were made (`legacy`), what `size` printed, and the credit: `acks` (the count of every `AckTerminal` call, in order), `ackState` (what the page had done at each, and the
@@ -57,14 +64,14 @@
 // given and parsed (and, for a burst, whether the numbered events came in order).
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { ThemeProvider } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider } from '@omniviewdev/kit';
 import { Profiler, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PluginHost } from '../../plugins/host/PluginHost';
 import type { PluginEntry } from '../../plugins/host/pluginStore';
 import type { PluginSource } from '../../plugins/host/contributions';
 import { base64Size, decodeBase64, encodeInput } from '../panel/terminal/bytes';
-import type { EngineLoader } from '../panel/terminal/engine';
+import type { EngineLoader, FindOptions } from '../panel/terminal/engine';
 import { signalEvent, streamEvent } from '../panel/terminal/execFeed';
 import type { TerminalTarget } from '../panel/terminal/feed';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
@@ -268,6 +275,8 @@ const log = {
   /** The bytes the host handed to the page, over every session, and the most it ever had delivered and not credited. */
   delivered: 0,
   maxUnacked: 0,
+  /** How many prompts the shell has written: a probe that types a command waits for the next one (and for the page to have parsed what the host delivered) before it reads the screen. */
+  prompts: 0,
   /** Whether the host has stopped reading any session's pty. */
   paused: (): boolean => [...ptys.values()].some((pty) => pty.paused),
   /** The bytes the shell wrote that the host has not delivered, over every session. */
@@ -380,6 +389,10 @@ const out = (id: string, text: string): void => {
   }
 
   let at = 0;
+  if (text.endsWith(PROMPT)) {
+    log.prompts += 1;
+  }
+
   while (at < text.length) {
     let end = Math.min(text.length, at + PIECE_UNITS);
     // A pair of UTF-16 units is one character: a write is cut between characters.
@@ -495,6 +508,18 @@ async function ack(id: string, bytes: number, fromPage = true): Promise<void> {
 
 const PROMPT = '\u001b[32muser@synthetic\u001b[0m:\u001b[34m~\u001b[0m$ ';
 const BANNER = `\u001b[90mSynthetic shell: hello, size, colors, flood N [W], sleep N, exit [code], kill, quit, fail\u001b[0m\r\n${PROMPT}`;
+
+/**
+ * What `known` prints, a line each: words that a find has to count (other cases, a word inside another, a word between marks, a word that a pattern also takes). The probe reads the same lines from `window.__known` and counts
+ * them itself, so the text is in one place. `?control=known-short` prints the first four lines only: the screen then holds less than the probe counts.
+ */
+const KNOWN = ['alpha Alpha ALPHA alphabet', 'beta alpha_beta alpha-beta betalpha', 'gamma 123 alpha 456 alpha.', 'delta Delta DELTA delta delta', 'epsilon alpha, epsilon; alpha', 'zeta eta theta iota kappa'] as const;
+
+/** What `urls` prints, a line each: an address that is a link, a script and another scheme that no link opens, and a name that is only text. `window.__urls`. */
+const URLS = ['docs: https://example.com/docs/alpha for the docs', 'script: javascript:alert(1) in a line', 'ftp: ftp://example.com/file in a line', 'name: example.com in a line'] as const;
+
+/** Every address the window was asked to open outside itself, in order (`window.__opened`). */
+const opened: string[] = [];
 
 function colors(id: string): void {
   const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
@@ -624,6 +649,30 @@ function run(id: string, pty: Pty, command: string): void {
     case 'colors':
       colors(id);
       break;
+    case 'known':
+      out(id, `${(control === 'known-short' ? KNOWN.slice(0, 4) : KNOWN).join('\r\n')}\r\n`);
+      break;
+    case 'dense': {
+      // N lines (5,200 by default) of K occurrences (6) of one word each, more matches than the highest count a find shows; `?control=cap-short` writes a thousand lines, which is fewer.
+      const count = control === 'cap-short' ? 1000 : Number(args[0] ?? 5200);
+      const each = Number(args[1] ?? 6);
+      out(id, Array.from({ length: count }, (_, line) => `${String(line).padStart(5, '0')} ${'needle '.repeat(each).trimEnd()}\r\n`).join(''));
+      break;
+    }
+
+    case 'urls':
+      out(id, `${URLS.join('\r\n')}\r\n`);
+      break;
+    case 'mouse-on':
+      // A program that asks for the mouse: every button, in the encoding that says the button in plain text. `?control=mouse-never`: the shell never asks.
+      if (control !== 'mouse-never') {
+        out(id, '\u001b[?1000h\u001b[?1006h');
+      }
+
+      break;
+    case 'mouse-off':
+      out(id, '\u001b[?1000l\u001b[?1006l');
+      break;
     case 'flood':
       flood(id, Number(args[0] ?? 1000), Number(args[1] ?? 80));
       return;
@@ -680,7 +729,7 @@ function run(id: string, pty: Pty, command: string): void {
 
 /** What the user typed, as the pty's line discipline would take it: echo, backspace, interrupt, a line at Enter. Escape sequences (arrows) are dropped. While a program holds the foreground only the interrupt reaches anything. */
 function typed(id: string, pty: Pty, data: string): void {
-  for (const ch of data.replace(/\u001b\[[0-9;?]*[A-Za-z~]/g, '').replace(/\u001b/g, '')) {
+  for (const ch of data.replace(/\u001b\[[<0-9;?]*[A-Za-z~]/g, '').replace(/\u001b/g, '')) {
     if (pty.gone) {
       return;
     }
@@ -1327,7 +1376,9 @@ const load: EngineLoader = async () => {
   const create = await loadXtermEngine();
   return (options) => {
     // `?control=big-scrollback` is the negative control of the probe's scrollback cap: an emulator that keeps four times the lines. `?control=reader-claims` makes it in the mode the person did not choose (off) whatever the window says.
-    const engine = create(control === 'big-scrollback' ? { ...options, scrollback: 20_000 } : control === 'reader-claims' ? { ...options, screenReaderMode: false } : options);
+    const engine = create(
+      control === 'big-scrollback' ? { ...options, scrollback: 20_000 } : control === 'reader-claims' ? { ...options, screenReaderMode: false } : control === 'cap-unlimited' ? { ...options, findLimit: 1_000_000 } : options,
+    );
     stats.engines += 1;
     stats.grid = () => engine.size();
     stats.measure = () => engine.measure() ?? null;
@@ -1466,6 +1517,74 @@ const load: EngineLoader = async () => {
 
         await engine.setRenderer(renderer);
       },
+      // The find, the mouse, the paste, the trigger of the context menu and the links, and what each negative control does to them. `count-case-ignored`, `count-word-ignored` and `count-regex-ignored`: an emulator that reads a query
+      // without one of the three switches of the find bar (`find.count`); `step-stuck`: a find that does not leave the match it is on (`find.count`); `cap-unlimited` (above): one with no highest count (`find.cap`);
+      // `mouse-reporting-lost`: an emulator that never says the program has the mouse (`menu.mouse`); `paste-lost`: a paste that goes nowhere and `trigger-lost`: an input that never gets the attributes of the menu's trigger (`menu.open`);
+      // `links-plain-follows`: a click that the emulator says had the modifier held, `links-hover-never`: a pointer that is never said to be on a link and `links-leave-never`: one that is never said to have left it (`links.activate`, `links.tooltip`).
+      find: async () => {
+        const finder = await engine.find();
+        const read = (query: FindOptions): FindOptions => ({
+          caseSensitive: control === 'count-case-ignored' ? false : query.caseSensitive,
+          wholeWord: control === 'count-word-ignored' ? false : query.wholeWord,
+          regex: control === 'count-regex-ignored' ? false : query.regex,
+        });
+        let last: string | undefined;
+        /** `?control=reopen-forgets`: the finder has been cleared once (the bar was closed), and looks for nothing after it. */
+        let cleared = false;
+        return {
+          ...finder,
+          clear: () => {
+            cleared = true;
+            finder.clear();
+          },
+          next: (query, switches) => {
+            if ((control === 'step-stuck' && query === last) || (control === 'reopen-forgets' && cleared)) {
+              return;
+            }
+
+            last = query;
+            finder.next(query, read(switches));
+          },
+          previous: (query, switches) => {
+            if ((control === 'step-stuck' && query === last) || (control === 'reopen-forgets' && cleared)) {
+              return;
+            }
+
+            last = query;
+            finder.previous(query, read(switches));
+          },
+        };
+      },
+      mouseReporting: () => control !== 'mouse-reporting-lost' && engine.mouseReporting(),
+      paste: (text) => {
+        if (control !== 'paste-lost') {
+          engine.paste(text);
+        }
+      },
+      decorateInput: (attributes) => {
+        if (control !== 'trigger-lost') {
+          engine.decorateInput(attributes);
+        }
+      },
+      setLinks: (handler) => {
+        if (handler === undefined) {
+          engine.setLinks(undefined);
+          return;
+        }
+
+        engine.setLinks({
+          activate: (uri, event) => {
+            handler.activate(uri, control === 'links-plain-follows' ? new MouseEvent('click', { metaKey: true, ctrlKey: true }) : event);
+          },
+          hover: (hover) => {
+            if (control === 'links-hover-never' || (control === 'links-leave-never' && hover === undefined)) {
+              return;
+            }
+
+            handler.hover(hover);
+          },
+        });
+      },
     };
   };
 };
@@ -1510,6 +1629,10 @@ Object.assign(window, {
     /** How many events `?control=leaky-heap` holds on to. */
     leaked: () => leak.length,
   },
+  /** What the shell prints for `known` and `urls`, line by line, and the addresses the page was asked to open outside the window (`openExternal`). */
+  __known: [...KNOWN],
+  __urls: [...URLS],
+  __opened: opened,
 });
 
 /**
@@ -1531,6 +1654,38 @@ function ChunkCounter() {
   return <span hidden>{count}</span>;
 }
 
+/** `?control=idle-commits`: a component that renders ten times a second for as long as the page lives, as a view that kept a clock would: a page that is at rest commits nothing. */
+function IdleTicker() {
+  const [ticks, setTicks] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTicks((n) => n + 1);
+    }, 100);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  return <span hidden>{ticks}</span>;
+}
+
+/**
+ * Every address the window was asked to open outside itself, in order (`window.__opened`): `openExternal` is what the Terminal tool is given to open a link. `?openExternal=off` gives it none, as a window that cannot open one has; `?control=open-twice`
+ * records each call twice; `?control=open-given` gives it whatever `?openExternal=off` says. `?control=search-eager` asks for the find's lazy chunk when the page loads.
+ */
+const openExternal = async (url: string): Promise<void> => {
+  opened.push(url);
+  if (control === 'open-twice') {
+    opened.push(url);
+  }
+
+  return Promise.resolve();
+};
+
+const givesOpenExternal = params.get('openExternal') !== 'off' || control === 'open-given';
+if (control === 'search-eager') {
+  void import('@xterm/addon-search');
+}
+
 const root = document.getElementById('root');
 
 /** The page is drawn once the window's session has been read (`?host=shared`: the real session, from the window's state), as the host's own screen draws it. */
@@ -1546,25 +1701,29 @@ async function mount(): Promise<void> {
   pageKey = keyed ? await loadPageKey(terminalKeyStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
   const key = pageKey;
   const session = shared ? await loadSession(windowStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
+  // The window's one menu host, as the app's entry mounts it (ui-next/main.tsx): the terminal's context menu opens on it, and without it a trigger is inert.
   createRoot(root).render(
     <ThemeProvider>
-      <Profiler
-        id="host"
-        onRender={(_id, phase, actualDuration) => {
-          commits.push({ phase, actualDuration });
-        }}
-      >
-        {control === 'chunk-commit' ? <ChunkCounter /> : null}
-        <PluginHost
-          plugins={plugins}
-          inventory="ready"
-          link={{ plugin: params.get('plugin') ?? undefined, page: undefined, connection: undefined, params: {} }}
-          onRetry={() => undefined}
-          onRetryInventory={() => undefined}
-          session={session}
-          terminals={{ target, load, pageKey: key, restore: key === undefined ? undefined : async () => restoreLocalTerminals(key, { client, events }), reconnect, reattach: key === undefined ? undefined : (id: string) => attachLocalTerminal(key, id, undefined, { client, events }) }}
-        />
-      </Profiler>
+      <MenuHost>
+        <Profiler
+          id="host"
+          onRender={(_id, phase, actualDuration) => {
+            commits.push({ phase, actualDuration });
+          }}
+        >
+          {control === 'chunk-commit' ? <ChunkCounter /> : null}
+          {control === 'idle-commits' ? <IdleTicker /> : null}
+          <PluginHost
+            plugins={plugins}
+            inventory="ready"
+            link={{ plugin: params.get('plugin') ?? undefined, page: undefined, connection: undefined, params: {} }}
+            onRetry={() => undefined}
+            onRetryInventory={() => undefined}
+            session={session}
+            terminals={{ target, load, pageKey: key, restore: key === undefined ? undefined : async () => restoreLocalTerminals(key, { client, events }), reconnect, reattach: key === undefined ? undefined : (id: string) => attachLocalTerminal(key, id, undefined, { client, events }), ...(givesOpenExternal ? { openExternal } : {}) }}
+          />
+        </Profiler>
+      </MenuHost>
     </ThemeProvider>,
   );
 }

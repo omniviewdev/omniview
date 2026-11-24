@@ -146,6 +146,10 @@
 //      A tab that takes the terminal back must not displace another: the first tab is free and offers the button, a third tab attaches the terminal nobody holds (the host tells the first tab nothing), and the press asks the host (ListTerminals), makes no AttachTerminal, says that
 //      another tab took the terminal and takes the button away, while the third tab goes on holding it and typing in it. A release the first tab missed (its events socket is cut and kept away by the proxy until the check has seen the host release the terminal): with the taker
 //      still open the first tab offers no button when the socket is back; with the taker closed it says so, offers the button and takes the terminal back (ListTerminals first, one AttachTerminal, the same shell).
+//   r6  find in the scrollback, the context menu and the links of the Terminal tool (T3a, `checkTerminalFindMenu`), over the real host and the engine's own keyboard and pointer. A known output (200 numbered lines, the word in other cases and as part of other words, three marker lines) is printed through the real shell and the find is opened by the platform's chord (Command F on a Mac, Control F and Control Shift F elsewhere; the other platform's chord opens nothing):
+//      its counts are those of a reference scan of the same rows (plain, Match case, Match whole word, a regular expression, `Invalid pattern`, `No results`), Enter, Shift+Enter, the Next and Previous buttons and F3 step by one and wrap, the match the count points at is the one the screen has selected, Escape and the Close button give the keyboard back to the shell, opening and closing the bar changes no size and sends no resize, the code of the find is requested only
+//      once a find is made, a find after a reload finds a line of the replayed scrollback, and with 1,000,000 lines flooding in the bar answers the pointer (while the shell has not printed its last line), counts right at the end and the shell still takes what is typed (more than 20,000 matches say `20,000+`). The context menu opens on a right click, Shift+F10 and the Menu key (Copy not available with nothing selected and saying why, Paste, Select all, Clear, Find: each does what it says, the clipboard is the page's own stub), Escape closes it and gives the keyboard back, and a program that has the mouse gets
+//      the right click and no menu opens unless Shift is held. A web address in the output says `Follow link (cmd + click)` (`ctrl` elsewhere) when the pointer is on it and is followed by that modifier and a click as exactly one call of the runtime's `Browser.OpenURL` (the Browser object, method 0, the address as its argument), which the check intercepts and answers 200 so that the host never opens a browser on this machine; a plain click, a `javascript:` line and a `file:` line make none. The same for a hyperlink the program writes (OSC 8, printed by the real shell: the words show one address, the program names another): the hover, a plain click that makes no call, the modifier and a click that makes one, and a `javascript:` and a `file:` hyperlink that make none; and no link ever calls `window.open` or asks a question (`confirm`, `alert`, `prompt`: the page's own are watched and no dialog opens). No request fails in the phase.
 //
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
@@ -8037,6 +8041,778 @@ async function checkTerminalFollowups(browser, getHost, engine) {
   console.log(`terminal-followups ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// r6: find in the scrollback, the context menu and the links of the Terminal tool (T3a). What the person presses and clicks is what the page gets: the engine's own keyboard and pointer, over the real host and its real shell.
+
+/**
+ * The clipboard of a page as a check can use it: what the page copies is in `window.__copied` (the last of it in `window.__clipboard`), and what a paste reads is `window.__clipboard`, which the check sets. It is made at every load of the page, since a reload
+ * makes a new document, and a test browser refuses the real clipboard.
+ */
+async function keepClipboardOnEveryLoad(page) {
+  await page.addInitScript(() => {
+    window.__copied = [];
+    window.__clipboard = '';
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text) => {
+          window.__copied.push(text);
+          window.__clipboard = text;
+        },
+        readText: async () => window.__clipboard,
+      },
+    });
+  });
+}
+
+/**
+ * What a page asks of the browser to open or to ask (T3a): `window.open` (its arguments) is recorded in `window.__opens`, and `confirm`, `alert` and `prompt` (their messages) in `window.__questions`. None of them does anything (a window that is not opened, a question that is
+ * answered no), so that a check cannot open one by accident: a link must open its address through the host and never through the browser, and must ask nothing first. It is made at every load of the page, since a reload makes a new document.
+ */
+async function watchWindowOpens(page) {
+  await page.addInitScript(() => {
+    window.__opens = [];
+    window.__questions = [];
+    window.open = (...args) => {
+      window.__opens.push(args.map(String));
+      return null;
+    };
+    window.confirm = (message) => {
+      window.__questions.push(`confirm: ${String(message)}`);
+      return false;
+    };
+    window.alert = (message) => {
+      window.__questions.push(`alert: ${String(message)}`);
+    };
+    window.prompt = (message) => {
+      window.__questions.push(`prompt: ${String(message)}`);
+      return null;
+    };
+  });
+}
+
+/** The characters that end a word for the find addon's whole word search (`NON_WORD_CHARACTERS` of @xterm/addon-search 0.16.0): letters, digits and the underscore are not among them. */
+const FIND_NON_WORD = ' ~!@#$%^&*()+`-=[]{}|\\;:"\',./<>?';
+
+/**
+ * What a find for `term` finds in the rows of a buffer, as the check counts it for itself, in the order of the buffer: the row and the text of each match. Plain terms are looked for from each match's second character on (a match may overlap the one before it, as the
+ * addon's walk does), a whole word has a non-word character or the end of the row on each side, and a regular expression is read as the addon reads it ('g', and 'i' unless the case matters). The check keeps to terms and rows where the addon's few oddities
+ * (a row whose first match is not a whole word is not searched further) cannot show.
+ */
+function findIn(rows, term, { caseSensitive = false, wholeWord = false, regex = false } = {}) {
+  const found = [];
+  rows.forEach((row, index) => {
+    if (regex) {
+      const pattern = new RegExp(term, caseSensitive ? 'g' : 'gi');
+      for (let match = pattern.exec(row); match !== null; match = pattern.exec(row)) {
+        if (match[0].length === 0) pattern.lastIndex += 1;
+        else found.push({ row: index, text: match[0] });
+      }
+
+      return;
+    }
+
+    const haystack = caseSensitive ? row : row.toLowerCase();
+    const wanted = caseSensitive ? term : term.toLowerCase();
+    for (let at = haystack.indexOf(wanted); at >= 0; at = haystack.indexOf(wanted, at + 1)) {
+      const wholeAtStart = at === 0 || FIND_NON_WORD.includes(haystack[at - 1]);
+      const wholeAtEnd = at + wanted.length === haystack.length || FIND_NON_WORD.includes(haystack[at + wanted.length]);
+      if (!wholeWord || (wholeAtStart && wholeAtEnd)) found.push({ row: index, text: row.slice(at, at + wanted.length) });
+    }
+  });
+  return found;
+}
+
+/**
+ * The call the runtime makes to open an address in the host's browser, as the check's net for it reads a request body: Wails' own `Browser.OpenURL` (`{object: 9, method: 0, args: {url}}`: @wailsio/runtime 3.1.0's objectNames.Browser and its only method),
+ * or a bound call whose name says it opens an address. `undefined` for anything else: the exec lane's calls carry typed text and addresses as arguments, and they are not this.
+ */
+function openUrlCallOf(text) {
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+
+  if (body?.object === 9) return { shape: 'runtime', object: body.object, method: body.method, url: String(body.args?.url ?? '') };
+  const name = body?.args?.methodName;
+  if (typeof name === 'string' && /Open(URL|External|Link)/i.test(name)) return { shape: 'bound', object: body.object, method: body.method, url: String(body.args?.args?.[0] ?? '') };
+  return undefined;
+}
+
+/** The count a find says, read as numbers: the place of the current match, how many there are, and whether the count stopped at the limit. `undefined` for words (`No results`, `Invalid pattern`) or nothing. */
+function parseCount(text) {
+  const found = /^(\d+) of ([\d,]+)(\+?)$/.exec(text);
+  return found === null ? undefined : { k: Number(found[1]), n: Number(found[2].replaceAll(',', '')), capped: found[3] === '+' };
+}
+
+/** A known output: 200 lines of `needle_N`, six lines that hold the word in other cases and as part of other words, a line with it three times, and three lines of a second word. The two words are made of parts in the commands, so that the commands' own echo holds neither. */
+const KNOWN_COMMAND = [
+  'w=ne; w=${w}edle; m=mar; m=${m}ker; i=1',
+  'while [ $i -le 200 ]; do echo ${w}_$i; i=$((i+1)); done',
+  'U=$(echo $w | tr a-z A-Z); C=$(echo $w | sed "s/^n/N/")',
+  'printf "%s\\n" "Capital $C" "Shout $U" "alone $w here" "the $w." "plural ${w}s" "${w}work thread" "mixed $C and $w and $U in one line" "$m alpha" "$m beta" "$m gamma"',
+  'echo KNOWN_BUFFER_END_$((6*7))',
+].join('; ');
+
+/**
+ * r6. Find in the scrollback, the context menu and the links of the Terminal tool (T3a), over the real host. (1) Find: a known output (200 numbered lines, the word in other cases and as part of other words) is printed through the real shell, the find
+ * is opened by the platform's own chord and its counts are those of a reference scan of the same rows (plain, Match case, Match whole word, a regular expression; Invalid pattern, No results), Enter, Shift+Enter, the buttons and F3 step by one and wrap, the match the
+ * count points at is the one selected on the screen, Escape closes the bar and gives the keyboard back to the shell, opening it changes no size, its code is requested only once a find is made, a find after a reload finds a line of the replayed scrollback, and
+ * the page stays usable while 1,000,000 lines flood in with the bar open (a count past 20,000 says 20,000+). (2) The context menu opens on a right click and on Shift+F10 and the Menu key: Copy (not available with nothing selected), Paste, Select all, Clear and Find do what
+ * they say, Escape closes it and gives the keyboard back, and a program that has the mouse gets the right click unless Shift is held. (3) Links: a web address in the output says how to follow it and is followed by the platform's modifier and a click, as one call of the host's
+ * `Browser.OpenURL` (which the check intercepts, so that the host never opens a browser on this machine); a plain click, a `javascript:` line and a `file:` line never make it; a hyperlink the program writes (OSC 8) is treated the same, and no link calls `window.open` or asks a question.
+ */
+async function checkTerminalFindMenu(page, base, engine) {
+  const errors = [];
+  const observed = [];
+  const note = (name, text) => observed.push(`${name}: ${text}`);
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  // The requests for the find's code (the search addon's chunk): it is fetched when the first find is made, and not before.
+  const addonRequests = [];
+  page.on('request', (request) => {
+    if (/addon-search/.test(request.url())) addonRequests.push(request.url());
+  });
+  // Every window the page opens: a link must open none in the browser itself.
+  const popups = [];
+  page.context().on('page', (popup) => popups.push(popup));
+  // Every question the page puts to the person with the browser's own dialogs: a link must ask none (they are dismissed, so that a page that asks one does not wait for an answer).
+  const dialogs = [];
+  page.on('dialog', async (dialog) => {
+    dialogs.push(`${dialog.type()}: ${dialog.message()}`);
+    await dialog.dismiss();
+  });
+  const wire = watchExecCalls(page);
+  await spoofPlatform(page);
+  await keepClipboardOnEveryLoad(page);
+  await watchWindowOpens(page);
+
+  // The check's own tools are asked what they will be trusted for before anything runs: the reference scan, and the net for the call that opens a link.
+  const sample = ['needle_1', 'Needle needles NEEDLE', 'the needle.', 'needlework'];
+  const scanned = [findIn(sample, 'needle').length, findIn(sample, 'needle', { caseSensitive: true }).length, findIn(sample, 'needle', { wholeWord: true }).length, findIn(sample, 'needle', { caseSensitive: true, wholeWord: true }).length, findIn(sample, 'needle_[0-9]+', { regex: true }).map((match) => match.text)];
+  assert.deepEqual(scanned, [6, 4, 3, 1, ['needle_1']], `${engine}: the reference scan of the check counts a plain, a case sensitive, a whole word and a regular expression search of a few rows as the find addon does`);
+  const netted = [openUrlCallOf('{"object":9,"method":0,"args":{"url":"https://example.com/path?x=1"}}')?.url, openUrlCallOf('{"object":0,"method":0,"args":{"call-id":"c","methodID":42,"args":["https://example.com/path?x=1"]}}'), openUrlCallOf('{"object":0,"method":0,"args":{"call-id":"c","methodName":"some.Service.OpenURL","args":[]}}')?.shape];
+  assert.deepEqual(netted, ['https://example.com/path?x=1', undefined, 'bound'], `${engine}: the check's net for the host's call that opens an address takes the runtime's own call and a bound call that names an opening, and lets a call that only carries the address as an argument go by`);
+
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await page.locator('[data-shell-part="panelToggle"]').click();
+  const id = await startTerminal(page, base, page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }));
+  const names = await tabLabelsOf(page);
+  const openChord = mac ? 'Meta+f' : 'Control+f';
+  const openChordName = mac ? 'Command F' : 'Control F';
+
+  // What the page shows, and the ways to ask it: the find bar by its field (a search input named `Find in terminal`) and the buttons around it, the count in the lane the field is described by, the context menu by its role.
+  const field = page.getByRole('searchbox', { name: 'Find in terminal', exact: true });
+  const bar = field.locator('xpath=ancestor::*[.//button[@aria-label="Match case"]][1]');
+  const toggle = (name) => bar.getByRole('button', { name, exact: true });
+  const hasFocus = () => field.evaluate((input) => document.activeElement === input).catch(() => false);
+  const barShown = async () => (await field.count()) === 1 && (await field.isVisible());
+  const barGone = async () => (await field.count()) === 0 || !(await field.isVisible());
+  const countNow = () => field.evaluate((input) => document.getElementById(input.getAttribute('aria-describedby') ?? '')?.textContent?.trim() ?? '').catch(() => '');
+  /** What the count says once it says what `pattern` matches, or what it says after `ms`: what a person would read. */
+  const countSaying = async (pattern, ms = 20_000) => {
+    let said = '';
+    await holdsWithin(async () => {
+      said = await countNow();
+      return pattern.test(said);
+    }, ms);
+    return said;
+  };
+  /** Opens the bar by a chord and says whether it is there with the keyboard in its field. */
+  const opensBy = async (chord) => {
+    await page.keyboard.press(chord);
+    return holdsWithin(async () => (await barShown()) && (await hasFocus()), 10_000);
+  };
+  /** Sets the three switches as asked, one press for each that is not as asked, and waits for each to say so. */
+  const setOptions = async ({ caseSensitive = false, wholeWord = false, regex = false }) => {
+    for (const [name, wanted] of [['Match case', caseSensitive], ['Match whole word', wholeWord], ['Use regular expression', regex]]) {
+      const now = (await toggle(name).getAttribute('aria-pressed')) === 'true';
+      if (now !== wanted) await toggle(name).click();
+      await waitUntil(`${name} to say that it is ${wanted ? 'on' : 'off'}`, async () => ((await toggle(name).getAttribute('aria-pressed')) === 'true') === wanted, 5_000);
+    }
+  };
+  /** The text the screen has selected, as Copy selection puts it on the clipboard (the match a find is on is selected). */
+  const selectedText = async () => {
+    await page.evaluate(() => {
+      window.__copied.length = 0;
+    });
+    await page.locator('[data-terminal-tool="copy"]').click();
+    await holdsWithin(() => page.evaluate(() => window.__copied.length > 0), 5_000);
+    return page.evaluate(() => window.__copied.at(-1));
+  };
+  const menu = page.getByRole('menu');
+  const item = (name) => menu.getByRole('menuitem', { name, exact: true });
+  const menuIsOpen = async () => (await menu.count()) > 0 && (await menu.first().isVisible());
+  const menuItems = () => menu.getByRole('menuitem').evaluateAll((items) => items.map((one) => one.getAttribute('aria-label')));
+  const inTerminal = () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false);
+  /** The keyboard goes to the terminal without a click (a click would select, or land on the bar), and a frame later. */
+  const toTerminal = async () => {
+    await page.locator('.xterm-helper-textarea').focus();
+    await afterFrames(page);
+  };
+  /**
+   * The emulator's input is quiet: it holds nothing, is not scrolled, and the cursor it follows has not moved for 8 frames. A menu opened by a key takes the keyboard from the input, and if what the shell printed last is still being drawn (the cursor moves to a new cell and
+   * the input with it) a `scroll` event whose target is the input itself arrives in the first milliseconds after the menu opens (WebKit: 4 times in about 30 runs, with the Menu key pressed 7 ms after Enter; the captured runs show the menu taking the keyboard, the input blurred
+   * and its value cleared, a scroll of the input dispatched, and the menu's host taking that scroll, which is the trigger's own, for the page scrolling under the menu and closing the menu at once). The key is pressed when the output has been drawn.
+   */
+  const quietInput = () =>
+    waitUntil(
+      "the emulator's input to hold nothing, be unscrolled and stay where it is for 8 frames",
+      () =>
+        page.evaluate(async () => {
+          const input = document.querySelector('.xterm-helper-textarea');
+          if (input === null) return false;
+          const where = () => `${input.style.left},${input.style.top}`;
+          const start = where();
+          for (let frame = 0; frame < 8; frame += 1) {
+            await new Promise((resolve) => {
+              requestAnimationFrame(resolve);
+            });
+            if (where() !== start) return false;
+          }
+
+          return input.value === '' && input.scrollLeft === 0 && input.scrollTop === 0;
+        }),
+      10_000,
+    );
+  /** Frames drawn with nothing asked of the page: the wait of a check that something does not happen, counted in frames and not in time. */
+  const settle = async (frames = 45) => {
+    for (let turn = 0; turn < frames; turn += 1) await afterFrames(page);
+  };
+  /** A right click at a place of the screen given as fractions of its width and height, with Shift held or not. */
+  const rightClick = async (fx, fy, shift = false) => {
+    const box = await page.locator('.xterm-screen').boundingBox();
+    if (shift) await page.keyboard.down('Shift');
+    await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy, { button: 'right' });
+    if (shift) await page.keyboard.up('Shift');
+  };
+  /** Types a marker's command and says whether the shell printed its output (`MARK_42`). */
+  const typedReaches = async (marker) => {
+    await typeLine(page, `echo ${marker}_$((6*7))`);
+    return holdsWithin(async () => new RegExp(`\\n${marker}_42\\n`).test(await plainTranscriptOf(base, id)), 15_000);
+  };
+  const sizeNow = async () => {
+    const from = (await plainTranscriptOf(base, id)).length;
+    await typeLine(page, 'stty size');
+    let size = null;
+    await waitUntil('stty size to answer', async () => {
+      size = sttyOf((await plainTranscriptOf(base, id)).slice(from));
+      return size !== null;
+    }, 15_000);
+    return size;
+  };
+
+  // The known output, through the real shell, as the emulator holds it. The reference scan of those rows is what every count below is held to; the rows are asserted to be what was printed first.
+  await typeLine(page, KNOWN_COMMAND);
+  const known = await untilLine(page, mac, 'KNOWN_BUFFER_END_42', 'the known output to be in the emulator', 60_000);
+  const rows = known.split('\n');
+  const counted = [findIn(rows, 'needle').length, findIn(rows, 'needle', { caseSensitive: true }).length, findIn(rows, 'needle', { wholeWord: true }).length, findIn(rows, 'needle', { caseSensitive: true, wholeWord: true }).length, findIn(rows, 'needle_[0-9]{3}', { regex: true }).length, findIn(rows, 'marker').length];
+  assert.deepEqual(counted, [209, 205, 7, 3, 101, 3], `${engine}: the known output is in the emulator's buffer as it was printed: the reference scan finds 209 needles (205 in lower case, 7 as a whole word, 3 of those in lower case), 101 of needle_[0-9]{3} and 3 markers`);
+  await takeKeyboard(page);
+  const sizeBefore = await sizeNow();
+  const screenBefore = await screenSizeOf(page);
+  const resizesBefore = wire.of('ResizeTerminal').length;
+  assert.deepEqual(addonRequests, [], `${engine}: the find's code was not requested before the first find`);
+
+  // (1) Find. The chord of another platform opens nothing; the platform's chord opens the bar from the terminal, with the keyboard in its field.
+  await page.keyboard.press(mac ? 'Control+f' : 'Meta+f');
+  await settle();
+  assert.equal(await field.count(), 0, `${engine}: ${mac ? 'Control F' : 'Command F'}, which is not this platform's chord, does not open the find bar`);
+  const openedByChord = await opensBy(openChord);
+  assert.ok(openedByChord, `${engine}: ${openChordName} opens the find bar from the terminal and the field has the keyboard`);
+  await field.fill('needle');
+  const plainSaid = await countSaying(/^\d+ of 209$/);
+  assert.match(plainSaid, /^\d+ of 209$/, `${engine}: a find for needle counts the 209 matches the rows hold (it says ${JSON.stringify(plainSaid)})`);
+  assert.equal(addonRequests.length, 1, `${engine}: the find's code was requested once, when the first find was made (${JSON.stringify(addonRequests)})`);
+  assert.deepEqual(await screenSizeOf(page), screenBefore, `${engine}: while the bar is open the screen is the size it was`);
+
+  await toggle('Match case').click();
+  const caseSaid = await countSaying(/^\d+ of 205$/);
+  assert.equal(await toggle('Match case').getAttribute('aria-pressed'), 'true', `${engine}: Match case says that it is on once it is pressed`);
+  assert.match(caseSaid, /^\d+ of 205$/, `${engine}: with Match case a find for needle counts the 205 lower case matches (it says ${JSON.stringify(caseSaid)})`);
+  await toggle('Match case').click();
+  const caseOffSaid = await countSaying(/^\d+ of 209$/);
+  assert.match(caseOffSaid, /^\d+ of 209$/, `${engine}: with Match case off again the count is 209 again (it says ${JSON.stringify(caseOffSaid)})`);
+  await toggle('Match whole word').click();
+  const wordSaid = await countSaying(/^\d+ of 7$/);
+  assert.match(wordSaid, /^\d+ of 7$/, `${engine}: with Match whole word a find for needle counts the 7 whole words, not needles, needlework nor needle_1 (it says ${JSON.stringify(wordSaid)})`);
+  await toggle('Match case').click();
+  const wordCaseSaid = await countSaying(/^\d+ of 3$/);
+  assert.match(wordCaseSaid, /^\d+ of 3$/, `${engine}: with Match whole word and Match case together the count is 3 (it says ${JSON.stringify(wordCaseSaid)})`);
+  await setOptions({ regex: true });
+  await field.fill('needle_[0-9]{3}');
+  const regexSaid = await countSaying(/^\d+ of 101$/);
+  assert.match(regexSaid, /^\d+ of 101$/, `${engine}: with Use regular expression a find for needle_[0-9]{3} counts the 101 matches (it says ${JSON.stringify(regexSaid)})`);
+  await field.fill('needle_(');
+  const invalidSaid = await countSaying(/^Invalid pattern$/);
+  const invalidMark = await field.getAttribute('aria-invalid');
+  assert.equal(invalidSaid, 'Invalid pattern', `${engine}: a regular expression that does not parse says Invalid pattern in the count (it says ${JSON.stringify(invalidSaid)})`);
+  assert.equal(invalidMark, 'true', `${engine}: the field says that it is invalid to a screen reader (aria-invalid) while the pattern does not parse`);
+  await field.fill('needle_[0-9]{3}');
+  const validSaid = await countSaying(/^\d+ of 101$/);
+  const validMark = await field.getAttribute('aria-invalid');
+  assert.equal(validMark, null, `${engine}: once the pattern parses again the field is no longer invalid`);
+  assert.match(validSaid, /^\d+ of 101$/, `${engine}: once the pattern parses again the count is back to the 101 matches (it says ${JSON.stringify(validSaid)})`);
+  await setOptions({});
+  await field.fill('zzznotinthebuffer');
+  const noneSaid = await countSaying(/^No results$/);
+  assert.equal(noneSaid, 'No results', `${engine}: a term that is nowhere in the buffer says No results (it says ${JSON.stringify(noneSaid)})`);
+
+  // Stepping, over three matches whose order is told by their text: the match the count points at is the one the screen has selected, and each step moves the count by one, from the last to the first and back.
+  await setOptions({ regex: true });
+  await field.fill('marker (alpha|beta|gamma)');
+  const markerSaid = await countSaying(/^\d+ of 3$/);
+  assert.match(markerSaid, /^\d+ of 3$/, `${engine}: a find for the three marker lines counts 3 (it says ${JSON.stringify(markerSaid)})`);
+  const markers = findIn(rows, 'marker (alpha|beta|gamma)', { regex: true }).map((match) => match.text);
+  let at = parseCount(markerSaid)?.k ?? 0;
+  const selectedFirst = await selectedText();
+  assert.equal(selectedFirst, markers[at - 1], `${engine}: the match the count points at (${String(at)} of 3) is the one selected on the screen (${JSON.stringify(markers)})`);
+  await field.focus();
+  const started = at;
+  for (let step = 0; step < 3; step += 1) {
+    await field.press('Enter');
+    at = (at % 3) + 1;
+    const said = await countSaying(new RegExp(`^${String(at)} of 3$`));
+    assert.equal(said, `${String(at)} of 3`, `${engine}: Enter steps to the next match and wraps from the last to the first (step ${String(step + 1)} of 3 from ${String(started)} of 3)`);
+    if (step === 0) {
+      const selectedNext = await selectedText();
+      assert.equal(selectedNext, markers[at - 1], `${engine}: after Enter the match selected on the screen is the next one (${String(at)} of 3)`);
+      await field.focus();
+    }
+  }
+
+  for (let step = 0; step < 3; step += 1) {
+    await field.press('Shift+Enter');
+    at = ((at + 1) % 3) + 1;
+    const said = await countSaying(new RegExp(`^${String(at)} of 3$`));
+    assert.equal(said, `${String(at)} of 3`, `${engine}: Shift Enter steps to the previous match and wraps from the first to the last (step ${String(step + 1)} of 3 back to ${String(started)} of 3)`);
+  }
+
+  await bar.getByRole('button', { name: 'Next match', exact: true }).click();
+  at = (at % 3) + 1;
+  const buttonNext = await countSaying(new RegExp(`^${String(at)} of 3$`));
+  assert.equal(buttonNext, `${String(at)} of 3`, `${engine}: the Next match button steps to the next match (${String(at)} of 3)`);
+  await bar.getByRole('button', { name: 'Previous match', exact: true }).click();
+  at = ((at + 1) % 3) + 1;
+  const buttonPrevious = await countSaying(new RegExp(`^${String(at)} of 3$`));
+  assert.equal(buttonPrevious, `${String(at)} of 3`, `${engine}: the Previous match button steps to the previous match (${String(at)} of 3)`);
+  await field.focus();
+  await field.press('F3');
+  at = (at % 3) + 1;
+  const fieldF3 = await countSaying(new RegExp(`^${String(at)} of 3$`));
+  assert.equal(fieldF3, `${String(at)} of 3`, `${engine}: F3 steps to the next match while the field has the keyboard (${String(at)} of 3)`);
+  await field.press('Shift+F3');
+  at = ((at + 1) % 3) + 1;
+  const fieldShiftF3 = await countSaying(new RegExp(`^${String(at)} of 3$`));
+  assert.equal(fieldShiftF3, `${String(at)} of 3`, `${engine}: Shift F3 steps to the previous match while the field has the keyboard (${String(at)} of 3)`);
+  await toTerminal();
+  await page.keyboard.press('F3');
+  at = (at % 3) + 1;
+  const terminalF3 = await countSaying(new RegExp(`^${String(at)} of 3$`));
+  assert.equal(terminalF3, `${String(at)} of 3`, `${engine}: F3 steps to the next match while the terminal has the keyboard and the bar is open (${String(at)} of 3)`);
+  await page.keyboard.press('Shift+F3');
+  at = ((at + 1) % 3) + 1;
+  const terminalShiftF3 = await countSaying(new RegExp(`^${String(at)} of 3$`));
+  assert.equal(terminalShiftF3, `${String(at)} of 3`, `${engine}: Shift F3 steps to the previous match while the terminal has the keyboard and the bar is open (${String(at)} of 3)`);
+  note('find counts', `needle ${plainSaid} (case ${caseSaid}, whole word ${wordSaid}, both ${wordCaseSaid}), needle_[0-9]{3} ${regexSaid}, "${invalidSaid}", "${noneSaid}", the three markers stepped by Enter, Shift+Enter, the buttons and F3 from ${String(started)} of 3`);
+
+  // Escape pressed in the terminal, with the bar open beside it, closes the bar too and the shell keeps the keyboard; the bar is opened again for the Escape of its own field.
+  await toTerminal();
+  await page.keyboard.press('Escape');
+  const closedFromTerminal = await holdsWithin(barGone, 5_000);
+  assert.ok(closedFromTerminal, `${engine}: Escape closes the find bar while the terminal has the keyboard`);
+  if (!(await opensBy(openChord))) throw new Error(`${engine}: ${openChordName} did not open the find bar again after Escape was pressed in the terminal`);
+
+  // Escape closes the bar and gives the keyboard back to the shell; opening, using and closing it changed no size.
+  await field.focus();
+  await field.press('Escape');
+  const closedByEscape = await holdsWithin(barGone, 5_000);
+  assert.ok(closedByEscape, `${engine}: Escape closes the find bar`);
+  assert.equal(await inTerminal(), true, `${engine}: Escape gives the keyboard back to the terminal`);
+  const afterFind = await typedReaches('AFTER_FIND');
+  assert.ok(afterFind, `${engine}: after the find the shell gets what is typed (echo AFTER_FIND_$((6*7)) printed AFTER_FIND_42)`);
+  const sizeAfter = await sizeNow();
+  assert.deepEqual([sizeAfter.rows, sizeAfter.cols], [sizeBefore.rows, sizeBefore.cols], `${engine}: the pty has the size it had before the find bar was opened (stty size: ${JSON.stringify(sizeBefore)} then ${JSON.stringify(sizeAfter)})`);
+  assert.equal(wire.of('ResizeTerminal').length, resizesBefore, `${engine}: the page sent no ResizeTerminal while the find bar was opened, used and closed`);
+  note('find bar and size', `the pty said ${JSON.stringify(sizeBefore)} before and ${JSON.stringify(sizeAfter)} after, the screen stayed ${JSON.stringify(screenBefore)}, no ResizeTerminal`);
+
+  // The other chord of a platform that has two, and the button that closes.
+  const secondChord = mac ? 'Meta+f' : 'Control+Shift+F';
+  const openedAgain = await opensBy(secondChord);
+  assert.ok(openedAgain, `${engine}: ${mac ? 'Command F' : 'Control Shift F'} opens the find bar again, with the keyboard in its field`);
+  await bar.getByRole('button', { name: /^Close/ }).click();
+  const closedByButton = await holdsWithin(barGone, 5_000);
+  assert.ok(closedByButton, `${engine}: the Close button closes the find bar`);
+  assert.equal(await inTerminal(), true, `${engine}: the Close button gives the keyboard back to the terminal`);
+
+  // The toolbar's Find button opens the bar and says that it is open; pressing it again closes the bar.
+  const findButton = page.locator('[data-terminal-tool="find"]');
+  await findButton.click();
+  const openedByButton = await holdsWithin(async () => (await barShown()) && (await hasFocus()), 10_000);
+  assert.ok(openedByButton, `${engine}: the Find button of the toolbar opens the find bar with the keyboard in its field`);
+  assert.equal(await findButton.getAttribute('aria-pressed'), 'true', `${engine}: the Find button says that the bar is open while it is`);
+  await findButton.click();
+  const closedByToolbar = await holdsWithin(barGone, 5_000);
+  assert.ok(closedByToolbar, `${engine}: pressing the Find button again closes the find bar`);
+  assert.equal(await findButton.getAttribute('aria-pressed'), 'false', `${engine}: the Find button says that the bar is closed once it is`);
+
+  // A find after a reload finds a line of the scrollback the host replays (T2b).
+  const back = await reloadUntil(page, runningAs(names), 60_000, true);
+  assert.ok(back.ok, `${engine}: after a reload the tab of the terminal is back and running: ${timelineOf(back.seen)}`);
+  await takeKeyboard(page);
+  const replayed = await untilLine(page, mac, 'KNOWN_BUFFER_END_42', 'the replayed output to be in the emulator after the reload', 60_000);
+  const replayedRows = replayed.split('\n');
+  await takeKeyboard(page);
+  const reopened = await opensBy(openChord);
+  assert.ok(reopened, `${engine}: after the reload ${openChordName} opens the find bar with the keyboard in its field`);
+  await field.fill('needle_150');
+  const replaySaid = await countSaying(/^\d+ of \d+$/);
+  assert.equal(replaySaid, `1 of ${String(findIn(replayedRows, 'needle_150').length)}`, `${engine}: after a reload a find for needle_150 finds its one line in the replayed output (it says ${JSON.stringify(replaySaid)})`);
+  await field.fill('needle');
+  const replayedTotal = findIn(replayedRows, 'needle').length;
+  const replayTotalSaid = await countSaying(new RegExp(`^\\d+ of ${String(replayedTotal)}$`));
+  assert.match(replayTotalSaid, new RegExp(`^\\d+ of ${String(replayedTotal)}$`), `${engine}: after a reload a find for needle counts the ${String(replayedTotal)} matches the replayed output holds (it says ${JSON.stringify(replayTotalSaid)})`);
+
+  // A flood of 1,000,000 lines (about 8 MB: seconds of parsing) with the bar open: the bar answers the pointer while the output floods in (the shell has not printed its last line when the bar first says so: the host paces the shell by what the page has parsed, so a shell
+  // that has not finished is a page that is still busy), the count is right when it ends, the shell still gets what is typed, and a count past the limit says so.
+  await field.fill('999999');
+  await toTerminal();
+  const floodStartedAt = Date.now();
+  await typeLine(page, 'seq 1 1000000; echo FLOOD_END_$((6*7))');
+  await toggle('Match case').click();
+  let floodEndedBeforeAnswer = false;
+  const pressedInFlood = await holdsWithin(async () => {
+    if ((await toggle('Match case').getAttribute('aria-pressed')) !== 'true') return false;
+    // The first moment the bar says that Match case is on: has the shell already printed the last line of the flood?
+    floodEndedBeforeAnswer = /\nFLOOD_END_42\n/.test(await plainTranscriptOf(base, id));
+    return true;
+  }, 10_000);
+  assert.ok(pressedInFlood, `${engine}: while 1,000,000 lines flood in, the find bar answers the pointer: Match case says that it is on within 10 s`);
+  assert.equal(floodEndedBeforeAnswer, false, `${engine}: the flood was still running when the find bar answered: the shell had not printed its last line (FLOOD_END_42) when Match case first said that it was on`);
+  await toTerminal();
+  const flooded = await untilLine(page, mac, 'FLOOD_END_42', 'the end of the flood to be in the emulator', 120_000);
+  const floodTook = Date.now() - floodStartedAt;
+  const floodRows = flooded.split('\n');
+  const floodMatches = findIn(floodRows, '999999', { caseSensitive: true }).length;
+  const floodSaid = await countSaying(new RegExp(`^\\d+ of ${String(floodMatches)}$`), 30_000);
+  assert.equal(floodSaid, `1 of ${String(floodMatches)}`, `${engine}: after a flood of 1,000,000 lines with the find bar open the count says the one match of 999999 the buffer holds (it says ${JSON.stringify(floodSaid)})`);
+  await toTerminal();
+  const afterFlood = await typedReaches('AFTER_FLOOD');
+  assert.ok(afterFlood, `${engine}: after the flood, with the find bar open, the shell gets what is typed`);
+  await setOptions({ regex: true });
+  await field.fill('[0-9]');
+  const digits = findIn(floodRows, '[0-9]', { regex: true }).length;
+  if (digits <= 20_000) throw new Error(`${engine}: the flooded buffer holds ${String(digits)} digits, too few for a find past the limit of 20,000`);
+  const cappedSaid = await countSaying(/20,000\+$/, 30_000);
+  assert.match(cappedSaid, /^(\d+|\?) of 20,000\+$/, `${engine}: a find with more than 20,000 matches (${String(digits)} digits in the buffer) says 20,000+ and never a count beyond the limit (it says ${JSON.stringify(cappedSaid)}; a ? stands for a match the screen is on that is not among the 20,000 counted)`);
+  await field.focus();
+  await field.press('Escape');
+  await holdsWithin(barGone, 5_000);
+  note('find after a reload and in a flood', `after the reload needle_150 said ${JSON.stringify(replaySaid)} and needle ${JSON.stringify(replayTotalSaid)}; the flood of 1,000,000 lines with the bar open took ${String(floodTook)} ms to be in the emulator, 999999 said ${JSON.stringify(floodSaid)}, ${String(digits)} digits said ${JSON.stringify(cappedSaid)}`);
+
+  // (2) The context menu. A right click on a cell with nothing on it opens it (the far right of the screen has no text): with nothing selected Copy is not available and says why.
+  await takeKeyboard(page);
+  await rightClick(0.97, 0.5);
+  const menuOpened = await holdsWithin(menuIsOpen, 10_000);
+  assert.ok(menuOpened, `${engine}: a right click on the screen opens the context menu`);
+  assert.deepEqual(await menuItems(), ['Copy', 'Paste', 'Select all', 'Clear', 'Find'], `${engine}: the context menu offers Copy, Paste, Select all, Clear and Find, in that order`);
+  assert.equal(await item('Copy').getAttribute('aria-disabled'), 'true', `${engine}: Copy is not available with nothing selected`);
+  assert.match((await item('Copy').getAttribute('aria-description')) ?? '', /Select text in the terminal first/, `${engine}: Copy says why it is not available`);
+  await page.keyboard.press('Escape');
+  await holdsWithin(async () => !(await menuIsOpen()), 5_000);
+
+  // Select all in the menu, then Copy in the menu (opened by the keyboard, so that the selection stays: a right click selects the word under the pointer on a Mac): the whole buffer is on the clipboard, as the chords copy it.
+  await toTerminal();
+  const chordCopied = await bufferOf(page, mac, 'the buffer the chords copy, to compare with the menu\'s');
+  await takeKeyboard(page);
+  await rightClick(0.97, 0.5);
+  await holdsWithin(menuIsOpen, 10_000);
+  await item('Select all').click();
+  await holdsWithin(async () => !(await menuIsOpen()), 5_000);
+  await toTerminal();
+  await quietInput();
+  await page.keyboard.press('Shift+F10');
+  await holdsWithin(menuIsOpen, 10_000);
+  const copyDisabled = await item('Copy').getAttribute('aria-disabled');
+  assert.equal(copyDisabled, null, `${engine}: after Select all in the menu Copy is available`);
+  await page.evaluate(() => {
+    window.__copied.length = 0;
+  });
+  await item('Copy').click();
+  await holdsWithin(() => page.evaluate(() => window.__copied.length > 0), 5_000);
+  const menuCopied = await page.evaluate(() => window.__copied.at(-1));
+  assert.equal(menuCopied, chordCopied, `${engine}: Select all and Copy in the menu put the whole buffer on the clipboard, as the chords do (${String(menuCopied?.length)} characters, the chords copied ${String(chordCopied.length)})`);
+
+  // Paste in the menu delivers the clipboard's text to the shell, as typed input: the text is on the shell's input line and nothing has run before Enter (a Paste that sent a line end after the text would run it at once; a line end inside the text does not, the shells' bracketed paste keeps it in the line); Enter runs it.
+  await toTerminal();
+  const pastedLine = 'echo MENU_PASTE_$((6*7))';
+  await page.evaluate((text) => {
+    window.__clipboard = text;
+  }, pastedLine);
+  await quietInput();
+  await page.keyboard.press('Shift+F10');
+  await holdsWithin(menuIsOpen, 10_000);
+  await item('Paste').click();
+  await holdsWithin(async () => !(await menuIsOpen()), 5_000);
+  await toTerminal();
+  const echoedPaste = await holdsWithin(async () => (await plainTranscriptOf(base, id)).includes(pastedLine), 15_000);
+  assert.ok(echoedPaste, `${engine}: Paste in the menu puts the text on the clipboard on the shell's input line: the shell echoed ${pastedLine}`);
+  await settle();
+  const ranBeforeEnter = /\nMENU_PASTE_42\n/.test(await plainTranscriptOf(base, id));
+  assert.equal(ranBeforeEnter, false, `${engine}: Paste in the menu does not run the pasted line: nothing ran before Enter (MENU_PASTE_42 was printed before it was pressed)`);
+  await page.keyboard.press('Enter');
+  const pasted = await holdsWithin(async () => /\nMENU_PASTE_42\n/.test(await plainTranscriptOf(base, id)), 15_000);
+  assert.ok(pasted, `${engine}: Paste in the menu delivers the text on the clipboard to the shell (echo MENU_PASTE_$((6*7)) printed MENU_PASTE_42 once Enter was pressed)`);
+
+  // Find in the menu opens the bar with the keyboard in its field.
+  await toTerminal();
+  await quietInput();
+  await page.keyboard.press('Shift+F10');
+  await holdsWithin(menuIsOpen, 10_000);
+  await item('Find').click();
+  const foundByMenu = await holdsWithin(async () => (await barShown()) && (await hasFocus()), 10_000);
+  assert.ok(foundByMenu, `${engine}: Find in the menu opens the find bar with the keyboard in its field`);
+  await field.press('Escape');
+  await holdsWithin(barGone, 5_000);
+
+  // Shift+F10 and the Menu key open it from the terminal; Escape closes it and gives the keyboard back.
+  await toTerminal();
+  await quietInput();
+  await page.keyboard.press('Shift+F10');
+  const byShiftF10 = await holdsWithin(menuIsOpen, 10_000);
+  assert.ok(byShiftF10, `${engine}: Shift F10 opens the context menu from the terminal`);
+  await page.keyboard.press('Escape');
+  const closedMenu = await holdsWithin(async () => !(await menuIsOpen()), 5_000);
+  assert.ok(closedMenu, `${engine}: Escape closes the context menu`);
+  assert.equal(await inTerminal(), true, `${engine}: Escape gives the keyboard back to the terminal after the menu`);
+  const afterMenu = await typedReaches('AFTER_MENU');
+  assert.ok(afterMenu, `${engine}: after the menu the shell gets what is typed`);
+  await quietInput();
+  await page.keyboard.press('ContextMenu');
+  const byMenuKey = await holdsWithin(menuIsOpen, 10_000);
+  assert.ok(byMenuKey, `${engine}: the Menu key opens the context menu from the terminal`);
+  await page.keyboard.press('Escape');
+  await holdsWithin(async () => !(await menuIsOpen()), 5_000);
+
+  // A program that has the mouse gets the right click and no menu opens; with Shift held the menu opens.
+  const cell = async () => {
+    const box = await page.locator('.xterm-screen').boundingBox();
+    return { box, cellWidth: box.width / sizeBefore.cols, cellHeight: box.height / sizeBefore.rows };
+  };
+  await typeLine(page, 'printf \'\\033[?1000h\\033[?1006h\'; stty -icanon -echo; echo READY_$((1+1)); cat -v');
+  await shellSays(base, id, /\nREADY_2\n/, 'cat to be reading with the mouse on');
+  const place = await cell();
+  const targetX = place.box.x + place.cellWidth * 9.5;
+  const targetY = place.box.y + place.cellHeight * 2.5;
+  let reported = null;
+  let clickedAt = 0;
+  // The emulator may not have taken the program's request for the mouse yet: the click is repeated, and a menu that a click opened before it did is closed.
+  await waitUntil('the right click to be reported to the program', async () => {
+    if (Date.now() - clickedAt > 3_000) {
+      clickedAt = Date.now();
+      if (await menuIsOpen()) await page.keyboard.press('Escape');
+      await page.mouse.click(targetX, targetY, { button: 'right' });
+    }
+
+    reported = /\^\[\[<2;(\d+);(\d+)M\^\[\[<2;\d+;\d+m/.exec(await plainTranscriptOf(base, id));
+    return reported !== null;
+  }, 30_000);
+  const reportedAt = { column: Number(reported[1]), row: Number(reported[2]) };
+  assert.ok(Math.abs(reportedAt.column - 10) <= 1 && Math.abs(reportedAt.row - 3) <= 1, `${engine}: with the program's mouse reporting on a right click on column 10, row 3 is reported to the program at ${JSON.stringify(reportedAt)}`);
+  await settle();
+  const menuWithMouse = await menuIsOpen();
+  assert.equal(menuWithMouse, false, `${engine}: with the program's mouse reporting on a right click opens no menu`);
+  await page.keyboard.down('Shift');
+  await page.mouse.click(targetX, targetY, { button: 'right' });
+  await page.keyboard.up('Shift');
+  const menuWithShift = await holdsWithin(menuIsOpen, 10_000);
+  assert.ok(menuWithShift, `${engine}: with Shift held a right click opens the menu although the program has the mouse`);
+  await page.keyboard.press('Escape');
+  await holdsWithin(async () => !(await menuIsOpen()), 5_000);
+  await toTerminal();
+  await page.keyboard.press('Control+c');
+  // The line that restores the terminal is typed again until the shell answers it: one typed while the interrupted program is still dying is read by it, and the shell never sees it.
+  let restoredAt = 0;
+  await waitUntil('the mouse mode to be restored', async () => {
+    if (Date.now() - restoredAt > 3_000) {
+      restoredAt = Date.now();
+      await typeLine(page, 'printf \'\\033[?1000l\\033[?1006l\'; stty sane; echo MOUSE_DONE_$((1+1))');
+    }
+
+    return /\nMOUSE_DONE_2\n/.test(await plainTranscriptOf(base, id));
+  }, 30_000);
+  note('context menu', `a right click opened it (Copy, Paste, Select all, Clear, Find), Select all and Copy put ${String(menuCopied.length)} characters on the clipboard, Paste ran its text, Find opened the bar, Shift+F10 and the Menu key opened it and Escape gave the keyboard back; with mouse reporting on a right click at column 10, row 3 reached the program as ${JSON.stringify(reportedAt)} and opened no menu, and with Shift it did`);
+
+  // Clear in the menu empties the emulator's buffer; the shell goes on.
+  const beforeClear = lineIn(flooded, '999999');
+  if (!beforeClear) throw new Error(`${engine}: the flooded buffer does not hold the lines the clear is looked for in`);
+  await toTerminal();
+  await quietInput();
+  await page.keyboard.press('Shift+F10');
+  await holdsWithin(menuIsOpen, 10_000);
+  await item('Clear').click();
+  await holdsWithin(async () => !(await menuIsOpen()), 5_000);
+  await toTerminal();
+  const cleared = await bufferOf(page, mac, 'the buffer after Clear in the menu');
+  assert.equal(lineIn(cleared, '999999'), false, `${engine}: Clear in the menu empties the buffer: the last lines of the flood are not in it`);
+  await takeKeyboard(page);
+  const afterClear = await typedReaches('AFTER_CLEAR');
+  assert.ok(afterClear, `${engine}: after Clear in the menu the shell gets what is typed`);
+
+  // (3) Links. The host's call that opens an address is intercepted and answered 200 with nothing: the host never opens a browser on this machine, whatever the page does.
+  const opened = [];
+  await page.route('**/wails/runtime', async (route) => {
+    const request = route.request();
+    const call = request.method() === 'POST' ? openUrlCallOf(request.postData() ?? '') : undefined;
+    if (call === undefined) {
+      await route.continue();
+      return;
+    }
+
+    opened.push(call);
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
+  });
+  // The check's net for a window or a question is asked what it records before the links are used: a call made here lands in it, and what it holds is then taken away, so that what it holds at the end is what the links did.
+  const netAdded = await page.evaluate(() => {
+    const before = [window.__opens.length, window.__questions.length];
+    window.open('about:blank#seam-self-check');
+    window.confirm('seam self check');
+    const added = [window.__opens.length - before[0], window.__questions.length - before[1], JSON.stringify(window.__opens.at(-1)), window.__questions.at(-1)];
+    window.__opens.length = 0;
+    window.__questions.length = 0;
+    return added;
+  });
+  assert.deepEqual(netAdded, [1, 1, '["about:blank#seam-self-check"]', 'confirm: seam self check'], `${engine}: the check's net for a window or a question (window.open, confirm) records the call that is made to it`);
+  const address = 'https://example.com/path?x=1';
+  const modifier = mac ? 'Meta' : 'Control';
+  const tipWords = mac ? 'Follow link (cmd + click)' : 'Follow link (ctrl + click)';
+  const tooltip = page.getByText(tipWords, { exact: true });
+  await toTerminal();
+  await typeLine(page, 'printf \'\\033[2J\\033[H%s\\n%s\\n%s\\n\' \'https://example.com/path?x=1\' \'javascript:alert(1)\' \'file:///etc/passwd\'; o() { printf \'\\033]8;;%s\\033\\\\%s\\033]8;;\\033\\\\\\n\' "$1" "$2"; }; o \'https://example.com/osc?y=2\' osc-web-link; o \'javascript:alert(2)\' osc-js-link; o \'file:///etc/hosts\' osc-file-link; echo LINKS_PRINTED_$((6*7))');
+  await shellSays(base, id, /\nLINKS_PRINTED_42\n/, 'the addresses to be printed');
+  const linkPoint = async (row) => {
+    const where = await cell();
+    return { x: where.box.x + where.cellWidth * 8.5, y: where.box.y + where.cellHeight * (row + 0.5) };
+  };
+  /**
+   * The pointer comes onto a row of the output from another row, as a hand moves it (from the blank last row, up the column of the address). Measured in both engines in this scenario: a pointer that moves along the very row where an address was printed, from the
+   * blank end of the row onto the address, was not reported a link (not in 15 s of waiting, and not on a second try), and one that comes onto the row from another row is, at once.
+   */
+  const hoverRow = async (row) => {
+    const point = await linkPoint(row);
+    const where = await cell();
+    await page.mouse.move(point.x, where.box.y + where.cellHeight * (sizeBefore.rows - 0.5));
+    await page.mouse.move(point.x, point.y, { steps: 8 });
+  };
+  /**
+   * A press and a release with the platform's modifier held, where the pointer is. On a Mac, Chromium takes Control and a click for a click of the secondary button and opens the terminal's menu (the run that makes the page say it is Linux has Control for its modifier;
+   * Linux and Windows do not do that): the menu is closed again, so that it does not cover the next row the pointer goes to and does not take the next click.
+   */
+  const clickWithModifier = async () => {
+    await page.keyboard.down(modifier);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.keyboard.up(modifier);
+    await settle(10);
+    if (await menuIsOpen()) {
+      await page.keyboard.press('Escape');
+      await waitUntil('the menu that the click opened to be closed', async () => !(await menuIsOpen()), 5_000);
+    }
+  };
+  const hoverShown = await holdsWithin(async () => {
+    await hoverRow(0);
+    return tooltip.isVisible();
+  }, 15_000);
+  assert.ok(hoverShown, `${engine}: hovering a web address in the output says "${tipWords}"`);
+  await hoverRow(1);
+  const tooltipLeft = await holdsWithin(async () => !(await tooltip.isVisible()), 5_000);
+  assert.ok(tooltipLeft, `${engine}: the tooltip goes when the pointer leaves the address`);
+  await settle();
+  assert.equal(await tooltip.isVisible(), false, `${engine}: a javascript: line is not a link: the pointer on it shows no tooltip`);
+  await hoverRow(2);
+  await settle();
+  assert.equal(await tooltip.isVisible(), false, `${engine}: a file: line is not a link: the pointer on it shows no tooltip`);
+  // A click on an address: the pointer is on it first (the emulator knows the link under it once the tooltip is there), and the press and the release are made where it is, with the modifier held or not.
+  await hoverRow(0);
+  await tooltip.waitFor({ state: 'visible', timeout: 10_000 });
+  await page.mouse.down();
+  await page.mouse.up();
+  await settle();
+  assert.equal(opened.length, 0, `${engine}: a plain click on an address opens nothing: it makes no call of the host's (${JSON.stringify(opened)})`);
+  await clickWithModifier();
+  await holdsWithin(() => opened.length > 0, 10_000);
+  await settle();
+  const openedUrls = opened.map((call) => call.url);
+  assert.deepEqual(openedUrls, [address], `${engine}: ${mac ? 'Command' : 'Control'} and a click on the address makes one call that opens it, carrying the address (${JSON.stringify(opened)})`);
+  const openedShapes = opened.map((call) => [call.shape, call.object, call.method]);
+  assert.deepEqual(openedShapes, [['runtime', 9, 0]], `${engine}: the call that opens it is the runtime's own Browser.OpenURL: the Browser object (9), its method 0`);
+  for (const row of [1, 2]) {
+    await hoverRow(row);
+    await settle(10);
+    await clickWithModifier();
+  }
+
+  await settle();
+  assert.equal(opened.length, 1, `${engine}: ${mac ? 'Command' : 'Control'} and a click on a javascript: line or a file: line makes no call (${String(opened.length)} calls in all)`);
+
+  // OSC 8 hyperlinks: the program says the address and the words that show it (ESC ] 8 ; ; address ESC \ words ESC ] 8 ; ; ESC \, rows 3 to 5 of the output). The emulator's own provider finds them, and the engine gives them to the same rules as the addresses it finds in the text: the hover says how to
+  // follow, the platform's modifier and a click follows a web address once, through the host's call, and a plain click, a script and a file follow nothing; and none of them ever uses the browser's `window.open` or one of its questions (`confirm`).
+  const oscAddress = 'https://example.com/osc?y=2';
+  const oscHoverShown = await holdsWithin(async () => {
+    await hoverRow(3);
+    return tooltip.isVisible();
+  }, 15_000);
+  assert.ok(oscHoverShown, `${engine}: hovering a hyperlink the program wrote (OSC 8) says "${tipWords}"`);
+  await page.mouse.down();
+  await page.mouse.up();
+  await settle();
+  assert.equal(opened.length, 1, `${engine}: a plain click on a hyperlink the program wrote (OSC 8) makes no call (${String(opened.length)} calls in all)`);
+  await clickWithModifier();
+  await holdsWithin(() => opened.length > 1, 10_000);
+  await settle();
+  const oscCalls = opened.slice(1).map((call) => [call.shape, call.object, call.method, call.url]);
+  assert.deepEqual(oscCalls, [['runtime', 9, 0, oscAddress]], `${engine}: ${mac ? 'Command' : 'Control'} and a click on a hyperlink the program wrote (OSC 8) makes one call that opens it: the runtime's own Browser.OpenURL (object 9, method 0) carrying its address (${JSON.stringify(opened)})`);
+  for (const row of [4, 5]) {
+    await hoverRow(row);
+    await settle(10);
+    await clickWithModifier();
+  }
+
+  await settle();
+  assert.equal(opened.length, 2, `${engine}: ${mac ? 'Command' : 'Control'} and a click on a javascript: or a file: hyperlink the program wrote (OSC 8) makes no call (${String(opened.length)} calls in all)`);
+  const asked = { opens: await page.evaluate(() => window.__opens), questions: await page.evaluate(() => window.__questions), dialogs };
+  assert.deepEqual(asked, { opens: [], questions: [], dialogs: [] }, `${engine}: no link, of the text or a hyperlink the program wrote, called window.open or asked a question (confirm, alert, prompt): ${JSON.stringify(asked)}`);
+  assert.equal(popups.length, 0, `${engine}: no link opened a window of the browser itself`);
+  await page.unroute('**/wails/runtime');
+  note('links', `hovering ${address} said "${tipWords}", a plain click made no call, ${mac ? 'Command' : 'Control'} and a click made ${JSON.stringify(opened.slice(0, 1).map((call) => [call.shape, call.object, call.method, call.url]))} (intercepted, answered 200), the javascript: and file: lines showed no tooltip and made no call; for a hyperlink the program wrote (OSC 8) the same: ${JSON.stringify(oscCalls)}, none for its javascript: and file: ones, and the browser's window.open and questions were never used`);
+
+  // (4) A terminal whose shell has ended takes no input: Paste says so, and the find still has its output to search.
+  await toTerminal();
+  await typeLine(page, 'exit');
+  await page.getByText('Input is off. Its output stays readable here.', { exact: true }).waitFor({ timeout: 20_000 });
+  await rightClick(0.97, 0.5);
+  if (!(await holdsWithin(menuIsOpen, 10_000))) throw new Error(`${engine}: the context menu did not open on the terminal whose shell has ended`);
+  assert.equal(await item('Paste').getAttribute('aria-disabled'), 'true', `${engine}: with the shell ended Paste is not available`);
+  const pasteReason = (await item('Paste').getAttribute('aria-description')) ?? '';
+  assert.match(pasteReason, /Input is off/, `${engine}: Paste says why it is not available once the shell has ended`);
+  await item('Find').click();
+  const foundWhenEnded = await holdsWithin(async () => (await barShown()) && (await hasFocus()), 10_000);
+  assert.ok(foundWhenEnded, `${engine}: Find in the menu of a terminal whose shell has ended opens the find bar with the keyboard in its field`);
+  await setOptions({});
+  await field.fill('LINKS_PRINTED_42');
+  const endedSaid = await countSaying(/^\d+ of \d+$/);
+  assert.equal(endedSaid, '1 of 1', `${engine}: the find of a terminal whose shell has ended finds the one line of its output the shell printed (it says ${JSON.stringify(endedSaid)})`);
+  await field.press('Escape');
+  await holdsWithin(barGone, 5_000);
+  note('an ended terminal', `Paste was not available (${JSON.stringify(pasteReason)}) and the find said ${JSON.stringify(endedSaid)}`);
+
+  assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the page raised no error but the calls a reload cut`);
+  console.log(`terminal-find ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
+}
+
 let host;
 try {
   const port = await freePort();
@@ -8142,10 +8918,10 @@ try {
         continue;
       }
 
-      // SEAM_TERMINAL_REPEAT=<n> runs scenarios r, r2, r3, r4 and r5 alone, n times in a row, for a developer who works on the Terminal tool (each run starts several shells of this machine and ends them). SEAM_TERMINAL_ONLY=r3,r5 narrows it to the scenarios it names.
+      // SEAM_TERMINAL_REPEAT=<n> runs scenarios r, r2, r3, r4, r5 and r6 alone, n times in a row, for a developer who works on the Terminal tool (each run starts several shells of this machine and ends them). SEAM_TERMINAL_ONLY=r3,r6 narrows it to the scenarios it names.
       if (process.env.SEAM_TERMINAL_REPEAT !== undefined) {
-        const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4,r5').split(',');
-        const unknown = terminalOnly.filter((id) => !['r', 'r2', 'r3', 'r4', 'r5'].includes(id));
+        const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4,r5,r6').split(',');
+        const unknown = terminalOnly.filter((id) => !['r', 'r2', 'r3', 'r4', 'r5', 'r6'].includes(id));
         if (unknown.length > 0) throw new Error(`SEAM_TERMINAL_ONLY names scenarios that are not terminal scenarios: ${unknown.join(', ')}`);
         const repeats = Number(process.env.SEAM_TERMINAL_REPEAT);
         if (!Number.isSafeInteger(repeats) || repeats < 1) {
@@ -8158,6 +8934,7 @@ try {
           if (terminalOnly.includes('r3')) await phase('terminal-reattach', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalReattach(page, host.base, name)));
           if (terminalOnly.includes('r4')) await phase('terminal-takeover', name, async () => checkTerminalTakeover(browser, () => host, restart, name, work));
           if (terminalOnly.includes('r5')) await phase('terminal-followups', name, async () => checkTerminalFollowups(browser, () => host, name));
+          if (terminalOnly.includes('r6')) await phase('terminal-find', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)));
           console.log(`terminal ${name} run ${String(run)} ok`);
         }
 
@@ -8243,6 +9020,7 @@ try {
       await phase('terminal-reattach', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalReattach(page, host.base, name)));
       await phase('terminal-takeover', name, async () => checkTerminalTakeover(browser, () => host, restart, name, work));
       await phase('terminal-followups', name, async () => checkTerminalFollowups(browser, () => host, name));
+      await phase('terminal-find', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)));
       await phase('session', name, () => checkSession(browser, () => host, restart, name));
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
