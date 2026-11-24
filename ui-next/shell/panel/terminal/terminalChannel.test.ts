@@ -1158,10 +1158,16 @@ describe('what a mutation of the channel would change', () => {
     expect(said.map((one) => one[0])).toEqual(['closed']);
   });
 
-  it('closes the stream for a gap of more than its 16 bytes, as for one of less', () => {
+  it.each<readonly [string, Uint8Array]>([
+    ['5 bytes', frame(0x83, bytesOf(0, 0, 0, 1))],
+    ['16 bytes', frame(0x83, u64(1), bytesOf(0, 0, 0, 0, 0, 0, 0))],
+    ['18 bytes', frame(0x83, u64(1), u64(2), bytesOf(0))],
+    ['a long payload', frame(0x83, u64(1), u64(2), new Uint8Array(100))],
+  ])('ends the stream with one closed, and throws nothing, for a gap frame of %s', (_name, bad) => {
     const { socket, said } = opened();
-    socket.deliver(frame(0x83, u64(1), u64(2), bytesOf(0)));
+    expect(() => socket.deliver(bad)).not.toThrow();
     expect(said.map((one) => one[0])).toEqual(['closed']);
+    expect(socket.closed).toBeGreaterThan(0);
   });
 
   it('keeps a resize inside 1 to 1,000 whatever it is given', () => {
