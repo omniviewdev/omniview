@@ -255,6 +255,15 @@ export function ResizeTerminal(sessionID: string, seq: number, rows: number, col
     return $Call.ByID(2152154508, sessionID, seq, rows, cols);
 }
 
+/**
+ * RevokeSession takes back the offer that OfferSession made: the move of a tab that did not happen (the drop was refused,
+ * or the window that was to take it went away). Only the window that holds the session revokes it; an offer that is not
+ * open is nothing to take back, and no error.
+ */
+export function RevokeSession(sessionID: string): $CancellablePromise<void> {
+    return $Call.ByID(4044647630, sessionID);
+}
+
 export function WriteSession(sessionID: string, data: string): $CancellablePromise<void> {
     return $Call.ByID(486465741, sessionID, data);
 }
