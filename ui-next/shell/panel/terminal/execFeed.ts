@@ -9,7 +9,7 @@ import { createHeldOutput } from './heldOutput';
 //     measures is never made). The stream opens once the host has made it, and the feed is `running` when the host's `ready` says so;
 //   - what the shell writes comes as bytes with offsets, in one ordered stream, and is held exactly as it came (nothing decoded, nothing dropped) and wakes a listener once between two reads, so a flood costs a push per frame and
 //     a hidden terminal costs no more. What bounds it is the HOST's flow control: the first acknowledgement, of nothing, turns the host's window on as soon as the stream is ready, and the feed acknowledges every byte the
-//     reader parsed of what the shell wrote LIVE. Never a byte of a replay and never a gap;
+//     reader parsed of what the shell wrote LIVE. The bytes of a replay are credited as they arrive (the host counts every output frame against its window), a gap's never;
 //   - what the user types goes out in input frames of at most `MAX_INPUT_BYTES`, in the order it was typed: the order is the stream's, so nothing is numbered, windowed or sent again. What is typed before the stream is
 //     ready, or while it is connecting again, waits and goes after `ready`;
 //   - the size STARTS the terminal and is then settled (`settleMs`: a drag is one frame), sent once the stream is ready, rows and columns together;
@@ -668,6 +668,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     cursor += bytes.length;
     if (gathering !== undefined) {
       gathering.parts.push(bytes);
+      // The host counts every output frame against its window, a replay's too: they are credited as they arrive, since the reader takes the replay only when it is complete (a replay larger than the window would never be).
+      owed += bytes.length;
+      sendAck();
       if (cursor === gathering.end) {
         publishGathered();
       }
@@ -755,8 +758,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
   /** The stream ended with no word of the host: when the host had said the terminal ended that is its end, and otherwise it is connected again from the offset the feed has, and then given up in words. */
   const onClosed = () => {
+    const midReplay = gathering !== undefined;
     unlink(false);
-    const hint = readyEnded ?? (attachTo?.ended === true ? {} : undefined);
+    // A terminal that had ended ends the feed only with its whole replay: a stream that dropped before that is connected again, from nothing.
+    const hint = midReplay ? undefined : (readyEnded ?? (attachTo?.ended === true ? {} : undefined));
     if (hint !== undefined) {
       fate = 'dismiss';
       over(withProgram(endOf(hint), status.program));
@@ -1003,7 +1008,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
 
       // A stream the page left is not closed here: the host closes it on the detach frame, and closing it first would lose the frame.
-      unlink(!left);
+      unlink(true);
       dropOutgoing();
       held.clear();
       awaiting = undefined;

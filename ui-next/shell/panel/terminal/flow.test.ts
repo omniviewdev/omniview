@@ -237,7 +237,7 @@ describe('a reload: a page takes a terminal over', () => {
     return w;
   }
 
-  it('writes the replay first, muted, and then the live output, once and in order, and acknowledges the live bytes only: not one byte of the replay', async () => {
+  it('writes the replay first, muted, and then the live output, once and in order, and acknowledges the replay as it arrives and the live bytes as they are parsed', async () => {
     const w = await reattached();
     for (let offset = 0; offset < REPLAY; offset += READ) {
       w.stream().output(1_000 + offset, sequence(1_000 + offset, Math.min(READ, REPLAY - offset)));
@@ -249,7 +249,7 @@ describe('a reload: a page takes a terminal over', () => {
     expect(same(written(w.engine()), sequence(1_000, REPLAY + live))).toBe(true);
     expect(w.engine().resets()).toBe(1);
     expect(w.stream().acks()[0]).toBe(0);
-    expect(acked(w.stream())).toBe(live);
+    expect(acked(w.stream())).toBe(REPLAY + live);
     expect(w.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
   });
 
@@ -268,7 +268,7 @@ describe('a reload: a page takes a terminal over', () => {
     }
 
     expect(w.stream().typed()).toBe('ls');
-    expect(acked(w.stream())).toBe(0);
+    expect(acked(w.stream())).toBe(REPLAY);
   });
 
   it('is brought to a terminal of the size and the modes it has: the screen takes the replay\'s own, which the feed read from the host\'s ready', async () => {
@@ -310,7 +310,7 @@ describe('a stream that dropped and was connected again', () => {
     expect(again.acks()).toEqual([0, 60]);
   });
 
-  it('brings the screen to what the host kept when it lost the bytes the page asked for: a reset, the replay, and then the live bytes, and acknowledges the live bytes only', async () => {
+  it('brings the screen to what the host kept when it lost the bytes the page asked for: a reset, the replay, and then the live bytes, and acknowledges the replay as it arrives and the live bytes as they are parsed', async () => {
     const { w } = await dropped();
     vi.advanceTimersByTime(250);
     expect(w.channels.streams()).toHaveLength(2);
@@ -321,7 +321,7 @@ describe('a stream that dropped and was connected again', () => {
     await w.drain();
     expect(w.engine().resets()).toBe(1);
     expect(same(written(w.engine()), Uint8Array.from([...sequence(0, 100), ...sequence(5_000, 65)]))).toBe(true);
-    expect(again.acks()).toEqual([0, 25]);
+    expect(again.acks()).toEqual([0, 40, 25]);
   });
 });
 

@@ -312,16 +312,40 @@ describe('acknowledging what the reader parsed', () => {
     expect(r.stream().acks()).toEqual([0, 4, 2, 2]);
   });
 
-  it('acknowledges no byte of a replay: the reader never reads one, and the host\'s window starts at nothing', async () => {
+  it('acknowledges the bytes of a replay as they arrive (the host counts every output frame against its window) and none of a gap, and the reader\'s own acknowledgements only for live bytes', async () => {
     const r = attaching();
     r.stream().ready({ start: 0, end: 6 });
     r.stream().output(0, 'abc');
     r.stream().output(3, 'def');
+    expect(acked(r.stream())).toBe(6);
     r.stream().output(6, 'live');
     expect(replayOf(r.feed).data).toEqual(new Uint8Array(bytes('abcdef')));
     expect(readText(r.feed)).toBe('live');
     r.feed.ack(4);
-    expect(r.stream().acks()).toEqual([0, 4]);
+    expect(r.stream().acks()).toEqual([0, 3, 3, 4]);
+    r.stream().gap(10, 50);
+    expect(acked(r.stream())).toBe(10);
+  });
+
+  it('completes a replay of 2 MiB against a host whose window is 1 MiB: the host sends only while sent less acknowledged fits the window, and every replay byte it sent is credited', async () => {
+    const WINDOW = 1_048_576;
+    const FRAME = 65_536;
+    const TOTAL = 2 * WINDOW;
+    const r = attaching();
+    r.stream().ready({ start: 0, end: TOTAL });
+    let sent = 0;
+    const stream = r.stream();
+    for (let guard = 0; guard < 1_000 && sent < TOTAL; guard += 1) {
+      if (sent - acked(stream) + FRAME > WINDOW) {
+        break;
+      }
+
+      stream.output(sent, new Uint8Array(FRAME));
+      sent += FRAME;
+    }
+
+    expect(sent).toBe(TOTAL);
+    expect(replayOf(r.feed).data).toHaveLength(TOTAL);
   });
 
   it('sends nothing for a feed that was closed, that left, or whose session is over', async () => {
@@ -642,6 +666,17 @@ describe('a terminal the feed attaches to (a page after a reload, a take-back)',
     expect(replayOf(r.feed).data).toEqual(new Uint8Array(bytes('abcdef')));
   });
 
+  it('fails when a frame of the replay goes past its end, and accepts one that ends exactly at it', async () => {
+    const over = attaching();
+    over.stream().ready({ start: 0, end: 4 });
+    over.stream().output(0, 'abcde');
+    expect(over.feed.getSnapshot().state).toBe('failed');
+    const exact = attaching();
+    exact.stream().ready({ start: 0, end: 4 });
+    exact.stream().output(0, 'abcd');
+    expect(exact.feed.getSnapshot().state).toBe('running');
+  });
+
   it('fails in words when a frame of the replay does not continue where the one before ended', async () => {
     const r = attaching();
     r.stream().ready({ start: 0, end: 6 });
@@ -732,6 +767,21 @@ describe('a stream that dropped', () => {
   });
 
   describe('and the host has what the feed lacks (`lost` is 0)', () => {
+    it('credits nothing to the new stream for what the reader parsed while the feed was reconnecting', async () => {
+      const r = await running();
+      r.stream().output(0, 'abcdef');
+      r.feed.read();
+      r.stream().drop();
+      r.feed.ack(6);
+      const again = reconnect(r);
+      again.ready({ start: 6, end: 6 });
+      expect(again.acks()).toEqual([0]);
+      again.output(6, 'gh');
+      r.feed.read();
+      r.feed.ack(2);
+      expect(again.acks()).toEqual([0, 2]);
+    });
+
     it('continues the output where it was, with no replay and nothing muted', async () => {
       const r = await running();
       r.stream().output(0, 'abc');
@@ -804,7 +854,7 @@ describe('a stream that dropped', () => {
       expect(readText(r.feed)).toBe('z');
     });
 
-    it('credits the host for the bytes it dropped unread, and for no byte of the replay, and not twice for what the reader already had', async () => {
+    it('credits the host for the bytes it dropped unread and for the replay as it arrives, and not twice for what the reader already had', async () => {
       const r = await running();
       r.stream().output(0, 'abcd');
       r.feed.read();
@@ -820,7 +870,7 @@ describe('a stream that dropped', () => {
       // The reader parsed the four bytes of the old stream it had been given, and now parses what the new stream delivered.
       r.feed.ack(4);
       r.feed.ack(2);
-      expect(again.acks()).toEqual([0, 2]);
+      expect(again.acks()).toEqual([0, 2, 2]);
     });
   });
 
@@ -853,7 +903,43 @@ describe('a stream that dropped', () => {
   });
 });
 
+describe('a stream that drops in the middle of the replay of a terminal that had ended', () => {
+  it('is connected again, with nothing applied, and ends with the whole replay: it does not end with none', async () => {
+    const r = attaching({ ended: true });
+    r.stream().ready({ start: 0, end: 6, ended: { reason: 'exited', exit_code: 4 } });
+    r.stream().output(0, 'abc');
+    r.stream().drop();
+    expect(r.feed.getSnapshot().state).toBe('running');
+    expect(reconnect(r).fromOffset).toBeUndefined();
+    r.stream().ready({ start: 0, end: 6, ended: { reason: 'exited', exit_code: 4 } });
+    r.stream().output(0, 'abcdef');
+    r.stream().ended({ reason: 'exited', exit_code: 4 });
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'ended', exit: { code: 4 } });
+    expect(replayOf(r.feed).data).toEqual(new Uint8Array(bytes('abcdef')));
+  });
+});
+
 describe('a gap (`gap{from, to}`: the host overwrote bytes before it sent them)', () => {
+  it('fails when it does not start where the output stands, and when it ends before it starts, and accepts an empty one', async () => {
+    const early = await running();
+    early.stream().output(0, 'abc');
+    early.stream().gap(2, 9);
+    expect(early.feed.getSnapshot().state).toBe('failed');
+    const late = await running();
+    late.stream().output(0, 'abc');
+    late.stream().gap(4, 9);
+    expect(late.feed.getSnapshot().state).toBe('failed');
+    const backwards = await running();
+    backwards.stream().output(0, 'abc');
+    backwards.stream().gap(3, 2);
+    expect(backwards.feed.getSnapshot().state).toBe('failed');
+    const empty = await running();
+    empty.stream().output(0, 'abc');
+    empty.stream().gap(3, 3);
+    expect(empty.feed.getSnapshot().state).toBe('running');
+  });
+
+
   it('is a replay of nothing at `to` for the reader, which resets the screen, with the size and modes the feed last knew', async () => {
     const r = await running({ size: { cols: 100, rows: 30 }, modes: { bracketed_paste: true } });
     r.stream().output(0, 'abc');
