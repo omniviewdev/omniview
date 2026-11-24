@@ -2,7 +2,6 @@ import { useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MenuHost, ThemeProvider, TooltipHost } from '@omniviewdev/kit';
 import '@omniviewdev/kit/styles.css';
-import { guidance } from '../content/catalog';
 import { groups } from '../content/registry';
 import type { PreviewReading, PreviewUpdate, TokenValues } from './Preview';
 
@@ -10,7 +9,7 @@ const parent = window.parent;
 const origin = window.location.origin;
 
 function ExampleCanvas({ update }: { update: PreviewUpdate }) {
-  const { part, group, name, appearance, overrides, revision } = update;
+  const { group, name, appearance, overrides, revision, tokenNames } = update;
   const Example = groups[group]?.[name];
 
   useLayoutEffect(() => {
@@ -23,7 +22,7 @@ function ExampleCanvas({ update }: { update: PreviewUpdate }) {
 
     const styles = getComputedStyle(root);
     const values: TokenValues = {};
-    for (const { name: token } of guidance[part]?.tokens ?? []) {
+    for (const token of tokenNames) {
       values[token] = styles.getPropertyValue(token).trim();
     }
     const reading: PreviewReading = { type: 'kit-preview:reading', revision, values };
@@ -32,7 +31,7 @@ function ExampleCanvas({ update }: { update: PreviewUpdate }) {
     return () => {
       for (const [token] of entries) root.style.removeProperty(token);
     };
-  }, [overrides, part, revision]);
+  }, [overrides, revision, tokenNames]);
 
   return (
     <ThemeProvider themeId={appearance.theme} density={appearance.density} textSize={appearance.textSize}>

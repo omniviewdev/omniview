@@ -11,13 +11,6 @@ export const entries = {
       'Pair onRowActivate with a Link or Button in the row. Row clicks do not add a keyboard tab stop.',
       'Use DataView when the table needs collection states, filters, and a footer. Use ListRows for short summaries that do not need sortable columns.',
     ],
-    tokens: [
-      { name: '--ov-row-height', label: 'One-line row baseline', property: 'height' },
-      { name: '--ov-table-metadata-height', label: 'Two-line row baseline', property: 'height' },
-      { name: '--ov-table-header-height', label: 'Sticky header height', property: 'height' },
-      { name: '--ov-selection-active', label: 'Selected row inside the focused table', property: 'background-color' },
-      { name: '--ov-selection-inactive', label: 'Selected row outside the focused table', property: 'background-color' },
-    ],
   },
   DataView: {
     category: 'Collections',
@@ -27,12 +20,6 @@ export const entries = {
       'Use loading for the first load, empty when there is nothing to list, and no-match when filters hide everything. Keep the filter reset in the toolbar.',
       'Use error when a failure leaves no rows. The view announces the failure as an alert, hides the footer, and offers Retry only when you pass onRetry.',
       'Use DataTable directly when the surrounding view already owns controls, counts, and result states.',
-    ],
-    tokens: [
-      { name: '--ov-spacing-8', label: 'Space below filters and toolbar', property: 'padding-block-end' },
-      { name: '--ov-progress-track', label: 'Loading skeleton bars', property: 'background-color' },
-      { name: '--ov-error-border', label: 'Failure notice edge', property: 'border' },
-      { name: '--ov-error-bg', label: 'Failure notice fill', property: 'background-color' },
     ],
   },
   LogView: {
@@ -44,12 +31,6 @@ export const entries = {
       'Use arrows, Page Up, Page Down, Home, and End to move through the focused list. In find, Enter and Shift+Enter move between matches.',
       'Use createLogViewControls for external follow, pause, clear, and copy commands. Use DataTable for structured records that need sorting instead of tailing.',
     ],
-    tokens: [
-      { name: '--ov-font-code', label: 'Log message face', property: 'font-family' },
-      { name: '--ov-warning-bg', label: 'Search match fill', property: 'background-color' },
-      { name: '--ov-accent', label: 'Current search match fill', property: 'background-color' },
-      { name: '--ov-error-fg', label: 'Error row marker', property: 'box-shadow' },
-    ],
   },
   CollectionFooter: {
     category: 'Collections',
@@ -60,11 +41,6 @@ export const entries = {
       'Use one footer per collection. Count and selection changes are announced through a status region; keep actions in WorkspaceToolbar.',
       'Pass hiddenColumns only for columns hidden at this width, not columns the user turned off. Offer the hidden columns in the Columns chooser.',
     ],
-    tokens: [
-      { name: '--ov-border-subtle', label: 'Separator above the footer', property: 'border-top' },
-      { name: '--ov-fg-muted', label: 'Count and status text', property: 'color' },
-      { name: '--ov-fs-12', label: 'Tabular count text size', property: 'font-size' },
-    ],
   },
   ListRows: {
     category: 'Collections',
@@ -74,11 +50,6 @@ export const entries = {
       'Keep title and detail brief: both clip to one line. Put an explicit Link in the title for navigation; the row itself is not a control.',
       'Use DataTable for comparable records that need column headers or sorting, or KeyValue for labeled facts about one record.',
     ],
-    tokens: [
-      { name: '--ov-row-height', label: 'Minimum row height', property: 'min-height' },
-      { name: '--ov-spacing-8', label: 'Space between aligned tracks', property: 'column-gap' },
-      { name: '--ov-fg-muted', label: 'Detail and trailing metadata', property: 'color' },
-    ],
   },
   KindTile: {
     category: 'Collections',
@@ -87,12 +58,6 @@ export const entries = {
       'Map each kind to its icon and tone in the owning view. Use distinct glyphs so kinds do not differ by color alone.',
       'Use the default 20 px box in lists and 16 px in dense trees. Both use the same 16 px glyph.',
       'Keep the kind name in text because the tile is hidden from assistive technology. Use Status for a condition, not KindTile.',
-    ],
-    tokens: [
-      { name: '--ov-icon', label: 'Neutral glyph ink', property: 'color' },
-      { name: '--ov-brand-orange', label: 'Orange glyph ink', property: 'color' },
-      { name: '--ov-brand-blue', label: 'Blue glyph ink', property: 'color' },
-      { name: '--ov-radius-control', label: 'Tile corner radius', property: 'border-radius' },
     ],
   },
   QuickFilters: {
@@ -104,12 +69,6 @@ export const entries = {
       'The group takes one tab stop. Left and Right move focus, Home and End jump to the ends, and activation calls onSelect.',
       'Use SearchField for free text or Select for a long list of options. QuickFilters does not apply the filter or change selection itself.',
     ],
-    tokens: [
-      { name: '--ov-spacing-8', label: 'Gap between chips (RovingGroup)', property: 'gap' },
-      { name: '--ov-control-height', label: 'Minimum toggle height (Chip)', property: 'min-height' },
-      { name: '--ov-selection-inactive', label: 'Pressed fill (Chip)', property: 'background-color' },
-      { name: '--ov-accent', label: 'Keyboard focus ring (Chip)', property: 'outline' },
-    ],
   },
   KeyValue: {
     category: 'Collections',
@@ -120,12 +79,6 @@ export const entries = {
       'Give a row a stable id if its label can change. The list adds no tab stops; Link and other controls inside values keep their own.',
       'Use DataTable to compare the same fields across records or ListRows for a stream of named items.',
     ],
-    tokens: [
-      { name: '--ov-spacing-16', label: 'Gap between each label and value', property: 'column-gap' },
-      { name: '--ov-spacing-24', label: 'Space between pairs in a multi-column list', property: 'gap' },
-      { name: '--ov-fg-muted', label: 'Label text', property: 'color' },
-      { name: '--ov-font-code', label: 'Monospace value face', property: 'font-family' },
-    ],
   },
   WorkspaceToolbar: {
     category: 'Collections',
@@ -134,10 +87,6 @@ export const entries = {
       'Place search and active filter actions in children. Pass secondary view commands such as Columns to end.',
       'Give the group a purpose-driven label such as “Search and filter jobs.” Name each control too; the group uses ordinary Tab order.',
       'Keep result counts in CollectionFooter. Use QuickFilters for counted state choices, or Stack for a layout without a named command group.',
-    ],
-    tokens: [
-      { name: '--ov-spacing-8', label: 'Space between commands and wrapped rows', property: 'gap' },
-      { name: '--ov-control-height', label: 'Minimum lane height', property: 'min-height' },
     ],
   },
 } satisfies Record<string, Guide>;

@@ -10,12 +10,6 @@ export const entries = {
       'Use compact in shallow surfaces to replace the icon box with a bare glyph and the caption with body text.',
       'The owning view controls placement, announcements, and focus.',
     ],
-    tokens: [
-      { name: '--ov-spacing-8', label: 'Default gap', property: 'gap' },
-      { name: '--ov-spacing-12', label: 'Compact gap', property: 'gap' },
-      { name: '--ov-fg-muted', label: 'Muted foreground', property: 'color' },
-      { name: '--ov-icon', label: 'Default icon foreground', property: 'color' },
-    ],
   },
   ProgressBar: {
     category: 'Primitives',
@@ -26,13 +20,6 @@ export const entries = {
       'Keep the last measured value when paused. The paused prop changes the fill and stops motion; supply the paused status yourself.',
       'Indeterminate progress uses a stripe by default. Set indeterminateMotion to sweep for a moving segment. Both respect reduced motion.',
     ],
-    tokens: [
-      { name: '--ov-radius-mark', label: 'Track and fill radius', property: 'border-radius' },
-      { name: '--ov-progress-track', label: 'Track background', property: 'background-color' },
-      { name: '--ov-accent', label: 'Active fill', property: 'background-color' },
-      { name: '--ov-fg-secondary', label: 'Paused fill', property: 'background-color' },
-      { name: '--ov-link', label: 'Animated stripe highlight', property: 'background-image' },
-    ],
   },
   KeyHint: {
     category: 'Primitives',
@@ -40,9 +27,6 @@ export const entries = {
     guidance: [
       'Supply the platform’s shortcut notation in keys. KeyHint keeps the chord left-to-right but does not format it or bind keys.',
       'Use spokenKeys when shortcut glyphs do not read clearly, and label when the action needs text beside the chord.',
-    ],
-    tokens: [
-      { name: '--ov-spacing-4', label: 'Gap between chord and label', property: 'gap' },
     ],
   },
 } satisfies Record<string, Guide>;

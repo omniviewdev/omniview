@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Button, Field, SearchField, Select, TextInput, ThemeProvider,
@@ -6,13 +6,17 @@ import {
   type Density, type TextSize, type ThemeId, type TokenName,
 } from '@omniviewdev/kit';
 import '@omniviewdev/kit/styles.css';
-import { guidance, type Guide } from '../content/catalog';
+import { guidance } from '../content/catalog';
+import type { PropGroup } from '../scripts/props';
+import type { TokenUse } from '../scripts/tokenUsage';
 import { HighlightedCode } from './HighlightedCode';
 import { Preview, type Appearance, type TokenValues } from './Preview';
+import { PropsReference } from './PropsReference';
 import './docs.css';
 
-type Example = { group: string; name: string; source: string };
-type Catalog = { revision: string; parts: Record<string, { examples: Example[] }> };
+type Example = { group: string; name: string; source: string; caption?: string };
+type CatalogPart = { examples: Example[]; propGroups: PropGroup[]; tokenUsage: TokenUse[] };
+type Catalog = { revision: string; parts: Record<string, CatalogPart> };
 type SourceFile = { name: string; code: string };
 
 async function fetchJSON<T>(path: string, signal: AbortSignal): Promise<T> {
@@ -81,22 +85,31 @@ function tokenValueProperty(name: TokenName) {
   return 'color';
 }
 
-function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
+const tokenUseLabels: Record<TokenUse['kind'], string> = {
+  direct: 'Direct',
+  shared: 'Shared',
+  composed: 'Composed',
+};
+
+function Inspector({ part, revision, tokenUses, tokenNames, resolved, overrides, setOverrides }: {
   part: string;
-  tokens: Guide['tokens'];
+  revision: string;
+  tokenUses: TokenUse[];
+  tokenNames: readonly TokenName[];
   resolved: TokenValues;
   overrides: TokenValues;
   setOverrides: (values: TokenValues) => void;
 }) {
-  const [tokenName, setTokenName] = useState<TokenName>(tokens[0].name);
+  const [tokenName, setTokenName] = useState<TokenName>(tokenNames[0]);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
   const valueProperty = tokenValueProperty(tokenName);
-  const token = tokens.find(({ name }) => name === tokenName)!;
+  const sourceRoot = `https://github.com/omniviewdev/omniview/blob/${revision}/packages/kit`;
+  const evidence = tokenUses.filter(({ name }) => name === tokenName);
   const active = overrides[tokenName];
   const value = resolved[tokenName];
-  const edits = tokens.flatMap(({ name }) => overrides[name] === undefined ? [] : [`  ${name}: ${overrides[name]};`]);
+  const edits = tokenNames.flatMap((name) => overrides[name] === undefined ? [] : [`  ${name}: ${overrides[name]};`]);
   const css = `[data-kit-preview] {\n${edits.join('\n')}\n}\n`;
 
   function apply(event: FormEvent) {
@@ -114,19 +127,18 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
     <section id="tokens" className="section" aria-labelledby="tokens-title">
       <p className="eyebrow"><span>02</span> Styling</p>
       <h2 id="tokens-title">Token inspector</h2>
-      <p className="section-intro">Read live token values and try overrides. Changes stay inside the preview; they never update the documentation theme.</p>
+      <p className="section-intro">Explore tokens found in Kit source and try overrides. Readings come from the preview root. A use in source does not mean the current example renders it.</p>
       <a className="text-link" href="#live-preview">Back to live preview ↑</a>
       <div className="inspector panel">
         <form ref={formRef} className="token-form" onSubmit={apply}>
           <Field label={`${part} token`} layout="stacked">
-            <Select value={tokenName} options={tokens.map(({ name }) => ({ value: name, label: name }))} onValueChange={(value) => {
+            <Select value={tokenName} options={tokenNames.map((name) => ({ value: name, label: name }))} onValueChange={(value) => {
               const name = value as TokenName;
               setTokenName(name);
               setDraft(overrides[name] ?? '');
               setError('');
             }} />
           </Field>
-          <p className="token-role">{token.label} — used in <code>{token.property}</code>.</p>
           <p className="token-role">Override input accepts a CSS <code>{valueProperty}</code> value.</p>
           <div className="token-reading">
             <span>{active === undefined ? 'Current value' : 'Overridden value'}</span>
@@ -173,6 +185,20 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
             </>
           ) : <p className="empty-state">No overrides. Add a CSS value to see a scoped export here.</p>}
         </div>
+        <div className="token-evidence">
+          <h3>Source uses <span className="count">{evidence.length}</span></h3>
+          <p className="token-role">Direct uses are in this component’s styles, shared uses come from shared rules, and composed uses come from other Kit components it renders.</p>
+          <ul className="token-use-list" role="list">
+            {evidence.map(({ kind, path, selector, property }) => (
+              <li key={`${kind}:${path}:${selector}:${property}`}>
+                <span className="token-kind">{tokenUseLabels[kind]}</span>
+                <code>{property}</code>
+                <code>{selector}</code>
+                <a href={`${sourceRoot}/${path.split('/').map(encodeURIComponent).join('/')}`}><code>{path}</code></a>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
@@ -207,14 +233,16 @@ function ExampleSource({ path }: { path: string }) {
   );
 }
 
-function ComponentDoc({ part, revision, examples, appearance, setAppearance }: {
+function ComponentDoc({ part, revision, catalogPart, appearance, setAppearance }: {
   part: string;
   revision: string;
-  examples: Example[];
+  catalogPart: CatalogPart;
   appearance: Appearance;
   setAppearance: (value: Appearance) => void;
 }) {
   const guide = guidance[part];
+  const { examples, propGroups, tokenUsage } = catalogPart;
+  const tokenNames = useMemo(() => [...new Set(tokenUsage.map(({ name }) => name))], [tokenUsage]);
   const [exampleIndex, setExampleIndex] = useState(() => {
     const standard = examples.findIndex(({ group, name }) => group === part && name === 'Default');
     if (standard >= 0) return standard;
@@ -250,7 +278,7 @@ function ComponentDoc({ part, revision, examples, appearance, setAppearance }: {
       <section id="playground" className="section" aria-labelledby="playground-title">
         <p className="eyebrow"><span>01</span> Examples</p>
         <h2 id="playground-title">Playground</h2>
-        <p className="section-intro">Try the same {part} examples that ship with Kit. Use the controls to explore their states and appearance.</p>
+        {example.caption && <p className="section-intro">{example.caption}</p>}
         <a className="text-link" href={`./storybook/?path=/story/${story}`}>Open {displayName(example.name)} in Storybook <span aria-hidden="true">↗</span></a>
         <div className="playground panel">
           <div className="toolbar">
@@ -269,14 +297,22 @@ function ComponentDoc({ part, revision, examples, appearance, setAppearance }: {
           </div>
           <div id="live-preview" className="canvas">
             <span className="canvas-badge" aria-hidden="true"><span /> Live preview</span>
-            <Preview part={part} group={example.group} name={example.name} appearance={appearance} overrides={overrides} onReadTokens={setResolved} />
+            <Preview part={part} group={example.group} name={example.name} appearance={appearance} overrides={overrides} tokenNames={tokenNames} onReadTokens={setResolved} />
           </div>
           <ExampleSource key={example.source} path={example.source} />
         </div>
       </section>
-      {guide.tokens.length > 0 && <Inspector part={part} tokens={guide.tokens} resolved={resolved} overrides={overrides} setOverrides={setOverrides} />}
+      {tokenNames.length > 0 && <Inspector part={part} revision={revision} tokenUses={tokenUsage} tokenNames={tokenNames} resolved={resolved} overrides={overrides} setOverrides={setOverrides} />}
+      {propGroups.length > 0 && (
+        <section id="props" className="section" aria-labelledby="props-title">
+          <p className="eyebrow"><span>{tokenNames.length > 0 ? '03' : '02'}</span> API</p>
+          <h2 id="props-title">Props reference</h2>
+          <p className="section-intro props-scroll-note">Swipe or scroll across wide tables to see all columns.</p>
+          <PropsReference groups={propGroups} />
+        </section>
+      )}
       <section id="usage" className="section" aria-labelledby="usage-title">
-        <p className="eyebrow"><span>{guide.tokens.length ? '03' : '02'}</span> Patterns</p>
+        <p className="eyebrow"><span>{String(2 + Number(propGroups.length > 0) + Number(tokenNames.length > 0)).padStart(2, '0')}</span> Patterns</p>
         <h2 id="usage-title">Usage guidance</h2>
         <ul className="guidance">
           {guide.guidance.map((tip) => <li key={tip}>{tip}</li>)}
@@ -299,6 +335,7 @@ function App() {
   const moveFocus = useRef(false);
   const parts = catalog ? Object.keys(catalog.parts) : [];
   const part = requested && parts.includes(requested) ? requested : parts[0];
+  const selectedPart = part ? catalog?.parts[part] : undefined;
   const terms = query.toLowerCase().match(/[a-z0-9]+/g) ?? [];
   const groups = new Map<string, string[]>();
   let matchCount = 0;
@@ -384,15 +421,16 @@ function App() {
               ))}
             </div>}
           </nav>
-          {part && <nav className="on-page" aria-label="On this page">
+          {selectedPart && <nav className="on-page" aria-label="On this page">
             <p className="eyebrow">On this page</p>
             <a href="#playground">Playground</a>
-            {guidance[part].tokens.length > 0 && <a href="#tokens">Token inspector</a>}
+            {selectedPart.tokenUsage.length > 0 && <a href="#tokens">Token inspector</a>}
+            {selectedPart.propGroups.length > 0 && <a href="#props">Props reference</a>}
             <a href="#usage">Usage guidance</a>
           </nav>}
         </aside>
         {!result ? <p className="load-status" role="status">Loading the component catalog…</p>
-          : catalog && part ? <ComponentDoc key={part} part={part} revision={catalog.revision} examples={catalog.parts[part].examples} appearance={appearance} setAppearance={setAppearance} />
+          : catalog && part && selectedPart ? <ComponentDoc key={part} part={part} revision={catalog.revision} catalogPart={selectedPart} appearance={appearance} setAppearance={setAppearance} />
           : <p className="load-status" role="alert">Component catalog unavailable.</p>}
       </main>
     </>

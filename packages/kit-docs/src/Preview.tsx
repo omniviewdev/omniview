@@ -8,10 +8,11 @@ type Selection = { part: string; group: string; name: string };
 type Props = Selection & {
   appearance: Appearance;
   overrides: TokenValues;
+  tokenNames: readonly TokenName[];
   onReadTokens: (values: TokenValues) => void;
 };
 
-export type PreviewUpdate = Omit<Props, 'onReadTokens'> & {
+export type PreviewUpdate = Omit<Props, 'part' | 'onReadTokens'> & {
   type: 'kit-preview:update';
   revision: number;
 };
@@ -22,7 +23,7 @@ export type PreviewReading = {
   values: TokenValues;
 };
 
-export function Preview({ part, group, name, appearance, overrides, onReadTokens }: Props) {
+export function Preview({ part, group, name, appearance, overrides, tokenNames, onReadTokens }: Props) {
   const frame = useRef<HTMLIFrameElement>(null);
   const revision = useRef(0);
   const [loadCount, setLoadCount] = useState(0);
@@ -46,14 +47,14 @@ export function Preview({ part, group, name, appearance, overrides, onReadTokens
     const update: PreviewUpdate = {
       type: 'kit-preview:update',
       revision: ++revision.current,
-      part,
       group,
       name,
       appearance: { theme, density, textSize },
       overrides,
+      tokenNames,
     };
     frame.current?.contentWindow?.postMessage(update, window.location.origin);
-  }, [loadCount, part, group, name, theme, density, textSize, overrides]);
+  }, [loadCount, group, name, theme, density, textSize, overrides, tokenNames]);
 
   return (
     <iframe

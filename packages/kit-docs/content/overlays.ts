@@ -1,39 +1,5 @@
 import type { Guide } from './catalog.ts';
 
-type Token = Guide['tokens'][number];
-
-function token(name: Token['name'], label: string, property: string): Token {
-  return { name, label, property };
-}
-
-const uiType = [
-  token('--ov-fg', 'Text', 'color'),
-  token('--ov-font-ui', 'UI font', 'font-family'),
-  token('--ov-font-features', 'UI font features', 'font-feature-settings'),
-  token('--ov-fs-13', 'Body text size', 'font-size'),
-  token('--ov-lh-16', 'Body line height', 'line-height'),
-];
-
-const popupEdge = [
-  token('--ov-border-popup', 'Popup edge', 'border-color'),
-  token('--ov-radius-popup', 'Popup corners', 'border-radius'),
-];
-
-const menuStates = [
-  token('--ov-bg-popup', 'Menu surface', 'background-color'),
-  token('--ov-selection-active', 'Focused menu item', 'background-color'),
-  token('--ov-error-fg', 'Destructive label', 'color'),
-  token('--ov-fg-disabled', 'Unavailable label', 'color'),
-];
-
-const ghostIcon = [
-  token('--ov-icon', 'Command icon', 'color'),
-  token('--ov-hover-toolbar', 'Ghost command hover', 'background-color'),
-  token('--ov-pressed', 'Ghost command press', 'background-color'),
-  token('--ov-accent', 'Command focus ring', 'outline-color'),
-  token('--ov-radius-control', 'Command corners', 'border-radius'),
-];
-
 export const entries = {
   HoverCard: {
     category: 'Overlays',
@@ -43,14 +9,6 @@ export const entries = {
       'Return a label and React content from render(key), or undefined when no card exists. Put hooks and subscriptions in a component inside the content, not in render.',
       'Hover and keyboard-visible focus normally open the card after 500 ms, without moving focus into it. For interactive content, opt in with arrow: down and supply a short announcement explaining how to reach the actions. Escape closes the card and returns focus from inside it.',
       'The native popover stays in the React tree but draws in the browser top layer. It opens below the anchor or flips above; it caps its width at 336 px and scrolls its body if height is constrained.',
-    ],
-    tokens: [
-      ...uiType,
-      ...popupEdge,
-      token('--ov-bg-popup', 'Card surface', 'background-color'),
-      token('--ov-shadow-popup', 'Card shadow', 'box-shadow'),
-      token('--ov-spacing-12', 'Card inset', 'padding'),
-      token('--ov-spacing-8', 'Content row gap', 'gap'),
     ],
   },
   Menu: {
@@ -64,27 +22,6 @@ export const entries = {
       'Use the inline forward and back arrows to enter and leave submenus. Escape closes one level at a time. Tab closes the menu and continues from the trigger. Selection closes the menu and returns focus before running the action. A removed or recycled trigger does not regain focus.',
       'The host mounts only the open menu and its open submenu branch. It uses the top layer where supported while keeping the popup inside its containing dialog or popover. Placement follows the trigger or context point and constrains the popup to the viewport. The item list scrolls when needed.',
     ],
-    tokens: [
-      ...uiType,
-      ...popupEdge,
-      ...menuStates,
-      token('--ov-shadow-popup', 'Popup shadow', 'box-shadow'),
-      token('--ov-selection-inactive', 'Expanded submenu item', 'background-color'),
-      token('--ov-radius-control', 'Item corners', 'border-radius'),
-      token('--ov-row-target', 'Item and group label height', 'min-height'),
-      token('--ov-icon', 'Item icons and marks', 'color'),
-      token('--ov-icon-disabled', 'Unavailable item icons and marks', 'color'),
-      token('--ov-fg-muted', 'Group labels, metadata and key hints', 'color'),
-      token('--ov-fg-editor', 'Focused item metadata and shortcut', 'color'),
-      token('--ov-fs-12', 'Group labels, metadata and key hints', 'font-size'),
-      token('--ov-spacing-4', 'Separator margin and metadata gap', 'margin-block / gap'),
-      token('--ov-spacing-6', 'Context menu list block inset', 'padding-block'),
-      token('--ov-spacing-8', 'List inset and scroll padding', 'padding / scroll-padding-block'),
-      token('--ov-spacing-12', 'Metadata offset and key hint gap', 'margin-inline-start / gap'),
-      token('--ov-spacing-16', 'Key hint footer inline inset', 'padding-inline'),
-      token('--ov-spacing-20', 'Mark and icon columns', 'grid-template-columns'),
-      token('--ov-spacing-24', 'Shortcut offset', 'margin-inline-start'),
-    ],
   },
   Sheet: {
     category: 'Overlays',
@@ -94,19 +31,6 @@ export const entries = {
       'The native dialog enters the browser top layer without a portal and makes the rest of the page inert. Tab wraps inside. Focus the opener before mounting if pointer activation does not focus it; Sheet restores it on close if focus is otherwise lost and the opener still exists.',
       'Close is the first control; content can take initial focus when the task calls for it. Keep draft state above Sheet if it must survive closing and reopening.',
       'The centered frame is at most 1060 × 640 px and shrinks to leave 24 px on each side. The body fills the space under the header, clips overflow, and adds no padding. Put scrolling and padding in the body layout.',
-    ],
-    tokens: [
-      ...uiType,
-      ...popupEdge,
-      ...ghostIcon,
-      token('--ov-bg-dialog', 'Dialog surface', 'background-color'),
-      token('--ov-shadow-popup', 'Dialog shadow', 'box-shadow'),
-      token('--ov-spacing-24', 'Viewport clearance', 'inline-size / block-size'),
-      token('--ov-spacing-6', 'Header block inset', 'padding-block'),
-      token('--ov-spacing-12', 'Header inline inset', 'padding-inline'),
-      token('--ov-spacing-8', 'Gap between title and Close', 'gap'),
-      token('--ov-row-target', 'Close control size', 'width / height'),
-      token('--ov-spacing-4', 'Close icon inset', 'padding'),
     ],
   },
   TooltipHost: {
@@ -118,14 +42,6 @@ export const entries = {
       'Pointer hover normally waits 500 ms; data-ov-tip-delay="0" opens immediately. Keyboard-visible focus opens immediately too. Escape hides the tooltip without swallowing the key. For a tip that repeats the trigger’s aria-label, the host does not add a second description.',
       'The popover draws in the browser top layer rather than a portal. Text wraps within a 300 px cap or a narrower viewport, and the text body scrolls if height is constrained.',
     ],
-    tokens: [
-      ...uiType,
-      token('--ov-bg-feedback', 'Tooltip surface and edge', 'background-color / border-color'),
-      token('--ov-radius-control', 'Tooltip corners', 'border-radius'),
-      token('--ov-shadow-tooltip', 'Tooltip shadow', 'box-shadow'),
-      token('--ov-spacing-8', 'Tooltip block inset', 'padding-block'),
-      token('--ov-spacing-12', 'Tooltip inline inset', 'padding-inline'),
-    ],
   },
   Tabs: {
     category: 'Navigation',
@@ -135,20 +51,6 @@ export const entries = {
       'Use the panel to render the selected content. It takes its accessible name from the selected tab and remains a Tab stop even if its content is only text.',
       'Tab enters the strip once. Left and Right wrap, and Home and End jump to the ends. Moving focus with those keys also selects the tab. The strip scrolls horizontally without wrapping and brings the focused tab into view.',
       'Use text labels; an icon or count can supplement the label. Zero is a visible count, not an absent count.',
-    ],
-    tokens: [
-      ...uiType,
-      token('--ov-control-height', 'Tab minimum height', 'min-height'),
-      token('--ov-radius-tab', 'Tab corners', 'border-radius'),
-      token('--ov-tab-bg', 'Selected tab fill', 'background-color'),
-      token('--ov-tab-border', 'Selected tab edge', 'border-color'),
-      token('--ov-hover-toolbar', 'Tab hover', 'background-color'),
-      token('--ov-accent', 'Tab and panel focus ring', 'outline-color'),
-      token('--ov-icon', 'Unselected tab icon', 'color'),
-      token('--ov-fg-muted', 'Count', 'color'),
-      token('--ov-spacing-4', 'Tab gap and block inset', 'gap / padding-block'),
-      token('--ov-spacing-6', 'Strip block inset', 'padding-block / scroll-padding'),
-      token('--ov-spacing-12', 'Tab inline inset', 'padding-inline'),
     ],
   },
   RovingGroup: {
@@ -160,16 +62,6 @@ export const entries = {
       'The last focus position takes precedence, then a current, selected, or pressed item, then a checked item, then the first. Reasoned aria-disabled controls stay reachable; natively disabled controls and items with hidden set are skipped.',
       'Only the gap has tokens here. Focus rings, fills, and typography belong to the controls inside the group.',
     ],
-    tokens: [
-      token('--ov-spacing-2', 'Gap step 2', 'gap'),
-      token('--ov-spacing-4', 'Gap step 4', 'gap'),
-      token('--ov-spacing-6', 'Gap step 6', 'gap'),
-      token('--ov-spacing-8', 'Gap step 8', 'gap'),
-      token('--ov-spacing-12', 'Gap step 12', 'gap'),
-      token('--ov-spacing-16', 'Gap step 16', 'gap'),
-      token('--ov-spacing-20', 'Gap step 20', 'gap'),
-      token('--ov-spacing-24', 'Gap step 24', 'gap'),
-    ],
   },
   Link: {
     category: 'Navigation',
@@ -179,13 +71,6 @@ export const entries = {
       'Enter and primary click invoke the host, as does middle click. Right click keeps the native context menu. Use link text that names the destination, not just its color or position.',
       'Provide a non-color cue for links embedded in running text. Kit Link is not underlined at rest.',
       'Normal text stays inline and inherits its type. Use mono for identifiers. In a constrained row, wrap a long name in MiddleEllipsis to keep its suffix visible and its full text accessible.',
-    ],
-    tokens: [
-      token('--ov-link', 'Link text', 'color'),
-      token('--ov-accent', 'Link focus ring', 'outline-color'),
-      token('--ov-font-code', 'Identifier font', 'font-family'),
-      token('--ov-fs-13', 'Identifier text size outside headings', 'font-size'),
-      token('--ov-lh-18', 'Identifier line height outside headings', 'line-height'),
     ],
   },
   PageHeader: {
@@ -198,37 +83,6 @@ export const entries = {
       'Use disabledReason when a command should remain reachable while unavailable. The first reason from a visible primary, secondary, or danger command also appears in the identity line.',
       'Pass null for an idle operation slot and a record to present progress or an outcome. The slot does not add a row; below 1000 px an active inline operation takes the space of the facts and the reason, while state stays visible.',
     ],
-    tokens: [
-      ...uiType,
-      ...popupEdge,
-      ...menuStates,
-      token('--ov-fs-18', 'Heading size', 'font-size'),
-      token('--ov-lh-24', 'Heading line height', 'line-height'),
-      token('--ov-fs-12', 'Secondary text size', 'font-size'),
-      token('--ov-fg-muted', 'Subtitle and notes', 'color'),
-      token('--ov-fg-secondary', 'Facts and alternate progress fill', 'color / background-color'),
-      token('--ov-font-code', 'Identifier font', 'font-family'),
-      token('--ov-link', 'Breadcrumb and progress highlight', 'color / background-image'),
-      token('--ov-bg-inline', 'State badge surface', 'background-color'),
-      token('--ov-border-subtle', 'State badge edge', 'border-color'),
-      token('--ov-radius-control', 'Badge and command corners', 'border-radius'),
-      token('--ov-accent', 'Focus ring, primary command and progress fill', 'outline-color / background-color'),
-      token('--ov-fg-over-accent', 'Primary command label', 'color'),
-      token('--ov-border-control', 'Secondary command edge', 'border-color'),
-      token('--ov-hover-row', 'Secondary command hover', 'background-color'),
-      token('--ov-hover-toolbar', 'Secondary command press and ghost hover', 'background-color'),
-      token('--ov-icon', 'Command and neutral kind icon', 'color'),
-      token('--ov-brand-blue', 'Blue kind glyph', 'color'),
-      token('--ov-control-height', 'Command and operation height', 'min-block-size'),
-      token('--ov-row-target', 'Overflow menu item height', 'min-height'),
-      token('--ov-progress-track', 'Operation track', 'background-color'),
-      token('--ov-radius-mark', 'Progress track and fill corners', 'border-radius'),
-      token('--ov-spacing-2', 'Title and badge block inset', 'padding-block'),
-      token('--ov-spacing-4', 'Breadcrumb, fact and operation gaps', 'gap'),
-      token('--ov-spacing-6', 'State badge inline inset', 'padding-inline'),
-      token('--ov-spacing-8', 'Header, commands and operation gaps', 'gap'),
-      token('--ov-spacing-12', 'Grid and operation spacing', 'column-gap / margin-inline'),
-    ],
   },
   SectionCard: {
     category: 'Layout',
@@ -237,18 +91,6 @@ export const entries = {
       'Use level 2 under the page heading, or level 3 or 4 when the section is nested. The heading level changes the outline, not the visual treatment.',
       'Keep meta short, such as a count or scope. Put trailing controls in actions and prefer ghost row-size buttons to preserve the default heading lane height. Give any icon-only action an accessible label.',
       'Use pad for text, chips, or key-value rows that need a 12 px block inset. Leave it off for tables that should sit flush below the rule. A long title clips before the trailing actions.',
-    ],
-    tokens: [
-      ...uiType,
-      ...ghostIcon,
-      token('--ov-border-subtle', 'Heading lane rule', 'border-bottom-color'),
-      token('--ov-fg-muted', 'Meta text', 'color'),
-      token('--ov-fs-12', 'Meta text size', 'font-size'),
-      token('--ov-spacing-8', 'Lane and action gaps', 'gap'),
-      token('--ov-spacing-6', 'Heading lane block inset', 'padding-block'),
-      token('--ov-spacing-12', 'Optional body block inset', 'padding-block'),
-      token('--ov-row-target', 'Row action height', 'height'),
-      token('--ov-row-pad', 'Action offset in heading lane', 'margin-block'),
     ],
   },
 } satisfies Record<string, Guide>;
