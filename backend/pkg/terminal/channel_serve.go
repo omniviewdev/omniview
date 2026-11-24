@@ -377,13 +377,20 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 		if len(body) > ChannelMaxInputBytes {
 			return false
 		}
-		return len(body) == 0 || m.applyFrom(s, c, writeOp(body))
+		if len(body) > 0 {
+			m.applyFrom(s, c, writeOp(body))
+		}
+		return true
 	case frameResize:
 		if len(body) != resizeBodyBytes {
 			return false
 		}
 		rows, cols, err := checkSize(int(binary.BigEndian.Uint16(body[2:])), int(binary.BigEndian.Uint16(body[:2])))
-		return err == nil && m.applyFrom(s, c, resizeOp(rows, cols))
+		if err != nil {
+			return false
+		}
+		m.applyFrom(s, c, resizeOp(rows, cols))
+		return true
 	case frameAck:
 		if len(body) != ackBodyBytes {
 			return false
@@ -410,16 +417,16 @@ func resizeOp(rows, cols uint16) *op {
 // applyFrom hands an input operation of the stream's to the terminal's queue, in one step with the decision that the stream holds
 // the terminal, and waits for the answer: the frames of one stream are applied in order, and a write that blocks in the kernel
 // (a program that does not read its terminal) holds up this stream's later frames and nobody else's. A stream that does not hold
-// the terminal types nothing: its operation is refused, and counted. It says whether the stream goes on.
-func (m *Manager) applyFrom(s *session, c *channelConn, o *op) bool {
+// the terminal types nothing: its operation is refused, and counted.
+func (m *Manager) applyFrom(s *session, c *channelConn, o *op) {
 	if !s.admitFrom(c, o) {
-		return true
+		return
 	}
 	select {
-	case <-o.done:
+	case err := <-o.done:
+		_ = err // The shell's answer to input is nothing the stream acts on: a shell that is gone is the end the page is told of.
 	case <-c.ch.Done():
 	}
-	return true
 }
 
 // admitFrom admits the operation to the terminal's queue if the stream holds the terminal and the terminal's end is not decided,
@@ -524,48 +531,65 @@ func (s *session) advance(c *channelConn, step senderStep) {
 // frame it may be parked in, and closed.
 func (m *Manager) runSender(s *session, c *channelConn) {
 	defer close(c.finished)
-	idle := false
+	sd := &sender{m: m, s: s, c: c, idle: false}
 	for {
-		switch {
-		case c.stopped.Load():
-			return
-		case c.displaced.Load():
-			_ = c.ch.Send([]byte{frameTakenOver})
-			_ = c.ch.Close()
-			return
-		}
-		step := s.nextStep(c, m.channel)
-		switch step.kind {
-		case stepIdle:
-			idle = true
-			if !c.wait() {
-				return
-			}
-		case stepWaitAck:
-			if !c.wait() {
-				return
-			}
-		case stepGap:
-			if c.ch.Send(gapFrame(step.from, step.to)) != nil {
-				return
-			}
-			s.advance(c, step)
-		case stepOutput:
-			if idle {
-				// Output came for a sender that had none: the page has had no chance to take it until now.
-				c.progress()
-				idle = false
-			}
-			if c.ch.Send(outputFrame(step.from, step.parts)) != nil {
-				return
-			}
-			s.advance(c, step)
-		case stepEnded:
-			if frame, err := endedFrame(*step.end); err == nil {
-				_ = c.ch.Send(frame)
-			}
-			_ = c.ch.Close()
+		if !sd.step() {
 			return
 		}
 	}
+}
+
+// sender is the state of one stream's sender.
+type sender struct {
+	m *Manager
+	s *session
+	c *channelConn
+	// idle is set when the last thing the sender did was to wait for output.
+	idle bool
+}
+
+// step does one thing for the stream's sender and says whether the sender goes on.
+func (sd *sender) step() bool {
+	c := sd.c
+	switch {
+	case c.stopped.Load():
+		return false
+	case c.displaced.Load():
+		_ = c.ch.Send([]byte{frameTakenOver})
+		_ = c.ch.Close()
+		return false
+	}
+	next := sd.s.nextStep(c, sd.m.channel)
+	switch next.kind {
+	case stepIdle:
+		sd.idle = true
+		return c.wait()
+	case stepWaitAck:
+		return c.wait()
+	case stepGap:
+		return sd.send(gapFrame(next.from, next.to), next)
+	case stepOutput:
+		if sd.idle {
+			// Output came for a sender that had none: the page has had no chance to take it until now.
+			c.progress()
+			sd.idle = false
+		}
+		return sd.send(outputFrame(next.from, next.parts), next)
+	case stepEnded:
+		if frame, err := endedFrame(*next.end); err == nil {
+			_ = c.ch.Send(frame)
+		}
+		_ = c.ch.Close()
+		return false
+	}
+	return false
+}
+
+// send hands the page a frame and, when the transport took it, moves the stream's cursor on. It says whether the sender goes on.
+func (sd *sender) send(frame []byte, next senderStep) bool {
+	if sd.c.ch.Send(frame) != nil {
+		return false
+	}
+	sd.s.advance(sd.c, next)
+	return true
 }

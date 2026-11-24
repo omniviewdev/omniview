@@ -95,8 +95,8 @@ func TestTheStreamAdapterPassesFramesBothWaysAndEndsWithTheConnection(t *testing
 	go func() { _, recvErr := channel.Recv(); blocked <- recvErr }()
 	conn.cancel() // the page went away: Wails closes the connection's context
 	select {
-	case err := <-blocked:
-		require.Error(t, err, "a Recv that waits returns once the connection is gone")
+	case blockedErr := <-blocked:
+		require.Error(t, blockedErr, "a Recv that waits returns once the connection is gone")
 	case <-time.After(30 * time.Second):
 		require.Fail(t, "a Recv that waited never returned")
 	}
@@ -162,7 +162,8 @@ func TestAStreamServedThroughTheAdapterSpeaksTheProtocol(t *testing.T) {
 // The handler that main registers is the one of this package, built for one controller, and its type is Wails'.
 func TestTheStreamHandlerIsWailsHandlerTypeForTheName(t *testing.T) {
 	fx := newTerminalFixture(t)
-	var handler application.StreamHandler = TerminalStreamHandler(fx.ctrl)
+	handler := TerminalStreamHandler(fx.ctrl)
 	assert.NotNil(t, handler)
+	assert.IsType(t, application.StreamHandler(nil), handler, "the handler is of Wails' type, so that HandleStream takes it")
 	assert.Equal(t, "terminal", TerminalStreamName, "the name carries nothing secret")
 }

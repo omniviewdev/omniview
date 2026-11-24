@@ -44,7 +44,7 @@ func TestAttachSendsReadyThenTheReplayThenLiveOutputOnOneOrderedStream(t *testin
 	st := page.waitBytes(len(all))
 
 	guarded(t, "ready-first", func() {
-		assert.Equal(t, byte(wReady), st.order[0], "the first frame is ready")
+		assert.Equal(t, wReady, st.order[0], "the first frame is ready")
 		assert.Equal(t, 1, ready.V)
 		assert.Zero(t, ready.Start, "the replay starts at the first byte the host kept")
 		assert.EqualValues(t, 8, ready.End, "and ends where the shell had written to when the page took the terminal")
@@ -126,7 +126,7 @@ func TestTheEndOfATerminalIsSentAfterItsLastOutputAndTheStreamClosesAndTheCapabi
 		assert.Equal(t, 3, *st.ended[0].ExitCode)
 		assert.EqualValues(t, 10, st.ended[0].LastOffset, "the length of everything the shell wrote")
 		assert.Equal(t, "hello\nbye\n", string(st.bytes()), "every byte comes before the end")
-		assert.Equal(t, byte(wEnded), st.order[len(st.order)-1], "the end is the last frame")
+		assert.Equal(t, wEnded, st.order[len(st.order)-1], "the end is the last frame")
 		assert.True(t, st.closed, "and then the stream closes")
 		assert.Empty(t, st.faults)
 	})
@@ -149,7 +149,7 @@ func TestTheEndOfATerminalIsSentAfterItsLastOutputAndTheStreamClosesAndTheCapabi
 	assert.EqualValues(t, 10, a.ready.End)
 	assert.Equal(t, "hello\nbye\n", string(a.bytes()), "and is handed what the shell wrote")
 	require.Len(t, a.ended, 1, "and the end comes again after the output")
-	assert.Equal(t, byte(wEnded), a.order[len(a.order)-1])
+	assert.Equal(t, wEnded, a.order[len(a.order)-1])
 	assert.Empty(t, a.faults)
 
 	from := uint64(6)

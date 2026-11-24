@@ -149,7 +149,7 @@ func TestAChannelTerminalIsInvisibleToEveryCallThatNamesATerminalByItsId(t *test
 	guarded(t, "legacy-invisible", func() {
 		for name, call := range calls {
 			requireNotFound(t, call(id), id)
-			assert.ErrorContains(t, call("no-such-session"), "no-such-session", name)
+			require.ErrorContains(t, call("no-such-session"), "no-such-session", name)
 		}
 		assert.False(t, m.CloseUnlessTakenOver(id, "wA"), "a window that did not make it cannot end it")
 		for _, listed := range m.ListSessions() {

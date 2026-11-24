@@ -449,7 +449,7 @@ func (p *chanPage) takeOutput(frame hostFrame) uint32 {
 	}
 	n := p.unacked
 	p.unacked = 0
-	return uint32(n) //nolint:gosec // The test's own acknowledgement is far below 4 GiB.
+	return uint32(n)
 }
 
 func (p *chanPage) requireReady(what string) {
@@ -661,13 +661,6 @@ func (d *gatedDevice) Resize(rows, cols uint16) error {
 	return nil
 }
 
-// let lets n calls through.
-func (d *gatedDevice) let(n int) {
-	for range n {
-		d.gate <- struct{}{}
-	}
-}
-
 // openAll lets every call through, now and later.
 func (d *gatedDevice) openAll() {
 	d.mu.Lock()
@@ -820,7 +813,7 @@ func TestTheCountingSequenceHelperIsRight(t *testing.T) {
 		all.WriteString(strconv.Itoa(i) + "\n")
 	}
 	want := all.Bytes()
-	require.EqualValues(t, countingLen(20000), len(want))
+	require.EqualValues(t, len(want), countingLen(20000))
 	for _, from := range []uint64{0, 1, 2, 17, 18, 19, 20, 100, 1888, 1889, 1890, 9999, 10000, 77777} {
 		for _, n := range []uint64{1, 5, 64, 1000} {
 			if from+n > uint64(len(want)) {

@@ -54,7 +54,7 @@ func TestASecondStreamWithTheCapabilityTakesTheTerminalAndTheFirstIsToldAndCanno
 	st := a.waitClosed()
 	guarded(t, "taken-over", func() {
 		assert.Equal(t, 1, st.takenOver, "the stream that lost the terminal is told, once")
-		assert.Equal(t, byte(wTakenOver), st.order[len(st.order)-1], "and it is the last thing it is told")
+		assert.Equal(t, wTakenOver, st.order[len(st.order)-1], "and it is the last thing it is told")
 	})
 	guarded(t, "one-holder", func() {
 		assert.True(t, s.channelStats().held)
@@ -136,63 +136,72 @@ func TestInputOfAHolderThatIsGivenAwayAndTheTakeoverOfItAtOnceKeepTheirOrder(t *
 	rng := rand.New(rand.NewPCG(11, 17))
 	for round := range 12 {
 		info := m.startChannel(t, `sleep 600`, Options{})
-		s := m.chanOf(t, info)
 		dev := newGatedDevice()
 		dev.openAll()
-		s.useDevice(dev)
+		m.chanOf(t, info).useDevice(dev)
 		a := m.attach(t, info.Cap, nil)
 		a.waitReady()
 
-		start := make(chan struct{})
-		delay := rand.New(rand.NewPCG(rng.Uint64(), 1))
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			<-start
-			for i := range 200 {
-				a.input(fmt.Sprintf("A%03d\n", i))
-			}
-		}()
-		go func() {
-			defer wg.Done()
-			<-start
-			jitter(delay)
-			b := m.attach(t, info.Cap, nil)
-			b.waitReady()
-			for i := range 20 {
-				b.input(fmt.Sprintf("B%03d\n", i))
-			}
-		}()
-		close(start)
-		wg.Wait()
+		typeWhileTheTerminalIsTaken(t, m, info.Cap, a, rand.New(rand.NewPCG(rng.Uint64(), 1)))
 		require.Eventually(t, func() bool { return contains(dev.log(), "w:B019\n") }, settle, time.Millisecond, "round %d: B's input arrived", round)
 
-		guarded(t, "decide-and-act", func() {
-			log := dev.log()
-			firstB := -1
-			var as, bs []string
-			for i, entry := range log {
-				switch {
-				case strings.HasPrefix(entry, "w:B"):
-					if firstB < 0 {
-						firstB = i
-					}
-					bs = append(bs, entry)
-				case strings.HasPrefix(entry, "w:A"):
-					assert.Negative(t, firstB, "round %d: A typed into the terminal after B had begun to: %q", round, entry)
-					as = append(as, entry)
-				}
-			}
-			for i, entry := range as {
-				assert.Equal(t, fmt.Sprintf("w:A%03d\n", i), entry, "round %d: what A typed is a prefix of what it sent, in order", round)
-			}
-			require.Len(t, bs, 20, "round %d", round)
-			for i, entry := range bs {
-				assert.Equal(t, fmt.Sprintf("w:B%03d\n", i), entry, "round %d", round)
-			}
-		})
+		guarded(t, "decide-and-act", func() { requireTheHandoverKeptTheOrder(t, round, dev.log()) })
 		require.NoError(t, m.CloseChannel(info.Cap))
+	}
+}
+
+// typeWhileTheTerminalIsTaken has the stream a type 200 lines while a second stream takes the terminal, after a jitter, and types
+// 20 lines of its own. It returns when both have typed.
+func typeWhileTheTerminalIsTaken(t *testing.T, m *Manager, capability string, a *chanPage, delay *rand.Rand) {
+	t.Helper()
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := range 200 {
+			a.input(fmt.Sprintf("A%03d\n", i))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		jitter(delay)
+		b := m.attach(t, capability, nil)
+		b.waitReady()
+		for i := range 20 {
+			b.input(fmt.Sprintf("B%03d\n", i))
+		}
+	}()
+	close(start)
+	wg.Wait()
+}
+
+// requireTheHandoverKeptTheOrder checks the shell's log of one round: nothing A typed comes after anything B typed, what A typed is
+// a prefix of what it sent, in order, and B's 20 lines are all there, in order.
+func requireTheHandoverKeptTheOrder(t *testing.T, round int, log []string) {
+	t.Helper()
+	firstB := -1
+	var as, bs []string
+	for i, entry := range log {
+		switch {
+		case strings.HasPrefix(entry, "w:B"):
+			if firstB < 0 {
+				firstB = i
+			}
+			bs = append(bs, entry)
+		case strings.HasPrefix(entry, "w:A"):
+			assert.Negative(t, firstB, "round %d: A typed into the terminal after B had begun to: %q", round, entry)
+			as = append(as, entry)
+		}
+	}
+	for i, entry := range as {
+		assert.Equal(t, fmt.Sprintf("w:A%03d\n", i), entry, "round %d: what A typed is a prefix of what it sent, in order", round)
+	}
+	require.Len(t, bs, 20, "round %d", round)
+	for i, entry := range bs {
+		assert.Equal(t, fmt.Sprintf("w:B%03d\n", i), entry, "round %d", round)
 	}
 }
 
