@@ -32,6 +32,9 @@ ORDERED = TERMINAL + "/ordered.go"
 TOMBS = TERMINAL + "/reattach.go"
 TYPES = TERMINAL + "/types.go"
 CONTROLLER = EXEC + "/controller.go"
+STREAMROUTE = EXEC + "/streamroute"
+# The packages whose tests are built with a tag (the real route is the server build's).
+TAGS = {STREAMROUTE: "server"}
 
 BY_CAP = "TestEveryCallThatNamesAChannelTerminalByItsCapabilityAnswersTheOneNotFoundForAnyThatOpensNothing"
 BY_ID = "TestAChannelTerminalIsInvisibleToEveryCallThatNamesATerminalByItsId"
@@ -71,6 +74,8 @@ END_COPY_LISTED = "TestAChannelListedEndIsACopyThatNoCallerCanChange"
 END_COPY_UNIT = "TestAnEndsCopyShareNothingWithTheEnd"
 NO_OWNER = "TestAChannelTerminalTakesNoOwner"
 LIST_SNAPSHOT = "TestAChannelListedIsNotTakenOfATerminalThatEndedBeforeItsSnapshot"
+IDLE_STREAM = "TestAStreamThatSendsNothingIsClosedWhenTheFirstFrameWaitIsOverAndNotBefore"
+IDLE_STREAM_STOPPED = "TestAStreamThatShowsItsCapabilityInTimeIsNotClosedWhenTheFirstFrameWaitIsOver"
 
 # number, what the fault is, file, the edits (each: the text it replaces, once, and the text it puts there), then the checks: for
 # each package the tests named for the fault with a part of the message of the assertion that must fail, and the guards (names in
@@ -235,6 +240,15 @@ CONTROLS = [
     (34, "a listing says a terminal is running although it ended between the test and the snapshot", CHANNEL,
      [("\t}, !s.ending.Load()\n", "\t}, true\n")],
      [(TERMINAL, [(LIST_SNAPSHOT, "a snapshot taken once the terminal has ended is not an entry of a running terminal")], ["list-after-snapshot"])]),
+
+    # The first-frame wait (S2 of the review of PR 704).
+    (35, "the wait for the first frame is never armed on the manager's clock: a stream that sends nothing is never closed", SERVE,
+     [("idle := m.clock.AfterFunc(m.channel.firstFrame, func() { _ = ch.Close() })", "var idle timer = time.NewTimer(time.Hour)")],
+     [(TERMINAL, [(IDLE_STREAM, "the host never armed a deadline for the first frame")], ["first-frame-deadline"])]),
+
+    (36, "the wait for the first frame is not stopped once the first frame has come: it closes a stream that attached in time", SERVE,
+     [("\tfirst, err := ch.Recv()\n\tidle.Stop()\n", "\tfirst, err := ch.Recv()\n\t_ = idle\n")],
+     [(TERMINAL, [(IDLE_STREAM_STOPPED, "the stream closed before the page saw the line it typed")], ["first-frame-wait-stopped"])]),
 ]
 
 
@@ -264,10 +278,10 @@ def run(package, tests, overlay_files, off):
     env.pop(OFF, None)
     if off:
         env[OFF] = ",".join(off)
-    done = subprocess.run(
-        ["go", "test", "-overlay=" + overlay, "-run", "^(" + "|".join(tests) + ")$", "-count=1", "-timeout", "300s", "-v",
-         "./" + package + "/"],
-        cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    command = ["go", "test", "-overlay=" + overlay, "-run", "^(" + "|".join(tests) + ")$", "-count=1", "-timeout", "300s", "-v", "./" + package + "/"]
+    if package in TAGS:
+        command[2:2] = ["-tags", TAGS[package]]
+    done = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     return done.returncode, done.stdout + done.stderr
 
 
