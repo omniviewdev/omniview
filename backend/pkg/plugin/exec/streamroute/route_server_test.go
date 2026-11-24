@@ -328,7 +328,7 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 
 		gate, err := os.OpenFile(gatePath, os.O_WRONLY, 0)
 		require.NoError(t, err)
-		_, err = gate.Write([]byte("x"))
+		_, err = gate.WriteString("x")
 		require.NoError(t, err)
 		require.NoError(t, gate.Close())
 		listed := waitListed(t, wrapper, info.Cap, func(l terminal.ChannelListed) bool { return l.NextOffset > end })
@@ -380,7 +380,7 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 		for _, gap := range state.gaps {
 			lost += gap[1] - gap[0]
 		}
-		assert.EqualValues(t, state.next, uint64(len(state.output))+lost, "what the page has and what it was told it missed are all of the output")
+		assert.Equal(t, state.next, uint64(len(state.output))+lost, "what the page has and what it was told it missed are all of the output")
 		assert.GreaterOrEqual(t, state.next, uint64(written), "the shell wrote everything")
 		listed := waitListed(t, wrapper, info.Cap, func(l terminal.ChannelListed) bool { return l.NextOffset == state.next })
 		assert.True(t, listed.Attached)

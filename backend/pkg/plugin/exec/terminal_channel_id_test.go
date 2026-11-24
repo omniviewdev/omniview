@@ -111,13 +111,14 @@ func TestTwoCreatesOfOneIDAtOnceFromAChannelAndAPluginHaveOneWinner(t *testing.T
 		info *terminal.Session
 		err  error
 	}
+	sh := shell(t)
 	results := make(chan outcome, 4)
 	start := make(chan struct{})
 	for range 4 {
 		go func() {
 			<-start
 			info, err := fx.wrapper.CreateTerminal(context.Background(),
-				execsdk.SessionOptions{ID: "contested", Command: append(shell(t), "-c", "sleep 600")}, terminal.Launch{Channel: true})
+				execsdk.SessionOptions{ID: "contested", Command: []string{sh[0], "-c", "sleep 600"}}, terminal.Launch{Channel: true})
 			results <- outcome{info: info, err: err}
 		}()
 	}
@@ -175,11 +176,11 @@ func TestAnIDThatAChannelTerminalIsBeingMadeWithIsHeldAgainstEveryLane(t *testin
 }
 
 func sdkexecOptions(id string) execsdk.SessionOptions {
-	return execsdk.SessionOptions{ID: id, Command: []string{"plain"}} //nolint:exhaustruct // The test names what it needs.
+	return execsdk.SessionOptions{ID: id, Command: []string{"plain"}}
 }
 
 func sdkexecOptionsHeld(id, tag string) execsdk.SessionOptions {
-	return execsdk.SessionOptions{ID: id, Command: []string{tag}} //nolint:exhaustruct // The test names what it needs.
+	return execsdk.SessionOptions{ID: id, Command: []string{tag}}
 }
 
 // A. The plugin session that the host refused (a channel terminal holds its id) still exists in the plugin until the host's close

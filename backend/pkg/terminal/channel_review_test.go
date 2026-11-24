@@ -121,13 +121,13 @@ func TestAChannelAcknowledgementThatArrivesBeforeTheSendReturnsIsKept(t *testing
 	// having finished with it, and the count cannot mean the host's first entry into Recv.
 	require.Eventually(t, func() bool { return f.recvWaiting() == 1 }, settle, time.Millisecond, "the host waits for the page's next frame")
 	calls := f.recvCalls()
-	f.pageSend(ackFrame(uint32(first))) //nolint:gosec // A frame is at most 64 KiB.
+	f.pageSend(ackFrame(uint32(first)))
 	require.Eventually(t, func() bool { return f.recvCalls() > calls }, settle, time.Millisecond, "the host finished with the acknowledgement")
 	f.release()
 	require.Eventually(t, func() bool { return s.channelStats().sentBytes == total }, settle, time.Millisecond, "the page was given everything")
 	require.Eventually(t, func() bool { return f.recvWaiting() == 1 }, settle, time.Millisecond, "the host waits for the page's next frame again")
 	calls = f.recvCalls()
-	f.pageSend(ackFrame(uint32(total - first))) //nolint:gosec // The sequence is a few kilobytes.
+	f.pageSend(ackFrame(uint32(total - first)))
 	require.Eventually(t, func() bool { return f.recvCalls() > calls }, settle, time.Millisecond, "the host finished with the second acknowledgement")
 
 	guarded(t, "early-ack-kept", func() {
@@ -170,7 +170,7 @@ func TestAChannelReaderThatAcknowledgesExactlyTheWindowIsNotDeadlockedByAFrameTh
 	f.release()
 
 	guarded(t, "split-to-credit", func() {
-		got := page.waitBytes(int(total)) //nolint:gosec // The sequence is a few hundred kilobytes.
+		got := page.waitBytes(int(total))
 		assert.True(t, bytes.Equal(countingBytes(0, total), got.bytes()), "every byte of the sequence, in order")
 		assert.Empty(t, got.faults)
 	})
