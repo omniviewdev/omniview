@@ -651,6 +651,11 @@ export async function loadTerminalChannels(deps: ChannelDeps): Promise<TerminalC
   return load(createCore(deps));
 }
 
+/** The stream of a page: the Wails runtime's. */
+export function streamOpener(_scope: unknown, native: (name: string) => ChannelSocket): (name: string) => ChannelSocket {
+  return (name) => native(name);
+}
+
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
 const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CAPABILITY_DEADLINE_MS, CAPABILITY_SLOT, capabilityStorage, createTerminalChannels, loadTerminalChannels, type CapabilityStorage, type ChannelClient, type ChannelSocket } from './terminalChannel';
+import { CAPABILITY_DEADLINE_MS, CAPABILITY_SLOT, capabilityStorage, createTerminalChannels, loadTerminalChannels, streamOpener, type CapabilityStorage, type ChannelClient, type ChannelSocket } from './terminalChannel';
 import type { ChannelEvents, TerminalChannels } from './channel';
 
 // The terminal channel (docs/ui-next/terminal-channel-protocol.md): the one place that holds the capabilities of the terminals of this page and their streams. What is tested here is the binary framing both ways,
@@ -1032,5 +1032,43 @@ describe('the capability, which nothing says', () => {
     );
     expect(error).toBeInstanceOf(Error);
     expect(JSON.stringify([messageOfError(error), r.channels.describe(error)])).not.toContain(CAP);
+  });
+});
+
+describe('the stream a page opens', () => {
+  // In server mode the page is served by the host to a browser and loads its own bundle of the Wails runtime, not the host's `/wails/runtime.js`, whose prelude is what makes `Stream` a WebSocket there: without it the
+  // runtime falls back to its HTTP poll. The page opens the host's stream route as a WebSocket itself, as the prelude does; in the app's own window it is the runtime's `Stream`, the native bridge.
+  type Opened = { url: string; binaryType: string };
+  const browser = (protocol: string) => {
+    const opened: Opened[] = [];
+    class FakeWebSocket {
+      binaryType = 'blob';
+      constructor(readonly url: string) {
+        opened.push(this);
+      }
+    }
+    return { opened, scope: { location: { protocol, host: '127.0.0.1:34115' }, WebSocket: FakeWebSocket } };
+  };
+
+  it('opens the host stream route as a WebSocket of binary frames in a browser, by name, with nothing else in the address', () => {
+    const { opened, scope } = browser('http:');
+    const native = vi.fn();
+    streamOpener(scope, native)('terminal');
+    expect(native).not.toHaveBeenCalled();
+    expect(opened).toEqual([expect.objectContaining({ url: 'ws://127.0.0.1:34115/wails/stream/ws?name=terminal', binaryType: 'arraybuffer' })]);
+  });
+
+  it('uses a secure WebSocket for a page served over https', () => {
+    const { opened, scope } = browser('https:');
+    streamOpener(scope, vi.fn())('terminal');
+    expect(opened.map(({ url }) => url)).toEqual(['wss://127.0.0.1:34115/wails/stream/ws?name=terminal']);
+  });
+
+  it('uses the runtime stream in the app window', () => {
+    const { opened, scope } = browser('wails:');
+    const native = vi.fn(() => ({}) as ChannelSocket);
+    streamOpener({ ...scope, webkit: { messageHandlers: { external: { postMessage: () => undefined } } } }, native)('terminal');
+    expect(native).toHaveBeenCalledWith('terminal');
+    expect(opened).toEqual([]);
   });
 });
