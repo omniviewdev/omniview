@@ -86,6 +86,8 @@ export type TerminalSessions = {
    * `refresh` that throws or rejects is one warning. Answers whether any feed was asked; with none it does nothing.
    */
   readonly refreshLost: () => boolean;
+  /** Whether any feed is lost to this page (ended with a `detached`, its end not known): what `refreshLost` would ask. */
+  readonly hasLost: () => boolean;
   /**
    * Opens a session in the Terminal tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). Every call is a new process, except for a target that names the id of its session
    * (`TerminalTarget.sessionId`): a terminal has one session. When the panel has a session of that id (a saved tab: the restore makes every terminal session `ended`, with no feed) the session is GIVEN the feed, stays
@@ -203,6 +205,17 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
           warn('[panel] a listener of the terminal feeds failed', error);
         }
       }
+    }
+  };
+
+  /** Whether the feed of an entry was lost to another tab and its end is not known. A status that cannot be read is one warning and no loss. */
+  const isLost = (entry: Entry): boolean => {
+    try {
+      const status = entry.feed.getSnapshot();
+      return status.state === 'ended' && status.detached !== undefined && status.exit === undefined;
+    } catch (error) {
+      warn(`[panel] ${entry.plugin} could not ask who holds the terminal`, error);
+      return false;
     }
   };
 
@@ -471,20 +484,20 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       }
     },
 
+    hasLost: () => {
+      for (const entry of [...entries.values()]) {
+        if (!entry.ended && isLost(entry)) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+
     refreshLost: () => {
       let asked = false;
       for (const entry of [...entries.values()]) {
-        if (entry.ended) {
-          continue;
-        }
-
-        try {
-          const status = entry.feed.getSnapshot();
-          if (status.state !== 'ended' || status.detached === undefined || status.exit !== undefined) {
-            continue;
-          }
-        } catch (error) {
-          warn(`[panel] ${entry.plugin} could not ask who holds the terminal`, error);
+        if (entry.ended || !isLost(entry)) {
           continue;
         }
 

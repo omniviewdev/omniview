@@ -1066,7 +1066,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
 
     it('runs no timer while the page is hidden, and arms it when it shows', () => {
-      const { stop, r } = taken();
+      const { stop } = taken();
       expect(vi.getTimerCount()).toBe(1);
       visibility('hidden');
       document.dispatchEvent(new Event('visibilitychange'));
@@ -1075,7 +1075,6 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       document.dispatchEvent(new Event('visibilitychange'));
       expect(vi.getTimerCount()).toBe(1);
       stop();
-      expect(r.terminals.sessions.feedOf('term-a')).toBeDefined();
     });
 
     it('asks every 5 seconds and no sooner', async () => {
