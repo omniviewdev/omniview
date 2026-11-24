@@ -12,6 +12,7 @@ import (
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
+	logging "github.com/omniviewdev/plugin-sdk/log"
 	sdktypes "github.com/omniviewdev/plugin-sdk/pkg/types"
 	sdkexec "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -295,4 +296,46 @@ func TestAFrameOfAPluginThatNamesTheIDOfAnotherSessionIsNotDelivered(t *testing.
 	require.True(t, f.window.told("core/exec/stream/stdout/not-recorded-yet"), "output that comes before the host has recorded its session is delivered")
 	f.frame(endedFixturePlugin, aCloseSignal("plugin-session"))
 	require.True(t, f.window.told("core/exec/signal/CLOSE/plugin-session"))
+}
+
+// aLoggerThatSeesTheClose runs a function once at the instant the dispatch of a CLOSE frame has decided what the
+// frame is and has not yet changed the record: the gap between deciding and acting. The dispatch logs "closing
+// session" there, so a test needs no seam in the controller.
+type aLoggerThatSeesTheClose struct {
+	logging.Logger
+
+	once       sync.Once
+	atTheClose func()
+}
+
+func (l *aLoggerThatSeesTheClose) Debugw(ctx context.Context, msg string, kv ...any) {
+	if msg == "closing session" {
+		l.once.Do(l.atTheClose)
+	}
+	l.Logger.Debugw(ctx, msg, kv...)
+}
+
+// A CLOSE frame whose id has no record is delivered (the output and the end of a session can come before the host has
+// recorded it). Another plugin can record the id between the moment the frame is let through and the moment the
+// record is changed: the order is forced here. The frame must neither mark the record of that other plugin ended
+// nor tell the windows that session closed: the decision and the change are one step (CodeRabbit on #690).
+func TestACloseThatWasLetThroughDoesNotEndTheSessionAnotherPluginRecordedMeanwhile(t *testing.T) {
+	f := newEndedSessionFixture(t)
+	f.install("second", newAKeepingPlugin())
+	f.ctrl.logger = &aLoggerThatSeesTheClose{Logger: f.ctrl.logger, once: sync.Once{}, atTheClose: func() {
+		f.ctrl.mu.Lock()
+		f.ctrl.sessionIndex["shared"] = sessionIndex{
+			pluginID: "second", connectionID: endedFixtureConnection, local: false, attached: false, closing: false,
+			ended: false, endedAt: time.Time{}, endedSeq: 0,
+		}
+		f.ctrl.mu.Unlock()
+	}}
+
+	f.frame(endedFixturePlugin, aCloseSignal("shared"))
+
+	record, found := f.recordOf("shared")
+	require.True(t, found)
+	require.Equal(t, "second", record.pluginID)
+	require.False(t, record.ended, "the CLOSE of another plugin's session did not end this one")
+	require.False(t, f.window.told("core/exec/signal/CLOSE/shared"), "and the windows were not told it closed")
 }
