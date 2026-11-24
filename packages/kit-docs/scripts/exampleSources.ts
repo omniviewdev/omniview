@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import ts from 'typescript';
 
 export type SourceFile = { name: string; code: string };
-export type ExampleSource = { group: string; name: string; files: SourceFile[]; path: string; line: number };
+export type ExampleSource = { group: string; name: string; caption?: string; files: SourceFile[]; path: string; line: number };
 
 type Input = { group: string; path: string; exportName?: string; name?: string };
 
@@ -159,7 +159,16 @@ export function exampleSources(inputs: readonly Input[], kit: string): ExampleSo
       const entry = { name: `${identifier}.tsx`, code: [importLines.join('\n'), ...declarations].filter(Boolean).join('\n\n') + '\n' };
       const files = [entry, ...dependencies.values()];
       if (new Set(files.map((file) => file.name)).size !== files.length) throw new Error(`Conflicting source filenames in ${group}.${name ?? identifier}`);
-      return { group, name: name ?? identifier, files, path, line: ast.getLineAndCharacterOfPosition(statement.getStart(ast)).line + 1 };
+      const caption = ts.getJSDocCommentsAndTags(statement)
+        .filter(ts.isJSDoc)
+        .map((doc) => ts.getTextOfJSDocComment(doc.comment)?.trim())
+        .filter(Boolean)
+        .join('\n\n');
+      return {
+        group, name: name ?? identifier, files, path,
+        line: ast.getLineAndCharacterOfPosition(statement.getStart(ast)).line + 1,
+        ...(caption ? { caption } : {}),
+      };
     });
   });
 }

@@ -9,6 +9,8 @@ import {
 } from '../../kit/src/generated/tokenNames.ts';
 import { guidance } from '../content/catalog.ts';
 import { exampleSources, kitInputs, type ExampleSource, type SourceFile } from './exampleSources.ts';
+import { readProps } from './props.ts';
+import { readTokenUsage } from './tokenUsage.ts';
 
 const docs = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const kit = resolve(docs, '../kit');
@@ -182,6 +184,8 @@ function generate(check: boolean) {
   const files = new Map<string, string>();
   const snippets = new Map<string, SourceFile[]>([['styling', [{ name: 'App.tsx', code: appExample }]]]);
   const parts = publicParts();
+  const propGroups = readProps(kit, parts);
+  const tokenUsage = readTokenUsage(kit, parts);
   const revisionPath = `revisions/${revision}`;
   const foundations = join(docs, 'content', 'foundations.tsx');
   const examples = exampleSources([
@@ -224,7 +228,13 @@ function generate(check: boolean) {
     revision,
     parts: Object.fromEntries([...examplesByPart].map(([part, list]) => [
       part,
-      { examples: list.map((example) => ({ group: example.group, name: example.name, source: `${prefix}${examplePath(example)}` })) },
+      {
+        propGroups: propGroups[part],
+        tokenUsage: tokenUsage[part],
+        examples: list.map((example) => ({
+          group: example.group, name: example.name, caption: example.caption, source: `${prefix}${examplePath(example)}`,
+        })),
+      },
     ])),
   }, null, 2) + '\n';
 
@@ -255,12 +265,21 @@ function generate(check: boolean) {
       guide.summary,
       `## Usage\n\n${guide.guidance.map((line) => `- ${line}`).join('\n')}`,
     ];
-    if (guide.tokens.length) {
-      lines.push(`## Tokens\n\n${guide.tokens.map(({ name, label, property }) => `- \`${name}\` — ${label} (\`${property}\`)`).join('\n')}`);
+    for (const group of propGroups[part]) {
+      lines.push(`## ${group.name} props`);
+      if (!group.props.length) lines.push('No named public props.');
+      for (const prop of group.props) {
+        const presence = prop.required ? 'required' : 'not required in every case';
+        lines.push(`- **${prop.name}** (${presence})${prop.description ? ` — ${prop.description}` : ''}\n\n${codeFence(prop.type)}${prop.defaultValue !== undefined ? `\n\nExplicit default:\n\n${codeFence(prop.defaultValue)}` : ''}`);
+      }
+    }
+    if (tokenUsage[part].length) {
+      lines.push(`## Token usage\n\n${tokenUsage[part].map(({ name, selector, kind, property, path }) =>
+        `- \`${name}\` — ${kind}, \`${selector}\` → \`${property}\` ([source](${source(path)}))`).join('\n')}`);
     }
     lines.push(`## Copyable example: ${primary.name}\n\nUse the [styling setup](../styling.md).${primary.files.length > 1 ? ' Save these files in the same directory.' : ''}\n\n${primary.files.map(({ name, code }) => `\`${name}\`\n\n${codeFence(code, name.split('.').at(-1))}`).join('\n\n')}\n\n[Download example bundle](../${examplePath(primary)})`);
     lines.push(`## Public API\n\nImport ${names(exports)} from \`@omniviewdev/kit\`. This declaration excerpt is for reference; see the [full API report](../api.md) for referenced types.\n\n${codeFence(declarations.join('\n\n'))}\n\n[Public exports source](${source(barrel)})`);
-    lines.push(`## Examples\n\n${list.map((example) => `- ${location(example)}${example.group !== part ? ' (parity)' : ''}`).join('\n')}`);
+    lines.push(`## Examples\n\n${list.map((example) => `- ${location(example)}${example.group !== part ? ' (parity)' : ''}${example.caption ? ` — ${example.caption}` : ''}`).join('\n')}`);
     files.set(page(part), `${lines.join('\n\n')}\n`);
   }
 

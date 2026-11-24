@@ -1,54 +1,6 @@
 import type { Guide } from './catalog.ts';
 
 const category = 'Controls';
-type Token = Guide['tokens'][number];
-const color = (name: Token['name'], label: string): Token => ({ name, label, property: 'color' });
-const controlHeight = { name: '--ov-control-height', label: 'Minimum control height', property: 'min-height' } as const;
-const controlRadius = { name: '--ov-radius-control', label: 'Corner radius', property: 'border-radius' } as const;
-const bodyType = [
-  { name: '--ov-fs-13', label: 'Control text size', property: 'font-size' },
-  { name: '--ov-lh-16', label: 'Control text line height', property: 'line-height' },
-] as const;
-const errorColors = [
-  color('--ov-error-control-inactive', 'Invalid border at rest'),
-  color('--ov-error-control', 'Invalid focus ring'),
-];
-const fieldFace = [
-  color('--ov-bg-island', 'Input fill and focused border'),
-  color('--ov-fg', 'Input text'),
-  color('--ov-border-control', 'Default border'),
-  color('--ov-accent', 'Default focus ring'),
-  ...errorColors,
-  color('--ov-warning-control-inactive', 'Warning border at rest'),
-  color('--ov-warning-control', 'Warning focus ring'),
-  color('--ov-fg-disabled', 'Unavailable text'),
-  color('--ov-border-disabled', 'Unavailable border'),
-  controlHeight,
-  controlRadius,
-  ...bodyType,
-];
-const textFace = [
-  ...fieldFace,
-  color('--ov-fg-muted', 'Placeholder text'),
-  color('--ov-bg-inline', 'Read-only fill'),
-  color('--ov-border-subtle', 'Read-only border'),
-];
-const commandColors = [
-  color('--ov-accent', 'Primary fill and focus ring'),
-  color('--ov-fg-over-accent', 'Label and glyph on solid fill'),
-  color('--ov-fg', 'Neutral label'),
-  color('--ov-icon', 'Neutral icon'),
-  color('--ov-border-control', 'Secondary border'),
-  color('--ov-hover-row', 'Secondary hover fill'),
-  color('--ov-hover-toolbar', 'Ghost hover / secondary active fill'),
-  color('--ov-pressed', 'Ghost active fill'),
-  color('--ov-error-fg', 'Danger label or glyph'),
-  color('--ov-error-control', 'Primary danger fill'),
-  color('--ov-fg-disabled', 'Unavailable label'),
-  color('--ov-icon-disabled', 'Unavailable icon'),
-  color('--ov-bg-island', 'Unavailable fill'),
-  color('--ov-border-disabled', 'Unavailable border'),
-];
 
 export const entries = {
   Button: {
@@ -62,17 +14,6 @@ export const entries = {
       'Use size="compact" for tighter side padding or size="row" within table rows. Use icon to add a decorative glyph before the label.',
       'busy announces work immediately and replaces an existing glyph after one second. It does not block activation or change the label.',
     ],
-    tokens: [
-      ...commandColors,
-      { ...controlHeight, label: 'Standard and compact minimum height' },
-      { name: '--ov-row-target', label: 'Row height', property: 'height' },
-      controlRadius,
-      { name: '--ov-spacing-4', label: 'Vertical padding and icon gap', property: 'padding-top' },
-      { name: '--ov-spacing-8', label: 'Compact and row side padding', property: 'padding-inline-start' },
-      { name: '--ov-spacing-12', label: 'Standard side padding', property: 'padding-inline-start' },
-      { name: '--ov-fs-13', label: 'Label font size', property: 'font-size' },
-      { name: '--ov-lh-16', label: 'Label line height', property: 'line-height' },
-    ],
   },
   IconButton: {
     category,
@@ -83,26 +24,6 @@ export const entries = {
       'For a mode such as Match case, pass pressed and update it in onClick. Keep the label the same in both states; omit pressed for a plain command.',
       'Set popup="menu" for a menu trigger. Let the menu manage expanded state and its relationship to the trigger.',
       'Use size="row" for a compact row target. busy swaps the glyph for a loader after one second but does not block activation.',
-    ],
-    tokens: [
-      color('--ov-accent', 'Primary fill and focus ring'),
-      color('--ov-fg-over-accent', 'Glyph on solid fill'),
-      color('--ov-icon', 'Neutral glyph'),
-      color('--ov-border-control', 'Secondary border'),
-      color('--ov-hover-row', 'Secondary hover fill'),
-      color('--ov-hover-toolbar', 'Ghost hover / secondary active fill'),
-      color('--ov-pressed', 'Ghost active fill'),
-      color('--ov-selection-inactive', 'Pressed toggle fill on secondary and ghost'),
-      color('--ov-fg', 'Pressed toggle glyph on secondary and ghost'),
-      color('--ov-error-fg', 'Danger glyph on secondary and ghost'),
-      color('--ov-error-control', 'Primary danger fill'),
-      color('--ov-icon-disabled', 'Unavailable glyph'),
-      color('--ov-bg-island', 'Unavailable secondary and primary fill'),
-      color('--ov-border-disabled', 'Unavailable secondary and primary border'),
-      { name: '--ov-control-height', label: 'Standard target width and minimum height', property: 'width' },
-      { name: '--ov-row-target', label: 'Row target width and height', property: 'width' },
-      controlRadius,
-      { name: '--ov-spacing-4', label: 'Standard target padding', property: 'padding' },
     ],
   },
   Field: {
@@ -115,22 +36,6 @@ export const entries = {
       'Set lane to reserve room before messages appear. For a failed check, set message.retry and supply onRetry to offer a keyboard-accessible Retry button.',
       'Use readOnly for a value users cannot edit. Use disabledReason for a change that is currently unavailable; the reason becomes a control description.',
     ],
-    tokens: [
-      color('--ov-fg', 'Label text'),
-      color('--ov-fg-muted', 'Help, aside, neutral message and unavailable label'),
-      color('--ov-error-fg', 'Required marker and error message'),
-      color('--ov-warning-fg', 'Warning and retry message'),
-      color('--ov-link', 'Info glyph and Retry action'),
-      color('--ov-accent', 'Retry focus ring'),
-      { name: '--ov-spacing-6', label: 'Aligned and stacked grid gap; row vertical padding', property: 'gap' },
-      { name: '--ov-spacing-16', label: 'Settings row column gap', property: 'gap' },
-      { name: '--ov-spacing-20', label: 'Settings row gutter', property: 'padding-inline-start' },
-      { name: '--ov-spacing-8', label: 'Settings row trailing slot gap', property: 'gap' },
-      { name: '--ov-spacing-4', label: 'Message gap and label marker spacing', property: 'gap' },
-      { name: '--ov-fs-13', label: 'Label font size', property: 'font-size' },
-      { name: '--ov-fs-12', label: 'Help, aside and message font size', property: 'font-size' },
-      { name: '--ov-lh-16', label: 'Line height and message lane height', property: 'line-height' },
-    ],
   },
   TextInput: {
     category,
@@ -140,11 +45,6 @@ export const entries = {
       'Update value through onValueChange. Wire onCommit for Enter and onBlur for commit on focus exit. Set dirty and onRevert to restore the applied value on Escape.',
       'Use maxLength for a length limit and allows to reject disallowed inserted text. allows does not validate the whole value or filter composition.',
       'Use mono for identifiers or addresses. Pick short, normal, wide, or fill for the available space. Use readOnly for selectable facts and disabledReason for unavailable edits.',
-    ],
-    tokens: [
-      ...textFace,
-      { name: '--ov-font-code', label: 'Monospace font', property: 'font-family' },
-      { name: '--ov-spacing-4', label: 'Vertical padding', property: 'padding-block-start' },
     ],
   },
   NumberInput: {
@@ -156,27 +56,6 @@ export const entries = {
       'Enter and successful steps call onCommit. Use onBlur for focus-exit handling and dirty with onRevert to restore a draft on Escape.',
       'Validate the draft yourself and explain errors in Field. Typing never clamps the value; keyboard steps require a valid number, but pointer steps clamp their result to the bounds.',
     ],
-    tokens: [
-      color('--ov-bg-island', 'Default stepper fill and focused border'),
-      color('--ov-fg', 'Numeric text'),
-      color('--ov-border-control', 'Default stepper border'),
-      color('--ov-accent', 'Default focus ring and step button focus ring'),
-      ...errorColors,
-      color('--ov-bg-inline', 'Read-only or unavailable stepper fill'),
-      color('--ov-border-subtle', 'Read-only or unavailable stepper border'),
-      color('--ov-fg-disabled', 'Unavailable numeric text'),
-      color('--ov-fg-muted', 'Unit text'),
-      color('--ov-icon', 'Step glyphs'),
-      color('--ov-icon-disabled', 'Unavailable step glyphs'),
-      color('--ov-hover-toolbar', 'Step button hover fill'),
-      color('--ov-pressed', 'Step button active fill'),
-      controlHeight,
-      controlRadius,
-      { name: '--ov-font-code', label: 'Numeric font', property: 'font-family' },
-      { name: '--ov-spacing-4', label: 'Gap between stepper parts', property: 'gap' },
-      { name: '--ov-spacing-2', label: 'Stepper side padding', property: 'padding-inline-start' },
-      ...bodyType,
-    ],
   },
   SecretInput: {
     category,
@@ -186,17 +65,6 @@ export const entries = {
       'Send the draft to your model through onValueChange and track changed there. Set changed to false after applying or reverting a draft to clear and remask the input.',
       'Use Field or a standalone label so the input and its actions have a name. Enter calls onCommit; Escape or Cancel exits replacement and calls onRevert for a draft.',
       'onBlur fires when focus leaves the composite control, not when it moves to a Show or Replace button.',
-    ],
-    tokens: [
-      ...textFace,
-      color('--ov-icon', 'Show and Hide glyph'),
-      color('--ov-icon-disabled', 'Unavailable Show glyph'),
-      color('--ov-hover-row', 'Replace and Cancel hover fill'),
-      color('--ov-hover-toolbar', 'Show hover / Replace and Cancel active fill'),
-      color('--ov-pressed', 'Show active fill'),
-      color('--ov-selection-inactive', 'Show pressed toggle fill'),
-      { name: '--ov-font-code', label: 'Secret entry font', property: 'font-family' },
-      { name: '--ov-spacing-4', label: 'Gap between input and actions; vertical padding', property: 'gap' },
     ],
   },
   SearchField: {
@@ -208,24 +76,6 @@ export const entries = {
       'Escape clears a nonempty query; empty Escape reaches the page. The pointer clear button restores input focus and adds no tab stop.',
       'Pass count for an in-content result such as “3 of 12”; pass an empty string to keep its lane reserved. For invalid queries, use invalid and put the explanation in the count lane.',
     ],
-    tokens: [
-      color('--ov-bg-inline', 'Search input fill'),
-      color('--ov-fg', 'Query text and hovered clear glyph'),
-      color('--ov-icon', 'Search and clear glyphs'),
-      color('--ov-fg-muted', 'Placeholder and count text'),
-      color('--ov-border-control', 'Default border'),
-      color('--ov-bg-island', 'Focused input border'),
-      color('--ov-accent', 'Default focus ring'),
-      ...errorColors,
-      color('--ov-error-fg', 'Invalid count or explanation'),
-      color('--ov-hover-toolbar', 'Clear button hover fill'),
-      controlHeight,
-      controlRadius,
-      { name: '--ov-row-target', label: 'Clear button width and height', property: 'width' },
-      { name: '--ov-text-scale', label: 'Count lane width multiplier', property: 'width' },
-      { name: '--ov-fs-12', label: 'Count text size', property: 'font-size' },
-      ...bodyType,
-    ],
   },
   Select: {
     category,
@@ -236,13 +86,6 @@ export const entries = {
       'Use width="normal" for an intrinsic settings-row width or fill to span the slot. Use mono for identifiers.',
       'readOnly and disabledReason keep the control focusable but prevent opening or changing it. Use Field help or a message to explain the restriction.',
     ],
-    tokens: [
-      ...fieldFace,
-      color('--ov-icon', 'Chevron glyph'),
-      color('--ov-icon-disabled', 'Unavailable chevron glyph'),
-      { name: '--ov-font-code', label: 'Monospace font', property: 'font-family' },
-      { name: '--ov-spacing-4', label: 'Vertical padding', property: 'padding-block-start' },
-    ],
   },
   Toggle: {
     category,
@@ -251,17 +94,6 @@ export const entries = {
       'Keep checked in the model and apply onCheckedChange immediately. Keep the Field label or standalone label the same in both states.',
       'The switch has one tab stop. Enter and Space request the opposite state, and assistive technology reads the current checked state.',
       'Use disabledReason for an unavailable change or readOnly for a fixed value. Both keep the switch focusable without letting it change.',
-    ],
-    tokens: [
-      color('--ov-border-control', 'Off track'),
-      color('--ov-icon', 'Off knob'),
-      color('--ov-accent', 'On track and keyboard focus ring'),
-      color('--ov-fg-over-accent', 'On knob'),
-      color('--ov-border-disabled', 'Unavailable track'),
-      color('--ov-icon-disabled', 'Unavailable knob'),
-      color('--ov-hover-toolbar', 'Hover fill around the switch'),
-      { name: '--ov-radius-popup', label: 'Track corner radius', property: 'border-radius' },
-      { name: '--ov-radius-control', label: 'Target corner radius', property: 'border-radius' },
     ],
   },
 } satisfies Record<string, Guide>;
