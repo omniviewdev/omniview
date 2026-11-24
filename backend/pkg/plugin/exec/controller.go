@@ -230,8 +230,8 @@ func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) 
 	return nil
 }
 
-// dispatchOutput emits a session output or signal to the UI.
-func (c *controller) dispatchOutput(output exec.StreamOutput) {
+// dispatchOutput emits a session output or signal to the UI. pluginID is the plugin the frame came from.
+func (c *controller) dispatchOutput(output exec.StreamOutput, pluginID string) {
 	if c.events == nil {
 		c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")
 		return
@@ -260,7 +260,9 @@ func (c *controller) dispatchOutput(output exec.StreamOutput) {
 		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 		// The session is over: its record goes, unless it ended by itself with nobody attached, when the plugin
 		// keeps its output for the first attach and so does the host.
-		c.sessionClosed(output.SessionID)
+		if !c.sessionClosed(output.SessionID, pluginID) {
+			return // the session is another plugin's: this plugin's CLOSE is not its end, and no window is told it was
+		}
 	case exec.StreamSignalSigint, exec.StreamSignalSigquit, exec.StreamSignalSigterm,
 		exec.StreamSignalSigkill, exec.StreamSignalSighup, exec.StreamSignalSigusr1,
 		exec.StreamSignalSigusr2, exec.StreamSignalSigwinch:
@@ -303,6 +305,7 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 
 	c.mu.RLock()
 	stream, active := c.streams[output.pluginID]
+	record, recorded := c.sessionIndex[output.SessionID]
 	c.mu.RUnlock()
 	if !active || stream.done != output.done || stream.ctx.Err() != nil {
 		// Output from a replaced or stopped provider stream is discarded.
@@ -311,12 +314,21 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
 		return
 	}
+	if heldByAnother(record, recorded, output.pluginID) {
+		// The host routes by session id, and this id is recorded for another session: a terminal of this host (it
+		// has no plugin) or a session of another plugin. A plugin speaks for the sessions it made, so the frame is
+		// not that session's.
+		c.logger.Warnw(context.Background(), "dropped output of a session id the plugin does not hold",
+			"pluginID", output.pluginID, "sessionID", output.SessionID)
+		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
+		return
+	}
 	if output.Signal == exec.StreamSignalError {
 		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "closed_error")
 		c.logger.Warnw(context.Background(), "exec session signaled error",
 			"pluginID", output.pluginID, "sessionID", output.SessionID)
 	}
-	c.dispatchOutput(output.StreamOutput)
+	c.dispatchOutput(output.StreamOutput, output.pluginID)
 }
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
@@ -662,6 +674,13 @@ func (c *controller) CreateSession(
 	if pctx == nil {
 		return nil, resourcev2.NewError("UNAVAILABLE", "The selected resource connection is unavailable. Reconnect and retry.")
 	}
+	// The host routes a call, an event and an end by the session id, so a session keeps its id: a second session
+	// with the id of a terminal of this host or of a session of any plugin would take over its record, as the other
+	// way CreateTerminal refuses. The page chose this id, so it is asked before a plugin is asked to start anything;
+	// the id the plugin answers is the one that decides, where it is recorded.
+	if opts.ID != "" && c.hasSession(opts.ID) {
+		return nil, terminal.IDInUse(opts.ID)
+	}
 	// Providers retain this context for the session, beyond binding completion.
 	pctx.Context = context.WithoutCancel(pctx.Context)
 	session, err = client.CreateSession(pctx, opts)
@@ -670,6 +689,11 @@ func (c *controller) CreateSession(
 	}
 
 	c.mu.Lock()
+	if held, taken := c.sessionIndex[session.ID]; taken {
+		c.mu.Unlock()
+		c.closeRefusedSession(ctx, pctx, client, plugin, held.pluginID, session.ID)
+		return nil, terminal.IDInUse(session.ID)
+	}
 	c.sessionIndex[session.ID] = sessionIndex{
 		pluginID:     plugin,
 		connectionID: connectionID,
@@ -685,6 +709,47 @@ func (c *controller) CreateSession(
 	c.logger.Infow(ctx, "exec session created", "sessionID", session.ID, "pluginID", plugin, "connectionID", connectionID)
 
 	return session, nil
+}
+
+// hasSession says the host holds a record for the session id: a terminal of this host, a session of a plugin, or one
+// that ended with nobody attached and waits for its first attach.
+func (c *controller) hasSession(sessionID string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, found := c.sessionIndex[sessionID]
+	return found
+}
+
+// heldByAnother says a frame from plugin names a session id the host recorded for another session: a terminal of this
+// host (its record has no plugin) or a session of another plugin. A plugin speaks for the sessions it made. A frame
+// whose id has no record is nobody's yet and is delivered: output and the end of a session can come before the host
+// has recorded it.
+func heldByAnother(record sessionIndex, recorded bool, pluginID string) bool {
+	return recorded && record.pluginID != pluginID
+}
+
+// closeRefusedSession ends the session a plugin made with an id the host holds for another session. It is closed with
+// the plugin that made it and never through CloseSession, which would find the record of the other session. heldBy is
+// the plugin the record names (none, for a terminal of this host). A plugin that answers an id it already holds a
+// session for has one session under that id, the recorded one (the SDK refuses a duplicate; a plugin that is not built
+// on it may not), and closing by the id would end that one: it is left alone.
+func (c *controller) closeRefusedSession(
+	ctx context.Context,
+	pctx *sdktypes.PluginContext,
+	client Provider,
+	plugin string,
+	heldBy string,
+	sessionID string,
+) {
+	if heldBy == plugin {
+		c.logger.Errorw(ctx, "plugin answered the id of a session it already holds", "sessionID", sessionID, "pluginID", plugin)
+		return
+	}
+	c.logger.Warnw(ctx, "closing a session whose id the host holds for another session", "sessionID", sessionID, "pluginID", plugin)
+	if err := client.CloseSession(pctx, sessionID); err != nil {
+		c.logger.Warnw(ctx, "could not close a session whose id is in use",
+			"sessionID", sessionID, "pluginID", plugin, "errorClass", telemetryutil.ErrorClass(err))
+	}
 }
 
 func (c *controller) ListSessions() (_ []*exec.Session, err error) {

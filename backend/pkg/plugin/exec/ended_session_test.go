@@ -257,7 +257,7 @@ func (f *anEndedSessionFixture) startOn(pluginID, id string) {
 // the host's dispatch.
 func (f *anEndedSessionFixture) endByItself(id string) {
 	f.t.Helper()
-	f.ctrl.dispatchOutput(f.plugin.end(id))
+	f.ctrl.dispatchOutput(f.plugin.end(id), endedFixturePlugin)
 	require.True(f.t, f.window.told("core/exec/signal/CLOSE/"+id), "the windows are told the session closed")
 }
 
@@ -409,7 +409,7 @@ func TestUnloadingAPluginClearsItsEndedSessions(t *testing.T) {
 	other.mu.Lock()
 	other.live["ended-there"].output = []byte("there")
 	other.mu.Unlock()
-	fx.ctrl.dispatchOutput(other.end("ended-there"))
+	fx.ctrl.dispatchOutput(other.end("ended-there"), "other-plugin")
 	require.ElementsMatch(t, []string{"ended-here", "live-here", "ended-there"}, fx.indexed())
 
 	require.NoError(t, fx.ctrl.OnPluginStop(endedFixturePlugin, config.PluginMeta{}))
@@ -515,7 +515,7 @@ func TestClosingASessionThatJustEndedIsNotAnError(t *testing.T) {
 
 			require.NoError(t, fx.ctrl.CloseSession("just-ended"))
 			require.Empty(t, fx.indexed())
-			fx.ctrl.dispatchOutput(aCloseSignal("just-ended")) // and then it arrives
+			fx.ctrl.dispatchOutput(aCloseSignal("just-ended"), endedFixturePlugin) // and then it arrives
 			require.Empty(t, fx.indexed(), "the late CLOSE of a session that was closed made no record")
 		})
 	}
@@ -539,7 +539,7 @@ func TestASessionTheHostClosedLeavesNoRecordWhenItsCloseComes(t *testing.T) {
 	fx.plugin.closeAnswer = errors.New("CloseSession timed out waiting for session closed goroutines")
 	require.Error(t, fx.ctrl.CloseSession("closed"))
 
-	fx.ctrl.dispatchOutput(aCloseSignal("closed"))
+	fx.ctrl.dispatchOutput(aCloseSignal("closed"), endedFixturePlugin)
 	require.Empty(t, fx.indexed())
 }
 
@@ -580,7 +580,7 @@ func TestACallAboutASessionThePluginNoLongerHasForgetsItsRecord(t *testing.T) {
 			err = call.do(fx.ctrl, "gone")
 			require.ErrorIs(t, err, sdkexec.ErrSessionNotFound, "the plugin's own answer")
 			require.Empty(t, fx.indexed())
-			fx.ctrl.dispatchOutput(aCloseSignal("gone")) // and then it arrives
+			fx.ctrl.dispatchOutput(aCloseSignal("gone"), endedFixturePlugin) // and then it arrives
 			require.Empty(t, fx.indexed())
 		})
 	}

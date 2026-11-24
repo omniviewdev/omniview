@@ -28,16 +28,24 @@ import (
 // An ended session is not a session a window can use. Every call except the three that have something to do
 // with its end (attach, detach, close) finds it as it found a session after its CLOSE before: not found.
 
-// sessionClosed is the host's answer to the CLOSE signal of a session of a plugin, the last thing it sends.
-func (c *controller) sessionClosed(sessionID string) {
+// sessionClosed is the host's answer to the CLOSE signal of a session of a plugin, the last thing it sends. It decides
+// whose session the id is and acts on the record in one critical section: a plugin that records a session with this id
+// after the frame was let through (dispatchProviderOutput) keeps it, and the answer is false: nothing was ended, and
+// the windows are not told.
+func (c *controller) sessionClosed(sessionID, pluginID string) bool {
 	now := c.clock()
 	c.mu.Lock()
+	if record, recorded := c.sessionIndex[sessionID]; heldByAnother(record, recorded, pluginID) {
+		c.mu.Unlock()
+		return false
+	}
 	kept := c.recordCloseLocked(sessionID, now)
 	c.mu.Unlock()
 	if kept {
 		c.logger.Debugw(context.Background(), "session ended with nobody attached; its output waits for the first attach",
 			"sessionID", sessionID)
 	}
+	return true
 }
 
 // recordCloseLocked decides the record of a session that has sent its CLOSE, and says whether it stays, marked
