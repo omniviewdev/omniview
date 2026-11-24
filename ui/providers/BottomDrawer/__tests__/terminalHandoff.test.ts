@@ -1,4 +1,4 @@
-import { offerTerminalSession } from '../terminalHandoff';
+import { hasTerminalSessionToOffer, offerTerminalSession } from '../terminalHandoff';
 
 const mocks = vi.hoisted(() => ({ offerSession: vi.fn() }));
 
@@ -8,15 +8,10 @@ vi.mock('@omniviewdev/runtime/api', () => ({
 
 // A session belongs to the window that opened it, and another window cannot attach it (docs/ui-next/status/T2c-go.md):
 // the window that moves a terminal tab offers its session first, so that the window that mounts the tab and attaches
-// the session holds it from then on.
+// the session holds it from then on. A move that cannot offer the session does not go on.
 describe('offerTerminalSession', () => {
   beforeEach(() => {
     mocks.offerSession.mockReset();
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it('offers the session of a terminal tab to the next window that attaches it', async () => {
@@ -36,19 +31,30 @@ describe('offerTerminalSession', () => {
     expect(mocks.offerSession).not.toHaveBeenCalled();
   });
 
-  it('lets the move go on when the offer fails: the session may have ended, and this window still holds what it holds', async () => {
-    mocks.offerSession.mockRejectedValue(new Error('the host said no'));
+  it('offers nothing for a terminal whose session has expired: it has no live session, and its move goes on', async () => {
+    await expect(offerTerminalSession({ id: 'session-2', variant: 'terminal', properties: { status: 'expired' } })).resolves.toBeUndefined();
 
-    await expect(offerTerminalSession({ id: 'session-1', variant: 'terminal' })).resolves.toBeUndefined();
-
-    expect(console.warn).toHaveBeenCalled();
+    expect(mocks.offerSession).not.toHaveBeenCalled();
   });
 
-  it('lets the move go on when the host has no OfferSession (a host older than this one)', async () => {
-    mocks.offerSession.mockImplementation(() => {
-      throw new TypeError('ExecClient.OfferSession is not a function');
-    });
+  it('rejects with the error of the host when the offer fails, so that the move does not go on', async () => {
+    const hostError = new Error('session not found');
+    mocks.offerSession.mockRejectedValue(hostError);
 
-    await expect(offerTerminalSession({ id: 'session-1', variant: 'terminal' })).resolves.toBeUndefined();
+    await expect(offerTerminalSession({ id: 'session-1', variant: 'terminal' })).rejects.toBe(hostError);
+
+    expect(mocks.offerSession).toHaveBeenCalledWith('session-1');
+  });
+});
+
+describe('hasTerminalSessionToOffer', () => {
+  it.each([
+    ['a terminal with a session', { id: 'session-1', variant: 'terminal' }, true],
+    ['a terminal with a live status', { id: 'session-1', variant: 'terminal', properties: { status: 'connected' } }, true],
+    ['a terminal that has no session yet', { id: 'pending-3', variant: 'terminal' }, false],
+    ['a terminal whose session has expired', { id: 'session-2', variant: 'terminal', properties: { status: 'expired' } }, false],
+    ['a tab that is not a terminal', { id: 'log-session', variant: 'logs' }, false],
+  ])('is decided for %s', (_name, tab, expected) => {
+    expect(hasTerminalSessionToOffer(tab)).toBe(expected);
   });
 });
