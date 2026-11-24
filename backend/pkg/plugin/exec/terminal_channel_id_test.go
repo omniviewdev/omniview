@@ -181,3 +181,34 @@ func sdkexecOptions(id string) execsdk.SessionOptions {
 func sdkexecOptionsHeld(id, tag string) execsdk.SessionOptions {
 	return execsdk.SessionOptions{ID: id, Command: []string{tag}} //nolint:exhaustruct // The test names what it needs.
 }
+
+// A. The plugin session that the host refused (a channel terminal holds its id) still exists in the plugin until the host's close
+// reaches it, and it can speak for that time. The host routes a frame by its session id, and an id that a channel terminal holds
+// is held by another session as much as an id the index records for a terminal of a window: the frame is dropped. Output and
+// signals under that id reach no window, and the plugin's CLOSE neither ends anything nor tells a window that something closed.
+func TestAPluginFrameUnderTheIDOfAChannelTerminalIsDropped(t *testing.T) {
+	fx := newTerminalFixture(t)
+	plugin := newAKeepingPlugin()
+	fx.install("plugin", plugin)
+	info := fx.openChannelWithID("held-by-a-channel-terminal")
+
+	frameFrom(t, fx.ctrl, "plugin", aStdoutFrame(info.ID, "output of a session the host refused"))
+	guarded(t, "channel-id-frames-dropped", func() {
+		require.Empty(t, fx.eventsOf(info.ID), "nothing of a plugin goes out under the id of a channel terminal")
+	})
+	fx.requireTheChannelTerminalIsUntouched(info)
+}
+
+func TestAPluginsCloseUnderTheIDOfAChannelTerminalNeitherEndsItNorReachesAWindow(t *testing.T) {
+	fx := newTerminalFixture(t)
+	plugin := newAKeepingPlugin()
+	fx.install("plugin", plugin)
+	info := fx.openChannelWithID("held-by-a-channel-terminal")
+
+	frameFrom(t, fx.ctrl, "plugin", aCloseSignal(info.ID))
+	guarded(t, "channel-id-frames-dropped", func() {
+		require.Empty(t, fx.eventsOf(info.ID), "no window is told that a session with the id of a channel terminal closed")
+		require.False(t, fx.ctrl.sessionClosed(info.ID, "plugin"), "the decision is taken with the record, in one step: the id is not that plugin's")
+	})
+	fx.requireTheChannelTerminalIsUntouched(info)
+}
