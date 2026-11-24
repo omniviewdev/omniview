@@ -103,6 +103,7 @@ func soak(t *testing.T, script func(gate) string, verify func(t *testing.T, s *s
 	final := s.channelStats()
 	assert.Equal(t, final.end-uint64(len(got)), final.overwritten, "overwritten is the output less what the ring holds")
 	assert.Equal(t, final.end-uint64(len(got)), final.start)
+	requireTheRingKeptAsMuchAsItShould(t, uint64(len(got)), final.end, m.channel.ring)
 	t.Logf("SOAK ring: kept %d of a limit of %d, overwritten %d, output %d", len(got), m.channel.ring, final.overwritten, final.end)
 	verify(t, s, got)
 }

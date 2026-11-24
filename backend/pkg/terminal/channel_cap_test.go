@@ -244,9 +244,12 @@ func TestEveryCallThatNamesAChannelTerminalByItsCapabilityAnswersTheOneNotFoundF
 	})
 
 	// The capability that opens a terminal gets its answers, and a list names it by its id.
-	busy, err := m.ChannelBusy(a.Cap)
-	require.NoError(t, err)
-	assert.Equal(t, StateBusy, busy.State, "the shell runs cat in the foreground")
+	// The shell starts cat after it printed, and the foreground is the shell's own until cat has been given the terminal: wait
+	// for the shell to hand it over, and do not ask before.
+	require.Eventually(t, func() bool {
+		busy, err := m.ChannelBusy(a.Cap)
+		return err == nil && busy.State == StateBusy
+	}, settle, 5*time.Millisecond, "the shell runs cat in the foreground")
 	cwd, err := m.ChannelCwd(a.Cap)
 	require.NoError(t, err)
 	assert.True(t, strings.HasSuffix(cwd.Path, a.Cwd), "where the shell is: its physical path ends with the one it started in (%q, %q)", cwd.Path, a.Cwd)
@@ -327,6 +330,7 @@ func TestTheFirstFrameIsTheAttachAndAnythingElseGetsTheOneNotFoundAndTheStreamCl
 		})
 		guarded(t, "attach-reads-only-the-first-frame", func() {
 			assert.False(t, m.chanOf(t, info).channelStats().held, "%s: the terminal was never held", name)
+			assert.Equal(t, 1, f.recvCalls(), "%s: nothing was read past the first frame, the valid attach behind it included", name)
 		})
 	}
 

@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -25,6 +26,17 @@ import (
 // The trigger of every test here is bytes written, an offset, and never a duration; the stall is decided by a clock the test
 // moves, and no outcome by a sleep. The child writes the counting sequence, so that every byte is known from its offset.
 
+// requireTheRingKeptAsMuchAsItShould is the size of a ring that nothing writes any more: no more than its limit, and (the output
+// being more than the limit) not much less than it, as the ring drops whole chunks, oldest first. A ring that trimmed down to its
+// newest chunk, and counted what it overwrote correctly, would pass every check of its bytes and fail this one.
+func requireTheRingKeptAsMuchAsItShould(t *testing.T, kept, end uint64, limit int) {
+	t.Helper()
+	assert.LessOrEqual(t, kept, uint64(limit), "and no more than its limit")
+	if end > uint64(limit) {
+		assert.Greater(t, kept, uint64(limit)-4*chunkBytes, "and not much less: it drops whole chunks, oldest first")
+	}
+}
+
 // requireTheRingHoldsTheNewest reads a terminal that has ended (nothing writes its ring any more): the ring holds exactly the
 // newest bytes of the sequence the child wrote, in whole chunks and no more than its limit, and what it dropped is counted.
 func requireTheRingHoldsTheNewest(t *testing.T, s *session, limit int) {
@@ -34,10 +46,7 @@ func requireTheRingHoldsTheNewest(t *testing.T, s *session, limit int) {
 	kept := uint64(len(got))
 	assert.Equal(t, kept, stats.kept, "what the ring says it holds is what it holds")
 	assert.Equal(t, stats.end-kept, stats.start, "it holds the end of the output")
-	assert.LessOrEqual(t, kept, uint64(limit), "and no more than its limit")
-	if stats.end > uint64(limit) {
-		assert.Greater(t, kept, uint64(limit)-4*chunkBytes, "and not much less: it drops whole chunks, oldest first")
-	}
+	requireTheRingKeptAsMuchAsItShould(t, kept, stats.end, limit)
 	guarded(t, "ring-counts", func() {
 		assert.Equal(t, stats.end-kept, stats.overwritten, "what it overwrote is counted: overwritten is the output less what the ring holds")
 	})
@@ -120,12 +129,19 @@ func TestAPageThatWakesGetsAGapOfExactlyWhatTheRingOverwroteThenTheExactSequence
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
 	hold.release(t)
+	// The page goes to sleep once the sender is parked in its first frame of output: a sender that is late would find the ring
+	// overwritten by then and begin with the gap, and the frame that the gap follows would not be this one. The frame is read here,
+	// as the transport holds it, and its length is what the page has when it wakes.
+	require.Eventually(t, func() bool { begun, _ := f.counts(); return begun >= 2 }, settle, time.Millisecond, "the sender began its first frame of output")
+	first := f.lastSendFrame()
+	require.GreaterOrEqual(t, len(first), 9, "a frame of output has its type and its offset")
+	require.Equal(t, wOutput, first[0], "the frame that the parked Send holds is output")
+	require.Zero(t, binary.BigEndian.Uint64(first[1:9]), "and it begins at offset 0")
+	n0 := uint64(len(first) - 9)
 	require.Eventually(t, func() bool { return s.channelStats().waits >= 1 }, settle, time.Millisecond)
 	clock.Advance(m.channel.stall)
 	require.Eventually(t, func() bool { return s.channelStats().end == total }, settle, time.Millisecond, "the child wrote it all with the page asleep")
 	stats := s.channelStats()
-	first := f.lastSendFrame()
-	n0 := uint64(len(first) - 9) // the frame the parked Send holds: its offset is 0
 	require.Positive(t, stats.start, "the ring overwrote bytes the sender had not sent")
 
 	f.release()

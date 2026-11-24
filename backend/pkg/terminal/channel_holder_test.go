@@ -153,31 +153,28 @@ func TestInputOfAHolderThatIsGivenAwayAndTheTakeoverOfItAtOnceKeepTheirOrder(t *
 }
 
 // typeWhileTheTerminalIsTaken has the stream a type 200 lines while a second stream takes the terminal, after a jitter, and types
-// 20 lines of its own. It returns when both have typed.
+// 20 lines of its own. It returns when both have typed. The first stream types on a goroutine of its own; the second attaches, waits
+// for the host's answer and types on the goroutine of the test, so that a failure of the attach stops the test and is not lost in a
+// goroutine that ends while the test waits for what it will never send.
 func typeWhileTheTerminalIsTaken(t *testing.T, m *Manager, capability string, a *chanPage, delay *rand.Rand) {
 	t.Helper()
 	start := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(2)
+	typed := make(chan struct{})
 	go func() {
-		defer wg.Done()
+		defer close(typed)
 		<-start
 		for i := range 200 {
 			a.input(fmt.Sprintf("A%03d\n", i))
 		}
 	}()
-	go func() {
-		defer wg.Done()
-		<-start
-		jitter(delay)
-		b := m.attach(t, capability, nil)
-		b.waitReady()
-		for i := range 20 {
-			b.input(fmt.Sprintf("B%03d\n", i))
-		}
-	}()
 	close(start)
-	wg.Wait()
+	jitter(delay)
+	b := m.attach(t, capability, nil)
+	b.waitReady()
+	for i := range 20 {
+		b.input(fmt.Sprintf("B%03d\n", i))
+	}
+	<-typed
 }
 
 // requireTheHandoverKeptTheOrder checks the shell's log of one round: nothing A typed comes after anything B typed, what A typed is

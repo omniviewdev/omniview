@@ -34,8 +34,9 @@ type Launch struct {
 	// is refused, naming the field).
 	PageKey string `json:"page_key,omitempty"`
 	// LeaseMs is how long the terminal is kept for a page that comes back once its page is gone, in
-	// milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something only
-	// with a PageKey.
+	// milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something
+	// only for a terminal that is kept: one with a PageKey (the events lane) or a Channel terminal (the
+	// channel lane), which exclude each other. A lease for a terminal that is neither is refused.
 	LeaseMs int `json:"lease_ms,omitempty"`
 	// Channel makes the terminal a channel terminal: it is reached by the capability that the answer of CreateTerminal
 	// carries (Session.Cap, once) and by one stream for each terminal (docs/ui-next/terminal-channel-protocol.md), it
@@ -44,10 +45,13 @@ type Launch struct {
 	// capability takes it over. The host never lets a page that sleeps block the shell (Limits.ChannelRingBytes).
 	// It excludes PageKey, which is the events lane's.
 	Channel bool `json:"channel,omitempty"`
-	// There is no flow-control option: every terminal is paced by credit (FlowHighBytes, FlowLowBytes), so
-	// the host never has more than that delivered and not credited for a client. That bounds what the
-	// terminal manager hands on, not what the transport keeps after it credits (docs/ui-next/status/T1-go.md,
-	// 2.8.6). See Manager.Ack and Manager.Delivered for where credit comes from.
+	// There is no flow-control option; what paces a terminal depends on its lane. A terminal of the events lane is
+	// paced by credit (FlowHighBytes, FlowLowBytes), so the host never has more than that delivered and not
+	// credited for a client; that bounds what the terminal manager hands on, not what the transport keeps after it
+	// credits (docs/ui-next/status/T1-go.md, 2.8.6), and the credit comes from Manager.Ack and Manager.Delivered.
+	// A channel terminal does not use that credit: it is paced between ChannelHighBytes and ChannelLowBytes while
+	// its page is alive, and its acknowledgements are frames of its own stream
+	// (docs/ui-next/terminal-channel-protocol.md).
 }
 
 // Options is what the manager starts a terminal from. CreateTerminal builds it from the SDK's session

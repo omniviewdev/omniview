@@ -227,7 +227,7 @@ func TestAChannelTerminalTakesNoOwner(t *testing.T) {
 	_, err := m.Start(Options{Command: []string{sh(t), "-c", "sleep 600"}, Channel: true}, Owner("wA"))
 	guarded(t, "channel-takes-no-owner", func() {
 		require.Error(t, err, "a channel terminal takes no owner")
-		assert.ErrorIs(t, err, ErrInvalid)
+		require.ErrorIs(t, err, ErrInvalid, "it is the refusal of an invalid request")
 		assert.Empty(t, m.running(), "and no shell was started")
 	})
 }

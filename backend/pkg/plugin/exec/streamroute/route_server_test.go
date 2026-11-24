@@ -326,7 +326,8 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 		assert.Positive(t, state.ready.LeaseMs, "the lease the terminal is kept for when this stream ends is stated")
 
 		page.write(append([]byte{pInput}, "hello\n"...))
-		state = page.until("the echo", func(s *streamState) bool { return bytes.Count(s.output, []byte("hello")) >= 2 })
+		// Both lines whole, the terminator of the second too: a frame can end anywhere, and the output is compared when it is all there.
+		state = page.until("the echo", func(s *streamState) bool { return bytes.Count(s.output, []byte("hello\r\n")) >= 2 })
 		assert.EqualValues(t, len(state.output), state.next, "the output is one run of bytes from offset 0")
 		assert.Equal(t, "hello\r\nhello\r\n", string(state.output), "the terminal's echo and then cat's own")
 	})
