@@ -362,23 +362,27 @@ func TestALeaseThatRunsOutEndsTheTerminalTheWayACloseDoes(t *testing.T) {
 // a lease of its own.
 func TestAnAttachBeforeTheLeaseEndsKeepsTheTerminalAndTheNextDetachStartsANewLease(t *testing.T) {
 	m, sink := newPageManager(t)
+	clock := withFakeClock(m)
 	info := m.startKeyed(t, `printf 'up\n'; sleep 60`, "w1", Options{LeaseMs: 700})
 	sink.waitFor(t, info.ID, "up\r\n")
+	s := m.session(t, info.ID)
 	m.ReleaseOwned("w1", ClosedByWindow)
-	time.Sleep(350 * time.Millisecond)
+	clock.Advance(350 * time.Millisecond)
 	_, err := m.Attach(info.ID, "w2", AttachRequest{PageKey: testKey})
 	require.NoError(t, err)
-	time.Sleep(1200 * time.Millisecond)
-	assert.False(t, gone(info.PID), "the first lease ran out while the terminal was attached: it did nothing")
+	clock.Advance(1200 * time.Millisecond)
+	assert.False(t, s.ending.Load(), "the first lease ran out while the terminal was attached: it did nothing")
 	assert.Empty(t, sink.closes(info.ID))
-	detached, _, _, _ := m.session(t, info.ID).state()
+	detached, _, _, _ := s.state()
 	assert.False(t, detached)
 
-	started := time.Now()
 	m.ReleaseOwned("w2", ClosedByWindow)
+	clock.Advance(700*time.Millisecond - time.Millisecond)
+	assert.False(t, s.ending.Load(), "the second lease is a whole one")
+	clock.Advance(time.Millisecond)
+	assert.True(t, s.ending.Load(), "and it ends the terminal when it is over")
 	end := sink.waitEnd(t, info.ID)
 	assert.Equal(t, ClosedByDetachTimeout, end.ClosedBy)
-	assert.GreaterOrEqual(t, time.Since(started), 700*time.Millisecond, "the second lease is a whole one")
 	requireGone(t, info.PID, "the terminal")
 }
 
@@ -466,7 +470,7 @@ func TestATerminalThatEndsWhileNoPageIsAttachedLeavesItsEndAndItsOutputForThePag
 	sink.waitFor(t, info.ID, "bye\r\n")
 	m.ReleaseOwned("w1", ClosedByWindow)
 	quiet(t, m, info.ID)
-	require.NoError(t, m.Write(info.ID, 0, []byte("go\n")))
+	m.endTheShellWith(info.ID, 0, "go\n")
 
 	require.Eventually(t, func() bool {
 		listed := m.List(nil, testKey)
@@ -512,9 +516,12 @@ func TestTheHostRemembersABoundedNumberOfTerminalsThatEndedAndOnlyThoseThatEnded
 	}
 	m.ReleaseOwned("w1", ClosedByWindow)
 	for _, info := range infos {
-		require.NoError(t, m.Write(info.ID, 0, []byte("go\n")))
+		m.endTheShellWith(info.ID, 0, "go\n")
 		sink.waitEnd(t, info.ID)
 	}
+	// The last terminal is in the list twice (the live one and its tombstone) between its CLOSE and the moment the
+	// manager lets its id go: the list is read once the manager holds no terminal.
+	require.Eventually(t, func() bool { return len(m.running()) == 0 }, 20*time.Second, 5*time.Millisecond, "the last terminal is gone from the manager")
 	listed := m.List(nil, testKey)
 	require.Len(t, listed, TombstoneLimit)
 	want := make([]string, 0, TombstoneLimit)
@@ -538,20 +545,26 @@ func TestTheHostRemembersABoundedNumberOfTerminalsThatEndedAndOnlyThoseThatEnded
 // opened with: a page that was told it has a minute finds the terminal's end for a minute.
 func TestATombstoneIsKeptForTheLeaseTheTerminalWasDetachedWith(t *testing.T) {
 	m, sink := newPageManager(t)
+	clock := withFakeClock(m)
 	info := m.startKeyed(t, `stty -echo; printf 'up\n'; read x; exit 0`, "w1", Options{LeaseMs: 700})
 	sink.waitFor(t, info.ID, "up\r\n")
 	detached, err := m.Detach(info.ID, "w1", DetachRequest{LeaseMs: 60000})
 	require.NoError(t, err)
 	assert.Equal(t, 60000, detached.LeaseMs)
-	require.NoError(t, m.Write(info.ID, 0, []byte("go\n")))
+	m.endTheShellWith(info.ID, 0, "go\n")
+	sink.waitEnd(t, info.ID)
 	require.Eventually(t, func() bool {
 		listed := m.List(nil, testKey)
 		return len(listed) == 1 && listed[0].Ended != nil
-	}, 30*time.Second, 10*time.Millisecond, "the terminal ended and left its end")
-	assert.WithinDuration(t, time.Now().Add(60*time.Second), time.UnixMilli(m.List(nil, testKey)[0].LeaseExpiresUnixMs), 5*time.Second,
-		"kept for the lease it was detached with")
-	time.Sleep(1200 * time.Millisecond)
+	}, 30*time.Second, 10*time.Millisecond, "the ended terminal is the only listed entry (the live one is in the list until the manager lets its id go)")
+	listed := m.List(nil, testKey)
+	require.Len(t, listed, 1)
+	require.NotNil(t, listed[0].Ended, "the terminal ended and left its end")
+	assert.Equal(t, clock.Now().Add(60*time.Second).UnixMilli(), listed[0].LeaseExpiresUnixMs, "kept for the lease it was detached with")
+	clock.Advance(1200 * time.Millisecond)
 	assert.Len(t, m.List(nil, testKey), 1, "and not forgotten when the lease it was opened with would have run out")
+	clock.Advance(60*time.Second - 1200*time.Millisecond)
+	assert.Empty(t, m.List(nil, testKey), "and forgotten when the lease it was detached with is over")
 }
 
 // 8. WHAT THE LEGACY ATTACH SEES.

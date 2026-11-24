@@ -143,7 +143,7 @@ run the-tombstone-timer-is-never-armed $T backend/pkg/terminal/reattach.go \
   '^TestTombstonesThatExpired'
 
 run the-shutdown-leaves-the-tombstone-timer $T backend/pkg/terminal/manager.go \
-  's/^\tm.armTombstoneTimerLocked(time.Now())$/\t_ = 0/' \
+  's/^\tm.armTombstoneTimerLocked(m.clock.Now())$/\t_ = 0/' \
   '^TestTombstonesThatExpired'
 
 run the-policy-allows-attach-terminal . internal/auditgate/policy.json \
@@ -155,3 +155,40 @@ run the-policy-allows-attach-terminal . internal/auditgate/policy.json \
 run a-failed-create-ends-a-terminal-another-window-attached-and-released $T backend/pkg/terminal/reattach.go \
   '/^func (m \*Manager) CloseUnlessTakenOver/,/^}/ s/ || s.attachment != 0//' \
   '^TestTheCleanupOfAFailedCreate'
+
+# next_input_seq (asked by the T2b UI): the number a reattached page continues the input sequence from.
+
+run the-input-sequence-is-always-one $T backend/pkg/terminal/ordered.go \
+  '/^func (q \*inputQueue) expects/,/^}/ s/^\treturn q.next$/\treturn 1/' \
+  '^TestAnAttachAndAListSay'
+
+run an-attach-does-not-say-the-input-sequence $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) attachLive/,/^}/ s/NextInputSeq: s.queue.expects()/NextInputSeq: 0/' \
+  '^TestAnAttachAndAListSay'
+
+# The tests that were decided by time or by the echo (the resize answer, the tombstone timer, the leases) now run on a
+# clock the test moves, or count what the shell computes; each fault below must still turn them red.
+
+run the-resize-is-never-applied $T backend/pkg/terminal/pty.go \
+  '/^func (d ptyDevice) Resize/,/^}/ s/return unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, &unix.Winsize{Row: rows, Col: cols, Xpixel: 0, Ypixel: 0})/return nil/' \
+  '^TestResizeAppliesInOrder'
+
+run a-size-of-zero-is-a-size $T backend/pkg/terminal/errors.go \
+  's/if d.value < 1 || d.value > MaxDimension {/if d.value > MaxDimension {/' \
+  '^TestResizeAppliesInOrder'
+
+run the-tombstone-timer-waits-twice-as-long $T backend/pkg/terminal/reattach.go \
+  '/^func (m \*Manager) armTombstoneTimerLocked/,/^}/ s/max(first.Sub(now), 0)/max(first.Sub(now), 0)*2/' \
+  '^TestTombstonesThatExpired'
+
+run a-tombstone-lives-for-no-time $T backend/pkg/terminal/reattach.go \
+  's/until, attachment := s.tombstoneTerms(now)/until, attachment := now, uint64(0)/' \
+  '^TestTombstonesThatExpired|^TestATombstoneIsKept'
+
+run a-tombstone-keeps-the-lease-it-was-opened-with $T backend/pkg/terminal/reattach.go \
+  '/^func (s \*session) tombstoneTerms/,/^}/ s/return s.leaseEnd, s.attachment/return now.Add(s.lease), s.attachment/' \
+  '^TestATombstoneIsKept'
+
+run a-lease-runs-on-the-wall-clock $T backend/pkg/terminal/reattach.go \
+  's/s.leaseTimer = s.clock.AfterFunc(lease, func() { s.expire(gen) })/s.leaseTimer = time.AfterFunc(lease, func() { s.expire(gen) })/' \
+  '^TestAnAttachBeforeTheLeaseEnds'

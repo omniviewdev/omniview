@@ -185,8 +185,8 @@ func (s *session) detachLocked(lease time.Duration, by DetachedBy) (time.Time, *
 	s.leaseGen++
 	gen := s.leaseGen
 	s.leaseLen = lease
-	s.leaseEnd = time.Now().Add(lease)
-	s.leaseTimer = time.AfterFunc(lease, func() { s.expire(gen) })
+	s.leaseEnd = s.clock.Now().Add(lease)
+	s.leaseTimer = s.clock.AfterFunc(lease, func() { s.expire(gen) })
 	return s.leaseEnd, left
 }
 
@@ -414,7 +414,7 @@ func (m *Manager) attachLive(s *session, caller Owner, req AttachRequest) (*Atta
 	}
 	return &Attached{
 		Session: s.info, Replay: hand.view.replay(), Cwd: Directory{Path: path, Reason: reason}, Busy: busy, Ended: nil,
-		Attachment: hand.attachment,
+		Attachment: hand.attachment, NextInputSeq: s.queue.expects(),
 	}, nil
 }
 
@@ -500,7 +500,7 @@ func (m *Manager) List(caller Owner, key string) []Listed {
 			out = append(out, listed)
 		}
 	}
-	now := time.Now()
+	now := m.clock.Now()
 	for _, t := range tombs {
 		if t.holdsKey(key) && now.Before(t.until) {
 			out = append(out, t.listed())
@@ -531,7 +531,7 @@ func (s *session) listed(caller Owner, key string) (Listed, bool) {
 	}
 	return Listed{
 		ID: s.id, CreatedAt: s.info.CreatedAt, PID: s.info.PID, Shell: s.info.Shell, Labels: nonNil(s.labels), Params: nonNil(s.params),
-		Size: size, Attached: !s.detached, NextOffset: next, ReplayStart: first, LeaseExpiresUnixMs: expires, Ended: nil,
+		Size: size, Attached: !s.detached, NextOffset: next, ReplayStart: first, NextInputSeq: s.queue.expects(), LeaseExpiresUnixMs: expires, Ended: nil,
 	}, true
 }
 
@@ -563,14 +563,14 @@ func (t *tombstone) attached(from *uint64) (*Attached, error) {
 	}
 	return &Attached{
 		Session: t.info, Replay: view.replay(), Cwd: Directory{Path: "", Reason: ReasonEnded}, Busy: UnknownForeground(ReasonEnded), Ended: new(t.end),
-		Attachment: t.attachment,
+		Attachment: t.attachment, NextInputSeq: 0,
 	}, nil
 }
 
 func (t *tombstone) listed() Listed {
 	return Listed{
 		ID: t.id, CreatedAt: t.info.CreatedAt, PID: t.info.PID, Shell: t.info.Shell, Labels: nonNil(t.labels), Params: nonNil(t.params),
-		Size: t.ring.size(t.ring.end), Attached: false, NextOffset: t.ring.end, ReplayStart: t.ring.start(),
+		Size: t.ring.size(t.ring.end), Attached: false, NextOffset: t.ring.end, ReplayStart: t.ring.start(), NextInputSeq: 0,
 		LeaseExpiresUnixMs: t.until.UnixMilli(), Ended: new(t.end),
 	}
 }
@@ -585,7 +585,7 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	s.outMu.Lock()
 	frozen := s.ring.freeze()
 	s.outMu.Unlock()
-	now := time.Now()
+	now := m.clock.Now()
 	until, attachment := s.tombstoneTerms(now)
 	t := &tombstone{
 		id: s.id, key: s.pageKey, info: s.info, ring: frozen, end: end, until: until, attachment: attachment,
@@ -634,14 +634,14 @@ func (m *Manager) armTombstoneTimerLocked(now time.Time) {
 			first = t.until
 		}
 	}
-	m.tombTimer = time.AfterFunc(max(first.Sub(now), 0), m.expireTombstones)
+	m.tombTimer = m.clock.AfterFunc(max(first.Sub(now), 0), m.expireTombstones)
 }
 
 // expireTombstones is what the timer does: free the tombstones whose lease is over, and wait for the next.
 func (m *Manager) expireTombstones() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := time.Now()
+	now := m.clock.Now()
 	m.pruneTombstonesLocked(now)
 	m.armTombstoneTimerLocked(now)
 }
@@ -653,7 +653,7 @@ func (m *Manager) find(id string) (*session, *tombstone) {
 	if s := m.sessions[id]; s != nil {
 		return s, nil
 	}
-	now := time.Now()
+	now := m.clock.Now()
 	for _, t := range m.tombs {
 		if t.id == id && now.Before(t.until) {
 			return nil, t

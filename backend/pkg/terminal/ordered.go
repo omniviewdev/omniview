@@ -98,6 +98,17 @@ func newInputQueue(dev device, limit queueLimits) *inputQueue {
 	return q
 }
 
+// expects is the sequence number the queue takes next: the lowest not yet taken (a call ahead of it that waits
+// has not been taken). It is 0 once the queue is closed: nothing more is taken.
+func (q *inputQueue) expects() uint64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.err != nil {
+		return 0
+	}
+	return q.next
+}
+
 // write applies data to the device. It returns when the write has been applied or refused.
 func (q *inputQueue) write(seq uint64, data []byte) error {
 	o := newOp(opWrite, seq)
@@ -261,6 +272,13 @@ func (q *inputQueue) apply(o *op) error {
 // close ends the queue: every operation that is held, waiting or running is answered with cause at
 // once, and so is every later one. It does not wait for the executor, which may be inside a write the
 // device has not returned from; the executor ends when that write does.
+//
+// The answer to a write that ends the shell is therefore decided by who comes first: the executor, once the
+// thread that wrote the line is scheduled again, or this close, which the end of the shell brings about: on a
+// busy machine the shell can read its line, end, and close the queue before the thread that handed the line to the
+// kernel has run again, and the call is answered with the cause although the bytes were delivered. No flag the
+// executor sets can close that window, because it is the executor waiting for a CPU. A caller whose line ends the
+// shell does not rely on the answer.
 func (q *inputQueue) close(cause error) {
 	q.mu.Lock()
 	if q.err != nil {

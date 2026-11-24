@@ -290,6 +290,38 @@ func TestADisplacedPageIsToldAndCannotDetachWhatTheNewPageOwns(t *testing.T) {
 	fx.detached(info.ID)
 }
 
+// The input queue of a terminal is the terminal's, not the page's: a page that reloads and attaches continues the
+// sequence of WriteTerminal and ResizeTerminal where the page before it stopped, and the host says where that is
+// (Listed and Attached, next_input_seq). A number below it is refused SEQUENCE_STALE, so a page that guessed 1
+// would be refused, and one that is told is not.
+func TestAReloadedPageContinuesTheInputSequenceFromTheNumberTheHostSays(t *testing.T) {
+	fx := newTerminalFixture(t)
+	first := fx.page(1)
+	info := fx.mustOpenKeyed(first, keyA, `stty -echo; cat`)
+	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, 1, []byte("one\n")))
+	require.NoError(t, fx.wrapper.ResizeTerminal(info.ID, 2, 30, 100))
+	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, 3, []byte("two\n")))
+	require.Eventually(t, func() bool { text, _ := fx.positioned(info.ID); return strings.Contains(text, "two\r\n") }, 20*time.Second, 5*time.Millisecond)
+
+	fx.retire(first)
+	fx.detached(info.ID)
+	second := fx.page(2)
+	listed := fx.listed(second, keyA)
+	require.Len(t, listed, 1)
+	assert.Equal(t, uint64(4), listed[0].NextInputSeq, "the list says where the sequence stands")
+	attached, err := fx.wrapper.AttachTerminal(fx.ctx(second), info.ID, terminal.AttachRequest{PageKey: keyA})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(4), attached.NextInputSeq, "and so does the attach")
+
+	var stale *apperror.AppError
+	require.ErrorAs(t, fx.wrapper.WriteTerminal(info.ID, 1, []byte("x\n")), &stale)
+	assert.Equal(t, "SEQUENCE_STALE", stale.Code, "a page that started again at 1 is refused")
+	require.NoError(t, fx.wrapper.WriteTerminal(info.ID, attached.NextInputSeq, []byte("three\n")))
+	require.NoError(t, fx.wrapper.ResizeTerminal(info.ID, attached.NextInputSeq+1, 24, 80))
+	require.Eventually(t, func() bool { text, _ := fx.positioned(info.ID); return strings.Contains(text, "three\r\n") }, 20*time.Second, 5*time.Millisecond)
+	assert.Equal(t, uint64(6), fx.listed(second, keyA)[0].NextInputSeq)
+}
+
 // A window that is already retired is refused: a terminal is not handed to a page nobody can reach, and it stays
 // as it was.
 func TestARetiredWindowCannotListOrAttachAndTheTerminalStaysDetached(t *testing.T) {
@@ -366,6 +398,12 @@ func TestTheAttachRequestAndTheDetachRequestAreTheirJSONNames(t *testing.T) {
 	assert.InDelta(t, 4, replay["end"], 0)
 	assert.Contains(t, replay, "start_size")
 	assert.Contains(t, replay, "start_modes")
+	assert.InDelta(t, 0, wire["next_input_seq"], 0, "the number the terminal takes next is on the wire, under its name")
+	rawListed, err := json.Marshal(terminal.Listed{NextInputSeq: 4})
+	require.NoError(t, err)
+	var listedWire map[string]any
+	require.NoError(t, json.Unmarshal(rawListed, &listedWire))
+	assert.InDelta(t, 4, listedWire["next_input_seq"], 0)
 	assert.NotContains(t, wire, "ended", "a terminal that has not ended says nothing of an end")
 }
 

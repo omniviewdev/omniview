@@ -866,6 +866,12 @@ func (c *controller) CloseSession(
 
 	index, client, ok := c.lookupSessionOrEnded(sessionID)
 	if !ok {
+		// The end that a terminal leaves when it ended by itself while no page was attached is not in the index (its
+		// CLOSE took the id out) and the terminal manager keeps it: closing it dismisses it. An id that is neither is
+		// not found.
+		if c.terminalManager != nil {
+			return c.terminalManager.CloseSession(sessionID)
+		}
 		return apperror.SessionNotFound(sessionID)
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
