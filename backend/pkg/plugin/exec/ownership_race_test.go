@@ -440,3 +440,51 @@ func TestAnOfferOfALocalTerminalIsTakenBackThroughTheWrapper(t *testing.T) {
 	requireNotFound(t, err, "the offer was taken back")
 	require.NoError(t, fx.wrapper.WriteTerminal(fx.ctx(a), info.ID, 0, []byte("still mine\n")))
 }
+
+// A session whose end the host has decided is nobody's to list, read or end (CodeRabbit): it is going, and a window that is
+// shown it would be refused when it attached it. The window that holds it keeps its access until the CLOSE comes. This holds
+// for a close that is on its way and for one the plugin answered with an error (the end stays decided).
+func TestASessionWhoseEndIsDecidedIsNotListedReadOrEndedByAWindowThatDoesNotHoldIt(t *testing.T) {
+	t.Run("a close that is on its way", func(t *testing.T) {
+		fx := newOwnershipRaceFixture(t)
+		fx.make(nil, "going")
+		fx.plugin.closeGate = newGate()
+		closed := fx.closeAsync("wA", "going")
+		<-fx.plugin.closeGate.entered
+
+		ids, err := fx.ctrl.ListSessions("wB")
+		require.NoError(t, err)
+		assert.Empty(t, ids, "the session is going: it is not listed to a window that does not hold it")
+		_, err = fx.ctrl.GetSession("wB", "going")
+		requireSessionNotFound(t, err, "going")
+		requireSessionNotFound(t, fx.ctrl.CloseSession("wB", "going"), "going")
+		close(fx.plugin.closeGate.release)
+		require.NoError(t, <-closed)
+		assert.Empty(t, fx.indexed())
+	})
+	t.Run("a close that the plugin answered with an error", func(t *testing.T) {
+		fx := newOwnershipRaceFixture(t)
+		fx.make(nil, "stuck")
+		fx.plugin.closeFails = errors.New("CloseSession timed out waiting for session stuck goroutines")
+		require.Error(t, fx.ctrl.CloseSession("wA", "stuck"))
+
+		ids, err := fx.ctrl.ListSessions("wB")
+		require.NoError(t, err)
+		assert.Empty(t, ids)
+		_, err = fx.ctrl.GetSession("wB", "stuck")
+		requireSessionNotFound(t, err, "stuck")
+		_, _, err = fx.ctrl.AttachSession("wB", "stuck")
+		requireSessionNotFound(t, err, "stuck")
+	})
+	t.Run("the window that holds it keeps listing and using it", func(t *testing.T) {
+		fx := newOwnershipRaceFixture(t)
+		fx.make("wA", "mine")
+		fx.plugin.closeFails = errors.New("CloseSession timed out waiting for session mine goroutines")
+		require.Error(t, fx.ctrl.CloseSession("wA", "mine"))
+
+		ids, err := fx.ctrl.ListSessions("wA")
+		require.NoError(t, err)
+		require.Len(t, ids, 1, "its own session is listed until its CLOSE comes")
+		require.NoError(t, fx.ctrl.WriteSession("wA", "mine", []byte("x")))
+	})
+}
