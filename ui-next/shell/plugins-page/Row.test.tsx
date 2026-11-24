@@ -116,7 +116,7 @@ describe('the tile', () => {
     // The invented plugin has no loaded interface in the window's store, so it has the host's own glyph and no hue.
     expect(part('row-tile')).toHaveAttribute('data-size', '24');
     expect(part('row-tile')).not.toHaveAttribute('data-accent');
-    expect(part('row-tile')?.querySelector('svg')).toHaveAttribute('data-ov-glyph', 'box');
+    expect(part('row-tile')?.querySelector('svg')).toHaveAttribute('data-ov-glyph', 'package');
   });
 
   it('says the glyph and the hue the rail has for a plugin whose interface has loaded', async () => {

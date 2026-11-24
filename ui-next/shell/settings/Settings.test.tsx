@@ -59,6 +59,11 @@ describe('a closed Settings', () => {
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
     expect(add.mock.calls.filter(([type, , options]) => type === 'keydown' && options === true)).toHaveLength(1);
   });
+
+  it('draws the gear as the mock\'s settings glyph', () => {
+    mount();
+    expect(screen.getByRole('button', { name: 'Settings' }).querySelector('svg')).toHaveAttribute('data-ov-glyph', 'settings');
+  });
 });
 
 describe('the chord', () => {

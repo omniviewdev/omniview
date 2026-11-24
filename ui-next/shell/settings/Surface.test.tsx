@@ -72,6 +72,13 @@ describe('the pages', () => {
     expect(screen.getByText('Customize the look and feel of the application')).toBeInTheDocument();
   });
 
+  it('draw the glyph the host names for each category, now that the kit has all six, in a column of their own', async () => {
+    await mount();
+    const buttons = within(screen.getByRole('navigation', { name: 'Settings pages' })).getAllByRole('button');
+    expect(buttons.map((button) => button.querySelector('svg')?.getAttribute('data-ov-glyph'))).toEqual(['paintbrush', 'settings-2', 'code', 'square-terminal', 'activity', 'beaker']);
+    expect(buttons.map((button) => button.querySelectorAll('svg').length)).toEqual([1, 1, 1, 1, 1, 1]);
+  });
+
   it('put the keyboard on the page that is on screen when the sheet is ready', async () => {
     await mount();
     expect(screen.getByRole('button', { name: 'Appearance' })).toHaveFocus();
@@ -136,7 +143,7 @@ describe('a change', () => {
     await settle(m.clock);
     expect(m.host.calls.commit).toEqual([{ 'terminal.cursorBlink': false }]);
     expect(screen.getByRole('switch', { name: 'Cursor Blink' })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('button', { name: 'Reset Cursor Blink to default' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reset Cursor Blink to default' }).querySelector('svg')).toHaveAttribute('data-ov-glyph', 'rotate-ccw');
   });
 
   it('is undone by Reset, which then goes, and the keyboard is on the row\'s control', async () => {

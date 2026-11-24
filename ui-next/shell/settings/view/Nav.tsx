@@ -1,5 +1,6 @@
-import { RovingGroup } from '@omniviewdev/kit';
+import { Icon, RovingGroup } from '@omniviewdev/kit';
 import type { SettingsPage } from '../model/adapter';
+import { kitGlyphOf } from './glyph';
 import styles from './Nav.module.css';
 
 type NavProps = {
@@ -19,24 +20,30 @@ export function Nav({ pages, selected, onSelect }: NavProps) {
         Core
       </div>
       <RovingGroup label="Core" kind="column">
-        {pages.map((page) => (
-          <button
-            key={page.id}
-            type="button"
-            className={styles.item}
-            aria-current={page.id === selected ? 'page' : undefined}
-            data-settings-page={page.id}
-            // The page follows the focus, as in the editors this is modelled on (VS Code's settings contents, JetBrains' settings tree): an arrow moves to a page and shows it; a press does the same.
-            onFocus={() => {
-              onSelect(page.id);
-            }}
-            onClick={() => {
-              onSelect(page.id);
-            }}
-          >
-            {page.title}
-          </button>
-        ))}
+        {pages.map((page) => {
+          const glyph = kitGlyphOf(page.icon);
+          return (
+            <button
+              key={page.id}
+              type="button"
+              className={styles.item}
+              aria-current={page.id === selected ? 'page' : undefined}
+              data-settings-page={page.id}
+              // The page follows the focus, as in the editors this is modelled on (VS Code's settings contents, JetBrains' settings tree): an arrow moves to a page and shows it; a press does the same.
+              onFocus={() => {
+                onSelect(page.id);
+              }}
+              onClick={() => {
+                onSelect(page.id);
+              }}
+            >
+              <span className={styles.glyph} aria-hidden="true">
+                {glyph === undefined ? null : <Icon name={glyph} />}
+              </span>
+              <span className={styles.label}>{page.title}</span>
+            </button>
+          );
+        })}
       </RovingGroup>
     </nav>
   );

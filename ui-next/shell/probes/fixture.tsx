@@ -124,10 +124,10 @@ const cases: Record<string, Case> = {
   panel: { described: full, page: () => <></> },
 };
 
-/** The tools of the mock's host, in its order, under the kit's glyphs (the registry has none for a terminal or a log yet: every glyph is 16 px, which is all a tab's width reads). Names of the host's own tools, no plugin's. */
+/** The tools of the mock's host, in its order, under the kit's glyphs (the mock's own for the terminal and the log; the other three have none in the kit yet, and every glyph is 16 px, which is all a tab's width reads). Names of the host's own tools, no plugin's. */
 const PANEL_TOOLS: readonly ToolInput[] = [
-  { id: 'terminal', label: 'Terminal', icon: 'server', order: 10 },
-  { id: 'logs', label: 'Logs', icon: 'layers', order: 20 },
+  { id: 'terminal', label: 'Terminal', icon: 'square-terminal', order: 10 },
+  { id: 'logs', label: 'Logs', icon: 'scroll-text', order: 20 },
   { id: 'ports', label: 'Ports', icon: 'columns', order: 30 },
   { id: 'problems', label: 'Problems', icon: 'status-warning', order: 40 },
   { id: 'operations', label: 'Operations', icon: 'clock', order: 50 },

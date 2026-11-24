@@ -443,7 +443,7 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
       id: 'host.settings.open',
       title: 'Settings',
       context: 'Window',
-      icon: 'settings-2',
+      icon: 'settings',
       shortcut: native ? settingsChordText(platform) : WEB_SETTINGS_CHORD[platform],
       // The palette gives the focus back to where it was when it closes, and the sheet gives it back to what had it when it opened: opened now, that would be the palette's input. One task later the palette
       // is gone and the focus is where the person was, so the sheet remembers that.

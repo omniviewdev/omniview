@@ -36,7 +36,7 @@ function verbOf(row: RowView): Verb | undefined {
   if (kind === 'failed') {
     return {
       label: 'Retry',
-      icon: 'refresh',
+      icon: 'rotate-cw',
       availability: row.actions.retry,
       run: (model, id) => {
         model.retry(id);
@@ -47,7 +47,7 @@ function verbOf(row: RowView): Verb | undefined {
   if (kind === 'disabled') {
     return {
       label: 'Enable',
-      icon: 'play',
+      icon: 'power',
       availability: row.actions.enable,
       run: (model, id) => {
         model.enable(id);
@@ -76,6 +76,7 @@ function itemsOf(row: RowView, model: PluginsModel, onUninstall: (id: string) =>
     items.push({
       kind: 'action',
       id: 'disable',
+      icon: 'power-off',
       label: 'Disable',
       onSelect: () => {
         model.disable(row.id);
