@@ -1,60 +1,44 @@
 // The real plugin host with NO plugin and a synthetic shell, for the Terminal probe (terminal-probe.mjs): `PluginHost` is the product's own, the Terminal tool in it is the product's own (the registry, the host's own
-// shell target with its transport over the exec lane, the feed, the screen controller, xterm in its lazy chunk, the close guard and its dialog); only the far end is invented: the host's exec bindings (`ExecClient` and its
-// events), answered by a pty that echoes what is typed, runs a few commands with known output and ends when told. A second HTML entry that the probe builds on its own; `vite build` of the channel never reaches it.
+// shell target over the terminal channel, the feed, the screen controller, xterm in its lazy chunk, the close guard and its dialog); only the far end is invented: the host's terminal channel (`terminal-host.mjs`, which
+// speaks docs/ui-next/terminal-channel-protocol.md: a capability from `CreateTerminal`, one stream for each terminal with the real binary frames, the ring, the window of acknowledgements, the holder, the lease), answered by a
+// shell that echoes what is typed, runs a few commands with known output and ends when told. A second HTML entry that the probe builds on its own; `vite build` of the channel never reaches it.
 //
-// The far end speaks what the host's local terminal says (docs/ui-next/status/T1-go.md, section 2): the pty opens at the size the view measured and the create call answers a `terminal.Session` (the shell's path and
-// name, the process id, the directory, the size, the limits); output reaches the page in events of at most 20,480 bytes under the host's CREDIT FLOW CONTROL (2.8.6: it counts the bytes it delivered that nobody credited,
-// stops reading the pty at 1 MiB, so the shell WAITS, and reads again at 256 KiB; until the page's first `AckTerminal` call its receipt credits at once, from the first call on only its acknowledgements do); input
-// reaches the shell through `WriteTerminal` and `ResizeTerminal`, each call carrying the number the page gave it, and the host puts the calls in the order of their numbers whatever order they arrive in (2.4); `IsBusy`
-// answers `idle`, `busy` or `unknown` (2.3); the end of a session is a typed CLOSE event, the last event of the session, after everything the shell wrote (2.2); a start that fails is a typed error (2.5).
+// The page speaks to the far end through `createTerminalChannels({ client, openStream, storage })`: `client` is the host's `ExecClient` calls by capability, `openStream` opens a stream that is a socket of this file (the frames
+// of the protocol, in order, each handed to the page in a task of its own as a transport does), and `storage` is the window's own slot of capabilities. The far end is the page's own (`createHost` in the page: its terminals end with
+// it) or, with `?host=shared`, the probe's host in its own process (terminal-serve.mjs), which outlives a reload and is shared by a second page.
 //
-// The pty opens at the size the view measured (the host's `launch`), as the host's does. Commands (type them and press Enter):
-//   hello           prints a known line                     size            prints "<rows> <cols>" of the pty (what the create call or the last resize said)
-//   colors          prints the 16 colours of the palette    flood N [W]     prints N lines of W columns (default 80), in events of about 1,000 bytes, as the host's pty reads come; it writes while its pty has room and waits when the host stops reading
-//   sleep N         runs N seconds (Ctrl+C ends it): `IsBusy` says `busy` and names `sleep` meanwhile
+// Commands of the shell (type them and press Enter):
+//   hello           prints a known line                     size            prints "<rows> <cols>" of the pty (what the create call or the last resize frame said)
+//   colors          prints the 16 colours of the palette    flood N [W]     prints N lines of W columns (default 80); it writes while its pty has room and waits when the host stops reading
+//   sleep N         runs N seconds (Ctrl+C ends it): `ChannelTerminalBusy` says `busy` and names `sleep` meanwhile
 //   exit [code]     prints "logout" and ends: `exited`, with the code (default 0)         kill     ends: `signaled`, SIGKILL (9)        segv     ends: `signaled`, SIGSEGV (11), core dumped
 //   quit            ends: `closed`, by the host quitting (`shutdown`)                       orphan   ends: `exited` 0, and the host says a program kept the terminal open and it dropped 4,096 bytes
-//   fail            ends the session with an error signal
+//   fail            ends the terminal with a typed failure
 //   (anything else) prints "synthetic: command not found: <word>"
 // A close the page asks for ends with `closed`, by `request`.
 //
 //   ?renderer=dom   the emulator keeps its DOM renderer (text a probe can read); the default is the GPU's while the terminal is on screen, as the product is
 //   ?shell=<name>   the shell the create call says it started (`terminal.Session.shell.name`): default zsh
 //   ?fail=<how>     the create call fails: `shell-unavailable` is the host's typed 422 (the detail names every path it tried), `start` is the host's typed start failure (500)
-//   ?busy=<how>     what `IsBusy` answers while the shell runs: `unknown` is `{ state: 'unknown', reason: 'query-failed' }`, `hang` is no answer at all; by default `idle` at the prompt and `busy` while `sleep` runs
-//   ?control=<name> the negative controls that perturb the far end or the emulator, each for the assertion of the probe it is named for: echo-slow, big-scrollback, leaky-heap (the emulator), the two of the screen reader
-//                   switch, reader-claims (the emulator is never put in screen reader mode while the window says it is) and reader-stuck (it is put in it and never taken out of it), and
-//                   flow-late     the create call answers after the shell's first output was delivered, so the page's first acknowledgement comes late (`flow.on`)
-//                   ack-on-receipt the page's acknowledgements are replaced by one for each event, made when it is delivered and not when it is parsed, as a page that credits what it merely holds would (`flow.paced`)
-//                   ack-lost      the credit that comes while the host is paused is lost, so a paused host never reads again (`flow.hidden`)
-//                   drop-held     the emulator is never given two of the slices the page hands it, though they are acknowledged (`hidden.drain`)
-//                   swap-held     the emulator is given the fifth slice after the sixth (`hidden.drain`)
-//                   draw-hidden   every event delivered changes an attribute of the page, as a view that drew hidden output would (`hidden.draws`)
-//                   ack-double    every parsed write is acknowledged twice (`flow.exact`)
-//                   early-size    the emulator's renderer is said to be in place before it is, and something measures the host again once it is, as the first version of the product did (`resize.none`)
-//                   size-off      the host opens the pty one column wider than it was asked to (`resize.cells`)
-//                   arrival-order the host applies the input calls in the order they arrive and not in the order of their numbers (`order.echo`)
-//                   resize-refused the host takes the number of a size call and refuses the call: it is not applied (`order.echo`)
-//                   input-serial  what is typed waits for the answer of the call before it (`order.nowait`)
-//                   seq-gap       the input calls are numbered with a number missing from the fourth on (`order.seq`)
-//                   legacy-write  a write call is also made with the old call, `WriteSession` (`order.legacy`)
-//                   no-shell-name the create call answers with no shell name (`title.shell`)
-//                   exit-code-lost, signal-lost, closed-lost   the typed end of `exit`, `kill`, `quit` says no code, no signal, no one (`ended.code`, `ended.signal`, `ended.closed`)
-//                   busy-always   `IsBusy` says a program named `sleep` runs, at the prompt too (`close.idle`)
-//                   busy-nameless `IsBusy` says a program runs and does not name it (`close.busy`)
-//                   unknown-idle  with `?busy=unknown`, `IsBusy` says `idle` (`close.unknown`)
-//                   code-less     the host's refusal to find a shell has no `code`, only its words (`start.unavailable`)
-//                   start-typed   the host's plain start failure carries the code of a missing shell (`start.failed`)
-//                   keys-dropped  a screen that drops what is typed while it writes a replay: the keys are lost before the screen sees them (`reattach.rejoin-keys`)
-//                   replies-as-keys the engine cannot tell what the emulator answers to a query from what the user typed, and gives its answers as keys (`reattach.rejoin-keys`)
+//   ?busy=<how>     what `ChannelTerminalBusy` answers while the shell runs: `unknown` is `{ state: 'unknown', reason: 'query-failed' }`, `hang` is no answer at all; by default `idle` at the prompt and `busy` while `sleep` runs
+//   ?control=<name> the negative controls that perturb the far end or the page's side of the stream, each for the assertion of the probe it is named for. The ones of the emulator: big-scrollback, leaky-heap, the two of the screen
+//                   reader switch, reader-claims (the emulator is never put in screen reader mode while the window says it is) and reader-stuck (it is put in it and never taken out of it), early-size (the emulator's
+//                   renderer is said to be in place before it is, and something measures the host again once it is, as the first version of the product did: `resize.none`), drop-held (the emulator is never given two of
+//                   the slices the page hands it, though they are acknowledged: `hidden.drain`), swap-held (it is given the fifth slice after the sixth), ack-double (every parsed write is acknowledged twice: `flow.exact`),
+//                   keys-dropped (a screen that drops what is typed while it writes a replay) and replies-as-keys (an engine that gives the emulator's answers to a query as keys): `reattach.rejoin-keys`.
+//                   The ones of the stream: flow-late (the page's first acknowledgement, of nothing, is held until the emulator was given a byte: `flow.on`), ack-on-receipt (the page's acknowledgements are replaced by one
+//                   for each frame, made when it is delivered and not when it is parsed: `flow.paced`), draw-hidden (every output frame delivered changes an attribute of the page: `hidden.draws`), input-serial (what is typed
+//                   waits for the frame before it to be applied: `order.nowait`), ack-replay (the page acknowledges the replay: `reattach.exact`), leave-lost (the page never sends the detach frame: `reattach.leave`),
+//                   cap-in-url (the capability is put in the address: `reattach.slot`), rejoin-from-zero (an attach that gives `from_offset` gives 0: `reattach.rejoin`).
+//                   And the ones of the host (faults of `createHost`): size-off (the pty opens one column wider than it was asked to: `resize.cells`), resize-dropped (the host takes a resize frame and keeps its size: `order.echo`),
+//                   no-shell-name, exit-code-lost, signal-lost, closed-lost, busy-always, busy-nameless, unknown-idle, code-less, start-typed, ack-lost (the credit that comes while the host's pump waits is lost: `flow.hidden`).
 //
-// `window.__pty` is what the probe reads and drives: `log` (what was created, refused, written, resized, closed, asked of `IsBusy`, what each input call was (`calls`: its kind, its number, its bytes, the instant the page made it, its place in the order
-// of arrival, the instant the host applied it, its place in the order of application, and the instant it answered) and which old calls were made (`legacy`), what `size` printed, and the credit: `acks` (the count of every `AckTerminal` call, in order), `ackState` (what the page had done at each, and the
-// sum acknowledged by then), `acked` (their sum), `delivered` (the bytes handed to the page), `maxUnacked` (the most bytes delivered and not credited at any instant), `paused()` (the host stopped reading) and `waiting()`
-// (the bytes the shell wrote that the host has not delivered)), `out(id, text)` (the shell writes text now), `burst(id, events)` (the shell writes that many events of 1,000 bytes, each numbered, in one task), `net` (what
-// the host does with the input calls: `latency`, the most a call takes to arrive in milliseconds, at random; `late`, the next calls of one kind that are slow to arrive, and how slow; `hold`, the next calls that the host is slow to apply),
-// `end(id)` (the process exits), `ids()`. `window.__commits` lists every commit of the tree (React's profiler; the probe builds this entry with the profiling build of React DOM), `window.__engine` what the emulator was
-// given and parsed (and, for a burst, whether the numbered events came in order).
+// `window.__pty` is what the probe reads and drives: `log` (what was created, refused, written, resized, closed, asked of `ChannelTerminalBusy`, what each input or resize frame was (`calls`: its kind, the instant the page sent it
+// and the host's own record of applying it) and what `size` printed, and the credit: `acks` (the count of every acknowledgement frame, in order), `ackState` (what the page had done at each, and the sum acknowledged by then), `acked` (their
+// sum), `delivered` (the bytes the host handed to the stream), `maxUnacked` (the most bytes sent and not acknowledged at any instant once the window was on), `paused()` (the host stopped reading the shell) and `waiting()` (the bytes the shell wrote
+// that the host has not handed to the stream)), `net` (what the stream does with the frames of the page: `latency`, the most a frame takes to arrive in milliseconds, at random but in order; and `hold`, the host being slow to apply the next
+// frames), `out(id, text)` (the shell writes text now), `burst(id, events)` (the shell writes that many events of 1,000 bytes, each numbered, in one task), `end(id)` (the process exits), `ids()`. `window.__commits` lists every commit of the tree
+// (React's profiler; the probe builds this entry with the profiling build of React DOM), `window.__engine` what the emulator was given and parsed (and, for a burst, whether the numbered events came in order).
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
 import { ThemeProvider } from '@omniviewdev/kit';
@@ -63,51 +47,12 @@ import { createRoot } from 'react-dom/client';
 import { PluginHost } from '../../plugins/host/PluginHost';
 import type { PluginEntry } from '../../plugins/host/pluginStore';
 import type { PluginSource } from '../../plugins/host/contributions';
-import { base64Size, decodeBase64, encodeInput } from '../panel/terminal/bytes';
 import type { EngineLoader } from '../panel/terminal/engine';
-import { signalEvent, streamEvent } from '../panel/terminal/execFeed';
-import type { TerminalTarget } from '../panel/terminal/feed';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
-import { attachLocalTerminal, localShellTarget, restoreLocalTerminals, type EventsLike } from '../panel/terminal/localShell';
-import { loadPageKey, terminalKeyStorage } from '../panel/terminal/pageKey';
+import { attachLocalTerminal, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
+import { capabilityStorage, CAPABILITY_SLOT, loadTerminalChannels, type ChannelClient, type ChannelSocket } from '../panel/terminal/terminalChannel';
 import { loadSession, windowStorage, type WindowState } from '../session';
-
-/** A program that holds the terminal's foreground besides the shell, until it ends (`sleep N`). */
-type Job = { readonly name: string; readonly timer: ReturnType<typeof setTimeout> };
-
-/** What the shell wrote, in the order it wrote it, until the host reads it: the bytes of one write (base64, as the event carries them), or the end of the session. */
-type Item = { readonly kind: 'bytes'; readonly encoded: string; readonly size: number } | { readonly kind: 'close'; readonly payload: unknown };
-
-type Pty = {
-  rows: number;
-  cols: number;
-  /** The line the user is typing, as the pty's line discipline holds it. */
-  line: string;
-  job: Job | undefined;
-  /** The shell is gone: it takes nothing. */
-  gone: boolean;
-  /** What the shell wrote that the host has not delivered, oldest first, from `head`; `waiting` is its bytes. */
-  queue: Item[];
-  head: number;
-  waiting: number;
-  /** The host's credit: bytes delivered and not credited, whether the page's own acknowledgements are the only credit now, and whether the host stopped reading the pty. */
-  unacked: number;
-  explicit: boolean;
-  paused: boolean;
-  pumping: boolean;
-  /** What waits for the pty to have room for the shell's next write, and for everything written to be delivered. */
-  roomWaiters: Array<() => void>;
-  emptyWaiters: Array<() => void>;
-  /** The host's order of the input: the number it expects next, the calls that came ahead of their turn, by number, each with what lets it go on, and whether a call that arrived is being applied now (the numbers after it wait for it). */
-  next: number;
-  early: Map<number, () => void>;
-  applying: boolean;
-  /** What lets go of the calls the host is slow with, when the pty closes. */
-  holds: Set<() => void>;
-  /** The page key the terminal was made with (T2-go 2.1): a terminal with one sends `output` events with offsets, and `offset` is the bytes it has written so far. */
-  key: string | null;
-  offset: number;
-};
+import { createHost, FRAME, fromBase64, toBase64 } from './terminal-host.mjs';
 
 const params = new URLSearchParams(window.location.search);
 const control = params.get('control');
@@ -115,81 +60,592 @@ const shellName = (params.get('shell') ?? 'zsh').replace(/[^A-Za-z0-9._-]/g, '')
 /** `?host=shared`: the far end is the probe's own host (terminal-host.mjs), which outlives this page and is shared by the others of the browser context. `?lines=1` keeps the numbered lines of a flood the emulator is given. */
 const shared = params.get('host') === 'shared';
 const trackLines = shared || params.get('lines') === '1';
-/** `?key=off`: the page gives its terminals no key, as a page that could not make one would: a terminal with no key ends with its page and is never listed (T2-go 2.1). */
-const keyed = params.get('key') !== 'off';
 const failure = params.get('fail');
 const busyMode = params.get('busy');
-const ptys = new Map<string, Pty>();
-const listeners = new Map<string, Set<(data: unknown) => void>>();
 
-/** What the host says of its limits in the answer to the create call (`terminal.Session.limits`, T1-go.md 2.1). */
-const LIMITS = {
-  max_dimension: 1000,
-  pending_ops: 256,
-  pending_bytes: 1_048_576,
-  seq_ahead: 64,
-  gap_wait_ms: 2000,
-  flow_high_bytes: 1_048_576,
-  flow_low_bytes: 262_144,
-  flow_stall_ms: 2000,
-  flow_step_bytes: 262_144,
-  flow_stall_ceiling_bytes: 8_388_608,
-  hangup_grace_ms: 1500,
-  drain_cap_ms: 3000,
-  replay_bytes: 1_310_720,
-  lease_default_ms: 300_000,
-  lease_max_ms: 1_800_000,
-} as const;
-
-/** The most the host reads from the pty at once: an event of the host is the bytes of one read (T1-go.md 2.2). */
-const READ_MAX = 20_480;
-/** What the pty's own buffer holds before the shell's write blocks. Only a writer that waits for room (the flood) reads it. */
-const PTY_ROOM = 65_536;
-/** The most UTF-16 units one write of the shell has in one event: a unit is at most three bytes in UTF-8, so an event is never over one read. */
-const PIECE_UNITS = Math.floor(READ_MAX / 3);
-/** The bytes of one event of a burst, and how many digits of its number it starts with. */
-const EVENT_BYTES = 1000;
-const NUMBER_DIGITS = 7;
-
-const SESSION_NOT_FOUND = 'omniview:session/not-found';
-
-/** The shell the host could not find: its typed 422 and the words of its detail, which name every path it tried (T1-go.md 2.8.8). The probe knows the four paths. */
-const UNAVAILABLE = {
-  type: 'omniview:terminal/shell-unavailable',
-  title: 'Shell not found',
-  status: 422,
-  detail: 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found; $SHELL "/opt/none/zsh": not found; /bin/bash: not found; /bin/sh: not found',
-  ...(control === 'code-less' ? {} : { code: 'SHELL_UNAVAILABLE' }),
+/** The negative controls that are a fault of the host itself: each is one way of getting the host wrong (`createHost`'s `faults`). */
+const HOST_FAULTS: Readonly<Record<string, string>> = {
+  'size-off': 'sizeOff',
+  'resize-dropped': 'resizeIgnored',
+  'no-shell-name': 'noShellName',
+  'exit-code-lost': 'exitCodeLost',
+  'signal-lost': 'signalLost',
+  'closed-lost': 'closedLost',
+  'busy-always': 'busyAlways',
+  'busy-nameless': 'busyNameless',
+  'unknown-idle': 'unknownIdle',
+  'code-less': 'codeLess',
+  'start-typed': 'startTyped',
+  'ack-lost': 'ackLost',
 };
 
-/** A start the host could not make: the pty or the process (T1-go.md 2.5, `START_FAILED`, 500). */
-const START_FAILED = {
-  type: 'omniview:terminal/start-failed',
-  title: 'Terminal failed to start',
-  status: 500,
-  detail: 'failed to start the terminal: the pty could not be opened',
-  code: control === 'start-typed' ? 'SHELL_UNAVAILABLE' : 'START_FAILED',
+/** What yields to the event loop as a task of its own, never a timer (the probe counts timers) and never a microtask. */
+const macrotask = ((): ((task: () => void) => void) => {
+  const channel = new MessageChannel();
+  const tasks: Array<() => void> = [];
+  channel.port1.onmessage = () => {
+    tasks.shift()?.();
+  };
+
+  return (task) => {
+    tasks.push(task);
+    channel.port2.postMessage(null);
+  };
+})();
+
+const localHost = shared ? undefined : createHost({ shell: shellName, defer: macrotask, ...(failure === 'shell-unavailable' || failure === 'start' ? { fail: failure } : {}), ...(busyMode === 'unknown' || busyMode === 'hang' ? { busy: busyMode } : {}), faults: Object.fromEntries(Object.entries(HOST_FAULTS).filter(([name]) => name === control).map(([, fault]) => [fault, true])) });
+
+// ---- the probe's host, when it is shared ------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+type HostBinding = (windowId: string, method: string, args: readonly unknown[]) => Promise<unknown>;
+type StreamBinding = (windowId: string, op: string, id: string, payload?: string) => Promise<void>;
+const injected: unknown = Reflect.get(window, '__host');
+const hostBinding = typeof injected === 'function' ? (injected as HostBinding) : undefined;
+const streamInjected: unknown = Reflect.get(window, '__hostStream');
+const streamBinding = typeof streamInjected === 'function' ? (streamInjected as StreamBinding) : undefined;
+/** A page load is a page of its own: the probe's host names the streams it opened by it, and never hands the frames of an old load to a new one. */
+const windowId = globalThis.crypto.randomUUID();
+
+const callHost = async (method: string, args: readonly unknown[]): Promise<unknown> => {
+  if (localHost !== undefined) {
+    return localHost.call(method, args);
+  }
+
+  if (hostBinding === undefined) {
+    throw new Error('the probe did not give this page its host (window.__host)');
+  }
+
+  return hostBinding(windowId, method, args);
 };
 
-/** What the host refuses an input call with when it cannot take its number (T1-go.md 2.4, 2.5): a number that was already applied or given up, and a number too far ahead. */
-const stale = (seq: number, next: number): Record<string, unknown> => ({
-  type: 'omniview:terminal/sequence-stale',
-  title: 'Stale input sequence number',
-  status: 409,
-  detail: `Sequence number ${String(seq)} was already applied or given up; the next expected is ${String(next)}.`,
-  code: 'SEQUENCE_STALE',
-});
-const ahead = (seq: number, next: number): Record<string, unknown> => ({
-  type: 'omniview:terminal/sequence-ahead',
-  title: 'Input sequence number too far ahead',
-  status: 400,
-  detail: `Sequence number ${String(seq)} is more than ${String(LIMITS.seq_ahead)} past the next expected, ${String(next)}.`,
-  code: 'SEQUENCE_AHEAD',
+// ---- the stream ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** What the stream of one terminal does at the other end: `send` a frame of the page, `close` the stream. What the host sends comes back through the two callbacks it was opened with. */
+type Backend = { readonly send: (frame: Uint8Array) => void; readonly close: () => void };
+
+const sockets = new Map<string, FixtureSocket>();
+let socketSerial = 0;
+
+/** The credit as the page made it, and what the probe reads of the stream: see the header (`window.__pty.log`). */
+type Call = { readonly kind: 'write' | 'resize'; readonly size: number; readonly at: number; entry: { readonly outcome?: string; readonly appliedAt?: number | null; readonly application?: number | null } | undefined };
+const calls: Call[] = [];
+const credit = {
+  acks: [] as number[],
+  ackState: [] as Array<{ id: string; count: number; at: number; exists: boolean; delivered: number; accepted: number; parsed: number; after: number }>,
+  acked: 0,
+  received: 0,
+  frames: 0,
+};
+
+/** What the probe changes about the stream: the most a frame of the page takes to arrive (a random time up to it, in order), and the next frames the host is slow to apply. */
+const net = {
+  latency: 0,
+  get hold(): null {
+    return null;
+  },
+  set hold(value: { calls: number; ms: number } | null) {
+    if (value !== null) {
+      localHost?.slow(value.calls, value.ms);
+    }
+  },
+};
+
+/** `window.__link` (shared host): the probe cuts the page's streams (`down()`: every stream is dropped and a stream opened meanwhile closes at once) and lets them be opened again (`up()`). */
+const link = { up: true, dropped: 0, twice: false, writes: 0, listed: 0, listsFail: false, reached: new Map<string, number>() };
+
+/** `window.__acks`: the probe holds the acknowledgement frames of the page from the moment it asks (`hold()`): they are in flight with no word until `release()`, when they are lost with the stream they were on or, after `accept()`, handed to the host late. */
+const acks = { holding: false, accepting: false, held: [] as Array<{ socket: FixtureSocket; frame: Uint8Array }> };
+
+/** The numbered lines the emulator is given while no byte is yet (`flow-late`): the first acknowledgement waits for the first write. */
+let firstAck: (() => void) | undefined;
+
+const leak: Uint8Array[] = [];
+
+class FixtureSocket implements ChannelSocket {
+  binaryType: 'arraybuffer' | 'blob' = 'arraybuffer';
+  readyState = 0;
+  bufferedAmount = 0;
+  /** The terminal this stream carries, once the host's `ready` names it, and the offset the output has reached. */
+  terminal: string | undefined;
+  ready = false;
+  readyEnd = 0;
+  /** The bytes of the replay the page's acknowledgements are not allowed to credit (`?control=replay-unacked`). */
+  withheld = 0;
+  private readonly handlers: Record<'open' | 'message' | 'close' | 'error', Set<(event: Event) => void>> = { open: new Set(), message: new Set(), close: new Set(), error: new Set() };
+  private readonly inbox: Array<{ readonly frame: Uint8Array } | { readonly close: true }> = [];
+  private draining = false;
+  private backend: Backend | undefined;
+  /** The far end of a stream that was dropped: a frame that was in flight when it went can still reach the host, late, when the probe's fault says so. */
+  private retired: Backend | undefined;
+  private first = true;
+  private lastArrival = Promise.resolve();
+  readonly id = String((socketSerial += 1));
+
+  constructor(open: (socket: FixtureSocket) => Backend | undefined) {
+    sockets.set(this.id, this);
+    macrotask(() => {
+      if (!link.up) {
+        this.over();
+        return;
+      }
+
+      this.backend = open(this);
+      if (this.backend === undefined) {
+        this.over();
+        return;
+      }
+
+      this.readyState = 1;
+      this.emit('open', new Event('open'));
+    });
+  }
+
+  addEventListener(type: 'open' | 'message' | 'close' | 'error', listener: (event: Event) => void): void {
+    this.handlers[type].add(listener);
+  }
+
+  removeEventListener(type: 'open' | 'message' | 'close' | 'error', listener: (event: Event) => void): void {
+    this.handlers[type].delete(listener);
+  }
+
+  private emit(type: 'open' | 'message' | 'close' | 'error', event: Event): void {
+    for (const listener of [...this.handlers[type]]) {
+      listener(event);
+    }
+  }
+
+  /** What the host sent, in order, each frame in a task of its own. */
+  push(item: { readonly frame: Uint8Array } | { readonly close: true }): void {
+    this.inbox.push(item);
+    if (!this.draining) {
+      this.draining = true;
+      macrotask(() => {
+        this.drain();
+      });
+    }
+  }
+
+  private drain(): void {
+    const item = this.inbox.shift();
+    if (item === undefined) {
+      this.draining = false;
+      return;
+    }
+
+    if ('close' in item) {
+      this.over();
+    } else {
+      this.arrive(item.frame);
+    }
+
+    if (this.inbox.length > 0) {
+      macrotask(() => {
+        this.drain();
+      });
+    } else {
+      this.draining = false;
+    }
+  }
+
+  /** A frame of the host reaches the page: what the probe records of it, the faults of the page's side, and the message. */
+  private arrive(frame: Uint8Array): void {
+    const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
+    if (frame[0] === FRAME.ready) {
+      try {
+        const ready = JSON.parse(new TextDecoder().decode(frame.subarray(1))) as { readonly end?: number; readonly session?: { readonly id?: string } };
+        this.terminal = ready.session?.id;
+        this.readyEnd = ready.end ?? 0;
+      } catch {
+        // The page says what it makes of a ready it cannot read.
+      }
+
+      this.ready = true;
+    } else if (frame[0] === FRAME.output) {
+      const offset = Number(view.getBigUint64(1));
+      const size = frame.length - 9;
+      credit.received += size;
+      credit.frames += 1;
+      if (this.terminal !== undefined) {
+        link.reached.set(this.terminal, offset + size);
+      }
+
+      if (control === 'leaky-heap') {
+        leak.push(frame);
+      }
+
+      if (control === 'draw-hidden') {
+        document.body.dataset.delivered = String(credit.received);
+      }
+
+      // `?control=ack-on-receipt`: the page's acknowledgement is made as the frame is delivered, and not when it is parsed.
+      if (control === 'ack-on-receipt' && offset >= this.readyEnd) {
+        this.sendAck(size, true);
+      }
+
+      // `?control=replay-unacked`: the page never acknowledges the replay (what it acknowledges of the first bytes it was sent is kept back), though the host counts every frame it sent, the replay included, against its window.
+      if (control === 'replay-unacked' && offset < this.readyEnd) {
+        this.withheld += size;
+      }
+    } else if (frame[0] === FRAME.gap && this.terminal !== undefined) {
+      link.reached.set(this.terminal, Number(view.getBigUint64(9)));
+    }
+
+    const data = new Uint8Array(frame).buffer;
+    this.emit('message', new MessageEvent('message', { data }));
+  }
+
+  private over(): void {
+    if (this.readyState === 3) {
+      return;
+    }
+
+    this.readyState = 3;
+    sockets.delete(this.id);
+    this.emit('close', new Event('close'));
+  }
+
+  /** The probe drops the stream: the transport is gone, and the host sees the stream end. */
+  drop(): void {
+    this.backend?.close();
+    this.retired = this.backend;
+    this.backend = undefined;
+    this.inbox.length = 0;
+    this.over();
+  }
+
+  private sendAck(bytes: number, synthetic: boolean): void {
+    this.record(bytes);
+    this.forward(this.frameOfAck(bytes), synthetic);
+  }
+
+  private frameOfAck(bytes: number): Uint8Array {
+    const frame = new Uint8Array(5);
+    frame[0] = FRAME.ack;
+    new DataView(frame.buffer).setUint32(1, bytes);
+    return frame;
+  }
+
+  private record(bytes: number): void {
+    credit.acks.push(bytes);
+    credit.acked += bytes;
+    credit.ackState.push({ id: this.terminal ?? '', count: bytes, at: performance.now(), exists: this.ready, delivered: localHost?.log.delivered ?? credit.received, accepted: stats.accepted, parsed: stats.parsed, after: credit.acked });
+  }
+
+  /** What the page sends: the page's own faults first, then the order of the stream, after the time the frame takes to arrive. */
+  send(data: Uint8Array<ArrayBuffer>): void {
+    if (this.readyState !== 1) {
+      return;
+    }
+
+    const type = data[0];
+    if (this.first) {
+      this.first = false;
+      // `?control=rejoin-from-zero`: an attach that says where the page is says 0.
+      if (control === 'rejoin-from-zero') {
+        const request = JSON.parse(new TextDecoder().decode(data.subarray(1))) as { from_offset?: number };
+        if (request.from_offset !== undefined) {
+          request.from_offset = 0;
+          const bytes = new TextEncoder().encode(JSON.stringify(request));
+          data = new Uint8Array(1 + bytes.length);
+          data[0] = FRAME.attach;
+          data.set(bytes, 1);
+        }
+      }
+
+      this.forward(data, false);
+      // Armed by the probe's control `take-back-twice`, once, just before the press: the attach is made once more, as a button that attaches twice would make it.
+      if (link.twice) {
+        link.twice = false;
+        const extra = new FixtureSocket((socket) => openBackend(socket));
+        extra.push = () => undefined;
+        macrotask(() => {
+          extra.send(new Uint8Array(data));
+        });
+      }
+
+      return;
+    }
+
+    if (type === FRAME.ack) {
+      let bytes = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(1);
+      if (this.withheld > 0 && bytes > 0) {
+        const kept = Math.min(bytes, this.withheld);
+        this.withheld -= kept;
+        bytes -= kept;
+        if (bytes === 0) {
+          return;
+        }
+
+        const rewritten = new Uint8Array(5);
+        rewritten[0] = FRAME.ack;
+        new DataView(rewritten.buffer).setUint32(1, bytes);
+        data = rewritten;
+      }
+
+      // `?control=ack-on-receipt`: what the page acknowledges is ignored; the acknowledgement is made on receipt.
+      if (control === 'ack-on-receipt' && bytes > 0) {
+        return;
+      }
+
+      // `?control=flow-late`: the first acknowledgement, of nothing, waits until the emulator was given a byte.
+      if (control === 'flow-late' && bytes === 0 && credit.acks.length === 0 && stats.accepted === 0) {
+        const held = new Uint8Array(data);
+        firstAck = () => {
+          this.sendAck(0, false);
+          void held;
+        };
+        return;
+      }
+
+      this.record(bytes);
+      if (acks.holding) {
+        acks.held.push({ socket: this, frame: new Uint8Array(data) });
+        return;
+      }
+    }
+
+    // `?control=leave-lost`: the page never says it is leaving.
+    if (type === FRAME.detach && control === 'leave-lost') {
+      return;
+    }
+
+    if (type === FRAME.input || type === FRAME.resize) {
+      if (type === FRAME.input) {
+        link.writes += 1;
+      }
+
+      calls.push({ kind: type === FRAME.input ? 'write' : 'resize', size: data.length - 1, at: performance.now(), entry: undefined });
+    }
+
+    this.forward(new Uint8Array(data), false);
+  }
+
+  /** Hands a frame to the far end, in order, after the time a frame takes to arrive. The frame is the host's from here on. */
+  forward(frame: Uint8Array, synthetic: boolean): void {
+    void synthetic;
+    const backend = this.backend ?? (acks.accepting ? this.retired : undefined);
+    if (backend === undefined) {
+      return;
+    }
+
+    const call = frame[0] === FRAME.input || frame[0] === FRAME.resize ? calls.at(-1) : undefined;
+    const deliver = (): void => {
+      backend.send(frame);
+      if (call !== undefined && localHost !== undefined) {
+        call.entry = localHost.log.frames.at(-1);
+      }
+    };
+
+    if (net.latency > 0) {
+      const wait = Math.random() * net.latency;
+      this.lastArrival = this.lastArrival.then(
+        async () =>
+          new Promise<void>((resolve) => {
+            setTimeout(() => {
+              deliver();
+              resolve();
+            }, wait);
+          }),
+      );
+    } else {
+      deliver();
+    }
+  }
+
+  close(): void {
+    this.backend?.close();
+    this.backend = undefined;
+    this.readyState = 3;
+    sockets.delete(this.id);
+  }
+}
+
+/** Opens the far end of a stream: the page's own host, or the probe's, through its binding. */
+function openBackend(socket: FixtureSocket): Backend | undefined {
+  if (localHost !== undefined) {
+    const stream = localHost.openStream(
+      (frame: Uint8Array) => {
+        socket.push({ frame });
+      },
+      () => {
+        socket.push({ close: true });
+      },
+    );
+    return { send: (frame) => stream.send(frame), close: () => stream.close() };
+  }
+
+  if (streamBinding === undefined) {
+    return undefined;
+  }
+
+  const binding = streamBinding;
+  let chain: Promise<void> = binding(windowId, 'open', socket.id);
+  const queue = (op: string, payload?: string): void => {
+    chain = chain.then(async () => binding(windowId, op, socket.id, payload)).catch(() => undefined);
+  };
+
+  return {
+    send: (frame) => {
+      // A page that is going away sends the one frame that must outlive it as a request that does too.
+      const beacon: unknown = Reflect.get(window, '__hostBeacon');
+      if (frame[0] === FRAME.detach && typeof beacon === 'string') {
+        void fetch(beacon, { method: 'POST', keepalive: true, body: JSON.stringify({ windowId, id: socket.id, payload: toBase64(frame) }) }).catch(() => undefined);
+        return;
+      }
+
+      queue('send', toBase64(frame));
+    },
+    close: () => {
+      queue('close');
+    },
+  };
+}
+
+/** What the probe's host sent on the page's streams, in the order it sent it. */
+Object.assign(window, {
+  __hostFrames: (items: ReadonlyArray<{ readonly id: string; readonly frame?: string; readonly close?: true }>): void => {
+    for (const item of items) {
+      const socket = sockets.get(item.id);
+      if (socket === undefined) {
+        continue;
+      }
+
+      if (item.frame !== undefined) {
+        socket.push({ frame: fromBase64(item.frame) });
+      } else {
+        socket.push({ close: true });
+      }
+    }
+  },
 });
 
-/** What an error of the host is, as the page receives it: an error whose message is the JSON of the host's envelope. */
-const refusal = (envelope: Record<string, unknown>): Error => new Error(JSON.stringify(envelope));
-const notFound = (id: string): Error => refusal({ type: SESSION_NOT_FOUND, title: 'Session not found', status: 404, detail: `Session ${id} not found`, code: 'NOT_FOUND' });
+const openStream = (name: string): ChannelSocket => {
+  void name;
+  return new FixtureSocket((socket) => openBackend(socket));
+};
+
+// ---- the host's calls ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const client: ChannelClient = {
+  CreateTerminal: async (options, launch) => {
+    const answer = await callHost('CreateTerminal', [options, launch]);
+    // `?control=cap-in-url`: the capability is put in the address, where a reload, a log and a screenshot would keep it.
+    if (control === 'cap-in-url' && typeof answer === 'object' && answer !== null && 'cap' in answer && typeof answer.cap === 'string') {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search === '' ? '?' : `${window.location.search}&`}k=${answer.cap}`);
+    }
+
+    return answer;
+  },
+  CloseChannelTerminal: async (cap) => callHost('CloseChannelTerminal', [cap]),
+  DismissChannelTerminal: async (cap) => callHost('DismissChannelTerminal', [cap]),
+  ChannelTerminalBusy: async (cap) => callHost('ChannelTerminalBusy', [cap]),
+  ListChannelTerminals: async (caps) => {
+    try {
+      // From the moment the probe arms it (`window.__link.failLists(true)`, its control `refresh-skipped`) the host's list cannot be had: the page cannot learn who holds a terminal it lost.
+      if (link.listsFail) {
+        throw new Error('the host could not answer the list');
+      }
+
+      return await callHost('ListChannelTerminals', [caps]);
+    } finally {
+      link.listed += 1;
+    }
+  },
+};
+
+/** The host's window service as the generated binding has it (`GetState`, `SaveState`): the slots of each window. `?host=shared` keeps them in the probe's host, which outlives the page, as the host's own state root does. */
+const slots = new Map<string, Record<string, string | undefined>>();
+
+/**
+ * `?control=restore-forgets-open` and `?control=restore-forgets-closed`: what the window state says of the panel is changed as it is read, so that the saved session says the panel was closed (or open) whatever it was saved as,
+ * as a restore that forgot the flag would have it.
+ */
+const withOpenFlag = (state: Record<string, string | undefined>, open: boolean): Record<string, string | undefined> => {
+  const text = state.session;
+  if (text === undefined) {
+    return state;
+  }
+
+  try {
+    const saved: unknown = JSON.parse(text);
+    if (typeof saved === 'object' && saved !== null && 'panel' in saved && typeof saved.panel === 'object' && saved.panel !== null) {
+      return { ...state, session: JSON.stringify({ ...saved, panel: { ...saved.panel, open } }) };
+    }
+  } catch {
+    // A session that cannot be read is read as it is.
+  }
+
+  return state;
+};
+
+const sharedState: WindowState = {
+  GetState: async (name) => {
+    const state = (await callHost('GetState', [name])) as Record<string, string | undefined>;
+    return control === 'restore-forgets-open' ? withOpenFlag(state, false) : control === 'restore-forgets-closed' ? withOpenFlag(state, true) : state;
+  },
+  SaveState: async (name, slot, json) => {
+    if ((control === 'no-session' && slot === 'session') || (control === 'cap-forgotten' && slot === CAPABILITY_SLOT)) {
+      return;
+    }
+
+    await callHost('SaveState', [name, slot, json]);
+  },
+};
+const localState: WindowState = {
+  GetState: async (name) => Promise.resolve({ ...slots.get(name) }),
+  SaveState: async (name, slot, json) => {
+    slots.set(name, { ...slots.get(name), [slot]: json });
+    return Promise.resolve();
+  },
+};
+const windowState = shared ? sharedState : localState;
+
+if (shared) {
+  Object.assign(window, {
+    __windowId: windowId,
+    __link: {
+      /** Every stream of the page is dropped (the transport is gone) and a stream opened meanwhile closes at once, until `up()`. Answers how far the output of each terminal had got. */
+      down: (): Record<string, number> => {
+        link.up = false;
+        for (const socket of [...sockets.values()]) {
+          link.dropped += 1;
+          socket.drop();
+        }
+
+        return Object.fromEntries(link.reached);
+      },
+      up: (): void => {
+        link.up = true;
+      },
+      arm: (on: boolean): void => {
+        link.twice = on;
+      },
+      state: (): { up: boolean; dropped: number; writes: number; listed: number; streams: number; delivered: Record<string, number> } => ({ up: link.up, dropped: link.dropped, writes: link.writes, listed: link.listed, streams: sockets.size, delivered: Object.fromEntries(link.reached) }),
+      failLists: (on: boolean): void => {
+        link.listsFail = on;
+      },
+    },
+    __acks: {
+      hold: (): void => {
+        acks.holding = true;
+      },
+      held: (): number => acks.held.length,
+      accept: (): void => {
+        acks.accepting = true;
+      },
+      release: (): void => {
+        acks.holding = false;
+        for (const held of acks.held.splice(0)) {
+          // A frame that was in flight when its stream went is lost with it; the probe's fault makes the host take it late, from the stream it was on.
+          if (acks.accepting) {
+            held.socket.forward(held.frame, true);
+          }
+        }
+      },
+    },
+  });
+}
+
 
 /**
  * What the emulator was given and what it parsed, for the probe (`window.__engine`): the bytes accepted by `write` and the bytes whose callback has run, the instant of the last write, the instants of what the user typed, and
@@ -220,209 +676,97 @@ const stats = {
  */
 const gate = { closed: false, held: [] as Array<() => void>, keys: 0, replies: 0 };
 
-/** One input call as the host saw it: the page made it at `at`, it arrived, the host applied it, and the host answered it. */
-type Call = {
-  kind: 'write' | 'resize';
-  id: string;
-  seq: number;
-  size: number;
-  at: number;
-  arrivedAt: number | null;
-  /** Its place in the order the calls arrived (1 is the first), and in the order the host applied them. */
-  arrival: number | null;
-  appliedAt: number | null;
-  application: number | null;
-  answeredAt: number | null;
-  outcome: string;
-};
 
+/** The bytes of one event of a burst, and how many digits of its number it starts with. */
+const EVENT_BYTES = 1000;
+const NUMBER_DIGITS = 7;
+
+/**
+ * What the probe reads of the far end, in the shape the probe has always read it (`window.__pty.log`): the page's own far end keeps its records in its host (`createHost`'s `log`), and what the page did is the stream's.
+ * A `?host=shared` page has no host of its own: what the probe reads of it is the probe's own host, in the probe's process.
+ */
 const log = {
-  created: [] as string[],
+  get created(): string[] {
+    return (localHost?.log.created ?? []).map((entry: { id: string }) => entry.id);
+  },
   /** The ids the host refused to start (`?fail=`). */
-  refused: [] as string[],
-  /** What every create call carried of its launch: the page key and the lease. */
-  launches: [] as Array<{ id: string; pageKey: string | undefined; leaseMs: number | undefined }>,
-  /** The terminals this page was asked to detach (`DetachTerminal`). */
-  detached: [] as string[],
-  writes: [] as string[],
+  get refused(): string[] {
+    return localHost?.log.refused ?? [];
+  },
+  /** The terminals this page asked the host to close (`CloseChannelTerminal`). */
+  get closed(): string[] {
+    return localHost?.log.closed ?? [];
+  },
+  /** What the shell was typed, in the order the host applied it. */
+  get writes(): string[] {
+    return (localHost?.log.writes ?? []).map((entry: { data: string }) => entry.data);
+  },
   /** The size the pty was opened at by the create call and every size the host applied after it, in the order it applied them. */
-  resizes: [] as Array<{ id: string; rows: number; cols: number; at: number }>,
-  closed: [] as string[],
-  floods: [] as Array<{ id: string; lines: number; bytes: number }>,
-  /** The instant each flood began, where `floods` has one entry for each that ended: the probe asks for both, so that a flood that never started is not taken for one that is still running. A flood ends when everything it wrote was DELIVERED to the page. */
-  floodStarts: [] as Array<{ id: string; at: number }>,
+  get resizes(): Array<{ id: string; rows: number; cols: number }> {
+    return localHost?.log.resizes ?? [];
+  },
   /** The instant each write reached the shell (`performance.now()`): the end of an input's latency. */
-  writeAt: [] as number[],
-  /** Every `IsBusy` call: the question the close of a running terminal asks, once. */
-  busy: [] as Array<{ id: string; at: number }>,
-  /** Every input call, in the order the page made them. */
-  calls: [] as Call[],
-  /** The old calls the page made, if any: it numbers its calls now, and never makes them. */
-  legacy: [] as string[],
+  writeAt: localHost?.log.writeAt ?? [],
+  /** Every `ChannelTerminalBusy` call: the question the close of a running terminal asks, once. */
+  get busy(): Array<{ id: string | null; at: number }> {
+    return localHost?.log.busy ?? [];
+  },
+  /** Every input and resize frame, in the order the page sent them, and the host's own record of applying each. */
+  get calls(): Array<{ kind: 'write' | 'resize'; size: number; at: number; outcome: string; application: number | null; appliedAt: number | null }> {
+    return calls.map((call) => ({ kind: call.kind, size: call.size, at: call.at, outcome: call.entry?.outcome === undefined || call.entry.outcome === 'received' ? 'sent' : call.entry.outcome, application: call.entry?.application ?? null, appliedAt: call.entry?.appliedAt ?? null }));
+  },
+  /** The streams the page opened, and the detach frames it sent. */
+  get streams(): number {
+    return localHost?.log.streams.length ?? 0;
+  },
+  get detaches(): number {
+    return localHost?.log.detaches.length ?? 0;
+  },
   /** What `size` printed, in order: the pty's own idea of its size. */
-  sizeReports: [] as Array<{ rows: number; cols: number }>,
-  /** The count of every `AckTerminal` call, in order, what the page had done at the instant of each (the bytes the host had delivered, the emulator had been given and had parsed), the sum acknowledged by then, and their sum. */
-  acks: [] as number[],
-  ackState: [] as Array<{ id: string; count: number; at: number; exists: boolean; delivered: number; accepted: number; parsed: number; after: number }>,
-  acked: 0,
-  /** The bytes the host handed to the page, over every session, and the most it ever had delivered and not credited. */
-  delivered: 0,
-  maxUnacked: 0,
-  /** Whether the host has stopped reading any session's pty. */
-  paused: (): boolean => [...ptys.values()].some((pty) => pty.paused),
-  /** The bytes the shell wrote that the host has not delivered, over every session. */
-  waiting: (): number => [...ptys.values()].reduce((sum, pty) => sum + pty.waiting, 0),
+  get sizeReports(): Array<{ rows: number; cols: number }> {
+    return localHost?.log.sizeReports ?? [];
+  },
+  /** The count of every acknowledgement frame, in order, what the page had done at the instant of each (the bytes the host had handed to the stream, the emulator had been given and had parsed), the sum acknowledged by then, and their sum. */
+  acks: credit.acks,
+  ackState: credit.ackState,
+  get acked(): number {
+    return credit.acked;
+  },
+  /** The bytes the host handed to the stream, and the most it ever had sent and not acknowledged once the page's window was on. */
+  /** How many output frames reached the page. */
+  get receivedFrames(): number {
+    return credit.frames;
+  },
+  get delivered(): number {
+    return localHost?.log.delivered ?? credit.received;
+  },
+  get maxUnacked(): number {
+    return localHost?.log.maxUnacked ?? 0;
+  },
+  /** The floods that ended (everything they wrote was handed to the stream), and the instant each began. */
+  get floods(): Array<{ id: string; lines: number; bytes: number }> {
+    return localHost?.log.floods ?? [];
+  },
+  get floodStarts(): Array<{ id: string; at: number }> {
+    return localHost?.log.floodStarts ?? [];
+  },
+  /** Whether the host has stopped reading the shell, and the bytes the shell wrote that the host has not handed to the stream. */
+  paused: (): boolean => localHost?.paused() ?? false,
+  waiting: (): number => localHost?.waiting() ?? 0,
 };
 
-/** What the probe changes about the host's handling of input: the most an input call takes to arrive (a random time up to it), the next calls of one kind that are slow to arrive, and the next calls the host is slow to apply (`Infinity` is never). */
-const net = { latency: 0, late: null as { kind: 'write' | 'resize'; calls: number; ms: number } | null, hold: null as { calls: number; ms: number } | null };
-let arrivals = 0;
-let applications = 0;
-
-const emit = (name: string, data: unknown): void => {
-  for (const listener of [...(listeners.get(name) ?? [])]) {
-    listener(data);
-  }
-};
-
-/** What `?control=leaky-heap` keeps: every event the shell wrote, as a page that held on to its output would (the negative control of the probe's heap assertion). */
-const leak: string[] = [];
-
-// ---- the host's credit flow control ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-/** Tells whoever waits for the pty that it has room, or is empty. */
-function settle(pty: Pty): void {
-  if (pty.waiting < PTY_ROOM) {
-    for (const wake of pty.roomWaiters.splice(0)) {
-      wake();
-    }
-  }
-
-  if (pty.head >= pty.queue.length) {
-    for (const wake of pty.emptyWaiters.splice(0)) {
-      wake();
-    }
-  }
-}
-
-/**
- * The host reads the pty: what the shell wrote is delivered, in reads of at most 20,480 bytes, while the bytes delivered and not credited are under the high mark; at the mark it stops reading, so the shell waits,
- * and it reads again when the count is down to the low mark (`ack`). Until the page's first acknowledgement the transport credits what it delivered, the page having taken the event. `?control=ack-on-receipt` has the
- * page acknowledge each event as it is delivered, and not when it is parsed: what the page's own acknowledgements say is then ignored.
- */
-function pump(id: string): void {
-  const pty = ptys.get(id);
-  if (pty === undefined || pty.pumping) {
-    return;
-  }
-
-  // An acknowledgement that comes while the host is delivering is credited by the loop that is running.
-  pty.pumping = true;
-  try {
-    while (!pty.paused && pty.head < pty.queue.length) {
-      const item = pty.queue[pty.head];
-      pty.head += 1;
-      if (item === undefined) {
-        break;
-      }
-
-      if (item.kind === 'close') {
-        emit(signalEvent(id, 'CLOSE'), { ...(item.payload as Record<string, unknown>), last_offset: pty.offset });
-        continue;
-      }
-
-      pty.waiting -= item.size;
-      pty.unacked += item.size;
-      log.maxUnacked = Math.max(log.maxUnacked, pty.unacked);
-      log.delivered += item.size;
-      if (pty.key === null) {
-        emit(streamEvent(id, 'stdout'), item.encoded);
-      } else {
-        emit(`core/exec/stream/output/${id}`, { offset: pty.offset, data: item.encoded });
-      }
-
-      pty.offset += item.size;
-      if (control === 'draw-hidden') {
-        document.body.dataset.delivered = String(log.delivered);
-      }
-
-      if (!pty.explicit) {
-        pty.unacked = Math.max(0, pty.unacked - item.size);
-      } else if (control === 'ack-on-receipt') {
-        void ack(id, item.size, false);
-      }
-
-      if (pty.unacked >= LIMITS.flow_high_bytes) {
-        pty.paused = true;
-      }
-    }
-  } finally {
-    pty.pumping = false;
-  }
-
-  if (pty.head >= pty.queue.length) {
-    pty.queue.length = 0;
-    pty.head = 0;
-  } else if (pty.head > 4096) {
-    pty.queue.splice(0, pty.head);
-    pty.head = 0;
-  }
-
-  settle(pty);
-}
-
-/** The shell writes `text`: it waits in the pty until the host reads it. */
-const out = (id: string, text: string): void => {
-  const pty = ptys.get(id);
-  // A shell that is gone writes nothing: what it wrote before it ended is in the queue, and the end follows it.
-  if (pty === undefined || pty.gone) {
-    return;
-  }
-
-  let at = 0;
-  while (at < text.length) {
-    let end = Math.min(text.length, at + PIECE_UNITS);
-    // A pair of UTF-16 units is one character: a write is cut between characters.
-    if (end < text.length && text.charCodeAt(end - 1) >= 0xd800 && text.charCodeAt(end - 1) <= 0xdbff) {
-      end -= 1;
-    }
-
-    const encoded = encodeInput(text.slice(at, end));
-    if (control === 'leaky-heap') {
-      leak.push(encoded);
-    }
-
-    const size = base64Size(encoded);
-    pty.queue.push({ kind: 'bytes', encoded, size });
-    pty.waiting += size;
-    at = end;
-  }
-
-  pump(id);
-};
-
-/** The event a burst writes at index `k`: 1,000 bytes of twelve lines of 80 columns and one of 40, the first line starting with the number of the event, so that the page's copy of the stream can be checked for order. */
-const burstEvent = (k: number): string => `${String(k).padStart(NUMBER_DIGITS, '0')} ${'x'.repeat(70)}\r\n${`${'x'.repeat(78)}\r\n`.repeat(11)}${'y'.repeat(38)}\r\n`;
-
-/**
- * The shell writes `events` numbered events in one task, as a build that prints a great deal while the panel is not shown does: the host delivers what is under its mark in the same task, and the rest waits in the pty. The
- * emulator's wrapper then looks, for each event, at the number where the event ought to be in what it is given (`checkOrder`).
- */
+/** What a burst writes: the host writes the numbered events in one task, and the emulator's wrapper then looks, for each event, at the number where the event ought to be in what it is given (`checkOrder`). */
 function burst(id: string, events: number): { ms: number; delivered: number; paused: boolean; waiting: number } {
-  const pty = ptys.get(id);
-  if (pty === undefined) {
+  if (localHost === undefined) {
     return { ms: 0, delivered: 0, paused: false, waiting: 0 };
   }
 
   stats.order = { base: stats.accepted, events, checked: 0, bad: 0, first: null };
-  const before = log.delivered;
   const started = performance.now();
-  for (let k = 0; k < events; k += 1) {
-    out(id, burstEvent(k));
-  }
-
-  return { ms: performance.now() - started, delivered: log.delivered - before, paused: pty.paused, waiting: pty.waiting };
+  const result = localHost.burst(id, events);
+  return { ms: performance.now() - started, ...result };
 }
+
 
 /** Looks, in what the emulator is given, at where each event of the burst begins: its number must be there. A slice that cuts the number is not looked at (the next one begins in the middle of an event). */
 function checkOrder(data: Uint8Array): void {
@@ -457,807 +801,6 @@ function checkOrder(data: Uint8Array): void {
     }
   }
 }
-
-/** One acknowledgement of the log, and what the page had done at the instant of it. */
-function record(id: string, bytes: number, exists: boolean): void {
-  log.acks.push(bytes);
-  log.acked += bytes;
-  log.ackState.push({ id, count: bytes, at: performance.now(), exists, delivered: log.delivered, accepted: stats.accepted, parsed: stats.parsed, after: log.acked });
-}
-
-/** The host credits what the page acknowledged: `AckTerminal(id, bytes)`. The first call turns the page's credit on; a session that is gone is a 404. `fromPage` is false for what `?control=ack-on-receipt` does in its place. */
-async function ack(id: string, bytes: number, fromPage = true): Promise<void> {
-  const pty = ptys.get(id);
-  if (fromPage && control === 'ack-on-receipt' && bytes > 0) {
-    return Promise.resolve();
-  }
-
-  record(id, bytes, pty !== undefined);
-  if (pty === undefined) {
-    throw notFound(id);
-  }
-
-  pty.explicit = true;
-  if (control === 'ack-lost' && pty.paused) {
-    return Promise.resolve();
-  }
-
-  pty.unacked = Math.max(0, pty.unacked - bytes);
-  if (pty.paused && pty.unacked <= LIMITS.flow_low_bytes) {
-    pty.paused = false;
-  }
-
-  pump(id);
-  return Promise.resolve();
-}
-
-// ---- the shell --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-const PROMPT = '\u001b[32muser@synthetic\u001b[0m:\u001b[34m~\u001b[0m$ ';
-const BANNER = `\u001b[90mSynthetic shell: hello, size, colors, flood N [W], sleep N, exit [code], kill, quit, fail\u001b[0m\r\n${PROMPT}`;
-
-function colors(id: string): void {
-  const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
-  for (const base of [30, 90]) {
-    out(id, `${names.map((name, index) => `\u001b[${String(base + index)}m${name.padEnd(8)}\u001b[0m`).join(' ')}\r\n`);
-  }
-
-  out(id, '\u001b[1mbold\u001b[0m \u001b[2mdim\u001b[0m \u001b[3mitalic\u001b[0m \u001b[4munderline\u001b[0m \u001b[7minverse\u001b[0m\r\n');
-}
-
-/**
- * N lines of W columns, in events of about 1,000 bytes, a batch of events a task so the page is never held for the whole flood. The shell writes while its pty has room and waits when it does not (the host stopped
- * reading it: the page has not acknowledged enough), so a flood moves at the page's own pace. It ends when everything it wrote was DELIVERED: that is what `floods` records.
- */
-function flood(id: string, lines: number, width: number): void {
-  const pty = ptys.get(id);
-  if (pty === undefined) {
-    return;
-  }
-
-  const perEvent = Math.max(1, Math.floor(1000 / (width + 2)));
-  log.floodStarts.push({ id, at: performance.now() });
-  let next = 0;
-  let bytes = 0;
-  const step = (): void => {
-    // The shell that ended writes no more, even while its pty is still there.
-    if (!ptys.has(id) || pty.gone) {
-      return;
-    }
-
-    for (let batch = 0; batch < 40 && next < lines && pty.waiting < PTY_ROOM; batch += 1) {
-      const count = Math.min(perEvent, lines - next);
-      let text = '';
-      for (let at = 0; at < count; at += 1) {
-        text += `${String(next + at).padStart(7, '0')} ${'x'.repeat(Math.max(0, width - 8))}\r\n`;
-      }
-
-      bytes += text.length;
-      next += count;
-      out(id, text);
-    }
-
-    if (next < lines) {
-      if (pty.waiting >= PTY_ROOM) {
-        pty.roomWaiters.push(() => {
-          setTimeout(step, 0);
-        });
-      } else {
-        setTimeout(step, 0);
-      }
-
-      return;
-    }
-
-    out(id, PROMPT);
-    const ended = (): void => {
-      log.floods.push({ id, lines, bytes });
-    };
-
-    if (pty.head >= pty.queue.length) {
-      ended();
-    } else {
-      pty.emptyWaiters.push(ended);
-    }
-  };
-
-  step();
-}
-
-function stopJob(pty: Pty): void {
-  if (pty.job !== undefined) {
-    clearTimeout(pty.job.timer);
-    pty.job = undefined;
-  }
-}
-
-/** The shell is gone, and the host says how as the last event of the session, after everything the shell wrote (T1-go.md 2.2). */
-function finish(id: string, end: unknown): void {
-  const pty = ptys.get(id);
-  if (pty === undefined || pty.gone) {
-    return;
-  }
-
-  pty.gone = true;
-  stopJob(pty);
-  letGo(pty);
-  setTimeout(() => {
-    if (ptys.get(id) === pty) {
-      pty.queue.push({ kind: 'close', payload: end });
-      pump(id);
-    }
-  }, 5);
-}
-
-/**
- * The pty closed, because the shell ended or the session was closed: what waits on it, for its turn or for a host that is slow with it, is let go, and each call that wakes finds the session gone and is refused. Nothing is applied
- * to a pty that is closed, and the numbers behind a call that was let go do not wait for it.
- */
-function letGo(pty: Pty): void {
-  for (const go of [...pty.early.values()]) {
-    go();
-  }
-
-  for (const done of [...pty.holds]) {
-    done();
-  }
-}
-
-/** How the typed end of each command says it, and what each negative control takes out of it. */
-const exited = (code: number): Record<string, unknown> => (control === 'exit-code-lost' ? { reason: 'exited' } : { reason: 'exited', exit_code: code });
-const signaled = (signal: string, number: number, dumped: boolean): Record<string, unknown> =>
-  control === 'signal-lost' ? { reason: 'signaled' } : { reason: 'signaled', signal, signal_number: number, ...(dumped ? { core_dumped: true } : {}) };
-const closedBy = (who: 'request' | 'window' | 'shutdown'): Record<string, unknown> => (control === 'closed-lost' ? { reason: 'closed' } : { reason: 'closed', closed_by: who });
-
-function run(id: string, pty: Pty, command: string): void {
-  const [word = '', ...args] = command.trim().split(/\s+/);
-  switch (word) {
-    case '':
-      break;
-    case 'hello':
-      out(id, 'hello from the synthetic shell\r\n');
-      break;
-    case 'size':
-      log.sizeReports.push({ rows: pty.rows, cols: pty.cols });
-      out(id, `${String(pty.rows)} ${String(pty.cols)}\r\n`);
-      break;
-    case 'colors':
-      colors(id);
-      break;
-    case 'flood':
-      flood(id, Number(args[0] ?? 1000), Number(args[1] ?? 80));
-      return;
-    case 'sleep': {
-      const seconds = Number(args[0]);
-      if (!(seconds >= 0)) {
-        out(id, 'sleep: invalid time interval\r\n');
-        break;
-      }
-
-      // The program holds the foreground; the shell gives its prompt back when it ends.
-      pty.job = {
-        name: 'sleep',
-        timer: setTimeout(() => {
-          pty.job = undefined;
-          out(id, PROMPT);
-        }, seconds * 1000),
-      };
-      return;
-    }
-
-    case 'exit':
-      out(id, 'logout\r\n');
-      finish(id, exited(Number(args[0] ?? 0)));
-      return;
-    case 'kill':
-      finish(id, signaled('SIGKILL', 9, false));
-      return;
-    case 'segv':
-      finish(id, signaled('SIGSEGV', 11, true));
-      return;
-    case 'quit':
-      finish(id, closedBy('shutdown'));
-      return;
-    case 'orphan':
-      out(id, 'logout\r\n');
-      finish(id, { ...exited(0), drain_capped: true, dropped_bytes: 4096 });
-      return;
-    case 'fail':
-      // A terminal with a key ends with a typed failure, as the host says it (T1-go.md 2.2: the end is the CLOSE event); the `ERROR` signal is the old way and is only heard for a terminal with no key.
-      if (pty.key === null) {
-        emit(signalEvent(id, 'ERROR'), { title: 'Connection lost', message: 'The shell stopped answering' });
-      } else {
-        finish(id, { reason: 'failed', failure: { stage: 'read', message: 'The shell stopped answering' } });
-      }
-
-      return;
-    default:
-      out(id, `synthetic: command not found: ${word}\r\n`);
-  }
-
-  out(id, PROMPT);
-}
-
-/** What the user typed, as the pty's line discipline would take it: echo, backspace, interrupt, a line at Enter. Escape sequences (arrows) are dropped. While a program holds the foreground only the interrupt reaches anything. */
-function typed(id: string, pty: Pty, data: string): void {
-  for (const ch of data.replace(/\u001b\[[0-9;?]*[A-Za-z~]/g, '').replace(/\u001b/g, '')) {
-    if (pty.gone) {
-      return;
-    }
-
-    if (ch === '\u0003') {
-      pty.line = '';
-      stopJob(pty);
-      out(id, `^C\r\n${PROMPT}`);
-    } else if (pty.job !== undefined) {
-      continue;
-    } else if (ch === '\r') {
-      out(id, '\r\n');
-      const line = pty.line;
-      pty.line = '';
-      run(id, pty, line);
-    } else if (ch === '\u007f') {
-      if (pty.line !== '') {
-        pty.line = pty.line.slice(0, -1);
-        out(id, '\b \b');
-      }
-    } else if (ch >= ' ') {
-      pty.line += ch;
-      out(id, ch);
-    }
-  }
-}
-
-// ---- the host's exec bindings ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-/** A wait of `ms` milliseconds. */
-const wait = async (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-/**
- * The call `seq` waits for its turn: the host puts the calls in the order of their numbers. A call that has arrived and is being applied (the host is slow with it) is waited for, however long it takes. Only a number that never
- * arrived is given up: when the host has waited `gap_wait_ms` for it with nothing being applied, it goes on with the lowest call it holds, and `next` never goes back (T1-go.md 2.4).
- */
-async function turn(pty: Pty, seq: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const go = (): void => {
-      clearTimeout(timer);
-      pty.early.delete(seq);
-      resolve();
-    };
-
-    const wake = (): void => {
-      if (pty.early.get(seq) !== go) {
-        return;
-      }
-
-      if (pty.applying) {
-        // The number it waits for arrived and is being applied: the host waits for it, and looks again later.
-        timer = setTimeout(wake, LIMITS.gap_wait_ms);
-        return;
-      }
-
-      const lowest = Math.min(...pty.early.keys());
-      pty.next = Math.max(pty.next, lowest);
-      pty.early.get(lowest)?.();
-    };
-
-    timer = setTimeout(wake, LIMITS.gap_wait_ms);
-    pty.early.set(seq, go);
-  });
-}
-
-/** The host is slow with a call, for `ms` milliseconds (for good, for `Infinity`): the wait ends early when the pty closes. */
-async function slowly(pty: Pty, ms: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const done = (): void => {
-      clearTimeout(timer);
-      pty.holds.delete(done);
-      resolve();
-    };
-
-    if (ms !== Number.POSITIVE_INFINITY) {
-      timer = setTimeout(done, ms);
-    }
-
-    pty.holds.add(done);
-  });
-}
-
-/**
- * An input call as the host takes it (T1-go.md 2.4): it arrives after a random time up to `net.latency`, or after `net.late` for the calls set to be slow (the transport runs unawaited calls at the same time, and they do not
- * arrive in the order they were made), and the host applies it in the order of the numbers and answers when it has applied it. `net.hold` makes the host slow to apply a call, and so to answer it, and the calls behind it wait.
- * A number that is used, or that already waits for its turn, is refused (`SEQUENCE_STALE`) and the call that waits keeps its place. A call is applied only to the pty it was admitted to, and only while it is open: when the shell ends or
- * the session is closed the calls that wait are let go and refused (`letGo`). `?control=arrival-order` has the host apply in the order of arrival whatever the numbers say.
- */
-async function input(kind: 'write' | 'resize', id: string, seq: number, size: number, apply: (pty: Pty) => void): Promise<void> {
-  const call: Call = { kind, id, seq, size, at: performance.now(), arrivedAt: null, arrival: null, appliedAt: null, application: null, answeredAt: null, outcome: 'sent' };
-  log.calls.push(call);
-  let delay = net.latency > 0 ? Math.random() * net.latency : 0;
-  const late = net.late;
-  if (late !== null && late.kind === kind && late.calls > 0) {
-    late.calls -= 1;
-    delay = late.ms;
-  }
-
-  if (delay > 0) {
-    await wait(delay);
-  }
-
-  arrivals += 1;
-  call.arrivedAt = performance.now();
-  call.arrival = arrivals;
-  const pty = ptys.get(id);
-  if (pty === undefined || pty.gone) {
-    call.outcome = 'not-found';
-    throw notFound(id);
-  }
-
-  // The call is admitted to this pty: when it closes while the call waits, for its turn or for a host that is slow with it, the call is not applied.
-  const closed = (): boolean => ptys.get(id) !== pty || pty.gone;
-  const ordered = seq >= 1 && control !== 'arrival-order';
-  if (ordered) {
-    // A number below the one the host expects, the one it is applying now, or one that already waits for its turn has been used.
-    if (seq < pty.next || (pty.applying && seq === pty.next) || pty.early.has(seq)) {
-      call.outcome = 'stale';
-      throw refusal(stale(seq, pty.next));
-    }
-
-    if (seq > pty.next + LIMITS.seq_ahead) {
-      call.outcome = 'ahead';
-      throw refusal(ahead(seq, pty.next));
-    }
-
-    if (seq !== pty.next) {
-      await turn(pty, seq);
-      if (closed()) {
-        call.outcome = 'not-found';
-        throw notFound(id);
-      }
-    }
-
-    pty.applying = true;
-  }
-
-  // `?control=resize-refused`: the host takes the number of a size call and refuses the call, which is not applied.
-  if (control === 'resize-refused' && kind === 'resize') {
-    call.outcome = 'refused';
-    if (ordered) {
-      pty.applying = false;
-      pty.next = Math.max(pty.next, seq + 1);
-      pty.early.get(pty.next)?.();
-    }
-
-    throw refusal(stale(seq, pty.next));
-  }
-
-  const slow = net.hold;
-  if (slow !== null && slow.calls > 0) {
-    slow.calls -= 1;
-    await slowly(pty, slow.ms);
-  }
-
-  if (closed()) {
-    pty.applying = false;
-    call.outcome = 'not-found';
-    throw notFound(id);
-  }
-
-  apply(pty);
-  applications += 1;
-  call.appliedAt = performance.now();
-  call.application = applications;
-  call.outcome = 'applied';
-  if (ordered) {
-    pty.applying = false;
-    pty.next = Math.max(pty.next, seq + 1);
-    pty.early.get(pty.next)?.();
-  }
-
-  call.answeredAt = performance.now();
-}
-
-/** `CreateTerminal`: the pty opens at the size the view measured, and the answer is the session (`terminal.Session`). A host that cannot start one says why, typed (`?fail=`). */
-async function create(id: string, size: { readonly cols: number; readonly rows: number; readonly page_key?: string | undefined; readonly lease_ms?: number | undefined }): Promise<unknown> {
-  if (failure === 'shell-unavailable') {
-    log.refused.push(id);
-    throw refusal(UNAVAILABLE);
-  }
-
-  if (failure === 'start') {
-    log.refused.push(id);
-    throw refusal(START_FAILED);
-  }
-
-  // A page key is 16 to 128 visible ASCII characters (T2-go 2.1): any other is refused, naming it, and nothing starts.
-  log.launches.push({ id, pageKey: size.page_key, leaseMs: size.lease_ms });
-  if (size.page_key !== undefined && !/^[\x21-\x7e]{16,128}$/.test(size.page_key)) {
-    throw refusal({ type: 'omniview:resource/invalid-request', title: 'Invalid request', status: 400, detail: 'page_key: a page key is 16 to 128 visible ASCII characters, no space', code: 'INVALID_REQUEST' });
-  }
-
-  // `?control=size-off`: the host opens the pty one column wider than it was asked to.
-  const cols = control === 'size-off' ? size.cols + 1 : size.cols;
-  ptys.set(id, { rows: size.rows, cols, line: '', job: undefined, gone: false, queue: [], head: 0, waiting: 0, unacked: 0, explicit: false, paused: false, pumping: false, roomWaiters: [], emptyWaiters: [], next: 1, early: new Map(), applying: false, holds: new Set(), key: size.page_key ?? null, offset: 0 });
-  log.resizes.push({ id, rows: size.rows, cols: size.cols, at: performance.now() });
-  log.created.push(id);
-  const first = new Promise<void>((resolve) => {
-    setTimeout(() => {
-      out(id, BANNER);
-      resolve();
-    }, 20);
-  });
-  if (control === 'flow-late') {
-    await first;
-  }
-
-  return {
-    id,
-    created_at: new Date().toISOString(),
-    pid: 4242,
-    shell: { path: `/bin/${shellName}`, name: control === 'no-shell-name' ? '' : shellName },
-    cwd: '/home/user',
-    cols,
-    rows: size.rows,
-    environment: { source: 'launch', probe: { state: 'ok' } },
-    limits: LIMITS,
-    lease_ms: size.page_key === undefined ? 0 : LIMITS.lease_default_ms,
-  };
-}
-
-/** `IsBusy`: what holds the terminal's foreground, asked when the person closes (T1-go.md 2.3). */
-async function busy(id: string): Promise<unknown> {
-  log.busy.push({ id, at: performance.now() });
-  if (busyMode === 'hang') {
-    return new Promise<never>(() => undefined);
-  }
-
-  const pty = ptys.get(id);
-  if (pty === undefined || pty.gone) {
-    throw notFound(id);
-  }
-
-  if (busyMode === 'unknown') {
-    return control === 'unknown-idle' ? { state: 'idle' } : { state: 'unknown', reason: 'query-failed' };
-  }
-
-  if (control === 'busy-always') {
-    return { state: 'busy', pgid: 4242, name: 'sleep' };
-  }
-
-  if (pty.job === undefined) {
-    return { state: 'idle' };
-  }
-
-  return control === 'busy-nameless' ? { state: 'busy', pgid: 4242 } : { state: 'busy', pgid: 4242, name: pty.job.name };
-}
-
-/** What a write call does at the shell: the bytes it carries are typed. */
-function writing(id: string, data: string): (pty: Pty) => void {
-  return (pty) => {
-    const text = new TextDecoder().decode(decodeBase64(data));
-    log.writes.push(text);
-    log.writeAt.push(performance.now());
-    typed(id, pty, text);
-  };
-}
-
-/** What a resize call does at the shell: the pty has the size. */
-function resizing(id: string, rows: number, cols: number): (pty: Pty) => void {
-  return (pty) => {
-    log.resizes.push({ id, rows, cols, at: performance.now() });
-    pty.rows = rows;
-    pty.cols = cols;
-  };
-}
-
-/**
- * The host's exec bindings, as the transport of the host's own shell calls them. The page numbers its input calls and sends them with `WriteTerminal` and `ResizeTerminal`, each at once, and the host puts them in the order of their
- * numbers. `WriteSession` and `ResizeSession` are the old calls: nothing makes them any more, and a page that does gets an error from them and leaves its call in `log.legacy`, which the probe asserts is empty.
- */
-const localClient = {
-  CreateTerminal: async (options: { readonly id: string }, launch: { readonly cols: number; readonly rows: number; readonly page_key?: string | undefined; readonly lease_ms?: number | undefined }) => create(options.id, launch),
-  WriteTerminal: async (id: string, seq: number, data: string) => {
-    // `?control=seq-gap`: a number is missing from the fourth call on. `?control=legacy-write`: the old call is made as well.
-    if (control === 'legacy-write') {
-      log.legacy.push(`WriteSession ${id}`);
-    }
-
-    await input('write', id, control === 'seq-gap' && seq > 3 ? seq + 1 : seq, base64Size(data), writing(id, data));
-  },
-  ResizeTerminal: async (id: string, seq: number, rows: number, cols: number) => {
-    await input('resize', id, control === 'seq-gap' && seq > 3 ? seq + 1 : seq, 0, resizing(id, rows, cols));
-  },
-  WriteSession: async (id: string) => {
-    log.legacy.push(`WriteSession ${id}`);
-    throw new Error('WriteSession is the old call: input is sent with WriteTerminal, numbered');
-  },
-  ResizeSession: async (id: string) => {
-    log.legacy.push(`ResizeSession ${id}`);
-    throw new Error('ResizeSession is the old call: sizes are sent with ResizeTerminal, numbered');
-  },
-  // A close the page asked for: the host ends the session, and its CLOSE is delivered before the call returns, to whoever still listens (T1-go.md 2.2).
-  CloseSession: async (id: string) => {
-    log.closed.push(id);
-    const pty = ptys.get(id);
-    if (pty === undefined) {
-      throw notFound(id);
-    }
-
-    stopJob(pty);
-    ptys.delete(id);
-    letGo(pty);
-    emit(signalEvent(id, 'CLOSE'), closedBy('request'));
-  },
-  AckTerminal: ack,
-  IsBusy: busy,
-  // The terminals of this page live in it and end with it, so a reloaded page finds none: the T2-go host, with its ring, its leases and its tombstones, is `?host=shared`.
-  ListTerminals: async (): Promise<unknown[]> => Promise.resolve([]),
-  AttachTerminal: async (id: string): Promise<never> => Promise.reject(notFound(id)),
-  DetachTerminal: async (id: string) => {
-    log.detached.push(id);
-    return Promise.resolve({ lease_ms: LIMITS.lease_default_ms, lease_expires_unix_ms: Date.now() + LIMITS.lease_default_ms });
-  },
-};
-
-/**
- * `?host=shared`: the host's calls go to the probe's host (terminal-host.mjs) through the binding `window.__host`, and what the host emits comes back through `window.__hostEmit`. A page load is a window of its own (`windowId`), as
- * a page of server mode is: the host retires it when the page goes away. The host keeps the terminals, the window's state (the page key and the saved session) and the rest of the far end; the page keeps none of it.
- * The page-side negative controls of the reattach assertions are in the calls below: `key-in-url` (the page puts its key in the address), `ack-replay` (it credits the replay), `seq-restart` (the answer of the attach hands the
- * page 1 for the number the input queue takes next), `rejoin-from-zero` (a rejoin asks for the output from its first byte), `leave-lost` (the page never says it is leaving), and in the window's state `no-session` and `key-regen`
- * (the session and the key are never kept) and `restore-forgets-open` and `restore-forgets-closed` (the saved session says the panel was closed, or open, whatever it was saved as). `window.__link.failLists(true)` (the probe's
- * control `refresh-skipped`) makes the host's list fail from then on, and `window.__acks.accept()` (its control `ack-stale-restore`) makes the `AckTerminal` call that was held be taken by the host when it is let go, and not refused.
- */
-type HostBinding = (windowId: string, method: string, args: readonly unknown[]) => Promise<unknown>;
-
-/** The probe's host (`?host=shared`): Playwright gives its binding to every page of the browser context. */
-const injected: unknown = Reflect.get(window, '__host');
-const hostBinding = typeof injected === 'function' ? (injected as HostBinding) : undefined;
-const windowId = globalThis.crypto.randomUUID();
-const hostCall = async (method: string, ...args: unknown[]): Promise<unknown> => {
-  if (hostBinding === undefined) {
-    throw new Error('the probe did not give this page its host (window.__host)');
-  }
-
-  return hostBinding(windowId, method, args);
-};
-
-/**
- * `?host=shared`: the page's connection to the host's events. The probe puts it down (`window.__link.down()`: every event the host sends from then on is lost to the page for good, as the events of a socket that was down are, and
- * the answer says how far the output of each terminal had got) and brings it up again (`window.__link.up()`: the Terminal tool is told, through the `reconnect` option, that the events are back, as the host's own page is when its
- * socket opens again; `signal()` tells it again without a change). `arm(true)` makes the next attach the page makes be made twice (the probe's control `take-back-twice` arms it, once, just before it presses the button). `state()` says
- * how many events were lost (`dropped`), how many `WriteTerminal` calls the page has made (`writes`), how many `ListTerminals` calls it has had answered or refused (`listed`) and how far the output of each terminal has got (`delivered`):
- * what the probe waits on, in the place of a time.
- */
-const reconnectListeners = new Set<() => void>();
-const link = { up: true, dropped: 0, twice: false, writes: 0, listed: 0, listsFail: false, delivered: new Map<string, number>() };
-
-/**
- * `window.__acks`: the probe holds the `AckTerminal` calls of the page from the moment it asks (`hold()`): each is in flight with no answer until `release()` lets it go, refused (the connection dropped under it, as it does under
- * a call that is in flight when the events stop) or, after `accept()`, taken by the host late, after an attach that made the host forget what it was owed. `held()` is how many are in flight.
- */
-const acks = { holding: false, accepting: false, held: [] as Array<{ id: string; bytes: number; resolve: (value: unknown) => void; reject: (error: unknown) => void }> };
-const OUTPUT = /^core\/exec\/stream\/output\/(.+)$/;
-const hostEmit = (name: string, data: unknown): void => {
-  if (!link.up) {
-    link.dropped += 1;
-    return;
-  }
-
-  const found = OUTPUT.exec(name);
-  if (found?.[1] !== undefined && typeof data === 'object' && data !== null && 'offset' in data && 'data' in data && typeof data.offset === 'number' && typeof data.data === 'string') {
-    link.delivered.set(found[1], data.offset + base64Size(data.data));
-  }
-
-  emit(name, data);
-};
-
-const signalReconnect = (): void => {
-  for (const listener of [...reconnectListeners]) {
-    listener();
-  }
-};
-
-/** What the Terminal tool is given to hear that the page's events are back (`TerminalsOptions.reconnect`). */
-const reconnect = (listener: () => void): (() => void) => {
-  reconnectListeners.add(listener);
-  return () => {
-    reconnectListeners.delete(listener);
-  };
-};
-
-type Launch = { readonly cols: number; readonly rows: number; readonly page_key?: string | undefined; readonly lease_ms?: number | undefined };
-type Attach = { readonly page_key?: string | undefined; readonly from_offset?: number | undefined };
-const remoteClient = {
-  CreateTerminal: async (options: { readonly id: string }, launch: Launch) => {
-    if (control === 'key-in-url' && launch.page_key !== undefined) {
-      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search === '' ? '?' : `${window.location.search}&`}k=${launch.page_key}`);
-    }
-
-    return hostCall('CreateTerminal', options, launch);
-  },
-  ListTerminals: async (pageKey: string) => {
-    try {
-      // From the moment the probe arms it (`window.__link.failLists(true)`, its control `refresh-skipped`) the host's list cannot be had: the page cannot learn who holds a terminal it lost.
-      if (link.listsFail) {
-        throw new Error('the host could not answer the list');
-      }
-
-      return await hostCall('ListTerminals', pageKey);
-    } finally {
-      link.listed += 1;
-    }
-  },
-  AttachTerminal: async (id: string, request: Attach) => {
-    // `?control=rejoin-from-zero`: a rejoin that starts over from the first byte, whatever the page has.
-    const sent = control === 'rejoin-from-zero' && request.from_offset !== undefined ? { ...request, from_offset: 0 } : request;
-    const answer = (await hostCall('AttachTerminal', id, sent)) as { readonly replay: { readonly data: string } };
-    if (control === 'ack-replay') {
-      void hostCall('AckTerminal', id, base64Size(answer.replay.data));
-    }
-
-    // Armed by the probe's control `take-back-twice`, once, just before the press: the attach is made once more, as a button that attaches twice would make it.
-    if (link.twice) {
-      link.twice = false;
-      await hostCall('AttachTerminal', id, sent);
-    }
-
-    return control === 'seq-restart' ? { ...answer, next_input_seq: 1 } : answer;
-  },
-  // A page that is going away says so with a request that outlives it (`keepalive`): a call made through the binding is dropped with the page in Chromium. The host's own does the same (T2b explore, 2.4).
-  DetachTerminal: async (id: string, request: { readonly page_key?: string | undefined; readonly lease_ms?: number | undefined }) => {
-    // `?control=leave-lost` is the negative control of the page that never says it is going; `?detach=off` is the scenario of a page that dies without saying it (a tab that was killed): the host notices later.
-    if (control === 'leave-lost' || params.get('detach') === 'off') {
-      return Promise.resolve({ lease_ms: 0, lease_expires_unix_ms: 0 });
-    }
-
-    const beacon: unknown = Reflect.get(window, '__hostBeacon');
-    if (typeof beacon !== 'string') {
-      return hostCall('DetachTerminal', id, request);
-    }
-
-    const response = await fetch(beacon, { method: 'POST', keepalive: true, body: JSON.stringify({ windowId, method: 'DetachTerminal', args: [id, request] }) });
-    // The probe's own server answers `{ answer }` or `{ message }` (the error as the host's envelope text).
-    const body = (await response.json()) as { readonly answer?: unknown; readonly message?: string };
-    if (!response.ok) {
-      throw new Error(body.message ?? 'DetachTerminal was refused');
-    }
-
-    return body.answer;
-  },
-  WriteTerminal: async (id: string, seq: number, data: string) => {
-    link.writes += 1;
-    return hostCall('WriteTerminal', id, seq, data);
-  },
-  ResizeTerminal: async (id: string, seq: number, rows: number, cols: number) => hostCall('ResizeTerminal', id, seq, rows, cols),
-  CloseSession: async (id: string) => hostCall('CloseSession', id),
-  AckTerminal: async (id: string, bytes: number) => {
-    if (acks.holding) {
-      return new Promise<unknown>((resolve, reject) => {
-        acks.held.push({ id, bytes, resolve, reject });
-      });
-    }
-
-    return hostCall('AckTerminal', id, bytes);
-  },
-  IsBusy: async (id: string) => hostCall('IsBusy', id),
-};
-
-const client = shared ? remoteClient : localClient;
-
-/** The host's window service as the generated binding has it (`GetState`, `SaveState`): the slots of each window. `?host=shared` keeps them in the probe's host, which outlives the page, as the host's own state root does. */
-const slots = new Map<string, Record<string, string | undefined>>();
-
-/**
- * `?control=restore-forgets-open` and `?control=restore-forgets-closed`: what the window state says of the panel is changed as it is read, so that the saved session says the panel was closed (or open) whatever it was saved as,
- * as a restore that forgot the flag would have it.
- */
-const withOpenFlag = (state: Record<string, string | undefined>, open: boolean): Record<string, string | undefined> => {
-  const text = state.session;
-  if (text === undefined) {
-    return state;
-  }
-
-  try {
-    const saved: unknown = JSON.parse(text);
-    if (typeof saved === 'object' && saved !== null && 'panel' in saved && typeof saved.panel === 'object' && saved.panel !== null) {
-      return { ...state, session: JSON.stringify({ ...saved, panel: { ...saved.panel, open } }) };
-    }
-  } catch {
-    // A session that cannot be read is read as it is.
-  }
-
-  return state;
-};
-
-const sharedState: WindowState = {
-  GetState: async (name) => {
-    const state = (await hostCall('GetState', name)) as Record<string, string | undefined>;
-    return control === 'restore-forgets-open' ? withOpenFlag(state, false) : control === 'restore-forgets-closed' ? withOpenFlag(state, true) : state;
-  },
-  SaveState: async (name, slot, json) => {
-    if ((control === 'no-session' && slot === 'session') || (control === 'key-regen' && slot === 'terminal-page-key')) {
-      return;
-    }
-
-    await hostCall('SaveState', name, slot, json);
-  },
-};
-const localState: WindowState = {
-  GetState: async (name) => Promise.resolve({ ...slots.get(name) }),
-  SaveState: async (name, slot, json) => {
-    slots.set(name, { ...slots.get(name), [slot]: json });
-    return Promise.resolve();
-  },
-};
-const windowState = shared ? sharedState : localState;
-if (shared) {
-  Object.assign(window, {
-    __hostEmit: hostEmit,
-    __windowId: windowId,
-    __link: {
-      down: (): Record<string, number> => {
-        link.up = false;
-        return Object.fromEntries(link.delivered);
-      },
-      up: (): void => {
-        link.up = true;
-        signalReconnect();
-      },
-      signal: signalReconnect,
-      arm: (on: boolean): void => {
-        link.twice = on;
-      },
-      state: (): { up: boolean; dropped: number; writes: number; listed: number; delivered: Record<string, number> } => ({ up: link.up, dropped: link.dropped, writes: link.writes, listed: link.listed, delivered: Object.fromEntries(link.delivered) }),
-      failLists: (on: boolean): void => {
-        link.listsFail = on;
-      },
-    },
-    __acks: {
-      hold: (): void => {
-        acks.holding = true;
-      },
-      held: (): number => acks.held.length,
-      accept: (): void => {
-        acks.accepting = true;
-      },
-      release: (): void => {
-        acks.holding = false;
-        for (const call of acks.held.splice(0)) {
-          if (acks.accepting) {
-            void hostCall('AckTerminal', call.id, call.bytes).then(call.resolve, call.reject);
-          } else {
-            call.reject(new Error('the connection to the host dropped'));
-          }
-        }
-      },
-    },
-  });
-}
-
-const events: EventsLike = {
-  On: (name, listener) => {
-    const set = listeners.get(name) ?? new Set();
-    const heard = (data: unknown): void => {
-      listener({ data });
-    };
-
-    set.add(heard);
-    listeners.set(name, set);
-    return () => {
-      set.delete(heard);
-    };
-  },
-};
-
-/** The page key the Terminal tool starts its terminals under: read from the window's state when the page mounts (`loadPageKey`, as the host's own screen reads it), and none for `?key=off`. */
-let pageKey: string | undefined;
-
-/** The product's own target for the host's shell (its tab is `Terminal` until the answer names the shell), over the invented far end, under the page's key. */
-const target = (): TerminalTarget => localShellTarget({ client, events }, pageKey);
 
 /** Burns the main thread for `ms` milliseconds: what a janky renderer or a slow handler does, for the probe's negative controls. */
 const burn = (ms: number): void => {
@@ -1347,6 +890,13 @@ const load: EngineLoader = async () => {
           }
 
           stats.accepted += size;
+          // `?control=flow-late`: the page's first acknowledgement was held until the emulator was given a byte.
+          if (firstAck !== undefined) {
+            const release = firstAck;
+            firstAck = undefined;
+            release();
+          }
+
           engine.write(data, () => {
             const parsed = (): void => {
               stats.parsed += size;
@@ -1496,18 +1046,17 @@ Object.assign(window, {
     log,
     net,
     out: (id: string, text: string) => {
-      out(id, text);
+      localHost?.append(id, text);
       chunkListeners.forEach((listener) => {
         listener();
       });
     },
     burst,
-    ids: () => [...ptys.keys()],
+    ids: () => localHost?.ids() ?? [],
     end: (id: string) => {
-      finish(id, exited(0));
+      localHost?.end(id);
     },
-    listenerCount: () => [...listeners.values()].reduce((sum, set) => sum + set.size, 0),
-    /** How many events `?control=leaky-heap` holds on to. */
+    /** How many frames `?control=leaky-heap` holds on to. */
     leaked: () => leak.length,
   },
 });
@@ -1533,18 +1082,17 @@ function ChunkCounter() {
 
 const root = document.getElementById('root');
 
-/** The page is drawn once the window's session has been read (`?host=shared`: the real session, from the window's state), as the host's own screen draws it. */
+/** The page is drawn once the window's session and its terminals' capabilities have been read (`?host=shared`: the real ones, from the window's state), as the host's own screen draws it. */
 async function mount(): Promise<void> {
   if (root === null) {
     return;
   }
 
   if (shared) {
-    await hostCall('hello');
+    await callHost('hello', []);
   }
 
-  pageKey = keyed ? await loadPageKey(terminalKeyStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
-  const key = pageKey;
+  const channels = await loadTerminalChannels({ client, openStream, storage: capabilityStorage({ client: windowState, name: async () => Promise.resolve('main') }) });
   const session = shared ? await loadSession(windowStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
   createRoot(root).render(
     <ThemeProvider>
@@ -1562,7 +1110,7 @@ async function mount(): Promise<void> {
           onRetry={() => undefined}
           onRetryInventory={() => undefined}
           session={session}
-          terminals={{ target, load, pageKey: key, restore: key === undefined ? undefined : async () => restoreLocalTerminals(key, { client, events }), reconnect, reattach: key === undefined ? undefined : (id: string) => attachLocalTerminal(key, id, undefined, { client, events }) }}
+          terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels) }}
         />
       </Profiler>
     </ThemeProvider>,
