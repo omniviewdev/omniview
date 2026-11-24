@@ -953,14 +953,14 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
   });
 
   describe('what `New terminal` starts', () => {
-    it('is the host\'s own shell made with the key of this window, and its session is the terminal\'s id: the next reload finds the tab by it', () => {
+    it('is the host\'s own shell, and its session is the terminal\'s id: the next reload finds the tab by it', () => {
       const feed = keyedFeed();
       vi.mocked(localShellTarget).mockReturnValue({ plugin: HOST, id: 'local', title: 'Terminal', sessionId: 'term-9', open: () => feed });
-      const r = reloaded({ pageKey: 'a-key-of-sixteen-characters-or-more' });
+      const r = reloaded({});
       const stop = r.terminals.attach();
       r.terminals.newSession.start();
       expect(localShellTarget).toHaveBeenCalledTimes(1);
-      expect(localShellTarget).toHaveBeenCalledWith(undefined, 'a-key-of-sixteen-characters-or-more');
+      expect(vi.mocked(localShellTarget).mock.calls).toEqual([[]]);
       expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-9']);
       expect(r.terminals.sessions.feedOf('term-9')).toBe(feed);
       expect(r.terminals.sessions.takeFocus('term-9')).toBe(true);
@@ -968,15 +968,15 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       stop();
     });
 
-    it('is made with no key when the window has none (a window of the T2a kind), and a target a probe gives is used as it is', () => {
+    it('is the host\'s own shell made with nothing from this window: the channel holds what the terminal needs, and a target a probe gives is used as it is', () => {
       vi.mocked(localShellTarget).mockReturnValue({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed() });
       const without = reloaded({});
       const stopWithout = without.terminals.attach();
       without.terminals.newSession.start();
-      expect(localShellTarget).toHaveBeenCalledWith(undefined, undefined);
+      expect(vi.mocked(localShellTarget).mock.calls).toEqual([[]]);
       stopWithout();
       vi.mocked(localShellTarget).mockClear();
-      const given = reloaded({ pageKey: 'a-key-of-sixteen-characters-or-more', target: () => ({ plugin: HOST, id: 'synthetic', title: 'Synthetic', open: () => fakeTerminalFeed() }) });
+      const given = reloaded({ target: () => ({ plugin: HOST, id: 'synthetic', title: 'Synthetic', open: () => fakeTerminalFeed() }) });
       const stopGiven = given.terminals.attach();
       given.terminals.newSession.start();
       expect(localShellTarget).not.toHaveBeenCalled();
@@ -985,150 +985,17 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
   });
 
-  describe('when the page\'s events connection comes back (T2d: the events told meanwhile are lost to the page, and a feed that can rejoin is asked to)', () => {
-    /** The page's events connection: `fire` is a socket of it opening, and the counts say how the window used the subscription (every call of what stops it is counted, so a second stop shows). */
-    function connection() {
-      const listeners = new Set<() => void>();
-      const counts = { subscribed: 0, unsubscribed: 0 };
-      return {
-        counts,
-        listening: () => listeners.size,
-        subscribe: (listener: () => void): (() => void) => {
-          counts.subscribed += 1;
-          listeners.add(listener);
-          return () => {
-            counts.unsubscribed += 1;
-            listeners.delete(listener);
-          };
-        },
-        fire: (): void => {
-          for (const listener of [...listeners]) {
-            listener();
-          }
-        },
-      };
-    }
-
-    /** A keyed feed that can rejoin: what it does is the test's to count. */
-    type RejoiningFeed = FakeTerminalFeed & { readonly rejoin: Mock<() => void> };
-    const rejoining = (): RejoiningFeed => ({ ...keyedFeed(), rejoin: vi.fn<() => void>() });
-
-    it('listens from the moment the window attaches until it stops, once for each attach, and never twice for one stop', () => {
-      const source = connection();
-      const r = reloaded({ reconnect: source.subscribe });
-      expect(source.counts).toEqual({ subscribed: 0, unsubscribed: 0 });
-      const stop = r.terminals.attach();
-      expect(source.counts).toEqual({ subscribed: 1, unsubscribed: 0 });
-      expect(source.listening()).toBe(1);
-      stop();
-      stop();
-      expect(source.counts).toEqual({ subscribed: 1, unsubscribed: 1 });
-      expect(source.listening()).toBe(0);
-    });
-
-    it('keeps the subscriptions balanced when the window attaches, stops and attaches again (a development build runs its effects twice): one is on, and one signal is one rejoin', () => {
-      const source = connection();
-      const r = reloaded({ reconnect: source.subscribe });
-      const feed = rejoining();
-      r.terminals.attach()();
+  describe('when the page\'s events connection comes back (a gap in the events lane, deleted with the lane)', () => {
+    it('is not listened to: every feed connects its own stream again, so the window has no connection to subscribe to and no feed to ask', () => {
+      const subscribe = vi.fn((): (() => void) => () => undefined);
+      // The option is deleted: a window that is still given one (an old caller) must not use it.
+      const r = reloaded({ reconnect: subscribe } as unknown as TerminalsOptions);
+      const feed = keyedFeed();
       const stop = r.terminals.attach();
       r.terminals.sessions.open(found('term-a', feed));
-      expect(source.counts).toEqual({ subscribed: 2, unsubscribed: 1 });
-      expect(source.listening()).toBe(1);
-      source.fire();
-      expect(feed.rejoin).toHaveBeenCalledTimes(1);
       stop();
-      expect(source.counts).toEqual({ subscribed: 2, unsubscribed: 2 });
-      expect(source.listening()).toBe(0);
-    });
-
-    it('asks each feed that can rejoin once for each signal, and no other feed', () => {
-      const source = connection();
-      const r = reloaded({ reconnect: source.subscribe });
-      const stop = r.terminals.attach();
-      const [one, two] = [rejoining(), rejoining()];
-      const plain = keyedFeed();
-      r.terminals.sessions.open(found('term-a', one));
-      r.terminals.sessions.open(found('term-b', two));
-      r.terminals.sessions.open(found('term-c', plain));
-      source.fire();
-      expect([one.rejoin.mock.calls.length, two.rejoin.mock.calls.length]).toEqual([1, 1]);
-      source.fire();
-      expect([one.rejoin.mock.calls.length, two.rejoin.mock.calls.length]).toEqual([2, 2]);
-      expect([plain.closed(), plain.reads(), plain.typed().length, plain.left()]).toEqual([0, 0, 0, 0]);
-      expect(console.warn).not.toHaveBeenCalled();
-      stop();
-    });
-
-    it('asks nobody once the window has stopped: a feed the window holds afterwards is not asked for a signal that is no longer listened to', () => {
-      const source = connection();
-      const r = reloaded({ reconnect: source.subscribe });
-      r.terminals.attach()();
-      const late = rejoining();
-      r.terminals.sessions.open(found('term-a', late));
-      source.fire();
-      expect(late.rejoin).not.toHaveBeenCalled();
-      expect(source.listening()).toBe(0);
-    });
-
-    it('is harmless while the host is still being asked for the terminals: the feeds that are open are asked, nothing is said, and what the host then lists is opened as it always was', async () => {
-      const gate = Promise.withResolvers<readonly TerminalTarget[]>();
-      const source = connection();
-      const r = reloaded({ reconnect: source.subscribe, restore: async () => gate.promise }, [zsh('term-a'), zsh('term-b')]);
-      const stop = r.terminals.attach();
-      const started = rejoining();
-      r.terminals.sessions.open(found('term-c', started));
-      expect(() => {
-        source.fire();
-      }).not.toThrow();
-      expect(started.rejoin).toHaveBeenCalledTimes(1);
-      expect([stateOf(r.store, 'term-a'), stateOf(r.store, 'term-b')]).toEqual(['ended', 'ended']);
-      const listed = rejoining();
-      gate.resolve([found('term-a', listed)]);
-      await turns();
-      expect(listed.rejoin).not.toHaveBeenCalled();
-      expect([stateOf(r.store, 'term-a'), stateOf(r.store, 'term-b')]).toEqual(['running', 'ended']);
-      expect(console.warn).not.toHaveBeenCalled();
-      source.fire();
-      expect(listed.rejoin).toHaveBeenCalledTimes(1);
-      expect(started.rejoin).toHaveBeenCalledTimes(2);
-      stop();
-    });
-
-    it('never throws out of the signal, whatever a feed does: it runs inside the event of a socket, and the page\'s other listeners must hear it too', () => {
-      const source = connection();
-      const r = reloaded({ reconnect: source.subscribe });
-      const stop = r.terminals.attach();
-      const broken: FakeTerminalFeed = {
-        ...keyedFeed(),
-        rejoin: () => {
-          throw new Error('threw');
-        },
-      };
-      const fine = rejoining();
-      r.terminals.sessions.open(found('term-a', broken));
-      r.terminals.sessions.open(found('term-b', fine));
-      expect(() => {
-        source.fire();
-      }).not.toThrow();
-      expect(fine.rejoin).toHaveBeenCalledTimes(1);
-      expect(console.warn).toHaveBeenCalledTimes(1);
-      stop();
-    });
-
-    it('asks a feed this window lost who holds its terminal when the connection comes back, instead of asking it to rejoin: the release it missed while its events were down is learned', () => {
-      const source = connection();
-      const r = reloaded({ reconnect: source.subscribe });
-      const stop = r.terminals.attach();
-      const asked = vi.fn(async (): Promise<void> => undefined);
-      const rejoined = vi.fn();
-      const feed: FakeTerminalFeed = { ...keyedFeed(), rejoin: rejoined, refresh: asked };
-      r.terminals.sessions.open(found('term-a', feed));
-      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
-      source.fire();
-      expect(asked).toHaveBeenCalledTimes(1);
-      expect(rejoined).not.toHaveBeenCalled();
-      stop();
+      expect(subscribe).not.toHaveBeenCalled();
+      expect(Object.hasOwn(r.terminals.sessions, 'rejoin')).toBe(false);
     });
   });
 

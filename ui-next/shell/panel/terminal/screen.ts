@@ -27,7 +27,7 @@ import { drainLine, exitLine, failureLines } from './state';
 //     last slice is parsed: it answers the queries in those bytes, and the program that asked them is long past, so its answers must never reach the shell. Not one replayed byte is acknowledged (the host counts what it
 //     delivered live). When the last is parsed the emulator takes the size the host's terminal has, and then the panel's measure; when the size the feed is told is that size, a full-screen program is made to paint again (a
 //     size that did not change signals nothing). A hidden screen applies a replay too, and only parses;
-//   - a replay may come LATE (T2d): the feed asks the host for what the page missed when its events were lost (a connection that dropped and opened again), and when the host's ring no longer reaches back to it, the screen is
+//   - a replay may come LATE (T2d): when the page's stream dropped and the host no longer has the bytes the page asked for, or the host reports a gap (bytes it overwrote before it sent them: a replay of nothing, at the byte after the gap), the screen is
 //     brought to the host's ring by a replay while the emulator holds output. The screen asks the feed for a replay on every pump (a function call) and applies the one it is given as the first one is applied, once the emulator
 //     has parsed what it already holds (the answers to those bytes are the shell's), one at a time. That replay RESETS the emulator and REPLACES its buffers, the normal screen and the alternate one, the scrollback included,
 //     by the host's ring: nothing of what the emulator held before it is left, and what is written after it is the live bytes. When the host's terminal then has another size than the panel, the feed is told the panel's size again;
@@ -174,7 +174,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let blocked = false;
   /** A replay the feed gave while the emulator was still parsing what came before it: applied once it has, so that what the emulator says of those bytes is the shell's and what it says of the replay is not. */
   let replayHeld: TerminalReplay | undefined;
-  /** The emulator holds output: live bytes were written to it, or a replay was applied. A replay that comes after that is a LATE one (a rejoin whose gap the host's ring no longer covers), not the first of a terminal the page took back. */
+  /** The emulator holds output: live bytes were written to it, or a replay was applied. A replay that comes after that is a LATE one (a stream that lost bytes, a gap), not the first of a terminal the page took back. */
   let holds = false;
   /** The replay being applied: its bytes are written a share at a time, and nothing the emulator says is heard until the last of them is parsed. */
   let replaying: { readonly replay: TerminalReplay; readonly late: boolean; written: number } | undefined;
@@ -389,8 +389,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     // Shown, a frame takes its whole share; hidden, a smaller one: nothing is drawn then and the parse is all the work, kept to a bounded part of every frame all the same.
     const share = visible ? FLOW.frame : FLOW.hiddenFrame;
     let taken = 0;
-    // A replay is asked of the feed on every pump, a call of a function: the one of a terminal the page took back is applied before anything live is read (the feed reads nothing until it is taken), and a LATE one, for a rejoin
-    // whose gap the host's ring no longer covers, comes while the emulator holds output and is applied just the same. One at a time: the next waits in the feed until the one being applied is parsed. The emulator is let
+    // A replay is asked of the feed on every pump, a call of a function: the one of a terminal the page took back is applied before anything live is read (the feed reads nothing until it is taken), and a LATE one, for a stream
+    // that lost bytes the page asked for or a gap the host reported, comes while the emulator holds output and is applied just the same. One at a time: the next waits in the feed until the one being applied is parsed. The emulator is let
     // parse what it was given first, so that its answers to those bytes are the shell's, and the live bytes after the replay are not read until it is applied (the feed holds them back until the replay is taken, and they
     // follow it).
     if (replaying === undefined) {

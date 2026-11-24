@@ -1059,12 +1059,6 @@ describe('a terminal this page lost, and takes back (T2d: its tab says so, and a
       expect(r.sessions.canTakeBack('term-a')).toBe(true);
     });
 
-    it.each(['requested', 'window-retired'] as const)('can, whichever way it was lost: %s', (by) => {
-      const { r, old } = lost();
-      lostTo(old, { by, free: true });
-      expect(r.sessions.canTakeBack('term-a')).toBe(true);
-    });
-
     it.each([
       ['is still held by the tab that took it: nothing says that tab has gone', { detached: { by: 'taken-over' } }],
       ['runs', { state: 'running', detached: undefined }],
@@ -1243,7 +1237,7 @@ describe('a terminal this page lost, and takes back (T2d: its tab says so, and a
       open.mockImplementationOnce(() => again).mockImplementationOnce(() => second);
       await r.sessions.takeBack('term-a');
       again.set({ state: 'running' });
-      lostTo(again, { by: 'requested', free: true });
+      lostTo(again, { by: 'taken-over', free: true });
       expect(r.sessions.canTakeBack('term-a')).toBe(true);
       await expect(r.sessions.takeBack('term-a')).resolves.toBe(true);
       expect(reattach).toHaveBeenCalledTimes(2);
@@ -1753,249 +1747,10 @@ describe('a terminal this page lost, and takes back (T2d: its tab says so, and a
   });
 });
 
-describe('the page\'s events came back (T2d: each feed that can rejoin is asked to, once for each signal, and a feed this page lost is asked who holds its terminal)', () => {
-  /** A keyed feed that can rejoin: what it does is the test's to count. */
-  type RejoiningFeed = FakeTerminalFeed & { readonly rejoin: Mock<() => void> };
-  const rejoining = (): RejoiningFeed => ({ ...keyedFeed(), rejoin: vi.fn<() => void>() });
-
-  /** A keyed feed that can ask the host who holds its terminal (`refresh`): what it does is the test's to count. */
-  type AskingFeed = FakeTerminalFeed & { readonly refresh: Mock<() => Promise<void>> };
-  const asking = (): AskingFeed => ({ ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) });
-
-  /** A keyed feed whose optional member `name` is a getter that throws when it is read. */
-  const unreadable = (name: 'rejoin' | 'refresh'): FakeTerminalFeed => {
-    const feed: FakeTerminalFeed = { ...keyedFeed() };
-    Object.defineProperty(feed, name, {
-      get: () => {
-        throw new Error(`the ${name} getter threw`);
-      },
-      enumerable: true,
-    });
-    return feed;
-  };
-
-  it('asks every feed that can rejoin, once for each call, and touches no other: a feed without the member is no error', () => {
+describe('the page\'s events coming back (a gap in the host\'s events lane, deleted with the lane)', () => {
+  it('is not something the registry has any more: every feed connects its own stream again from the offset it has, so there is nothing to tell the feeds', () => {
     const r = harness();
-    const one = rejoining();
-    const two = rejoining();
-    const plain = fakeTerminalFeed();
-    r.sessions.open(terminalOf(one, 'term-one'));
-    r.sessions.open(terminalOf(two, 'term-two'));
-    r.sessions.open(terminalOf(plain, undefined));
-    r.sessions.rejoin();
-    expect(one.rejoin).toHaveBeenCalledTimes(1);
-    expect(two.rejoin).toHaveBeenCalledTimes(1);
-    r.sessions.rejoin();
-    expect(one.rejoin).toHaveBeenCalledTimes(2);
-    expect(two.rejoin).toHaveBeenCalledTimes(2);
-    expect([plain.closed(), plain.reads(), plain.typed().length, plain.sizes().length]).toEqual([0, 0, 0, 0]);
-    expect(r.warn).not.toHaveBeenCalled();
-  });
-
-  it('asks no feed the registry let go of: one its plugin\'s unload ended, and every feed once the registry has stopped', () => {
-    const r = harness({ plugins: ['acme'] });
-    const unloaded = rejoining();
-    const kept = rejoining();
-    r.sessions.open({ plugin: 'acme', id: 'item', title: 'web', sessionId: 'item-1', open: () => unloaded });
-    r.sessions.open(terminalOf(kept, 'term-one'));
-    r.store.syncPlugins([]);
-    r.sessions.rejoin();
-    expect(unloaded.rejoin).not.toHaveBeenCalled();
-    expect(kept.rejoin).toHaveBeenCalledTimes(1);
-    r.detach();
-    r.sessions.rejoin();
-    expect(kept.rejoin).toHaveBeenCalledTimes(1);
-  });
-
-  it('says so, and goes on with the others, when a feed cannot rejoin: a `rejoin` that throws and one that rejects are the supplier\'s, and the call itself never throws', async () => {
-    const r = harness();
-    const throwing: FakeTerminalFeed = {
-      ...keyedFeed(),
-      rejoin: () => {
-        throw new Error('threw');
-      },
-    };
-    const rejecting: FakeTerminalFeed = { ...keyedFeed(), rejoin: async () => Promise.reject(new Error('no')) };
-    const fine = rejoining();
-    for (const [index, feed] of [throwing, rejecting, fine].entries()) {
-      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
-    }
-
-    expect(() => {
-      r.sessions.rejoin();
-    }).not.toThrow();
-    expect(fine.rejoin).toHaveBeenCalledTimes(1);
-    await flush();
-    expect(r.warn).toHaveBeenCalledTimes(2);
-    expect(r.warn).toHaveBeenCalledWith(expect.stringContaining('host could not rejoin the terminal'), expect.any(Error));
-  });
-
-  it('asks the feed a terminal was taken back with, and not the one it replaced', async () => {
-    const old = rejoining();
-    const again = rejoining();
-    const r = harness({ reattach: (id) => ({ plugin: HOST, id: 'local', title: 'Terminal', sessionId: id, open: () => again }) });
-    r.sessions.open(terminalOf(old, 'term-a'));
-    lostTo(old);
-    await r.sessions.takeBack('term-a');
-    r.sessions.rejoin();
-    expect(again.rejoin).toHaveBeenCalledTimes(1);
-    expect(old.rejoin).not.toHaveBeenCalled();
-  });
-
-  it('asks a feed this page lost who holds its terminal, after the others were asked to rejoin, and does not ask it to rejoin: the release it missed while its events were down is learned', () => {
-    const r = harness();
-    const calls: string[] = [];
-    const lostFeed = {
-      ...keyedFeed(),
-      rejoin: vi.fn(() => calls.push('rejoin lost')),
-      refresh: vi.fn(async (): Promise<void> => {
-        calls.push('refresh lost');
-      }),
-    };
-    const running = { ...keyedFeed(), rejoin: vi.fn(() => calls.push('rejoin running')) };
-    // The lost feed is the first the registry holds, so that it would be asked first if the order were the registry's own.
-    r.sessions.open(terminalOf(lostFeed, 'term-a'));
-    r.sessions.open(terminalOf(running, 'term-b'));
-    lostTo(lostFeed);
-    r.sessions.rejoin();
-    expect(calls).toEqual(['rejoin running', 'refresh lost']);
-    expect(lostFeed.rejoin).not.toHaveBeenCalled();
-  });
-
-  it('asks a lost feed once for each call, whether or not it was said to be free, and no feed that is not lost: not a running one, not one that ended by itself', () => {
-    const r = harness();
-    const [held, free, running, finished] = [asking(), asking(), asking(), asking()];
-    r.sessions.open(terminalOf(held, 'term-a'));
-    r.sessions.open(terminalOf(free, 'term-b'));
-    r.sessions.open(terminalOf(running, 'term-c'));
-    r.sessions.open(terminalOf(finished, 'term-d'));
-    lostTo(held, { by: 'taken-over' });
-    lostTo(free);
-    finished.set({ state: 'ended', exit: { code: 0 } });
-    r.sessions.rejoin();
-    r.sessions.rejoin();
-    expect([held, free, running, finished].map((feed) => feed.refresh.mock.calls.length)).toEqual([2, 2, 0, 0]);
-  });
-
-  it('does not ask a lost feed the registry let go of: one its plugin\'s unload ended, and every feed once the registry has stopped', () => {
-    const r = harness({ plugins: ['acme'] });
-    const unloaded = asking();
-    const kept = asking();
-    r.sessions.open({ plugin: 'acme', id: 'item', title: 'web', sessionId: 'item-1', open: () => unloaded });
-    r.sessions.open(terminalOf(kept, 'term-one'));
-    lostTo(unloaded);
-    lostTo(kept);
-    r.store.syncPlugins([]);
-    r.sessions.rejoin();
-    expect(unloaded.refresh).not.toHaveBeenCalled();
-    expect(kept.refresh).toHaveBeenCalledTimes(1);
-    r.detach();
-    r.sessions.rejoin();
-    expect(kept.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  it('contains the question as it contains the rejoin: a `refresh` that throws and one that rejects are one warning each, the other lost feeds are asked all the same, and the call never throws', async () => {
-    const r = harness();
-    const throwing: FakeTerminalFeed = {
-      ...keyedFeed(),
-      refresh: (): never => {
-        throw new Error('threw');
-      },
-    };
-    const rejecting: FakeTerminalFeed = { ...keyedFeed(), refresh: async () => Promise.reject(new Error('no')) };
-    const fine = asking();
-    for (const [index, feed] of [throwing, rejecting, fine].entries()) {
-      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
-      lostTo(feed);
-    }
-
-    expect(() => {
-      r.sessions.rejoin();
-    }).not.toThrow();
-    expect(fine.refresh).toHaveBeenCalledTimes(1);
-    await flush();
-    expect(r.warn).toHaveBeenCalledTimes(2);
-    expect(r.warn).toHaveBeenCalledWith(expect.stringContaining('host could not ask who holds the terminal'), expect.any(Error));
-  });
-
-  it('reads `rejoin` from a feed inside what it protects: a getter that throws is one warning, the other feeds still get the signal, and a feed without the member is no error', () => {
-    const r = harness();
-    const broken = unreadable('rejoin');
-    const fine = rejoining();
-    const plain = keyedFeed();
-    r.sessions.open(terminalOf(broken, 'term-a'));
-    r.sessions.open(terminalOf(fine, 'term-b'));
-    r.sessions.open(terminalOf(plain, 'term-c'));
-    expect(() => {
-      r.sessions.rejoin();
-    }).not.toThrow();
-    expect(fine.rejoin).toHaveBeenCalledTimes(1);
-    expect(r.warn).toHaveBeenCalledTimes(1);
-    expect(r.warn).toHaveBeenCalledWith(expect.stringContaining('host could not rejoin the terminal'), expect.objectContaining({ message: 'the rejoin getter threw' }));
-  });
-
-  it('reads `refresh` from a lost feed inside what it protects: a getter that throws is one warning, the other lost feeds are still asked, and a lost feed without the member is no error', () => {
-    const r = harness();
-    const broken = unreadable('refresh');
-    const fine = asking();
-    const plain = keyedFeed();
-    for (const [index, feed] of [broken, fine, plain].entries()) {
-      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
-      lostTo(feed);
-    }
-
-    expect(() => {
-      r.sessions.rejoin();
-    }).not.toThrow();
-    expect(fine.refresh).toHaveBeenCalledTimes(1);
-    expect(r.warn).toHaveBeenCalledTimes(1);
-    expect(r.warn).toHaveBeenCalledWith(expect.stringContaining('host could not ask who holds the terminal'), expect.objectContaining({ message: 'the refresh getter threw' }));
-  });
-
-  it('keeps the feed the receiver of what it calls: `this` is the feed in its `rejoin` and in its `refresh`', () => {
-    const receivers: unknown[] = [];
-    const feed: FakeTerminalFeed = {
-      ...keyedFeed(),
-      rejoin() {
-        receivers.push(this);
-      },
-      async refresh() {
-        receivers.push(this);
-      },
-    };
-    const r = harness();
-    r.sessions.open(terminalOf(feed, 'term-a'));
-    r.sessions.rejoin();
-    lostTo(feed);
-    r.sessions.rejoin();
-    expect(receivers).toHaveLength(2);
-    expect(receivers[0]).toBe(feed);
-    expect(receivers[1]).toBe(feed);
-  });
-
-  it('reads the status of each feed inside what it protects: a feed whose status cannot be read is one warning, and the others are still asked', () => {
-    const r = harness();
-    const base = keyedFeed();
-    let broken = false;
-    const unreadableStatus: FakeTerminalFeed = {
-      ...base,
-      getSnapshot: () => {
-        if (broken) {
-          throw new Error('the status cannot be read');
-        }
-
-        return base.getSnapshot();
-      },
-    };
-    const fine = rejoining();
-    r.sessions.open(terminalOf(unreadableStatus, 'term-a'));
-    r.sessions.open(terminalOf(fine, 'term-b'));
-    broken = true;
-    expect(() => {
-      r.sessions.rejoin();
-    }).not.toThrow();
-    expect(fine.rejoin).toHaveBeenCalledTimes(1);
-    expect(r.warn).toHaveBeenCalledTimes(1);
+    expect(Object.hasOwn(r.sessions, 'rejoin')).toBe(false);
   });
 });
 
@@ -2141,7 +1896,6 @@ describe('the feed a session has can be followed (T2d: a body that was drawn bef
     live.set({ state: 'ended', exit: { code: 0 } });
     live.push('output');
     r.sessions.leave();
-    r.sessions.rejoin();
     expect(told).not.toHaveBeenCalled();
   });
 
