@@ -611,22 +611,18 @@ func TestInputThatThePluginHasNotTakenWhenASessionChangesHandsIsRefusedAndNeverS
 	assert.Equal(t, []string{"B1"}, all, "the plugin has B's input and none of A's, which was not taken when B claimed")
 }
 
-// THE PLUGIN'S OWN CALLS (CodeRabbit on #677: keep ownership stable until the provider operation completes).
-//
-// A call that the plugin answers (resize, detach, the facts of a session, attach) checked the window on a copy of the record, then
-// asked for the connection and called the plugin. A window that took the session in between (an offer that was used) left the
-// call to act for the window that lost it: a resize, a detach or a read of a session that is the other's now, and, for an attach,
-// the output of it. The session's gate orders a call from its check to the plugin's answer (shared) against a claim by another
-// window (exclusive): the claim waits for the call that was on its way, and a call that comes after it is refused. Each case holds
-// the call after its check (the lookup of the connection), lands the claim there, and states that the claim waited for the
-// call (the controller says so when it has to) and that the call was answered, as the holder's, before the claim.
-func TestAClaimWaitsForTheCallToThePluginOfTheWindowThatHeldTheSessionAndNoCallIsMadeAfterIt(t *testing.T) {
-	cases := []struct {
-		name    string
-		call    func(fx *anOwnershipRaceFixture) error
-		answers []string
-		again   func(fx *anOwnershipRaceFixture) error
-	}{
+// aCallToThePlugin is a call that the plugin answers, made by window A for the session "moving": what the plugin answers for A
+// when B claims the session after it, and the call made again.
+type aCallToThePlugin struct {
+	name    string
+	call    func(fx *anOwnershipRaceFixture) error
+	answers []string
+	again   func(fx *anOwnershipRaceFixture) error
+}
+
+// theCallsToThePlugin are the calls of a window that the plugin answers.
+func theCallsToThePlugin() []aCallToThePlugin {
+	return []aCallToThePlugin{
 		{
 			name:    "resize",
 			call:    func(fx *anOwnershipRaceFixture) error { return fx.ctrl.ResizeSession("wA", "moving", 24, 80) },
@@ -670,7 +666,19 @@ func TestAClaimWaitsForTheCallToThePluginOfTheWindowThatHeldTheSessionAndNoCallI
 			},
 		},
 	}
-	for _, tc := range cases {
+}
+
+// THE PLUGIN'S OWN CALLS (CodeRabbit on #677: keep ownership stable until the provider operation completes).
+//
+// A call that the plugin answers (resize, detach, the facts of a session, attach) checked the window on a copy of the record, then
+// asked for the connection and called the plugin. A window that took the session in between (an offer that was used) left the
+// call to act for the window that lost it: a resize, a detach or a read of a session that is the other's now, and, for an attach,
+// the output of it. The session's gate orders a call from its check to the plugin's answer (shared) against a claim by another
+// window (exclusive): the claim waits for the call that was on its way, and a call that comes after it is refused. Each case holds
+// the call after its check (the lookup of the connection), lands the claim there, and states that the claim waited for the
+// call (the controller says so when it has to) and that the call was answered, as the holder's, before the claim.
+func TestAClaimWaitsForTheCallToThePluginOfTheWindowThatHeldTheSessionAndNoCallIsMadeAfterIt(t *testing.T) {
+	for _, tc := range theCallsToThePlugin() {
 		t.Run(tc.name, func(t *testing.T) {
 			fx := newOwnershipRaceFixture(t)
 			fx.make("wA", "moving")
@@ -705,6 +713,27 @@ func TestAClaimWaitsForTheCallToThePluginOfTheWindowThatHeldTheSessionAndNoCallI
 			assert.True(t, claimWaited, "the claim waited for the call that was on its way to the plugin: it did not land between the check and the call")
 			assert.Equal(t, tc.answers, fx.plugin.answers(), "the plugin answered A, then B's attach")
 			requireSessionNotFound(t, tc.again(fx), "moving")
+		})
+	}
+}
+
+// The check is made again with the gate held: a window that lost the session between its first check and the gate (the claim
+// lands there, before the call takes the gate) is refused, and the plugin is never called for it.
+func TestACallToThePluginIsRefusedWhenTheWindowLostTheSessionBetweenItsFirstCheckAndTheGate(t *testing.T) {
+	for _, tc := range theCallsToThePlugin() {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newOwnershipRaceFixture(t)
+			fx.make("wA", "moving")
+			require.NoError(t, fx.ctrl.OfferSession("wA", "moving"))
+			var claimErr error
+			fx.ctrl.beforeGate = func(string) {
+				fx.ctrl.beforeGate = nil
+				_, _, claimErr = fx.ctrl.AttachSession("wB", "moving")
+			}
+
+			requireSessionNotFound(t, tc.call(fx), "moving")
+			require.NoError(t, claimErr, "B claimed the session that A offered, after A's first check and before its call took the gate")
+			assert.Equal(t, []string{"attach"}, fx.plugin.answers(), "the plugin was called for B and for no one else")
 		})
 	}
 }

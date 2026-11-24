@@ -132,6 +132,11 @@ type sessionIndex struct {
 	// offerUntil is when the owner's offer of the session to the next window that attaches it runs out (zero: no
 	// offer is open).
 	offerUntil time.Time
+	// gate orders the calls to the plugin that act for the window that holds the session (shared, from their check of the
+	// window to the plugin's answer) against a claim by another window (exclusive): the claim waits for the call that was on its
+	// way, and the calls that come after it are refused (holdGate, claimSession). It comes before c.mu. A record that was not made
+	// by CreateSession has none, and its calls are not ordered against a claim.
+	gate *sync.RWMutex
 }
 
 func NewController(
@@ -149,6 +154,7 @@ func NewController(
 		creating:         make(map[terminal.Owner]map[*createGuard]struct{}),
 		beforeSend:       nil,
 		claimWaiting:     nil,
+		beforeGate:       nil,
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -180,9 +186,12 @@ type controller struct {
 	// claimWaiting is set by a test, and by nothing else: claimSession calls it when a window's claim has to wait for a call that is on its
 	// way to the plugin for the window that holds the session.
 	claimWaiting func(sessionID string)
-	inChans      map[string]chan exec.StreamInput
-	handlerMap   map[string]map[string]exec.Handler
-	streams      map[string]execProviderStream
+	// beforeGate is set by a test, and by nothing else: gated calls it before a call takes the session's gate, after the call's first check
+	// of the window.
+	beforeGate func(sessionID string)
+	inChans    map[string]chan exec.StreamInput
+	handlerMap map[string]map[string]exec.Handler
+	streams    map[string]execProviderStream
 
 	// Publication and retirement share this outer lock. Never acquire it with mu held.
 	outputMu sync.Mutex
@@ -727,6 +736,7 @@ func (c *controller) CreateSession(
 		endedSeq:     0,
 		owner:        c.publishedOwner(owner, guard),
 		offerUntil:   time.Time{},
+		gate:         new(sync.RWMutex),
 	}
 	c.mu.Unlock()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
@@ -804,6 +814,11 @@ func (c *controller) GetSession(
 	}
 	span.SetAttributes(attribute.String("plugin_id", index.pluginID),
 		attribute.String("connection_id", index.connectionID))
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSession, func(i sessionIndex) bool { return c.visible(i, sessionID, owner) })
+	if !ok {
+		return nil, apperror.SessionNotFound(sessionID)
+	}
+	defer release()
 	if client == nil {
 		return nil, apperror.PluginNotFound(index.pluginID)
 	}
@@ -832,6 +847,13 @@ func (c *controller) AttachSession(owner terminal.Owner, sessionID string) (_ *e
 	if claimErr := c.claimSession(sessionID, owner); claimErr != nil {
 		return nil, nil, claimErr
 	}
+	// The window holds the session now; it is held from here to the plugin's answer, and the output is handed to the window
+	// that holds it then (a window that lost the session in between is refused).
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSessionOrEnded, func(i sessionIndex) bool { return c.holds(i, sessionID, owner) })
+	if !ok {
+		return nil, nil, apperror.SessionNotFound(sessionID)
+	}
+	defer release()
 	if client == nil {
 		return nil, nil, apperror.PluginNotFound(index.pluginID)
 	}
@@ -864,6 +886,11 @@ func (c *controller) DetachSession(owner terminal.Owner, sessionID string) (_ *e
 	if index.local {
 		return c.terminalManager.DetachOwned(sessionID, owner)
 	}
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSessionOrEnded, func(i sessionIndex) bool { return c.holds(i, sessionID, owner) })
+	if !ok {
+		return nil, apperror.SessionNotFound(sessionID)
+	}
+	defer release()
 	if index.ended {
 		// A window that never attached has nothing to detach from, as after the CLOSE of any session; it is also done with
 		// the output the plugin kept for it.
@@ -1027,6 +1054,11 @@ func (c *controller) ResizeSession(
 	if index.local {
 		return c.terminalManager.ResizeOwned(sessionID, owner, 0, int(rows), int(cols))
 	}
+	index, client, release, ok := c.gated(sessionID, index, c.lookupSession, func(i sessionIndex) bool { return c.holds(i, sessionID, owner) })
+	if !ok {
+		return apperror.SessionNotFound(sessionID)
+	}
+	defer release()
 	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}

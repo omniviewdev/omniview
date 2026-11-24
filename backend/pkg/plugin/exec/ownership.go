@@ -73,6 +73,20 @@ func (c *controller) claimSession(sessionID string, owner terminal.Owner) error 
 	if !terminal.ValidOwner(owner) {
 		return apperror.SessionNotFound(sessionID)
 	}
+	c.mu.RLock()
+	gate := c.sessionIndex[sessionID].gate
+	c.mu.RUnlock()
+	if gate != nil {
+		// The calls to the plugin that act for the window that holds the session hold the gate, shared, from their check to the
+		// plugin's answer: a claim that takes the session from it waits for them (see sessionIndex.gate).
+		if !gate.TryLock() {
+			if c.claimWaiting != nil {
+				c.claimWaiting(sessionID)
+			}
+			gate.Lock()
+		}
+		defer gate.Unlock()
+	}
 	now := c.clock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -235,4 +249,37 @@ func (c *controller) publishedOwner(owner terminal.Owner, guard *createGuard) te
 		return nil
 	}
 	return c.sessionOwner(owner)
+}
+
+// gated holds the gate of the session of a plugin, shared, for a call that acts for the window that holds it, and returns the
+// record and the plugin as they are with the gate held, and the function that lets it go (call it when the plugin has
+// answered). The call checked the window on a copy of the record that any claim changes at any moment (first is that copy);
+// with the gate held no claim by another window completes, so the check is made again here, of the record as it is, and a
+// window that lost the session in between is refused (false). A session that is local, or has no gate, is held by nothing.
+func (c *controller) gated(
+	sessionID string,
+	first sessionIndex,
+	lookup func(string) (sessionIndex, Provider, bool),
+	allow func(sessionIndex) bool,
+) (sessionIndex, Provider, func(), bool) {
+	if first.local || first.gate == nil {
+		return first, c.clientOf(first.pluginID), func() {}, allow(first)
+	}
+	if c.beforeGate != nil {
+		c.beforeGate(sessionID)
+	}
+	first.gate.RLock()
+	index, client, ok := lookup(sessionID)
+	if !ok || !allow(index) {
+		first.gate.RUnlock()
+		return sessionIndex{}, nil, nil, false
+	}
+	return index, client, first.gate.RUnlock, true
+}
+
+// clientOf is the plugin's client, read under c.mu.
+func (c *controller) clientOf(pluginID string) Provider {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.clients[pluginID]
 }
