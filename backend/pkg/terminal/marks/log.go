@@ -109,6 +109,9 @@ type Log struct {
 	// trusted is the last directory sent with the nonce, loose the last one that OSC 7 gave.
 	trusted string
 	loose   string
+	// pending is a line sent with the nonce while no command was open (the stream began at a prompt, or the shell sent
+	// it before its prompt mark): the next command opened takes it.
+	pending string
 }
 
 func newLog(maxRecords int) *Log {
@@ -203,8 +206,13 @@ func (l *Log) newest() *Record {
 func (l *Log) open(at uint64, state State) *Record {
 	l.seq++
 	cwd, trust := l.cwd()
+	line, lineTrust := l.pending, TrustUnverified
+	if line != "" {
+		lineTrust = TrustNonce
+	}
+	l.pending = ""
 	r := Record{
-		CommandID: "c" + strconv.FormatUint(l.seq, decimalBase), State: state, Ran: false, CommandLine: "", Trust: TrustUnverified,
+		CommandID: "c" + strconv.FormatUint(l.seq, decimalBase), State: state, Ran: false, CommandLine: line, Trust: lineTrust,
 		Cwd: cwd, CwdTrust: trust, ExitCode: 0, HasExitCode: false, StartedAt: time.Time{}, EndedAt: time.Time{},
 		PromptOffset: at, OutputStart: 0, OutputEnd: 0,
 	}
@@ -286,12 +294,17 @@ func (l *Log) end(at uint64, code int32, hasCode bool, now time.Time) (string, u
 	return r.CommandID, durationMS
 }
 
-// setLine gives the command at its prompt the line the shell sent with the nonce. A line after the start is not
-// the line of this command; one before it replaces an earlier one.
+// setLine gives the command at its prompt the line the shell sent with the nonce; one before it replaces an earlier
+// one. With no command open the line waits for the next command. A line that comes while a command runs is not the
+// line of any command and is dropped.
 func (l *Log) setLine(line string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if r := l.newest(); isOpen(r) && r.State != StateRunning {
+	r := l.newest()
+	switch {
+	case !isOpen(r):
+		l.pending = line
+	case r.State != StateRunning:
 		r.CommandLine, r.Trust = line, TrustNonce
 	}
 }
