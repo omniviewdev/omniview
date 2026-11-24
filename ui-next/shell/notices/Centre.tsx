@@ -1,4 +1,4 @@
-import { Button, Icon, RovingGroup, menuTrigger, useMenu, type MenuItem } from '@omniviewdev/kit';
+import { Button, EmptyState, Icon, RovingGroup, menuTrigger, useMenu, type MenuItem } from '@omniviewdev/kit';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import type { NoticesStore, RecordView } from '../core/notices';
 import type { Centre } from './centreControl';
@@ -373,22 +373,13 @@ export function CentrePopover({ id, place, centre, invoker }: CentreProps) {
               )}
             </ul>
           ) : (
-            <div className={styles.empty} data-notices-part="centreEmpty">
-              <span className={styles.bigicon} data-notices-part="centreEmptyIcon" aria-hidden="true">
-                <Icon name={empty.icon} />
-              </span>
-              <p className={styles.emptyTitle} data-notices-part="centreEmptyTitle">
-                {empty.title}
-              </p>
-              <p className={styles.emptyHint} data-notices-part="centreEmptyHint">
-                {empty.hint}
-              </p>
-              {empty.action === 'clear-filters' ? (
-                <Button icon="close" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              ) : null}
-            </div>
+            <EmptyState
+              data-notices-part="centreEmpty"
+              icon={empty.icon}
+              title={empty.title}
+              hint={empty.hint}
+              action={empty.action === 'clear-filters' ? { label: 'Clear filters', icon: 'close', onSelect: clearFilters } : undefined}
+            />
           )}
         </div>
       </div>

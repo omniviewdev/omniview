@@ -1,9 +1,9 @@
 import { isIconName } from '@omniviewdev/kit';
 import type { SessionId } from '../core/panel';
 import { usePanel } from './context';
-import { EmptyState } from './EmptyState';
 import { useActiveSession, useActiveTool, useIsShown, useMounted, useSession, useToolItem } from './hooks';
 import styles from './Panel.module.css';
+import { PanelEmpty } from './PanelEmpty';
 import { bodyId, sessionTabId, toolTabId } from './words';
 
 type SlotProps = { readonly id: SessionId; readonly prefix: string };
@@ -50,13 +50,13 @@ export function PanelBody({ prefix, id }: PanelBodyProps) {
   const labelledBy = active !== null ? sessionTabId(prefix, active) : tool !== null ? toolTabId(prefix, tool) : undefined;
   return (
     <div id={id} className={styles.body} role="tabpanel" aria-labelledby={labelledBy} aria-label={labelledBy === undefined ? 'Panel' : undefined} data-shell-part="panelDeck">
-      {tool === null ? <EmptyState icon="panel-bottom" title="No tools" hint="Tools appear here when a plugin brings one." /> : null}
+      {tool === null ? <PanelEmpty icon="panel-bottom" title="No tools" hint="Tools appear here when a plugin brings one." /> : null}
       {tool !== null && active === null ? (
-        <EmptyState
+        <PanelEmpty
           icon={item !== undefined && isIconName(item.icon) ? item.icon : 'box'}
           title={words?.title ?? 'No sessions'}
           hint={words?.hint ?? 'A session of this tool appears here when you start one.'}
-          action={add === undefined ? undefined : { label: add.label, onSelect: add.start }}
+          action={add === undefined ? undefined : { label: add.label, icon: 'plus', onSelect: add.start }}
         />
       ) : null}
       {mounted.map((sessionId) => (

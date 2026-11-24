@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@omniviewdev/kit';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { Profiler, type ReactElement } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, type PanelStore, type Session } from '../../core/panel';
@@ -155,8 +155,10 @@ describe('the body of a Logs session', () => {
 
   it('says what is left of a session that has no stream (restored from the last run, or whose plugin came back): the earlier lines are gone, and how to get logs again; no view is made over nothing', () => {
     mount({ stream: false });
-    expect(screen.getByText('The earlier lines are gone')).toBeInTheDocument();
-    expect(screen.getByText('Open logs from the resource to follow them again.')).toBeInTheDocument();
+    const status = within(screen.getByRole('status'));
+    expect(status.getByText('The earlier lines are gone')).toBeInTheDocument();
+    expect(status.getByText('Open logs from the resource to follow them again.')).toBeInTheDocument();
+    expect(status.queryByRole('button')).toBeNull();
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('grid')).toBeNull();
     expect(screen.queryByRole('group', { name: /^Log,/ })).toBeNull();

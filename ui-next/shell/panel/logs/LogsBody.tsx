@@ -1,6 +1,6 @@
 import { Activity } from 'react';
 import type { Session } from '../../core/panel';
-import { EmptyState } from '../EmptyState';
+import { PanelEmpty } from '../PanelEmpty';
 import { LogSession } from './LogSession';
 import type { LogStreams } from './LogStreams';
 import { LOGS_GONE, LOGS_ICON } from './tool';
@@ -31,7 +31,7 @@ type LogsBodyProps = {
 export function LogsBody({ streams, session, visible }: LogsBodyProps) {
   const feed = streams.feedOf(session.id);
   if (feed === undefined) {
-    return <EmptyState icon={LOGS_ICON} title={LOGS_GONE.title} hint={LOGS_GONE.hint} />;
+    return <PanelEmpty icon={LOGS_ICON} title={LOGS_GONE.title} hint={LOGS_GONE.hint} />;
   }
 
   return (

@@ -17,6 +17,7 @@ export { readParts };
 const POPOVER = '#statusitem-bell-popover';
 const BELL = '.statusitem[data-key="bell"]';
 const ROW = `${POPOVER} .notify[data-surface="center"]`;
+const CENTRE_EMPTY = '[data-notices-part="centreEmpty"][data-ov-part="empty-state"]';
 
 export const FILTER_MENU = '[role="menu"][aria-label="Filter notifications"]';
 
@@ -52,10 +53,10 @@ export const PARTS = [
   { name: 'rowDetail', all: true, mock: `${ROW} > .notify__detail`, shell: '[data-notices-part="rowDetail"]' },
   { name: 'rowActions', all: true, mock: `${ROW} > .notify__actions`, shell: '[data-notices-part="rowActions"]' },
   { name: 'rowAction', all: true, mock: `${ROW} > .notify__actions button`, shell: '[data-notices-part="rowActions"] button' },
-  { name: 'centreEmpty', mock: `${POPOVER} .fbc__scroll .empty2`, shell: '[data-notices-part="centreEmpty"]' },
-  { name: 'centreEmptyIcon', mock: `${POPOVER} .empty2 .bigicon`, shell: '[data-notices-part="centreEmptyIcon"]' },
-  { name: 'centreEmptyTitle', mock: `${POPOVER} .empty2 b`, shell: '[data-notices-part="centreEmptyTitle"]' },
-  { name: 'centreEmptyHint', mock: `${POPOVER} .empty2 .tiny`, shell: '[data-notices-part="centreEmptyHint"]' },
+  { name: 'centreEmpty', mock: `${POPOVER} .fbc__scroll .empty2`, shell: CENTRE_EMPTY },
+  { name: 'centreEmptyIcon', mock: `${POPOVER} .empty2 .bigicon`, shell: `${CENTRE_EMPTY} > [data-ov-part="icon"]` },
+  { name: 'centreEmptyTitle', mock: `${POPOVER} .empty2 b`, shell: `${CENTRE_EMPTY} > [data-ov-part="title"]` },
+  { name: 'centreEmptyHint', mock: `${POPOVER} .empty2 .tiny`, shell: `${CENTRE_EMPTY} > [data-ov-part="hint"]` },
   { name: 'centreMenu', mock: `${POPOVER} .menu[role="menu"]`, shell: FILTER_MENU },
   { name: 'centreMenuItem', all: true, mock: `${POPOVER} .menu[role="menu"] .menu__item`, shell: `${FILTER_MENU} [role^="menuitem"]` },
 ];

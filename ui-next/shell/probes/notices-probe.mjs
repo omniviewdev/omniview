@@ -1927,6 +1927,7 @@ function centreFacts(filterMenu) {
   const dot = document.querySelector('[data-notices-part="bellDot"]');
   const menu = document.querySelector(filterMenu);
   const empty = within(centre, 'centreEmpty');
+  const emptyPart = (name) => empty?.querySelector(`:scope > [data-ov-part="${name}"]`) ?? null;
   return {
     toasts: document.querySelectorAll('[data-notices-part="toast"]').length,
     centres: document.querySelectorAll('[data-notices-part="centre"]').length,
@@ -1947,7 +1948,7 @@ function centreFacts(filterMenu) {
       toggleExpanded: attr(within(row, 'rowToggle'), 'aria-expanded'),
       actions: [...row.querySelectorAll('[data-notices-part="rowActions"] button')].map((button) => attr(button, 'aria-label') ?? words(button)),
     })),
-    empty: empty === null ? null : { title: words(within(empty, 'centreEmptyTitle')), hint: words(within(empty, 'centreEmptyHint')), icon: within(empty, 'centreEmptyIcon') !== null },
+    empty: empty === null ? null : { title: words(emptyPart('title')), hint: words(emptyPart('hint')), icon: emptyPart('icon') !== null },
     menu:
       menu === null
         ? null

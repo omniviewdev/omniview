@@ -97,8 +97,10 @@ describe('a session with no feed', () => {
     const sessions = createTerminalSessions(store);
     const restored: Session = { id: 'old', tool: 'terminal', plugin: HOST, title: 'Terminal', scope: '', state: 'ended', since: 1, cause: 'The session ended when the app restarted.' };
     render(<TerminalBody sessions={sessions} session={restored} visible screenReader={createScreenReaderChoice()} />);
-    expect(page.getByText(TERMINAL_GONE.title)).toBeInTheDocument();
-    expect(page.getByText(TERMINAL_GONE.hint)).toBeInTheDocument();
+    const status = within(page.getByRole('status'));
+    expect(status.getByText(TERMINAL_GONE.title)).toBeInTheDocument();
+    expect(status.getByText(TERMINAL_GONE.hint)).toBeInTheDocument();
+    expect(status.queryByRole('button')).toBeNull();
     expect(page.queryByRole('toolbar')).toBeNull();
   });
 });

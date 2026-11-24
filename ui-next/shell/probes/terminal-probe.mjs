@@ -13,7 +13,7 @@
 // Sections and their assertions (the name starts each line of a failure). PART=view: geometry, words, title, ended, start, keys, close, resize, size, bundle, paint, axe, screenreader, screenreader-cost. PART=data: hidden, idle, commits, flood, latency, memory, order.
 //   geometry   (both viewports, both engines)  geometry.body / tools / button / screen / lane / rows / colors: the rectangles, sizes and colours of the mock's terminal body (mock-terminal.json: the mock measured in each engine at each
 //              viewport)
-//   words      the empty state, the toolbar and its names, the input's name and hint, the lane for a running, ended and failed session, the exit line written into the transcript
+//   words      the empty state and its layout at normal and minimum panel height, the toolbar and its names, the input's name and hint, the lane for a running, ended and failed session, the exit line written into the transcript
 //   title      the session's tab is called by the shell the host says it started, zsh and bash, and not Terminal; the tool's tab and the emulator's input (title.shell)
 //   ended      how a process ended, from the host's typed CLOSE: the lane's words and note, the last muted line of the transcript and the tab's state, for an exit with its code and a program that kept the terminal open (ended.code), a signal and a core dump
 //              (ended.signal), the host closing it (ended.closed)
@@ -531,14 +531,48 @@ async function geometry(ctx) {
 
 // ---------------------------------------------------------------------------------------------------- words
 async function words(ctx) {
-  const { browser, origin, viewport, engine } = ctx;
-  if (ctx.vp !== '1440x900') return;
+  const { browser, origin, viewport, engine, vp } = ctx;
+  const tag = `${engine} ${vp}`;
   const page = await open(browser, origin, viewport, { query: 'renderer=dom' });
   await page.click('[data-shell-part="panelToggle"]');
-  await page.waitForSelector('[data-shell-part="panelEmpty"]');
-  const empty = await page.evaluate(() => ({ text: document.querySelector('[data-shell-part="panelEmpty"]')?.innerText, buttons: [...document.querySelectorAll('[data-shell-part="panelEmpty"] button')].map((b) => b.textContent) }));
-  check('words.empty', /No terminals/.test(empty.text ?? '') && /Start a shell in this window\. A session stays available when you switch tabs\./.test(empty.text ?? '') && empty.buttons.length === 1 && empty.buttons[0] === 'New terminal', `${engine}: the empty tool says ${JSON.stringify(empty)}`);
-  await page.click('[data-shell-part="panelEmpty"] button');
+  const state = page.locator('[data-shell-part="panelEmpty"] > [data-ov-part="empty-state"]');
+  await state.waitFor();
+  const empty = await state.evaluate((element) => ({
+    title: element.querySelector(':scope > [data-ov-part="title"]')?.textContent,
+    hint: element.querySelector(':scope > [data-ov-part="hint"]')?.textContent,
+    buttons: [...element.parentElement.querySelectorAll('button')].map((button) => button.textContent),
+    role: element.parentElement.getAttribute('role'),
+  }));
+  check('words.empty', empty.title === 'No terminals' && empty.hint === 'Start a shell in this window. A session stays available when you switch tabs.' && empty.buttons.length === 1 && empty.buttons[0] === 'New terminal' && empty.role === 'status', `${tag}: the empty tool says ${JSON.stringify(empty)}`);
+
+  const placement = () => state.evaluate((element) => {
+    const region = element.parentElement;
+    const outer = region.getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    const { flexDirection, flexWrap } = getComputedStyle(element);
+    return {
+      flexDirection,
+      flexWrap,
+      inlineOffset: (box.left + box.right - outer.left - outer.right) / 2,
+      blockOffset: (box.top + box.bottom - outer.top - outer.bottom) / 2,
+      fits: region.scrollWidth <= region.clientWidth && region.scrollHeight <= region.clientHeight,
+    };
+  });
+  const centered = (read) => read.fits && near(read.inlineOffset, 0) && near(read.blockOffset, 0);
+  const normal = await placement();
+  check('words.empty-stack', normal.flexDirection === 'column' && centered(normal), `${tag}: at normal height the empty stack is ${JSON.stringify(normal)}`);
+  const splitter = page.getByRole('separator', { name: 'Resize panel' });
+  await splitter.press('Home');
+  const short = await placement();
+  check('words.empty-row', (await splitter.getAttribute('aria-valuenow')) === '120' && short.flexDirection === 'row' && short.flexWrap === 'wrap' && centered(short), `${tag}: at minimum height the empty row is ${JSON.stringify(short)}`);
+  report.numbers[`words empty ${tag}`] = { normal, short };
+  if (vp !== '1440x900') {
+    await page.context().close();
+    return;
+  }
+
+  await splitter.press('Enter');
+  await state.getByRole('button', { name: 'New terminal', exact: true }).click();
   await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
   await page.waitForFunction(() => window.__engine.writes > 0);
   await sleep(500);
