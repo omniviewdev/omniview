@@ -230,8 +230,8 @@ func (c *controller) safeSend(ch chan exec.StreamInput, input exec.StreamInput) 
 	return nil
 }
 
-// dispatchOutput emits a session output or signal to the UI.
-func (c *controller) dispatchOutput(output exec.StreamOutput) {
+// dispatchOutput emits a session output or signal to the UI. pluginID is the plugin the frame came from.
+func (c *controller) dispatchOutput(output exec.StreamOutput, pluginID string) {
 	if c.events == nil {
 		c.logger.Errorw(context.Background(), "event emitter is nil, cannot dispatch output")
 		return
@@ -260,7 +260,9 @@ func (c *controller) dispatchOutput(output exec.StreamOutput) {
 		eventkey = "core/exec/signal/" + output.Signal.String() + "/" + output.SessionID
 		// The session is over: its record goes, unless it ended by itself with nobody attached, when the plugin
 		// keeps its output for the first attach and so does the host.
-		c.sessionClosed(output.SessionID)
+		if !c.sessionClosed(output.SessionID, pluginID) {
+			return // the session is another plugin's: this plugin's CLOSE is not its end, and no window is told it was
+		}
 	case exec.StreamSignalSigint, exec.StreamSignalSigquit, exec.StreamSignalSigterm,
 		exec.StreamSignalSigkill, exec.StreamSignalSighup, exec.StreamSignalSigusr1,
 		exec.StreamSignalSigusr2, exec.StreamSignalSigwinch:
@@ -312,7 +314,7 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
 		return
 	}
-	if recorded && record.pluginID != output.pluginID {
+	if heldByAnother(record, recorded, output.pluginID) {
 		// The host routes by session id, and this id is recorded for another session: a terminal of this host (it
 		// has no plugin) or a session of another plugin. A plugin speaks for the sessions it made, so the frame is
 		// not that session's.
@@ -326,7 +328,7 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 		c.logger.Warnw(context.Background(), "exec session signaled error",
 			"pluginID", output.pluginID, "sessionID", output.SessionID)
 	}
-	c.dispatchOutput(output.StreamOutput)
+	c.dispatchOutput(output.StreamOutput, output.pluginID)
 }
 
 func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
@@ -716,6 +718,14 @@ func (c *controller) hasSession(sessionID string) bool {
 	defer c.mu.RUnlock()
 	_, found := c.sessionIndex[sessionID]
 	return found
+}
+
+// heldByAnother says a frame from plugin names a session id the host recorded for another session: a terminal of this
+// host (its record has no plugin) or a session of another plugin. A plugin speaks for the sessions it made. A frame
+// whose id has no record is nobody's yet and is delivered: output and the end of a session can come before the host
+// has recorded it.
+func heldByAnother(record sessionIndex, recorded bool, pluginID string) bool {
+	return recorded && record.pluginID != pluginID
 }
 
 // closeRefusedSession ends the session a plugin made with an id the host holds for another session. It is closed with
