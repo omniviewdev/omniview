@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+# B-110 negative controls (docs/ui-next/status/B110.md). Run from the repository root:
+#   python3 docs/ui-next/status/B110/controls.py.txt
+# Every control is a fault in a SCRATCH copy of one file (go test -overlay): the worktree is not edited. For each one the
+# script runs the test named for it twice: with the fault (it must fail by its own assertion, with the message written
+# here, and not by a panic, a timeout or a build error) and with the fault and the assertions that catch it switched off
+# in a scratch copy of the test (it must then pass: nothing else catches the fault; rule 28 of docs/ui-next/AGENTS.md).
+import json, os, subprocess, sys, tempfile
+
+ROOT = os.getcwd()
+SERVER = "backend/window/webview_window_server.go"
+WAILS = "backend/window/wails.go"
+TEST = "backend/window/webview_window_server_test.go"
+
+RETAINED = "TestEventsAreNotRetainedByTheWindowsOfTheServerBuild"
+CLOSING = "TestClosingAWindowOfTheServerBuildTellsTheWindowService"
+SETTINGS = "TestClosingTheSettingsWindowOfTheServerBuildHidesItInsteadOfClosing"
+
+FACTORY = """	window := application.NewWindow(options)
+	app.Window.Add(window)
+	return window
+"""
+GUARD = """	if !runsNativeWindows {
+		return newRegistryWindow(h.app, window, spec, sink)
+	}
+"""
+CLOSE_BODY = """	if w.kind == KindSettings && !w.sink.shutdownStarted() {
+		w.sink.windowVisibilityChanged(w.name, false)
+		return
+	}
+	w.app.Window.Remove(w.window.ID())
+	if w.kind != KindSettings {
+		w.sink.windowClosed(w.name)
+	}
+"""
+HEAP = ("if grown := eventsKept(t, app, port, b110Events, b110EventBytes); grown > b110HeapBound {",
+        "if grown := eventsKept(t, app, port, b110Events, b110EventBytes); false && grown > b110HeapBound {")
+REGISTERED = ("if _, found := app.Window.GetByName(registered); !found {",
+              "if _, found := app.Window.GetByName(registered); false && !found {")
+CLOSED_TOLD = ("if len(sink.closed) != 1 || sink.closed[0] != name || len(sink.hidden) != 0 {", "if false {")
+FORGOTTEN = ("if _, found := app.Window.GetByName(name); found {",
+             "if _, found := app.Window.GetByName(name); false && found {")
+HIDDEN_TOLD = ("if len(sink.hidden) != 1 || sink.hidden[0] != name || len(sink.closed) != 0 {", "if false {")
+KEPT = ("if _, found := app.Window.GetByName(name); !found {\n\t\tt.Fatalf(\"the settings window",
+        "if _, found := app.Window.GetByName(name); false && !found {\n\t\tt.Fatalf(\"the settings window")
+
+def read(path):
+    with open(os.path.join(ROOT, path)) as handle:
+        return handle.read()
+
+def replaced(text, old, new):
+    if text.count(old) != 1:
+        sys.exit("control cannot be built: %r is in the file %d times" % (old[:70], text.count(old)))
+    return text.replace(old, new)
+
+CONTROLS = [
+    # name, file, fault, test named for it, assertions that catch it (switched off for the second run), message of the failure
+    ("C1 the server build runs the windows it creates (the behaviour of main)", SERVER,
+     lambda s: replaced(s, FACTORY, "	return app.Window.NewWithOptions(options)\n"), RETAINED, [HEAP], "keeps the events it was given"),
+    ("C2 the server build says it runs native windows: Activate shows them", SERVER,
+     lambda s: replaced(s, "const runsNativeWindows = false", "const runsNativeWindows = true"), RETAINED, [HEAP], "keeps the events it was given"),
+    ("C3 the window service creates a window that runs in the server build", WAILS,
+     lambda s: replaced(s, "window := NewWebviewWindow(h.app, options)", "window := h.app.Window.NewWithOptions(options)"),
+     RETAINED, [HEAP], "keeps the events it was given"),
+    ("C4 the factory does not register the windows", SERVER,
+     lambda s: replaced(s, "	app.Window.Add(window)\n", ""), RETAINED, [REGISTERED], "is not in the registry of the application"),
+    ("C6 closing a window of the server build tells nobody and forgets nothing", SERVER,
+     lambda s: replaced(s, CLOSE_BODY, ""), CLOSING, [CLOSED_TOLD, FORGOTTEN], "the window service was told closed="),
+    ("C7 the settings window of the server build is closed, not hidden", SERVER,
+     lambda s: replaced(s, CLOSE_BODY, "	w.app.Window.Remove(w.window.ID())\n	w.sink.windowClosed(w.name)\n"), SETTINGS,
+     [HIDDEN_TOLD, KEPT], "the window service was told closed="),
+    ("C8 the service's windows are plain Wails windows that did not run, whose Close returns at once", WAILS,
+     lambda s: replaced(s, GUARD, ""), CLOSING, [CLOSED_TOLD, FORGOTTEN], "the window service was told closed="),
+    ("C9 a closed window stays in the registry", SERVER,
+     lambda s: replaced(s, "	w.app.Window.Remove(w.window.ID())\n	if w.kind", "	if w.kind"), CLOSING, [FORGOTTEN],
+     "is still in the registry of the application after it closed"),
+    ("C10 the settings window leaves the registry when it hides", SERVER,
+     lambda s: replaced(s, "		w.sink.windowVisibilityChanged(w.name, false)\n		return", "		w.app.Window.Remove(w.window.ID())\n		w.sink.windowVisibilityChanged(w.name, false)\n		return"),
+     SETTINGS, [KEPT], "was taken out of the registry although closing it only hides it"),
+]
+
+def run(overlay_files, target):
+    scratch = tempfile.mkdtemp(prefix="b110-control-")
+    replace = {}
+    for path, text in overlay_files.items():
+        copy = os.path.join(scratch, path.replace("/", "__"))
+        with open(copy, "w") as handle:
+            handle.write(text)
+        replace[os.path.join(ROOT, path)] = copy
+    overlay = os.path.join(scratch, "overlay.json")
+    with open(overlay, "w") as handle:
+        json.dump({"Replace": replace}, handle)
+    env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="local")
+    done = subprocess.run(
+        ["go", "test", "-tags", "server", "-overlay=" + overlay, "-run", "^" + target + "$", "-count=1", "-v", "./backend/window/"],
+        cwd=ROOT, env=env, capture_output=True, text=True, timeout=600)
+    return done.returncode, done.stdout + done.stderr
+
+failed = 0
+for name, path, fault, target, catching, message in CONTROLS:
+    faulty = fault(read(path))
+    code, out = run({path: faulty}, target)
+    caught = code != 0 and ("--- FAIL: " + target) in out and message in out and "panic:" not in out and "timed out" not in out
+    print("%-86s with the fault:      %s" % (name, "RED by its assertion" if caught else "NOT RED AS NAMED (exit %d)" % code))
+    if not caught:
+        failed += 1
+        print(out[-1500:])
+    switched_off = read(TEST)
+    for old, new in catching:
+        switched_off = replaced(switched_off, old, new)
+    code, out = run({path: faulty, TEST: switched_off}, target)
+    passed = code == 0 and ("--- PASS: " + target) in out
+    print("%-86s fault, assertion off: %s" % ("", "passes (nothing else catches it)" if passed else "STILL FAILS (exit %d)" % code))
+    if not passed:
+        failed += 1
+        print(out[-1500:])
+print("controls not as named:", failed)
+sys.exit(1 if failed else 0)

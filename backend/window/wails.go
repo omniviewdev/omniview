@@ -89,7 +89,10 @@ func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) na
 		options.InitialPosition = application.WindowXY
 		options.X, options.Y = spec.Position.X, spec.Position.Y
 	}
-	window := h.app.Window.NewWithOptions(options)
+	window := NewWebviewWindow(h.app, options)
+	if !runsNativeWindows {
+		return newRegistryWindow(h.app, window, spec, sink)
+	}
 	wireFocusAndVisibility(window, spec.Name, sink)
 	wireBoundsTracking(window, spec.Name, sink)
 	if spec.Kind == KindSettings {
@@ -167,6 +170,11 @@ type wailsWindow struct {
 }
 
 func (w wailsWindow) Activate() {
+	if !runsNativeWindows {
+		// Show runs a window that has not run, and Wails then queues every
+		// event for it (B-110).
+		return
+	}
 	if w.window.IsMinimised() {
 		w.window.UnMinimise()
 	}
