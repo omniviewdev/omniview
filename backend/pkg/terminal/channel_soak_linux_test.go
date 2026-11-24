@@ -58,17 +58,18 @@ func residentKiB(t *testing.T, pid int) int {
 }
 
 // soak floods a terminal whose page never reads for the seconds asked, and checks what must hold at the end.
-func soak(t *testing.T, script string, verify func(t *testing.T, s *session, got []byte)) {
+func soak(t *testing.T, script func(gate) string, verify func(t *testing.T, s *session, got []byte)) {
 	t.Helper()
 	seconds := soakSeconds(t)
 	m, _ := newChannelManager(t, nil) // the limits of the host: an 8 MiB ring, a stall of two seconds
-	info := m.startChannel(t, script, Options{})
+	hold := newGate(t)
+	info := m.startChannel(t, script(hold), Options{})
 	s := m.chanOf(t, info)
 	f := newFakeChannel(t)
 	f.park(1)
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
-	page.input("go\n")
+	hold.release(t)
 	ring := uint64(m.channel.ring)
 	require.Eventually(t, func() bool { return s.channelStats().end >= 2*ring+(1<<20) }, 60*time.Second, 50*time.Millisecond,
 		"the ring never filled twice: the child is blocked at %d", s.channelStats().end)
@@ -108,7 +109,7 @@ func soak(t *testing.T, script string, verify func(t *testing.T, s *session, got
 
 // The counting sequence, which tells every byte of the ring from its offset.
 func TestSoakAChildWritingTheCountingSequenceForAMinuteWithNoReaderIsNeverBlockedAndTheHostIsFlat(t *testing.T) {
-	soak(t, countingScript(-1, true), func(t *testing.T, s *session, got []byte) {
+	soak(t, func(g gate) string { return countingScript(-1, g) }, func(t *testing.T, s *session, got []byte) {
 		t.Helper()
 		start := s.channelStats().start
 		assert.Equal(t, countingBytes(start, uint64(len(got))), got, "the ring holds the newest bytes of the sequence, byte for byte")
@@ -117,7 +118,7 @@ func TestSoakAChildWritingTheCountingSequenceForAMinuteWithNoReaderIsNeverBlocke
 
 // `yes`, the fastest flood there is: the same, and the ring is its newest bytes, which the offset tells (an even offset is a `y`).
 func TestSoakYesForAMinuteWithNoReaderIsNeverBlockedAndTheHostIsFlat(t *testing.T) {
-	soak(t, `stty -opost -echo; read go; exec yes`, func(t *testing.T, s *session, got []byte) {
+	soak(t, func(g gate) string { return "stty -opost -echo; " + g.wait() + "exec yes" }, func(t *testing.T, s *session, got []byte) {
 		t.Helper()
 		start := s.channelStats().start
 		for i := range got {

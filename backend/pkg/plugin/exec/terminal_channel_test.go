@@ -298,7 +298,7 @@ func TestAChannelTerminalIsInvisibleToEveryBindingThatNamesATerminalByItsId(t *t
 	assert.Equal(t, "up\r\nS\r\n", got, "nothing reached the shell but what the stream typed")
 	busy, err := fx.wrapper.ChannelTerminalBusy(info.Cap)
 	require.NoError(t, err)
-	assert.Equal(t, terminal.StateIdle, busy.State)
+	assert.Equal(t, terminal.StateBusy, busy.State, "the shell runs cat in the foreground")
 	assert.False(t, gone(info.PID))
 }
 

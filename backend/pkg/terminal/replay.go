@@ -3,6 +3,7 @@ package terminal
 import (
 	"fmt"
 	"slices"
+	"sort"
 )
 
 const (
@@ -38,6 +39,8 @@ type replayRing struct {
 	live   modeTracker
 	front  modeTracker
 	sizes  []sizeAt
+	// overwritten counts the bytes the ring dropped for room, oldest first: the output less what it holds, always.
+	overwritten uint64
 }
 
 // replayChunk is a run of whole reads.
@@ -104,6 +107,7 @@ func (r *replayRing) trim() {
 		head := r.chunks[0]
 		r.front.feed(head.data)
 		r.kept -= len(head.data)
+		r.overwritten += offset(len(head.data))
 		r.chunks[0] = replayChunk{start: 0, data: nil, ground: false}
 		r.chunks = r.chunks[1:]
 	}
@@ -159,6 +163,25 @@ func (r *replayRing) start() uint64 {
 	return r.chunks[0].start
 }
 
+// slices returns the output from offset from, at most limit bytes of it, as slices of the chunks that hold it, and the offset
+// where they end. The bytes of a chunk, once written, never change and a slice is cut to its length, so the slices stay good
+// after the lock that ordered the call is let go, and nothing is copied: the caller copies what it needs. An offset below the
+// start of what is kept, or at the end, has no bytes (the caller reads where the ring starts and ends).
+func (r *replayRing) slices(from uint64, limit int) ([][]byte, uint64) {
+	at := from
+	var parts [][]byte
+	first := sort.Search(len(r.chunks), func(i int) bool { return r.chunks[i].start+offset(len(r.chunks[i].data)) > from })
+	for i := first; i < len(r.chunks) && limit > 0 && at >= r.chunks[i].start; i++ {
+		chunk := r.chunks[i]
+		lo := int(at - chunk.start) //nolint:gosec // A chunk is far below the size of an int.
+		take := min(len(chunk.data)-lo, limit)
+		parts = append(parts, chunk.data[lo:lo+take:lo+take])
+		at += offset(take)
+		limit -= take
+	}
+	return parts, at
+}
+
 // bytes is everything that is kept, as one slice.
 func (r *replayRing) bytes() []byte {
 	out := make([]byte, 0, r.kept)
@@ -177,6 +200,7 @@ func (r *replayRing) freeze() *replayRing {
 	frozen.chunks = slices.Clone(r.chunks)
 	frozen.kept = r.kept
 	frozen.end = r.end
+	frozen.overwritten = r.overwritten
 	frozen.live = r.live.clone()
 	frozen.front = r.front.clone()
 	frozen.sizes = slices.Clone(r.sizes)
@@ -216,6 +240,22 @@ func (r *replayRing) view(from *uint64) (replayView, error) {
 		start: start, end: r.end, parts: parts, skip: start - first, front: r.front.clone(), now: r.live.modes(),
 		startSize: r.size(start), size: r.size(r.end),
 	}, nil
+}
+
+// startModes reads the modes the first byte of the replay was written under: the tracker at the start of the parts, brought
+// forward over the bytes of the parts that come before the replay's start. It copies no byte.
+func (v *replayView) startModes() TerminalModes {
+	modes := v.front
+	skip := v.skip
+	for _, part := range v.parts {
+		if skip == 0 {
+			break
+		}
+		cut := min(skip, offset(len(part)))
+		modes.feed(part[:cut])
+		skip -= cut
+	}
+	return modes.modes()
 }
 
 // replay copies the bytes out, and reads the modes the first of them was written under.

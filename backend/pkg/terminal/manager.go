@@ -212,6 +212,9 @@ type session struct {
 	// attachment numbers the attachments of the terminal: 0 for the window that opened it, and one more for
 	// every attach (Attached.Attachment).
 	attachment uint64
+	// channel is set for a terminal opened with Options.Channel: the capability that reaches it, who holds it and what the host
+	// counted of its output (channel.go). A channel terminal has no owner, no window and no event of the events lane.
+	channel *channelState
 }
 
 func (s *session) decide(f fate) bool {
@@ -352,7 +355,7 @@ func (m *Manager) live(id string) (*session, error) {
 	m.mu.RLock()
 	s := m.sessions[id]
 	m.mu.RUnlock()
-	if s == nil || s.ending.Load() {
+	if s == nil || s.ending.Load() || s.channel != nil {
 		return nil, apperror.SessionNotFound(id)
 	}
 	return s, nil
@@ -372,7 +375,7 @@ func (m *Manager) ListSessions() []*sdkexec.Session {
 	m.mu.RLock()
 	sessions := make([]*sdkexec.Session, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		if !s.ending.Load() {
+		if !s.ending.Load() && s.channel == nil {
 			sessions = append(sessions, s.snapshot())
 		}
 	}
@@ -397,11 +400,15 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
+	secret, err := mintCapability(opts.Channel)
+	if err != nil {
+		return Session{}, startError(err)
+	}
 	id, err := m.reserve(opts.ID, owner)
 	if err != nil {
 		return Session{}, err
 	}
-	s, err := m.launch(id, opts, cols, rows, owner, lease)
+	s, err := m.launch(id, opts, cols, rows, owner, lease, secret)
 	if err != nil {
 		m.mu.Lock()
 		delete(m.starting, id)
@@ -412,6 +419,9 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	delete(m.starting, id)
 	m.sessions[id] = s
 	m.mu.Unlock()
+	// A channel terminal that no stream holds is on its lease from the moment it is made: a page that is gone before it
+	// opens the stream leaves no shell behind.
+	s.beginLease()
 	go m.wait(s)
 	go m.pump(s)
 	if m.closing.Load() {
@@ -419,10 +429,9 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 		s.beginClose(ClosedByShutdown)
 	}
 	m.log.Debugw(context.Background(), "session started", "session", id, "shell", s.info.Shell.Path, "cols", cols, "rows", rows)
+	// The capability is in this answer and in no other: it is not part of what the session says of itself.
 	info := s.info
-	if opts.Channel {
-		info.Cap = stubCapability // STUB of the red commit: the next commit replaces it with the capability the host mints
-	}
+	info.Cap = string(secret)
 	return info, nil
 }
 
@@ -473,7 +482,7 @@ func startDirectory(requested string) (string, error) {
 }
 
 // launch starts the process on a pty that already has its size.
-func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner, lease time.Duration) (*session, error) {
+func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner, lease time.Duration, secret capability) (*session, error) {
 	path, args, err := m.resolve(opts.Command)
 	if err != nil {
 		return nil, shellError(err)
@@ -520,16 +529,16 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 		pageKey: opts.PageKey, lease: lease, clock: m.clock,
 		info: Session{
 			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
-			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: defaultLimits(), Environment: environmentOf(m.probe()),
+			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: m.limits(), Environment: environmentOf(m.probe()),
 			LeaseMs: int(lease / time.Millisecond),
 		},
 		cmd: cmd, master: polled, cancel: cancel, outMu: sync.Mutex{}, emitMu: sync.Mutex{},
-		ring:  newReplayRing(m.replayBytes, Size{Cols: int(cols), Rows: int(rows)}),
+		ring:  newReplayRing(m.ringLimit(opts), Size{Cols: int(cols), Rows: int(rows)}),
 		queue: nil, flow: m.newCredit(id),
 		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
 		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
-		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0,
+		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0, channel: newChannelState(opts.Channel, secret),
 	}
 	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
 	return s, nil
@@ -580,7 +589,11 @@ func (m *Manager) pump(s *session) {
 func (m *Manager) read(s *session) error {
 	buf := make([]byte, DefaultReadBufferSize)
 	for {
-		s.flow.wait(s.exited)
+		if s.channel != nil {
+			m.waitChannelRoom(s)
+		} else {
+			s.flow.wait(s.exited)
+		}
 		var end time.Time
 		if s.hasExited() {
 			// The shell is gone: keep reading while bytes come, stop when none have for drainWait, and in
@@ -602,7 +615,7 @@ func (m *Manager) read(s *session) error {
 			// The event owns its bytes: the read buffer is reused.
 			data := slices.Clone(buf[:n])
 			m.deliver(s, data)
-			if !m.reported {
+			if s.channel == nil && !m.reported {
 				// A sink that returns when the transport has taken the bytes has delivered them.
 				s.flow.delivered(n)
 			}
@@ -653,10 +666,16 @@ func (m *Manager) finish(s *session, readErr error) {
 	// What a page that comes back needs of a terminal that ended by itself is kept before its CLOSE goes out and
 	// before its id is free.
 	m.keepTombstone(s, end)
-	m.sink.Closed(s.id, end)
+	if s.channel != nil {
+		m.channelEnded(s, end)
+	} else {
+		m.sink.Closed(s.id, end)
+	}
 	m.mu.Lock()
 	delete(m.sessions, s.id)
-	m.rememberEnded(s.id)
+	if s.channel == nil {
+		m.rememberEnded(s.id)
+	}
 	m.mu.Unlock()
 	s.stopLease()
 	s.cancel()
@@ -761,6 +780,9 @@ func (m *Manager) Ack(sessionID string, n int) error {
 	}
 	m.mu.RLock()
 	s := m.sessions[sessionID]
+	if s != nil && s.channel != nil {
+		s = nil // a channel terminal is nobody's by its id: the call is told what an id that never was is told
+	}
 	ended := s == nil && slices.Contains(m.ended, sessionID)
 	m.mu.RUnlock()
 	switch {
