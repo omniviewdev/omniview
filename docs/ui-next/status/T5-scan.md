@@ -6,7 +6,7 @@
 
 ## Decision (to repeat in the first pull request)
 
-One scanner, as the issue binds: a leaf package with the SDK's API shape, so that X4a (`exec-lane.md` 7, `pkg/v1/exec/scan/{scanner,marks,modes,nonce}.go`) becomes a move and the host then deletes its copy.
+One scanner, as the issue binds: a leaf package with the SDK's API shape, so that X4a (`exec-lane.md` 7, `pkg/v1/exec/scan/{scanner,marks,modes,nonce}.go`) takes the shapes over and the host then deletes its copy. It is not a pure move: X4a adds what this package does not have, the ground state at a chunk boundary and a UTF-8 boundary for the replay start (additive, and it merges the two tokenizers).
 
 - Package `marks`, directory `backend/pkg/terminal/marks`. It is the `marks.go` and `nonce.go` part of the SDK's `scan`; the SDK's `scan` also holds the terminal-modes tracker, which stays in `backend/pkg/terminal/modes.go` until then (a second tokenizer for the modes is not worth merging into a package that must not touch the manager now). The tokenizer (ground, ESC, CSI, OSC, strings) is a second copy of the states of `modes.go` cut to what marks need; the SDK's X4a merges both into one.
 - Names: `Mark{Kind, AtOffset, ExitCode, HasExitCode, Cwd, CommandID, CommandLine, Trust, DurationMS, Redraw}` is the SDK's `Mark` (`exec-lane.md` 4.3) with `Kind` for `MarkKind` and `Trust` for `MarkTrust` (`TrustUnverified` = 0, `TrustNonce` = 1; the zero value is the safe one). `ExitCode` is `int32` plus `HasExitCode` where the generated Go has `*int32`: a pointer would allocate per command end. `MARK_INPUT_START` is `KindInputStart`.
@@ -16,11 +16,11 @@ One scanner, as the issue binds: a leaf package with the SDK's API shape, so tha
 
 - `New(Config{Nonce, Now, MaxRecords, StartOffset}) *Scanner`; `Scanner.Feed(p, out) []Mark` appends the marks of the next read, `Offset()`, `Stats()`, `Log()`. `Feed` never changes or keeps `p`; one goroutine feeds; the `Log` and the counters are readable from any.
 - `Log`: `Records()` (a copy, oldest first), `Last()`, `Running()` ("a command is running", B-106), `At(offset)`, `Cwd()`. A ring of `MaxRecords` (512 by default); a command line is cut at 4 KiB, a directory over 4 KiB is dropped, an OSC payload over 17 KiB is dropped and counted, and OSC that are none of ours (titles, clipboard) are skipped without being kept.
-- `Record{CommandID, State, Ran, CommandLine, Trust, Cwd, CwdTrust, ExitCode, HasExitCode, StartedAt, EndedAt, PromptOffset, OutputStart, OutputEnd}`. `[OutputStart, OutputEnd)` is the output: `OutputStart` is the offset after the C sequence, `OutputEnd` the offset of the D sequence; `Mark.AtOffset` is the offset of the ESC that begins a sequence. Times come from `Config.Now` (the producer's clock), read at C and at D only.
+- `Record{CommandID, State, Ran, CommandLine, Trust, Cwd, CwdTrust, ExitCode, HasExitCode, StartedAt, EndedAt, PromptOffset, OutputStart, OutputEnd}`. `[OutputStart, OutputEnd)` is the output: `OutputStart` is the offset after the C sequence, `OutputEnd` the offset of the D sequence; `Mark.AtOffset` is the offset of the ESC that begins a sequence. Times come from `Config.Now` (the producer's clock), read at C and at D only. `DurationMS` is monotonic only when `Config.Now` is `time.Now` (a wall time with its monotonic reading, which is the default); an injected clock gives the difference of its own readings, clamped at 0.
 - Trust. Only `633;E;<line>;<nonce>` and `633;P;Cwd=<path>;<nonce>` can be trusted, and only when the field after the last `;` equals the session's nonce (`crypto/subtle`, a configured empty nonce trusts nothing). A wrong, empty or missing nonce gives no command line and no directory, is counted in `Stats.Forged`, and emits nothing. Every OSC 133 and OSC 7 mark is `TrustUnverified`: navigation only. A directory sent with the nonce wins over OSC 7 for `Log.Cwd()` and for `Record.Cwd` (`CwdTrust` says which); the command line is on the C mark of the command and in the record, set by a verified E that comes before C.
 - The nonce: `Nonce` prints as `«secret»` from every verb, `String`, `GoString`, JSON, text and `slog`; `Mark`, `Record`, `Scanner` and `Log` print without any string of the user's (no line, no directory) from every verb and from `slog`. The only reader is `Nonce.Reveal`, for the code that hands it to the script (step 2). `ParseNonce` errors never contain the input.
 - Lifecycle, as tested: A opens a command (a second A at the prompt is the same command, `Redraw`); B moves it to input; C starts it (without B, or without A, too); D ends it (a D with no code, as pwsh, has no exit code; a D at the prompt, Ctrl-C at an empty prompt, ends a command that never ran); a stray A, B, C or forged D inside a running command does not open a command. A lone D with no open command is a mark with no id and no record. `633;A..D` are read as `133;A..D`.
-- Sequences: BEL and ST end an OSC; a raw ESC inside an OSC ends it (the OSC is dispatched with what came before, as the DEC parser does) and begins the next sequence; CAN and SUB cancel it; other C0 bytes and DEL are ignored inside an OSC; `%HH` in an OSC 7 path is decoded and every control byte, decoded or not, is stripped. DCS, SOS, PM and APC contents are never marks. 8-bit C1 controls are not read (a UTF-8 terminal).
+- Sequences: BEL and ST end an OSC; a raw ESC inside an OSC ends it (the OSC is dispatched with what came before, as the DEC parser does) and begins the next sequence; CAN and SUB cancel it; other C0 bytes and DEL are ignored inside an OSC; `%HH` in an OSC 7 path is decoded and every control byte, decoded or not, is stripped. DCS, SOS, PM and APC contents are never marks, but an ESC inside one that is not followed by `\` ends it and starts a new sequence (a `DCS ... ESC ] 133;A BEL` is a mark, as the emulator reads it). 8-bit C1 controls are not read (a UTF-8 terminal).
 - Not done, on purpose: the host of an OSC 7 is not checked or reported (a remote shell's OSC 7 is unverified like any); a decision for step 4 with the page's use of the directory.
 
 ## Log
@@ -40,20 +40,32 @@ Linux amd64, Go 1.27.4 (`PATH=$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.2
 
 ## Negative controls (AGENTS 28)
 
-`docs/ui-next/status/T5-scan/mutations.sh.txt`, run from the worktree (`bash docs/ui-next/status/T5-scan/mutations.sh.txt [name]`). Each fault is in a scratch copy under `go test -overlay`; the worktree is never edited. Half 1: the tests that go red are exactly the ones named. Half 2: with those tests skipped, the same fault passes (nothing else sees it). All ten, both halves, on this head:
+`docs/ui-next/status/T5-scan/mutations.sh.txt`, run from the worktree (`bash docs/ui-next/status/T5-scan/mutations.sh.txt [name]`). Each fault is in a scratch copy under `go test -overlay`; the worktree is never edited. Half 1: the tests that go red are exactly the ones named. Half 2: with those tests skipped, the same fault passes (nothing else sees it). All 24, both halves, on this head (the first ten from the first pass, the last fourteen from the independent review, each a guard no test noticed):
 
 | Control (the fault) | Red in (half 1) | Without them (half 2) |
 |---|---|---|
-| nonce-not-checked (`verified` always true) | `TestAForgedDirectoryNeverChangesTheTrustedOne`, `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne`, `TestAWrongOrMissingNonceNeverGivesACommandLine`, `TestNoNonceInTheConfigTrustsNothing`, `TestTheDirectoryOfTheShellNeedsTheNonceToBeTrusted` | pass |
+| nonce-not-checked (`verified` always true) | `TestAForgedDirectoryNeverChangesTheTrustedOne`, `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne`, `TestANonceAfterOtherBytesIsRefused`, `TestAWrongOrMissingNonceNeverGivesACommandLine`, `TestNoNonceInTheConfigTrustsNothing`, `TestTheDirectoryOfTheShellNeedsTheNonceToBeTrusted` | pass |
 | empty-nonce-trusted (no `len(nonce) > 0` guard) | `TestNoNonceInTheConfigTrustsNothing` | pass |
 | forged-directory-accepted-as-trusted (an OSC 7 writes the trusted slot) | `TestAForgedDirectoryNeverChangesTheTrustedOne`, `TestOSC7GivesTheDirectoryDecodedAndUnverified` | pass |
 | line-taken-after-the-start | `TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne` | pass |
 | scanner-changes-a-byte (blanks the bytes of an OSC in `p`) | `FuzzFeed`, `TestTheScannerNeverChangesAByte` | pass |
 | record-unbounded (no eviction) | `TestACommandIsFoundByAnOffsetInIt`, `TestTheLogDefaultIsBounded`, `TestTheLogKeepsTheNewestCommandsAndIdsGoOn`, `TestTheRecordStaysBoundedUnderA16MBFlood`, `TestTheRecordStaysBoundedWhateverTheFloodIsMadeOf` | pass |
 | state-lost-between-reads (ground state at the end of `Feed`) | `FuzzFeed`, `TestMarksAreTheSameWhenTheStreamIsSplitAtEveryOffset` | pass |
-| control-bytes-kept-in-a-directory (a percent-encoded ESC is kept) | `TestAControlByteThatIsEncodedIsStrippedToo` | pass |
+| control-bytes-kept-in-a-directory (a percent-encoded ESC is kept) | `TestAControlByteThatIsEncodedIsStrippedToo`, `TestATrustedDirectoryHasItsEscapedControlBytesStripped` | pass |
 | nonce-printed-by-the-scanner (`Scanner.Format` adds the nonce) | `TestTheNonceNeverShowsInAnythingThatPrintsIt` | pass |
 | directory-allocates-on-every-read (no reuse of the same directory) | `TestReadsOfOrdinaryOutputAllocateNothing` | pass |
+| end-twice-rewrites (a second D reopens an ended command) | `TestASecondEndOfAnEndedCommandChangesNothing` | pass |
+| exit-overflow-wraps (no bound on the digits: 2^64+1 reads as 1) | `TestAnExitCodeThatDoesNotFitIsNoCodeAndNeverWraps` | pass |
+| exit-negative-dropped (the sign is lost) | `TestANegativeExitCodeIsRead`, `TestAnExitCodeThatDoesNotFitIsNoCodeAndNeverWraps` | pass |
+| vscode-letters-not-read (633;A..D) | `TestVSCodePromptLettersAreReadLikeOSC133` | pass |
+| redraw-option-ignored (`redraw=1`) | `TestRedrawIsReadFromTheOptionAndFromARepeat` | pass |
+| st-end-offset (an ST-ended sequence ends one byte early) | `TestAnEndedByTheSTAndByBELGiveTheSameOutputStart` | pass |
+| mark-prints-directory (`Mark.Format`) | `TestAMarkOfADirectoryPrintsNoDirectory` | pass |
+| trusted-directory-keeps-controls (an escaped `\x1b` kept) | `TestATrustedDirectoryHasItsEscapedControlBytesStripped` | pass |
+| first-semicolon-ends-the-line / first-semicolon-ends-the-directory (the two `LastIndexByte` guards) | `TestASemicolonInAGenuineLineOrDirectoryIsPartOfIt` | pass |
+| nonce-matched-by-suffix | `TestANonceAfterOtherBytesIsRefused` | pass |
+| nonce-matched-by-prefix | `TestANonceAfterOtherBytesIsRefused`, `TestAWrongOrMissingNonceNeverGivesACommandLine` | pass |
+| nonce-text-prints-value / nonce-gostring-prints-value | `TestTheNonceTextAndGoFormsNeverPrintTheValue` | pass |
 
 ## Not verified
 
