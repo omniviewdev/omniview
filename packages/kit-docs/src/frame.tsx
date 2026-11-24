@@ -1,6 +1,6 @@
 import { useLayoutEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ThemeProvider } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider } from '@omniviewdev/kit';
 import '@omniviewdev/kit/styles.css';
 import { guidance } from '../content/catalog';
 import { groups } from '../content/registry';
@@ -37,7 +37,7 @@ function ExampleCanvas({ update }: { update: PreviewUpdate }) {
   return (
     <ThemeProvider themeId={appearance.theme} density={appearance.density} textSize={appearance.textSize}>
       <main className="canvas-content">
-        {Example ? <Example key={`${group}/${name}`} /> : <p>Example not found.</p>}
+        <MenuHost>{Example ? <Example key={`${group}/${name}`} /> : <p>Example not found.</p>}</MenuHost>
       </main>
     </ThemeProvider>
   );

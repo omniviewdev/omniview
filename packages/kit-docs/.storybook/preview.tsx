@@ -3,6 +3,7 @@ import {
   DEFAULT_TEXT_SIZE,
   DEFAULT_THEME_ID,
   DENSITIES,
+  MenuHost,
   TEXT_SIZES,
   THEMES,
   ThemeProvider,
@@ -53,7 +54,7 @@ const preview: Preview = {
         density={DENSITIES.find((density) => density === globals.density) ?? DEFAULT_DENSITY}
         textSize={TEXT_SIZES.find((size) => size === String(globals.textSize)) ?? DEFAULT_TEXT_SIZE}
       >
-        <Story />
+        <MenuHost><Story /></MenuHost>
       </ThemeProvider>
     ),
   ],

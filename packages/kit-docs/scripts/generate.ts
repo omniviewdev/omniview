@@ -91,15 +91,17 @@ function apiDeclarations(report: string) {
   return entries;
 }
 
-const appExample = `import { Stack, Text, ThemeProvider } from '@omniviewdev/kit';
+const appExample = `import { MenuHost, Stack, Text, ThemeProvider } from '@omniviewdev/kit';
 import '@omniviewdev/kit/styles.css';
 
 export function App() {
   return (
     <ThemeProvider>
-      <Stack gap={8}>
-        <Text>Preferences</Text>
-      </Stack>
+      <MenuHost>
+        <Stack gap={8}>
+          <Text>Preferences</Text>
+        </Stack>
+      </MenuHost>
     </ThemeProvider>
   );
 }`;
