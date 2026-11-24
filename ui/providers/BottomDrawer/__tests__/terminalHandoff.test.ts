@@ -1,9 +1,9 @@
-import { hasTerminalSessionToOffer, offerTerminalSession } from '../terminalHandoff';
+import { hasTerminalSessionToOffer, offerTerminalSession, revokeTerminalSession } from '../terminalHandoff';
 
-const mocks = vi.hoisted(() => ({ offerSession: vi.fn() }));
+const mocks = vi.hoisted(() => ({ offerSession: vi.fn(), revokeSession: vi.fn() }));
 
 vi.mock('@omniviewdev/runtime/api', () => ({
-  ExecClient: { OfferSession: mocks.offerSession },
+  ExecClient: { OfferSession: mocks.offerSession, RevokeSession: mocks.revokeSession },
 }));
 
 // A session belongs to the window that opened it, and another window cannot attach it (docs/ui-next/status/T2c-go.md):
@@ -44,6 +44,46 @@ describe('offerTerminalSession', () => {
     await expect(offerTerminalSession({ id: 'session-1', variant: 'terminal' })).rejects.toBe(hostError);
 
     expect(mocks.offerSession).toHaveBeenCalledWith('session-1');
+  });
+});
+
+// The window that offered the session and then did not move the tab takes its offer back: the offer stays open for a
+// minute for any window that knows the session id. It runs in a failure path, so it never rejects.
+describe('revokeTerminalSession', () => {
+  beforeEach(() => {
+    mocks.revokeSession.mockReset();
+    mocks.revokeSession.mockResolvedValue(undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('takes back the offer of the session of a terminal tab', async () => {
+    await revokeTerminalSession({ id: 'session-1', variant: 'terminal' });
+
+    expect(mocks.revokeSession).toHaveBeenCalledTimes(1);
+    expect(mocks.revokeSession).toHaveBeenCalledWith('session-1');
+  });
+
+  it('revokes nothing for a tab that has no live session to offer', async () => {
+    await revokeTerminalSession({ id: 'pending-3', variant: 'terminal' });
+    await revokeTerminalSession({ id: 'log-session', variant: 'logs' });
+    await revokeTerminalSession({ id: 'session-2', variant: 'terminal', properties: { status: 'expired' } });
+
+    expect(mocks.revokeSession).not.toHaveBeenCalled();
+  });
+
+  it('never rejects: a failed revoke is logged and left to run out by itself', async () => {
+    const hostError = new Error('session not found');
+    mocks.revokeSession.mockRejectedValue(hostError);
+
+    await expect(revokeTerminalSession({ id: 'session-1', variant: 'terminal' })).resolves.toBeUndefined();
+
+    expect(mocks.revokeSession).toHaveBeenCalledWith('session-1');
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(console.warn).mock.calls[0]).toContain(hostError);
   });
 });
 
