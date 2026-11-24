@@ -47,6 +47,13 @@ for (const channel of ['omniview', 'omniview-nightly']) {
       ['  depends_on macos: :ventura'],
     );
   });
+
+  test(`${channel}: keep auto_updates so Homebrew leaves in-app updates alone`, () => {
+    const input = source(channel).replace('  app ', '  auto_updates true\n\n  app ');
+    const result = updateCask(input, '0.26.0', sha);
+    assert.deepEqual(result.split('\n').filter((line) => line.includes('auto_updates')), ['  auto_updates true']);
+    assert.match(result, /^ {2}version "0\.26\.0"$/m);
+  });
 }
 
 test('reject invalid release data and ambiguous cask ownership', () => {
