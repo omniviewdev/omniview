@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -381,6 +382,9 @@ type chanPage struct {
 	unacked   int
 	// dead says the page has gone: what the host sent after is lost to it, as the frames queued in a closed tab are.
 	dead bool
+	// lag is how late the page's goroutine is for each frame it takes, in nanoseconds: the page of a machine that is busy. A test sets
+	// it to see what it does when the page is late.
+	lag atomic.Int64
 }
 
 func newChanPage(t *testing.T, f *fakeChannel, ackEvery int) *chanPage {
@@ -400,6 +404,9 @@ func (p *chanPage) run() {
 			p.closed = true
 			p.mu.Unlock()
 			return
+		}
+		if lag := time.Duration(p.lag.Load()); lag > 0 {
+			time.Sleep(lag)
 		}
 		if ack := p.take(raw); ack > 0 {
 			p.f.pageSend(ackFrame(ack))
@@ -550,6 +557,38 @@ func (p *chanPage) waitFor(what string, ok func(pageState) bool) pageState {
 		}
 		if time.Now().After(deadline) {
 			require.FailNow(p.t, "the page never saw "+what, "frames %d, order %x, faults %v", last.frames, last.order, last.faults)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// describe says what the host counted for a terminal and what its page saw (none, for a test that has no page): the message of a
+// wait that failed. A stream that stands still is told by its numbers, and not by a bare timeout.
+func describe(s *session, page *chanPage) string {
+	st := s.channelStats()
+	host := fmt.Sprintf("host: end %d, sent %d, kept %d, waits %d, stall releases %d, held %t", st.end, st.sent, st.kept, st.waits, st.stallReleases, st.held)
+	if page == nil {
+		return host
+	}
+	ps := page.state()
+	return fmt.Sprintf("%s; page: %d frames, at offset %d, faults %v, closed %t", host, ps.frames, ps.next, ps.faults, ps.closed)
+}
+
+// waitHost waits, for at most settle, until what the host counted for the terminal satisfies ok, and returns what it counted; if it
+// never does, the test fails with the sentence it was given and the numbers (describe). Where a test waits for the host, the host's
+// own counters are the barrier. The transport's count says that a Send returned, and the page's state says that the page's goroutine
+// has taken the frame, later; neither says that the host has finished with it. (The poll's cadence decides nothing: the wait fails
+// only for an event that never came.)
+func waitHost(t *testing.T, s *session, page *chanPage, failure string, ok func(channelStats) bool) channelStats {
+	t.Helper()
+	deadline := time.Now().Add(settle)
+	for {
+		st := s.channelStats()
+		if ok(st) {
+			return st
+		}
+		if time.Now().After(deadline) {
+			require.FailNow(t, failure, describe(s, page))
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -794,14 +833,24 @@ func newGate(t *testing.T) gate {
 	return gate{path: path}
 }
 
-// release lets the child go: it opens the pipe for writing, which waits for the shell to open it for reading.
+// release lets the child go: it opens the pipe for writing once the child has opened it for reading, and writes it a line. The open
+// does not wait for the child (a non-blocking open of a pipe that nothing has open for reading is refused with ENXIO), so that a
+// child that never opens the pipe is a failure at the bound, with a message, and not a test that hangs until the binary's timeout.
 func (g gate) release(t *testing.T) {
 	t.Helper()
-	file, err := os.OpenFile(g.path, os.O_WRONLY, 0)
-	require.NoError(t, err)
-	_, err = file.WriteString("go\n")
-	require.NoError(t, err)
-	require.NoError(t, file.Close())
+	deadline := time.Now().Add(settle)
+	for {
+		file, err := os.OpenFile(g.path, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+		if err == nil {
+			_, err = file.WriteString("go\n")
+			require.NoError(t, err)
+			require.NoError(t, file.Close())
+			return
+		}
+		require.ErrorIs(t, err, syscall.ENXIO, "the only reason the gate cannot be opened is that the child has not opened it yet")
+		require.True(t, time.Now().Before(deadline), "the child never opened the gate")
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // countingScript is a shell script that writes the counting sequence, in blocks, to a terminal whose output is not

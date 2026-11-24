@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand/v2"
 	"testing"
 	"time"
@@ -62,13 +63,13 @@ func TestAChildNeverBlocksWhenNoReaderTakesAFrame(t *testing.T) {
 	page.waitReady()
 	before := heapInUse()
 	hold.release(t)
-	require.Eventually(t, func() bool { return s.channelStats().waits >= 1 }, settle, time.Millisecond, "the pump waited for a page that was alive")
+	waitHost(t, s, page, "the pump never waited for a page that was alive", func(st channelStats) bool { return st.waits >= 1 })
 
 	clock.Advance(m.channel.stall) // the page made no progress for the stall: it is asleep
 	ring := uint64(m.channel.ring)
 	guarded(t, "stall-release", func() {
-		require.Eventually(t, func() bool { return s.channelStats().end >= 20*ring }, settle, time.Millisecond,
-			"the child never wrote 20 rings: it was blocked at %d", s.channelStats().end)
+		waitHost(t, s, page, "the child never wrote 20 rings: it was blocked by a page that was asleep",
+			func(st channelStats) bool { return st.end >= 20*ring })
 	})
 	stats := s.channelStats()
 	after := heapInUse()
@@ -97,7 +98,7 @@ func TestTheShellIsNeverHeldWhileNoStreamHoldsIt(t *testing.T) {
 	ring := uint64(m.channel.ring)
 
 	guarded(t, "no-holder-no-wait", func() {
-		require.Eventually(t, func() bool { return s.channelStats().end >= 20*ring }, settle, time.Millisecond, "the child never wrote 20 rings")
+		waitHost(t, s, nil, "the child never wrote 20 rings", func(st channelStats) bool { return st.end >= 20*ring })
 		assert.False(t, gone(info.PID))
 	})
 	require.NoError(t, m.CloseChannel(info.Cap))
@@ -158,7 +159,21 @@ func TestAPageThatWakesGetsAGapOfExactlyWhatTheRingOverwroteThenTheExactSequence
 // A page that is slow but alive (every frame it takes is within the stall, here a clock that never moves) gets every byte, in order,
 // with no gap, and the shell is slowed to its pace: the child's offset is never more than the high mark and one read ahead of what
 // the page has been given.
+//
+// What the test waits for is the host's own events, and never the speed of a machine or of a goroutine of the test: the child is
+// held for the page when the pump has decided to wait for it (the child writes eighteen times the high mark, so that decision must
+// come, however slow the child is), and a frame is given to the page when the host's cursor has moved past the last one (not when
+// the transport counts a Send, which is before the host has finished with the frame, and not when the page's goroutine has taken
+// it, which is after: a test that decided by the page's state asked for a frame that did not exist when the page was late).
 func TestASlowButAlivePageGetsEveryByteAndTheShellIsSlowedToItsPace(t *testing.T) {
+	t.Run("a page that takes each frame at once", func(t *testing.T) { slowButAlivePage(t, 0) })
+	// The goroutine of the page is late for every frame, as it is on a machine that is busy (the CI run that found this test waiting
+	// for the page's goroutine had it late for the last frame only): nothing the test waits for may be what that goroutine has done.
+	t.Run("a page whose goroutine is late for every frame", func(t *testing.T) { slowButAlivePage(t, 3*time.Millisecond) })
+}
+
+// slowButAlivePage is the body of that test, for a page whose goroutine is late by lag for every frame it takes.
+func slowButAlivePage(t *testing.T, lag time.Duration) {
 	m, _ := newChannelManager(t, smallChannel)
 	withFakeClock(m)
 	const lines = 150000
@@ -169,35 +184,43 @@ func TestASlowButAlivePageGetsEveryByteAndTheShellIsSlowedToItsPace(t *testing.T
 	f := newFakeChannel(t)
 	f.meter(1) // the ready frame is taken; each frame of output is taken when the test says
 	page := m.attachOn(t, f, info.Cap, nil, 0)
+	page.lag.Store(int64(lag))
 	page.waitReady()
 	hold.release(t)
 	bound := uint64(m.channel.high + DefaultReadBufferSize)
 
+	// The page has taken no output: the shell is held for it, which the pump says by deciding to wait. A host that does not hold the
+	// shell is told at once (the child runs past the bound within moments), by the assertions below and not by the bound of the wait.
+	held := waitHost(t, s, page, "the pump never waited for a page that is alive and behind, and the shell never ran past the bound", func(st channelStats) bool {
+		return st.waits >= 1 || st.end-st.sent > bound
+	})
+	guarded(t, "backpressure-while-alive", func() {
+		assert.Positive(t, held.waits, "the shell is held for a page that is alive and behind: the pump waits for it")
+		assert.Less(t, held.end, total, "the shell has not run to its end ahead of a page that has taken nothing")
+		assert.LessOrEqual(t, held.end-held.sent, bound, "the shell is paced by the page that is alive")
+	})
+
 	frames := 0
-	for page.state().next < total {
+	for sent := held.sent; sent < total; {
 		f.allow(1)
 		frames++
-		require.Eventually(t, func() bool { _, taken := f.counts(); return taken >= 1+frames }, settle, time.Millisecond, "frame %d was never sent", frames)
-		stats := s.channelStats()
+		before := sent
+		stats := waitHost(t, s, page, fmt.Sprintf("frame %d was never handed to the page", frames), func(st channelStats) bool { return st.sent > before })
+		sent = stats.sent
 		guarded(t, "backpressure-while-alive", func() {
 			assert.LessOrEqual(t, stats.end-stats.sent, bound, "frame %d: the shell is paced by the page that is alive", frames)
 		})
-		if frames == 1 {
-			guarded(t, "backpressure-while-alive", func() {
-				assert.Less(t, stats.end, total, "the shell has not run to its end ahead of a page that has taken one frame")
-			})
-		}
 	}
-	st := page.state()
+	st := page.waitFor("all of the output", func(s pageState) bool { return s.next == total })
 	stats := s.channelStats()
 	guarded(t, "backpressure-while-alive", func() {
 		assert.Empty(t, st.gaps, "a page that is alive loses nothing")
 		assert.Zero(t, stats.lost)
-		assert.Equal(t, countingBytes(0, total), st.bytes(), "every byte, in order")
+		assert.True(t, bytes.Equal(countingBytes(0, total), st.bytes()), "every byte, in order")
 		assert.Positive(t, stats.waits, "the shell was held for the page")
 		assert.Empty(t, st.faults)
 	})
-	t.Logf("slow page: %d frames for %d bytes, the pump waited %d times, nothing lost", frames, total, stats.waits)
+	t.Logf("slow page, goroutine late by %v for every frame: %d frames for %d bytes, the pump waited %d times, nothing lost", lag, frames, total, stats.waits)
 }
 
 // The stall is decided by the clock. With more than the high mark unsent and a page that took nothing, the pump waits; the
@@ -214,13 +237,13 @@ func TestTheStallIsDecidedByTheClockAndNotBeforeIt(t *testing.T) {
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
 	hold.release(t)
-	require.Eventually(t, func() bool { return s.channelStats().waits >= 1 }, settle, time.Millisecond, "the pump waited")
-	waits, written := s.channelStats().waits, s.channelStats().end
+	held := waitHost(t, s, page, "the pump never waited for a page that was alive", func(st channelStats) bool { return st.waits >= 1 })
+	waits, written := held.waits, held.end
 
 	clock.Advance(m.channel.stall - time.Millisecond)
 	s.channelNudge() // a wake that carries no news: the pump looks again, and the stall is not over
 	guarded(t, "stall-not-early", func() {
-		require.Eventually(t, func() bool { return s.channelStats().waits > waits }, settle, time.Millisecond, "the pump looked again and waited again")
+		waitHost(t, s, page, "the pump never looked again and waited again", func(st channelStats) bool { return st.waits > waits })
 		stats := s.channelStats()
 		assert.Equal(t, written, stats.end, "the child wrote nothing while the page was within its stall")
 		assert.Zero(t, stats.stallReleases)
@@ -228,14 +251,17 @@ func TestTheStallIsDecidedByTheClockAndNotBeforeIt(t *testing.T) {
 
 	clock.Advance(2 * time.Millisecond)
 	guarded(t, "stall-release", func() {
-		require.Eventually(t, func() bool { return s.channelStats().stallReleases >= 1 }, settle, time.Millisecond, "the stall let the pump go")
-		require.Eventually(t, func() bool { return s.channelStats().end > written+uint64(m.channel.ring) }, settle, time.Millisecond, "and the child wrote on")
+		waitHost(t, s, page, "the stall never let the pump go", func(st channelStats) bool { return st.stallReleases >= 1 })
+		waitHost(t, s, page, "the child never wrote on", func(st channelStats) bool { return st.end > written+uint64(m.channel.ring) })
 	})
 
 	waits = s.channelStats().waits
-	f.release() // the page takes a frame again: progress
+	// The page takes one frame again, which is progress, and no more. A page that took every frame at once would drain the backlog
+	// as fast as the child fills it, and on a machine where the child is the slower the pump would never have a backlog to wait for.
+	f.meter(1)
+	f.allow(1)
 	guarded(t, "wait-again-on-progress", func() {
-		require.Eventually(t, func() bool { return s.channelStats().waits > waits }, settle, time.Millisecond, "when progress came back the pump waited again")
+		waitHost(t, s, page, "when progress came back the pump never waited again", func(st channelStats) bool { return st.waits > waits })
 	})
 }
 

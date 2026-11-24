@@ -58,6 +58,7 @@ IN_USE = "the refusal is the one CreateTerminal gives for an id in use"
 CHANNEL_FRAME_1 = "TestAPluginFrameUnderTheIDOfAChannelTerminalIsDropped"
 CHANNEL_FRAME_2 = "TestAPluginsCloseUnderTheIDOfAChannelTerminalNeitherEndsItNorReachesAWindow"
 NOWHERE = "TestTheCapabilityAppearsNowhereInALogAnEventAnErrorAFrameOrASpan"
+SLOW_PAGE = "TestASlowButAlivePageGetsEveryByteAndTheShellIsSlowedToItsPace"
 
 # number, what the fault is, file, the edits (each: the text it replaces, once, and the text it puts there), then the checks: for
 # each package the tests named for the fault with a part of the message of the assertion that must fail, and the guards (names in
@@ -99,12 +100,12 @@ CONTROLS = [
 
     (8, "the stall never releases the pump: a page that sleeps holds the shell for ever", PACE,
      [("if idle := s.clock.Now().Sub(progress); idle >= m.channel.stall {", "if idle := s.clock.Now().Sub(progress); false && idle >= m.channel.stall {")],
-     [(TERMINAL, [(NO_READER, "the child never wrote 20 rings"), (STALL, "the stall let the pump go")],
+     [(TERMINAL, [(NO_READER, "the child never wrote 20 rings"), (STALL, "the stall never let the pump go")],
        ["stall-release", "child-not-blocked"])]),
 
     (9, "the stall releases the pump at half of it, before the clock says so", PACE,
      [("if idle := s.clock.Now().Sub(progress); idle >= m.channel.stall {", "if idle := s.clock.Now().Sub(progress); idle >= m.channel.stall/2 {")],
-     [(TERMINAL, [(STALL, "the pump looked again and waited again")], ["stall-not-early"])]),
+     [(TERMINAL, [(STALL, "the pump never looked again and waited again")], ["stall-not-early"])]),
 
     (10, "a terminal that no stream holds holds the pump (the legacy hold of a detached reader)", PACE,
      [("\t\tif holder == nil {\n\t\t\tif ch.paused {\n\t\t\t\tch.noHolderReleases.Add(1)\n\t\t\t}\n\t\t\tch.paused, ch.stalled = false, false\n\t\t\treturn\n\t\t}\n",
@@ -181,6 +182,11 @@ CONTROLS = [
      [("c.logger.Infow(ctx, \"exec channel terminal created\", \"sessionID\", info.ID)\n",
        "c.logger.Infow(ctx, \"exec channel terminal created\", \"sessionID\", info.ID, \"capability\", info.Cap)\n")],
      [(EXEC, [(NOWHERE, "the capability (or a piece of it) is in")], ["capability-appears-nowhere"])]),
+
+    # The test of a page that is slow but alive, which waits for the host's own events (the failure of PR 704 in CI): the shell is held for it.
+    (26, "the pump never holds the shell for a page that is alive and behind (the high mark is never acted on): the child runs ahead of the page", PACE,
+     [("if backlog <= uint64(m.channel.high) {", "if true || backlog <= uint64(m.channel.high) {")],
+     [(TERMINAL, [(SLOW_PAGE, "the shell is held for a page that is alive and behind: the pump waits for it")], ["backpressure-while-alive"])]),
 ]
 
 
