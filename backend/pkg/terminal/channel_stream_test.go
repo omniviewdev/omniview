@@ -83,7 +83,7 @@ func TestAnAttachUnderAFloodJoinsTheReplayAndTheLiveOutputWithoutAGapOrADuplicat
 		l.ring = 8 << 20
 	})
 	for round := range 6 {
-		info := m.startChannel(t, countingScript(-1, false), Options{})
+		info := m.startChannel(t, countingScript(-1, gate{}), Options{})
 		s := m.chanOf(t, info)
 		at := uint64(40<<10) * uint64(round+1)
 		require.Eventually(t, func() bool { return s.channelStats().end >= at }, settle, time.Millisecond, "the flood reached %d", at)
@@ -110,7 +110,7 @@ func TestAnAttachUnderAFloodJoinsTheReplayAndTheLiveOutputWithoutAGapOrADuplicat
 // to the events lane.
 func TestTheEndOfATerminalIsSentAfterItsLastOutputAndTheStreamClosesAndTheCapabilityStaysValidUntilDismissed(t *testing.T) {
 	m, sink := newChannelManager(t, smallChannel)
-	info := m.startChannel(t, `stty -echo -opost; printf 'hello\n'; read x; printf 'bye\n'; exit 3`, Options{})
+	info := m.startChannel(t, `stty -echo -opost; printf 'hello\n'; read x; printf 'bye\n'; exec sh -c 'exit 3'`, Options{})
 	page := m.attach(t, info.Cap, nil)
 	page.waitBytes(6)
 	page.input("\n")
@@ -294,12 +294,13 @@ func TestADetachFrameLetsTheTerminalGoAtOnceAndTheNextStreamResumesByOffset(t *t
 // away is still served to its end: the Send that is parked returns when the connection closes, and the terminal is detached.
 func TestAStreamWhoseSendIsParkedStillDetachesTheTerminalWhenItsConnectionGoesAway(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
-	info := m.startChannel(t, countingScript(-1, true), Options{})
+	hold := newGate(t)
+	info := m.startChannel(t, countingScript(-1, hold), Options{})
 	f := newFakeChannel(t)
 	f.park(1)
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
-	page.input("go\n")
+	hold.release(t)
 	require.Eventually(t, func() bool { begun, taken := f.counts(); return begun >= 2 && taken == 1 }, settle, time.Millisecond, "the first output frame is parked in Send")
 
 	page.close()

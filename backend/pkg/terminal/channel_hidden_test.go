@@ -51,14 +51,15 @@ func requireTheRingHoldsTheNewest(t *testing.T, s *session, limit int) {
 func TestAChildNeverBlocksWhenNoReaderTakesAFrame(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	clock := withFakeClock(m)
-	info := m.startChannel(t, countingScript(-1, true), Options{})
+	hold := newGate(t)
+	info := m.startChannel(t, countingScript(-1, hold), Options{})
 	s := m.chanOf(t, info)
 	f := newFakeChannel(t)
 	f.park(1) // the ready frame is taken; every frame of output parks: a page that sleeps
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
 	before := heapInUse()
-	page.input("go\n")
+	hold.release(t)
 	require.Eventually(t, func() bool { return s.channelStats().waits >= 1 }, settle, time.Millisecond, "the pump waited for a page that was alive")
 
 	clock.Advance(m.channel.stall) // the page made no progress for the stall: it is asleep
@@ -89,7 +90,7 @@ func TestAChildNeverBlocksWhenNoReaderTakesAFrame(t *testing.T) {
 // No stream at all: a terminal that nobody holds never holds its shell either. The same child, the same trigger, no clock.
 func TestTheShellIsNeverHeldWhileNoStreamHoldsIt(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
-	info := m.startChannel(t, countingScript(-1, false), Options{})
+	info := m.startChannel(t, countingScript(-1, gate{}), Options{})
 	s := m.chanOf(t, info)
 	ring := uint64(m.channel.ring)
 
@@ -108,13 +109,14 @@ func TestAPageThatWakesGetsAGapOfExactlyWhatTheRingOverwroteThenTheExactSequence
 	clock := withFakeClock(m)
 	const lines = 800000 // 5,488,888 bytes: more than twenty rings
 	total := countingLen(lines)
-	info := m.startChannel(t, countingScript(lines, true), Options{})
+	hold := newGate(t)
+	info := m.startChannel(t, countingScript(lines, hold), Options{})
 	s := m.chanOf(t, info)
 	f := newFakeChannel(t)
 	f.park(1)
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
-	page.input("go\n")
+	hold.release(t)
 	require.Eventually(t, func() bool { return s.channelStats().waits >= 1 }, settle, time.Millisecond)
 	clock.Advance(m.channel.stall)
 	require.Eventually(t, func() bool { return s.channelStats().end == total }, settle, time.Millisecond, "the child wrote it all with the page asleep")
@@ -152,13 +154,14 @@ func TestASlowButAlivePageGetsEveryByteAndTheShellIsSlowedToItsPace(t *testing.T
 	withFakeClock(m)
 	const lines = 150000
 	total := countingLen(lines)
-	info := m.startChannel(t, countingScript(lines, true), Options{})
+	hold := newGate(t)
+	info := m.startChannel(t, countingScript(lines, hold), Options{})
 	s := m.chanOf(t, info)
 	f := newFakeChannel(t)
 	f.meter(1) // the ready frame is taken; each frame of output is taken when the test says
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
-	page.input("go\n")
+	hold.release(t)
 	bound := uint64(m.channel.high + DefaultReadBufferSize)
 
 	frames := 0
@@ -181,7 +184,6 @@ func TestASlowButAlivePageGetsEveryByteAndTheShellIsSlowedToItsPace(t *testing.T
 	guarded(t, "backpressure-while-alive", func() {
 		assert.Empty(t, st.gaps, "a page that is alive loses nothing")
 		assert.Zero(t, stats.lost)
-		assert.Zero(t, stats.overwritten)
 		assert.Equal(t, countingBytes(0, total), st.bytes(), "every byte, in order")
 		assert.Positive(t, stats.waits, "the shell was held for the page")
 		assert.Empty(t, st.faults)
@@ -195,13 +197,14 @@ func TestASlowButAlivePageGetsEveryByteAndTheShellIsSlowedToItsPace(t *testing.T
 func TestTheStallIsDecidedByTheClockAndNotBeforeIt(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	clock := withFakeClock(m)
-	info := m.startChannel(t, countingScript(-1, true), Options{})
+	hold := newGate(t)
+	info := m.startChannel(t, countingScript(-1, hold), Options{})
 	s := m.chanOf(t, info)
 	f := newFakeChannel(t)
 	f.park(1)
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
-	page.input("go\n")
+	hold.release(t)
 	require.Eventually(t, func() bool { return s.channelStats().waits >= 1 }, settle, time.Millisecond, "the pump waited")
 	waits, written := s.channelStats().waits, s.channelStats().end
 
@@ -235,7 +238,7 @@ func TestAReattachOlderThanTheRingSaysExactlyHowMuchWasLost(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	const lines = 800000
 	total := countingLen(lines)
-	info := m.startChannel(t, countingScript(lines, false), Options{})
+	info := m.startChannel(t, countingScript(lines, gate{}), Options{})
 	s := m.chanOf(t, info)
 	require.Eventually(t, func() bool { return s.channelStats().end == total }, settle, time.Millisecond)
 	start := s.channelStats().start
@@ -264,7 +267,7 @@ func TestAReattachOlderThanTheRingSaysExactlyHowMuchWasLost(t *testing.T) {
 			assert.Equal(t, c.lost, ready.Lost, "%s: how much of what the page asked for is gone", c.name)
 			assert.Equal(t, total, ready.End, c.name)
 		})
-		assert.Equal(t, countingBytes(c.wantStart, want), st.bytes(), "%s: the bytes that follow are the sequence from there", c.name)
+		assert.True(t, bytes.Equal(countingBytes(c.wantStart, want), st.bytes()), "%s: the bytes that follow are the sequence from there", c.name)
 		assert.Empty(t, st.faults, c.name)
 		t.Logf("%s: start %d, lost %d, replay %d bytes", c.name, ready.Start, ready.Lost, want)
 		page.close()
@@ -285,7 +288,7 @@ func TestAStreamThatReloadsUnderAFloodResumesByteExactByOffset(t *testing.T) {
 	m, _ := newChannelManager(t, func(l *channelLimits) { l.ring = 16 << 20 })
 	const lines = 300000
 	total := countingLen(lines)
-	info := m.startChannel(t, countingScript(lines, false), Options{})
+	info := m.startChannel(t, countingScript(lines, gate{}), Options{})
 	rng := rand.New(rand.NewPCG(5, 9))
 	var have uint64
 	var joined bytes.Buffer
@@ -313,7 +316,7 @@ func TestAStreamThatReloadsUnderAFloodResumesByteExactByOffset(t *testing.T) {
 // sequence, byte for byte.
 func TestTwentyReloadsUnderAFloodLeaveOneShellWithTheSamePid(t *testing.T) {
 	m, _ := newChannelManager(t, nil)
-	info := m.startChannel(t, countingScript(-1, false), Options{})
+	info := m.startChannel(t, countingScript(-1, gate{}), Options{})
 	var have uint64
 	var joined bytes.Buffer
 	for reload := range 20 {

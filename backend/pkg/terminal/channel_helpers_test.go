@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -765,16 +767,44 @@ func countingBytes(from, n uint64) []byte {
 	return out[:n]
 }
 
+// gate is a named pipe that holds a flooding child back until the test lets it go, so that nothing is typed into its terminal: a
+// line typed before the shell has switched the echo off is echoed into the output, and moves every offset of what follows. The
+// zero gate holds nothing back.
+type gate struct{ path string }
+
+func newGate(t *testing.T) gate {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "go")
+	require.NoError(t, syscall.Mkfifo(path, 0o600))
+	return gate{path: path}
+}
+
+// release lets the child go: it opens the pipe for writing, which waits for the shell to open it for reading.
+func (g gate) release(t *testing.T) {
+	t.Helper()
+	file, err := os.OpenFile(g.path, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = file.WriteString("go\n")
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+}
+
+// wait is the shell's side of the gate: nothing for the zero gate.
+func (g gate) wait() string {
+	if g.path == "" {
+		return ""
+	}
+	return "read go < '" + g.path + "'; "
+}
+
 // countingScript is a shell script that writes the counting sequence, in blocks, to a terminal whose output is not
 // processed (a line that ended with a newline would come out with a carriage return too, and some systems add a second
-// one under load): lines of it, or for ever when lines is below zero. It waits for one line of input first when wait is
-// set, so that a page can be there before the first byte. A bounded sequence is followed by a shell that stays.
-func countingScript(lines int, wait bool) string {
+// one under load): lines of it, or for ever when lines is below zero. It waits for the gate first, so that a page can be there
+// before the first byte. A bounded sequence is followed by a shell that stays.
+func countingScript(lines int, hold gate) string {
 	var script strings.Builder
 	script.WriteString("stty -opost -echo; ")
-	if wait {
-		script.WriteString("read go; ")
-	}
+	script.WriteString(hold.wait())
 	limit := "1e18"
 	if lines >= 0 {
 		limit = strconv.Itoa(lines)

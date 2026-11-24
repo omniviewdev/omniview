@@ -134,7 +134,8 @@ func (c *controller) startTerminals(ctx context.Context) {
 	c.terminalManager = terminal.NewManager(ctx, c.logger, localSink{c: c})
 }
 
-// CreateTerminal starts a shell on this machine. The session belongs to owner and ends with it.
+// CreateTerminal starts a shell on this machine. The session belongs to owner and ends with it; a channel terminal
+// (opts.Channel) belongs to no one: see createChannelTerminal.
 //
 //nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) CreateTerminal(
@@ -144,6 +145,9 @@ func (c *controller) CreateTerminal(
 	defer end(&err)
 	if opts.ID == "" {
 		opts.ID = uuid.NewString()
+	}
+	if opts.Channel {
+		return c.createChannelTerminal(ctx, opts)
 	}
 	// The id is in the index before the shell starts: its output, even its CLOSE, can come before this
 	// call returns. It also keeps a terminal from taking the id of a session of a plugin.
@@ -163,6 +167,23 @@ func (c *controller) CreateTerminal(
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", info.ID))
 	c.logger.Infow(ctx, "exec session created", "sessionID", info.ID, "pluginID", "local")
+	return &info, nil
+}
+
+// createChannelTerminal starts a channel terminal. It has no record in the index of the events lane, so every call that names a
+// terminal by its id finds nothing, it has no owner and no window, and nothing of it goes out as an event: the page reaches it by
+// the capability in the answer, which is never logged or put in a span. An id that a session already has is refused, as for any
+// terminal.
+func (c *controller) createChannelTerminal(ctx context.Context, opts terminal.Options) (*terminal.Session, error) {
+	if c.hasSession(opts.ID) {
+		return nil, terminal.IDInUse(opts.ID)
+	}
+	info, err := c.terminalManager.Start(opts, nil)
+	if err != nil {
+		return nil, err
+	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", info.ID))
+	c.logger.Infow(ctx, "exec channel terminal created", "sessionID", info.ID)
 	return &info, nil
 }
 

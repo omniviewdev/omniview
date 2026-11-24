@@ -246,10 +246,10 @@ func TestEveryCallThatNamesAChannelTerminalByItsCapabilityAnswersTheOneNotFoundF
 	// The capability that opens a terminal gets its answers, and a list names it by its id.
 	busy, err := m.ChannelBusy(a.Cap)
 	require.NoError(t, err)
-	assert.Equal(t, StateIdle, busy.State)
+	assert.Equal(t, StateBusy, busy.State, "the shell runs cat in the foreground")
 	cwd, err := m.ChannelCwd(a.Cap)
 	require.NoError(t, err)
-	assert.Equal(t, a.Cwd, cwd.Path)
+	assert.True(t, strings.HasSuffix(cwd.Path, a.Cwd), "where the shell is: its physical path ends with the one it started in (%q, %q)", cwd.Path, a.Cwd)
 	got, err := m.ListChannels([]string{b.Cap, "no-such-capability", a.Cap, b.Cap})
 	require.NoError(t, err)
 	require.Len(t, got, 3, "only for the capabilities that open a terminal, in the order given")
@@ -397,14 +397,16 @@ func TestInputResizeAndAcknowledgementsTravelOnTheStreamInTheOrderTheyWereSent(t
 	page := m.attach(t, info.Cap, nil)
 	page.waitBytes(len("up\n"))
 
+	// A line is typed after the answer to the one before it, so that what the shell reads is decided by the order of the host and
+	// not by the speed of the shell; the resize and the line after it travel together, and the shell reads the line under the new size.
 	page.input("one\n")
-	page.input("two\n")
+	page.waitBytes(len("up\ngot:one\n24 80\n"))
 	page.resize(101, 33)
-	page.input("three\n")
+	page.input("two\n")
 	page.ack(3)
-	page.input("four\n")
+	page.input("three\n")
 
-	want := "up\ngot:one\n24 80\ngot:two\n24 80\ngot:three\n33 101\ngot:four\n33 101\n"
+	want := "up\ngot:one\n24 80\ngot:two\n33 101\ngot:three\n33 101\n"
 	state := page.waitBytes(len(want))
 	assert.Equal(t, want, string(state.bytes()), "the page's frames were applied in order")
 	assert.Empty(t, state.faults)
