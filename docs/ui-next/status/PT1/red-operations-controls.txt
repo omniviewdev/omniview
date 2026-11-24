@@ -1,0 +1,71 @@
+CAUGHT   badge-is-a-count: 7 failing | first: × is an error dot that names 1 failure(s): "1 unread failure" 4ms
+CAUGHT   snapshot-always-new: 6 failing | first: × keeps the row of a record that did not change, the rows, the counts and the badge, and tells nobody, when the feed holds the same records 
+CAUGHT   active-task-can-be-unread: 4 failing | first: × is never so for a task that is starting, whatever its record says: an active task is not unread, it becomes unread when it finishes 3ms
+CAUGHT   emit-ignores-unsubscribe: 1 failing | first: × are not told in the middle of a notification they unsubscribed in 3ms
+CAUGHT   attach-not-counted: 1 failing | first: × keeps following the feed while one of two attachments is left (a window that mounts twice), and stops with the last 3ms
+CAUGHT   cancel-unguarded: 4 failing | first: × does not ask the feed for a task the host says is already requested 3ms
+CAUGHT   markread-rejects: 5 failing | first: × asks the feed for each id, once, and answers when all of them did 5ms
+CAUGHT   no-cheap-path: 1 failing | first: × does no work for a record that did not change when the feed changes: the resolver is asked for the one that did 3ms
+CAUGHT   report-before-row-restored: 1 failing | first: × has put available back before it tells the host: a way to ask again that is used at once finds a row that can be asked for 3ms
+CAUGHT   sorts-the-feeds-array: 1 failing | first: × never changes the feed's records or the array it holds: they are the provider's, and the other tool reads them too 4ms
+CAUGHT   no-id-tiebreak: 1 failing | first: × breaks a tie of time by the id, so the order never depends on the feed 4ms
+CAUGHT   nan-is-not-same: 1 failing | first: × keeps the row of a record whose time cannot be read when it is made again: a time that is not a time is the same as itself 4ms
+CAUGHT   ids-array-always-new: 1 failing | first: × keeps the ids of the unread as one array while the same ones are unread, though the counts change, so a reader keyed on it is not made to 
+CAUGHT   unknown-is-active: 10 failing | first: × is unknown: active is false, and the state is the producer's 4ms
+CAUGHT   record-severity-lowers: 18 failing | first: × is a failure nobody read: unread is failed 3ms
+CAUGHT   attach-does-not-read: 2 failing | first: × reads the feed at once when it is attached, and tells its listeners of the rows it found 3ms
+CAUGHT   refresh-is-cheap-path: 3 failing | first: × makes every row again from the records and the names now: a plugin that was named by its id gets its name, a connection that was unknown i
+CAUGHT   second-cancel-resolves-at-once: 1 failing | first: × does not ask the feed again while its own call is in flight, and answers when the first call does 3ms
+CAUGHT   empty-plugin-is-a-plugin: 1 failing | first: × is the host's own work when the record names an empty plugin id too: an empty id is no plugin, and no connection is asked for 4ms
+CAUGHT   in-flight-flag-ignored: 3 failing | first: × asks the feed once, with the id, and the row says requested while the call is in flight; the listeners are told 3ms
+CAUGHT   progress-kept-when-finished: 4 failing | first: × is none for a task that is succeeded: the work that finished is not "6 of 14" any more 3ms
+CAUGHT   detach-leaks-the-listener: 5 failing | first: × stops listening when it is detached: the feed has no listener of the model and the rows stay as they were 3ms
+CAUGHT   markread-one-after-the-other: 1 failing | first: × asks for every id at once: one that is slow does not hold the others 2ms
+CAUGHT   markread-failure-not-logged: 2 failing | first: × never rejects: a failure is logged with console.warn, naming the record, the other ids are still asked, and the rows stay unread 2ms
+CAUGHT   retry-skips-guard: 3 failing | first: × asks the feed again when the way it gave is used, and tells the host again if that fails too: once for each failure 3ms
+CAUGHT   badge-warning-label-singular-only: 1 failing | first: × is a warning dot that names 3 warning(s) when none is a failure: "3 unread warnings" 4ms
+CAUGHT   warning-unread-never: 8 failing | first: × is an outcome nobody knows, not read: unread is unknown 3ms
+CAUGHT   start-time-nan-unsorted: 1 failing | first: × keeps a record whose time cannot be read, as the oldest, and does not make the order depend on it 3ms
+CAUGHT   duplicate-ids-kept: 1 failing | first: × lists a record once when the feed lists its id twice: the first wins, because a row's id is the key a table keeps it by 3ms
+CAUGHT   progress-rounds-not-truncates: 3 failing | first: × does not round a count past 2^53 up to its whole: a double reads both of these as the same number, or as one that is nearly 1 2ms
+CAUGHT   progress-uses-doubles: 4 failing | first: × does not round a count past 2^53 up to its whole: a double reads both of these as the same number, or as one that is nearly 1 2ms
+CAUGHT   progress-no-clamp-to-whole: 3 failing | first: × draws a full bar for a count that is done, and for one that went past its whole, and says what the producer said 3ms
+CAUGHT   progress-digits-unanchored: 15 failing | first: × draws no bar and says the producer's own "-1" when the current count is not decimal digits 3ms
+CAUGHT   progress-no-grouping: 3 failing | first: × groups thousands with a comma, as the mock's num() and the collection footer do 2ms
+CAUGHT   progress-zero-whole-is-a-bar: 3 failing | first: × draws no bar when the whole is 0 (a part of nothing), and still says what the producer said 3ms
+CAUGHT   progress-trailing-space-for-empty-unit: 1 failing | first: × leaves no trailing space when the producer names no unit 3ms
+CAUGHT   progress-indeterminate-has-a-face: 1 failing | first: × is nothing for work that cannot be measured, with or without the producer's message: a dash is drawn, never a bar made up 2ms
+CAUGHT   ago-no-nan-guard: 1 failing | first: × says nothing for a date that is not a date, and never changes it 3ms
+CAUGHT   ago-mock-45-seconds: 8 failing | first: × a start 59999 ms ago reads just now 3ms
+CAUGHT   ago-rounds-not-floors: 24 failing | first: × a start 119999 ms ago reads 1 min ago 2ms
+CAUGHT   ago-changes-a-unit-early: 18 failing | first: × is the first instant of the next words, at every boundary 2ms
+CAUGHT   ago-hour-words: 5 failing | first: × a start 3600000 ms ago reads 1 h ago 3ms
+CAUGHT   agotip-no-nan-guard: 1 failing | first: × says nothing for a date that is not a date, and never changes it 3ms
+CAUGHT   agotip-future-treated-as-past: 1 failing | first: × is exact for a start that is ahead of the clock too: asked again where "in 5 minutes" becomes "in 4 minutes", and at the start itself 3ms
+CAUGHT   agotip-never-changes: 2 failing | first: × is asked again at the next whole minute after the start, which is the latest its words can change 2ms
+CAUGHT   cancel-always-drawn: 3 failing | first: × draw no Cancel for work that cannot be cancelled, and none for work that finished: Cancel is only what the producer offers (S84)
+CAUGHT   timer-armed-with-no-ids: 3 failing | first: × arms nothing while nothing is unread: running work is never unread, and what finished well needs no look 6ms
+CAUGHT   timer-not-cleared: 4 failing | first: × does not mark anything after the tool left the screen: the host unmounts the body, and the timer goes with it 4ms
+CAUGHT   read-after-999ms: 2 failing | first: × marks the unread ones when the tool has been on screen for a second, and not before 7ms
+CAUGHT   timer-not-re-armed-on-new-ids: 2 failing | first: × starts the second again when the unread ones change: a failure that arrives later is not read before it was shown for a second 5
+CAUGHT   no-cause-tip-on-failure: 2 failing | first: × says what the producer said of a failure, and of an outcome nobody knows, as the tip of the state: the word is short and the cau
+CAUGHT   open-without-subject: 1 failing | first: × does nothing for work that has no page: the host's own 5ms
+CAUGHT   row-not-activatable: 2 failing | first: × opens the subject of the row with the click, as the Open button does 5ms
+CAUGHT   progress-words-not-marked-clip: 1 failing | first: × puts the bar first and the words after it, and marks the words that may be cut 6ms
+CAUGHT   started-without-tip: 2 failing | first: × says how long ago the host first had the record, in the mock's words, and the absolute stamp in UTC as its tip 8ms
+CAUGHT   canceling-word-missing: 2 failing | first: × says Canceling… while a cancel is pending, whatever state the work was in, with the loader: a change is in motion 9ms
+CAUGHT   cancel-keeps-no-reason: 2 failing | first: × ask the feed to cancel the task when Cancel is pressed, once, and the row says Canceling… with the button still in its place, un
+CAUGHT   open-named-by-source-only: 6 failing | first: × are a Cancel and an Open, in that order, each a button named for its action and its object 8ms
+CAUGHT   footer-noun-plural-swapped: 1 failing | first: × counts its rows in the footer, in the singular and the plural 7ms
+CAUGHT   bar-without-fraction: 1 failing | first: × says the producer's words and draws no bar when its numbers are not a part of a whole 8ms
+CAUGHT   empty-state-not-shown: 5 failing | first: × says so in the mock's words, and draws no table 84ms
+CAUGHT   open-button-name-lost: 7 failing | first: × are a Cancel and an Open, in that order, each a button named for its action and its object 12ms
+CAUGHT   cancel-click-does-nothing: 2 failing | first: × says Canceling… for a request of this window that is in flight, and the word of the state again when it failed 30ms
+CAUGHT   open-click-does-nothing: 2 failing | first: × open the subject of the row when Open is pressed, with the click, and open it once: the press is not also the row's 19ms
+CAUGHT   started-dash-lost: 1 failing | first: × draws a dash named for what is missing when the record's time cannot be read, and no time 13ms
+CAUGHT   no-progress-word-changed: 3 failing | first: × is a dash named No progress reported for work that cannot be measured: no bar is made up, and no motion that says nothing 7ms
+CAUGHT   starting-is-the-loader: 2 failing | first: × says a task that is starting with the progress role (glyph clock) and the word "Starting" 7ms
+CAUGHT   cancelled-spelled-british: 1 failing | first: × says a task that is cancelled with the stopped role (glyph circle-minus) and the word "Canceled" 5ms
+CAUGHT   progress-text-not-ellipsized: 1 failing | first: × clips the words of the Progress cell with an ellipsis inside the cell, which the table does not do for a fixed column 4ms
+CAUGHT   bar-can-shrink: 1 failing | first: × gives the bar of the Progress cell 48 px and keeps it from shrinking 3ms
+CAUGHT   progress-cell-not-clipped: 1 failing | first: × clips the words of the Progress cell with an ellipsis inside the cell, which the table does not do for a fixed column 3ms

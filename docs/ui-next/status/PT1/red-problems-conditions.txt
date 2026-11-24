@@ -1,0 +1,118 @@
+     × is an error when its process stopped, worded as the plugin list words it ({ kind: 'unloaded', …(2) }) 3ms
+     × is an error when it did not start, worded as the plugin list words it ({ kind: 'unloaded', …(2) }) 0ms
+     × is an error when it took too long to start, worded as the plugin list words it ({ kind: 'unloaded', …(2) }) 0ms
+     × is an error when the host refused it for its protocol, worded as the plugin list words it ({ kind: 'unloaded', …(3) }) 0ms
+     × is an error when its interface could not be read, worded as the plugin list words it ({ kind: 'missing', …(1) }) 0ms
+     × is an error when its interface failed to start, worded as the plugin list words it ({ kind: 'broken', …(1) }) 0ms
+     × is an error when its interface took too long to load, worded as the plugin list words it ({ kind: 'timeout', …(1) }) 0ms
+     × is an error when its interface was built for another version, worded as the plugin list words it ({ kind: 'incompatible', …(1) }) 0ms
+     × is an error when its interface is not one this version understands, worded as the plugin list words it ({ kind: 'contract', …(1) }) 0ms
+     × is not a problem while the plugin is starting again: the host is bringing it back, and nothing has failed 0ms
+     × is not a problem while the plugin loads, nor when it is ready 0ms
+     × lists the faulted plugins of a window and no other, in the order the store lists them 0ms
+     × names the plugin by what the store calls it, its id staying the id of its page 0ms
+     × is a condition when a connection is unreachable: the word Not responding, severity error 0ms
+     × is a condition when a connection is failed: the word Connection failed, severity error 0ms
+     × is a condition when a connection is forbidden: the word Access denied, severity error 0ms
+     × is a condition when a connection is unauthorized: the word Needs sign-in, severity warning 0ms
+     × says the word of the state in its title when the host gave no reason: "north: Not responding" 0ms
+     × is not a problem when a connection is connected, being connected or not connected: disconnected is a normal idle state (S94) 0ms
+     × lists the failed connections and no other, of every plugin, in the order the store lists them 0ms
+     × keys a connection by its plugin and its key as a pair, so two that would run together are two: "a" and "b:c" is not "a:b" and "c" 1ms
+     × names the plugin as the caller reads it, and says nothing before the host was asked or when the read failed and left nothing 0ms
+       × is a condition: the title is its label and the title and the message are its sentence 0ms
+       × takes the severity of its record: error is error 0ms
+       × takes the severity of its record: warning is warning 0ms
+       × takes the severity of its record: info is info 0ms
+       × takes the severity of its record: success is info 0ms
+       × has the title alone for a sentence when it has no message 0ms
+       × is shown as not confirmed, with a warning, whatever severity it had: its plugin stopped reporting, and the list does not hide what may still be true 0ms
+       × names the plugin by what the window calls it, not by its id 0ms
+       × is an alert that resolved: it stopped being true, and a condition goes when it does 0ms
+       × is a task or a message, whatever its severity and whatever else the record carries: the kind of the record decides 0ms
+       × is a record that says it is an alert and carries none: nothing says whether it is true 0ms
+       × is about the connection when the window knows it, and goes to it 0ms
+       × is about nothing, and goes to its plugin, when the connection is one the window does not know 0ms
+       × is about nothing, and goes to its plugin, when it names no connection 0ms
+       × is the host's own, with no page of its own, when it names no plugin 0ms
+       × does not take a connection of another plugin for its own: the connection is looked up under the plugin the record names 0ms
+       × keys the condition by the record, so a record keeps its row while it fires and a new record is another row 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 39 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when its process stopped, worded as the plugin list words it ({ kind: 'unloaded', …(2) })
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when it did not start, worded as the plugin list words it ({ kind: 'unloaded', …(2) })
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when it took too long to start, worded as the plugin list words it ({ kind: 'unloaded', …(2) }
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when the host refused it for its protocol, worded as the plugin list words it ({ kind: 'unloaded
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when its interface could not be read, worded as the plugin list words it ({ kind: 'missing', …
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when its interface failed to start, worded as the plugin list words it ({ kind: 'broken', …(1)
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when its interface took too long to load, worded as the plugin list words it ({ kind: 'timeout',
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when its interface was built for another version, worded as the plugin list words it ({ kind: 'i
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is an error when its interface is not one this version understands, worded as the plugin list words it ({ ki
+AssertionError: expected [] to deeply equal [ { key: 'plugin:alpha', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is not a problem while the plugin is starting again: the host is bringing it back, and nothing has failed
+AssertionError: expected [] to deeply equal [ 'plugin:beta' ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > is not a problem while the plugin loads, nor when it is ready
+AssertionError: expected [] to deeply equal [ 'plugin:gamma' ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > lists the faulted plugins of a window and no other, in the order the store lists them
+AssertionError: expected [] to deeply equal [ 'plugin:b', 'plugin:e' ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > pluginConditions: the plugins that could not be kept running > names the plugin by what the store calls it, its id staying the id of its page
+AssertionError: expected undefined to deeply equal { id: 'acme-1', name: 'Acme Plugin' }
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > is a condition when a connection is unreachable: the word Not responding, severity error
+AssertionError: expected undefined to deeply equal { …(7) }
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > is a condition when a connection is failed: the word Connection failed, severity error
+AssertionError: expected undefined to deeply equal { …(7) }
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > is a condition when a connection is forbidden: the word Access denied, severity error
+AssertionError: expected undefined to deeply equal { …(7) }
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > is a condition when a connection is unauthorized: the word Needs sign-in, severity warning
+AssertionError: expected undefined to deeply equal { …(7) }
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > says the word of the state in its title when the host gave no reason: "north: Not responding"
+AssertionError: expected undefined to be 'north: Not responding' // Object.is equality
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > is not a problem when a connection is connected, being connected or not connected: disconnected is a normal idle state 
+AssertionError: expected [] to deeply equal [ 'connection:["alpha","c-4"]' ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > lists the failed connections and no other, of every plugin, in the order the store lists them
+AssertionError: expected [] to deeply equal [ …(2) ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > keys a connection by its plugin and its key as a pair, so two that would run together are two: "a" and "b:c" is not "a:
+AssertionError: expected [] to have a length of 2 but got +0
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions: the connections that failed > names the plugin as the caller reads it, and says nothing before the host was asked or when the read failed and left no
+AssertionError: expected undefined to deeply equal { id: 'alpha', name: 'Alpha Cloud' }
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > a firing alert > is a condition: the title is its label and the title and the message are its sentence
+AssertionError: expected [] to deeply equal [ { key: 'alert:r-1', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > a firing alert > takes the severity of its record: error is error
+AssertionError: expected undefined to be 'error' // Object.is equality
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > a firing alert > takes the severity of its record: warning is warning
+AssertionError: expected undefined to be 'warning' // Object.is equality
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > a firing alert > takes the severity of its record: info is info
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > a firing alert > takes the severity of its record: success is info
+AssertionError: expected undefined to be 'info' // Object.is equality
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > a firing alert > has the title alone for a sentence when it has no message
+AssertionError: expected undefined to be 'Disk almost full' // Object.is equality
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > an alert the host does not know to be true any more > is shown as not confirmed, with a warning, whatever severity it had: i
+AssertionError: expected [] to deeply equal [ { key: 'alert:r-1', …(6) } ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > an alert the host does not know to be true any more > names the plugin by what the window calls it, not by its id
+AssertionError: expected undefined to be 'Disk almost full. beta is not reporti…' // Object.is equality
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > what is not a condition > is an alert that resolved: it stopped being true, and a condition goes when it does
+AssertionError: expected [] to deeply equal [ 'alert:r-2' ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > what is not a condition > is a task or a message, whatever its severity and whatever else the record carries: the kind of th
+AssertionError: expected [] to deeply equal [ 'alert:r-1' ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > what is not a condition > is a record that says it is an alert and carries none: nothing says whether it is true
+AssertionError: expected [] to deeply equal [ 'alert:r-2' ]
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > where it is from and where it goes > is about the connection when the window knows it, and goes to it
+AssertionError: expected undefined to be 'north' // Object.is equality
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > where it is from and where it goes > is about nothing, and goes to its plugin, when the connection is one the window does no
+AssertionError: expected undefined to deeply equal { kind: 'plugin', plugin: 'alpha' }
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > where it is from and where it goes > is about nothing, and goes to its plugin, when it names no connection
+AssertionError: expected undefined to deeply equal { kind: 'plugin', plugin: 'alpha' }
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > where it is from and where it goes > is the host's own, with no page of its own, when it names no plugin
+AssertionError: expected undefined to deeply equal { id: 'host', name: 'Omniview' }
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > where it is from and where it goes > does not take a connection of another plugin for its own: the connection is looked up u
+AssertionError: expected undefined to deeply equal { kind: 'plugin', plugin: 'beta' }
+ FAIL  ui-next/plugins/host/conditions.test.ts > alertConditions: the alerts a plugin reports > where it is from and where it goes > keys the condition by the record, so a record keeps its row while it fires and a new re
+AssertionError: expected [] to deeply equal [ 'alert:r-1', 'alert:r-2' ]
+      Tests  39 failed | 2 passed (41)

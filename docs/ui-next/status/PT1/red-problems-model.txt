@@ -1,0 +1,155 @@
+     × lists what the producer says 3ms
+     × drops a condition the moment its producer stops saying it: nothing to clear, nothing to acknowledge (S74) 0ms
+     × replaces the list of that producer, it does not add to it 0ms
+     × leaves what the other producers say as it is 0ms
+     × keeps nothing of the array it was given: a list the caller changes afterwards is not what the model says, and the caller's order is its own 0ms
+     × lists the errors, then the warnings, then the infos 0ms
+     × lists the sources of one severity by name: numbers by value and case ignored (the host's one collator) 0ms
+     × lists the targets of one source by name, and the conditions that have none after the ones that have 0ms
+     × lists what is still equal by key 0ms
+     × is the same list in every order the conditions arrive in, and from whichever producer: texts that differ only in case still have one order 0ms
+     × orders the rows of every producer together, not one producer after another 0ms
+     × counts the conditions of each severity 0ms
+     × is a count of the errors when there is one: "1 error" 0ms
+     × is a count of the errors when there are several: "3 errors" 0ms
+     × counts the errors and leaves the warnings out of it 0ms
+     × is a dot for the warnings when there is no error: "1 warning" 0ms
+     × is a dot for the warnings when there is no error: "4 warnings" 0ms
+     × is nothing for infos: an info never badges the tab 0ms
+     × follows the conditions at once: the last error that goes leaves the warnings' dot, the last problem that goes leaves nothing 0ms
+     × keeps the object of a condition that a new list says again in every member, though the producer built it anew with every nested object new 1ms
+     × is a new object, with the new member, when its severity changes 0ms
+     × is a new object, with the new member, when its label changes 0ms
+     × is a new object, with the new member, when its title changes 0ms
+     × is a new object, with the new member, when the id of its source changes 0ms
+     × is a new object, with the new member, when the name of its source changes 0ms
+     × is a new object, with the new member, when its target changes 0ms
+     × is a new object, with the new member, when its target goes away 0ms
+     × is a new object, with the new member, when its subject becomes a connection 0ms
+     × is a new object, with the new member, when the plugin of its subject changes 0ms
+     × is a new object, with the new member, when its subject goes away 0ms
+     × is a new object when its subject, a connection, names another connection 0ms
+     × leaves the other rows alone when one changes: a change of one record is not a new object for the others 0ms
+     × keeps the snapshot, the rows, the counts and the badge when a list says what it said 0ms
+     × keeps them when the list comes in another order: the order is the model's 0ms
+     × keeps the counts and the badge, but not the rows or the snapshot, when a row changes and the numbers and the words do not 0ms
+     × keeps the badge, but not the counts, when the counts change and the badge says the same 0ms
+     × makes a new badge when its words change: a count of 2 errors is not the object of 1 error 0ms
+     × makes a new rows array and a new snapshot when a row came or went 0ms
+     × tells its listeners once after a set that changed what the tool says, and they read the new state 0ms
+     × tells every listener, once each 0ms
+     × tells nobody for a set with a list that says what the producer said: the same objects, new objects that are equal, the same conditions in another order 0ms
+     × tells nobody for an empty list of a producer that said nothing, and nobody for a producer that was never heard of 0ms
+     × tells nobody when a list differs from the last one only in a duplicate that the first of its key wins over 0ms
+     × tells nobody again for the one condition whose last change was already told 0ms
+     × is told ONCE for two hundred conditions that arrive in one set, with all of them listed 0ms
+     × stops telling a listener once it stopped, and tells the others 0ms
+     × does not tell a listener that was stopped by another listener in the same notification 0ms
+     × is its first condition when it appears twice in one list: the first wins 0ms
+     × is shown as the producer that said it last says it, and a later set of the first producer does not take it back 0ms
+     × tells nobody and keeps every object when only the version that is not shown changes 0ms
+     × shows the first producer's version again when the second stops saying the key: the first still says it 0ms
+     × is gone when no producer says it 0ms
+     × is said anew by a producer that dropped it and says it again: the one that says it last wins 0ms
+     × keeps the object it shows when the producer that says it last says it in every member as the one before 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 54 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/problems/model.test.ts > set: what one producer says is true now > lists what the producer says
+AssertionError: expected [] to deeply equal [ 'a', 'b' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > set: what one producer says is true now > drops a condition the moment its producer stops saying it: nothing to clear, nothing to acknowledge (S74)
+AssertionError: expected [] to deeply equal [ 'a', 'b' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > set: what one producer says is true now > replaces the list of that producer, it does not add to it
+AssertionError: expected [] to deeply equal [ 'b' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > set: what one producer says is true now > leaves what the other producers say as it is
+AssertionError: expected [] to deeply equal [ 'a', 'b' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > set: what one producer says is true now > keeps nothing of the array it was given: a list the caller changes afterwards is not what the model says, and the caller's ord
+AssertionError: expected [] to deeply equal [ 'a', 'b' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the order of the rows (S121) > lists the errors, then the warnings, then the infos
+AssertionError: expected [] to deeply equal [ 'e', 'w', 'i' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the order of the rows (S121) > lists the sources of one severity by name: numbers by value and case ignored (the host's one collator)
+AssertionError: expected [] to deeply equal [ 'k-plain', 'k-two', 'k-ten', …(1) ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the order of the rows (S121) > lists the targets of one source by name, and the conditions that have none after the ones that have
+AssertionError: expected [] to deeply equal [ 'two', 'ten', 'none', 'none-2' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the order of the rows (S121) > lists what is still equal by key
+AssertionError: expected [] to deeply equal [ 'a', 'b', 'c' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the order of the rows (S121) > is the same list in every order the conditions arrive in, and from whichever producer: texts that differ only in case still have one orde
+AssertionError: a b c d e: expected [] to deeply equal [ 'a', 'b', 'd', 'c', 'e' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the order of the rows (S121) > orders the rows of every producer together, not one producer after another
+AssertionError: expected [] to deeply equal [ 'one-error', 'two-error', …(2) ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > counts the conditions of each severity
+AssertionError: expected { error: +0, warning: +0, info: +0 } to deeply equal { error: 2, warning: 1, info: 3 }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > is a count of the errors when there is one: "1 error"
+AssertionError: expected undefined to deeply equal { kind: 'count', count: 1, …(1) }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > is a count of the errors when there are several: "3 errors"
+AssertionError: expected undefined to deeply equal { kind: 'count', count: 3, …(1) }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > counts the errors and leaves the warnings out of it
+AssertionError: expected undefined to deeply equal { kind: 'count', count: 2, …(1) }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > is a dot for the warnings when there is no error: "1 warning"
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'warning', …(1) }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > is a dot for the warnings when there is no error: "4 warnings"
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'warning', …(1) }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > is nothing for infos: an info never badges the tab
+AssertionError: expected { error: +0, warning: +0, info: +0 } to deeply equal { error: +0, warning: +0, info: 2 }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > the counts and the badge of the tab (S114) > follows the conditions at once: the last error that goes leaves the warnings' dot, the last problem that goes leaves nothin
+AssertionError: expected undefined to deeply equal { kind: 'count', count: 1, …(1) }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > keeps the object of a condition that a new list says again in every member, though the producer built it ane
+AssertionError: expected [] to have a length of 3 but got +0
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when its severity changes
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when its label changes
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when its title changes
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when the id of its source changes
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when the name of its source changes
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when its target changes
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when its target goes away
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when its subject becomes a connection
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when the plugin of its subject changes
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object, with the new member, when its subject goes away
+AssertionError: expected undefined to be defined
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > is a new object when its subject, a connection, names another connection
+AssertionError: expected undefined to be defined
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > leaves the other rows alone when one changes: a change of one record is not a new object for the others
+AssertionError: expected [] to have a length of 3 but got +0
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > keeps the snapshot, the rows, the counts and the badge when a list says what it said
+AssertionError: expected [] to have a length of 2 but got +0
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > keeps them when the list comes in another order: the order is the model's
+AssertionError: expected [] to have a length of 3 but got +0
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > keeps the counts and the badge, but not the rows or the snapshot, when a row changes and the numbers and the
+AssertionError: expected { rows: [], …(2) } not to be { rows: [], …(2) } // Object.is equality
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > keeps the badge, but not the counts, when the counts change and the badge says the same
+AssertionError: expected undefined to deeply equal { kind: 'count', count: 2, …(1) }
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > makes a new badge when its words change: a count of 2 errors is not the object of 1 error
+AssertionError: expected undefined not to be undefined // Object.is equality
+ FAIL  ui-next/shell/panel/problems/model.test.ts > identity: an object that says the same is the same object > makes a new rows array and a new snapshot when a row came or went
+AssertionError: expected { rows: [], …(2) } not to be { rows: [], …(2) } // Object.is equality
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > tells its listeners once after a set that changed what the tool says, and they read the new state
+AssertionError: expected [] to deeply equal [ [ 'a', 'b' ] ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > tells every listener, once each
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > tells nobody for a set with a list that says what the producer said: the same objects, new objects that are equal, the same conditions in anothe
+AssertionError: expected [] to deeply equal [ 'a', 'b' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > tells nobody for an empty list of a producer that said nothing, and nobody for a producer that was never heard of
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > tells nobody when a list differs from the last one only in a duplicate that the first of its key wins over
+AssertionError: expected [] to deeply equal [ 'Stopped' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > tells nobody again for the one condition whose last change was already told
+AssertionError: expected "vi.fn()" to be called 2 times, but got 0 times
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > is told ONCE for two hundred conditions that arrive in one set, with all of them listed
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > stops telling a listener once it stopped, and tells the others
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/problems/model.test.ts > who is told, and when > does not tell a listener that was stopped by another listener in the same notification
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/problems/model.test.ts > a key that is said twice > is its first condition when it appears twice in one list: the first wins
+AssertionError: expected [] to deeply equal [ 'a', 'b' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > a key that is said twice > is shown as the producer that said it last says it, and a later set of the first producer does not take it back
+AssertionError: expected [] to deeply equal [ 'Second says' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > a key that is said twice > tells nobody and keeps every object when only the version that is not shown changes
+AssertionError: expected [] to deeply equal [ 'Second says' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > a key that is said twice > shows the first producer's version again when the second stops saying the key: the first still says it
+AssertionError: expected [] to deeply equal [ 'First now' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > a key that is said twice > is gone when no producer says it
+AssertionError: expected [] to deeply equal [ 'k' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > a key that is said twice > is said anew by a producer that dropped it and says it again: the one that says it last wins
+AssertionError: expected [] to deeply equal [ 'First says again' ]
+ FAIL  ui-next/shell/panel/problems/model.test.ts > a key that is said twice > keeps the object it shows when the producer that says it last says it in every member as the one before
+AssertionError: expected undefined to be defined
+      Tests  54 failed | 2 passed (56)

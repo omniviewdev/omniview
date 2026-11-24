@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/omniviewdev/omniview/ui-next/plugins/fixture/activityscript"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
 )
 
@@ -31,7 +32,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	sdk.NewPlugin(sdk.PluginOpts{ID: pluginID, Settings: nil, Debug: false}).Serve()
+	plugin := sdk.NewPlugin(sdk.PluginOpts{ID: pluginID, Settings: nil, Debug: false})
+	// Reports the activity the check scripts in the file `activity-script`, once the host has bound the reporter.
+	defer activityscript.Start(plugin.Activities())()
+	plugin.Serve()
 }
 
 // startMode is what the file next to bin/ says, "" when there is none.

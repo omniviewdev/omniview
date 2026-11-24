@@ -199,6 +199,8 @@ jobs:
             if (/PROCESS_CONTROLS/.test(text)) names.push("process");
             // Scenario u runs every one of its controls (CONNECTIONS_CONTROLS) from one run: `connections` runs them all (a name of the table makes one only).
             if (/CONNECTIONS_CONTROLS/.test(text)) names.push("connections");
+            // Scenario v runs every one of its controls (PT_CONTROLS) from one run: problems-operations runs them all (a name of the table makes one only).
+            if (/PT_CONTROLS/.test(text)) names.push("problems-operations");
             console.log(names.join(" "));
           ')"
           [ -n "$controls" ] || { echo "::error::no negative control found in seam.check.mjs"; exit 1; }

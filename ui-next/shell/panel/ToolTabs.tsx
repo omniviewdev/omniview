@@ -2,8 +2,9 @@ import { Icon, Text, isIconName } from '@omniviewdev/kit';
 import type { ToolId } from '../core/panel';
 import { useTablist } from '../tablist';
 import { usePanel } from './context';
-import { useActiveTool, useToolIds, useToolItem } from './hooks';
+import { useActiveTool, useToolBadge, useToolIds, useToolItem } from './hooks';
 import styles from './Header.module.css';
+import { tabName, ToolBadgeMark } from './ToolBadge';
 import { toolTabId } from './words';
 
 /** A plugin's glyph name is data from outside: a name the kit does not have draws the generic one rather than throwing in the strip. */
@@ -20,13 +21,14 @@ type ToolTabProps = {
 };
 
 /**
- * One tool tab: a 28 px capsule with the tool's glyph and its words (ch16 S113), the selected one filled like a document tab. It reads its own tool's item and renders when that changes:
- * a session changing state does not touch it. Activation is explicit: arrows move the focus, Enter and Space (the button's own click) select the tool, because switching a tool switches a
- * body that may be heavy.
+ * One tool tab: a 28 px capsule with the tool's glyph and its words (ch16 S113), the selected one filled like a document tab, and the badge the host gives its tool (S114: a count or a dot). It reads its own tool's item and
+ * its own badge and renders when either changes: a session changing state, or another tool's badge, does not touch it. Activation is explicit: arrows move the focus, Enter and Space (the button's own click) select the
+ * tool, because switching a tool switches a body that may be heavy.
  */
 function ToolTab({ id, stop, selected, controls, prefix }: ToolTabProps) {
   const { store } = usePanel();
   const item = useToolItem(id);
+  const badge = useToolBadge(id);
   if (item === undefined) {
     return null;
   }
@@ -37,6 +39,7 @@ function ToolTab({ id, stop, selected, controls, prefix }: ToolTabProps) {
       role="tab"
       id={toolTabId(prefix, id)}
       className={styles.toolTab}
+      aria-label={badge === undefined ? undefined : tabName(item.label, badge)}
       aria-selected={selected}
       aria-controls={controls}
       tabIndex={stop ? 0 : -1}
@@ -50,6 +53,7 @@ function ToolTab({ id, stop, selected, controls, prefix }: ToolTabProps) {
       <span className={styles.toolLabel} dir="auto">
         <Text>{item.label}</Text>
       </span>
+      {badge === undefined ? null : <ToolBadgeMark badge={badge} />}
     </button>
   );
 }

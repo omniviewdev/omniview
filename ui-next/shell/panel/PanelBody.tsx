@@ -1,7 +1,7 @@
 import { isIconName } from '@omniviewdev/kit';
 import type { SessionId } from '../core/panel';
 import { usePanel } from './context';
-import { useActiveSession, useActiveTool, useIsShown, useMounted, useSession, useToolItem } from './hooks';
+import { useActiveSession, useActiveTool, useIsShown, useMounted, useOpen, useSession, useToolItem } from './hooks';
 import styles from './Panel.module.css';
 import { PanelEmpty } from './PanelEmpty';
 import { bodyId, sessionTabId, toolTabId } from './words';
@@ -37,21 +37,24 @@ type PanelBodyProps = {
 
 /**
  * The region under the header: the one tabpanel the tool tabs and the session tabs switch, labelled by the session on screen (else the tool). It holds the mounted bodies and, in their
- * place, the empty state: no tool at all, or a tool with no session. A tool with no session shows the button that starts one when its owner says how.
+ * place, the empty state: no tool at all, or a tool with no session. A tool with no session shows the button that starts one when its owner says how. A tool that has no sessions at all (a singleton,
+ * Problems and Operations: ch16 S114) is drawn by the host (`renderTool`), only while it is on screen with the panel open, and replaces both the bodies and the empty state.
  */
 export function PanelBody({ prefix, id }: PanelBodyProps) {
-  const { newSessionOf, emptyOf } = usePanel();
+  const { newSessionOf, emptyOf, renderTool } = usePanel();
   const mounted = useMounted();
+  const open = useOpen();
   const tool = useActiveTool();
   const active = useActiveSession(tool);
   const item = useToolItem(tool ?? '');
   const add = tool === null ? undefined : newSessionOf(tool);
   const words = tool === null ? undefined : emptyOf?.(tool);
+  const singleton = tool === null || !open ? undefined : renderTool?.(tool);
   const labelledBy = active !== null ? sessionTabId(prefix, active) : tool !== null ? toolTabId(prefix, tool) : undefined;
   return (
     <div id={id} className={styles.body} role="tabpanel" aria-labelledby={labelledBy} aria-label={labelledBy === undefined ? 'Panel' : undefined} data-shell-part="panelDeck">
       {tool === null ? <PanelEmpty icon="panel-bottom" title="No tools" hint="Tools appear here when a plugin brings one." /> : null}
-      {tool !== null && active === null ? (
+      {tool !== null && active === null && singleton === undefined ? (
         <PanelEmpty
           icon={item !== undefined && isIconName(item.icon) ? item.icon : 'box'}
           title={words?.title ?? 'No sessions'}
@@ -59,6 +62,11 @@ export function PanelBody({ prefix, id }: PanelBodyProps) {
           action={add === undefined ? undefined : { label: add.label, icon: 'plus', onSelect: add.start }}
         />
       ) : null}
+      {tool === null || singleton === undefined ? null : (
+        <div key={tool} id={bodyId(prefix, tool)} className={styles.slot} data-shell-part="panelBody" data-tool-id={tool}>
+          {singleton}
+        </div>
+      )}
       {mounted.map((sessionId) => (
         <BodySlot key={sessionId} id={sessionId} prefix={prefix} />
       ))}

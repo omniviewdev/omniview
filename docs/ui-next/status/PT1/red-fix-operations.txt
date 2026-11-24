@@ -1,0 +1,786 @@
+# PT1 review fixes, Operations side (agent ProblemsOperations.OperationsFixes): the first red run of each new test.
+# Every section: the command, then the output as vitest printed it (first run, before the code it tests).
+
+## 1. activity feed: the contract `push(records, error?)`, `getError()`, listeners told of an error change (comment 4685831499, feed side)
+# The types and a stub that always answers `undefined` were in place, so every failure below is an assertion, not a missing name.
+$ pnpm exec vitest run ui-next/shell/panel/activity.test.ts
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt1-problems-operations
+ ❯ ui-next/shell/panel/activity.test.ts (15 tests | 4 failed) 6ms
+   ❯ the activity feed: whether the service can be observed (8)
+     × holds the sentence a push carries, beside the records of the same push 2ms
+     × tells its listeners when only the error changes, once for each change, and the records are the same array 0ms
+     × tells its listeners once when the records and the error change in the same push, and the error is already the new one when they hear 1ms
+     × tells its listeners of a failure that comes before any record: the provider failed on its first read 0ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/activity.test.ts > the activity feed: whether the service can be observed > holds the sentence a push carries, beside the records of the same push
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+- Expected:
+"The activity service did not answer."
++ Received:
+undefined
+ ❯ ui-next/shell/panel/activity.test.ts:91:29
+     89|     const records = [record('a')];
+     90|     push(records, SENTENCE);
+     91|     expect(feed.getError()).toBe(SENTENCE);
+       |                             ^
+     92|     expect(feed.getSnapshot()).toBe(records);
+     93|   });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+ FAIL  ui-next/shell/panel/activity.test.ts > the activity feed: whether the service can be observed > tells its listeners when only the error changes, once for each change, and the records are the same array
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ ui-next/shell/panel/activity.test.ts:117:22
+    115|     feed.subscribe(listener);
+    116|     push(records, SENTENCE);
+    117|     expect(listener).toHaveBeenCalledTimes(1);
+       |                      ^
+    118|     expect(feed.getSnapshot()).toBe(records);
+    119|     push(records);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+ FAIL  ui-next/shell/panel/activity.test.ts > the activity feed: whether the service can be observed > tells its listeners once when the records and the error change in the same push, and the error is already the new one when they hear
+AssertionError: expected [ undefined ] to deeply equal [ Array(1) ]
+- Expected
++ Received
+  [
+-   "The activity service did not answer.",
++   undefined,
+  ]
+ ❯ ui-next/shell/panel/activity.test.ts:141:19
+    139|     });
+    140|     push([record('a')], SENTENCE);
+    141|     expect(heard).toEqual([SENTENCE]);
+       |                   ^
+    142|     push([record('b')]);
+    143|     expect(heard).toEqual([SENTENCE, undefined]);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+ FAIL  ui-next/shell/panel/activity.test.ts > the activity feed: whether the service can be observed > tells its listeners of a failure that comes before any record: the provider failed on its first read
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+- Expected:
+"The activity service did not answer."
++ Received:
+undefined
+ ❯ ui-next/shell/panel/activity.test.ts:152:29
+    150|     push([], SENTENCE);
+    151|     expect(listener).toHaveBeenCalledTimes(1);
+    152|     expect(feed.getError()).toBe(SENTENCE);
+       |                             ^
+    153|     expect(feed.getSnapshot()).toEqual([]);
+    154|   });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+ Test Files  1 failed (1)
+      Tests  4 failed | 11 passed (15)
+   Start at  14:35:19
+   Duration  806ms (environment 63%, transform 21%, setup 15%, tests 1%, worker 1%)
+
+## 2. operations model: `unavailable` from the feed error (4685831499) and `CancelFailure.running` (4685831477, model side)
+# The two members were in the types and the model did not set them: every failure is an assertion on a missing value. The two existing tests that matched the whole CancelFailure now say `running`.
+$ pnpm exec vitest run ui-next/shell/panel/operations/model.test.ts
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt1-problems-operations
+ ❯ ui-next/shell/panel/operations/model.test.ts (137 tests | 18 failed) 131ms
+   ❯ when the activity service cannot be observed (the feed's error) (9)
+     × is the feed's sentence, with no row, when the first read failed: a failed read is not "no operations" 3ms
+     × keeps the rows it holds when the observation fails after it worked, and says so beside them 0ms
+     × tells its listeners once for a change of the error alone, with a new snapshot whose rows, counts and badge are the objects they were 0ms
+     × goes when the feed says the service can be observed again, and tells its listeners once 0ms
+     × says it with the rows of the same push, in one notification, when the records and the error change together 1ms
+     × reads the error when it is attached: a window that mounts after the service failed 0ms
+     × keeps it when the names the window knows change: refreshing makes the rows again and says the same of the service 0ms
+   ❯ cancelling a task (25)
+     × never rejects: a rejection of the feed puts available back and tells the host once, with the title, the plugin, the error and a way to ask again 1ms
+     × tells the host what it knew when it asked, when the task is gone from the feed before the answer comes 0ms
+     × tells the host the work is still running when the task is starting at the moment the failure is reported 0ms
+     × tells the host the work is still running when the task is running at the moment the failure is reported 0ms
+     × tells the host the work is still running when the task is paused at the moment the failure is reported 0ms
+     × tells the host the work is not running when the task was succeeded by the time the failure is reported: it finished while the request was on its way 0ms
+     × tells the host the work is not running when the task was failed by the time the failure is reported: it finished while the request was on its way 0ms
+     × tells the host the work is not running when the task was cancelled by the time the failure is reported: it finished while the request was on its way 0ms
+     × tells the host the work is not running when the task was unknown by the time the failure is reported: it finished while the request was on its way 0ms
+     × tells the host the work is still running when a feed that throws before it returns a promise fails it, as it does for any other failure of a task that has not finished 0ms
+     × says the work is still running for the first failure and not running for the second, when the task finished while the way to ask again was in flight 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 18 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > when the activity service cannot be observed (the feed's error) > is the feed's sentence, with no row, when the first read failed: a failed read is not "no operations"
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+- Expected:
+"The activity service did not answer."
++ Received:
+undefined
+ ❯ ui-next/shell/panel/operations/model.test.ts:418:36
+    416|     const { push, snapshot } = setup();
+    417|     push([], SENTENCE);
+    418|     expect(snapshot().unavailable).toBe(SENTENCE);
+       |                                    ^
+    419|     expect(snapshot().rows).toEqual([]);
+    420|   });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > when the activity service cannot be observed (the feed's error) > keeps the rows it holds when the observation fails after it worked, and says so beside them
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+- Expected:
+"The activity service did not answer."
++ Received:
+undefined
+ ❯ ui-next/shell/panel/operations/model.test.ts:427:36
+    425|     push(records);
+    426|     push(records, SENTENCE);
+    427|     expect(snapshot().unavailable).toBe(SENTENCE);
+       |                                    ^
+    428|     expect(ids()).toEqual(['b', 'a']);
+    429|     expect(snapshot().active).toBe(1);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > when the activity service cannot be observed (the feed's error) > tells its listeners once for a change of the error alone, with a new snapshot whose rows, counts and badge are the objects they were
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ ui-next/shell/panel/operations/model.test.ts:441:22
+    439|     operations.subscribe(listener);
+    440|     push(records, SENTENCE);
+    441|     expect(listener).toHaveBeenCalledTimes(1);
+       |                      ^
+    442|     const after = snapshot();
+    443|     expect(after).not.toBe(before);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > when the activity service cannot be observed (the feed's error) > goes when the feed says the service can be observed again, and tells its listeners once
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ ui-next/shell/panel/operations/model.test.ts:457:22
+    455|     operations.subscribe(listener);
+    456|     push(records);
+    457|     expect(listener).toHaveBeenCalledTimes(1);
+       |                      ^
+    458|     expect(snapshot().unavailable).toBeUndefined();
+    459|     expect(snapshot().rows).toHaveLength(1);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > when the activity service cannot be observed (the feed's error) > says it with the rows of the same push, in one notification, when the records and the error change together
+AssertionError: expected [ { rows: 2, unavailable: undefined } ] to deeply equal [ { rows: 2, …(1) } ]
+- Expected
++ Received
+  [
+    {
+      "rows": 2,
+-     "unavailable": "The activity service did not answer.",
++     "unavailable": undefined,
+    },
+  ]
+ ❯ ui-next/shell/panel/operations/model.test.ts:469:18
+    467|     });
+    468|     push([task('a'), task('b', { at: 1 })], SENTENCE);
+    469|     expect(seen).toEqual([{ rows: 2, unavailable: SENTENCE }]);
+       |                  ^
+    470|   });
+    471|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > when the activity service cannot be observed (the feed's error) > reads the error when it is attached: a window that mounts after the service failed
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+- Expected:
+"The activity service did not answer."
++ Received:
+undefined
+ ❯ ui-next/shell/panel/operations/model.test.ts:490:50
+    488|     expect(operations.getSnapshot().unavailable).toBeUndefined();
+    489|     operations.attach();
+    490|     expect(operations.getSnapshot().unavailable).toBe(SENTENCE);
+       |                                                  ^
+    491|     expect(operations.getSnapshot().rows).toHaveLength(1);
+    492|   });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > when the activity service cannot be observed (the feed's error) > keeps it when the names the window knows change: refreshing makes the rows again and says the same of the service
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+- Expected:
+"The activity service did not answer."
++ Received:
+undefined
+ ❯ ui-next/shell/panel/operations/model.test.ts:498:36
+    496|     push([task('a')], SENTENCE);
+    497|     operations.refresh();
+    498|     expect(snapshot().unavailable).toBe(SENTENCE);
+       |                                    ^
+    499|   });
+    500| });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > never rejects: a rejection of the feed puts available back and tells the host once, with the title, the plugin, the error and a way to ask again
+AssertionError: expected "vi.fn()" to be called with arguments: [ { id: 'a', …(5) } ]
+Received:
+  1st vi.fn() call:
+@@ -3,10 +3,9 @@
+      "error": Error {
+        "message": "cancellation unavailable",
+      },
+      "id": "a",
+      "plugin": "alpha",
+-     "retry": Any<Function>,
+-     "running": true,
++     "retry": [Function retry],
+      "title": "Reindexing the catalogue",
+    },
+  ]
+Number of calls: 1
+ ❯ ui-next/shell/panel/operations/model.test.ts:892:18
+    890|     expect(row('a').cancel).toBe('available');
+    891|     expect(fail).toHaveBeenCalledTimes(1);
+    892|     expect(fail).toHaveBeenCalledWith({ id: 'a', title: 'Reindexing th…
+       |                  ^
+    893|   });
+    894|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host what it knew when it asked, when the task is gone from the feed before the answer comes
+AssertionError: expected "vi.fn()" to be called with arguments: [ ObjectContaining{…} ]
+Received:
+  1st vi.fn() call:
+  [
+-   ObjectContaining {
++   {
++     "error": Error {
++       "message": "too late",
++     },
+      "id": "a",
+      "plugin": "alpha",
+-     "running": false,
++     "retry": [Function retry],
+      "title": "Reindexing the catalogue",
+    },
+  ]
+Number of calls: 1
+ ❯ ui-next/shell/panel/operations/model.test.ts:1022:18
+    1020|     gate.reject(new Error('too late'));
+    1021|     await call;
+    1022|     expect(fail).toHaveBeenCalledWith(expect.objectContaining({ id: 'a…
+       |                  ^
+    1023|   });
+    1024|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is still running when the task is starting at the moment the failure is reported
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is still running when the task is running at the moment the failure is reported
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is still running when the task is paused at the moment the failure is reported
+AssertionError: expected "vi.fn()" to be called with arguments: [ ObjectContaining{…} ]
+Received:
+  1st vi.fn() call:
+  [
+-   ObjectContaining {
++   {
++     "error": Error {
++       "message": "no",
++     },
+      "id": "a",
+-     "running": true,
++     "plugin": "alpha",
++     "retry": [Function retry],
++     "title": "Reindexing the catalogue",
+    },
+  ]
+Number of calls: 1
+ ❯ ui-next/shell/panel/operations/model.test.ts:1036:18
+    1034|     await call;
+    1035|     expect(fail).toHaveBeenCalledTimes(1);
+    1036|     expect(fail).toHaveBeenCalledWith(expect.objectContaining({ id: 'a…
+       |                  ^
+    1037|   });
+    1038|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is not running when the task was succeeded by the time the failure is reported: it finished while the request was on its way
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is not running when the task was failed by the time the failure is reported: it finished while the request was on its way
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is not running when the task was cancelled by the time the failure is reported: it finished while the request was on its way
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is not running when the task was unknown by the time the failure is reported: it finished while the request was on its way
+AssertionError: expected "vi.fn()" to be called with arguments: [ ObjectContaining{…} ]
+Received:
+  1st vi.fn() call:
+  [
+-   ObjectContaining {
++   {
++     "error": Error {
++       "message": "too late",
++     },
+      "id": "a",
+-     "running": false,
++     "plugin": "alpha",
++     "retry": [Function retry],
++     "title": "Reindexing the catalogue",
+    },
+  ]
+Number of calls: 1
+ ❯ ui-next/shell/panel/operations/model.test.ts:1050:18
+    1048|     expect(row('a').active).toBe(false);
+    1049|     expect(fail).toHaveBeenCalledTimes(1);
+    1050|     expect(fail).toHaveBeenCalledWith(expect.objectContaining({ id: 'a…
+       |                  ^
+    1051|   });
+    1052|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host the work is still running when a feed that throws before it returns a promise fails it, as it does for any other failure of a task that has not finished
+AssertionError: expected "vi.fn()" to be called with arguments: [ ObjectContaining{…} ]
+Received:
+  1st vi.fn() call:
+  [
+-   ObjectContaining {
++   {
++     "error": Error {
++       "message": "the bridge is down",
++     },
+      "id": "a",
+-     "running": true,
++     "plugin": "alpha",
++     "retry": [Function retry],
++     "title": "Reindexing the catalogue",
+    },
+  ]
+Number of calls: 1
+ ❯ ui-next/shell/panel/operations/model.test.ts:1064:18
+    1062|     push([record]);
+    1063|     await operations.cancel('a');
+    1064|     expect(fail).toHaveBeenCalledWith(expect.objectContaining({ id: 'a…
+       |                  ^
+    1065|   });
+    1066|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/18]⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > says the work is still running for the first failure and not running for the second, when the task finished while the way to ask again was in flight
+AssertionError: expected undefined to be true // Object.is equality
+- Expected:
+true
++ Received:
+undefined
+ ❯ ui-next/shell/panel/operations/model.test.ts:1076:43
+    1074|     push([record]);
+    1075|     await operations.cancel('a');
+    1076|     expect(fail.mock.calls[0][0].running).toBe(true);
+       |                                           ^
+    1077|     fail.mock.calls[0][0].retry();
+    1078|     push([{ ...record, task: { state: 'failed', cancellation: 'unsuppo…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/18]⎯
+ Test Files  1 failed (1)
+      Tests  18 failed | 119 passed (137)
+   Start at  14:36:31
+   Duration  691ms (environment 37%, transform 31%, tests 23%, setup 7%, import 1%)
+
+## 3. operations body: the unavailable state in place of "No operations" (4685831499, Operations side)
+# The model already carried `unavailable`; the body ignored it. The 4 tests of the section that keep the rows listed and the empty state when the service can be observed pass before the code, as they must: each has a control (section 7).
+$ pnpm exec vitest run ui-next/shell/panel/operations/OperationsBody.test.tsx
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt1-problems-operations
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx (76 tests | 3 failed) 734ms
+   ❯ when the activity service cannot be observed (7)
+     × says so in place of "No operations" when the tool holds no row: its title and the feed's sentence, as an alert, and no table 18ms
+     × says what the feed says, whatever the sentence is: nothing of it is the tool's 7ms
+     × comes in place of the empty state when the service fails with no row, and goes back to it when the service can be observed again 5ms
+ Test Files  1 failed (1)
+      Tests  3 failed | 73 passed (76)
+   Start at  14:41:36
+   Duration  2.34s (tests 33%, transform 27%, environment 26%, setup 8%, import 5%)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > when the activity service cannot be observed > says so in place of "No operations" when the tool holds no row: its title and the feed's sentence, as an alert, and no table
+TestingLibraryElementError: Unable to find an accessible element with the role "alert"
+Here are the accessible roles:
+  status:
+  Name "":
+  <div
+    class="_empty_fa0bfc"
+    data-shell-part="panelEmpty"
+    role="status"
+  />
+  --------------------------------------------------
+  paragraph:
+  Name "":
+  <p
+    class="Text-module_root_1p2mcW"
+    data-ov-part="title"
+    data-ov-tone="default"
+    data-ov-variant="title"
+  />
+  Name "":
+  <p
+    class="Text-module_root_1p2mcW"
+    data-ov-part="hint"
+    data-ov-tone="muted"
+    data-ov-variant="body"
+  />
+  --------------------------------------------------
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div
+      class="_empty_fa0bfc"
+      data-shell-part="panelEmpty"
+      role="status"
+    >
+      <div
+        class="EmptyState-module_root_veG_Eq"
+        data-ov-compact=""
+        data-ov-part="empty-state"
+      >
+        <span
+          aria-hidden="true"
+          class="EmptyState-module_icon_veG_Eq"
+          data-ov-part="icon"
+        >
+          <svg
+            aria-hidden="true"
+            class="Icon-module_root_8Wb43a"
+            data-ov-glyph="activity"
+            data-ov-size="16"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+        </span>
+        <p
+          class="Text-module_root_1p2mcW"
+          data-ov-part="title"
+          data-ov-tone="default"
+          data-ov-variant="title"
+        >
+          No operations
+        </p>
+        <p
+          class="Text-module_root_1p2mcW"
+          data-ov-part="hint"
+          data-ov-tone="muted"
+          data-ov-variant="body"
+        >
+          Operations you start and background work from plugins appear here.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+ ❯ Object.getElementError node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ getByRole node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:165:26
+    163|   it('says so in place of "No operations" when the tool holds no row: …
+    164|     mount([], { error: SENTENCE });
+    165|     const alert = screen.getByRole('alert');
+       |                          ^
+    166|     expect(within(alert).getByText('Couldn\'t read operations')).toBeI…
+    167|     expect(within(alert).getByText(SENTENCE)).toBeInTheDocument();
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > when the activity service cannot be observed > says what the feed says, whatever the sentence is: nothing of it is the tool's
+TestingLibraryElementError: Unable to find an accessible element with the role "alert"
+Here are the accessible roles:
+  status:
+  Name "":
+  <div
+    class="_empty_fa0bfc"
+    data-shell-part="panelEmpty"
+    role="status"
+  />
+  --------------------------------------------------
+  paragraph:
+  Name "":
+  <p
+    class="Text-module_root_1p2mcW"
+    data-ov-part="title"
+    data-ov-tone="default"
+    data-ov-variant="title"
+  />
+  Name "":
+  <p
+    class="Text-module_root_1p2mcW"
+    data-ov-part="hint"
+    data-ov-tone="muted"
+    data-ov-variant="body"
+  />
+  --------------------------------------------------
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div
+      class="_empty_fa0bfc"
+      data-shell-part="panelEmpty"
+      role="status"
+    >
+      <div
+        class="EmptyState-module_root_veG_Eq"
+        data-ov-compact=""
+        data-ov-part="empty-state"
+      >
+        <span
+          aria-hidden="true"
+          class="EmptyState-module_icon_veG_Eq"
+          data-ov-part="icon"
+        >
+          <svg
+            aria-hidden="true"
+            class="Icon-module_root_8Wb43a"
+            data-ov-glyph="activity"
+            data-ov-size="16"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+        </span>
+        <p
+          class="Text-module_root_1p2mcW"
+          data-ov-part="title"
+          data-ov-tone="default"
+          data-ov-variant="title"
+        >
+          No operations
+        </p>
+        <p
+          class="Text-module_root_1p2mcW"
+          data-ov-part="hint"
+          data-ov-tone="muted"
+          data-ov-variant="body"
+        >
+          Operations you start and background work from plugins appear here.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+ ❯ Object.getElementError node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ getByRole node_modules/.pnpm/@testing-library+dom@10.4.2/node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:181:19
+    179|   it('says what the feed says, whatever the sentence is: nothing of it…
+    180|     mount([], { error: 'The host is not running (connection refused).'…
+    181|     expect(screen.getByRole('alert')).toHaveTextContent('The host is n…
+       |                   ^
+    182|   });
+    183|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > when the activity service cannot be observed > comes in place of the empty state when the service fails with no row, and goes back to it when the service can be observed again
+Error: expect(element).not.toBeInTheDocument()
+expected document not to contain element, found <p
+  class="Text-module_root_1p2mcW"
+  data-ov-part="title"
+  data-ov-tone="default"
+  data-ov-variant="title"
+>
+  No operations
+</p> instead
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:188:53
+    186|     expect(screen.getByText('No operations')).toBeInTheDocument();
+    187|     push([], SENTENCE);
+    188|     expect(screen.queryByText('No operations')).not.toBeInTheDocument(…
+       |                                                     ^
+    189|     expect(screen.getByRole('alert')).toHaveTextContent(SENTENCE);
+    190|     push([]);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+## 4. ago: the mock's rounding restored (4685831508); the tip carries the UTC stamp only (its words were the kit's floor and would disagree with the label)
+# Run against the old floor rule and a stub `stampOf` that answers an empty string. 47 failures, each an assertion on words or on an instant (samples below). The 26 that pass are what the two rules share:
+# under 44 s, whole hours and days, a start ahead of the clock, the 400-day walk's change count (the floor rule has as many labels).
+$ pnpm exec vitest run ui-next/shell/panel/operations/ago.test.ts ui-next/shell/panel/operations/OperationsBody.test.tsx -t "ago|stampOf|Started"
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx (76 tests | 2 failed | 72 skipped) 87ms
+   ❯ the Started column (4)
+     × says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip 36ms
+     ❯ on the page's one age clock (1)
+       × turns "just now" into "1 min ago" at the half of the 45th second, the mock's rounding, and the tip keeps the stamp it had 8ms
+ ❯ ui-next/shell/panel/operations/ago.test.ts (69 tests | 45 failed) 156ms
+   ❯ ago: the words (33)
+     × a start 44500 ms ago reads 1 min ago 3ms
+     × a start 45000 ms ago reads 1 min ago 0ms
+     × a start 59000 ms ago reads 1 min ago 0ms
+     × a start 89500 ms ago reads 2 min ago 0ms
+     × a start 90000 ms ago reads 2 min ago 0ms
+     × a start 1060000 ms ago reads 18 min ago 0ms
+     × a start 3569500 ms ago reads 1 h ago 0ms
+     × a start 3570000 ms ago reads 1 h ago 0ms
+     × a start 5370000 ms ago reads 2 h ago 0ms
+     × a start 19800000 ms ago reads 6 h ago 0ms
+     × a start 84570000 ms ago reads 1 d ago 0ms
+     × a start 127770000 ms ago reads 2 d ago 0ms
+   ❯ ago: the mock's function is its oracle (9)
+     × says what the mock says at every second of the first 40 hours, with the clock 0 ms into the second 10ms
+     × says what the mock says at every second of the first 40 hours, with the clock 1 ms into the second 8ms
+     × says what the mock says at every second of the first 40 hours, with the clock 250 ms into the second 7ms
+     × says what the mock says at every second of the first 40 hours, with the clock 499 ms into the second 8ms
+     × says what the mock says at every second of the first 40 hours, with the clock 500 ms into the second 7ms
+     × says what the mock says at every second of the first 40 hours, with the clock 501 ms into the second 6ms
+     × says what the mock says at every second of the first 40 hours, with the clock 999 ms into the second 6ms
+     × says what the mock says for the starts that are days and years old, and for the ones ahead of the clock 12ms
+     × says what the mock says at every instant where its words change, and at the one before it 1ms
+   ❯ ago: changesAt (21)
+     × with the clock 0 ms after the start, the next words begin at 44500 ms 0ms
+     × with the clock 44499 ms after the start, the next words begin at 44500 ms 0ms
+     × with the clock 44500 ms after the start, the next words begin at 89500 ms 0ms
+     × with the clock 89499 ms after the start, the next words begin at 89500 ms 0ms
+     × with the clock 89500 ms after the start, the next words begin at 149500 ms 0ms
+     × with the clock 1060000 ms after the start, the next words begin at 1109500 ms 0ms
+     × with the clock 3569499 ms after the start, the next words begin at 3569500 ms 0ms
+     × with the clock 3569500 ms after the start, the next words begin at 5369500 ms 0ms
+     × with the clock 5369999 ms after the start, the next words begin at 8969500 ms 0ms
+     × with the clock 19740000 ms after the start, the next words begin at 19769500 ms 0ms
+     × with the clock 84569499 ms after the start, the next words begin at 84569500 ms 0ms
+     × with the clock 84569500 ms after the start, the next words begin at 127769500 ms 0ms
+     × with the clock 127769500 ms after the start, the next words begin at 214169500 ms 0ms
+     × with the clock 1486800000 ms after the start, the next words begin at 1510169500 ms 0ms
+     × is the instant at which the mock says other words, from every age of a sweep of the first 30 hours and three days past them 45ms
+     × is exact: the words hold to the millisecond before it and are the mock's others at it, at every instant where the mock's words change 0ms
+     × walks the first 40 hours second by second and changes exactly where it says (grid offset 0 ms) 4ms
+     × walks the first 40 hours second by second and changes exactly where it says (grid offset 250 ms) 3ms
+     × walks the first 40 hours second by second and changes exactly where it says (grid offset 999 ms) 3ms
+   ❯ ago: the age clock of the page reads it (3)
+     × turns "just now" into "1 min ago" at the half of the 45th second, and no earlier 7ms
+     × turns "1 min ago" into "2 min ago" at the half of the 90th second 1ms
+     × turns "59 min ago" into "1 h ago" at the half of the 3,570th second, and "23 h ago" into "1 d ago" at the half of the 84,570th 1ms
+   ❯ stampOf: the absolute start, in UTC (3)
+     × is the instant in UTC to the minute, as the kit writes the stamp of an age: the tip of the words 0ms
+     × is UTC whatever the time zone of the machine is: the day turns at the midnight of UTC 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 47 ⎯⎯⎯⎯⎯⎯⎯
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:413:38
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:441:23
+ Test Files  2 failed (2)
+      Tests  47 failed | 26 passed | 72 skipped (145)
+
+# samples of the assertions
+      2 AssertionError: expected [ { age: 44500, …(2) }, …(4) ] to deeply equal []
+      2 AssertionError: expected 'just now' to be '1 min ago' // Object.is equality
+      2 AssertionError: expected '59 min ago' to be '1 h ago' // Object.is equality
+      2 AssertionError: expected '1 min ago' to be '2 min ago' // Object.is equality
+      1 Error: expect(element).toHaveTextContent()
+      1 AssertionError: expected [ { age: 45499, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ { age: 45250, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ { age: 45001, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ { age: 45000, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ { age: 44999, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ { age: 44501, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ { age: 144000000, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ { age: -60000, …(2) }, …(4) ] to deeply equal []
+      1 AssertionError: expected [ 44500, 89500, 149500, 209500, …(81) ] to deeply equal []
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Started column > says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip
+Error: expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  /^18 min ago$/
+Received:
+  17 min ago
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:413:38
+
+## 5. read after a second: each failure keeps ITS OWN second (4685831517)
+# Against the old effect (one timer, started again by every change of the unread ids). 3 failures, 11 passes: the 11 are the cases both designs share (one batch, leaving the screen, read elsewhere, a mount run twice); the 3 are the review's scenario.
+# Fake timers; the assertions are the calls of `markRead` and their ids, never a duration.
+$ pnpm exec vitest run ui-next/shell/panel/operations/OperationsBody.test.tsx -t "marking read"
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt1-problems-operations
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx (81 tests | 3 failed | 67 skipped) 145ms
+   ❯ marking read: what the tool has shown for a second (S81) (14)
+     × keeps the second of each failure from when the tool listed it: one that arrives 600 ms later does not start the older one's again 12ms
+     × marks each failure of a stream at its own second when one arrives every 600 ms: none waits for the stream to stop 12ms
+     × asks for an id once while it stays unread: a failure that arrives after its mark was asked for, and before the host answered, does not ask for it again 6ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > keeps the second of each failure from when the tool listed it: one that arrives 600 ms later does not start the older one's again
+AssertionError: expected [] to deeply equal [ [ 'a' ] ]
+- Expected
++ Received
+- [
+-   [
+-     "a",
+-   ],
+- ]
++ []
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:707:26
+ Test Files  1 failed (1)
+      Tests  3 failed | 11 passed | 67 skipped (81)
+   Start at  14:50:06
+   Duration  2.06s (environment 45%, transform 29%, setup 12%, tests 8%, import 6%)
+    705|     // t = 1000: a's second is over, and only a is asked for.
+    706|     advance(1);
+    707|     expect(marked(read)).toEqual([['a']]);
+       |                          ^
+    708|     // t = 1599: b has been listed for 999 ms.
+    709|     advance(599);
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > marks each failure of a stream at its own second when one arrives every 600 ms: none waits for the stream to stop
+AssertionError: expected [] to deeply equal [ [ 'f0' ], [ 'f1' ], [ 'f2' ], …(1) ]
+- Expected
++ Received
+- [
+-   [
+-     "f0",
+-   ],
+-   [
+-     "f1",
+-   ],
+-   [
+-     "f2",
+-   ],
+-   [
+-     "f3",
+-   ],
+- ]
++ []
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:727:26
+    725|     }
+    726|
+    727|     expect(marked(read)).toEqual([['f0'], ['f1'], ['f2'], ['f3']]);
+       |                          ^
+    728|     advance(400);
+    729|     expect(marked(read)).toEqual([['f0'], ['f1'], ['f2'], ['f3'], ['f4…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > asks for an id once while it stays unread: a failure that arrives after its mark was asked for, and before the host answered, does not ask for it again
+AssertionError: expected [ [ 'a' ], [ 'b', 'a' ] ] to deeply equal [ [ 'a' ], [ 'b' ] ]
+- Expected
++ Received
+@@ -2,7 +2,8 @@
+    [
+      "a",
+    ],
+    [
+      "b",
++     "a",
+    ],
+  ]
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:742:26
+    740|     push([a, task('b', { state: 'failed', at: 1 })]);
+    741|     advance(1000);
+    742|     expect(marked(read)).toEqual([['a'], ['b']]);
+       |                          ^
+    743|   });
+    744|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+## 6. negative controls: 41 faults, each written in memory into one source file (no file of the tree is touched), each caught by the test it is named for
+# `docs/ui-next/status/PT1/controls-fix-operations.mjs` (a Vite transform in a copy of the repo's vitest config, a fresh module cache for every run). Uptime load 11 at the start. The earlier controls of the ago, the tip and the read timer
+# (`red-operations-controls.txt`: ago-mock-45-seconds, ago-rounds-not-floors, ago-changes-a-unit-early, ago-hour-words, agotip-*, timer-not-re-armed-on-new-ids, timer-armed-with-no-ids) described faults of code that no longer exists:
+# they are replaced by the ones below (ago-*, stamp-*, started-*, read-*). `ago-no-nan-guard`, `ago-hour-words`, `started-without-tip` and `read-after-999ms` keep their names.
+$ node docs/ui-next/status/PT1/controls-fix-operations.mjs
+baseline: 307 passed, 0 failing (must be 0)
+CAUGHT   feed-error-never-held: 3 failing | trips: "holds the sentence a push carries" | first: × the activity feed: whether the service can be observed holds the sentence a push carries, beside the records of the same push
+CAUGHT   feed-error-not-cleared: 2 failing | trips: "has no error again when a push carries none" | first: × the activity feed: whether the service can be observed has no error again when a push carries none: absent means the service can be observed
+CAUGHT   feed-error-change-silent: 2 failing | trips: "tells its listeners when only the error changes" | first: × the activity feed: whether the service can be observed has no error again when a push carries none: absent means the service can be observed
+CAUGHT   feed-always-notifies: 2 failing | trips: "for no push of the one it has" | first: × the activity feed tells its listeners once for each push of another array, and for no push of the one it has
+CAUGHT   unavailable-never-set: 8 failing | trips: "is the feed's sentence, with no row, when the first read failed" | first: × when the activity service cannot be observed (the feed's error) is the feed's sentence, with no row, when the first read failed: a failed read is not "no operations"
+CAUGHT   model-ignores-error-change: 3 failing | trips: "tells its listeners once for a change of the error alone" | first: × when the activity service cannot be observed (the feed's error) keeps the rows it holds when the observation fails after it worked, and says so beside them
+CAUGHT   snapshot-ignores-error: 4 failing | trips: "tells its listeners once for a change of the error alone" | first: × when the activity service cannot be observed (the feed's error) is the feed's sentence, with no row, when the first read failed: a failed read is not "no operations"
+CAUGHT   running-always-true: 6 failing | trips: "tells the host the work is not running when the task was" | first: × cancelling a task tells the host what it knew when it asked, when the task is gone from the feed before the answer comes
+CAUGHT   running-true-for-a-gone-row: 1 failing | trips: "when the task is gone from the feed before the answer comes" | first: × cancelling a task tells the host what it knew when it asked, when the task is gone from the feed before the answer comes
+CAUGHT   running-always-false: 6 failing | trips: "tells the host the work is still running when the task is" | first: × cancelling a task never rejects: a rejection of the feed puts available back and tells the host once, with the title, the plugin, the error and a way to ask again
+CAUGHT   unavailable-ignored: 3 failing | trips: "says so in place of "No operations"" | first: × when the activity service cannot be observed says so in place of "No operations" when the tool holds no row: its title and the feed's sentence, as an alert, and no table
+CAUGHT   unavailable-hides-rows: 2 failing | trips: "keeps the rows listed when the service fails after it worked" | first: × when the activity service cannot be observed keeps the rows listed when the service fails after it worked: a failed read is not the end of what the window saw
+CAUGHT   unavailable-is-a-status: 3 failing | trips: "says so in place of "No operations"" | first: × when the activity service cannot be observed says so in place of "No operations" when the tool holds no row: its title and the feed's sentence, as an alert, and no table
+CAUGHT   unavailable-sentence-dropped: 3 failing | trips: "says so in place of "No operations"" | first: × when the activity service cannot be observed says so in place of "No operations" when the tool holds no row: its title and the feed's sentence, as an alert, and no table
+CAUGHT   unavailable-title-words: 2 failing | trips: "says in the host's words that the service could not be read" | first: × when the activity service cannot be observed says so in place of "No operations" when the tool holds no row: its title and the feed's sentence, as an alert, and no table
+CAUGHT   ago-no-nan-guard: 1 failing | trips: "says nothing for a date that is not a date" | first: × ago: the words says nothing for a date that is not a date, and never changes it
+CAUGHT   ago-just-now-until-60-seconds: 20 failing | trips: "a start 44500 ms ago reads 1 min ago" | first: × the Started column on the page's one age clock turns "just now" into "1 min ago" at the half of the 45th second, the mock's rounding, and the tip keeps the stamp it had
+CAUGHT   ago-seconds-floor: 24 failing | trips: "with the clock 500 ms into the second" | first: × the Started column on the page's one age clock turns "just now" into "1 min ago" at the half of the 45th second, the mock's rounding, and the tip keeps the stamp it had
+CAUGHT   ago-minutes-floor: 38 failing | trips: "a start 1060000 ms ago reads 18 min ago" | first: × the Started column says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip
+CAUGHT   ago-hours-floor: 23 failing | trips: "a start 5370000 ms ago reads 2 h ago" | first: × ago: the words a start 5370000 ms ago reads 2 h ago
+CAUGHT   ago-days-floor: 17 failing | trips: "a start 127770000 ms ago reads 2 d ago" | first: × ago: the words a start 127770000 ms ago reads 2 d ago
+CAUGHT   ago-hours-from-seconds: 22 failing | trips: "a start 5370000 ms ago reads 2 h ago" | first: × ago: the words a start 5370000 ms ago reads 2 h ago
+CAUGHT   ago-days-from-seconds: 17 failing | trips: "a start 127770000 ms ago reads 2 d ago" | first: × ago: the words a start 127770000 ms ago reads 2 d ago
+CAUGHT   ago-changes-at-whole-second: 24 failing | trips: "with the clock 0 ms after the start, the next words begin at 44500 ms" | first: × the Started column on the page's one age clock turns "just now" into "1 min ago" at the half of the 45th second, the mock's rounding, and the tip keeps the stamp it had
+CAUGHT   ago-minute-ends-early: 11 failing | trips: "with the clock 44500 ms after the start, the next words begin at 89500 ms" | first: × ago: changesAt with the clock 44500 ms after the start, the next words begin at 89500 ms
+CAUGHT   ago-hour-ends-late: 11 failing | trips: "with the clock 3569500 ms after the start, the next words begin at 5369500 ms" | first: × ago: changesAt with the clock 3569500 ms after the start, the next words begin at 5369500 ms
+CAUGHT   ago-day-ends-late: 9 failing | trips: "with the clock 84569500 ms after the start, the next words begin at 127769500 ms" | first: × ago: changesAt with the clock 84569500 ms after the start, the next words begin at 127769500 ms
+CAUGHT   ago-hour-words: 19 failing | trips: "a start 3570000 ms ago reads 1 h ago" | first: × the Started column says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip
+CAUGHT   stamp-has-seconds: 4 failing | trips: "is the instant in UTC to the minute" | first: × the Started column says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip
+CAUGHT   stamp-no-nan-guard: 1 failing | trips: "is nothing for a time that is not a time" | first: × stampOf: the absolute start, in UTC is nothing for a time that is not a time
+CAUGHT   stamp-local-time: 4 failing | trips: "is UTC whatever the time zone of the machine is" | first: × the Started column says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip
+CAUGHT   started-without-tip: 2 failing | trips: "and the absolute stamp in UTC as its tip" | first: × the Started column says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip
+CAUGHT   started-tip-has-words: 2 failing | trips: "and the absolute stamp in UTC as its tip" | first: × the Started column says how long ago the host first had the record, in the mock's words and with its rounding, and the absolute stamp in UTC as its tip
+CAUGHT   read-after-999ms: 3 failing | trips: "marks the unread ones when the tool has been on screen for a second, and not before" | first: × marking read: what the tool has shown for a second (S81) marks the unread ones when the tool has been on screen for a second, and not before
+CAUGHT   read-restarts-everyone: 3 failing | trips: "keeps the second of each failure from when the tool listed it" | first: × marking read: what the tool has shown for a second (S81) keeps the second of each failure from when the tool listed it: one that arrives 600 ms later does not start the older one's again
+CAUGHT   read-asks-twice: 2 failing | trips: "asks for an id once while it stays unread" | first: × marking read: what the tool has shown for a second (S81) marks each failure of a stream at its own second when one arrives every 600 ms: none waits for the stream to stop
+CAUGHT   read-ignores-leave-and-return: 2 failing | trips: "begins a new second for an id that was read from another window" | first: × marking read: what the tool has shown for a second (S81) begins a new second for an id that was read from another window and is unread again: the second its first listing had is not the new one's
+CAUGHT   read-never-forgets-an-id: 2 failing | trips: "begins a new second for an id that was read from another window" | first: × marking read: what the tool has shown for a second (S81) begins a new second for an id that was read from another window and is unread again: the second its first listing had is not the new one's
+CAUGHT   read-timers-survive-leaving: 1 failing | trips: "leaves no timer behind" | first: × marking read: what the tool has shown for a second (S81) runs no second after the tool left the screen, whichever failure it was for, and leaves no timer behind: each had its own
+CAUGHT   read-one-listing-keeps-only-the-last-timer: 1 failing | trips: "leaves no timer behind" | first: × marking read: what the tool has shown for a second (S81) runs no second after the tool left the screen, whichever failure it was for, and leaves no timer behind: each had its own

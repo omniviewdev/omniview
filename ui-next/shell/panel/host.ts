@@ -1,6 +1,7 @@
 import type { LinkActivation } from '@omniviewdev/kit';
 import type { ReactElement } from 'react';
 import type { PanelStore, Route, Session, ToolId } from '../core/panel';
+import type { ToolBadges } from './badge';
 
 // What the shell asks of its host to draw the panel. The shell knows a tool by the data the model holds (an id, a label, a glyph) and a session by its record; what a session's body draws and
 // what its card says are the owner's (a plugin's, or the host's own tool's), so the host hands the shell these answers and the shell never reads a plugin. Plain data and functions.
@@ -51,6 +52,14 @@ export type PanelBindings = {
    * and the button that starts a session when `newSessionOf` has one.
    */
   readonly emptyOf?: ((tool: ToolId) => PanelEmpty | undefined) | undefined;
+  /**
+   * Draws a tool that has no sessions (a singleton, ch16 S114: Problems and Operations), or `undefined` for a tool that has them. It is asked only for the tool that is on screen while the panel is open, so the host
+   * does no work for a tool nobody is looking at, and what it returns is dropped when the tool leaves the screen or the panel is hidden: a singleton holds no stream, so nothing of it is kept mounted. The host puts the
+   * element in its own boundary, as it does a session's body. A tool it draws has no strip of sessions, no `+` and no empty state. Member absent: every tool has sessions.
+   */
+  readonly renderTool?: ((tool: ToolId) => ReactElement | undefined) | undefined;
+  /** What each tool tab carries beside its words: a count or a dot (`badge.ts`). Member absent: no tab carries one. */
+  readonly badges?: ToolBadges | undefined;
   /** Where the resource of a session is: its address, and what opening it does. The shell knows no address grammar and no tab disposition: the host does. */
   readonly linkOf: (route: Route) => PanelLink;
 };

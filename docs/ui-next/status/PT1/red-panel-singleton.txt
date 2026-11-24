@@ -1,0 +1,26 @@
+     × draws what the host renders for it, and no strip of sessions, no + and no empty state 182ms
+     × is the tabpanel its tab names, so the body and the tab say one thing to a screen reader 68ms
+     × is not drawn while the panel is hidden, and is drawn again from scratch when it is shown: it holds no stream, so nothing of it is kept mounted 16ms
+     × is not asked for while another tool is on screen: the host does no work for a tool nobody is looking at 66ms
+     × is a count with its words in the tab name: "Problems, 2 errors" 71ms
+     × is a dot with its words in the tab name: "Operations, 1 unread failure"; the dot says its tone and draws no number 58ms
+     × follows the host while the panel is on screen: it appears, changes and goes, and a tab that has none is named by its words alone 56ms
+     × is subscribed once for each tab that is drawn and let go of with the shell 11ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > a tool that has no sessions > draws what the host renders for it, and no strip of sessions, no + and no empty state
+TestingLibraryElementError: Unable to find an element with the text: The conditions. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > a tool that has no sessions > is the tabpanel its tab names, so the body and the tab say one thing to a screen reader
+TestingLibraryElementError: Unable to find an element with the text: The conditions. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > a tool that has no sessions > is not drawn while the panel is hidden, and is drawn again from scratch when it is shown: it holds no stream, so not
+AssertionError: expected null not to be null
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > a tool that has no sessions > is not asked for while another tool is on screen: the host does no work for a tool nobody is looking at
+AssertionError: expected "vi.fn()" to be called with arguments: [ 'terminal' ]
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > the badge of a tool tab (ch16 S114: a count on a tab is allowed) > is a count with its words in the tab name: "Problems, 2 errors"
+TestingLibraryElementError: Unable to find an accessible element with the role "tab" and name "Problems, 2 errors"
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > the badge of a tool tab (ch16 S114: a count on a tab is allowed) > is a dot with its words in the tab name: "Operations, 1 unread failure"; the do
+TestingLibraryElementError: Unable to find an accessible element with the role "tab" and name "Operations, 1 unread failure"
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > the badge of a tool tab (ch16 S114: a count on a tab is allowed) > follows the host while the panel is on screen: it appears, changes and goes, an
+TestingLibraryElementError: Unable to find an accessible element with the role "tab" and name "Problems, 1 error"
+ FAIL  ui-next/shell/panel/Panel.singleton.test.tsx > the badge of a tool tab (ch16 S114: a count on a tab is allowed) > is subscribed once for each tab that is drawn and let go of with the shell
+AssertionError: expected +0 to be 3 // Object.is equality
+      Tests  8 failed | 1 passed (9)

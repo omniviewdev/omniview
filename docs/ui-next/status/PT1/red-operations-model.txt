@@ -1,0 +1,280 @@
+     × lists the tasks of the feed and nothing else: an alert and a message have tools of their own 4ms
+     × does not list a record that says it is a task and has no task in it: there is no state to draw 0ms
+     × forgets a task the host dropped (its history was cleared), and the count with it 0ms
+     × never changes the feed's records or the array it holds: they are the provider's, and the other tool reads them too 1ms
+     × holds what the producer said and what the window knows of its source 0ms
+     × is the host's own work when the record names no plugin: the host's name, no target and no page to go to 0ms
+     × names no target and goes to the plugin when the window does not know the connection the record names 0ms
+     × says the plugin's id when the window does not know its name (it is not loaded) 0ms
+     × starts when the host first had the record: the instant of its createdAt, whatever the offset it is written in 0ms
+     × is starting: active is true, and the state is the producer's 0ms
+     × is running: active is true, and the state is the producer's 0ms
+     × is paused: active is true, and the state is the producer's 0ms
+     × is succeeded: active is false, and the state is the producer's 0ms
+     × is failed: active is false, and the state is the producer's 0ms
+     × is cancelled: active is false, and the state is the producer's 0ms
+     × is unknown: active is false, and the state is the producer's 0ms
+     × keeps the producer's message as it came 0ms
+     × is the producer's, for a task that is starting 0ms
+     × is the producer's, for a task that is running 0ms
+     × is the producer's, for a task that is paused 0ms
+     × is steps as "2 of 5" 0ms
+     × is none for a task that is succeeded: the work that finished is not "6 of 14" any more 0ms
+     × is none for a task that is failed: the work that finished is not "6 of 14" any more 0ms
+     × is none for a task that is cancelled: the work that finished is not "6 of 14" any more 0ms
+     × is none for a task that is unknown: the work that finished is not "6 of 14" any more 0ms
+     × is none for work that cannot be measured, and for no progress 0ms
+     × is exact for a count of any size: the producer's numbers are decimal strings 0ms
+     × is the row of an active task that says it can be cancelled 0ms
+     × is the row of a task that is starting and says it can be cancelled 0ms
+     × is the row of a paused task that says it can be cancelled 0ms
+     × is the row of an active task that cannot be cancelled 0ms
+     × is the row of an active task whose cancellation was requested 0ms
+     × is the row of an active task whose cancellation the producer acknowledged 0ms
+     × is the row of a task that finished and still says it can be cancelled (its record is behind) 0ms
+     × is the row of a task that failed with a cancellation that was requested 0ms
+     × is the row of a task whose outcome nobody knows 0ms
+     × is active work first, and each group newest first 0ms
+     × is the same whatever order the feed lists them in 0ms
+     × breaks a tie of time by the id, so the order never depends on the feed 0ms
+     × is by the instant, not by the spelling of the stamp: an offset moves it 0ms
+     × moves a task below the active ones when it finishes, and back to its place among its group 1ms
+     × keeps a record whose time cannot be read, as the oldest, and does not make the order depend on it 0ms
+     × is a failure nobody read: unread is failed 0ms
+     × is a failure that is read: unread is failed 0ms
+     × is an outcome nobody knows, not read: unread is unknown 0ms
+     × is an outcome nobody knows, read: unread is unknown 0ms
+     × is a task that was cancelled: unread is cancelled 0ms
+     × is a task that succeeded: unread is succeeded 0ms
+     × is a task that succeeded and says warning, not read: unread is succeeded 0ms
+     × is a task that succeeded and says error, not read: unread is succeeded 0ms
+     × is a task that succeeded and says error, read: unread is succeeded 0ms
+     × is a task that was cancelled and says error: unread is cancelled 0ms
+     × is a task that was cancelled and says warning: unread is cancelled 0ms
+     × is a failure whose record says only warning (the record never lowers it): unread is failed 0ms
+     × is an outcome nobody knows whose record says error (raised): unread is unknown 0ms
+     × is a failure whose record says success (the record never lowers it): unread is failed 0ms
+     × is never so for a task that is starting, whatever its record says: an active task is not unread, it becomes unread when it finishes 0ms
+     × is never so for a task that is running, whatever its record says: an active task is not unread, it becomes unread when it finishes 0ms
+     × is never so for a task that is paused, whatever its record says: an active task is not unread, it becomes unread when it finishes 0ms
+     × counts what is unread, in the order of the rows, and names the ids to mark 1ms
+     × is an error dot that names 1 failure(s): "1 unread failure" 0ms
+     × is an error dot that names 2 failure(s): "2 unread failures" 0ms
+     × is an error dot that names 12 failure(s): "12 unread failures" 0ms
+     × is a warning dot that names 1 warning(s) when none is a failure: "1 unread warning" 0ms
+     × is a warning dot that names 3 warning(s) when none is a failure: "3 unread warnings" 0ms
+     × is the error dot when there is a failure and a warning, and names the failures 0ms
+     × goes when the failure is read, and the warning that was behind it shows 0ms
+     × is a dot and never a count, whatever the number of rows or of failures 0ms
+     × keeps the row of a record that did not change, the rows, the counts and the badge, and tells nobody, when the feed holds the same records in a new array 0ms
+     × keeps the row, and the snapshot, of a record that was made again and says the same 0ms
+     × makes a new row for the record that changed and keeps the others; the counts and the badge, which it did not touch, keep their objects 0ms
+     × makes a new count, and a new badge, only when what they say changed 0ms
+     × keeps the rows array when only the order of the feed changed 0ms
+     × are told once for a change, and the snapshot is current when they are 0ms
+     × are told once for 500 records that arrive together, and the rows are all of them in order 1ms
+     × are not told again for a change that says nothing new 0ms
+     × are not told after they unsubscribe, and the others still are 0ms
+     × are not told in the middle of a notification they unsubscribed in 0ms
+     × holds nothing before it is attached, and has no listener on the feed 0ms
+     × reads the feed at once when it is attached, and tells its listeners of the rows it found 0ms
+     × follows the feed while it is attached: one listener on the feed, whatever the number of changes 0ms
+     × stops listening when it is detached: the feed has no listener of the model and the rows stay as they were 0ms
+     × does nothing when the function that detaches is called twice 0ms
+     × reads what the feed holds when it is attached again, and has again one listener 0ms
+     × keeps following the feed while one of two attachments is left (a window that mounts twice), and stops with the last 0ms
+     × can be attached, detached and attached again in a row, as a strict mount does: the model follows the feed 0ms
+     × makes every row again from the records and the names now: a plugin that was named by its id gets its name, a connection that was unknown is a target and a page 0ms
+     × keeps the rows that come out the same, and tells the listeners once 0ms
+     × keeps the snapshot and tells nobody when nothing it knows changed 0ms
+     × asks the resolver again for every record: that is what it is for 0ms
+     × does no work for a record that did not change when the feed changes: the resolver is asked for the one that did 0ms
+     × asks the feed once, with the id, and the row says requested while the call is in flight; the listeners are told 0ms
+     × follows its record again when the call is answered: the host's own word says what the row says next 0ms
+     × does not ask the feed again while its own call is in flight, and answers when the first call does 0ms
+     × does not ask the feed for a task the host says is already requested 0ms
+     × does not ask the feed for a task the host says is already acknowledged 0ms
+     × does not ask the feed for a task that cannot be cancelled, one that finished, or one it does not know: Cancel never promises what the producer did not 0ms
+     × never rejects: a rejection of the feed puts available back and tells the host once, with the title, the plugin, the error and a way to ask again 0ms
+     × has put available back before it tells the host: a way to ask again that is used at once finds a row that can be asked for 0ms
+     × is told of the host's own work with no plugin: there is none to name 0ms
+     × asks the feed again when the way it gave is used, and tells the host again if that fails too: once for each failure 0ms
+     × succeeds on the second ask: the way to ask again is the one that works 0ms
+     × does not ask again, when the way to ask again is used, for a task that finished meanwhile 0ms
+     × treats a feed that throws before it returns a promise as a failure like any other 0ms
+     × never rejects when the host's own handler of the failure throws: it is logged 0ms
+     × tells the host what it knew when it asked, when the task is gone from the feed before the answer comes 0ms
+     × is a model that needs no failure handler: a rejection with no one to tell is still not a rejection 0ms
+     × asks the feed for each id, once, and answers when all of them did 2ms
+     × asks for every id at once: one that is slow does not hold the others 0ms
+     × makes no call for no ids 0ms
+     × never rejects: a failure is logged with console.warn, the other ids are still asked, and the rows stay unread 0ms
+     × treats a feed that throws before it returns a promise as a failure like any other 0ms
+     × shows a record as read when the host says so, through the feed, and the badge goes with it 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 113 ⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/operations/model.test.ts > which records are rows > lists the tasks of the feed and nothing else: an alert and a message have tools of their own
+AssertionError: expected [] to deeply equal [ 't1' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > which records are rows > does not list a record that says it is a task and has no task in it: there is no state to draw
+AssertionError: expected [] to deeply equal [ 't2' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > which records are rows > forgets a task the host dropped (its history was cleared), and the count with it
+AssertionError: expected +0 to be 2 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > which records are rows > never changes the feed's records or the array it holds: they are the provider's, and the other tool reads them too
+AssertionError: expected [] to deeply equal [ 'c', 'a', 'b' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > holds what the producer said and what the window knows of its source
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is the host's own work when the record names no plugin: the host's name, no target and no page to go to
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > names no target and goes to the plugin when the window does not know the connection the record names
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > says the plugin's id when the window does not know its name (it is not loaded)
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > starts when the host first had the record: the instant of its createdAt, whatever the offset it is written in
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is starting: active is true, and the state is the producer's
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is running: active is true, and the state is the producer's
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is paused: active is true, and the state is the producer's
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is succeeded: active is false, and the state is the producer's
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is failed: active is false, and the state is the producer's
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is cancelled: active is false, and the state is the producer's
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > is unknown: active is false, and the state is the producer's
+ FAIL  ui-next/shell/panel/operations/model.test.ts > a row > keeps the producer's message as it came
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is the producer's, for a task that is starting
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is the producer's, for a task that is running
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is the producer's, for a task that is paused
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is steps as "2 of 5"
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is none for a task that is succeeded: the work that finished is not "6 of 14" any more
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is none for a task that is failed: the work that finished is not "6 of 14" any more
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is none for a task that is cancelled: the work that finished is not "6 of 14" any more
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is none for a task that is unknown: the work that finished is not "6 of 14" any more
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is none for work that cannot be measured, and for no progress
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the progress of a row > is exact for a count of any size: the producer's numbers are decimal strings
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of an active task that says it can be cancelled
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of a task that is starting and says it can be cancelled
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of a paused task that says it can be cancelled
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of an active task that cannot be cancelled
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of an active task whose cancellation was requested
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of an active task whose cancellation the producer acknowledged
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of a task that finished and still says it can be cancelled (its record is behind)
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of a task that failed with a cancellation that was requested
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what Cancel may say (S84: only when the producer says it is available) > is the row of a task whose outcome nobody knows
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the order of the rows > is active work first, and each group newest first
+AssertionError: expected [] to deeply equal [ 'new-run', 'start', 'old-run', …(2) ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the order of the rows > is the same whatever order the feed lists them in
+AssertionError: expected [] to deeply equal [ 'e', 'c', 'a', 'd', 'b' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the order of the rows > breaks a tie of time by the id, so the order never depends on the feed
+AssertionError: expected [] to deeply equal [ 'a', 'b', 'c' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the order of the rows > is by the instant, not by the spelling of the stamp: an offset moves it
+AssertionError: expected [] to deeply equal [ 'later-time', 'later-text' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the order of the rows > moves a task below the active ones when it finishes, and back to its place among its group
+AssertionError: expected [] to deeply equal [ 'newest', 'middle', 'oldest' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the order of the rows > keeps a record whose time cannot be read, as the oldest, and does not make the order depend on it
+AssertionError: expected [] to deeply equal [ 'b', 'a', 'bad' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a failure nobody read: unread is failed
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a failure that is read: unread is failed
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is an outcome nobody knows, not read: unread is unknown
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is an outcome nobody knows, read: unread is unknown
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a task that was cancelled: unread is cancelled
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a task that succeeded: unread is succeeded
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a task that succeeded and says warning, not read: unread is succeeded
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a task that succeeded and says error, not read: unread is succeeded
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a task that succeeded and says error, read: unread is succeeded
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a task that was cancelled and says error: unread is cancelled
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a task that was cancelled and says warning: unread is cancelled
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a failure whose record says only warning (the record never lowers it): unread is failed
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is an outcome nobody knows whose record says error (raised): unread is unknown
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is a failure whose record says success (the record never lowers it): unread is failed
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is never so for a task that is starting, whatever its record says: an active task is not unread, it bec
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is never so for a task that is running, whatever its record says: an active task is not unread, it beco
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > is never so for a task that is paused, whatever its record says: an active task is not unread, it becom
+ FAIL  ui-next/shell/panel/operations/model.test.ts > what is unread, and the severity of what finished (S74, S81) > counts what is unread, in the order of the rows, and names the ids to mark
+AssertionError: expected { ids: [], errors: +0, warnings: +0 } to deeply equal { ids: [ 'failed-new', …(2) ], …(2) }
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > is an error dot that names 1 failure(s): "1 unread failure"
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'error', …(1) }
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > is an error dot that names 2 failure(s): "2 unread failures"
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'error', …(1) }
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > is an error dot that names 12 failure(s): "12 unread failures"
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'error', …(1) }
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > is a warning dot that names 1 warning(s) when none is a failure: "1 unread warning"
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'warning', …(1) }
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > is a warning dot that names 3 warning(s) when none is a failure: "3 unread warnings"
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'warning', …(1) }
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > is the error dot when there is a failure and a warning, and names the failures
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'error', …(1) }
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > goes when the failure is read, and the warning that was behind it shows
+AssertionError: expected false to be 'error' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the badge of the tool (S114: a dot while a failure is unread, never a count) > is a dot and never a count, whatever the number of rows or of failures
+AssertionError: expected undefined to be 'dot' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > identity: a change of one record makes no new object for the others > keeps the row of a record that did not change, the rows, the counts and the badge, and tells nob
+AssertionError: expected { rows: [], active: +0, …(2) } to be { rows: [], active: +0, …(2) } // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > identity: a change of one record makes no new object for the others > keeps the row, and the snapshot, of a record that was made again and says the same
+AssertionError: expected { rows: [], active: +0, …(2) } to be { rows: [], active: +0, …(2) } // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > identity: a change of one record makes no new object for the others > makes a new row for the record that changed and keeps the others; the counts and the badge, whic
+AssertionError: expected [] not to be [] // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > identity: a change of one record makes no new object for the others > makes a new count, and a new badge, only when what they say changed
+AssertionError: expected { ids: [], errors: +0, warnings: +0 } not to be { ids: [], errors: +0, warnings: +0 } // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > identity: a change of one record makes no new object for the others > keeps the rows array when only the order of the feed changed
+AssertionError: expected { rows: [], active: +0, …(2) } to be { rows: [], active: +0, …(2) } // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the listeners > are told once for a change, and the snapshot is current when they are
+AssertionError: expected [ +0 ] to deeply equal [ 2 ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the listeners > are told once for 500 records that arrive together, and the rows are all of them in order
+AssertionError: expected [] to have a length of 500 but got +0
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the listeners > are not told again for a change that says nothing new
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 2 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the listeners > are not told after they unsubscribe, and the others still are
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > the listeners > are not told in the middle of a notification they unsubscribed in
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > holds nothing before it is attached, and has no listener on the feed
+AssertionError: expected 1 to be +0 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > reads the feed at once when it is attached, and tells its listeners of the rows it found
+AssertionError: expected [] to deeply equal [ 'b', 'a' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > follows the feed while it is attached: one listener on the feed, whatever the number of changes
+AssertionError: expected [] to deeply equal [ 'b' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > stops listening when it is detached: the feed has no listener of the model and the rows stay as they were
+AssertionError: expected 1 to be +0 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > does nothing when the function that detaches is called twice
+AssertionError: expected 1 to be +0 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > reads what the feed holds when it is attached again, and has again one listener
+AssertionError: expected [] to deeply equal [ 'a' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > keeps following the feed while one of two attachments is left (a window that mounts twice), and stops with the last
+AssertionError: expected [] to deeply equal [ 'a' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > attaching to the feed > can be attached, detached and attached again in a row, as a strict mount does: the model follows the feed
+AssertionError: expected [] to deeply equal [ 'a' ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > refreshing what the window knows of names and connections > makes every row again from the records and the names now: a plugin that was named by its id gets its name,
+ FAIL  ui-next/shell/panel/operations/model.test.ts > refreshing what the window knows of names and connections > keeps the rows that come out the same, and tells the listeners once
+ FAIL  ui-next/shell/panel/operations/model.test.ts > refreshing what the window knows of names and connections > keeps the snapshot and tells nobody when nothing it knows changed
+AssertionError: expected { rows: [], active: +0, …(2) } to be { rows: [], active: +0, …(2) } // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > refreshing what the window knows of names and connections > asks the resolver again for every record: that is what it is for
+AssertionError: expected 0 to be greater than 1
+ FAIL  ui-next/shell/panel/operations/model.test.ts > refreshing what the window knows of names and connections > does no work for a record that did not change when the feed changes: the resolver is asked for the one tha
+AssertionError: expected +0 to be 1 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > asks the feed once, with the id, and the row says requested while the call is in flight; the listeners are told
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > follows its record again when the call is answered: the host's own word says what the row says next
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > does not ask the feed again while its own call is in flight, and answers when the first call does
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > does not ask the feed for a task the host says is already requested
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > does not ask the feed for a task the host says is already acknowledged
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > does not ask the feed for a task that cannot be cancelled, one that finished, or one it does not know: Cancel never promises what the producer did
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 3 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > never rejects: a rejection of the feed puts available back and tells the host once, with the title, the plugin, the error and a way to ask again
+AssertionError: promise rejected "Error: cancellation unavailable" instead of resolving
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > has put available back before it tells the host: a way to ask again that is used at once finds a row that can be asked for
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > is told of the host's own work with no plugin: there is none to name
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > asks the feed again when the way it gave is used, and tells the host again if that fails too: once for each failure
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > succeeds on the second ask: the way to ask again is the one that works
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > does not ask again, when the way to ask again is used, for a task that finished meanwhile
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > treats a feed that throws before it returns a promise as a failure like any other
+AssertionError: promise rejected "Error: the bridge is down" instead of resolving
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > never rejects when the host's own handler of the failure throws: it is logged
+AssertionError: promise rejected "Error: no" instead of resolving
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > tells the host what it knew when it asked, when the task is gone from the feed before the answer comes
+ FAIL  ui-next/shell/panel/operations/model.test.ts > cancelling a task > is a model that needs no failure handler: a rejection with no one to tell is still not a rejection
+AssertionError: promise rejected "Error: no" instead of resolving
+ FAIL  ui-next/shell/panel/operations/model.test.ts > marking records read > asks the feed for each id, once, and answers when all of them did
+AssertionError: expected [ [ '' ] ] to deeply equal [ [ 'a' ], [ 'b' ], [ 'c' ] ]
+ FAIL  ui-next/shell/panel/operations/model.test.ts > marking records read > asks for every id at once: one that is slow does not hold the others
+AssertionError: expected "vi.fn()" to be called 3 times, but got 1 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > marking records read > makes no call for no ids
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > marking records read > never rejects: a failure is logged with console.warn, the other ids are still asked, and the rows stay unread
+AssertionError: expected "vi.fn()" to be called 3 times, but got 1 times
+ FAIL  ui-next/shell/panel/operations/model.test.ts > marking records read > treats a feed that throws before it returns a promise as a failure like any other
+AssertionError: promise rejected "Error: the bridge is down" instead of resolving
+ FAIL  ui-next/shell/panel/operations/model.test.ts > marking records read > shows a record as read when the host says so, through the feed, and the badge goes with it
+AssertionError: expected undefined to deeply equal { kind: 'dot', tone: 'error', …(1) }
+      Tests  113 failed | 3 passed (116)

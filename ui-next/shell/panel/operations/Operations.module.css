@@ -1,0 +1,60 @@
+/* The Operations tool (ch16 S122; the mock's shell-panel.css, `.ptable--ops`). Host composition, so every rule sits in ov.shell, above the kit's parts, and uses the kit's tokens only. The kit's table clips the cells of its
+   flexible columns and none of a fixed one (a fixed column has the width of its content), so the cells of the fixed columns that hold words clip themselves: the mock's Progress cell overflowed under the next cell. */
+@layer ov.shell {
+  /* The panel lays a tool's body out as an item of a row, which sizes an item that does not grow to its content (the Logs body had the same trouble, ./logs/LogsBody.module.css): this box is that item. It takes all the room
+     the panel gives the body, and the data view fills it. */
+  .operations {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  /* The data view lays out three lanes, a header, the body and a footer, and this slice draws no header: the footer took the `1fr` track and stood under the rows, out of the panel with a full table (see ../problems/Problems.module.css). */
+  .operations > [data-ov-state] {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  /* The words of a cell that may be cut: the title, the source and the connection. The kit's tooltip says them whole while they are cut (data-ov-clip). */
+  .clip {
+    display: block;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The Progress cell, 144 px wide with its 10 px insets: a 48 px bar, 8 px, and the producer's words, which take what is left and are cut with an ellipsis. The cell itself holds it, so it never runs under the next one. */
+  .progress {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+
+  .bar {
+    flex: 0 0 48px;
+    inline-size: 48px;
+  }
+
+  .progressText {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The row's buttons: 24 px each, 4 px apart (the mock's `.pact`). The kit's cell gives its block padding back to a button that is its own child (`.cell:has(> button)`) so that a 24 px command is a 24 px row; these two are in a box, so
+     the box gives it back itself, and the row is the mock's 24 px and not 32. */
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact), not a step of the spacing scale: the kit's own `.identifier > button` gives it back the same way */
+    margin-block: calc(-1 * var(--ov-row-pad));
+  }
+}

@@ -109,6 +109,17 @@
 //      SEAM_ONLY=connections runs u alone; SEAM_CONTROL=connections runs it alone with every perturbation of its controls (CONNECTIONS_CONTROLS) made in turn just before the assertion each must trip (one run serves them all); SEAM_CONTROL=<one of
 //      them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its perturbation pass undetected
 //
+//   v  the Problems and Operations tools of the host's panel (PT1), over the real host, on a host of its own whose two plugins (`fixture-a-ok`, which is the one that is killed, and `fixture-f-conn`) have a PROCESS that reports activity when the check appends
+//      a line to the file `activity-script` next to its binary (`fixture/activityscript`: `task begin|step|finish`, `alert fire|resolve`). OPERATIONS: a task is reported at 1 of 4 and at 3 of 4 items and finishes (Running with the plugin's own count, then
+//      Succeeded and no dot); a task that fails while Problems is on screen puts the dot `Operations, 1 unread failure` on its tab, which stays until the Operations tool has shown the row, when the window marks the record read (one call) and the host holds the
+//      mark. PROBLEMS: an alert is a row and a dot while it fires and goes when the plugin resolves it; a connection that does not answer (started from Home, refused by the host) is a row, and choosing it asks the host to start it again, which is refused again,
+//      opens nothing, leaves the row and says so in a sticky error toast (`Couldn't open south`, with the refusal's sentence) that the check closes, and with the file gone it starts the connection, opens its page and the row goes; a plugin killed by the pid the host names is a row, the tab counts two errors, its alert stays listed as Not confirmed and its running task
+//      says Outcome unknown (the host no longer knows); choosing the row opens the plugin's page in one tab, which says why and offers Retry; Retry (RetryFailedPlugin, once the host has given up its own recovery) runs the plugin again, the row goes, the alert
+//      stays Not confirmed until the plugin resolves it, and it does. Both tools are reached with the keyboard (the arrows and Enter on the tool tabs, the control key to the table and to the open button of a row, Enter on it). SEAM_ONLY=problems-operations
+//      runs v alone; SEAM_CONTROL=problems-operations runs it alone with every control of PT_CONTROLS made in turn: each plants a fault that the assertion it is named for must see, with its own words (the report, the choice or the key is not made yet; or, where one act makes
+//      several assertions true, the kill, the refused choice and the connection that answers, a wrong attribute or a decoy once the act is done); SEAM_CONTROL=<one of them> makes that one only, and SEAM_REMOVE=<one of them> leaves that control's assertion out, which must let its fault pass
+//      undetected by every other assertion of the act. The Logs control `page-error` is not v's: the control of v that reads the page's errors is `pt-page-error`
+//
 //   r  the Terminal tool on the host's own shell (T1, T2a), over the real host. Before the first terminal the emulator's code is not requested (no request for its chunk while the panel is open and says `No terminals`); `New terminal` starts a
 //      shell of this machine (the host lists exactly one session), the code is fetched then, the emulator takes the keyboard (the person who pressed the button types) and a command with a known output is run: what the shell printed,
 //      read from the host's own replay of the session (`AttachSession`: the GPU draws on a canvas, there is no text in the page), holds the output line of `echo SEAM_$((6*7))` and not only its echo. The session's tab is called by the shell
@@ -158,7 +169,7 @@
 //
 //   node ui-next/plugins/e2e/seam.check.mjs        needs bin/Omniview-server (OMNIVIEW_UI=next task build:server) and Playwright's browsers; ENGINES=webkit or ENGINES=chromium runs one engine
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
@@ -302,23 +313,75 @@ const CONNECTIONS_CONTROLS = {
   'fail-home': /Home says Needs sign-in on the row of south, with the reason under its name/,
   'fail-palette': /a start the host refused leaves the palette open with a notice that names the row and the reason/,
 };
+// The negative controls of scenario v, the Problems and Operations tools (PT1). Each plants a fault that ITS assertion must see, with its words and no other (`withPremises`). Where an act makes one assertion true (a report a plugin's process makes, a row chosen, a key pressed) the
+// fault is that the act has not been done when the assertion is tried; then the act is done and the assertion is the check. Where one act makes several true (the kill makes three, the refused choice and the connection that answers two each) what is not done yet is not done for any of them, so each has a fault of its
+// own: once the act is done, one thing the page shows is wrong (an attribute, a decoy), as the controls of u make it, and put back. The controls of what is not an act (what the tool keeps once the plugin is back, the errors a page wrote) do the same for the moment of the assertion, as those of n,
+// p, t and u do. One run serves them all (SEAM_CONTROL=problems-operations: the host finds a killed process on its next health check, up to 30 s); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and its fault must then pass undetected: with the fault
+// in place every other assertion of the same act is tried, and none may see it. The names are this table's alone: the Logs control `page-error` is not the one of v, which is `pt-page-error`.
+const PT_CONTROLS = {
+  'ops-running': /the Operations tool lists a task that began as running, with the producer's own count/,
+  'ops-progress': /the Operations row follows the producer's count/,
+  'ops-succeeded': /a task that finished is Succeeded in the Operations tool, with no progress and no dot/,
+  'ops-dot': /a task that failed while Problems was on screen puts a dot on the Operations tab/,
+  'ops-read': /the Operations tool clears the dot once it has shown the failure/,
+  'alert-fires': /a firing alert is a row of the Problems tool and a warning dot on its tab/,
+  'alert-resolves': /a resolved alert leaves the Problems tool and its tab/,
+  'keys-reach': /the keys choose the Problems tool and reach its table and the open button of a row/,
+  'keys-open': /Enter on the open button of a Problems row opens the page of its plugin in a tab/,
+  'conn-listed': /a connection that could not be reached is a row of Problems, with its words, its plugin and itself/,
+  'conn-refused': /choosing the row of a connection that is still down asks the host again and opens no tab/,
+  'conn-toast': /choosing the row of a connection that is still down tells the person in a sticky error toast/,
+  'stopped-listed': /a plugin whose process was killed is a row of Problems and counts as an error on its tab/,
+  'alert-unknown': /the alert of a plugin that stopped stays in Problems as Not confirmed/,
+  'ops-unknown-dot': /a task that was running when its plugin stopped puts a warning dot on the Operations tab/,
+  'ops-unknown': /a task that was running when its plugin stopped says Outcome unknown/,
+  'row-opens-plugin': /choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry/,
+  recovered: /after Retry the plugin runs again and leaves Problems/,
+  'alert-kept': /the alert of a plugin that came back is still Not confirmed/,
+  'alert-cleared': /an alert that the plugin which came back resolves leaves Problems/,
+  'conn-opens': /choosing the row of a connection that answers again starts it and opens its page in a tab/,
+  'conn-cleared': /a connection that answers again leaves the Problems tool and its count/,
+  'pt-page-error': /the whole scenario wrote no page error and no console error/,
+};
 const FAILED_GROUP = 'failed-load';
 const PAGE_GROUP = 'plugins-page';
 const CONNECTIONS_GROUP = 'connections';
+const PT_GROUP = 'problems-operations';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
 const REMOVE = process.env.SEAM_REMOVE ?? '';
-// SEAM_ONLY=plugins-page runs scenario t alone, and SEAM_ONLY=connections scenario u alone, with no perturbation, held to the allow-list of failed requests as in a full run. SEAM_ONLY=settings-slots runs the slots part of
+// SEAM_ONLY=plugins-page runs scenario t alone, SEAM_ONLY=connections scenario u alone and SEAM_ONLY=problems-operations scenario v alone, with no perturbation, held to the allow-list of failed requests as in a full run. SEAM_ONLY=settings-slots runs the slots part of
 // scenario s alone, clean (the 100 Settings window pages), for the one who works on it: it is the only part of s that opens and closes a window 100 times, and what a slow runner does to it is the thing to look at.
 const SETTINGS_SLOTS = 'settings-slots';
 const ONLY = process.env.SEAM_ONLY ?? '';
-if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== SETTINGS_SLOTS) {
-  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP} or ${SETTINGS_SLOTS}`);
+if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== PT_GROUP && ONLY !== SETTINGS_SLOTS) {
+  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP}, ${PT_GROUP} or ${SETTINGS_SLOTS}`);
 }
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== PT_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+}
+
+// A control's name belongs to one table. The dispatch at the end of this file runs the scenario of the first group that holds the name, so a name that two tables held would run one scenario and never the other: `page-error` was the control of the Logs scenario
+// and of v, and `SEAM_CONTROL=page-error` ran v. (CONTROLS also holds the controls of s and the planted 422, which SETTINGS_PARTS and RUNTIME_CONTROL name again: the same controls, not two.)
+const NAMED_ONCE = new Map();
+for (const [table, names] of [
+  ['CONTROLS (scenarios k and m)', Object.keys(CONTROLS).filter((name) => SETTINGS_PARTS[name] === undefined && name !== RUNTIME_CONTROL)],
+  ['PROCESS_CONTROLS', Object.keys(PROCESS_CONTROLS)],
+  ['FAILED_CONTROLS', Object.keys(FAILED_CONTROLS)],
+  ['PAGE_CONTROLS', Object.keys(PAGE_CONTROLS)],
+  ['CONNECTIONS_CONTROLS', Object.keys(CONNECTIONS_CONTROLS)],
+  ['PT_CONTROLS', Object.keys(PT_CONTROLS)],
+  ['SETTINGS_PARTS', Object.keys(SETTINGS_PARTS)],
+  ['the watch over failed requests', [RUNTIME_CONTROL]],
+  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PT_GROUP]],
+]) {
+  for (const name of names) NAMED_ONCE.set(name, [...(NAMED_ONCE.get(name) ?? []), table]);
+}
+const NAMED_TWICE = [...NAMED_ONCE].filter(([, tables]) => tables.length > 1);
+if (NAMED_TWICE.length > 0) {
+  throw new Error(`a control's name belongs to one table of the check: ${NAMED_TWICE.map(([name, tables]) => `${name} (${tables.join(' and ')})`).join(', ')}`);
 }
 
 async function freePort() {
@@ -479,6 +542,11 @@ const RUNTIME_ALLOW = [
     phases: [CONNECTIONS_GROUP],
     reason: "scenario u makes the start of south fail on purpose, with the connections fixture's file `connection-mode` (`unauthorized`, `unreachable`): the host answers StartConnection for it with a 422 (the class of the refusal is in the body), and the window says the refusal on the row, which is what the scenario asserts",
     test: (failure) => failure.status === 422 && failure.asked.includes(`"methodID":${String(methodIdOf(RESOURCE_SERVICE, 'StartConnection'))},`) && failure.asked.includes(SOUTH_KEY) && ['omniview:resource/unauthorized', 'omniview:connection/failed'].some((type) => failure.answered.includes(type)),
+  },
+  {
+    phases: [PT_GROUP],
+    reason: "scenario v makes south of the connections fixture unreachable (its file `connection-mode` says `unreachable`) and the window starts it twice while it is, from Home and from the row of the Problems tool: the host answers each StartConnection with a 422 (`omniview:connection/failed`: the class of the failure is in the body), and the window says it as a row of the Problems tool, which is what the scenario asserts",
+    test: (failure) => failure.status === 422 && failure.asked.includes(`"methodID":${String(methodIdOf(RESOURCE_SERVICE, 'StartConnection'))},`) && failure.asked.includes(SOUTH_KEY) && failure.answered.includes('omniview:connection/failed'),
   },
   {
     phases: ['terminal-followups'],
@@ -883,9 +951,9 @@ async function checkPanel(page, base, engine) {
   await toggle.click();
   await region.waitFor({ state: 'visible' });
   assert.equal(await toggle.getAttribute('aria-pressed'), 'true', `${engine}: the toggle is pressed once it is open`);
-  // The host's own tools come first: Terminal, which the panel opens on, then Logs; then one tool for each plugin that contributes, in the order of the rail and in the plugin's own words.
+  // The host's own tools come first: Terminal, which the panel opens on, then Logs, then Problems and Operations (PT1: the host's singleton tools, orders 30 and 40); then one tool for each plugin that contributes, in the order of the rail and in the plugin's own words.
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Terminal', 'Logs', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Terminal and Logs tools, then the tool of each plugin that contributes, in the order of the rail (the first plugin's, then the copy's)`);
+  assert.deepEqual((await tools.allTextContents()).map((text) => text.trim()), ['Terminal', 'Logs', 'Problems 2', 'Operations', 'Streams', 'Streams copy'], `${engine}: the strip draws the host's Terminal, Logs, Problems (with the count of its two errors: this host's plugins that cannot load, by design) and Operations tools, then the tool of each plugin that contributes, in the order of the rail (the first plugin's, then the copy's)`);
   assert.equal(await tools.first().getAttribute('aria-selected'), 'true', `${engine}: the Terminal tool is on screen`);
   await page.getByText('No terminals', { exact: true }).waitFor();
   await tools.nth(1).click();
@@ -893,8 +961,8 @@ async function checkPanel(page, base, engine) {
   await page.getByText('No log sessions').waitFor();
   assert.equal(await page.locator('[data-shell-part="sessionAdd"]').count(), 0, `${engine}: the Logs tool has no \`+\` (decision A20)`);
   // The rail's first plugin brings the tool the rest of this scenario uses.
-  await tools.nth(2).click();
-  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
+  await tools.nth(4).click();
+  assert.equal(await tools.nth(4).getAttribute('aria-selected'), 'true', `${engine}: Streams is on screen once it is chosen`);
   await page.getByText('No sessions').waitFor();
   // The tool's `+` starts a stream; three in turn: running, ended and failed.
   const add = page.getByRole('button', { name: 'New stream' }).first();
@@ -954,30 +1022,30 @@ async function checkPanelLate(page, base, engine) {
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
   const names = async () => (await tools.allTextContents()).map((text) => text.trim());
   // The copy is ready and the first plugin is not: the strip has the host's tools and the copy's.
-  await page.waitForFunction(() => [...document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]')].map((tab) => tab.textContent.trim()).join('|') === 'Terminal|Logs|Streams copy', null, { timeout: 30_000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]')].map((tab) => tab.textContent.trim()).join('|') === 'Terminal|Logs|Problems 2|Operations|Streams copy', null, { timeout: 30_000 });
   assert.equal(held.length > 0, true, `${engine}: the first plugin's bundle was asked for and is held`);
   // The person is on the copy's tool, with a stream open in it.
-  await tools.nth(2).click();
+  await tools.nth(4).click();
   await page.getByRole('button', { name: 'New stream' }).first().click();
   const stream = page.locator('[data-fixture="stream"][data-session="stream-alpha"]');
   await stream.waitFor();
   const body = await stream.elementHandle();
   const lines = () => stream.evaluate((element) => Number(element.getAttribute('data-lines')));
   const linesBefore = await lines();
-  const copyBefore = (await tools.nth(2).boundingBox())?.x ?? NaN;
-  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is on screen before the first plugin arrives`);
+  const copyBefore = (await tools.nth(4).boundingBox())?.x ?? NaN;
+  assert.equal(await tools.nth(4).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is on screen before the first plugin arrives`);
 
   // The first plugin's bundle is let through: it finishes after the copy.
   released = true;
   for (const route of held.splice(0)) await route.continue();
-  await page.waitForFunction(() => document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]').length === 4, null, { timeout: 30_000 });
-  assert.deepEqual(await names(), ['Terminal', 'Logs', 'Streams', 'Streams copy'], `${engine}: the first plugin took its place in the strip, in the order of the rail, though it finished after the copy`);
-  assert.equal(await tools.nth(3).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is still the one on screen`);
-  assert.equal(await tools.nth(2).getAttribute('aria-selected'), 'false', `${engine}: and the tool that arrived did not take the panel`);
+  await page.waitForFunction(() => document.querySelectorAll('[role=tablist][aria-label="Panel tools"] [role=tab]').length === 6, null, { timeout: 30_000 });
+  assert.deepEqual(await names(), ['Terminal', 'Logs', 'Problems 2', 'Operations', 'Streams', 'Streams copy'], `${engine}: the first plugin took its place in the strip, in the order of the rail, though it finished after the copy`);
+  assert.equal(await tools.nth(5).getAttribute('aria-selected'), 'true', `${engine}: the copy's tool is still the one on screen`);
+  assert.equal(await tools.nth(4).getAttribute('aria-selected'), 'false', `${engine}: and the tool that arrived did not take the panel`);
   assert.equal(await page.getByRole('tab', { name: 'stream-alpha', selected: true }).count(), 1, `${engine}: the stream is still the session on screen`);
   assert.equal(await body.evaluate((element) => element.isConnected), true, `${engine}: and its body is the same element, not drawn again`);
   assert.ok((await lines()) >= linesBefore, `${engine}: and its count did not start again (${String(linesBefore)} lines, then ${String(await lines())})`);
-  const moved = ((await tools.nth(3).boundingBox())?.x ?? NaN) - copyBefore;
+  const moved = ((await tools.nth(5).boundingBox())?.x ?? NaN) - copyBefore;
   console.log(`${engine}: the copy's tab moved ${moved.toFixed(1)} px to the right when the first plugin's tab arrived ahead of it; the tool, the stream and the body on screen did not change`);
   // The window settles: with every plugin loaded and no tab open it is the empty window, which lists the plugins to open.
   await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
@@ -4085,6 +4153,806 @@ async function checkConnectionsAndHome(browser, engine, binary, work) {
 }
 
 /**
+ * What `ps` says of a process: when it started and the command it runs, as one line ('' when no process has the number). A pid alone does not say who a process is: the OS gives the number to another process once the first is gone and reaped, so a check
+ * that signals a pid it recorded earlier signals whoever has it now. Read when the host names the process, it is what the process is compared with later (`isNamed`).
+ */
+async function identityOf(pid) {
+  if (process.platform === 'linux') {
+    // The CI image has no `ps` (`.github/ci/Dockerfile` installs no procps): procfs says the same. The start time is field 22 of `stat`, counted after the command's own `(...)` (which may hold spaces), and `cmdline` is the command line, NUL-separated; a process that was killed and not yet reaped has an empty one.
+    try {
+      const statLine = await readFile(`/proc/${String(pid)}/stat`, 'utf8');
+      const started = statLine.slice(statLine.lastIndexOf(')') + 2).split(' ')[19];
+      const command = (await readFile(`/proc/${String(pid)}/cmdline`, 'utf8')).split('\0').join(' ').trim();
+      return `${started} ${command}`;
+    } catch (error) {
+      if (error?.code === 'ENOENT' || error?.code === 'ESRCH') return '';
+      throw error;
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    execFile('ps', ['-o', 'lstart=,command=', '-p', String(pid)], (error, stdout) => {
+      // `ps -p` exits 1 when no process has the number; any other failure (no `ps`) is not an answer about the process.
+      if (error !== null && error.code !== 1) reject(error);
+      else resolve(String(stdout).trim());
+    });
+  });
+}
+
+/** Whether `pid` is still the process that `identity` was read for: a number that nothing holds now, or that another process holds, is not (a process that was killed and not yet reaped shows another command, and is not either). */
+async function isNamed(pid, identity) {
+  return alive(pid) && (await identityOf(pid)) === identity;
+}
+
+/**
+ * The assertions of a scenario whose negative controls plant a FAULT (scenario v). `afterwards(act, ...named)` is `act`, which makes each assertion of `named` true; an entry is `[name, assertion]` or `[name, assertion, perturb, undo]`. Where `act`
+ * makes ONE assertion true the fault is a PREMISE broken: for each control that is asked for (the group's, or the one SEAM_CONTROL names) the assertion is tried BEFORE the act, when what it says has not happened yet (no `task finish` was sent, no key was
+ * pressed): it must fail, and with ITS words. Where `act` makes SEVERAL true (the kill makes three, the refused choice and the connection that answers two each) what is not done yet is not done for any of them, and each would see it: so each has a fault of its own, `perturb` and
+ * `undo`, which make the facts of that assertion alone wrong in what the page shows once the act is done (an attribute, a decoy: nothing the page owns is replaced) and put it back. The assertion is tried while the fault is in place and must fail with ITS words.
+ * Under SEAM_REMOVE=<name> that assertion is left out and the fault is held while EVERY OTHER assertion of the act is tried: none of them may see it, which is what shows that the control is tripped by its assertion and by no other. Then the act is done and
+ * the fault is gone, and every assertion is the check; under SEAM_REMOVE=<name> that assertion is left out, and nothing may fail. `asserting(name, perturb, undo, assertion)` is the control of an assertion that is not about an act (what the tool keeps once the
+ * plugin is back, the errors a page wrote): `perturb` changes what the page shows, or makes it raise an error, for the moment of the assertion and `undo` puts it back, as in `withControls`. `verdict(engine)` says, for each control that was made, whether the
+ * assertion it is named for saw it, and throws when one did not (or, for the one removed, when anything did).
+ */
+function withPremises(group, table) {
+  const made = [];
+  const asked = (name) => CONTROL === group || CONTROL === name;
+  /** What an assertion says when it is tried for a control: its words when it failed, nothing when it did not (and for the one SEAM_REMOVE leaves out, which is not run). */
+  const answer = async (name, assertion) => {
+    if (REMOVE === name) return '';
+    try {
+      await assertion();
+    } catch (error) {
+      return String(error?.message ?? error);
+    }
+
+    return '';
+  };
+  const afterwards = async (act, ...named) => {
+    // An act that makes several assertions true leaves no premise to break for one of them alone, so each of them has a fault of its own.
+    if (named.length > 1 && named.some(([, , perturb, undo]) => perturb === undefined || undo === undefined)) {
+      throw new Error(`${named.map(([name]) => name).join(', ')} are made true by one act: each needs a fault of its own (a perturb and an undo)`);
+    }
+
+    // A premise: an assertion with no fault of its own is tried before its act.
+    for (const [name, assertion, perturb] of named) {
+      if (perturb === undefined && asked(name)) made.push({ name, message: await answer(name, assertion) });
+    }
+
+    await act();
+    // A fault: made once the act is done, held while the assertions are tried, and put back. With the assertion left out (SEAM_REMOVE) the others of the act are tried in its place, and none of them may see the fault.
+    for (const [name, assertion, perturb, undo] of named) {
+      if (perturb === undefined || !asked(name)) continue;
+      await perturb();
+      let message = '';
+      if (REMOVE === name) {
+        for (const [other, otherAssertion] of named) {
+          if (message === '' && other !== name) message = await answer(other, otherAssertion);
+        }
+      } else message = await answer(name, assertion);
+      await undo();
+      made.push({ name, message });
+    }
+
+    for (const [name, assertion] of named) {
+      if (REMOVE !== name) await assertion();
+    }
+  };
+  const asserting = async (name, perturb, undo, assertion) => {
+    if (asked(name)) {
+      await perturb();
+      const message = await answer(name, assertion);
+      await undo();
+      made.push({ name, message });
+    }
+
+    if (REMOVE !== name) await assertion();
+  };
+  const verdict = (engine) => {
+    const lost = [];
+    for (const { name, message } of made) {
+      if (REMOVE === name) {
+        if (message === '') console.log(`NEGATIVE CONTROL "${name}": NOT DETECTED in ${engine} with its assertion removed, as it must be`);
+        else lost.push(`NEGATIVE CONTROL "${name}": detected in ${engine} with its assertion removed, by ${message}`);
+      } else if (table[name].test(message)) console.log(`NEGATIVE CONTROL "${name}": detected in ${engine}: ${message.split('\n')[0]}`);
+      else lost.push(message === '' ? `NEGATIVE CONTROL "${name}": NOT DETECTED in ${engine}` : `NEGATIVE CONTROL "${name}": failed in ${engine}, but not the assertion it is named for: ${message}`);
+    }
+
+    if (lost.length > 0) throw new Error(lost.join('\n'));
+  };
+  return { afterwards, asserting, verdict };
+}
+
+/**
+ * v. The Problems and Operations tools of the host's panel (PT1, ch16 S121 and S122) over the real host, on a host of its own whose two plugins have a PROCESS that reports real activity when the check says so (`fixture/activityscript`: a line
+ * appended to the file `activity-script` next to the plugin's binary is one report of a task or of an alert, and the process answers each in a log): `fixture-a-ok`, which is the one that is killed, and `fixture-f-conn`, whose south connection does
+ * not answer when the file `connection-mode` says `unreachable`. Nothing is polled by the window and nothing is reloaded: the tools are read from what the host says, and each wait here is for a fact of the host to be on screen.
+ * OPERATIONS: a task begins, is reported at 1 of 4 and at 3 of 4 items and finishes (the row says Running with the plugin's own count, then Succeeded with none, and the tab has no dot); a task that fails while Problems is on screen puts a dot on the
+ * Operations tab (`Operations, 1 unread failure`) that stays until the Operations tool has shown the row, when the window marks the record read once and the host holds the mark. PROBLEMS: an alert that fires is a row and a dot on the tab, and goes when
+ * the plugin resolves it; a connection that does not answer (the window starts it from Home and the host refuses) is a row, which the person chooses: the window asks the host to start it again, is refused again, opens nothing and says so in a sticky error toast that the check closes, then, with the file
+ * gone, starts it, opens its page and the row goes; a plugin whose process is killed (by the pid the host names) is a row and an error on the tab (two with the connection's), its alert stays as Not confirmed and its running task says Outcome unknown, because
+ * the host no longer knows what became of them; choosing its row opens the plugin's page in a tab, which says why and offers Retry, and Retry (RetryFailedPlugin, once the host has given up its own recovery) runs the plugin again: the row goes, the alert
+ * stays Not confirmed (the host keeps it until the plugin resolves it, and the plugin does) and the tool is empty at the end. Both tools are reached with the keyboard: the arrows and Enter choose them, the control key reaches the table and the open button
+ * of a row, and Enter on it opens the row's subject. Every negative control of this scenario is made here, in turn, when SEAM_CONTROL asks (`withPremises`; PT_CONTROLS). Each process the host names is recorded with who it was then (its start time and its command: `identityOf`)
+ * and is ended with the host, or after the check, only if it still is who it was: a pid alone is not (the OS gives it to another process), and the process that the check kills is not tracked once its end was seen.
+ */
+async function checkProblemsOperations(browser, engine, binaries, work) {
+  const dir = await mkdtemp(path.join(work, `problems-operations-${engine}-`));
+  const host = await startHost(dir, await freePort(), undefined, async (plugins) => [await writePlugin(plugins, OK, binaries.fixture), await writeConnectionsPlugin(plugins, binaries.connections)]);
+  const exited = new Promise((resolve) => host.child.once('exit', resolve));
+  const { afterwards, asserting, verdict } = withPremises(PT_GROUP, PT_CONTROLS);
+  const pluginsDir = path.join(stateRoot(dir), 'plugins');
+  const binaryPath = path.join(pluginsDir, OK, 'bin', 'plugin');
+  const modeFile = path.join(pluginsDir, CONNECTIONS_ID, 'connection-mode');
+  const CRASHED = "The plugin process stopped unexpectedly, so its pages can't load data.";
+  const errors = [];
+  /** Every process the host named for a plugin and the check has not seen end, with who it was when the host named it (`identityOf`): none is left when the host is gone, and none that is not who it was is signalled (a pid is given to another process once the first has gone). */
+  const pids = new Map();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  PAGE_LABELS.set(page, 'the window of the Problems and Operations tools');
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    // The browser's own line for a request that answered 4xx is not a script error: the two starts of south that the host refuses are in the allow-list of failed requests, which the phase is held to.
+    if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(`console: ${message.text()}`);
+  });
+  // What the host tells the window of a plugin: every `plugin/*` event that reaches its event socket, as the host sent it.
+  const frames = [];
+  page.on('websocket', (socket) => {
+    socket.on('framereceived', ({ payload }) => {
+      try {
+        const message = JSON.parse(String(payload));
+        if (typeof message?.name === 'string' && message.name.startsWith('plugin/')) frames.push({ name: message.name, data: message.data });
+      } catch {
+        // not an event
+      }
+    });
+  });
+  const told = () => frames.filter((frame) => frame.name === 'plugin/unloaded').map((frame) => frame.data);
+  // The calls the page makes of the host that this scenario counts, with the status the host answered each: a call is `POST /wails/runtime` with the id of the method (a binding) or its name (the runtime's own client).
+  const counted = new Map();
+  for (const [service, method] of [[RESOURCE_SERVICE, 'StartConnection'], [PLUGIN_SERVICE, 'RetryFailedPlugin'], [ACTIVITY_SERVICE, 'SetPresentation']]) {
+    counted.set(methodIdOf(service, method), method);
+    counted.set(`${service}.${method}`, method);
+  }
+
+  const wire = [];
+  const byRequest = new Map();
+  page.on('request', (request) => {
+    if (!request.url().endsWith('/wails/runtime')) return;
+    try {
+      const { args } = JSON.parse(request.postData() ?? 'null') ?? {};
+      const method = counted.get(args?.methodID) ?? counted.get(args?.methodName);
+      if (method === undefined) return;
+      const call = { method, args: args.args, status: 0 };
+      wire.push(call);
+      byRequest.set(request, call);
+    } catch {
+      // not a call
+    }
+  });
+  page.on('response', (response) => {
+    const call = byRequest.get(response.request());
+    if (call !== undefined) call.status = response.status();
+  });
+  const called = (method) => wire.filter((call) => call.method === method);
+
+  const said = new Map();
+  /**
+   * One report of a plugin's process (`fixture/activityscript`): a line appended to the file `activity-script` next to its binary. The process answers each line in `activity-script.log` (`ok <n> <line>`, or `error <n> <text>`, n counting the lines of the
+   * file), so the check waits for the host to have the fact and never for a time.
+   */
+  const say = async (id, command) => {
+    const script = path.join(pluginsDir, id, 'activity-script');
+    const n = (said.get(id) ?? 0) + 1;
+    said.set(id, n);
+    await writeFile(script, `${command}\n`, { flag: 'a' });
+    await waitUntil(`the process of ${id} to report "${command}"`, async () => {
+      const log = (await readFile(`${script}.log`, 'utf8').catch(() => '')).split('\n');
+      const refused = log.find((line) => line.startsWith(`error ${String(n)} `));
+      if (refused !== undefined) throw new Error(`the process of ${id} did not take line ${String(n)} of its script: ${refused}`);
+      return log.some((line) => line.startsWith(`ok ${String(n)} `));
+    }, 20_000);
+  };
+  /** What the host's activity service holds, read as a window reads it (`Snapshot`): the records the tools list, and whether each was read. */
+  const records = async () => (await callBound(host.base, ACTIVITY_SERVICE, 'Snapshot')).records;
+  const recordOf = async (title) => (await records()).find((record) => record.presentation.title === title);
+  /** The process the host names for a plugin (`processinfo`, with the executable it runs: never a pattern), once it does and it is not `not`: a plugin that was just loaded or started again is named a moment after its page can be on screen. */
+  const processOf = async (id, not = undefined) => {
+    let row;
+    await waitUntil(`the host to name the process of ${id}`, async () => {
+      row = (await callBound(host.base, PROCESS_SERVICE, 'GetSnapshot')).processes.find((candidate) => candidate.key === `plugin:${id}`);
+      return row?.ownership === 'verified' && row.identity?.pid > 0 && row.identity.pid !== not;
+    }, 30_000);
+    assert.ok(row.identity.executable.endsWith(`/plugins/${id}/bin/plugin`), `${engine}: the host names the process of ${id}, with the executable it runs: ${JSON.stringify(row)}`);
+    const named = await identityOf(row.identity.pid);
+    assert.ok(named.includes(`/plugins/${id}/bin/plugin`), `${engine}: ps says that the process the host named for ${id} is the plugin's own: ${JSON.stringify(named)}`);
+    pids.set(row.identity.pid, named);
+    return row.identity;
+  };
+
+  // The strip of tools and what each tab says: its accessible name (which carries the words of its badge), the text a person reads, and the badge it draws (none, a count, or a dot of a tone).
+  const toggle = page.getByRole('button', { name: 'Panel', exact: true });
+  const strip = page.getByRole('tablist', { name: 'Panel tools' });
+  const toolTab = (id) => strip.locator(`[data-tab-id="${id}"]`);
+  const toolsSay = async () =>
+    strip.getByRole('tab').evaluateAll((tabs) =>
+      tabs.map((tab) => {
+        const badge = tab.querySelector('[data-shell-part="toolBadge"]');
+        return {
+          id: tab.getAttribute('data-tab-id') ?? '',
+          name: tab.getAttribute('aria-label') ?? (tab.textContent ?? '').trim(),
+          text: (tab.textContent ?? '').trim(),
+          badge: badge === null ? 'none' : badge.getAttribute('data-kind') === 'dot' ? `dot ${badge.getAttribute('data-tone')}` : 'count',
+        };
+      }),
+    );
+  const tabSays = async (id) => {
+    const { name, text, badge } = (await toolsSay()).find((tool) => tool.id === id) ?? { name: '', text: '', badge: 'missing' };
+    return { name, text, badge };
+  };
+  const select = async (id) => {
+    await toolTab(id).click();
+    await waitUntil(`the tool ${id} to be on screen`, async () => (await toolTab(id).getAttribute('aria-selected')) === 'true', 10_000);
+  };
+  // What the tool on screen lists: the rows of its table as a person reads them, its footer's count, and the words of its empty state.
+  const regionOf = (name) => page.getByRole('region', { name, exact: true }).first();
+  const problemRows = async () =>
+    regionOf('Problems')
+      .locator('tbody tr[data-ov-index]')
+      .evaluateAll((rows) =>
+        rows.map((row) => {
+          const cells = [...row.querySelectorAll('td')];
+          const face = cells[0]?.querySelector('[data-ov-role]');
+          const label = (face?.textContent ?? '').trim();
+          const whole = (cells[0]?.textContent ?? '').trim();
+          return {
+            label,
+            role: face?.getAttribute('data-ov-role') ?? '',
+            sentence: whole.startsWith(label) ? whole.slice(label.length).trim() : whole,
+            source: (cells[1]?.textContent ?? '').trim(),
+            target: (cells[2]?.textContent ?? '').trim(),
+            open: cells[3]?.querySelector('button')?.getAttribute('aria-label') ?? '',
+          };
+        }),
+      );
+  const operationRows = async () =>
+    regionOf('Operations')
+      .locator('tbody tr[data-ov-index]')
+      .evaluateAll((rows) =>
+        rows.map((row) => {
+          const cells = [...row.querySelectorAll('td')];
+          const face = cells[3]?.querySelector('[data-ov-role]');
+          return {
+            title: (cells[0]?.textContent ?? '').trim(),
+            source: (cells[1]?.textContent ?? '').trim(),
+            target: (cells[2]?.textContent ?? '').trim(),
+            state: (face?.textContent ?? '').trim(),
+            role: face?.getAttribute('data-ov-role') ?? '',
+            progress: (cells[4]?.textContent ?? '').trim(),
+            bar: cells[4]?.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow') ?? '',
+            open: cells[6]?.querySelector('button')?.getAttribute('aria-label') ?? '',
+          };
+        }),
+      );
+  const footerOf = async () => (await page.locator('[data-shell-part="panelDeck"] [role="status"]').allInnerTexts()).join(' ').replace(/\s+/g, ' ').trim();
+  const emptyWords = async () => (await page.locator('[data-shell-part="panelDeck"]').innerText()).split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  /** The row of Problems that says `label`: the person chooses it by its first cell, as a click on the row does. */
+  const rowCell = (label) =>
+    regionOf('Problems')
+      .locator('tbody tr[data-ov-index]')
+      .filter({ has: page.locator('[data-ov-role]', { hasText: label }) })
+      .locator('td')
+      .first();
+  /** The face of the row of Problems that says `label`: the status whose role `problemRows` reads. */
+  const faceOf = (label) => rowCell(label).locator('[data-ov-role]');
+  /**
+   * The fault of a control of an assertion that shares its act with others (`afterwards`): once the act is done, one attribute of one element of the page is not what the product wrote (`wrong`) until the control puts it back (`right`). The element is found again
+   * to put it back, and nothing the page owns is replaced or removed.
+   */
+  const falsify = (where, attribute, wrong, right) => [
+    async () => where().evaluate((element, [name, value]) => element.setAttribute(name, value), [attribute, wrong], { timeout: 5000 }),
+    async () => where().evaluate((element, [name, value]) => element.setAttribute(name, value), [attribute, right], { timeout: 5000 }),
+  ];
+  // The window's own tabs, and Home (what the empty window is): the row of a connection to press.
+  const tabStrip = page.getByRole('tablist', { name: 'Open tabs' });
+  const openTabs = async () => tabStrip.getByRole('tab').evaluateAll((tabs) => tabs.map((tab) => ({ title: (tab.textContent ?? '').trim(), name: tab.getAttribute('aria-label') ?? '', selected: tab.getAttribute('aria-selected') === 'true' })));
+  const closeTabs = async () => {
+    for (let left = (await openTabs()).length; left > 0; left -= 1) {
+      await tabStrip.getByRole('tab').first().focus();
+      await page.keyboard.press('Delete');
+      await waitUntil(`${String(left - 1)} tabs to be open`, async () => (await openTabs()).length === left - 1, 10_000);
+    }
+
+    await page.getByText('No tabs are open.', { exact: true }).waitFor({ timeout: 10_000 });
+  };
+  const homeRow = (name) => page.locator('[data-home-part="connection"]', { has: page.getByText(name, { exact: true }) }).filter({ visible: true });
+  // The keys of a person: the control key is Alt+Tab in WebKit on a Mac (Tab alone skips buttons unless the person's setting says otherwise) and Tab elsewhere, as the other scenarios press it.
+  const nextControl = engine === 'webkit' ? 'Alt+Tab' : 'Tab';
+  const focused = async () =>
+    page.evaluate(() => {
+      const element = document.activeElement;
+      if (element === null) return '';
+      const tool = element.getAttribute('data-tab-id');
+      return tool === null ? `${element.getAttribute('role') ?? element.tagName.toLowerCase()}: ${element.getAttribute('aria-label') ?? ''}` : `tool: ${tool}`;
+    });
+  /** From the tab of the tool on screen: an arrow moves the focus to the neighbour, Enter chooses it, and the control key walks on to the table of the tool and to the open button of its first row. What had the focus at each press is the trail. */
+  const keysTo = async (tool, arrow) => {
+    const trail = [];
+    await page.keyboard.press(arrow);
+    trail.push(await focused());
+    await page.keyboard.press('Enter');
+    await waitUntil(`the tool ${tool} to be chosen`, async () => (await toolTab(tool).getAttribute('aria-selected')) === 'true', 10_000);
+    for (let press = 0; press < 30 && !trail.at(-1).startsWith('button: Open'); press += 1) {
+      await page.keyboard.press(nextControl);
+      trail.push(await focused());
+    }
+
+    return trail;
+  };
+  const reached = (trail, table) => trail.filter((stop) => stop === `tool: ${table.toLowerCase()}` || stop === `region: ${table}` || stop.startsWith('button: Open'));
+  // What each row says. The words are the producers' own (the plugin's title for an alert, the host's for a connection and for a plugin that stopped) and the host's for what it no longer knows.
+  const notResponding = { label: 'Not responding', role: 'error', sentence: 'south: The server did not answer.', source: 'Seam Connections', target: 'south', open: 'Open south' };
+  const quota = { label: 'Quota almost used', role: 'attention', sentence: '', source: 'Seam Fixture', target: '—', open: 'Open Seam Fixture' };
+  const stopped = { label: 'Stopped', role: 'error', sentence: `Seam Fixture: ${CRASHED}`, source: 'Seam Fixture', target: 'Seam Fixture', open: 'Open Seam Fixture' };
+  const unconfirmed = { label: 'Not confirmed', role: 'attention', sentence: 'Quota almost used. Seam Fixture is not reporting, so it is not known whether this is still true.', source: 'Seam Fixture', target: '—', open: 'Open Seam Fixture' };
+  const operation = (title, state, role, progress, bar) => ({ title, source: 'Seam Fixture', target: '—', state, role, progress, bar, open: 'Open Seam Fixture' });
+  const nothing = { name: 'Operations', text: 'Operations', badge: 'none' };
+  const noProblems = { name: 'Problems', text: 'Problems', badge: 'none' };
+  const stoppedNotice = page.getByRole('alert').filter({ hasText: "Couldn't load Seam Fixture" });
+  /** The toasts of the window, which its notices layer draws as `toast` parts: the refusal of a choice is told in one, and the person closes it. */
+  const toasts = page.locator('[data-notices-part="layer"] [data-notices-part="toast"]');
+  /** What the host says of the connections of the plugin (`GetAllConnectionStates`): the readiness of each by name. */
+  const readiness = async () => {
+    const answer = await callBound(host.base, RESOURCE_SERVICE, 'GetAllConnectionStates');
+    return Object.fromEntries((answer[CONNECTIONS_ID] ?? []).map((state) => [state.connection.name, state.readiness]));
+  };
+
+  try {
+    // 1. NOTHING IS WRONG. Two healthy plugins and no connection in trouble: the panel opens on Terminal, the strip has the host's four tools and the plugin's, no tab carries a count or a dot, both tools are empty and the host holds no record.
+    await open(page, host.base);
+    await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+    const first = await processOf(OK);
+    await processOf(CONNECTIONS_ID);
+    await toggle.click();
+    await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
+    await strip.getByRole('tab', { name: 'Streams', exact: true }).waitFor({ timeout: 30_000 });
+    assert.deepEqual((await toolsSay()).map((tool) => tool.name), ['Terminal', 'Logs', 'Problems', 'Operations', 'Streams'], `${engine}: the strip draws the host's four tools and the plugin's, none of them with a count or a dot in its name`);
+    assert.deepEqual((await toolsSay()).map((tool) => tool.badge), ['none', 'none', 'none', 'none', 'none'], `${engine}: and no tab draws a badge`);
+    assert.deepEqual(await records(), [], `${engine}: the host holds no activity record before a plugin reports anything`);
+    await select('problems');
+    await waitUntil('the Problems tool to say that nothing is wrong', async () => (await emptyWords())[0] === 'No problems', 10_000);
+    assert.deepEqual(await emptyWords(), ['No problems', 'Plugins and connections are healthy.'], `${engine}: with two healthy plugins the Problems tool says that nothing is wrong, in the mock's words`);
+    await select('operations');
+    await waitUntil('the Operations tool to say that nothing runs', async () => (await emptyWords())[0] === 'No operations', 10_000);
+    assert.deepEqual(await emptyWords(), ['No operations', 'Operations you start and background work from plugins appear here.'], `${engine}: and the Operations tool has no operation, in the mock's words`);
+
+    // 2. A LONG OPERATION. A task of a plugin's process begins, is reported at 1 of 4 and at 3 of 4 items, and finishes. The Operations tool is on screen and its row follows each report of the plugin, in the plugin's own count and never one the window worked out;
+    // a task that finished with no failure is Succeeded, has no progress left and leaves the tab with no dot (a success is not unread).
+    await afterwards(
+      async () => {
+        await say(OK, 'task begin t1 4 Reindexing the catalogue');
+        await say(OK, 'task step t1 1');
+        await waitUntil('the Operations tool to list the task as running, at 1 of 4 items', async () => {
+          const row = (await operationRows())[0];
+          return row?.state === 'Running' && row.progress === '1 of 4 items';
+        }, 15_000);
+      },
+      [
+        'ops-running',
+        async () => {
+          assert.deepEqual(await operationRows(), [operation('Reindexing the catalogue', 'Running', 'progress', '1 of 4 items', '25')], `${engine}: the Operations tool lists a task that began as running, with the producer's own count (the rows)`);
+          assert.equal(await footerOf(), '1 operation', `${engine}: the Operations tool lists a task that began as running, with the producer's own count (the footer)`);
+        },
+      ],
+    );
+    await afterwards(
+      async () => {
+        await say(OK, 'task step t1 3');
+        await waitUntil('the row to say 3 of 4 items', async () => (await operationRows())[0]?.progress === '3 of 4 items', 15_000);
+      },
+      [
+        'ops-progress',
+        async () => {
+          assert.deepEqual(await operationRows(), [operation('Reindexing the catalogue', 'Running', 'progress', '3 of 4 items', '75')], `${engine}: the Operations row follows the producer's count, 3 of 4 items after 1 of 4`);
+        },
+      ],
+    );
+    await afterwards(
+      async () => {
+        await say(OK, 'task finish t1 succeeded Done');
+        await waitUntil('the row to say Succeeded', async () => (await operationRows())[0]?.state === 'Succeeded', 15_000);
+      },
+      [
+        'ops-succeeded',
+        async () => {
+          assert.deepEqual(await operationRows(), [operation('Reindexing the catalogue', 'Succeeded', 'healthy', '—', '')], `${engine}: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the rows)`);
+          assert.deepEqual(await tabSays('operations'), nothing, `${engine}: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the tab)`);
+        },
+      ],
+    );
+
+    // 3. A FAILURE THAT NOBODY HAS SEEN. Problems is on screen when a second task fails: the Operations tab carries the dot of an unread failure (`Operations, 1 unread failure`), the host holds the record unread, and nothing is marked read while the tool is
+    // not shown. Then the Operations tool is chosen: after the second it has shown the row the window marks it read (one call to the host, for that record), the host holds the mark and the dot goes. The row stays: it is the history, and was never the dot.
+    await select('problems');
+    await say(OK, 'task begin t2 3 Rolling out the release');
+    await afterwards(
+      async () => {
+        await say(OK, 'task finish t2 failed The rollout stopped');
+        await waitUntil('the Operations tab to carry the dot of an unread failure', async () => (await tabSays('operations')).name === 'Operations, 1 unread failure', 15_000);
+      },
+      [
+        'ops-dot',
+        async () => {
+          assert.deepEqual(await tabSays('operations'), { name: 'Operations, 1 unread failure', text: 'Operations', badge: 'dot error' }, `${engine}: a task that failed while Problems was on screen puts a dot on the Operations tab (the tab)`);
+          assert.equal((await recordOf('Rolling out the release'))?.visibility.read, false, `${engine}: a task that failed while Problems was on screen puts a dot on the Operations tab (the host holds the record unread)`);
+          assert.equal(called('SetPresentation').length, 0, `${engine}: a task that failed while Problems was on screen puts a dot on the Operations tab (and nothing marked it read while the tool was not shown)`);
+        },
+      ],
+    );
+    await afterwards(
+      async () => {
+        await select('operations');
+        await waitUntil('the dot to go once the Operations tool has shown the failure', async () => (await tabSays('operations')).badge === 'none', 20_000);
+      },
+      [
+        'ops-read',
+        async () => {
+          const failed = await recordOf('Rolling out the release');
+          assert.deepEqual(await tabSays('operations'), nothing, `${engine}: the Operations tool clears the dot once it has shown the failure (the tab)`);
+          assert.equal(failed?.visibility.read, true, `${engine}: the Operations tool clears the dot once it has shown the failure (the host holds the record read)`);
+          assert.deepEqual(called('SetPresentation').map((call) => call.args), [[{ id: failed?.id, read: true }]], `${engine}: the Operations tool clears the dot once it has shown the failure (one call to the host, for that record)`);
+          assert.deepEqual((await operationRows()).map((row) => [row.title, row.state]), [['Rolling out the release', 'Failed'], ['Reindexing the catalogue', 'Succeeded']], `${engine}: the Operations tool clears the dot once it has shown the failure (and the rows stay)`);
+        },
+      ],
+    );
+
+    // 4. ALERTS. A plugin's process reports an alert: it is a row of Problems and a warning dot on its tab while it fires, and when the plugin resolves it the row and the dot go. A second alert stays firing for what follows.
+    await select('problems');
+    await afterwards(
+      async () => {
+        await say(OK, 'alert fire a1 warning Some groups are unavailable');
+        await waitUntil('the Problems tool to list the alert', async () => (await problemRows()).length === 1, 15_000);
+      },
+      [
+        'alert-fires',
+        async () => {
+          assert.deepEqual(await problemRows(), [{ label: 'Some groups are unavailable', role: 'attention', sentence: '', source: 'Seam Fixture', target: '—', open: 'Open Seam Fixture' }], `${engine}: a firing alert is a row of the Problems tool and a warning dot on its tab (the row)`);
+          assert.deepEqual(await tabSays('problems'), { name: 'Problems, 1 warning', text: 'Problems', badge: 'dot warning' }, `${engine}: a firing alert is a row of the Problems tool and a warning dot on its tab (the tab)`);
+          assert.equal(await footerOf(), '1 problem', `${engine}: a firing alert is a row of the Problems tool and a warning dot on its tab (the footer)`);
+        },
+      ],
+    );
+    await afterwards(
+      async () => {
+        await say(OK, 'alert resolve a1');
+        await waitUntil('the Problems tool to say that nothing is wrong', async () => (await problemRows()).length === 0, 15_000);
+      },
+      [
+        'alert-resolves',
+        async () => {
+          assert.deepEqual(await emptyWords(), ['No problems', 'Plugins and connections are healthy.'], `${engine}: a resolved alert leaves the Problems tool and its tab (the tool is empty)`);
+          assert.deepEqual(await tabSays('problems'), noProblems, `${engine}: a resolved alert leaves the Problems tool and its tab (the tab)`);
+        },
+      ],
+    );
+    await say(OK, 'alert fire a2 warning Quota almost used');
+    await waitUntil('the Problems tool to list the second alert', async () => (await problemRows()).length === 1, 15_000);
+    assert.deepEqual(await problemRows(), [quota], `${engine}: the second alert is the one row, with the plugin for its source and no target`);
+
+    // 5. THE KEYBOARD. The tool tabs are one Tab stop with the arrows (the strip's contract): an arrow moves the focus along the strip, Enter chooses the tool, and the control key walks on to the tool's table (a Tab stop of its own) and to the open button of its first
+    // row (a Tab stop: a row is not), where Enter opens the row's subject, the page of its plugin. First the Operations tool, then the Problems tool, each reached from the other.
+    await toolTab('problems').focus();
+    const operationsTrail = await keysTo('operations', 'ArrowRight');
+    assert.deepEqual(reached(operationsTrail, 'Operations'), ['tool: operations', 'region: Operations', 'button: Open Seam Fixture'], `${engine}: the Operations tool is reached with the keys: an arrow and Enter choose it, and the control key reaches its table and the open button of its first row (${JSON.stringify(operationsTrail)})`);
+    await page.keyboard.press('Enter');
+    await waitUntil('the page of the plugin to open in a tab', async () => (await openTabs()).length === 1, 15_000);
+    assert.deepEqual(await openTabs(), [{ title: 'Items', name: 'Items', selected: true }], `${engine}: Enter on the open button of an Operations row opens the page of its plugin in a tab`);
+    await closeTabs();
+    await toolTab('operations').focus();
+    let trail = [];
+    await afterwards(
+      async () => {
+        trail = await keysTo('problems', 'ArrowLeft');
+      },
+      [
+        'keys-reach',
+        async () => {
+          assert.equal(await toolTab('problems').getAttribute('aria-selected'), 'true', `${engine}: the keys choose the Problems tool and reach its table and the open button of a row (the arrow and Enter choose the tool)`);
+          assert.deepEqual(reached(trail, 'Problems'), ['tool: problems', 'region: Problems', 'button: Open Seam Fixture'], `${engine}: the keys choose the Problems tool and reach its table and the open button of a row (${JSON.stringify(trail)})`);
+        },
+      ],
+    );
+    await afterwards(
+      async () => {
+        await page.keyboard.press('Enter');
+        await waitUntil('the page of the plugin to open in a tab', async () => (await openTabs()).length === 1, 15_000);
+      },
+      [
+        'keys-open',
+        async () => {
+          assert.deepEqual(await openTabs(), [{ title: 'Items', name: 'Items', selected: true }], `${engine}: Enter on the open button of a Problems row opens the page of its plugin in a tab`);
+        },
+      ],
+    );
+    await closeTabs();
+    assert.deepEqual(await problemRows(), [quota], `${engine}: choosing a row of Problems does not take the row away: it is true until the plugin says it is not`);
+
+    // 6. A CONNECTION THAT DOES NOT ANSWER. The window starts south from Home (the empty window) and the host refuses (a 422, the class of the failure in the body: the allow-list of failed requests names it): Home says Not responding, and so does the Problems tool, with the
+    // host's one line for the class, the plugin and the connection by name, and the tab counts an error. Nothing but a window that made the start learns of it: the host tells no window that a start failed. The row is chosen, which asks the host to start the connection
+    // (`connections.actions.go`, as Home and the picker choose one), and with the server still silent it is refused again, no tab opens and the row stays, and the window says so in a sticky error toast (`Couldn't open south`, with the refusal's sentence) that the person closes before the next choice.
+    await writeFile(modeFile, 'unreachable\n');
+    await afterwards(
+      async () => {
+        await homeRow('south').click();
+        await waitUntil('the Problems tool to list the connection that did not answer', async () => (await problemRows()).some((row) => row.label === 'Not responding'), 15_000);
+      },
+      [
+        'conn-listed',
+        async () => {
+          assert.deepEqual(await problemRows(), [notResponding, quota], `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)`);
+          assert.deepEqual(await tabSays('problems'), { name: 'Problems 1 error', text: 'Problems 1', badge: 'count' }, `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the tab counts one error: the alert is a warning)`);
+          assert.deepEqual(called('StartConnection').map((call) => call.args), [[CONNECTIONS_ID, SOUTH_KEY]], `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the window asked the host once)`);
+          assert.equal(await homeRow('south').evaluate((row) => row.querySelector('[data-ov-role]')?.textContent?.trim() ?? ''), 'Not responding', `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (Home says the same)`);
+        },
+      ],
+    );
+    // One act makes two assertions true: the host asked again and refusing, with no tab and the row still there, and the toast that says so. So each has a fault of its own once the act is done (the row drawn as healthy; the toast no alert), and the other is tried with it in place.
+    await afterwards(
+      async () => {
+        await rowCell('Not responding').click();
+        await page.mouse.move(2, 2);
+        await waitUntil('the host to be asked once more, and to refuse', async () => called('StartConnection').length === 2 && called('StartConnection')[1].status === 422, 15_000);
+        await waitUntil('the row to be listed again', async () => (await problemRows()).some((row) => row.label === 'Not responding'), 15_000);
+        await waitUntil('the toast that says the connection could not be opened', async () => (await toasts.count()) > 0, 15_000);
+        await afterFrames(page);
+      },
+      [
+        'conn-refused',
+        async () => {
+          assert.deepEqual(called('StartConnection').map((call) => [call.args, call.status]), [[[CONNECTIONS_ID, SOUTH_KEY], 422], [[CONNECTIONS_ID, SOUTH_KEY], 422]], `${engine}: choosing the row of a connection that is still down asks the host again and opens no tab (two starts, both refused)`);
+          assert.deepEqual(await openTabs(), [], `${engine}: choosing the row of a connection that is still down asks the host again and opens no tab (no tab)`);
+          assert.deepEqual(await problemRows(), [notResponding, quota], `${engine}: choosing the row of a connection that is still down asks the host again and opens no tab (the row stays)`);
+        },
+        ...falsify(() => faceOf('Not responding'), 'data-ov-role', 'healthy', notResponding.role),
+      ],
+      [
+        'conn-toast',
+        async () => {
+          const toast = toasts.first();
+          const said = async (part) => (await toast.locator(`[data-notices-part="${part}"]`).allInnerTexts()).join(' ').trim();
+          assert.equal(await toasts.count(), 1, `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (one toast)`);
+          assert.equal(await toast.getAttribute('role'), 'alert', `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (an alert: work the person started)`);
+          assert.equal(await toast.getAttribute('data-severity'), 'error', `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (an error)`);
+          assert.notEqual(await toast.getAttribute('data-sticky'), null, `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (sticky)`);
+          assert.equal(await said('title'), "Couldn't open south", `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (the headline names the connection)`);
+          assert.notEqual(await said('message'), '', `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (and its detail is the refusal's sentence)`);
+        },
+        ...falsify(() => toasts.first(), 'role', 'status', 'alert'),
+      ],
+    );
+    // The toast is sticky: the person closes it before the next choice, so that none is left over the tool (the check does what the person does).
+    await toasts.first().getByRole('button', { name: /^Dismiss/ }).click();
+    await waitUntil('the toast to be gone', async () => (await toasts.count()) === 0, 10_000);
+
+    // 7. A PLUGIN THAT STOPS. A task of the plugin is running when its process is killed (by the pid the host names; with its execute bit off, so that the host's own recovery cannot start it). The host finds the process gone on its next health check (up to 30 s) and tells
+    // the window; it also turns what the plugin was reporting into what it no longer knows, because the process that knew is gone. So the Problems tool lists, errors first, the connection's row and the plugin's own (Stopped, with the sentence the Plugins page and the rail say), the
+    // tab counts the two, the alert is still listed, as Not confirmed (a row that vanished would hide a condition that may well be true) and the task is Outcome unknown, with a warning dot on the Operations tab until that tool has shown it.
+    await say(OK, 'task begin t3 5 Draining the queue');
+    await say(OK, 'task step t3 2');
+    process.kill(first.pid, 0);
+    await chmod(binaryPath, 0o644);
+    const killedAt = frames.length;
+    // The kill makes three assertions true at once, so each has a fault of its own once it is done (a row drawn as healthy, a dot of another tone), and the others are tried with it in place.
+    await afterwards(
+      async () => {
+        process.kill(first.pid, 'SIGKILL');
+        await waitUntil(`the host to see process ${String(first.pid)} end`, () => host.output().includes(`id=${String(first.pid)} error="signal: killed"`), 15_000);
+        // Its end is seen: the number is no longer the plugin's, and nothing of this check signals whoever is given it.
+        await waitUntil(`the process ${String(first.pid)} to be gone`, async () => !(await isNamed(first.pid, pids.get(first.pid))), 10_000);
+        pids.delete(first.pid);
+        await waitUntil('the Problems tool to list the plugin that stopped', async () => (await problemRows()).some((row) => row.label === 'Stopped'), 75_000);
+        await waitUntil('the Problems tool to list the alert as not confirmed', async () => (await problemRows()).some((row) => row.label === 'Not confirmed'), 15_000);
+        await waitUntil('the Operations tab to carry the dot of what the host no longer knows', async () => (await tabSays('operations')).badge !== 'none', 15_000);
+      },
+      [
+        'stopped-listed',
+        async () => {
+          assert.deepEqual((await problemRows()).filter((row) => row.role === 'error'), [notResponding, stopped], `${engine}: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)`);
+          assert.deepEqual(await tabSays('problems'), { name: 'Problems 2 errors', text: 'Problems 2', badge: 'count' }, `${engine}: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the tab counts two errors)`);
+          assert.equal(await footerOf(), '3 problems', `${engine}: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the footer)`);
+        },
+        ...falsify(() => faceOf('Stopped'), 'data-ov-role', 'healthy', stopped.role),
+      ],
+      [
+        'alert-unknown',
+        async () => {
+          assert.deepEqual((await problemRows()).filter((row) => row.role === 'attention'), [unconfirmed], `${engine}: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named`);
+        },
+        ...falsify(() => faceOf('Not confirmed'), 'data-ov-role', 'healthy', unconfirmed.role),
+      ],
+      [
+        'ops-unknown-dot',
+        async () => {
+          assert.deepEqual(await tabSays('operations'), { name: 'Operations, 1 unread warning', text: 'Operations', badge: 'dot warning' }, `${engine}: a task that was running when its plugin stopped puts a warning dot on the Operations tab`);
+        },
+        ...falsify(() => toolTab('operations').locator('[data-shell-part="toolBadge"]'), 'data-tone', 'error', 'warning'),
+      ],
+    );
+    assert.deepEqual(frames.slice(killedAt).find((frame) => frame.name === 'plugin/unloaded')?.data, { pluginID: OK, cause: 'crashed' }, `${engine}: the host told the window that the plugin crashed, and nothing else of it`);
+    await afterwards(
+      async () => {
+        await select('operations');
+        await waitUntil('the Operations tool to list the task whose plugin stopped', async () => (await operationRows())[0]?.state === 'Outcome unknown', 15_000);
+      },
+      [
+        'ops-unknown',
+        async () => {
+          assert.deepEqual((await operationRows())[0], operation('Draining the queue', 'Outcome unknown', 'attention', '—', ''), `${engine}: a task that was running when its plugin stopped says Outcome unknown, with no progress (the row)`);
+          assert.equal(await footerOf(), '3 operations', `${engine}: a task that was running when its plugin stopped says Outcome unknown, with no progress (the footer)`);
+        },
+      ],
+    );
+    await waitUntil('the dot to go once the Operations tool has shown the task', async () => (await tabSays('operations')).badge === 'none', 20_000);
+
+    // 8. CHOOSING THE ROW OF A PLUGIN THAT STOPPED opens its page, which says why and offers Retry: one choice, one tab (the window had none open).
+    await select('problems');
+    await afterwards(
+      async () => {
+        await rowCell('Stopped').click();
+        await page.mouse.move(2, 2);
+        await waitUntil('a tab of the plugin that stopped', async () => (await openTabs()).length === 1, 15_000);
+        await stoppedNotice.waitFor({ timeout: 15_000 });
+      },
+      [
+        'row-opens-plugin',
+        async () => {
+          assert.deepEqual(await openTabs(), [{ title: 'Seam Fixture', name: 'Seam Fixture', selected: true }], `${engine}: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (one tab, the plugin's)`);
+          assert.equal(await stoppedNotice.count(), 1, `${engine}: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (the page says it could not load it)`);
+          assert.match(await stoppedNotice.innerText(), new RegExp(CRASHED.replace(/[.']/g, '\\$&')), `${engine}: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (the sentence)`);
+          assert.equal(await stoppedNotice.getByRole('button', { name: 'Retry', exact: true }).count(), 1, `${engine}: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (the Retry)`);
+        },
+      ],
+    );
+
+    // 9. RETRY. The host recovers a crash by itself and, with the binary unable to run, gives up (the window is told the last load failed): the cause the plugin went away with stands in the row all that time. With the binary back, Retry in the page asks the host
+    // (`RetryFailedPlugin`, once) and the plugin runs again: its row and its error leave Problems, its page is in the tab and its tool is back in the strip. The alert STAYS as Not confirmed: the host turned it unknown when the process was lost and keeps it so until
+    // the plugin resolves it or reports it again, and the process that is back does neither by itself (a fact of the host, written here so that it is read as one: a plugin that recovers has to say what is no longer true).
+    await waitUntil('the host to give up the recovery', () => host.output().includes('max crash recovery attempts reached'), 45_000);
+    await waitUntil("the window to be told that the recovery's last load failed", () => told().at(-1)?.cause === 'failed', 15_000);
+    assert.deepEqual((await problemRows()).filter((row) => row.label === 'Stopped'), [stopped], `${engine}: the first cause stands in the row while the host recovers the plugin and gives up`);
+    await chmod(binaryPath, 0o755);
+    await afterwards(
+      async () => {
+        await stoppedNotice.getByRole('button', { name: 'Retry', exact: true }).click();
+        await waitUntil('the plugin to run again: its row gone and its page in the tab', async () => !(await problemRows()).some((row) => row.label === 'Stopped') && (await openTabs()).some((tab) => tab.title === 'Items'), 30_000);
+        await strip.getByRole('tab', { name: 'Streams', exact: true }).waitFor({ timeout: 30_000 });
+      },
+      [
+        'recovered',
+        async () => {
+          assert.deepEqual(await problemRows(), [notResponding, unconfirmed], `${engine}: after Retry the plugin runs again and leaves Problems (the rows: the connection's, and the alert, still not confirmed)`);
+          assert.deepEqual(await tabSays('problems'), { name: 'Problems 1 error', text: 'Problems 1', badge: 'count' }, `${engine}: after Retry the plugin runs again and leaves Problems (the tab counts the connection's error alone)`);
+          assert.deepEqual(called('RetryFailedPlugin').map((call) => call.args), [[OK]], `${engine}: after Retry the plugin runs again and leaves Problems (one retry, asked of the host)`);
+          assert.deepEqual((await openTabs()).map((tab) => tab.title), ['Items'], `${engine}: after Retry the plugin runs again and leaves Problems (its page is in the tab)`);
+        },
+      ],
+    );
+    const second = await processOf(OK, first.pid);
+    assert.notEqual(second.pid, first.pid, `${engine}: the plugin runs in another process than the one that was killed`);
+    await asserting(
+      'alert-kept',
+      async () => {
+        await regionOf('Problems').locator('tbody').evaluate((body) => {
+          body.insertAdjacentHTML('afterbegin', '<tr data-ov-index="0" data-decoy><td><span data-ov-role="attention">Quota almost used</span></td><td>Seam Fixture</td><td>—</td><td></td></tr>');
+        });
+      },
+      async () => {
+        await page.evaluate(() => {
+          document.querySelectorAll('[data-decoy]').forEach((element) => {
+            element.remove();
+          });
+        });
+      },
+      async () => {
+        assert.deepEqual((await problemRows()).filter((row) => row.role === 'attention'), [unconfirmed], `${engine}: the alert of a plugin that came back is still Not confirmed: the host keeps it unknown until the plugin resolves it or reports it again`);
+      },
+    );
+
+    // 10. THE PLUGIN RESOLVES THE ALERT. The process that is back says it is no longer true (the line is read by the new process: a process does not replay what an earlier one was told), and the row leaves.
+    await afterwards(
+      async () => {
+        await say(OK, 'alert resolve a2');
+        await waitUntil('the alert to leave Problems', async () => !(await problemRows()).some((row) => row.role === 'attention'), 15_000);
+      },
+      [
+        'alert-cleared',
+        async () => {
+          assert.deepEqual(await problemRows(), [notResponding], `${engine}: an alert that the plugin which came back resolves leaves Problems (the connection's row is the one left)`);
+          assert.equal(await footerOf(), '1 problem', `${engine}: an alert that the plugin which came back resolves leaves Problems (the footer)`);
+        },
+      ],
+    );
+
+    // 11. THE CONNECTION ANSWERS AGAIN. With the file gone the host can start south: choosing the row asks it to, the host connects it, the window goes to it (its page opens in a tab, with the connection's chip) and the row and the count are gone.
+    // One act makes two assertions true, a tab of south on screen and a Problems tool with nothing in it, so each has a fault of its own once it is done (no tab is the selected one; a row is left in the tool), and the other is tried with it in place.
+    await afterwards(
+      async () => {
+        await rm(modeFile, { force: true });
+        await rowCell('Not responding').click();
+        await page.mouse.move(2, 2);
+        await waitUntil('the page of south to open in a tab', async () => (await openTabs()).some((tab) => tab.name === 'Items, south' && tab.selected), 30_000);
+        await waitUntil('the connection to leave Problems', async () => (await problemRows()).length === 0, 15_000);
+      },
+      [
+        'conn-opens',
+        async () => {
+          assert.deepEqual((await openTabs()).filter((tab) => tab.selected).map((tab) => tab.name), ['Items, south'], `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)`);
+          assert.equal(await page.getByRole('button', { name: 'Connection: south', exact: true }).count(), 1, `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the chip says south)`);
+          assert.deepEqual(called('StartConnection').map((call) => call.status), [422, 422, 200], `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the third start was answered)`);
+          assert.deepEqual(await readiness(), { north: 'DISCONNECTED', south: 'CONNECTED' }, `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the host says south is connected)`);
+        },
+        ...falsify(() => tabStrip.getByRole('tab', { name: 'Items, south', exact: true }), 'aria-selected', 'false', 'true'),
+      ],
+      [
+        'conn-cleared',
+        async () => {
+          assert.deepEqual(await emptyWords(), ['No problems', 'Plugins and connections are healthy.'], `${engine}: a connection that answers again leaves the Problems tool and its count (the tool is empty)`);
+          assert.deepEqual(await tabSays('problems'), noProblems, `${engine}: a connection that answers again leaves the Problems tool and its count (the tab)`);
+        },
+        async () => {
+          await page.locator('[data-shell-part="panelDeck"]').evaluate((deck) => {
+            deck.insertAdjacentHTML('beforeend', '<p data-decoy>Not responding</p>');
+          });
+        },
+        async () => {
+          await page.evaluate(() => {
+            document.querySelectorAll('[data-decoy]').forEach((element) => {
+              element.remove();
+            });
+          });
+        },
+      ],
+    );
+
+    // 12. NOTHING WENT WRONG THAT THE SCENARIO DID NOT MAKE. No page error and no console error (the browser's own line for a refused request is the allow-list's business), and every process the host named is gone when the host is. The control plants an error
+    // of its own, told apart by the words it carries, waits for THAT one and takes away only it: an error the page wrote before, or while the control waited, stays in `errors`, and the check that follows fails on it.
+    const planted = `Failed to fetch (planted by the control pt-page-error of ${engine} at ${String(Date.now())})`;
+    const recorded = errors.length;
+    await asserting(
+      'pt-page-error',
+      async () => {
+        await page.evaluate((message) => {
+          setTimeout(() => {
+            throw new Error(message);
+          }, 0);
+        }, planted);
+        await waitUntil('the planted page error to be recorded', () => errors.slice(recorded).some((entry) => entry.includes(planted)), 5000);
+      },
+      async () => {
+        for (let index = errors.length - 1; index >= recorded; index -= 1) {
+          if (errors[index].includes(planted)) errors.splice(index, 1);
+        }
+      },
+      async () => {
+        assert.deepEqual(errors, [], `${engine}: the whole scenario wrote no page error and no console error`);
+      },
+    );
+    console.log(`${engine}: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid ${String(first.pid)} were rows (the alert and the task became Not confirmed and Outcome unknown), Retry ran the plugin again, and both tools were reached by the keys`);
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    for (const [pid, identity] of pids) await waitUntil(`the process ${String(pid)} to end with the host`, async () => !(await isNamed(pid, identity)), 10_000);
+    verdict(engine);
+  } finally {
+    await rm(modeFile, { force: true });
+    await page.close().catch(() => undefined);
+    host.child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    // A process that cannot be told from the one the host named is left alone: its number may be another's now.
+    for (const [pid, identity] of pids) if (await isNamed(pid, identity).catch(() => false)) process.kill(pid, 'SIGKILL');
+  }
+}
+
+/**
  * i. The session (S3a). The window starts empty; two tabs of two plugins, the rail on the second plugin and the panel open on the second plugin's tool at a height the keyboard chose are what a person
  * leaves. They are what the host holds after a quiet moment, what a reload of the page brings back, and what a host that was stopped and started again (the app's restart; the state root is kept) brings
  * back. Then what is saved is made unusable in the ways that matter, through the window service the shell uses: a tab of a plugin that is not installed (the tab stays, and says so), a session of a
@@ -4150,7 +5018,7 @@ async function checkSession(browser, getHost, restart, engine) {
   await toggleOf(page).click();
   await page.locator('[data-shell-region="panel"]').waitFor({ state: 'visible' });
   const tools = page.getByRole('tablist', { name: 'Panel tools' }).getByRole('tab');
-  await tools.nth(3).click();
+  await tools.nth(5).click();
   await page.getByRole('separator', { name: 'Resize panel' }).focus();
   for (let press = 0; press < 3; press += 1) await page.keyboard.press('ArrowUp');
   const left = await look(page);
@@ -8930,6 +9798,18 @@ try {
         continue;
       }
 
+      if (ONLY === PT_GROUP || CONTROL === PT_GROUP || PT_CONTROLS[CONTROL] !== undefined) {
+        // Scenario v alone: clean under SEAM_ONLY, and under SEAM_CONTROL with the controls asked for, saying for each whether its own assertion saw it (`checkProblemsOperations`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
+        try {
+          await phase(PT_GROUP, name, async () => checkProblemsOperations(browser, name, { fixture: await processFixture(), connections: await connectionsFixture() }, work));
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
       // SEAM_TERMINAL_REPEAT=<n> runs scenarios r, r2, r3, r4, r5 and r6 alone, n times in a row, for a developer who works on the Terminal tool (each run starts several shells of this machine and ends them). SEAM_TERMINAL_ONLY=r3,r6 narrows it to the scenarios it names.
       if (process.env.SEAM_TERMINAL_REPEAT !== undefined) {
         const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4,r5,r6').split(',');
@@ -9038,7 +9918,8 @@ try {
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
       await phase('plugins-page', name, async () => checkPluginsPage(browser, name, await processFixture(), work));
       await phase(CONNECTIONS_GROUP, name, async () => checkConnectionsAndHome(browser, name, await connectionsFixture(), work));
-      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen), the connections (the chip's picker, Home and the palette start a connection and say how it went, a start the host refuses is said where it was chosen, a Logs session of the host's panel stays when the tab's connection changes)`);
+      await phase(PT_GROUP, name, async () => checkProblemsOperations(browser, name, { fixture: await processFixture(), connections: await connectionsFixture() }, work));
+      console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen), the connections (the chip's picker, Home and the palette start a connection and say how it went, a start the host refuses is said where it was chosen, a Logs session of the host's panel stays when the tab's connection changes), the Problems and Operations tools (a plugin whose process is killed, an alert, a connection that does not answer and a failed task are each a row, with the tab's count or dot, live from the host's events; each row leaves when it stops being true and goes to its plugin or connection; a task's progress follows the plugin's own reports; the dot of an unread failure is cleared by the host's own mark)`);
     } finally {
       await browser.close();
     }

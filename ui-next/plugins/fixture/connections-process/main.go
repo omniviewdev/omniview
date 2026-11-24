@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/omniviewdev/omniview/ui-next/plugins/fixture/activityscript"
 	resource "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	resourceplugin "github.com/omniviewdev/plugin-sdk/pkg/resource/v2/plugin"
 	"github.com/omniviewdev/plugin-sdk/pkg/sdk"
@@ -83,6 +84,8 @@ func main() {
 
 	plugin := sdk.NewPlugin(sdk.PluginOpts{ID: pluginID})
 	plugin.RegisterCapability("resource", &resourceplugin.GRPCPlugin{Impl: controller, SettingsProvider: plugin.SettingsProvider})
+	// Reports the activity the check scripts in the file `activity-script`, once the host has bound the reporter.
+	defer activityscript.Start(plugin.Activities())()
 	plugin.Serve()
 }
 
