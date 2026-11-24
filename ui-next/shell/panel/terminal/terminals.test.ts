@@ -1004,6 +1004,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     const visibility = (state: 'visible' | 'hidden'): void => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
     };
+
     /** A window with a terminal another tab took: its feed answers `refresh` from `holder.held`. */
     function taken() {
       const holder = { held: true };

@@ -2002,7 +2002,9 @@ describe('asking who holds the terminals this page lost (`refreshLost`)', () => 
 
   it('contains a refresh that throws or rejects: one warning each, the others are asked, and it never throws', async () => {
     const r = harness();
-    const throwing: FakeTerminalFeed = { ...keyedFeed(), refresh: (): never => { throw new Error('threw'); } };
+    const throwing: FakeTerminalFeed = { ...keyedFeed(), refresh: (): never => {
+      throw new Error('threw'); 
+    } };
     const fine = asking();
     for (const [index, feed] of [throwing, fine].entries()) {
       r.sessions.open(terminalOf(feed, `term-${String(index)}`));
