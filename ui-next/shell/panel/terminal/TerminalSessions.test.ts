@@ -1974,3 +1974,43 @@ describe('the feed a session has can be followed (T2d: a body that was drawn bef
     expect(told).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('asking who holds the terminals this page lost (`refreshLost`)', () => {
+  const asking = (): FakeTerminalFeed & { readonly refresh: Mock<() => Promise<void>> } => ({ ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) });
+
+  it('asks `refresh` of every feed this page lost, once each, and of no other: not a running feed, not one that ended by itself', () => {
+    const r = harness();
+    const [held, free, running, finished] = [asking(), asking(), asking(), asking()];
+    for (const [index, feed] of [held, free, running, finished].entries()) {
+      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
+    }
+
+    lostTo(held, { by: 'taken-over' });
+    lostTo(free);
+    finished.set({ state: 'ended', exit: { code: 0 } });
+    expect(r.sessions.refreshLost()).toBe(true);
+    expect([held, free, running, finished].map((feed) => feed.refresh.mock.calls.length)).toEqual([1, 1, 0, 0]);
+  });
+
+  it('is a no-op, and says so, with nothing lost', () => {
+    const r = harness();
+    const running = asking();
+    r.sessions.open(terminalOf(running, 'term-a'));
+    expect(r.sessions.refreshLost()).toBe(false);
+    expect(running.refresh).not.toHaveBeenCalled();
+  });
+
+  it('contains a refresh that throws or rejects: one warning each, the others are asked, and it never throws', async () => {
+    const r = harness();
+    const throwing: FakeTerminalFeed = { ...keyedFeed(), refresh: (): never => { throw new Error('threw'); } };
+    const fine = asking();
+    for (const [index, feed] of [throwing, fine].entries()) {
+      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
+      lostTo(feed);
+    }
+
+    expect(() => r.sessions.refreshLost()).not.toThrow();
+    expect(fine.refresh).toHaveBeenCalledTimes(1);
+    expect(r.warn).toHaveBeenCalledTimes(1);
+  });
+});
