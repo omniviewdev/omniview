@@ -8,6 +8,7 @@ import { LIMITS, PANEL_VERSION, type PanelState, type PersistedPanel, type Persi
 // The saved panel (ch16 S103, S116, S150). The document carries its version, `migrate` brings an older one up to the current, and what is read back is repaired rather than discarded: a
 // damaged session is dropped alone and the rest is kept. It saves what the user chose (open, height, the tool, the session of each tool) and each session's identity; never what a session
 // was doing, which is nobody's any more (a restored session is `ended`) and never its output. The old app has 36 stores that were never versioned; this is not the 37th.
+// What the user chose comes back as they left it, the panel's visibility included (T2d, decision A23): S116's "do not open it" is about a restored session, and a panel the user left open is not one.
 
 export type { Migration, MigrateResult };
 
@@ -57,9 +58,11 @@ function remembered(size: number, viewport: number | undefined): number {
 }
 
 /**
- * Reads a saved panel back into a state. A session that cannot be read is dropped alone; every session comes back `ended`; the panel does not open because sessions were restored (S116: a
- * restored terminal must not cover the page), though it opens as it was left when there are none. The tools are the host's to register again, and no plugin is live until it says so, so
- * a restored session of a plugin shows when its plugin has loaded.
+ * Reads a saved panel back into a state. A session that cannot be read is dropped alone; every session comes back `ended`. The panel comes back as it was left: open when it was open, with its height, its tool and the session of each
+ * tool, whatever sessions it holds (T2d, decision A23). S116 says "Sessions restored at startup, adopted from another window, or re-created by Retry do not open it (today's quiet-tab rule)", and "Why: a restored terminal must not
+ * cover the page": a restored SESSION opens no panel, and nothing here or in the registry does (`reveal: false` stays); the person's own saved panel is not a session. A terminal that is alive again after a reload must not wait
+ * unseen behind a closed panel, and VS Code and JetBrains both keep the panel's visibility and the active terminal across a reload. The tools are the host's to register again, and no plugin is live until it says so, so the tool and the
+ * session a panel was saved on are on screen when their plugin has loaded, and until then it shows the first tool it has.
  */
 export function restorePanel(raw: unknown, options: RestoreOptions): RestoreResult {
   const migrated = migrate(raw, { current: PANEL_VERSION, steps: MIGRATIONS });
@@ -94,7 +97,6 @@ export function restorePanel(raw: unknown, options: RestoreOptions): RestoreResu
     }
   }
 
-  const wasOpen = saved.open === true;
   const height = typeof saved.height === 'number' && Number.isFinite(saved.height) && saved.height > 0 ? remembered(saved.height, options.viewport) : null;
   if (saved.height !== null && saved.height !== undefined && height === null) {
     problems.push('the height is not a size');
@@ -103,7 +105,7 @@ export function restorePanel(raw: unknown, options: RestoreOptions): RestoreResu
   const tool = typeof saved.tool === 'string' && saved.tool !== '' ? saved.tool : null;
   const state = settle(
     patch(emptyPanel(), {
-      open: wasOpen && order.length === 0,
+      open: saved.open === true,
       height,
       tool,
       active: Object.freeze(Object.fromEntries(active)),

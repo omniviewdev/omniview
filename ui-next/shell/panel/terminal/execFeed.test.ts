@@ -86,6 +86,12 @@ function attached(options: AttachedOptions = {}): Record<string, unknown> {
 /** An answer without one of its members. */
 const without = (answer: Record<string, unknown>, member: string): Record<string, unknown> => Object.fromEntries(Object.entries(answer).filter(([name]) => name !== member));
 
+/** An answer to an attach whose replay has this text for the bytes [0, end), and is right in everything else: what a replay whose text is not base64 looks like when nothing but the text is wrong. */
+function withText(end: number, data: string): Record<string, unknown> {
+  const answer = attached({ attachment: 1 });
+  return { ...answer, replay: { ...(answer.replay as Record<string, unknown>), start: 0, end, data } };
+}
+
 /** An output event of a terminal that has a key (T2-go 2.3): where its bytes lie in the terminal's output, and the bytes as base64. */
 const output = (offset: number, value: string): { readonly offset: number; readonly data: string } => ({ offset, data: btoa(value) });
 
@@ -2002,11 +2008,20 @@ describe('a terminal that has a key: it outlives the page that started it (T2-go
     expect(of('write')).toEqual([['term-1', 1, btoa('ls')]]);
   });
 
-  it('has `leave` and no `takeReplay` when it started the terminal; a feed with no key has neither', () => {
-    expect(typeof rig({ pageKey: KEY }).feed.leave).toBe('function');
-    expect(rig({ pageKey: KEY }).feed.takeReplay).toBeUndefined();
-    expect(rig().feed.leave).toBeUndefined();
-    expect(rig().feed.takeReplay).toBeUndefined();
+  it('has `leave`, `rejoin`, `refresh` and `takeReplay` for its whole life when it has a key, whether it started its terminal or took it over, and none of them without one: a replay may wait at any time, after a rejoin', () => {
+    for (const keyed of [rig({ pageKey: KEY }), rig({ auto: false, attach: { id: 'term-1' } })]) {
+      expect(typeof keyed.feed.leave).toBe('function');
+      expect(typeof keyed.feed.rejoin).toBe('function');
+      expect(typeof keyed.feed.refresh).toBe('function');
+      expect(typeof keyed.feed.takeReplay).toBe('function');
+      expect(keyed.feed.takeReplay?.()).toBeUndefined();
+    }
+
+    const plain = rig();
+    expect(plain.feed.leave).toBeUndefined();
+    expect(plain.feed.rejoin).toBeUndefined();
+    expect(plain.feed.refresh).toBeUndefined();
+    expect(plain.feed.takeReplay).toBeUndefined();
   });
 
   it('never puts the key in what it says: not in the status of a session that failed, not in a warning', async () => {
@@ -2733,6 +2748,33 @@ describe('taking over a terminal that outlived its page (T2-go 2.4)', () => {
       await flush();
       expect([...of('write'), ...of('resize'), ...of('ack')]).toEqual([]);
     });
+
+    it.each([
+      { name: 'not base64 and holds the bytes the answer says (the text ****, bytes 0 to 3)', answer: withText(3, '****') },
+      { name: 'a text with a character outside the alphabet in the middle of a long text', answer: withText(750, `${'AAAA'.repeat(124)}A*AA${'AAAA'.repeat(125)}`) },
+      { name: 'a text with padding in the middle', answer: withText(4, 'QQ==QQ==') },
+      { name: 'a text with too much padding', answer: withText(1, 'A===') },
+    ])('fails at the start, in the same words, when the text of the replay is $name: the whole text is read before anything is published, and nobody is given a payload that cannot be decoded', async ({ answer }) => {
+      const { feed, listeners, of } = rig({ attach: ATTACH, attached: answer });
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'start', message: 'The terminal could not be taken over: the host\'s answer was not understood.' } });
+      expect(listeners()).toBe(0);
+      expect(feed.takeReplay?.()).toBeUndefined();
+      expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+      feed.write('x');
+      await flush();
+      expect([...of('write'), ...of('resize'), ...of('ack')]).toEqual([]);
+    });
+
+    it('reads the replay of a terminal whole when its text is base64 as the host writes it: the whole alphabet, padding of one and of two, and an empty one', async () => {
+      for (const data of ['', 'a', 'ab', 'abc', String.fromCharCode(0xfb, 0xff, 0xbe, 0xfa, 0xff), String.fromCharCode(...Array.from({ length: 256 }, (_, byte) => byte))]) {
+        const { feed, listeners } = rig({ attach: ATTACH, attached: attached({ data }) });
+        await flush();
+        expect(feed.getSnapshot().state).toBe('running');
+        expect(listeners()).toBe(3);
+        expect([...(feed.takeReplay?.()?.data ?? [])]).toEqual([...data].map((char) => char.charCodeAt(0)));
+      }
+    });
   });
 
   describe('closing', () => {
@@ -2841,11 +2883,13 @@ describe('the loss of a terminal this page held (DETACHED, T2-go 2.4 rule 8)', (
     expect(readText(feed)).toBe('before');
   });
 
-  it('lets go of the output and the loss, and keeps listening to the END of the terminal only: it learns when the lease it was lost to runs out', async () => {
+  it('lets go of the output and keeps listening to the loss and to the END of the terminal: it learns when the lease it was lost to runs out, and when the tab that took it has gone', async () => {
     const { emit, listeners } = await started();
     emit(DETACHED, { by: 'requested', attachment: 0 });
-    expect(listeners()).toBe(1);
+    expect(listeners()).toBe(2);
     expect(listeners(CLOSE)).toBe(1);
+    expect(listeners(DETACHED)).toBe(1);
+    expect(listeners(OUTPUT)).toBe(0);
   });
 
   it('reads no output that comes after the loss: the terminal belongs to another page now', async () => {
@@ -2939,14 +2983,14 @@ describe('the loss of a terminal this page held (DETACHED, T2-go 2.4 rule 8)', (
       expect(feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
     });
 
-    it('finds the one that is the page\'s among several held', async () => {
+    it('finds the one that is the page\'s among several held, and goes on with the ones after it: a later holder\'s release that was held with it says the terminal is free', async () => {
       const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
       emit(DETACHED, { by: 'taken-over', attachment: 2 });
       emit(DETACHED, { by: 'requested', attachment: 4 });
       emit(DETACHED, { by: 'window-retired', attachment: 5 });
       pending('attach')[0]?.resolve(attached({ attachment: 4, nextInputSeq: 1 }));
       await flush();
-      expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'requested' }, program: 'zsh' });
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'requested', free: true }, program: 'zsh' });
     });
 
     it('keeps the order the events came in: the output heard before the loss is applied, the output heard after it is not', async () => {
@@ -3322,35 +3366,1068 @@ describe('the terminals the host lists for a page key (`ListTerminals`)', () => 
   });
 
   it('reads the id and the shell\'s name of each, in the order the host gave them (by creation)', () => {
-    expect(listedOf([listed('a', 'zsh'), listed('b', 'bash'), listed('c', 'zsh')])).toEqual([{ id: 'a', program: 'zsh' }, { id: 'b', program: 'bash' }, { id: 'c', program: 'zsh' }]);
+    expect(listedOf([listed('a', 'zsh'), listed('b', 'bash'), listed('c', 'zsh')])).toEqual([{ id: 'a', program: 'zsh', attached: false }, { id: 'b', program: 'bash', attached: false }, { id: 'c', program: 'zsh', attached: false }]);
   });
 
   it('says no program for a terminal whose shell has no usable name, and trims one that has', () => {
-    expect(listedOf([listed('a', undefined), listed('b', '  bash '), listed('c', '   ')])).toEqual([{ id: 'a' }, { id: 'b', program: 'bash' }, { id: 'c' }]);
+    expect(listedOf([listed('a', undefined), listed('b', '  bash '), listed('c', '   ')])).toEqual([{ id: 'a', attached: false }, { id: 'b', program: 'bash', attached: false }, { id: 'c', attached: false }]);
   });
 
   it('reads no input number of a listing: a page continues the count from the answer to its attach, since the window that holds the terminal can write between the list and the attach, and the host refuses the number the listing stated then as stale', () => {
     const end = { reason: 'exited', exit_code: 0, last_offset: 0 };
     const answer = listedOf([listed('a', 'zsh', { next_input_seq: 12 }), listed('b', 'bash', { next_input_seq: 0, ended: end })]);
-    expect(answer).toEqual([{ id: 'a', program: 'zsh' }, { id: 'b', program: 'bash', ended: true }]);
+    expect(answer).toEqual([{ id: 'a', program: 'zsh', attached: false }, { id: 'b', program: 'bash', attached: false, ended: true }]);
     expect(JSON.stringify(answer)).not.toMatch(/seq/i);
   });
 
   it('skips what is not a terminal: no id, an id that is not text or is empty, not an object', () => {
-    expect(listedOf([null, 7, 'x', {}, { id: 7 }, { id: '' }, { id: '  ' }, listed('ok', 'zsh')])).toEqual([{ id: 'ok', program: 'zsh' }]);
+    expect(listedOf([null, 7, 'x', {}, { id: 7 }, { id: '' }, { id: '  ' }, listed('ok', 'zsh')])).toEqual([{ id: 'ok', program: 'zsh', attached: false }]);
   });
 
   it('says a terminal ended when the host lists how it ended, and says nothing of it for one that runs: a terminal whose shell ended while no page held it is listed with its end', () => {
     const ended = { reason: 'exited', exit_code: 7, last_offset: 208 };
     const answer = listedOf([listed('a', 'zsh'), listed('b', 'bash', { ended }), listed('c', 'zsh', { ended: null }), listed('d', undefined, { ended })]);
-    expect(answer).toEqual([{ id: 'a', program: 'zsh' }, { id: 'b', program: 'bash', ended: true }, { id: 'c', program: 'zsh' }, { id: 'd', ended: true }]);
+    expect(answer).toEqual([{ id: 'a', program: 'zsh', attached: false }, { id: 'b', program: 'bash', attached: false, ended: true }, { id: 'c', program: 'zsh', attached: false }, { id: 'd', attached: false, ended: true }]);
     expect(answer[0]).not.toHaveProperty('ended');
     expect(answer[2]).not.toHaveProperty('ended');
+  });
+
+  it('says whether a window holds each terminal, as the host says it: `attached` is carried when it is a boolean, and left out when the host says anything else', () => {
+    const answer = listedOf([listed('a', 'zsh', { attached: true }), listed('b', 'zsh', { attached: false }), listed('c', 'zsh', { attached: 'yes' }), listed('d', 'zsh', { attached: undefined }), listed('e', 'zsh', { attached: 1 })]);
+    expect(answer).toEqual([{ id: 'a', program: 'zsh', attached: true }, { id: 'b', program: 'zsh', attached: false }, { id: 'c', program: 'zsh' }, { id: 'd', program: 'zsh' }, { id: 'e', program: 'zsh' }]);
+    expect(answer[2]).not.toHaveProperty('attached');
   });
 
   it('is empty for an answer that is not a list', () => {
     for (const answer of [undefined, null, {}, 'a', 7, { id: 'a' }]) {
       expect(listedOf(answer)).toEqual([]);
     }
+  });
+});
+
+// ---- T2d: a terminal this page lost, and the tab that took it going away ---------------------------------------------------------------------------------------------------------------------------------------
+
+describe('a terminal this page lost, and the tab that took it going away (T2d: the terminal may be taken back)', () => {
+  /** A feed that started its terminal (the creating page holds attachment 0), running and named by the shell. */
+  const started = async (options: RigOptions = {}) => {
+    const r = rig({ pageKey: KEY, created: SESSION, ...options });
+    await flush();
+    return r;
+  };
+
+  /** A feed that took a terminal over and holds the attachment number the host gave it. */
+  const reattached = async (attachment: number, options: RigOptions = {}) => {
+    const r = rig({ auto: false, attach: { id: 'term-1', program: 'zsh' }, ...options });
+    r.pending('attach')[0]?.resolve(attached({ attachment, nextInputSeq: 1 }));
+    await flush();
+    return r;
+  };
+
+  /** A feed that lost the terminal to the tab that took it: the creating page held 0, and the tab that took it holds 1. */
+  const lost = async (by: 'taken-over' | 'requested' | 'window-retired' = 'taken-over') => {
+    const r = await started();
+    r.emit(DETACHED, { by, attachment: 0 });
+    return r;
+  };
+
+  it.each(['requested', 'window-retired'] as const)('says the terminal is free when the tab that took it says %s of its own attachment: the snapshot keeps why this page lost it, gains `free`, and the listeners are told', async (by) => {
+    const { feed, emit, wakes } = await lost();
+    const before = wakes();
+    emit(DETACHED, { by, attachment: 1 });
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over', free: true }, program: 'zsh' });
+    expect(wakes()).toBe(before + 1);
+  });
+
+  it('keeps why this page lost the terminal whatever that was: a terminal it was told to let go of is free too when the later holder lets go of it', async () => {
+    for (const by of ['taken-over', 'requested', 'window-retired'] as const) {
+      const { feed, emit } = await lost(by);
+      emit(DETACHED, { by: 'window-retired', attachment: 1 });
+      expect(feed.getSnapshot().detached).toEqual({ by, free: true });
+    }
+  });
+
+  it('says nothing again of what it knows: the same release twice, or one of a later holder after it, is no change: the snapshot is the same object and nobody is told', async () => {
+    const { feed, emit, wakes } = await lost();
+    emit(DETACHED, { by: 'requested', attachment: 1 });
+    const free = feed.getSnapshot();
+    const before = wakes();
+    emit(DETACHED, { by: 'requested', attachment: 1 });
+    emit(DETACHED, { by: 'window-retired', attachment: 2 });
+    expect(feed.getSnapshot()).toBe(free);
+    expect(wakes()).toBe(before);
+  });
+
+  it('is held again when a third tab takes the terminal from the tab that took it: `taken-over` of a later number clears `free`, and says nothing when there was none to clear', async () => {
+    const { feed, emit, wakes } = await lost();
+    const held = feed.getSnapshot();
+    const before = wakes();
+    emit(DETACHED, { by: 'taken-over', attachment: 1 });
+    expect(feed.getSnapshot()).toBe(held);
+    expect(wakes()).toBe(before);
+    emit(DETACHED, { by: 'requested', attachment: 2 });
+    expect(feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    emit(DETACHED, { by: 'taken-over', attachment: 3 });
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+    expect(wakes()).toBe(before + 2);
+    emit(DETACHED, { by: 'window-retired', attachment: 4 });
+    expect(feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    expect(wakes()).toBe(before + 3);
+  });
+
+  it('ignores an event of the number this page held and of any number before it, and one it cannot read: they are the loss it already knows', async () => {
+    const taken = await reattached(4);
+    taken.emit(DETACHED, { by: 'taken-over', attachment: 4 });
+    const after = taken.feed.getSnapshot();
+    const before = taken.wakes();
+    const events: unknown[] = [
+      { by: 'requested', attachment: 4 },
+      { by: 'window-retired', attachment: 3 },
+      { by: 'requested', attachment: 0 },
+      null,
+      undefined,
+      'requested',
+      {},
+      { by: 'requested' },
+      { by: 'requested', attachment: '5' },
+      { by: 'requested', attachment: Number.NaN },
+      { by: 'requested', attachment: 5.5 },
+      { by: 'requested', attachment: -1 },
+    ];
+    for (const payload of events) {
+      taken.emit(DETACHED, payload);
+    }
+
+    expect(taken.feed.getSnapshot()).toBe(after);
+    expect(taken.wakes()).toBe(before);
+  });
+
+  it('compares with the number it holds, whatever that is: a page that took the terminal over and holds 4 sees its later holder in 5, and in any number above', async () => {
+    const one = await reattached(4);
+    one.emit(DETACHED, { by: 'taken-over', attachment: 4 });
+    one.emit(DETACHED, { by: 'requested', attachment: 5 });
+    expect(one.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    const other = await reattached(4);
+    other.emit(DETACHED, { by: 'requested', attachment: 4 });
+    other.emit(DETACHED, { by: 'window-retired', attachment: 9 });
+    expect(other.feed.getSnapshot().detached).toEqual({ by: 'requested', free: true });
+  });
+
+  it('does not read a reason it does not know of a later holder as a release: only a reason the page recognises says the terminal is free, so the snapshot stays as it was, free or not', async () => {
+    const { feed, emit, wakes } = await lost();
+    const held = feed.getSnapshot();
+    const before = wakes();
+    emit(DETACHED, { by: 'a-reason-from-the-future', attachment: 1 });
+    emit(DETACHED, { attachment: 2 });
+    emit(DETACHED, { by: 7, attachment: 3 });
+    expect(feed.getSnapshot()).toBe(held);
+    emit(DETACHED, { by: 'window-retired', attachment: 4 });
+    const free = feed.getSnapshot();
+    expect(free.detached).toEqual({ by: 'taken-over', free: true });
+    emit(DETACHED, { by: 'a-reason-from-the-future', attachment: 5 });
+    expect(feed.getSnapshot()).toBe(free);
+    expect(wakes()).toBe(before + 1);
+  });
+
+  it('keeps listening to the loss and to the end and to nothing else, and lets go of every listener when the feed is closed: nothing it hears after that changes anything', async () => {
+    const { feed, emit, listeners, wakes } = await lost();
+    expect([listeners(DETACHED), listeners(CLOSE), listeners(OUTPUT)]).toEqual([1, 1, 0]);
+    await feed.close();
+    expect(listeners()).toBe(0);
+    const snapshot = feed.getSnapshot();
+    const before = wakes();
+    emit(DETACHED, { by: 'requested', attachment: 1 });
+    emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    expect(feed.getSnapshot()).toBe(snapshot);
+    expect(wakes()).toBe(before);
+  });
+
+  it.each([
+    { how: 'the lease ran out', end: { reason: 'closed', closed_by: 'detach-timeout', last_offset: 9 }, exit: { closedBy: 'detach-timeout' } },
+    { how: 'the tab that took it closed it', end: { reason: 'closed', closed_by: 'request', last_offset: 9 }, exit: { closedBy: 'request' } },
+    { how: 'its shell exited', end: { reason: 'exited', exit_code: 3, last_offset: 9 }, exit: { code: 3 } },
+  ])('drops `free` and says how the terminal ended when $how: nobody can take it back, and every listener is let go', async ({ end, exit }) => {
+    const { feed, emit, listeners, wakes } = await lost();
+    emit(DETACHED, { by: 'window-retired', attachment: 1 });
+    const before = wakes();
+    emit(CLOSE, end);
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, exit, program: 'zsh' });
+    expect(wakes()).toBe(before + 1);
+    expect(listeners()).toBe(0);
+  });
+
+  it('drops `free` when the end says nothing it can read or is a failure of the pty, and keeps the snapshot as it was when the terminal was not free: either way the last listener goes', async () => {
+    for (const payload of [undefined, null, {}, { reason: 'vanished' }, { reason: 'failed', failure: { stage: 'pty', message: 'broken' } }]) {
+      const free = await lost();
+      free.emit(DETACHED, { by: 'requested', attachment: 1 });
+      const before = free.wakes();
+      free.emit(CLOSE, payload);
+      expect(free.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+      expect(free.wakes()).toBe(before + 1);
+      expect(free.listeners()).toBe(0);
+      const held = await lost();
+      const snapshot = held.feed.getSnapshot();
+      held.emit(CLOSE, payload);
+      expect(held.feed.getSnapshot()).toBe(snapshot);
+      expect(held.listeners()).toBe(0);
+    }
+  });
+
+  it('sends nothing to the host for a terminal that is free: it is not this page\'s to detach, to ask for again or to end, and closing the tab does not end what no tab shows', async () => {
+    const { feed, emit, of } = await lost();
+    emit(DETACHED, { by: 'requested', attachment: 1 });
+    feed.leave?.();
+    feed.rejoin?.();
+    await feed.close();
+    expect([...of('detach'), ...of('attach'), ...of('close')]).toEqual([]);
+  });
+});
+
+// ---- T2d fix round: asking the host who holds a terminal this page lost ------------------------------------------------------------------------------------------------------------------------------------------
+
+describe('asking the host who holds a terminal this page lost (`refresh`, T2d)', () => {
+  /** A feed that started its terminal and lost it to another tab (the page held 0), with the host's answers in the test's hands. */
+  const lostFeed = async (options: RigOptions = {}) => {
+    const r = rig({ pageKey: KEY, auto: false, ...options });
+    r.pending('create')[0]?.resolve(SESSION);
+    await flush();
+    r.pending('ack')[0]?.resolve();
+    await flush();
+    r.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    return r;
+  };
+
+  /** What `ListTerminals` answers for the terminal: whether a window holds it, and what else the host says of it. */
+  const listing = (attached: boolean, extra: Record<string, unknown> = {}): unknown[] => [{ id: 'term-1', shell: { path: '/bin/zsh', name: 'zsh' }, attached, next_input_seq: 1, ...extra }];
+
+  /** `refresh` is called and the host answers the listing with `answer`: the answer is applied when this returns. */
+  const refreshed = async (r: Rig, answer: unknown) => {
+    const done = r.feed.refresh?.();
+    r.pending('list').at(-1)?.resolve(answer);
+    await done;
+  };
+
+  it('does nothing for a feed that is not lost: one that is starting, running, ended, failed, closed, has left, or was lost and has been told how the terminal ended; no call is made', async () => {
+    const starting = rig({ pageKey: KEY, auto: false });
+    const running = rig({ pageKey: KEY, created: SESSION });
+    await flush();
+    const left = rig({ pageKey: KEY, created: SESSION });
+    await flush();
+    left.feed.leave?.();
+    const ended = rig({ pageKey: KEY, created: SESSION });
+    await flush();
+    ended.emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    const failed = rig({ pageKey: KEY, created: SESSION });
+    await flush();
+    failed.emit(OUTPUT, output(9, 'gap'));
+    const closed = await lostFeed();
+    await closed.feed.close();
+    const told = await lostFeed();
+    told.emit(CLOSE, { reason: 'closed', closed_by: 'detach-timeout', last_offset: 0 });
+    for (const r of [starting, running, left, ended, failed, closed, told]) {
+      await expect(r.feed.refresh?.()).resolves.toBeUndefined();
+      expect(r.of('list')).toEqual([]);
+    }
+  });
+
+  it('says the terminal is free when the host lists it as not held by any window: the tab that took it released it while this page\'s events were down, and the page asks, and attaches nothing', async () => {
+    const r = await lostFeed();
+    const before = r.wakes();
+    await refreshed(r, listing(false));
+    expect(r.of('list')).toEqual([[KEY]]);
+    expect(r.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over', free: true }, program: 'zsh' });
+    expect(r.wakes()).toBe(before + 1);
+    expect([...r.of('attach'), ...r.of('detach'), ...r.of('close')]).toEqual([]);
+  });
+
+  it('leaves the snapshot as it is when the host lists the terminal as held: the tab that took it has not let go, and nobody is told', async () => {
+    const r = await lostFeed();
+    const held = r.feed.getSnapshot();
+    const before = r.wakes();
+    await refreshed(r, listing(true));
+    expect(r.feed.getSnapshot()).toBe(held);
+    expect(r.wakes()).toBe(before);
+  });
+
+  it('clears `free` when the host lists a terminal that was free as held again: a third tab took it, and nothing told the page', async () => {
+    const r = await lostFeed();
+    r.emit(DETACHED, { by: 'requested', attachment: 1 });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    const before = r.wakes();
+    await refreshed(r, listing(true));
+    expect(r.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+    expect(r.wakes()).toBe(before + 1);
+    await refreshed(r, listing(false));
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    expect(r.wakes()).toBe(before + 2);
+  });
+
+  it('leaves a free terminal as it is when the host lists it as not held either: the same snapshot, and nobody is told again', async () => {
+    const r = await lostFeed();
+    r.emit(DETACHED, { by: 'window-retired', attachment: 1 });
+    const free = r.feed.getSnapshot();
+    const before = r.wakes();
+    await refreshed(r, listing(false));
+    expect(r.feed.getSnapshot()).toBe(free);
+    expect(r.wakes()).toBe(before);
+  });
+
+  it('leaves the snapshot as it is when the host does not say: the terminal is not listed, the list is not a list, or its entry does not say whether a window holds it', async () => {
+    const answers: unknown[] = [[], [{ id: 'another', attached: false }], undefined, null, {}, 'x', 7, [{ id: 'term-1' }], [{ id: 'term-1', attached: 'no' }], [null, 3, {}]];
+    for (const answer of answers) {
+      const r = await lostFeed();
+      const snapshot = r.feed.getSnapshot();
+      const before = r.wakes();
+      await refreshed(r, answer);
+      expect(r.feed.getSnapshot()).toBe(snapshot);
+      expect(r.wakes()).toBe(before);
+      expect(r.warn).not.toHaveBeenCalled();
+    }
+  });
+
+  it('does not say the terminal is free when the host lists how it ended: it ended while no window held it and nobody can take it back, and a `free` that was set is cleared', async () => {
+    const end = { reason: 'exited', exit_code: 0, last_offset: 0 };
+    const held = await lostFeed();
+    const snapshot = held.feed.getSnapshot();
+    await refreshed(held, listing(false, { ended: end }));
+    expect(held.feed.getSnapshot()).toBe(snapshot);
+    const free = await lostFeed();
+    free.emit(DETACHED, { by: 'requested', attachment: 1 });
+    await refreshed(free, listing(false, { ended: end }));
+    expect(free.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+  });
+
+  it('never throws, leaves the snapshot as it is, and says so once when the call fails: the page is told of a host that cannot say, and not again for every try', async () => {
+    const r = await lostFeed();
+    const snapshot = r.feed.getSnapshot();
+    const first = r.feed.refresh?.();
+    r.pending('list')[0]?.reject(new Error('The host is away'));
+    await expect(first).resolves.toBeUndefined();
+    expect(r.feed.getSnapshot()).toBe(snapshot);
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    const again = r.feed.refresh?.();
+    r.pending('list')[1]?.reject(new Error('The host is away'));
+    await expect(again).resolves.toBeUndefined();
+    expect(r.feed.getSnapshot()).toBe(snapshot);
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    expect([...r.of('attach'), ...r.of('detach'), ...r.of('close')]).toEqual([]);
+  });
+
+  it('shares the call that is out with a second one, and asks again once it is answered: both callers wait for the one answer', async () => {
+    const r = await lostFeed();
+    let answered = 0;
+    const first = r.feed.refresh?.().then(() => {
+      answered += 1;
+    });
+    const second = r.feed.refresh?.().then(() => {
+      answered += 1;
+    });
+    await flush();
+    expect(r.of('list')).toHaveLength(1);
+    expect(answered).toBe(0);
+    r.pending('list')[0]?.resolve(listing(false));
+    await Promise.all([first, second]);
+    expect(answered).toBe(2);
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    const third = r.feed.refresh?.();
+    expect(r.of('list')).toHaveLength(2);
+    r.pending('list')[1]?.resolve(listing(true));
+    await third;
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+  });
+
+  it('ignores the answer when the terminal ended meanwhile or the feed was closed: the end says how, and a closed feed has nothing to change', async () => {
+    const ended = await lostFeed();
+    const done = ended.feed.refresh?.();
+    ended.emit(CLOSE, { reason: 'exited', exit_code: 3, last_offset: 0 });
+    ended.pending('list')[0]?.resolve(listing(false));
+    await done;
+    expect(ended.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, exit: { code: 3 }, program: 'zsh' });
+    const closed = await lostFeed();
+    const closing = closed.feed.refresh?.();
+    await closed.feed.close();
+    closed.pending('list')[0]?.resolve(listing(false));
+    await closing;
+    expect(closed.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+  });
+});
+
+// ---- T2d: the page's events came back after a gap --------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+describe('asking the host for what a gap in the page\'s events lost (`rejoin`, T2d)', () => {
+  const ATTACH = { id: 'term-1', program: 'zsh' };
+  /** What the session says when the host's answer cannot be joined to what the feed has, and when the host no longer has the terminal. */
+  const UNREADABLE = 'The terminal could not be taken over: the host\'s answer was not understood.';
+  const GONE = 'The terminal is not there any more: the host ended it while this window was away.';
+
+  /** A feed that started its terminal (it holds attachment 0), running, its flow control on, with the host's answers in the test's hands and no call out. */
+  const running = async (options: RigOptions = {}) => {
+    const r = rig({ pageKey: KEY, auto: false, ...options });
+    r.pending('create')[0]?.resolve(SESSION);
+    await flush();
+    r.pending('ack')[0]?.resolve();
+    await flush();
+    return r;
+  };
+
+  /** `rejoin` is called and the host answers it with `answer`: the answer is applied when this returns. */
+  const answered = async (r: Rig, answer: unknown) => {
+    r.feed.rejoin?.();
+    r.pending('attach').at(-1)?.resolve(answer);
+    await flush();
+  };
+
+  /** The bytes a reader gets now. */
+  const bytesRead = (feed: TerminalFeedHandle): number[] => feed.read().chunks.flatMap((chunk) => [...chunk]);
+
+  it('asks nothing of a feed that is not running and held by this page: one that is starting, ended, failed, lost, closed or has left; the call it is already making for the first time is its own', async () => {
+    const starting = rig({ pageKey: KEY, auto: false });
+    const ended = await running();
+    ended.emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    const failed = await running();
+    failed.emit(OUTPUT, output(9, 'gap'));
+    const lost = await running();
+    lost.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    const closed = await running();
+    void closed.feed.close();
+    const left = await running();
+    left.feed.leave?.();
+    const attaching = rig({ auto: false, attach: ATTACH });
+    for (const r of [starting, ended, failed, lost, closed, left, attaching]) {
+      r.feed.rejoin?.();
+    }
+
+    expect([starting, ended, failed, lost, closed, left].flatMap((r) => r.of('attach'))).toEqual([]);
+    expect(attaching.of('attach')).toHaveLength(1);
+  });
+
+  it('is asked once at a time: another call while the host has not answered does nothing, and one after the answer asks again', async () => {
+    const r = await running();
+    r.feed.rejoin?.();
+    r.feed.rejoin?.();
+    expect(r.of('attach')).toHaveLength(1);
+    r.pending('attach')[0]?.resolve(attached({ attachment: 1 }));
+    await flush();
+    r.feed.rejoin?.();
+    expect(r.of('attach')).toHaveLength(2);
+  });
+
+  describe('the call', () => {
+    it('asks with the key and the offset it has applied up to, the output it holds unread included, and makes no listener of its own: the three it has are the ones that hear what comes meanwhile', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'hello '));
+      r.emit(OUTPUT, output(6, 'world'));
+      r.feed.read(6);
+      const listening = r.listeners();
+      r.feed.rejoin?.();
+      expect(r.of('attach')).toEqual([['term-1', { pageKey: KEY, fromOffset: 11 }]]);
+      expect(r.listeners()).toBe(listening);
+      expect(r.calls.filter((call) => call.startsWith('on '))).toHaveLength(3);
+    });
+
+    it('asks from offset 0 when it has applied nothing: an offset all the same, not a request for everything the host kept', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      expect(r.of('attach')[0]?.[1]).toStrictEqual({ pageKey: KEY, fromOffset: 0 });
+    });
+  });
+
+  describe('when the host still has what the feed lacks', () => {
+    it('reads the bytes it lacks as ordinary output after what it holds, in order, with no replay handed to the reader: the host starts exactly at the offset it was asked for', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'hello '));
+      readText(r.feed);
+      r.emit(OUTPUT, output(6, 'world'));
+      await answered(r, attached({ attachment: 1, start: 11, data: ' and more' }));
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+      expect(readText(r.feed)).toBe('world and more');
+      expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    });
+
+    it('skips what it already has when the host starts the replay before the offset it was asked for (a boundary of its ring), whatever the cut inside the base64 of the answer: every cut of 13 binary bytes', async () => {
+      const data = String.fromCharCode(0, 1, 2, 250, 251, 252, 253, 254, 255, 128, 64, 32, 16);
+      for (let have = 0; have <= data.length; have += 1) {
+        const r = await running();
+        r.emit(OUTPUT, output(0, 'x'.repeat(100 + have)));
+        r.feed.read();
+        await answered(r, attached({ attachment: 1, start: 100, data }));
+        expect(bytesRead(r.feed)).toEqual([...data.slice(have)].map((char) => char.charCodeAt(0)));
+        expect(r.feed.takeReplay?.()).toBeUndefined();
+      }
+    });
+
+    it('cuts a long answer in the same way: a hundred thousand bytes, cut inside a group of three', async () => {
+      const data = Array.from({ length: 100_003 }, (_, index) => String.fromCharCode(index % 251)).join('');
+      const have = 50_001;
+      const r = await running();
+      r.emit(OUTPUT, output(0, data.slice(0, have)));
+      r.feed.read();
+      await answered(r, attached({ attachment: 1, start: 0, data }));
+      const got = bytesRead(r.feed);
+      expect(got).toHaveLength(data.length - have);
+      expect(got.every((value, index) => value === (have + index) % 251)).toBe(true);
+    });
+
+    it('hands nothing and wakes nobody when the answer ends where the feed is: nothing was missed', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'abcd'));
+      r.feed.read();
+      const before = r.wakes();
+      await answered(r, attached({ attachment: 1, start: 0, data: 'abcd' }));
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+      expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
+      expect(r.wakes()).toBe(before);
+      expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    });
+
+    it('wakes the reader once for the bytes it was missing, as for any output', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'abcd'));
+      r.feed.read();
+      const before = r.wakes();
+      await answered(r, attached({ attachment: 1, start: 0, data: 'abcdefgh' }));
+      expect(r.wakes()).toBe(before + 1);
+    });
+
+    it('applies what continues the answer, in order, and drops what the answer has: the events heard while the call was out, and the ones that reach it after the answer', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      r.feed.read();
+      r.feed.rejoin?.();
+      r.emit(OUTPUT, output(4, 'bbbb'));
+      r.emit(OUTPUT, output(12, 'dddd'));
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 4, data: 'bbbbcccc' }));
+      await flush();
+      r.emit(OUTPUT, output(8, 'cccc'));
+      r.emit(OUTPUT, output(16, 'eeee'));
+      expect(readText(r.feed)).toBe('bbbbccccddddeeee');
+    });
+
+    it('fails the session in words when an event heard meanwhile lies above where the answer ends: a gap that must not happen, as for any output', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.emit(OUTPUT, output(40, 'zz'));
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 0, data: 'abcd' }));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: 'Some of the terminal\'s output did not arrive.' } });
+      expect(r.warn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('when the host\'s ring no longer reaches back to what the feed has', () => {
+    it('hands the reader the host\'s ring as a replay, once, with its sizes and modes and where the live output continues, and `read` gives nothing until it is taken; the live output follows it', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      await answered(r, attached({ attachment: 1, start: 10, data: 'rrrrrr', startSize: { cols: 70, rows: 20 }, size: { cols: 90, rows: 33 }, modes: { alt_screen: true, mouse_tracking: 5 } }));
+      expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
+      const replay = replayOf(r.feed);
+      expect([...replay.data]).toEqual(bytes('rrrrrr'));
+      expect(replay.end).toBe(16);
+      expect(replay.startSize).toEqual({ cols: 70, rows: 20 });
+      expect(replay.size).toEqual({ cols: 90, rows: 33 });
+      expect(replay.modes).toMatchObject({ altScreen: true, mouseTracking: 5 });
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+      r.emit(OUTPUT, output(10, 'rrrrrr'));
+      r.emit(OUTPUT, output(16, 'live'));
+      expect(readText(r.feed)).toBe('live');
+    });
+
+    it('tells the reader at once whether or not a wake-up is pending, since a replay is something it must come for, and drops what the feed held and nobody read: it is older than the replay and would be written after it', async () => {
+      for (const pending of [true, false]) {
+        const r = await running();
+        r.emit(OUTPUT, output(0, 'old1'));
+        if (pending) {
+          r.emit(OUTPUT, output(4, 'old2'));
+        } else {
+          r.feed.read();
+        }
+
+        const before = r.wakes();
+        await answered(r, attached({ attachment: 1, start: 100, data: 'rrrr' }));
+        expect(r.wakes()).toBe(before + 1);
+        // The reader has not come yet: it was told, and live output that follows does not tell it again before it reads.
+        r.emit(OUTPUT, output(104, 'live'));
+        expect(r.wakes()).toBe(before + 1);
+        replayOf(r.feed);
+        expect(readText(r.feed)).toBe('live');
+      }
+    });
+
+    it('gives a replay at any time and once, to a feed that started its terminal as to one that took it over; a replay the reader had not taken is replaced by a newer one, and a later rejoin brings another', async () => {
+      const r = await running();
+      await answered(r, attached({ attachment: 1, start: 50, data: 'one' }));
+      await answered(r, attached({ attachment: 2, start: 90, data: 'two' }));
+      expect([...replayOf(r.feed).data]).toEqual(bytes('two'));
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+      await answered(r, attached({ attachment: 3, start: 200, data: 'three' }));
+      expect([...replayOf(r.feed).data]).toEqual(bytes('three'));
+      const taken = rig({ auto: false, attach: ATTACH });
+      taken.pending('attach')[0]?.resolve(attached({ attachment: 1 }));
+      await flush();
+      await answered(taken, attached({ attachment: 2, start: 30, data: 'late' }));
+      expect([...replayOf(taken.feed).data]).toEqual(bytes('late'));
+    });
+
+    it('hands the ring after a first replay the reader had not taken yet, in place of it: the screen is brought to the newest ring and not to both', async () => {
+      const r = rig({ auto: false, attach: ATTACH });
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, data: 'first' }));
+      await flush();
+      await answered(r, attached({ attachment: 2, start: 500, data: 'newest' }));
+      expect([...replayOf(r.feed).data]).toEqual(bytes('newest'));
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+    });
+
+    it('hands the replay of a first attach that the reader had not taken yet, and then what a rejoin found when the host still has it: the replay first, and the output it lacked after it', async () => {
+      const r = rig({ auto: false, attach: ATTACH });
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, data: 'first' }));
+      await flush();
+      await answered(r, attached({ attachment: 2, start: 5, data: 'more' }));
+      expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
+      expect([...replayOf(r.feed).data]).toEqual(bytes('first'));
+      expect(readText(r.feed)).toBe('more');
+    });
+  });
+
+  describe('the number of its attachment, and the count of its input calls', () => {
+    it('holds the new attachment as the one that counts: the host\'s own DETACHED for the attachment that ended, which this call caused, carries the old number and is ignored, whether it came while the call was out or after the answer', async () => {
+      for (const when of ['during', 'after'] as const) {
+        const r = await running();
+        r.feed.rejoin?.();
+        if (when === 'during') {
+          r.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+        }
+
+        r.pending('attach')[0]?.resolve(attached({ attachment: 1 }));
+        await flush();
+        if (when === 'after') {
+          r.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+        }
+
+        expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+        r.emit(DETACHED, { by: 'taken-over', attachment: 1 });
+        expect(r.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+      }
+    });
+
+    it('does the same for a page that took the terminal over and holds 4: the echo carries 4, and the new number is 5', async () => {
+      const r = rig({ auto: false, attach: ATTACH });
+      r.pending('attach')[0]?.resolve(attached({ attachment: 4 }));
+      await flush();
+      r.feed.rejoin?.();
+      r.emit(DETACHED, { by: 'taken-over', attachment: 4 });
+      r.pending('attach')[1]?.resolve(attached({ attachment: 5 }));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+      r.emit(DETACHED, { by: 'requested', attachment: 5 });
+      expect(r.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'requested' }, program: 'zsh' });
+    });
+
+    it('is lost with the new number: a DETACHED that carries it and was heard while the call was out ends the session once the answer has said the number', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.emit(DETACHED, { by: 'taken-over', attachment: 1 });
+      expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1 }));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+      expect([r.listeners(DETACHED), r.listeners(CLOSE), r.listeners(OUTPUT)]).toEqual([1, 1, 0]);
+    });
+
+    it('continues the count of input calls from the host\'s number when it is ahead of the feed\'s own: another tab typed while this page was away', async () => {
+      const r = await running();
+      r.feed.write('a');
+      r.feed.write('b');
+      r.pending('write')[0]?.resolve();
+      r.pending('write')[1]?.resolve();
+      await flush();
+      await answered(r, attached({ attachment: 1, nextInputSeq: 40 }));
+      r.feed.write('c');
+      expect(r.of('write').at(-1)).toEqual(['term-1', 40, btoa('c')]);
+    });
+
+    it('keeps its own number when calls it sent are still on their way and the host has not taken them yet: a number is never used twice', async () => {
+      const r = await running();
+      r.feed.write('a');
+      r.feed.write('b');
+      await answered(r, attached({ attachment: 1, nextInputSeq: 2 }));
+      r.feed.write('c');
+      expect(r.of('write')).toEqual([['term-1', 1, btoa('a')], ['term-1', 2, btoa('b')], ['term-1', 3, btoa('c')]]);
+    });
+
+    it('sends the size the screen stands at when it is not the size the host has, as the next call, and nothing when it is the same', async () => {
+      const differs = await running({ size: { cols: 100, rows: 30 } });
+      await answered(differs, attached({ attachment: 1, size: { cols: 120, rows: 40 }, nextInputSeq: 6 }));
+      expect(differs.of('resize')).toEqual([['term-1', 6, 30, 100]]);
+      const same = await running({ size: { cols: 100, rows: 30 } });
+      await answered(same, attached({ attachment: 1, size: { cols: 100, rows: 30 } }));
+      expect(same.of('resize')).toEqual([]);
+    });
+  });
+
+  describe('what the feed acknowledges (T2-go 2.4 rule 6: never the replay, and nothing the attach made the host forget)', () => {
+    /** The host answers every acknowledgement the feed sends, until it sends no more: `of('ack')` is then what the host was told, in order. */
+    const settleAcks = async (r: Rig) => {
+      let known = -1;
+      while (known !== r.pending('ack').length) {
+        known = r.pending('ack').length;
+        for (const call of r.pending('ack')) {
+          call.resolve();
+        }
+
+        await flush();
+      }
+    };
+
+    it('acknowledges the live bytes it reads and none of the bytes the host forgot when it took the terminal over again: the tail of the answer, and what the feed had applied and the reader had not acknowledged yet', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      expect(readText(r.feed)).toBe('aaaa');
+      r.emit(OUTPUT, output(4, 'bbbb'));
+      await answered(r, attached({ attachment: 1, start: 0, data: 'aaaabbbbcccc' }));
+      r.emit(OUTPUT, output(12, 'dddd'));
+      expect(readText(r.feed)).toBe('bbbbccccdddd');
+      // The reader parses 'aaaa' after the answer, then the rest: 'aaaa', 'bbbb' and 'cccc' are what the host forgot, 'dddd' is live.
+      r.feed.ack(4);
+      r.feed.ack(12);
+      await settleAcks(r);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+    });
+
+    it('does the same when the host\'s ring no longer reaches back: what the reader took and has not acknowledged is forgotten by the host, and what was held unread is dropped and never acknowledged', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      expect(readText(r.feed)).toBe('aaaa');
+      r.emit(OUTPUT, output(4, 'bbbb'));
+      await answered(r, attached({ attachment: 1, start: 100, data: 'rrrr' }));
+      replayOf(r.feed);
+      r.emit(OUTPUT, output(104, 'live'));
+      expect(readText(r.feed)).toBe('live');
+      r.feed.ack(4);
+      r.feed.ack(4);
+      await settleAcks(r);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+    });
+
+    it('drops the count the reader had given and the feed had not sent yet: the host forgot what it was for', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaabbbb'));
+      expect(readText(r.feed)).toBe('aaaabbbb');
+      r.feed.ack(4);
+      r.feed.ack(4);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+      await answered(r, attached({ attachment: 1, start: 0, data: 'aaaabbbb' }));
+      await settleAcks(r);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+    });
+
+    it('sends no acknowledgement while the call is out: what the reader parses then was delivered before the attach, which the host forgets, and a count that reached the host after the attach would be taken from what it is owed for the bytes that follow', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      expect(readText(r.feed)).toBe('aaaa');
+      r.feed.rejoin?.();
+      r.feed.ack(4);
+      await settleAcks(r);
+      expect(r.of('ack')).toEqual([['term-1', 0]]);
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 0, data: 'aaaa' }));
+      await flush();
+      await settleAcks(r);
+      expect(r.of('ack')).toEqual([['term-1', 0]]);
+    });
+
+    it('acknowledges everything it reads as it did, for a feed that never rejoined', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      expect(readText(r.feed)).toBe('aaaa');
+      r.feed.ack(4);
+      await settleAcks(r);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+    });
+
+    it('counts forgotten bytes once, over several rejoins: what the reader had not acknowledged is the same bytes each time', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      expect(readText(r.feed)).toBe('aaaa');
+      await answered(r, attached({ attachment: 1, start: 0, data: 'aaaabbbb' }));
+      await answered(r, attached({ attachment: 2, start: 0, data: 'aaaabbbbcccc' }));
+      r.emit(OUTPUT, output(12, 'dddd'));
+      expect(readText(r.feed)).toBe('bbbbccccdddd');
+      r.feed.ack(16);
+      await settleAcks(r);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+    });
+
+    it('discards the refusal of an acknowledgement that was in flight when the rejoin was answered: its count was for bytes the host forgot at the attach, so it is not owed again and not sent again, and what accrued for the new attachment goes at once, alone', async () => {
+      for (const refusal of [Object.assign(new Error('The host is busy'), { code: 'BUSY' }), new Error('gone')]) {
+        const r = await running();
+        r.emit(OUTPUT, output(0, 'aaaa'));
+        expect(readText(r.feed)).toBe('aaaa');
+        // The count is sent, and the host has not answered it.
+        r.feed.ack(4);
+        expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+        await answered(r, attached({ attachment: 1, start: 4, data: '' }));
+        r.emit(OUTPUT, output(4, 'bbbb'));
+        expect(readText(r.feed)).toBe('bbbb');
+        // What the reader parsed of the new attachment's output waits behind the call that is out.
+        r.feed.ack(4);
+        expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+        // Only now does the host refuse the old one.
+        r.pending('ack')[1]?.reject(refusal);
+        await flush();
+        expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4], ['term-1', 4]]);
+        await settleAcks(r);
+        vi.advanceTimersByTime(10 * ACK_RETRY_MS);
+        await settleAcks(r);
+        expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4], ['term-1', 4]]);
+        expect(r.warn).not.toHaveBeenCalled();
+      }
+    });
+
+    it('goes on with what accrued for the new attachment when an acknowledgement sent before the rejoin is answered after it: the older call says nothing of what is owed now', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      expect(readText(r.feed)).toBe('aaaa');
+      r.feed.ack(4);
+      await answered(r, attached({ attachment: 1, start: 4, data: '' }));
+      r.emit(OUTPUT, output(4, 'bbbb'));
+      expect(readText(r.feed)).toBe('bbbb');
+      r.feed.ack(4);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+      r.pending('ack')[1]?.resolve();
+      await flush();
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4], ['term-1', 4]]);
+    });
+
+    it('retries the refusal of an acknowledgement sent after the rejoin as it always did: the count stays owed, and goes again by itself after the wait', async () => {
+      const r = await running();
+      await answered(r, attached({ attachment: 1, start: 0, data: '' }));
+      r.emit(OUTPUT, output(0, 'cccc'));
+      expect(readText(r.feed)).toBe('cccc');
+      r.feed.ack(4);
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+      r.pending('ack')[1]?.reject(Object.assign(new Error('The host is busy'), { code: 'BUSY' }));
+      await flush();
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+      vi.advanceTimersByTime(ACK_RETRY_MS);
+      await flush();
+      expect(r.of('ack')).toEqual([['term-1', 0], ['term-1', 4], ['term-1', 4]]);
+      expect(r.warn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('an answer that cannot be read, and a call the host refused', () => {
+    it.each([
+      { name: 'nothing', before: '', answer: undefined },
+      { name: 'null', before: '', answer: null },
+      { name: 'an empty object', before: '', answer: {} },
+      { name: 'a replay whose start and length do not reach its end', before: '', answer: attached({ attachment: 1, data: 'abc', end: 9 }) },
+      { name: 'a replay whose data is not text', before: '', answer: { ...attached({ attachment: 1 }), replay: { ...(attached().replay as Record<string, unknown>), data: 7 } } },
+      { name: 'a replay that ends below the offset the feed is at: the host has less than the page does', before: 'aaaaaaaa', answer: attached({ attachment: 1, data: 'abcd' }) },
+      { name: 'no number of the attachment', before: '', answer: without(attached(), 'attachment') },
+      { name: 'no number of the input queue for a terminal that runs', before: '', answer: without(attached({ attachment: 1 }), 'next_input_seq') },
+      { name: 'a number of the input queue that is 0 for a terminal that runs', before: '', answer: attached({ attachment: 1, nextInputSeq: 0 }) },
+      { name: 'a number of the input queue that is below 1', before: '', answer: attached({ attachment: 1, nextInputSeq: -3 }) },
+      { name: 'a number of the input queue that is a fraction', before: '', answer: attached({ attachment: 1, nextInputSeq: 17.5 }) },
+      { name: 'a number of the input queue that is text', before: '', answer: attached({ attachment: 1, nextInputSeq: '17' }) },
+      { name: 'a number of the input queue that is null', before: '', answer: attached({ attachment: 1, nextInputSeq: null }) },
+      { name: 'a replay that starts below 0', before: '', answer: attached({ attachment: 1, start: -3, data: 'abc', end: 0 }) },
+      { name: 'a replay whose start is a fraction', before: '', answer: attached({ attachment: 1, start: 0.5, data: 'abc', end: 3.5 }) },
+      { name: 'a replay whose text is not base64, cut inside a group', before: 'x', answer: { ...attached({ attachment: 1, data: 'abc' }), replay: { ...(attached({ attachment: 1, data: 'abc' }).replay as Record<string, unknown>), data: '****' } } },
+      { name: 'a replay whose text is not base64 and holds the bytes the answer says (the text ****, bytes 0 to 3)', before: '', answer: withText(3, '****') },
+      { name: 'a replay whose text has a character outside the alphabet in the middle of a long text', before: '', answer: withText(750, `${'AAAA'.repeat(124)}A*AA${'AAAA'.repeat(125)}`) },
+      { name: 'a replay whose text has padding in the middle', before: '', answer: withText(4, 'QQ==QQ==') },
+      { name: 'a replay whose text has too much padding', before: '', answer: withText(1, 'A===') },
+    ])('fails the session in words, as a first attach does, when the answer is $name: the output could not be joined exactly, and the host is not guessed at', async ({ before, answer }) => {
+      const r = await running();
+      if (before !== '') {
+        r.emit(OUTPUT, output(0, before));
+        r.feed.read();
+      }
+
+      await answered(r, answer);
+      expect(r.feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: UNREADABLE } });
+      expect(r.listeners()).toBe(0);
+      r.feed.write('x');
+      r.feed.resize(100, 30);
+      vi.advanceTimersByTime(1_000);
+      await flush();
+      expect([...r.of('write'), ...r.of('resize')]).toEqual([]);
+    });
+
+    it('ends the session as failed, in words, when the host no longer has the terminal: it ended while the window was away, and nothing the page could have heard told it', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.pending('attach')[0]?.reject(new Error('gone'));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: GONE } });
+      expect(r.listeners()).toBe(0);
+    });
+
+    it('fails in the host\'s words and code, at the stage of a session that was running, for any other refusal', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.pending('attach')[0]?.reject(Object.assign(new Error('The host is busy'), { code: 'BUSY' }));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: 'The host is busy', code: 'BUSY' } });
+      expect(r.listeners()).toBe(0);
+    });
+
+    it('applies nothing it heard meanwhile when the call is refused: the failure is the only change, and what it had read stays readable', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'abcd'));
+      r.feed.rejoin?.();
+      r.emit(OUTPUT, output(4, 'efgh'));
+      r.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+      r.pending('attach')[0]?.reject(new Error('gone'));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: GONE } });
+      expect(readText(r.feed)).toBe('abcd');
+    });
+
+    it('can be closed afterwards, and the close says nothing of a terminal the host says is gone', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.pending('attach')[0]?.reject(new Error('gone'));
+      await flush();
+      const closing = r.feed.close();
+      await flush();
+      r.pending('close')[0]?.reject(new Error('gone'));
+      await expect(closing).resolves.toBeUndefined();
+    });
+  });
+
+  describe('a terminal that ended while the window was away', () => {
+    const END = { reason: 'exited', exit_code: 3, last_offset: 12 };
+
+    it('delivers what it missed and is then ended with how it ended, as for a first attach: the output after the offset it asked for is read, the state is `ended`, every listener is let go, and nothing is acknowledged', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      r.feed.read();
+      await answered(r, attached({ attachment: 1, start: 0, data: 'aaaabbbb\r\n', ended: END }));
+      expect(r.feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 3 }, program: 'zsh' });
+      expect(r.listeners()).toBe(0);
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+      expect(readText(r.feed)).toBe('bbbb\r\n');
+      expect(r.of('ack')).toEqual([['term-1', 0]]);
+    });
+
+    it('hands the ring as a replay when it no longer reaches back, and is ended all the same: `read` gives nothing until the reader has taken the replay', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      await answered(r, attached({ attachment: 1, start: 100, data: 'bye\r\n', ended: END }));
+      expect(r.feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 3 }, program: 'zsh' });
+      expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
+      expect([...replayOf(r.feed).data]).toEqual(bytes('bye\r\n'));
+      expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
+    });
+
+    it('says how it ended in the typed words, whatever the end was: a signal, a close', async () => {
+      const signaled = await running();
+      await answered(signaled, attached({ attachment: 1, ended: { reason: 'signaled', signal: 'SIGKILL', signal_number: 9, last_offset: 0 } }));
+      expect(signaled.feed.getSnapshot()).toEqual({ state: 'ended', exit: { signal: 'SIGKILL', signalNumber: 9 }, program: 'zsh' });
+      const closed = await running();
+      await answered(closed, attached({ attachment: 1, ended: { reason: 'closed', closed_by: 'detach-timeout', last_offset: 0 } }));
+      expect(closed.feed.getSnapshot()).toEqual({ state: 'ended', exit: { closedBy: 'detach-timeout' }, program: 'zsh' });
+    });
+
+    it.each([
+      { name: 'the 0 a terminal that takes no input says', answer: attached({ attachment: 1, ended: END }) },
+      { name: 'no number of the input queue', answer: without(attached({ attachment: 1, ended: END }), 'next_input_seq') },
+      { name: 'text where the number goes', answer: attached({ attachment: 1, ended: END, nextInputSeq: 'seven' }) },
+    ])('is ended all the same when the answer carries $name: a terminal that ended takes no input, and its number is not read', async ({ answer }) => {
+      const r = await running();
+      await answered(r, answer);
+      expect(r.feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 3 }, program: 'zsh' });
+      r.feed.write('x');
+      await flush();
+      expect(r.of('write')).toEqual([]);
+    });
+
+    it('is dismissed at the host by the close of the feed, as any terminal that ended is', async () => {
+      const r = await running();
+      await answered(r, attached({ attachment: 1, ended: END }));
+      const closing = r.feed.close();
+      await flush();
+      expect(r.of('close')).toEqual([['term-1']]);
+      r.pending('close')[0]?.resolve();
+      await closing;
+    });
+  });
+
+  describe('what changes while the call is out', () => {
+    it('ignores the answer when the feed was closed meanwhile: the close ends the terminal, and the answer changes nothing', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      const closing = r.feed.close();
+      await flush();
+      expect(r.of('close')).toEqual([['term-1']]);
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 50, data: 'rrrr' }));
+      r.pending('close')[0]?.resolve();
+      await closing;
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+      expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
+      expect(r.listeners()).toBe(0);
+    });
+
+    it('ignores the answer when the page left meanwhile: the terminal is left for the page that comes back, and the answer changes nothing', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.feed.leave?.();
+      expect(r.of('detach')).toEqual([['term-1', { pageKey: KEY }]]);
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 50, data: 'rrrr' }));
+      await flush();
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    });
+
+    it('ignores the answer when the session failed meanwhile: what was typed was refused, and that is what the session says', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.feed.write('x');
+      r.pending('write')[0]?.reject(Object.assign(new Error('The host cannot take this number.'), { code: 'SEQUENCE_STALE' }));
+      await flush();
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 50, data: 'rrrr' }));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'input', message: 'The host cannot take this number.', code: 'SEQUENCE_STALE' } });
+      expect(r.feed.takeReplay?.()).toBeUndefined();
+    });
+
+    it('applies a close that was heard meanwhile after the answer: the terminal ended as the page asked again, and the output the answer holds is read first', async () => {
+      const r = await running();
+      r.feed.rejoin?.();
+      r.emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 5 });
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 0, data: 'bye\r\n' }));
+      await flush();
+      expect(r.feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 0 } });
+      expect(readText(r.feed)).toBe('bye\r\n');
+      expect(r.listeners()).toBe(0);
+    });
+
+    it('holds what comes while the call is out and reads none of it before the answer: the reader is given the output in order, after the call', async () => {
+      const r = await running();
+      r.emit(OUTPUT, output(0, 'aaaa'));
+      r.feed.read();
+      r.feed.rejoin?.();
+      r.emit(OUTPUT, output(4, 'bbbb'));
+      expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
+      r.pending('attach')[0]?.resolve(attached({ attachment: 1, start: 4, data: '' }));
+      await flush();
+      expect(readText(r.feed)).toBe('bbbb');
+    });
+
+    it('ignores the refusal when the page left meanwhile or the feed was closed: nothing more is said of a terminal the page no longer holds', async () => {
+      const left = await running();
+      left.feed.rejoin?.();
+      left.feed.leave?.();
+      left.pending('attach')[0]?.reject(new Error('gone'));
+      await flush();
+      expect(left.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+      const closed = await running();
+      closed.feed.rejoin?.();
+      const closing = closed.feed.close();
+      await flush();
+      closed.pending('attach')[0]?.reject(new Error('gone'));
+      closed.pending('close')[0]?.resolve();
+      await closing;
+      expect(closed.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    });
   });
 });

@@ -397,7 +397,22 @@
       "seq-restart",
       "own-number",
       "tombstone-adopted",
-      "detached-axe"
+      "detached-axe",
+      "restore-forgets-open",
+      "restore-forgets-closed",
+      "taker-gone-ignored",
+      "take-back-twice",
+      "free-axe",
+      "rejoin-from-zero",
+      "rejoin-drops-missed",
+      "rejoin-acks-replay",
+      "gap-hidden",
+      "gone-keeps-attaching",
+      "keys-dropped",
+      "replies-as-keys",
+      "ack-stale-restore",
+      "takeback-unguarded",
+      "refresh-skipped"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {
@@ -405,6 +420,18 @@
     "controls": []
   },
   "ui-next/shell/probes/terminal-reattach-c-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-reattach-d-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-reattach-e-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-reattach-f-probe.mjs": {
     "probe": true,
     "controls": []
   },

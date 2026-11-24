@@ -45,6 +45,8 @@
 //                   unknown-idle  with `?busy=unknown`, `IsBusy` says `idle` (`close.unknown`)
 //                   code-less     the host's refusal to find a shell has no `code`, only its words (`start.unavailable`)
 //                   start-typed   the host's plain start failure carries the code of a missing shell (`start.failed`)
+//                   keys-dropped  a screen that drops what is typed while it writes a replay: the keys are lost before the screen sees them (`reattach.rejoin-keys`)
+//                   replies-as-keys the engine cannot tell what the emulator answers to a query from what the user typed, and gives its answers as keys (`reattach.rejoin-keys`)
 //
 // `window.__pty` is what the probe reads and drives: `log` (what was created, refused, written, resized, closed, asked of `IsBusy`, what each input call was (`calls`: its kind, its number, its bytes, the instant the page made it, its place in the order
 // of arrival, the instant the host applied it, its place in the order of application, and the instant it answered) and which old calls were made (`legacy`), what `size` printed, and the credit: `acks` (the count of every `AckTerminal` call, in order), `ackState` (what the page had done at each, and the
@@ -66,7 +68,7 @@ import type { EngineLoader } from '../panel/terminal/engine';
 import { signalEvent, streamEvent } from '../panel/terminal/execFeed';
 import type { TerminalTarget } from '../panel/terminal/feed';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
-import { localShellTarget, restoreLocalTerminals, type EventsLike } from '../panel/terminal/localShell';
+import { attachLocalTerminal, localShellTarget, restoreLocalTerminals, type EventsLike } from '../panel/terminal/localShell';
 import { loadPageKey, terminalKeyStorage } from '../panel/terminal/pageKey';
 import { loadSession, windowStorage, type WindowState } from '../session';
 
@@ -196,7 +198,7 @@ const notFound = (id: string): Error => refusal({ type: SESSION_NOT_FOUND, title
  */
 type Order = { readonly base: number; readonly events: number; checked: number; bad: number; first: { k: number; at: number; got: number } | null };
 /** The numbered lines of a flood (`0000042 xxx`) as the emulator was given them: the last number, how many, and where one was skipped or repeated. */
-type Lines = { last: number; count: number; carry: string; gaps: Array<{ after: number; got: number }>; dups: Array<{ after: number; got: number }>; resets: number };
+type Lines = { last: number; first: number; count: number; carry: string; gaps: Array<{ after: number; got: number }>; dups: Array<{ after: number; got: number }>; resets: number };
 const stats = {
   writes: 0,
   accepted: 0,
@@ -206,10 +208,17 @@ const stats = {
   renderers: [] as string[],
   engines: 0,
   order: null as Order | null,
-  lines: (trackLines ? { last: -1, count: 0, carry: '', gaps: [], dups: [], resets: 0 } : null) as Lines | null,
+  lines: (trackLines ? { last: -1, first: -1, count: 0, carry: '', gaps: [], dups: [], resets: 0 } : null) as Lines | null,
   grid: (): { cols: number; rows: number } => ({ cols: 0, rows: 0 }),
   measure: (): { cols: number; rows: number } | null => null,
 };
+
+/**
+ * `window.__gate`: the probe holds back the end of the emulator's writes. The emulator is given the bytes and parses them, and the callback that says it has is kept until the probe lets it go, so that a replay takes as many
+ * frames as the probe wants and a key typed meanwhile is typed while the screen is still writing. `keys` and `replies` count what the emulator says through `onData`: what the user typed, and what the emulator answered to a
+ * query in the bytes it parsed (the engine says which it is).
+ */
+const gate = { closed: false, held: [] as Array<() => void>, keys: 0, replies: 0 };
 
 /** One input call as the host saw it: the page made it at `at`, it arrived, the host applied it, and the host answered it. */
 type Call = {
@@ -998,7 +1007,9 @@ const localClient = {
  * `?host=shared`: the host's calls go to the probe's host (terminal-host.mjs) through the binding `window.__host`, and what the host emits comes back through `window.__hostEmit`. A page load is a window of its own (`windowId`), as
  * a page of server mode is: the host retires it when the page goes away. The host keeps the terminals, the window's state (the page key and the saved session) and the rest of the far end; the page keeps none of it.
  * The page-side negative controls of the reattach assertions are in the calls below: `key-in-url` (the page puts its key in the address), `ack-replay` (it credits the replay), `seq-restart` (the answer of the attach hands the
- * page 1 for the number the input queue takes next), `leave-lost` (the page never says it is leaving), and in the window's state `no-session` and `key-regen` (the session and the key are never kept).
+ * page 1 for the number the input queue takes next), `rejoin-from-zero` (a rejoin asks for the output from its first byte), `leave-lost` (the page never says it is leaving), and in the window's state `no-session` and `key-regen`
+ * (the session and the key are never kept) and `restore-forgets-open` and `restore-forgets-closed` (the saved session says the panel was closed, or open, whatever it was saved as). `window.__link.failLists(true)` (the probe's
+ * control `refresh-skipped`) makes the host's list fail from then on, and `window.__acks.accept()` (its control `ack-stale-restore`) makes the `AckTerminal` call that was held be taken by the host when it is let go, and not refused.
  */
 type HostBinding = (windowId: string, method: string, args: readonly unknown[]) => Promise<unknown>;
 
@@ -1014,6 +1025,50 @@ const hostCall = async (method: string, ...args: unknown[]): Promise<unknown> =>
   return hostBinding(windowId, method, args);
 };
 
+/**
+ * `?host=shared`: the page's connection to the host's events. The probe puts it down (`window.__link.down()`: every event the host sends from then on is lost to the page for good, as the events of a socket that was down are, and
+ * the answer says how far the output of each terminal had got) and brings it up again (`window.__link.up()`: the Terminal tool is told, through the `reconnect` option, that the events are back, as the host's own page is when its
+ * socket opens again; `signal()` tells it again without a change). `arm(true)` makes the next attach the page makes be made twice (the probe's control `take-back-twice` arms it, once, just before it presses the button). `state()` says
+ * how many events were lost (`dropped`), how many `WriteTerminal` calls the page has made (`writes`), how many `ListTerminals` calls it has had answered or refused (`listed`) and how far the output of each terminal has got (`delivered`):
+ * what the probe waits on, in the place of a time.
+ */
+const reconnectListeners = new Set<() => void>();
+const link = { up: true, dropped: 0, twice: false, writes: 0, listed: 0, listsFail: false, delivered: new Map<string, number>() };
+
+/**
+ * `window.__acks`: the probe holds the `AckTerminal` calls of the page from the moment it asks (`hold()`): each is in flight with no answer until `release()` lets it go, refused (the connection dropped under it, as it does under
+ * a call that is in flight when the events stop) or, after `accept()`, taken by the host late, after an attach that made the host forget what it was owed. `held()` is how many are in flight.
+ */
+const acks = { holding: false, accepting: false, held: [] as Array<{ id: string; bytes: number; resolve: (value: unknown) => void; reject: (error: unknown) => void }> };
+const OUTPUT = /^core\/exec\/stream\/output\/(.+)$/;
+const hostEmit = (name: string, data: unknown): void => {
+  if (!link.up) {
+    link.dropped += 1;
+    return;
+  }
+
+  const found = OUTPUT.exec(name);
+  if (found?.[1] !== undefined && typeof data === 'object' && data !== null && 'offset' in data && 'data' in data && typeof data.offset === 'number' && typeof data.data === 'string') {
+    link.delivered.set(found[1], data.offset + base64Size(data.data));
+  }
+
+  emit(name, data);
+};
+
+const signalReconnect = (): void => {
+  for (const listener of [...reconnectListeners]) {
+    listener();
+  }
+};
+
+/** What the Terminal tool is given to hear that the page's events are back (`TerminalsOptions.reconnect`). */
+const reconnect = (listener: () => void): (() => void) => {
+  reconnectListeners.add(listener);
+  return () => {
+    reconnectListeners.delete(listener);
+  };
+};
+
 type Launch = { readonly cols: number; readonly rows: number; readonly page_key?: string | undefined; readonly lease_ms?: number | undefined };
 type Attach = { readonly page_key?: string | undefined; readonly from_offset?: number | undefined };
 const remoteClient = {
@@ -1024,11 +1079,30 @@ const remoteClient = {
 
     return hostCall('CreateTerminal', options, launch);
   },
-  ListTerminals: async (pageKey: string) => hostCall('ListTerminals', pageKey),
+  ListTerminals: async (pageKey: string) => {
+    try {
+      // From the moment the probe arms it (`window.__link.failLists(true)`, its control `refresh-skipped`) the host's list cannot be had: the page cannot learn who holds a terminal it lost.
+      if (link.listsFail) {
+        throw new Error('the host could not answer the list');
+      }
+
+      return await hostCall('ListTerminals', pageKey);
+    } finally {
+      link.listed += 1;
+    }
+  },
   AttachTerminal: async (id: string, request: Attach) => {
-    const answer = (await hostCall('AttachTerminal', id, request)) as { readonly replay: { readonly data: string } };
+    // `?control=rejoin-from-zero`: a rejoin that starts over from the first byte, whatever the page has.
+    const sent = control === 'rejoin-from-zero' && request.from_offset !== undefined ? { ...request, from_offset: 0 } : request;
+    const answer = (await hostCall('AttachTerminal', id, sent)) as { readonly replay: { readonly data: string } };
     if (control === 'ack-replay') {
       void hostCall('AckTerminal', id, base64Size(answer.replay.data));
+    }
+
+    // Armed by the probe's control `take-back-twice`, once, just before the press: the attach is made once more, as a button that attaches twice would make it.
+    if (link.twice) {
+      link.twice = false;
+      await hostCall('AttachTerminal', id, sent);
     }
 
     return control === 'seq-restart' ? { ...answer, next_input_seq: 1 } : answer;
@@ -1054,10 +1128,21 @@ const remoteClient = {
 
     return body.answer;
   },
-  WriteTerminal: async (id: string, seq: number, data: string) => hostCall('WriteTerminal', id, seq, data),
+  WriteTerminal: async (id: string, seq: number, data: string) => {
+    link.writes += 1;
+    return hostCall('WriteTerminal', id, seq, data);
+  },
   ResizeTerminal: async (id: string, seq: number, rows: number, cols: number) => hostCall('ResizeTerminal', id, seq, rows, cols),
   CloseSession: async (id: string) => hostCall('CloseSession', id),
-  AckTerminal: async (id: string, bytes: number) => hostCall('AckTerminal', id, bytes),
+  AckTerminal: async (id: string, bytes: number) => {
+    if (acks.holding) {
+      return new Promise<unknown>((resolve, reject) => {
+        acks.held.push({ id, bytes, resolve, reject });
+      });
+    }
+
+    return hostCall('AckTerminal', id, bytes);
+  },
   IsBusy: async (id: string) => hostCall('IsBusy', id),
 };
 
@@ -1065,8 +1150,34 @@ const client = shared ? remoteClient : localClient;
 
 /** The host's window service as the generated binding has it (`GetState`, `SaveState`): the slots of each window. `?host=shared` keeps them in the probe's host, which outlives the page, as the host's own state root does. */
 const slots = new Map<string, Record<string, string | undefined>>();
+
+/**
+ * `?control=restore-forgets-open` and `?control=restore-forgets-closed`: what the window state says of the panel is changed as it is read, so that the saved session says the panel was closed (or open) whatever it was saved as,
+ * as a restore that forgot the flag would have it.
+ */
+const withOpenFlag = (state: Record<string, string | undefined>, open: boolean): Record<string, string | undefined> => {
+  const text = state.session;
+  if (text === undefined) {
+    return state;
+  }
+
+  try {
+    const saved: unknown = JSON.parse(text);
+    if (typeof saved === 'object' && saved !== null && 'panel' in saved && typeof saved.panel === 'object' && saved.panel !== null) {
+      return { ...state, session: JSON.stringify({ ...saved, panel: { ...saved.panel, open } }) };
+    }
+  } catch {
+    // A session that cannot be read is read as it is.
+  }
+
+  return state;
+};
+
 const sharedState: WindowState = {
-  GetState: async (name) => (await hostCall('GetState', name)) as Record<string, string | undefined>,
+  GetState: async (name) => {
+    const state = (await hostCall('GetState', name)) as Record<string, string | undefined>;
+    return control === 'restore-forgets-open' ? withOpenFlag(state, false) : control === 'restore-forgets-closed' ? withOpenFlag(state, true) : state;
+  },
   SaveState: async (name, slot, json) => {
     if ((control === 'no-session' && slot === 'session') || (control === 'key-regen' && slot === 'terminal-page-key')) {
       return;
@@ -1084,7 +1195,47 @@ const localState: WindowState = {
 };
 const windowState = shared ? sharedState : localState;
 if (shared) {
-  Object.assign(window, { __hostEmit: emit, __windowId: windowId });
+  Object.assign(window, {
+    __hostEmit: hostEmit,
+    __windowId: windowId,
+    __link: {
+      down: (): Record<string, number> => {
+        link.up = false;
+        return Object.fromEntries(link.delivered);
+      },
+      up: (): void => {
+        link.up = true;
+        signalReconnect();
+      },
+      signal: signalReconnect,
+      arm: (on: boolean): void => {
+        link.twice = on;
+      },
+      state: (): { up: boolean; dropped: number; writes: number; listed: number; delivered: Record<string, number> } => ({ up: link.up, dropped: link.dropped, writes: link.writes, listed: link.listed, delivered: Object.fromEntries(link.delivered) }),
+      failLists: (on: boolean): void => {
+        link.listsFail = on;
+      },
+    },
+    __acks: {
+      hold: (): void => {
+        acks.holding = true;
+      },
+      held: (): number => acks.held.length,
+      accept: (): void => {
+        acks.accepting = true;
+      },
+      release: (): void => {
+        acks.holding = false;
+        for (const call of acks.held.splice(0)) {
+          if (acks.accepting) {
+            void hostCall('AckTerminal', call.id, call.bytes).then(call.resolve, call.reject);
+          } else {
+            call.reject(new Error('the connection to the host dropped'));
+          }
+        }
+      },
+    },
+  });
 }
 
 const events: EventsLike = {
@@ -1138,7 +1289,7 @@ const latin1 = new TextDecoder('latin1');
 function trackLine(lines: Lines, data: Uint8Array | string): void {
   if (typeof data === 'string') {
     if (data.includes('\u001bc')) {
-      Object.assign(lines, { last: -1, carry: '' });
+      Object.assign(lines, { last: -1, first: -1, carry: '' });
       lines.resets += 1;
     }
 
@@ -1161,6 +1312,10 @@ function trackLine(lines: Lines, data: Uint8Array | string): void {
 
     if (lines.last >= 0 && number !== lines.last + 1) {
       lines.gaps.push({ after: lines.last, got: number });
+    }
+
+    if (lines.first < 0) {
+      lines.first = number;
     }
 
     lines.count += 1;
@@ -1193,10 +1348,19 @@ const load: EngineLoader = async () => {
 
           stats.accepted += size;
           engine.write(data, () => {
-            stats.parsed += size;
-            done?.();
-            if (control === 'ack-double') {
+            const parsed = (): void => {
+              stats.parsed += size;
               done?.();
+              if (control === 'ack-double') {
+                done?.();
+              }
+            };
+
+            // The probe's gate holds the end of the write: the emulator has the bytes, and the screen is told that it has parsed them when the probe lets it.
+            if (gate.closed) {
+              gate.held.push(parsed);
+            } else {
+              parsed();
             }
           });
         };
@@ -1229,8 +1393,21 @@ const load: EngineLoader = async () => {
         forward();
       },
       onData: (listener) =>
-        engine.onData((data) => {
+        engine.onData((data, user) => {
           stats.typedAt.push(performance.now());
+          if (user) {
+            gate.keys += 1;
+          } else {
+            gate.replies += 1;
+          }
+
+          // `?control=keys-dropped`: a screen that drops what is typed while it writes a replay loses the keys before it sees them.
+          if (control === 'keys-dropped' && gate.closed && user) {
+            return;
+          }
+
+          // `?control=replies-as-keys`: an engine that cannot tell what the emulator answers from what the user typed gives its answers to the screen as keys.
+          const typed = control === 'replies-as-keys' ? true : user;
           if (control === 'echo-slow' && log.floodStarts.length === 0) {
             burn(80);
           }
@@ -1238,7 +1415,7 @@ const load: EngineLoader = async () => {
           if (control === 'input-serial') {
             // What is typed waits for the call before it to be answered, as a page that sent its input one call at a time would: the keys are let go one at a time, each after the call before it was answered.
             typedWaiting.push(() => {
-              listener(data);
+              listener(data, typed);
             });
             if (!letting) {
               letting = true;
@@ -1264,7 +1441,7 @@ const load: EngineLoader = async () => {
             return;
           }
 
-          listener(data);
+          listener(data, typed);
         }),
       setScreenReaderMode: (on) => {
         if (control === 'reader-claims' || (control === 'reader-stuck' && !on)) {
@@ -1301,6 +1478,20 @@ const chunkListeners = new Set<() => void>();
 Object.assign(window, {
   __commits: commits,
   __engine: stats,
+  __gate: {
+    close: (): void => {
+      gate.closed = true;
+    },
+    open: (): void => {
+      gate.closed = false;
+      for (const parsed of gate.held.splice(0)) {
+        parsed();
+      }
+    },
+    held: (): number => gate.held.length,
+    keys: (): number => gate.keys,
+    replies: (): number => gate.replies,
+  },
   __pty: {
     log,
     net,
@@ -1371,7 +1562,7 @@ async function mount(): Promise<void> {
           onRetry={() => undefined}
           onRetryInventory={() => undefined}
           session={session}
-          terminals={{ target, load, pageKey: key, restore: key === undefined ? undefined : async () => restoreLocalTerminals(key, { client, events }) }}
+          terminals={{ target, load, pageKey: key, restore: key === undefined ? undefined : async () => restoreLocalTerminals(key, { client, events }), reconnect, reattach: key === undefined ? undefined : (id: string) => attachLocalTerminal(key, id, undefined, { client, events }) }}
         />
       </Profiler>
     </ThemeProvider>,

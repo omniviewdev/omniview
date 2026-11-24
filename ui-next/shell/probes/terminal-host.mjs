@@ -6,8 +6,9 @@
 //   - a terminal made with `launch.page_key` (16 to 128 visible ASCII characters, no space; anything else is refused INVALID_REQUEST naming it) sends `core/exec/stream/output/<id>` as `{offset, data}` (offsets contiguous,
 //     at most 20,480 bytes an event) and ends with a CLOSE that carries `last_offset`; one without a key sends `stdout` as T1 did and ends with its window (2.1, 2.3);
 //   - the ring of what the host read: 20 chunks of 64 KiB with absolute offsets (a chunk closes at a boundary that is not inside an escape or a UTF-8 sequence), the size log, and the modes a scanner reads from the output,
-//     exact at any offset (2.2);
-//   - ListTerminals, AttachTerminal (the replay is one answer), DetachTerminal, and the events DETACHED and CLOSE (`closed_by: 'detach-timeout'`), with the attachment numbers (the creating page holds 0) (2.2, 2.3);
+//     exact at any offset (2.2); a replay for a page that has the output up to `from_offset` begins at the boundary of the chunk that holds it, at or below the offset, as the real host's does (the page skips what it has);
+//   - ListTerminals (each entry says whether a page holds the terminal now: `attached`), AttachTerminal (the replay is one answer), DetachTerminal, and the events DETACHED and CLOSE (`closed_by: 'detach-timeout'`), with the
+//     attachment numbers (the creating page holds 0) (2.2, 2.3);
 //   - a window that goes away detaches the keyed terminals it owns (a lease starts) and ends the others; the lease running out ends a terminal as a close does; a shell that ends while no page holds it leaves a tombstone (2.5);
 //   - while no page holds a terminal the reader is held: nothing more is read than the read in flight, and the shell blocks in its own write;
 //   - the credit flow control of T1 (2.8.6) and the numbered input of 2.4 (the host expects `next`; a number that is used is SEQUENCE_STALE; seq 0 is applied as it comes and does not move it; the answer of an attach and each
@@ -209,7 +210,38 @@ export class Ring {
     scanner.feed(this.read(chunk.start, offset));
     return scanner.modes;
   }
+
+  /**
+   * The ring no longer reaches back to `from` (the shell wrote more than the ring keeps while the page was away): the chunk that holds it and the ones before it are dropped, so that `start` is past it. At least one chunk stays,
+   * which is the caller's to make sure of by writing past `from` first. Answers where the ring starts now.
+   */
+  trim(from) {
+    while (this.chunks.length > 1 && this.chunks[0].start <= from) this.chunks.shift();
+    return this.start;
+  }
+
+  /** Where a replay for a page that has the output up to `offset` begins: the start of the chunk that holds `offset`, or the start of the ring when the ring no longer reaches back that far. */
+  boundaryAtOrBelow(offset) {
+    let found = this.start;
+    for (const chunk of this.chunks) if (chunk.start <= offset) found = chunk.start;
+    return found;
+  }
 }
+
+/**
+ * The number of the first numbered line (`0001234 xxx`) that a stretch of output holds whole, or null: the lines of a flood, by which a probe checks the page's copy of a stream. The last piece is a line still being written.
+ * @param {Buffer} bytes
+ */
+const firstNumbered = (bytes) => {
+  const parts = bytes.toString('latin1').split('\r\n');
+  parts.pop();
+  for (const part of parts) {
+    const found = /^(\d{7}) x/.exec(part);
+    if (found !== null) return Number(found[1]);
+  }
+
+  return null;
+};
 
 // ---- the host ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -513,7 +545,8 @@ export function createHost(options = {}) {
     pty.holder = null;
     if (pty.queue.length > 0 && !pty.paused && !pty.gone) read(pty, false);
     if (pty.ended === null) startLease(pty);
-    if (!(by === 'taken-over' && faults.noDetached)) emit(`core/exec/signal/DETACHED/${pty.id}`, { by, attachment: held });
+    // `faults.takerSilent`: the host does not say that the tab that took the terminal has gone (the page that lost it is never told that nobody holds it now).
+    if (!(by === 'taken-over' && faults.noDetached) && !faults.takerSilent) emit(`core/exec/signal/DETACHED/${pty.id}`, { by, attachment: held });
   };
 
   const register = (id, deliver) => {
@@ -617,7 +650,8 @@ export function createHost(options = {}) {
     labels: {},
     params: {},
     size: { cols: pty.cols, rows: pty.rows },
-    attached: pty.holder !== null,
+    // `faults.attachedHidden`: the list never says that a page holds a terminal.
+    attached: !faults.attachedHidden && pty.holder !== null,
     next_offset: pty.ring.end,
     replay_start: pty.ring.start,
     lease_expires_unix_ms: pty.holder === null ? pty.leaseExpires : 0,
@@ -639,14 +673,21 @@ export function createHost(options = {}) {
 
   const replayOf = (pty, from) => {
     const ring = pty.ring;
-    const start = from !== undefined && from !== null && from >= ring.start ? from : ring.start;
+    const asked = from !== undefined && from !== null;
+    // The host answers from the boundary of the chunk that holds the offset, at or below it (the page skips what it has of the start); when the ring no longer reaches back to the offset it answers from where the ring starts.
+    const start = asked && from >= ring.start ? ring.boundaryAtOrBelow(from) : ring.start;
     let data = ring.read(start, ring.end);
     if (faults.replayGap) data = data.subarray(0, Math.max(0, data.length - 1000));
+    // `faults.missedDropped`: the host says it gives everything from where the page is, and gives none of it. `faults.gapHidden`: the ring no longer reaches back to where the page is, and the host says its replay starts there.
+    if (faults.missedDropped && asked) data = Buffer.alloc(0);
+    const said = asked && (faults.missedDropped || (faults.gapHidden && from < ring.start)) ? from : start;
     const size = { cols: pty.cols, rows: pty.rows };
-    return { start, end: ring.end, data: data.toString('base64'), start_size: ring.sizeAt(start), start_modes: modesOf(pty, start), size, modes: modesOf(pty, ring.end) };
+    return { start: said, end: ring.end, data: data.toString('base64'), start_size: ring.sizeAt(start), start_modes: modesOf(pty, start), size, modes: modesOf(pty, ring.end) };
   };
 
   const attach = (window, id, request = {}) => {
+    // `faults.goneTransient`: a terminal that is not there is answered with a plain server error, which says nothing of the terminal being gone.
+    if (faults.goneTransient && !ptys.has(id)) throw refusal('omniview:server/internal', 'Internal error', 500, 'INTERNAL_ERROR', 'the host could not answer just now');
     const pty = reachable(id, window, request.page_key);
     if (request.from_offset !== undefined && request.from_offset !== null && request.from_offset > pty.ring.end) throw invalid('from_offset', 'past the end of the output');
     // A tombstone is given to the page as it is: its output and its end, the attachment number does not advance, nobody holds it, and its lease runs on (T2b explore, Q3d).
@@ -678,7 +719,7 @@ export function createHost(options = {}) {
       ...(dead ? { ended: pty.ended } : {}),
       next_input_seq: dead ? 0 : pty.next,
     };
-    log.attaches.push({ window, id, from_offset: request.from_offset ?? null, start: replay.start, end: replay.end, bytes: pty.ring.end - replay.start, attachment: answer.attachment, next_input_seq: answer.next_input_seq, dead, answered: Date.now() });
+    log.attaches.push({ window, id, from_offset: request.from_offset ?? null, start: replay.start, end: replay.end, bytes: pty.ring.end - replay.start, firstLine: firstNumbered(Buffer.from(replay.data.slice(0, 800), 'base64')), attachment: answer.attachment, next_input_seq: answer.next_input_seq, dead, callsAt: log.calls.length, writesAt: log.writes.length, answered: Date.now() });
     if (dead) return answer;
     // What follows the answer: the reader is let go (the live output continues at `replay.end`), and an event the replay holds may still arrive, as an event and a reply travel apart.
     setTimeout(() => {
@@ -871,7 +912,7 @@ export function createHost(options = {}) {
       case 'ResizeTerminal':
         return resize(window, entry, args[0], args[1], args[2], args[3]);
       case 'AckTerminal':
-        log.acks.push({ window, id: args[0], bytes: args[1] });
+        log.acks.push({ window, id: args[0], bytes: args[1], attachesAt: log.attaches.length });
         return ack(args[0], args[1]);
       case 'IsBusy': {
         const pty = ptys.get(args[0]);
@@ -962,6 +1003,27 @@ export function createHost(options = {}) {
       }
 
       ptys.clear();
+    },
+    /** The terminal is gone with no word: a lease that ran out, or a close by another tab, while the page was away and was told nothing. The next call about it finds it not there. */
+    vanish: (id) => {
+      const pty = ptys.get(id);
+      if (pty === undefined) return;
+      clearTimeout(pty.lease);
+      stopJob(pty);
+      ptys.delete(id);
+      pty.gone = true;
+      letGo(pty);
+    },
+    /** Another tab types: an empty write takes the number the input queue expects now. */
+    strayWrite: (id) => {
+      const pty = ptys.get(id);
+      if (pty !== undefined) stray(pty);
+    },
+    /** The ring no longer reaches back to `from`: answers where it starts now. */
+    trimRing: (id, from) => ptys.get(id).ring.trim(from),
+    /** Bytes the host has read into its ring that no page was given (what the shell wrote while the page's events were lost): a replay holds them, with no event for them. They take the offsets the ring has now. */
+    plant: (id, text) => {
+      ptys.get(id).ring.record(Buffer.from(text));
     },
     ids: () => [...ptys.keys()],
     windows: () => [...windows.keys()],

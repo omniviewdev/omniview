@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkInvariants, createPanelStore, HOST, restorePanel, type PanelState, type PanelStore } from './index';
+import { checkInvariants, createPanelStore, HOST, restorePanel, type PanelState, type PanelStore, type Tool } from './index';
 import { generator, tabProblems, tool } from './testing';
 
 // Thousands of random operations against the store, with the invariants of `checkInvariants` checked after each, and the saved session checked to come back whole. Deterministic: a seeded
@@ -179,6 +179,41 @@ const OPERATIONS = ['show', 'hide', 'resize', 'resetHeight', 'activateTool', 'op
 /** The sessions of a state that are held. */
 const heldOf = (state: PanelState): Array<PanelState['sessions'][string]> => Object.values(state.sessions).filter((session) => session.held === true);
 
+/**
+ * A window that starts from a restored panel, the way the host starts one: its own tools are registered first, and then the plugins that are ready bring theirs one at a time, in whatever order they happen to be ready in (`next` draws it; the
+ * list a plugin is given in is always the saved one's, the order of the rail). The tools and the plugins are the ones `like` had. `checked` hears the store after every step.
+ */
+function startFrom(initial: PanelState, like: PanelState, next: () => number, checked: (store: PanelStore, step: string) => void): PanelStore {
+  const store = createPanelStore({ initial });
+  checked(store, 'the restore');
+  const byOrderMade = (a: Tool, b: Tool): number => a.seq - b.seq;
+  for (const one of Object.values(like.tools).filter((candidate) => candidate.owner === HOST).sort(byOrderMade)) {
+    store.registerTool({ id: one.id, label: one.label, icon: one.icon, order: one.order });
+    checked(store, `the host's tool ${one.id}`);
+  }
+
+  const waiting = [...like.live];
+  const ready = new Set<string>();
+  while (waiting.length > 0) {
+    const [plugin] = waiting.splice(next() % waiting.length, 1);
+    ready.add(plugin);
+    store.syncPlugins(
+      like.live
+        .filter((id) => ready.has(id))
+        .map((id) => ({
+          id,
+          tools: Object.values(like.tools)
+            .filter((candidate) => candidate.owner === id)
+            .sort(byOrderMade)
+            .map((one) => ({ id: one.id.slice(id.length + 1), label: one.label, icon: one.icon, order: one.order })),
+        })),
+    );
+    checked(store, `the plugin ${plugin}`);
+  }
+
+  return store;
+}
+
 describe('the panel under random operations', () => {
   it('keeps every invariant after every operation, and what it saves comes back whole', () => {
     const clock = { time: 1 };
@@ -285,6 +320,31 @@ describe('the panel under random operations', () => {
         expect(restored.repaired, `seed ${String(seed)}: nothing needed repair`).toBe(false);
         expect(restored.state.order).toEqual(document.sessions.map((one) => one.id));
         expect(heldOf(restored.state), `seed ${String(seed)}: a restored session is never held`).toEqual([]);
+        // T2d: the panel comes back as it was left, whatever it holds: open or closed, at its height, on its tool, with the session each tool had.
+        expect(
+          { open: restored.state.open, height: restored.state.height, tool: restored.state.tool, active: restored.state.active },
+          `seed ${String(seed)}: the choices come back as they were left`,
+        ).toEqual({ open: document.open, height: document.height, tool: document.tool, active: document.active });
+
+        // And a window that starts from it shows what the saved one showed. Whatever order its tools and plugins arrive in, no body is ever mounted that is not listed, and when they are all back the tool on screen is the one that was.
+        const final = store.getSnapshot();
+        const reborn = startFrom(restored.state, final, next, (started, step) => {
+          expect(checkInvariants(started.getSnapshot()), `seed ${String(seed)}: after ${step}`).toEqual([]);
+        });
+        const was = store.selectors.shown(final);
+        const is = reborn.selectors.shown(reborn.getSnapshot());
+        expect(is?.tool ?? null, `seed ${String(seed)}: the tool on screen comes back`).toBe(was?.tool ?? null);
+        const shownId = was?.session ?? undefined;
+        const onScreen = shownId === undefined ? undefined : final.sessions[shownId];
+        // The one session a restored panel cannot bring back is one that was listed only because its plugin's unload held it: the plugin is off, and a restored session is never held.
+        if (onScreen?.held === true && !final.live.includes(onScreen.plugin)) {
+          count(tally, 'restore:held on screen');
+        } else {
+          expect(is?.session ?? null, `seed ${String(seed)}: the session on screen comes back`).toBe(was?.session ?? null);
+          count(tally, was === null ? 'restore:nothing on screen' : was.session === null ? 'restore:a tool and no session' : 'restore:a session');
+        }
+
+        count(tally, document.open ? (document.sessions.length > 0 ? 'restore:open with sessions' : 'restore:open without') : 'restore:closed');
       }
     }
 
@@ -300,6 +360,11 @@ describe('the panel under random operations', () => {
     // The held sessions are what this is for: a run that never made one, never saw its plugin come back while it was held, or never closed one, proves nothing about them.
     for (const event of ['held:made', 'held:returned', 'held:closed']) {
       expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(100);
+    }
+
+    // A restored panel is what this part is for: a run in which no panel was ever left open with sessions or closed, or in which no session was ever on screen to come back, proves nothing about the way back.
+    for (const event of ['restore:open with sessions', 'restore:closed', 'restore:a session']) {
+      expect(tally.get(event) ?? 0, `event ${event}`).toBeGreaterThan(20);
     }
 
     // A retitle that changes a title, one that changes nothing (the title it has) and one that is refused (a held session) must all have been drawn: a run that only ever renamed, or never met a held session, proves nothing about the others.

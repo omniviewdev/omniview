@@ -1,10 +1,10 @@
 import { ActivityProvider } from '@omniviewdev/runtime';
 import { WindowClient } from '@omniviewdev/runtime/api';
-import { Events, Window } from '@omniviewdev/runtime/runtime';
+import { Events, onEventsReconnect, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
-import { loadPageKey, restoreLocalTerminals, terminalKeyStorage, type TerminalsOptions } from '../../shell/panel/terminal';
+import { attachLocalTerminal, loadPageKey, restoreLocalTerminals, terminalKeyStorage, type TerminalsOptions } from '../../shell/panel/terminal';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
@@ -75,8 +75,9 @@ export function PluginHostScreen() {
     let current = true;
     void Promise.all([loadWindowSession(), loadWindowNotices(), loadWindowPageKey()]).then(([session, notices, pageKey]) => {
       if (current) {
-        // The Terminal tool starts its shells under the key and, when the window attaches, asks the host for the ones this window left (`restoreLocalTerminals`).
-        setLoaded({ session, notices, terminals: { pageKey, restore: async () => restoreLocalTerminals(pageKey) } });
+        // The Terminal tool starts its shells under the key and, when the window attaches, asks the host for the ones this window left (`restoreLocalTerminals`). A terminal another tab took over is attached again under the key
+        // (`attachLocalTerminal`), and the page's events coming back after a gap is told to its feeds (`onEventsReconnect`: in a native window it never fires).
+        setLoaded({ session, notices, terminals: { pageKey, restore: async () => restoreLocalTerminals(pageKey), reattach: (id) => attachLocalTerminal(pageKey, id), reconnect: onEventsReconnect } });
       }
     });
     return () => {

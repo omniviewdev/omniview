@@ -340,3 +340,137 @@ test('the answer of an attach can be held: the host has taken the terminal over 
   assert.equal((await c.call('AttachTerminal', 't', { page_key: KEY })).attachment, 2, 'the next attach is answered as it comes');
   host.stop();
 });
+
+test('the ring can stop reaching back: after a trim the replay starts past the offset the page asked for, the modes are exact there, and the log says the first whole numbered line; a host that hides the gap or drops the missed bytes is a fault of its own', async () => {
+  const flooded = async (faults) => {
+    const host = createHost({ leaseMs: 60_000, faults });
+    const a = windowOf(host, 'a');
+    await a.create('t');
+    host.append('t', '\u001b[?2004h');
+    host.flood('t', 4000, 80);
+    while ((host.state('t')?.end ?? 0) < 328_000) await sleep(5);
+    host.retire('a');
+    return host;
+  };
+
+  const host = await flooded({});
+  const trimmed = host.trimRing('t', 1000);
+  assert.ok(trimmed > 1000, 'the ring starts past what the page asked for');
+  const { replay } = await windowOf(host, 'b').call('AttachTerminal', 't', { page_key: KEY, from_offset: 1000 });
+  assert.equal(replay.start, trimmed);
+  assert.equal(replay.start_modes.bracketed_paste, true, 'the modes are exact at the start, though the bytes that set them are gone');
+  const parts = Buffer.from(replay.data, 'base64').toString('latin1').split('\r\n').slice(0, -1);
+  assert.equal(host.log.attaches.at(-1).firstLine, Number(parts.find((part) => /^\d{7} x/.test(part)).slice(0, 7)));
+  assert.equal(host.log.attaches.at(-1).from_offset, 1000);
+  host.stop();
+
+  const hidden = await flooded({ gapHidden: true });
+  const end = hidden.state('t').end;
+  const start = hidden.trimRing('t', 1000);
+  const lie = (await windowOf(hidden, 'b').call('AttachTerminal', 't', { page_key: KEY, from_offset: 1000 })).replay;
+  assert.equal(lie.start, 1000, 'the host says its replay starts where the page is');
+  assert.equal(Buffer.from(lie.data, 'base64').length, end - start, 'and the data starts where the ring does');
+  hidden.stop();
+
+  const dropped = await flooded({ missedDropped: true });
+  const nothing = (await windowOf(dropped, 'b').call('AttachTerminal', 't', { page_key: KEY, from_offset: 1000 })).replay;
+  assert.equal(nothing.start, 1000);
+  assert.equal(nothing.data, '', 'the host says it gives everything from there and gives none of it');
+  assert.ok(nothing.end > 1000);
+  dropped.stop();
+});
+
+test('a page that lost a terminal is told when the tab that took it goes, unless the host is silent; a terminal that vanished is not there, or a plain server error with the fault; another tab can type meanwhile', async () => {
+  for (const silent of [false, true]) {
+    const host = createHost({ leaseMs: 60_000, faults: { takerSilent: silent } });
+    const a = windowOf(host, 'a');
+    await a.create('t');
+    const b = windowOf(host, 'b');
+    await b.call('AttachTerminal', 't', { page_key: KEY });
+    host.retire('b');
+    assert.deepEqual(a.signals('DETACHED', 't'), silent ? [{ by: 'taken-over', attachment: 0 }] : [{ by: 'taken-over', attachment: 0 }, { by: 'window-retired', attachment: 1 }]);
+    host.stop();
+  }
+
+  for (const transient of [false, true]) {
+    const host = createHost({ leaseMs: 60_000, faults: { goneTransient: transient } });
+    const a = windowOf(host, 'a');
+    await a.create('t');
+    host.vanish('t');
+    await assert.rejects(a.call('AttachTerminal', 't', { page_key: KEY }), (error) => JSON.parse(error.message).code === (transient ? 'INTERNAL_ERROR' : 'NOT_FOUND'));
+    assert.deepEqual(host.ids(), []);
+    host.stop();
+  }
+
+  const host = createHost({ leaseMs: 60_000 });
+  const c = windowOf(host, 'c');
+  await c.create('t');
+  await c.type('t', 1, 'x');
+  host.strayWrite('t');
+  assert.equal(host.state('t').next, 3, 'the empty write of the other tab took the number 2');
+  host.stop();
+});
+
+test('a replay for a page that has the output up to an offset begins at the boundary of the chunk that holds it, at or below the offset, and where the ring starts when the ring no longer reaches back', async () => {
+  const ring = new Ring(80, 24);
+  for (let at = 0; at < 400; at += 1) ring.record(Buffer.from('x'.repeat(1000)));
+  const starts = ring.chunks.map((chunk) => chunk.start);
+  assert.ok(starts.length >= 5, 'the ring holds several chunks');
+  assert.equal(ring.boundaryAtOrBelow(starts[2]), starts[2], 'at a boundary: that boundary');
+  assert.equal(ring.boundaryAtOrBelow(starts[2] + 1), starts[2], 'inside a chunk: its start');
+  assert.equal(ring.boundaryAtOrBelow(starts[3] - 1), starts[2], 'the byte before the next boundary: still its chunk');
+  assert.equal(ring.boundaryAtOrBelow(ring.end), starts.at(-1), 'the end of the ring: the last chunk');
+  ring.trim(starts[1]);
+  assert.equal(ring.boundaryAtOrBelow(10), ring.start, 'before the ring: where it starts now');
+
+  const host = createHost({ leaseMs: 60_000 });
+  const a = windowOf(host, 'a');
+  await a.create('t');
+  host.flood('t', 5000, 80);
+  while ((host.state('t')?.end ?? 0) < 400_000) await sleep(5);
+  host.retire('a');
+  const { replay } = await windowOf(host, 'b').call('AttachTerminal', 't', { page_key: KEY, from_offset: 100_000 });
+  assert.ok(replay.start > 0 && replay.start <= 100_000, `the replay starts at or below what the page has: ${String(replay.start)}`);
+  assert.ok(100_000 - replay.start < LIMITS.replay_bytes / 20 + READ_MAX, 'and no more than a chunk below it');
+  assert.equal(Buffer.from(replay.data, 'base64').length, replay.end - replay.start, 'its data runs from its start to its end');
+  assert.equal(host.log.attaches.at(-1).start, replay.start);
+  host.stop();
+});
+
+test('the list says whether a page holds a terminal now: the page that took it holds it, nobody does once that page is gone, and a third page that took it free is not told to the first; a fault never says', async () => {
+  for (const hidden of [false, true]) {
+    const host = createHost({ leaseMs: 60_000, faults: { attachedHidden: hidden } });
+    const a = windowOf(host, 'a');
+    await a.create('t');
+    const listing = async () => (await a.call('ListTerminals', KEY)).find((item) => item.id === 't');
+    assert.equal((await listing()).attached, !hidden, 'the creating page holds it');
+    const b = windowOf(host, 'b');
+    await b.call('AttachTerminal', 't', { page_key: KEY });
+    assert.equal((await listing()).attached, !hidden, 'the page that took it holds it');
+    host.retire('b');
+    assert.equal((await listing()).attached, false, 'nobody holds it once the page that took it is gone');
+    const c = windowOf(host, 'c');
+    await c.call('AttachTerminal', 't', { page_key: KEY });
+    assert.deepEqual(a.signals('DETACHED', 't').map((event) => event.by), ['taken-over', 'window-retired'], 'a terminal nobody held is taken with no word to the page that lost it first');
+    assert.equal((await listing()).attached, !hidden, 'a third page holds it');
+    host.stop();
+  }
+});
+
+test('bytes can be planted into the ring with no event for them, a replay holds them, and the log of an attach says where the writes were', async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const a = windowOf(host, 'a');
+  await a.create('t');
+  while ((host.state('t')?.end ?? 0) === 0) await sleep(5);
+  const before = host.state('t').end;
+  const events = a.outputOf('t').length;
+  host.plant('t', '\u001b[6n\u001b[c');
+  assert.equal(host.state('t').end, before + 7, 'the ring has the bytes');
+  assert.equal(a.outputOf('t').length, events, 'and no page is given an event for them');
+  await a.type('t', 1, 'x');
+  const { replay } = await windowOf(host, 'b').call('AttachTerminal', 't', { page_key: KEY });
+  assert.ok(Buffer.from(replay.data, 'base64').toString().includes('\u001b[6n\u001b[c'), 'a replay holds them');
+  assert.equal(replay.end, host.state('t').end, 'and runs to the end of the ring, past the echo of what was typed');
+  assert.equal(host.log.attaches.at(-1).writesAt, 1, 'one write had been made when the attach was answered');
+  host.stop();
+});

@@ -64,7 +64,13 @@
   "terminal-controls-reattach": 100,
   "terminal-controls-reattach-b": 90,
   "terminal-controls-reattach-c": 120,
-  "terminal-controls-reattach-d": 60
+  "terminal-controls-reattach-d": 60,
+  "terminal-reattach-d": 13,
+  "terminal-reattach-e": 43,
+  "terminal-reattach-f": 59,
+  "terminal-controls-reattach-e": 17,
+  "terminal-controls-reattach-f": 42,
+  "terminal-controls-reattach-g": 90
  },
  "sharedLayoutRuns": [
   {

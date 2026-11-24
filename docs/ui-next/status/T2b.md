@@ -2,6 +2,8 @@
 
 **Status: for review (see the PR).** Branch `ui-next/t2b-terminal-reattach` on `origin/main` 19935ee1 (the T2a slice #671, the Go side of reattach #674 and its follow-up #675, `next_input_seq` and the dismissal of an ended terminal, are merged; the kit's menus and Home, #676 to #684, are in). Worktree `~/Repos/omniviewdev/worktrees/ui-next-t2b-terminal-reattach`. Owner agent `TerminalTool`. One slice: the page of T2a becomes the client of the host's reattach contract (`T2-go.md`).
 
+**Update (T2d):** follow-ups 1 to 3 of section 8 (the panel coming back open, a taker that has gone, the rejoin on an events reconnect) are built in `T2d.md`; the "panel stays closed" reading of S116 in decision 6 is superseded there.
+
 ## 1. What this slice is, and is not
 
 In: a page key kept in the window's state and given to every terminal the host starts; on load the page lists the terminals it left, gives each saved tab its terminal again and attaches; the replay of the host's ring is written into a new emulator with its replies muted and its size and modes applied; the live output follows byte for byte; the words for a terminal that another tab took, one that went with its window and one whose lease ran out; the detach at `pagehide`; the three leftovers of T2a (the host's tried shells in the words of the page, the refused-resize replay bug, the clipped twin tab).

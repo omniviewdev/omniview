@@ -39,19 +39,22 @@ const keyedFeed = (): FakeTerminalFeed => fakeTerminalFeed({ leave: true });
 /** What the host lists for a window that was reloaded: a terminal whose session has the id of the terminal. */
 const found = (sessionId: string, feed: FakeTerminalFeed): TerminalTarget => ({ plugin: PANEL_HOST, id: 'local', title: 'Terminal', sessionId, open: () => feed });
 
-/** The window as the last run left it: the panel closed (a restored panel never opens by itself) with two terminal tabs, `bash` the one that was on screen. */
-function savedWindow(): LoadedSession {
+/**
+ * The window as the last run left it: two terminal tabs, `bash` the one that was on screen, and the panel open or closed as the person left it. A restored session opens no panel ("Sessions restored at startup ... do not open it", S116), and a panel
+ * that was left open is not a restored session: it comes back open (T2d).
+ */
+function savedWindow(open = false): LoadedSession {
   const sessions = [
     { id: 'term-1', tool: 'terminal', plugin: PANEL_HOST, title: 'zsh', scope: '' },
     { id: 'term-2', tool: 'terminal', plugin: PANEL_HOST, title: 'bash', scope: '' },
   ];
-  const text = JSON.stringify({ version: SESSION_VERSION, tabs: { version: 1, active: null, tabs: [] }, rail: null, panel: { version: 1, open: false, height: null, tool: 'terminal', active: { terminal: 'term-2' }, sessions } });
+  const text = JSON.stringify({ version: SESSION_VERSION, tabs: { version: 1, active: null, tabs: [] }, rail: null, panel: { version: 1, open, height: null, tool: 'terminal', active: { terminal: 'term-2' }, sessions } });
   return openSession({ read: async () => Promise.resolve(text), write: async () => Promise.resolve(), keep: async () => Promise.resolve() }, text);
 }
 
-function mount(options: TerminalsOptions) {
+function mount(options: TerminalsOptions, open = false) {
   const loader: FakeEngineLoader = fakeEngineLoader();
-  const view = render(<PluginHost plugins={plugins} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={savedWindow()} terminals={{ load: loader.load, ...options }} />);
+  const view = render(<PluginHost plugins={plugins} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={savedWindow(open)} terminals={{ load: loader.load, ...options }} />);
   return { ...view, loader, user: userEvent.setup() };
 }
 
@@ -67,6 +70,52 @@ describe('a window that was reloaded, through the real host', () => {
     expect(screen.getByRole('tab', { name: 'bash' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'zsh, ended' })).toBeInTheDocument();
     expect(feed.listeners()).toBeGreaterThan(0);
+  });
+
+  it('comes back with the panel open when the window was left with it open: the tab it was on is on screen with no press of the toggle, and nothing takes the keyboard (T2d)', async () => {
+    const feed = keyedFeed();
+    mount({ restore: async () => Promise.resolve([found('term-2', feed)]) }, true);
+    await waitFor(() => {
+      expect(feed.listeners()).toBeGreaterThan(0);
+    });
+    expect(screen.getByRole('button', { name: 'Panel' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('tab', { name: 'bash', selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'zsh, ended' })).toBeInTheDocument();
+    // The registry never takes the keyboard for a terminal it finds again, and the panel takes none when it opens with the window: the focus is where the page left it.
+    expect(screen.getByRole('region', { name: 'Panel' }).contains(document.activeElement)).toBe(false);
+  });
+
+  it('draws the terminal the host lists in a panel that was open when the window was drawn, though the host was asked after: the note that the earlier output is gone gives way to the terminal (T2d)', async () => {
+    const feed = keyedFeed();
+    const { loader } = mount({ restore: async () => Promise.resolve([found('term-2', feed)]) }, true);
+    await waitFor(() => {
+      expect(loader.engines).toHaveLength(1);
+    });
+    expect(screen.queryByText('The earlier output is gone')).toBeNull();
+    expect(feed.listeners()).toBeGreaterThan(0);
+  });
+
+  it('comes back open all the same when the host lists no terminal for it (the app restarted): the tabs are ended and the body says the earlier output is gone, where the person can see it', async () => {
+    const restore = vi.fn(async (): Promise<readonly TerminalTarget[]> => Promise.resolve([]));
+    const { loader } = mount({ restore }, true);
+    await waitFor(() => {
+      expect(restore).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByRole('button', { name: 'Panel' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('The earlier output is gone')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'bash, ended', selected: true })).toBeInTheDocument();
+    expect(loader.engines).toHaveLength(0);
+  });
+
+  it('stays closed when the window was left with the panel closed, and finds the terminal all the same: a restored session opens nothing, and its screen waits for the panel (T2d)', async () => {
+    const feed = keyedFeed();
+    const { loader } = mount({ restore: async () => Promise.resolve([found('term-2', feed)]) });
+    await waitFor(() => {
+      expect(feed.listeners()).toBeGreaterThan(0);
+    });
+    expect(screen.getByRole('button', { name: 'Panel' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('tab', { name: 'bash' })).toBeNull();
+    expect(loader.engines).toHaveLength(0);
   });
 
   it('keeps the tab ended, with the note, when the host lists no terminal for it (the app restarted, and a terminal does not outlive it): nothing is offered', async () => {

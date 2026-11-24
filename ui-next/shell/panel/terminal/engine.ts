@@ -50,8 +50,11 @@ export type Engine = {
   readonly size: () => { readonly cols: number; readonly rows: number };
   /** Parses bytes (or text) into the screen. `done` is called once they are parsed: what the screen's flow control counts. */
   readonly write: (data: Uint8Array | string, done?: () => void) => void;
-  /** What the user typed or pasted. Returns what stops it. */
-  readonly onData: (listener: (data: string) => void) => () => void;
+  /**
+   * What the emulator sends toward the shell: what the person typed, pasted or composed (`user` is true), and what the emulator says by itself (`user` is false): the answer to a query it parsed, a report of its focus. The
+   * two must be told apart because the second is the answer of a program that may be long past (while a replay is applied it is dropped), and the first is the person's, which is never lost. Returns what stops it.
+   */
+  readonly onData: (listener: (data: string, user: boolean) => void) => () => void;
   /** The selection changed. Returns what stops it. */
   readonly onSelection: (listener: () => void) => () => void;
   /**

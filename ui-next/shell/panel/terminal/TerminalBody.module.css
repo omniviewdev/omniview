@@ -151,6 +151,22 @@
     text-overflow: ellipsis;
   }
 
+  /* The lane's action (Take it back), at the lane's right end, as the mock draws a lane's button (`.ptool__actions`, shell-panel.css: an inline row, 8 px apart, buttons of 24 px). The kit's button takes the row target (24 px,
+     22 px in compact density), so the lane stays the one 28 px row whatever it holds. The auto margin pushes it to the end while the words and the note take what they need and give way, with an ellipsis, when they do not fit. */
+  .laneActions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    margin-inline-start: auto;
+  }
+
+  /* The kit's ring stands 2 px off the button, and a button of 24 px in a lane of 28 px puts it 2 px outside the lane, where the panel clips it at the bottom edge. The ring is drawn inside the button, as the shell draws
+     it for a control in a strip with no room (`outline-offset: -2px`, as the status bar's toggles do). */
+  .laneActions > :focus-visible {
+    outline-offset: -2px;
+  }
+
   /* What a person who cannot see the lane is told: a copy that was made, and how to leave the terminal. Read and never drawn; it takes no room and holds no focus. */
   .live,
   .hint {

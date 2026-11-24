@@ -6,6 +6,8 @@ import { boot, generator, session, tool } from './testing';
 // The saved panel (ch16 S103, S105, S116, S150): versioned and migratable, repaired rather than discarded, one write per burst. Cases marked "mock" are ported from the design lab's harness
 // (ShellStore2-unit.cjs "panel state persists per window and a bad value falls back to hidden (S105)", ShellStore/unit.cjs "persist: write after delay, only when changed, round trip, flush
 // on demand" and "storage envelope and invalid data"); docs/ui-next/status/P1a.md lists which.
+// The panel comes back as the person left it (T2d, decision A23). S103 saves its `open`, its height, its tool and the session of each tool, and S116 says "Sessions restored at startup, adopted from another window, or re-created by Retry
+// do not open it (today's quiet-tab rule)": a restored session opens no panel, and a panel the person left open is not a session. A terminal that is alive again after a reload must not wait unseen behind a panel that was open.
 
 const NOW = 5_000_000;
 const restore = (raw: unknown) => restorePanel(raw, { now: NOW });
@@ -56,7 +58,7 @@ describe('what the session saves', () => {
 });
 
 describe('a session that is read back', () => {
-  it('has the choices it was saved with, the sessions all ended, and nothing open (S116: a restored terminal must not cover the page)', () => {
+  it('has the choices it was saved with, open as it was left, and the sessions all ended: a panel that was open comes back open whatever it holds (T2d)', () => {
     const result = restore(saved({ open: true, height: 300, tool: 'logs', active: { logs: 'b' }, sessions: [entry('a'), entry('b', 'logs', { scope: 'dev' })] }));
     expect(result.ok).toBe(true);
     if (!result.ok) {
@@ -64,16 +66,145 @@ describe('a session that is read back', () => {
     }
 
     const { state } = result;
-    expect(state).toMatchObject({ open: false, height: 300, tool: 'logs', active: { logs: 'b' }, order: ['a', 'b'], mounted: [] });
+    // Nothing is registered yet, so there is no tool to show and no body is mounted: the bodies come with the tools.
+    expect(state).toMatchObject({ open: true, height: 300, tool: 'logs', active: { logs: 'b' }, order: ['a', 'b'], mounted: [] });
     expect(state.sessions.a).toMatchObject({ state: 'ended', since: NOW, cause: RESTORED_CAUSE, title: 'a', plugin: 'acme' });
     expect(state.sessions.b?.scope).toBe('dev');
     expect(checkInvariants(state)).toEqual([]);
     expect(result.repaired).toBe(false);
   });
 
-  it('opens as it was left when there are no sessions to cover the page with', () => {
-    const result = restore(saved({ open: true, tool: 'logs' }));
-    expect(result.ok && result.state.open).toBe(true);
+  it('stays closed when it was left closed, whatever it holds: the person hid it, and a restored session opens nothing', () => {
+    const result = restore(saved({ open: false, height: 300, tool: 'logs', active: { logs: 'b' }, sessions: [entry('a'), entry('b', 'logs', { scope: 'dev' })] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.state).toMatchObject({ open: false, height: 300, tool: 'logs', active: { logs: 'b' }, order: ['a', 'b'], mounted: [] });
+    expect(result.state.sessions.b).toMatchObject({ state: 'ended', cause: RESTORED_CAUSE });
+    expect(checkInvariants(result.state)).toEqual([]);
+    expect(result.repaired).toBe(false);
+
+    // And it stays closed when its tool and its plugin arrive: a hidden panel shows nothing and mounts nothing.
+    const store = createPanelStore({ initial: result.state });
+    store.registerTool(tool('logs', 'Logs', 20));
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    expect(store.getSnapshot()).toMatchObject({ open: false, mounted: [] });
+    expect(store.selectors.shown(store.getSnapshot())).toBeNull();
+  });
+
+  it('comes back as it was left when it holds no session: open stays open and closed stays closed', () => {
+    expect(restore(saved({ open: true, tool: 'logs' }))).toMatchObject({ ok: true, state: { open: true, tool: 'logs' } });
+    expect(restore(saved({ open: false, tool: 'logs' }))).toMatchObject({ ok: true, state: { open: false, tool: 'logs' } });
+  });
+
+  it('opens for an open flag that is a yes and for nothing else: any other value in the document is a closed panel', () => {
+    for (const open of ['true', 1, {}, [], null]) {
+      const result = restore({ ...saved({ sessions: [entry('a')] }), open });
+      expect(result.ok && result.state.open, JSON.stringify(open)).toBe(false);
+    }
+  });
+
+  it('puts back the tool the panel was on and the session each tool was on, not the first of each: it opens on what it showed', () => {
+    const result = restore(
+      saved({
+        open: true,
+        tool: 'terminal',
+        active: { terminal: 'z2', logs: 'l2' },
+        sessions: [entry('l1', 'logs'), entry('z1', 'terminal', { plugin: 'host' }), entry('l2', 'logs'), entry('z2', 'terminal', { plugin: 'host' })],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    expect(result.state).toMatchObject({ open: true, tool: 'terminal', active: { terminal: 'z2', logs: 'l2' } });
+    const store = createPanelStore({ initial: result.state });
+    store.registerTool(tool('terminal', 'Terminal', 10));
+    store.registerTool(tool('logs', 'Logs', 20));
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    const state = store.getSnapshot();
+    expect(store.selectors.shown(state)).toEqual({ tool: 'terminal', session: 'z2' });
+    expect(store.selectors.activeSession(state, 'terminal')).toBe('z2');
+    expect(store.selectors.activeSession(state, 'logs')).toBe('l2');
+    // Only the body on screen is mounted: the others are mounted when they are first shown.
+    expect(state.mounted).toEqual(['z2']);
+    expect(checkInvariants(state)).toEqual([]);
+  });
+
+  it('shows what an open panel shows while the plugin of its tool has not loaded, and never a body that is mounted and cannot be seen: its own tool and session are back with the plugin', () => {
+    const result = restore(saved({ open: true, tool: 'acme:streams', active: { 'acme:streams': 'r1', logs: 'l1' }, sessions: [entry('r1', 'acme:streams'), entry('l1', 'logs')] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const store = createPanelStore({ initial: result.state });
+    const sound = (): void => {
+      expect(checkInvariants(store.getSnapshot())).toEqual([]);
+    };
+
+    // Before anything is registered the panel is open and has nothing to show: no tool, so no body.
+    expect(store.getSnapshot()).toMatchObject({ open: true, tool: 'acme:streams', mounted: [] });
+    expect(store.selectors.shown(store.getSnapshot())).toBeNull();
+    sound();
+
+    // The host's own tool comes first: the panel is on the first tool it has, the saved choice stands, and the sessions of a plugin that is not here are neither listed nor mounted.
+    store.registerTool(tool('logs', 'Logs', 20));
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'logs', session: null });
+    expect(store.getSnapshot()).toMatchObject({ open: true, tool: 'acme:streams', mounted: [] });
+    sound();
+
+    // The plugin loads: its tool and its sessions return together, and the panel is on the tool and the session it was saved on.
+    store.syncPlugins([{ id: 'acme', tools: [tool('streams', 'Streams', 30)] }]);
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'acme:streams', session: 'r1' });
+    expect(store.getSnapshot().mounted).toEqual(['r1']);
+    expect(store.selectors.activeSession(store.getSnapshot(), 'logs')).toBe('l1');
+    sound();
+
+    // And the plugin leaves again: what it brought goes with it, the session it had in the host's tool is held, and no body of its own stays mounted.
+    store.syncPlugins([]);
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'logs', session: 'l1' });
+    expect(store.getSnapshot().mounted).toEqual(['l1']);
+    sound();
+  });
+
+  it('is an open panel like any other once it is read: hiding it unmounts nothing, and showing it again puts back the tool and the session it was on', () => {
+    const result = restore(saved({ open: true, tool: 'logs', active: { logs: 'b' }, sessions: [entry('a'), entry('b')] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const store = createPanelStore({ initial: result.state });
+    store.registerTool(tool('logs', 'Logs', 20));
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    expect(store.getSnapshot().mounted).toEqual(['b']);
+    store.hide();
+    expect(store.getSnapshot()).toMatchObject({ open: false, mounted: ['b'] });
+    expect(store.selectors.shown(store.getSnapshot())).toBeNull();
+    store.show();
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'logs', session: 'b' });
+    expect(checkInvariants(store.getSnapshot())).toEqual([]);
+  });
+
+  it('is not moved by a session that is added without being revealed, as the host adds a terminal it finds that no saved tab held: the panel stays on the tool and the session it was saved on', () => {
+    const result = restore(saved({ open: true, tool: 'terminal', active: { terminal: 'z2' }, sessions: [entry('z1', 'terminal', { plugin: 'host' }), entry('z2', 'terminal', { plugin: 'host' })] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const store = createPanelStore({ initial: result.state });
+    store.registerTool(tool('terminal', 'Terminal', 10));
+    store.registerTool(tool('logs', 'Logs', 20));
+    store.openSession({ id: 'z3', tool: 'terminal', plugin: 'host', title: 'found' }, { reveal: false });
+    store.openSession({ id: 'l1', tool: 'logs', plugin: 'host', title: 'found too' }, { reveal: false });
+    expect(store.selectors.shown(store.getSnapshot())).toEqual({ tool: 'terminal', session: 'z2' });
+    expect(store.getSnapshot()).toMatchObject({ open: true, tool: 'terminal', active: { terminal: 'z2' }, mounted: ['z2'] });
+    expect(checkInvariants(store.getSnapshot())).toEqual([]);
   });
 
   it('has no tool and no plugin live: they are the host\'s to register again, and a restored session shows when its plugin has loaded', () => {
@@ -91,18 +222,22 @@ describe('a session that is read back', () => {
     expect(store.getSnapshot().sessions.a?.state).toBe('ended');
   });
 
-  it('round-trips what the store saved', () => {
+  it('round-trips what the store saved, open or closed', () => {
     const h = boot({ hostTools: [tool('logs', 'Logs', 20)], plugins: { acme: [] } });
     h.store.openSession(session('logs', 'acme', 'worker', { scope: 'dev', route: { plugin: 'acme', contribution: 'item', params: { n: '1' } } }));
     h.store.openSession(session('logs', 'acme', 'other'));
     h.store.activateSession('s1');
     h.store.resize({ size: 410 });
+    const open = h.store.serialise();
     h.store.hide();
-    const first = h.store.serialise();
-    const result = restore(JSON.parse(JSON.stringify(first)));
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(serialise(result.state)).toEqual({ ...first, open: false });
+    const closed = h.store.serialise();
+    expect([open.open, closed.open]).toEqual([true, false]);
+    for (const first of [open, closed]) {
+      const result = restore(JSON.parse(JSON.stringify(first)));
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(serialise(result.state)).toEqual(first);
+      }
     }
   });
 
@@ -119,7 +254,7 @@ describe('a session that is read back', () => {
     if (result.ok) {
       expect(result.repaired).toBe(false);
       expect(result.state.sessions.s1).toMatchObject({ title: 'zsh', scope: 'dev', state: 'ended' });
-      expect(serialise(result.state)).toEqual({ ...first, open: false });
+      expect(serialise(result.state)).toEqual(first);
     }
   });
 });
@@ -264,7 +399,7 @@ describe('a saved panel that is damaged is repaired, not discarded (mock: "a bad
     expect(result.state.active.logs).toBe('__proto__');
     expect(checkInvariants(result.state)).toEqual([]);
     // And what it saves again is what it read.
-    expect(serialise(result.state)).toEqual({ ...saved({ tool: 'logs', active: { logs: '__proto__' }, sessions: [entry('constructor'), entry('__proto__'), entry('toString', 'terminal')] }), open: false });
+    expect(serialise(result.state)).toEqual(saved({ tool: 'logs', active: { logs: '__proto__' }, sessions: [entry('constructor'), entry('__proto__'), entry('toString', 'terminal')] }));
   });
 
   it('does not take a session named `constructor` for a repeat of another: nothing has been read yet', () => {
@@ -309,9 +444,13 @@ describe('a saved panel that is damaged is repaired, not discarded (mock: "a bad
     };
 
     for (let seed = 1; seed <= 600; seed += 1) {
-      const result = restore(mutate(base, seed));
+      const damaged = mutate(base, seed);
+      const result = restore(damaged);
       if (result.ok) {
         expect(checkInvariants(result.state), `seed ${String(seed)}`).toEqual([]);
+        // The panel is open exactly when the document says it is (T2d), whatever else of it was damaged: sessions dropped or kept, a tool or a height that cannot be read.
+        const says = typeof damaged === 'object' && damaged !== null && 'open' in damaged && damaged.open === true;
+        expect(result.state.open, `seed ${String(seed)}: the open flag`).toBe(says);
       }
     }
   });

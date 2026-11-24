@@ -8,4 +8,4 @@ export type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from '.
 export type { Engine, EngineLoader, EngineOptions } from './engine';
 export { loadPageKey, terminalKeyStorage } from './pageKey';
 export type { KeyStorage, KeyStorageOptions } from './pageKey';
-export { restoreLocalTerminals } from './localShell';
+export { attachLocalTerminal, restoreLocalTerminals } from './localShell';

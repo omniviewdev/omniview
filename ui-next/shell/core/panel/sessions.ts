@@ -26,8 +26,8 @@ function freshId(state: PanelState, newId: () => SessionId): SessionId {
 
 export type OpenOptions = {
   /**
-   * The user started this session, so the panel opens on it (S116). A session that is restored, adopted from another window or brought back by a retry says `false`: a restored terminal
-   * must not cover the page. Default: true.
+   * The user started this session, so the panel opens on it (S116). A session that is restored, adopted from another window or brought back by a retry says `false`: S116's "do not open it (today's quiet-tab rule)", so it opens no panel
+   * and moves neither the tool nor the session on screen. What a reload brings back open is the saved panel's own flag (`restorePanel`, T2d), never a session's. Default: true.
    */
   readonly reveal?: boolean | undefined;
 };

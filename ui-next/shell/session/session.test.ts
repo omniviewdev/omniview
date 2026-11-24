@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPanelStore, RESTORED_CAUSE, type PanelStore } from '../core/panel';
+import { checkInvariants, createPanelStore, RESTORED_CAUSE, type PanelStore } from '../core/panel';
 import { createTabsStore, type TabsStore } from '../core/tabs';
 import { cloudPage, FIXTURE_PLUGINS, makeWorld, stackPage, type World } from '../core/tabs/testing';
 import { createRailChoice, loadSession, MIGRATIONS, QUARANTINE_PREFIX, SESSION_VERSION, type Lifecycle, type LoadedSession, type RailChoice, type Restored, type SessionOptions, type SessionStorage } from './index';
@@ -87,6 +87,16 @@ const settle = async (ms = 400) => {
 function equip(panel: PanelStore, plugins: readonly string[] = ['cloud', 'stack']) {
   panel.registerTool({ id: 'logs', label: 'Logs', icon: 'box', order: 20 });
   panel.syncPlugins(plugins.map((id) => ({ id, tools: id === 'cloud' ? [{ id: 'streams', label: 'Streams', icon: 'box' }] : [] })));
+}
+
+/** A session as a plugin's command opens one, in a tool: the panel opens on it. Its id. */
+function startIn(panel: PanelStore, tool: string, title: string, scope = ''): string {
+  const opened = panel.openSession({ tool, plugin: 'cloud', title, scope });
+  if (opened.status !== 'done') {
+    throw new Error(`the session ${title} was refused: ${opened.message}`);
+  }
+
+  return opened.id;
 }
 
 describe('a window that is saved and comes back', () => {
@@ -207,32 +217,106 @@ describe('a window that is saved and comes back', () => {
     expect(memory.kept.size).toBe(0);
   });
 
-  it('brings the panel back as the user left it when it holds no session, and closed, with its sessions ended, when it holds one (S116)', async () => {
+  it('brings the panel back as the user left it when it holds no session', async () => {
     const memory = memoryStorage();
     const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
     equip(first.panel);
     first.panel.show({ tool: 'logs' });
     first.panel.resize({ size: 301 });
     await settle();
-    const bare = live(await loadSession(memory.storage, optionsOf(notes().log)));
-    expect(bare.panel.getSnapshot()).toMatchObject({ open: true, height: 301, tool: 'logs' });
-    bare.stop();
+    const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    expect(second.panel.getSnapshot()).toMatchObject({ open: true, height: 301, tool: 'logs' });
+  });
 
-    const opened = first.panel.openSession({ tool: 'logs', plugin: 'cloud', title: 'worker', scope: 'north' });
-    expect(opened.status).toBe('done');
-    if (opened.status === 'done') {
-      first.panel.setSessionState(opened.id, { state: 'running' });
+  it('brings the panel back OPEN when it was left open, on the tool and the session it was on, with its sessions ended: a terminal that is alive again is not left behind a closed panel (T2d)', async () => {
+    const memory = memoryStorage();
+    const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(first.panel);
+    first.panel.resize({ size: 301 });
+    const worker = startIn(first.panel, 'logs', 'worker', 'north');
+    const sidecar = startIn(first.panel, 'logs', 'sidecar', 'north');
+    const tail = startIn(first.panel, 'logs', 'tail', 'north');
+    first.panel.setSessionState(worker, { state: 'running' });
+    // The user went back to the middle one: neither the first of the tool's strip nor the newest.
+    first.panel.activateSession(sidecar);
+    await settle();
+
+    const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    expect(second.panel.getSnapshot()).toMatchObject({ open: true, height: 301, tool: 'logs', active: { logs: sidecar }, order: [worker, sidecar, tail], mounted: [] });
+    equip(second.panel);
+    const state = second.panel.getSnapshot();
+    for (const id of [worker, sidecar, tail]) {
+      expect(state.sessions[id], id).toMatchObject({ plugin: 'cloud', scope: 'north', state: 'ended', cause: RESTORED_CAUSE });
     }
 
+    expect(state.sessions[worker]?.title).toBe('worker');
+    expect(second.panel.selectors.sessionIds(state, 'logs')).toEqual([worker, sidecar, tail]);
+    // The panel is on the session it was on, and only that body is mounted.
+    expect(second.panel.selectors.shown(state)).toEqual({ tool: 'logs', session: sidecar });
+    expect(state.mounted).toEqual([sidecar]);
+    expect(checkInvariants(state)).toEqual([]);
+  });
+
+  it('brings the panel back closed when the user had hidden it, with its sessions and its choices: a restored session opens nothing', async () => {
+    const memory = memoryStorage();
+    const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(first.panel);
+    first.panel.resize({ size: 301 });
+    const worker = startIn(first.panel, 'logs', 'worker', 'north');
+    first.panel.hide();
     await settle();
+
     const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
     equip(second.panel);
     const state = second.panel.getSnapshot();
-    expect(state).toMatchObject({ open: false, height: 301, tool: 'logs' });
-    const restored = Object.values(state.sessions);
-    expect(restored).toHaveLength(1);
-    expect(restored[0]).toMatchObject({ title: 'worker', scope: 'north', plugin: 'cloud', state: 'ended', cause: RESTORED_CAUSE });
-    expect(second.panel.selectors.sessionIds(second.panel.getSnapshot(), 'logs')).toEqual(restored.map((session) => session.id));
+    expect(state).toMatchObject({ open: false, height: 301, tool: 'logs', active: { logs: worker }, mounted: [] });
+    expect(state.sessions[worker]).toMatchObject({ state: 'ended', cause: RESTORED_CAUSE });
+    expect(second.panel.selectors.sessionIds(state, 'logs')).toEqual([worker]);
+    expect(second.panel.selectors.shown(state)).toBeNull();
+  });
+
+  it('brings an open panel back on the first tool it has while the plugin of its tool has not loaded, and on its own tool and session when it has: nothing is mounted that cannot be seen', async () => {
+    const memory = memoryStorage();
+    const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(first.panel);
+    const id = startIn(first.panel, 'cloud:streams', 'tail', 'north');
+    await settle();
+
+    // The window starts again and the plugin has not loaded yet: the panel is open on the first tool it has, and the session of the plugin is neither listed nor mounted.
+    const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(second.panel, ['stack']);
+    const waiting = second.panel.getSnapshot();
+    expect(waiting).toMatchObject({ open: true, tool: 'cloud:streams', mounted: [] });
+    expect(second.panel.selectors.shown(waiting)).toEqual({ tool: 'logs', session: null });
+    expect(checkInvariants(waiting)).toEqual([]);
+
+    // The plugin loads: its tool and its session come back together, and the panel is on them.
+    second.panel.syncPlugins([{ id: 'cloud', tools: [{ id: 'streams', label: 'Streams', icon: 'box' }] }, { id: 'stack', tools: [] }]);
+    const loaded = second.panel.getSnapshot();
+    expect(second.panel.selectors.shown(loaded)).toEqual({ tool: 'cloud:streams', session: id });
+    expect(loaded.mounted).toEqual([id]);
+    expect(checkInvariants(loaded)).toEqual([]);
+  });
+
+  it('saves the panel as it was left after a restore, whatever else changes: the open flag is not lost at the next write', async () => {
+    const memory = memoryStorage();
+    const first = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(first.panel);
+    const worker = startIn(first.panel, 'logs', 'worker', 'north');
+    first.panel.resize({ size: 301 });
+    await settle();
+    const written = memory.writes.length;
+
+    const second = live(await loadSession(memory.storage, optionsOf(notes().log)));
+    equip(second.panel);
+    // What was saved is what is held now: restoring wrote nothing.
+    await settle(1000);
+    expect(memory.writes).toHaveLength(written);
+
+    second.rail.set('cloud');
+    await settle();
+    expect(memory.writes).toHaveLength(written + 1);
+    expect(JSON.parse(memory.writes.at(-1) ?? '')).toMatchObject({ rail: 'cloud', panel: { open: true, height: 301, tool: 'logs', active: { logs: worker } } });
   });
 
   it('keeps the tab of a plugin that has not loaded yet, as it was drawn, and describes it when the plugin registers', async () => {
