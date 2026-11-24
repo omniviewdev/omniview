@@ -23,6 +23,9 @@ import { NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_TOOL_ID } from './tool';
  */
 export const ASK_MS = 1_500;
 
+/** How often a visible window asks the host who holds the terminals it lost: the host says nothing when the tab that took one goes, so a lost terminal is asked about until it is free. */
+export const LOST_REFRESH_MS = 5_000;
+
 /** The host's answer to "what runs in it", or `unknown` when it does not come in time or the question fails: a question that was not answered is never "nothing runs". */
 async function answered(question: Promise<TerminalBusy>): Promise<TerminalBusy> {
   return new Promise((resolve) => {
@@ -224,6 +227,16 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       };
 
       window.addEventListener('pagehide', hide);
+      // The host does not tell a page that the tab that took its terminal has gone: a visible window asks when it is shown, when it gets the focus and every few seconds, and only while it has a lost terminal.
+      const ask = (): void => {
+        if (document.visibilityState === 'visible') {
+          sessions.refreshLost();
+        }
+      };
+
+      document.addEventListener('visibilitychange', ask);
+      window.addEventListener('focus', ask);
+      const timer = setInterval(ask, LOST_REFRESH_MS);
       attached += 1;
       findTerminals();
       openFound();
@@ -236,6 +249,9 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         on = false;
         attached -= 1;
         window.removeEventListener('pagehide', hide);
+        document.removeEventListener('visibilitychange', ask);
+        window.removeEventListener('focus', ask);
+        clearInterval(timer);
         stop();
       };
     },

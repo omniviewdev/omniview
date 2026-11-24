@@ -82,6 +82,11 @@ export type TerminalSessions = {
    */
   readonly leave: () => void;
   /**
+   * Asks every feed this page lost (ended with a `detached`, its end not known) who holds its terminal (`TerminalFeedHandle.refresh`): the host sends no word when the tab that took a terminal goes, so the page asks. A
+   * `refresh` that throws or rejects is one warning. Answers whether any feed was asked; with none it does nothing.
+   */
+  readonly refreshLost: () => boolean;
+  /**
    * Opens a session in the Terminal tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). Every call is a new process, except for a target that names the id of its session
    * (`TerminalTarget.sessionId`): a terminal has one session. When the panel has a session of that id (a saved tab: the restore makes every terminal session `ended`, with no feed) the session is GIVEN the feed, stays
    * where it is under the title it has, and follows the feed from then on; when it has none, a session of that id is made. `undefined` when it could not, and why is in the log: the target is not well formed, its id names
@@ -464,6 +469,30 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
           leaveFeed(entry);
         }
       }
+    },
+
+    refreshLost: () => {
+      let asked = false;
+      for (const entry of [...entries.values()]) {
+        if (entry.ended) {
+          continue;
+        }
+
+        try {
+          const status = entry.feed.getSnapshot();
+          if (status.state !== 'ended' || status.detached === undefined || status.exit !== undefined) {
+            continue;
+          }
+        } catch (error) {
+          warn(`[panel] ${entry.plugin} could not ask who holds the terminal`, error);
+          continue;
+        }
+
+        asked = true;
+        tellFeed(entry.plugin, (): Promise<void> | undefined => entry.feed.refresh?.(), 'could not ask who holds the terminal');
+      }
+
+      return asked;
     },
 
     open: (target, opening = {}) => {
