@@ -640,8 +640,9 @@ export class Launch {
 
     /**
      * LeaseMs is how long the terminal is kept for a page that comes back once its page is gone, in
-     * milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something only
-     * with a PageKey.
+     * milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something
+     * only for a terminal that is kept: one with a PageKey (the events lane) or a Channel terminal (the
+     * channel lane), which exclude each other. A lease for a terminal that is neither is refused.
      */
     "lease_ms"?: number;
 
