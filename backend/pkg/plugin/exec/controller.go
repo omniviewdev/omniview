@@ -131,6 +131,7 @@ func NewController(
 		mu:               sync.RWMutex{},
 		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
+		channelMaking:    make(map[string]bool),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -154,9 +155,12 @@ type controller struct {
 	mu           sync.RWMutex
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
-	inChans      map[string]chan exec.StreamInput
-	handlerMap   map[string]map[string]exec.Handler
-	streams      map[string]execProviderStream
+	// channelMaking holds the id of each channel terminal whose shell is being started: the manager does not hold it yet and the
+	// index never will, and the id is not free (see idHeldLocked). Guarded by mu.
+	channelMaking map[string]bool
+	inChans       map[string]chan exec.StreamInput
+	handlerMap    map[string]map[string]exec.Handler
+	streams       map[string]execProviderStream
 
 	// Publication and retirement share this outer lock. Never acquire it with mu held.
 	outputMu sync.Mutex

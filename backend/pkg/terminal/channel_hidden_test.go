@@ -34,12 +34,14 @@ func requireTheRingHoldsTheNewest(t *testing.T, s *session, limit int) {
 	assert.Equal(t, kept, stats.kept, "what the ring says it holds is what it holds")
 	assert.Equal(t, stats.end-kept, stats.start, "it holds the end of the output")
 	assert.LessOrEqual(t, kept, uint64(limit), "and no more than its limit")
-	assert.Greater(t, kept, uint64(limit)-4*chunkBytes, "and not much less: it drops whole chunks, oldest first")
+	if stats.end > uint64(limit) {
+		assert.Greater(t, kept, uint64(limit)-4*chunkBytes, "and not much less: it drops whole chunks, oldest first")
+	}
 	guarded(t, "ring-counts", func() {
 		assert.Equal(t, stats.end-kept, stats.overwritten, "what it overwrote is counted: overwritten is the output less what the ring holds")
 	})
 	guarded(t, "newest-bytes", func() {
-		assert.Equal(t, countingBytes(stats.start, kept), got, "the ring holds the newest %d bytes of the sequence, byte for byte", kept)
+		assert.True(t, bytes.Equal(countingBytes(stats.start, kept), got), "the ring holds the newest %d bytes of the sequence, byte for byte", kept)
 	})
 	t.Logf("ring: output %d, kept %d, overwritten %d, start %d", stats.end, kept, stats.overwritten, stats.start)
 }

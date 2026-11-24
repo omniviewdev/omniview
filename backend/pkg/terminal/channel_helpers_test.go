@@ -88,6 +88,8 @@ type fakeChannel struct {
 	toHost [][]byte
 	// sends counts the Send calls begun and taken those that returned.
 	sends, taken int
+	// recvs counts the Recv calls begun: when it goes up, the host has finished with the frame it took before.
+	recvs int
 	// lastSend is the frame of the latest Send that began, whether or not it returned.
 	lastSend []byte
 	// gate decides what a Send does from the gateFrom-th on: pass, park until release, or pass one for each token.
@@ -101,7 +103,7 @@ type fakeChannel struct {
 func newFakeChannel(t testing.TB) *fakeChannel {
 	t.Helper()
 	f := &fakeChannel{
-		mu: sync.Mutex{}, toPage: nil, read: 0, toHost: nil, sends: 0, taken: 0, lastSend: nil, gate: gateOpen, gateFrom: 0, tokens: 0, closed: false, done: make(chan struct{}),
+		mu: sync.Mutex{}, toPage: nil, read: 0, toHost: nil, sends: 0, taken: 0, recvs: 0, lastSend: nil, gate: gateOpen, gateFrom: 0, tokens: 0, closed: false, done: make(chan struct{}),
 	}
 	f.cond = sync.NewCond(&f.mu)
 	t.Cleanup(func() { _ = f.Close() })
@@ -135,6 +137,7 @@ func (f *fakeChannel) Send(frame []byte) error {
 func (f *fakeChannel) Recv() ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.recvs++
 	for len(f.toHost) == 0 && !f.closed {
 		f.cond.Wait()
 	}
@@ -196,6 +199,13 @@ func (f *fakeChannel) counts() (int, int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.sends, f.taken
+}
+
+// recvCalls says how many Recv calls began.
+func (f *fakeChannel) recvCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.recvs
 }
 
 // allFrames is every frame the host sent that the transport took, in order.

@@ -85,12 +85,13 @@ func TestInputThatWasTakenInBeforeAHandoverIsAppliedBeforeTheNewHoldersAndNothin
 	b := m.attach(t, info.Cap, nil)
 	b.waitReady()
 	b.input("B1\n")
-	require.Eventually(t, func() bool { return s.channelStats().admitted >= 2 }, settle, time.Millisecond, "B's input is behind A's")
-	dev.openAll()
-	require.Eventually(t, func() bool { return s.channelStats().refused >= 1 }, settle, time.Millisecond, "A's input after the handover was read")
-	require.Eventually(t, func() bool { return len(dev.log()) >= 2 }, settle, time.Millisecond)
-
 	guarded(t, "decide-and-act", func() {
+		require.Eventually(t, func() bool { return s.channelStats().admitted >= 2 }, settle, time.Millisecond, "B's input is behind A's")
+	})
+	dev.openAll()
+	guarded(t, "decide-and-act", func() {
+		require.Eventually(t, func() bool { return s.channelStats().refused >= 1 }, settle, time.Millisecond, "A's input after the handover was read")
+		require.Eventually(t, func() bool { return len(dev.log()) >= 2 }, settle, time.Millisecond, "and what was admitted was applied")
 		assert.Equal(t, []string{"w:A1\n", "w:B1\n"}, dev.log(), "what A had taken in comes first, B's follows, and A's later input is nowhere")
 		assert.EqualValues(t, 2, s.channelStats().admitted)
 		assert.EqualValues(t, 1, s.channelStats().refused)
@@ -118,12 +119,13 @@ func TestAResizeThatWasTakenInBeforeAHandoverIsAppliedBeforeTheNewHoldersAndNoth
 	b := m.attach(t, info.Cap, nil)
 	b.waitReady()
 	b.resize(101, 41)
-	require.Eventually(t, func() bool { return s.channelStats().admitted >= 2 }, settle, time.Millisecond)
-	dev.openAll()
-	require.Eventually(t, func() bool { return s.channelStats().refused >= 1 }, settle, time.Millisecond)
-	require.Eventually(t, func() bool { return len(dev.log()) >= 2 }, settle, time.Millisecond)
-
 	guarded(t, "decide-and-act", func() {
+		require.Eventually(t, func() bool { return s.channelStats().admitted >= 2 }, settle, time.Millisecond, "B's resize is behind A's")
+	})
+	dev.openAll()
+	guarded(t, "decide-and-act", func() {
+		require.Eventually(t, func() bool { return s.channelStats().refused >= 1 }, settle, time.Millisecond, "A's resize after the handover was read")
+		require.Eventually(t, func() bool { return len(dev.log()) >= 2 }, settle, time.Millisecond, "and what was admitted was applied")
 		assert.Equal(t, []string{"r:31x91", "r:41x101"}, dev.log(), "the size is the new holder's, and A's later resize did nothing")
 	})
 }
