@@ -297,7 +297,7 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 	})
 
 	t.Run("the right capability gets ready first and its input comes back as output", func(t *testing.T) {
-		info := startTerminal(t, wrapper, "cat")
+		info := startTerminal(t, wrapper, "sh", "-c", "cat")
 		page := dial(t, port)
 		page.write(attach(info.Cap, nil))
 		state := page.until("ready", func(s *streamState) bool { return s.ready != nil })
@@ -346,18 +346,35 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 	})
 
 	t.Run("a stream that never reads does not block the shell, and the page that wakes is told what it missed", func(t *testing.T) {
-		const written = 24_000_000
+		const blocks, block = 366, 1 << 16
+		const written = blocks * block // 23,986,176 bytes: three rings and more than the transport holds
 		done := filepath.Join(t.TempDir(), "done")
-		info := startTerminal(t, wrapper, "sh", "-c", fmt.Sprintf(`yes | head -c %d; printf 'MARK-END\n'; : > "$0"; exec sleep 600`, written), done)
+		// The terminal does no output processing (stty -opost) and the shell writes in blocks of 64 KiB: a pty that turns each newline into
+		// two bytes, or a pipeline that writes in small pieces, passes about 1 MB/s on macOS whatever reads it, and the test would be a
+		// measure of the pty. Every byte the shell writes is a byte of the stream.
+		info := startTerminal(t, wrapper, "sh", "-c", fmt.Sprintf(`stty -opost; perl -e '$|=1; print((q(y) x %d)."\n") for 1..%d'; printf 'MARK-END\n'; : > "$0"; exec sleep 600`, block-1, blocks), done)
 
+		began := time.Now()
 		page := dial(t, port)
 		page.write(attach(info.Cap, nil))
 		page.until("ready", func(s *streamState) bool { return s.ready != nil })
 		// The page reads nothing more until the shell has written everything: the event that must come is the file.
-		require.Eventually(t, func() bool { _, err := os.Stat(done); return err == nil }, bound, 10*time.Millisecond,
+		sampled := time.Now()
+		require.Eventually(t, func() bool {
+			if time.Since(sampled) >= 2*time.Second {
+				sampled = time.Now()
+				if listed, err := wrapper.ListChannelTerminals([]string{info.Cap}); err == nil && len(listed) == 1 {
+					t.Logf("%v: the shell has written %d bytes, the ring starts at %d", time.Since(began).Round(time.Second), listed[0].NextOffset, listed[0].ReplayStart)
+				}
+			}
+			_, err := os.Stat(done)
+			return err == nil
+		}, bound, 10*time.Millisecond,
 			"the shell wrote %d bytes with nobody reading, and was never blocked", written)
+		t.Logf("the shell wrote %d bytes with nobody reading, and was never blocked: %v after the stream attached", written, time.Since(began))
 
-		state := page.until("the end of the output", func(s *streamState) bool { return bytes.HasSuffix(s.output, []byte("MARK-END\r\n")) })
+		state := page.until("the end of the output", func(s *streamState) bool { return bytes.HasSuffix(s.output, []byte("MARK-END\n")) })
+		t.Logf("the page woke after %v: %d bytes of output, %d gaps, offset %d", time.Since(began), len(state.output), len(state.gaps), state.next)
 		assert.NotEmpty(t, state.gaps, "the ring overwrote what the page did not take, and the page is told")
 		var lost uint64
 		for _, gap := range state.gaps {
