@@ -12,7 +12,7 @@ func NewWebviewWindow(app *application.App, options application.WebviewWindowOpt
 	return app.Window.NewWithOptions(options)
 }
 
-// newHeadlessWindow is never called in this build: it shows native windows.
-func newHeadlessWindow(windowSpec, windowEventSink) nativeWindow {
+// newRegistryWindow is never called in this build: it shows native windows.
+func newRegistryWindow(*application.App, *application.WebviewWindow, windowSpec, windowEventSink) nativeWindow {
 	return nil
 }

@@ -21,22 +21,28 @@ FACTORY = """	window := application.NewWindow(options)
 	return window
 """
 GUARD = """	if !runsNativeWindows {
-		return newHeadlessWindow(spec, sink)
+		return newRegistryWindow(h.app, window, spec, sink)
 	}
 """
-CLOSE_SWITCH = """	switch {
-	case w.kind == KindSettings && !w.sink.shutdownStarted():
+CLOSE_BODY = """	if w.kind == KindSettings && !w.sink.shutdownStarted() {
 		w.sink.windowVisibilityChanged(w.name, false)
-	case w.kind != KindSettings:
+		return
+	}
+	w.app.Window.Remove(w.window.ID())
+	if w.kind != KindSettings {
 		w.sink.windowClosed(w.name)
 	}
 """
 HEAP = ("if grown := eventsKept(t, app, port, b110Events, b110EventBytes); grown > b110HeapBound {",
         "if grown := eventsKept(t, app, port, b110Events, b110EventBytes); false && grown > b110HeapBound {")
-MAIN_REGISTERED = ("if _, found := app.Window.GetByName(MainWindowName); !found {",
-                   "if _, found := app.Window.GetByName(MainWindowName); false && !found {")
+REGISTERED = ("if _, found := app.Window.GetByName(registered); !found {",
+              "if _, found := app.Window.GetByName(registered); false && !found {")
 CLOSED_TOLD = ("if len(sink.closed) != 1 || sink.closed[0] != name || len(sink.hidden) != 0 {", "if false {")
+FORGOTTEN = ("if _, found := app.Window.GetByName(name); found {",
+             "if _, found := app.Window.GetByName(name); false && found {")
 HIDDEN_TOLD = ("if len(sink.hidden) != 1 || sink.hidden[0] != name || len(sink.closed) != 0 {", "if false {")
+KEPT = ("if _, found := app.Window.GetByName(name); !found {\n\t\tt.Fatalf(\"the settings window",
+        "if _, found := app.Window.GetByName(name); false && !found {\n\t\tt.Fatalf(\"the settings window")
 
 def read(path):
     with open(os.path.join(ROOT, path)) as handle:
@@ -54,16 +60,23 @@ CONTROLS = [
     ("C2 the server build says it runs native windows: Activate shows them", SERVER,
      lambda s: replaced(s, "const runsNativeWindows = false", "const runsNativeWindows = true"), RETAINED, [HEAP], "keeps the events it was given"),
     ("C3 the window service creates a window that runs in the server build", WAILS,
-     lambda s: replaced(replaced(s, GUARD, ""), "window := NewWebviewWindow(h.app, options)", "window := h.app.Window.NewWithOptions(options)"),
+     lambda s: replaced(s, "window := NewWebviewWindow(h.app, options)", "window := h.app.Window.NewWithOptions(options)"),
      RETAINED, [HEAP], "keeps the events it was given"),
-    ("C4 the factory does not register the main window", SERVER,
-     lambda s: replaced(s, "	app.Window.Add(window)\n", ""), RETAINED, [MAIN_REGISTERED], "main window is not in the registry"),
-    ("C6 closing a window of the server build tells nobody", SERVER,
-     lambda s: replaced(s, CLOSE_SWITCH, ""), CLOSING, [CLOSED_TOLD], "the window service was told closed="),
-    ("C7 the settings window of the server build is reported closed, not hidden", SERVER,
-     lambda s: replaced(s, CLOSE_SWITCH, "	w.sink.windowClosed(w.name)\n"), SETTINGS, [HIDDEN_TOLD], "the window service was told closed="),
-    ("C8 the window service's windows are registry-only Wails windows, whose Close returns at once", WAILS,
-     lambda s: replaced(s, GUARD, ""), CLOSING, [CLOSED_TOLD], "the window service was told closed="),
+    ("C4 the factory does not register the windows", SERVER,
+     lambda s: replaced(s, "	app.Window.Add(window)\n", ""), RETAINED, [REGISTERED], "is not in the registry of the application"),
+    ("C6 closing a window of the server build tells nobody and forgets nothing", SERVER,
+     lambda s: replaced(s, CLOSE_BODY, ""), CLOSING, [CLOSED_TOLD, FORGOTTEN], "the window service was told closed="),
+    ("C7 the settings window of the server build is closed, not hidden", SERVER,
+     lambda s: replaced(s, CLOSE_BODY, "	w.app.Window.Remove(w.window.ID())\n	w.sink.windowClosed(w.name)\n"), SETTINGS,
+     [HIDDEN_TOLD, KEPT], "the window service was told closed="),
+    ("C8 the service's windows are plain Wails windows that did not run, whose Close returns at once", WAILS,
+     lambda s: replaced(s, GUARD, ""), CLOSING, [CLOSED_TOLD, FORGOTTEN], "the window service was told closed="),
+    ("C9 a closed window stays in the registry", SERVER,
+     lambda s: replaced(s, "	w.app.Window.Remove(w.window.ID())\n	if w.kind", "	if w.kind"), CLOSING, [FORGOTTEN],
+     "is still in the registry of the application after it closed"),
+    ("C10 the settings window leaves the registry when it hides", SERVER,
+     lambda s: replaced(s, "		w.sink.windowVisibilityChanged(w.name, false)\n		return", "		w.app.Window.Remove(w.window.ID())\n		w.sink.windowVisibilityChanged(w.name, false)\n		return"),
+     SETTINGS, [KEPT], "was taken out of the registry although closing it only hides it"),
 ]
 
 def run(overlay_files, target):

@@ -56,9 +56,6 @@ type wailsWindowHost struct {
 }
 
 func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) nativeWindow {
-	if !runsNativeWindows {
-		return newHeadlessWindow(spec, sink)
-	}
 	options := h.template
 	options.Name = spec.Name
 	// The frontend asks Wails for its window name; a URL query would be lost
@@ -93,6 +90,9 @@ func (h *wailsWindowHost) createWindow(spec windowSpec, sink windowEventSink) na
 		options.X, options.Y = spec.Position.X, spec.Position.Y
 	}
 	window := NewWebviewWindow(h.app, options)
+	if !runsNativeWindows {
+		return newRegistryWindow(h.app, window, spec, sink)
+	}
 	wireFocusAndVisibility(window, spec.Name, sink)
 	wireBoundsTracking(window, spec.Name, sink)
 	if spec.Kind == KindSettings {

@@ -218,8 +218,10 @@ func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
 	second := host.createWindow(windowSpec{Name: name, Kind: KindWorkspace, Width: 800, Height: 600}, inertSink{})
 	wailsWindow{window: serverProcess.main}.Activate()
 	second.Activate()
-	if _, found := app.Window.GetByName(MainWindowName); !found {
-		t.Fatal("the main window is not in the registry of the application")
+	for _, registered := range []string{MainWindowName, name} {
+		if _, found := app.Window.GetByName(registered); !found {
+			t.Fatalf("window %q is not in the registry of the application: a page binds to a window by its name", registered)
+		}
 	}
 
 	if grown := eventsKept(t, app, port, b110Events, b110EventBytes); grown > b110HeapBound {
@@ -228,10 +230,10 @@ func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
 	}
 }
 
-// A window of the window service has no platform window in the server build,
-// and Wails' Close returns at once for a window that did not run: the service
-// must still hear that the window closed, or it keeps the entry and the saved
-// state of a window that is gone.
+// A window of the window service is in Wails' registry in the server build and
+// never runs, and Wails' Close returns at once for a window that did not run:
+// the service must still hear that the window closed, or it keeps the entry and
+// the saved state of a window that is gone, and the registry must forget it.
 func TestClosingAWindowOfTheServerBuildTellsTheWindowService(t *testing.T) {
 	app, _ := theServerApplication(t)
 	host := &wailsWindowHost{app: app, template: serverWindowTemplate()}
@@ -243,6 +245,9 @@ func TestClosingAWindowOfTheServerBuildTellsTheWindowService(t *testing.T) {
 
 	if len(sink.closed) != 1 || sink.closed[0] != name || len(sink.hidden) != 0 {
 		t.Fatalf("after Close the window service was told closed=%v hidden=%v, want closed=[%s] and nothing hidden", sink.closed, sink.hidden, name)
+	}
+	if _, found := app.Window.GetByName(name); found {
+		t.Fatalf("window %q is still in the registry of the application after it closed", name)
 	}
 }
 
@@ -258,5 +263,8 @@ func TestClosingTheSettingsWindowOfTheServerBuildHidesItInsteadOfClosing(t *test
 
 	if len(sink.hidden) != 1 || sink.hidden[0] != name || len(sink.closed) != 0 {
 		t.Fatalf("after Close the window service was told closed=%v hidden=%v, want hidden=[%s] and nothing closed", sink.closed, sink.hidden, name)
+	}
+	if _, found := app.Window.GetByName(name); !found {
+		t.Fatalf("the settings window %q was taken out of the registry although closing it only hides it", name)
 	}
 }
