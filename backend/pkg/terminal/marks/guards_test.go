@@ -58,8 +58,8 @@ func TestVSCodePromptLettersAreReadLikeOSC133(t *testing.T) {
 		t.Fatalf("633;D;4 is %+v", ms[3])
 	}
 	// A letter followed by more letters is none of them.
-	if ms := feedAll(newTestScanner(t, newClock(), 0), osc("633;AB")+osc("133;AB")); len(ms) != 0 {
-		t.Fatalf("a longer word is read as a letter: %v", ms)
+	if longer := feedAll(newTestScanner(t, newClock(), 0), osc("633;AB")+osc("133;AB")); len(longer) != 0 {
+		t.Fatalf("a longer word is read as a letter: %v", longer)
 	}
 }
 
