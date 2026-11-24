@@ -103,6 +103,7 @@ const profileTest = base.extend<ProfileFixtures>({
     const contexts: BrowserContext[] = [];
     const workspaces: ApplicationWorkspace[] = [];
     const operations: Array<Promise<unknown>> = [];
+    const pages: Page[] = [];
     const records = new BrowserErrors();
     let closing = false;
     const open = async (name: string, options: ProfileOptions = {}): Promise<OpenProfile> => {
@@ -120,6 +121,7 @@ const profileTest = base.extend<ProfileFixtures>({
           collectErrors(page, records); 
         });
         const page = await context.newPage();
+        pages.push(page);
         await bindWindowContext(page, 'main');
         await closeSessions(page.request);
         await page.goto('/');
@@ -143,6 +145,12 @@ const profileTest = base.extend<ProfileFixtures>({
         } catch (error) {
           failures.push(error); 
         }
+      }
+
+      // The terminals a profile page opened are held by that page's window and are visible only as that window: they are closed
+      // as the page, before its context closes (a closed page has nothing to ask as).
+      for (const page of pages) {
+        await closePageSessions(page);
       }
 
       for (const context of contexts) {
