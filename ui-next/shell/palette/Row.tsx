@@ -1,4 +1,4 @@
-import { Icon, KindTile, isIconName, tip, type IconName } from '@omniviewdev/kit';
+import { Icon, KeyHint, KindTile, isIconName, tip, type IconName } from '@omniviewdev/kit';
 import { Fragment } from 'react';
 import type { Label as LabelData, Row as RowData } from '../core/palette';
 import styles from './Palette.module.css';
@@ -135,11 +135,7 @@ export function PaletteRow({ row, id, active, trailing }: RowProps) {
               </span>
             ) : null}
             {trailing.type === 'action' ? <span className={styles.action}>{trailing.text}</span> : null}
-            {trailing.type === 'keys' ? (
-              <span className={styles.keys}>
-                <kbd className={styles.kbd}>{trailing.text}</kbd>
-              </span>
-            ) : null}
+            {trailing.type === 'keys' ? <KeyHint keys={trailing.text} /> : null}
             {trailing.type === 'drill' ? (
               <span className={styles.drill} aria-hidden="true" data-palette-drill="">
                 <Icon name="chevron-right" />

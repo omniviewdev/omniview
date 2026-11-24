@@ -343,6 +343,16 @@ export type IconSize = 12 | 16 | 20;
 export const isIconName: (name: string) => name is IconName;
 
 // @public
+export function KeyHint(input: KeyHintProps): JSX.Element;
+
+// @public (undocumented)
+export type KeyHintProps = {
+    readonly keys: string;
+    readonly spokenKeys?: string | undefined;
+    readonly label?: string | undefined;
+} & DataAttributes;
+
+// @public
 export function KeyValue(input: KeyValueProps): JSX.Element | null;
 
 // @public (undocumented)

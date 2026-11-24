@@ -530,24 +530,6 @@
     overflow: hidden;
   }
 
-  .hint {
-    display: inline-flex;
-    align-items: baseline;
-    gap: var(--ov-spacing-4);
-  }
-
-  .kbd {
-    direction: ltr;
-    unicode-bidi: isolate;
-    color: var(--ov-fg-muted);
-    font: inherit;
-    white-space: nowrap;
-  }
-
-  .keys .kbd {
-    color: var(--_sub);
-  }
-
   .reason {
     min-inline-size: 0;
     overflow: hidden;

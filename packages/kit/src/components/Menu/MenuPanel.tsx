@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { Icon } from '../Icon';
+import { KeyHint } from '../KeyHint';
 import { rowAt, type MenuController, type MenuLevel, type MenuView } from './controller';
 import type { MenuKeyHint, MenuModel, MenuRow } from './items';
 import { placeMenu, type MenuPlacement, type MenuPosition } from './placement';
@@ -52,7 +53,7 @@ function MenuButton({ row, expanded }: { readonly row: MenuRow; readonly expande
           <span className={styles.metadataText} data-ov-menu-clip="">{metadata}</span>
         </span>
       )}
-      {entry.shortcut === undefined ? null : <span className={styles.shortcut}><kbd>{entry.shortcut}</kbd></span>}
+      {entry.shortcut === undefined ? null : <span className={styles.shortcut}><KeyHint keys={entry.shortcut} /></span>}
       {submenu === undefined ? null : <span className={styles.arrow}><Icon name="chevron-right" /></span>}
     </button>
   );
@@ -87,10 +88,7 @@ function Hints({ hints }: { readonly hints: readonly MenuKeyHint[] | undefined }
   return (
     <span className={styles.hints}>
       {hints?.map((hint) => (
-        <span className={styles.hint} key={`${hint.keys}:${hint.label}`}>
-          <kbd>{hint.keys}</kbd>
-          <span>{hint.label}</span>
-        </span>
+        <KeyHint key={`${hint.keys}:${hint.label}`} keys={hint.keys} label={hint.label} />
       ))}
     </span>
   );

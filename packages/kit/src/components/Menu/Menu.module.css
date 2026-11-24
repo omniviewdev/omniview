@@ -244,12 +244,6 @@
     margin-inline-start: var(--ov-spacing-24);
   }
 
-  .shortcut > kbd {
-    font: inherit;
-    direction: ltr;
-    unicode-bidi: isolate;
-  }
-
   .arrow {
     grid-column: 7;
     justify-self: end;
@@ -302,21 +296,10 @@
     min-height: var(--ov-lh-16);
   }
 
-  .hints,
-  .hint {
+  .hints {
     display: inline-flex;
     align-items: baseline;
-    gap: var(--ov-spacing-4);
-    white-space: nowrap;
-  }
-
-  .hints {
     gap: var(--ov-spacing-12);
-  }
-
-  .hint > kbd {
-    font: inherit;
-    direction: ltr;
-    unicode-bidi: isolate;
+    white-space: nowrap;
   }
 }

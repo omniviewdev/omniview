@@ -304,9 +304,13 @@ describe('delegated MenuHost', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('mixed');
     expect(checkbox.querySelector('[data-ov-glyph="minus"]')).not.toBeNull();
     expect(checkbox.querySelector('[data-ov-menu-metadata] [data-ov-glyph="folder-tree"]')).not.toBeNull();
-    expect(checkbox?.textContent ?? '').toContain('⌘H');
+    expect(checkbox.querySelector('kbd')?.textContent).toBe('⌘H');
     expect(checkbox.getAttribute('aria-description')).toBe('Two hidden; ⌘H; Enter: Change visibility');
-    expect(panel().querySelector('[data-ov-menu-footer]')?.lastElementChild?.textContent ?? '').toContain('Change visibility');
+    const footer = panel().querySelector('[data-ov-menu-footer]');
+    expect(footer?.getAttribute('aria-hidden')).toBe('true');
+    expect(footer?.firstElementChild?.querySelector('kbd')?.textContent).toBe('↵');
+    expect(footer?.lastElementChild?.querySelector('kbd')?.textContent).toBe('↵');
+    expect(footer?.lastElementChild?.textContent ?? '').toContain('Change visibility');
     const group = screen.getByRole('group', { name: 'Source' });
     expect(within(group).getByRole('menuitemradio', { name: 'All sources' }).getAttribute('aria-checked')).toBe('true');
     expect(within(group).getByRole('menuitemradio', { name: 'Local' }).getAttribute('aria-checked')).toBe('false');

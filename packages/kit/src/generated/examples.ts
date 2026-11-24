@@ -11,6 +11,7 @@ import * as fieldModule from '../components/Field/Field.examples';
 import * as hoverCardModule from '../components/HoverCard/HoverCard.examples';
 import * as iconModule from '../components/Icon/Icon.examples';
 import * as iconButtonModule from '../components/IconButton/IconButton.examples';
+import * as keyHintModule from '../components/KeyHint/KeyHint.examples';
 import * as keyValueModule from '../components/KeyValue/KeyValue.examples';
 import * as kindTileModule from '../components/KindTile/KindTile.examples';
 import * as linkModule from '../components/Link/Link.examples';
@@ -50,6 +51,7 @@ export const partExamples = {
   HoverCard: hoverCardModule,
   Icon: iconModule,
   IconButton: iconButtonModule,
+  KeyHint: keyHintModule,
   KeyValue: keyValueModule,
   KindTile: kindTileModule,
   Link: linkModule,

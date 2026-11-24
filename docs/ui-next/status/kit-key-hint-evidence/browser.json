@@ -1,0 +1,70 @@
+[
+  {
+    "engine": "webkit",
+    "width": 1280,
+    "height": 800,
+    "examples": [
+      "KeyHint/Action",
+      "KeyHint/RightToLeft",
+      "KeyHint/Shortcut"
+    ],
+    "elements": [
+      9,
+      8,
+      5
+    ],
+    "mutations": 0,
+    "frameP95Ms": 18
+  },
+  {
+    "engine": "webkit",
+    "width": 1440,
+    "height": 900,
+    "examples": [
+      "KeyHint/Action",
+      "KeyHint/RightToLeft",
+      "KeyHint/Shortcut"
+    ],
+    "elements": [
+      9,
+      8,
+      5
+    ],
+    "mutations": 0,
+    "frameP95Ms": 18
+  },
+  {
+    "engine": "chromium",
+    "width": 1280,
+    "height": 800,
+    "examples": [
+      "KeyHint/Action",
+      "KeyHint/RightToLeft",
+      "KeyHint/Shortcut"
+    ],
+    "elements": [
+      9,
+      8,
+      5
+    ],
+    "mutations": 0,
+    "frameP95Ms": 16.700000000000045
+  },
+  {
+    "engine": "chromium",
+    "width": 1440,
+    "height": 900,
+    "examples": [
+      "KeyHint/Action",
+      "KeyHint/RightToLeft",
+      "KeyHint/Shortcut"
+    ],
+    "elements": [
+      9,
+      8,
+      5
+    ],
+    "mutations": 0,
+    "frameP95Ms": 16.799999999999955
+  }
+]

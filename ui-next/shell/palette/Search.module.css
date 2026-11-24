@@ -44,10 +44,7 @@
     outline-offset: -2px;
   }
 
-  .hint {
-    margin: 0;
+  .search > kbd {
     color: var(--ov-fg-muted);
-    font: inherit;
-    white-space: nowrap;
   }
 }

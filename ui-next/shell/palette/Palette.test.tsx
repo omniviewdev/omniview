@@ -522,7 +522,8 @@ describe('what a row says', () => {
     const toggle = optionOf('Toggle panel');
     expect(close.querySelector('svg')).not.toBeNull();
     expect(within(close).getByText('Tabs')).toBeInTheDocument();
-    expect(within(close).getByText('⌘W')).toBeInTheDocument();
+    expect(close.querySelector('[data-palette-part="meta"] kbd')).toHaveTextContent(/^⌘W$/);
+    expect(close).toHaveAccessibleName('Command: Close tab, Tabs, ⌘W');
     expect(toggle.querySelector('kbd')).toBeNull();
   });
 
@@ -636,9 +637,10 @@ describe('what a row says', () => {
     const dialog = open(m, { kind: 'goto' });
     const foot = partOf(dialog, 'foot');
     expect(within(foot).getByText('Open')).toBeInTheDocument();
-    const background = within(foot).getByText('Background tab');
-    expect(background.previousElementSibling).toHaveTextContent('⌘↵');
-    expect(within(background.previousElementSibling as HTMLElement).getByText('Command Enter')).toBeInTheDocument();
+    const keys = within(foot).getByText('Background tab').previousElementSibling;
+    expect(keys?.tagName).toBe('KBD');
+    expect(keys?.querySelector('[aria-hidden="true"]')).toHaveTextContent('⌘↵');
+    expect(keys).toHaveTextContent('Command Enter');
   });
 
   it('says the open keys that work and no other: a host that cannot open a window does not advertise one', () => {
@@ -654,7 +656,9 @@ describe('what a row says', () => {
   it('writes the keys with Control elsewhere', () => {
     const m = mount({ platform: 'Linux x86_64' });
     const dialog = open(m, { kind: 'goto' });
-    expect(within(partOf(dialog, 'foot')).getByText('Background tab').previousElementSibling).toHaveTextContent('Ctrl+Enter');
+    const keys = within(partOf(dialog, 'foot')).getByText('Background tab').previousElementSibling;
+    expect(keys?.querySelector('[aria-hidden="true"]')).toHaveTextContent('Ctrl+Enter');
+    expect(keys).toHaveTextContent('Control Enter');
   });
 });
 
