@@ -63,10 +63,12 @@ async function closePageSessions(page: Page): Promise<void> {
     if (page.isClosed()) {
       return;
     }
+
     const clientId = await page.evaluate(() => window._wails?.clientId);
     if (!clientId) {
       return;
     }
+
     const sessions = await callBindingAs<Array<{ id: string }> | null>(page.request, clientId, Service.exec, 'ListSessions');
     for (const { id } of sessions ?? []) {
       await callBindingAs(page.request, clientId, Service.exec, 'CloseSession', id);
