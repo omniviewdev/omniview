@@ -20,57 +20,80 @@ func TestEveryWebviewWindowIsCreatedThroughTheFactory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve the repository root: %v", err)
 	}
-	factories := map[string]bool{
-		filepath.Join(root, "backend", "window", "webview_window_native.go"): true,
-		filepath.Join(root, "backend", "window", "webview_window_server.go"): true,
+	scan, err := scanForWindowCreation(root)
+	if err != nil {
+		t.Fatalf("scan the repository: %v", err)
 	}
-	skipped := map[string]bool{
-		".git": true, "node_modules": true, "dist": true, "ui": true, "ui-next": true, "packages": true,
-		"docs": true, "public": true, "evidence": true, "plans": true, "img": true, "patches": true,
+	if scan.files < 100 {
+		t.Fatalf("the scan read %d Go files; it is not looking at the repository", scan.files)
 	}
+	for _, position := range scan.around {
+		t.Errorf("%s creates a webview window without NewWebviewWindow", position)
+	}
+}
 
+type windowCreationScan struct {
+	files  int
+	around []string
+}
+
+// scanForWindowCreation parses the Go files of the repository that are not
+// tests and not the factory, and lists where they create a window.
+func scanForWindowCreation(root string) (windowCreationScan, error) {
+	var scan windowCreationScan
 	files := token.NewFileSet()
-	scanned := 0
-	var around []string
-	walked := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if skipped[entry.Name()] && path != root {
+			if path != root && notScanned(entry.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || factories[path] {
+		if !isScannedFile(root, path) {
 			return nil
 		}
 		parsed, parseErr := parser.ParseFile(files, path, nil, parser.SkipObjectResolution)
 		if parseErr != nil {
 			return parseErr
 		}
-		scanned++
-		ast.Inspect(parsed, func(node ast.Node) bool {
-			call, isCall := node.(*ast.CallExpr)
-			if !isCall {
-				return true
-			}
-			if createsWebviewWindow(call) {
-				around = append(around, files.Position(call.Pos()).String())
-			}
-			return true
-		})
+		scan.files++
+		scan.around = append(scan.around, windowCreations(files, parsed)...)
 		return nil
 	})
-	if walked != nil {
-		t.Fatalf("scan the repository: %v", walked)
+	return scan, err
+}
+
+// notScanned names the directories that hold no Go of the host.
+func notScanned(name string) bool {
+	switch name {
+	case ".git", "node_modules", "dist", "ui", "ui-next", "packages", "docs", "public", "evidence", "plans", "img", "patches":
+		return true
+	default:
+		return false
 	}
-	if scanned < 100 {
-		t.Fatalf("the scan read %d Go files; it is not looking at the repository", scanned)
+}
+
+func isScannedFile(root, path string) bool {
+	if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+		return false
 	}
-	for _, position := range around {
-		t.Errorf("%s creates a webview window without NewWebviewWindow", position)
-	}
+	factory := filepath.Join(root, "backend", "window")
+	return path != filepath.Join(factory, "webview_window_native.go") &&
+		path != filepath.Join(factory, "webview_window_server.go")
+}
+
+func windowCreations(files *token.FileSet, parsed *ast.File) []string {
+	var found []string
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		if call, isCall := node.(*ast.CallExpr); isCall && createsWebviewWindow(call) {
+			found = append(found, files.Position(call.Pos()).String())
+		}
+		return true
+	})
+	return found
 }
 
 // createsWebviewWindow reports <anything>.Window.New(...),

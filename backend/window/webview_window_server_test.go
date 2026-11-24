@@ -47,8 +47,15 @@ func loopbackPort(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer listener.Close()
-	return listener.Addr().(*net.TCPAddr).Port
+	address, isTCP := listener.Addr().(*net.TCPAddr)
+	if !isTCP {
+		t.Fatalf("the probe listener address is %T", listener.Addr())
+	}
+	port := address.Port
+	if closeErr := listener.Close(); closeErr != nil {
+		t.Fatalf("close the probe listener: %v", closeErr)
+	}
+	return port
 }
 
 // waitServing returns when the application answers; it waits for that event
@@ -77,39 +84,43 @@ func liveHeap() uint64 {
 	return stats.HeapAlloc
 }
 
-// A process has one Wails application, and it ends with the process.
-var (
-	serverApplicationOnce sync.Once
-	serverApplication     *application.App
-	serverApplicationPort int
-	serverMainWindow      *application.WebviewWindow
-	serverSecondWindows   atomic.Int32
-)
+func serverWindowTemplate() application.WebviewWindowOptions {
+	return application.WebviewWindowOptions{Width: 800, Height: 600}
+}
 
-var serverWindowTemplate = application.WebviewWindowOptions{Width: 800, Height: 600}
+// A process has one Wails application, and it ends with the process.
+//
+//nolint:gochecknoglobals // application.New keeps the first application of the process in a global, so the tests share it
+var serverProcess struct {
+	once    sync.Once
+	app     *application.App
+	port    int
+	main    *application.WebviewWindow
+	windows atomic.Int32
+}
 
 // theServerApplication starts the application the way main.go does: the main
 // window is created before Run and is the first window of the registry.
 func theServerApplication(t *testing.T) (*application.App, int) {
 	t.Helper()
-	serverApplicationOnce.Do(func() {
+	serverProcess.once.Do(func() {
 		port := loopbackPort(t)
 		app := application.New(application.Options{
 			Name:   "omniview-b110",
 			Server: application.ServerOptions{Host: "127.0.0.1", Port: port},
 			Assets: application.AssetOptions{Handler: http.NotFoundHandler()},
 		})
-		mainOptions := serverWindowTemplate
+		mainOptions := serverWindowTemplate()
 		mainOptions.Name = MainWindowName
-		serverMainWindow = NewWebviewWindow(app, mainOptions)
+		serverProcess.main = NewWebviewWindow(app, mainOptions)
 		go func() { _ = app.Run() }()
 		waitServing(t, port)
-		serverApplication, serverApplicationPort = app, port
+		serverProcess.app, serverProcess.port = app, port
 	})
-	if serverApplication == nil {
+	if serverProcess.app == nil {
 		t.Fatal("the application did not start in an earlier test")
 	}
-	return serverApplication, serverApplicationPort
+	return serverProcess.app, serverProcess.port
 }
 
 // eventsKept emits count events of size bytes, waits until the last one has
@@ -122,7 +133,7 @@ func eventsKept(t *testing.T, app *application.App, port, count, size int) int64
 	if err != nil {
 		t.Fatalf("connect to the event socket: %v", err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 	conn.SetReadLimit(1 << 20)
 
 	payload := strings.Repeat("x", size)
@@ -135,9 +146,9 @@ func eventsKept(t *testing.T, app *application.App, port, count, size int) int64
 	// sockets, so the end marker on the socket means every payload event has
 	// been through every window.
 	for {
-		_, message, err := conn.Read(ctx)
-		if err != nil {
-			t.Fatalf("read the event socket before the end marker: %v", err)
+		_, message, readErr := conn.Read(ctx)
+		if readErr != nil {
+			t.Fatalf("read the event socket before the end marker: %v", readErr)
 		}
 		if bytes.Contains(message, []byte("b110.done")) {
 			break
@@ -153,10 +164,10 @@ func eventsKept(t *testing.T, app *application.App, port, count, size int) int64
 func TestEventsAreNotRetainedByTheWindowsOfTheServerBuild(t *testing.T) {
 	app, port := theServerApplication(t)
 
-	host := &wailsWindowHost{app: app, template: serverWindowTemplate}
-	name := fmt.Sprintf("second-%d", serverSecondWindows.Add(1))
+	host := &wailsWindowHost{app: app, template: serverWindowTemplate()}
+	name := fmt.Sprintf("second-%d", serverProcess.windows.Add(1))
 	second := host.createWindow(windowSpec{Name: name, Kind: KindWorkspace, Width: 800, Height: 600}, inertSink{})
-	wailsWindow{window: serverMainWindow}.Activate()
+	wailsWindow{window: serverProcess.main}.Activate()
 	second.Activate()
 	for _, registered := range []string{MainWindowName, name} {
 		if _, found := app.Window.GetByName(registered); !found {
