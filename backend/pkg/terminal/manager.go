@@ -431,7 +431,7 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	m.log.Debugw(context.Background(), "session started", "session", id, "shell", s.info.Shell.Path, "cols", cols, "rows", rows)
 	// The capability is in this answer and in no other: it is not part of what the session says of itself.
 	info := s.info
-	info.Cap = string(secret)
+	info.Cap = secret.reveal()
 	return info, nil
 }
 

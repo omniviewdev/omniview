@@ -29,7 +29,11 @@ const redacted = "[capability]"
 // capability is the secret of one channel terminal: 32 random bytes of the host's, base64url. It is a type of its own so that no
 // verb can print it by accident: a struct, an error or a log field that holds one shows a placeholder. It is compared with
 // crypto/subtle, never with ==.
-type capability string
+//
+// The secret is held behind a pointer on purpose. fmt does not call the methods of a field that is not exported, it prints what
+// the field holds: a struct with a capability in a field of its own would print the secret, whatever the methods below say. A
+// pointer is printed as an address.
+type capability struct{ secret *string }
 
 func (capability) String() string   { return redacted }
 func (capability) GoString() string { return redacted }
@@ -37,16 +41,33 @@ func (capability) GoString() string { return redacted }
 // Format hides the capability from every verb, %v and %+v and %q and %x included.
 func (capability) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(redacted)) }
 
+// none says there is no capability: the terminal is not a channel terminal.
+func (c capability) none() bool { return c.secret == nil }
+
+// reveal is the secret, for the one answer that gives it and for a lookup that takes it back.
+func (c capability) reveal() string {
+	if c.secret == nil {
+		return ""
+	}
+	return *c.secret
+}
+
+// matches compares the capability with what a page presented, in constant time.
+func (c capability) matches(want []byte) bool {
+	return c.secret != nil && subtle.ConstantTimeCompare([]byte(*c.secret), want) == 1
+}
+
 // mintCapability makes the capability of a channel terminal, and none for any other terminal.
 func mintCapability(channel bool) (capability, error) {
 	if !channel {
-		return "", nil
+		return capability{secret: nil}, nil
 	}
 	var raw [capabilityBytes]byte
 	if _, err := rand.Read(raw[:]); err != nil {
-		return "", fmt.Errorf("the host could not make a capability: %w", err)
+		return capability{secret: nil}, fmt.Errorf("the host could not make a capability: %w", err)
 	}
-	return capability(base64.RawURLEncoding.EncodeToString(raw[:])), nil
+	secret := base64.RawURLEncoding.EncodeToString(raw[:])
+	return capability{secret: &secret}, nil
 }
 
 // channelLimits are the numbers of a channel terminal's ring and its pacing, the manager's copy of the Channel constants of
@@ -127,7 +148,7 @@ func (c *channelState) signalPump() {
 // capabilityOf is the capability of a channel terminal, and none for any other.
 func (s *session) capabilityOf() capability {
 	if s.channel == nil {
-		return ""
+		return capability{secret: nil}
 	}
 	return s.channel.capability
 }
@@ -204,12 +225,12 @@ func (m *Manager) lookupCap(presented string) (*session, *tombstone) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, s := range m.sessions {
-		if s.channel != nil && subtle.ConstantTimeCompare([]byte(s.channel.capability), want) == 1 {
+		if s.channel != nil && s.channel.capability.matches(want) {
 			found = s
 		}
 	}
 	for _, t := range m.tombs {
-		if t.capability != "" && subtle.ConstantTimeCompare([]byte(t.capability), want) == 1 && now.Before(t.until) {
+		if t.capability.matches(want) && now.Before(t.until) {
 			kept = t
 		}
 	}
@@ -324,7 +345,7 @@ func (m *Manager) DismissChannel(presented string) error {
 	defer m.mu.Unlock()
 	dismissed := false
 	m.tombs = slices.DeleteFunc(m.tombs, func(t *tombstone) bool {
-		if t.capability == "" || subtle.ConstantTimeCompare([]byte(t.capability), want) != 1 {
+		if !t.capability.matches(want) {
 			return false
 		}
 		dismissed = dismissed || now.Before(t.until)
@@ -334,4 +355,16 @@ func (m *Manager) DismissChannel(presented string) error {
 		return ChannelNotFound()
 	}
 	return nil
+}
+
+// HoldsID says the manager holds a terminal with the id, running or being started: an id that no other lane may take. A channel
+// terminal has no record in the controller's index, so the controller asks the manager.
+func (m *Manager) HoldsID(id string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if _, held := m.sessions[id]; held {
+		return true
+	}
+	_, starting := m.starting[id]
+	return starting
 }

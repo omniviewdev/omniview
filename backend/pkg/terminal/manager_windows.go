@@ -122,5 +122,8 @@ func (m *Manager) ChannelCwd(_ string) (Directory, error) {
 // ListChannels lists nothing: no channel terminal can exist. It is an empty list, as on any platform, and not none.
 func (m *Manager) ListChannels(_ []string) ([]ChannelListed, error) { return []ChannelListed{}, nil }
 
+// HoldsID says no terminal is held: none can exist.
+func (m *Manager) HoldsID(_ string) bool { return false }
+
 // DismissChannel is not supported.
 func (m *Manager) DismissChannel(_ string) error { return unsupportedError() }

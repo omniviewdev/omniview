@@ -704,7 +704,7 @@ func (c *controller) CreateSession(
 	}
 
 	c.mu.Lock()
-	if held, taken := c.sessionIndex[session.ID]; taken {
+	if held, taken := c.sessionIndex[session.ID]; taken || c.channelHoldsLocked(session.ID) {
 		c.mu.Unlock()
 		c.closeRefusedSession(ctx, pctx, client, plugin, held.pluginID, session.ID)
 		return nil, terminal.IDInUse(session.ID)
@@ -726,13 +726,28 @@ func (c *controller) CreateSession(
 	return session, nil
 }
 
-// hasSession says the host holds a record for the session id: a terminal of this host, a session of a plugin, or one
-// that ended with nobody attached and waits for its first attach.
+// hasSession says the id is not free: the host holds a record for it (a terminal of this host, a session of a plugin, or one that
+// ended with nobody attached and waits for its first attach), or a channel terminal holds it.
 func (c *controller) hasSession(sessionID string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	_, found := c.sessionIndex[sessionID]
-	return found
+	return c.idHeldLocked(sessionID)
+}
+
+// idHeldLocked is the one predicate of every lane that makes a session or a terminal with an id the page chose, taken under mu:
+// the index of the events lane has a record of the id, or a channel terminal holds it. Of two creates of one id there is one
+// winner, whatever lanes they come from, because each decides here, under the same lock, from the same places.
+func (c *controller) idHeldLocked(id string) bool {
+	if _, found := c.sessionIndex[id]; found {
+		return true
+	}
+	return c.channelHoldsLocked(id)
+}
+
+// channelHoldsLocked says a channel terminal holds the id: its shell is being started, or the manager has it. A channel terminal
+// has no record in the index, which is how no call that names a terminal by its id can reach it.
+func (c *controller) channelHoldsLocked(id string) bool {
+	return c.channelMaking[id] || (c.terminalManager != nil && c.terminalManager.HoldsID(id))
 }
 
 // heldByAnother says a frame from plugin names a session id the host recorded for another session: a terminal of this

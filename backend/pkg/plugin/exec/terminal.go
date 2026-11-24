@@ -172,13 +172,21 @@ func (c *controller) CreateTerminal(
 
 // createChannelTerminal starts a channel terminal. It has no record in the index of the events lane, so every call that names a
 // terminal by its id finds nothing, it has no owner and no window, and nothing of it goes out as an event: the page reaches it by
-// the capability in the answer, which is never logged or put in a span. An id that a session already has is refused, as for any
-// terminal.
+// the capability in the answer, which is never logged or put in a span. Its id is held from the check to the manager's own hold,
+// under the one lock that every lane decides an id under (idHeldLocked): an id that a session has or that is being made is
+// refused, as for any terminal.
 func (c *controller) createChannelTerminal(ctx context.Context, opts terminal.Options) (*terminal.Session, error) {
-	if c.hasSession(opts.ID) {
+	c.mu.Lock()
+	if c.idHeldLocked(opts.ID) {
+		c.mu.Unlock()
 		return nil, terminal.IDInUse(opts.ID)
 	}
+	c.channelMaking[opts.ID] = true
+	c.mu.Unlock()
 	info, err := c.terminalManager.Start(opts, nil)
+	c.mu.Lock()
+	delete(c.channelMaking, opts.ID)
+	c.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}

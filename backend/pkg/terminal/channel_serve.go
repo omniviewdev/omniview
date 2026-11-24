@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -141,9 +142,10 @@ type channelConn struct {
 	ch    Channel
 	clock clock
 	// sent is the offset of the next byte of output the page has not been given; the sender advances it, under the session's
-	// output lock, when a Send returns. sentBytes is the bytes of output it was given (a gap is not), acked the bytes the page
-	// said it parsed (never more than sentBytes), lost the bytes the stream said it missed.
-	sent, sentBytes, acked, lost atomic.Uint64
+	// output lock, when a Send returns. begun is the bytes of output the sender has begun to hand to the transport, counted before
+	// the Send (a page can acknowledge a frame before its Send returns), sentBytes the bytes of output it was given (a gap is
+	// not), acked the bytes the page said it parsed (never more than begun), lost the bytes the stream said it missed.
+	sent, begun, sentBytes, acked, lost atomic.Uint64
 	// ackSeen says the page acknowledged at least once: from then on it holds no more than ChannelInflightBytes unacknowledged.
 	ackSeen atomic.Bool
 	// progressAt is the clock's time of the last progress: a frame the transport took, an acknowledgement, the moment the stream
@@ -151,6 +153,9 @@ type channelConn struct {
 	progressAt atomic.Int64
 	// displaced says another stream took the terminal; stopped says this one's frames are no longer read: the sender ends.
 	displaced, stopped atomic.Bool
+	// gone is closed when another stream takes the terminal: an input of this stream that waits for room in the queue looks again.
+	gone     chan struct{}
+	goneOnce sync.Once
 	// wake wakes the sender: output, an acknowledgement, a handover, an end, a stop.
 	wake chan struct{}
 	// finished is closed when the sender has returned.
@@ -159,8 +164,8 @@ type channelConn struct {
 
 func newChannelConn(ch Channel, clk clock) *channelConn {
 	return &channelConn{
-		ch: ch, clock: clk, sent: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
-		ackSeen: atomic.Bool{}, progressAt: atomic.Int64{}, displaced: atomic.Bool{}, stopped: atomic.Bool{},
+		ch: ch, clock: clk, sent: atomic.Uint64{}, begun: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
+		ackSeen: atomic.Bool{}, progressAt: atomic.Int64{}, displaced: atomic.Bool{}, stopped: atomic.Bool{}, gone: make(chan struct{}), goneOnce: sync.Once{},
 		wake: make(chan struct{}, 1), finished: make(chan struct{}),
 	}
 }
@@ -179,6 +184,7 @@ func (c *channelConn) progress() { c.progressAt.Store(c.clock.Now().UnixNano()) 
 // sends the frame that says so after the frame it may be parked in.
 func (c *channelConn) displace() {
 	c.displaced.Store(true)
+	c.goneOnce.Do(func() { close(c.gone) })
 	c.signal()
 }
 
@@ -234,7 +240,7 @@ func (m *Manager) serveLive(ch Channel, s *session, from *uint64) {
 	case errors.Is(err, errEndingByItself):
 		// The shell ended by itself: it leaves its end, and the page that is attaching is owed it.
 		s.awaitDone(closeWait)
-		if _, kept := m.lookupCap(string(s.channel.capability)); kept != nil {
+		if _, kept := m.lookupCap(s.channel.capability.reveal()); kept != nil {
 			m.serveEnded(ch, kept, from)
 		} else {
 			refuseChannel(ch)
@@ -431,28 +437,46 @@ func (m *Manager) applyFrom(s *session, c *channelConn, o *op) {
 
 // admitFrom admits the operation to the terminal's queue if the stream holds the terminal and the terminal's end is not decided,
 // in the same step under the lock that decides who holds it: the operations admitted before a handover are applied before the new
-// holder's, and one admitted after is not. It says whether the operation was admitted.
+// holder's, and one admitted after is not. A queue that has no room (a write that blocks in the kernel keeps its bytes in it) is
+// waited for, and the stream's right to type is looked at again each time: the input of the stream that holds the terminal is never
+// dropped, and that of a stream that lost the terminal is refused. It says whether the operation was admitted.
 func (s *session) admitFrom(c *channelConn, o *op) bool {
-	s.mu.Lock()
-	admitted := s.channel.holder == c && !s.fate.set && !s.ending.Load() && s.queue.admit(o) == nil
-	s.mu.Unlock()
-	if admitted {
-		s.channel.admitted.Add(1)
-	} else {
-		s.channel.refused.Add(1)
+	for {
+		s.mu.Lock()
+		if s.channel.holder != c || s.fate.set || s.ending.Load() {
+			s.mu.Unlock()
+			s.channel.refused.Add(1)
+			return false
+		}
+		room, err := s.queue.admitOrWait(o)
+		s.mu.Unlock()
+		if err == nil {
+			s.channel.admitted.Add(1)
+			return true
+		}
+		if room == nil {
+			s.channel.refused.Add(1)
+			return false
+		}
+		select {
+		case <-room:
+		case <-c.gone:
+		case <-c.ch.Done():
+			s.channel.refused.Add(1)
+			return false
+		}
 	}
-	return admitted
 }
 
 // ackFrom is the page saying it parsed n more bytes of what it was sent: its in-flight bytes go down, and that is progress. An
-// acknowledgement of a stream that does not hold the terminal counts for nothing, and the page can never acknowledge more than it
-// was sent.
+// acknowledgement of a stream that does not hold the terminal counts for nothing, and the page can never acknowledge more than the
+// sender has begun to hand to the transport, which a frame that is acknowledged before its Send returns already is.
 func (s *session) ackFrom(c *channelConn, n uint32) {
 	if s.channel.holderPtr.Load() != c {
 		return
 	}
 	c.ackSeen.Store(true)
-	c.acked.Store(min(c.acked.Load()+uint64(n), c.sentBytes.Load()))
+	c.acked.Store(min(c.acked.Load()+uint64(n), c.begun.Load()))
 	c.progress()
 	c.signal()
 	s.channel.signalPump()
@@ -482,26 +506,29 @@ type senderStep struct {
 }
 
 // nextStep decides what the sender does next, from the ring as it is now. The end is read before the ring: if it is set, the
-// ring is final.
+// ring is final. A page that acknowledges holds no more than the window unacknowledged, counted from the bytes handed to the
+// transport: a frame is cut to the credit that is left, so that a page that acknowledges when it holds a whole window is always
+// given one, and the sender waits only when there is no credit at all.
 func (s *session) nextStep(c *channelConn, lim channelLimits) senderStep {
 	ended := s.channel.ended.Load()
+	limit, credit := lim.frame, true
+	if c.ackSeen.Load() {
+		limit, credit = creditLeft(c, lim)
+	}
 	s.outMu.Lock()
 	start, end, pos := s.ring.start(), s.ring.end, c.sent.Load()
 	var parts [][]byte
 	var to uint64
-	if pos >= start && pos < end {
-		parts, to = s.ring.slices(pos, lim.frame)
+	if credit && pos >= start && pos < end {
+		parts, to = s.ring.slices(pos, limit)
 	}
 	s.outMu.Unlock()
 	switch {
 	case pos < start:
 		return senderStep{kind: stepGap, from: pos, to: start, parts: nil, end: nil}
 	case pos < end:
-		if c.ackSeen.Load() {
-			inflight := c.sentBytes.Load() - c.acked.Load()
-			if inflight > 0 && inflight+(to-pos) > uint64(lim.inflight) { //nolint:gosec // The limit is a positive number of bytes.
-				return senderStep{kind: stepWaitAck, from: 0, to: 0, parts: nil, end: nil}
-			}
+		if !credit {
+			return senderStep{kind: stepWaitAck, from: 0, to: 0, parts: nil, end: nil}
 		}
 		return senderStep{kind: stepOutput, from: pos, to: to, parts: parts, end: nil}
 	case ended != nil:
@@ -509,6 +536,18 @@ func (s *session) nextStep(c *channelConn, lim channelLimits) senderStep {
 	default:
 		return senderStep{kind: stepIdle, from: 0, to: 0, parts: nil, end: nil}
 	}
+}
+
+// creditLeft is how many bytes of output a page that acknowledges may be given now, at most a frame, and whether it may be given
+// any: the window less what was handed to the transport and is not acknowledged.
+func creditLeft(c *channelConn, lim channelLimits) (int, bool) {
+	window := uint64(lim.inflight) //nolint:gosec // The limit is a positive number of bytes.
+	acked := c.acked.Load()        // read first: it only grows, and begun is never less than it
+	room := window - min(c.begun.Load()-acked, window)
+	if room == 0 {
+		return 0, false
+	}
+	return int(min(room, uint64(lim.frame))), true //nolint:gosec // The limit is a positive number of bytes, and the result is at most a frame.
 }
 
 // advance is the stream having been handed a frame: its cursor moves, that is progress, and the pump may have room.
@@ -587,6 +626,10 @@ func (sd *sender) step() bool {
 
 // send hands the page a frame and, when the transport took it, moves the stream's cursor on. It says whether the sender goes on.
 func (sd *sender) send(frame []byte, next senderStep) bool {
+	if next.kind == stepOutput {
+		// Counted before the Send: the page can acknowledge the frame before the Send returns.
+		sd.c.begun.Add(next.to - next.from)
+	}
 	if sd.c.ch.Send(frame) != nil {
 		return false
 	}

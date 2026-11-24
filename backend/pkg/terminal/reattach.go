@@ -560,7 +560,7 @@ func (s *session) listed(caller Owner, key string) (Listed, bool) {
 type tombstone struct {
 	id  string
 	key string
-	// capability is the capability of a channel terminal's tombstone, empty for the events lane's.
+	// capability is the capability of a channel terminal's tombstone, none for the events lane's.
 	capability capability
 	info       Session
 	ring       *replayRing
@@ -678,7 +678,7 @@ func (m *Manager) find(id string) (*session, *tombstone) {
 	}
 	now := m.clock.Now()
 	for _, t := range m.tombs {
-		if t.id == id && t.capability == "" && now.Before(t.until) {
+		if t.id == id && t.capability.none() && now.Before(t.until) {
 			return nil, t
 		}
 	}
@@ -695,6 +695,6 @@ func (m *Manager) dropTombstone(id string) bool {
 // dropTombstoneLocked is dropTombstone for a caller that holds m.mu.
 func (m *Manager) dropTombstoneLocked(id string) bool {
 	before := len(m.tombs)
-	m.tombs = slices.DeleteFunc(m.tombs, func(t *tombstone) bool { return t.id == id && t.capability == "" })
+	m.tombs = slices.DeleteFunc(m.tombs, func(t *tombstone) bool { return t.id == id && t.capability.none() })
 	return len(m.tombs) != before
 }
