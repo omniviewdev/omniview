@@ -43,9 +43,10 @@ func (c *controller) holds(index sessionIndex, sessionID string, owner terminal.
 }
 
 // claimable says whether the session is one that no window holds and owner is a window: any window may list it, read
-// its facts, adopt it with one call (attach) and end it. Nothing else of it is open to a window that does not hold it.
+// its facts, adopt it with one call (attach) and end it. Nothing else of it is open to a window that does not hold it, and
+// a session whose end the host has decided (commitClose) is open to none: it is going, and claimSession refuses it.
 func (*controller) claimable(index sessionIndex, owner terminal.Owner) bool {
-	return !index.local && index.owner == nil && terminal.ValidOwner(owner)
+	return !index.local && index.owner == nil && !index.closing && terminal.ValidOwner(owner)
 }
 
 // visible says whether owner may read the facts of the session (GetSession): it holds it, or it is a session of a
