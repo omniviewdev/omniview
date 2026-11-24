@@ -84,8 +84,7 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
  * CreateSession starts a session of a plugin for the window that asks: it belongs to that window until the window
  * goes away, and then to whichever window attaches it first (T2c-go.md). A call that comes from no window creates
  * a session that belongs to none. A window that retires while the plugin makes the session leaves it to none as well
- * (the session is recorded as the window's, and the retirement, which came before, found nothing of the window's to
- * release).
+ * (createGuard).
  */
 export function CreateSession(plugin: string, connectionID: string, encoded: string): $CancellablePromise<exec$0.Session | null> {
     return $Call.ByID(608251756, plugin, connectionID, encoded).then(($result: any) => {
