@@ -23,7 +23,7 @@ export const units = [
     name: 'Probe the Terminal tool against the pinned mock reference',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40', PART: 'view', REPORT: '$RUNNER_TEMP/terminal-probe.json' },
-    seconds: 130,
+    seconds: 175,
   },
 
   // What flows and what it costs: a hidden panel that goes on taking in what its shell writes (2 MB and 20 MB), an idle terminal, a chunk of output that renders nothing, a 16 MB flood, the latency of a key, 1,000,000 lines kept to the
@@ -33,7 +33,7 @@ export const units = [
     name: 'Probe what the Terminal tool takes in and what it costs',
     script: 'ui-next/shell/probes/terminal-data-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-data-probe.json' },
-    seconds: 130,
+    seconds: 145,
   },
 
   // The negative controls of the terminal probe, each perturbs one thing in the page after it loaded (or in the fixture) and passes only when the probe sees it, on the assertion that must (Chromium, 1440 x 900; the flood's
@@ -46,7 +46,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['lane-border', 'button-size', 'ring-back', 'scrollbar-block', 'scrollbar-stuck', 'f6-trap', 'escape-leaves', 'modal-off', 'resize-chatty'],
     plants: 'page',
-    seconds: 110,
+    seconds: 155,
   },
 
   // The terminal that does work it should not: an interval left running, a component that renders for each chunk, frames that come 45 ms late, a sample of frames that stops before the flood, a key handler that takes 80 ms. The five that tell a hidden
@@ -58,7 +58,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['idle-timer', 'chunk-commit', 'flood-janky', 'flood-no-sample', 'echo-slow'],
     plants: 'page',
-    seconds: 95,
+    seconds: 145,
   },
 
   // The terminal that costs what it should not: the emulator's chunk imported before the first terminal, four times the scrollback, a page that holds every event it was sent, every parsed write acknowledged twice, and the memory measured of a flood
@@ -70,7 +70,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['lazy-load', 'big-scrollback', 'leaky-heap', 'memory-undrained', 'ack-double'],
     plants: 'page',
-    seconds: 95,
+    seconds: 140,
   },
 
   // A hidden panel (docs/ui-next/status/T2a.md: it goes on reading, parsing and acknowledging, in frames of a smaller share, and draws nothing of the page's), each in Chromium: the create call answers after the shell's first output (the first
@@ -109,7 +109,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['busy-always', 'busy-nameless', 'unknown-idle', 'ask-never'],
     plants: 'page',
-    seconds: 50,
+    seconds: 55,
   },
 
   // The screen reader switch (docs/ui-next/status/T1.md section 16), each in Chromium: an emulator that is never put in the mode the window says it is in, one that is put in it and never taken out, a description that keeps the words of
@@ -121,7 +121,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['reader-claims', 'reader-stuck', 'reader-words-stale', 'reader-announce-twice', 'reader-axe', 'reader-hidden-frames', 'reader-idle-timer'],
     plants: 'page',
-    seconds: 45,
+    seconds: 155,
   },
 
   // What the host says of the shell wrong (T2a), each in Chromium: a create answer with no shell name, an end with no code, no signal, no one who closed it, a refusal to find a shell with its words and no code, a plain start failure
@@ -144,21 +144,21 @@ export const units = [
     name: 'Probe that a terminal survives a reload of the page: the key, the session and an exact join',
     script: 'ui-next/shell/probes/terminal-reattach-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-probe.json' },
-    seconds: 45,
+    seconds: 50,
   },
   {
     id: 'terminal-reattach-b',
     name: 'Probe that a terminal survives a reload of the page: the replay, its modes and its size',
     script: 'ui-next/shell/probes/terminal-reattach-b-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-b-probe.json' },
-    seconds: 45,
+    seconds: 50,
   },
   {
     id: 'terminal-reattach-c',
     name: 'Probe that a terminal survives a reload of the page: who holds it, how it ends and its input',
     script: 'ui-next/shell/probes/terminal-reattach-c-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-c-probe.json' },
-    seconds: 115,
+    seconds: 105,
   },
 
   // The reattach assertions' faults (T2b), each in Chromium at one viewport, in four units by what they cost: the page puts its key in the address, the window's state never keeps the key, nor the session, and a replay with a gap
@@ -172,7 +172,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['key-in-url', 'key-regen', 'no-session', 'replay-gap'],
     plants: 'page',
-    seconds: 40,
+    seconds: 55,
   },
   {
     id: 'terminal-controls-reattach-b',
@@ -181,7 +181,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['dup-offset', 'ack-replay', 'unmuted-reply', 'modes-lost', 'resize-ignored'],
     plants: 'page',
-    seconds: 50,
+    seconds: 45,
   },
   {
     id: 'terminal-controls-reattach-c',
@@ -190,7 +190,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['no-detached', 'own-number', 'lease-silent'],
     plants: 'page',
-    seconds: 55,
+    seconds: 50,
   },
   {
     id: 'terminal-controls-reattach-d',
@@ -211,21 +211,21 @@ export const units = [
     name: 'Probe that the panel comes back as it was left after a reload: open or closed, its tool, its session and its height',
     script: 'ui-next/shell/probes/terminal-reattach-d-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-d-probe.json' },
-    seconds: 13,
+    seconds: 25,
   },
   {
     id: 'terminal-reattach-e',
     name: 'Probe that a terminal whose taker has gone can be taken back, with a button and one attach, that a stale button asks the host first, and what a tab whose events were down learns when they are back',
     script: 'ui-next/shell/probes/terminal-reattach-e-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-e-probe.json' },
-    seconds: 43,
+    seconds: 40,
   },
   {
     id: 'terminal-reattach-f',
     name: 'Probe what the page does when its events come back after a gap: the rejoin by offset, the rejoin past the ring, the keys typed while a late replay is written, an acknowledgement in flight and a terminal that is gone',
     script: 'ui-next/shell/probes/terminal-reattach-f-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-f-probe.json' },
-    seconds: 59,
+    seconds: 100,
   },
 
   // The faults of the follow-ups, each in Chromium at one viewport, in three units by what they cost: a saved panel that comes back the other way (the first, 13 s on the laptop); a take-back that is not offered when the taker has gone, one
@@ -239,7 +239,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['restore-forgets-open', 'restore-forgets-closed'],
     plants: 'page',
-    seconds: 17,
+    seconds: 25,
   },
   {
     id: 'terminal-controls-reattach-f',
@@ -248,7 +248,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['taker-gone-ignored', 'take-back-twice', 'free-axe', 'takeback-unguarded', 'refresh-skipped'],
     plants: 'page',
-    seconds: 42,
+    seconds: 40,
   },
   {
     id: 'terminal-controls-reattach-g',
@@ -257,6 +257,95 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['rejoin-from-zero', 'rejoin-drops-missed', 'rejoin-acks-replay', 'gap-hidden', 'gone-keeps-attaching', 'keys-dropped', 'replies-as-keys', 'ack-stale-restore'],
     plants: 'page',
-    seconds: 90,
+    seconds: 95,
+  },
+
+  // T3a: find in the scrollback, the context menu of the terminal and the links in its output (the sections are in terminal-find.mjs, the fixture is terminal-fixture.tsx, the mock's bar is measured by
+  // mock-terminal-find-measure.mjs), four probes of their own, WebKit and Chromium at both viewports. The seconds are the laptop's measure times 1.3: the sections wait on what the page shows and on counters, with no clock,
+  // so they take 1 to 5 s each at each of the four sizes.
+  {
+    id: 'terminal-find-a',
+    name: 'Probe that the find bar opens over an unchanged screen where the mock puts it, counts what the buffer holds, steps and clears with the keys, and asks for the code that finds once',
+    script: 'ui-next/shell/probes/terminal-find-a-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-find-a-probe.json' },
+    seconds: 15,
+  },
+  {
+    id: 'terminal-find-b',
+    name: 'Probe that the find searches a replayed scrollback, that a closed bar is no node and no commit, that the count stops at 20,000 and that axe finds nothing in the bar',
+    script: 'ui-next/shell/probes/terminal-find-b-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-find-b-probe.json' },
+    seconds: 45,
+  },
+  {
+    id: 'terminal-find-c',
+    name: 'Probe that the context menu of the terminal opens by the pointer and the keyboard with its items, that each does what it says, that a program that has the mouse keeps the right click, and that axe finds nothing in it',
+    script: 'ui-next/shell/probes/terminal-find-c-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-find-c-probe.json' },
+    seconds: 10,
+  },
+  {
+    id: 'terminal-find-d',
+    name: 'Probe that the pointer on a link in the output says how to follow it, that only the platform\'s modifier opens a web address and only once, and that axe finds nothing in the tooltip',
+    script: 'ui-next/shell/probes/terminal-find-d-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-find-d-probe.json' },
+    seconds: 20,
+  },
+
+  // The faults of T3a, each in Chromium at both viewports, in six units by the sections they belong to (each is under half a shard): the bar's opening and the toolbar's Find button (the first), its count (the second), its keys and
+  // its lazy code (the third), the replay, the idle bar, the cap and the bar's axe (the fourth), the menu (the fifth) and the links (the sixth).
+  {
+    id: 'terminal-controls-find-a',
+    name: 'Probe that the find probe sees a chord that is lost, a bar that pushes the screen, and a toolbar button that does not say the bar is open or does nothing',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['find-chord-lost', 'find-pushes-grid', 'find-button-unpressed', 'find-button-dead'],
+    plants: 'page',
+    seconds: 45,
+  },
+  {
+    id: 'terminal-controls-find-b',
+    name: 'Probe that the find probe sees a count that is wrong: a buffer that lacks lines, a case, a whole word or a pattern that is ignored, and a find that does not step',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['known-short', 'count-case-ignored', 'count-word-ignored', 'count-regex-ignored', 'step-stuck'],
+    plants: 'page',
+    seconds: 105,
+  },
+  {
+    id: 'terminal-controls-find-c',
+    name: 'Probe that the find probe sees keys that do nothing, a row of buttons that Tab cannot enter, a bar that forgets its text and code that is asked for too soon',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['find-escape-stuck', 'find-f3-lost', 'find-escape-terminal-stuck', 'find-ctrl-f-lost', 'find-tab-stop-lost', 'reopen-forgets', 'search-eager'],
+    plants: 'page',
+    seconds: 121,
+  },
+  {
+    id: 'terminal-controls-find-d',
+    name: 'Probe that the find probe sees a replay with a gap, a closed bar that stays, a page that commits at rest, a cap that is wrong and a violation in the bar',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['find-replay-gap', 'find-mounted', 'idle-commits', 'cap-unlimited', 'cap-short', 'decorations-leak', 'find-axe'],
+    plants: 'page',
+    seconds: 155,
+  },
+  {
+    id: 'terminal-controls-find-e',
+    name: 'Probe that the find probe sees a menu that lacks an item or draws a shortcut, a paste or a copy that goes nowhere, a keyboard that cannot open it, a right click that is not the program\'s and a violation in the menu',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['menu-item-missing', 'menu-shortcut-drawn', 'paste-lost', 'trigger-lost', 'clipboard-dropped', 'mouse-never', 'mouse-reporting-lost', 'shift-menu-blocked', 'menu-axe'],
+    plants: 'page',
+    seconds: 95,
+  },
+  {
+    id: 'terminal-controls-find-f',
+    name: 'Probe that the find probe sees a link that is never hovered or never left, a plain click that follows, an address opened twice or with no way to open it, and a violation in the tooltip',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['links-hover-never', 'links-leave-never', 'links-plain-follows', 'open-twice', 'open-given', 'tooltip-axe'],
+    plants: 'page',
+    seconds: 70,
   },
 ];

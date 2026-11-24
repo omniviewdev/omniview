@@ -245,6 +245,9 @@ importers:
       '@xterm/addon-fit':
         specifier: 0.11.0
         version: 0.11.0
+      '@xterm/addon-search':
+        specifier: 0.16.0
+        version: 0.16.0
       '@xterm/addon-unicode11':
         specifier: 0.9.0
         version: 0.9.0

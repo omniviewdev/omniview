@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Platform } from '../../core/chords';
-import type { EngineAppearance } from './engine';
+import type { EngineAppearance, LinkHandler, LinkHover } from './engine';
 import type { TerminalModes, TerminalReplay } from './feed';
 import { FLOW, HELD_TYPING, HIDDEN_TICK_MS, SCROLLBACK, clearScreenIn, createScreen, type TerminalScreen } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
@@ -61,6 +61,11 @@ type RigOptions = {
   readonly copy?: (text: string) => Promise<boolean>;
   readonly screenReader?: boolean;
   readonly defaultTimer?: boolean;
+  /** The find chord's handler and the find steps' (`ScreenDeps.onFind` and `onFindStep`). */
+  readonly onFind?: () => void;
+  readonly onFindStep?: (direction: 'next' | 'previous') => boolean;
+  /** The handler of Escape for the find bar (`ScreenDeps.onFindClose`): says whether the bar took the key. */
+  readonly onFindClose?: () => boolean;
   /** The queries the emulator answers when it parses them (`FakeEngineOptions.answers`). */
   readonly answers?: FakeEngineOptions['answers'];
   /**
@@ -172,6 +177,9 @@ function rig(options: RigOptions = {}): Rig {
       return Promise.resolve(true);
     }),
     warn: () => undefined,
+    onFind: options.onFind,
+    onFindStep: options.onFindStep,
+    onFindClose: options.onFindClose,
   });
   return {
     screen,
@@ -2368,5 +2376,459 @@ describe('what the person types while a replay is applied', () => {
     r.engine().type('a');
     r.engine().type('b');
     expect(r.feed.typed()).toEqual(['a', 'b']);
+  });
+});
+
+// What the screen gives of the emulator to the parts of the body that are built on it (T3a): the find over its buffer, whether the program has the mouse, a paste, the attributes of the element that takes the keys (a menu's
+// host reads them from it), and the links in the output. The emulator is made when the screen is first shown, so what is asked before is kept and given to it when it is made.
+describe('what the screen gives of the emulator: its find, its mouse, a paste, its input\'s attributes and its links', () => {
+  async function shown(): Promise<Rig> {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    return r;
+  }
+
+  const LINKS: LinkHandler = { activate: () => undefined, hover: () => undefined };
+
+  it('gives the emulator\'s finder once the emulator is there, and nothing before: a screen that was not shown has no emulator to search, and none is made for the asking', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    expect(await r.screen.find()).toBeUndefined();
+    expect(r.loader.loads()).toBe(0);
+    r.screen.show();
+    await r.settle();
+    const finder = await r.screen.find();
+    expect(finder).toBeDefined();
+    expect(r.engine().findAsks()).toBe(1);
+    finder?.next('abc', { caseSensitive: false, regex: false, wholeWord: false });
+    expect(r.engine().finds).toEqual([{ direction: 'next', query: 'abc', options: { caseSensitive: false, regex: false, wholeWord: false } }]);
+  });
+
+  it('gives nothing once the screen is disposed: the emulator is gone', async () => {
+    const r = await shown();
+    r.screen.dispose();
+    expect(await r.screen.find()).toBeUndefined();
+  });
+
+  it('says the program has the mouse as the emulator says it, and that it has not before the emulator is there', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    expect(r.screen.mouseReporting()).toBe(false);
+    r.screen.show();
+    await r.settle();
+    expect(r.screen.mouseReporting()).toBe(false);
+    r.engine().mouseReports(true);
+    expect(r.screen.mouseReporting()).toBe(true);
+    r.engine().mouseReports(false);
+    expect(r.screen.mouseReporting()).toBe(false);
+  });
+
+  it('pastes through the emulator, in the order it is asked, and nothing before the emulator is there', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.paste('lost');
+    r.screen.show();
+    await r.settle();
+    r.screen.paste('one\ntwo');
+    r.screen.paste('three');
+    expect(r.engine().pastes).toEqual(['one\ntwo', 'three']);
+  });
+
+  it('selects all the output through the emulator, once for each ask, and does nothing before the emulator is there: the menu\'s Select all, as the key is', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.selectAll();
+    r.screen.show();
+    await r.settle();
+    expect(r.engine().selectAlls()).toBe(0);
+    r.screen.selectAll();
+    r.screen.selectAll();
+    expect(r.engine().selectAlls()).toBe(2);
+  });
+
+  it('gives the attributes of the input to the emulator when it is made, and the new ones when they change: asked before the emulator is there, they are kept for it', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.decorateInput({ 'data-ov-menu': 'menu-1', 'data-ov-menu-mode': 'context' });
+    r.screen.show();
+    await r.settle();
+    expect(r.engine().inputAttributes()).toEqual({ 'data-ov-menu': 'menu-1', 'data-ov-menu-mode': 'context' });
+    r.screen.decorateInput({ 'data-ov-menu': 'menu-2' });
+    expect(r.engine().inputAttributes()).toEqual({ 'data-ov-menu': 'menu-2' });
+  });
+
+  it('gives the attributes of the input to the emulator of a screen that is shown again after being hidden: the emulator is the same, and keeps them', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.screen.decorateInput({ 'data-ov-menu': 'menu-1' });
+    r.screen.hide();
+    r.screen.show();
+    await r.settle();
+    expect(r.loader.engines).toHaveLength(1);
+    expect(r.engine().inputAttributes()).toEqual({ 'data-ov-menu': 'menu-1' });
+  });
+
+  it('gives the links\' handler to the emulator when it is made, and the new one when it changes, and none when it is taken away: the emulator makes no link without one', async () => {
+    const r = rig();
+    r.screen.mount(r.host);
+    r.screen.setLinks(LINKS);
+    r.screen.show();
+    await r.settle();
+    expect(r.engine().links()).toBe(LINKS);
+    const other: LinkHandler = { activate: () => undefined, hover: () => undefined };
+    r.screen.setLinks(other);
+    expect(r.engine().links()).toBe(other);
+    r.screen.setLinks(undefined);
+    expect(r.engine().links()).toBeUndefined();
+  });
+
+  it('makes no link for a screen that was never given a handler', async () => {
+    const r = await shown();
+    expect(r.engine().links()).toBeUndefined();
+  });
+
+  it('tells the handler what the emulator says of a link: the pointer on it, off it, and a click with its event as it came', async () => {
+    const r = rig();
+    const hovers: Array<LinkHover | undefined> = [];
+    const clicks: Array<readonly [string, MouseEvent]> = [];
+    r.screen.mount(r.host);
+    r.screen.setLinks({
+      activate: (uri, event) => {
+        clicks.push([uri, event]);
+      },
+      hover: (hover) => {
+        hovers.push(hover);
+      },
+    });
+    r.screen.show();
+    await r.settle();
+    r.engine().linkHover({ uri: 'https://example.com', x: 40, y: 18 });
+    r.engine().linkHover(undefined);
+    const click = new MouseEvent('click', { metaKey: true });
+    r.engine().linkActivate('https://example.com', click);
+    expect(hovers).toEqual([{ uri: 'https://example.com', x: 40, y: 18 }, undefined]);
+    expect(clicks).toEqual([['https://example.com', click]]);
+  });
+});
+
+// The keys of find and of the context menu (T3a). The find chord is the screen's to stop and to tell the find bar of: Command F on a Mac, Control F and Control Shift F elsewhere. The keys that step a find (F3 and Shift F3, and
+// Command G and Command Shift G on a Mac) are the bar's when it takes them, and what they were when it does not (F3 reaches the shell, Command G is the window's). Shift F10 and the Menu key are the menu host's: the emulator
+// neither handles them nor stops them.
+describe('the keys of find and of the context menu', () => {
+  async function shown(options: RigOptions = {}): Promise<Rig> {
+    const r = rig(options);
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    return r;
+  }
+
+  const CMD_F = { key: 'f', code: 'KeyF', metaKey: true } as const;
+  const CTRL_F = { key: 'f', code: 'KeyF', ctrlKey: true } as const;
+  const CTRL_SHIFT_F = { key: 'F', code: 'KeyF', ctrlKey: true, shiftKey: true } as const;
+  const STOPPED = { handled: false, defaultPrevented: true } as const;
+  const WINDOWS = { handled: false, defaultPrevented: false } as const;
+  const TERMINALS = { handled: true, defaultPrevented: false } as const;
+
+  it('opens the find on Command F on a Mac and stops the key: the emulator does not handle it, nothing else acts on it, and the find bar is told once', async () => {
+    let opened = 0;
+    const r = await shown({
+      platform: 'mac',
+      onFind: () => {
+        opened += 1;
+      },
+    });
+    expect(r.engine().key(CMD_F)).toEqual(STOPPED);
+    expect(opened).toBe(1);
+  });
+
+  it.each([['Control F', CTRL_F], ['Control Shift F', CTRL_SHIFT_F]] as const)('opens the find on %s on Windows and Linux and stops the key', async (_name, chord) => {
+    let opened = 0;
+    const r = await shown({
+      platform: 'other',
+      onFind: () => {
+        opened += 1;
+      },
+    });
+    expect(r.engine().key(chord)).toEqual(STOPPED);
+    expect(opened).toBe(1);
+  });
+
+  it('tells the find bar on the keydown alone: the key\'s other events are stopped and do nothing, so that one press opens it once', async () => {
+    let opened = 0;
+    const r = await shown({
+      platform: 'mac',
+      onFind: () => {
+        opened += 1;
+      },
+    });
+    expect(r.engine().key({ ...CMD_F, type: 'keypress' })).toEqual(STOPPED);
+    expect(r.engine().key({ ...CMD_F, type: 'keyup' })).toEqual(STOPPED);
+    expect(opened).toBe(0);
+    r.engine().key(CMD_F);
+    expect(opened).toBe(1);
+  });
+
+  it('finds in a terminal that takes no input: an ended session has its output to search', async () => {
+    let opened = 0;
+    const r = await shown({
+      platform: 'mac',
+      onFind: () => {
+        opened += 1;
+      },
+    });
+    r.feed.set({ state: 'ended' });
+    expect(r.engine().key(CMD_F)).toEqual(STOPPED);
+    expect(opened).toBe(1);
+  });
+
+  it('leaves the keys as they were when nothing listens: Control F reaches the shell, and Command F and Control Shift F are the window\'s', async () => {
+    const mac = await shown({ platform: 'mac' });
+    expect(mac.engine().key(CMD_F)).toEqual(WINDOWS);
+    const other = await shown({ platform: 'other' });
+    expect(other.engine().key(CTRL_F)).toEqual(TERMINALS);
+    expect(other.engine().key(CTRL_SHIFT_F)).toEqual(WINDOWS);
+  });
+
+  describe('the steps', () => {
+    const F3 = { key: 'F3', code: 'F3' } as const;
+    const SHIFT_F3 = { key: 'F3', code: 'F3', shiftKey: true } as const;
+    const CMD_G = { key: 'g', code: 'KeyG', metaKey: true } as const;
+    const CMD_SHIFT_G = { key: 'G', code: 'KeyG', metaKey: true, shiftKey: true } as const;
+
+    it('steps the find on F3 and Shift F3 on every platform when the bar takes the key, and stops it: next and previous', async () => {
+      for (const platform of ['mac', 'other'] as const) {
+        const steps: string[] = [];
+        const r = await shown({
+          platform,
+          onFindStep: (direction) => {
+            steps.push(direction);
+            return true;
+          },
+        });
+        expect(r.engine().key(F3)).toEqual(STOPPED);
+        expect(r.engine().key(SHIFT_F3)).toEqual(STOPPED);
+        expect(steps).toEqual(['next', 'previous']);
+      }
+    });
+
+    it('steps on Command G and Command Shift G on a Mac when the bar takes the key, and stops it', async () => {
+      const steps: string[] = [];
+      const r = await shown({
+        platform: 'mac',
+        onFindStep: (direction) => {
+          steps.push(direction);
+          return true;
+        },
+      });
+      expect(r.engine().key(CMD_G)).toEqual(STOPPED);
+      expect(r.engine().key(CMD_SHIFT_G)).toEqual(STOPPED);
+      expect(steps).toEqual(['next', 'previous']);
+    });
+
+    it('leaves F3 to the shell when the bar does not take it, and Command G to the window: as they were', async () => {
+      const asked: string[] = [];
+      const r = await shown({
+        platform: 'mac',
+        onFindStep: (direction) => {
+          asked.push(direction);
+          return false;
+        },
+      });
+      expect(r.engine().key(F3)).toEqual(TERMINALS);
+      expect(r.engine().key(SHIFT_F3)).toEqual(TERMINALS);
+      expect(r.engine().key(CMD_G)).toEqual(WINDOWS);
+      expect(r.engine().key(CMD_SHIFT_G)).toEqual(WINDOWS);
+      expect(asked).toEqual(['next', 'previous', 'next', 'previous']);
+    });
+
+    it('leaves them as they were when nothing listens', async () => {
+      const r = await shown({ platform: 'mac' });
+      expect(r.engine().key(F3)).toEqual(TERMINALS);
+      expect(r.engine().key(CMD_G)).toEqual(WINDOWS);
+    });
+
+    it('asks the bar on the keydown alone, and does not stop the later events of a key the bar did not take', async () => {
+      const asked: string[] = [];
+      const r = await shown({
+        platform: 'other',
+        onFindStep: (direction) => {
+          asked.push(direction);
+          return false;
+        },
+      });
+      expect(r.engine().key({ ...F3, type: 'keyup' })).toEqual(TERMINALS);
+      expect(asked).toEqual([]);
+    });
+
+    it('does not ask the bar for a chord that is not a step: Control G and Command G on Windows and Linux are not', async () => {
+      const asked: string[] = [];
+      const r = await shown({
+        platform: 'other',
+        onFindStep: (direction) => {
+          asked.push(direction);
+          return true;
+        },
+      });
+      expect(r.engine().key({ key: 'g', code: 'KeyG', ctrlKey: true })).toEqual(TERMINALS);
+      expect(r.engine().key(CMD_G)).toEqual(WINDOWS);
+      expect(asked).toEqual([]);
+    });
+  });
+
+  it.each(['mac', 'other'] as const)('leaves Shift F10 and the Menu key alone on %s: the emulator neither handles them nor stops them, so the menu\'s host sees the event, whether or not the session takes input', async (platform) => {
+    const r = await shown({ platform });
+    expect(r.engine().key({ key: 'F10', code: 'F10', shiftKey: true })).toEqual(WINDOWS);
+    expect(r.engine().key({ key: 'ContextMenu', code: 'ContextMenu' })).toEqual(WINDOWS);
+    r.feed.set({ state: 'ended' });
+    expect(r.engine().key({ key: 'F10', code: 'F10', shiftKey: true })).toEqual(WINDOWS);
+    expect(r.engine().key({ key: 'ContextMenu', code: 'ContextMenu' })).toEqual(WINDOWS);
+  });
+});
+
+// Escape with the find bar open (T3a). VS Code closes the find when Escape is pressed with the focus in the terminal and the find visible, and the mock's find bar does too and gives the terminal the focus back. The screen asks
+// the find bar first, for an Escape with no modifier: when the bar takes it the key is stopped (nothing reaches the shell, and the window's region keys, which would move the focus to the page, do not see it); when it does
+// not, or there is no bar, Escape is the shell's, as the first decision of the terminal's keys says (programs need it).
+describe('Escape with the find bar open', () => {
+  async function shown(options: RigOptions = {}): Promise<Rig> {
+    const r = rig(options);
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    return r;
+  }
+
+  const ESCAPE = { key: 'Escape', code: 'Escape' } as const;
+  const STOPPED = { handled: false, defaultPrevented: true } as const;
+  const SHELLS = { handled: true, defaultPrevented: false } as const;
+
+  it('closes the bar when the bar takes the key, and stops it: the emulator does not handle it, nothing is sent to the shell, and the event goes no further', async () => {
+    let asked = 0;
+    const r = await shown({
+      onFindClose: () => {
+        asked += 1;
+        return true;
+      },
+    });
+    expect(r.engine().key(ESCAPE)).toEqual(STOPPED);
+    expect(asked).toBe(1);
+    expect(r.engine().keysStopped()).toBe(1);
+    expect(r.feed.typed()).toEqual([]);
+  });
+
+  it.each(['mac', 'other'] as const)('is the shell\'s when the bar does not take the key, on %s: the emulator handles it, and it is not stopped', async (platform) => {
+    let asked = 0;
+    const r = await shown({
+      platform,
+      onFindClose: () => {
+        asked += 1;
+        return false;
+      },
+    });
+    expect(r.engine().key(ESCAPE)).toEqual(SHELLS);
+    expect(asked).toBe(1);
+    expect(r.engine().keysStopped()).toBe(0);
+  });
+
+  it('is the shell\'s as it was when there is no find bar to ask', async () => {
+    const r = await shown();
+    expect(r.engine().key(ESCAPE)).toEqual(SHELLS);
+    expect(r.engine().keysStopped()).toBe(0);
+  });
+
+  it('asks the bar for an Escape with no modifier alone: Shift, Control, Option and Command Escape are not the bar\'s, and the bar is not asked', async () => {
+    let asked = 0;
+    const mac = await shown({
+      platform: 'mac',
+      onFindClose: () => {
+        asked += 1;
+        return true;
+      },
+    });
+    expect(mac.engine().key({ ...ESCAPE, shiftKey: true })).toEqual(SHELLS);
+    expect(mac.engine().key({ ...ESCAPE, ctrlKey: true })).toEqual(SHELLS);
+    expect(mac.engine().key({ ...ESCAPE, altKey: true })).toEqual(SHELLS);
+    expect(mac.engine().key({ ...ESCAPE, metaKey: true })).toEqual({ handled: false, defaultPrevented: false });
+    const other = await shown({
+      platform: 'other',
+      onFindClose: () => {
+        asked += 1;
+        return true;
+      },
+    });
+    expect(other.engine().key({ ...ESCAPE, ctrlKey: true })).toEqual(SHELLS);
+    expect(other.engine().key({ ...ESCAPE, altKey: true })).toEqual(SHELLS);
+    expect(asked).toBe(0);
+  });
+
+  it('asks the bar on the keydown alone: the later events of the key are the emulator\'s as they were, and the bar is not asked again', async () => {
+    let asked = 0;
+    const r = await shown({
+      onFindClose: () => {
+        asked += 1;
+        return true;
+      },
+    });
+    expect(r.engine().key({ ...ESCAPE, type: 'keyup' })).toEqual(SHELLS);
+    expect(r.engine().key({ ...ESCAPE, type: 'keypress' })).toEqual(SHELLS);
+    expect(asked).toBe(0);
+    r.engine().key(ESCAPE);
+    expect(asked).toBe(1);
+  });
+
+  it('leaves an Escape that cancels an input method\'s composition to the input method: the bar is not asked', async () => {
+    let asked = 0;
+    const r = await shown({
+      onFindClose: () => {
+        asked += 1;
+        return true;
+      },
+    });
+    expect(r.engine().key({ ...ESCAPE, isComposing: true })).toEqual(SHELLS);
+    expect(asked).toBe(0);
+  });
+
+  it('leaves an Escape that an input method took to the input method when the browser says so only with the key code: 229 and no `isComposing` (the key that ends a composition in some browsers), the bar is not asked and nothing is stopped', async () => {
+    let asked = 0;
+    const r = await shown({
+      onFindClose: () => {
+        asked += 1;
+        return true;
+      },
+    });
+    expect(r.engine().key({ ...ESCAPE, keyCode: 229, isComposing: false })).toEqual(SHELLS);
+    expect(asked).toBe(0);
+    expect(r.engine().keysStopped()).toBe(0);
+  });
+
+  it('asks the bar in a terminal that takes no input too: an ended session has its find to close', async () => {
+    let asked = 0;
+    const r = await shown({
+      onFindClose: () => {
+        asked += 1;
+        return true;
+      },
+    });
+    r.feed.set({ state: 'ended' });
+    expect(r.engine().key(ESCAPE)).toEqual(STOPPED);
+    expect(asked).toBe(1);
+  });
+
+  it('asks the bar each time, and takes the answer of each: a bar that is closed leaves the next Escape to the shell', async () => {
+    let open = true;
+    const r = await shown({
+      onFindClose: () => {
+        const was = open;
+        open = false;
+        return was;
+      },
+    });
+    expect(r.engine().key(ESCAPE)).toEqual(STOPPED);
+    expect(r.engine().key(ESCAPE)).toEqual(SHELLS);
+    expect(r.engine().keysStopped()).toBe(1);
   });
 });

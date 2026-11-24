@@ -70,7 +70,17 @@
   "terminal-reattach-f": 59,
   "terminal-controls-reattach-e": 17,
   "terminal-controls-reattach-f": 42,
-  "terminal-controls-reattach-g": 90
+  "terminal-controls-reattach-g": 90,
+  "terminal-find-a": 19,
+  "terminal-find-b": 33,
+  "terminal-find-c": 11,
+  "terminal-find-d": 20,
+  "terminal-controls-find-a": 59,
+  "terminal-controls-find-b": 132,
+  "terminal-controls-find-c": 121,
+  "terminal-controls-find-d": 150,
+  "terminal-controls-find-e": 116,
+  "terminal-controls-find-f": 68
  },
  "sharedLayoutRuns": [
   {

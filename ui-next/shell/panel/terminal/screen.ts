@@ -1,5 +1,5 @@
 import type { Platform } from '../../core/chords';
-import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions } from './engine';
+import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions, type Finder, type LinkHandler } from './engine';
 import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
@@ -91,6 +91,18 @@ export type ScreenDeps = {
   /** Puts text on the clipboard; says whether it could. */
   readonly copy: (text: string) => Promise<boolean>;
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
+  /** The find chord was pressed in the terminal (Command F, or Control F and Control Shift F elsewhere): the screen stops the key and says so. Without it the key is the terminal's, or the window's, as it was. */
+  readonly onFind?: (() => void) | undefined;
+  /**
+   * A key that steps a find was pressed in the terminal (F3 and Shift F3, and Command G and Command Shift G on a Mac): says whether the find bar took it. When it did the screen stops the key; when it did not, or there is no
+   * handler, the key is the terminal's (F3 goes to the shell) or the window's (Command G), as it was.
+   */
+  readonly onFindStep?: ((direction: 'next' | 'previous') => boolean) | undefined;
+  /**
+   * Escape was pressed in the terminal with no modifier, with no input method composing: says whether the find bar took it (it closes). The bar is asked first. When it took the key the screen stops it: nothing is sent to the
+   * shell, and the window's region keys, which move the focus to the page for an Escape, do not see it. When it did not, or there is no handler, Escape is the shell's, as it is (programs need it).
+   */
+  readonly onFindClose?: (() => boolean) | undefined;
 };
 
 export type TerminalScreen = {
@@ -112,6 +124,18 @@ export type TerminalScreen = {
   readonly dispose: () => void;
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => ScreenSnapshot;
+  /** The emulator's finder, once the emulator is there (`undefined` before it is made, or after the screen is disposed): see `Engine.find`. The code that finds is loaded by the first call. */
+  readonly find: () => Promise<Finder | undefined>;
+  /** Whether the program in the terminal has the mouse (false before the emulator is made). */
+  readonly mouseReporting: () => boolean;
+  /** Pastes text as the person's own input (nothing before the emulator is made). */
+  readonly paste: (text: string) => void;
+  /** Sets these attributes on the element that takes the keys, and removes those an earlier call set that are not in these. What is asked before the emulator is made is given to it when it is. */
+  readonly decorateInput: (attributes: Readonly<Record<string, string>>) => void;
+  /** The links in the output are given to `handler`; `undefined` makes none. What is asked before the emulator is made is given to it when it is. */
+  readonly setLinks: (handler: LinkHandler | undefined) => void;
+  /** Selects the whole buffer, the screen and the scrollback (nothing before the emulator is made): the key does it too. */
+  readonly selectAll: () => void;
 };
 
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
@@ -191,6 +215,9 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let held: string[] = [];
   let heldLength = 0;
   let heldFull = false;
+  /** The attributes the host asked the emulator's input to have, and the handler it asked its links to have: kept for an emulator that is not made yet, and given to the one that is. */
+  let inputAttributes: Readonly<Record<string, string>> | undefined;
+  let linkHandler: LinkHandler | undefined;
 
   const set = (change: Partial<ScreenSnapshot>) => {
     snapshot = { ...snapshot, ...change };
@@ -532,8 +559,16 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       return false;
     }
 
-    switch (keyOf(event, deps.platform, engine?.hasSelection() === true)) {
+    const kind = keyOf(event, deps.platform, engine?.hasSelection() === true);
+    switch (kind) {
       case 'terminal':
+        // Escape closes the find bar first, unless an input method has the key: it cancels a composition, and some browsers report the key that ends one with `isComposing` already false and the key code 229, so both are asked (as the bar's own keys do).
+        if (event.type === 'keydown' && event.key === 'Escape' && !event.isComposing && event.keyCode !== 229 && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey && deps.onFindClose?.() === true) {
+          event.preventDefault();
+          event.stopPropagation();
+          return false;
+        }
+
         return true;
       case 'leave':
       case 'app':
@@ -562,6 +597,27 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         }
 
         return false;
+      case 'find':
+        // The find opens, in a terminal that takes input or not (an ended session has its output to search). With no one to tell the key is what it was: Control F is the shell's, and the Command and Control Shift chords the window's.
+        if (deps.onFind === undefined) {
+          return !event.metaKey && !event.shiftKey;
+        }
+
+        event.preventDefault();
+        if (event.type === 'keydown') {
+          deps.onFind();
+        }
+
+        return false;
+      case 'findNext':
+      case 'findPrevious':
+        // The bar takes the step or it does not: when it does not, F3 reaches the shell and Command G is the window's, as they were.
+        if (event.type === 'keydown' && deps.onFindStep?.(kind === 'findNext' ? 'next' : 'previous') === true) {
+          event.preventDefault();
+          return false;
+        }
+
+        return !event.metaKey;
     }
   }
 
@@ -622,6 +678,14 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     made.open(host);
     made.describe(label, deps.descriptionId);
     made.setKeys(onKey);
+    if (inputAttributes !== undefined) {
+      made.decorateInput(inputAttributes);
+    }
+
+    if (linkHandler !== undefined) {
+      made.setLinks(linkHandler);
+    }
+
     stops.push(
       made.onData((data, user) => {
         // What the emulator says by itself while a replay is applied is not for the shell: it answers the queries in the bytes, and the program that asked them is long past (switching on focus events makes it report focus, too).
@@ -733,6 +797,28 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
     clear: () => {
       engine?.clear();
+    },
+
+    selectAll: () => {
+      engine?.selectAll();
+    },
+
+    find: async () => (engine === undefined ? undefined : engine.find()),
+
+    mouseReporting: () => engine?.mouseReporting() === true,
+
+    paste: (text) => {
+      engine?.paste(text);
+    },
+
+    decorateInput: (attributes) => {
+      inputAttributes = attributes;
+      engine?.decorateInput(attributes);
+    },
+
+    setLinks: (handler) => {
+      linkHandler = handler;
+      engine?.setLinks(handler);
     },
 
     copy,

@@ -28,6 +28,8 @@ import { TERMINAL_TOOL_ID } from './tool';
 //     holds its terminal instead (`refresh`): the release it missed is learned, and the lane offers the way back.
 //   - it can be followed (`subscribeFeeds`, T2d): which feed a session has is read in a render (`feedOf`), so whoever draws a body is told when that changes: a saved tab is given its terminal after its body was drawn with
 //     none, a terminal is taken back (one feed for another), a feed is let go of. The listener runs once, synchronously, when the change is complete, and `feedOf` answers the same value between two changes.
+//   - it opens the address of a link in a terminal's output outside the app (`openExternal`, T3a), through the way the window gave it (`TerminalSessionsOptions.openExternal`): only an http or https address is let through, because a
+//     program writes what it likes and a link can name any scheme; a window that gave no way has no link to draw (`canOpenExternal`). It keeps no state for it.
 //
 // A feed's status is told to the registry's listener with every held chunk's first wake-up too; the listener compares the status with the last it saw and writes to the panel only for a new one, so a flood
 // of output is a handful of writes in the life of a session, never one a chunk.
@@ -58,6 +60,11 @@ export type TerminalSessionsOptions = {
    * key. Absent: a terminal this window lost cannot be taken back.
    */
   readonly reattach?: ((session: SessionId) => TerminalTarget) | undefined;
+  /**
+   * What opens an address outside the app (T3a): the window's own way to do it (the system browser, through the runtime), called with the address of a link a person followed in a terminal. Absent: the window cannot open an address, and no link
+   * is drawn (`canOpenExternal`). The registry gives it only http and https addresses, once for each follow; a way that throws or rejects is one warning, and nothing is tried again.
+   */
+  readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
 };
 
 export type OpenTerminalOptions = {
@@ -125,6 +132,14 @@ export type TerminalSessions = {
    * between two changes, it is an external store (`useSyncExternalStore(subscribeFeeds, () => feedOf(session))`): a body drawn before its terminal was found, or while another feed was the session's, is drawn again.
    */
   readonly subscribeFeeds: (listener: () => void) => () => void;
+  /** Whether the window gave the registry a way to open an address outside the app (`TerminalSessionsOptions.openExternal`). A link in a terminal's output is drawn only where this is true, so that no link is dead. The same answer every time. */
+  readonly canOpenExternal: () => boolean;
+  /**
+   * Opens the address of a link a person followed in a terminal, outside the app, through the window's way (T3a). Only an http or https address with a host goes to it, once: a program writes what it likes, so another scheme, a relative path,
+   * an empty string and an address with a space, a control character or a backslash in it are refused, with one warning and no call. A way that throws, or rejects when it is done, is one warning too. Never throws and answers nothing: the caller is
+   * a click. Does nothing when the window gave no way (`canOpenExternal`).
+   */
+  readonly openExternal: (uri: string) => void;
 };
 
 type Entry = {
@@ -167,6 +182,25 @@ function hasClose(value: unknown): value is { readonly close: () => unknown } {
 
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
+/** What an address may look like for the host to open it: http or https, with an authority, and no space, control character or backslash anywhere (a valid address has none; the reader of one would tidy them away or take them for something else). */
+const LINK = /^https?:\/\/[^\s\p{Cc}\\]+$/iu;
+
+/**
+ * Whether the host may be asked to open this address outside the app. A program writes what it likes in its output, and a link can name any scheme (a hyperlink the program wrote carries an address that nothing matched): another scheme starts another
+ * program on the machine (a mail client, an editor, whatever handles it), and what the host refuses of them is a list, so only http and https are let through. The address is also read as an address, so that one with no host in it is refused.
+ */
+function isOpenable(address: string): boolean {
+  if (!LINK.test(address)) {
+    return false;
+  }
+
+  try {
+    return new URL(address).hostname !== '';
+  } catch {
+    return false;
+  }
+}
+
 /** The platform's `crypto`, which every engine the app runs in has, and a test environment may not. */
 const platform: { readonly crypto?: Crypto | undefined } = globalThis;
 let fallbackCounter = 0;
@@ -191,6 +225,7 @@ const consoleWarn = (message: string, error?: unknown): void => {
 export function createTerminalSessions(store: PanelStore, options: TerminalSessionsOptions = {}): TerminalSessions {
   const newId = options.newId ?? newUuid;
   const warn = options.warn ?? consoleWarn;
+  const external = options.openExternal;
   const entries = new Map<SessionId, Entry>();
   const wanted = new Set<SessionId>();
   const feedListeners = new Set<() => void>();
@@ -658,6 +693,28 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       } finally {
         old.taking = false;
       }
+    },
+
+    canOpenExternal: () => external !== undefined,
+
+    openExternal: (uri) => {
+      if (external === undefined) {
+        return;
+      }
+
+      if (!isOpenable(uri)) {
+        warn('[terminal] the link could not be opened: only http and https addresses are opened');
+        return;
+      }
+
+      // The window's way is called here, before this returns, and what comes of it is the window's: a throw or a rejection is one warning, and nothing is tried again.
+      void (async () => {
+        try {
+          await external(uri);
+        } catch (error) {
+          warn('[terminal] the link could not be opened', error);
+        }
+      })();
     },
   };
 }

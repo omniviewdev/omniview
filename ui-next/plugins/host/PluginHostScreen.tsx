@@ -1,6 +1,6 @@
 import { ActivityProvider } from '@omniviewdev/runtime';
 import { WindowClient } from '@omniviewdev/runtime/api';
-import { Events, onEventsReconnect, Window } from '@omniviewdev/runtime/runtime';
+import { Browser, Events, onEventsReconnect, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
@@ -27,6 +27,14 @@ function closeWindow(): void {
  */
 async function showSettingsWindow(): Promise<void> {
   await WindowClient.OpenSettings('');
+}
+
+/**
+ * Opens an address outside the app, in the system's browser: the host's own call (`Browser.OpenURL`), which the Terminal tool uses for a link a person follows in a terminal's output. The tool gives it only http and https addresses; the host
+ * checks the address again and may refuse it (one with a shell metacharacter in it), and a refusal is the call's rejection, which the tool turns into a warning on the console.
+ */
+async function openExternal(url: string): Promise<void> {
+  await Browser.OpenURL(url);
 }
 
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
@@ -77,7 +85,7 @@ export function PluginHostScreen() {
       if (current) {
         // The Terminal tool starts its shells under the key and, when the window attaches, asks the host for the ones this window left (`restoreLocalTerminals`). A terminal another tab took over is attached again under the key
         // (`attachLocalTerminal`), and the page's events coming back after a gap is told to its feeds (`onEventsReconnect`: in a native window it never fires).
-        setLoaded({ session, notices, terminals: { pageKey, restore: async () => restoreLocalTerminals(pageKey), reattach: (id) => attachLocalTerminal(pageKey, id), reconnect: onEventsReconnect } });
+        setLoaded({ session, notices, terminals: { pageKey, restore: async () => restoreLocalTerminals(pageKey), reattach: (id) => attachLocalTerminal(pageKey, id), reconnect: onEventsReconnect, openExternal } });
       }
     });
     return () => {

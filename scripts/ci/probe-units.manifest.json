@@ -323,6 +323,22 @@
     "probe": true,
     "controls": []
   },
+  "ui-next/shell/probes/terminal-find-a-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-find-b-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-find-c-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-find-d-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-probe.mjs": {
     "probe": true,
     "controls": [
@@ -412,7 +428,45 @@
       "replies-as-keys",
       "ack-stale-restore",
       "takeback-unguarded",
-      "refresh-skipped"
+      "refresh-skipped",
+      "find-chord-lost",
+      "find-pushes-grid",
+      "find-button-unpressed",
+      "find-button-dead",
+      "known-short",
+      "count-case-ignored",
+      "count-word-ignored",
+      "count-regex-ignored",
+      "step-stuck",
+      "find-escape-stuck",
+      "find-f3-lost",
+      "find-escape-terminal-stuck",
+      "find-ctrl-f-lost",
+      "find-tab-stop-lost",
+      "reopen-forgets",
+      "search-eager",
+      "find-replay-gap",
+      "find-mounted",
+      "idle-commits",
+      "cap-unlimited",
+      "cap-short",
+      "decorations-leak",
+      "find-axe",
+      "menu-item-missing",
+      "menu-shortcut-drawn",
+      "paste-lost",
+      "trigger-lost",
+      "clipboard-dropped",
+      "mouse-never",
+      "mouse-reporting-lost",
+      "shift-menu-blocked",
+      "menu-axe",
+      "links-hover-never",
+      "links-leave-never",
+      "links-plain-follows",
+      "open-twice",
+      "open-given",
+      "tooltip-axe"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

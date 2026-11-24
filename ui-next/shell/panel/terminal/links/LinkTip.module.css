@@ -1,0 +1,39 @@
+@layer ov.shell {
+  /* The tooltip of a link in a terminal's output (T3a): the kit's own tooltip, drawn at the link and not at an element, because the link is a run of cells the emulator found and no element of the page. The kit's host (`TooltipHost`)
+     reads `data-ov-tip` of the element under the pointer, and a link has none, so this is the same look from the same tokens: a popover in the top layer (the panel clips what it holds, and nothing needs a z-index over the
+     emulator's own layers), plain text, no arrow, no animation. It is in the document only while the pointer is on a link, and it takes no pointer event: the output under it stays the output. `--_x` and `--_y` are the link's
+     first cell, in the pixels of the window (bound on this element when the link is hovered). It sits one line below that cell and is moved back inside the window when its right or lower edge would leave it (`translate` takes
+     its percentages of the tooltip's own size, so no script has to measure it). The user agent's popover rules for inset, margin and size are set aside. */
+  .tip {
+    position: fixed;
+    inset: auto;
+    left: var(--_x, 0px);
+    top: calc(var(--_y, 0px) + var(--ov-spacing-20));
+    box-sizing: border-box;
+    width: max-content;
+    height: auto;
+    margin: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    overflow: visible;
+    border: 1px solid var(--ov-bg-feedback);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-feedback);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    white-space: nowrap;
+    box-shadow: var(--ov-shadow-tooltip);
+    translate:
+      min(0px, calc(100vw - var(--_x, 0px) - 100% - var(--ov-spacing-8)))
+      min(0px, calc(100vh - var(--_y, 0px) - var(--ov-spacing-20) - 100% - var(--ov-spacing-8)));
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}

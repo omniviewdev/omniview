@@ -21,14 +21,21 @@ type Harness = {
 let clock = 1_000;
 let counter = 0;
 
-function harness(options: { readonly plugins?: readonly string[]; readonly initial?: PanelState | undefined; readonly reattach?: ((id: string) => TerminalTarget) | undefined } = {}): Harness {
+function harness(
+  options: {
+    readonly plugins?: readonly string[];
+    readonly initial?: PanelState | undefined;
+    readonly reattach?: ((id: string) => TerminalTarget) | undefined;
+    readonly openExternal?: ((url: string) => void | Promise<void>) | undefined;
+  } = {},
+): Harness {
   clock = 1_000;
   counter = 0;
   const store = createPanelStore({ initial: options.initial, now: () => clock, newId: () => `store-${String(++counter)}` });
   store.registerTool(TERMINAL_TOOL);
   store.syncPlugins((options.plugins ?? []).map((id) => ({ id, tools: [] })));
   const warn = vi.fn<(message: string, error?: unknown) => void>();
-  const sessions = createTerminalSessions(store, { newId: () => `term-${String(++counter)}`, warn, reattach: options.reattach });
+  const sessions = createTerminalSessions(store, { newId: () => `term-${String(++counter)}`, warn, reattach: options.reattach, openExternal: options.openExternal });
   const detach = sessions.attach();
   return {
     store,
@@ -2218,5 +2225,168 @@ describe('the feed a session has can be followed (T2d: a body that was drawn bef
     expect(told).toHaveBeenCalledTimes(1);
     stop();
     expect(told).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('opening an address outside the app (T3a: what a person follows from a link a program wrote in a terminal)', () => {
+  const ADDRESS = 'https://example.com/docs?page=2#top';
+
+  it('can when the window gave a way to, and cannot when it gave none: a link is drawn only where it can be followed, so no link is dead', () => {
+    expect(harness().sessions.canOpenExternal()).toBe(false);
+    expect(harness({ openExternal: vi.fn() }).sessions.canOpenExternal()).toBe(true);
+  });
+
+  it('says the same each time it is asked: the answer is the window\'s, not a state of the registry', () => {
+    const r = harness({ openExternal: vi.fn() });
+    r.detach();
+    expect([r.sessions.canOpenExternal(), r.sessions.canOpenExternal()]).toEqual([true, true]);
+    const none = harness();
+    expect([none.sessions.canOpenExternal(), none.sessions.canOpenExternal()]).toEqual([false, false]);
+  });
+
+  it('does nothing without a way, whatever it is given: no throw and no warning, for an address that is fine and for one that would be refused', () => {
+    const r = harness();
+    expect(() => {
+      r.sessions.openExternal(ADDRESS);
+      r.sessions.openExternal('javascript:alert(1)');
+      r.sessions.openExternal('');
+    }).not.toThrow();
+    expect(r.warn).not.toHaveBeenCalled();
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('gives the address to the window\'s way once, as it was given and before it returns, and says nothing of it', () => {
+    const open = vi.fn();
+    const r = harness({ openExternal: open });
+    r.sessions.openExternal(ADDRESS);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith(ADDRESS);
+    expect(r.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'http://example.com',
+    'https://example.com',
+    'HTTPS://EXAMPLE.COM/Path',
+    'http://localhost:3000',
+    'http://127.0.0.1:8080/health',
+    'http://[::1]:8080/',
+    'https://user:secret@example.com/private',
+    'https://example.com/a%20b?q=a+b&r=%C3%A9#frag',
+    'https://münchen.example/straße',
+  ])('opens %j: an http or https address with a host, whatever else is in it', (address) => {
+    const open = vi.fn();
+    const r = harness({ openExternal: open });
+    r.sessions.openExternal(address);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith(address);
+    expect(r.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'JavaScript:alert(1)',
+    'file:///etc/passwd',
+    'data:text/html,<script>alert(1)</script>',
+    'ftp://example.com/file',
+    'mailto:someone@example.com',
+    'vscode://file/etc/hosts',
+    'ms-msdt:/id PCWDiagnostic',
+    'blob:https://example.com/2b6f',
+    'about:blank',
+    '',
+    '   ',
+    '/docs/page',
+    'docs/page.html',
+    'example.com',
+    'www.example.com/page',
+    '//example.com/page',
+    'https:example.com',
+    'https:/example.com',
+    'https://',
+    'https:///',
+    'https://:8080',
+    'https://example.com:99999',
+    ' https://example.com',
+    'https://example.com ',
+    'https://exa mple.com',
+    'https://example.com/\nfoo',
+    'https://example.com/\u0000',
+    'http://example.com\\@evil.com',
+  ])('never gives %j to the window\'s way: one warning, and no call', (address) => {
+    const open = vi.fn();
+    const r = harness({ openExternal: open });
+    expect(() => {
+      r.sessions.openExternal(address);
+    }).not.toThrow();
+    expect(open).not.toHaveBeenCalled();
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    expect(r.warn.mock.calls[0]?.[0]).toBe('[terminal] the link could not be opened: only http and https addresses are opened');
+  });
+
+  it('takes each press as its own: an address that was refused is no reason to refuse the next, and each good one is one call, in order', () => {
+    const open = vi.fn();
+    const r = harness({ openExternal: open });
+    r.sessions.openExternal('https://example.com/one');
+    r.sessions.openExternal('file:///etc/passwd');
+    r.sessions.openExternal('http://localhost:3000');
+    expect(open.mock.calls).toEqual([['https://example.com/one'], ['http://localhost:3000']]);
+    expect(r.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns once when the way throws, and does not throw itself: whoever calls it is a click', () => {
+    const broke = new Error('the host refused the address');
+    const open = vi.fn(() => {
+      throw broke;
+    });
+    const r = harness({ openExternal: open });
+    expect(() => {
+      r.sessions.openExternal(ADDRESS);
+    }).not.toThrow();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    expect(r.warn).toHaveBeenCalledWith('[terminal] the link could not be opened', broke);
+  });
+
+  it('warns once when the way rejects, when it does and not before, and does nothing else: the address is not tried again', async () => {
+    const gate = Promise.withResolvers<void>();
+    const open = vi.fn(async () => gate.promise);
+    const r = harness({ openExternal: open });
+    r.sessions.openExternal(ADDRESS);
+    await flush();
+    expect(r.warn).not.toHaveBeenCalled();
+    const refused = new Error('the address has a character the host does not open');
+    gate.reject(refused);
+    await flush();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    expect(r.warn).toHaveBeenCalledWith('[terminal] the link could not be opened', refused);
+  });
+
+  it('says nothing when the way answers that it opened the address, now or later', async () => {
+    const gate = Promise.withResolvers<void>();
+    const slow = harness({ openExternal: async () => gate.promise });
+    slow.sessions.openExternal(ADDRESS);
+    gate.resolve();
+    await flush();
+    expect(slow.warn).not.toHaveBeenCalled();
+    const quick = harness({ openExternal: async () => Promise.resolve() });
+    quick.sessions.openExternal(ADDRESS);
+    await flush();
+    expect(quick.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns on the console when the registry was given no channel of its own, as it does for everything else it could not do: the same one warning for a throw and for a refusal', () => {
+    const broke = new Error('the host refused the address');
+    const sessions = createTerminalSessions(createPanelStore(), {
+      openExternal: () => {
+        throw broke;
+      },
+    });
+    sessions.openExternal(ADDRESS);
+    sessions.openExternal('file:///etc/passwd');
+    expect(console.warn).toHaveBeenCalledTimes(2);
+    expect(console.warn).toHaveBeenNthCalledWith(1, '[terminal] the link could not be opened', broke);
+    expect(console.warn).toHaveBeenNthCalledWith(2, '[terminal] the link could not be opened: only http and https addresses are opened');
   });
 });
