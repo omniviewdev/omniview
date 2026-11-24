@@ -12,12 +12,31 @@ SERVER = "backend/window/webview_window_server.go"
 WAILS = "backend/window/wails.go"
 TEST = "backend/window/webview_window_server_test.go"
 
+RETAINED = "TestEventsAreNotRetainedByTheWindowsOfTheServerBuild"
+CLOSING = "TestClosingAWindowOfTheServerBuildTellsTheWindowService"
+SETTINGS = "TestClosingTheSettingsWindowOfTheServerBuildHidesItInsteadOfClosing"
+
 FACTORY = """	window := application.NewWindow(options)
 	app.Window.Add(window)
 	return window
 """
-HEAP_ASSERTION = "if grown := eventsKept(t, app, port, b110Events, b110EventBytes); grown > b110HeapBound {"
-REGISTRY_ASSERTION = "if _, found := app.Window.GetByName(registered); !found {"
+GUARD = """	if !runsNativeWindows {
+		return newHeadlessWindow(spec, sink)
+	}
+"""
+CLOSE_SWITCH = """	switch {
+	case w.kind == KindSettings && !w.sink.shutdownStarted():
+		w.sink.windowVisibilityChanged(w.name, false)
+	case w.kind != KindSettings:
+		w.sink.windowClosed(w.name)
+	}
+"""
+HEAP = ("if grown := eventsKept(t, app, port, b110Events, b110EventBytes); grown > b110HeapBound {",
+        "if grown := eventsKept(t, app, port, b110Events, b110EventBytes); false && grown > b110HeapBound {")
+MAIN_REGISTERED = ("if _, found := app.Window.GetByName(MainWindowName); !found {",
+                   "if _, found := app.Window.GetByName(MainWindowName); false && !found {")
+CLOSED_TOLD = ("if len(sink.closed) != 1 || sink.closed[0] != name || len(sink.hidden) != 0 {", "if false {")
+HIDDEN_TOLD = ("if len(sink.hidden) != 1 || sink.hidden[0] != name || len(sink.closed) != 0 {", "if false {")
 
 def read(path):
     with open(os.path.join(ROOT, path)) as handle:
@@ -31,17 +50,20 @@ def replaced(text, old, new):
 CONTROLS = [
     # name, file, fault, test named for it, assertions that catch it (switched off for the second run), message of the failure
     ("C1 the server build runs the windows it creates (the behaviour of main)", SERVER,
-     lambda s: replaced(s, FACTORY, "	return app.Window.NewWithOptions(options)\n"),
-     HEAP_ASSERTION, "keeps the events it was given"),
-    ("C2 Activate shows a window of the server build", SERVER,
-     lambda s: replaced(s, "const runsNativeWindows = false", "const runsNativeWindows = true"),
-     HEAP_ASSERTION, "keeps the events it was given"),
-    ("C3 the window service creates its windows without the factory", WAILS,
-     lambda s: replaced(s, "window := NewWebviewWindow(h.app, options)", "window := h.app.Window.NewWithOptions(options)"),
-     HEAP_ASSERTION, "keeps the events it was given"),
-    ("C4 the factory does not register the window", SERVER,
-     lambda s: replaced(s, "	app.Window.Add(window)\n", ""),
-     REGISTRY_ASSERTION, "is not in the registry of the application"),
+     lambda s: replaced(s, FACTORY, "	return app.Window.NewWithOptions(options)\n"), RETAINED, [HEAP], "keeps the events it was given"),
+    ("C2 the server build says it runs native windows: Activate shows them", SERVER,
+     lambda s: replaced(s, "const runsNativeWindows = false", "const runsNativeWindows = true"), RETAINED, [HEAP], "keeps the events it was given"),
+    ("C3 the window service creates a window that runs in the server build", WAILS,
+     lambda s: replaced(replaced(s, GUARD, ""), "window := NewWebviewWindow(h.app, options)", "window := h.app.Window.NewWithOptions(options)"),
+     RETAINED, [HEAP], "keeps the events it was given"),
+    ("C4 the factory does not register the main window", SERVER,
+     lambda s: replaced(s, "	app.Window.Add(window)\n", ""), RETAINED, [MAIN_REGISTERED], "main window is not in the registry"),
+    ("C6 closing a window of the server build tells nobody", SERVER,
+     lambda s: replaced(s, CLOSE_SWITCH, ""), CLOSING, [CLOSED_TOLD], "the window service was told closed="),
+    ("C7 the settings window of the server build is reported closed, not hidden", SERVER,
+     lambda s: replaced(s, CLOSE_SWITCH, "	w.sink.windowClosed(w.name)\n"), SETTINGS, [HIDDEN_TOLD], "the window service was told closed="),
+    ("C8 the window service's windows are registry-only Wails windows, whose Close returns at once", WAILS,
+     lambda s: replaced(s, GUARD, ""), CLOSING, [CLOSED_TOLD], "the window service was told closed="),
 ]
 
 def run(overlay_files, target):
