@@ -193,9 +193,18 @@ func (s *ServiceWrapper) GetSession(ctx context.Context, sessionID string) (*exe
 }
 
 // AttachSession returns a session's output: for the window that holds it, or that claims it (a session of a plugin
-// that no window holds, or one its owner offered with OfferSession), which holds it from then on.
+// that no window holds, or one its owner offered with OfferSession), which holds it from then on. A claim can make a
+// window the owner of a session, and a window that holds a session has to be one the realm knows, so that its
+// retirement releases what it holds: the window is admitted here and not only when it opens a terminal of its own. A
+// call that comes from no window, or from one the realm refuses, claims nothing and is told what is told of an id that
+// never was.
 func (s *ServiceWrapper) AttachSession(ctx context.Context, sessionID string) (*execsdk.Session, []byte, error) {
-	return s.Ctrl.AttachSession(callerOf(ctx), sessionID)
+	window, _ := ctx.Value(application.WindowKey).(application.Window)
+	owner, err := s.terminalOwner(window)
+	if err != nil {
+		return nil, nil, apperror.SessionNotFound(sessionID)
+	}
+	return s.Ctrl.AttachSession(owner, sessionID)
 }
 func (s *ServiceWrapper) DetachSession(ctx context.Context, sessionID string) (*execsdk.Session, error) {
 	return s.Ctrl.DetachSession(callerOf(ctx), sessionID)

@@ -399,10 +399,16 @@ func (m *Manager) Attach(sessionID string, caller Owner, req AttachRequest) (*At
 	if tomb == nil || !tomb.holdsKey(req.PageKey) {
 		return nil, apperror.SessionNotFound(sessionID)
 	}
+	attached, err := tomb.attached(req.FromOffset)
+	if err != nil {
+		return nil, err
+	}
+	// The window that attached its end holds it from now on, and only once the attach is answered: one that is refused
+	// for its offset takes nothing from the window that holds it.
 	m.mu.Lock()
 	tomb.owner = caller
 	m.mu.Unlock()
-	return tomb.attached(req.FromOffset)
+	return attached, nil
 }
 
 func (m *Manager) attachLive(s *session, caller Owner, req AttachRequest) (*Attached, error) {

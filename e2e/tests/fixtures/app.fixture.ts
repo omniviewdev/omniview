@@ -68,7 +68,8 @@ declare const window: WailsWindow;
 
 // The terminals a page opened are held by that page's window and are listed and ended only as that window (the host
 // tells every other client that they do not exist), so what a test's page opened is closed as the page. Best effort: the
-// page may be gone, and what is left is found by closeSessions once its window has been retired.
+// page may be gone, and then what it held stays: a keyed terminal waits for its lease, any other ends with the window
+// when the realm retires it. closeSessions (the client e2e) cannot reach a window's sessions: only those no window holds.
 async function closePageSessions(page: Page): Promise<void> {
   try {
     if (page.isClosed()) {

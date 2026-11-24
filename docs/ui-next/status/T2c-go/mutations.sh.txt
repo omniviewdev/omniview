@@ -26,19 +26,33 @@ run() {
   else echo "CONTROL $name: RED  $failed"; fi
 }
 
+# The file that a TypeScript control changed in place is put back when the script ends, however it ends (the restore is
+# registered BEFORE the file is changed); a failure to put it back is said.
+RESTORE_FILE=""
+RESTORE_COPY=""
+restore() {
+  if [ -n "$RESTORE_FILE" ]; then
+    cp "$RESTORE_COPY" "$RESTORE_FILE" || echo "THE FILE $RESTORE_FILE WAS NOT RESTORED: its copy is $RESTORE_COPY"
+    RESTORE_FILE=""
+  fi
+}
+trap restore EXIT INT TERM
+
 # name | file | sed expression | vitest files
 runts() {
   name="$1"; file="$2"; expr="$3"; tests="$4"
   echo "$name" | grep -Eq "$ONLY" || return
   cp "$WT/$file" "$M/$name.orig"
+  RESTORE_FILE="$WT/$file"; RESTORE_COPY="$M/$name.orig"
   sed -i '' -e "$expr" "$WT/$file"
-  if cmp -s "$WT/$file" "$M/$name.orig"; then echo "CONTROL $name: FAULT NOT APPLIED"; return; fi
+  if cmp -s "$WT/$file" "$M/$name.orig"; then echo "CONTROL $name: FAULT NOT APPLIED"; restore; return; fi
   out=$(CI= pnpm exec vitest run $tests 2>&1)
   code=$?
-  cp "$M/$name.orig" "$WT/$file"
+  restore
   cmp -s "$WT/$file" "$M/$name.orig" || echo "CONTROL $name: THE FILE WAS NOT RESTORED"
   failed=$(echo "$out" | grep -E "^ *(FAIL|×)" | head -3 | tr '\n' ' ')
   if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $tests"
+  elif [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (vitest failed before a test did: the setup)"
   else echo "CONTROL $name: RED  $failed"; fi
 }
 
@@ -106,3 +120,13 @@ runts a-move-offers-nothing ui/providers/BottomDrawer/terminalHandoff.ts \
 run the-end-of-an-unheld-session-is-refused $X backend/pkg/plugin/exec/controller.go \
   's/if !c.holds(index, sessionID, owner) \&\& !c.claimable(index, owner) {/if !c.holds(index, sessionID, owner) {/' \
   '^TestAWindowEndsTheSessionsItListsThatNoWindowHolds'
+
+# CodeRabbit: an attach that is refused takes nothing, and a window that claims a session is admitted to the realm.
+
+run a-refused-attach-takes-the-end $T backend/pkg/terminal/reattach.go \
+  '/attached, err := tomb.attached(req.FromOffset)/,/^\t}/ s/^\t\treturn nil, err$/\t\ttomb.owner = caller; return nil, err/' \
+  '^TestARefusedAttachOfAnEndedTerminal'
+
+run a-claim-does-not-admit-the-window $X backend/pkg/plugin/exec/service_wrapper.go \
+  '/^func (s \*ServiceWrapper) AttachSession/,/^}/ s/owner, err := s.terminalOwner(window)/_ = window; owner, err := callerOf(ctx), error(nil)/' \
+  '^TestAWindowThatClaimsASession'

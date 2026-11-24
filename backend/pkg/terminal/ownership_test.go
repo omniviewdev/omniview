@@ -115,7 +115,7 @@ func TestAnEndedSessionAndTheEndOfAKeyedTerminalAreHeldByTheirLastWindow(t *test
 
 	keyed := m.startKeyed(t, `stty -echo; printf 'up\n'; read x; exit 0`, "wA", Options{})
 	sink.waitFor(t, keyed.ID, "up\r\n")
-	require.NoError(t, m.Write(keyed.ID, 0, []byte("go\n")))
+	m.endTheShellWith(keyed.ID, 0, "go\n")
 	sink.waitEnd(t, keyed.ID)
 	require.Eventually(t, func() bool { return m.tombstoneCount() == 1 }, 20*time.Second, 5*time.Millisecond)
 	_, err = m.Attach(keyed.ID, "wB", AttachRequest{PageKey: testKey})
@@ -123,4 +123,23 @@ func TestAnEndedSessionAndTheEndOfAKeyedTerminalAreHeldByTheirLastWindow(t *test
 	require.NoError(t, m.Authorize(keyed.ID, "wB"), "the page that attached its end")
 	notFound(t, m.Authorize(keyed.ID, "wC"), keyed.ID)
 	require.NoError(t, m.CloseSession(keyed.ID), "dismisses it")
+}
+
+// An attach that is refused owns nothing (CodeRabbit): a caller that asks for the end of a terminal from an offset that
+// is past it is told so, and does not take the end from the window that holds it.
+func TestARefusedAttachOfAnEndedTerminalDoesNotTakeItFromTheWindowThatHoldsIt(t *testing.T) {
+	m, sink := newPageManager(t)
+	keyed := m.startKeyed(t, `stty -echo; printf 'up\n'; read x; exit 0`, "wA", Options{})
+	sink.waitFor(t, keyed.ID, "up\r\n")
+	m.endTheShellWith(keyed.ID, 0, "go\n")
+	sink.waitEnd(t, keyed.ID)
+	require.Eventually(t, func() bool { return m.tombstoneCount() == 1 }, 20*time.Second, 5*time.Millisecond)
+	_, err := m.Attach(keyed.ID, "wB", AttachRequest{PageKey: testKey})
+	require.NoError(t, err)
+
+	past := uint64(1) << 40
+	_, err = m.Attach(keyed.ID, "wC", AttachRequest{PageKey: testKey, FromOffset: &past})
+	require.Error(t, err, "an offset past the end of the output is refused")
+	require.NoError(t, m.Authorize(keyed.ID, "wB"), "the window that held the end still holds it")
+	notFound(t, m.Authorize(keyed.ID, "wC"), keyed.ID)
 }

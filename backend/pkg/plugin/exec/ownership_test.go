@@ -362,3 +362,19 @@ func TestAWindowEndsTheSessionsItListsThatNoWindowHoldsAndNoOtherWindows(t *test
 	requireSessionNotFound(t, fx.ctrl.CloseSession("wC", "theirs"), "theirs")
 	require.NoError(t, fx.ctrl.CloseSession("wB", "theirs"), "and the window that adopted it ends it")
 }
+
+// A window that claims a session with its first call is a window the realm knows by then (CodeRabbit): when the page
+// that was offered a terminal retires, the terminal ends with it, though the page never made a session of its own. A
+// claim that did not admit the window left the terminal to a window whose retirement nobody heard of.
+func TestAWindowThatClaimsASessionWithItsFirstCallIsReleasedWithItWhenItRetires(t *testing.T) {
+	fx := newTerminalFixture(t)
+	a, b := fx.page(1), fx.page(2)
+	info := fx.open(a, terminal.Options{Command: append(shell(t), "-c", "stty -echo; cat")})
+	require.NoError(t, fx.wrapper.OfferSession(fx.ctx(a), info.ID))
+	_, _, err := fx.wrapper.AttachSession(fx.ctx(b), info.ID)
+	require.NoError(t, err, "the window that is offered the terminal claims it with its first call")
+
+	fx.retire(b)
+	require.Eventually(t, func() bool { return len(fx.closes(info.ID)) == 1 }, 30*time.Second, 20*time.Millisecond,
+		"the terminal ends with the window that holds it now")
+}
