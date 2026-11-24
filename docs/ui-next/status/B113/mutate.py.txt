@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""B-113 negative controls: each fault is put into a scratch copy of controller.go (go test -overlay; the worktree is
+not edited), and the tests it must turn red are run. Run from the worktree root:  python3 mutate.py [name ...]"""
+import json, os, re, subprocess, sys, tempfile
+
+ROOT = os.getcwd()
+TARGET = os.path.join(ROOT, "backend/pkg/plugin/exec/controller.go")
+SRC = open(TARGET).read()
+PKG = "./backend/pkg/plugin/exec/"
+ALL = r"TestCreateSessionRefuses|TestAPluginSessionThatAnswers|TestTheRefusalOfADuplicateID|TestAFrameOfAPluginThatNames"
+
+EARLY = '''	if opts.ID != "" && c.hasSession(opts.ID) {
+		return nil, terminal.IDInUse(opts.ID)
+	}
+'''
+WRITE = '''	if held, taken := c.sessionIndex[session.ID]; taken {
+		c.mu.Unlock()
+		c.closeRefusedSession(ctx, pctx, client, plugin, held.pluginID, session.ID)
+		return nil, terminal.IDInUse(session.ID)
+	}
+'''
+GUARD_HEAD = "	if recorded && record.pluginID != output.pluginID {"
+CLOSE = "	if err := client.CloseSession(pctx, sessionID); err != nil {"
+
+MUTATIONS = {
+    # name: (replace-from, replace-to, tests that must fail)
+    "no-early-check": (EARLY, "", ["TestCreateSessionRefusesTheIDOfATerminalOfAnotherWindow",
+        "TestCreateSessionRefusesAnIDThatASessionOfAnotherPluginHasWithoutAskingThePlugin",
+        "TestCreateSessionRefusesAnIDThatASessionOfTheSamePluginHasWithoutAskingThePlugin"]),
+    "no-write-check": (WRITE, "", ["TestCreateSessionRefusesAnIDThatAnotherPluginTookWhileThisOneAnswered",
+        "TestTheRefusalOfADuplicateIDNeverClosesTheSessionThePluginHoldsUnderThatID",
+        "TestAPluginSessionThatAnswersTheIDOfATerminalMadeMeanwhileIsRefusedAndClosed"]),
+    "refusal-is-not-typed": (WRITE, WRITE.replace("terminal.IDInUse(session.ID)", "errors.New(\"id in use\")"), [
+        "TestCreateSessionRefusesAnIDThatAnotherPluginTookWhileThisOneAnswered",
+        "TestTheRefusalOfADuplicateIDNeverClosesTheSessionThePluginHoldsUnderThatID",
+        "TestAPluginSessionThatAnswersTheIDOfATerminalMadeMeanwhileIsRefusedAndClosed"]),
+    "early-refusal-is-not-typed": (EARLY, EARLY.replace("terminal.IDInUse(opts.ID)", "errors.New(\"id in use\")"), [
+        "TestCreateSessionRefusesTheIDOfATerminalOfAnotherWindow",
+        "TestCreateSessionRefusesAnIDThatASessionOfAnotherPluginHasWithoutAskingThePlugin",
+        "TestCreateSessionRefusesAnIDThatASessionOfTheSamePluginHasWithoutAskingThePlugin"]),
+    "refused-session-not-closed": (CLOSE, "	if err := error(nil); err != nil {", [
+        "TestCreateSessionRefusesAnIDThatAnotherPluginTookWhileThisOneAnswered",
+        "TestAPluginSessionThatAnswersTheIDOfATerminalMadeMeanwhileIsRefusedAndClosed"]),
+    "refused-session-closed-by-the-hosts-own-close": (CLOSE, "	if err := c.CloseSession(sessionID); err != nil {", [
+        "TestCreateSessionRefusesAnIDThatAnotherPluginTookWhileThisOneAnswered",
+        "TestAPluginSessionThatAnswersTheIDOfATerminalMadeMeanwhileIsRefusedAndClosed"]),
+    "same-plugin-duplicate-is-closed": ("	if heldBy == plugin {", "	if false {", [
+        "TestTheRefusalOfADuplicateIDNeverClosesTheSessionThePluginHoldsUnderThatID"]),
+    "no-frame-guard": (GUARD_HEAD, "	if recorded && record.pluginID != output.pluginID && false {", [
+        "TestAFrameOfAPluginThatNamesTheIDOfAnotherSessionIsNotDelivered",
+        "TestCreateSessionRefusesAnIDThatAnotherPluginTookWhileThisOneAnswered",
+        "TestAPluginSessionThatAnswersTheIDOfATerminalMadeMeanwhileIsRefusedAndClosed"]),
+    "frame-guard-only-for-terminals": (GUARD_HEAD, '	if recorded && record.pluginID == "" {', [
+        "TestAFrameOfAPluginThatNamesTheIDOfAnotherSessionIsNotDelivered",
+        "TestCreateSessionRefusesAnIDThatAnotherPluginTookWhileThisOneAnswered"]),
+    "frame-guard-drops-the-sessions-own-frames": (GUARD_HEAD, "	if recorded && record.pluginID == output.pluginID {", [
+        "TestAFrameOfAPluginThatNamesTheIDOfAnotherSessionIsNotDelivered",
+        "TestAPluginSessionThatAnswersTheIDOfATerminalMadeMeanwhileIsRefusedAndClosed",
+        "TestCreateSessionRefusesAnIDThatAnotherPluginTookWhileThisOneAnswered"]),
+}
+
+def run(name, src_from, src_to, must):
+    assert src_from in SRC, f"{name}: the text to replace is not in controller.go"
+    mutated = SRC.replace(src_from, src_to, 1)
+    if "errors.New" in mutated and '"errors"' not in mutated:
+        mutated = mutated.replace('import (\n', 'import (\n\t"errors"\n', 1)
+    tmp = tempfile.mkdtemp(prefix="b113-")
+    mfile = os.path.join(tmp, "controller.go")
+    open(mfile, "w").write(mutated)
+    overlay = os.path.join(tmp, "overlay.json")
+    json.dump({"Replace": {TARGET: mfile}}, open(overlay, "w"))
+    env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="local")
+    out = subprocess.run(["go", "test", f"-overlay={overlay}", PKG, "-count=1", "-run", ALL, "-v"],
+                         capture_output=True, text=True, env=env, cwd=ROOT).stdout
+    failed = sorted(set(re.findall(r"^--- FAIL: (\w+)", out, re.M)))
+    built = "--- PASS" in out or "--- FAIL" in out
+    missing = [t for t in must if t not in failed]
+    extra = [t for t in failed if t not in must]
+    if re.search(r"^(panic:|fatal error:|FAIL\s+.*\[build failed\])|test timed out", out, re.M):
+        print(f"{name}: a panic, a timeout or a build failure is in the output: that is not an assertion")
+        return False
+    status = "RED as named" if built and not missing and not extra else ("RED but not only the named" if built and not missing else "NOT RED / DID NOT BUILD")
+    print(f"{name}: {status}\n   failed: {failed}\n   named but green: {missing}\n   failed but not named: {extra}")
+    return built and not missing
+
+if __name__ == "__main__":
+    names = sys.argv[1:] or list(MUTATIONS)
+    ok = True
+    for n in names:
+        f, t, must = MUTATIONS[n]
+        ok = run(n, f, t, must) and ok
+    sys.exit(0 if ok else 1)
