@@ -276,7 +276,7 @@ env -i HOME="$HOME" PATH="$PATH" ENGINES=webkit node ui-next/plugins/e2e/seam.ch
 
 ## 9. Traps
 
-- Terminal events go to every window by id; the page key is not a secret against code in the page (B-111). Do not build a feature that assumes either is a boundary until #693 lands.
+- Terminal events go to every window by id; the page key is not a secret against code in the page (B-111). Do not build a feature that assumes either is a boundary until #693 lands, and even then only against other windows and callers that guess a session id: #693 does not hide anything from plugin code that runs in the same page (B-112).
 - A server-mode reconnect of the page's events socket is a new window; a native reload keeps its window identity. Anything keyed on a window identity fails on a reconnect.
 - The host consumes only released SDK tags. `feature/exec-v2` is not tagged: nothing in the host may pin it.
 - xterm.js is `6.0.0` and `@xterm/addon-webgl` `0.19.0`; fixes the study cites as "master only" are not in them (`prior-art.md` section 5, pitfall 3).
