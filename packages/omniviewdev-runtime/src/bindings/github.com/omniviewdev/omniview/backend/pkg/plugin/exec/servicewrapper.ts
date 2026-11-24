@@ -121,6 +121,11 @@ export function CreateSession(plugin: string, connectionID: string, encoded: str
  * AttachTerminal, and what the shell wrote meanwhile is replayed (docs/ui-next/status/T2-go.md). Its output
  * then arrives on core/exec/stream/output/<id> with an offset. A call that comes from no window starts
  * nothing: a terminal that nothing could ever retire would outlive everything.
+ * 
+ * With launch.channel the terminal is a channel terminal instead (docs/ui-next/terminal-channel-protocol.md): the answer
+ * carries a capability, once, and the terminal is reached by it and by one stream, and by nothing that names it by its id.
+ * It uses no window: it is not admitted, not owned, and nothing a window does ends it; a call from no window may start one.
+ * It excludes launch.page_key, which is the events lane's.
  */
 export function CreateTerminal(opts: exec$0.SessionOptions, launch: terminal$0.Launch): $CancellablePromise<terminal$0.Session | null> {
     return $Call.ByID(4182196712, opts, launch).then(($result: any) => {
