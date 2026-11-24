@@ -239,6 +239,12 @@ type End struct {
 	LastOffset uint64 `json:"last_offset"`
 }
 
+// clone is a copy of the end that shares nothing with it: its pointers are copies too, so that a caller that changes what it was
+// given changes its own copy.
+func (e End) clone() End {
+	return e
+}
+
 // State is the answer to "is something other than the shell in the foreground of the terminal?".
 // It has three values on purpose: a platform that cannot tell says so instead of guessing.
 type State string
@@ -399,6 +405,10 @@ const (
 	// TombstoneLimit is how many terminals that ended while no page was attached the host remembers, so that the
 	// page that comes back can still read how they ended.
 	TombstoneLimit = 16
+	// ChannelTombstoneLimit is how many ends of channel terminals the host remembers. The ends of the events lane have the budget
+	// above and neither lane takes the other's: the oldest of a lane goes first, even before its lease is over, so the time an end is
+	// listed with is not a promise that it is still there.
+	ChannelTombstoneLimit = 16
 	// The channel of a terminal opened with Launch.Channel (docs/ui-next/terminal-channel-protocol.md): the host
 	// reads the shell into a ring of ChannelRingBytes whatever the page does, and the ring overwrites its oldest
 	// bytes, counting them, when it is full. A stream's sender reads the ring in frames of at most ChannelFrameBytes

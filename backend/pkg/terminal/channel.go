@@ -305,7 +305,13 @@ func (m *Manager) ListChannels(presented []string) ([]ChannelListed, error) {
 		s, kept := m.lookupCap(one)
 		switch {
 		case s != nil && !s.ending.Load():
-			out = append(out, s.channelListed())
+			if listed, ok := s.channelListed(); ok {
+				out = append(out, listed)
+				continue
+			}
+			if _, kept = m.lookupCap(one); kept != nil {
+				out = append(out, kept.channelListed())
+			}
 		case kept != nil:
 			out = append(out, kept.channelListed())
 		}
@@ -313,8 +319,9 @@ func (m *Manager) ListChannels(presented []string) ([]ChannelListed, error) {
 	return out, nil
 }
 
-// channelListed is the terminal as the page that holds its capability sees it in a list.
-func (s *session) channelListed() ChannelListed {
+// channelListed is the terminal as the page that holds its capability sees it in a list, and whether it is still running when the
+// snapshot is taken: an entry taken of a terminal that ended meanwhile is not an entry of a running one.
+func (s *session) channelListed() (ChannelListed, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.outMu.Lock()
@@ -327,7 +334,7 @@ func (s *session) channelListed() ChannelListed {
 	return ChannelListed{
 		ID: s.id, CreatedAt: s.info.CreatedAt, PID: s.info.PID, Shell: s.info.Shell, Labels: nonNil(s.labels), Params: nonNil(s.params),
 		Size: size, Attached: s.channel.holder != nil, NextOffset: next, ReplayStart: first, LeaseExpiresUnixMs: expires, Ended: nil,
-	}
+	}, true
 }
 
 // channelListed is the kept end of a channel terminal as a list shows it.

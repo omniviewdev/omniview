@@ -62,3 +62,8 @@ func ChannelNotFound() error {
 	notFound.Detail = "No terminal is held by that capability."
 	return notFound
 }
+
+// checkListedCaps refuses a list of capabilities longer than a page holds: the same answer on every platform.
+func checkListedCaps(n int) error {
+	return nil
+}

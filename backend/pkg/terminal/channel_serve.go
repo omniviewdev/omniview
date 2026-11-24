@@ -180,6 +180,9 @@ func (c *channelConn) signal() {
 // progress notes that the page is alive: now, on the manager's clock.
 func (c *channelConn) progress() { c.progressAt.Store(c.clock.Now().UnixNano()) }
 
+// lastProgress is the time of the last progress.
+func (c *channelConn) lastProgress() time.Time { return time.Unix(0, c.progressAt.Load()) }
+
 // displace is what the stream that takes the terminal does to the one that held it: its sender is told, in its own time, and
 // sends the frame that says so after the frame it may be parked in.
 func (c *channelConn) displace() {
