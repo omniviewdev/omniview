@@ -250,6 +250,16 @@ function createCore(deps: ChannelDeps): Core {
     }
   };
 
+  /**
+   * An error of the host as it leaves this file: its public reading (`parseAppError`: type, title, status, detail, code, shells tried, suggestions) cleaned of every capability the page has held, in a new error
+   * with no cause and no other field. The host never puts a capability in an error, but a place that echoes what it was given might, and the feed logs what it is handed.
+   */
+  const clean = (error: unknown): Error => {
+    const read = parseAppError(error);
+    const safe = JSON.parse(scrub(JSON.stringify(read))) as Record<string, unknown>;
+    return Object.assign(new Error(scrub(messageOf(error))), safe);
+  };
+
   const isGone = (error: unknown): boolean => parseAppError(error).type === SESSION_NOT_FOUND;
 
   /** A call that names a terminal: the host is asked with its capability, and a terminal the page holds none for is answered as the host answers a capability that opens nothing. */
@@ -271,13 +281,15 @@ function createCore(deps: ChannelDeps): Core {
         forget(id, cap);
       }
 
-      throw error;
+      throw clean(error);
     }
   }
 
   /** The host's listing of some capabilities, which is a list. */
   async function listing(capabilities: string[]): Promise<readonly unknown[]> {
-    const answer = await client.ListChannelTerminals(capabilities);
+    const answer = await Promise.resolve(client.ListChannelTerminals(capabilities)).catch((error: unknown) => {
+      throw clean(error);
+    });
     if (!Array.isArray(answer)) {
       throw new Error('The host did not answer the list of terminals with a list.');
     }
@@ -289,10 +301,14 @@ function createCore(deps: ChannelDeps): Core {
 
   const channels: TerminalChannels = {
     create: async (id: string, launch: ChannelLaunch) => {
-      const session = await client.CreateTerminal(
-        { id, tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' },
-        { channel: true, cols: launch.cols, rows: launch.rows, ...(launch.leaseMs === undefined ? {} : { lease_ms: launch.leaseMs }) },
-      );
+      const session = await Promise.resolve(
+        client.CreateTerminal(
+          { id, tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' },
+          { channel: true, cols: launch.cols, rows: launch.rows, ...(launch.leaseMs === undefined ? {} : { lease_ms: launch.leaseMs }) },
+        ),
+      ).catch((error: unknown) => {
+        throw clean(error);
+      });
       if (!isRecord(session)) {
         throw new Error('The host did not answer with a terminal.');
       }
