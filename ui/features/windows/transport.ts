@@ -5,8 +5,9 @@ import type {
   TabDragPointer,
   TabDragTransport,
 } from '@omniviewdev/base-ui';
-import { ExecClient, WindowClient } from '@omniviewdev/runtime/api';
+import { WindowClient } from '@omniviewdev/runtime/api';
 import { Events } from '@omniviewdev/runtime/runtime';
+import { hasTerminalSessionToOffer, offerTerminalSession } from '@/providers/BottomDrawer/terminalHandoff';
 import { DRAWER_TAB_DRAG_TYPE } from './dragTypes';
 import { currentWindow } from './identity';
 
@@ -43,7 +44,11 @@ class SerialDragChannel {
   private pendingMovePoint: ClientPoint | null = null;
   private moveScheduled = false;
 
-  constructor(private readonly sessionId: string) {}
+  constructor(
+    private readonly sessionId: string,
+    /** The terminal session that the drag offers when it is dropped; null when it carries none. */
+    readonly tabToOffer: OfferableTab | null,
+  ) {}
 
   async enqueue<T>(call: () => Promise<T>): Promise<T> {
     const result = this.tail.then(call);
@@ -71,24 +76,22 @@ class SerialDragChannel {
   }
 }
 
+type OfferableTab = Parameters<typeof offerTerminalSession>[0];
+
 /**
  * A drawer tab that is a terminal carries its session, and a window cannot
- * attach a session that another window holds (docs/ui-next/status/T2c-go.md):
- * the window that drags it offers the session as the drag begins, before the
- * window under the pointer can attach it. Anything else has nothing to offer,
- * and a failed offer does not stop the drag.
+ * attach a session that another window holds (docs/ui-next/status/T2c-go.md).
+ * Returns the tab to offer when it is dropped, or null when the payload is not
+ * a drawer tab that has a session to offer.
  */
-async function offerDraggedSession(payload: TabDragPayload): Promise<void> {
-  const tab = payload.tab.payload as { variant?: unknown } | undefined;
-  if (payload.dragType !== DRAWER_TAB_DRAG_TYPE || tab?.variant !== 'terminal' || payload.tab.id.startsWith('pending-')) {
-    return;
+function tabWithSessionToOffer(payload: TabDragPayload): OfferableTab | null {
+  const drawerTab = payload.tab.payload as { variant?: unknown; properties?: Record<string, unknown> } | undefined;
+  if (payload.dragType !== DRAWER_TAB_DRAG_TYPE || typeof drawerTab?.variant !== 'string') {
+    return null;
   }
 
-  try {
-    await ExecClient.OfferSession(payload.tab.id);
-  } catch (error) {
-    console.warn('[windows] could not offer the session of a terminal that is dragged', payload.tab.id, error);
-  }
+  const tab = { id: payload.tab.id, variant: drawerTab.variant, properties: drawerTab.properties };
+  return hasTerminalSessionToOffer(tab) ? tab : null;
 }
 
 /**
@@ -103,10 +106,9 @@ export function createWailsTabDragTransport(): TabDragTransport {
 
   return {
     begin(sessionId, payload, pointer: TabDragPointer) {
-      const channel = new SerialDragChannel(sessionId);
+      const channel = new SerialDragChannel(sessionId, tabWithSessionToOffer(payload));
       channels.set(sessionId, channel);
       void channel.enqueue(async () => {
-        await offerDraggedSession(payload);
         await WindowClient.BeginDrag({
           sessionId,
           sourceWindow: currentWindow.name,
@@ -128,8 +130,24 @@ export function createWailsTabDragTransport(): TabDragTransport {
       }
 
       channels.delete(sessionId);
-      const result = await channel.enqueue(async () => WindowClient.EndDrag(sessionId, pointer.clientX, pointer.clientY));
-      return result.accepted ? { targetInstanceId: result.targetInstanceId } : null;
+      const result = await channel.enqueue(async () => {
+        // The target attaches the session as soon as EndDrag forwards the drop to it, and an offer stays open for a
+        // minute: the offer is made here, in line, and not as the drag begins, which can be long before the drop.
+        if (channel.tabToOffer) {
+          try {
+            await offerTerminalSession(channel.tabToOffer);
+          } catch (error) {
+            console.warn('[windows] could not offer the session of a terminal that is dropped; the drag is cancelled', channel.tabToOffer.id, error);
+            await WindowClient.CancelDrag(sessionId).catch((cancelError: unknown) => {
+              console.error('[windows] CancelDrag failed', cancelError);
+            });
+            return null;
+          }
+        }
+
+        return WindowClient.EndDrag(sessionId, pointer.clientX, pointer.clientY);
+      });
+      return result?.accepted ? { targetInstanceId: result.targetInstanceId } : null;
     },
 
     cancel(sessionId) {
