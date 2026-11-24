@@ -13,6 +13,7 @@ export * from './components/Field';
 export * from './components/HoverCard';
 export * from './components/Icon';
 export * from './components/IconButton';
+export * from './components/KeyHint';
 export * from './components/KeyValue';
 export * from './components/KindTile';
 export * from './components/Link';

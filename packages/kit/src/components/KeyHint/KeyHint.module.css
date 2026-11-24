@@ -1,0 +1,23 @@
+@layer ov.components {
+  .chord {
+    font: inherit;
+    unicode-bidi: isolate;
+    white-space: nowrap;
+  }
+
+  .pair {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--ov-spacing-4);
+    white-space: nowrap;
+  }
+
+  .spoken {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

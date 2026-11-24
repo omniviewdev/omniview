@@ -1,4 +1,4 @@
-import { Icon, tip } from '@omniviewdev/kit';
+import { Icon, KeyHint, tip } from '@omniviewdev/kit';
 import { useState } from 'react';
 import { platformOf } from '../core/chords';
 import { usePalette } from './context';
@@ -9,7 +9,7 @@ import { chordKeys, chordText } from './words';
  * The top row's Search control (ch16 S6, the Window actions: Search `⌘K`): a 20 px glyph and the chord, 30 px high, which opens the palette. It is a button and a Tab stop (decision A14), named
  * Search, with its chord as `aria-keyshortcuts` and in its tip. Its accessible name is the label and the chord it draws ("Search ⌘K"): a name that holds the text the control shows is one a voice
  * user can say (WCAG 2.5.3). It takes the focus when it is pressed: Safari does not focus a button it was clicked on, and the palette gives the focus back to the element that had it when it
- * opened, so the control must be that element. Kit part it should become: the window actions' button, with its key hint.
+ * opened, so the control must be that element.
  */
 export function Search() {
   const { store, opening } = usePalette();
@@ -32,7 +32,7 @@ export function Search() {
       }}
     >
       <Icon name="search" size={20} />
-      <kbd className={styles.hint}>{chord}</kbd>
+      <KeyHint keys={chord} />
     </button>
   );
 }

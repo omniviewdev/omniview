@@ -44,7 +44,7 @@ describe('the Search control', () => {
     const button = control();
     expect(button).toHaveAttribute('aria-haspopup', 'dialog');
     expect(button).toHaveAttribute('aria-keyshortcuts', 'Meta+K');
-    expect(button).toHaveTextContent('⌘K');
+    expect(button.querySelector('kbd')).toHaveTextContent('⌘K');
     expect(button).toHaveAttribute('data-ov-tip', 'Search\n⌘K');
     expect(button.closest('[data-shell-region="topRow"]')).not.toBeNull();
     expect(button).toHaveAttribute('data-shell-part', 'search');
@@ -58,7 +58,7 @@ describe('the Search control', () => {
   it('says Control K elsewhere', () => {
     mountShell('Linux x86_64');
     expect(control()).toHaveAttribute('aria-keyshortcuts', 'Control+K');
-    expect(control()).toHaveTextContent('Ctrl+K');
+    expect(control().querySelector('kbd')).toHaveTextContent('Ctrl+K');
     expect(control()).toHaveAccessibleName('Search Ctrl+K');
     expect(control()).toHaveAttribute('data-ov-tip', 'Search\nCtrl+K');
   });
