@@ -148,6 +148,7 @@ func NewController(
 		sessionIndex:     make(map[string]sessionIndex),
 		creating:         make(map[terminal.Owner]map[*createGuard]struct{}),
 		beforeSend:       nil,
+		claimWaiting:     nil,
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -176,9 +177,12 @@ type controller struct {
 	// beforeSend is set by a test, and by nothing else: it runs in sendHeld, holding c.mu, once the window is known to hold the session
 	// and before the input is offered to the plugin, so that a test can place a claim after the window was checked and before the input is sent.
 	beforeSend func(sessionID string)
-	inChans    map[string]chan exec.StreamInput
-	handlerMap map[string]map[string]exec.Handler
-	streams    map[string]execProviderStream
+	// claimWaiting is set by a test, and by nothing else: claimSession calls it when a window's claim has to wait for a call that is on its
+	// way to the plugin for the window that holds the session.
+	claimWaiting func(sessionID string)
+	inChans      map[string]chan exec.StreamInput
+	handlerMap   map[string]map[string]exec.Handler
+	streams      map[string]execProviderStream
 
 	// Publication and retirement share this outer lock. Never acquire it with mu held.
 	outputMu sync.Mutex

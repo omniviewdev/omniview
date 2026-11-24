@@ -53,6 +53,42 @@ type aHeldPlugin struct {
 	createGate *aGate
 	closeGate  *aGate
 	closeFails error
+
+	// the calls the plugin answered for a window, in the order it answered them (resize, get, attach, detach).
+	answeredMu sync.Mutex
+	answered   []string
+}
+
+func (p *aHeldPlugin) answer(call string) {
+	p.answeredMu.Lock()
+	defer p.answeredMu.Unlock()
+	p.answered = append(p.answered, call)
+}
+
+func (p *aHeldPlugin) answers() []string {
+	p.answeredMu.Lock()
+	defer p.answeredMu.Unlock()
+	return append([]string(nil), p.answered...)
+}
+
+func (p *aHeldPlugin) ResizeSession(_ *sdktypes.PluginContext, _ string, _, _ int32) error {
+	p.answer("resize")
+	return nil
+}
+
+func (p *aHeldPlugin) GetSession(_ *sdktypes.PluginContext, id string) (*execsdk.Session, error) {
+	p.answer("get")
+	return &execsdk.Session{ID: id}, nil
+}
+
+func (p *aHeldPlugin) AttachSession(ctx *sdktypes.PluginContext, id string) (*execsdk.Session, []byte, error) {
+	p.answer("attach")
+	return p.aKeepingPlugin.AttachSession(ctx, id)
+}
+
+func (p *aHeldPlugin) DetachSession(ctx *sdktypes.PluginContext, id string) (*execsdk.Session, error) {
+	p.answer("detach")
+	return p.aKeepingPlugin.DetachSession(ctx, id)
 }
 
 func (p *aHeldPlugin) CreateSession(ctx *sdktypes.PluginContext, opts execsdk.SessionOptions) (*execsdk.Session, error) {
@@ -573,4 +609,102 @@ func TestInputThatThePluginHasNotTakenWhenASessionChangesHandsIsRefusedAndNeverS
 		all = append(all, word)
 	}
 	assert.Equal(t, []string{"B1"}, all, "the plugin has B's input and none of A's, which was not taken when B claimed")
+}
+
+// THE PLUGIN'S OWN CALLS (CodeRabbit on #677: keep ownership stable until the provider operation completes).
+//
+// A call that the plugin answers (resize, detach, the facts of a session, attach) checked the window on a copy of the record, then
+// asked for the connection and called the plugin. A window that took the session in between (an offer that was used) left the
+// call to act for the window that lost it: a resize, a detach or a read of a session that is the other's now, and, for an attach,
+// the output of it. The session's gate orders a call from its check to the plugin's answer (shared) against a claim by another
+// window (exclusive): the claim waits for the call that was on its way, and a call that comes after it is refused. Each case holds
+// the call after its check (the lookup of the connection), lands the claim there, and states that the claim waited for the
+// call (the controller says so when it has to) and that the call was answered, as the holder's, before the claim.
+func TestAClaimWaitsForTheCallToThePluginOfTheWindowThatHeldTheSessionAndNoCallIsMadeAfterIt(t *testing.T) {
+	cases := []struct {
+		name    string
+		call    func(fx *anOwnershipRaceFixture) error
+		answers []string
+		again   func(fx *anOwnershipRaceFixture) error
+	}{
+		{
+			name:    "resize",
+			call:    func(fx *anOwnershipRaceFixture) error { return fx.ctrl.ResizeSession("wA", "moving", 24, 80) },
+			answers: []string{"resize", "attach"},
+			again:   func(fx *anOwnershipRaceFixture) error { return fx.ctrl.ResizeSession("wA", "moving", 24, 80) },
+		},
+		{
+			name: "detach",
+			call: func(fx *anOwnershipRaceFixture) error {
+				_, err := fx.ctrl.DetachSession("wA", "moving")
+				return err
+			},
+			answers: []string{"detach", "attach"},
+			again: func(fx *anOwnershipRaceFixture) error {
+				_, err := fx.ctrl.DetachSession("wA", "moving")
+				return err
+			},
+		},
+		{
+			name: "facts",
+			call: func(fx *anOwnershipRaceFixture) error {
+				_, err := fx.ctrl.GetSession("wA", "moving")
+				return err
+			},
+			answers: []string{"get", "attach"},
+			again: func(fx *anOwnershipRaceFixture) error {
+				_, err := fx.ctrl.GetSession("wA", "moving")
+				return err
+			},
+		},
+		{
+			name: "attach",
+			call: func(fx *anOwnershipRaceFixture) error {
+				_, _, err := fx.ctrl.AttachSession("wA", "moving")
+				return err
+			},
+			answers: []string{"attach", "attach"},
+			again: func(fx *anOwnershipRaceFixture) error {
+				_, _, err := fx.ctrl.AttachSession("wA", "moving")
+				return err
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newOwnershipRaceFixture(t)
+			fx.make("wA", "moving")
+			require.NoError(t, fx.ctrl.OfferSession("wA", "moving"))
+			gate := fx.conn.holdTheNextConnectionLookup()
+			waiting := make(chan struct{}, 1)
+			fx.ctrl.claimWaiting = func(string) { waiting <- struct{}{} }
+
+			answered := make(chan error, 1)
+			go func() { answered <- tc.call(fx) }()
+			<-gate.entered // A was checked, and is on its way to the plugin
+
+			claimed := make(chan error, 1)
+			go func() {
+				_, _, err := fx.ctrl.AttachSession("wB", "moving")
+				claimed <- err
+			}()
+			var claimErr error
+			claimWaited := false
+			select {
+			case <-waiting:
+				claimWaited = true
+			case claimErr = <-claimed:
+			}
+			close(gate.release)
+			require.NoError(t, <-answered, "A held the session when it asked")
+			if claimWaited {
+				claimErr = <-claimed
+			}
+			require.NoError(t, claimErr, "B claims the session that A offered")
+
+			assert.True(t, claimWaited, "the claim waited for the call that was on its way to the plugin: it did not land between the check and the call")
+			assert.Equal(t, tc.answers, fx.plugin.answers(), "the plugin answered A, then B's attach")
+			requireSessionNotFound(t, tc.again(fx), "moving")
+		})
+	}
 }
