@@ -780,6 +780,18 @@ export type PageOperationAction = {
 export type PageOperationState = 'queued' | 'running' | 'paused' | 'succeeded' | 'failed' | 'cancelled' | 'unknown';
 
 // @public
+export function ProgressBar(input: ProgressBarProps): JSX.Element;
+
+// @public (undocumented)
+export type ProgressBarProps = {
+    readonly label: string;
+    readonly value: number | 'indeterminate';
+    readonly valueText?: string | undefined;
+    readonly paused?: boolean | undefined;
+    readonly indeterminateMotion?: 'stripe' | 'sweep' | undefined;
+} & DataAttributes;
+
+// @public
 export type QuickFilter = {
     readonly id: string;
     readonly label: string;

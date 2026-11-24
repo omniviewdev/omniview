@@ -1,0 +1,72 @@
+@layer ov.components {
+  .root {
+    --_fill: var(--ov-accent);
+
+    display: block;
+    inline-size: 100%;
+    min-inline-size: 0;
+    block-size: 4px;
+    overflow: hidden;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--ov-progress-track);
+  }
+
+  .root[data-ov-paused='true'] {
+    --_fill: var(--ov-fg-secondary);
+  }
+
+  .fill {
+    display: block;
+    inline-size: calc(var(--_percent, 0) * 1%);
+    block-size: 100%;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--_fill);
+  }
+
+  .root[data-ov-indeterminate='true'] > .fill {
+    inline-size: 100%;
+    background-image: repeating-linear-gradient(90deg, var(--_fill) 0 8px, var(--ov-progress-track) 8px 16px);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .root[data-ov-motion='stripe']:not([data-ov-paused]) > .fill {
+      background-image: linear-gradient(90deg, var(--ov-accent) 0%, var(--ov-link) 50%, var(--ov-accent) 100%);
+      background-size: 200% 100%;
+      animation: stripe 800ms linear infinite;
+    }
+
+    .root[data-ov-motion='sweep']:not([data-ov-paused]) > .fill {
+      --_sweep-from: -100%;
+      --_sweep-to: 250%;
+
+      inline-size: 40%;
+      background-image: none;
+      animation: sweep 1.4s linear infinite;
+    }
+
+    .root[data-ov-motion='sweep']:not([data-ov-paused]):dir(rtl) > .fill {
+      --_sweep-from: 100%;
+      --_sweep-to: -250%;
+    }
+  }
+
+  @keyframes stripe {
+    from {
+      background-position: 0 0;
+    }
+
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  @keyframes sweep {
+    from {
+      transform: translateX(var(--_sweep-from));
+    }
+
+    to {
+      transform: translateX(var(--_sweep-to));
+    }
+  }
+}

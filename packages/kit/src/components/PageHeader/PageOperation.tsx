@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Button } from '../Button';
 import { IconButton } from '../IconButton';
+import { ProgressBar } from '../ProgressBar';
 import type { PageOperation, PageOperationAction, PageOperationState } from './operation';
 import styles from './PageOperation.module.css';
 
@@ -46,9 +47,6 @@ const SEVERITY: Readonly<Record<PageOperationState, Severity>> = {
 
 /** The word that leads the presenter's accessible name. */
 const WORD: Readonly<Record<Severity, string>> = { info: 'Info', success: 'Success', warning: 'Warning', error: 'Error' };
-
-/** Whole percent, 0 to 100. */
-const percentOf = (progress: number) => Math.round(Math.min(1, Math.max(0, progress)) * 100);
 
 function Command({ action }: { readonly action: PageOperationAction }) {
   const kind = action.kind;
@@ -130,25 +128,16 @@ export function PageOperationView({ operation }: { readonly operation: PageOpera
           <span className={styles.phase} data-ov-clip="">
             {text}
           </span>
-          {bar ? (
-            <div className={styles.track} data-ov-track="">
-              <div
-                className={styles.bar}
-                role="progressbar"
-                aria-label={title}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={progress === 'indeterminate' ? undefined : percentOf(progress)}
-                aria-valuetext={text}
-                data-ov-indeterminate={progress === 'indeterminate' ? 'true' : undefined}
-                data-ov-paused={state === 'paused' ? 'true' : undefined}
-              >
-                <span className={styles.fill} style={{ '--_p': progress === 'indeterminate' ? 100 : percentOf(progress) }} />
-              </div>
-            </div>
-          ) : (
-            <div className={styles.track} data-ov-track="" aria-hidden="true" />
-          )}
+          <div className={styles.track} data-ov-track="" aria-hidden={bar ? undefined : 'true'}>
+            {bar ? (
+              <ProgressBar
+                label={title}
+                value={typeof progress === 'number' ? Math.round(progress * 100) : progress}
+                valueText={text}
+                paused={state === 'paused'}
+              />
+            ) : null}
+          </div>
         </div>
         <div className={styles.actions}>
           {action === undefined ? null : <Command action={action} />}
