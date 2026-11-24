@@ -1,14 +1,14 @@
-import { onEventsReconnect } from '@omniviewdev/runtime/runtime';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TerminalsOptions } from '../../shell';
+import type { TerminalChannels } from '../../shell/panel/terminal/channel';
 import { attachLocalTerminal, restoreLocalTerminals } from '../../shell/panel/terminal/localShell';
-import { PAGE_KEY_SLOT } from '../../shell/panel/terminal/pageKey';
+import { loadAppTerminalChannels } from '../../shell/panel/terminal/terminalChannel';
 import { PluginHostScreen } from './PluginHostScreen';
 
-// What the screen of contributed pages gives the Terminal tool for a reload (T2-go): the window's page key, read beside its session and its notifications from the host's window service (a slot of its own), and a way
-// to find the terminals the window left under that key. The host is drawn once all three have been read, so that its terminals are made with the key from their first press. Everything outside the screen is what the
-// test says: the host's window service is a map of slots, and the host component records the props it was given.
+// What the screen of contributed pages gives the Terminal tool for a reload (#693 step 4): the terminal channels of the page, with the capabilities its window kept, read beside its session and its notifications; and a way to
+// find the terminals the window left, and to attach one again, through those channels. The host is drawn once all three have been read, so that the terminals the window left are found from the first frame. Everything outside
+// the screen is what the test says: the host's window service is a map of slots, the loader of the channels is a promise the test settles, and the host component records the props it was given.
 
 type Inventory = { readonly plugins: readonly unknown[]; readonly state: 'ready' | 'loading' | 'failed'; readonly retry: () => void };
 
@@ -17,12 +17,6 @@ const world = vi.hoisted(() => {
   return {
     /** The slots of the window, as the host's window service keeps them. */
     slots: new Map<string, string>(),
-    /** While it is set, a write to a slot waits for it. */
-    held: undefined as Promise<void> | undefined,
-    /** Whether a read of the slots fails. */
-    unreadable: false,
-    /** The slots that were written, in order. */
-    written: [] as string[],
     /** The props the host was given, in order. */
     given: [] as Array<{ readonly terminals?: TerminalsOptions | undefined }>,
     /** What the inventory says; a test changes it to have the screen drawn again. */
@@ -33,17 +27,10 @@ const world = vi.hoisted(() => {
 vi.mock('@omniviewdev/runtime/api', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   WindowClient: {
-    GetState: async () => {
-      if (world.unreadable) {
-        throw new Error('the host did not answer');
-      }
-
-      return Promise.resolve(Object.fromEntries(world.slots));
-    },
+    GetState: async () => Promise.resolve(Object.fromEntries(world.slots)),
     SaveState: async (_name: string, slot: string, json: string) => {
-      await world.held;
       world.slots.set(slot, json);
-      world.written.push(slot);
+      return Promise.resolve();
     },
     List: async () => Promise.resolve([{ name: 'main' }]),
     OpenSettings: async () => Promise.resolve(),
@@ -54,10 +41,10 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   Window: { Name: async () => Promise.resolve('main'), Close: async () => Promise.resolve() },
   Events: { On: () => () => undefined },
-  onEventsReconnect: vi.fn(),
 }));
 
 vi.mock('../../shell/panel/terminal/localShell', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), restoreLocalTerminals: vi.fn(), attachLocalTerminal: vi.fn() }));
+vi.mock('../../shell/panel/terminal/terminalChannel', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), loadAppTerminalChannels: vi.fn() }));
 
 vi.mock('./useInstalledPlugins', () => ({ useInstalledPlugins: () => world.inventory }));
 
@@ -68,22 +55,20 @@ vi.mock('./PluginHost', () => ({
   },
 }));
 
-const SAVED_KEY = 'a-key-saved-by-an-earlier-page';
+const channels = { name: 'the channels of the page' } as unknown as TerminalChannels;
 
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   vi.mocked(restoreLocalTerminals).mockReset();
   vi.mocked(attachLocalTerminal).mockReset();
-  vi.mocked(onEventsReconnect).mockReset();
+  vi.mocked(loadAppTerminalChannels).mockReset();
+  vi.mocked(loadAppTerminalChannels).mockResolvedValue(channels);
 });
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   world.slots.clear();
-  world.held = undefined;
-  world.unreadable = false;
-  world.written.length = 0;
   world.given.length = 0;
   world.inventory = { plugins: [], state: 'ready', retry: () => undefined };
 });
@@ -98,44 +83,29 @@ async function turns(): Promise<void> {
   }
 }
 
-describe('the page key the screen gives the Terminal tool', () => {
-  it('is read before the host is drawn, with the session and the notifications: the host waits for a key that has to be saved first, and is drawn with it once it is', async () => {
-    const gate = Promise.withResolvers<void>();
-    world.held = gate.promise;
+describe('the terminal channels the screen gives the Terminal tool', () => {
+  it('are loaded before the host is drawn, with the session and the notifications: the host waits for the capabilities the window kept, and is drawn once they are read', async () => {
+    const gate = Promise.withResolvers<TerminalChannels>();
+    vi.mocked(loadAppTerminalChannels).mockReturnValue(gate.promise);
     render(<PluginHostScreen />);
     await turns();
+    expect(loadAppTerminalChannels).toHaveBeenCalledTimes(1);
     expect(world.given).toHaveLength(0);
-    gate.resolve();
+    gate.resolve(channels);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
-    const saved: unknown = JSON.parse(world.slots.get(PAGE_KEY_SLOT) ?? 'null');
-    expect(typeof saved).toBe('string');
-    expect(drawn()?.terminals?.pageKey).toBe(saved);
   });
 
-  it('is the one this window saved before, when it saved one, and nothing is written: a reload finds its terminals under the key they were started with', async () => {
-    world.slots.set(PAGE_KEY_SLOT, JSON.stringify(SAVED_KEY));
+  it('come as a way to find the terminals the window left and a way to attach one again, and nothing else: no page key, no reconnection signal', async () => {
     render(<PluginHostScreen />);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
-    expect(drawn()?.terminals?.pageKey).toBe(SAVED_KEY);
-    expect(world.written).not.toContain(PAGE_KEY_SLOT);
+    expect(Object.keys(drawn()?.terminals ?? {}).sort()).toEqual(['reattach', 'restore']);
   });
 
-  it('is a key of its own for a window whose slots cannot be read, and the window is drawn all the same: a key that lives as long as the page, and a note on the console', async () => {
-    world.unreadable = true;
-    render(<PluginHostScreen />);
-    await waitFor(() => {
-      expect(world.given.length).toBeGreaterThan(0);
-    });
-    expect(drawn()?.terminals?.pageKey).toMatch(/^[\x21-\x7e]{16,128}$/);
-    expect(console.warn).toHaveBeenCalled();
-  });
-
-  it('comes with a way to find the terminals the window left, which asks the host under that key, when it is asked and not before', async () => {
-    world.slots.set(PAGE_KEY_SLOT, JSON.stringify(SAVED_KEY));
+  it('are what the way to find the terminals the window left asks, when it is asked and not before', async () => {
     const found = [{ plugin: 'host', id: 'local', title: 'zsh', sessionId: 'term-1', open: vi.fn() }];
     vi.mocked(restoreLocalTerminals).mockResolvedValue(found);
     render(<PluginHostScreen />);
@@ -145,11 +115,10 @@ describe('the page key the screen gives the Terminal tool', () => {
     expect(restoreLocalTerminals).not.toHaveBeenCalled();
     await expect(drawn()?.terminals?.restore?.()).resolves.toBe(found);
     expect(restoreLocalTerminals).toHaveBeenCalledTimes(1);
-    expect(restoreLocalTerminals).toHaveBeenCalledWith(SAVED_KEY);
+    expect(restoreLocalTerminals).toHaveBeenCalledWith(channels);
   });
 
-  it('comes with a way to attach a terminal again that this window lost to another tab, which attaches it under the window\'s key, when it is asked and not before', async () => {
-    world.slots.set(PAGE_KEY_SLOT, JSON.stringify(SAVED_KEY));
+  it('are what the way to attach a terminal again attaches through, when it is asked and not before', async () => {
     const target = { plugin: 'host', id: 'local', title: 'zsh', sessionId: 'term-7', open: vi.fn() };
     vi.mocked(attachLocalTerminal).mockReturnValue(target);
     render(<PluginHostScreen />);
@@ -159,21 +128,18 @@ describe('the page key the screen gives the Terminal tool', () => {
     expect(attachLocalTerminal).not.toHaveBeenCalled();
     expect(drawn()?.terminals?.reattach?.('term-7')).toBe(target);
     expect(attachLocalTerminal).toHaveBeenCalledTimes(1);
-    expect(attachLocalTerminal).toHaveBeenCalledWith(SAVED_KEY, 'term-7');
+    expect(attachLocalTerminal).toHaveBeenCalledWith('term-7', undefined, channels);
   });
 
-  it('comes with the page\'s events reconnection signal as the runtime has it, for the Terminal tool to listen to: the screen does not subscribe to it itself', async () => {
-    world.slots.set(PAGE_KEY_SLOT, JSON.stringify(SAVED_KEY));
+  it('keep the window\'s slots as they were: the screen writes none for the terminals, which the channels keep themselves', async () => {
     render(<PluginHostScreen />);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
-    expect(drawn()?.terminals?.reconnect).toBe(onEventsReconnect);
-    expect(onEventsReconnect).not.toHaveBeenCalled();
+    expect([...world.slots.keys()]).not.toContain('terminal-page-key');
   });
 
-  it('is handed to the host as one set of options for the life of the window, however often the screen is drawn', async () => {
-    world.slots.set(PAGE_KEY_SLOT, JSON.stringify(SAVED_KEY));
+  it('are handed to the host as one set of options for the life of the window, however often the screen is drawn', async () => {
     const view = render(<PluginHostScreen />);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);

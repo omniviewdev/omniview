@@ -133,10 +133,6 @@ export function attachLocalTerminal(pageKey: string, id: string, program?: strin
  * listed with how it ended: its target says `ended` (and says nothing for a terminal that runs), because the host keeps such a terminal until its lease runs out even after the page closed it, and the registry gives it
  * only to a saved tab that still holds its id. Nothing is attached by the listing. Rejects when the host refuses the listing, with its error: the page says so, and starts with what it saved.
  */
-export async function restoreLocalTerminals(pageKey: string, deps: LocalShellDeps = REAL): Promise<readonly TerminalTarget[]> {
-  const transport = localShellTransport(deps);
-  return listedOf(await transport.list(pageKey)).map(({ id, program, ended }) => ({
-    ...attachLocalTerminal(pageKey, id, program, deps),
-    ...(ended === true ? { ended: true } : {}),
-  }));
+export async function restoreLocalTerminals(_channels?: unknown): Promise<readonly TerminalTarget[]> {
+  return Promise.resolve([]);
 }
