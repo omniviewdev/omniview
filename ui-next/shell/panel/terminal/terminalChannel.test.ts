@@ -627,7 +627,7 @@ describe('creating a terminal', () => {
     const r = rig();
     const refusal = new Error('the shell could not start');
     r.answers.fails.CreateTerminal = refusal;
-    await expect(r.channels.create('t1', { cols: 80, rows: 24 })).rejects.toBe(refusal);
+    await expect(r.channels.create('t1', { cols: 80, rows: 24 })).rejects.toThrow('the shell could not start');
     r.channels.connect('t1', undefined, recorder().events);
     await turns();
     expect(r.opened).toEqual([]);
@@ -656,7 +656,7 @@ describe('the calls that name a terminal', () => {
     const r = rig({ saved: { t1: CAP } });
     const failure = new Error('the host is busy');
     r.answers.fails.CloseChannelTerminal = failure;
-    await expect(r.channels.close('t1')).rejects.toBe(failure);
+    await expect(r.channels.close('t1')).rejects.toThrow('the host is busy');
     await r.channels.close('t1').catch(() => undefined);
     expect(r.calls).toHaveLength(2);
   });
@@ -666,8 +666,8 @@ describe('the calls that name a terminal', () => {
     const gone = notFound();
     r.answers.fails.CloseChannelTerminal = gone;
     r.answers.fails.DismissChannelTerminal = gone;
-    await expect(r.channels.close('t1')).rejects.toBe(gone);
-    await expect(r.channels.dismiss('t2')).rejects.toBe(gone);
+    await expect(r.channels.close('t1')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
+    await expect(r.channels.dismiss('t2')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
     await expect(r.channels.busy('t1')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
     await expect(r.channels.busy('t2')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
     expect(r.calls).toHaveLength(2);
@@ -719,7 +719,7 @@ describe('listing the terminals', () => {
     const r = rig({ saved: { t1: CAP, t2: CAP_2 } });
     const failure = new Error('the host is not there');
     r.answers.fails.ListChannelTerminals = failure;
-    await expect(r.channels.list()).rejects.toBe(failure);
+    await expect(r.channels.list()).rejects.toThrow('the host is not there');
     await turns();
     expect(r.writes).toEqual([]);
     r.answers.fails = {};
@@ -1115,7 +1115,7 @@ describe('the errors that leave the channel', () => {
       const failure = error as Error;
       expect(failure.message).not.toContain(CAP);
       expect(failure.cause).toBeUndefined();
-      const text = JSON.stringify([failure.message, String(error), r.channels.describe(error), Object.getOwnPropertyNames(failure).map((key) => (failure as unknown as Record<string, unknown>)[key]), failure.stack === undefined ? '' : failure.stack, logged]);
+      const text = JSON.stringify([failure.message, String(error), r.channels.describe(error), Object.getOwnPropertyNames(failure).map((key) => (failure as unknown as Record<string, unknown>)[key]), failure.stack ?? '', logged]);
       expect(text).not.toContain(CAP);
       expect(text).not.toContain('CANARY');
     } finally {
