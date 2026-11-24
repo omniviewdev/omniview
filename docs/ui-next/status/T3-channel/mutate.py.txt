@@ -57,6 +57,7 @@ CHANNEL_ID_4 = "TestAnIDThatAChannelTerminalIsBeingMadeWithIsHeldAgainstEveryLan
 IN_USE = "the refusal is the one CreateTerminal gives for an id in use"
 CHANNEL_FRAME_1 = "TestAPluginFrameUnderTheIDOfAChannelTerminalIsDropped"
 CHANNEL_FRAME_2 = "TestAPluginsCloseUnderTheIDOfAChannelTerminalNeitherEndsItNorReachesAWindow"
+NOWHERE = "TestTheCapabilityAppearsNowhereInALogAnEventAnErrorAFrameOrASpan"
 
 # number, what the fault is, file, the edits (each: the text it replaces, once, and the text it puts there), then the checks: for
 # each package the tests named for the fault with a part of the message of the assertion that must fail, and the guards (names in
@@ -119,9 +120,11 @@ CONTROLS = [
        "\t\ttail.data = append(tail.data, p[:n]...)\n\t\tif n > 0 {\n\t\t\ttail.data[len(tail.data)-1] ^= 0x01\n\t\t}\n")],
      [(TERMINAL, [(NO_READER, "the ring holds the newest"), (NO_STREAM, "the ring holds the newest")], ["newest-bytes"])]),
 
+    # The page's own check that the output continues where the gap says (gap-continues) catches this fault as well, as it should: both
+    # are switched off for the second run, and the gap assertion is the one that makes the first run red, at once.
     (13, "the gap frame says it ends one byte before the output goes on", SERVE,
      [("return sd.send(gapFrame(next.from, next.to), next)", "return sd.send(gapFrame(next.from, next.to-1), next)")],
-     [(TERMINAL, [(WAKES, "from the end of what was sent to the first byte the ring still has")], ["gap-frame", "lost-counted"])]),
+     [(TERMINAL, [(WAKES, "from the end of what was sent to the first byte the ring still has")], ["gap-frame", "gap-continues", "lost-counted"])]),
 
     (14, "the stream counts one byte more lost than its gap says", SERVE,
      [("c.lost.Add(step.to - step.from)", "c.lost.Add(step.to - step.from + 1)")],
@@ -167,6 +170,17 @@ CONTROLS = [
     (23, "A: the CLOSE of a plugin under the id of a channel terminal is decided in the record's critical section without asking whether a channel terminal holds the id", EXEC + "/ended_session.go",
      [("heldByAnother(record, recorded, pluginID, c.channelHoldsLocked(sessionID))", "heldByAnother(record, recorded, pluginID, false)")],
      [(EXEC, [(CHANNEL_FRAME_2, "the decision is taken with the record, in one step")], ["channel-id-frames-dropped"])]),
+
+    # The test that scans everything the host writes for the capability, now repeatable (one shared span exporter, reset for each run).
+    (24, "a span of the create of a channel terminal carries the capability", EXEC + "/terminal.go",
+     [("\ttrace.SpanFromContext(ctx).SetAttributes(attribute.String(\"session_id\", info.ID))\n\tc.logger.Infow(ctx, \"exec channel terminal created\", \"sessionID\", info.ID)\n",
+       "\ttrace.SpanFromContext(ctx).SetAttributes(attribute.String(\"session_id\", info.ID), attribute.String(\"capability\", info.Cap))\n\tc.logger.Infow(ctx, \"exec channel terminal created\", \"sessionID\", info.ID)\n")],
+     [(EXEC, [(NOWHERE, "the capability (or a piece of it) is in")], ["capability-appears-nowhere"])]),
+
+    (25, "the log line of the create of a channel terminal carries the capability", EXEC + "/terminal.go",
+     [("c.logger.Infow(ctx, \"exec channel terminal created\", \"sessionID\", info.ID)\n",
+       "c.logger.Infow(ctx, \"exec channel terminal created\", \"sessionID\", info.ID, \"capability\", info.Cap)\n")],
+     [(EXEC, [(NOWHERE, "the capability (or a piece of it) is in")], ["capability-appears-nowhere"])]),
 ]
 
 

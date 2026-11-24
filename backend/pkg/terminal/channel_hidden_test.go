@@ -128,16 +128,23 @@ func TestAPageThatWakesGetsAGapOfExactlyWhatTheRingOverwroteThenTheExactSequence
 	require.Positive(t, stats.start, "the ring overwrote bytes the sender had not sent")
 
 	f.release()
-	st := page.waitFor("all of the output", func(s pageState) bool { return s.next == total })
-
+	// The gap is looked at as soon as the page has read it, before anything else is waited for: a fault in it is found here, at once,
+	// and not by a wait for output that a fault in the gap can keep from ever adding up.
+	st := page.waitFor("the gap frame", func(s pageState) bool { return len(s.gaps) >= 1 })
 	guarded(t, "gap-frame", func() {
 		require.Len(t, st.gaps, 1, "one gap: the child had stopped before the page woke")
-		assert.Equal(t, [2]uint64{n0, stats.start}, st.gaps[0], "from the end of what was sent to the first byte the ring still has")
-		assert.Equal(t, stats.overwritten-n0, st.gaps[0][1]-st.gaps[0][0], "its length is the overwritten count less what had been sent")
+		require.Equal(t, [2]uint64{n0, stats.start}, st.gaps[0], "from the end of what was sent to the first byte the ring still has")
+		require.Equal(t, stats.overwritten-n0, st.gaps[0][1]-st.gaps[0][0], "its length is the overwritten count less what had been sent")
+	})
+	// What follows the gap: the page's own check that every output frame begins where the one before ended (or the gap), and the bytes.
+	// A gap that says the wrong thing is caught by this too, which is why a control for the gap switches both off.
+	guarded(t, "gap-continues", func() {
+		st = page.waitFor("all of the output", func(s pageState) bool { return s.next == total })
 		assert.Empty(t, st.faults, "and the output continues where the gap says it does")
 		want := append(countingBytes(0, n0), countingBytes(stats.start, total-stats.start)...)
 		assert.True(t, bytes.Equal(want, st.bytes()), "the page has the first frame, then the sequence from the ring's start, byte for byte")
 	})
+	require.Eventually(t, func() bool { return s.channelStats().sent == total }, settle, time.Millisecond, "the sender gave the page everything")
 	after := s.channelStats()
 	guarded(t, "lost-counted", func() {
 		assert.Equal(t, after.end, after.sentBytes+after.lost, "what was delivered and what was lost are all of the output: sent + gap == end")

@@ -804,29 +804,24 @@ func (g gate) release(t *testing.T) {
 	require.NoError(t, file.Close())
 }
 
-// wait is the shell's side of the gate: nothing for the zero gate.
-func (g gate) wait() string {
-	if g.path == "" {
-		return ""
-	}
-	return "read go < '" + g.path + "'; "
-}
-
 // countingScript is a shell script that writes the counting sequence, in blocks, to a terminal whose output is not
 // processed (a line that ended with a newline would come out with a carriage return too, and some systems add a second
 // one under load): lines of it, or for ever when lines is below zero. It waits for the gate first, so that a page can be there
-// before the first byte. A bounded sequence is followed by a shell that stays.
+// before the first byte. A bounded sequence is followed by a program that stays.
+//
+// The shell forks nothing: it execs perl, which sets the terminal's modes, waits for the gate and writes. A shell that forks a
+// child on a loaded machine can print a diagnostic of its own (bash as sh on macOS: "sh: child setpgid (n to n): Operation not
+// permitted"), which would be the first bytes of a stream whose every offset the tests know.
 func countingScript(lines int, hold gate) string {
-	var script strings.Builder
-	script.WriteString("stty -opost -echo; ")
-	script.WriteString(hold.wait())
 	limit := "1e18"
 	if lines >= 0 {
 		limit = strconv.Itoa(lines)
 	}
-	script.WriteString(`perl -e '$|=1; my ($i,$n)=(1,` + limit + `); while ($i <= $n) { my $stop=$i+3999; $stop=$n if $stop>$n; my $s=""; $s.="$_\n" for $i..$stop; $i=$stop+1; syswrite(STDOUT,$s) or exit 1 }'; `)
-	script.WriteString("sleep 3600")
-	return script.String()
+	wait := ""
+	if hold.path != "" {
+		wait = `open(my $g, "<", "` + hold.path + `") or exit 2; my $line = <$g>; close($g); `
+	}
+	return `exec perl -e 'system("stty -opost -echo"); ` + wait + `$|=1; my ($i,$n)=(1,` + limit + `); while ($i <= $n) { my $stop=$i+3999; $stop=$n if $stop>$n; my $s=""; $s.="$_\n" for $i..$stop; $i=$stop+1; syswrite(STDOUT,$s) or exit 1 } exec("sleep", "3600")'`
 }
 
 func TestTheCountingSequenceHelperIsRight(t *testing.T) {

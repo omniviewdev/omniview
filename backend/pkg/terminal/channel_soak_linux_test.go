@@ -132,3 +132,11 @@ func TestSoakYesForAMinuteWithNoReaderIsNeverBlockedAndTheHostIsFlat(t *testing.
 		}
 	})
 }
+
+// wait is the shell's side of the gate: nothing for the zero gate.
+func (g gate) wait() string {
+	if g.path == "" {
+		return ""
+	}
+	return "read go < '" + g.path + "'; "
+}

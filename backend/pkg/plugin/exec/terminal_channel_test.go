@@ -295,7 +295,10 @@ func TestAChannelTerminalIsInvisibleToEveryBindingThatNamesATerminalByItsId(t *t
 	stream.waitText(t, "up")
 	stream.page(append([]byte{0x02}, "S\n"...))
 	got := stream.waitText(t, "S\r\n")
-	assert.Equal(t, "up\r\nS\r\n", got, "nothing reached the shell but what the stream typed")
+	// A shell that forks a child while the machine is loaded can print a diagnostic of its own before its first line (bash as sh on
+	// macOS: "sh: child setpgid (n to n): Operation not permitted"). What the test is for is what came between the shell's line and
+	// the sentinel: nothing that a call typed.
+	assert.True(t, strings.HasSuffix(got, "up\r\nS\r\n"), "nothing reached the shell but what the stream typed: %q", got)
 	busy, err := fx.wrapper.ChannelTerminalBusy(info.Cap)
 	require.NoError(t, err)
 	assert.Equal(t, terminal.StateBusy, busy.State, "the shell runs cat in the foreground")
@@ -474,13 +477,28 @@ func TestAWindowThatClosesOrReloadsDoesNotEndAChannelTerminal(t *testing.T) {
 	}
 }
 
+//nolint:gochecknoglobals // The package tracer binds to the first provider of the process, so every run of the test shares one exporter.
+var (
+	capabilitySpanOnce     sync.Once
+	capabilitySpanExporter = tracetest.NewInMemoryExporter()
+)
+
+// captureSpans installs the process-wide provider once and empties the exporter for the run that asks: the package tracer binds
+// to the first global provider only, so a test that made a provider of its own heard its spans in the first run of a process and
+// none in the second (go test -count=2).
+func captureSpans(t *testing.T) *tracetest.InMemoryExporter {
+	t.Helper()
+	capabilitySpanOnce.Do(func() {
+		otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSyncer(capabilitySpanExporter)))
+	})
+	capabilitySpanExporter.Reset()
+	return capabilitySpanExporter
+}
+
 // The capability is nowhere the host writes: not in a log line (fields and message), not in an event, not in an error a call
 // answered, not in a frame of the stream, not in a span. Whole, or in the parts of it that identify it.
 func TestTheCapabilityAppearsNowhereInALogAnEventAnErrorAFrameOrASpan(t *testing.T) {
-	spans := tracetest.NewSpanRecorder()
-	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
-	otel.SetTracerProvider(provider)
-	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	spans := captureSpans(t)
 	sink := &logtest.RecordingSink{}
 	logger := logging.New(logging.Config{Backend: logging.NewSinkBackend(sink), Level: logging.NewLevelController(logging.LevelDebug)})
 	fx := newTerminalFixtureLogged(t, logger)
@@ -527,18 +545,19 @@ func TestTheCapabilityAppearsNowhereInALogAnEventAnErrorAFrameOrASpan(t *testing
 		note("an event", event.name, event.data)
 	}
 	fx.mu.Unlock()
-	require.NoError(t, provider.ForceFlush(context.Background()))
-	ended := spans.Ended()
+	ended := spans.GetSpans() // the exporter is a syncer: a span is there when it ends
 	require.NotEmpty(t, ended, "the spans of the calls were recorded: the test heard them")
 	for _, span := range ended {
-		note("a span", span.Name(), span.Attributes(), span.Status(), span.Events(), span.Links())
+		note("a span", span.Name, span.Attributes, span.Status, span.Events, span.Links)
 	}
 
 	parts := []string{capability, capability[:16], capability[len(capability)-16:], other.Cap}
-	for _, line := range seen {
-		for _, part := range parts {
-			assert.NotContains(t, line, part, "the capability (or a piece of it) is in %.200s", line)
+	guarded(t, "capability-appears-nowhere", func() {
+		for _, line := range seen {
+			for _, part := range parts {
+				assert.NotContains(t, line, part, "the capability (or a piece of it) is in %.200s", line)
+			}
 		}
-	}
+	})
 	t.Logf("scanned %d lines of logs, events, errors, frames and spans", len(seen))
 }

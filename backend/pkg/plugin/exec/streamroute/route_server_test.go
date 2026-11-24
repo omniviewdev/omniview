@@ -280,6 +280,25 @@ func waitListed(t *testing.T, wrapper *hostexec.ServiceWrapper, capability strin
 	return terminal.ChannelListed{}
 }
 
+// release lets go the shell that waits on a named pipe (`cat < "$0"`): it writes a byte once the shell has opened the pipe for reading,
+// which is the event the test waits for (a pipe that nothing has opened for reading refuses a non-blocking open with ENXIO).
+func release(t *testing.T, gatePath string) {
+	t.Helper()
+	deadline := time.Now().Add(bound)
+	for {
+		gate, err := os.OpenFile(gatePath, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+		if err == nil {
+			_, err = gate.WriteString("x")
+			require.NoError(t, err)
+			require.NoError(t, gate.Close())
+			return
+		}
+		require.ErrorIs(t, err, syscall.ENXIO, "the only reason the pipe cannot be opened is that the shell has not opened it yet")
+		require.True(t, time.Now().Before(deadline), "the shell never opened the pipe")
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 	port, wrapper := theRoute(t)
 
@@ -326,11 +345,7 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 		detached := waitListed(t, wrapper, info.Cap, func(l terminal.ChannelListed) bool { return !l.Attached })
 		assert.NotZero(t, detached.LeaseExpiresUnixMs, "a terminal that no stream holds has its lease running")
 
-		gate, err := os.OpenFile(gatePath, os.O_WRONLY, 0)
-		require.NoError(t, err)
-		_, err = gate.WriteString("x")
-		require.NoError(t, err)
-		require.NoError(t, gate.Close())
+		release(t, gatePath)
 		listed := waitListed(t, wrapper, info.Cap, func(l terminal.ChannelListed) bool { return l.NextOffset > end })
 		assert.False(t, listed.Attached, "the shell went on writing into the ring while nobody held it")
 
@@ -348,16 +363,23 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 	t.Run("a stream that never reads does not block the shell, and the page that wakes is told what it missed", func(t *testing.T) {
 		const blocks, block = 366, 1 << 16
 		const written = blocks * block // 23,986,176 bytes: three rings and more than the transport holds
-		done := filepath.Join(t.TempDir(), "done")
+		dir := t.TempDir()
+		gatePath, done := filepath.Join(dir, "gate"), filepath.Join(dir, "done")
+		require.NoError(t, syscall.Mkfifo(gatePath, 0o600))
+		// The shell writes nothing until the test lets it go, which it does once the stream has the ready frame: the flood cannot begin,
+		// overwrite the ring or finish before the stream holds the terminal, whatever the machine is doing.
 		// The terminal does no output processing (stty -opost) and the shell writes in blocks of 64 KiB: a pty that turns each newline into
 		// two bytes, or a pipeline that writes in small pieces, passes about 1 MB/s on macOS whatever reads it, and the test would be a
 		// measure of the pty. Every byte the shell writes is a byte of the stream.
-		info := startTerminal(t, wrapper, "sh", "-c", fmt.Sprintf(`stty -opost; perl -e '$|=1; print((q(y) x %d)."\n") for 1..%d'; printf 'MARK-END\n'; : > "$0"; exec sleep 600`, block-1, blocks), done)
+		script := fmt.Sprintf(`stty -opost; cat < "$0" >/dev/null; perl -e '$|=1; print((q(y) x %d)."\n") for 1..%d'; printf 'MARK-END\n'; : > "$1"; exec sleep 600`, block-1, blocks)
+		info := startTerminal(t, wrapper, "sh", "-c", script, gatePath, done)
 
-		began := time.Now()
 		page := dial(t, port)
 		page.write(attach(info.Cap, nil))
-		page.until("ready", func(s *streamState) bool { return s.ready != nil })
+		state := page.until("ready", func(s *streamState) bool { return s.ready != nil })
+		assert.Zero(t, state.ready.End, "the shell has written nothing: the stream holds the terminal before the flood begins")
+		began := time.Now()
+		release(t, gatePath)
 		// The page reads nothing more until the shell has written everything: the event that must come is the file.
 		sampled := time.Now()
 		require.Eventually(t, func() bool {
@@ -373,7 +395,7 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 			"the shell wrote %d bytes with nobody reading, and was never blocked", written)
 		t.Logf("the shell wrote %d bytes with nobody reading, and was never blocked: %v after the stream attached", written, time.Since(began))
 
-		state := page.until("the end of the output", func(s *streamState) bool { return bytes.HasSuffix(s.output, []byte("MARK-END\n")) })
+		state = page.until("the end of the output", func(s *streamState) bool { return bytes.HasSuffix(s.output, []byte("MARK-END\n")) })
 		t.Logf("the page woke after %v: %d bytes of output, %d gaps, offset %d", time.Since(began), len(state.output), len(state.gaps), state.next)
 		assert.NotEmpty(t, state.gaps, "the ring overwrote what the page did not take, and the page is told")
 		var lost uint64
