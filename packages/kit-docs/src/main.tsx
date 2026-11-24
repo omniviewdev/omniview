@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  Button, Field, SearchField, Select, TextInput, ThemeProvider,
   DEFAULT_DENSITY, DEFAULT_TEXT_SIZE, DEFAULT_THEME_ID, DENSITIES, TEXT_SIZES, THEMES,
   type Density, type TextSize, type ThemeId, type TokenName,
 } from '@omniviewdev/kit';
+import '@omniviewdev/kit/styles.css';
 import { guidance, type Guide } from '../content/catalog';
 import { HighlightedCode } from './HighlightedCode';
 import { Preview, type Appearance, type TokenValues } from './Preview';
@@ -43,19 +45,22 @@ function readComponent() {
 
 const componentHref = (part: string) => `?component=${encodeURIComponent(part)}`;
 const defaultAppearance: Appearance = { theme: DEFAULT_THEME_ID, density: DEFAULT_DENSITY, textSize: DEFAULT_TEXT_SIZE };
+const themeOptions = THEMES.map(({ id, name }) => ({ value: id, label: name }));
+const densityOptions = DENSITIES.map((density) => ({ value: density, label: density[0].toUpperCase() + density.slice(1) }));
+const textSizeOptions = TEXT_SIZES.map((size) => ({ value: size, label: `${size}%` }));
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [status, setStatus] = useState('');
   return (
     <div className="copy-control">
-      <button type="button" className="action" onClick={async () => {
+      <Button onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
           setStatus('Copied');
         } catch {
           setStatus('Clipboard unavailable. Select and copy the code.');
         }
-      }}>{label}</button>
+      }}>{label}</Button>
       <span aria-live="polite" className="copy-status">{status}</span>
     </div>
   );
@@ -71,6 +76,7 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
   const [tokenName, setTokenName] = useState<TokenName>(tokens[0].name);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
+  const formRef = useRef<HTMLFormElement>(null);
   const token = tokens.find(({ name }) => name === tokenName)!;
   const active = overrides[tokenName];
   const value = resolved[tokenName];
@@ -95,17 +101,15 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
       <p className="section-intro">Read live token values and try overrides. Changes stay inside the preview; they never update the documentation theme.</p>
       <a className="text-link" href="#live-preview">Back to live preview ↑</a>
       <div className="inspector panel">
-        <form className="token-form" onSubmit={apply}>
-          <label className="field">{part} token
-            <select value={tokenName} onChange={(event) => {
-              const name = event.target.value as TokenName;
+        <form ref={formRef} className="token-form" onSubmit={apply}>
+          <Field label={`${part} token`} layout="stacked">
+            <Select value={tokenName} options={tokens.map(({ name }) => ({ value: name, label: name }))} onValueChange={(value) => {
+              const name = value as TokenName;
               setTokenName(name);
               setDraft(overrides[name] ?? '');
               setError('');
-            }}>
-              {tokens.map(({ name }) => <option key={name}>{name}</option>)}
-            </select>
-          </label>
+            }} />
+          </Field>
           <p className="token-role">{token.label}</p>
           <div className="token-reading">
             <span>{active === undefined ? 'Current value' : 'Overridden value'}</span>
@@ -114,32 +118,32 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
               <code>{value || '—'}</code>
             </output>
           </div>
-          <label className="field">Override value
-            <input value={draft} placeholder={token.property === 'color' ? '#74e1b0' : '8px'} aria-invalid={!!error} aria-describedby={error ? 'token-error' : undefined} onChange={(event) => {
-              setDraft(event.target.value);
+          <Field label="Override value" layout="stacked" message={error ? { kind: 'error', text: error } : undefined}>
+            <TextInput value={draft} placeholder={token.property === 'color' ? '#74e1b0' : '8px'} onCommit={() => formRef.current?.requestSubmit()} onValueChange={(value) => {
+              setDraft(value);
               setError('');
             }} />
-          </label>
-          {error && <p id="token-error" role="alert" className="form-error">{error}</p>}
+          </Field>
+          <span className="sr-only" role="alert">{error}</span>
           <div className="actions">
-            <button type="submit" className="action accent-action">Apply override</button>
-            <button type="button" className="action" disabled={active === undefined} onClick={() => {
+            <Button variant="primary" onClick={(event) => event.currentTarget.form?.requestSubmit()}>Apply override</Button>
+            <Button disabledReason={active === undefined ? 'This token has no override.' : undefined} onClick={() => {
               const next = { ...overrides };
               delete next[tokenName];
               setOverrides(next);
               setDraft('');
               setError('');
-            }}>Remove override</button>
+            }}>Remove override</Button>
           </div>
         </form>
         <div className="overrides">
           <div className="overrides-heading">
             <h3>Preview overrides <span className="count">{edits.length}</span></h3>
-            <button className="action" type="button" disabled={!edits.length} onClick={() => {
+            <Button disabledReason={edits.length ? undefined : 'There are no overrides to reset.'} onClick={() => {
               setOverrides({});
               setDraft('');
               setError('');
-            }}>Reset overrides</button>
+            }}>Reset overrides</Button>
           </div>
           {edits.length > 0 ? (
             <>
@@ -147,7 +151,7 @@ function Inspector({ part, tokens, resolved, overrides, setOverrides }: {
               <HighlightedCode code={css} fileName="overrides.css" label="CSS overrides" className="export-code" />
               <div className="actions">
                 <CopyButton key={css} text={css} label="Copy CSS overrides" />
-                <a className="action download" href={`data:text/css;charset=utf-8,${encodeURIComponent(css)}`} download={`${part.toLowerCase()}-preview.css`}>Download CSS</a>
+                <a className="text-link" href={`data:text/css;charset=utf-8,${encodeURIComponent(css)}`} download={`${part.toLowerCase()}-preview.css`}>Download CSS</a>
               </div>
             </>
           ) : <p className="empty-state">No overrides. Add a CSS value to see a scoped export here.</p>}
@@ -170,11 +174,15 @@ function ExampleSource({ path }: { path: string }) {
       {!result ? <p className="inline-status" role="status">Loading example source…</p>
         : file && 'data' in result ? (
           <>
-            <label className="field source-file">Source file
-              <select value={fileIndex} onChange={(event) => setFileIndex(Number(event.target.value))}>
-                {result.data.files.map(({ name }, index) => <option key={name} value={index}>{name}</option>)}
-              </select>
-            </label>
+            <div className="source-file">
+              <Field label="Source file" layout="stacked">
+                <Select
+                  value={String(fileIndex)}
+                  options={result.data.files.map(({ name }, index) => ({ value: String(index), label: name }))}
+                  onValueChange={(value) => setFileIndex(Number(value))}
+                />
+              </Field>
+            </div>
             <HighlightedCode code={file.code} fileName={file.name} />
           </>
         ) : <p className="inline-status" role="alert">Example source unavailable.</p>}
@@ -201,11 +209,13 @@ function ComponentDoc({ part, revision, examples, appearance, setAppearance }: {
   const example = examples[exampleIndex];
   const story = `kit-${example.group.toLowerCase()}--${displayName(example.name).toLowerCase().replaceAll(' ', '-')}`;
   const revisionPath = `./revisions/${revision}`;
-  const regularOptions: { index: number; name: string }[] = [];
-  const parityOptions: { index: number; name: string }[] = [];
-  examples.forEach(({ group, name }, index) => {
-    (group === part ? regularOptions : parityOptions).push({ index, name });
-  });
+  const exampleOptions = examples
+    .map(({ group, name }, index) => ({
+      parity: group !== part,
+      value: String(index),
+      label: group === part ? displayName(name) : `Parity: ${displayName(name)}`,
+    }))
+    .sort((left, right) => Number(left.parity) - Number(right.parity));
 
   return (
     <article className="doc">
@@ -227,31 +237,18 @@ function ComponentDoc({ part, revision, examples, appearance, setAppearance }: {
         <a className="text-link" href={`./storybook/?path=/story/${story}`}>Open {displayName(example.name)} in Storybook <span aria-hidden="true">↗</span></a>
         <div className="playground panel">
           <div className="toolbar">
-            <label className="field">Example
-              <select value={exampleIndex} onChange={(event) => setExampleIndex(Number(event.target.value))}>
-                <optgroup label="Component examples">
-                  {regularOptions.map(({ index, name }) => <option key={index} value={index}>{displayName(name)}</option>)}
-                </optgroup>
-                {parityOptions.length > 0 && <optgroup label="Parity examples">
-                  {parityOptions.map(({ index, name }) => <option key={index} value={index}>{displayName(name)}</option>)}
-                </optgroup>}
-              </select>
-            </label>
-            <label className="field">Theme
-              <select value={appearance.theme} onChange={(event) => setAppearance({ ...appearance, theme: event.target.value as ThemeId })}>
-                {THEMES.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-              </select>
-            </label>
-            <label className="field">Density
-              <select value={appearance.density} onChange={(event) => setAppearance({ ...appearance, density: event.target.value as Density })}>
-                {DENSITIES.map((density) => <option key={density} value={density}>{density[0].toUpperCase() + density.slice(1)}</option>)}
-              </select>
-            </label>
-            <label className="field">Text size
-              <select value={appearance.textSize} onChange={(event) => setAppearance({ ...appearance, textSize: event.target.value as TextSize })}>
-                {TEXT_SIZES.map((size) => <option key={size} value={size}>{size}%</option>)}
-              </select>
-            </label>
+            <Field label="Example" layout="stacked">
+              <Select value={String(exampleIndex)} options={exampleOptions} onValueChange={(value) => setExampleIndex(Number(value))} />
+            </Field>
+            <Field label="Theme" layout="stacked">
+              <Select value={appearance.theme} options={themeOptions} onValueChange={(value) => setAppearance({ ...appearance, theme: value as ThemeId })} />
+            </Field>
+            <Field label="Density" layout="stacked">
+              <Select value={appearance.density} options={densityOptions} onValueChange={(value) => setAppearance({ ...appearance, density: value as Density })} />
+            </Field>
+            <Field label="Text size" layout="stacked">
+              <Select value={appearance.textSize} options={textSizeOptions} onValueChange={(value) => setAppearance({ ...appearance, textSize: value as TextSize })} />
+            </Field>
           </div>
           <div id="live-preview" className="canvas">
             <span className="canvas-badge" aria-hidden="true"><span /> Live preview</span>
@@ -350,9 +347,10 @@ function App() {
       <main id="main" className="shell main-shell" tabIndex={-1}>
         <aside className="sidebar" aria-label="Documentation navigation">
           <nav className="component-finder" aria-label="Components">
-            <label className="field">Search components
-              <input type="search" value={query} placeholder="Name or category" onChange={(event) => setQuery(event.target.value)} />
-            </label>
+            <div className="finder-search">
+              <span aria-hidden="true">Search components</span>
+              <SearchField label="Search components" value={query} placeholder="Name or category" onValueChange={setQuery} />
+            </div>
             {catalog && <p className="inline-status" role="status">
               {matchCount === 0 ? 'No matching components.' : terms.length > 0 ? `${matchCount} found` : ''}
             </p>}
@@ -384,4 +382,8 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(
+  <ThemeProvider>
+    <App />
+  </ThemeProvider>,
+);

@@ -10,13 +10,17 @@ on:
       - 'pnpm-workspace.yaml'
       - '.github/workflows/kit-docs-preview.yml'
 
+concurrency:
+  group: kit-docs-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   preview:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
