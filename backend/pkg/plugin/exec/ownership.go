@@ -272,7 +272,8 @@ func (c *controller) gated(
 	index, client, ok := lookup(sessionID)
 	if !ok || !allow(index) {
 		first.gate.RUnlock()
-		return sessionIndex{}, nil, nil, false
+		var none sessionIndex
+		return none, nil, nil, false
 	}
 	return index, client, first.gate.RUnlock, true
 }
