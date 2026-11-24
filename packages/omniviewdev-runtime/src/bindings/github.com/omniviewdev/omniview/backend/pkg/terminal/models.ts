@@ -709,8 +709,10 @@ export class Listed {
     "replay_start": number;
 
     /**
-     * NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal: as for
-     * Attached, 0 for a terminal that has ended.
+     * NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal, as of the
+     * list: 0 for a terminal that has ended, as for Attached. A page does not resume from it: the window that holds the
+     * terminal can write between the list and the attach, and the attach answers with the number to continue from
+     * (Attached.NextInputSeq); a page that sent the listed one would be refused SEQUENCE_STALE.
      */
     "next_input_seq": number;
 

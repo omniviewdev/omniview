@@ -182,8 +182,10 @@ type Listed struct {
 	// NextOffset is the offset the next output will have and ReplayStart is the oldest offset the host keeps.
 	NextOffset  uint64 `json:"next_offset"`
 	ReplayStart uint64 `json:"replay_start"`
-	// NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal: as for
-	// Attached, 0 for a terminal that has ended.
+	// NextInputSeq is the sequence number the terminal takes next for WriteTerminal and ResizeTerminal, as of the
+	// list: 0 for a terminal that has ended, as for Attached. A page does not resume from it: the window that holds the
+	// terminal can write between the list and the attach, and the attach answers with the number to continue from
+	// (Attached.NextInputSeq); a page that sent the listed one would be refused SEQUENCE_STALE.
 	NextInputSeq uint64 `json:"next_input_seq"`
 	// LeaseExpiresUnixMs is when a detached terminal ends, in Unix milliseconds; zero when it is attached.
 	LeaseExpiresUnixMs int64 `json:"lease_expires_unix_ms"`

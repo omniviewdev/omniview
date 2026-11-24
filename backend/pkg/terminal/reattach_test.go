@@ -519,6 +519,9 @@ func TestTheHostRemembersABoundedNumberOfTerminalsThatEndedAndOnlyThoseThatEnded
 		m.endTheShellWith(info.ID, 0, "go\n")
 		sink.waitEnd(t, info.ID)
 	}
+	// The last terminal is in the list twice (the live one and its tombstone) between its CLOSE and the moment the
+	// manager lets its id go: the list is read once the manager holds no terminal.
+	require.Eventually(t, func() bool { return len(m.running()) == 0 }, 20*time.Second, 5*time.Millisecond, "the last terminal is gone from the manager")
 	listed := m.List(nil, testKey)
 	require.Len(t, listed, TombstoneLimit)
 	want := make([]string, 0, TombstoneLimit)
@@ -550,6 +553,10 @@ func TestATombstoneIsKeptForTheLeaseTheTerminalWasDetachedWith(t *testing.T) {
 	assert.Equal(t, 60000, detached.LeaseMs)
 	m.endTheShellWith(info.ID, 0, "go\n")
 	sink.waitEnd(t, info.ID)
+	require.Eventually(t, func() bool {
+		listed := m.List(nil, testKey)
+		return len(listed) == 1 && listed[0].Ended != nil
+	}, 30*time.Second, 10*time.Millisecond, "the ended terminal is the only listed entry (the live one is in the list until the manager lets its id go)")
 	listed := m.List(nil, testKey)
 	require.Len(t, listed, 1)
 	require.NotNil(t, listed[0].Ended, "the terminal ended and left its end")
