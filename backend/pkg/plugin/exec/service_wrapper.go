@@ -59,7 +59,9 @@ func (s *ServiceWrapper) ServiceShutdown() error {
 
 // CreateSession starts a session of a plugin for the window that asks: it belongs to that window until the window
 // goes away, and then to whichever window attaches it first (T2c-go.md). A call that comes from no window creates
-// a session that belongs to none.
+// a session that belongs to none. A window that retires while the plugin makes the session leaves it to none as well
+// (the session is recorded as the window's, and the retirement, which came before, found nothing of the window's to
+// release).
 func (s *ServiceWrapper) CreateSession(
 	ctx context.Context,
 	plugin, connectionID string,
@@ -81,7 +83,20 @@ func (s *ServiceWrapper) CreateSession(
 		}
 		owner = identity
 	}
-	return s.Ctrl.CreateSession(s.realmContext(ctx), owner, plugin, connectionID, opts)
+	session, err := s.Ctrl.CreateSession(s.realmContext(ctx), owner, plugin, connectionID, opts)
+	if err != nil || owner == nil {
+		return session, err
+	}
+	// A retirement that came while the plugin made the session found no session of the window to orphan, and the session
+	// has just been recorded as the window's: nobody could list it, claim it or release it. The realm refuses a window
+	// that was retired, and has already refused it when it announces the retirement, so asking it again, now that the
+	// session is recorded, closes the gap exactly as it does for a terminal (CreateTerminal): a retirement before this
+	// point is seen here, and one after it finds the session and orphans it. The session goes on, and any window that
+	// lists it takes it.
+	if _, admitErr := s.Realm.AdmitWindow(window); admitErr != nil {
+		s.Ctrl.ReleaseOwnedTerminals(owner, terminal.ClosedByWindow)
+	}
+	return session, nil
 }
 
 // OpenNativeSession accepts only the same bounded resource payload as CreateSession.

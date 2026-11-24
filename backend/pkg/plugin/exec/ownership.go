@@ -64,7 +64,9 @@ func (c *controller) listable(sessionID string, owner terminal.Owner) bool {
 
 // claimSession decides the attach of a session of a plugin: the window that holds it attaches it; so does any
 // window when none holds it, or when its owner offered it and the offer is open, and that window holds it from
-// then on (the offer is used once). Any other is told what is told of an id that never was.
+// then on (the offer is used once). Any other is told what is told of an id that never was, and so is every window
+// that does not hold a session whose end the host has decided (commitClose): it is going, and taking it would hand
+// the window a session that is about to be gone.
 func (c *controller) claimSession(sessionID string, owner terminal.Owner) error {
 	if !terminal.ValidOwner(owner) {
 		return apperror.SessionNotFound(sessionID)
@@ -78,6 +80,8 @@ func (c *controller) claimSession(sessionID string, owner terminal.Owner) error 
 		return apperror.SessionNotFound(sessionID)
 	case index.owner != nil && index.owner == owner:
 		return nil
+	case index.closing:
+		return apperror.SessionNotFound(sessionID)
 	case index.owner == nil || (!index.offerUntil.IsZero() && now.Before(index.offerUntil)):
 		index.owner, index.offerUntil = owner, time.Time{}
 		c.sessionIndex[sessionID] = index
@@ -107,6 +111,34 @@ func (c *controller) OfferSession(owner terminal.Owner, sessionID string) error 
 	index.offerUntil = now.Add(terminal.OfferTTL)
 	c.sessionIndex[sessionID] = index
 	return nil
+}
+
+// commitClose is where the end of a session of a plugin is decided, for the window that asks for it. CloseSession
+// checks the window early, on a copy of the record that any other call changes at any moment, and the plugin is
+// asked after that (and after a lookup of the connection that takes as long as it takes): a window that took the
+// session in between, by adopting what no window held or by using an offer, would have it ended by a window that no
+// longer holds it. So the right of the window is read again here, from the record as it is now, and the decision
+// (the record says the host is closing the session, which claimSession then refuses to hand to anyone else) is
+// written in the same step. It holds c.mu and no more: the plugin is asked after it returns.
+//
+// It says true when there is nothing left for the plugin to do: the session ended by itself meanwhile, or the record
+// was one that only kept the output of a session that had ended.
+func (c *controller) commitClose(sessionID string, owner terminal.Owner) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	index, found := c.sessionIndex[sessionID]
+	switch {
+	case !found:
+		return true, nil
+	case index.local || !c.visible(index, sessionID, owner):
+		return false, apperror.SessionNotFound(sessionID)
+	case index.ended:
+		delete(c.sessionIndex, sessionID)
+		return true, nil
+	}
+	index.closing = true
+	c.sessionIndex[sessionID] = index
+	return false, nil
 }
 
 // orphanSessionsOf is what a window going away does to its sessions of plugins: they go on, and no window holds

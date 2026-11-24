@@ -896,6 +896,10 @@ func (c *controller) WriteSession(
 	})
 }
 
+// CloseSession ends a session for the window that holds it (or, for a session of a plugin that no window holds, any
+// window that may list it). The window is checked twice: early, on a copy of the record, so that a window that has
+// no business with the session is told so before anything is asked of the plugin; and again, in one step with the
+// decision to end it (commitClose), because a window can take the session in between.
 func (c *controller) CloseSession(
 	owner terminal.Owner,
 	sessionID string,
@@ -924,23 +928,25 @@ func (c *controller) CloseSession(
 	if index.ended {
 		// It ended by itself and no window attached: there is nothing to close. The output the plugin kept is for an attach
 		// that nobody will make now, and goes with the plugin's own limits.
-		c.forgetSession(sessionID)
-		return nil
+		_, err = c.commitClose(sessionID, owner)
+		return err
 	}
 	if client == nil {
 		return apperror.PluginNotFound(index.pluginID)
 	}
-	c.closeStarted(sessionID)
-	err = client.CloseSession(
-		c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID),
-		sessionID,
-	)
+	pluginCtx := c.getConnectedCtx(invocation.HostContext(ctx), index.pluginID, index.connectionID)
+	if done, commitErr := c.commitClose(sessionID, owner); commitErr != nil || done {
+		return commitErr
+	}
+	err = client.CloseSession(pluginCtx, sessionID)
 	if err == nil || sessionGone(err) {
 		// A session that ended by itself in the instant before the host heard of it is closed: plugin-sdk v0.22.1 answers
 		// not-found to a close that comes then. That is what the caller asked for, and no failure.
 		c.forgetSession(sessionID)
 		return nil
 	}
+	// Any other answer is the plugin's, and the end stays decided: a close that timed out still ends the session, and its
+	// CLOSE is its end.
 	return err
 }
 

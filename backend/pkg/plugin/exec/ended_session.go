@@ -145,17 +145,6 @@ func (c *controller) detachStarted(sessionID string) {
 	}
 }
 
-// closeStarted notes that the end of the session is the host's, before the plugin is asked: the plugin keeps
-// no output of a session the host closed, so the CLOSE that follows is its end for everyone.
-func (c *controller) closeStarted(sessionID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if record, found := c.sessionIndex[sessionID]; found && !record.local {
-		record.closing = true
-		c.sessionIndex[sessionID] = record
-	}
-}
-
 // forgetSession drops the record of a session.
 func (c *controller) forgetSession(sessionID string) {
 	c.mu.Lock()
