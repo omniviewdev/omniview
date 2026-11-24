@@ -25,10 +25,14 @@ export function RestartToUpdateButton({ status, onError }: { status: UpdateStatu
       confirmLabel: 'Restart anyway',
       cancelLabel: 'Cancel',
       onConfirm: async () => {
+        // Cancel can close the dialog while the restart is pending; keep the button disabled.
+        setBusy(true);
         try {
           await restart(true);
         } catch (err) {
           onError(String(err));
+        } finally {
+          setBusy(false);
         }
       },
     });

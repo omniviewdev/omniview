@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,22 +20,38 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+	wailsupdater "github.com/wailsapp/wails/v3/pkg/updater"
+
 	settingsservice "github.com/omniviewdev/omniview/backend/pkg/settings"
 	"github.com/omniviewdev/omniview/internal/releasechannel"
 	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	feed "github.com/omniviewdev/omniview/internal/updater"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	wailsupdater "github.com/wailsapp/wails/v3/pkg/updater"
 )
 
 // feedRequestCounts counts and steers requests to a signed feed fixture.
 type feedRequestCounts struct {
-	manifest       atomic.Int32
-	payload        atomic.Int32
-	failDownload   atomic.Bool
-	blockPayload   atomic.Bool
-	onManifest     atomic.Pointer[func()]
-	payloadStarted chan struct{}
+	manifest      atomic.Int32
+	payload       atomic.Int32
+	failDownload  atomic.Bool
+	blockManifest atomic.Bool
+	blockPayload  atomic.Bool
+	onManifest    atomic.Pointer[func()]
+	// requestBlocked receives once a blocked request waits; released ends every wait at cleanup.
+	requestBlocked chan struct{}
+	released       chan struct{}
+}
+
+// block holds a request until the client cancels it or the fixture closes.
+func (requests *feedRequestCounts) block(r *http.Request) {
+	select {
+	case requests.requestBlocked <- struct{}{}:
+	default:
+	}
+	select {
+	case <-r.Context().Done():
+	case <-requests.released:
+	}
 }
 
 // newSignedFeedFixture serves a signed nightly manifest for version and its
@@ -43,11 +60,14 @@ type feedRequestCounts struct {
 func newSignedFeedFixture(t *testing.T, version, providerChannel, root string) (*httptest.Server, *feed.Provider, *feedRequestCounts) {
 	t.Helper()
 	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
-	public := key.Public().(ed25519.PublicKey)
+	public, ok := key.Public().(ed25519.PublicKey)
+	if !ok {
+		t.Fatal("ed25519 private key returned a non-ed25519 public key")
+	}
 	body := []byte("nightly binary")
 	digest := sha256.Sum256(body)
 	filename := "Omniview_" + version + "_linux_amd64"
-	requests := &feedRequestCounts{payloadStarted: make(chan struct{}, 1)}
+	requests := &feedRequestCounts{requestBlocked: make(chan struct{}, 1), released: make(chan struct{})}
 	var base string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -55,6 +75,10 @@ func newSignedFeedFixture(t *testing.T, version, providerChannel, root string) (
 			fmt.Fprint(w, `{"schema":"omniview-channel-index/v1","channels":[{"channel":"feature-abc","branch":"feature/abc","status":"active","desktopVersion":"1.0.1-feature-abc.1.1"}]}`)
 		case "/channels/nightly.json":
 			requests.manifest.Add(1)
+			if requests.blockManifest.Load() {
+				requests.block(r)
+				return
+			}
 			if hook := requests.onManifest.Load(); hook != nil {
 				(*hook)()
 			}
@@ -88,11 +112,7 @@ func newSignedFeedFixture(t *testing.T, version, providerChannel, root string) (
 				return
 			}
 			if requests.blockPayload.Load() {
-				select {
-				case requests.payloadStarted <- struct{}{}:
-				default:
-				}
-				<-r.Context().Done()
+				requests.block(r)
 				return
 			}
 			http.ServeContent(w, r, filename, time.Time{}, bytes.NewReader(body))
@@ -100,7 +120,9 @@ func newSignedFeedFixture(t *testing.T, version, providerChannel, root string) (
 			http.NotFound(w, r)
 		}
 	}))
+	// Cleanups run last-in first-out: release blocked handlers, then close the server.
 	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(requests.released) })
 	base = server.URL
 	provider, err := feed.NewProviderWithConfig(providerChannel, root, nil, base, []ed25519.PublicKey{public}, server.Client())
 	if err != nil {
@@ -129,7 +151,11 @@ func newModeTestService(t *testing.T, mode *atomic.Value) (*UpdateService, *feed
 	_, provider, requests := newSignedFeedFixture(t, testNightlyNext, "nightly", t.TempDir())
 	s := &UpdateService{
 		updater: newTestUpdater(t, provider, testNightlyCurrent), provider: provider, configured: true,
-		channel: "nightly", updateMode: func() string { return mode.Load().(string) }, modeChanged: make(chan struct{}, 1),
+		channel: "nightly", modeChanged: make(chan struct{}, 1),
+		updateMode: func() string {
+			current, _ := mode.Load().(string)
+			return current
+		},
 	}
 	return s, requests
 }
@@ -194,7 +220,7 @@ func TestCancelStopsDownload(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- s.Download() }()
 	select {
-	case <-requests.payloadStarted:
+	case <-requests.requestBlocked:
 	case <-time.After(5 * time.Second):
 		t.Fatal("payload request did not start")
 	}
@@ -202,7 +228,10 @@ func TestCancelStopsDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case <-done:
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Download after Cancel returned %v, want context.Canceled", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Download did not return after Cancel")
 	}
@@ -245,7 +274,7 @@ func TestRestartRequiresConfirmationForActiveWork(t *testing.T) {
 			return []ActiveWork{{Kind: "terminal", Description: "Terminal: bash"}}
 		},
 	}
-	if err := s.Restart(false); err != errActiveWorkBlocksRestart {
+	if err := s.Restart(false); !errors.Is(err, errActiveWorkBlocksRestart) {
 		t.Fatalf("Restart(false): %v", err)
 	}
 	if got := (&UpdateService{}).ActiveWork(); got == nil || len(got) != 0 {
@@ -299,9 +328,9 @@ func TestFreshProfileDefaultsUpdateModeToAutomatic(t *testing.T) {
 		t.Fatalf("update_mode default = %#v", got)
 	}
 	for value, wantValid := range map[string]bool{"bogus": false, coresettings.UpdateModeCheckOnly: true} {
-		result, err := service.Validate(hostScope, "general.update_mode", value)
-		if err != nil {
-			t.Fatal(err)
+		result, validateErr := service.Validate(hostScope, "general.update_mode", value)
+		if validateErr != nil {
+			t.Fatal(validateErr)
 		}
 		if result.Valid != wantValid {
 			t.Fatalf("Validate(%q) = %+v", value, result)
@@ -477,8 +506,8 @@ func TestRolledBackRestartSkipsThatVersion(t *testing.T) {
 	// The skip survives the next start, which has no restart record.
 	s, requests = newService()
 	s.runScheduledCheck(context.Background(), coresettings.UpdateModeAutomatic)
-	if status := s.Status(); status.State != string(wailsupdater.StateUpToDate) || requests.payload.Load() != 0 || status.Error != "" {
-		t.Fatalf("next start: %+v, payload %d", status, requests.payload.Load())
+	if next := s.Status(); next.State != string(wailsupdater.StateUpToDate) || requests.payload.Load() != 0 || next.Error != "" {
+		t.Fatalf("next start: %+v, payload %d", next, requests.payload.Load())
 	}
 }
 
@@ -488,7 +517,10 @@ func TestSuccessfulRestartSkipsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, provider, requests := newSignedFeedFixture(t, testNightlyNext, "nightly", root)
-	s := &UpdateService{updater: newTestUpdater(t, provider, testNightlyCurrent), provider: provider, configured: true, channel: "nightly", root: root, version: testNightlyCurrent}
+	s := &UpdateService{
+		updater: newTestUpdater(t, provider, testNightlyCurrent), provider: provider, configured: true, channel: "nightly", root: root, version: testNightlyCurrent,
+		updateMode: func() string { return coresettings.UpdateModeAutomatic },
+	}
 	s.recoverFromFailedRestart()
 	if _, err := os.Stat(filepath.Join(root, skippedVersionFile)); !os.IsNotExist(err) {
 		t.Fatalf("successful restart recorded a skip: %v", err)
@@ -496,5 +528,70 @@ func TestSuccessfulRestartSkipsNothing(t *testing.T) {
 	s.runScheduledCheck(context.Background(), coresettings.UpdateModeAutomatic)
 	if status := s.Status(); status.State != string(wailsupdater.StateReady) || requests.payload.Load() != 1 || status.Error != "" {
 		t.Fatalf("after successful restart: %+v", status)
+	}
+}
+
+func TestCancelStopsCheck(t *testing.T) {
+	var mode atomic.Value
+	mode.Store(coresettings.UpdateModeCheckOnly)
+	s, requests := newModeTestService(t, &mode)
+	requests.blockManifest.Store(true)
+	done := make(chan error, 1)
+	go func() { done <- s.Check() }()
+	select {
+	case <-requests.requestBlocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("manifest request did not start")
+	}
+	if err := s.Cancel(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Check after Cancel returned %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Check did not return after Cancel")
+	}
+	if status := s.Status(); !status.Canceled || status.Error != "" {
+		t.Fatalf("after cancel: %+v", status)
+	}
+}
+
+func TestModeChangeWaitsForRunningOperation(t *testing.T) {
+	var mode atomic.Value
+	mode.Store(coresettings.UpdateModeManual)
+	s, requests := newModeTestService(t, &mode)
+	s.flow.Lock()
+	if err := s.ServiceStartup(context.Background(), application.ServiceOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.ServiceShutdown() })
+	mode.Store(coresettings.UpdateModeAutomatic)
+	s.settingsChanged()
+	time.Sleep(300 * time.Millisecond)
+	if got := requests.manifest.Load(); got != 0 {
+		t.Fatalf("check ran while another operation held the flow: %d", got)
+	}
+	s.flow.Unlock()
+	deadline := time.Now().Add(5 * time.Second)
+	for requests.payload.Load() != 1 {
+		if time.Now().After(deadline) {
+			t.Fatalf("pending mode change made %d payload requests", requests.payload.Load())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestModeChangeDuringCheckStopsAutomaticDownload(t *testing.T) {
+	var mode atomic.Value
+	mode.Store(coresettings.UpdateModeAutomatic)
+	s, requests := newModeTestService(t, &mode)
+	switchToCheckOnly := func() { mode.Store(coresettings.UpdateModeCheckOnly) }
+	requests.onManifest.Store(&switchToCheckOnly)
+	s.runScheduledCheck(context.Background(), coresettings.UpdateModeAutomatic)
+	if status := s.Status(); status.State != string(wailsupdater.StateAvailable) || requests.payload.Load() != 0 {
+		t.Fatalf("mode changed to Check only during the check: %+v, payload %d", status, requests.payload.Load())
 	}
 }

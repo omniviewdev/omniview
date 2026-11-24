@@ -24,7 +24,10 @@ import (
 	wailsupdater "github.com/wailsapp/wails/v3/pkg/updater"
 )
 
-var errActiveWorkBlocksRestart = errors.New("active work would be lost; confirm restart")
+var (
+	errActiveWorkBlocksRestart = errors.New("active work would be lost; confirm restart")
+	errUpdateOperationRunning  = errors.New("another update operation is running")
+)
 
 type UpdateService struct {
 	updater                  *wailsupdater.Updater
@@ -98,7 +101,7 @@ type ChannelList struct {
 }
 
 func newUpdateService(app *application.App, channel, root, version string, updateMode func() string, listActiveWork func() []ActiveWork) *UpdateService {
-	s := &UpdateService{
+	s := &UpdateService{ //nolint:exhaustruct // The other fields start at their zero values.
 		updater: app.Updater, channel: channel, root: root, version: version,
 		updateMode: updateMode, listActiveWork: listActiveWork, modeChanged: make(chan struct{}, 1),
 	}
@@ -179,27 +182,7 @@ func (s *UpdateService) ServiceStartup(ctx context.Context, _ application.Servic
 	if app := application.Get(); app != nil {
 		s.stopSettingsSubscription = app.Event.On(bootstrap.SettingsChangedEvent, func(*application.CustomEvent) { s.settingsChanged() })
 	}
-	go func() {
-		mode := s.currentMode()
-		s.runScheduledCheck(ctx, mode)
-		ticker := time.NewTicker(6 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				mode = s.currentMode()
-				s.runScheduledCheck(ctx, mode)
-			case <-s.modeChanged:
-				next := s.currentMode()
-				if next != mode && next != coresettings.UpdateModeManual {
-					s.runScheduledCheck(ctx, next)
-				}
-				mode = next
-			}
-		}
-	}()
+	go s.schedule(ctx)
 	return nil
 }
 
@@ -239,13 +222,57 @@ func (s *UpdateService) currentMode() string {
 	return coresettings.UpdateModeManual
 }
 
-func (s *UpdateService) runScheduledCheck(ctx context.Context, mode string) {
+// Background check timing.
+const (
+	scheduledCheckInterval = 6 * time.Hour
+	busyRetryInterval      = time.Second
+)
+
+// schedule runs background checks: at startup, every six hours, and when the
+// mode changes to Automatic or Check only. A check that finds another update
+// operation running stays pending and retries.
+func (s *UpdateService) schedule(ctx context.Context) {
+	mode := s.currentMode()
+	pending := true
+	var retry <-chan time.Time
+	ticker := time.NewTicker(scheduledCheckInterval)
+	defer ticker.Stop()
+	for {
+		if pending {
+			retry = nil
+			if s.runScheduledCheck(ctx, mode) {
+				pending = false
+			} else {
+				retry = time.After(busyRetryInterval)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			mode = s.currentMode()
+			pending = true
+		case <-s.modeChanged:
+			next := s.currentMode()
+			if next != mode {
+				pending = next != coresettings.UpdateModeManual
+			}
+			mode = next
+		case <-retry:
+		}
+	}
+}
+
+// runScheduledCheck reports false when another update operation holds the flow.
+func (s *UpdateService) runScheduledCheck(ctx context.Context, mode string) bool {
+	var err error
 	switch mode {
 	case coresettings.UpdateModeCheckOnly:
-		_ = s.check(ctx, false)
+		err = s.check(ctx, false)
 	case coresettings.UpdateModeAutomatic:
-		_ = s.check(ctx, true)
+		err = s.check(ctx, true)
 	}
+	return !errors.Is(err, errUpdateOperationRunning)
 }
 
 // beginOperation makes the returned context cancelable through Cancel until finish runs.
@@ -278,9 +305,19 @@ func (s *UpdateService) recordResult(err error) {
 	}
 }
 
+// operationResult marks the failure of a canceled operation as a
+// cancellation. Wails joins provider errors into text, which loses
+// context.Canceled.
+func operationResult(opCtx context.Context, err error) error {
+	if err != nil && !errors.Is(err, context.Canceled) && errors.Is(opCtx.Err(), context.Canceled) {
+		return fmt.Errorf("%w: %w", context.Canceled, err)
+	}
+	return err
+}
+
 func (s *UpdateService) check(ctx context.Context, downloadWhenFound bool) error {
 	if !s.flow.TryLock() {
-		return nil
+		return errUpdateOperationRunning
 	}
 	defer s.flow.Unlock()
 	if s.updater.State() == wailsupdater.StateReady {
@@ -297,10 +334,12 @@ func (s *UpdateService) check(ctx context.Context, downloadWhenFound bool) error
 			s.releaseURL, _ = release.Metadata["releaseUrl"].(string)
 		}
 		s.mu.Unlock()
-		if release != nil && downloadWhenFound {
+		// The mode can change while the manifest loads; only Automatic downloads on its own.
+		if release != nil && downloadWhenFound && s.currentMode() == coresettings.UpdateModeAutomatic {
 			err = s.updater.DownloadAndInstall(opCtx)
 		}
 	}
+	err = operationResult(opCtx, err)
 	s.recordResult(err)
 	return err
 }
@@ -334,12 +373,12 @@ func (s *UpdateService) Download() error {
 		return errors.New("no update is available; check for updates first")
 	}
 	if !s.flow.TryLock() {
-		return errors.New("another update operation is running")
+		return errUpdateOperationRunning
 	}
 	defer s.flow.Unlock()
 	opCtx, finish := s.beginOperation(context.Background())
 	defer finish()
-	err := s.updater.DownloadAndInstall(opCtx)
+	err := operationResult(opCtx, s.updater.DownloadAndInstall(opCtx))
 	s.recordResult(err)
 	return err
 }
@@ -536,7 +575,16 @@ func (s *UpdateService) SwitchChannel(target string, copyCurrentData bool) (err 
 			_ = s.provider.SetTarget("")
 		}
 	}()
-	ctx := context.Background()
+	ctx, finish := s.beginOperation(context.Background())
+	defer finish()
+	defer func() {
+		err = operationResult(ctx, err)
+		if errors.Is(err, context.Canceled) {
+			s.mu.Lock()
+			s.canceled = true
+			s.mu.Unlock()
+		}
+	}()
 	release, err := s.updater.Check(ctx)
 	if err != nil {
 		return err
@@ -679,8 +727,9 @@ func (s *UpdateService) recoverFromFailedRestart() {
 		if removeErr := os.Remove(targetPath); removeErr != nil {
 			log.Printf("remove update restart record: %v", removeErr)
 		}
-		if string(target) != s.version {
-			if writeErr := os.WriteFile(skippedPath, target, 0o600); writeErr != nil {
+		// Only a release version is recorded; anything else is a corrupt record.
+		if string(target) != s.version && releasechannel.ValidVersion(s.channel, string(target)) {
+			if writeErr := os.WriteFile(skippedPath, target, 0o600); writeErr != nil { //nolint:gosec // The path is the profile root and a constant name; the content is a validated version.
 				log.Printf("record skipped update: %v", writeErr)
 			}
 			s.restartFailure = fmt.Sprintf("Omniview %s did not start, so Omniview kept %s. This update is skipped; a newer one will be offered.", target, s.version)

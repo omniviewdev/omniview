@@ -10,6 +10,15 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/networker"
 )
 
+// Kinds of ActiveWork.
+const (
+	activeWorkTerminal    = "terminal"
+	activeWorkLogStream   = "log-stream"
+	activeWorkPortForward = "port-forward"
+	activeWorkTask        = "task"
+	activeWorkUnknown     = "unknown"
+)
+
 // activeWorkLister lists work that a restart would end. A listing that fails
 // becomes an "unknown" entry, so the restart still asks for confirmation.
 func activeWorkLister(
@@ -18,49 +27,73 @@ func activeWorkLister(
 	networkerController networker.Controller,
 	activityService *activity.Service,
 ) func() []ActiveWork {
-	unknown := func(what string, err error) ActiveWork {
-		return ActiveWork{Kind: "unknown", Description: fmt.Sprintf("Omniview could not confirm that no %s are running: %v", what, err)}
-	}
 	return func() []ActiveWork {
 		work := []ActiveWork{}
-		if sessions, err := execController.ListSessions(); err != nil {
-			work = append(work, unknown("terminals", err))
-		} else {
-			for _, session := range sessions {
-				description := "Terminal session " + session.ID
-				if len(session.Command) > 0 {
-					description = "Terminal: " + strings.Join(session.Command, " ")
-				}
-				work = append(work, ActiveWork{Kind: "terminal", Description: description})
-			}
-		}
-		if sessions, err := logsController.ListSessions(); err != nil {
-			work = append(work, unknown("log streams", err))
-		} else {
-			for _, session := range sessions {
-				work = append(work, ActiveWork{Kind: "log-stream", Description: "Log stream: " + session.ResourceID})
-			}
-		}
-		if sessions, err := networkerController.ListAllPortForwardSessions(); err != nil {
-			work = append(work, unknown("port forwards", err))
-		} else {
-			for _, session := range sessions {
-				work = append(work, ActiveWork{Kind: "port-forward", Description: fmt.Sprintf("Port forward: localhost:%d → %d", session.LocalPort, session.RemotePort)})
-			}
-		}
-		for _, record := range activityService.Snapshot().Records {
-			if record.Task == nil {
-				continue
-			}
-			switch record.Task.State {
-			case "starting", "running", "paused":
-				description := record.Presentation.Title
-				if description == "" {
-					description = record.ID
-				}
-				work = append(work, ActiveWork{Kind: "task", Description: description})
-			}
-		}
-		return work
+		work = append(work, activeTerminals(execController)...)
+		work = append(work, activeLogStreams(logsController)...)
+		work = append(work, activePortForwards(networkerController)...)
+		return append(work, activeTasks(activityService)...)
 	}
+}
+
+func unconfirmedWork(what string, err error) []ActiveWork {
+	return []ActiveWork{{Kind: activeWorkUnknown, Description: fmt.Sprintf("Omniview could not confirm that no %s are running: %v", what, err)}}
+}
+
+func activeTerminals(controller exec.Controller) []ActiveWork {
+	sessions, err := controller.ListSessions()
+	if err != nil {
+		return unconfirmedWork("terminals", err)
+	}
+	work := make([]ActiveWork, 0, len(sessions))
+	for _, session := range sessions {
+		description := "Terminal session " + session.ID
+		if len(session.Command) > 0 {
+			description = "Terminal: " + strings.Join(session.Command, " ")
+		}
+		work = append(work, ActiveWork{Kind: activeWorkTerminal, Description: description})
+	}
+	return work
+}
+
+func activeLogStreams(controller pluginlogs.Controller) []ActiveWork {
+	sessions, err := controller.ListSessions()
+	if err != nil {
+		return unconfirmedWork("log streams", err)
+	}
+	work := make([]ActiveWork, 0, len(sessions))
+	for _, session := range sessions {
+		work = append(work, ActiveWork{Kind: activeWorkLogStream, Description: "Log stream: " + session.ResourceID})
+	}
+	return work
+}
+
+func activePortForwards(controller networker.Controller) []ActiveWork {
+	sessions, err := controller.ListAllPortForwardSessions()
+	if err != nil {
+		return unconfirmedWork("port forwards", err)
+	}
+	work := make([]ActiveWork, 0, len(sessions))
+	for _, session := range sessions {
+		work = append(work, ActiveWork{Kind: activeWorkPortForward, Description: fmt.Sprintf("Port forward: localhost:%d → %d", session.LocalPort, session.RemotePort)})
+	}
+	return work
+}
+
+func activeTasks(service *activity.Service) []ActiveWork {
+	var work []ActiveWork
+	for _, record := range service.Snapshot().Records {
+		if record.Task == nil {
+			continue
+		}
+		switch record.Task.State {
+		case "starting", "running", "paused":
+			description := record.Presentation.Title
+			if description == "" {
+				description = record.ID
+			}
+			work = append(work, ActiveWork{Kind: activeWorkTask, Description: description})
+		}
+	}
+	return work
 }

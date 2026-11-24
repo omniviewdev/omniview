@@ -902,11 +902,11 @@ func main() {
 	}, menus.AppMenuOptions{
 		Reload: profile.Descriptor.Kind == "development",
 		CheckForUpdates: func() {
-			if _, err := windowService.OpenSettings("/settings?section=core&category=updates"); err != nil {
-				log.Errorw(context.Background(), "failed to open update settings", "error", err)
+			if _, openErr := windowService.OpenSettings("/settings?section=core&category=updates"); openErr != nil {
+				log.Errorw(context.Background(), "failed to open update settings", "error", openErr)
 			}
-			if err := updateService.Check(); err != nil {
-				log.Warnw(context.Background(), "update check from menu failed", "error", err)
+			if checkErr := updateService.Check(); checkErr != nil {
+				log.Warnw(context.Background(), "update check from menu failed", "error", checkErr)
 			}
 		},
 	})

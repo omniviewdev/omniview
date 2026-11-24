@@ -21,7 +21,7 @@ import (
 )
 
 // feedBaseURL is the signed feed origin. Release builds keep the default; local lifecycle tests set it with -ldflags -X.
-var feedBaseURL = "https://updates.omniview.dev"
+var feedBaseURL = "https://updates.omniview.dev" //nolint:gochecknoglobals // -ldflags -X can set only package variables.
 
 const maxEnvelope = 1 << 20
 const defaultDownloadTimeout = 2 * time.Hour
