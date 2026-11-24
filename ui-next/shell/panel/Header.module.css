@@ -179,7 +179,9 @@
     }
   }
 
-  /* The name in two parts: an unbroken head with an end ellipsis, and a tail that keeps its end (a generated suffix, the ordinal), then the muted scope, which gives way first. Nothing is measured. */
+  /* The name in two parts: an unbroken head with an end ellipsis, and a tail that keeps its end (a generated suffix, the ordinal), then the muted scope, which gives way first. Nothing is measured.
+     The head has no floor in the width of characters (the mock's `min-width: min(100%, 3ch)`): a percentage does not count when the tab is sized, so a head whose text is narrower than three characters
+     (`zsh`) was laid out wider than its text and pushed the end of the tail under the label's clip (`zsh (2` and a sliver of `)`), with a gap before the tail. The tail is never clipped for a head of any length. */
   .sessionLabel {
     display: flex;
     flex: 1 1 auto;
@@ -199,7 +201,7 @@
 
   .sessionHead {
     flex: 0 1 auto;
-    min-inline-size: min(100%, 3ch);
+    min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }

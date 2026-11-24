@@ -282,6 +282,52 @@ describe('the lane', () => {
     expect(page.getByRole('status')).toHaveTextContent('The terminal stopped. The connection was closed.');
   });
 
+  it('says that the page is taking the terminal back while its feed knows the shell but has not answered: a first start has no shell yet, and says that it is connecting', async () => {
+    const { feed } = mount({ state: 'starting' });
+    await flush();
+    expect(page.getByRole('status')).toHaveTextContent('Connecting');
+    act(() => {
+      feed.set({ program: 'zsh' });
+    });
+    expect(page.getByRole('status')).toHaveTextContent('Reattaching');
+    expect(page.getByRole('status')).not.toHaveTextContent('Connecting');
+  });
+
+  it.each([
+    ['taken over by another tab', { by: 'taken-over' }, 'Taken over by another tab', 'Input is off. The shell keeps running in the tab that took it.'],
+    ['detached', { by: 'requested' }, 'Detached', 'Input is off. The shell keeps running until its lease ends.'],
+    ['detached with its window', { by: 'window-retired' }, 'Detached with its window', 'Input is off. The shell keeps running until its lease ends.'],
+  ] as const)('says in words that the terminal was %s and that input is off, keeps the emulator\'s input off, and writes the same words as the last line of the transcript', async (_name, detached, words, note) => {
+    const { feed, loader, frame } = mount();
+    await flush();
+    act(() => {
+      feed.set({ state: 'ended', detached });
+    });
+    expect(page.getByRole('status')).toHaveTextContent(words);
+    expect(page.getByRole('status')).toHaveTextContent(note);
+    expect(loader.engines[0]?.inputs.at(-1)).toBe(false);
+    await frame();
+    expect(loader.engines[0]?.text()).toContain(`[${words}]`);
+  });
+
+  it('says that no tab took the terminal back in time when its lease ran out, also when this page had lost it before, and writes both into the transcript', async () => {
+    const { feed, loader, frame } = mount();
+    await flush();
+    act(() => {
+      feed.set({ state: 'ended', detached: { by: 'requested' } });
+    });
+    await frame();
+    act(() => {
+      feed.set({ exit: { closedBy: 'detach-timeout' } });
+    });
+    expect(page.getByRole('status')).toHaveTextContent('Closed: no tab took it back in time');
+    expect(page.getByRole('status')).toHaveTextContent('Input is off. Its output stays readable here.');
+    await frame();
+    const text = loader.engines[0]?.text() ?? '';
+    expect(text).toContain('[Detached]');
+    expect(text).toContain('[Process closed: no tab took it back in time]');
+  });
+
   it('says that the emulator could not load, and what the person can do: the terminal view is the one thing that loads late', async () => {
     const store = createPanelStore({ now: () => 1, newId: () => 's1' });
     store.registerTool(TERMINAL_TOOL);

@@ -380,8 +380,37 @@
       "seq-gap",
       "legacy-write",
       "focus-close-button",
-      "focus-delete-swallowed"
+      "focus-delete-swallowed",
+      "key-in-url",
+      "key-regen",
+      "no-session",
+      "replay-gap",
+      "dup-offset",
+      "ack-replay",
+      "unmuted-reply",
+      "modes-lost",
+      "resize-ignored",
+      "no-detached",
+      "lease-silent",
+      "list-ghost",
+      "leave-lost",
+      "seq-restart",
+      "own-number",
+      "tombstone-adopted",
+      "detached-axe"
     ]
+  },
+  "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-reattach-c-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
+  "ui-next/shell/probes/terminal-reattach-probe.mjs": {
+    "probe": true,
+    "controls": []
   },
   "ui-next/shell/probes/tour-probe.mjs": {
     "probe": true,

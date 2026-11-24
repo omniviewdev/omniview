@@ -4,13 +4,13 @@
 //   node ui-next/shell/probes/terminal-probe.mjs      builds the fixture twice (OMNIVIEW_UI=next, once for the processes of a shard that share BUILD_CACHE), serves it, probes it in WebKit and Chromium at 1440 x 900 and 1280 x 800
 //
 //   FIXTURE_DIST=<dir> FIXTURE_DIST_DEV=<dir>   probe existing builds      ENGINES=webkit,chromium      VIEWPORTS=1440x900,1280x800      SECTIONS=geometry,keys      REPORT=<file>   the report as JSON
-//   PART=view|data            run the sections of one part (the unit of CI that runs this script is PART=view, and terminal-data-probe.mjs, the other unit, is PART=data): every section is in one part and only one, and the probe refuses to start when it is not
+//   PART=view|data|reattach-a|reattach-b|reattach-c   run the sections of one part (the unit of CI that runs this script is PART=view, and terminal-data-probe.mjs, terminal-reattach-probe.mjs, terminal-reattach-b-probe.mjs and terminal-reattach-c-probe.mjs, the others, are PART=data and the three of the reattach sections): every section is in one part and only one, and the probe refuses to start when it is not
 //   NEGATIVE_CONTROL=<name>   perturb the page so ONE assertion must fail, in the section it belongs to; "detected" and exit 0 when only that assertion failed, "NOT DETECTED" or "failed another assertion" and exit 1 when not
 //   ASSERTION_OFF=<regex>     drops the failures whose name matches, as if the assertion were not there: the control of it must then print NOT DETECTED (the proof that it trips that assertion and no other)
 //   SCREEN_READER=on          turn the Terminal's screen reader mode on right after each terminal starts, through its palette command and by the keyboard as a person does, so that a section measures a terminal with the mode on:
 //                             `SECTIONS=flood,hidden,idle,commits SCREEN_READER=on` is what the mode costs (docs/ui-next/status/T1.md section 16). Every other section is written for the mode off.
 //
-// Sections and their assertions (the name starts each line of a failure). PART=view: geometry, words, title, ended, start, keys, close, resize, size, bundle, paint, axe, screenreader, screenreader-cost. PART=data: hidden, idle, commits, flood, latency, memory, order.
+// Sections and their assertions (the name starts each line of a failure). PART=view: geometry, words, title, ended, start, keys, close, resize, size, bundle, paint, axe, screenreader, screenreader-cost. PART=data: hidden, idle, commits, flood, latency, memory, order. PART=reattach-a|b|c (T2b, terminal-reattach.mjs, which has its own header: a terminal survives a reload of the page, against the probe's own host, terminal-host.mjs): reattach-key, reattach-restore, reattach-exact, reattach-axe; reattach-muted, reattach-modes, reattach-size; reattach-detached, reattach-lease, reattach-restart, reattach-tombstone, reattach-leave, reattach-seq.
 //   geometry   (both viewports, both engines)  geometry.body / tools / button / screen / lane / rows / colors: the rectangles, sizes and colours of the mock's terminal body (mock-terminal.json: the mock measured in each engine at each
 //              viewport)
 //   words      the empty state and its layout at normal and minimum panel height, the toolbar and its names, the input's name and hint, the lane for a running, ended and failed session, the exit line written into the transcript
@@ -57,6 +57,7 @@ import { sharedBuild } from '../../../packages/kit/probes/build-cache.mjs';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
 import { serve } from '../../../packages/kit/probes/serve.mjs';
 import { AXE } from './harness.mjs';
+import { createReattachSections, REATTACH_CONTROLS, REATTACH_PARTS } from './terminal-reattach.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../../..');
@@ -168,6 +169,8 @@ const CONTROLS = {
   'start-typed': { assertion: 'start.failed', section: 'start', engines: ['chromium'], query: 'control=start-typed' },
   // A violation that exists only in the lane of a terminal that could not start: an image with no text alternative.
   'axe-failed': { assertion: 'axe.unavailable', section: 'axe', engines: ['chromium'], stage: 'unavailable', after: (page) => page.evaluate(() => { const image = document.createElement('img'); image.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; document.querySelector('[data-shell-part="terminalLane"]').append(image); }) },
+  // The reattach assertions (docs/ui-next/status/T2-go.md, T2b): a terminal survives a reload of the page. Their far end, their sections and their controls are in terminal-reattach.mjs.
+  ...REATTACH_CONTROLS,
 };
 if (CONTROL !== '' && CONTROL !== 'all' && CONTROLS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be all or one of ${Object.keys(CONTROLS).join(', ')}`);
 
@@ -1715,11 +1718,12 @@ async function screenreaderCost(ctx) {
   await page.context().close();
 }
 
-const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order };
+const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order, ...createReattachSections({ check, note, report, runAxe }) };
 /** The two parts the probe is run in, by the units of CI: the sections of the page (what a person sees and does) and those of the data path (what flows, and what it costs). Every section is in one and only one. */
 const PARTS = {
   view: ['geometry', 'words', 'title', 'ended', 'start', 'keys', 'close', 'resize', 'size', 'bundle', 'paint', 'axe', 'screenreader', 'screenreader-cost'],
   data: ['hidden', 'idle', 'commits', 'flood', 'latency', 'memory', 'order'],
+  ...REATTACH_PARTS,
 };
 {
   const named = Object.values(PARTS).flat();

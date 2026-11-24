@@ -1,3 +1,5 @@
+import type { TerminalModes } from './feed';
+
 // What the Terminal tool needs of a terminal emulator, in the host's own words. The emulator itself (xterm.js, with its GPU renderer) is the one thing the tool loads lazily, when the first terminal is shown
 // (`xtermEngine.ts`, the only file that imports it); everything else (`screen.ts`, the body) is written against this and tested against a fake. The emulator holds the SCREEN and the scrollback; the bytes
 // come from a feed, and the user's input goes back to it.
@@ -85,3 +87,40 @@ export type Engine = {
 
 /** Makes an emulator. Loading the emulator's code is the one asynchronous step: the factory it answers with is synchronous. */
 export type EngineLoader = () => Promise<(options: EngineOptions) => Engine>;
+
+/** A full reset (RIS), in band: the first thing a replay writes, so that the emulator parses it in order with the bytes after it. */
+export const FULL_RESET = '\u001bc';
+
+/**
+ * The two sequences that make a fresh emulator draw its cursor: a switch to the alternate screen and straight back. xterm 6.0.0 draws no cursor (not the hollow one of a terminal without the focus either) until its first
+ * focus, its first key or a switch of screen, and an emulator that is only written to, as a replay writes it, is none of them: a restored terminal would show no cursor until the person typed. The bounce clears nothing of the
+ * normal screen or its scrollback. It is written right after the reset, on the empty screen and at the start of the replay's bytes, where nothing is cut: written between the replay and the live output it would break an escape
+ * sequence that the host's cut falls inside (a cut is the end of a read, not the end of a sequence). It is for bytes that start on the normal screen: the switch to the alternate screen draws the cursor itself, and a bounce
+ * there would take the emulator off the screen it is on.
+ */
+export const CURSOR_INIT = '\u001b[?47h\u001b[?47l';
+
+/** The sequences that switch on the mouse encodings the host reports by number: the default one (0, X10) needs none; 1 is UTF-8, 2 SGR and 3 urxvt. */
+const MOUSE_ENCODINGS = ['', '\u001b[?1005h', '\u001b[?1006h', '\u001b[?1015h'];
+
+/**
+ * The escape sequences that put a fresh emulator in the modes a terminal's bytes were written under (T2-go 2.4 rule 4): the alternate screen first (the keyboard protocol's flags are a stack of each screen), the mouse (the
+ * tracking bits, the smallest first, and then the encoding), bracketed paste, application cursor keys, focus events, a hidden cursor, and one push of the keyboard protocol for each flag, the bottom of the stack first. The
+ * emulator sends a focus report when focus events are switched on, as it does for a query: whoever writes this mutes what the emulator says.
+ */
+export function modesPrologue(modes: TerminalModes): string {
+  let text = modes.altScreen ? '\u001b[?1049h' : '';
+  text += (modes.mouseTracking & 1) === 0 ? '' : '\u001b[?1000h';
+  text += (modes.mouseTracking & 2) === 0 ? '' : '\u001b[?1002h';
+  text += (modes.mouseTracking & 4) === 0 ? '' : '\u001b[?1003h';
+  text += MOUSE_ENCODINGS[modes.mouseEncoding] ?? '';
+  text += modes.bracketedPaste ? '\u001b[?2004h' : '';
+  text += modes.applicationCursor ? '\u001b[?1h' : '';
+  text += modes.focusEvents ? '\u001b[?1004h' : '';
+  text += modes.cursorHidden ? '\u001b[?25l' : '';
+  for (const flag of modes.kittyKeyboard) {
+    text += `\u001b[>${String(flag)}u`;
+  }
+
+  return text;
+}

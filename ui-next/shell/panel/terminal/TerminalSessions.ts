@@ -1,4 +1,4 @@
-import { HOST, type PanelStore, type SessionId } from '../../core/panel';
+import { HOST, type PanelStore, type Session, type SessionId } from '../../core/panel';
 import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './feed';
 import { sessionStateOf } from './state';
 import { TERMINAL_TOOL_ID } from './tool';
@@ -8,12 +8,17 @@ import { TERMINAL_TOOL_ID } from './tool';
 // (panel/logs/LogStreams.ts); what differs is said where it does:
 //
 //   - it copies what the feed says to what the session says (`sessionStateOf`): the card and the tab show it, whether the session is on screen or not;
-//   - it closes the feed, and lets go of its own listener, when the session's tab closes, when its plugin unloads, and when the registry itself ends (the window). A session the unload ENDED is kept (A21,
-//     `Session.held`): its process is ended, but its entry stays, with the very feed the view over it was made for, until the tab closes, so what a person was reading stays readable;
+//   - it closes the feed, and lets go of its own listener, when the session's tab closes and when its plugin unloads. A session the unload ENDED is kept (A21, `Session.held`): its process is ended, but its
+//     entry stays, with the very feed the view over it was made for, until the tab closes, so what a person was reading stays readable;
+//   - it LEAVES a feed that can be left, where it closes any other, when the page goes away (`leave`) and when the registry itself ends (the window unmounts): the host holds a terminal that has a key for its lease,
+//     and the page that comes back finds it (T2-go). A tab the person closes is still a close: the shell ends;
 //   - it never reads the feed and never writes to it: the view is the one reader (a feed has one);
 //   - it does NOT look for a session a target already has (A22 is the Logs tool's rule: reading one item's log twice is reading it). A press of "New terminal" is a new process, and so is a second shell in
 //     the same container: two sessions of one title are twins, which the strip already tells apart;
-//   - it remembers that the USER started a session and wants the keyboard in it (S116a): the body that shows the session takes the request when its screen is ready, once.
+//   - it remembers that the USER started a session and wants the keyboard in it (S116a): the body that shows the session takes the request when its screen is ready, once;
+//   - it finds the tab of a terminal that comes back after a reload by the id of its session (`TerminalTarget.sessionId`, which is the id of the terminal): the saved tab (the restore makes every terminal session `ended`,
+//     with no feed) is given the feed and stays where it is, under the title the person saw, and goes from `ended` to what the feed says through the write every status takes; a terminal with no saved tab gets a session
+//     of that id. Nothing is shown or focused for it. A terminal has one session: this is the one case where a target already has a session, and it is told by the id, not by what the target runs.
 //
 // A feed's status is told to the registry's listener with every held chunk's first wake-up too; the listener compares the status with the last it saw and writes to the panel only for a new one, so a flood
 // of output is a handful of writes in the life of a session, never one a chunk.
@@ -44,20 +49,33 @@ export type TerminalSessionsOptions = {
 export type OpenTerminalOptions = {
   /** The user started this session and wants the keyboard in it once its screen is ready. Default: no. */
   readonly focus?: boolean | undefined;
+  /**
+   * The panel opens on a session this call makes, and it becomes the one on screen (the panel's own `reveal`, S116). A terminal that is found again after a reload says `false`: a restored terminal must not cover the page.
+   * A saved tab that is given its feed is never shown or moved, whatever this says. Default: true.
+   */
+  readonly reveal?: boolean | undefined;
 };
 
 export type TerminalSessions = {
   /**
    * Starts listening to the panel: a session that closes, or a plugin that leaves, releases its process (a session the plugin's unload ended is kept: its process is ended and its entry stays until its tab
-   * closes, A21). Returns what stops it, which also closes every process still open and releases every entry (the window is going). It may be attached again after it was stopped.
+   * closes, A21). Returns what stops it, which also releases every entry (the window is going): a feed that can be left is left, and any other is closed. It may be attached again after it was stopped.
    */
   readonly attach: () => () => void;
   /**
-   * Opens a session in the Terminal tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). Every call is a new process. `undefined` when it could not, and why is in the
-   * log: the target is not well formed, its `open` threw or answered something that is not a feed, or the panel refused the session (its plugin is not live); the process is closed again in the last two cases.
+   * The page is going away (`pagehide`): every feed that can be left is told so (`TerminalFeedHandle.leave`), once, and nothing is closed or released: the host holds a terminal that has a key for its lease, and the page
+   * that comes back finds it. A feed that cannot be left is not touched, because the page may come back to it. The end of the registry leaves the same feeds, closes the others, and does not tell a feed twice.
+   */
+  readonly leave: () => void;
+  /**
+   * Opens a session in the Terminal tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). Every call is a new process, except for a target that names the id of its session
+   * (`TerminalTarget.sessionId`): a terminal has one session. When the panel has a session of that id (a saved tab: the restore makes every terminal session `ended`, with no feed) the session is GIVEN the feed, stays
+   * where it is under the title it has, and follows the feed from then on; when it has none, a session of that id is made. `undefined` when it could not, and why is in the log: the target is not well formed, its id names
+   * a session that cannot have this terminal (another tool's or plugin's, one a plugin's unload kept, one of a plugin that is not live, or one this registry holds a terminal for already: nothing is started for any of
+   * these), its `open` threw or answered something that is not a feed, or the panel refused the session (its plugin is not live); the process is closed again in the last two cases.
    */
   readonly open: (target: TerminalTarget, options?: OpenTerminalOptions) => TerminalOpened | undefined;
-  /** The feed of a session the registry holds, by identity: the live one, or the closed one of a held session (A21); `undefined` for a session that has none (one that closed, one restored from the last run). */
+  /** The feed of a session the registry holds, by identity: the live one, or the closed one of a held session (A21); `undefined` for a session that has none (one that closed, one restored from the last run that no terminal was found for). */
   readonly feedOf: (session: SessionId) => TerminalFeedHandle | undefined;
   /** What the card of a session needs of its feed; `undefined` when it has none. */
   readonly recordOf: (session: SessionId) => TerminalSessionRecord | undefined;
@@ -78,9 +96,14 @@ type Entry = {
   last: TerminalFeedSnapshot;
   /** The registry stopped listening to the feed and closed it, and the session stays (A21): the entry is kept for the feed, which the view reads, and for the card's record, until the tab closes. Closed only once. */
   ended: boolean;
+  /** The feed was told to leave, because the page is going away: its process lives on for its lease, and the end of the registry that follows must not close it or tell it again. */
+  left: boolean;
   /** What the record says once the entry ended (A21: a kept session never changes again): the status at the unload, with a process that was starting or running as ended. A closed feed may say anything after. */
   final?: TerminalFeedSnapshot | undefined;
 };
+
+/** What stands where a target says its session is (`claim`): a saved tab to give the feed to, or nothing there (`saved` is undefined: a session is made), or why this terminal cannot have that id. */
+type Claim = { readonly saved: Session | undefined } | { readonly why: string };
 
 const MEMBERS = ['subscribe', 'getSnapshot', 'read', 'ack', 'write', 'resize', 'close'] as const;
 
@@ -123,22 +146,36 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
   const entries = new Map<SessionId, Entry>();
   const wanted = new Set<SessionId>();
 
-  /** Closes a feed. A close that throws or rejects is the supplier's: it goes to the log, and the feed is closed either way. */
-  const closeFeed = (plugin: string, close: () => unknown): void => {
+  /** Does what lets a supplier's feed go of its process (close it, leave it). An action that throws or rejects is the supplier's: it goes to the log, and the registry has let go of the feed either way. */
+  const letGo = (plugin: string, action: () => unknown, failure: string): void => {
     try {
-      void Promise.resolve(close()).catch((error: unknown) => {
-        warn(`[panel] ${plugin} could not close the terminal`, error);
+      void Promise.resolve(action()).catch((error: unknown) => {
+        warn(`[panel] ${plugin} ${failure}`, error);
       });
     } catch (error) {
-      warn(`[panel] ${plugin} could not close the terminal`, error);
+      warn(`[panel] ${plugin} ${failure}`, error);
+    }
+  };
+
+  /** Closes a feed, which ends its process. */
+  const closeFeed = (plugin: string, close: () => unknown): void => {
+    letGo(plugin, close, 'could not close the terminal');
+  };
+
+  /** Tells a feed that the page is going away, once: the host holds its terminal for its lease. */
+  const leaveFeed = (entry: Entry): void => {
+    if (!entry.left) {
+      entry.left = true;
+      letGo(entry.plugin, () => entry.feed.leave?.(), 'could not let go of the terminal');
     }
   };
 
   /**
-   * Stops listening to a session's feed and closes it, and keeps the entry: the session stays and its view reads the feed it already has. Once: an entry that is ended is not closed again. It is marked first,
-   * so nothing the feed publishes as it closes (a real one may tell its listeners it ended) is heard.
+   * Stops listening to a session's feed and lets go of it, and keeps the entry: the session stays and its view reads the feed it already has. A feed is closed, which ends its process, unless the page is going away
+   * (`how` is `leave`) and the feed can be left: then it is left, and its process lives on for its lease (one the page left already is not told again, and is not closed after). Once: an entry that is ended is not let
+   * go of again. It is marked first, so nothing the feed publishes as it closes (a real one may tell its listeners it ended) is heard.
    */
-  const end = (entry: Entry): void => {
+  const end = (entry: Entry, how: 'close' | 'leave' = 'close'): void => {
     if (entry.ended) {
       return;
     }
@@ -148,15 +185,20 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     try {
       entry.stop();
     } catch (error) {
-      // The supplier's unsubscribe is the supplier's: the feed is closed whatever it does.
+      // The supplier's unsubscribe is the supplier's: the feed is let go of whatever it does.
       warn(`[panel] ${entry.plugin} could not stop listening to the terminal`, error);
+    }
+
+    if (how === 'leave' && typeof entry.feed.leave === 'function') {
+      leaveFeed(entry);
+      return;
     }
 
     closeFeed(entry.plugin, (): Promise<void> | void => entry.feed.close());
   };
 
-  /** Lets a session's process go: out of the registry first (a feed that publishes as it closes finds nobody), then its listener, then the feed, unless an unload already ended it. */
-  const release = (id: SessionId): void => {
+  /** Lets a session's process go: out of the registry first (a feed that publishes as it closes finds nobody), then its listener, then the feed (closed, or left: `end`), unless an unload already ended it. */
+  const release = (id: SessionId, how: 'close' | 'leave' = 'close'): void => {
     const entry = entries.get(id);
     wanted.delete(id);
     if (entry === undefined) {
@@ -164,7 +206,33 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     }
 
     entries.delete(id);
-    end(entry);
+    end(entry, how);
+  };
+
+  /**
+   * What stands where a target says its session is: nothing (a session is made), a saved tab that can be given the feed, or why that id cannot have this terminal. A terminal has one session, so a registry that holds
+   * a terminal for the id already refuses a second; a session of another tool or plugin, one its plugin's unload kept (it never changes again, A21) and one of a plugin that is not live cannot take a feed.
+   */
+  const claim = (id: SessionId, plugin: string): Claim => {
+    if (entries.has(id)) {
+      return { why: `this window holds a terminal for the session ${id} already` };
+    }
+
+    const state = store.getSnapshot();
+    const session: Session | undefined = Object.hasOwn(state.sessions, id) ? state.sessions[id] : undefined;
+    if (session === undefined) {
+      return { saved: undefined };
+    }
+
+    if (session.tool !== TERMINAL_TOOL_ID || session.plugin !== plugin) {
+      return { why: `the session ${id} is not a terminal session of ${plugin}` };
+    }
+
+    if (session.held === true) {
+      return { why: `the session ${id} ended when its plugin was unloaded and is kept as it is until it is closed` };
+    }
+
+    return plugin !== HOST && !state.live.includes(plugin) ? { why: `the plugin ${plugin} is not live` } : { saved: session };
   };
 
   /**
@@ -239,9 +307,17 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       return () => {
         stop();
         for (const id of [...entries.keys()]) {
-          release(id);
+          release(id, 'leave');
         }
       };
+    },
+
+    leave: () => {
+      for (const entry of [...entries.values()]) {
+        if (!entry.ended && typeof entry.feed.leave === 'function') {
+          leaveFeed(entry);
+        }
+      }
     },
 
     open: (target, opening = {}) => {
@@ -251,6 +327,22 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         warn(`[panel] ${plugin === '' ? 'a supplier' : plugin} could not open a terminal: a target needs a plugin, an id, a title and a way to open it`);
         return undefined;
       }
+
+      // The id of the session is the terminal's own when the target names it (T2-go: a terminal that comes back after a reload finds its tab by it), else one the registry makes. What the id stands for already is settled
+      // before anything starts: a process is never started for a session that cannot have it.
+      const named = target.sessionId;
+      if (named !== undefined && (typeof named !== 'string' || named.trim() === '')) {
+        warn(`[panel] ${plugin} could not open a terminal for ${targetId}: its session id is not an id`);
+        return undefined;
+      }
+
+      const claimed: Claim = named === undefined ? { saved: undefined } : claim(named, plugin);
+      if ('why' in claimed) {
+        warn(`[panel] ${plugin} could not open a terminal for ${targetId}: ${claimed.why}`);
+        return undefined;
+      }
+
+      const { saved } = claimed;
 
       let feed: unknown;
       try {
@@ -270,8 +362,8 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         return undefined;
       }
 
-      // The registry knows the session before the panel does, so nothing that hears of the new session (a render, a listener) can find it without its feed.
-      const id = newId();
+      // The registry knows the session before the panel does, so nothing that hears of the session (a render, a listener) can find it without its feed.
+      const id = named ?? newId();
       let first: TerminalFeedSnapshot;
       try {
         first = feed.getSnapshot();
@@ -281,14 +373,28 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         return undefined;
       }
 
-      const entry: Entry = { plugin, target: targetId, resource: target.resource, feed, stop: () => undefined, retitle: target.retitle, title: text(target.title), last: first, ended: false };
+      // A saved tab keeps the title the person saw, and says what it was when the last run saved it (ended) until the first status is copied to it below, through the write every status takes.
+      const entry: Entry = {
+        plugin,
+        target: targetId,
+        resource: target.resource,
+        feed,
+        stop: () => undefined,
+        retitle: target.retitle,
+        title: saved?.title ?? text(target.title),
+        last: saved === undefined ? first : { state: saved.state },
+        ended: false,
+        left: false,
+      };
       entries.set(id, entry);
-      const opened = store.openSession({ id, tool: TERMINAL_TOOL_ID, plugin, title: target.title, scope: target.scope, route: target.resource?.route, ...sessionStateOf(first) });
-      if (opened.status === 'refused') {
-        entries.delete(id);
-        closeFeed(plugin, (): Promise<void> | void => feed.close());
-        warn(`[panel] ${plugin} could not open a terminal for ${targetId}: ${opened.message}`);
-        return undefined;
+      if (saved === undefined) {
+        const opened = store.openSession({ id, tool: TERMINAL_TOOL_ID, plugin, title: target.title, scope: target.scope, route: target.resource?.route, ...sessionStateOf(first) }, { reveal: opening.reveal });
+        if (opened.status === 'refused') {
+          entries.delete(id);
+          closeFeed(plugin, (): Promise<void> | void => feed.close());
+          warn(`[panel] ${plugin} could not open a terminal for ${targetId}: ${opened.message}`);
+          return undefined;
+        }
       }
 
       // The panel tells its listeners as the session opens, and one of them may have closed it (the registry released the entry, and with it the feed): nothing is followed or asked for then.
@@ -301,9 +407,12 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
           heard(id);
         });
       } catch (error) {
-        // A feed that cannot be listened to cannot be followed: the session goes with its process.
+        // A feed that cannot be listened to cannot be followed: a session the registry made goes with its process, and a saved tab stays as it was, ended.
         warn(`[panel] ${plugin} gave a terminal for ${targetId} that cannot be listened to`, error);
-        store.closeSession(id);
+        if (saved === undefined) {
+          store.closeSession(id);
+        }
+
         release(id);
         return undefined;
       }
@@ -313,9 +422,12 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       }
 
       // The first status names the session when the feed already says what it runs, and a status that changed since the first read (while the panel announced the session) is the session's state now: a subscription
-      // only tells of what changes after it.
+      // only tells of what changes after it. For a saved tab it is the first state it has had since it was restored.
       retitle(id, entry, first);
       heard(id);
+      if (entries.get(id) !== entry) {
+        return undefined;
+      }
 
       return {
         id,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { ACK_RETRY_MS, BACKLOG_RETRY_MS, CHUNK_BYTES, WINDOW_BYTES, WINDOW_CALLS, createExecFeed, signalEvent, streamEvent, type ExecTransport } from './execFeed';
-import type { TerminalFeedHandle } from './feed';
+import { ACK_RETRY_MS, BACKLOG_RETRY_MS, CHUNK_BYTES, WINDOW_BYTES, WINDOW_CALLS, createExecFeed, listedOf, signalEvent, streamEvent, type ExecFeed, type ExecLaunch, type ExecTransport } from './execFeed';
+import type { TerminalFeedHandle, TerminalReplay, TerminalShellAttempt } from './feed';
 import { fakeCreditHost } from './testing';
 
 // The session of a pty as the host holds it, against a transport the test drives: what `ExecClient` and the Wails events are, as far as the feed is concerned. The feed is where the rules of a terminal's
@@ -10,25 +10,101 @@ import { fakeCreditHost } from './testing';
 
 type Deferred = { readonly resolve: (value?: unknown) => void; readonly reject: (error: unknown) => void };
 
+type Kind = 'create' | 'write' | 'resize' | 'close' | 'ack' | 'busy' | 'list' | 'attach' | 'detach';
+
 type Rig = {
-  readonly feed: TerminalFeedHandle & { readonly id: string };
+  readonly feed: ExecFeed;
   readonly calls: string[];
   /** The calls of one kind, with their arguments. */
-  readonly of: (kind: 'create' | 'write' | 'resize' | 'close' | 'ack' | 'busy') => unknown[][];
+  readonly of: (kind: Kind) => unknown[][];
   /** Delivers an event to its listeners, as Wails does. */
   readonly emit: (name: string, data: unknown) => void;
   /** Listeners alive now, over all names, or on one. */
   readonly listeners: (name?: string) => number;
   /** The calls whose answer the test has not given yet. */
-  readonly pending: (kind: 'create' | 'write' | 'resize' | 'close' | 'ack' | 'busy') => Deferred[];
+  readonly pending: (kind: Kind) => Deferred[];
   /** The kind and the number of every input call, in the order the transport was called: the counter the host puts the calls in order by. */
   readonly numbered: () => ReadonlyArray<readonly ['write' | 'resize', number]>;
+  /** What each call that starts a process was given besides the size, in order. */
+  readonly launches: ReadonlyArray<ExecLaunch | undefined>;
   readonly warn: Mock<(message: string, error?: unknown) => void>;
   readonly wakes: () => number;
 };
 
 const text = (value: string): string => btoa(value);
 const bytes = (value: string): number[] => [...new TextEncoder().encode(value)];
+
+/** The page key the rigs give a feed that has one: 36 visible characters, as a UUID is. */
+const KEY = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
+
+/** The modes of a terminal that has switched nothing on, as the host states them. */
+const PLAIN_MODES = { known: true, alt_screen: false, bracketed_paste: false, application_cursor: false, focus_events: false, cursor_hidden: false, mouse_tracking: 0, mouse_encoding: 0, kitty_keyboard: [] as number[] };
+
+type AttachedOptions = {
+  /** What the host kept: the bytes of [start, start + data.length). */
+  readonly data?: string;
+  readonly start?: number;
+  /** Where the live output continues; default: the end of `data`. */
+  readonly end?: number;
+  readonly attachment?: number;
+  readonly shell?: string;
+  readonly ended?: unknown;
+  /** The number the terminal's input queue takes next. Default: 1 for a terminal that runs, 0 for one that ended. Not a number when a test says what the host must not say. */
+  readonly nextInputSeq?: unknown;
+  readonly size?: { readonly cols: number; readonly rows: number };
+  readonly startSize?: { readonly cols: number; readonly rows: number };
+  readonly modes?: Partial<typeof PLAIN_MODES>;
+  readonly startModes?: Partial<typeof PLAIN_MODES>;
+};
+
+/**
+ * What `AttachTerminal` answers (`terminal.Attached`, T2-go 2.2). `next_input_seq` is the number the terminal's input queue takes next (host #675): at least 1 for a terminal that runs, 0 for one that ended, which takes no
+ * input. `nextInputSeq` says another number; the member is left out with `without(answer, 'next_input_seq')`.
+ */
+function attached(options: AttachedOptions = {}): Record<string, unknown> {
+  const data = options.data ?? '';
+  const start = options.start ?? 0;
+  return {
+    session: { id: 'term-1', pid: 4242, shell: { path: `/bin/${options.shell ?? 'zsh'}`, name: options.shell ?? 'zsh' }, cwd: '/home/u', cols: 80, rows: 24, lease_ms: 300_000 },
+    replay: {
+      start,
+      end: options.end ?? start + data.length,
+      data: btoa(data),
+      start_size: options.startSize ?? { cols: 80, rows: 24 },
+      start_modes: { ...PLAIN_MODES, ...options.startModes },
+      size: options.size ?? { cols: 80, rows: 24 },
+      modes: { ...PLAIN_MODES, ...options.modes },
+    },
+    cwd: { path: '/home/u' },
+    busy: { state: 'idle' },
+    attachment: options.attachment ?? 1,
+    ...(options.ended === undefined ? {} : { ended: options.ended }),
+    next_input_seq: Object.hasOwn(options, 'nextInputSeq') ? options.nextInputSeq : options.ended === undefined ? 1 : 0,
+  };
+}
+
+/** An answer without one of its members. */
+const without = (answer: Record<string, unknown>, member: string): Record<string, unknown> => Object.fromEntries(Object.entries(answer).filter(([name]) => name !== member));
+
+/** An output event of a terminal that has a key (T2-go 2.3): where its bytes lie in the terminal's output, and the bytes as base64. */
+const output = (offset: number, value: string): { readonly offset: number; readonly data: string } => ({ offset, data: btoa(value) });
+
+const OUTPUT = streamEvent('term-1', 'output');
+const DETACHED = signalEvent('term-1', 'DETACHED');
+const CLOSE = signalEvent('term-1', 'CLOSE');
+
+/** What a reader gets of the feed's output, as text. */
+const readText = (feed: TerminalFeedHandle, max?: number): string => feed.read(max).chunks.map((chunk) => new TextDecoder().decode(chunk)).join('');
+
+/** The replay a feed gives, or a failure of the test when it gives none. */
+function replayOf(feed: TerminalFeedHandle): TerminalReplay {
+  const replay = feed.takeReplay?.();
+  if (replay === undefined) {
+    throw new Error('the feed has no replay to give');
+  }
+
+  return replay;
+}
 
 type RigOptions = {
   readonly auto?: boolean;
@@ -39,15 +115,22 @@ type RigOptions = {
   readonly created?: unknown;
   /** What the backend answers to the question of what runs in the session. */
   readonly busy?: unknown;
+  /** The page's key: the feed is keyed, and its terminal outlives the page (T2-go). */
+  readonly pageKey?: string;
+  /** Takes over the terminal of this id instead of starting one (the key is `KEY` when the test gives none). The view has not measured: nothing is sent until the test sizes it. */
+  readonly attach?: { readonly id: string; readonly program?: string };
+  /** What the backend answers to the call that takes a terminal over. Default: an answer with no output yet. */
+  readonly attached?: unknown;
 };
 
 function rig(options: RigOptions = {}): Rig {
   const calls: string[] = [];
-  const log: Record<string, unknown[][]> = { create: [], write: [], resize: [], close: [], ack: [], busy: [] };
+  const log: Record<string, unknown[][]> = { create: [], write: [], resize: [], close: [], ack: [], busy: [], list: [], attach: [], detach: [] };
   const listeners = new Map<string, Set<(data: unknown) => void>>();
-  const waiting: Record<string, Deferred[]> = { create: [], write: [], resize: [], close: [], ack: [], busy: [] };
+  const waiting: Record<string, Deferred[]> = { create: [], write: [], resize: [], close: [], ack: [], busy: [], list: [], attach: [], detach: [] };
   const auto = options.auto ?? true;
   const numbered: Array<readonly ['write' | 'resize', number]> = [];
+  const launches: Array<ExecLaunch | undefined> = [];
   const answer = async (kind: string, args: unknown[], value?: unknown): Promise<unknown> => {
     calls.push(kind);
     log[kind]?.push(args);
@@ -61,7 +144,13 @@ function rig(options: RigOptions = {}): Rig {
   };
 
   const transport: ExecTransport = {
-    create: async (id, size) => answer('create', [id, size.cols, size.rows], options.created),
+    create: async (id, size, launch) => {
+      launches.push(launch);
+      return answer('create', [id, size.cols, size.rows], options.created);
+    },
+    list: async (key) => answer('list', [key]),
+    attach: async (id, request) => answer('attach', [id, request], Object.hasOwn(options, 'attached') ? options.attached : attached()),
+    detach: async (id, request) => answer('detach', [id, request]),
     write: async (id, seq, data) => {
       numbered.push(['write', seq]);
       return answer('write', [id, seq, data]);
@@ -86,16 +175,29 @@ function rig(options: RigOptions = {}): Rig {
     describe: (error) => (error instanceof Error ? error.message : String(error)),
     isGone: options.gone ?? ((error) => error instanceof Error && error.message === 'gone'),
     codeOf: (error) => (typeof error === 'object' && error !== null && typeof Reflect.get(error, 'code') === 'string' ? String(Reflect.get(error, 'code')) : undefined),
+    triedOf: (error) => {
+      const tried: unknown = typeof error === 'object' && error !== null ? Reflect.get(error, 'tried') : undefined;
+      return Array.isArray(tried) ? (tried as TerminalShellAttempt[]) : undefined;
+    },
   };
   const warn = vi.fn<(message: string, error?: unknown) => void>();
-  const feed = createExecFeed({ transport, newId: () => 'term-1', warn, ...(options.settleMs === undefined ? {} : { settleMs: options.settleMs }) });
+  const common = { transport, newId: () => 'term-1', warn, ...(options.settleMs === undefined ? {} : { settleMs: options.settleMs }) };
+  let feed: ExecFeed;
+  if (options.attach !== undefined) {
+    feed = createExecFeed({ ...common, pageKey: options.pageKey ?? KEY, attach: options.attach });
+  } else if (options.pageKey !== undefined) {
+    feed = createExecFeed({ ...common, pageKey: options.pageKey });
+  } else {
+    feed = createExecFeed(common);
+  }
+
   let woken = 0;
   feed.subscribe(() => {
     woken += 1;
   });
-  // The view measuring itself, as the body does when it mounts: the process starts at that size (`size: false` is a view that has not measured).
-  if (options.size !== false) {
-    const size = options.size ?? { cols: 80, rows: 24 };
+  // The view measuring itself, as the body does when it mounts: the process starts at that size (`size: false` is a view that has not measured). A terminal that is taken over is already there: nothing is sized unless the test says.
+  const size = options.size === false ? undefined : (options.size ?? (options.attach === undefined ? { cols: 80, rows: 24 } : undefined));
+  if (size !== undefined) {
     feed.resize(size.cols, size.rows);
   }
 
@@ -111,6 +213,7 @@ function rig(options: RigOptions = {}): Rig {
     listeners: (name) => (name === undefined ? [...listeners.values()].reduce((sum, set) => sum + set.size, 0) : (listeners.get(name)?.size ?? 0)),
     pending: (kind) => waiting[kind] ?? [],
     numbered: () => numbered,
+    launches,
     warn,
     wakes: () => woken,
   };
@@ -1859,5 +1962,1395 @@ describe('input while the host has paused the shell for credit (T1-go 2.8.6)', (
       { kind: 'resize', seq: 2, rows: 30, cols: 100 },
       { kind: 'write', seq: 3, text: 'ls\r' },
     ]);
+  });
+});
+
+// ---- T2b: a terminal that outlives its page (docs/ui-next/status/T2-go.md, sections 2.1 to 2.5) ---------------------------------------------------------------------------------------------------------------
+
+describe('a terminal that has a key: it outlives the page that started it (T2-go 2.1)', () => {
+  it('gives the key to the transport with the call that starts the process, beside the size, and a feed that has none gives nothing at all: it starts as it always did', () => {
+    const keyed = rig({ pageKey: KEY });
+    expect(keyed.launches).toEqual([{ pageKey: KEY }]);
+    expect(keyed.of('create')).toEqual([['term-1', 80, 24]]);
+    expect(rig().launches).toEqual([undefined]);
+  });
+
+  it('listens to the three events of a keyed terminal BEFORE it starts the process: its output with offsets, its end, and the loss of it (the host sends no plain stream for it)', () => {
+    const { calls } = rig({ pageKey: KEY });
+    const first = calls.indexOf('create');
+    expect(first).toBeGreaterThan(0);
+    expect(calls.slice(0, first).sort()).toEqual(['on core/exec/signal/CLOSE/term-1', 'on core/exec/signal/DETACHED/term-1', 'on core/exec/stream/output/term-1']);
+  });
+
+  it('lets go of all three when it is closed', async () => {
+    const { feed, listeners, calls } = rig({ pageKey: KEY });
+    await settle();
+    await feed.close();
+    expect(listeners()).toBe(0);
+    expect(calls.filter((call) => call.startsWith('off ')).sort()).toEqual(['off core/exec/signal/CLOSE/term-1', 'off core/exec/signal/DETACHED/term-1', 'off core/exec/stream/output/term-1']);
+  });
+
+  it('names the events as the host does (backend/pkg/plugin/exec/terminal.go)', () => {
+    expect(streamEvent('term-1', 'output')).toBe('core/exec/stream/output/term-1');
+    expect(signalEvent('term-1', 'DETACHED')).toBe('core/exec/signal/DETACHED/term-1');
+  });
+
+  it('numbers its input from 1 once the process exists, as a feed that started the terminal always did', async () => {
+    const { feed, of } = rig({ pageKey: KEY });
+    await settle();
+    feed.write('ls');
+    expect(of('write')).toEqual([['term-1', 1, btoa('ls')]]);
+  });
+
+  it('has `leave` and no `takeReplay` when it started the terminal; a feed with no key has neither', () => {
+    expect(typeof rig({ pageKey: KEY }).feed.leave).toBe('function');
+    expect(rig({ pageKey: KEY }).feed.takeReplay).toBeUndefined();
+    expect(rig().feed.leave).toBeUndefined();
+    expect(rig().feed.takeReplay).toBeUndefined();
+  });
+
+  it('never puts the key in what it says: not in the status of a session that failed, not in a warning', async () => {
+    const { feed, emit, pending, warn } = rig({ pageKey: KEY, auto: false, settleMs: 10 });
+    pending('create')[0]?.resolve();
+    await flush();
+    emit(OUTPUT, output(0, 'abc'));
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    pending('resize')[0]?.reject(new Error('Failed to resize'));
+    pending('ack')[0]?.resolve();
+    await flush();
+    feed.ack(3);
+    pending('ack')[1]?.reject(new Error('refused'));
+    await flush();
+    emit(OUTPUT, output(50, 'gap'));
+    expect(warn.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(JSON.stringify([warn.mock.calls, feed.getSnapshot()])).not.toContain(KEY);
+  });
+});
+
+describe('the output of a terminal that has a key, joined by offset (T2-go 2.3, 2.4 rules 5 and 6)', () => {
+  it('applies each event at the offset the feed has reached, in order, and reads it as bytes, once', () => {
+    const { feed, emit } = rig({ pageKey: KEY });
+    emit(OUTPUT, output(0, 'hello '));
+    emit(OUTPUT, output(6, 'world'));
+    const read = feed.read();
+    expect(read.chunks.map((chunk) => [...chunk])).toEqual([bytes('hello '), bytes('world')]);
+    expect(read.bytes).toBe(11);
+    expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+  });
+
+  it('does not listen to the plain output stream: a keyed terminal has none, and a byte taken from both would be applied twice', () => {
+    const { feed, emit } = rig({ pageKey: KEY });
+    emit(streamEvent('term-1', 'stdout'), text('plain'));
+    emit(streamEvent('term-1', 'stderr'), text('plain'));
+    expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+  });
+
+  it('keeps what arrives before the host has answered: the first prompt may come before the call returns', async () => {
+    const { feed, emit, pending } = rig({ pageKey: KEY, auto: false });
+    emit(OUTPUT, output(0, 'prompt $ '));
+    expect(feed.getSnapshot().state).toBe('starting');
+    pending('create')[0]?.resolve();
+    await settle();
+    expect(readText(feed)).toBe('prompt $ ');
+  });
+
+  it('drops an event whose bytes it already has, whenever it comes, and neither holds it, wakes anybody for it, nor lets it be read: a duplicate is not output', () => {
+    const { feed, emit, wakes } = rig({ pageKey: KEY });
+    emit(OUTPUT, output(0, 'hello '));
+    feed.read();
+    const before = wakes();
+    // The same event again, one that lies inside what it has, one that ends exactly where it stands: all of them are bytes it has.
+    emit(OUTPUT, output(0, 'hello '));
+    emit(OUTPUT, output(2, 'llo'));
+    emit(OUTPUT, output(4, 'o '));
+    expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+    expect(wakes()).toBe(before);
+    emit(OUTPUT, output(6, 'world'));
+    expect(readText(feed)).toBe('world');
+    expect(wakes()).toBe(before + 1);
+  });
+
+  it('drops a duplicate that comes while what it duplicates is still held, not yet read: held or read, it is the same bytes', () => {
+    const { feed, emit } = rig({ pageKey: KEY });
+    emit(OUTPUT, output(0, 'abc'));
+    emit(OUTPUT, output(0, 'abc'));
+    emit(OUTPUT, output(3, 'def'));
+    emit(OUTPUT, output(3, 'def'));
+    expect(readText(feed)).toBe('abcdef');
+  });
+
+  it('treats an event above the offset it has as a gap that must not happen: the session fails in words that say so, with a warning, and every listener is released; what came before stays readable', () => {
+    const { feed, emit, warn, listeners } = rig({ pageKey: KEY });
+    emit(OUTPUT, output(0, 'abc'));
+    emit(OUTPUT, output(10, 'xyz'));
+    expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: 'Some of the terminal\'s output did not arrive.' } });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(listeners()).toBe(0);
+    emit(OUTPUT, output(3, 'def'));
+    expect(readText(feed)).toBe('abc');
+  });
+
+  it('ends the process of a session that failed that way when the feed is closed: the host still has it', async () => {
+    const { feed, emit, of } = rig({ pageKey: KEY });
+    await flush();
+    emit(OUTPUT, output(5, 'gap'));
+    await feed.close();
+    expect(of('close')).toEqual([['term-1']]);
+  });
+
+  it('does not apply an event that overlaps what it has and goes beyond it, either: the offsets no longer join, and that is said as a gap is', () => {
+    const { feed, emit, warn } = rig({ pageKey: KEY });
+    emit(OUTPUT, output(0, 'abc'));
+    emit(OUTPUT, output(2, 'cdef'));
+    expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: 'Some of the terminal\'s output did not arrive.' } });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(readText(feed)).toBe('abc');
+  });
+
+  it('ignores an output event that is not an offset and text, and says so once, not for every event: what it ignored took no place in the output', () => {
+    const { feed, emit, warn } = rig({ pageKey: KEY });
+    const bad: unknown[] = [null, undefined, 42, 'aGk=', { offset: 0 }, { data: btoa('x') }, { offset: -1, data: btoa('x') }, { offset: 1.5, data: btoa('x') }, { offset: '0', data: btoa('x') }, { offset: 0, data: 7 }, { offset: 0, data: 'abc' }, { offset: Number.NaN, data: btoa('x') }];
+    for (const payload of bad) {
+      emit(OUTPUT, payload);
+    }
+
+    expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(feed.getSnapshot().state).toBe('starting');
+    emit(OUTPUT, output(0, 'ok'));
+    expect(readText(feed)).toBe('ok');
+  });
+
+  it('holds all of it and drops nothing, as a feed with no key does: the host\'s pacing is the bound, so a reader that comes late reads every byte, in order', () => {
+    const { feed, emit } = rig({ pageKey: KEY });
+    for (let index = 0; index < 300; index += 1) {
+      emit(OUTPUT, { offset: index * 1_024, data: text(String(index).padStart(4, '0').repeat(256)) });
+    }
+
+    const read = feed.read();
+    expect(read.chunks).toHaveLength(300);
+    expect(read.bytes).toBe(300 * 1_024);
+    const markers = read.chunks.map((chunk) => new TextDecoder().decode(chunk).slice(0, 4));
+    expect(markers).toEqual(Array.from({ length: 300 }, (_, index) => String(index).padStart(4, '0')));
+  });
+
+  it('does not touch what it holds until somebody reads: no decode, no copy; the length of an event is counted from its text', () => {
+    const decode = vi.spyOn(Uint8Array as unknown as { fromBase64: (text: string) => Uint8Array }, 'fromBase64');
+    const { emit } = rig({ pageKey: KEY });
+    for (let index = 0; index < 100; index += 1) {
+      emit(OUTPUT, { offset: index * 3, data: text('y\r\n') });
+    }
+
+    expect(decode).not.toHaveBeenCalled();
+    decode.mockRestore();
+  });
+
+  it('wakes a listener ONCE until its reader has read, however many events come, and not for the events it dropped', () => {
+    const { feed, emit, wakes } = rig({ pageKey: KEY });
+    const before = wakes();
+    for (let index = 0; index < 1_000; index += 1) {
+      emit(OUTPUT, { offset: index * 3, data: text('y\r\n') });
+      emit(OUTPUT, { offset: index * 3, data: text('y\r\n') });
+    }
+
+    expect(wakes()).toBe(before + 1);
+    feed.read();
+    emit(OUTPUT, { offset: 3_000, data: text('y\r\n') });
+    expect(wakes()).toBe(before + 2);
+  });
+
+  it('ends on the typed close of the terminal as a feed with no key does, and says when it was the lease of a terminal nobody held that ran out', async () => {
+    const { feed, emit, listeners } = rig({ pageKey: KEY });
+    await flush();
+    emit(OUTPUT, output(0, 'bye\r\n'));
+    emit(CLOSE, { reason: 'closed', closed_by: 'detach-timeout', last_offset: 5 });
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', exit: { closedBy: 'detach-timeout' } });
+    expect(listeners()).toBe(0);
+    expect(readText(feed)).toBe('bye\r\n');
+  });
+
+  it('dismisses the terminal at the host when it is closed after it ended on its own: the host keeps how it ended and what it wrote for the rest of its lease, until a page closes it', async () => {
+    const keyed = rig({ pageKey: KEY });
+    await flush();
+    keyed.emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    await keyed.feed.close();
+    expect(keyed.of('close')).toEqual([['term-1']]);
+    // A feed with no key has nothing to dismiss: its process ended and the host kept nothing.
+    const plain = rig();
+    await flush();
+    plain.emit(signalEvent('term-1', 'CLOSE'), { reason: 'exited', exit_code: 0 });
+    await plain.feed.close();
+    expect(plain.of('close')).toEqual([]);
+  });
+
+  it('is not troubled when the host says the terminal it dismisses is already gone', async () => {
+    const { feed, emit, pending } = rig({ pageKey: KEY, auto: false });
+    pending('create')[0]?.resolve();
+    await flush();
+    emit(CLOSE, { reason: 'closed', closed_by: 'request', last_offset: 0 });
+    const closing = feed.close();
+    await flush();
+    pending('close')[0]?.reject(new Error('gone'));
+    await expect(closing).resolves.toBeUndefined();
+  });
+
+  it('takes a not-found answer to the close of a terminal that ended on its own as done: the host keeps such a terminal listed until its lease runs out and does not dismiss it (its close answers not-found), so closing the tab is no failure and says nothing', async () => {
+    const { feed, emit, pending, of, warn } = rig({ pageKey: KEY, auto: false });
+    pending('create')[0]?.resolve();
+    await flush();
+    emit(CLOSE, { reason: 'exited', exit_code: 3, last_offset: 0 });
+    const closing = feed.close();
+    await flush();
+    expect(of('close')).toEqual([['term-1']]);
+    pending('close')[0]?.reject(new Error('gone'));
+    await expect(closing).resolves.toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 3 } });
+  });
+
+  it('takes it as done for a terminal that had ended while no page held it, too: the page took it over only to show how it ended', async () => {
+    const { feed, pending, of, warn } = rig({ auto: false, attach: { id: 'term-1', program: 'zsh' } });
+    pending('attach')[0]?.resolve(attached({ ended: { reason: 'exited', exit_code: 7, last_offset: 0 } }));
+    await flush();
+    const closing = feed.close();
+    await flush();
+    pending('close')[0]?.reject(new Error('gone'));
+    await expect(closing).resolves.toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    expect(of('close')).toHaveLength(1);
+  });
+
+  it('still tells the caller when the host refuses the close of an ended terminal for another reason: only not-found is done', async () => {
+    const { feed, emit, pending } = rig({ pageKey: KEY, auto: false });
+    pending('create')[0]?.resolve();
+    await flush();
+    emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    const closing = feed.close();
+    await flush();
+    pending('close')[0]?.reject(new Error('The host is busy'));
+    await expect(closing).rejects.toThrow('The host is busy');
+  });
+});
+
+describe('taking over a terminal that outlived its page (T2-go 2.4)', () => {
+  const ATTACH = { id: 'term-1', program: 'zsh' };
+
+  it('is starting, named by the shell the listing gave, and listens to the three events BEFORE the one call that takes the terminal over: with the key and NO offset, since a fresh emulator has nothing', () => {
+    const { feed, calls, of } = rig({ auto: false, attach: ATTACH });
+    expect(feed.getSnapshot()).toEqual({ state: 'starting', program: 'zsh' });
+    const first = calls.indexOf('attach');
+    expect(first).toBeGreaterThan(0);
+    expect(calls.slice(0, first).sort()).toEqual(['on core/exec/signal/CLOSE/term-1', 'on core/exec/signal/DETACHED/term-1', 'on core/exec/stream/output/term-1']);
+    expect(of('attach')).toHaveLength(1);
+    expect(of('attach')[0]?.[0]).toBe('term-1');
+    expect(of('attach')[0]?.[1]).toStrictEqual({ pageKey: KEY });
+  });
+
+  it('starts no process, measures nothing and waits for no size: the terminal is there, and the call goes at once', () => {
+    const { of } = rig({ auto: false, attach: ATTACH });
+    expect(of('create')).toEqual([]);
+    expect(of('attach')).toHaveLength(1);
+  });
+
+  it('is running when the host has answered, named by the shell its answer says (it wins over the listing), and tells its listeners once', async () => {
+    const { feed, pending, wakes } = rig({ auto: false, attach: { id: 'term-1', program: 'sh' } });
+    const before = wakes();
+    pending('attach')[0]?.resolve(attached({ shell: 'zsh' }));
+    await flush();
+    expect(feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    expect(wakes()).toBe(before + 1);
+  });
+
+  it('keeps the name the listing gave when the answer names no shell, and has none when neither does', async () => {
+    const named = rig({ auto: false, attach: ATTACH });
+    named.pending('attach')[0]?.resolve({ ...attached(), session: {} });
+    await flush();
+    expect(named.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    const nameless = rig({ auto: false, attach: { id: 'term-1' } });
+    expect(nameless.feed.getSnapshot()).toEqual({ state: 'starting' });
+    nameless.pending('attach')[0]?.resolve({ ...attached(), session: {} });
+    await flush();
+    expect(nameless.feed.getSnapshot()).toEqual({ state: 'running' });
+  });
+
+  describe('the replay', () => {
+    it('is given once, as the bytes the host kept and the sizes and the modes it states, with the offset the live output continues at', async () => {
+      const { feed, pending } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(
+        attached({
+          data: 'hello\r\n',
+          start: 100,
+          startSize: { cols: 120, rows: 30 },
+          size: { cols: 100, rows: 40 },
+          startModes: { bracketed_paste: true },
+          modes: { alt_screen: true, bracketed_paste: true, application_cursor: true, focus_events: true, cursor_hidden: true, mouse_tracking: 5, mouse_encoding: 2, kitty_keyboard: [1, 3] },
+        }),
+      );
+      await flush();
+      const replay = replayOf(feed);
+      expect([...replay.data]).toEqual(bytes('hello\r\n'));
+      expect(replay.end).toBe(107);
+      expect(replay.startSize).toEqual({ cols: 120, rows: 30 });
+      expect(replay.size).toEqual({ cols: 100, rows: 40 });
+      expect(replay.startModes).toEqual({ altScreen: false, bracketedPaste: true, applicationCursor: false, focusEvents: false, cursorHidden: false, mouseTracking: 0, mouseEncoding: 0, kittyKeyboard: [] });
+      expect(replay.modes).toEqual({ altScreen: true, bracketedPaste: true, applicationCursor: true, focusEvents: true, cursorHidden: true, mouseTracking: 5, mouseEncoding: 2, kittyKeyboard: [1, 3] });
+      expect(feed.takeReplay?.()).toBeUndefined();
+    });
+
+    it('is not decoded until the reader takes it: a terminal that is never shown costs the text it holds and no more', async () => {
+      const decode = vi.spyOn(Uint8Array as unknown as { fromBase64: (text: string) => Uint8Array }, 'fromBase64');
+      const { feed, pending } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ data: 'x'.repeat(4_096) }));
+      await flush();
+      expect(decode).not.toHaveBeenCalled();
+      replayOf(feed);
+      decode.mockRestore();
+    });
+
+    it('does not exist before the host has answered, and nothing is read then: whatever came is held for after it', () => {
+      const { feed, emit } = rig({ auto: false, attach: ATTACH });
+      expect(feed.takeReplay?.()).toBeUndefined();
+      emit(OUTPUT, output(0, 'x'));
+      expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+    });
+
+    it('gives no live output before it is taken: `read` is empty until then, however much has come, and what came is there after it, in order', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ data: 'old' }));
+      await flush();
+      emit(OUTPUT, output(3, 'new1'));
+      emit(OUTPUT, output(7, 'new2'));
+      expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+      replayOf(feed);
+      expect(readText(feed)).toBe('new1new2');
+    });
+
+    it('is given when there was nothing to replay, with the size and the modes that are in force: the bytes are none, and the emulator is still brought to where the terminal is', async () => {
+      const { feed, pending } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ size: { cols: 90, rows: 33 }, modes: { cursor_hidden: true } }));
+      await flush();
+      const replay = replayOf(feed);
+      expect(replay.data).toHaveLength(0);
+      expect(replay.end).toBe(0);
+      expect(replay.size).toEqual({ cols: 90, rows: 33 });
+      expect(replay.modes.cursorHidden).toBe(true);
+    });
+
+    it('continues at an offset past 2^32: a terminal that has written gigabytes joins as exactly as one that wrote a prompt', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      const end = 2 ** 33;
+      pending('attach')[0]?.resolve(attached({ data: 'tail', start: end - 4 }));
+      await flush();
+      replayOf(feed);
+      emit(OUTPUT, output(end - 4, 'tail'));
+      emit(OUTPUT, output(end, 'more'));
+      expect(readText(feed)).toBe('more');
+    });
+  });
+
+  describe('the output that comes while the call is out, and after it (rule 5)', () => {
+    it('holds what comes while the call is out and applies it after the answer by offset: what the replay has is dropped, what continues it is read, in order', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      emit(OUTPUT, output(0, 'aaaa'));
+      emit(OUTPUT, output(4, 'bbbb'));
+      emit(OUTPUT, output(8, 'cccc'));
+      emit(OUTPUT, output(12, 'dddd'));
+      expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+      pending('attach')[0]?.resolve(attached({ data: 'aaaabbbb' }));
+      await flush();
+      replayOf(feed);
+      expect(readText(feed)).toBe('ccccdddd');
+    });
+
+    it('drops, ALWAYS, an event the replay has the bytes of, also one that comes AFTER the answer: an event and a reply travel apart (7 in 2,051 reattaches seen in the field), and then goes on with the event at the offset it has', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ data: 'aaaabbbb' }));
+      await flush();
+      replayOf(feed);
+      emit(OUTPUT, output(4, 'bbbb'));
+      emit(OUTPUT, output(0, 'aaaa'));
+      emit(OUTPUT, output(8, 'cccc'));
+      emit(OUTPUT, output(8, 'cccc'));
+      emit(OUTPUT, output(12, 'dddd'));
+      expect(readText(feed)).toBe('ccccdddd');
+    });
+
+    it('does not wake its reader for an event it dropped', async () => {
+      const { feed, pending, emit, wakes } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ data: 'aaaabbbb' }));
+      await flush();
+      replayOf(feed);
+      feed.read();
+      const before = wakes();
+      emit(OUTPUT, output(4, 'bbbb'));
+      expect(wakes()).toBe(before);
+    });
+
+    it('fails the session in words when a held event lies above where the replay ends: a gap that must not happen, and the host\'s output is not guessed at', async () => {
+      const { feed, pending, emit, warn } = rig({ auto: false, attach: ATTACH });
+      emit(OUTPUT, output(12, 'dddd'));
+      pending('attach')[0]?.resolve(attached({ data: 'aaaabbbb' }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: 'Some of the terminal\'s output did not arrive.' } });
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('fails the same way when an event straddles the end of the replay: whole events never do, and one that does is not to be trusted', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ data: 'aaaabbbb' }));
+      await flush();
+      emit(OUTPUT, output(6, 'bbcccc'));
+      expect(feed.getSnapshot().state).toBe('failed');
+    });
+
+    it('reads every event after the replay once and in order when events and the answer are shuffled any way: held before, dropped after, applied after', async () => {
+      // The terminal wrote 'abcdefghij' in five events of two bytes; the replay holds the first three, and the events the page hears are the ones it hears in each interleaving.
+      const events = [output(0, 'ab'), output(2, 'cd'), output(4, 'ef'), output(6, 'gh'), output(8, 'ij')];
+      for (let heardBefore = 0; heardBefore <= events.length; heardBefore += 1) {
+        for (let late = 0; late <= 3; late += 1) {
+          const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+          for (const event of events.slice(0, heardBefore)) {
+            emit(OUTPUT, event);
+          }
+
+          pending('attach')[0]?.resolve(attached({ data: 'abcdef' }));
+          await flush();
+          // Events that were handed to the transport before the answer was made and reach the page after it, then the live ones.
+          for (const event of [...events.slice(Math.max(heardBefore, 3 - late), 3), ...events.slice(Math.max(heardBefore, 3))]) {
+            emit(OUTPUT, event);
+          }
+
+          replayOf(feed);
+          expect(readText(feed)).toBe('ghij');
+        }
+      }
+    });
+  });
+
+  describe('flow control and the input counter (rule 6)', () => {
+    it('turns flow control on once the host has answered, with the first acknowledgement and nothing owed, and not before', async () => {
+      const { pending, of } = rig({ auto: false, attach: ATTACH });
+      await flush();
+      expect(of('ack')).toEqual([]);
+      pending('attach')[0]?.resolve(attached());
+      await flush();
+      expect(of('ack')).toEqual([['term-1', 0]]);
+    });
+
+    it('acknowledges what the reader parsed of the live output, and nothing of the replay, whatever its size: the first call carries no byte', async () => {
+      const { feed, pending, of, emit } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ data: 'x'.repeat(1_000) }));
+      await flush();
+      pending('ack')[0]?.resolve();
+      replayOf(feed);
+      await flush();
+      expect(of('ack')).toEqual([['term-1', 0]]);
+      emit(OUTPUT, output(1_000, 'live'));
+      emit(OUTPUT, output(500, 'dropped duplicate'));
+      feed.ack(feed.read().bytes);
+      await flush();
+      expect(of('ack')).toEqual([['term-1', 0], ['term-1', 4]]);
+    });
+
+    it('continues the count of input calls from the number the answer states, whatever it is and not from 1: the first write is exactly that number, a size the next, a write after it the next, one counter for the writes and the sizes together', async () => {
+      const { feed, pending, numbered, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ nextInputSeq: 17 }));
+      await flush();
+      feed.write('a');
+      feed.resize(100, 30);
+      vi.advanceTimersByTime(200);
+      feed.write('b');
+      expect(numbered()).toEqual([['write', 17], ['resize', 18], ['write', 19]]);
+      expect(of('write')).toEqual([['term-1', 17, btoa('a')], ['term-1', 19, btoa('b')]]);
+      expect(of('resize')).toEqual([['term-1', 18, 30, 100]]);
+    });
+
+    it('sends what is typed at once, each key as its own call with the next number, and never waits for the answer of a call before it: the numbers keep the order, as they do for a terminal this page started', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ nextInputSeq: 17 }));
+      await flush();
+      feed.write('a');
+      feed.write('b');
+      feed.write('c');
+      expect(of('write')).toEqual([['term-1', 17, btoa('a')], ['term-1', 18, btoa('b')], ['term-1', 19, btoa('c')]]);
+    });
+
+    it('keeps the numbers of a typed burst consecutive across the windows: what does not fit waits and goes in the next call as calls are answered, and every call, those of the first window and those after it, takes the number after the one before, from the answer\'s', async () => {
+      const { feed, pending, of, numbered } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ nextInputSeq: 17 }));
+      await flush();
+      const keys = Array.from({ length: 300 }, (_, key) => String.fromCharCode(97 + (key % 26))).join('');
+      for (const key of keys) {
+        feed.write(key);
+      }
+
+      expect(of('write')).toHaveLength(WINDOW_CALLS);
+      // The list grows while it is walked: a call that goes out when one is answered is answered in its turn.
+      for (const call of pending('write')) {
+        call.resolve();
+        await settle();
+      }
+
+      expect(of('write')).toHaveLength(WINDOW_CALLS + 1);
+      expect(of('write').map(textOf).join('')).toBe(keys);
+      expect(numbered().map(([, number]) => number)).toEqual(Array.from({ length: WINDOW_CALLS + 1 }, (_, index) => 17 + index));
+    });
+
+    it('keeps the numbers of a paste consecutive across the window of bytes: one more piece goes for each call answered, in order, and the numbers go on from the answer\'s', async () => {
+      const { feed, pending, of, numbered } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ nextInputSeq: 17 }));
+      await flush();
+      const paste = pasteOf(2_048);
+      const pieces = paste.length / CHUNK_BYTES;
+      feed.write(paste);
+      for (let answered = 0; answered < pieces; answered += 1) {
+        pending('write')[answered]?.resolve();
+        await settle();
+      }
+
+      expect(of('write')).toHaveLength(pieces);
+      expect(numbered().map(([, number]) => number)).toEqual(Array.from({ length: pieces }, (_, index) => 17 + index));
+      expect(of('write').map(textOf).join('')).toBe(paste);
+    });
+
+    it('holds what is typed while the call is out, and sends it after the answer, in order, under the numbers the answer gives', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      feed.write('ls');
+      feed.write('\r');
+      expect(of('write')).toEqual([]);
+      pending('attach')[0]?.resolve(attached({ nextInputSeq: 7 }));
+      await flush();
+      expect(of('write')).toEqual([['term-1', 7, btoa('ls\r')]]);
+    });
+
+    it('numbers the two sizes of a redraw from the answer\'s number, one counter with the writes: both go out at once, the size one column short and then as it is, and what is typed behind them takes the number after them', async () => {
+      const { feed, pending, of, numbered } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ size: { cols: 100, rows: 30 }, nextInputSeq: 17 }));
+      await flush();
+      feed.redraw?.();
+      feed.write('x');
+      expect(of('resize')).toEqual([['term-1', 17, 30, 99], ['term-1', 18, 30, 100]]);
+      expect(of('write')).toEqual([['term-1', 19, btoa('x')]]);
+      expect(numbered()).toEqual([['resize', 17], ['resize', 18], ['write', 19]]);
+    });
+
+    it('fails the session in the host\'s words and code when it refuses a number as stale, as it does for any other refusal of a call, and does not send the call again: only a full queue is sent again', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ nextInputSeq: 17 }));
+      await flush();
+      feed.write('a');
+      const words = 'Sequence number 17 was already applied or given up; the next expected is 40.';
+      pending('write')[0]?.reject(Object.assign(new Error(words), { code: 'SEQUENCE_STALE' }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'input', message: words, code: 'SEQUENCE_STALE' } });
+      vi.advanceTimersByTime(10_000);
+      await flush();
+      expect(of('write')).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  describe('the size', () => {
+    it('knows the size the host has from the replay: a size measured that is the same sends nothing, and a different one is sent once, as its own call', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ size: { cols: 100, rows: 30 }, nextInputSeq: 3 }));
+      await flush();
+      feed.resize(100, 30);
+      vi.advanceTimersByTime(200);
+      await settle();
+      expect(of('resize')).toEqual([]);
+      feed.resize(120, 40);
+      vi.advanceTimersByTime(200);
+      await settle();
+      expect(of('resize')).toEqual([['term-1', 3, 40, 120]]);
+    });
+
+    it('holds a size measured before the answer until the host has answered, and sends it only when it is not the size the host has', async () => {
+      const same = rig({ auto: false, attach: ATTACH });
+      same.feed.resize(100, 30);
+      vi.advanceTimersByTime(200);
+      expect(same.of('resize')).toEqual([]);
+      same.pending('attach')[0]?.resolve(attached({ size: { cols: 100, rows: 30 }, nextInputSeq: 1 }));
+      await flush();
+      expect(same.of('resize')).toEqual([]);
+      const other = rig({ auto: false, attach: ATTACH });
+      other.feed.resize(120, 40);
+      vi.advanceTimersByTime(200);
+      other.pending('attach')[0]?.resolve(attached({ size: { cols: 100, rows: 30 }, nextInputSeq: 1 }));
+      await flush();
+      expect(other.of('resize')).toEqual([['term-1', 1, 40, 120]]);
+    });
+  });
+
+  describe('a terminal that had ended while no page held it (rule 7)', () => {
+    it('is ended, with how it ended in the words of the typed end, the replay still given, nothing acknowledged, and every listener released: no live output follows', async () => {
+      const { feed, pending, listeners, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ data: 'bye\r\n', ended: { reason: 'exited', exit_code: 3, last_offset: 5 } }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 3 }, program: 'zsh' });
+      expect(listeners()).toBe(0);
+      expect([...replayOf(feed).data]).toEqual(bytes('bye\r\n'));
+      expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+      expect(of('ack')).toEqual([]);
+    });
+
+    it.each([
+      { name: 'the 0 a terminal that takes no input says', answer: attached({ ended: { reason: 'exited', exit_code: 3, last_offset: 5 } }) },
+      { name: 'no number at all', answer: without(attached({ ended: { reason: 'exited', exit_code: 3, last_offset: 5 } }), 'next_input_seq') },
+      { name: 'a fraction where the number goes', answer: attached({ ended: { reason: 'exited', exit_code: 3, last_offset: 5 }, nextInputSeq: -4.5 }) },
+      { name: 'text where the number goes', answer: attached({ ended: { reason: 'exited', exit_code: 3, last_offset: 5 }, nextInputSeq: 'seven' }) },
+      { name: 'null where the number goes', answer: attached({ ended: { reason: 'exited', exit_code: 3, last_offset: 5 }, nextInputSeq: null }) },
+    ])('is ended all the same when the answer carries $name: a terminal that ended takes no input, so its number is not read and no call is ever sent for it', async ({ answer }) => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(answer);
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 3 }, program: 'zsh' });
+      feed.write('x');
+      feed.resize(100, 30);
+      vi.advanceTimersByTime(1_000);
+      await flush();
+      expect([...of('write'), ...of('resize'), ...of('ack')]).toEqual([]);
+    });
+
+    it.each([
+      { how: 'was killed by a signal', ended: { reason: 'signaled', signal: 'SIGKILL', signal_number: 9, last_offset: 0 }, exit: { signal: 'SIGKILL', signalNumber: 9 } },
+      { how: 'was ended when the lease ran out', ended: { reason: 'closed', closed_by: 'detach-timeout', last_offset: 0 }, exit: { closedBy: 'detach-timeout' } },
+      { how: 'was closed with its window', ended: { reason: 'closed', closed_by: 'window', last_offset: 0 }, exit: { closedBy: 'window' } },
+    ])('says how it ended when the terminal $how', async ({ ended, exit }) => {
+      const { feed, pending } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ ended }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', exit, program: 'zsh' });
+    });
+
+    it('does not read the output it held while the call was out: the terminal is over, and what the replay holds is all there is', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      emit(OUTPUT, output(5, 'late'));
+      pending('attach')[0]?.resolve(attached({ data: 'bye\r\n', ended: { reason: 'exited', exit_code: 0, last_offset: 5 } }));
+      await flush();
+      replayOf(feed);
+      expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+    });
+
+    it('is dismissed at the host by the close of the feed: the host keeps the end and the output of a terminal that ended while no page held it until a page closes it', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ ended: { reason: 'exited', exit_code: 0, last_offset: 0 } }));
+      await flush();
+      const closing = feed.close();
+      await flush();
+      expect(of('close')).toEqual([['term-1']]);
+      pending('close')[0]?.resolve();
+      await closing;
+    });
+
+    it('says nothing is running in it, and asks the host nothing', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ ended: { reason: 'exited', exit_code: 0, last_offset: 0 } }));
+      await flush();
+      expect(await feed.busy?.()).toEqual({ state: 'idle' });
+      expect(of('busy')).toEqual([]);
+    });
+
+    it('is a failed session when the end it was told of is a failure of the pty, in the host\'s words', async () => {
+      const { feed, pending } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached({ ended: { reason: 'failed', failure: { stage: 'pty', message: 'input/output error' }, last_offset: 0 } }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'session', message: 'input/output error' } });
+    });
+  });
+
+  describe('a call the host refused, or an answer that cannot be read', () => {
+    const refusal = (message: string, code?: string): Error => Object.assign(new Error(message), code === undefined ? {} : { code });
+
+    it('fails in the host\'s words and code, at the start, and lets every listener go: a terminal that is not there, or that cannot be taken over, is not a terminal', async () => {
+      const { feed, pending, listeners } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.reject(refusal('This terminal cannot be attached again', 'NOT_REATTACHABLE'));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'start', message: 'This terminal cannot be attached again', code: 'NOT_REATTACHABLE' } });
+      expect(listeners()).toBe(0);
+    });
+
+    it('says the same of a terminal the host says is not there: a failed start, and not an end', async () => {
+      const { feed, pending } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.reject(refusal('gone'));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'start', message: 'gone' } });
+    });
+
+    it('has nothing to end when the host refused: the close of the feed sends nothing to the host', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.reject(refusal('nope'));
+      await flush();
+      await feed.close();
+      expect(of('close')).toEqual([]);
+    });
+
+    it('sends nothing and acknowledges nothing for a terminal it could not take over', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.reject(refusal('nope'));
+      await flush();
+      feed.write('x');
+      feed.resize(100, 30);
+      feed.ack(5);
+      vi.advanceTimersByTime(1_000);
+      await flush();
+      expect([...of('write'), ...of('resize'), ...of('ack')]).toEqual([]);
+    });
+
+    it.each([
+      { name: 'nothing', answer: undefined },
+      { name: 'null', answer: null },
+      { name: 'an empty object', answer: {} },
+      { name: 'no replay', answer: { attachment: 1 } },
+      { name: 'a replay with no end', answer: { attachment: 1, replay: { start: 0, data: '', start_size: { cols: 80, rows: 24 }, size: { cols: 80, rows: 24 } } } },
+      { name: 'a replay whose end is not a number', answer: { attachment: 1, replay: { ...(attached().replay as Record<string, unknown>), end: 'ten' } } },
+      { name: 'a replay whose data is not text', answer: { attachment: 1, replay: { ...(attached().replay as Record<string, unknown>), data: 7 } } },
+      { name: 'a replay with a size of no cells', answer: { attachment: 1, replay: { ...(attached().replay as Record<string, unknown>), size: { cols: 0, rows: 24 } } } },
+      { name: 'no attachment number', answer: { replay: attached().replay } },
+    ])('fails at the start, in words, when the answer is $name: the output could not be joined exactly, and the host is not guessed at', async ({ answer }) => {
+      const { feed, listeners } = rig({ attach: ATTACH, attached: answer });
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'start', message: 'The terminal could not be taken over: the host\'s answer was not understood.' } });
+      expect(listeners()).toBe(0);
+    });
+
+    it.each([
+      { name: 'absent', answer: without(attached(), 'next_input_seq') },
+      { name: '0, which a terminal that ended says and one that runs does not', answer: attached({ nextInputSeq: 0 }) },
+      { name: 'below 1', answer: attached({ nextInputSeq: -1 }) },
+      { name: 'a fraction', answer: attached({ nextInputSeq: 17.5 }) },
+      { name: 'text', answer: attached({ nextInputSeq: '17' }) },
+      { name: 'null', answer: attached({ nextInputSeq: null }) },
+    ])('fails at the start, in the same words, when the terminal runs and the number its input takes next is $name: the page cannot say where the count continues, and calls numbered from 1 would be refused as stale', async ({ answer }) => {
+      const { feed, listeners, of } = rig({ attach: ATTACH, attached: answer });
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'start', message: 'The terminal could not be taken over: the host\'s answer was not understood.' } });
+      expect(listeners()).toBe(0);
+      feed.write('x');
+      feed.resize(100, 30);
+      vi.advanceTimersByTime(1_000);
+      await flush();
+      expect([...of('write'), ...of('resize'), ...of('ack')]).toEqual([]);
+    });
+  });
+
+  describe('closing', () => {
+    it('ends the terminal when the feed is closed while the call is out: the answer is the first chance, as for a process that is starting', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH });
+      const closing = feed.close();
+      expect(of('close')).toEqual([]);
+      pending('attach')[0]?.resolve(attached());
+      await flush();
+      expect(of('close')).toEqual([['term-1']]);
+      pending('close')[0]?.resolve();
+      await closing;
+    });
+
+    it('ends the terminal once, and lets go of every listener, when it is running', async () => {
+      const { feed, pending, of, listeners } = rig({ auto: false, attach: ATTACH });
+      pending('attach')[0]?.resolve(attached());
+      await flush();
+      const closing = Promise.all([feed.close(), feed.close()]);
+      await flush();
+      pending('close')[0]?.resolve();
+      await closing;
+      expect(of('close')).toEqual([['term-1']]);
+      expect(listeners()).toBe(0);
+    });
+
+    it('asks the host what runs in it as any session does, once it is taken over', async () => {
+      const { feed, pending, of } = rig({ auto: false, attach: ATTACH, busy: { state: 'busy', name: 'sleep' } });
+      expect(await feed.busy?.()).toEqual({ state: 'idle' });
+      pending('attach')[0]?.resolve(attached());
+      await flush();
+      const asked = feed.busy?.();
+      pending('busy')[0]?.resolve({ state: 'busy', pgid: 1, name: 'sleep' });
+      expect(await asked).toEqual({ state: 'busy', name: 'sleep' });
+      expect(of('busy')).toEqual([['term-1']]);
+    });
+  });
+});
+
+describe('the loss of a terminal this page held (DETACHED, T2-go 2.4 rule 8)', () => {
+  /** A feed that started its terminal (the creating page holds attachment 0), running and named by the shell. */
+  const started = async (options: RigOptions = {}) => {
+    const r = rig({ pageKey: KEY, created: SESSION, ...options });
+    await flush();
+    return r;
+  };
+
+  /** A feed that took a terminal over and holds the attachment number the host gave it. */
+  const reattached = async (attachment: number, options: RigOptions = {}) => {
+    const r = rig({ auto: false, attach: { id: 'term-1', program: 'zsh' }, ...options });
+    r.pending('attach')[0]?.resolve(attached({ attachment, nextInputSeq: 1 }));
+    await flush();
+    return r;
+  };
+
+  it.each(['taken-over', 'requested', 'window-retired'] as const)('ends the session for this page, and says it was %s, when the event carries the attachment this page holds: the page that created the terminal holds 0', async (by) => {
+    const { feed, emit, wakes } = await started();
+    const before = wakes();
+    emit(DETACHED, { by, attachment: 0 });
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by }, program: 'zsh' });
+    expect(wakes()).toBe(before + 1);
+  });
+
+  it('is the page\'s business only for the number it holds: the event of the attachment before it, or after it, changes nothing, for a page that took the terminal over and for one that created it', async () => {
+    const taken = await reattached(4);
+    const snapshot = taken.feed.getSnapshot();
+    taken.emit(DETACHED, { by: 'taken-over', attachment: 3 });
+    taken.emit(DETACHED, { by: 'taken-over', attachment: 5 });
+    taken.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    expect(taken.feed.getSnapshot()).toBe(snapshot);
+    taken.emit(DETACHED, { by: 'taken-over', attachment: 4 });
+    expect(taken.feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+    const created = await started();
+    const before = created.feed.getSnapshot();
+    created.emit(DETACHED, { by: 'taken-over', attachment: 1 });
+    expect(created.feed.getSnapshot()).toBe(before);
+  });
+
+  it('reads a reason it does not know as a release (`requested`): the terminal is no longer held, and that is what matters; and ignores an event that carries no number it can compare', async () => {
+    const { feed, emit } = await started();
+    const before = feed.getSnapshot();
+    for (const payload of [null, undefined, 'taken-over', 7, {}, { by: 'taken-over' }, { by: 'taken-over', attachment: '0' }, { by: 'taken-over', attachment: Number.NaN }, { by: 'taken-over', attachment: -1 }]) {
+      emit(DETACHED, payload);
+    }
+
+    expect(feed.getSnapshot()).toBe(before);
+    emit(DETACHED, { by: 'a-reason-from-the-future', attachment: 0 });
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'requested' }, program: 'zsh' });
+  });
+
+  it('stops everything toward the host: what is typed, the size that was settling, the counts, and every timer; and it keeps what it had read readable', async () => {
+    const { feed, emit, of } = await started({ settleMs: 10 });
+    emit(OUTPUT, output(0, 'before'));
+    feed.resize(120, 30);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    expect(vi.getTimerCount()).toBe(0);
+    feed.write('x');
+    feed.resize(130, 31);
+    feed.ack(6);
+    vi.advanceTimersByTime(1_000);
+    await flush();
+    expect(of('write')).toEqual([]);
+    expect(of('resize')).toEqual([]);
+    expect(of('ack')).toEqual([['term-1', 0]]);
+    expect(readText(feed)).toBe('before');
+  });
+
+  it('lets go of the output and the loss, and keeps listening to the END of the terminal only: it learns when the lease it was lost to runs out', async () => {
+    const { emit, listeners } = await started();
+    emit(DETACHED, { by: 'requested', attachment: 0 });
+    expect(listeners()).toBe(1);
+    expect(listeners(CLOSE)).toBe(1);
+  });
+
+  it('reads no output that comes after the loss: the terminal belongs to another page now', async () => {
+    const { feed, emit } = await started();
+    emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    emit(OUTPUT, output(0, 'after'));
+    expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+  });
+
+  it('sends neither DetachTerminal nor CloseSession for a terminal it lost: that would hold or end what another page shows', async () => {
+    const { feed, emit, of } = await started();
+    emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    feed.leave?.();
+    await feed.close();
+    expect(of('detach')).toEqual([]);
+    expect(of('close')).toEqual([]);
+  });
+
+  it('says why the terminal ended when the lease it was lost to runs out: the snapshot keeps `detached`, gains the exit, and the state stays `ended`; then the last listener is released', async () => {
+    const { feed, emit, listeners, wakes } = await started();
+    emit(DETACHED, { by: 'requested', attachment: 0 });
+    const before = wakes();
+    emit(CLOSE, { reason: 'closed', closed_by: 'detach-timeout', last_offset: 100 });
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'requested' }, exit: { closedBy: 'detach-timeout' }, program: 'zsh' });
+    expect(wakes()).toBe(before + 1);
+    expect(listeners()).toBe(0);
+    const snapshot = feed.getSnapshot();
+    emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 100 });
+    expect(feed.getSnapshot()).toBe(snapshot);
+  });
+
+  it('says how the terminal ended when the page that has it exits the shell: the exit code is the lost page\'s to read as well', async () => {
+    const { feed, emit } = await started();
+    emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    emit(CLOSE, { reason: 'exited', exit_code: 3, last_offset: 9 });
+    expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, exit: { code: 3 }, program: 'zsh' });
+  });
+
+  it('keeps the snapshot as it is, and lets the last listener go, when the end says nothing it can read, or is a failure: the page lost the terminal, and what became of it is not the page\'s state', async () => {
+    for (const payload of [undefined, null, {}, { reason: 'vanished' }, { reason: 'failed', failure: { stage: 'pty', message: 'broken' } }]) {
+      const { feed, emit, listeners, wakes } = await started();
+      emit(DETACHED, { by: 'requested', attachment: 0 });
+      const snapshot = feed.getSnapshot();
+      const before = wakes();
+      emit(CLOSE, payload);
+      expect(feed.getSnapshot()).toBe(snapshot);
+      expect(wakes()).toBe(before);
+      expect(listeners()).toBe(0);
+    }
+  });
+
+  it('is not told twice: a second loss, or one after the session ended or failed or was closed, changes nothing', async () => {
+    const ended = await started();
+    ended.emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    const snapshot = ended.feed.getSnapshot();
+    ended.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    expect(ended.feed.getSnapshot()).toBe(snapshot);
+    const lost = await started();
+    lost.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    const once = lost.feed.getSnapshot();
+    lost.emit(DETACHED, { by: 'requested', attachment: 0 });
+    expect(lost.feed.getSnapshot()).toBe(once);
+    const closed = await started();
+    await closed.feed.close();
+    const before = closed.wakes();
+    closed.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    expect(closed.wakes()).toBe(before);
+    expect(closed.feed.getSnapshot().detached).toBeUndefined();
+  });
+
+  describe('an event that comes while the call that takes the terminal over is out (the page does not know its number yet)', () => {
+    const ATTACH = { id: 'term-1', program: 'zsh' };
+
+    it('is held, and applied once the answer has said the number: the page lost the terminal before it knew it had it', async () => {
+      const { feed, pending, emit, of } = rig({ auto: false, attach: ATTACH });
+      emit(DETACHED, { by: 'taken-over', attachment: 4 });
+      expect(feed.getSnapshot()).toEqual({ state: 'starting', program: 'zsh' });
+      pending('attach')[0]?.resolve(attached({ attachment: 4, nextInputSeq: 1 }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'taken-over' }, program: 'zsh' });
+      expect(of('ack')).toEqual([]);
+    });
+
+    it('is ignored when its number is not the one the answer gives, each held event by its own: the page holds the terminal', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      emit(DETACHED, { by: 'taken-over', attachment: 2 });
+      emit(DETACHED, { by: 'requested', attachment: 3 });
+      emit(DETACHED, { by: 'window-retired', attachment: 5 });
+      pending('attach')[0]?.resolve(attached({ attachment: 4, nextInputSeq: 1 }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    });
+
+    it('finds the one that is the page\'s among several held', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      emit(DETACHED, { by: 'taken-over', attachment: 2 });
+      emit(DETACHED, { by: 'requested', attachment: 4 });
+      emit(DETACHED, { by: 'window-retired', attachment: 5 });
+      pending('attach')[0]?.resolve(attached({ attachment: 4, nextInputSeq: 1 }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'requested' }, program: 'zsh' });
+    });
+
+    it('keeps the order the events came in: the output heard before the loss is applied, the output heard after it is not', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      emit(OUTPUT, output(2, 'b'));
+      emit(DETACHED, { by: 'taken-over', attachment: 4 });
+      emit(OUTPUT, output(3, 'c'));
+      pending('attach')[0]?.resolve(attached({ attachment: 4, data: 'aa', nextInputSeq: 1 }));
+      await flush();
+      replayOf(feed);
+      expect(readText(feed)).toBe('b');
+    });
+
+    it('still reads the end of the terminal that was heard after the loss, and says why: the lease ran out while the answer was on its way', async () => {
+      const { feed, pending, emit, listeners } = rig({ auto: false, attach: ATTACH });
+      emit(DETACHED, { by: 'requested', attachment: 4 });
+      emit(CLOSE, { reason: 'closed', closed_by: 'detach-timeout', last_offset: 2 });
+      pending('attach')[0]?.resolve(attached({ attachment: 4, nextInputSeq: 1 }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', detached: { by: 'requested' }, exit: { closedBy: 'detach-timeout' }, program: 'zsh' });
+      expect(listeners()).toBe(0);
+    });
+
+    it('is not the business of a terminal the answer says had already ended: it is over, and its end is what the page shows', async () => {
+      const { feed, pending, emit } = rig({ auto: false, attach: ATTACH });
+      emit(DETACHED, { by: 'taken-over', attachment: 4 });
+      pending('attach')[0]?.resolve(attached({ attachment: 4, ended: { reason: 'exited', exit_code: 1, last_offset: 0 } }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 1 }, program: 'zsh' });
+    });
+
+    it('applies the end that was heard while the call was out: the terminal ended as the page took it over', async () => {
+      const { feed, pending, emit, listeners } = rig({ auto: false, attach: ATTACH });
+      emit(OUTPUT, output(2, 'bye'));
+      emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 5 });
+      pending('attach')[0]?.resolve(attached({ data: 'aa', nextInputSeq: 1 }));
+      await flush();
+      expect(feed.getSnapshot()).toEqual({ state: 'ended', exit: { code: 0 } });
+      expect(listeners()).toBe(0);
+      replayOf(feed);
+      expect(readText(feed)).toBe('bye');
+    });
+  });
+});
+
+describe('a page that is going away leaves its terminal for the page that comes back (`leave`, T2-go 2.4)', () => {
+  const started = async (options: RigOptions = {}) => {
+    const r = rig({ pageKey: KEY, created: SESSION, ...options });
+    await flush();
+    return r;
+  };
+
+  it('detaches a running terminal that has a key: ONE DetachTerminal with the key, and every listener is released without ending the process', async () => {
+    const { feed, of, listeners } = await started();
+    feed.leave?.();
+    expect(of('detach')).toEqual([['term-1', { pageKey: KEY }]]);
+    expect(of('close')).toEqual([]);
+    expect(listeners()).toBe(0);
+  });
+
+  it('does it once: a second call does nothing', async () => {
+    const { feed, of } = await started();
+    feed.leave?.();
+    feed.leave?.();
+    expect(of('detach')).toHaveLength(1);
+  });
+
+  it('is fire and forget: it returns at once, and the answer of the host changes nothing', async () => {
+    const { feed, pending } = await started({ auto: false });
+    pending('create')[0]?.resolve(SESSION);
+    await flush();
+    const before = feed.getSnapshot();
+    expect(feed.leave?.()).toBeUndefined();
+    pending('detach')[0]?.resolve({ lease_ms: 300_000, lease_expires_unix_ms: 1 });
+    await flush();
+    expect(feed.getSnapshot()).toBe(before);
+  });
+
+  it('says an error of the host as a warning only, and nothing else changes', async () => {
+    const { feed, pending, warn } = await started({ auto: false });
+    pending('create')[0]?.resolve(SESSION);
+    await flush();
+    const before = feed.getSnapshot();
+    feed.leave?.();
+    pending('detach')[0]?.reject(new Error('The window service is gone'));
+    await flush();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(feed.getSnapshot()).toBe(before);
+  });
+
+  it('leaves the process alone when the feed is closed after it left: the terminal must survive for the page that comes back, so nothing ends it, and the feed is closed all the same', async () => {
+    const { feed, of, listeners } = await started({ settleMs: 10 });
+    feed.leave?.();
+    feed.resize(130, 31);
+    await feed.close();
+    expect(of('close')).toEqual([]);
+    expect(of('detach')).toHaveLength(1);
+    expect(listeners()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('sends nothing more once it left: what is typed, a size, a count, and nothing is held for a reader that will not come', async () => {
+    const { feed, emit, of } = await started({ settleMs: 10 });
+    const typed = feed.inputs?.();
+    feed.leave?.();
+    feed.write('x');
+    feed.resize(130, 31);
+    feed.ack(10);
+    emit(OUTPUT, output(0, 'late'));
+    vi.advanceTimersByTime(1_000);
+    await flush();
+    expect([...of('write'), ...of('resize')]).toEqual([]);
+    expect(of('ack')).toEqual([['term-1', 0]]);
+    expect(feed.read()).toEqual({ chunks: [], bytes: 0 });
+    // What was typed after it left was not taken, and so is not counted.
+    expect(feed.inputs?.()).toBe(typed);
+  });
+
+  it('does not send the count that was owed when it left, when the call that was in flight is answered afterwards: nothing is credited for a terminal the page has let go of', async () => {
+    const { feed, pending, of } = await started({ auto: false });
+    pending('create')[0]?.resolve(SESSION);
+    await flush();
+    pending('ack')[0]?.resolve();
+    await flush();
+    feed.ack(5);
+    feed.ack(7);
+    expect(of('ack')).toEqual([['term-1', 0], ['term-1', 5]]);
+    feed.leave?.();
+    pending('ack')[1]?.resolve();
+    await flush();
+    expect(of('ack')).toEqual([['term-1', 0], ['term-1', 5]]);
+  });
+
+  it('does not change the status: the page is going, and what it shows is not for this to rewrite', async () => {
+    const { feed } = await started();
+    const before = feed.getSnapshot();
+    feed.leave?.();
+    expect(feed.getSnapshot()).toBe(before);
+  });
+
+  it('does nothing for a session that is not running and held by this page: starting, ended, failed, closed, or lost', async () => {
+    const starting = rig({ pageKey: KEY, auto: false });
+    starting.feed.leave?.();
+    const ended = await started();
+    ended.emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    ended.feed.leave?.();
+    const failed = await started();
+    failed.emit(OUTPUT, output(9, 'gap'));
+    failed.feed.leave?.();
+    const closed = await started();
+    await closed.feed.close();
+    closed.feed.leave?.();
+    const lost = await started();
+    lost.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    lost.feed.leave?.();
+    expect([starting, ended, failed, closed, lost].flatMap((r) => r.of('detach'))).toEqual([]);
+  });
+
+  it('does it for a terminal it took over as well, and not for one it is taking over: the answer has not come, and the close that follows is the caller\'s', async () => {
+    const taking = rig({ auto: false, attach: { id: 'term-1' } });
+    taking.feed.leave?.();
+    expect(taking.of('detach')).toEqual([]);
+    taking.pending('attach')[0]?.resolve(attached());
+    await flush();
+    taking.feed.leave?.();
+    expect(taking.of('detach')).toEqual([['term-1', { pageKey: KEY }]]);
+  });
+});
+
+describe('making a full-screen program draw itself again (`redraw`, T2-go 2.4 rule 4)', () => {
+  const sized = async (cols: number, rows: number, options: RigOptions = {}) => {
+    const r = rig({ pageKey: KEY, auto: false, size: { cols, rows }, ...options });
+    r.pending('create')[0]?.resolve();
+    await flush();
+    return r;
+  };
+
+  it('sends the size one column short and then as it is, as two numbered calls out together, rows before columns, without waiting for the size to settle', async () => {
+    const { feed, of, numbered } = await sized(100, 20);
+    feed.redraw?.();
+    expect(of('resize')).toEqual([['term-1', 1, 20, 99], ['term-1', 2, 20, 100]]);
+    expect(numbered()).toEqual([['resize', 1], ['resize', 2]]);
+  });
+
+  it('redraws at the size the screen stands at, which is not the size it started at, and drops the settling that was waiting for it: the size is not sent a second time', async () => {
+    const { feed, of } = await sized(100, 20, { settleMs: 10 });
+    feed.resize(120, 30);
+    feed.redraw?.();
+    expect(of('resize')).toEqual([['term-1', 1, 30, 119], ['term-1', 2, 30, 120]]);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(1_000);
+    await flush();
+    expect(of('resize')).toHaveLength(2);
+  });
+
+  it('has sent the size the screen stands at afterwards, so the same size measured again is not sent', async () => {
+    const { feed, of } = await sized(100, 20, { settleMs: 10 });
+    feed.redraw?.();
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    await flush();
+    expect(of('resize')).toHaveLength(2);
+  });
+
+  it('shortens the rows instead when there is one column: a terminal of one column has no column to spare', async () => {
+    const { feed, of } = await sized(1, 10);
+    feed.redraw?.();
+    expect(of('resize')).toEqual([['term-1', 1, 9, 1], ['term-1', 2, 10, 1]]);
+  });
+
+  it('sends nothing for a terminal of one cell: there is no size one cell off that is a size', async () => {
+    const { feed, of } = await sized(1, 1);
+    feed.redraw?.();
+    expect(of('resize')).toEqual([]);
+  });
+
+  it('redraws at the size the host has when the screen has measured nothing yet: a terminal that was taken over knows it from the replay', async () => {
+    const { feed, pending, of } = rig({ auto: false, attach: { id: 'term-1' } });
+    pending('attach')[0]?.resolve(attached({ size: { cols: 100, rows: 30 }, nextInputSeq: 5 }));
+    await flush();
+    feed.redraw?.();
+    expect(of('resize')).toEqual([['term-1', 5, 30, 99], ['term-1', 6, 30, 100]]);
+  });
+
+  it('does nothing before it knows any size, and nothing when the session is not running: starting, ended, failed, closed, lost, or gone for the page that comes back', async () => {
+    const starting = rig({ pageKey: KEY, auto: false, size: false });
+    starting.feed.redraw?.();
+    const unmeasured = rig({ attach: { id: 'term-1' }, attached: attached({ size: { cols: 100, rows: 30 } }) });
+    unmeasured.feed.redraw?.();
+    const ended = await sized(100, 20);
+    ended.emit(CLOSE, { reason: 'exited', exit_code: 0, last_offset: 0 });
+    ended.feed.redraw?.();
+    const failed = await sized(100, 20);
+    failed.emit(OUTPUT, output(9, 'gap'));
+    failed.feed.redraw?.();
+    const closed = await sized(100, 20);
+    void closed.feed.close();
+    closed.feed.redraw?.();
+    const lost = await sized(100, 20);
+    lost.emit(DETACHED, { by: 'taken-over', attachment: 0 });
+    lost.feed.redraw?.();
+    const left = await sized(100, 20);
+    left.feed.leave?.();
+    left.feed.redraw?.();
+    expect([starting, unmeasured, ended, failed, closed, lost, left].flatMap((r) => r.of('resize'))).toEqual([]);
+  });
+
+  it('says a refusal of either call as a warning, as for any size, and the other call is not held up by it', async () => {
+    const { feed, pending, of, warn } = await sized(100, 20);
+    feed.redraw?.();
+    pending('resize')[0]?.reject(new Error('Failed to resize'));
+    await flush();
+    expect(warn).toHaveBeenCalledTimes(1);
+    pending('resize')[1]?.resolve();
+    await flush();
+    expect(of('resize')).toHaveLength(2);
+    expect(feed.getSnapshot().state).toBe('running');
+  });
+});
+
+describe('a size the host refused, and measured again while the call was out (the leftover of T2a)', () => {
+  it('is not sent again by the refusal: the same size by its columns and rows is the same size whatever object measured it, and a size that is sent again is a new measurement', async () => {
+    const { feed, of, pending, warn } = rig({ auto: false, settleMs: 10 });
+    pending('create')[0]?.resolve();
+    await settle();
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    // The screen measures the same size again while the first call is still out: a new measurement of the same cells.
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    expect(of('resize')).toEqual([['term-1', 1, 20, 100]]);
+    pending('resize')[0]?.reject(new Error('Failed to resize'));
+    await settle();
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(of('resize')).toEqual([['term-1', 1, 20, 100]]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    await settle();
+    expect(of('resize')).toEqual([['term-1', 1, 20, 100], ['term-1', 2, 20, 100]]);
+  });
+
+  it('is not sent again either when it was measured again several times, or with fractions that floor to it', async () => {
+    const { feed, of, pending } = rig({ auto: false, settleMs: 10 });
+    pending('create')[0]?.resolve();
+    await settle();
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    feed.resize(100.7, 20.3);
+    vi.advanceTimersByTime(20);
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    pending('resize')[0]?.reject(new Error('Failed to resize'));
+    await settle();
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(of('resize')).toHaveLength(1);
+  });
+
+  it('still sends a different size that was measured while the refused one was out: the refusal of the first leaves the one the screen stands at to its own settling', async () => {
+    const { feed, of, pending } = rig({ auto: false, settleMs: 10 });
+    pending('create')[0]?.resolve();
+    await settle();
+    feed.resize(100, 20);
+    vi.advanceTimersByTime(20);
+    feed.resize(110, 21);
+    vi.advanceTimersByTime(20);
+    pending('resize')[0]?.reject(new Error('Failed to resize'));
+    await settle();
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(of('resize')).toEqual([['term-1', 1, 20, 100], ['term-1', 2, 21, 110]]);
+  });
+});
+
+describe('the shells the host tried when none could be started (SHELL_UNAVAILABLE, host #672)', () => {
+  const tried: TerminalShellAttempt[] = [
+    { source: 'requested', path: '/opt/bin/fish', reason: 'not-found' },
+    { source: 'account', path: '/bin/zsh', reason: 'not-executable' },
+    { source: 'fallback', path: '/bin/sh', reason: 'other', detail: 'permission denied' },
+  ];
+  const refusal = (extra: Record<string, unknown>): Error => Object.assign(new Error('shell executable unavailable: tried /opt/bin/fish: not found'), { code: 'SHELL_UNAVAILABLE' }, extra);
+
+  it('carries the list the transport read from the refusal, in the order the host gave it, beside the words and the code', async () => {
+    const { feed, pending } = rig({ auto: false });
+    pending('create')[0]?.reject(refusal({ tried }));
+    await flush();
+    expect(feed.getSnapshot()).toEqual({ state: 'failed', cause: { stage: 'start', message: 'shell executable unavailable: tried /opt/bin/fish: not found', code: 'SHELL_UNAVAILABLE', tried } });
+  });
+
+  it('keeps a token it does not know as it was given: the words for it are not the feed\'s business', async () => {
+    const odd = [{ source: 'a-source-from-the-future', path: '/x/sh', reason: 'a-reason-from-the-future' }];
+    const { feed, pending } = rig({ auto: false });
+    pending('create')[0]?.reject(refusal({ tried: odd }));
+    await flush();
+    expect(feed.getSnapshot().cause?.tried).toEqual(odd);
+  });
+
+  it('has no list when the refusal carries none, or an empty one: no member at all', async () => {
+    for (const extra of [{}, { tried: [] }]) {
+      const { feed, pending } = rig({ auto: false });
+      pending('create')[0]?.reject(refusal(extra));
+      await flush();
+      expect(feed.getSnapshot().cause).toEqual({ stage: 'start', message: 'shell executable unavailable: tried /opt/bin/fish: not found', code: 'SHELL_UNAVAILABLE' });
+      expect(feed.getSnapshot().cause).not.toHaveProperty('tried');
+    }
+  });
+
+  it('is carried by a refusal to take a terminal over as it is by a refusal to start one: the cause is the cause', async () => {
+    const { feed, pending } = rig({ auto: false, attach: { id: 'term-1' } });
+    pending('attach')[0]?.reject(refusal({ tried }));
+    await flush();
+    expect(feed.getSnapshot().cause?.tried).toEqual(tried);
+  });
+});
+
+describe('the terminals the host lists for a page key (`ListTerminals`)', () => {
+  const listed = (id: string, name: string | undefined, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id,
+    created_at: '2026-11-23T10:00:00Z',
+    pid: 4242,
+    shell: name === undefined ? {} : { path: `/bin/${name}`, name },
+    labels: {},
+    params: {},
+    size: { cols: 80, rows: 24 },
+    attached: false,
+    next_offset: 0,
+    replay_start: 0,
+    next_input_seq: 1,
+    lease_expires_unix_ms: 0,
+    ...extra,
+  });
+
+  it('reads the id and the shell\'s name of each, in the order the host gave them (by creation)', () => {
+    expect(listedOf([listed('a', 'zsh'), listed('b', 'bash'), listed('c', 'zsh')])).toEqual([{ id: 'a', program: 'zsh' }, { id: 'b', program: 'bash' }, { id: 'c', program: 'zsh' }]);
+  });
+
+  it('says no program for a terminal whose shell has no usable name, and trims one that has', () => {
+    expect(listedOf([listed('a', undefined), listed('b', '  bash '), listed('c', '   ')])).toEqual([{ id: 'a' }, { id: 'b', program: 'bash' }, { id: 'c' }]);
+  });
+
+  it('reads no input number of a listing: a page continues the count from the answer to its attach, since the window that holds the terminal can write between the list and the attach, and the host refuses the number the listing stated then as stale', () => {
+    const end = { reason: 'exited', exit_code: 0, last_offset: 0 };
+    const answer = listedOf([listed('a', 'zsh', { next_input_seq: 12 }), listed('b', 'bash', { next_input_seq: 0, ended: end })]);
+    expect(answer).toEqual([{ id: 'a', program: 'zsh' }, { id: 'b', program: 'bash', ended: true }]);
+    expect(JSON.stringify(answer)).not.toMatch(/seq/i);
+  });
+
+  it('skips what is not a terminal: no id, an id that is not text or is empty, not an object', () => {
+    expect(listedOf([null, 7, 'x', {}, { id: 7 }, { id: '' }, { id: '  ' }, listed('ok', 'zsh')])).toEqual([{ id: 'ok', program: 'zsh' }]);
+  });
+
+  it('says a terminal ended when the host lists how it ended, and says nothing of it for one that runs: a terminal whose shell ended while no page held it is listed with its end', () => {
+    const ended = { reason: 'exited', exit_code: 7, last_offset: 208 };
+    const answer = listedOf([listed('a', 'zsh'), listed('b', 'bash', { ended }), listed('c', 'zsh', { ended: null }), listed('d', undefined, { ended })]);
+    expect(answer).toEqual([{ id: 'a', program: 'zsh' }, { id: 'b', program: 'bash', ended: true }, { id: 'c', program: 'zsh' }, { id: 'd', ended: true }]);
+    expect(answer[0]).not.toHaveProperty('ended');
+    expect(answer[2]).not.toHaveProperty('ended');
+  });
+
+  it('is empty for an answer that is not a list', () => {
+    for (const answer of [undefined, null, {}, 'a', 7, { id: 'a' }]) {
+      expect(listedOf(answer)).toEqual([]);
+    }
   });
 });

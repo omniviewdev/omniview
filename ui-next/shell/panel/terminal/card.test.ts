@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { cardOf } from '../card';
 import { terminalCardOf } from './card';
+import { sessionStateOf } from './state';
 import { TERMINAL_ICON } from './tool';
 import type { TerminalFeedSnapshot } from './feed';
 import type { TerminalSessionRecord } from './TerminalSessions';
@@ -44,5 +46,47 @@ describe('the card of a terminal session', () => {
       record({ state: 'running' }, { plugin: 'acme', resource: { label: 'Item web-0', kind: 'Item', icon: 'box', route: { plugin: 'acme', contribution: 'item', params: { name: 'web-0' } } } }),
     );
     expect(card.resource).toMatchObject({ label: 'Item web-0', kind: 'Item', icon: 'box', route: { plugin: 'acme', contribution: 'item', params: { name: 'web-0' } } });
+  });
+});
+
+// A terminal that outlives the page (T2-go): the card says what the page is doing with it in the words of the lane, and still names its shell. The reason under the state is the session's own cause (the shell completes the
+// card with it, `../card.ts`), which `sessionStateOf` gives: these read the card as a person sees it, the two put together.
+describe('the card of a terminal that outlives the page', () => {
+  const seen = (snapshot: TerminalFeedSnapshot) => {
+    const session = { id: 's1', tool: 'terminal', plugin: 'host', title: 'zsh', scope: '', since: 1, ...sessionStateOf(snapshot) };
+    return cardOf(session, { label: 'Terminal', icon: TERMINAL_ICON }, terminalCardOf(record(snapshot)), 2);
+  };
+
+  it('says Reattaching while the page takes the terminal back, and names its shell: the host told the program before it answered', () => {
+    expect(terminalCardOf(record({ state: 'starting', program: 'zsh' }))).toMatchObject({ facts: [['Shell', 'zsh']], state: { label: 'Reattaching' } });
+    expect(terminalCardOf(record({ state: 'starting' })).state).toEqual({ label: 'Connecting' });
+  });
+
+  it('says that another tab took the terminal, with the sentence that says why input is off as its reason, and still names the shell', () => {
+    const snapshot: TerminalFeedSnapshot = { state: 'ended', program: 'zsh', detached: { by: 'taken-over' } };
+    expect(terminalCardOf(record(snapshot))).toMatchObject({ facts: [['Shell', 'zsh']], state: { label: 'Taken over by another tab' } });
+    expect(seen(snapshot).state).toMatchObject({ label: 'Taken over by another tab', reason: 'Input is off. The shell keeps running in the tab that took it.' });
+  });
+
+  it('says that it was detached, or detached with its window, and that the shell keeps running until its lease ends', () => {
+    expect(seen({ state: 'ended', detached: { by: 'requested' } }).state).toMatchObject({ label: 'Detached', reason: 'Input is off. The shell keeps running until its lease ends.' });
+    expect(seen({ state: 'ended', detached: { by: 'window-retired' } }).state).toMatchObject({ label: 'Detached with its window', reason: 'Input is off. The shell keeps running until its lease ends.' });
+  });
+
+  it('says that no tab took it back in time, with no reason: the process is over, and there is nothing more to say of it', () => {
+    expect(seen({ state: 'ended', exit: { closedBy: 'detach-timeout' } }).state).toMatchObject({ label: 'Closed: no tab took it back in time', reason: '' });
+  });
+
+  it('follows the later fact: a terminal this page lost and that then ended says how it ended, with no reason', () => {
+    expect(seen({ state: 'ended', detached: { by: 'requested' }, exit: { closedBy: 'detach-timeout' } }).state).toMatchObject({ label: 'Closed: no tab took it back in time', reason: '' });
+    expect(seen({ state: 'ended', detached: { by: 'taken-over' }, exit: { code: 0 } }).state).toMatchObject({ label: 'Exited with code 0', reason: '' });
+  });
+
+  it('keeps the host\'s sentence as the reason of a start that no shell answered, whether or not the host listed the shells it tried', () => {
+    const message = 'shell executable unavailable: tried the shell asked for "/bin/zsh": not found';
+    const sentence = `No shell could be started. ${message}.`;
+    const tried = [{ source: 'requested', path: '/bin/zsh', reason: 'not-found' }];
+    expect(seen({ state: 'failed', cause: { stage: 'start', code: 'SHELL_UNAVAILABLE', message, tried } }).state).toMatchObject({ label: 'Failed to start', reason: sentence });
+    expect(seen({ state: 'failed', cause: { stage: 'start', code: 'SHELL_UNAVAILABLE', message } }).state).toMatchObject({ label: 'Failed to start', reason: sentence });
   });
 });

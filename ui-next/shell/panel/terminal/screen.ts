@@ -1,6 +1,6 @@
 import type { Platform } from '../../core/chords';
-import type { Engine, EngineAppearance, EngineLoader, EngineOptions } from './engine';
-import type { TerminalFeedHandle, TerminalFeedSnapshot } from './feed';
+import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions } from './engine';
+import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
 import { drainLine, exitLine, failureLines } from './state';
@@ -22,6 +22,11 @@ import { drainLine, exitLine, failureLines } from './state';
 //     pump once and cancels the other, at the share the screen has then (the shown one while it is shown, the hidden one while it is hidden), so that a build is never stalled by a window that cannot draw;
 //   - the window's screen reader choice is read when the emulator is made and followed while the screen is on screen, one call to the emulator for each change; a hidden screen listens to nothing, its emulator is out of the mode
 //     while it is hidden (an accessibility layer refreshes itself a second after the lines it was given, which must not happen in a hidden panel), and the choice made meanwhile is taken when the screen is shown again;
+//   - a terminal the page took back after a reload (T2-go 2.4) has its replay taken first, before any live byte is read (the feed gives none until then). The emulator is reset, made to draw its cursor (an emulator that is
+//     only written to draws none: `CURSOR_INIT`), sized and put in the modes the host's bytes were written under, and then written them, in slices within the frame's share, with what the emulator says MUTED until the
+//     last slice is parsed: it answers the queries in those bytes, and the program that asked them is long past, so its answers must never reach the shell. Not one replayed byte is acknowledged (the host counts what it
+//     delivered live). When the last is parsed the emulator takes the size the host's terminal has, and then the panel's measure; when the size the feed is told is that size, a full-screen program is made to paint again (a
+//     size that did not change signals nothing). A hidden screen applies a replay too, and only parses;
 //   - the emulator keeps its screen and its scrollback for the life of the session, and is disposed once, with the session.
 
 /** Lines kept above the screen: 5,000, as the library's terminal keeps (LIB-21) and the old host's did not (it took the emulator's 1,000). The mock keeps 2,000 rows of transcript (`TERM_CAP`). */
@@ -146,12 +151,20 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let cancelLater: (() => void) | undefined;
   let told: { readonly cols: number; readonly rows: number } | undefined;
   let lastStatus: TerminalFeedSnapshot | undefined;
-  let endWritten = false;
+  /** The last end written into the transcript (`exitLine`): when the end says something else, another line is written, as for a terminal this page lost and that then ended. */
+  let endLine = '';
+  let drainWritten = false;
   let failureWritten = false;
   /** What a screen reader says for the emulator's input: the tab's title, which the shell may rename. */
   let label = deps.label;
   let pending = 0;
   let blocked = false;
+  /** A replay is asked of the feed until the first live byte is read: the feed reads nothing until its replay is taken, so one that is not here yet (the attach is being answered) is waited for. */
+  let awaitingReplay = true;
+  /** The replay being applied: its bytes are written a share at a time, and nothing the emulator says is heard until the last of them is parsed. */
+  let replaying: { readonly replay: TerminalReplay; written: number } | undefined;
+  /** The size the host's terminal had at the end of a replay, until the screen has told the feed its own: when they are the same, a full-screen program is made to paint again. */
+  let redrawAt: TerminalSize | undefined;
 
   const set = (change: Partial<ScreenSnapshot>) => {
     snapshot = { ...snapshot, ...change };
@@ -193,6 +206,19 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     cancelLater ??= later(fromTimer, HIDDEN_TICK_MS);
   };
 
+  /** The emulator parsed `bytes` it had accepted: a frame that stopped at the bound goes on once half of it is parsed, and the feed is told what was live, which is what the host paces the shell by. */
+  function parsed(bytes: number, live: boolean): void {
+    pending -= bytes;
+    if (live) {
+      feed.ack(bytes);
+    }
+
+    if (blocked && pending < FLOW.high / 2) {
+      blocked = false;
+      schedule();
+    }
+  }
+
   /** Writes what is held in slices the emulator parses without a long task, counts what it has accepted and not parsed, and tells the feed what it parsed: the host paces the shell by that. */
   function send(emulator: Engine, chunks: readonly Uint8Array[]): void {
     let piece = new Uint8Array(FLOW.slice);
@@ -205,13 +231,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       const bytes = filled;
       pending += bytes;
       emulator.write(piece.subarray(0, bytes), () => {
-        pending -= bytes;
-        feed.ack(bytes);
-        // The emulator took what it had: a frame that stopped at the bound goes on once half of it is parsed.
-        if (blocked && pending < FLOW.high / 2) {
-          blocked = false;
-          schedule();
-        }
+        parsed(bytes, true);
       });
       piece = new Uint8Array(FLOW.slice);
       filled = 0;
@@ -232,6 +252,74 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     flush();
   }
 
+  /** One write of a replay: counted as accepted until it is parsed, never acknowledged, and the last of them ends the replay. */
+  function writeReplay(emulator: Engine, piece: Uint8Array | string, last: boolean): void {
+    const bytes = typeof piece === 'string' ? 0 : piece.length;
+    pending += bytes;
+    emulator.write(piece, () => {
+      parsed(bytes, false);
+      if (last) {
+        finishReplay();
+      }
+    });
+  }
+
+  /**
+   * A replay was taken: the emulator is reset, made to draw its cursor, sized to the size the bytes were written under and put in the modes they were written under, in one write that is parsed in order with the bytes
+   * after it. From here to the parse of the last slice what the emulator says goes nowhere (`onData` is muted): it answers the queries in the bytes, and the program that asked them is long past.
+   */
+  function beginReplay(emulator: Engine, taken: TerminalReplay): void {
+    replaying = { replay: taken, written: 0 };
+    const { cols, rows } = taken.startSize;
+    const now = emulator.size();
+    if (now.cols !== cols || now.rows !== rows) {
+      emulator.resize(cols, rows);
+    }
+
+    // An emulator that was only written to draws no cursor (`CURSOR_INIT`). The reset leaves it on the normal screen, so a replay that starts there needs the bounce; one that starts on the alternate screen switches to it in its modes.
+    const cursor = taken.startModes.altScreen ? '' : CURSOR_INIT;
+    writeReplay(emulator, `${FULL_RESET}${cursor}${modesPrologue(taken.startModes)}`, taken.data.length === 0);
+  }
+
+  /** Writes the next slice of the replay's bytes, at most `budget` of them, and says how many: none once they all are written, when the parse of the last slice ends the replay. */
+  function replaySlice(emulator: Engine, budget: number): number {
+    if (replaying === undefined) {
+      return 0;
+    }
+
+    const { data } = replaying.replay;
+    const count = Math.min(data.length - replaying.written, FLOW.slice, budget);
+    if (count <= 0) {
+      return 0;
+    }
+
+    const at = replaying.written;
+    replaying.written += count;
+    writeReplay(emulator, data.subarray(at, at + count), replaying.written === data.length);
+    return count;
+  }
+
+  /**
+   * The last byte of the replay is parsed: what the emulator says is heard again, it has the size the host's terminal has, and the panel's measure is taken again (the emulator follows it and the feed is told it), so that
+   * a full-screen program is made to paint when that is the size the host's terminal has. What is live goes on.
+   */
+  function finishReplay(): void {
+    if (replaying === undefined || engine === undefined) {
+      return;
+    }
+
+    const { size } = replaying.replay;
+    replaying = undefined;
+    const now = engine.size();
+    if (now.cols !== size.cols || now.rows !== size.rows) {
+      engine.resize(size.cols, size.rows);
+    }
+
+    redrawAt = size;
+    fit();
+    schedule();
+  }
+
   function pump(): void {
     if (engine === undefined) {
       return;
@@ -240,6 +328,15 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     // Shown, a frame takes its whole share; hidden, a smaller one: nothing is drawn then and the parse is all the work, kept to a bounded part of every frame all the same.
     const share = visible ? FLOW.frame : FLOW.hiddenFrame;
     let taken = 0;
+    // A terminal the page took back is brought to where the host's is before anything live is read: its replay is asked for until the first live byte, and the live output follows the parse of its last byte.
+    if (awaitingReplay) {
+      const found = feed.takeReplay?.();
+      if (found !== undefined) {
+        awaitingReplay = false;
+        beginReplay(engine, found);
+      }
+    }
+
     for (;;) {
       const room = FLOW.high - pending;
       if (room <= 0) {
@@ -254,22 +351,40 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         return;
       }
 
+      if (replaying !== undefined) {
+        const written = replaySlice(engine, budget);
+        if (written === 0) {
+          // Every byte of the replay is written and the last is not parsed yet: its parse goes on.
+          return;
+        }
+
+        taken += written;
+        continue;
+      }
+
       const out = feed.read(budget);
       if (out.chunks.length === 0) {
         break;
       }
 
+      awaitingReplay = false;
       send(engine, out.chunks);
       taken += out.bytes;
     }
 
-    // How the process ended is the last line of its output, and what the host said of a program that kept the terminal open after it. A start that failed says why, where the shell's prompt would have been.
+    // How the process ended is the last line of its output, and what the host said of a program that kept the terminal open after it. A terminal this page lost while its shell runs on says so, and says how it ended when it
+    // ends later. A start that failed says why, where the shell's prompt would have been.
     const status = feed.getSnapshot();
-    if (status.state === 'ended' && !endWritten) {
-      endWritten = true;
-      engine.write(muted(exitLine(status)));
+    if (status.state === 'ended') {
+      const line = exitLine(status);
+      if (line !== endLine) {
+        endLine = line;
+        engine.write(muted(line));
+      }
+
       const drain = drainLine(status);
-      if (drain !== '') {
+      if (drain !== '' && !drainWritten) {
+        drainWritten = true;
         engine.write(muted(drain));
       }
     }
@@ -295,7 +410,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
   /** Measures the host; the emulator follows it, and the feed is told only a size that changed. */
   function fit(): void {
-    if (!visible || engine === undefined || !rendererReady) {
+    // While a replay is written the emulator keeps the size its bytes were written under: the measure is taken when its last byte is parsed.
+    if (!visible || engine === undefined || !rendererReady || replaying !== undefined) {
       return;
     }
 
@@ -312,6 +428,16 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     if (told?.cols !== cells.cols || told.rows !== cells.rows) {
       told = cells;
       feed.resize(cells.cols, cells.rows);
+    }
+
+    // A replay brought the emulator to the bytes a full-screen program wrote, and the program must paint over them. The host signals it when its terminal changes size; when the size the feed is told is the one it has there
+    // is nothing to send, so the program is asked to paint again. A terminal that is over, or that another tab took, has no program for this page to paint.
+    if (redrawAt !== undefined) {
+      const same = redrawAt.cols === cells.cols && redrawAt.rows === cells.rows;
+      redrawAt = undefined;
+      if (same && takesInput(feed.getSnapshot())) {
+        feed.redraw?.();
+      }
     }
   }
 
@@ -419,7 +545,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     made.setKeys(onKey);
     stops.push(
       made.onData((data) => {
-        feed.write(data);
+        // What the emulator says while a replay is written is not for the shell: it answers the queries in the bytes, and the program that asked them is long past (switching on focus events makes it report focus, too). It cannot
+        // tell a reply from a key, so a key typed in that window, a few frames at most, is lost with them.
+        if (replaying === undefined) {
+          feed.write(data);
+        }
       }),
       made.onSelection(() => {
         const selected = made.hasSelection();

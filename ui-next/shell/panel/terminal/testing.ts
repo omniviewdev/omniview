@@ -1,6 +1,6 @@
 import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer } from './engine';
 import type { ExecTransport } from './execFeed';
-import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput } from './feed';
+import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -24,6 +24,11 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly acks: () => readonly number[];
   /** Tells the listeners without changing anything: what a feed does when held output became readable. */
   readonly wake: () => void;
+  /** How many times `leave` was called, and `redraw`. */
+  readonly left: () => number;
+  readonly redraws: () => number;
+  /** The reader took the replay. */
+  readonly replayTaken: () => boolean;
 };
 
 export type FakeTerminalFeedOptions = {
@@ -32,6 +37,12 @@ export type FakeTerminalFeedOptions = {
   readonly close?: (() => Promise<void> | void) | undefined;
   /** What the feed answers when it is asked what runs in it; default: the feed cannot tell (it has no such member). */
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
+  /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`). */
+  readonly replay?: TerminalReplay | undefined;
+  /** The feed has a `leave` (it started a terminal with a key, which outlives its page), counted by `left`. Default: it has none. */
+  readonly leave?: boolean | undefined;
+  /** The feed has a `redraw`, counted by `redraws`. Default: it has none. */
+  readonly redraw?: boolean | undefined;
 };
 
 /** A feed that is `running` (or in the state asked for) and holds nothing. */
@@ -48,11 +59,32 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   /** The calls of the typing that the feed took: what `inputs` says. */
   let taken = 0;
   const sizes: Array<readonly [number, number]> = [];
+  let replayTaken = false;
+  let left = 0;
+  let redraws = 0;
 
   const tell = () => {
     for (const listener of [...listeners]) {
       listener();
     }
+  };
+
+  /** The reader takes the replay once: the second call finds none. */
+  const takeReplay = (): TerminalReplay | undefined => {
+    if (replayTaken) {
+      return undefined;
+    }
+
+    replayTaken = true;
+    return options.replay;
+  };
+
+  const leave = () => {
+    left += 1;
+  };
+
+  const redraw = () => {
+    redraws += 1;
   };
 
   return {
@@ -72,6 +104,11 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     read: (max): TerminalOutput => {
       reads += 1;
       woken = false;
+      // A feed that holds a replay gives no live output before the reader has taken it (T2-go 2.4: the replay is written first, with the emulator's replies muted).
+      if (options.replay !== undefined && !replayTaken) {
+        return { chunks: [], bytes: 0 };
+      }
+
       let count = held.length;
       if (max !== undefined) {
         let sum = 0;
@@ -104,6 +141,12 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       acks.push(bytes);
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
+    ...(options.replay === undefined ? {} : { takeReplay }),
+    ...(options.leave === true ? { leave } : {}),
+    ...(options.redraw === true ? { redraw } : {}),
+    left: () => left,
+    redraws: () => redraws,
+    replayTaken: () => replayTaken,
     listeners: () => subscribed,
     closed: () => closed,
     reads: () => reads,
@@ -162,6 +205,12 @@ export type FakeEngine = Engine & {
   /** What the host measures now (`undefined`: no size). */
   readonly measured: (size: { readonly cols: number; readonly rows: number } | undefined) => void;
   readonly listeners: () => number;
+  /** The size the emulator had when each write came, in the order of `writes`: a replay is written at the size its bytes were written under. */
+  readonly writeSizes: ReadonlyArray<readonly [number, number]>;
+  /** How many full resets (`ESC c`) were written as text: a replay starts from a fresh emulator, in band, in order with the bytes. */
+  readonly resets: () => number;
+  /** Everything the emulator sent to its listeners, in order: what the user typed and what it answered to a query it parsed, whether or not anything kept it. */
+  readonly emitted: readonly string[];
 };
 
 export type FakeEngineOptions = {
@@ -169,6 +218,11 @@ export type FakeEngineOptions = {
   readonly auto?: boolean | undefined;
   /** What `setRenderer` waits for before it answers (default: nothing): a test holds it to see what the screen does in between. */
   readonly rendererReady?: Promise<void> | undefined;
+  /**
+   * The queries this emulator answers when it parses them, as a real one does: the query it finds in what it was written (as text) and the reply it sends to its listeners, once for each query found, when it PARSES
+   * the write, just before the write's callback. Default: it answers nothing. A query cut between two writes is not found.
+   */
+  readonly answers?: ReadonlyArray<readonly [query: string, reply: string]> | undefined;
 };
 
 export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {}): FakeEngine {
@@ -181,6 +235,9 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   const screenReaderModes: boolean[] = [];
   const appearances: EngineAppearance[] = [];
   const labels: Array<readonly [string, string]> = [];
+  const writeSizes: Array<readonly [number, number]> = [];
+  const emitted: string[] = [];
+  const answers = config.answers ?? [];
   const dataListeners = new Set<(data: string) => void>();
   const selectionListeners = new Set<() => void>();
   const bellListeners = new Set<() => void>();
@@ -195,9 +252,32 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   let focuses = 0;
   let focused = false;
 
+  const emit = (data: string) => {
+    emitted.push(data);
+    for (const listener of [...dataListeners]) {
+      listener(data);
+    }
+  };
+
+  const answer = (data: Uint8Array | string) => {
+    if (answers.length === 0) {
+      return;
+    }
+
+    const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
+    for (const [query, reply] of answers) {
+      for (let at = text.indexOf(query); at !== -1; at = text.indexOf(query, at + query.length)) {
+        emit(reply);
+      }
+    }
+  };
+
   return {
     options,
     writes,
+    writeSizes,
+    emitted,
+    resets: () => writes.reduce((sum, data) => sum + (typeof data === 'string' ? data.split('\u001bc').length - 1 : 0), 0),
     screenReaderModes,
     text: () => writes.map((data) => (typeof data === 'string' ? data : new TextDecoder().decode(data))).join(''),
     pendingWrites: () => waiting.filter((done) => done !== undefined).length,
@@ -233,10 +313,17 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     size: () => size,
     write: (data, done) => {
       writes.push(data);
-      if (auto) {
+      writeSizes.push([size.cols, size.rows]);
+      // What a real emulator answers to a query it parses goes out as it parses the bytes, just before it says it has: a reply is the emulator's own output, in the middle of the stream.
+      const parsed = () => {
+        answer(data);
         done?.();
+      };
+
+      if (auto) {
+        parsed();
       } else {
-        waiting.push(done);
+        waiting.push(done === undefined && answers.length === 0 ? undefined : parsed);
       }
     },
     onData: (listener) => {
@@ -293,9 +380,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       disposed += 1;
     },
     type: (data) => {
-      for (const listener of [...dataListeners]) {
-        listener(data);
-      }
+      emit(data);
     },
     select: (text) => {
       selected = text;
@@ -375,18 +460,66 @@ export function fakeEngineLoader(config: FakeEngineOptions & { readonly deferred
 //
 // What backend/pkg/terminal/flow.go does, as far as a page can tell (docs/ui-next/status/T1-go.md 2.8.6): the host counts the bytes it delivered that nobody has credited; at the high mark it STOPS READING the pty, so
 // the shell waits in its own write; it reads again when the count is down to the low mark. Until the client's first acknowledgement the transport credits what it took (here: at once, the page takes every event); from
-// the first on only the client's acknowledgements credit. The bytes the shell writes are a counting sequence (0, 1, ... 250, 0, ...), so a test can tell that every byte arrived, once, in order.
-// What the page types and the sizes it sends are recorded with their call numbers (`inputs`): the host puts them in order by the number, whatever order they reach it in, and nothing here changes their order.
+// the first on only the client's acknowledgements credit. The bytes the shell writes are a counting sequence (0, 1, ... 250, 0, ...), so a test can tell that every byte arrived, once, in order; `say` writes the
+// exact bytes a test gives. What the page types and the sizes it sends are recorded with their call numbers (`inputs`): the host puts them in order by the number, whatever order they reach it in, and nothing here
+// changes their order.
+//
+// A terminal started with a page key is the host of docs/ui-next/status/T2-go.md (backend/pkg/terminal/reattach.go): its output comes as `{offset, data}` events and is kept in a ring of whole reads, so that a
+// page that comes back is answered with a replay and the live output continues at its end; a window that goes away, or a page that leaves, DETACHES it (the reader is held, a lease runs: `expire` ends it); an attach
+// takes it over for a new window, with the next attachment number, and tells the window that held it (`DETACHED`); a shell that ends by itself leaves its end and its output for a page that comes back (a
+// tombstone), until `CloseSession` dismisses it. Every event goes to every window, as on the real host. A window is a `HostPage`: its events can be held (`hold`) and released, to put an event of the host on the far
+// side of the answer of a call, as the field showed (7 in 2,051 reattaches: an event the replay holds reaches the page after the answer). The host's input queue counts the numbered calls and refuses a number it has
+// passed (`SEQUENCE_STALE`), so a page that numbers from 1 after a reattach is seen; the answers to an attach and to a list state the number the queue takes next (`next_input_seq`, host #675: at least 1 while the terminal
+// runs, 0 once it ended), the list's as of the list and the attach's as of the attach, since the window that holds the terminal can write between the two.
 
 /** An input call the page made, with the number it carried: a write as the text the host's pty would read, a size as the binding takes it (rows, then columns). */
 export type HostInput =
   | { readonly kind: 'write'; readonly seq: number; readonly text: string }
   | { readonly kind: 'resize'; readonly seq: number; readonly rows: number; readonly cols: number };
 
-export type CreditHost = {
+/** A call about the life of a terminal that a window made, in the order they reached the host. `page` is the index of the window (0 is the one the host starts with). */
+export type HostCall =
+  | { readonly kind: 'create'; readonly page: number; readonly pageKey: string | undefined }
+  | { readonly kind: 'list'; readonly page: number; readonly pageKey: string }
+  | { readonly kind: 'attach'; readonly page: number; readonly pageKey: string }
+  | { readonly kind: 'detach'; readonly page: number; readonly pageKey: string }
+  | { readonly kind: 'close'; readonly page: number };
+
+/** The modes of a terminal as the host states them on the wire (`terminal.TerminalModes`). */
+export type HostModes = {
+  readonly known: boolean;
+  readonly alt_screen: boolean;
+  readonly bracketed_paste: boolean;
+  readonly application_cursor: boolean;
+  readonly focus_events: boolean;
+  readonly cursor_hidden: boolean;
+  readonly mouse_tracking: number;
+  readonly mouse_encoding: number;
+  readonly kitty_keyboard: readonly number[];
+};
+
+/** A window of the host: its own calls and its own events (every event goes to every window). */
+export type HostPage = {
   readonly transport: ExecTransport;
+  /** The events for this window wait, in order, until `release`: an event and the answer of a call travel apart, so an event the host handed over before it answered can reach the page after the answer. */
+  readonly hold: () => void;
+  /** Delivers what waited, in order, and delivers what comes from now on at once. */
+  readonly release: () => void;
+  /** The window goes away: it hears nothing more, and the host lets go of what it held (a terminal with a key is detached, `window-retired`; one without ends). */
+  readonly die: () => void;
+  /** How many events wait in this window's wire. */
+  readonly queued: () => number;
+};
+
+export type CreditHost = {
+  /** The window the host starts with (`home`, whose calls `transport` makes), and `page`, which opens another. */
+  readonly transport: ExecTransport;
+  readonly home: HostPage;
+  readonly page: () => HostPage;
   /** The shell writes this many more bytes. What the host may read now it delivers (reads of at most 20,480 bytes); the rest waits in the pty. */
   readonly produce: (bytes: number) => void;
+  /** The shell writes exactly this text (as UTF-8), after what it was already to write. */
+  readonly say: (text: string) => void;
   /** Bytes the shell wrote that the host has not read: the shell, blocked in its own write. */
   readonly waiting: () => number;
   /** Bytes the host delivered to the page. */
@@ -404,6 +537,20 @@ export type CreditHost = {
   readonly byteAt: (offset: number) => number;
   /** Every input call the page made, in the order it made them, with its number. */
   readonly inputs: () => readonly HostInput[];
+  /** The shell exits by itself, once the host has read all it wrote. A terminal with a key is kept, with its end and its output, until a page closes it. */
+  readonly exit: (code?: number) => void;
+  /** The lease of a detached terminal runs out: the host ends it (`closed_by: 'detach-timeout'`). */
+  readonly expire: () => void;
+  /** The modes in force at the end of the output, and, when given, the modes under which the oldest byte the host kept was written. */
+  readonly modes: (now: Partial<HostModes>, atStart?: Partial<HostModes>) => void;
+  /** Who holds the terminal: the number of the attachment, whether it is detached, and the window that owns it. */
+  readonly holder: () => { readonly attachment: number; readonly detached: boolean; readonly owner: number | undefined };
+  /** The offsets the host keeps of a terminal with a key: [start, end). */
+  readonly kept: () => { readonly start: number; readonly end: number };
+  /** Every call about the life of the terminal that reached the host, in order. */
+  readonly calls: () => readonly HostCall[];
+  /** The number the host's input queue expects next. */
+  readonly nextInput: () => number;
 };
 
 export type CreditHostOptions = {
@@ -411,6 +558,10 @@ export type CreditHostOptions = {
   readonly low?: number;
   /** The size of one pty read. */
   readonly read?: number;
+  /** Bytes the host keeps of a terminal with a key, in whole reads, for a replay. Default: 1,310,720, as the host. */
+  readonly ring?: number;
+  /** The close of a terminal whose shell ended by itself dismisses it, as the host's contract says. Default: no, as the real host (it answers not-found and the terminal stays listed until its lease runs out). */
+  readonly dismissEnded?: boolean;
 };
 
 function base64Of(bytes: Uint8Array): string {
@@ -422,14 +573,49 @@ function base64Of(bytes: Uint8Array): string {
   return btoa(text);
 }
 
+const noModes = (): HostModes => ({ known: true, alt_screen: false, bracketed_paste: false, application_cursor: false, focus_events: false, cursor_hidden: false, mouse_tracking: 0, mouse_encoding: 0, kitty_keyboard: [] });
+
+/** What the shell has yet to write: a count of the sequence, or the bytes of a text. */
+type Segment = { readonly kind: 'count'; left: number } | { readonly kind: 'bytes'; readonly data: Uint8Array; at: number };
+
+/** One window's events: what listens, and what waits while the wire is held. */
+type Wire = {
+  readonly listeners: Map<string, Set<(data: unknown) => void>>;
+  readonly queue: Array<readonly [string, unknown]>;
+  holding: boolean;
+  dead: boolean;
+};
+
+/** One read of the pty that the host kept for a replay. */
+type Kept = { readonly offset: number; readonly bytes: Uint8Array };
+
+/** What the host says of a terminal that is not there, or that a key does not open: the same words for both. */
+const notThere = (id: string): Error => Object.assign(new Error(`Session ${id} not found`), { gone: true });
+
 export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
   const high = options.high ?? 1_048_576;
   const low = options.low ?? 262_144;
   const readSize = options.read ?? 20_480;
-  const listeners = new Map<string, Set<(data: unknown) => void>>();
+  const ringLimit = options.ring ?? 1_310_720;
+  const dismissEnded = options.dismissEnded ?? false;
+  const wires: Wire[] = [];
   const acks: number[] = [];
   const inputs: HostInput[] = [];
+  const calls: HostCall[] = [];
+  const segments: Segment[] = [];
+  let ring: Kept[] = [];
+  let ringBytes = 0;
   let session: string | undefined;
+  let key: string | undefined;
+  let owner: number | undefined;
+  let attachment = 0;
+  let detached = false;
+  let ended: Record<string, unknown> | undefined;
+  let size = { cols: 80, rows: 24 };
+  let startSize = size;
+  let modesNow = noModes();
+  let modesStart = noModes();
+  let nextInput = 1;
   let queued = 0;
   let delivered = 0;
   let unacked = 0;
@@ -440,6 +626,65 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
 
   const byteAt = (offset: number): number => offset % 251;
 
+  const deliverTo = (wire: Wire, name: string, data: unknown) => {
+    for (const listener of [...(wire.listeners.get(name) ?? [])]) {
+      listener(data);
+    }
+  };
+
+  /** Every event goes to every window, as it does on the real host; a window whose wire is held keeps it for later. */
+  const emit = (name: string, data: unknown) => {
+    for (const wire of wires) {
+      if (wire.dead) {
+        continue;
+      }
+
+      if (wire.holding) {
+        wire.queue.push([name, data]);
+      } else {
+        deliverTo(wire, name, data);
+      }
+    }
+  };
+
+  /** The next `count` bytes of what the shell wrote, in order: the bytes of a count are a function of their offset. */
+  const take = (count: number): Uint8Array => {
+    const chunk = new Uint8Array(count);
+    let filled = 0;
+    while (filled < count) {
+      const head = segments[0];
+      if (head === undefined) {
+        break;
+      }
+
+      if (head.kind === 'count') {
+        const piece = Math.min(count - filled, head.left);
+        for (let index = 0; index < piece; index += 1) {
+          chunk[filled + index] = byteAt(delivered + filled + index);
+        }
+
+        head.left -= piece;
+        filled += piece;
+        if (head.left === 0) {
+          segments.shift();
+        }
+      } else {
+        const piece = Math.min(count - filled, head.data.length - head.at);
+        chunk.set(head.data.subarray(head.at, head.at + piece), filled);
+        head.at += piece;
+        filled += piece;
+        if (head.at === head.data.length) {
+          segments.shift();
+        }
+      }
+    }
+
+    return chunk;
+  };
+
+  /** The host reads the pty: nothing while it is paused for credit, nothing while a terminal with a key is detached (its reader is held), nothing once the shell has ended. */
+  const readable = (): boolean => queued > 0 && !paused && session !== undefined && ended === undefined && !(key !== undefined && detached);
+
   const pump = () => {
     // An acknowledgement that comes while the host is delivering (the page parses in the listener) is credited by the loop that is running.
     if (pumping) {
@@ -447,24 +692,29 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
     }
 
     pumping = true;
-    while (queued > 0 && !paused && session !== undefined) {
-      const size = Math.min(readSize, queued);
-      const chunk = new Uint8Array(size);
-      for (let index = 0; index < size; index += 1) {
-        chunk[index] = byteAt(delivered + index);
-      }
-
-      queued -= size;
-      unacked += size;
+    while (readable()) {
+      const count = Math.min(readSize, queued);
+      const offset = delivered;
+      const chunk = take(count);
+      queued -= count;
+      unacked += count;
       most = Math.max(most, unacked);
-      delivered += size;
-      for (const listener of [...(listeners.get(`core/exec/stream/stdout/${session}`) ?? [])]) {
-        listener(base64Of(chunk));
+      delivered += count;
+      if (key === undefined) {
+        emit(`core/exec/stream/stdout/${String(session)}`, base64Of(chunk));
+      } else {
+        ring.push({ offset, bytes: chunk });
+        ringBytes += count;
+        while (ringBytes > ringLimit && ring.length > 1) {
+          ringBytes -= ring.shift()?.bytes.length ?? 0;
+        }
+
+        emit(`core/exec/stream/output/${String(session)}`, { offset, data: base64Of(chunk) });
       }
 
       // Until the client takes over the credit, the transport's is what counts, and the page took the event.
       if (!explicit) {
-        unacked = Math.max(0, unacked - size);
+        unacked = Math.max(0, unacked - count);
       }
 
       if (unacked >= high) {
@@ -475,50 +725,252 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
     pumping = false;
   };
 
-  const transport: ExecTransport = {
-    create: async (id) => {
-      session = id;
-      pump();
-      return Promise.resolve({ id, pid: 4242, shell: { path: '/bin/sh', name: 'sh' }, cwd: '/home/u', cols: 80, rows: 24 });
-    },
-    write: async (_id, seq, base64) => {
-      inputs.push({ kind: 'write', seq, text: new TextDecoder().decode(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))) });
-      return Promise.resolve();
-    },
-    resize: async (_id, seq, rows, cols) => {
-      inputs.push({ kind: 'resize', seq, rows, cols });
-      return Promise.resolve();
-    },
-    close: async () => Promise.resolve(),
-    ack: async (_id, bytes) => {
-      explicit = true;
-      acks.push(bytes);
-      unacked = Math.max(0, unacked - bytes);
-      if (paused && unacked <= low) {
-        paused = false;
-      }
+  /** The terminal is over: every window hears it end. One that has a key and whose shell ended by itself is kept, with its output, for a page that comes back; any other end leaves nothing. */
+  const finish = (end: Record<string, unknown>) => {
+    emit(`core/exec/signal/CLOSE/${String(session)}`, end);
+    if (key !== undefined && end.reason !== 'closed') {
+      ended = end;
+      return;
+    }
 
-      pump();
-      return Promise.resolve();
-    },
-    busy: async () => Promise.resolve({ state: 'idle' }),
-    on: (name, listener) => {
-      const set = listeners.get(name) ?? new Set();
-      set.add(listener);
-      listeners.set(name, set);
-      return () => {
-        set.delete(listener);
-      };
-    },
-    describe: (error) => (error instanceof Error ? error.message : String(error)),
-    isGone: () => false,
-    codeOf: () => undefined,
+    session = undefined;
+    ring = [];
+    ringBytes = 0;
+    segments.length = 0;
+    queued = 0;
   };
 
+  const sessionInfo = (id: string): Record<string, unknown> => ({ id, pid: 4242, shell: { path: '/bin/sh', name: 'sh' }, cwd: '/home/u', cols: 80, rows: 24, lease_ms: key === undefined ? 0 : 300_000 });
+
+  /** What a page needs of the terminal as it is now: the bytes the host kept and the sizes and modes they were written under, and where the live output continues. */
+  const replayNow = (): Record<string, unknown> => {
+    const data = new Uint8Array(ringBytes);
+    let at = 0;
+    for (const kept of ring) {
+      data.set(kept.bytes, at);
+      at += kept.bytes.length;
+    }
+
+    return { start: ring[0]?.offset ?? delivered, end: delivered, data: base64Of(data), start_size: { ...startSize }, start_modes: { ...modesStart }, size: { ...size }, modes: { ...modesNow } };
+  };
+
+  /** The input queue: a numbered call is refused when the number was passed, as the host refuses a number it applied or gave up. Number 0 is no number: arrival order. */
+  const admit = (seq: number) => {
+    if (seq > 0) {
+      if (seq < nextInput) {
+        throw Object.assign(new Error(`Sequence number ${String(seq)} was already applied or given up; the next expected is ${String(nextInput)}.`), { code: 'SEQUENCE_STALE' });
+      }
+
+      nextInput = seq + 1;
+    }
+  };
+
+  const open = (index: number): HostPage => {
+    const wire: Wire = { listeners: new Map(), queue: [], holding: false, dead: false };
+    wires.push(wire);
+    const transport: ExecTransport = {
+      create: async (id, area, launch) => {
+        calls.push({ kind: 'create', page: index, pageKey: launch?.pageKey });
+        session = id;
+        key = launch?.pageKey;
+        owner = index;
+        attachment = 0;
+        detached = false;
+        ended = undefined;
+        size = { cols: area.cols, rows: area.rows };
+        startSize = size;
+        nextInput = 1;
+        pump();
+        return Promise.resolve(sessionInfo(id));
+      },
+      list: async (pageKey) => {
+        calls.push({ kind: 'list', page: index, pageKey });
+        if (session === undefined || key === undefined || key !== pageKey) {
+          return Promise.resolve([]);
+        }
+
+        return Promise.resolve([
+          {
+            id: session,
+            created_at: '2026-11-23T10:00:00Z',
+            pid: 4242,
+            shell: { path: '/bin/sh', name: 'sh' },
+            labels: {},
+            params: {},
+            size: { ...size },
+            attached: !detached,
+            next_offset: delivered,
+            replay_start: ring[0]?.offset ?? delivered,
+            // As of the list: the window that holds the terminal can write before the attach, and the answer to the attach states the number to continue from.
+            next_input_seq: ended === undefined ? nextInput : 0,
+            lease_expires_unix_ms: detached ? 1 : 0,
+            ...(ended === undefined ? {} : { ended }),
+          },
+        ]);
+      },
+      attach: async (id, request) => {
+        calls.push({ kind: 'attach', page: index, pageKey: request.pageKey });
+        if (request.fromOffset !== undefined) {
+          throw new Error('this host does not model from_offset: a fresh emulator asks for none');
+        }
+
+        if (session !== id || key === undefined || key !== request.pageKey) {
+          throw notThere(id);
+        }
+
+        if (ended === undefined) {
+          // The page that held the terminal is told, with the number of the attachment that ended; the new page holds the next one. A terminal nobody held tells nobody.
+          if (!detached && owner !== undefined && owner !== index) {
+            emit(`core/exec/signal/DETACHED/${id}`, { by: 'taken-over', attachment });
+          }
+
+          attachment += 1;
+          owner = index;
+          detached = false;
+          // The attach forgets what was owed for everything below the end of the replay, and lets the reader go.
+          unacked = 0;
+          paused = false;
+        }
+
+        const answer: Record<string, unknown> = {
+          session: sessionInfo(id),
+          replay: replayNow(),
+          cwd: { path: '/home/u' },
+          busy: { state: 'idle' },
+          attachment,
+          ...(ended === undefined ? {} : { ended }),
+          // The number the input queue takes next as of this attach: at least 1 while the terminal runs, 0 for one that ended (it takes no input).
+          next_input_seq: ended === undefined ? nextInput : 0,
+        };
+        pump();
+        return Promise.resolve(answer);
+      },
+      detach: async (id, request) => {
+        calls.push({ kind: 'detach', page: index, pageKey: request.pageKey });
+        // The window that owns the terminal detaches it; the key detaches only a terminal that no window owns: a page that was displaced cannot detach what the page that took it shows.
+        if (session !== id || key === undefined || key !== request.pageKey || (owner !== undefined && owner !== index)) {
+          throw notThere(id);
+        }
+
+        if (!detached && ended === undefined) {
+          detached = true;
+          owner = undefined;
+          emit(`core/exec/signal/DETACHED/${id}`, { by: 'requested', attachment });
+        }
+
+        return Promise.resolve({ lease_ms: 300_000, lease_expires_unix_ms: 1 });
+      },
+      write: async (_id, seq, base64) => {
+        admit(seq);
+        inputs.push({ kind: 'write', seq, text: new TextDecoder().decode(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))) });
+        return Promise.resolve();
+      },
+      resize: async (_id, seq, rows, cols) => {
+        admit(seq);
+        inputs.push({ kind: 'resize', seq, rows, cols });
+        size = { cols, rows };
+        return Promise.resolve();
+      },
+      close: async (id) => {
+        calls.push({ kind: 'close', page: index });
+        // A terminal with no key has no history here: it is closed as it always was, with nothing to say.
+        if (key === undefined) {
+          return Promise.resolve();
+        }
+
+        if (session !== id) {
+          throw notThere(id);
+        }
+
+        if (ended !== undefined) {
+          // The host's own contract dismisses what a shell that ended by itself left. The real host does not (S1): the close of an ended terminal answers not-found, and the terminal stays listed until its lease runs out.
+          if (!dismissEnded) {
+            throw notThere(id);
+          }
+
+          session = undefined;
+          ended = undefined;
+          ring = [];
+          ringBytes = 0;
+        } else {
+          finish({ reason: 'closed', closed_by: 'request', last_offset: delivered });
+        }
+
+        return Promise.resolve();
+      },
+      ack: async (_id, bytes) => {
+        explicit = true;
+        acks.push(bytes);
+        unacked = Math.max(0, unacked - bytes);
+        if (paused && unacked <= low) {
+          paused = false;
+        }
+
+        pump();
+        return Promise.resolve();
+      },
+      busy: async () => Promise.resolve({ state: 'idle' }),
+      on: (name, listener) => {
+        const set = wire.listeners.get(name) ?? new Set();
+        set.add(listener);
+        wire.listeners.set(name, set);
+        return () => {
+          set.delete(listener);
+        };
+      },
+      describe: (error) => (error instanceof Error ? error.message : String(error)),
+      isGone: (error) => typeof error === 'object' && error !== null && Reflect.get(error, 'gone') === true,
+      codeOf: (error) => (typeof error === 'object' && error !== null && typeof Reflect.get(error, 'code') === 'string' ? String(Reflect.get(error, 'code')) : undefined),
+      triedOf: () => undefined,
+    };
+
+    return {
+      transport,
+      hold: () => {
+        wire.holding = true;
+      },
+      release: () => {
+        wire.holding = false;
+        for (const [name, data] of wire.queue.splice(0)) {
+          if (!wire.dead) {
+            deliverTo(wire, name, data);
+          }
+        }
+      },
+      die: () => {
+        wire.dead = true;
+        wire.queue.length = 0;
+        if (session === undefined || owner !== index || detached || ended !== undefined) {
+          return;
+        }
+
+        if (key === undefined) {
+          finish({ reason: 'closed', closed_by: 'window', last_offset: delivered });
+        } else {
+          detached = true;
+          owner = undefined;
+          emit(`core/exec/signal/DETACHED/${session}`, { by: 'window-retired', attachment });
+        }
+      },
+      queued: () => wire.queue.length,
+    };
+  };
+
+  const first = open(0);
+
   return {
-    transport,
+    transport: first.transport,
+    home: first,
+    page: () => open(wires.length),
     produce: (bytes) => {
+      segments.push({ kind: 'count', left: bytes });
       queued += bytes;
+      pump();
+    },
+    say: (text) => {
+      const data = new TextEncoder().encode(text);
+      segments.push({ kind: 'bytes', data, at: 0 });
+      queued += data.length;
       pump();
     },
     waiting: () => queued,
@@ -530,5 +982,33 @@ export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
     acks: () => acks,
     inputs: () => inputs,
     byteAt,
+    exit: (code = 0) => {
+      if (session === undefined || ended !== undefined) {
+        throw new Error('no shell runs in this host');
+      }
+
+      if (queued > 0) {
+        throw new Error('the shell exits when the host has read what it wrote: it has not');
+      }
+
+      finish({ reason: 'exited', exit_code: code, last_offset: delivered });
+    },
+    expire: () => {
+      if (session === undefined || !detached || ended !== undefined) {
+        throw new Error('no lease runs: the terminal is not detached');
+      }
+
+      finish({ reason: 'closed', closed_by: 'detach-timeout', last_offset: delivered });
+    },
+    modes: (now, atStart) => {
+      modesNow = { ...modesNow, ...now };
+      if (atStart !== undefined) {
+        modesStart = { ...modesStart, ...atStart };
+      }
+    },
+    holder: () => ({ attachment, detached, owner }),
+    kept: () => ({ start: ring[0]?.offset ?? delivered, end: delivered }),
+    calls: () => calls,
+    nextInput: () => nextInput,
   };
 }

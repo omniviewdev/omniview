@@ -126,6 +126,18 @@
 //      stays readable here.`, the last line of the emulator is `[Process exited with code 3]`, its tab is announced as ended and stays, closing it asks nothing, and the host has no session left. No request failed and no page error was raised.
 //   (r2 below r: the same terminal against the programs of the machine, `checkTerminalPrograms`, docs/ui-next/status/T1.md section 14.)
 //
+//   r3  a terminal outlives a reload of its page (T2b, `checkTerminalReattach`, docs/ui-next/status/T2-go.md), over the real host. The window's state holds a page key (a slot every page of the host shares), the terminal is opened with it, and a page that loads asks the host
+//      for the terminals of its key and takes its saved tabs' terminals back. A reload in the middle of a session: the tab is back (the same name and place, running, never Connecting for good), the scrollback holds the markers written before it, `echo $$` prints the
+//      same pid, typing works (the first numbered call after the attach carries exactly the `next_input_seq` the attach answered, which is one past the last number the first page sent; the numbers after it are consecutive, none is 0 and the host refuses none with SEQUENCE_STALE), the wire is one ListTerminals and one AttachTerminal (with the key and no offset) and no CreateTerminal, and the key is in no address and on no console line; the old window retired by the host while the new page's attach is on its way
+//      (the page's DetachTerminal dropped, its attach held until the host says nobody holds the terminal and has told every window) tells the page nothing; two terminals come back in their order with their own shells and closing one ends its shell. A reload in the
+//      middle of a flood of 3,000,000 numbered lines (about 26 MB through the pty): the end arrives, the lines the emulator holds at the end count up by one and the page acknowledged live bytes only; a slow stream across a reload is read in the emulator again and again, every reading counting up by one
+//      at the join; a runaway producer (`yes`, which never ends) is read on after a reload and stopped by Control C typed in the terminal the page took back, the page acknowledging live bytes only. A full-screen program (the alternate screen of a program of the shell's own, one whose start has left the host's 1.25 MiB ring, and vim when the machine has it) is on the alternate screen with its text after the reload, and its end gives the shell back with
+//      its earlier output. The seconds each took, the replay sizes and the words a person saw while the tab came back are told.
+//   r4  one page holds a terminal at a time, and it does not outlive the host or its lease (T2b, `checkTerminalTakeover`). A second page of the same browser takes the terminal over: the first is told (`DETACHED` `taken-over`), says `Taken over by another tab` and that its input is
+//      off, sends no write, and neither DetachTerminal nor CloseSession as it goes; the second page's terminal goes on running and takes input (its first numbered call carries the `next_input_seq` of its attach) after the first is closed and the host has retired its window. A restart of the host over the same state root: the saved tab
+//      comes back ended, says the earlier output is gone, and no AttachTerminal succeeded and no terminal was started. A lease that runs out (a detach with 3 s): the host ends the terminal and says why, the page says `Closed: no tab took it back in time`, and a page that loads
+//      later finds the tab ended with the earlier output gone.
+//
 //   The failed requests (INV1): every request any page of the run makes that answers 4xx or 5xx is recorded with the phase it happened in, and the phase fails unless each is in RUNTIME_ALLOW (an explicit list: the entry, its reason, the phases it
 //   is expected in). SEAM_CONTROL=runtime-4xx plants one 422 in a clean page and passes when the phase's assertion saw it; SEAM_REMOVE=runtime-4xx leaves that assertion out, and the planted 422 must then pass undetected
 //
@@ -5526,14 +5538,19 @@ function sttyOf(transcript) {
 /**
  * The calls of the exec lane that the Terminal tool makes of the host, by the id each call of the page carries: `CreateTerminal` starts the shell and answers which one it is, `AckTerminal` tells the host how much of the output the screen has parsed (the
  * credit the host paces the shell by), `IsBusy` asks what runs in the terminal, `WriteTerminal` and `ResizeTerminal` are the input and the size with a sequence number for each call (the host applies them in the order they were sent, whatever order the
- * transport delivers them in), and `WriteSession` and `ResizeSession` are the legacy calls, which the page does not make.
+ * transport delivers them in), `WriteSession` and `ResizeSession` are the legacy calls, which the page does not make, and `ListTerminals`, `AttachTerminal`, `DetachTerminal` and `CloseSession` are how a page finds its terminals again, takes one over, lets
+ * one go and ends one (T2b).
  */
-const EXEC_CALLS = new Map(['CreateTerminal', 'AckTerminal', 'IsBusy', 'WriteTerminal', 'ResizeTerminal', 'WriteSession', 'ResizeSession'].map((method) => [methodIdOf(EXEC_SERVICE, method), method]));
+const EXEC_CALLS = new Map(['CreateTerminal', 'AckTerminal', 'IsBusy', 'WriteTerminal', 'ResizeTerminal', 'WriteSession', 'ResizeSession', 'ListTerminals', 'AttachTerminal', 'DetachTerminal', 'CloseSession'].map((method) => [methodIdOf(EXEC_SERVICE, method), method]));
+
+/** The page keys the pages of this run gave the host (in `CreateTerminal` and `ListTerminals`), so that the terminals they opened can be ended afterwards whatever page asks. A key is a capability: it is never printed. */
+const PAGE_KEYS = new Set();
 
 /**
- * Records what a page asks of the host in those calls, in the order it asks, and what the host answers: the arguments, when it asked and when the answer came (two marks of one counter, so that "after the answer" can be said), the status, whether the
- * answer has come and the answer itself (`null` for a call that answers nothing). The checks about the host's facts (the shell's name, what runs in it, the credit that paces it, the order of the input) read the wire, so that each says what the page was
- * told and what it did with it.
+ * Records what a page asks of the host in those calls, in the order it asks, and what the host answers: the arguments, when it asked and when the answer came (two marks of one counter, so that "after the answer" can be said, and the wall clock
+ * of each, so that "after the reload" can), the status, whether the answer has come and the answer itself (`null` for a call that answers nothing). The checks about the host's facts (the shell's name, what runs in it, the credit that paces it, the
+ * order of the input, the terminals a reloaded page finds) read the wire, so that each says what the page was told and what it did with it. A call the check makes itself through the page (`callAsPage`) carries a call id that starts with `seam-` and
+ * is not recorded: the wire is what the product asked.
  */
 function watchExecCalls(page) {
   const calls = [];
@@ -5542,8 +5559,12 @@ function watchExecCalls(page) {
   page.on('request', (request) => {
     const method = EXEC_CALLS.get(calledMethod(request));
     if (method === undefined) return;
+    const body = JSON.parse(request.postData() ?? '{}');
+    if (String(body.args?.['call-id'] ?? '').startsWith('seam-')) return;
     tick += 1;
-    const call = { method, args: JSON.parse(request.postData() ?? '{}').args?.args ?? [], askedAt: tick, answeredAt: 0, status: 0, answered: false, answer: null };
+    const call = { method, args: body.args?.args ?? [], askedAt: tick, askedMs: Date.now(), answeredAt: 0, answeredMs: 0, status: 0, answered: false, answer: null };
+    const key = method === 'CreateTerminal' ? call.args[1]?.page_key : method === 'ListTerminals' ? call.args[0] : undefined;
+    if (typeof key === 'string' && key !== '') PAGE_KEYS.add(key);
     asked.set(request, call);
     calls.push(call);
   });
@@ -5552,6 +5573,7 @@ function watchExecCalls(page) {
     if (call === undefined) return;
     tick += 1;
     call.answeredAt = tick;
+    call.answeredMs = Date.now();
     call.status = response.status();
     try {
       call.answer = JSON.parse(await response.text());
@@ -5695,10 +5717,10 @@ async function startTerminal(page, base, button) {
 
 /**
  * Puts the keyboard in the emulator with a click at its top left corner, where the click takes a selection away and meets no program's mouse mode, and waits until the emulator has it and a frame after, so that what is typed next goes to the
- * emulator and not to the control the focus was on.
+ * emulator and not to the control the focus was on. With several terminals the screen that is shown is the one clicked (the others stay mounted, hidden).
  */
 async function takeKeyboard(page) {
-  await page.locator('.xterm-screen').click({ position: { x: 3, y: 3 } });
+  await page.locator('.xterm-screen:visible').click({ position: { x: 3, y: 3 } });
   await waitUntil('the emulator to have the keyboard', async () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 10_000);
   await afterFrames(page);
 }
@@ -6053,7 +6075,8 @@ async function checkTerminal(page, base, engine) {
   // (asked of the emulator with a cursor position report, `emulatorGridOf`): the rows exactly, the columns within one.
   const created = wire.of('CreateTerminal');
   await waitUntil('the answer of the host to the call that started the terminal', async () => created[0]?.answered === true, 10_000);
-  const launch = created[0].args[1];
+  // Only the size of the call is kept: the call carries the page key too (a secret: no message of a check may print it).
+  const launch = { cols: created[0].args[1]?.cols, rows: created[0].args[1]?.rows };
   assert.ok(Number.isInteger(launch?.cols) && Number.isInteger(launch?.rows) && launch.cols > 0 && launch.rows > 0, `${engine}: the call that starts the terminal carries the size of the screen (it carried ${JSON.stringify(launch)})`);
   for (let turn = 0; turn < 45; turn += 1) await afterFrames(page);
   assert.deepEqual(wire.calls.filter((call) => call.method === 'ResizeTerminal' || call.method === 'ResizeSession').map((call) => [call.method, ...call.args]), [], `${engine}: the page sends no resize after the terminal started: the call that started it carried the size the person sees (${JSON.stringify(launch)}) and no ResizeTerminal (nor the legacy ResizeSession) followed it in the 90 frames after the shell's first prompt`);
@@ -6623,6 +6646,825 @@ async function checkTerminalPrograms(page, base, engine) {
   console.log(`terminal-programs ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// r3 and r4: a terminal outlives its page (T2b, docs/ui-next/status/T2-go.md). What a reloaded page finds, takes over and shows is read from the real host: the calls the page makes, the events it receives, what the emulator holds, what the shell says.
+
+/** A pause, in milliseconds. */
+const waitMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The tabs of the terminals in the panel's strip of sessions. */
+const sessionTabsOf = (page) => page.locator('[data-shell-part="sessionTabs"] [role="tab"]');
+
+/** The name of each tab as a screen reader says it: a session that is not steady says its state (`zsh, starting`, `zsh, ended`). */
+const tabLabelsOf = async (page) => sessionTabsOf(page).evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label') ?? ''));
+
+/** The clipboard stub of `keepCopies`, made at every load of the page: a reload makes a new document, and the stub of the old one goes with it. */
+async function keepCopiesOnEveryLoad(page) {
+  await page.addInitScript(() => {
+    window.__copied = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { window.__copied.push(text); } } });
+  });
+}
+
+/** The number of bytes a base64 text decodes to, without decoding it. */
+const base64Length = (text) => Math.floor((text.length * 3) / 4) - (text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0);
+
+/**
+ * The events of the exec lane that the page's events socket carries, as the page receives them, each with the time it arrived: `core/exec/stream/output/<id>` (`{offset, data}`: the bytes of a terminal that has a page key, and the offset of the first of
+ * them in the terminal's output), `core/exec/signal/CLOSE/<id>` and `core/exec/signal/DETACHED/<id>` (`{by, attachment}`: a page lost a terminal). A reload makes a new socket; the frames of every socket the page has had are kept.
+ */
+function watchTerminalEvents(page) {
+  const frames = [];
+  page.on('websocket', (socket) => {
+    socket.on('framereceived', ({ payload }) => {
+      let message;
+      try {
+        message = JSON.parse(String(payload));
+      } catch {
+        return;
+      }
+
+      if (typeof message?.name === 'string' && message.name.startsWith('core/exec/')) frames.push({ at: Date.now(), name: message.name, data: message.data });
+    });
+  });
+  const of = (kind, id) => frames.filter((frame) => frame.name === `core/exec/${kind}/${id}`);
+  return {
+    frames,
+    /** The output events of a terminal: when each came, where it starts in the terminal's output and how many bytes it carries. */
+    outputs: (id) => of('stream/output', id).map((frame) => ({ at: frame.at, offset: frame.data?.offset, length: base64Length(String(frame.data?.data ?? '')) })),
+    detached: (id) => of('signal/DETACHED', id),
+    closes: (id) => of('signal/CLOSE', id),
+  };
+}
+
+/**
+ * What a page says or asks for where a secret must never be: its console (a line of any kind), its errors, the address of the page and every address it asked for or opened a socket to. The page key is a capability: the body of a call carries it (the
+ * host's calls are POSTs with their arguments in the body), and nothing else may.
+ */
+function watchLeaks(page) {
+  const lines = [];
+  const urls = [];
+  page.on('console', (message) => lines.push(message.text()));
+  page.on('pageerror', (error) => lines.push(error.message));
+  page.on('request', (request) => urls.push(request.url()));
+  page.on('websocket', (socket) => urls.push(socket.url()));
+  return { lines, urls };
+}
+
+/** Fails, without printing the key, when the secret is in the address of the page, in an address it asked for, or in a line of its console. */
+function assertSecretIsNowhere(secret, page, leaks, engine, when) {
+  assert.ok(typeof secret === 'string' && secret.length >= 16, `${engine}: ${when}: there is a page key to look for (16 characters or more)`);
+  assert.equal(page.url().includes(secret), false, `${engine}: ${when}: the page key is not in the address of the page`);
+  assert.equal(leaks.urls.filter((url) => url.includes(secret)).length, 0, `${engine}: ${when}: no address the page asked for or opened a socket to carries the page key`);
+  assert.equal(leaks.lines.filter((line) => line.includes(secret)).length, 0, `${engine}: ${when}: no line of the console and no error of the page carries the page key`);
+}
+
+let seamCalls = 0;
+/**
+ * A call of the exec lane made by the page's own code, with the client id its runtime holds, as the page's bindings make it: what the host takes for a call of that window (`ListTerminals` and `AttachTerminal` need one). Its call id starts with
+ * `seam-`, which `watchExecCalls` leaves out of the wire. The answer: the status, the text and the JSON.
+ */
+async function callAsPage(page, method, ...args) {
+  seamCalls += 1;
+  const out = await page.evaluate(
+    async ({ id, list, tag }) => {
+      const response = await fetch('/wails/runtime', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId },
+        body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': tag, methodID: id, args: list } }),
+      });
+      return { status: response.status, text: await response.text() };
+    },
+    { id: methodIdOf(EXEC_SERVICE, method), list: args, tag: `seam-${method}-${String(seamCalls)}` },
+  );
+  let json;
+  try {
+    json = JSON.parse(out.text);
+  } catch {
+    json = undefined;
+  }
+
+  return { status: out.status, text: out.text, json };
+}
+
+/**
+ * The page key a page gave the host when it started its first terminal (T2-go 2.1: 16 to 128 visible characters, the page makes it and keeps it where its build keeps it), read from the wire, so that no check depends on where that is. Undefined while the page
+ * started no terminal with a key.
+ */
+const keyOnTheWire = (wire) => wire.of('CreateTerminal').find((call) => typeof call.args[1]?.page_key === 'string')?.args[1].page_key;
+
+/**
+ * What a browser does when it duplicates a tab: the new tab starts with a copy of the old tab's `sessionStorage` (a key kept there is then the same key; a key kept anywhere else is shared by the pages of one browser context or of one window of the host
+ * anyway). Written before the new page's own scripts run, and never over a value the new page made.
+ */
+async function duplicateStorage(from, to) {
+  const entries = await from.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)));
+  await to.addInitScript((copy) => {
+    for (const [name, value] of Object.entries(copy)) if (sessionStorage.getItem(name) === null) sessionStorage.setItem(name, value);
+  }, entries);
+}
+
+/** Waits until the host holds the saved window with these tabs in it: the session is saved a quiet moment after it changes, and a page that is reloaded or replaced before that finds the window as it was. */
+async function savedTabs(base, ...ids) {
+  await waitUntil(`the host to hold the saved window with ${String(ids.length)} terminal tab${ids.length === 1 ? '' : 's'}`, async () => {
+    const session = String((await callHost(base, 'GetState', 'main')).session ?? '');
+    return ids.every((id) => session.includes(id));
+  }, 30_000);
+}
+
+/**
+ * Ends every terminal the host holds for the keys the pages of this run used and every session it lists, as a person closes each tab: a terminal with a page key outlives its page (its lease), and a later page would find it. Never throws: what was
+ * running has said what failed.
+ */
+async function endTerminals(base, page) {
+  try {
+    if (page !== undefined && !page.isClosed()) {
+      for (const key of PAGE_KEYS) {
+        const listed = await callAsPage(page, 'ListTerminals', key);
+        for (const one of Array.isArray(listed.json) ? listed.json : []) await tryBound(base, EXEC_SERVICE, 'CloseSession', one.id);
+      }
+    }
+
+    for (const id of await terminalIds(base)) await tryBound(base, EXEC_SERVICE, 'CloseSession', id);
+    await waitUntil('the host to list no terminal', async () => (await terminalIds(base)).length === 0, 20_000);
+  } catch {
+    // best effort
+  }
+}
+
+/** Runs a terminal scenario on a fresh page and ends every terminal the host still holds afterwards, so that the next scenario starts from a host with none. */
+async function onTerminalPage(browser, base, run) {
+  const page = await freshPage(browser, base);
+  try {
+    await run(page);
+  } finally {
+    await endTerminals(base, page);
+  }
+}
+
+/**
+ * What a person sees of the terminals in the panel: the name of each tab as a screen reader says it, what the lanes of the terminals on screen say, and whether the words of a terminal that is gone are anywhere on the page.
+ */
+async function seePanel(page) {
+  return page.evaluate(() => ({
+    tabs: [...document.querySelectorAll('[data-shell-part="sessionTabs"] [role="tab"]')].map((tab) => tab.getAttribute('aria-label') ?? ''),
+    lane: [...document.querySelectorAll('[data-shell-part="terminalLane"]')].filter((lane) => lane.getClientRects().length > 0).map((lane) => (lane.textContent ?? '').replace(/\s+/g, ' ').trim()),
+    gone: document.body.innerText.includes('The earlier output is gone'),
+  }));
+}
+
+/** The panel as terminals that are back and running leave it: these tabs, none of them starting or ended, no lane with words, and nothing said of a terminal that is gone. */
+const runningAs = (names) => (state) => state.tabs.length === names.length && state.tabs.every((tab, index) => tab === names[index]) && state.lane.every((words) => words === '') && !state.gone;
+
+/**
+ * Looks at the panel every 50 ms until `done(state)` holds or `ms` have passed, and keeps each state that was different from the one before, with the time it was first seen, counted from `from`: what a person saw, in order, and when.
+ */
+async function watchPanelUntil(page, done, ms, from = Date.now()) {
+  const seen = [];
+  const deadline = Date.now() + ms;
+  for (;;) {
+    // A document that is being replaced cannot be looked at for a moment.
+    const state = await seePanel(page).catch(() => undefined);
+    if (state !== undefined) {
+      const text = JSON.stringify(state);
+      if (seen.at(-1)?.text !== text) seen.push({ text, state, at: Date.now() - from });
+      if (done(state)) return { ok: true, seen, took: Date.now() - from };
+    }
+
+    if (Date.now() > deadline) return { ok: false, seen, took: Date.now() - from };
+    await waitMs(50);
+  }
+}
+
+/** What `watchPanelUntil` saw, as one line: each state with the time it came. */
+const timelineOf = (seen) => seen.map(({ state, at }) => `${String(at)} ms ${JSON.stringify(state.tabs)} ${JSON.stringify(state.lane)}${state.gone ? ' with the words of a terminal that is gone' : ''}`).join(' | ');
+
+/**
+ * What a person does when a window comes back with its terminals and the panel is closed (a restored session does not cover the page): opens the panel. The window is waited for (the empty window's list of plugins is on screen), then a short moment in case
+ * the panel opens by itself, and then the toggle is pressed. Returns which of the two it was.
+ */
+async function openPanelAgain(page) {
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  const toggle = page.locator('[data-shell-part="panelToggle"]');
+  for (let turn = 0; turn < 4; turn += 1) {
+    if ((await toggle.getAttribute('aria-pressed')) === 'true') return 'by itself';
+    await waitMs(150);
+  }
+
+  await toggle.click();
+  return 'by a press';
+}
+
+/** Reloads the page, opens the panel and watches it until `done` holds: when the reload began (a wall clock time), how the panel opened and when (milliseconds after the reload began), whether the panel got there, what was seen and how long it took in milliseconds. */
+async function reloadUntil(page, done, ms = 60_000) {
+  const startedAt = Date.now();
+  await page.reload({ waitUntil: 'load' });
+  const opened = await openPanelAgain(page);
+  const openedAfter = Date.now() - startedAt;
+  return { startedAt, opened, openedAfter, ...(await watchPanelUntil(page, done, ms, startedAt)) };
+}
+
+/** The calls of one kind the page made from `since` (a wall clock time) on, for the terminal `id` when one is named (its first argument). */
+const sinceOf = (wire, method, id, since) => wire.of(method).filter((call) => call.askedMs >= since && (id === undefined || call.args[0] === id));
+
+/** The bytes of the output events that lie at or beyond `end`: what a page that took a terminal over at `end` has to apply, and so to acknowledge. Whole events (an event never straddles the end of a replay), and a straddling one would count only what lies beyond. */
+const bytesBeyond = (outputs, end) => outputs.reduce((sum, event) => sum + Math.max(0, event.offset + event.length - Math.max(event.offset, end)), 0);
+
+/** What the page acknowledged of a terminal from `since` on: the bytes of its AckTerminal calls. */
+const ackedOf = (wire, id, since) => sinceOf(wire, 'AckTerminal', id, since).reduce((sum, call) => sum + (Number(call.args[1]) || 0), 0);
+
+/**
+ * Reads the emulator's whole buffer again and again until it holds `line`, and keeps what each reading shows of a numbered stream that counts up to `last`: its numbers (the first is left out: a replay may begin in the middle of a line; numbers above `last`
+ * are an earlier stream's, which the scrollback may still hold), where they begin and end, and where they stop counting up by one. A reading takes a moment, so what the readings catch is a stream that is not too fast for them.
+ */
+async function readingsUntil(page, mac, line, what, ms, last) {
+  const readings = [];
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const buffer = await bufferOf(page, mac);
+    const numbers = numbersOf(buffer).filter((number) => number <= last).slice(1);
+    const reading = { at: Date.now(), first: numbers[0], last: numbers.at(-1), count: numbers.length, broken: firstBreak(numbers), done: lineIn(buffer, line) };
+    readings.push(reading);
+    if (reading.done) return readings;
+    if (Date.now() > deadline) throw new Error(`timed out after ${String(ms)} ms waiting for ${what}; the last of ${String(readings.length)} readings held ${String(reading.count)} numbered lines from ${String(reading.first)} to ${String(reading.last)}`);
+    await waitMs(100);
+  }
+}
+
+/** Waits until what the shell has written to the terminal (the host's replay, without the control sequences) holds `pattern`, and returns the match. */
+async function shellSays(base, id, pattern, what) {
+  let found = null;
+  await waitUntil(what, async () => {
+    found = pattern.exec(await plainTranscriptOf(base, id));
+    return found !== null;
+  }, 30_000);
+  return found;
+}
+
+/** Polls (every 200 ms) until `fn` holds or `ms` have passed, and says which: a bound that is an assertion of its own, with its own words, where `waitUntil` throws a timeout. */
+async function holdsWithin(fn, ms) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    if (await fn()) return true;
+    if (Date.now() > deadline) return false;
+    await waitMs(200);
+  }
+}
+
+/**
+ * What the page numbered after it took a terminal over (T2-go 2.4: the host answers `next_input_seq` in the attach answer, the number its queue expects next, and the page goes on counting from it; a number the host has already applied or given up is
+ * refused SEQUENCE_STALE, with nothing applied). The page sent input; the host answered every WriteTerminal and ResizeTerminal with success (the refusal is told first: a page that goes on from the wrong number types into a terminal that applies nothing);
+ * no call is unnumbered (number 0 is the fallback of a page that did not know where the count stood); the first carries exactly the number the attach answered, and the writes and resizes after it count up by one.
+ */
+async function assertNumbersAfterAttach(wire, id, attach, engine, when) {
+  const numbered = () => [...sinceOf(wire, 'WriteTerminal', id, attach.askedMs), ...sinceOf(wire, 'ResizeTerminal', id, attach.askedMs)].sort((a, b) => a.askedAt - b.askedAt);
+  await holdsWithin(async () => numbered().length > 0 && numbered().every((call) => call.answered), 20_000);
+  const calls = numbered();
+  const next = attach.answer?.next_input_seq;
+  const numbers = calls.map((call) => call.args[1]);
+  assert.ok(calls.length > 0, `${engine}: ${when}: the page sent input to the terminal it took back (no WriteTerminal after the attach)`);
+  const refused = calls.filter((call) => call.status !== 200).map((call) => `${call.method} number ${String(call.args[1])} -> ${String(call.status)} ${String(call.answer?.cause?.code ?? '')}`);
+  assert.deepEqual(refused.slice(0, 3), [], `${engine}: ${when}: the host answered every WriteTerminal and ResizeTerminal of the page with success (it refuses a number it has applied or given up with SEQUENCE_STALE and applies nothing: the page must go on from the next_input_seq of the attach answer, ${String(next)}, not from 1); ${String(refused.length)} of ${String(calls.length)} were refused`);
+  assert.deepEqual(calls.filter((call) => call.args[1] === 0).map((call) => call.method), [], `${engine}: ${when}: no call of the page is unnumbered (number 0 is the fallback of a page that was not told where the count stands)`);
+  assert.equal(numbers[0], next, `${engine}: ${when}: the first numbered call after the attach carries exactly the next_input_seq the attach answered (${String(next)}); it carried ${String(numbers[0])}`);
+  assert.equal(firstBreak(numbers), undefined, `${engine}: ${when}: the numbers of the writes and resizes after the attach count up by one from the number the attach answered (${String(next)}): ${JSON.stringify(numbers.slice(0, 12))}`);
+}
+
+/** Whether the shell has a program, asked of the shell and read from the host's replay. */
+async function hasProgram(page, base, id, program) {
+  await typeLine(page, `command -v ${program} >/dev/null && echo HAS_YES_${program} || echo HAS_NO_${program}`);
+  return (await shellSays(base, id, new RegExp(`\\nHAS_(YES|NO)_${program}\\n`), `the shell to say whether it has ${program}`))[1] === 'YES';
+}
+
+/** A reload cuts the calls that are in flight, which an engine reports as a page error: they are the page's going away, not the terminal's. Anything else is. */
+const CUT_BY_A_RELOAD = /access control checks|Load failed|Failed to fetch|NetworkError|network connection was lost|cancelled|aborted/i;
+
+/**
+ * r3. A terminal outlives a reload of its page (T2b, docs/ui-next/status/T2-go.md 2.4), on the real host. The page has a key (the page makes it and keeps it where its build keeps it: the check reads it from the wire) and opens its terminals with it; a page
+ * that loads finds the terminals of its key (`ListTerminals`), its saved tabs take theirs back (`AttachTerminal`: the replay, its replies muted, then the live events, dropped by offset) and nothing else starts. (1) A reload in the middle of a session: the
+ * markers and the shell's pid before it are there after it (the same shell, the earlier output in the scrollback), typing works with the count of its input going on from the host's `next_input_seq` (the first numbered call after the attach carries it, the next ones are consecutive, none is 0, the host refuses none), the page made one ListTerminals and one AttachTerminal with its key and no offset and no CreateTerminal, and the key is not in the
+ * address of the page, in an address it asked for, or on its console; the old window being retired by the host while the new page's attach is on its way tells the page nothing (a DETACHED with another page's number is not its business); a terminal that
+ * was let go (a request to detach it) is `Detached` with its input off, still the host's shell, and a reload within its lease takes it back; two terminals come back in their order, each with its own shell, and closing one ends its shell. (2) A reload in the
+ * middle of a flood: the end arrives, the lines the emulator holds at the end count up by one, and what the page acknowledges after the attach is live bytes only; and a slow stream across a reload is read in the emulator at its join: every reading counts up
+ * by one; a runaway producer (`yes`, which never ends) is read on after a reload and stopped by Control C typed in the terminal the page took back, with live bytes only acknowledged. (3) A full-screen program: the alternate screen is back with its text, `:q!` or the program's end gives the shell back with its earlier output; a program whose start has left the replay (the host's ring is 1.25 MiB) is on the alternate screen all
+ * the same, by the modes the host states. How long each took is told, and the words a person saw while it came back.
+ */
+async function checkTerminalReattach(page, base, engine) {
+  const errors = [];
+  const observed = [];
+  const note = (name, text) => observed.push(`${name}: ${text}`);
+  page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+  const wire = watchExecCalls(page);
+  const events = watchTerminalEvents(page);
+  const leaks = watchLeaks(page);
+  await spoofPlatform(page);
+  await keepCopiesOnEveryLoad(page);
+  await open(page, base);
+  await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await page.locator('[data-shell-part="panelToggle"]').click();
+  const emptyButton = () => page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true });
+  const plusButton = () => page.locator('[data-shell-part="sessionAdd"]').getByRole('button', { name: 'New terminal', exact: true });
+
+  // The terminals the checks below reload, by the names of their tabs.
+  let names = [];
+  /**
+   * A reload of the page, until the terminals are back and running as `names` says: what a person saw meanwhile, the one attach of each terminal (with the page's key and no offset), no create, and the emulator has the keyboard. Returns when the reload
+   * began, how long it took and the attach of the first terminal.
+   */
+  const reloadToTerminals = async (ids, what) => {
+    const back = await reloadUntil(page, runningAs(names));
+    assert.ok(back.ok, `${engine}: after ${what} the tabs of the terminals are back, running and with no word of a terminal that is gone, within 60 s: ${timelineOf(back.seen)}`);
+    assert.deepEqual(back.seen.filter((seen) => /taken over|detached/i.test(seen.state.lane.join(' '))), [], `${engine}: after ${what} the page said nothing of a terminal it did not lose (its own takeover comes back to it as DETACHED taken-over with the number of the window that held the terminal before): ${timelineOf(back.seen)}`);
+    await takeKeyboard(page);
+    for (const id of ids) {
+      const attached = sinceOf(wire, 'AttachTerminal', id, back.startedAt);
+      assert.equal(attached.length, 1, `${engine}: after ${what} the page took terminal ${id} back with one AttachTerminal (it made ${String(attached.length)})`);
+      await waitUntil('the answer of the host to the attach', async () => attached[0].answered === true, 15_000);
+      assert.equal(attached[0].status, 200, `${engine}: after ${what} the host answered the attach of terminal ${id} with success`);
+    }
+
+    assert.equal(sinceOf(wire, 'CreateTerminal', undefined, back.startedAt).length, 0, `${engine}: after ${what} the page started no terminal: the saved tabs took their own back`);
+    return { ...back, attach: sinceOf(wire, 'AttachTerminal', ids[0], back.startedAt)[0] };
+  };
+
+  // (1a) A reload in the middle of a session.
+  const first = await startTerminal(page, base, emptyButton());
+  assert.equal(await sessionTabsOf(page).first().getAttribute('data-tab-id'), first, `${engine}: the tab of a terminal has the terminal's id (a saved tab finds its terminal by it)`);
+  await takeKeyboard(page);
+  await typeLine(page, 'echo MARK_ONE_$((6*7)); echo PID_$$; echo MARK_TWO_$((6*8))');
+  const pid = Number((await shellSays(base, first, /\nMARK_ONE_42\nPID_(\d+)\nMARK_TWO_48\n/, 'the markers and the pid of the shell'))[1]);
+  names = await tabLabelsOf(page);
+  assert.ok(names.length === 1 && !/, (starting|ended|failed)$/.test(names[0]), `${engine}: one terminal, one tab, and the tab is of a running terminal (it says ${names.join(' | ')})`);
+  await savedTabs(base, first);
+  const key = keyOnTheWire(wire);
+  assert.ok(typeof key === 'string' && key.length >= 16 && key.length <= 128, `${engine}: the page gave the host a page key when it started the terminal (16 to 128 characters)`);
+  // The numbers the first page gave its input and its size before the reload (writes and resizes count together): the host's next number is one past the last of them, and the page that takes the terminal back must go on from there.
+  const numbersBefore = [...wire.of('WriteTerminal'), ...wire.of('ResizeTerminal')].filter((call) => call.args[0] === first).map((call) => call.args[1]);
+  const one = await reloadToTerminals([first], 'a reload in the middle of a session');
+  const buffer = await untilLine(page, mac, 'MARK_TWO_48', 'the earlier output in the emulator of the page that came back', 60_000);
+  const scrolledAt = Date.now() - one.startedAt;
+  assert.ok(lineIn(buffer, 'MARK_ONE_42') && lineIn(buffer, `PID_${String(pid)}`), `${engine}: the scrollback of the page that came back holds the markers and the pid the shell wrote before the reload`);
+  await typeLine(page, 'echo PID_AGAIN_$$');
+  await assertNumbersAfterAttach(wire, first, one.attach, engine, 'after a reload in the middle of a session');
+  const again = Number((await shellSays(base, first, /\nPID_AGAIN_(\d+)\n/, 'the shell to say its pid again'))[1]);
+  assert.equal(again, pid, `${engine}: after the reload the terminal is the same shell: its pid is ${String(pid)} again`);
+  await typeLine(page, 'echo AFTER_$((6*7))');
+  await untilLine(page, mac, 'AFTER_42', 'what was typed after the reload in the emulator', 30_000);
+  assert.ok(/\nAFTER_42\n/.test(await plainTranscriptOf(base, first)), `${engine}: what was typed after the reload reached the shell`);
+  await assertNumbersAfterAttach(wire, first, one.attach, engine, 'after the two lines typed after the reload');
+  const listed = sinceOf(wire, 'ListTerminals', undefined, one.startedAt);
+  assert.ok(listed.length >= 1 && listed.every((call) => call.status === 200 && call.args[0] === key), `${engine}: after the reload the page asked the host for the terminals of its key (${String(listed.length)} ListTerminals)`);
+  const request = one.attach.args[1];
+  assert.ok(request?.page_key === key && !('from_offset' in request), `${engine}: the page took the terminal over with its page key and no offset (a page that has rendered nothing has nothing to continue)`);
+  const answer = one.attach.answer;
+  assert.ok(answer?.attachment >= 1 && !answer.ended && answer.replay?.end > 0, `${engine}: the host answered the attach with the replay and the number of the attachment (the first page held 0), and no end`);
+  const replayBytes = base64Length(String(answer.replay.data ?? ''));
+  const lastNumberBefore = numbersBefore.reduce((high, number) => Math.max(high, number), 0);
+  assert.ok(Number.isInteger(answer.next_input_seq) && answer.next_input_seq > 1, `${engine}: the attach answered a next input number past 1 (the first page typed before the reload): ${JSON.stringify(answer.next_input_seq)}`);
+  assert.equal(answer.next_input_seq, lastNumberBefore + 1, `${engine}: the attach answered the number one past the last number the first page sent (${String(lastNumberBefore)}, in ${String(numbersBefore.length)} calls)`);
+  const listedNext = listed.at(-1)?.answer?.find?.((listedEntry) => listedEntry.id === first)?.next_input_seq;
+  assert.equal(listedNext, answer.next_input_seq, `${engine}: the list said the same next input number as the attach (the list said ${JSON.stringify(listedNext)})`);
+  assert.deepEqual(await terminalIds(base), [first], `${engine}: the host holds the one terminal, and the reload made no other`);
+  assertSecretIsNowhere(key, page, leaks, engine, 'after a reload');
+  note('reload in the middle of a session', `the page asked to attach ${String(one.attach.askedMs - one.startedAt)} ms after the reload began and the host answered ${String(one.attach.answeredMs - one.attach.askedMs)} ms later (the replay was in hand ${String(one.attach.answeredMs - one.startedAt)} ms after the reload began); the panel ${one.opened === 'by itself' ? 'opened by itself' : 'stayed closed (a restored session does not cover the page) and was opened by a press'} ${String(one.openedAfter)} ms after the reload began; the tab was running ${String(one.took - one.openedAfter)} ms after that and the earlier output was in the emulator ${String(scrolledAt - one.openedAfter)} ms after the panel opened (what a person saw: ${timelineOf(one.seen)}); the replay was ${String(replayBytes)} bytes ([${String(answer.replay.start)}, ${String(answer.replay.end)}), attachment ${String(answer.attachment)}); the same shell (pid ${String(pid)}) typed in`);
+
+  // (1c) The host retires the old window while the new page's attach is on its way. The old page's DetachTerminal (what a page that is going away says, so that the host holds the shell at once) is dropped here, so the host learns of the loss only when it
+  // retires the window, about 3 s after its socket went; the attach of the new page is held until the host says that nobody holds the terminal and every window has been told (`DETACHED`, `window-retired`, the number of the attachment that ended: the one the old page
+  // held, which the reload before it made 1). That number is not the new page's (the next one), so the page says nothing and takes the terminal back all the same. (An engine may deliver the call of a page that is going away whatever a route says: the host then holds the terminal at once, the new page has no socket yet to be told
+  // on, and the race cannot be staged: that is told, and the page is checked all the same.)
+  const gate = Promise.withResolvers();
+  let attachHeld = false;
+  let dropped = 0;
+  const detachMethod = methodIdOf(EXEC_SERVICE, 'DetachTerminal');
+  const attachMethod = methodIdOf(EXEC_SERVICE, 'AttachTerminal');
+  const hold = async (route) => {
+    const method = calledMethod(route.request());
+    if (method === detachMethod) {
+      dropped += 1;
+      await route.abort();
+      return;
+    }
+
+    if (method === attachMethod && !attachHeld) {
+      attachHeld = true;
+      await gate.promise;
+    }
+
+    await route.continue();
+  };
+  await page.route('**/wails/runtime', hold);
+  const raceAt = Date.now();
+  await page.reload({ waitUntil: 'load' });
+  await openPanelAgain(page);
+  const racing = watchPanelUntil(page, runningAs(names), 90_000, raceAt);
+  await waitUntil('the attach of the new page to be on its way', async () => attachHeld, 30_000);
+  const entryOf = async () => {
+    const answered = await callAsPage(page, 'ListTerminals', key);
+    return Array.isArray(answered.json) ? answered.json.find((one) => one.id === first) : undefined;
+  };
+  let entry = await entryOf();
+  const staged = entry?.attached === true;
+  let told;
+  if (staged) {
+    await waitUntil('the host to count the old window as gone', async () => {
+      entry = await entryOf();
+      return entry?.attached === false;
+    }, 30_000);
+    assert.ok(entry.lease_expires_unix_ms > Date.now(), `${engine}: the terminal that nobody holds has a lease running (it expires at ${String(entry.lease_expires_unix_ms)})`);
+    await waitUntil('the page to be told that the old window let the terminal go', async () => events.detached(first).some((frame) => frame.at >= raceAt), 15_000);
+    told = events.detached(first).find((frame) => frame.at >= raceAt);
+    assert.deepEqual({ by: told.data?.by, attachment: told.data?.attachment }, { by: 'window-retired', attachment: answer.attachment }, `${engine}: the host told every window that the old window's hold was over, with the number of the attachment that ended (the one the old page held)`);
+  }
+
+  gate.resolve();
+  const raced = await racing;
+  await page.unroute('**/wails/runtime', hold);
+  assert.ok(raced.ok, `${engine}: the page takes the terminal back although the host told it that the old window let it go (another page's number is not its business) within 90 s: ${timelineOf(raced.seen)}`);
+  assert.deepEqual(raced.seen.filter((entry) => /taken over|detached|moved|waiting/i.test(entry.state.lane.join(' '))), [], `${engine}: the page said nothing of a terminal it did not lose: ${timelineOf(raced.seen)}`);
+  const raceAttach = sinceOf(wire, 'AttachTerminal', first, raceAt);
+  assert.equal(raceAttach.length, 1, `${engine}: the page made one attach in the race (it made ${String(raceAttach.length)})`);
+  await waitUntil('the answer of the host to the attach', async () => raceAttach[0].answered === true, 15_000);
+  assert.ok(raceAttach[0].status === 200 && raceAttach[0].answer?.attachment >= 1, `${engine}: the attach that waited for the retirement succeeded, with the next number of attachment`);
+  await takeKeyboard(page);
+  await typeLine(page, 'echo AFTER_RACE_$((6*7))');
+  await untilLine(page, mac, 'AFTER_RACE_42', 'what was typed after the race in the emulator', 30_000);
+  assert.ok(/\nAFTER_RACE_42\n/.test(await plainTranscriptOf(base, first)), `${engine}: what was typed after the race reached the shell`);
+  note('the old window retired while the attach was on its way', staged
+    ? `the host said the terminal was nobody's and told the page ${JSON.stringify(told.data)} ${((told.at - raceAt) / 1000).toFixed(1)} s after the reload began (the check dropped ${String(dropped)} DetachTerminal call of the old page); the page took it back after the wait (attachment ${String(raceAttach[0].answer.attachment)}) and said nothing: ${timelineOf(raced.seen)}`
+    : `NOT STAGED: the host already counted the terminal as nobody's when the attach was held (the engine delivered the old page's DetachTerminal although the check dropped ${String(dropped)}); the page took the terminal back (attachment ${String(raceAttach[0].answer.attachment)}) and said nothing: ${timelineOf(raced.seen)}`);
+
+  // (1d) A terminal that was let go. A request to detach it, made through the page as another client of the window may make it, leaves it running until its lease ends. The page that held it says `Detached` and that its input is off, types nothing into it, the
+  // shell is still there for the host, and a reload within the lease takes it back.
+  const letGoAt = Date.now();
+  const toldBefore = events.detached(first).length;
+  const letGo = await callAsPage(page, 'DetachTerminal', first, { page_key: key, lease_ms: 120_000 });
+  assert.equal(letGo.status, 200, `${engine}: the host detached the terminal at the request of the window that holds it (${letGo.text.slice(0, 200)})`);
+  const lane = await watchPanelUntil(page, (state) => state.lane.some((words) => /Detached/.test(words)), 30_000, letGoAt);
+  assert.ok(lane.ok, `${engine}: the page says that the terminal was detached within 30 s: ${timelineOf(lane.seen)}`);
+  assert.match((await seePanel(page)).lane.join(' '), /Input is off\. The shell keeps running until its lease ends\./, `${engine}: the lane says that the input is off and that the shell keeps running until its lease ends`);
+  const letGoTold = events.detached(first).slice(toldBefore).map((frame) => ({ by: frame.data?.by, attachment: frame.data?.attachment }));
+  assert.deepEqual(letGoTold, [{ by: 'requested', attachment: raceAttach[0].answer.attachment }], `${engine}: the host told the window that it let the terminal go, with the number of the attachment that held it`);
+  const kept = await entryOf();
+  assert.ok(kept?.attached === false && Math.abs(kept.lease_expires_unix_ms - Date.now() - 120_000) < 10_000, `${engine}: the host lists the terminal as nobody's with the lease that was asked for, 120 s (${JSON.stringify({ attached: kept?.attached, leaseLeftMs: (kept?.lease_expires_unix_ms ?? 0) - Date.now() })})`);
+  const wrote = wire.of('WriteTerminal').length;
+  await page.locator('.xterm-screen').click({ position: { x: 3, y: 3 } });
+  await typeLine(page, 'echo WHILE_DETACHED_$((6*7))');
+  for (let turn = 0; turn < 45; turn += 1) await afterFrames(page);
+  assert.equal(wire.of('WriteTerminal').length, wrote, `${engine}: the page sends nothing to a terminal it let go: what was typed made no WriteTerminal`);
+  assert.equal(/WHILE_DETACHED_42/.test(await plainTranscriptOf(base, first)), false, `${engine}: what was typed while the terminal was detached never reached the shell`);
+  assert.equal((await busyOf(base, first)).state, 'idle', `${engine}: the shell is still at its prompt for the host`);
+  const taken = await reloadToTerminals([first], 'a reload while the terminal was detached');
+  const retaken = await untilLine(page, mac, 'AFTER_RACE_42', 'the earlier output in the emulator that took the detached terminal back', 60_000);
+  assert.ok(lineIn(retaken, 'MARK_ONE_42') && lineIn(retaken, `PID_${String(pid)}`), `${engine}: the scrollback of the page that took the detached terminal back holds what the shell wrote before it was let go`);
+  await typeLine(page, 'echo PID_LETGO_$$');
+  assert.equal(Number((await shellSays(base, first, /\nPID_LETGO_(\d+)\n/, 'the shell to say its pid after it was let go'))[1]), pid, `${engine}: a terminal that was let go and taken back within its lease is the same shell: pid ${String(pid)}`);
+  note('a terminal that was let go', `the page said "${lane.seen.at(-1).state.lane.join(' ')}" ${String(lane.took)} ms after the request, the host kept the shell (pid ${String(pid)}) with a lease of 120 s, and a reload took it back after ${(taken.took / 1000).toFixed(2)} s with attachment ${String(taken.attach.answer.attachment)}`);
+
+  // (1b) Two terminals come back in the order they were in, each with its own shell, and closing one ends its shell.
+  const second = await startTerminal(page, base, plusButton());
+  await takeKeyboard(page);
+  await typeLine(page, 'echo MARK_B_$((6*9)); echo PID_B_$$');
+  const pidB = Number((await shellSays(base, second, /\nMARK_B_54\nPID_B_(\d+)\n/, 'the marker and the pid of the second shell'))[1]);
+  assert.notEqual(pidB, pid, `${engine}: the second terminal is another shell`);
+  names = await tabLabelsOf(page);
+  assert.equal(names.length, 2, `${engine}: two terminals, two tabs (${names.join(' | ')})`);
+  await savedTabs(base, first, second);
+  const two = await reloadToTerminals([first, second], 'a reload with two terminals');
+  for (const [index, id, marker, label, expected] of [[0, first, 'MARK_TWO_48', 'PID_', pid], [1, second, 'MARK_B_54', 'PID_B_', pidB]]) {
+    await sessionTabsOf(page).nth(index).click();
+    await takeKeyboard(page);
+    const shown = await untilLine(page, mac, marker, `the earlier output of terminal ${String(index + 1)} in its emulator`, 60_000);
+    assert.ok(lineIn(shown, `${label}${String(expected)}`), `${engine}: terminal ${String(index + 1)} came back with the output its shell wrote, in the tab it was in`);
+    await typeLine(page, `echo NOW_${String(index)}_$$`);
+    const now = Number((await shellSays(base, id, new RegExp(`\\nNOW_${String(index)}_(\\d+)\\n`), `the shell of terminal ${String(index + 1)} to say its pid`))[1]);
+    assert.equal(now, expected, `${engine}: terminal ${String(index + 1)} is the shell it was: pid ${String(expected)}`);
+  }
+
+  assert.deepEqual(await tabLabelsOf(page), names, `${engine}: the two tabs are in the order they were in, with the names they had`);
+  assert.deepEqual((await terminalIds(base)).sort(), [first, second].sort(), `${engine}: the host holds the two terminals and the reload made no other`);
+  await page.locator('[data-shell-part="sessionTab"]').nth(1).locator('[data-shell-part="sessionClose"]').click();
+  await waitUntil('the host to end the terminal whose tab was closed', async () => (await terminalIds(base)).length === 1, 15_000);
+  assert.deepEqual(await terminalIds(base), [first], `${engine}: closing the tab of a terminal that came back ended that shell and no other`);
+  assert.ok(sinceOf(wire, 'CloseSession', second, two.startedAt).length >= 1, `${engine}: the page asked the host to end it with CloseSession`);
+  names = await tabLabelsOf(page);
+  assert.equal(names.length, 1, `${engine}: one tab is left`);
+  note('two terminals', `both came back ${(two.took / 1000).toFixed(2)} s after the reload began, in their order, each with its own shell (pids ${String(pid)} and ${String(pidB)}); closing the second ended it`);
+
+  // (2a) A reload in the middle of a flood (3,000,000 lines, about 26 MB through the pty: longer than the reload takes whatever the machine's speed): the host holds the shell at its mark while nobody acknowledges, the new page's attach gives it the replay (which it
+  // never acknowledges) and the live bytes after it, and the flood goes on to its end. The numbers are written to a file first and sent by `cat`, so that the events are the size of a read (a line-buffered producer makes one event of a few bytes for each line, and
+  // some `seq` prints 1e+06 from a million on). The scrollback keeps 5,000 lines, so what is read at the end is the end of the flood: the lines count up by one to the last, and what the page acknowledged after the attach is the live bytes.
+  await sessionTabsOf(page).first().click();
+  await takeKeyboard(page);
+  const flood = 3_000_000;
+  await typeLine(page, `f=$(mktemp); awk 'BEGIN{for(i=1;i<=${String(flood)};i++)print i}' > $f; cat $f; rm -f $f; echo FLOOD_END_$((6*7))`);
+  await waitUntil('the flood to hold the terminal', async () => (await busyOf(base, first)).state === 'busy', 30_000);
+  const mid = await reloadToTerminals([first], 'a reload in the middle of a flood');
+  const flooded = await untilLine(page, mac, 'FLOOD_END_42', 'the end of the flood in the emulator of the page that came back', 180_000);
+  const tail = numbersOf(flooded).slice(1);
+  assert.ok(tail.length >= 4_000 && tail.at(-1) === flood && firstBreak(tail) === undefined, `${engine}: the numbered lines the emulator holds at the end of the flood count up by one to ${String(flood)} (${String(tail.length)} lines from ${String(tail[0])} to ${String(tail.at(-1))}, ${JSON.stringify(firstBreak(tail) ?? 'in order')})`);
+  const midAnswer = mid.attach.answer;
+  const live = bytesBeyond(events.outputs(first), midAnswer.replay.end);
+  assert.ok(live >= 262_144, `${engine}: the flood was still running when the page took the terminal back: ${String(live)} bytes of it came after the replay (the host's low mark is 262,144)`);
+  await waitUntil('the last acknowledgement of the live output', async () => ackedOf(wire, first, mid.attach.askedMs) >= live - 65_536, 30_000).catch(() => undefined);
+  const acked = ackedOf(wire, first, mid.attach.askedMs);
+  assert.ok(acked <= live, `${engine}: the page acknowledged live bytes only: ${String(acked)} bytes acknowledged after the attach, ${String(live)} bytes of live events lie beyond the replay (it ended at ${String(midAnswer.replay.end)} and held ${String(base64Length(String(midAnswer.replay.data ?? '')))} bytes): the replay is never acknowledged`);
+  assert.ok(acked >= live - 65_536, `${engine}: the page acknowledged what it applied of the live output: ${String(acked)} of ${String(live)} bytes`);
+  note('reload in the middle of a flood', `the end of ${String(flood)} lines arrived; the replay was ${String(base64Length(String(midAnswer.replay.data ?? '')))} bytes ([${String(midAnswer.replay.start)}, ${String(midAnswer.replay.end)})), ${String(live)} live bytes followed and ${String(acked)} were acknowledged; the last ${String(tail.length)} lines count up by one`);
+
+  // (2b) A stream slow enough for its join to be read in the emulator (the flood above is over in less time than a reading takes): the page reads it again and again after the reload, and every reading counts up by one, the join (the last line of the replay)
+  // among them.
+  const paced = 18_000;
+  await typeLine(page, `i=1; while [ $i -le ${String(paced)} ]; do echo $i; [ $((i % 50)) -eq 0 ] && sleep 0.05; i=$((i+1)); done; echo PACED_END_$((6*7))`);
+  await waitUntil('the stream to have written 3,000 lines', async () => (numbersOf(await bufferOf(page, mac)).filter((number) => number <= paced).at(-1) ?? 0) >= 3_000, 60_000);
+  const slow = await reloadToTerminals([first], 'a reload in the middle of a stream');
+  const readings = await readingsUntil(page, mac, 'PACED_END_42', 'the end of the stream in the emulator of the page that came back', 120_000, paced);
+  const replayNumbers = numbersOf(plain(Buffer.from(String(slow.attach.answer.replay.data ?? ''), 'base64').toString('utf8'))).filter((number) => number <= paced);
+  // The last line of a replay may be cut where it ends; the one before it is whole.
+  const join = replayNumbers.at(-2);
+  assert.ok(Number.isInteger(join) && join >= 3_000, `${engine}: the replay holds the stream as far as the reload (its last whole line is ${String(join)})`);
+  assert.deepEqual(readings.filter((reading) => reading.broken !== undefined).map((reading) => reading.broken), [], `${engine}: every reading of the emulator counts up by one, from the replay into the live lines (${String(readings.length)} readings)`);
+  assert.ok(readings.some((reading) => reading.first <= join - 50 && reading.last >= join + 50), `${engine}: a reading held the join at line ${String(join)} with 50 lines on each side (the ${String(readings.length)} readings held ${readings.map((reading) => `${String(reading.first)}-${String(reading.last)}`).join(', ')})`);
+  note('a slow stream across a reload', `${String(readings.length)} readings of the emulator counted up by one, the join at line ${String(join)} (the replay held ${String(replayNumbers.length)} numbered lines) among them`);
+
+  // (2c) A runaway producer across a reload (`yes`, which never ends). The host holds the shell at its mark while nobody acknowledges; the page that takes the terminal back must go on reading, parsing and acknowledging its live bytes (a page that stalls
+  // leaves the host holding the shell for good), and the keyboard of the terminal it took back is the shell's: Control C typed in the middle of the flood stops the producer and the shell answers. What the page acknowledged after the attach is live bytes
+  // only. Nothing reads the host's replay of the terminal while the producer runs (that call makes the host forget what is owed to it), and the buffer is not read before Control C (a selection would make the key a copy on some platforms).
+  const yesFrom = Date.now();
+  await takeKeyboard(page);
+  await typeLine(page, 'yes');
+  const yesRan = await holdsWithin(async () => (await busyOf(base, first)).state === 'busy' && ackedOf(wire, first, yesFrom) >= 4_194_304, 120_000);
+  assert.ok(yesRan, `${engine}: the runaway producer was running before the reload: the host said busy and the page had acknowledged at least 4 MiB of its output within 120 s (it had acknowledged ${String(ackedOf(wire, first, yesFrom))} bytes)`);
+  const yesAckedBefore = ackedOf(wire, first, yesFrom);
+  const runaway = await reloadToTerminals([first], 'a reload in the middle of a runaway producer');
+  const runawayAnswer = runaway.attach.answer;
+  assert.equal(runawayAnswer.busy?.state, 'busy', `${engine}: the host said that a program runs in the terminal as the page took it back (the attach said ${JSON.stringify(runawayAnswer.busy)})`);
+  const yesGrowthFrom = Date.now();
+  const yesAcksAtBack = ackedOf(wire, first, runaway.attach.askedMs);
+  const yesGrownBy = () => ackedOf(wire, first, runaway.attach.askedMs) - yesAcksAtBack;
+  const yesReadOn = await holdsWithin(async () => yesGrownBy() >= 2_097_152, 120_000);
+  assert.ok(yesReadOn, `${engine}: the page that took the runaway producer back went on reading it: it acknowledged ${String(yesGrownBy())} more bytes in ${String(Date.now() - yesGrowthFrom)} ms, at least 2 MiB were due (a page that stops reading leaves the host holding the shell at its mark)`);
+  const yesGrewIn = Date.now() - yesGrowthFrom;
+  await takeKeyboard(page);
+  const yesControlCAt = Date.now();
+  await page.keyboard.press('Control+c');
+  const yesIdle = await holdsWithin(async () => (await busyOf(base, first)).state === 'idle', 90_000);
+  assert.ok(yesIdle, `${engine}: Control C typed in the terminal the page took back stopped the runaway producer: the host said that nothing but the shell holds the terminal within 90 s (it said ${(await busyOf(base, first)).state})`);
+  const yesStoppedIn = Date.now() - yesControlCAt;
+  await typeLine(page, 'echo AFTER_YES_$((6*7))');
+  const yesAnswered = await holdsWithin(async () => /\nAFTER_YES_42\n/.test(await plainTranscriptOf(base, first)), 60_000);
+  assert.ok(yesAnswered, `${engine}: the shell answers after the runaway producer was stopped: AFTER_YES_42 is in the host's replay within 60 s of the command`);
+  await untilLine(page, mac, 'AFTER_YES_42', 'the answer of the shell in the emulator of the page that came back', 60_000);
+  assert.ok(runningAs(names)(await seePanel(page)), `${engine}: the terminal is running as it was, with its tab and no word in its lane: ${JSON.stringify(await seePanel(page))}`);
+  // Whatever the shell wrote last has been delivered by now, to the page and to what watches the page.
+  await waitMs(1_500);
+  const yesLive = bytesBeyond(events.outputs(first), runawayAnswer.replay.end);
+  const yesAcked = ackedOf(wire, first, runaway.attach.askedMs);
+  assert.ok(yesAcked <= yesLive, `${engine}: after the runaway producer the page acknowledged live bytes only: ${String(yesAcked)} bytes acknowledged after the attach, ${String(yesLive)} bytes of live events lie beyond the replay (it ended at ${String(runawayAnswer.replay.end)}): the replay is never acknowledged`);
+  assert.ok(yesAcked >= yesLive - 65_536, `${engine}: the page acknowledged what it applied of the live output of the runaway producer: ${String(yesAcked)} of ${String(yesLive)} bytes`);
+  note('a runaway producer across a reload', `the page had acknowledged ${String(yesAckedBefore)} bytes of it when it was reloaded; the replay was ${String(base64Length(String(runawayAnswer.replay.data ?? '')))} bytes ([${String(runawayAnswer.replay.start)}, ${String(runawayAnswer.replay.end)})) and the host said ${JSON.stringify(runawayAnswer.busy)}; the page then acknowledged 2 MiB more in ${String(yesGrewIn)} ms; Control C stopped it in ${String(yesStoppedIn)} ms (the host said idle) and the shell answered; ${String(yesLive)} live bytes in all, ${String(yesAcked)} acknowledged`);
+
+  // (3) A full-screen program. The alternate screen is back with its text and not the shell's, and when the program ends the shell is back with its earlier output.
+
+  // (3a) A short program of the shell's own, which every shell has: the alternate screen, two lines, a wait for a line, the way back.
+  await takeKeyboard(page);
+  await typeLine(page, 'echo MARK_BEFORE_ALT_$((6*7)); printf \'\\033[?1049h\\033[2J\\033[H\'; echo ALT_ONE_$((6*7)); echo ALT_TWO_$((6*8)); read -r line; printf \'\\033[?1049l\'; echo ALT_LEFT_$((6*9))');
+  await shellSays(base, first, /\nALT_TWO_48\n/, 'the program to be on the alternate screen');
+  const alt = await reloadToTerminals([first], 'a reload with a program on the alternate screen');
+  const altShown = await untilLine(page, mac, 'ALT_TWO_48', 'the alternate screen in the emulator that came back', 60_000);
+  assert.ok(lineIn(altShown, 'ALT_ONE_42') && !lineIn(altShown, 'MARK_BEFORE_ALT_42'), `${engine}: the emulator is on the alternate screen: its two lines are shown and the shell's earlier output is not`);
+  await page.keyboard.press('Enter');
+  const altLeft = await untilLine(page, mac, 'ALT_LEFT_54', 'the shell in the emulator once the program ended', 60_000);
+  assert.ok(lineIn(altLeft, 'MARK_BEFORE_ALT_42') && !lineIn(altLeft, 'ALT_ONE_42'), `${engine}: when the program ended the shell's screen is back with its earlier output, and the program's lines are not on it`);
+  note('the alternate screen', `a program on it came back after ${(alt.took / 1000).toFixed(2)} s with its text; its end gave back the shell with the earlier output`);
+
+  // (3b) The same with the start of the program out of the host's ring (1.25 MiB): a flood after it entered the alternate screen (written to a file first and sent by `cat`, as above). The page is not sent the switch itself, the host states it (`start_modes`), and the page
+  // switches before it writes.
+  await takeKeyboard(page);
+  await typeLine(page, 'echo MARK_BEFORE_BIG_$((6*7)); f=$(mktemp); awk \'BEGIN{for(i=1;i<=300000;i++)print i}\' > $f; printf \'\\033[?1049h\\033[2J\\033[H\'; cat $f; printf \'\\033[2J\\033[H\'; echo BIG_ALT_ONE_$((6*7)); read -r line; printf \'\\033[?1049l\'; rm -f $f; echo BIG_LEFT_$((6*9))');
+  await untilLine(page, mac, 'BIG_ALT_ONE_42', 'the program to have written its screen after the flood', 120_000);
+  const big = await reloadToTerminals([first], 'a reload with a program whose start left the replay');
+  const bigAnswer = big.attach.answer;
+  assert.ok(bigAnswer.replay.start > 0 && bigAnswer.replay.start_modes?.alt_screen === true, `${engine}: the host's ring no longer holds the start of the program and states that the bytes at its start were written on the alternate screen (start ${String(bigAnswer.replay.start)}, start_modes ${JSON.stringify(bigAnswer.replay.start_modes)})`);
+  const bigShown = await untilLine(page, mac, 'BIG_ALT_ONE_42', 'the alternate screen in the emulator that came back', 60_000);
+  assert.equal(numbersOf(bigShown).length, 0, `${engine}: the emulator is on the alternate screen, which keeps no scrollback, though the replay does not hold the switch: none of the ${String(numbersOf(bigShown).length)} numbered lines the program wrote before it cleared its screen is in the buffer (a page that wrote the replay on the shell's screen would hold thousands)`);
+  await page.keyboard.press('Enter');
+  const bigLeft = await untilLine(page, mac, 'BIG_LEFT_54', 'the shell in the emulator once the program ended', 60_000);
+  assert.equal(lineIn(bigLeft, 'BIG_ALT_ONE_42'), false, `${engine}: the program's screen was on the alternate screen and left with it: its lines are not on the shell's screen (a page that did not switch would keep them)`);
+  note('the alternate screen without its start', `the host's ring began ${String(bigAnswer.replay.start)} bytes into the output and stated the alternate screen; the page switched, and the end of the program left the shell's screen free of it`);
+
+  // (3c) The program of this machine, when it has one: vim, with text typed in insert mode, comes back with its text, and `:q!` gives the shell back.
+  await takeKeyboard(page);
+  if (await hasProgram(page, base, first, 'vim')) {
+    await typeLine(page, 'echo MARK_BEFORE_VIM_$((6*7)); vim -u NONE -N -n "$HOME/seam-reattach.txt"');
+    await waitUntil('vim to be on the alternate screen', async () => {
+      const raw = await transcriptOf(base, first);
+      return raw.lastIndexOf('\u001b[?1049h') > raw.lastIndexOf('\u001b[?1049l');
+    }, 30_000);
+    await page.keyboard.type('iVIM_TEXT_42');
+    await waitUntil('vim to draw what was typed', async () => (await plainTranscriptOf(base, first)).includes('VIM_TEXT_42'), 30_000);
+    const vim = await reloadToTerminals([first], 'a reload with vim on the screen');
+    const vimShown = await untilLine(page, mac, 'VIM_TEXT_42', 'what was typed in vim, in the emulator that came back', 60_000);
+    assert.equal(lineIn(vimShown, 'MARK_BEFORE_VIM_42'), false, `${engine}: vim is on the screen: the shell's earlier output is not`);
+    await page.keyboard.press('Escape');
+    await page.keyboard.type(':q!');
+    await page.keyboard.press('Enter');
+    await waitUntil('vim to give the alternate screen back', async () => {
+      const raw = await transcriptOf(base, first);
+      return raw.lastIndexOf('\u001b[?1049l') > raw.lastIndexOf('\u001b[?1049h');
+    }, 30_000);
+    await typeLine(page, 'echo AFTER_VIM_$((6*7))');
+    const vimLeft = await untilLine(page, mac, 'AFTER_VIM_42', 'the shell in the emulator after vim', 60_000);
+    assert.ok(lineIn(vimLeft, 'MARK_BEFORE_VIM_42') && !lineIn(vimLeft, 'VIM_TEXT_42'), `${engine}: after :q! the shell's screen is back with its earlier output and vim's text is not on it`);
+    assert.ok(/\nAFTER_VIM_42\n/.test(await plainTranscriptOf(base, first)), `${engine}: the shell answers after vim`);
+    note('vim', `came back ${(vim.took / 1000).toFixed(2)} s after the reload began with its text, and :q! gave the shell back`);
+  } else {
+    note('vim', 'not installed on this machine, not run (the alternate screen is checked with the shell\'s own programs above)');
+  }
+
+  assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the page raised no error but the calls a reload cut`);
+  assertSecretIsNowhere(key, page, leaks, engine, 'at the end');
+  console.log(`terminal-reattach ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
+}
+
+/**
+ * r4. A terminal is held by one page at a time, and it does not outlive the host or its lease (T2b, docs/ui-next/status/T2-go.md 2.4, 2.5 and 2.7), on the real host. (1) A duplicated tab: a second page of the same browser (a copy of the first page's session storage,
+ * as a browser's duplicate makes) takes the terminal over as it loads; the first page is told (`DETACHED`, `taken-over`, its own number: 0), its lane says "Taken over by another tab" and that its input is off (what is typed in it reaches nobody: no WriteTerminal,
+ * nothing in the shell), and when it goes it sends neither DetachTerminal nor CloseSession (the host refuses the detach of a page that was displaced, and a close would end the other page's shell); the second page's terminal goes on running after the first page
+ * is closed and the host has retired its window, and it takes input (its first numbered call carries the `next_input_seq` of its attach). How long the first page took to be told, and to say so, is told. (2) A restart of the host: a window saved with a terminal tab comes back to a host that holds no such terminal: the tab is ended,
+ * says that the earlier output is gone, and no attach succeeded and nothing was started. (3) A lease that runs out: a terminal detached with a lease of 3 s and taken back by nobody is ended by the host, which says why (`CLOSE`, `detach-timeout`), the page says
+ * `Closed: no tab took it back in time`, and a page that loads later finds the tab ended with the earlier output gone.
+ */
+async function checkTerminalTakeover(browser, getHost, restart, engine, work) {
+  const errors = [];
+  const observed = [];
+  const note = (name, text) => observed.push(`${name}: ${text}`);
+  const base = () => getHost().base;
+  const emptyButton = (page) => page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true });
+  /** What a check of this scenario watches of a page: its calls, the events of the exec lane, what it says where a secret must not be, its errors; the platform and the clipboard. */
+  const watched = async (page) => {
+    page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
+    const made = { wire: watchExecCalls(page), events: watchTerminalEvents(page), leaks: watchLeaks(page) };
+    await spoofPlatform(page);
+    await keepCopiesOnEveryLoad(page);
+    return made;
+  };
+  /** A page, opened, with one terminal that has said its pid and with the host holding the saved window with its tab. */
+  const withTerminal = async (page) => {
+    await open(page, base());
+    await page.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+    const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+    await page.locator('[data-shell-part="panelToggle"]').click();
+    const id = await startTerminal(page, base(), emptyButton(page));
+    await takeKeyboard(page);
+    await typeLine(page, 'echo MARK_A_$((6*7)); echo PID_$$');
+    const pid = Number((await shellSays(base(), id, /\nMARK_A_42\nPID_(\d+)\n/, 'the marker and the pid of the shell'))[1]);
+    await savedTabs(base(), id);
+    return { id, pid, mac, names: await tabLabelsOf(page) };
+  };
+
+  // (1) A duplicated tab: two pages of one browser context (a page made by `browser.newPage` owns its context, so the pair is made here).
+  await forgetSession(base());
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const a = await context.newPage();
+  watchRequests(a);
+  const first = await watched(a);
+  const { id, pid, mac, names } = await withTerminal(a);
+  const key = keyOnTheWire(first.wire);
+  assert.ok(typeof key === 'string' && key.length >= 16, `${engine}: the first tab gave the host a page key when it started the terminal`);
+  const b = await context.newPage();
+  watchRequests(b);
+  const second = await watched(b);
+  await duplicateStorage(a, b);
+  const takeoverAt = Date.now();
+  const losing = watchPanelUntil(a, (state) => state.lane.some((words) => /Taken over by another tab/.test(words)), 60_000, takeoverAt);
+  await open(b, base());
+  await openPanelAgain(b);
+  const there = await watchPanelUntil(b, runningAs(names), 60_000, takeoverAt);
+  assert.ok(there.ok, `${engine}: the second tab shows the terminal back and running within 60 s: ${timelineOf(there.seen)}`);
+  const attached = sinceOf(second.wire, 'AttachTerminal', id, takeoverAt);
+  assert.equal(attached.length, 1, `${engine}: the second tab took the terminal with one AttachTerminal (it made ${String(attached.length)})`);
+  await waitUntil('the answer of the host to the attach of the second tab', async () => attached[0].answered === true, 15_000);
+  assert.ok(attached[0].status === 200 && attached[0].answer?.attachment >= 1, `${engine}: the host let the second tab take the terminal, with the next number of attachment (the first tab held 0)`);
+  assert.equal(sinceOf(second.wire, 'CreateTerminal', undefined, takeoverAt).length, 0, `${engine}: the second tab started no terminal`);
+  const lost = await losing;
+  assert.ok(lost.ok, `${engine}: the first tab says that another tab took the terminal over within 60 s: ${timelineOf(lost.seen)}`);
+  const told = first.events.detached(id).find((frame) => frame.at >= takeoverAt);
+  assert.ok(told !== undefined, `${engine}: the host told the first tab that it lost the terminal`);
+  assert.deepEqual({ by: told.data?.by, attachment: told.data?.attachment }, { by: 'taken-over', attachment: 0 }, `${engine}: the host told the first tab that another tab took the terminal, with the number of the first tab's attachment`);
+  const lane = (await seePanel(a)).lane.join(' ');
+  assert.match(lane, /Taken over by another tab/, `${engine}: the lane of the first tab says that another tab took the terminal over`);
+  assert.match(lane, /Input is off\./, `${engine}: and that its input is off`);
+
+  // What is typed in the first tab reaches nobody.
+  await a.bringToFront();
+  await a.locator('.xterm-screen').first().click({ position: { x: 3, y: 3 } });
+  const wrote = first.wire.of('WriteTerminal').length;
+  await typeLine(a, 'echo FROM_A_$((6*7))');
+  for (let turn = 0; turn < 45; turn += 1) await afterFrames(a);
+  assert.equal(first.wire.of('WriteTerminal').length, wrote, `${engine}: the first tab sends nothing to the terminal it lost: what was typed in it made no WriteTerminal`);
+  assert.equal(/\nFROM_A_42\n/.test(await plainTranscriptOf(base(), id)), false, `${engine}: what was typed in the first tab never reached the shell`);
+
+  // The second tab has the terminal: the output the shell wrote before it came, and a shell that answers.
+  await b.bringToFront();
+  await takeKeyboard(b);
+  await typeLine(b, 'echo FROM_B_$((6*7))');
+  const numbersOfFirstTab = [...first.wire.of('WriteTerminal'), ...first.wire.of('ResizeTerminal')].filter((call) => call.args[0] === id).map((call) => call.args[1]);
+  assert.equal(attached[0].answer.next_input_seq, numbersOfFirstTab.reduce((high, number) => Math.max(high, number), 0) + 1, `${engine}: the attach of the second tab answered the number one past the last number the first tab sent (${String(numbersOfFirstTab.length)} calls)`);
+  await assertNumbersAfterAttach(second.wire, id, attached[0], engine, 'in the second tab');
+  await shellSays(base(), id, /\nFROM_B_42\n/, 'what was typed in the second tab to reach the shell');
+  const shown = await untilLine(b, mac, 'FROM_B_42', 'what the shell answered, in the second tab', 30_000);
+  assert.ok(lineIn(shown, 'MARK_A_42'), `${engine}: the second tab holds the output the shell wrote before it took the terminal over`);
+
+  // The first tab goes: it says nothing to the host (the host would refuse a detach of a page that was displaced, and a close would end the shell the second tab holds).
+  const before = first.wire.calls.length;
+  await a.goto('about:blank');
+  await waitMs(2_000);
+  assert.deepEqual(first.wire.calls.slice(before).map((call) => call.method), [], `${engine}: the first tab sent nothing to the host as it went`);
+  assert.deepEqual(first.wire.calls.filter((call) => call.method === 'DetachTerminal' || call.method === 'CloseSession').map((call) => call.method), [], `${engine}: the first tab sent neither DetachTerminal nor CloseSession, not when it lost the terminal and not when it went`);
+  await a.close();
+
+  // The host retires the window of a page that is gone about 3.4 s after its socket went, and ends a terminal nobody holds when its lease runs out: neither touches the terminal the second tab holds. Looked at for 12 s.
+  for (let round = 0; round < 30; round += 1) {
+    await waitMs(400);
+    const state = await seePanel(b);
+    assert.ok(runningAs(names)(state), `${engine}: after the first tab was closed the second tab's terminal is still running (${JSON.stringify(state)})`);
+  }
+
+  const listed = await callAsPage(b, 'ListTerminals', key);
+  const entry = (listed.json ?? []).find((one) => one.id === id);
+  assert.ok(entry?.attached === true, `${engine}: the host lists the terminal as held by a page, 12 s after the first tab was closed (${JSON.stringify(entry)})`);
+  assert.equal((await busyOf(base(), id)).state, 'idle', `${engine}: the shell is at its prompt`);
+  await typeLine(b, 'echo STILL_B_$((6*7)); echo PID_NOW_$$');
+  const pidNow = Number((await shellSays(base(), id, /\nSTILL_B_42\nPID_NOW_(\d+)\n/, 'the shell to answer in the second tab after the first was closed'))[1]);
+  assert.equal(pidNow, pid, `${engine}: it is the shell it was: pid ${String(pid)}`);
+  assert.deepEqual(second.wire.calls.filter((call) => call.method === 'DetachTerminal' || call.method === 'CloseSession').map((call) => call.method), [], `${engine}: the second tab sent neither DetachTerminal nor CloseSession`);
+  assert.equal(second.events.detached(id).some((frame) => frame.data?.attachment === attached[0].answer.attachment), false, `${engine}: the second tab was not told that it lost the terminal`);
+  assertSecretIsNowhere(key, a, first.leaks, engine, 'in the first tab');
+  assertSecretIsNowhere(key, b, second.leaks, engine, 'in the second tab');
+  note('a duplicated tab', `the first tab was told ${JSON.stringify(told.data)} ${String(told.at - attached[0].askedMs)} ms after the second tab asked to attach (the answer came after ${String(attached[0].answeredMs - attached[0].askedMs)} ms) and said "Taken over by another tab" ${String(lost.took)} ms after the second tab began to load; the second tab had the terminal running ${String(there.took)} ms after it began (attachment ${String(attached[0].answer.attachment)}); the first tab sent no write, no detach and no close; 12 s after it was closed the terminal was still held by the second tab, which typed in the same shell (pid ${String(pid)})`);
+  await endTerminals(base(), b);
+  await b.close();
+  await context.close();
+
+  // (2) A restart of the host.
+  const c = await freshPage(browser, base());
+  const third = await watched(c);
+  const kept = await withTerminal(c);
+  const keyBefore = keyOnTheWire(third.wire);
+  const onDisk = async () => JSON.parse(await readFile(path.join(stateRoot(work), 'windows.json'), 'utf8')).states?.main?.session;
+  await waitUntil('the saved window with the terminal tab to be on disk', async () => String(await onDisk().catch(() => '')).includes(kept.id), 30_000);
+  await c.close();
+  await restart();
+  const d = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const fourth = await watched(d);
+  const restartedAt = Date.now();
+  await open(d, base());
+  await openPanelAgain(d);
+  const ended = await watchPanelUntil(d, (state) => state.tabs.length === 1 && state.tabs[0] === `${kept.names[0]}, ended` && state.gone, 60_000, restartedAt);
+  assert.ok(ended.ok, `${engine}: after the host restarted the tab of the terminal is ended and says that the earlier output is gone within 60 s: ${timelineOf(ended.seen)}`);
+  assert.deepEqual(await terminalIds(base()), [], `${engine}: the restarted host holds no terminal, and the page started none`);
+  assert.deepEqual(fourth.wire.of('AttachTerminal').filter((call) => call.status === 200).map((call) => call.args[0]), [], `${engine}: no AttachTerminal succeeded (the terminal ended with the host)`);
+  assert.equal(fourth.wire.of('CreateTerminal').length, 0, `${engine}: the page started no terminal in the place of the one that ended`);
+  const lists = fourth.wire.of('ListTerminals');
+  assert.ok(lists.length >= 1 && lists.every((call) => call.status === 200 && (call.answer ?? []).length === 0), `${engine}: the page asked the host for the terminals of its key and was told there are none (${String(lists.length)} ListTerminals)`);
+  const said = await d.locator('body').innerText();
+  assert.match(said, /The earlier output is gone/, `${engine}: the page says that the earlier output is gone`);
+  assert.match(said, /This terminal is not running any more: Omniview restarted, or this window was away for longer than a terminal is kept\. Start a new terminal to continue\./, `${engine}: and says why, and what to do`);
+  assertSecretIsNowhere(lists[0].args[0], d, fourth.leaks, engine, 'after the restart (the key of the page that looked)');
+  assertSecretIsNowhere(keyBefore, d, fourth.leaks, engine, 'after the restart (the key of the page before it)');
+  assertSecretIsNowhere(keyBefore, c, third.leaks, engine, 'before the restart');
+  note('a restart of the host', `the tab of the terminal came back ended with the earlier output gone ${String(ended.took)} ms after the page began to load; ${String(lists.length)} ListTerminals answered none, no attach, no create`);
+
+  await d.close();
+  // (3) A terminal whose lease ran out while no page held it. A request to detach it with a short lease (made through the page, as another client of the window may make it) leaves the shell running for 3 s; nobody takes it back; the host ends it and says
+  // why (`CLOSE`, `closed`, `detach-timeout`), and the page that held it says so. A page that loads after that finds the tab ended, with the words that the earlier output is gone, and no attach.
+  const e = await freshPage(browser, base());
+  const fifth = await watched(e);
+  const lone = await withTerminal(e);
+  const keyE = keyOnTheWire(fifth.wire);
+  const letGoAt = Date.now();
+  const detached = await callAsPage(e, 'DetachTerminal', lone.id, { page_key: keyE, lease_ms: 3_000 });
+  assert.equal(detached.status, 200, `${engine}: the host detached the terminal with a lease of 3 s (${detached.text.slice(0, 200)})`);
+  const expired = await watchPanelUntil(e, (state) => state.lane.some((words) => /Closed: no tab took it back in time/.test(words)), 30_000, letGoAt);
+  assert.ok(expired.ok, `${engine}: the page says that the terminal was closed because no tab took it back in time, within 30 s of a lease of 3 s: ${timelineOf(expired.seen)}`);
+  const closed = fifth.events.closes(lone.id).find((frame) => frame.at >= letGoAt);
+  assert.deepEqual({ reason: closed?.data?.reason, closed_by: closed?.data?.closed_by }, { reason: 'closed', closed_by: 'detach-timeout' }, `${engine}: the host said why it ended the terminal`);
+  assert.deepEqual(await terminalIds(base()), [], `${engine}: the host holds no terminal once the lease ran out`);
+  const lateAt = Date.now();
+  await e.reload({ waitUntil: 'load' });
+  await openPanelAgain(e);
+  const late = await watchPanelUntil(e, (state) => state.tabs.length === 1 && state.tabs[0] === `${lone.names[0]}, ended` && state.gone, 60_000, lateAt);
+  assert.ok(late.ok, `${engine}: a page that loads after the lease ran out finds the tab ended, with the words that the earlier output is gone, within 60 s: ${timelineOf(late.seen)}`);
+  assert.deepEqual(sinceOf(fifth.wire, 'AttachTerminal', undefined, lateAt).filter((call) => call.status === 200).map((call) => call.args[0]), [], `${engine}: no attach of the terminal that ran out succeeded`);
+  assert.equal(sinceOf(fifth.wire, 'CreateTerminal', undefined, lateAt).length, 0, `${engine}: the page started no terminal in its place`);
+  assertSecretIsNowhere(keyE, e, fifth.leaks, engine, 'after the lease ran out');
+  note('a lease that ran out', `the page said "${expired.seen.at(-1).state.lane.join(' ')}" ${String(expired.took)} ms after the request to detach with a lease of 3 s (the host's CLOSE came ${String(closed.at - letGoAt)} ms after it); a page that loaded later found the tab ended with the earlier output gone after ${String(late.took)} ms`);
+
+  assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the pages raised no error but the calls a reload cut`);
+  console.log(`terminal-takeover ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
+}
+
 let host;
 try {
   const port = await freePort();
@@ -6728,16 +7570,21 @@ try {
         continue;
       }
 
-      // SEAM_TERMINAL_REPEAT=<n> runs scenarios r and r2 alone, n times in a row, for a developer who works on the Terminal tool (each run starts several shells of this machine and ends them).
+      // SEAM_TERMINAL_REPEAT=<n> runs scenarios r, r2, r3 and r4 alone, n times in a row, for a developer who works on the Terminal tool (each run starts several shells of this machine and ends them). SEAM_TERMINAL_ONLY=r3,r4 narrows it to the scenarios it names.
       if (process.env.SEAM_TERMINAL_REPEAT !== undefined) {
+        const terminalOnly = (process.env.SEAM_TERMINAL_ONLY ?? 'r,r2,r3,r4').split(',');
+        const unknown = terminalOnly.filter((id) => !['r', 'r2', 'r3', 'r4'].includes(id));
+        if (unknown.length > 0) throw new Error(`SEAM_TERMINAL_ONLY names scenarios that are not terminal scenarios: ${unknown.join(', ')}`);
         const repeats = Number(process.env.SEAM_TERMINAL_REPEAT);
         if (!Number.isSafeInteger(repeats) || repeats < 1) {
           throw new Error(`SEAM_TERMINAL_REPEAT must be a positive whole number, it is ${JSON.stringify(process.env.SEAM_TERMINAL_REPEAT)}`);
         }
 
         for (let run = 0; run < repeats; run += 1) {
-          await phase('terminal', name, async () => checkTerminal(await freshPage(browser, host.base), host.base, name));
-          await phase('terminal-programs', name, async () => checkTerminalPrograms(await freshPage(browser, host.base), host.base, name));
+          if (terminalOnly.includes('r')) await phase('terminal', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminal(page, host.base, name)));
+          if (terminalOnly.includes('r2')) await phase('terminal-programs', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalPrograms(page, host.base, name)));
+          if (terminalOnly.includes('r3')) await phase('terminal-reattach', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalReattach(page, host.base, name)));
+          if (terminalOnly.includes('r4')) await phase('terminal-takeover', name, async () => checkTerminalTakeover(browser, () => host, restart, name, work));
           console.log(`terminal ${name} run ${String(run)} ok`);
         }
 
@@ -6818,8 +7665,10 @@ try {
       await phase('toasts', name, async () => checkToasts(await freshPage(browser, host.base), host.base, name));
       await phase('centre', name, async () => checkCentre(await freshPage(browser, host.base), host.base, name));
       await phase('settings', name, async () => checkSettings(browser, name, work));
-      await phase('terminal', name, async () => checkTerminal(await freshPage(browser, host.base), host.base, name));
-      await phase('terminal-programs', name, async () => checkTerminalPrograms(await freshPage(browser, host.base), host.base, name));
+      await phase('terminal', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminal(page, host.base, name)));
+      await phase('terminal-programs', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalPrograms(page, host.base, name)));
+      await phase('terminal-reattach', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalReattach(page, host.base, name)));
+      await phase('terminal-takeover', name, async () => checkTerminalTakeover(browser, () => host, restart, name, work));
       await phase('session', name, () => checkSession(browser, () => host, restart, name));
       await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
       await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
