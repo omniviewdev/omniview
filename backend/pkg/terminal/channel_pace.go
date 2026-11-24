@@ -45,36 +45,53 @@ func (m *Manager) waitChannelRoom(s *session) {
 			ch.paused, ch.stalled = false, false
 			return
 		}
-		backlog := s.backlog(holder)
-		if ch.paused {
-			if backlog <= uint64(m.channel.low) { //nolint:gosec // The mark is a positive number of bytes.
-				ch.paused, ch.stalled = false, false
-				return
-			}
-		} else {
-			if backlog <= uint64(m.channel.high) { //nolint:gosec // The mark is a positive number of bytes.
-				return
-			}
-			ch.paused = true
-		}
-		// More than the mark waits unsent: the pump waits while the page makes progress, and no longer than the stall since it did.
-		idle := s.clock.Now().Sub(time.Unix(0, holder.progressAt.Load()))
-		if idle >= m.channel.stall {
-			if !ch.stalled {
-				ch.stalled = true
-				ch.stallReleases.Add(1)
-			}
+		idle, mustWait := m.mustWait(s, holder)
+		if !mustWait || !s.sleepUntilProgress(m.channel.stall-idle) {
 			return
 		}
-		ch.stalled = false
-		ch.waits.Add(1)
-		timer := s.clock.AfterFunc(m.channel.stall-idle, ch.signalPump)
-		select {
-		case <-ch.wake:
-		case <-s.exited:
-			timer.Stop()
-			return
+	}
+}
+
+// mustWait decides, from how much waits unsent and how long ago the page last made progress, whether the pump waits, and says how
+// long ago that was. A pump that paused at the high mark resumes at the low mark, so that it does not wait again for every frame;
+// one whose page made no progress for the stall does not wait at all.
+func (m *Manager) mustWait(s *session, holder *channelConn) (time.Duration, bool) {
+	ch := s.channel
+	backlog := s.backlog(holder)
+	if ch.paused {
+		if backlog <= uint64(m.channel.low) { //nolint:gosec // The mark is a positive number of bytes.
+			ch.paused, ch.stalled = false, false
+			return 0, false
 		}
-		timer.Stop()
+	} else {
+		if backlog <= uint64(m.channel.high) { //nolint:gosec // The mark is a positive number of bytes.
+			return 0, false
+		}
+		ch.paused = true
+	}
+	// More than the mark waits unsent: the pump waits while the page makes progress, and no longer than the stall since it did.
+	idle := s.clock.Now().Sub(time.Unix(0, holder.progressAt.Load()))
+	if idle >= m.channel.stall {
+		if !ch.stalled {
+			ch.stalled = true
+			ch.stallReleases.Add(1)
+		}
+		return idle, false
+	}
+	ch.stalled = false
+	ch.waits.Add(1)
+	return idle, true
+}
+
+// sleepUntilProgress waits for the sender to say that the page made progress, or for the stall to come due on the manager's clock,
+// whichever is first. It says false if the shell ended meanwhile.
+func (s *session) sleepUntilProgress(d time.Duration) bool {
+	timer := s.clock.AfterFunc(d, s.channel.signalPump)
+	defer timer.Stop()
+	select {
+	case <-s.channel.wake:
+		return true
+	case <-s.exited:
+		return false
 	}
 }

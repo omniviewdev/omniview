@@ -179,13 +179,13 @@ func guarded(t *testing.T, name string, assertion func()) {
 // Every binding of the wrapper is of one of three kinds as far as a channel terminal is concerned: it names a terminal by its id
 // (and a channel terminal is not found by it), it names one by its capability, or it names none. A binding that is added has to
 // be put in one of them, which is how a new way to reach a terminal by its id cannot slip past the isolation.
-func channelBindingKinds() (byID, byCapability, unrelated []string) {
-	byID = []string{
+func channelBindingKinds() ([]string, []string, []string) {
+	byID := []string{
 		"GetSession", "AttachSession", "DetachSession", "WriteSession", "CloseSession", "ResizeSession", "WriteTerminal",
 		"ResizeTerminal", "IsBusy", "GetCwd", "AckTerminal", "AttachTerminal", "DetachTerminal",
 	}
-	byCapability = []string{"CloseChannelTerminal", "ChannelTerminalBusy", "ChannelTerminalCwd", "ListChannelTerminals", "DismissChannelTerminal"}
-	unrelated = []string{
+	byCapability := []string{"CloseChannelTerminal", "ChannelTerminalBusy", "ChannelTerminalCwd", "ListChannelTerminals", "DismissChannelTerminal"}
+	unrelated := []string{
 		"ServiceStartup", "ServiceShutdown", "CreateSession", "OpenNativeSession", "GetNativeTerminalSupport", "GetNativeTerminalApplications",
 		"CreateTerminal", "ListSessions", "ListTerminals", "GetHandler", "GetHandlers", "GetPluginHandlers", "ListPlugins", "HasPlugin",
 	}
