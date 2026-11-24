@@ -55,6 +55,10 @@ const (
 // bound is how long an event that must come may take.
 const bound = 90 * time.Second
 
+// firstFrameBound is how long the test waits for the host to close a stream that sends nothing: three times the 10 s that the protocol
+// document states, so that only a host that never closes it reaches the bound.
+const firstFrameBound = 30 * time.Second
+
 // frameLimit is what the client accepts of one message: a frame of output is at most 64 KiB and a header.
 const frameLimit = 1 << 20
 
@@ -408,4 +412,33 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 		listed := waitListed(t, wrapper, info.Cap, func(l terminal.ChannelListed) bool { return l.NextOffset == state.next })
 		assert.True(t, listed.Attached)
 	})
+}
+
+// S2 of the review of PR 704: Wails' stream route has no ping and no read deadline, so a socket that sends nothing was never closed,
+// and 4,096 of them filled the connection cap of the transport. The host closes a stream that has sent nothing 10 s after it opened
+// (docs/ui-next/terminal-channel-protocol.md, section 5). The test runs in parallel with the others of the package, so that its 10 s
+// are paid once, and it waits for the event that must come, the close, with a bound of three times the wait.
+func TestAStreamThatSendsNothingIsClosedByTheHostOnTheRealRouteAndAStreamThatAttachesIsNot(t *testing.T) {
+	t.Parallel()
+	port, wrapper := theRoute(t)
+	info := startTerminal(t, wrapper, "sh", "-c", "cat")
+	// The stream that attaches in time opens first, so that if its own wait were not stopped it would run out before the idle one's.
+	page := dial(t, port)
+	page.write(attach(info.Cap, nil))
+	page.until("ready", func(s *streamState) bool { return s.ready != nil })
+
+	idle := dial(t, port) // a raw WebSocket that sends nothing
+	opened := time.Now()
+	ctx, cancel := context.WithTimeout(idle.ctx, firstFrameBound)
+	defer cancel()
+	_, _, err := idle.conn.Read(ctx)
+	require.Error(t, err)
+	assert.Equal(t, websocket.StatusNormalClosure, websocket.CloseStatus(err),
+		"the host closed the stream that sent nothing within %v (what the read said: %v)", firstFrameBound, err)
+	t.Logf("the read of the stream that sent nothing ended %v after it opened: %v", time.Since(opened).Round(time.Millisecond), err)
+
+	// The stream that attached has outlived the wait that closed the other one: it still carries a line to the shell and back.
+	page.write(append([]byte{pInput}, "hello\n"...))
+	state := page.until("the echo", func(s *streamState) bool { return bytes.Count(s.output, []byte("hello\r\n")) >= 2 })
+	assert.Equal(t, "hello\r\nhello\r\n", string(state.output), "the stream that showed its capability in time was not closed by the first-frame wait")
 }

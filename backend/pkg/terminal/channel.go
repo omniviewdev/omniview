@@ -79,10 +79,19 @@ type channelLimits struct {
 	inflight int
 	frame    int
 	stall    time.Duration
+	// firstFrame is how long a stream may be open before its first frame.
+	firstFrame time.Duration
 }
 
+// channelFirstFrameWait is how long a stream may stay open before it shows a capability: a stream that has said nothing by then is
+// closed, so that an idle connection holds no slot of the transport and no goroutine of the host.
+const channelFirstFrameWait = 10 * time.Second
+
 func defaultChannelLimits() channelLimits {
-	return channelLimits{ring: ChannelRingBytes, high: ChannelHighBytes, low: ChannelLowBytes, inflight: ChannelInflightBytes, frame: ChannelFrameBytes, stall: ChannelStall}
+	return channelLimits{
+		ring: ChannelRingBytes, high: ChannelHighBytes, low: ChannelLowBytes, inflight: ChannelInflightBytes, frame: ChannelFrameBytes, stall: ChannelStall,
+		firstFrame: channelFirstFrameWait,
+	}
 }
 
 // limits is what a new session says of the bounds that hold it: the constants of types.go and the manager's channel numbers.
