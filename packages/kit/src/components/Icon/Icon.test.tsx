@@ -81,6 +81,27 @@ describe('Icon', () => {
     }
   });
 
+  it('draws the seven glyphs of G3 at the three sizes of the scale, each on its own artboard, the Int UI ones as one even-odd ink fill', () => {
+    const asked: ReadonlyArray<readonly [IconName, 16 | 24]> = [
+      ['circle-check', 24], ['external-link', 16], ['filter-x', 24], ['paste', 16], ['select-all', 24], ['triangle-alert', 16], ['whole-word', 24],
+    ];
+    for (const [name, box] of asked) {
+      for (const size of [12, 16, 20] as const) {
+        const { container, unmount } = render(<Icon name={name} size={size} />);
+        const svg = container.querySelector('svg');
+        expect(svg?.getAttribute('data-ov-glyph'), name).toBe(name);
+        expect(svg?.getAttribute('viewBox'), name).toBe(`0 0 ${box} ${box}`);
+        expect(svg?.getAttribute('data-ov-size'), name).toBe(String(size));
+        expect(container.querySelectorAll('path').length, name).toBe(1);
+        if (box === 16) {
+          expect(container.querySelector('path')?.getAttribute('fill-rule'), name).toBe('evenodd');
+        }
+
+        unmount();
+      }
+    }
+  });
+
   it('draws the eleven glyphs of the shell (G2) at the three sizes of the scale, each on its own artboard, and the screen of the terminal and the gear with the paints of their artwork', () => {
     const shell: ReadonlyArray<readonly [IconName, 16 | 24]> = [
       ['beaker', 24], ['code', 24], ['package', 24], ['paintbrush', 24], ['power', 24], ['power-off', 24], ['puzzle', 24], ['rotate-ccw', 24], ['rotate-cw', 24], ['settings', 16], ['square-terminal', 16],
