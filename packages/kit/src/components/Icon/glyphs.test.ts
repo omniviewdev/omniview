@@ -41,10 +41,15 @@ const CENTRE_INT_UI_GLYPHS = ['bell', 'trash', 'undo'];
 const SHELL_LUCIDE_GLYPHS = ['beaker', 'code', 'package', 'paintbrush', 'power', 'power-off', 'puzzle', 'rotate-ccw', 'rotate-cw'];
 const SHELL_INT_UI_GLYPHS = ['settings', 'square-terminal'];
 
+// G3: the glyphs other steps asked for (status/T3a.md section 6, the Problems and Operations tools). Lucide, 24 artboard: the empty Problems check, the filter that clears, the find bar's whole-word switch and the
+// terminal menu's Select all (the mock has no select-all glyph; its text-select is the nearest). Int UI, 16 artboard, one even-odd ink fill each: the warning triangle, the external link and the paste.
+const ASKED_LUCIDE_GLYPHS = ['circle-check', 'filter-x', 'select-all', 'whole-word'];
+const ASKED_INT_UI_GLYPHS = ['external-link', 'paste', 'triangle-alert'];
+
 describe('the glyph registry', () => {
   it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
     expect([...names].sort()).toEqual(
-      [...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...HOME_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS, ...SHELL_LUCIDE_GLYPHS, ...SHELL_INT_UI_GLYPHS].sort(),
+      [...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...HOME_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS, ...SHELL_LUCIDE_GLYPHS, ...SHELL_INT_UI_GLYPHS, ...ASKED_LUCIDE_GLYPHS, ...ASKED_INT_UI_GLYPHS].sort(),
     );
   });
 
@@ -114,7 +119,7 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes but the gear, which is 1,735 as the mock draws it and may be 1,800; the registry 22,450: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs, then 854 bytes for the form parts\' three, then 1,774 bytes for the six notification centre glyphs, then about 250 bytes for the Home glyph, then 4,052 bytes for the eleven glyphs of G2 (the gear alone is 1,735); the real total is 22,342 with 88 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not: status/G2.md measures it)', () => {
+  it('stays within its byte budget (one glyph 800 bytes but the gear, which is 1,735 as the mock draws it and may be 1,800; the registry 24,740: 7,000 for slice 1a, 18,400 after G1 and the steps that followed it, 22,450 after the eleven glyphs of G2, then 2,288 bytes for the seven of G3; the real total is 24,630 with 95 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not: status/G2.md measures it)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -122,7 +127,7 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(22450);
+    expect(total).toBeLessThanOrEqual(24740);
   });
 
   it('draws the shell glyphs from Lucide as the family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke, no relative moveto', () => {
@@ -139,6 +144,26 @@ describe('the glyph registry', () => {
         expect(layer.evenodd, name).toBeUndefined();
         expect(layer.d, name).not.toMatch(/m/);
       }
+    }
+  });
+
+  it('draws the glyphs of G3 as their families are drawn here: Lucide on 24 in one ink stroke of 2 with no relative moveto, Int UI on 16 as one even-odd ink fill', () => {
+    for (const name of ASKED_LUCIDE_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(24);
+      expect(glyph.layers.length, name).toBe(1);
+      expect(glyph.layers[0], name).toMatchObject({ stroke: 'ink', width: 2, cap: 'round', join: 'round' });
+      expect(glyph.layers[0].fill, name).toBeUndefined();
+      expect(glyph.layers[0].d, name).not.toMatch(/m/);
+    }
+
+    for (const name of ASKED_INT_UI_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(16);
+      expect(glyph.layers.length, name).toBe(1);
+      expect(glyph.layers[0], name).toMatchObject({ fill: 'ink', evenodd: true });
+      expect(glyph.layers[0].stroke, name).toBeUndefined();
+      expect(glyph.layers[0].d, name).not.toMatch(/m/);
     }
   });
 

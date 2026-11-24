@@ -307,10 +307,12 @@ const PAGE_GROUP = 'plugins-page';
 const CONNECTIONS_GROUP = 'connections';
 const CONTROL = process.env.SEAM_CONTROL ?? '';
 const REMOVE = process.env.SEAM_REMOVE ?? '';
-// SEAM_ONLY=plugins-page runs scenario t alone, and SEAM_ONLY=connections scenario u alone, with no perturbation, held to the allow-list of failed requests as in a full run.
+// SEAM_ONLY=plugins-page runs scenario t alone, and SEAM_ONLY=connections scenario u alone, with no perturbation, held to the allow-list of failed requests as in a full run. SEAM_ONLY=settings-slots runs the slots part of
+// scenario s alone, clean (the 100 Settings window pages), for the one who works on it: it is the only part of s that opens and closes a window 100 times, and what a slow runner does to it is the thing to look at.
+const SETTINGS_SLOTS = 'settings-slots';
 const ONLY = process.env.SEAM_ONLY ?? '';
-if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP) {
-  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP} or ${CONNECTIONS_GROUP}`);
+if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== SETTINGS_SLOTS) {
+  throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP} or ${SETTINGS_SLOTS}`);
 }
 if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined) {
   throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
@@ -5094,7 +5096,17 @@ async function settingsSlots(c) {
     try {
       if (refused) await standIn(page, refusal);
       await page.goto(`${base}/?screen=settings-window`, { waitUntil: 'load' });
-      await page.waitForFunction(() => (document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0) || document.querySelector('[data-settings-state="failed"]') !== null, null, { timeout: 30_000 });
+      // The wait ends on the page's own state (its rows, or the failed notice) and is bounded. When it is lost, the failure says what the page was doing and what the host held at that moment, so a slow runner's
+      // lost page is told from a host that refused it: no CI run has shown the cause of the one 30 s wait of 2026-11-24 (WebKit, PR #705), and 3 runs in a 2-CPU arm64 container and 1 in the CI image under emulation had none.
+      try {
+        await page.waitForFunction(() => (document.querySelector('[aria-current="page"]')?.getAttribute('data-settings-page') === 'terminal' && document.querySelectorAll('[data-settings-row]').length > 0) || document.querySelector('[data-settings-state="failed"]') !== null, null, { timeout: 30_000 });
+      } catch (error) {
+        const seen = await page
+          .evaluate(() => ({ text: document.body.innerText.slice(0, 200), state: document.querySelector('[data-settings-state]')?.getAttribute('data-settings-state') ?? null, rows: document.querySelectorAll('[data-settings-row]').length }))
+          .catch((reason) => ({ unreadable: String(reason?.message ?? reason).slice(0, 120) }));
+        const held = await windows().catch(() => []);
+        throw new Error(`${engine}: window page ${String(number)} of ${String(PAGES)} did not read its rows in 30 s: the page says ${JSON.stringify(seen)} and the window service lists ${String(held.length)} windows (${error.message.split('\n')[0]})`);
+      }
       assert.deepEqual(
         await page.locator('[data-settings-row]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-settings-row'))),
         expected,
@@ -5454,7 +5466,7 @@ async function checkSettings(browser, engine, work) {
       return page;
     },
   };
-  const only = SETTINGS_PARTS[CONTROL];
+  const only = ONLY === SETTINGS_SLOTS ? 'slots' : SETTINGS_PARTS[CONTROL];
   const started = Date.now();
   try {
     for (const [name, part] of [['sheet', settingsSheet], ['window', settingsWindow], ['truth', settingsTruth], ['reconnect', settingsReconnect], ['slots', settingsSlots], ['secrets', settingsSecrets], ['popups', settingsPopups]]) {
@@ -8882,7 +8894,7 @@ try {
         continue;
       }
 
-      if (CONTROL === SETTINGS_GROUP || SETTINGS_PARTS[CONTROL] !== undefined) {
+      if (CONTROL === SETTINGS_GROUP || SETTINGS_PARTS[CONTROL] !== undefined || ONLY === SETTINGS_SLOTS) {
         // The negative controls of scenario s: it runs alone, once (the part the control belongs to, or every part for the group), with the perturbations of the controls asked for, and says for each whether its own assertion saw it (`checkSettings`).
         try {
           await checkSettings(browser, name, work);
