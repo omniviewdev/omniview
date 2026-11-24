@@ -566,3 +566,33 @@ func TestInputOfAWindowThatGivesATerminalAwayAndTheClaimOfItAtOnceKeepTheirOrder
 		require.NoError(t, m.CloseSession(id))
 	}
 }
+
+// The last acknowledgement of a shell that ended races its CLOSE: the window that held the terminal when it ended is answered,
+// and credits nothing; any other window is told what is told of an id that never was. A count of bytes below zero is refused.
+func TestTheAcknowledgementOfAnEndedTerminalIsTakenFromTheWindowThatHeldItAndNoOther(t *testing.T) {
+	m, sink := newPageManager(t)
+	info, err := m.Start(Options{Command: []string{sh(t), "-c", `exit 0`}}, "wA")
+	require.NoError(t, err)
+	sink.waitEnd(t, info.ID)
+
+	require.NoError(t, m.AckOwned(info.ID, "wA", 5), "A held the terminal when it ended")
+	for _, stranger := range []Owner{"wB", nil, []int{1}} {
+		notFound(t, m.AckOwned(info.ID, stranger, 5), info.ID)
+	}
+	notFound(t, m.AckOwned("no-such-session", "wA", 5), "no-such-session")
+	assert.Equal(t, "INVALID_REQUEST", appError(t, m.AckOwned(info.ID, "wA", -1)).Code, "a count below zero is refused, for the window that held it")
+	notFound(t, m.AckOwned(info.ID, "wB", -1), info.ID)
+}
+
+// A terminal whose end is decided is nobody's to take by attaching it, offered or not: it is going (Claim).
+func TestAnAttachOfATerminalWhoseEndIsDecidedIsRefusedEvenWhenItIsOffered(t *testing.T) {
+	m, _ := newPageManager(t)
+	info := m.offered(t)
+	var attachErr error
+	m.beforeEnd = func(id string) {
+		m.beforeEnd = nil
+		_, _, attachErr = m.AttachOwned(id, "wB")
+	}
+	require.NoError(t, m.CloseOwned(info.ID, "wA"))
+	notFound(t, attachErr, info.ID)
+}
