@@ -42,7 +42,11 @@ export function AckTerminal(sessionID: string, n: number): $CancellablePromise<v
 
 /**
  * AttachSession returns a session's output: for the window that holds it, or that claims it (a session of a plugin
- * that no window holds, or one its owner offered with OfferSession), which holds it from then on.
+ * that no window holds, or one its owner offered with OfferSession), which holds it from then on. A claim can make a
+ * window the owner of a session, and a window that holds a session has to be one the realm knows, so that its
+ * retirement releases what it holds: the window is admitted here and not only when it opens a terminal of its own. A
+ * call that comes from no window, or from one the realm refuses, claims nothing and is told what is told of an id that
+ * never was.
  */
 export function AttachSession(sessionID: string): $CancellablePromise<[exec$0.Session | null, string]> {
     return $Call.ByID(93318075, sessionID).then(($result: any) => {
@@ -79,7 +83,9 @@ export function CloseSession(sessionID: string): $CancellablePromise<void> {
 /**
  * CreateSession starts a session of a plugin for the window that asks: it belongs to that window until the window
  * goes away, and then to whichever window attaches it first (T2c-go.md). A call that comes from no window creates
- * a session that belongs to none.
+ * a session that belongs to none. A window that retires while the plugin makes the session leaves it to none as well
+ * (the session is recorded as the window's, and the retirement, which came before, found nothing of the window's to
+ * release).
  */
 export function CreateSession(plugin: string, connectionID: string, encoded: string): $CancellablePromise<exec$0.Session | null> {
     return $Call.ByID(608251756, plugin, connectionID, encoded).then(($result: any) => {
