@@ -166,15 +166,17 @@ func (s *ServiceWrapper) terminalOwner(window application.Window) (invocation.Wi
 	if s.Realm == nil || window == nil {
 		return none, apperror.Forbidden("Access denied", "A terminal belongs to the window that opens it.")
 	}
-	if _, err := s.Realm.AdmitWindow(window); err != nil {
-		return none, err
-	}
-	// Subscribed before the first session is made, so no retirement can fall before it.
+	// Subscribed before the window is admitted, and so before the first session is made: a retirement that falls between the
+	// admission and the subscription would be lost to the guard of the session being made (createGuard), and the session would
+	// be recorded as the retired window's (CodeRabbit on #677).
 	s.retire.Do(func() {
 		s.Realm.OnRetire(func(key invocation.WindowIdentity) {
 			s.Ctrl.ReleaseOwnedTerminals(key, terminal.ClosedByWindow)
 		})
 	})
+	if _, err := s.Realm.AdmitWindow(window); err != nil {
+		return none, err
+	}
 	return invocation.IdentityOf(window), nil
 }
 
