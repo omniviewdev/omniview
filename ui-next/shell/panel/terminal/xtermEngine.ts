@@ -47,6 +47,9 @@ const pitchOf = (appearance: EngineAppearance): number => Math.round(appearance.
  */
 const PERSON_EVENTS: Readonly<Record<string, true>> = { keydown: true, keypress: true, input: true, paste: true };
 
+/** The characters a pasted text must not carry into a bracketed paste: ESC (which starts the sequence that ends it), ETX (which a line editor takes as an interrupt) and the C1 control CSI. */
+const UNSAFE_PASTE = /[\u001b\u0003\u009b]/g;
+
 /** What a find tells when it has nothing: no match, and none counted. */
 const NOTHING: FindState = { index: -1, count: 0, capped: false };
 
@@ -125,6 +128,21 @@ export function createXtermEngine(options: EngineOptions): Engine {
   /** The attributes the host asked the input to have, and the names of those set on it: a call replaces what the one before set. */
   let wantedAttributes: Readonly<Record<string, string>> = {};
   let appliedAttributes: readonly string[] = [];
+
+  /**
+   * The ONE paste path (#698 item 13): the platform's chord (the browser's paste event, taken in `open`) and the context menu's Paste both end here. xterm 6.0.0 wraps a pasted text in the markers of bracketed paste without
+   * sanitising it, so a pasted `ESC [ 201 ~` would end the bracket and what follows would run as typed commands. While the program has bracketed paste on, ESC, ETX and the C1 control CSI (0x9b) are dropped before the wrap
+   * (VS Code's and xterm master's sanitising); with it off there is no bracket to end, and the text is the person's. Line endings are the emulator's own (`terminal.paste` makes them carriage returns). One trailing newline is
+   * KEPT, as VS Code keeps it in bracketed mode: the program between the markers tells a paste from typing and decides, and a newline cut off silently changes what a pasted line means.
+   */
+  const pasteText = (text: string): void => {
+    pasting = true;
+    try {
+      terminal.paste(terminal.modes.bracketedPasteMode ? text.replace(UNSAFE_PASTE, '') : text);
+    } finally {
+      pasting = false;
+    }
+  };
 
   /**
    * Whether what the emulator sends now is what the person did, and not what it says by itself. The emulator sends both through one event and knows inside which is which (its own flag for input), which its public interface does
@@ -404,6 +422,19 @@ export function createXtermEngine(options: EngineOptions): Engine {
       terminal.open(host);
       calibrate();
       applyAttributes();
+      // The emulator's own paste handler is never reached: this one takes the event first (capture, at the host) and stops it, so a paste is made once, by `pasteText`.
+      host.addEventListener(
+        'paste',
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const text = event.clipboardData?.getData('text/plain') ?? '';
+          if (text !== '') {
+            pasteText(text);
+          }
+        },
+        true,
+      );
       // This listener comes after the emulator's own for the same event, so the timer it sets comes after the emulator's, and the commit is sent while `committing` is set.
       terminal.textarea?.addEventListener('compositionend', () => {
         committing = true;
@@ -537,14 +568,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
 
     mouseReporting: () => terminal.modes.mouseTrackingMode !== 'none',
 
-    paste: (text) => {
-      pasting = true;
-      try {
-        terminal.paste(text);
-      } finally {
-        pasting = false;
-      }
-    },
+    paste: pasteText,
 
     decorateInput: (attributes) => {
       wantedAttributes = attributes;
