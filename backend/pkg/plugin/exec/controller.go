@@ -86,6 +86,9 @@ type Controller interface {
 	// OfferSession lets the next window that attaches the session take it over, for a short time: the move of
 	// a tab to another window. Only the window that holds it offers it.
 	OfferSession(owner terminal.Owner, sessionID string) error
+	// RevokeSession takes back an offer of OfferSession: the move of a tab that did not happen. Only the window that holds the
+	// session revokes it, and an offer that is not open is nothing to take back.
+	RevokeSession(owner terminal.Owner, sessionID string) error
 }
 
 const (

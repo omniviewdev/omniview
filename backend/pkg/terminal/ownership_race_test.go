@@ -366,3 +366,28 @@ func TestTheDismissalOfTheEndOfATerminalAndTheAttachOfItAtOnceHaveOneOutcome(t *
 	}
 	t.Logf("the attach came first in %d rounds and the dismissal in %d", attached, dismissed)
 }
+
+// 4. AN OFFER THAT IS TAKEN BACK.
+
+// The window that offered its terminal takes the offer back (the drop was refused, the window that was to take the tab went
+// away): the next window to claim it finds none, the terminal is still the offering window's, and it can be offered again.
+// Only the window that holds the terminal revokes, and an offer that is not open is nothing to take back, and no error.
+func TestAnOfferIsTakenBackByTheWindowThatMadeItAndByNoOtherAndOnlyOnce(t *testing.T) {
+	m, _ := newPageManager(t)
+	info := m.startPlain(t, "wA")
+
+	require.NoError(t, m.Revoke(info.ID, "wA"), "there is no offer to take back, and that is no error")
+	require.NoError(t, m.Offer(info.ID, "wA", OfferTTL))
+	for _, stranger := range []Owner{"wB", nil, []int{1}} {
+		notFound(t, m.Revoke(info.ID, stranger), info.ID)
+	}
+	notFound(t, m.Revoke("no-such-session", "wA"), "no-such-session")
+	require.NoError(t, m.Revoke(info.ID, "wA"))
+
+	notFound(t, m.Claim(info.ID, "wB"), info.ID)
+	require.NoError(t, m.Authorize(info.ID, "wA"), "it is still A's")
+	require.NoError(t, m.Revoke(info.ID, "wA"), "a second revoke finds nothing and says nothing")
+	require.NoError(t, m.Offer(info.ID, "wA", OfferTTL), "and it can be offered again")
+	require.NoError(t, m.Claim(info.ID, "wB"))
+	notFound(t, m.Revoke(info.ID, "wA"), info.ID)
+}

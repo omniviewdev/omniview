@@ -355,3 +355,10 @@ func (s *ServiceWrapper) GetCwd(ctx context.Context, sessionID string) (terminal
 func (s *ServiceWrapper) AckTerminal(ctx context.Context, sessionID string, n int) error {
 	return s.Ctrl.AckTerminal(callerOf(ctx), sessionID, n)
 }
+
+// RevokeSession takes back the offer that OfferSession made: the move of a tab that did not happen (the drop was refused,
+// or the window that was to take it went away). Only the window that holds the session revokes it; an offer that is not
+// open is nothing to take back, and no error.
+func (s *ServiceWrapper) RevokeSession(ctx context.Context, sessionID string) error {
+	return s.Ctrl.RevokeSession(callerOf(ctx), sessionID)
+}

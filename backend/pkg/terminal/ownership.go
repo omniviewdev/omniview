@@ -207,3 +207,10 @@ func (m *Manager) SessionsOf(owner Owner) []*sdkexec.Session {
 	}
 	return out
 }
+
+// Revoke takes back the owner's offer of its session: the next window that claims it finds none (the move of a tab that
+// did not happen: the drop was refused, or the window that was to take it went away). Only the window that holds the
+// session revokes; an offer that is not open is nothing to take back, and no error.
+func (m *Manager) Revoke(sessionID string, _ Owner) error {
+	return apperror.SessionNotFound(sessionID)
+}

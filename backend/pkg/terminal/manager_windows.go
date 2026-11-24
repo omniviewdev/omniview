@@ -121,3 +121,6 @@ func (m *Manager) Shutdown() {}
 
 // SetFlowStall does nothing: no session can exist.
 func (m *Manager) SetFlowStall(_ time.Duration) {}
+
+// Revoke is not supported: no session can exist.
+func (m *Manager) Revoke(sessionID string, _ Owner) error { return apperror.SessionNotFound(sessionID) }

@@ -38,6 +38,7 @@ func bareIDCalls(fx *terminalFixture, typed string) map[string]func(ctx context.
 		"GetCwd":         func(ctx context.Context, id string) error { _, err := w.GetCwd(ctx, id); return err },
 		"AckTerminal":    func(ctx context.Context, id string) error { return w.AckTerminal(ctx, id, 1) },
 		"OfferSession":   func(ctx context.Context, id string) error { return w.OfferSession(ctx, id) },
+		"RevokeSession":  func(ctx context.Context, id string) error { return w.RevokeSession(ctx, id) },
 		"CloseSession":   func(ctx context.Context, id string) error { return w.CloseSession(ctx, id) },
 	}
 }

@@ -94,6 +94,7 @@
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.OpenNativeSession", "decision": "deny", "reason": "launches a native terminal application on the host"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.ResizeSession", "decision": "deny", "reason": "controls a live terminal session"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.ResizeTerminal", "decision": "deny", "reason": "controls a live terminal session"},
+    {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.RevokeSession", "decision": "deny", "reason": "takes back an offer of a live terminal session: controls who may attach it and read and type into it"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.WriteSession", "decision": "deny", "reason": "writes input into a live terminal session"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper.WriteTerminal", "decision": "deny", "reason": "writes input into a live terminal session"},
     {"fqn": "github.com/omniviewdev/omniview/backend/pkg/plugin/logs.ServiceWrapper.CloseSession", "decision": "allow", "reason": "log viewer session control; lines flow as core/logs/* events and may contain secrets (Q1)"},

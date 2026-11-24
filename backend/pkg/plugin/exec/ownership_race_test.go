@@ -402,3 +402,41 @@ func TestAWindowThatGaveALocalTerminalAwayCannotEndItAndTheWindowThatHoldsItCan(
 	require.NoError(t, fx.wrapper.CloseSession(fx.ctx(b), info.ID), "B holds it")
 	require.Eventually(t, func() bool { return gone(info.PID) }, 20*time.Second, 5*time.Millisecond)
 }
+
+// An offer of a session of a plugin is taken back by the window that made it and by no other; the next window to attach
+// it finds none, and the session is still the offering window's.
+func TestAnOfferOfASessionOfAPluginIsTakenBackByItsWindowAndByNoOther(t *testing.T) {
+	fx := newOwnershipRaceFixture(t)
+	fx.make("wA", "moving")
+
+	require.NoError(t, fx.ctrl.RevokeSession("wA", "moving"), "there is no offer to take back, and that is no error")
+	require.NoError(t, fx.ctrl.OfferSession("wA", "moving"))
+	for _, stranger := range []terminal.Owner{"wB", nil} {
+		requireSessionNotFound(t, fx.ctrl.RevokeSession(stranger, "moving"), "moving")
+	}
+	requireSessionNotFound(t, fx.ctrl.RevokeSession("wA", "no-such-session"), "no-such-session")
+	require.NoError(t, fx.ctrl.RevokeSession("wA", "moving"))
+
+	_, _, err := fx.ctrl.AttachSession("wB", "moving")
+	requireSessionNotFound(t, err, "moving")
+	require.NoError(t, fx.ctrl.WriteSession("wA", "moving", []byte("x")), "it is still A's")
+	require.NoError(t, fx.ctrl.OfferSession("wA", "moving"), "and it can be offered again")
+	_, _, err = fx.ctrl.AttachSession("wB", "moving")
+	require.NoError(t, err)
+	requireSessionNotFound(t, fx.ctrl.RevokeSession("wA", "moving"), "moving")
+}
+
+// The same for a local terminal through the wrapper, and for a window that never held it.
+func TestAnOfferOfALocalTerminalIsTakenBackThroughTheWrapper(t *testing.T) {
+	fx := newTerminalFixture(t)
+	a, b := fx.page(1), fx.page(2)
+	info := fx.open(a, terminal.Options{Command: append(shell(t), "-c", "stty -echo; cat")})
+	require.NoError(t, fx.wrapper.OfferSession(fx.ctx(a), info.ID))
+
+	requireNotFound(t, fx.wrapper.RevokeSession(fx.ctx(b), info.ID), "a window that does not hold it")
+	requireNotFound(t, fx.wrapper.RevokeSession(context.Background(), info.ID), "no window")
+	require.NoError(t, fx.wrapper.RevokeSession(fx.ctx(a), info.ID))
+	_, _, err := fx.wrapper.AttachSession(fx.ctx(b), info.ID)
+	requireNotFound(t, err, "the offer was taken back")
+	require.NoError(t, fx.wrapper.WriteTerminal(fx.ctx(a), info.ID, 0, []byte("still mine\n")))
+}

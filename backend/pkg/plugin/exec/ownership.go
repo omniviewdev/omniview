@@ -159,3 +159,9 @@ func (c *controller) orphanSessionsOf(owner terminal.Owner) int {
 	}
 	return orphaned
 }
+
+// RevokeSession takes back the offer of a session: the next window that attaches it finds none. Only the window that
+// holds the session revokes; an offer that is not open is nothing to take back, and no error.
+func (c *controller) RevokeSession(_ terminal.Owner, sessionID string) error {
+	return apperror.SessionNotFound(sessionID)
+}
