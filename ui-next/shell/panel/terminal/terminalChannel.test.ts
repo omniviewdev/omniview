@@ -253,9 +253,9 @@ const attachJson = (socket: FakeSocket): unknown => {
 };
 
 /** Opens a stream for `t1` and returns it with what it said. */
-function connected(r: Rig, fromOffset?: number): { readonly socket: FakeSocket; readonly said: Said; readonly link: ReturnType<TerminalChannels['connect']> } {
+function connected(r: Rig, fromOffset?: number, writer?: string): { readonly socket: FakeSocket; readonly said: Said; readonly link: ReturnType<TerminalChannels['connect']> } {
   const { said, events } = recorder();
-  const link = r.channels.connect('t1', fromOffset, events);
+  const link = r.channels.connect('t1', fromOffset, events, writer);
   return { socket: socketOf(r), said, link };
 }
 
@@ -265,6 +265,18 @@ describe('opening a stream', () => {
     const { socket } = connected(r);
     expect(r.opened).toEqual(['terminal']);
     expect(socket.binaryType).toBe('arraybuffer');
+  });
+
+  it('says the feed\'s writer in the attach when it has one, and not otherwise', () => {
+    const writer = 'ab'.repeat(16);
+    const r = rig({ saved: { t1: CAP } });
+    const { socket } = connected(r, 4096, writer);
+    socket.open();
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP, from_offset: 4096, writer });
+    expect(socket.sent[0]?.length).toBeLessThanOrEqual(1024);
+    const none = connected(rig({ saved: { t1: CAP } }));
+    none.socket.open();
+    expect(attachJson(none.socket)).toEqual({ v: 2, cap: CAP });
   });
 
   it('sends the attach as the first frame, with the capability and the protocol version, and no offset when the page has none', () => {

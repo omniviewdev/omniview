@@ -58,8 +58,8 @@ export type ChannelLaunch = { readonly cols: number; readonly rows: number; read
 export type TerminalChannels = {
   /** Starts a channel terminal under `id` (`CreateTerminal` with `launch.channel`) and keeps its capability. Answers the host's session, without the capability. */
   readonly create: (id: string, launch: ChannelLaunch) => Promise<unknown>;
-  /** Opens a stream to the terminal and attaches it, from `fromOffset` when the page has the bytes before it (absent: the page has nothing). */
-  readonly connect: (id: string, fromOffset: number | undefined, events: ChannelEvents) => ChannelLink;
+  /** Opens a stream to the terminal and attaches it, saying the feed's `writer` (32 lowercase hex digits, one for each feed, kept across its streams: the host counts input applied for each writer), from `fromOffset` when the page has the bytes before it (absent: the page has nothing). */
+  readonly connect: (id: string, fromOffset: number | undefined, events: ChannelEvents, writer?: string) => ChannelLink;
   /** Ends the terminal (`CloseChannelTerminal`) and forgets its capability. */
   readonly close: (id: string) => Promise<void>;
   /** Forgets the end a terminal left (`DismissChannelTerminal`) and its capability. */

@@ -11,6 +11,8 @@ const text = new TextDecoder();
 const CAP = /^[A-Za-z0-9_-]{43}$/;
 const MODES_ON = { known: true, alt_screen: true, bracketed_paste: true, application_cursor: true, focus_events: true, cursor_hidden: true, mouse_tracking: 1, mouse_encoding: 2, kitty_keyboard: [] };
 const timeout = { timeout: 30_000 };
+const WRITER = 'a1'.repeat(16);
+const OTHER = 'b2'.repeat(16);
 
 /** Makes a terminal and answers it with its capability. */
 const make = async (host, id = 't', launch = { channel: true, cols: 80, rows: 24 }) => {
@@ -24,7 +26,7 @@ const make = async (host, id = 't', launch = { channel: true, cols: 80, rows: 24
  * A page that follows the protocol: it opens a stream, sends `attach` (with `from` when it has the bytes before it), keeps every frame the host sends in order, applies the output by offset (a frame that does not join is a failure
  * of the host, and the test says so), acknowledges what it took when `ack` is on (the first acknowledgement, of nothing, turns the host's window on), and says when the stream is closed.
  */
-function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } = {}) {
+function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true, writer } = {}) {
   const page = { frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, released: false, refused: 0, unsupported: undefined, counts: [], notFound: false, waiters: [], acked: 0, live: 0 };
   const wake = () => {
     for (const waiter of page.waiters.splice(0)) waiter();
@@ -86,7 +88,7 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } 
   };
 
   page.bytes = () => Buffer.concat(page.applied);
-  if (sendAttach) page.stream.send(pageFrames.attach(cap, from));
+  if (sendAttach) page.stream.send(pageFrames.attach(cap, from, undefined, writer));
   return page;
 }
 
@@ -788,10 +790,10 @@ test('the host speaks version 2: ready says so and counts the input applied, and
   host.stop();
 });
 
-test('the holder is told how much input was applied, across streams: only when it is more than it was told, never a number that goes down or repeats, and a watcher is told nothing; the ready of the next stream counts what the last had admitted', timeout, async () => {
+test('the holder is told how much input was applied, across the streams of one writer: only when it is more than it was told, never a number that goes down or repeats, and a watcher is told nothing; the ready of the next stream counts what the last had admitted', timeout, async () => {
   const host = createHost({ leaseMs: 60_000 });
   const { cap } = await make(host);
-  const first = pageOf(host, cap);
+  const first = pageOf(host, cap, { writer: WRITER });
   await first.until('ready', () => first.ready !== undefined);
   first.stream.send(pageFrames.input('abc'));
   first.stream.send(pageFrames.input(''));
@@ -802,7 +804,7 @@ test('the holder is told how much input was applied, across streams: only when i
   // The host is slow to apply the next frame: a second stream takes the terminal meanwhile, and its ready counts what the first had admitted, so that the page does not send it again.
   host.slow(1, Infinity);
   first.stream.send(pageFrames.input('xy'));
-  const second = pageOf(host, cap);
+  const second = pageOf(host, cap, { writer: WRITER });
   await second.until('ready', () => second.ready !== undefined);
   assert.equal(second.ready.input_applied, 7, 'applied (5) and what is queued ahead (2)');
   host.release();
@@ -979,5 +981,65 @@ test('an attach that waits for a natural exit is closed when the terminal vanish
   );
   assert.equal(host.log.detaches.length, 1);
   assert.equal(host.state('t').holder, null);
+  host.stop();
+});
+
+test('the input applied is counted for each writer: another writer\'s input is in its own count and never in this one\'s, a malformed writer is the one not-found, an absent writer is one nothing remembers, and the last eight writers are kept', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const one = pageOf(host, cap, { writer: WRITER });
+  await one.until('ready', () => one.ready !== undefined);
+  one.stream.send(pageFrames.input('abc'));
+  await one.until('applied 3', () => one.counts.at(-1) === 3);
+  // Another writer takes the terminal and types 4 bytes while the first is away.
+  one.stream.close();
+  const two = pageOf(host, cap, { writer: OTHER });
+  await two.until('ready', () => two.ready !== undefined);
+  assert.equal(two.ready.input_applied, 0, 'a writer the host does not know starts at 0');
+  two.stream.send(pageFrames.input('wxyz'));
+  await two.until('applied 4', () => two.counts.at(-1) === 4);
+  two.stream.close();
+  const back = pageOf(host, cap, { writer: WRITER });
+  await back.until('ready', () => back.ready !== undefined);
+  assert.equal(back.ready.input_applied, 3, 'the first writer\'s count is its own: the 4 bytes of the other are not in it');
+  back.stream.send(pageFrames.input('d'));
+  await back.until('applied 4', () => back.counts.at(-1) === 4);
+  back.stream.close();
+
+  const anonymous = pageOf(host, cap);
+  await anonymous.until('ready', () => anonymous.ready !== undefined);
+  assert.equal(anonymous.ready.input_applied, 0);
+  anonymous.stream.send(pageFrames.input('q'));
+  await anonymous.until('applied 1', () => anonymous.counts.at(-1) === 1);
+  anonymous.stream.close();
+  const again = pageOf(host, cap);
+  await again.until('ready', () => again.ready !== undefined);
+  assert.equal(again.ready.input_applied, 0, 'a writer of its own is gone with its stream');
+  again.stream.close();
+
+  for (const bad of ['A1'.repeat(16), 'a1'.repeat(15), 'a1'.repeat(17), 'zz'.repeat(16), 7, '']) {
+    const page = pageOf(host, cap, { sendAttach: false });
+    page.stream.send(pageFrames.attach(cap, undefined, undefined, bad));
+    await page.until('closed', () => page.closed);
+    assert.deepEqual(page.raw.map((bytes) => [...bytes]), [[FRAME.notFound]], 'a malformed writer is the one not-found');
+  }
+
+  // Eight writers are kept: the first one, last attached before nine others, is forgotten and starts at 0.
+  const ids = Array.from({ length: 9 }, (_, at) => at.toString(16).padStart(2, '0').repeat(16));
+  for (const id of ids) {
+    const page = pageOf(host, cap, { writer: id });
+    await page.until('ready', () => page.ready !== undefined);
+    page.stream.send(pageFrames.input('1'));
+    await page.until('applied', () => page.counts.at(-1) === 1);
+    page.stream.close();
+  }
+
+  const forgotten = pageOf(host, cap, { writer: ids[0] });
+  await forgotten.until('ready', () => forgotten.ready !== undefined);
+  assert.equal(forgotten.ready.input_applied, 0, 'the writer that attached least recently was forgotten');
+  forgotten.stream.close();
+  const kept = pageOf(host, cap, { writer: ids[8] });
+  await kept.until('ready', () => kept.ready !== undefined);
+  assert.equal(kept.ready.input_applied, 1);
   host.stop();
 });

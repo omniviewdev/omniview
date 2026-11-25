@@ -98,7 +98,7 @@ const gapFrame = (from, to) => {
 
 /** The frames a page sends, as a test or a probe makes them. */
 export const pageFrames = {
-  attach: (cap, fromOffset, version = VERSION) => withType(FRAME.attach, encoder.encode(JSON.stringify({ v: version, cap, ...(fromOffset === undefined ? {} : { from_offset: fromOffset }) }))),
+  attach: (cap, fromOffset, version = VERSION, writer = undefined) => withType(FRAME.attach, encoder.encode(JSON.stringify({ v: version, cap, ...(fromOffset === undefined ? {} : { from_offset: fromOffset }), ...(writer === undefined ? {} : { writer }) }))),
   input: (bytes) => withType(FRAME.input, typeof bytes === 'string' ? encoder.encode(bytes) : bytes),
   resize: (cols, rows) => {
     const payload = new Uint8Array(4);

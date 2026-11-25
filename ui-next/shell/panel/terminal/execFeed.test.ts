@@ -2204,3 +2204,19 @@ describe('the count of input applied is the writer\'s own (a host that counts fo
     expect(again.typed()).toBe('abc');
   });
 });
+
+describe('the writer of a feed', () => {
+  it('says one writer id in every attach of the feed: 32 lowercase hex digits, the same across its reconnects, and another for another feed', async () => {
+    const r = await running();
+    const first = r.stream().writer;
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    r.stream().drop();
+    const again = reconnect(r);
+    expect(again.writer).toBe(first);
+    const other = await running();
+    expect(other.stream().writer).toMatch(/^[0-9a-f]{32}$/);
+    expect(other.stream().writer).not.toBe(first);
+    const attached = attaching();
+    expect(attached.stream().writer).toMatch(/^[0-9a-f]{32}$/);
+  });
+});
