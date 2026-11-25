@@ -58,6 +58,8 @@ const componentTests = [
 //   Every file that imports ExecAction.tsx or useResourceDefinition.tsx, which import jsonpath, is here.
 // - ui/vite-optimizer.test.ts needs nothing of a VM context. It starts a node subprocess that takes ten seconds to exit after its half-second test, so the smallest file of the run, last in the queue,
 //   was alone in the last ten seconds of a cold run. Here it starts first, with the others running beside it.
+// - `perf.test.ts`, by name: the files that assert a wall-clock budget (`performance.now() - start < 100`), a bound set for the forks pool. In a VM context one keystroke of the palette took 393 ms on CI against its
+//   100 ms bound (globals are slower there, and a pause counts in full). A file that asserts a time budget is named `perf.test.ts` and stays here.
 // A file that a VM context cannot run fails at once, and loudly, so a new one is found the first time it runs: add it here with the reason.
 const forksOnly = [
   'ui/features/router/components/ErrorBoundary.spec.tsx',
@@ -68,6 +70,7 @@ const forksOnly = [
   'ui/components/tables/Resources/actions/ExecAction.test.tsx',
   'ui/features/plugins/react/startup.test.tsx',
   'ui/vite-optimizer.test.ts',
+  '**/perf.test.ts',
 ];
 
 // https://vitejs.dev/config/
