@@ -2,9 +2,16 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Connection } from '@omniviewdev/runtime/ui/v1';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { admit } from '../../contract/admit';
 import type { LogTargetV1, PanelHostV1 } from '../../contract/v1';
 import { chooseConnection, connectionFace } from './connection';
-import { itemsFrame, itemsOf } from './connection-pages';
+import { itemsFrame, itemsOf, overviewViewOf } from './connection-pages';
+import { contributionV1 } from './entry-connections';
+
+// The build writes the rail entry into the bundle (`define`, build.mjs) and the bundle's module reads it when it is evaluated: a test says what the build would, before the imports above are.
+vi.hoisted(() => {
+  Reflect.set(globalThis, 'FIXTURE_RAIL', { label: 'Seam Connections', order: 30 });
+});
 
 /**
  * What the connections process (`../connections-process/main.go`) says of its two connections: the page's copy of each fact, which the process is held to below and which the seam check asserts (`checkConnectionsAndHome`): the
@@ -45,6 +52,21 @@ describe('the connections fixture', () => {
   it('titles the tab Items and puts the connection in the path', () => {
     expect(itemsFrame({ named: 'south', pending: false })).toMatchObject({ tab: { title: 'Items' }, path: ['Seam Connections', 'south', 'Items'] });
     expect(itemsFrame({ named: undefined, pending: true }).path).toEqual(['Seam Connections', 'Items']);
+  });
+
+  it('says the overview of a connection from its name and the line its process gives it: the header\'s state and fact, and a list, a table and key-value pairs, with the connection\'s own items', () => {
+    for (const name of ['north', 'south'] as const) {
+      const view = overviewViewOf(name, FACTS[name].description);
+      const content = view.tabs.overview;
+      const sections = content?.kind === 'overview' ? content.sections : [];
+      const table = sections.find((section) => section.kind === 'table');
+
+      expect(view.state).toEqual({ role: 'healthy', label: 'Connected' });
+      expect(view.facts).toEqual([{ text: FACTS[name].description }]);
+      expect(sections.map((section) => [section.id, section.kind])).toEqual([['attention', 'list'], ['items', 'table'], ['connection', 'kv']]);
+      expect(table?.kind === 'table' ? table.rows.map((row: { readonly name: string }) => row.name) : []).toEqual(FACTS[name].items);
+      expect(sections.find((section) => section.kind === 'kv')).toMatchObject({ rows: [{ label: 'Name', value: name }, { label: 'Description', value: FACTS[name].description }, { label: 'Items', value: '3' }] });
+    }
   });
 
   describe('Logs sessions of the rows', () => {
@@ -99,6 +121,17 @@ describe('the connections fixture', () => {
       void feed?.close();
       expect({ ...Reflect.get(window, '__fixtureLogs') }).toEqual({ opened: 1, closed: 1, listeners: 0 });
     });
+  });
+});
+
+describe('the connections fixture\'s bundle', () => {
+  it('lands a connection on its overview (HM3): the overview is the plugin\'s home and the first entry of its sidebar, the Items list is the page after it, and the host admits the bundle', () => {
+    expect(admit({ contributionV1 })).toMatchObject({ ok: true });
+    expect(contributionV1.home).toBe('overview');
+    expect(contributionV1.sidebar.nodes.map((node) => node.id)).toEqual(['overview', 'things']);
+    expect(Object.keys(contributionV1.pages)).toEqual(['overview', 'items']);
+    expect(contributionV1.pages.overview.kind).toBe('overview');
+    expect(contributionV1.pages.items.kind).toBe('list');
   });
 });
 

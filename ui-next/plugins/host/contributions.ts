@@ -1,6 +1,6 @@
 import { facetsOf, nameOf, titleOf, type DetailPageDefinition } from '../../page';
 import type { Contributions, Description, Route, RouteInput } from '../../shell';
-import type { FrameV1, SidebarNodeV1 } from '../contract/v1';
+import type { FrameV1, OverviewPageDefinition, SidebarNodeV1 } from '../contract/v1';
 import { failureWords } from '../loader/failure';
 import { ConnectionNames, laneNameOf, pathSaid, restoredFace } from './connectionName';
 import { HOME_ROUTE, hostPageOf } from './hostPages';
@@ -120,6 +120,32 @@ export function describeDetail(pluginName: string, route: Route, definition: Det
   };
 }
 
+/** The one route parameter the detail page of an overview is drawn with: it holds the connection's NAME, and the synthesized definition (`overviewAsDetail`) names it as the page's subject. Internal to the host: no route carries it. */
+export const OVERVIEW_SUBJECT = 'scope';
+
+/**
+ * The detail definition an overview page is drawn with (HM3): the overview is the detail page's anatomy for a scope and not for an object, so the page header, the strip and the Overview are the detail page's own, unchanged, given a definition made from the
+ * overview's. Its kind is the page's title (the word of the page's states and the heading while nothing names the connection), its tile and tabs are the overview's, and the one parameter that names its subject is `OVERVIEW_SUBJECT`, which the host fills with the connection's name.
+ */
+export const overviewAsDetail = (definition: OverviewPageDefinition): DetailPageDefinition => ({ kind: definition.title, tile: definition.tile, identity: { name: OVERVIEW_SUBJECT }, tabs: definition.tabs });
+
+/**
+ * What an overview route says about its tab (HM3): the page's title, the tile's glyph, the path `Plugin › connection` (the plugin alone while no connection is known), the scope, and the connection's name as the qualifier that tells two overviews apart. The page
+ * is the page of a scope, so its face is the definition's, the plugin's and the connection's NAME alone, as an object's is (`describeDetail`): the same before the page's hook has run (a tab restored in the background, never drawn) and after it, and the key a route
+ * carries is drawn nowhere.
+ */
+export function describeOverview(pluginName: string, route: Route, definition: OverviewPageDefinition, connectionName?: string): Description {
+  const connection = connectionOf(route);
+  return {
+    title: definition.title,
+    icon: definition.tile.icon,
+    pluginName,
+    path: [pluginName, ...(connectionName === undefined ? [] : [connectionName])],
+    scope: connection === undefined ? undefined : { id: connection, label: connectionName ?? '' },
+    facets: connectionName === undefined ? [] : [connectionName],
+  };
+}
+
 /**
  * The model's `Contributions`, over the host's plugins. `describe` gives a tab its title, glyph and path from the page's own contribution (what its hook published, else the page's
  * definition and its sidebar entry), its scope from the connection its route names, and says the plugin's name so a tab that reads like another is told from it. `availability` opens a
@@ -182,6 +208,11 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
       if (found?.kind === 'detail') {
         // An object's face is the route's, the definition's and the connection's name alone: it is the same before the page's hook has run (the name is the one this window has learned, if any), in every state of the data, and in a tab that was never shown.
         return describeDetail(contribution.plugin.name, route, found.definition, name);
+      }
+
+      if (found?.kind === 'overview') {
+        // A scope's face is the same, from the definition, the plugin and the connection's name alone: what the page publishes says the same words, so a tab that was never shown names its place as the tab on screen does.
+        return describeOverview(contribution.plugin.name, route, found.definition, name);
       }
 
       const title = frame?.tab.title ?? found?.definition.title ?? entry.name;

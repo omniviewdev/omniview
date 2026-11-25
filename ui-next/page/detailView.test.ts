@@ -224,6 +224,23 @@ describe('hasContent: a section that has nothing to say is not drawn', () => {
     expect(hasContent({ id: 'l', kind: 'list', title: 'l', rows: [{ id: 'r', title: 'r' }] })).toBe(true);
     expect(hasContent({ id: 't', kind: 'table', title: 't', columns: [], rows: [{}], getRowKey: () => '' })).toBe(true);
   });
+
+  it('does not throw for a section whose data is not what its kind says: it is drawn, so that its own card says it failed', () => {
+    for (const broken of [
+      { id: 'a', kind: 'kv', title: 'a' },
+      { id: 'b', kind: 'table', title: 'b', columns: [], getRowKey: () => '' },
+      { id: 'c', kind: 'list', title: 'c', rows: 'rows' },
+      { id: 'd', kind: 'tags', title: 'd', items: null },
+    ]) {
+      expect(hasContent(broken as unknown as DetailSection), broken.id).toBe(true);
+    }
+  });
+
+  it('does not throw for a value that is no section at all, and does not draw it', () => {
+    for (const value of [null, undefined, 7, 'kv', true]) {
+      expect(hasContent(value as unknown as DetailSection), String(value)).toBe(false);
+    }
+  });
 });
 
 describe('overviewColumns', () => {

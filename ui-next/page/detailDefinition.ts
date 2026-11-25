@@ -58,6 +58,8 @@ export type DetailPageDefinition = {
  * - `failed`: a read failed. `retry` is given only when asking again can help; without it the page draws no Retry (a button that does nothing is a stub).
  *
  * A state other than `ready` replaces the body of the page and leaves the header and the strip where they are. A failure that comes after a view does not replace it.
+ *
+ * It is ONE state, for the whole page (an overview page's hook answers it too). It says nothing of any one section: a section that is loading, partial, failed or not available says so in the plugin's own words, in the section (`SectionBase`).
  */
 export type DetailState =
   | { readonly kind: 'loading' }
@@ -69,7 +71,12 @@ export type DetailState =
 /** Where a section sits: the object's own content in the main column, usage and metadata in the aside (design 13 OVW1). The aside stacks under the main column in a narrow page. */
 export type DetailPlacement = 'main' | 'aside';
 
-/** What every section has. A section that has nothing to say is not drawn: never an empty heading, never a placeholder (design 13 OVW1). */
+/**
+ * What every section has. A section that has nothing to say is not drawn: never an empty heading, never a placeholder (design 13 OVW1).
+ *
+ * No fake zeros: a section states loading, partial, failed or not available, in its own words, in its rows and cells, its `count` and its `action` (a Retry on the section); a plugin never draws a zero, a dash or `None` for a read that has not answered or has failed (the kit's `MissingValue` is the dash of a value that does not
+ * apply). The page cannot know what a read is, so it cannot enforce this; what it does is contain a section that cannot be drawn: it says `<title> failed to display.` with a Retry in its own card, and the page and the other sections stay (`SectionBoundary`).
+ */
 type SectionBase = {
   /** Names the section in its column and keys it. */
   readonly id: string;
@@ -129,7 +136,10 @@ export type DetailListSection = SectionBase & {
  */
 export type DetailSection = DetailKvSection | DetailTableSection<any> | DetailTagsSection | DetailListSection;
 
-/** What a tab shows. The Overview is typed data the page lays out; any other tab is the plugin's own content, drawn as given. */
+/**
+ * What a tab shows. The Overview is typed data the page lays out; any other tab is the plugin's own content, drawn as given. `kind: 'overview'` here is the typed content of a TAB, which any tab of a detail page or of an overview page may hold: it is neither the kind of an overview PAGE (`OverviewPageV1`) nor the id of a tab
+ * a plugin happens to call "overview" (`DetailTab.id`).
+ */
 export type DetailTabContent =
   | {
     readonly kind: 'overview';
@@ -162,6 +172,9 @@ export type DetailSource = {
   readonly view: DetailView | undefined;
   /** A refresh runs on a view that stays on screen, whoever asked for it. */
   readonly refreshing: boolean;
-  /** The user's Refresh. Resolves when the read is over and never rejects: a failure is the source's `state`. */
+  /**
+   * The user's Refresh. Resolves when the read is over and never rejects: a failure is the source's `state`. The page does not trust it to: a refresh that rejects, throws, or has not answered in `REFRESH_LIMIT_MS` (`useRefreshFeedback.ts`, 30 s) is said in the header's slot, "Refresh did not finish", with a Retry,
+   * and Refresh is available again; its error goes to the log. An overview's refresh is the aggregate of the plugin's reads, so one read that hangs is enough.
+   */
   readonly refresh: () => Promise<void>;
 };

@@ -10,14 +10,26 @@ import { clip, LIMITS, type Face, type Route, type ShellLaneFace, type ShellScop
 /** The label a plugin written before the marker gives the lane's face that says the connection (the design lab's lane does too). */
 const FACE_LABEL = 'connection';
 
-const textOf = (value: unknown): string | undefined => {
+/**
+ * The longest NAME of a connection the host holds, in characters (N2 of the review of HM3b). A name is a word a person or a tool gave a connection, a few dozen characters at most, and the page's heading draws it whole; one of a million characters is a broken or a hostile
+ * plugin's, and WebKit, the native app's engine, stalled for longer than 45 s laying one out in the heading (a name of 200,000 was fine, one of 400,000 was not). So a name is clipped once, where it comes in (`nameText`), and no surface can draw an unclipped one. 200 is the line the
+ * host already allows a connection's secondary text (`DETAIL_MAX`), far above any name a person gives a connection (Home draws one of 110 characters whole) and far below what stalls; the tab's own limit for a scope label, `LIMITS.scopeLabel`, is a label's, and 24 would
+ * cut a name a person chose.
+ */
+export const NAME_MAX = 200;
+
+/**
+ * The name a text says: trimmed, and clipped to `NAME_MAX` with the shell's own `clip` (the one every label of a tab's face is clipped with), or `undefined` when it is not text or says nothing. A name comes in here, from a page's lane, from what a window has learned and from
+ * the host's own list of connections (`connections/words.ts`), so nothing that is made from a name is longer than `NAME_MAX`: the heading, the path, the tab, Home's rows, the picker's options.
+ */
+export function nameText(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }
 
   const text = value.trim();
-  return text === '' ? undefined : text;
-};
+  return text === '' ? undefined : clip(text, NAME_MAX);
+}
 
 /** A face of a lane as the contract has it (`ShellScopeFace`): a label, a glyph and a text, all text. A plugin's data is not trusted, and a face that is not valid is not the connection, marked or not. */
 type LaneFace = Record<string, unknown> & { readonly label: string; readonly icon: string; readonly text: string };
@@ -37,12 +49,12 @@ export function laneNameOf(lane: unknown): string | null | undefined {
   const faces = (lane as readonly unknown[]).filter(isFace);
   const marked = faces.find((face) => face.role === 'connection');
   if (marked !== undefined) {
-    return textOf(marked.text) ?? null;
+    return nameText(marked.text) ?? null;
   }
 
   for (const face of faces) {
     if (face.label.trim().toLowerCase() === FACE_LABEL) {
-      const text = textOf(face.text);
+      const text = nameText(face.text);
       if (text !== undefined) {
         return text;
       }
@@ -55,7 +67,7 @@ export function laneNameOf(lane: unknown): string | null | undefined {
 /**
  * The lane a page published, as the shell draws it (HM1): each face the contract has, copied member by member (a plugin's own object is never handed on, so a plugin cannot give a face a picker or any other member the shell reads), and the one
  * face that says the connection (the one `laneNameOf` reads: the marked face, else a face labelled Connection) made a control by the picker `pick` makes of it, from the glyph and the text the face says (`undefined`: no picker, the face stays text).
- * A face that is not valid is left out, as `laneNameOf` leaves it out. `undefined` when the page published no lane.
+ * A face that is not valid is left out, as `laneNameOf` leaves it out. Every face's text is clipped to `NAME_MAX` (N2), so the lane draws no longer a name than the heading does, and the picker is made from the text the lane says. `undefined` when the page published no lane.
  */
 export function laneFor(lane: readonly ShellScopeFace[] | undefined, pick: ((face: Pick<ShellScopeFace, 'icon' | 'text'>) => ShellScopePicker | undefined) | undefined): readonly ShellLaneFace[] | undefined {
   if (!Array.isArray(lane)) {
@@ -64,9 +76,9 @@ export function laneFor(lane: readonly ShellScopeFace[] | undefined, pick: ((fac
 
   const faces = (lane as readonly unknown[]).filter(isFace);
   const marked = faces.find((face) => face.role === 'connection');
-  const legacy = marked ?? faces.find((face) => face.label.trim().toLowerCase() === FACE_LABEL && textOf(face.text) !== undefined);
+  const legacy = marked ?? faces.find((face) => face.label.trim().toLowerCase() === FACE_LABEL && nameText(face.text) !== undefined);
   return faces.map((face): ShellLaneFace => {
-    const copy: ShellScopeFace = { label: face.label, icon: face.icon as ShellScopeFace['icon'], text: face.text, ...(face.role === 'connection' ? { role: 'connection' as const } : {}) };
+    const copy: ShellScopeFace = { label: face.label, icon: face.icon as ShellScopeFace['icon'], text: clip(face.text, NAME_MAX), ...(face.role === 'connection' ? { role: 'connection' as const } : {}) };
     const picker = face === legacy ? pick?.(copy) : undefined;
     return picker === undefined ? copy : { ...copy, picker };
   });
@@ -85,9 +97,12 @@ export class ConnectionNames {
     return this.names.get(JSON.stringify([plugin, key]));
   }
 
-  /** Remembers `name` for the connection `key` of `plugin`: the latest is the one. An empty name is none. Those who `subscribe` are told when what is remembered changed, and not when a name is learned again as it is. */
+  /**
+   * Remembers `name` for the connection `key` of `plugin`: the latest is the one. An empty name is none, and a name is held as `nameText` says it (clipped to `NAME_MAX`) BEFORE it is compared, stored and told. Those who `subscribe` are told when what is remembered
+   * changed, and not when a name is learned again as it is: a name that is learned again, however long it came, is the same name once it is clipped.
+   */
   learn(plugin: string, key: string, name: string): void {
-    const text = textOf(name);
+    const text = nameText(name);
     const id = JSON.stringify([plugin, key]);
     if (text === undefined || this.names.get(id) === text) {
       return;
@@ -115,6 +130,15 @@ export class ConnectionNames {
       this.listeners.delete(subscription);
     };
   }
+}
+
+/**
+ * The NAME a page says its connection by, for its header and its path: the one its own lane says (`laneNameOf`), else the one this window has learned for the connection its route names (`ConnectionNames`), else none. A lane that says it has no name
+ * (`null`) leaves the page with none, and a name learned before is not put in its place. `undefined`: no name is known, and the page says no connection. The detail page and the overview page both read it this way, so there is one rule for it.
+ */
+export function connectionNameOf(lane: unknown, names: ConnectionNames, plugin: string, connection: string | undefined): string | undefined {
+  const said = laneNameOf(lane);
+  return said === null ? undefined : (said ?? (connection === undefined ? undefined : names.get(plugin, connection)));
 }
 
 /** Whether a scope's label is the key: the key itself, or the key clipped as the tab model clips every scope label (`LIMITS.scopeLabel`), which is how a saved face holds a long key. Nothing else is: a name may begin like a key. */

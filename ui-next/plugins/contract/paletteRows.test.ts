@@ -6,11 +6,12 @@ import { admitRow, admitRows, PALETTE_LIMITS, type RowRules } from './paletteRow
 
 type Loose = Record<string, unknown>;
 
-/** What Acme has: a list page, a detail page whose object is named by `name`, and one command. */
+/** What Acme has: a list page, a detail page whose object is named by `name`, an overview page (the page of a scope: no parameters, as a list page has none) and one command. */
 const rules: RowRules = {
   pages: {
     widgets: { kind: 'list', definition: { title: 'Widgets' } },
     widget: { kind: 'detail', definition: { identity: { name: 'name' } } },
+    overview: { kind: 'overview', definition: { title: 'Overview' } },
   },
   commands: { reset: {} },
 };
@@ -32,6 +33,11 @@ describe('admitRow', () => {
       row: { id: 'w:one', label: 'one two', secondary: 'in Acme', keywords: 'w1', icon: 'box', route: { page: 'widgets', connection: 'north', params: {} }, command: undefined },
     });
     expect(admission.ok && admission.row).not.toBe(raw);
+  });
+
+  it('admits a row that names an overview page: with no parameters, as a list page is named, and in a connection', () => {
+    expect(admitRow(row({ route: { page: 'overview', params: {} } }), rules, 0)).toMatchObject({ ok: true, row: { route: { page: 'overview', params: {} } } });
+    expect(admitRow(row({ route: { page: 'overview', connection: 'north', params: {} } }), rules, 0)).toMatchObject({ ok: true, row: { route: { page: 'overview', connection: 'north', params: {} } } });
   });
 
   it('admits a row that names a command, with and without an argument, and one that names a detail page with the parameter that names its object', () => {
@@ -87,6 +93,7 @@ describe('admitRow', () => {
     ['a route whose parameters are not an object', row({ route: { page: 'widgets', params: [] } }), 'row "w:one": route.params is not an object'],
     ['a route with no parameters member', row({ route: { page: 'widgets' } }), 'row "w:one": route.params is not an object'],
     ['a list page given a parameter', row({ route: { page: 'widgets', params: { name: 'a' } } }), 'row "w:one": route.page "widgets" is a list page and takes no parameters'],
+    ['an overview page given a parameter', row({ route: { page: 'overview', params: { name: 'a' } } }), 'row "w:one": route.page "overview" is an overview page and takes no parameters'],
     ['a detail page without the parameter that names its object', row({ route: { page: 'widget', params: {} } }), 'row "w:one": route.page "widget" is a detail page and needs the parameter "name"'],
     ['a detail page whose object is named by blank text', row({ route: { page: 'widget', params: { name: ' ' } } }), 'row "w:one": route.page "widget" is a detail page and needs the parameter "name"'],
     ['a parameter that is not text', row({ route: { page: 'widget', params: { name: 3 } } }), 'row "w:one": route.params.name is not a string of at most 256 characters'],
