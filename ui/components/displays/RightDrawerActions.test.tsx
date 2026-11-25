@@ -142,12 +142,14 @@ it('refreshes native choices from external state and disables only the pending n
   expect(listeners.size).toBe(0);
 });
 
-it('disables a direct single-item action while its choice is pending', () => {
+it('disables a direct single-item action while its choice is pending', async () => {
   const action = vi.fn();
-  render(<ActivityTestRoot><RightDrawerActions ctx={{ data: {} }} actions={[{
-    title: 'Exec',
-    list: [{ title: 'app — Open in Native Terminal', disabled: true, action }],
-  }]} /></ActivityTestRoot>);
+  await act(async () => {
+    render(<ActivityTestRoot><RightDrawerActions ctx={{ data: {} }} actions={[{
+      title: 'Exec',
+      list: [{ title: 'app — Open in Native Terminal', disabled: true, action }],
+    }]} /></ActivityTestRoot>);
+  });
   const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Exec' });
   expect(button.disabled).toBe(true);
   fireEvent.click(button);

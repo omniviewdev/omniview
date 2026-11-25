@@ -134,7 +134,9 @@ describe('GlobalCommandSearch scoped interaction', () => {
     expect(controller.getSnapshot().scopes).toEqual([connection]);
     expect(input).toHaveValue('pod');
     expect(await screen.findByRole('option', { name: /Pods/ })).toHaveAttribute('aria-selected', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove connection scope prod' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove connection scope prod' }));
+    });
     expect(controller.getSnapshot().scopes).toEqual([]);
     expect(input).toHaveValue('pro');
     expect(controller.getSnapshot().selectedKey).toBe(parentKey);
@@ -180,7 +182,9 @@ describe('GlobalCommandSearch scoped interaction', () => {
     fireEvent.keyDown(input, { key: 'ArrowLeft' });
     fireEvent.keyDown(input, { key: 'ArrowLeft' });
     expect(screen.getByRole('button', { name: /^Connection: prod/ })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.keyDown(input, { key: 'Backspace' });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Backspace' });
+    });
     expect(controller.getSnapshot().scopes).toEqual([]);
     expect(input).toHaveValue('pro');
   });
