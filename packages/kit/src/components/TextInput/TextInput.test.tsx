@@ -2,9 +2,10 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { useState, type ComponentType } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cssRules, declarationsOf } from '../../../scripts/cssRules.ts';
 import { Field } from '../Field';
+import { Sheet } from '../Sheet';
 import { TextInput, type TextInputProps } from './TextInput';
 import * as examples from './TextInput.examples';
 
@@ -317,6 +318,50 @@ describe('TextInput', () => {
     it('has the name it is given when it has no field around it', () => {
       render(input({ label: 'Search the table' }));
       expect(box().getAttribute('aria-label')).toBe('Search the table');
+    });
+  });
+
+  describe('autoFocus (the first field of a dialog)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('takes the focus once, when it mounts, and does not take it back on a later render', () => {
+      const view = render(input({ autoFocus: true }));
+      expect(document.activeElement).toBe(box());
+      const other = document.createElement('button');
+      document.body.append(other);
+      other.focus();
+      view.rerender(input({ autoFocus: true, value: 'x' }));
+      expect(document.activeElement).toBe(other);
+      other.remove();
+    });
+
+    it('takes nothing without it: a field on a page never moves the focus', () => {
+      render(input());
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('wins over Close inside a Sheet, which moves the focus to its first control before the field takes it', () => {
+      // jsdom has no modal dialog and no layout: stand-ins open the dialog as the attribute does, and give every element a box, so that the Sheet finds Close as its first stop.
+      const dialogPrototype = HTMLDialogElement.prototype as unknown as { showModal?: () => void };
+      dialogPrototype.showModal ??= function showModal(this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      };
+
+      vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(() => [{ width: 1, height: 1 }] as unknown as DOMRectList);
+      const sheet = (autoFocus: boolean) => (
+        <Sheet title="Create item" onClose={() => undefined}>
+          <Field label="Name">
+            <TextInput autoFocus={autoFocus} value="" onValueChange={() => undefined} />
+          </Field>
+        </Sheet>
+      );
+      const without = render(sheet(false));
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }));
+      without.unmount();
+      render(sheet(true));
+      expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Name' }));
     });
   });
 });

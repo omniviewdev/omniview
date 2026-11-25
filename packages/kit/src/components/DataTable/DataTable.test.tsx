@@ -4,6 +4,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { useMemo, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MenuHost, type MenuAction } from '../Menu';
 import { DataTable } from './DataTable';
 import type { DataTableColumn, DataTableSort } from './types';
 
@@ -339,5 +340,45 @@ describe('row activation', () => {
     expect(screen.getByRole('table').hasAttribute('data-ov-activatable')).toBe(false);
     rerender(<DataTable label="Items" rows={items(5)} getRowKey={getRowKey} columns={columns} onRowActivate={() => undefined} />);
     expect(screen.getByRole('table').hasAttribute('data-ov-activatable')).toBe(true);
+  });
+});
+
+describe('rowMenu', () => {
+  const resolver = vi.fn((key: string | undefined): MenuAction[] | null => (key === undefined || key === 'gone' ? null : [{ kind: 'action', id: 'open', label: `Open ${key}`, onSelect: () => undefined }]));
+  const withMenu = (rowCount: number, extra: Array<DataTableColumn<Item>> = []) => (
+    <MenuHost menus={{ rows: resolver }}>
+      <DataTable label="Items" rows={items(rowCount)} getRowKey={getRowKey} columns={[...columns, ...extra]} rowMenu="rows" />
+    </MenuHost>
+  );
+
+  afterEach(() => {
+    resolver.mockClear();
+  });
+
+  it('opens one menu for the row that was right-clicked, resolving nothing until then', () => {
+    render(withMenu(10));
+    expect(resolver).not.toHaveBeenCalled();
+    fireEvent.contextMenu(cellOf(bodyRow(3), 1), { button: 2, clientX: 40, clientY: 60 });
+    expect(resolver).toHaveBeenCalledExactlyOnceWith('k3');
+    expect(screen.getByRole('menuitem', { name: 'Open k3' })).toBeTruthy();
+  });
+
+  it('opens from Shift+F10 on a control inside the row, and keeps rows out of the Tab order', () => {
+    const control: Array<DataTableColumn<Item>> = [{ id: 'go', header: 'Go', fit: 'fixed', width: 60, cell: (row) => <button type="button">{`Go ${row.name}`}</button> }];
+    render(withMenu(10, control));
+    expect(bodyRow(2).hasAttribute('tabindex')).toBe(false);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Go item-2' }), { key: 'F10', shiftKey: true });
+    expect(screen.getByRole('menuitem', { name: 'Open k2' })).toBeTruthy();
+  });
+
+  it('opens no menu for a key that names no row, and marks no row without rowMenu', () => {
+    const { rerender } = render(withMenu(3));
+    expect(bodyRow(0).getAttribute('data-ov-menu-key')).toBe('k0');
+    const stale = bodyRow(1);
+    stale.setAttribute('data-ov-menu-key', 'gone');
+    fireEvent.contextMenu(cellOf(stale, 0), { button: 2 });
+    expect(screen.queryByRole('menu')).toBeNull();
+    rerender(<DataTable label="Items" rows={items(3)} getRowKey={getRowKey} columns={columns} />);
+    expect(bodyRow(0).hasAttribute('data-ov-menu')).toBe(false);
   });
 });

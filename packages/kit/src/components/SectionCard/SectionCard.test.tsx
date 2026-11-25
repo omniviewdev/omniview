@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentType, ReactElement } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { cssRules, declarationsOf } from '../../../scripts/cssRules.ts';
 import { rootWrites } from '../../../scripts/rootWrites.ts';
 import { SectionCard, type SectionCardProps } from './SectionCard';
@@ -143,6 +143,41 @@ describe('SectionCard', () => {
     expect([accepted, withClass, withStyle, levelOne, levelFive, elementTitle, numberMeta, untitled]).toHaveLength(8);
   });
 
+  it('collapses on its own: the toggle is a button with aria-expanded and aria-controls, the body unmounts while closed, the lane stays', () => {
+    const { container } = render(
+      <SectionCard title="Members" meta="3" actions={<button type="button">View all</button>} collapse={{ defaultOpen: true }}>
+        text
+      </SectionCard>,
+    );
+    const toggle = screen.getByRole('button', { name: 'Collapse Members' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const body = container.querySelector('[data-ov-part="body"]')!;
+    expect(toggle.getAttribute('aria-controls')).toBe(body.id);
+    expect(container.querySelector('[data-ov-part="lane"]')!.querySelectorAll('button')[1]).toBe(toggle);
+
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: 'Expand Members' }).getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.hasAttribute('aria-controls')).toBe(false);
+    expect(container.querySelector('[data-ov-part="body"]')).toBeNull();
+    expect(container.querySelector('[data-ov-part="meta"]')?.textContent).toBe('3');
+    expect(screen.getByRole('button', { name: 'View all' })).toBeDefined();
+  });
+
+  it('is driven by the caller when `open` is given: it reports the change and shows only what it is told', () => {
+    const onOpenChange = vi.fn();
+    const { container, rerender } = render(<SectionCard title="Members" collapse={{ open: false, onOpenChange }}>text</SectionCard>);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Members' }));
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(true);
+    expect(container.querySelector('[data-ov-part="body"]')).toBeNull();
+    rerender(<SectionCard title="Members" collapse={{ open: true, onOpenChange }}>text</SectionCard>);
+    expect(container.querySelector('[data-ov-part="body"]')?.textContent).toBe('text');
+  });
+
+  it('draws no toggle without `collapse`', () => {
+    render(<SectionCard title="Members">text</SectionCard>);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
   it('writes nothing to the document root: no attribute, no style, no custom property', () => {
     const root = document.documentElement;
     const before = root.getAttribute('style');
@@ -180,6 +215,11 @@ const MATRIX: Readonly<Record<string, Row>> = {
   LevelThree: { headings: ['H3 Containers'], meta: '2', padded: true, body: true },
   LevelFour: { headings: ['H4 Init containers'], padded: true, body: true },
   LongTitle: { headings: ['H2 Recent warnings from the orders-api rollout in the north-yard group'], meta: '12', buttons: ['Events'], body: false },
+  CollapsibleOpen: { headings: ['H2 Members'], buttons: ['Collapse Members'], padded: true, body: true },
+  CollapsibleClosed: { headings: ['H2 Members'], buttons: ['Expand Members'], body: false },
+  CollapsibleClosedWithMeta: { headings: ['H2 Group A'], meta: '3', buttons: ['Expand Group A'], body: false },
+  CollapsibleWithMenu: { headings: ['H2 Group A'], meta: '3', buttons: ['Actions for Group A', 'Collapse Group A'], padded: true, body: true },
+  CollapsibleControlled: { headings: ['H2 Members'], meta: '3', buttons: ['Collapse Members'], padded: true, body: true },
   LabelsSection: { headings: ['H2 Labels'], meta: '3', padded: true, body: true },
 };
 

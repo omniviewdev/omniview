@@ -1,4 +1,5 @@
 import { Button, IconButton, KeyValue, SectionCard, TagList } from '@omniviewdev/kit';
+import { useState } from 'react';
 import styles from './SectionCard.examples.module.css';
 
 /** A title and nothing else: the lane is 29 px, a 28 px lane and its 1 px rule. A section with no body draws no body. */
@@ -128,3 +129,47 @@ export const LabelsSection = () => (
     </SectionCard>
   </div>
 );
+
+/** An open collapsible section: the toggle is the last control of the lane, a chevron up, named "Collapse <title>". The section keeps its own state. */
+export const CollapsibleOpen = () => (
+  <SectionCard title="Members" collapse={{ defaultOpen: true }} pad>
+    Three members belong to this group.
+  </SectionCard>
+);
+
+/** Closed: the body is not mounted, so a long list costs nothing; the chevron points down and the name is "Expand <title>". */
+export const CollapsibleClosed = () => (
+  <SectionCard title="Members" collapse={{}} pad>
+    Three members belong to this group.
+  </SectionCard>
+);
+
+/** The count stays in the lane when the section is closed. */
+export const CollapsibleClosedWithMeta = () => (
+  <SectionCard title="Group A" meta="3" collapse={{}} pad>
+    Three members belong to this group.
+  </SectionCard>
+);
+
+/** A menu button comes before the toggle; both are Tab stops. */
+export const CollapsibleWithMenu = () => (
+  <SectionCard
+    title="Group A"
+    meta="3"
+    collapse={{ defaultOpen: true }}
+    actions={<IconButton icon="ellipsis" label="Actions for Group A" variant="ghost" size="row" />}
+    pad
+  >
+    Three members belong to this group.
+  </SectionCard>
+);
+
+/** The caller owns the state: `open` and `onOpenChange`, here kept in a hook. */
+export const CollapsibleControlled = () => {
+  const [open, setOpen] = useState(true);
+  return (
+    <SectionCard title="Members" meta="3" collapse={{ open, onOpenChange: setOpen }} pad>
+      Three members belong to this group.
+    </SectionCard>
+  );
+};

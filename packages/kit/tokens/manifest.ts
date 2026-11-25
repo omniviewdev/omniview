@@ -4,7 +4,8 @@
  *
  * The names are the design lab's roles (mock `frontend/mock/base.css`, research chapters 01, 02, 04 section 9, 13 section 7,
  * 14 section 1). A colour role keeps the mock's name with its `--int-` prefix swapped for `--ov-`: `--int-bg-island` is
- * `--ov-bg-island`. There is ONE scale per kind of value and no alias for any of them; a role that changes meaning is renamed
+ * `--ov-bg-island`. The one group the mock does not name is `tint` (below): values the mock computes in CSS, written out here.
+ * There is ONE scale per kind of value and no alias for any of them; a role that changes meaning is renamed
  * and the old name is deleted in the same commit (strategy R6).
  *
  * Scale steps are named by their pixel value and the roles the mock gives them stay documentation: `spacing` 4 is the
@@ -88,6 +89,14 @@ export const COLOR_ROLE_GROUPS = {
     'brand-red',
     'brand-teal',
   ],
+  /**
+   * The tints of the data palette, one per hue: the hue mixed 24% over `bg-island`, the fill under a tinted avatar and under an
+   * unavailable swatch. The mock mixes in CSS with `color-mix` (the avatar `base.css` 1576, the unavailable swatch 2058, at 30%); the kit
+   * writes no colour function, so a theme carries each mix as a literal, and `tint.test.ts` holds every literal to the mix of its own
+   * theme. The hues are `link` (blue), `success-fg` (green), `warning-fg` (amber), `error-fg` (red), `chart-purple` (purple),
+   * `chart-teal` (cyan) and `fg-muted` (gray).
+   */
+  tint: ['tint-blue', 'tint-green', 'tint-amber', 'tint-red', 'tint-purple', 'tint-cyan', 'tint-gray'],
 } as const;
 
 export type ColorRoleGroup = keyof typeof COLOR_ROLE_GROUPS;

@@ -8,6 +8,8 @@ import type { ThemeDefinition } from './schema.ts';
  * (tag `spec-baseline-2026-11-16` in `omniviewdev/design-lab`), `frontend/mock/base.css` (blob 8bfdb89d0bb2b530fa1689fba8e52f156f48ea6a):
  * the `:root` block is `void`, the other eight are the `html:root[data-theme='<id>']` blocks. Values were copied by script, not
  * retyped; a mock value that changes is changed here and nowhere else.
+ * The seven `tint-*` roles are the one exception: the mock mixes them in CSS (`color-mix`), so they are computed here, per theme, as the
+ * data-palette hue mixed 24% over that theme's `bg-island` and rounded to the nearest 8-bit channel (`tint.test.ts` holds them to it).
  *
  * Ids are the nine ids the host already persists in `appearance.theme`. The mock calls the two high-contrast themes
  * `hc-dark` and `hc-light`; the persisted ids are `high-contrast-dark` and `high-contrast-light`, and a setting must not need migrating.
@@ -99,6 +101,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#E7157B',
       'brand-red': '#DD344C',
       'brand-teal': '#01A88D',
+      'tint-blue': '#2E3A52',
+      'tint-green': '#2D3E35',
+      'tint-amber': '#463822',
+      'tint-red': '#4E3235',
+      'tint-purple': '#3B3750',
+      'tint-cyan': '#2C3E3D',
+      'tint-gray': '#393B3E',
     },
   },
   {
@@ -185,6 +194,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#E7157B',
       'brand-red': '#DD344C',
       'brand-teal': '#01A88D',
+      'tint-blue': '#394356',
+      'tint-green': '#314239',
+      'tint-amber': '#4A3C27',
+      'tint-red': '#52363A',
+      'tint-purple': '#3F3B55',
+      'tint-cyan': '#304142',
+      'tint-gray': '#3E3F43',
     },
   },
   {
@@ -271,6 +287,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#C31268',
       'brand-red': '#C32138',
       'brand-teal': '#017260',
+      'tint-blue': '#C6D9FB',
+      'tint-green': '#C9DFD0',
+      'tint-amber': '#E3D7C2',
+      'tint-red': '#F0CACD',
+      'tint-purple': '#DBD7F5',
+      'tint-cyan': '#C9E0DE',
+      'tint-gray': '#D9D9DB',
     },
   },
   {
@@ -357,6 +380,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#E7157B',
       'brand-red': '#DD344C',
       'brand-teal': '#01A88D',
+      'tint-blue': '#373248',
+      'tint-green': '#26362C',
+      'tint-amber': '#3F2F19',
+      'tint-red': '#462A2C',
+      'tint-purple': '#342F47',
+      'tint-cyan': '#253534',
+      'tint-gray': '#2E2E30',
     },
   },
   {
@@ -443,6 +473,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#E7157B',
       'brand-red': '#DD344C',
       'brand-teal': '#01A88D',
+      'tint-blue': '#374555',
+      'tint-green': '#2F423B',
+      'tint-amber': '#483C29',
+      'tint-red': '#50363B',
+      'tint-purple': '#3E3B56',
+      'tint-cyan': '#2F4143',
+      'tint-gray': '#3A3E45',
     },
   },
   {
@@ -529,6 +566,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#E7157B',
       'brand-red': '#DD344C',
       'brand-teal': '#01A88D',
+      'tint-blue': '#1B4C5F',
+      'tint-green': '#1A4B48',
+      'tint-amber': '#334536',
+      'tint-red': '#3B3F49',
+      'tint-purple': '#284464',
+      'tint-cyan': '#194A51',
+      'tint-gray': '#254851',
     },
   },
   {
@@ -615,6 +659,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#DE1476',
       'brand-red': '#DC2B44',
       'brand-teal': '#01836E',
+      'tint-blue': '#C7D4D4',
+      'tint-green': '#C7D7BA',
+      'tint-amber': '#E1D1AD',
+      'tint-red': '#EEC3B8',
+      'tint-purple': '#DAD0E0',
+      'tint-cyan': '#C8D9C9',
+      'tint-gray': '#D5D3C6',
     },
   },
   {
@@ -701,6 +752,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#E7157B',
       'brand-red': '#DD344C',
       'brand-teal': '#01A88D',
+      'tint-blue': '#27343D',
+      'tint-green': '#1C3422',
+      'tint-amber': '#3D2E12',
+      'tint-red': '#3D2121',
+      'tint-purple': '#28243B',
+      'tint-cyan': '#192A28',
+      'tint-gray': '#313131',
     },
   },
   {
@@ -787,6 +845,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#A50F58',
       'brand-red': '#A51C2F',
       'brand-teal': '#016051',
+      'tint-blue': '#C5D4E2',
+      'tint-green': '#C2D7C9',
+      'tint-amber': '#DBD2C2',
+      'tint-red': '#E8C2C6',
+      'tint-purple': '#DBD7F5',
+      'tint-cyan': '#C9E0DE',
+      'tint-gray': '#CECECE',
     },
   },
 ];

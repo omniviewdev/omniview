@@ -25,12 +25,13 @@ export const entries = {
   },
   Sheet: {
     category: 'Overlays',
-    summary: 'Sheet opens a modal with a named header, a Close control, and a body laid out by the caller.',
+    summary: 'Sheet opens a modal with a named header, a Close control, a body laid out by the caller, and an optional footer.',
     guidance: [
       'Render Sheet only while open. Give it a visible title and handle onClose by unmounting it. Escape and Close request dismissal; pressing outside does not.',
       'The native dialog enters the browser top layer without a portal and makes the rest of the page inert. Tab wraps inside. Focus the opener before mounting if pointer activation does not focus it; Sheet restores it on close if focus is otherwise lost and the opener still exists.',
       'Close is the first control; content can take initial focus when the task calls for it. Keep draft state above Sheet if it must survive closing and reopening.',
-      'The centered frame is at most 1060 × 640 px and shrinks to leave 24 px on each side. The body fills the space under the header, clips overflow, and adds no padding. Put scrolling and padding in the body layout.',
+      'size is narrow (440 px), standard (640 px, the default), or wide (900 px), each as tall as its content up to the window, or settings, a fixed 1060 × 640 px frame. In the dialog sizes the body is padded and is the one scroller; in settings it fills the frame, clips, and its content scrolls itself.',
+      'Add icon for a glyph before the title, meta for a short muted line under it, and footer for the dialog’s actions, usually a FormActions, which stays in place while the body scrolls. Use describedBy to name the body element that says what the dialog is for.',
     ],
   },
   TooltipHost: {
@@ -91,6 +92,16 @@ export const entries = {
       'Use level 2 under the page heading, or level 3 or 4 when the section is nested. The heading level changes the outline, not the visual treatment.',
       'Keep meta short, such as a count or scope. Put trailing controls in actions and prefer ghost row-size buttons to preserve the default heading lane height. Give any icon-only action an accessible label.',
       'Use pad for text, chips, or key-value rows that need a 12 px block inset. Leave it off for tables that should sit flush below the rule. A long title clips before the trailing actions.',
+    ],
+  },
+  ConfirmDialog: {
+    category: 'Overlays',
+    summary: 'ConfirmDialog asks a person to confirm one action, in a narrow Sheet with Cancel and a verb.',
+    guidance: [
+      'Render it only while open. Name the action in title, say what happens in one line in message, and put only the verb in confirmLabel. onCancel handles Cancel, Close, and Escape; the caller stops rendering it.',
+      'Use subject to show the object’s name, kind, meta, and status above the message. Never use the message for a question or a consent checkbox.',
+      'Use tier="destructive" for a cascade or an action with no way back. The subject’s name must then be typed before Confirm works, and the field takes focus.',
+      'tone="danger" fills Confirm with the error role and starts focus on Cancel, so Enter is the safe answer. Set busy while the operation runs, and error to say why it failed; the dialog stays open.',
     ],
   },
 } satisfies Record<string, Guide>;

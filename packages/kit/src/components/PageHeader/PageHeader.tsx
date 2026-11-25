@@ -7,7 +7,7 @@ import { KindTile, type KindTileTone } from '../KindTile';
 import { menuTrigger, useMenu } from '../Menu';
 import { Status, type StatusRole } from '../Status';
 import { laneMode } from './lane';
-import { overflowItems, type MenuEntry } from './overflow';
+import { isDisabled, overflowItems, type OverflowEntry } from './overflow';
 import type { PageOperation } from './operation';
 import styles from './PageHeader.module.css';
 import { PageOperationView } from './PageOperation';
@@ -27,8 +27,8 @@ export type PageHeaderCommand = {
   readonly busy?: boolean | undefined;
 };
 
-/** An item of the overflow menu. */
-export type PageHeaderMenuItem = MenuEntry;
+/** An item of the overflow menu: the kit Menu's action fields (`icon`, `disabled` as a flag or a reason, `destructive`) and an optional separator before it. */
+export type PageHeaderMenuItem = OverflowEntry;
 
 /** The commands of the header, in the one order the design allows (design 12 PH2): they are drawn in this order and no other. */
 export type PageHeaderCommands = {
@@ -100,7 +100,7 @@ const MAX_FACTS = 4;
 
 type OverflowProps = {
   readonly title: string;
-  readonly entries: readonly MenuEntry[];
+  readonly entries: readonly OverflowEntry[];
   readonly visible: ReadonlySet<string>;
 };
 
@@ -114,7 +114,7 @@ function Overflow({ title, entries, visible }: OverflowProps) {
 
   const revision = JSON.stringify([
     title,
-    entries.filter((entry) => !visible.has(entry.id)).map(({ id, label, disabled, destructive, separatorBefore }) => [id, label, disabled === true, destructive === true, separatorBefore === true]),
+    entries.filter((entry) => !visible.has(entry.id)).map(({ id, label, icon, disabled, destructive, separatorBefore }) => [id, label, icon ?? null, disabled ?? false, destructive === true, separatorBefore === true]),
   ]);
   const id = useMenu(
     () => overflowItems(entries, visible, (key) => {
@@ -124,7 +124,7 @@ function Overflow({ title, entries, visible }: OverflowProps) {
       }
 
       const entry = current.entries.find((candidate) => candidate.id === key);
-      if (entry !== undefined && entry.disabled !== true) {
+      if (entry !== undefined && !isDisabled(entry)) {
         entry.onSelect();
       }
     }),
@@ -174,7 +174,7 @@ export function PageHeader({ title, subtitle, level = 1, path, tile, state, fact
   const secondary = commands?.secondary ?? [];
   const drawn = secondary.slice(0, MAX_SECONDARY);
   const visible = new Set([primary, ...drawn, danger, utility].flatMap((command) => (command === undefined ? [] : [command.id])));
-  const moved = secondary.slice(MAX_SECONDARY).map((command): MenuEntry => ({ id: command.id, label: command.label, onSelect: command.onSelect, disabled: command.disabledReason !== undefined }));
+  const moved = secondary.slice(MAX_SECONDARY).map((command): OverflowEntry => ({ id: command.id, label: command.label, icon: command.icon, onSelect: command.onSelect, disabled: command.disabledReason }));
   const entries = [...moved, ...(commands?.menu ?? [])];
   const hasOverflow = entries.some((entry) => !visible.has(entry.id));
 

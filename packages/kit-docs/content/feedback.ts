@@ -29,4 +29,13 @@ export const entries = {
       'Use spokenKeys when shortcut glyphs do not read clearly, and label when the action needs text beside the chord.',
     ],
   },
+  Notice: {
+    category: 'Primitives',
+    summary: 'An inline message in a box tinted by its tone.',
+    guidance: [
+      'Pick tone for the status glyph and colors: info, success, warning, or error. Write the message as a string; an optional title leads it.',
+      'Add live="alert" for a problem that appears after an action, or "status" for a result. Without live, the notice is plain content.',
+      'Put at most two compact Buttons in actions, such as Retry.',
+    ],
+  },
 } satisfies Record<string, Guide>;

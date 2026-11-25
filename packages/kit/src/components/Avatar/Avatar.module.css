@@ -1,0 +1,106 @@
+@layer ov.components {
+  /* A box of one fixed size that holds initials, a glyph or a picture (the mock's `.avatar`). The paint is two private properties that the
+     data colour sets and the fill reads: tinted, the box is the tint of the hue and its text the hue; solid, the box is the hue and its
+     text the ink of a data fill. The glyph is ink, so it takes the text colour. The box is contained, so a picture or a long name never
+     moves the layout. */
+  .root {
+    --_hue: var(--ov-link);
+    --_tint: var(--ov-tint-blue);
+
+    display: inline-flex;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    contain: strict;
+    background-color: var(--_tint);
+    color: var(--_hue);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-12);
+    font-synthesis: none;
+    font-weight: 600;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .root[data-ov-size='16'] {
+    width: 16px;
+    height: 16px;
+  }
+
+  .root[data-ov-size='20'] {
+    width: 20px;
+    height: 20px;
+  }
+
+  .root[data-ov-size='24'] {
+    width: 24px;
+    height: 24px;
+  }
+
+  .root[data-ov-size='28'] {
+    width: 28px;
+    height: 28px;
+  }
+
+  .root[data-ov-shape='square'] {
+    border-radius: var(--ov-radius-control);
+  }
+
+  .root[data-ov-color='blue'] {
+    --_hue: var(--ov-link);
+    --_tint: var(--ov-tint-blue);
+  }
+
+  .root[data-ov-color='green'] {
+    --_hue: var(--ov-success-fg);
+    --_tint: var(--ov-tint-green);
+  }
+
+  .root[data-ov-color='amber'] {
+    --_hue: var(--ov-warning-fg);
+    --_tint: var(--ov-tint-amber);
+  }
+
+  .root[data-ov-color='red'] {
+    --_hue: var(--ov-error-fg);
+    --_tint: var(--ov-tint-red);
+  }
+
+  .root[data-ov-color='purple'] {
+    --_hue: var(--ov-chart-purple);
+    --_tint: var(--ov-tint-purple);
+  }
+
+  .root[data-ov-color='cyan'] {
+    --_hue: var(--ov-chart-teal);
+    --_tint: var(--ov-tint-cyan);
+  }
+
+  .root[data-ov-color='gray'] {
+    --_hue: var(--ov-fg-muted);
+    --_tint: var(--ov-tint-gray);
+  }
+
+  /* A colour of the caller's is a data fill: the hue itself, with the ink of a data fill on it. */
+  .root[data-ov-fill='solid'] {
+    background-color: var(--_hue);
+    color: var(--ov-fg-on-data);
+  }
+
+  /* A picture covers a circle; in a square it is contained, whole, over the tint. */
+  .image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .root[data-ov-shape='square'] > .image {
+    object-fit: contain;
+  }
+}
