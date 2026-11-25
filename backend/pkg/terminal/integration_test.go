@@ -149,15 +149,15 @@ type answeringSink struct {
 }
 
 // queriesIn counts the queries in the read, with what the last read left before it, and keeps the end that may begin one.
-func (a *answeringSink) queriesIn(id string, data []byte) (cursor, attributes int) {
+func (a *answeringSink) queriesIn(id string, data []byte) (int, int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.tails == nil {
 		a.tails = map[string][]byte{}
 	}
 	window := append(append([]byte(nil), a.tails[id]...), data...)
-	cursor = bytes.Count(window, []byte("\x1b[6n"))
-	attributes = bytes.Count(window, []byte("\x1b[c")) + bytes.Count(window, []byte("\x1b[0c"))
+	cursor := bytes.Count(window, []byte("\x1b[6n"))
+	attributes := bytes.Count(window, []byte("\x1b[c")) + bytes.Count(window, []byte("\x1b[0c"))
 	// Keep the last three bytes (a query is four at most), unless they belong to a query that is complete: it is not carried on.
 	keep := min(3, len(window))
 	tail := window[len(window)-keep:]
