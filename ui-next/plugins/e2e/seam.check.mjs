@@ -155,11 +155,11 @@
 //      was answered and no terminal was started. A lease that runs out (a terminal of 20 s that the check hands to the page through the window's slots, let go when the page navigates away): the host ends it and keeps nothing of it, the capability opens nothing, and a page that loads later
 //      finds the tab ended with the earlier output gone.
 //   r5  a terminal whose taker has gone, and a terminal across a cut of its stream (T2d, `checkTerminalFollowups`). Take it back: a second page takes the terminal over (the first says `Taken over by another tab` and offers no way back while the taker is there); the second closes, and the first
-//      (which asks the host from time to time) says that the tab that took the terminal has closed and that the shell keeps running until its lease ends, and a `Take it back` button appears, which the keyboard reaches with Tab and presses with Enter in one round and the pointer clicks in the other:
+//      (told by the host on its own stream, `released`, the moment the taker's stream ends: nothing is asked, nothing polls) says that the tab that took the terminal has closed and that the shell keeps running until its lease ends, and a `Take it back` button appears, which the keyboard reaches with Tab and presses with Enter in one round and the pointer clicks in the other:
 //      the same shell runs again in the same tab on one new stream, after ListChannelTerminals. A tab that takes the terminal back must not displace another: the press asks the host and opens no stream when a third tab holds the terminal. A page whose events socket is away (a TCP proxy cuts it)
-//      loses nothing of the terminal's business. A cut of the terminal stream in the middle of a numbered stream: the page connects again by itself with `from_offset` at the last byte it had, the host answers from there with nothing lost, every reading counts up by one across the join; an outage of
+//      loses nothing of the terminal's business: it is told `released` on its stream while its events socket is away. A cut of the terminal stream in the middle of a numbered stream: the page connects again by itself with `from_offset` at the last byte it had, the host answers from there with nothing lost, every reading counts up by one across the join; an outage of
 //      5 s ends the same way; one that outlasts the page's three tries (250 ms, 1 s, 4 s) makes the feed fail in words and a reload takes the same shell back; a shell the host ended while the page was away (killed by its pid) is an ended tab, and the page does not attach in a loop.
-//   r6  a terminal across the cuts of the page's two sockets (the review of #677, B1, `checkTerminalReconnect`): the events socket cut for 1 s and for 5 s, then the terminal stream for 1 s and for 5 s. The same pid, a line typed during each cut and one after it reach the shell in order, no call of the
+//   r6  a terminal across the cuts of the page's two sockets (the review of #677, B1, `checkTerminalReconnect`): the events socket cut for 1 s and for 5 s, then the terminal stream for 1 s and for 5 s. The same pid, a line typed during each cut (also when it is typed before the page has seen its stream close: the page keeps what the host has not said it applied and sends the rest after `ready`) and one after it reach the shell once and in order, no call of the
 //      page answered not-found or FORBIDDEN and no frame was a `not-found`, and the shell can still be ended. Controls: RECONNECT_CONTROLS.
 //   r7  two pages and nothing of one reaches the other (`checkTerminalIsolation`): a canary printed in the first terminal is in no frame or event of the second page; the 13 bare-id bindings named with the first terminal's id answer `omniview:session/not-found` from the second page and from callers that are no
 //      window; a stream opened with a wrong capability gets exactly one `0x86` frame. The refusals of the second page's own calls are allowed for that phase only (RUNTIME_ALLOW). Controls: ISOLATION_CONTROLS.
@@ -7199,7 +7199,7 @@ async function transcriptOf(base, id) {
   return outputSince(id, outputEnd(id) - 1_048_576);
 }
 
-const HOST_FRAMES = new Map([[0x81, 'ready'], [0x82, 'output'], [0x83, 'gap'], [0x84, 'ended'], [0x85, 'takenOver'], [0x86, 'notFound']]);
+const HOST_FRAMES = new Map([[0x81, 'ready'], [0x82, 'output'], [0x83, 'gap'], [0x84, 'ended'], [0x85, 'takenOver'], [0x86, 'notFound'], [0x87, 'applied'], [0x88, 'released'], [0x89, 'unsupported']]);
 
 /**
  * Every terminal stream a page opens (a WebSocket at `/wails/stream/ws`), and the frames each carries in both directions, in the order they came: `frames` are `{ n, ms, dir, type, ... }` (`n` is the counter of `nextOrder`; `dir` is `page` or `host`). A frame's bytes are not kept but for the
@@ -7295,6 +7295,10 @@ function watchStreams(page) {
           socket.replayBytes += bytes.length;
           while (socket.replayBytes > OUTPUT_WINDOW && socket.replay.length > 1) socket.replayBytes -= socket.replay.shift().length;
         }
+      } else if (type === 'applied' && payload.length === 9) {
+        note({ dir: 'host', type, n: Number(payload.readBigUInt64BE(1)) });
+      } else if (type === 'unsupported') {
+        note({ dir: 'host', type, v: json()?.v });
       } else if (type === 'gap' && payload.length === 17) {
         note({ dir: 'host', type, from: Number(payload.readBigUInt64BE(1)), to: Number(payload.readBigUInt64BE(9)) });
       } else if (type === 'ended') {
@@ -9112,7 +9116,7 @@ async function checkTerminalReattach(page, base, engine) {
   const listed = sinceOf(wire, 'ListChannelTerminals', undefined, one.startedAt);
   assert.ok(listed.length >= 1 && listed.every((call) => call.status === 200 && call.args[0].includes(first)), `${engine}: after the reload the page asked the host for its terminals (${String(listed.length)} ListChannelTerminals) and each question named this one`);
   const request = one.attach.attach;
-  assert.ok(request.v === 1 && request.from_offset === undefined, `${engine}: the page took the terminal over with its capability and no offset (a page that has rendered nothing has nothing to continue)`);
+  assert.ok(request.v === 2 && request.from_offset === undefined, `${engine}: the page took the terminal over with its capability and no offset (a page that has rendered nothing has nothing to continue)`);
   const ready = one.attach.ready;
   assert.ok(ready.ended == null && ready.end > 0 && ready.lost === 0 && ready.session?.id === first, `${engine}: the host answered the attach with the replay, nothing lost and no end (start ${String(ready.start)}, end ${String(ready.end)}, lost ${String(ready.lost)})`);
   assert.deepEqual(await terminalIds(base), [first], `${engine}: the host holds the one terminal, and the reload made no other`);
@@ -9711,14 +9715,8 @@ async function checkTerminalFollowups(browser, getHost, engine) {
   await a.bringToFront();
   const guardButton = a.getByRole('button', { name: 'Take it back', exact: true });
   await waitUntil('the first tab of the guard to offer Take it back once the taker has closed', async () => (await guardButton.count()) === 1, 60_000);
-  // The first tab asks the host from time to time while it is shown (when it is brought forward, gets the focus, and every few seconds), and a true answer would take the button away by itself. The guard is about the PRESS, so until the press the host's answer to the first tab's questions is the one it had when the tab was free (a stand-in in this page only: the host is never changed); the press is then made on a button that is really stale, and its own question is answered by the host.
-  const staleBody = JSON.stringify((await listedTerminals(base(), { ended: true })).filter((entry) => entry.id === id));
-  let serveStale = true;
-  const staleList = async (route) => {
-    if (!serveStale || calledMethod(route.request()) !== methodIdOf(EXEC_SERVICE, 'ListChannelTerminals')) return route.fallback();
-    return route.fulfill({ status: 200, contentType: 'application/json', body: staleBody });
-  };
-  await a.route('**/wails/runtime', staleList);
+  // Nothing asks the host while the button stands: the host told the first tab its stream when the terminal was free, and says nothing when a third tab takes the terminal from nobody. The questions the first tab asks from here are counted.
+  const guardQuiet = Date.now();
   const guardThird = await context.newPage();
   watchRequests(guardThird);
   PAGE_LABELS.set(guardThird, 'the third tab of the guard');
@@ -9737,7 +9735,7 @@ async function checkTerminalFollowups(browser, getHost, engine) {
   }
 
   assert.deepEqual(guardOffered.filter((count) => count !== 1), [], `${engine}: the first tab still offers its one Take it back when a third tab holds the terminal and the host has told it nothing (the button is stale, which is what the press has to guard against): ${JSON.stringify(guardOffered)}`);
-  serveStale = false;
+  assert.equal(sinceOf(first.wire, 'ListChannelTerminals', undefined, guardQuiet).length, 0, `${engine}: the first tab asked the host nothing on its own while its button stood (nothing polls): the press is the one question`);
   const guardPressAt = Date.now();
   await guardButton.click();
   const guardTold = await watchPanelUntil(a, (state) => state.lane.some((words) => /Taken over by another tab/.test(words)), 60_000, guardPressAt);
@@ -9752,8 +9750,7 @@ async function checkTerminalFollowups(browser, getHost, engine) {
   await typeLine(guardThird, 'echo GUARD_THIRD_$((6*7))');
   await assertTakesInput(guardThirdSocket, engine, 'in the third tab after the first tab asked who holds the terminal');
   await shellSays(base(), id, /\nGUARD_THIRD_42\n/, 'what was typed in the third tab to reach the shell');
-  await a.unroute('**/wails/runtime', staleList);
-  note('take it back guard', `the first tab offered the button with a third tab holding the terminal (its own looks at the host were answered as before the third tab came), the press asked the host, opened no stream, said "${guardTold.seen.at(-1).state.lane.join(' ')}" ${String(guardTold.took)} ms after, and the third tab went on typing in the same shell`);
+  note('take it back guard', `the first tab offered the button with a third tab holding the terminal (it asked the host nothing), the press asked the host, opened no stream, said "${guardTold.seen.at(-1).state.lane.join(' ')}" ${String(guardTold.took)} ms after, and the third tab went on typing in the same shell`);
   await endTerminals(base(), a);
   await context.close();
 
@@ -9817,7 +9814,7 @@ async function checkTerminalFollowups(browser, getHost, engine) {
     };
     // (3) A page whose events socket is away. The first tab (through the proxy) has lost the terminal to a second tab; its events socket is cut and kept away until the check lets it back. The order is forced by what the check sees: the outage is in force when the proxy has
     // refused a reconnect, the release has happened when the host lists the terminal as held by nobody, and only then is the socket let back. (a) The second tab stays: the first tab offers no way back. (b) The second tab closes while the socket is away: the host
-    // releases the terminal and the first tab is not told (it never was); it still says "taken over" until the socket is back, then asks the host, says that the taker has closed, offers the button, and the press takes the terminal back: ListChannelTerminals first, one stream, the same shell.
+    // releases the terminal and tells the first tab's terminal stream (`released`: the release does not need the events socket), so the first tab says that the taker has closed and offers the button while its events socket is away, asking the host nothing; the press takes the terminal back (once the socket is back): ListChannelTerminals first, one stream, the same shell.
     await forgetSession(base());
     const missContext = await browser.newContext({ viewport });
     const away = await missContext.newPage();
@@ -9864,15 +9861,20 @@ async function checkTerminalFollowups(browser, getHost, engine) {
     assert.deepEqual(awayOffered.filter((count) => count > 0), [], `${engine}: after its events socket came back, with the second tab still open, the first tab offers no Take it back (the host says that the terminal is held): ${JSON.stringify(awayOffered)}`);
     assert.match((await seePanel(away)).lane.join(' '), /Taken over by another tab/, `${engine}: after its events socket came back, with the second tab still open, the first tab still says that another tab took the terminal`);
 
+    // The release does not travel on the events socket: the host tells the first tab's terminal stream (`released`) the moment the second tab's stream ends, so the first tab is told, and offers the button, while its events socket is still away.
+    const awayHeld = awaySeen.streams.of(awayTerminal.id).at(-1);
     await staged('the second tab closes');
     await missTaker.close();
     await waitUntil('the host to hold the terminal for nobody once the second tab was gone', async () => (await listedAs(awayTerminal.id))?.attached === false, 30_000);
     const missedAt = Date.now();
-    await restored('the second tab had closed');
     const heardLate = await watchPanelUntil(away, (state) => state.lane.some((words) => /The tab that took this terminal has closed\. The shell keeps running until its lease ends\./.test(words)), 60_000, missedAt);
-    assert.ok(heardLate.ok, `${engine}: after its events socket came back the first tab says that the tab that took the terminal has closed, and that the shell keeps running until its lease ends, within 60 s (it asked the host): ${timelineOf(heardLate.seen)}`);
+    assert.ok(heardLate.ok, `${engine}: with its events socket still away the first tab says that the tab that took the terminal has closed, and that the shell keeps running until its lease ends, within 60 s (the host told its terminal stream): ${timelineOf(heardLate.seen)}`);
+    assert.equal(gotOf(awayHeld, 'released').length, 1, `${engine}: the host sent the first tab's stream released, once (it sent ${String(gotOf(awayHeld, 'released').length)})`);
+    await waitUntil('the first tab\'s stream to be seen closed after released', async () => awayHeld.closedMs > 0, 30_000);
     await awayButton.waitFor({ timeout: 10_000 });
-    assert.equal(await awayButton.count(), 1, `${engine}: after its events socket came back the first tab offers one Take it back button`);
+    assert.equal(await awayButton.count(), 1, `${engine}: with its events socket still away the first tab offers one Take it back button`);
+    assert.equal(sinceOf(awaySeen.wire, 'ListChannelTerminals', undefined, missedAt).length, 0, `${engine}: the first tab asked the host nothing to learn it: the host said so`);
+    await restored('the second tab had closed');
     const latePressAt = Date.now();
     await away.bringToFront();
     await awayButton.click();
@@ -9887,7 +9889,7 @@ async function checkTerminalFollowups(browser, getHost, engine) {
     await assertTakesInput(lateAttaches[0], engine, 'after Take it back, after a release the first tab had missed');
     const pidLate = Number((await shellSays(base(), awayTerminal.id, /\nPID_LATE_(\d+)\n/, 'the shell to say its pid after Take it back, after a release the first tab had missed'))[1]);
     assert.equal(pidLate, awayTerminal.pid, `${engine}: the terminal that was taken back after a release the first tab had missed is the shell it was: pid ${String(awayTerminal.pid)}`);
-    note('a page whose events socket was away', `with the second tab open the first offered no button when its socket was back; with the second tab closed while it was away the first still said "taken over" until it asked the host, then said so ${String(heardLate.took)} ms after the release was seen by the host, and the press took the terminal back after ${String(lateBack.took)} ms (the proxy cut ${String(proxy.events.counts.cut)}, refused ${String(proxy.events.counts.refused)} and let ${String(proxy.events.counts.passed)} events sockets through so far)`);
+    note('a page whose events socket was away', `with the second tab open the first offered no button when its socket was back; with the second tab closed while it was away the first was told on its terminal stream (released) and said so ${String(heardLate.took)} ms after the release was seen by the host, asking nothing, and the press took the terminal back after ${String(lateBack.took)} ms (the proxy cut ${String(proxy.events.counts.cut)}, refused ${String(proxy.events.counts.refused)} and let ${String(proxy.events.counts.passed)} events sockets through so far)`);
     await endTerminals(base(), away);
     await missContext.close();
 
@@ -10005,16 +10007,14 @@ async function checkTerminalReconnect(browser, getHost, engine) {
       const target = proxy[kind];
       const passedBefore = target.counts.passed;
       const sinceCut = Date.now();
-      const old = kind === 'stream' ? seen.streams.of(id).at(-1) : undefined;
       // The staging of the cut (no control: a cut that cuts nothing leaves nothing to wait for, and the steps below fail by their own words).
       const cut = target.cut();
       if (kind === 'events') noteEventsCut(page);
       // A cut stream stays refused until the outage line is typed, so that the line is typed with no stream to take it; the refusal is then let go of when the cut has lasted `ms`.
       target.refuse(Number.POSITIVE_INFINITY);
       assert.ok(cut > 0, `${engine}: ${label}: the cut was real: the proxy cut ${kind === 'events' ? "the page's events socket" : "the terminal's stream"} (it cut ${String(cut)})`);
-      // What is typed in the instant between the cut and the page's seeing it goes down a stream that is gone (the protocol acknowledges no input), so the page is waited for to see its stream closed: from then on what it is typed waits for the stream that comes back.
-      if (old !== undefined) await waitUntil(`the page to see its stream closed after ${label}`, async () => old.closedMs > 0, 30_000);
-      // A line typed while the cut is in force: on a cut stream it waits and goes after `ready`, on a cut events socket nothing waits.
+      // A line typed while the cut is in force, with no wait for the page to see its stream closed: what is typed in the instant between the cut and the page's seeing it goes down a stream that is gone, and the page keeps it until the host says it applied it
+      // (`ready.input_applied`, `applied`) and sends what the host did not take after the next `ready`, so that none is lost and none is typed twice. On a cut stream the rest waits and goes after `ready`, on a cut events socket nothing waits.
       await typeLine(page, `echo AWAY_${tag}_$((6*7))`);
       if (kind === 'stream') {
         assert.equal(attachedSince(seen.streams, id, sinceCut).filter((socket) => socket.ready !== undefined).length, 0, `${engine}: ${label}: the line was typed while the terminal had no stream: no replacement stream was ready when it was typed`);
@@ -10053,7 +10053,8 @@ async function checkTerminalReconnect(browser, getHost, engine) {
 
           const reached = await holdsWithin(async () => new RegExp(`\\nAWAY_${tag}_42\\n[\\s\\S]*\\nKEEP_${tag}_${n}_42\\n`).test(await plainTranscriptOf(base(), id)), 20_000);
           const frames = seen.streams.of(id).filter((socket) => socket.openedMs >= sinceCut - 2_000).map((socket) => `[open+${String(socket.openedMs - sinceCut)} close${socket.closedMs > 0 ? `+${String(socket.closedMs - sinceCut)}` : ' never'}: ${socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir === 'page' ? '>' : '<'}${frame.type}${frame.length === undefined ? '' : `(${String(frame.length)})`}@${String(frame.ms - sinceCut)}`).join(' ')}]`).join(' ');
-          assert.ok(reached, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote); the streams since the cut: ${frames}; the shell wrote ${JSON.stringify(plain(outputSince(id, outputEnd(id) - 600)))}`);
+          const away = (await plainTranscriptOf(base(), id)).split(`\nAWAY_${tag}_42\n`).length - 1;
+          assert.ok(reached && away === 1, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, once (${String(away)} times), in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote); the streams since the cut: ${frames}; the shell wrote ${JSON.stringify(plain(outputSince(id, outputEnd(id) - 600)))}`);
         },
       );
       await guarded(
@@ -10152,7 +10153,7 @@ async function probeStream(page, cap, marker = '1') {
         const frames = [];
         const socket = new WebSocket(`${location.origin.replace(/^http/, 'ws')}/wails/stream/ws?name=terminal&seam-probe=${probeMarker}`);
         socket.binaryType = 'arraybuffer';
-        socket.onopen = () => socket.send(new Uint8Array([1, ...new TextEncoder().encode(JSON.stringify({ v: 1, cap: capability }))]));
+        socket.onopen = () => socket.send(new Uint8Array([1, ...new TextEncoder().encode(JSON.stringify({ v: 2, cap: capability }))]));
         socket.onmessage = (event) => frames.push({ type: new Uint8Array(event.data)[0], length: event.data.byteLength });
         socket.onclose = () => resolve({ frames, closed: true });
         setTimeout(() => {
