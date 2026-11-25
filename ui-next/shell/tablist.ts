@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type RefObject } from 'react';
 import { tablistKey } from './core/tablist';
+import { bindStripDrag } from './stripDrag';
 
 // The one tab stop and the keys of a strip of tabs, for every strip of the shell: the tab strip of the top row and the panel's tool and session strips. `core/tablist.ts` holds the rule (what a
-// key does); this holds the DOM that carries it out: which tab is the stop, where the focus goes, that the tab on screen is brought into view, that the wheel scrolls the strip sideways, and
-// that a tab closed from the keyboard hands the focus to its neighbour and one moved from it keeps the focus. A strip is a scroller whose direct children are the tabs' faces, each carrying `data-tab-id` (a face is the
+// key does); this holds the DOM that carries it out: which tab is the stop, where the focus goes, that the tab on screen is brought into view, that the wheel scrolls the strip sideways, that a tab closed from the
+// keyboard hands the focus to its neighbour and one moved keeps the focus, and that the pointer drags a tab to another place (`stripDrag.ts`). A strip is a scroller whose direct children are the tabs' faces, each carrying `data-tab-id` (a face is the
 // `role="tab"` button itself, or an element that holds it and its close control).
 
 export type TablistOptions = {
@@ -13,8 +14,8 @@ export type TablistOptions = {
   readonly selected: string | null;
   /** Delete or Backspace on a tab. It answers whether the tab closed: the focus then goes to its neighbour. Absent: the strip cannot close a tab from the keyboard. */
   readonly onClose?: ((id: string) => boolean) | undefined;
-  /** Alt+Shift with an arrow, Home or End on a tab asks to move it to an index of `ids`. It answers whether the tab moved: the focus then stays on it. Absent: the strip cannot move a tab from the keyboard. */
-  readonly onMove?: ((id: string, to: number) => boolean) | undefined;
+  /** The tab moves to an index of `ids`: Alt+Shift with an arrow, Home or End on a tab asks for it, and so does the pointer dropping one (`stripDrag.ts`), which says too, beside the separator of the pinned tabs, which side of it the drop is on (`pinned`). It answers whether the tab moved: the focus then stays on it. Absent: the strip can move a tab neither way. */
+  readonly onMove?: ((id: string, to: number, pinned?: boolean) => boolean) | undefined;
 };
 
 export type Tablist = {
@@ -70,6 +71,19 @@ export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): 
   // The strip's scroller is drawn while there are tabs and not before (a strip of tools that a plugin brings starts with none): the listener below is bound again when it appears.
   const hasScroller = ids.length > 0;
 
+  // A tab moved from the keyboard or dropped by the pointer: one callback for both, and a tab that moved keeps the focus once the strip is drawn in its new order.
+  const move = (id: string, to: number, pinned?: boolean): void => {
+    if (onMove?.(id, to, pinned) === true) {
+      refocus.current = id;
+    }
+  };
+
+  // The pointer's drag is bound to the scroller once and drops through this render's `move`, whichever render that is.
+  const dropping = useRef(move);
+  useLayoutEffect(() => {
+    dropping.current = move;
+  });
+
   // The tab on screen is revealed when it changes or the tabs do (a new tab opens after it, a close moves it).
   useLayoutEffect(() => {
     const element = ref.current;
@@ -116,6 +130,19 @@ export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): 
     };
   }, [hasScroller]);
 
+  // The pointer drags a tab, in a strip that can move one: bound to the scroller that is there, as the wheel is.
+  const draggable = onMove !== undefined;
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null || !draggable) {
+      return undefined;
+    }
+
+    return bindStripDrag(element, (id, to, pinned) => {
+      dropping.current(id, to, pinned);
+    });
+  }, [hasScroller, draggable]);
+
   return {
     ref,
     stop,
@@ -156,9 +183,7 @@ export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): 
             reveal(event.currentTarget, face);
           }
         } else if ('move' in answer) {
-          if (onMove?.(hit.id, answer.move) === true) {
-            refocus.current = hit.id;
-          }
+          move(hit.id, answer.move);
         } else {
           const neighbour = ids[at + 1] ?? ids[at - 1];
           if (onClose?.(hit.id) === true && neighbour !== undefined) {

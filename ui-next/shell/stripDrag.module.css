@@ -1,0 +1,31 @@
+/* The pointer's drag of a tab (ch16 S56, S57; stripDrag.ts): the marker of the place a drop lands and the ghost of the tab, in one popover, so that the top layer holds them over the window without a z-index. */
+@layer ov.shell {
+  /* A point at the window's corner: the marker and the ghost are placed from it by `translate`, in the window's own pixels. It draws nothing and takes no pointer. */
+  .layer {
+    position: fixed;
+    inset: 0 auto auto 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background-color: transparent;
+    pointer-events: none;
+  }
+
+  /* 2 px wide and as high as a face, centred on its place. */
+  .marker {
+    position: absolute;
+    inset: 0 auto auto -1px;
+    inline-size: 2px;
+    block-size: 28px;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--ov-accent);
+  }
+
+  /* While a drag runs the window carries `data-tab-dragging`: the grabbing cursor shows over whatever the pointer is on and nothing is selected. Never on <html>: an attribute there restyles the page. */
+  :global([data-shell-part='window'][data-tab-dragging]),
+  :global([data-shell-part='window'][data-tab-dragging] *) {
+    cursor: grabbing;
+    user-select: none;
+  }
+}

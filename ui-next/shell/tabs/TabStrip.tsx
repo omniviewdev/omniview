@@ -28,10 +28,10 @@ export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
   const ids = useTabIds(store);
   const active = useActiveId(store);
   const say = useMaybeNotices()?.announcer.polite.announce;
-  // The model's own reorder decides where the tab lands and whether it crosses the pinned boundary; the strip says where it went (ch16 S45).
-  const onMove = (id: TabId, to: number): boolean => {
+  // The model's own reorder decides where the tab lands and whether it crosses the pinned boundary; a drop beside the separator of the pinned tabs says which side it is on. The strip says where the tab went (ch16 S45).
+  const onMove = (id: TabId, to: number, pinned?: boolean): boolean => {
     const before = store.getSnapshot().tabs[id];
-    if (before === undefined || store.reorder(id, to).status !== 'done') {
+    if (before === undefined || store.reorder(id, to, { pinned }).status !== 'done') {
       return false;
     }
 

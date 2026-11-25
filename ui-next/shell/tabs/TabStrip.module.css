@@ -66,8 +66,28 @@
     box-shadow: inset 0 0 0 1px var(--ov-tab-border);
   }
 
-  /* A faint divider in the gap between two resting neighbours, never beside the tab on screen or a hovered face. It is paint: no target, no stop. */
-  .item:not([data-active], :hover) + .item:not([data-active], :hover)::before {
+  /* The tab being dragged keeps its place, painted as a tab that is not on screen with its text muted (S56). Its ghost (S57), which `stripDrag.ts` places at the pointer, is the face again on the popup's plane, with no close control. */
+  .item[data-dragging],
+  .item[data-dragging]:hover {
+    background-color: var(--ov-selection-inactive);
+    box-shadow: inset 0 0 0 1px var(--ov-border-control);
+  }
+
+  .item[data-dragging] .title * {
+    color: var(--ov-fg-muted);
+  }
+
+  .item[data-shell-part='tabGhost'] {
+    background-color: var(--ov-bg-popup);
+    box-shadow: inset 0 0 0 1px var(--ov-border-popup), var(--ov-shadow-popup);
+  }
+
+  .item[data-shell-part='tabGhost'] .close {
+    display: none;
+  }
+
+  /* A faint divider in the gap between two resting neighbours, never beside the tab on screen, a hovered face or the tab dragged. It is paint: no target, no stop. */
+  .item:not([data-active], [data-dragging], :hover) + .item:not([data-active], [data-dragging], :hover)::before {
     content: '';
     position: absolute;
     inset-block-start: 6px;
