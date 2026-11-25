@@ -22,7 +22,7 @@ export const Initials = () => <Avatar name="Connection A" />;
 /** One word gives its first two letters. */
 export const OneWord = () => <Avatar name="production" />;
 
-/** The four tints a name can take: blue, purple, cyan and gray, each its hue mixed 24% over the surface. The names here are the ones that fall on each. */
+/** The four tints a name can take: blue, purple, cyan and gray, each its hue mixed over the surface. The names here are the ones that fall on each. */
 export const Tints = () => (
   <Stack direction="row" gap={8} align="center">
     <Avatar name="Connection C" />

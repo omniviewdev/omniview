@@ -79,6 +79,8 @@ export function ValuePickerPopup({ anchor, listId, name, options, value, onValue
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLSpanElement>(null);
+  /** Where the pointer was last seen over the list: a move to that same place is the engine's, not the pointer's. */
+  const seen = useRef<{ readonly x: number; readonly y: number } | null>(null);
   const [query, setQuery] = useState('');
   const [initial] = useState(() => firstChosen(options, value, allOption !== undefined));
   /** The row that was moved to; undefined is the first row that can be chosen. */
@@ -292,6 +294,14 @@ export function ValuePickerPopup({ anchor, listId, name, options, value, onValue
 
   const onListPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const index = rowAt(event.target);
+    const before = seen.current;
+    seen.current = { x: event.clientX, y: event.clientY };
+    // A list that scrolls under a resting pointer (End, Home or an arrow reached a row outside the window) makes WebKit send a move the pointer did not make: to the place it
+    // was already seen at, and the row under it must not take the active row from the keys.
+    if (before !== null && before.x === event.clientX && before.y === event.clientY) {
+      return;
+    }
+
     // The row under the pointer is the active one, unless it cannot be chosen.
     if (index !== undefined && index !== current && event.pointerType !== 'touch' && reasonOf(visible[index - offset]) === undefined) {
       setActive(index);
@@ -382,6 +392,9 @@ export function ValuePickerPopup({ anchor, listId, name, options, value, onValue
         aria-activedescendant={searchable ? undefined : activeId}
         tabIndex={searchable ? undefined : -1}
         onClick={onListClick}
+        onPointerEnter={(event) => {
+          seen.current = { x: event.clientX, y: event.clientY };
+        }}
         onPointerMove={onListPointerMove}
       >
         {above > 0 ? <div className={styles.spacer} aria-hidden="true" style={{ '--_height': `${above}px` }} /> : null}

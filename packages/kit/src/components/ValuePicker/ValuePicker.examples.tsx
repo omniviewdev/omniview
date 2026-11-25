@@ -1,4 +1,4 @@
-import { Field, ValuePicker, WorkspaceToolbar, type ValuePickerOption } from '@omniviewdev/kit';
+import { Button, Field, FormActions, Sheet, ValuePicker, WorkspaceToolbar, type ValuePickerOption } from '@omniviewdev/kit';
 import { useState } from 'react';
 
 // A picker written the way a consumer writes it: the caller owns the choice, and every change applies at once. The popup opens with a press, Enter,
@@ -106,3 +106,35 @@ export const NoOptions = () => (
     <ValuePicker label="Folder members" options={[]} value={[]} onValueChange={() => undefined} />
   </Field>
 );
+
+/**
+ * In a dialog: the popup is in the top layer, above the sheet and its scrim. The first Escape closes the popup and gives the focus back to the picker, and the next one closes the sheet.
+ * A sheet is a modal and makes the whole page inert, so nothing opens at load: press the button.
+ */
+export const InSheet = () => {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState<readonly string[]>([]);
+  const close = () => {
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Button
+        onClick={(event) => {
+          event.currentTarget.focus();
+          setOpen(true);
+        }}
+      >
+        Open sheet with a picker
+      </Button>
+      {open ? (
+        <Sheet title="New group" icon="folder-plus" size="narrow" onClose={close} footer={<FormActions cancel={{ label: 'Cancel', onSelect: close }} primary={{ label: 'Create', onSelect: close }} />}>
+          <Field label="Members" layout="stacked" help="Members stay included, even when the rules do not match." lane>
+            <ValuePicker label="Group members" options={MEMBERS} value={value} onValueChange={setValue} />
+          </Field>
+        </Sheet>
+      ) : null}
+    </>
+  );
+};

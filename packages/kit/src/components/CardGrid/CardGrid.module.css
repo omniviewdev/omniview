@@ -11,16 +11,14 @@
     list-style: none;
   }
 
-  /* A card's cell fills the row, so the card in it is as tall as the tallest of its row. It is contained and skipped while it is far off screen
-     (`content-visibility: auto`: the browser lays out and draws only the cells near the viewport, and the others stay in the accessibility tree and
-     in the Tab order), so a long list costs what is on screen. A skipped cell is as high as the last one that was drawn, and 151 px before any has
-     been: the height measured of a card of the full anatomy (the identity and its muted line, one row of facts, a standard command), the one the mock draws.
-     A cell must not be a subgrid: layout containment makes a subgrid an ordinary grid. Each card keeps its own bands in line instead (ResourceCard). */
+  /* A card's cell fills the row, so the card in it is as tall as the tallest of its row. The cell is plain: what lets a long list cost what is on screen
+     (`content-visibility: auto`: the browser lays out and draws only the bodies of the cards near the viewport, and the others stay in the accessibility
+     tree and in the Tab order) is the containment of each card's body, inside its edge (ResourceCard). It is not the cell's: a contained box that is not on a
+     whole pixel is painted up to a pixel past its edge in Chromium, and the last column of a scrolling body would lose its right edge. A cell must not be a
+     subgrid either; each card keeps its own bands in line instead (ResourceCard). */
   .item {
     display: grid;
     min-width: 0;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 151px;
   }
 
   /* With groups the sections are the grid's children: 20 px apart (the mock's `.form-section + .form-section`). */

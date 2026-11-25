@@ -3,28 +3,31 @@
      apart: the identity, the facts, the commands. The edge is one private property that a tone sets, so a state never repeats a colour; only the edge
      changes with the tone, the footer's rule stays subtle.
 
+     The card is two boxes. The root draws the edge and nothing contains it; the body inside the edge holds the inset, the bands and the containment. A
+     contained box (layout and paint, and so every `content-visibility: auto` box) is painted from a rounded origin and keeps its fractional width, so in
+     Chromium, in a grid of fractional columns, its right edge falls up to a pixel beyond where it was laid out; an ancestor that clips at the grid's edge
+     (the scrolling body of a data view) then drops the last column's right edge. With the containment on the body, that overshoot is inside the card, over
+     the inset, and the edge is drawn where it was laid out. The body's clip is the box inside the edge, 12 px from the controls, so their focus rings
+     (2 px, offset 2 px) are whole.
+
      The card is a column that fills the box it is given (a row of a grid gives every card the height of the tallest). Room to spare goes to the identity,
      as it does in the mock, where the card is a subgrid and its identity band is as tall as the tallest of the row: the facts and the commands sit on the
      card's bottom, so they line up across the row whatever the lines over them (a title with and without a muted line under it), and the title is centred
-     in the room it has. The grid contains its cards for speed, and layout containment makes a subgrid an ordinary grid, so this column stands in for it. A
-     card as tall as its contents has no room to spare and is the plain column. The card contains its own layout and paint: nothing in it changes the page
-     around it. */
+     in the room it has. Layout containment makes a subgrid an ordinary grid, so this column stands in for it. A card as tall as its contents has no room to
+     spare and is the plain column. Nothing in the body changes the page around it. */
   .root {
     --_edge: var(--ov-border-subtle);
 
     display: flex;
     flex-direction: column;
-    gap: var(--ov-spacing-8);
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
     margin: 0;
-    padding: var(--ov-spacing-12);
     border: 1px solid var(--_edge);
     border-radius: var(--ov-radius-control);
     background-color: transparent;
     color: var(--ov-fg);
-    contain: layout paint;
     font-family: var(--ov-font-ui);
     font-feature-settings: var(--ov-font-features);
     font-size: var(--ov-fs-13);
@@ -34,6 +37,21 @@
     line-height: var(--ov-lh-16);
     text-align: start;
     white-space: normal;
+  }
+
+  /* The inset and the bands, 8 px apart. The browser skips the body while the card is far off screen (`content-visibility: auto`), and then the card is as
+     high as the last body it drew, and as high as 125 px of content before any was: the height measured of a body of the full anatomy (the identity and its
+     muted line, one row of facts, a standard command), which with the inset and the edge is the 151 px of the mock's card. */
+  .body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--ov-spacing-12);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 125px;
   }
 
   .root[data-ov-tone='warning'] {

@@ -90,8 +90,9 @@ export const COLOR_ROLE_GROUPS = {
     'brand-teal',
   ],
   /**
-   * The tints of the data palette, one per hue: the hue mixed 24% over `bg-island`, the fill under a tinted avatar and under an
-   * unavailable swatch. The mock mixes in CSS with `color-mix` (the avatar `base.css` 1576, the unavailable swatch 2058, at 30%); the kit
+   * The tints of the data palette, one per hue: the hue mixed over `bg-island` (24%, the mock's share; 18% in `solarized-dark` and 22% in
+   * `solarized-light`, so that the foreground reads at 4.5:1 on every tint), the fill under a tinted avatar and under an unavailable swatch.
+   * The mock mixes in CSS with `color-mix` (the avatar `base.css` 1576, the unavailable swatch 2058, at 30%); the kit
    * writes no colour function, so a theme carries each mix as a literal, and `tint.test.ts` holds every literal to the mix of its own
    * theme. The hues are `link` (blue), `success-fg` (green), `warning-fg` (amber), `error-fg` (red), `chart-purple` (purple),
    * `chart-teal` (cyan) and `fg-muted` (gray).

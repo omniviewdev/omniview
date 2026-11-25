@@ -9,7 +9,8 @@ import type { ThemeDefinition } from './schema.ts';
  * the `:root` block is `void`, the other eight are the `html:root[data-theme='<id>']` blocks. Values were copied by script, not
  * retyped; a mock value that changes is changed here and nowhere else.
  * The seven `tint-*` roles are the one exception: the mock mixes them in CSS (`color-mix`), so they are computed here, per theme, as the
- * data-palette hue mixed 24% over that theme's `bg-island` and rounded to the nearest 8-bit channel (`tint.test.ts` holds them to it).
+ * data-palette hue mixed 24% over that theme's `bg-island` (18% in `solarized-dark` and 22% in `solarized-light`, where the foreground on a
+ * 24% tint is under 4.5:1 for some hue) and rounded to the nearest 8-bit channel (`tint.test.ts` holds each theme to its own mix).
  *
  * Ids are the nine ids the host already persists in `appearance.theme`. The mock calls the two high-contrast themes
  * `hc-dark` and `hc-light`; the persisted ids are `high-contrast-dark` and `high-contrast-light`, and a setting must not need migrating.
@@ -566,13 +567,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#E7157B',
       'brand-red': '#DD344C',
       'brand-teal': '#01A88D',
-      'tint-blue': '#1B4C5F',
-      'tint-green': '#1A4B48',
-      'tint-amber': '#334536',
-      'tint-red': '#3B3F49',
-      'tint-purple': '#284464',
-      'tint-cyan': '#194A51',
-      'tint-gray': '#254851',
+      'tint-blue': '#154455',
+      'tint-green': '#144344',
+      'tint-amber': '#263E36',
+      'tint-red': '#2C3A44',
+      'tint-purple': '#1E3E59',
+      'tint-cyan': '#13434A',
+      'tint-gray': '#1C414A',
     },
   },
   {
@@ -659,13 +660,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       'brand-pink': '#DE1476',
       'brand-red': '#DC2B44',
       'brand-teal': '#01836E',
-      'tint-blue': '#C7D4D4',
-      'tint-green': '#C7D7BA',
-      'tint-amber': '#E1D1AD',
-      'tint-red': '#EEC3B8',
-      'tint-purple': '#DAD0E0',
-      'tint-cyan': '#C8D9C9',
-      'tint-gray': '#D5D3C6',
+      'tint-blue': '#CBD7D6',
+      'tint-green': '#CCDABD',
+      'tint-amber': '#E4D4B1',
+      'tint-red': '#F0C7BB',
+      'tint-purple': '#DDD3E0',
+      'tint-cyan': '#CCDCCB',
+      'tint-gray': '#D8D6C9',
     },
   },
   {

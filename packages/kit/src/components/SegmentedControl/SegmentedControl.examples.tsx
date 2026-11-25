@@ -3,30 +3,36 @@ import { useState } from 'react';
 import styles from './SegmentedControl.examples.module.css';
 
 // A control written the way a consumer writes it: the caller owns the value.
-type View = 'table' | 'cards' | 'debug';
+type View = 'table' | 'cards' | 'list';
 
 const text: ReadonlyArray<SegmentedOption<View>> = [
   { value: 'table', label: 'Table' },
   { value: 'cards', label: 'Cards' },
-  { value: 'debug', label: 'Debug' },
+  { value: 'list', label: 'List' },
+];
+
+// The mock's view switcher: a glyph and a label in each of its two segments.
+const viewSwitcher: ReadonlyArray<SegmentedOption<View>> = [
+  { value: 'table', label: 'Table', icon: 'table' },
+  { value: 'cards', label: 'Cards', icon: 'layout-grid' },
 ];
 
 const withIcons: ReadonlyArray<SegmentedOption<View>> = [
-  { value: 'table', label: 'Table', icon: 'list-ordered' },
-  { value: 'cards', label: 'Cards', icon: 'layers' },
-  { value: 'debug', label: 'Debug', icon: 'code' },
+  { value: 'table', label: 'Table', icon: 'table' },
+  { value: 'cards', label: 'Cards', icon: 'layout-grid' },
+  { value: 'list', label: 'List', icon: 'layout-list' },
 ];
 
 const iconOnly: ReadonlyArray<SegmentedOption<View>> = [
-  { value: 'table', icon: 'list-ordered', tip: 'Table' },
-  { value: 'cards', icon: 'layers', tip: 'Cards' },
-  { value: 'debug', icon: 'code', tip: 'Debug' },
+  { value: 'table', icon: 'table', tip: 'Table' },
+  { value: 'cards', icon: 'layout-grid', tip: 'Cards' },
+  { value: 'list', icon: 'layout-list', tip: 'List' },
 ];
 
 const oneUnavailable: ReadonlyArray<SegmentedOption<View>> = [
-  { value: 'table', label: 'Table', icon: 'list-ordered' },
-  { value: 'cards', label: 'Cards', icon: 'layers' },
-  { value: 'debug', label: 'Debug', icon: 'code', disabledReason: 'Debug view is off in this build.' },
+  { value: 'table', label: 'Table', icon: 'table' },
+  { value: 'cards', label: 'Cards', icon: 'layout-grid' },
+  { value: 'list', label: 'List', icon: 'layout-list', disabledReason: 'The list view is not available for this collection.' },
 ];
 
 function Stateful({ options, initial = 'table' }: { readonly options: ReadonlyArray<SegmentedOption<View>>; readonly initial?: View }) {
@@ -37,8 +43,8 @@ function Stateful({ options, initial = 'table' }: { readonly options: ReadonlyAr
 /** Text only: one Tab stop; the arrows move and choose, Home and End go to the ends. */
 export const TextOnly = () => <Stateful options={text} />;
 
-/** A glyph before each label. */
-export const IconAndText = () => <Stateful options={withIcons} initial="cards" />;
+/** A glyph before each label, as the mock's view switcher draws its two segments. */
+export const IconAndText = () => <Stateful options={viewSwitcher} initial="cards" />;
 
 /** Glyphs alone: the tip of each option is its name. */
 export const IconOnly = () => <Stateful options={iconOnly} />;

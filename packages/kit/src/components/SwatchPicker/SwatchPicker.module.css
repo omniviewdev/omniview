@@ -8,7 +8,8 @@
   }
 
   /* The target of one swatch. The data colour sets two private properties, the hue and its tint, that the dot reads. The chosen one has a 2 px
-     accent ring inside its box and a check mark in the dot, so the choice is not the colour alone. */
+     accent ring inside its box and a check mark in the dot, so the choice is not the colour alone. A button does not inherit the page's feature
+     settings, and the reason an unavailable swatch holds (hidden text) is text like any other: contextual alternates stay off. */
   .option {
     --_hue: var(--ov-link);
     --_tint: var(--ov-tint-blue);
@@ -26,6 +27,7 @@
     border: 0;
     border-radius: var(--ov-radius-control);
     background-color: transparent;
+    font-feature-settings: var(--ov-font-features);
     cursor: pointer;
   }
 

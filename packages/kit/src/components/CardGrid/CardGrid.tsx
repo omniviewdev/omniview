@@ -50,8 +50,8 @@ function ItemImpl<T>({ item, render }: { readonly item: T; readonly render: Rend
 
 /**
  * One card's cell. It renders again only when its own item or the render function changes: a patch to one item draws one card, a change of
- * the parent draws none (the same rule as a row of `DataTable`). The long collection is cheap to hold because each cell contains its own
- * layout and skips its contents while it is far off screen (see the stylesheet).
+ * the parent draws none (the same rule as a row of `DataTable`). The long collection is cheap to hold because each card contains the layout of
+ * its body and skips it while it is far off screen (see `ResourceCard`'s stylesheet).
  */
 const Item = memo(ItemImpl) as typeof ItemImpl;
 
@@ -95,8 +95,8 @@ function Group<T>({
  * are; with `groups` each group is a labelled section with a heading of its own (the mock's `H.section`), and the sections are 20 px apart.
  * The grid has no Tab stop and no state of its own. It draws nothing for no items.
  *
- * A long collection is held in the page, not windowed: each card's cell is contained, so the browser skips the layout and the paint of the
- * ones that are far off screen. What stays is the DOM itself, about 27 elements a card (13,000 for 500 cards): window a collection of thousands
+ * A long collection is held in the page, not windowed: each card's body is contained, so the browser skips the layout and the paint of the
+ * ones that are far off screen. What stays is the DOM itself, about 28 elements a card (14,000 for 500 cards): window a collection of thousands
  * instead. Props are closed: no `className`, no `style`; `data-*` passes through.
  */
 export function CardGrid<T>({ label, getKey, renderCard, level = 2, items, groups, ...rest }: CardGridProps<T>) {

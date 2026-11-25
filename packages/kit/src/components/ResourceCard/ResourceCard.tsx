@@ -70,45 +70,47 @@ export function ResourceCard({ title, to, lead, status, meta, metrics, tone, act
 
   return (
     <div {...dataAttributes(attributes)} className={styles.root} data-ov-part="resource-card" data-ov-tone={tone}>
-      <div className={styles.identity} data-ov-part="identity">
-        {drawn(lead) ? (
-          <span className={styles.lead} data-ov-part="lead">
-            {lead}
+      <div className={styles.body} data-ov-part="body">
+        <div className={styles.identity} data-ov-part="identity">
+          {drawn(lead) ? (
+            <span className={styles.lead} data-ov-part="lead">
+              {lead}
+            </span>
+          ) : null}
+          <span className={styles.name} data-ov-part="title">
+            {to === undefined ? name : <Link to={to}>{name}</Link>}
           </span>
-        ) : null}
-        <span className={styles.name} data-ov-part="title">
-          {to === undefined ? name : <Link to={to}>{name}</Link>}
-        </span>
-        {drawn(status) ? (
-          <span className={styles.status} data-ov-part="status">
-            {status}
-          </span>
-        ) : null}
-        {meta === undefined || meta === '' ? null : (
-          <span className={styles.meta} data-ov-part="meta" data-ov-clip="">
-            {meta}
-          </span>
-        )}
-      </div>
-      {metrics === undefined || metrics.length === 0 ? null : (
-        <dl className={styles.metrics} data-ov-part="metrics">
-          {metrics.map((metric, index) => (
-            <div key={`${String(index)}:${metric.label}`} className={styles.metric}>
-              <dt className={styles.label} data-ov-clip="">
-                {metric.label}
-              </dt>
-              <dd className={styles.value} data-ov-clip="">
-                {metric.value}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {drawn(actions) ? (
-        <div className={styles.actions} data-ov-part="actions">
-          {actions}
+          {drawn(status) ? (
+            <span className={styles.status} data-ov-part="status">
+              {status}
+            </span>
+          ) : null}
+          {meta === undefined || meta === '' ? null : (
+            <span className={styles.meta} data-ov-part="meta" data-ov-clip="">
+              {meta}
+            </span>
+          )}
         </div>
-      ) : null}
+        {metrics === undefined || metrics.length === 0 ? null : (
+          <dl className={styles.metrics} data-ov-part="metrics">
+            {metrics.map((metric, index) => (
+              <div key={`${String(index)}:${metric.label}`} className={styles.metric}>
+                <dt className={styles.label} data-ov-clip="">
+                  {metric.label}
+                </dt>
+                <dd className={styles.value} data-ov-clip="">
+                  {metric.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {drawn(actions) ? (
+          <div className={styles.actions} data-ov-part="actions">
+            {actions}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

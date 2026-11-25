@@ -1,8 +1,10 @@
 @layer ov.components {
   /* A box of one fixed size that holds initials, a glyph or a picture (the mock's `.avatar`). The paint is two private properties that the
-     data colour sets and the fill reads: tinted, the box is the tint of the hue and its text the hue; solid, the box is the hue and its
-     text the ink of a data fill. The glyph is ink, so it takes the text colour. The box is contained, so a picture or a long name never
-     moves the layout. */
+     data colour sets and the fill reads: tinted, the box is the tint of the hue, its initials are the foreground colour and its glyph the hue;
+     solid, the box is the hue and its initials and glyph the ink of a data fill. The initials are text and need 4.5:1 on the tint: the hue gives
+     4.4:1 in Void (the mock draws them in the hue, base.css 1576, and fails AA), the foreground gives 4.5:1 or more on every tint of every theme
+     (tint.test.ts holds it; the two Solarized themes mix their tint less for it). The glyph is not text and needs 3:1, which the hue keeps, in
+     every theme. The box is contained, so a picture or a long name never moves the layout. */
   .root {
     --_hue: var(--ov-link);
     --_tint: var(--ov-tint-blue);
@@ -15,7 +17,7 @@
     border-radius: 50%;
     contain: strict;
     background-color: var(--_tint);
-    color: var(--_hue);
+    color: var(--ov-fg);
     font-family: var(--ov-font-ui);
     font-feature-settings: var(--ov-font-features);
     font-size: var(--ov-fs-12);
@@ -86,10 +88,19 @@
     --_tint: var(--ov-tint-gray);
   }
 
-  /* A colour of the caller's is a data fill: the hue itself, with the ink of a data fill on it. */
+  /* A glyph on a tint keeps the hue: it is not text, and 3:1 is what it needs. */
+  .root > svg {
+    color: var(--_hue);
+  }
+
+  /* A colour of the caller's is a data fill: the hue itself, with the ink of a data fill on it, for the initials and for the glyph. */
   .root[data-ov-fill='solid'] {
     background-color: var(--_hue);
     color: var(--ov-fg-on-data);
+  }
+
+  .root[data-ov-fill='solid'] > svg {
+    color: currentcolor;
   }
 
   /* A picture covers a circle; in a square it is contained, whole, over the tint. */

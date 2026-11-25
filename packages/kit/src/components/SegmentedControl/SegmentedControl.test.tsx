@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SegmentedControl, type SegmentedOption } from './SegmentedControl';
 
-type View = 'table' | 'cards' | 'debug';
+type View = 'table' | 'cards' | 'list';
 const options: ReadonlyArray<SegmentedOption<View>> = [
   { value: 'table', label: 'Table' },
   { value: 'cards', label: 'Cards' },
-  { value: 'debug', label: 'Debug', disabledReason: 'Not in this build.' },
+  { value: 'list', label: 'List', disabledReason: 'Not in this build.' },
 ];
 
 function Harness({ onChange }: { readonly onChange?: (value: View) => void }) {
@@ -56,18 +56,18 @@ describe('SegmentedControl', () => {
   it('chooses an option by a click, and does nothing for one that is unavailable', () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);
-    const debug = screen.getByRole('radio', { name: 'Debug' });
-    expect(debug.getAttribute('aria-disabled')).toBe('true');
-    expect(debug.getAttribute('data-ov-tip')).toBe('Not in this build.');
-    expect(debug.hasAttribute('disabled')).toBe(false);
-    fireEvent.click(debug);
+    const list = screen.getByRole('radio', { name: 'List' });
+    expect(list.getAttribute('aria-disabled')).toBe('true');
+    expect(list.getAttribute('data-ov-tip')).toBe('Not in this build.');
+    expect(list.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(list);
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('radio', { name: 'Cards' }));
     expect(onChange).toHaveBeenCalledWith('cards');
   });
 
   it('names an icon-only option by its tip', () => {
-    render(<SegmentedControl label="View as" options={[{ value: 'table', icon: 'list-ordered', tip: 'Table' }, { value: 'cards', icon: 'layers', tip: 'Cards' }]} value="table" onValueChange={() => undefined} />);
+    render(<SegmentedControl label="View as" options={[{ value: 'table', icon: 'table', tip: 'Table' }, { value: 'cards', icon: 'layout-grid', tip: 'Cards' }]} value="table" onValueChange={() => undefined} />);
     expect(screen.getByRole('radio', { name: 'Cards' })).toBeTruthy();
   });
 });

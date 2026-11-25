@@ -1,4 +1,4 @@
-import { DataTable, Icon, IconButton, menuTrigger, useMenu, type DataTableColumn, type DataTableSort } from '@omniviewdev/kit';
+import { Button, DataTable, Icon, IconButton, menuTrigger, useMenu, type DataTableColumn, type DataTableSort } from '@omniviewdev/kit';
 import { useMemo, useState } from 'react';
 
 type Job = { readonly key: string; readonly name: string; readonly group: string; readonly state: string; readonly attempts: number; readonly created: number };
@@ -160,9 +160,9 @@ export const RowMenu = () => {
       fit: 'id',
       text: (row) => row.name,
       cell: (row) => (
-        <button type="button" onClick={() => {
-          setLast(`Opened ${row.name}`); 
-        }}>{row.name}</button>
+        <Button variant="ghost" size="row" onClick={() => {
+          setLast(`Opened ${row.name}`);
+        }}>{row.name}</Button>
       ),
     },
     stateColumn,
