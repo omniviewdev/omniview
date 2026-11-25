@@ -1,17 +1,29 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { Connection } from '@omniviewdev/runtime/ui/v1';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LogTargetV1, PanelHostV1 } from '../../contract/v1';
 import { chooseConnection, connectionFace } from './connection';
 import { itemsFrame, itemsOf } from './connection-pages';
 
-/* eslint-disable @typescript-eslint/consistent-type-assertions -- a test names only the id and the name of a connection */
-const north = { id: 'north-57a082bd74', name: 'north' } as Connection;
-const south = { id: 'south-0c3d9e1f42', name: 'south' } as Connection;
+/**
+ * What the connections process (`../connections-process/main.go`) says of its two connections: the page's copy of each fact, which the process is held to below and which the seam check asserts (`checkConnectionsAndHome`): the
+ * plugin's id for the connection, the line it says under its name (the SDK's `Description`, which the host passes through) and the three records it lists.
+ */
+const FACTS = {
+  north: { id: 'north-57a082bd74', description: 'Fixture · region one', items: ['orders-api', 'ledger-sync', 'billing-sync'] },
+  south: { id: 'south-0c3d9e1f42', description: 'Fixture · region two', items: ['harbor-gate', 'tide-table', 'keel-check'] },
+} as const;
+
+/* eslint-disable @typescript-eslint/consistent-type-assertions -- a test names only the id, the name and the description of a connection */
+const north = { id: FACTS.north.id, name: 'north', description: FACTS.north.description } as Connection;
+const south = { id: FACTS.south.id, name: 'south', description: FACTS.south.description } as Connection;
 /* eslint-enable @typescript-eslint/consistent-type-assertions */
 
 describe('the connections fixture', () => {
   it('chooses the connection the route names, and the first one for a route that names none or an unknown one', () => {
     expect(chooseConnection([north, south], 'south-0c3d9e1f42')).toBe(south);
+    expect(chooseConnection([north, south], 'south-0c3d9e1f42')?.description).toBe(FACTS.south.description);
     expect(chooseConnection([north, south], undefined)).toBe(north);
     expect(chooseConnection([north, south], 'gone-0000000000')).toBe(north);
     expect(chooseConnection([], 'south-0c3d9e1f42')).toBeUndefined();
@@ -87,5 +99,47 @@ describe('the connections fixture', () => {
       void feed?.close();
       expect({ ...Reflect.get(window, '__fixtureLogs') }).toEqual({ opened: 1, closed: 1, listeners: 0 });
     });
+  });
+});
+
+/** The text of a string constant of the process (`northDescription = "…"`); undefined when the source declares none. */
+function constantOf(source: string, name: string): string | undefined {
+  return new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`).exec(source)?.[1];
+}
+
+/** Whether the process lists the connection as `{ID: <name>ID, Name: "<name>", Description: <name>Description}`: its id, its name and its description are the constants and the literal the page holds. */
+function listsConnection(source: string, name: string): boolean {
+  return new RegExp(`\\{ID: ${name}ID, Name: "${name}", Description: ${name}Description\\}`).test(source);
+}
+
+/** The names of the records a connection lists: the `case <name>ID:` of the process's `itemsOf`. */
+function itemsIn(source: string, name: string): string[] {
+  const body = new RegExp(`case ${name}ID:\\s*return \\[\\]string\\{([^}]*)\\}`).exec(source)?.[1] ?? '';
+  return [...body.matchAll(/"([^"]*)"/g)].map((match) => match[1] ?? '');
+}
+
+describe('the connections process', () => {
+  const source = readFileSync(path.join(__dirname, '../connections-process/main.go'), 'utf8');
+
+  it('lists each connection with its id, its name and its description, as the page and the seam check hold them', () => {
+    for (const name of ['north', 'south'] as const) {
+      expect(listsConnection(source, name), `${name} is listed with its id, its name and its description`).toBe(true);
+      expect(constantOf(source, `${name}ID`), `${name}'s id`).toBe(FACTS[name].id);
+      expect(constantOf(source, `${name}Description`), `${name}'s description`).toBe(FACTS[name].description);
+    }
+  });
+
+  it('lists the records the page lists, for each connection', () => {
+    for (const name of ['north', 'south'] as const) {
+      expect(itemsIn(source, name), `the records ${name} lists`).toEqual(FACTS[name].items);
+      expect(itemsOf(name).map((row) => row.name), `the rows the page draws for ${name}`).toEqual(itemsIn(source, name));
+    }
+  });
+
+  it('NEGATIVE: a process that says another description, lists a connection with none, or lists another record is not the one the page holds', () => {
+    expect(constantOf(source.replace(FACTS.north.description, 'Fixture · region 1'), 'northDescription')).not.toBe(FACTS.north.description);
+    expect(listsConnection(source.replace('Description: northDescription', ''), 'north')).toBe(false);
+    expect(itemsIn(source.replace('"orders-api"', '"orders-web"'), 'north')).not.toEqual(FACTS.north.items);
+    expect(constantOf('', 'northDescription')).toBeUndefined();
   });
 });

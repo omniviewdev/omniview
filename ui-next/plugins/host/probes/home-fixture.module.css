@@ -1,0 +1,7 @@
+/* The island the page is drawn in, as the window has it: as high as the window, and the page scrolls inside it. */
+@layer ov.shell {
+  .page {
+    block-size: 100vh;
+    overflow: auto;
+  }
+}

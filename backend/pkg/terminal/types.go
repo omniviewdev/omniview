@@ -160,6 +160,9 @@ type Session struct {
 	Limits Limits `json:"limits"`
 	// Environment says where the shell's environment came from and how the host's login probe went.
 	Environment Environment `json:"environment"`
+	// Integration says whether the shell tells the host where its commands start and end (shell integration), and
+	// when it does not, why not. The page reads it and never guesses.
+	Integration Integration `json:"integration"`
 	// LeaseMs is how long the terminal is kept for its page once the page is gone, in milliseconds. Zero: it
 	// has no page key and ends with its window.
 	LeaseMs int `json:"lease_ms"`

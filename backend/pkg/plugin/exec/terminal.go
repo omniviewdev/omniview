@@ -132,6 +132,17 @@ func (c *controller) emitLocal(name string, data any) {
 // c.terminalManager starts.
 func (c *controller) startTerminals(ctx context.Context) {
 	c.terminalManager = terminal.NewManager(ctx, c.logger, localSink{c: c})
+	c.terminalManager.SetIntegration(c.shellIntegrationOn)
+}
+
+// shellIntegrationOn is the user's opt-out of the shell integration, asked for every terminal that starts so that a change
+// in Settings applies to the next one. The integration is on by default: with no settings to ask, or a value that cannot be
+// read, the manager is told so and leaves the shell alone.
+func (c *controller) shellIntegrationOn() (bool, error) {
+	if c.settingsProvider == nil {
+		return true, nil
+	}
+	return c.settingsProvider.GetBool("terminal.shellIntegration")
 }
 
 // CreateTerminal starts a shell on this machine. The session belongs to owner and ends with it; a channel terminal

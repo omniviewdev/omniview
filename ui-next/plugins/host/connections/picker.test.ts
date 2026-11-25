@@ -4,7 +4,7 @@ import type { HostConnection } from './types';
 
 // The picker of the connection face (HM1): the plugin's own connections, by name, with the state each is in, and the one the face says marked as current.
 
-const connection = (plugin: string, key: string, name: string, state: HostConnection['state'] = 'connected', reason?: string): HostConnection => ({ plugin, key, name, state, reason });
+const connection = (plugin: string, key: string, name: string, state: HostConnection['state'] = 'connected', reason?: string, detail?: string): HostConnection => ({ plugin, key, name, state, reason, detail });
 
 const input = (over: Partial<PickerInput> = {}): PickerInput => ({
   plugin: 'acme',
@@ -26,6 +26,15 @@ describe('the picker of the connection face', () => {
       ['k2', 'south', 'Needs sign-in', 'The connection needs you to sign in.', false],
     ]);
     expect(picker?.options.map((option) => option.state.role)).toEqual(['healthy', 'attention']);
+  });
+
+  it('says the plugin\'s secondary text of a connection, and none for a connection the plugin gave none', () => {
+    const picker = pickerOf(input({ connections: [connection('acme', 'k1', 'north', 'connected', undefined, 'EKS \u00b7 us-east-1'), connection('acme', 'k2', 'south')] }));
+
+    expect(picker?.options.map((option) => [option.label, option.detail])).toEqual([
+      ['north', 'EKS \u00b7 us-east-1'],
+      ['south', undefined],
+    ]);
   });
 
   it('says a connection that is being started as busy, in the word of that state', () => {

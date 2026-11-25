@@ -5,7 +5,7 @@ import { connectionFace, useChosenConnection, type PageConnection } from './conn
 import { connectionLogTargetOf } from './logs';
 
 // The page of the connections fixture: one list whose three rows depend on the connection the route names, read the way a plugin with real connections reads it (connection.ts). The rows are static,
-// keyed by the connection's NAME: the backend (../connections-process) serves the same names, and the host starts a connection before it routes to it, so the page reads no resource. The name of a row is a button that
+// keyed by the connection's NAME: the backend (../connections-process) serves the same names (`connection.test.ts` reads its source and holds these rows, and each connection's id and description, to it), and the host starts a connection before it routes to it, so the page reads no resource. The name of a row is a button that
 // opens the item's Logs session through the panel handle the host gave the page (`ContextV1.panel`, as a plugin's row action does): the proof that a session belongs to the host's panel and not to the connection the
 // page was read in (decision A21: it stays when the tab goes to another connection).
 

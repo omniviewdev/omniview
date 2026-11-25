@@ -39,6 +39,7 @@ export function pickerOf({ plugin, connections, named, text, icon, onOpen, onCho
   const options = mine.map((connection): ShellPickerOption => ({
     id: connection.key,
     label: connection.name,
+    detail: connection.detail,
     state: faceOf(connection.state),
     reason: connection.reason,
     busy: connection.state === 'connecting',

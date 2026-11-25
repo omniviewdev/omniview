@@ -16,6 +16,8 @@
 //   fixture-c-old      a bundle of the old shell: it imports the old UI library, which the new shell does not serve, and must be refused unrun
 //   fixture-d-missing  a plugin whose `assets/` holds no bundle
 // A fifth plugin, `fixture-f-conn` (Seam Connections), is written only on request (`writeConnectionsPlugin`, see below): it has a process of its own, with a `resource` capability and two connections.
+// A sixth, `fixture-g-ports` (Seam Ports), is written only on request too (`writePortsPlugin`): its process (`./ports-process`) has the `resource` capability, for the one connection the host needs to start a forward in, and the
+// `networker` capability, a real forwarder to a TCP server of its own (`./portforward`), and its page has the three buttons that ask the host to forward that port, to stop what was forwarded and to forward the same port again (`src/ports.ts` says what it is).
 import { execFile } from 'node:child_process';
 import { chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -25,6 +27,8 @@ import react from '@vitejs/plugin-react';
 import { build } from 'vite';
 import { readDependencies } from '../loader/preflight.ts';
 import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
+import { manifestOf } from './src/manifest.ts';
+import { PORTS_ID, PORTS_NAME } from './src/ports.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, '../../..');
@@ -50,6 +54,26 @@ export const PLUGINS = {
 // check that wants it writes it itself with `writeConnectionsPlugin(root, binary)` (scenario u of the seam check, `checkConnectionsAndHome`, does). Its bundle is `src/entry-connections.tsx`; the name of each row of its one page opens that item's Logs session in the host's panel.
 export const CONNECTIONS_ID = 'fixture-f-conn';
 const CONNECTIONS = { variant: 'connections', name: 'Seam Connections', rail: { label: 'Seam Connections', order: 30 } };
+
+// The ports plugin is NOT in `PLUGINS` either, for the same reason, and a check that wants it writes it with `writePortsPlugin(root, binary)`. It has one connection, `harbor`, because the host starts a forward in a connection
+// it knows, and a `networker` capability whose forwarder relays to a TCP server of the plugin's own (`./ports-process`, built by `buildPortsProcess`, and `./portforward`, the Go package it is made of). Its bundle is
+// `src/entry-ports.tsx`: one page, `targets`, whose one row has the three buttons that ask the host to forward the target's port, to stop the forward it answered last and to forward the same port again. Everything the check needs to name of it is exported here, from the one file that says it (`src/ports.ts`).
+export {
+  AGAIN_LABEL,
+  FORWARD_LABEL,
+  NO_CONNECTION_WORDS,
+  NO_FORWARD_WORDS,
+  NO_PORTS_WORDS,
+  PORTS_CONNECTION_KEY,
+  PORTS_CONNECTION_NAME,
+  PORTS_ID,
+  PORTS_NAME,
+  STOP_LABEL,
+  TARGET_GREETING,
+  TARGET_ID,
+  TARGET_PORT,
+} from './src/ports.ts';
+const PORTS = { variant: 'ports', name: PORTS_NAME };
 
 const bareName = (source) => (source.startsWith('@') ? source.split('/').slice(0, 2).join('/') : source.split('/')[0]);
 
@@ -125,6 +149,9 @@ function virtualOldEntry() {
   };
 }
 
+/** The entry of the bundle of each variant that has one of its own; every other variant builds `src/entry.tsx`. */
+const ENTRIES = { connections: 'src/entry-connections.tsx', ports: 'src/entry-ports.tsx' };
+
 async function buildBundle(id, variant, directory, rail) {
   const old = variant === 'old';
   // Only the negative control bundles the kit and needs to resolve its ReactDOM peer. React stays external.
@@ -147,7 +174,7 @@ async function buildBundle(id, variant, directory, rail) {
       cssCodeSplit: false,
       sourcemap: false,
       rollupOptions: {
-        input: old ? OLD_ENTRY : path.join(here, variant === 'connections' ? 'src/entry-connections.tsx' : 'src/entry.tsx'),
+        input: old ? OLD_ENTRY : path.join(here, ENTRIES[variant] ?? 'src/entry.tsx'),
         external,
         output: { entryFileNames: 'assets/entry.js', chunkFileNames: 'assets/[name].js', assetFileNames: 'assets/[name].[ext]', format: 'system' },
         preserveEntrySignatures: 'exports-only',
@@ -158,31 +185,38 @@ async function buildBundle(id, variant, directory, rail) {
 }
 
 /**
- * `backend` is whether the plugin has a process: the capabilities are what tells the host to start one (`settings` is the one the SDK serves with no code of the plugin's). `resource` is a capability the plugin's
- * process serves itself: the connections fixture's.
+ * Builds a Go program of this directory (`program` is its folder: `process`, `connections-process`, `ports-process`) to `<directory>/plugin` and answers its ABSOLUTE path. `go build` runs in the repository, so a relative
+ * `directory` is resolved here, against where the caller is, before anything is made: the file Go writes and the path that is answered are then one file, whatever directory the caller is in.
+ *
+ * It is a program of the host's own module, so it has no `go.mod` of its own and is built with the host's, which the build never changes (`GOFLAGS` is cleared, so no ambient `-mod=mod` can rewrite it). That does not make the build
+ * offline: `go build` downloads each module it imports that the machine does not hold yet. Every module these programs import is one the host's own server build imports too (`go list -deps -tags production,server .`), so a
+ * machine that has built the host holds them all in its Go module cache and builds these with `GOPROXY=off`; a machine that has not needs the network once (`go mod download`). `GOTOOLCHAIN=local` makes a Go older than the `go`
+ * line of `go.mod` fail the build, where the default would fetch the toolchain it names.
  */
-function manifest(id, name, backend, resource = false) {
-  const capabilities = backend ? [...(resource ? ['  - resource'] : []), '  - settings', '  - ui'] : ['  - ui'];
-  return [`id: ${id}`, 'version: 0.0.1', `name: ${name}`, 'description: Fixture plugin of the new UI seam', 'license: Apache-2.0', 'author:', '  name: Omniview', 'capabilities:', ...capabilities, ''].join('\n');
+async function buildGo(directory, program) {
+  const output = path.resolve(directory);
+  await mkdir(output, { recursive: true });
+  const binary = path.join(output, 'plugin');
+  await promisify(execFile)('go', ['build', '-o', binary, `./ui-next/plugins/fixture/${program}`], { cwd: repository, env: { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '' } });
+  return binary;
 }
 
 /**
- * Builds the fixture's process (`./process`) to `<directory>/plugin` and answers its path: the Go program of the host's own module, so it needs no network and no module of its own. One build serves every
- * plugin that is given it, in every host a check starts.
+ * Builds the fixture's process (`./process`) to `<directory>/plugin` and answers its path. One build serves every plugin that is given it, in every host a check starts: the process registers no capability of its own, and
+ * the manifest of the plugin that is given it declares what the host needs to start it.
  */
 export async function buildProcess(directory) {
-  await mkdir(directory, { recursive: true });
-  const binary = path.join(directory, 'plugin');
-  await promisify(execFile)('go', ['build', '-o', binary, './ui-next/plugins/fixture/process'], { cwd: repository, env: { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '' } });
-  return binary;
+  return buildGo(directory, 'process');
 }
 
-/** Builds the connections fixture's process (`./connections-process`) to `<directory>/plugin` and answers its path, as `buildProcess` does for the fixture's own. */
+/** Builds the connections fixture's process (`./connections-process`) to `<directory>/plugin` and answers its path, as `buildProcess` does for the fixture's own. `resource` is the capability it serves itself. */
 export async function buildConnectionsProcess(directory) {
-  await mkdir(directory, { recursive: true });
-  const binary = path.join(directory, 'plugin');
-  await promisify(execFile)('go', ['build', '-o', binary, './ui-next/plugins/fixture/connections-process'], { cwd: repository, env: { ...process.env, GOWORK: 'off', GOTOOLCHAIN: 'local', GOFLAGS: '' } });
-  return binary;
+  return buildGo(directory, 'connections-process');
+}
+
+/** Builds the ports fixture's process (`./ports-process`) to `<directory>/plugin` and answers its path, as `buildProcess` does for the fixture's own. `resource` and `networker` are the capabilities it serves itself. */
+export async function buildPortsProcess(directory) {
+  return buildGo(directory, 'ports-process');
 }
 
 /**
@@ -190,7 +224,7 @@ export async function buildConnectionsProcess(directory) {
  * and the capability that makes the host start it.
  */
 export async function writePlugin(root, id, binary = undefined) {
-  return install(root, id, PLUGINS[id], binary, false);
+  return install(root, id, PLUGINS[id], binary, []);
 }
 
 /**
@@ -198,14 +232,33 @@ export async function writePlugin(root, id, binary = undefined) {
  * and `ui`. Without a binary it is a plugin with no process, which lists no connections. Its `connection-mode` file (next to `bin/`) is the check's to write.
  */
 export async function writeConnectionsPlugin(root, binary = undefined) {
-  return install(root, CONNECTIONS_ID, CONNECTIONS, binary, true);
+  return install(root, CONNECTIONS_ID, CONNECTIONS, binary, ['resource']);
 }
 
-async function install(root, id, { variant, name, rail }, binary, resource) {
+/**
+ * Builds the ports plugin (`fixture-g-ports`) into `<root>/fixture-g-ports/`: its bundle, and with `binary` (the path `buildPortsProcess` answered) `bin/plugin` and the capabilities `resource`, `networker`, `settings` and
+ * `ui`. Without a binary it is a plugin with no process, which has no connection to forward in.
+ *
+ * What a check does with it: the process starts its target server when it starts, so a forward needs nothing but a connection that is STARTED (the host's `StartConnection` of `PORTS_ID` and `PORTS_CONNECTION_KEY`, which a
+ * person's press on Home makes; a forward on one that was not started is refused by the plugin's SDK, and the page shows the refusal) and the press of the button `FORWARD_LABEL` on the page
+ * `#/fixture-g-ports/targets?connection=harbor-9c41e07ab2`, which says `Forward session <id> on <localHost>:<localPort>` from the host's answer. The button `STOP_LABEL` stops the forward the page was last answered and says
+ * `Stopped forward <id>`; the button `AGAIN_LABEL` asks for the local port of that answer again, and says `Forward session ...` or, when the host refuses it, `Refused <CODE>: <message>` with the code and the words of the host's
+ * error (a stop that is refused says `Stop refused <CODE>: <message>`). Neither has a forward to act on until the host has answered one (`NO_FORWARD_WORDS`), and while the host answers a press the two buttons that were not pressed are
+ * unavailable (`aria-disabled`, with the words `The host has not answered the last press yet.`), so that a press of one of them waits for the answer. A page read in no connection (no `connection` in its route) is
+ * given no handle to forward with and says `NO_CONNECTION_WORDS`, where a host with no such member says `NO_PORTS_WORDS`. The Ports tool shows `127.0.0.1:<local> → :8080/TCP` (`TARGET_PORT`), and a client of that local port reads
+ * the line `TARGET_GREETING` and then gets back what it sends. Stopping the forward, stopping the connection (`StopConnection`) or ending the plugin closes the local port and every client of it. The plugin is ended from outside as the
+ * checks of the other fixture processes do it: the pid the host reports for the process keyed `plugin:fixture-g-ports` (`processinfo` `GetSnapshot`), `SIGKILL`, and `bin/plugin` made not executable first so that the host's
+ * recovery cannot start it again.
+ */
+export async function writePortsPlugin(root, binary = undefined) {
+  return install(root, PORTS_ID, PORTS, binary, ['resource', 'networker']);
+}
+
+async function install(root, id, { variant, name, rail }, binary, served) {
   const directory = path.join(root, id);
   await rm(directory, { recursive: true, force: true });
   await mkdir(path.join(directory, 'assets'), { recursive: true });
-  await writeFile(path.join(directory, 'plugin.yaml'), manifest(id, name, binary !== undefined, resource));
+  await writeFile(path.join(directory, 'plugin.yaml'), manifestOf(id, name, binary !== undefined, served));
   if (binary !== undefined) {
     await mkdir(path.join(directory, 'bin'), { recursive: true });
     await copyFile(binary, path.join(directory, 'bin', 'plugin'));

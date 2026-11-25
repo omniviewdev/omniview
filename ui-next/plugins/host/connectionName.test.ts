@@ -79,6 +79,63 @@ describe('the names a window has learned', () => {
   });
 });
 
+describe('hearing that a learned name changed', () => {
+  it('tells a listener when a connection is named, and when its name is another, and not when it is learned again as it is', () => {
+    const names = new ConnectionNames();
+    let told = 0;
+    names.subscribe(() => {
+      told += 1;
+    });
+    names.learn('acme', KEY, NAME);
+    expect(told).toBe(1);
+    names.learn('acme', KEY, NAME);
+    names.learn('acme', KEY, `  ${NAME}  `);
+    expect(told).toBe(1);
+    names.learn('acme', KEY, 'renamed');
+    expect(told).toBe(2);
+    expect(names.get('acme', KEY)).toBe('renamed');
+  });
+
+  it('tells it with the name already there to be read', () => {
+    const names = new ConnectionNames();
+    let heard: string | undefined;
+    names.subscribe(() => {
+      heard = names.get('acme', KEY);
+    });
+    names.learn('acme', KEY, NAME);
+    expect(heard).toBe(NAME);
+  });
+
+  it('tells nobody of a name that is empty: an empty name is none', () => {
+    const names = new ConnectionNames();
+    let told = 0;
+    names.subscribe(() => {
+      told += 1;
+    });
+    names.learn('acme', KEY, '  ');
+    expect(told).toBe(0);
+  });
+
+  it('is a subscription for each call: one that was taken off is not told, and the one made with the same function is, until it is taken off too', () => {
+    const names = new ConnectionNames();
+    let told = 0;
+    const listener = (): void => {
+      told += 1;
+    };
+
+    const first = names.subscribe(listener);
+    const second = names.subscribe(listener);
+    names.learn('acme', KEY, NAME);
+    expect(told).toBe(2);
+    first();
+    names.learn('acme', KEY, 'renamed');
+    expect(told).toBe(3);
+    second();
+    names.learn('acme', KEY, 'again');
+    expect(told).toBe(3);
+  });
+});
+
 describe('said', () => {
   it('puts the name where the LAST qualifier is the key, leaves the rest as they are, and leaves the key out when no name is known', () => {
     expect(said(['east', KEY], KEY, NAME)).toEqual(['east', NAME]);
@@ -262,6 +319,7 @@ describe('the files that read a route\'s connection parameter', () => {
   const ALLOWED: Readonly<Record<string, string>> = {
     'plugins/host/connectionName.ts': 'the naming module: a saved face holds the key of its route, and the key is taken out of it here',
     'plugins/host/connections/actions.ts': 'changes a tab\'s connection and opens a plugin\'s first page in one: the route it makes carries the key the person chose, and a tab already in that connection is left alone',
+    'plugins/host/connections/recents.ts': 'remembers which connection a tab was in: the list of connections used last (Home\'s Recent, and the connection a plugin opens in when none is named) is made from the routes of the tabs the window came back with and of the tab on screen; it is never drawn',
     'plugins/host/contributions.ts': 'makes a face from a route: the key is the scope\'s id and never a label; `complete` opens a page in the connection of the tab it is opened from',
     'plugins/host/PluginHost.tsx': 'tells a page\'s hook the connection it is read in, opens a link, and carries the connection of the plugin a sidebar was last shown for',
     'plugins/host/palette.ts': 'opens a place in the connection it was last used in, and compares a chip\'s id with the key: what is drawn is the name',

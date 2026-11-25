@@ -347,6 +347,7 @@ export function ScopePicker({ picker, anchor, id, onClose }: ScopePickerProps) {
           {results.map(({ option, ranges }, index) => {
             const isCurrent = option.id === picker.current;
             const reason = option.reason ?? '';
+            const detail = option.detail ?? '';
             return (
               <div
                 key={option.id}
@@ -382,6 +383,14 @@ export function ScopePicker({ picker, anchor, id, onClose }: ScopePickerProps) {
                     {' '}
                     <span className={styles.reason} data-shell-part="pickerReason" {...tip(reason)}>
                       {reason}
+                    </span>
+                  </>
+                )}
+                {reason !== '' || detail === '' ? null : (
+                  <>
+                    {' '}
+                    <span className={styles.detail} data-shell-part="pickerDetail" {...tip(detail)}>
+                      {detail}
                     </span>
                   </>
                 )}

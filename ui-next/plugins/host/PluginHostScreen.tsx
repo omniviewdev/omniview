@@ -1,5 +1,5 @@
 import { activityClient, ActivityProvider, useActivities } from '@omniviewdev/runtime';
-import { WindowClient } from '@omniviewdev/runtime/api';
+import { NetworkerClient, WindowClient } from '@omniviewdev/runtime/api';
 import { Browser, Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
@@ -10,6 +10,7 @@ import { loadAppTerminalChannels } from '../../shell/panel/terminal/terminalChan
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
+import type { PortForwardNetwork } from './portForward';
 import { useHashLink } from './route';
 import { useInstalledPlugins } from './useInstalledPlugins';
 
@@ -53,6 +54,18 @@ async function showSettingsWindow(): Promise<void> {
 async function openExternal(url: string): Promise<void> {
   await Browser.OpenURL(url);
 }
+
+/**
+ * The host's networker as a page's forward reaches it (`ctx.panel.ports.forward`, and the `stop` of the forward it answers): the runtime's own calls, as they are, and nothing decided here. `start` is the typed start: the plugin and the
+ * connection the page is read in are its routing, and the request is the typed one the host admits and hands to the plugin's forwarder. `stop` is the close of a forward by its id, and the session the host answers is not read. What comes
+ * of either is worded by the forward (`portForward.ts`), so the host's refusal is the call's rejection as it came.
+ */
+const networker: PortForwardNetwork = {
+  start: async (plugin, connection, request) => NetworkerClient.StartResourcePortForwardingSession(plugin, connection, request),
+  stop: async (sessionId) => {
+    await NetworkerClient.ClosePortForwardSession(sessionId);
+  },
+};
 
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
 const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
@@ -143,6 +156,7 @@ export function PluginHostScreen() {
           connections={productionApi}
           terminals={loaded.terminals}
           activity={activity.feed}
+          networker={networker}
         />
       )}
     </ActivityProvider>

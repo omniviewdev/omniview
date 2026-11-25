@@ -156,3 +156,11 @@ func TestProfilingPortValidation(t *testing.T) {
 		assert.False(t, port.Validation(value).Valid, "expected invalid: %v", value)
 	}
 }
+
+func TestShellIntegrationIsAToggleOfTheTerminalThatIsOnByDefault(t *testing.T) {
+	setting, ok := Terminal.Settings["shellIntegration"]
+	require.True(t, ok, "the terminal category declares the opt-out of the shell integration")
+	assert.Equal(t, "shellIntegration", setting.ID)
+	assert.Equal(t, settings.Toggle, setting.Type)
+	assert.Equal(t, true, setting.Default, "the integration is on until the user turns it off")
+}

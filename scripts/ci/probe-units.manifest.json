@@ -82,6 +82,16 @@
     "probe": true,
     "controls": []
   },
+  "ui-next/shell/probes/home-perf-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "late-change",
+      "second-row",
+      "key-commits",
+      "idle-timer",
+      "push-out"
+    ]
+  },
   "ui-next/shell/probes/logs-open-probe.mjs": {
     "probe": true,
     "controls": [
@@ -234,6 +244,88 @@
       "no-name",
       "extra-stop",
       "focus-lost"
+    ]
+  },
+  "ui-next/shell/probes/ports-a-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "columns-swapped",
+      "header-tall",
+      "row-tall",
+      "padding-mapping",
+      "mapping-face",
+      "actions-gap",
+      "footer-count",
+      "word-edited",
+      "icon-swapped",
+      "reason-text",
+      "reason-muted",
+      "names-ids",
+      "long-wraps",
+      "layout-mapping-wide",
+      "layout-status-wide",
+      "names-fitted",
+      "names-greedy",
+      "long-uncapped"
+    ]
+  },
+  "ui-next/shell/probes/ports-b-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "button-nameless",
+      "glyph-wrong",
+      "disabled-native",
+      "udp-open",
+      "open-twice",
+      "open-wrong",
+      "copy-twice",
+      "announce-twice",
+      "close-twice",
+      "close-other",
+      "menu-item-missing",
+      "trigger-keys-lost",
+      "escape-blurs",
+      "confirm-stale"
+    ]
+  },
+  "ui-next/shell/probes/ports-c-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "tabstop-extra",
+      "arrows-swallowed",
+      "focus-dropped",
+      "forward-button",
+      "loading-count",
+      "retry-twice",
+      "hint-size",
+      "footer-singular",
+      "footer-suffix-stuck",
+      "section-timeout"
+    ]
+  },
+  "ui-next/shell/probes/ports-d-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "idle-timer",
+      "idle-commits",
+      "hidden-leak",
+      "names-leak",
+      "list-eager",
+      "flood-sync",
+      "idle-uncounted",
+      "flood-uncounted",
+      "hidden-stale",
+      "reconnect-ignored",
+      "wake-leak"
+    ]
+  },
+  "ui-next/shell/probes/ports-e-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "axe-table",
+      "axe-states",
+      "axe-menu",
+      "axe-unstaged"
     ]
   },
   "ui-next/shell/probes/problems-operations-probe.mjs": {

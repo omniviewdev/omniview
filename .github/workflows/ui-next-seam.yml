@@ -86,9 +86,8 @@ jobs:
   seam:
     name: Seam ${{ matrix.engine }}
     runs-on: ubuntu-24.04
-    # Measured: 6.5 to 8 minutes for scenarios a to m, 9.3 minutes with scenario n (a plugin's process killed: the host finds it on its health check, up to 30 s, twice: once in the seam and once in its control).
-    # 2026-11-25: 21 to 22 minutes on `main` (`45546882604`); with the terminal channel's scenarios r6 to r8 and their two control groups (#716) 23.6 minutes in chromium and over 25 in webkit, where the job was
-    # cancelled during its last control group. The budget is 40 minutes; splitting the controls into a job of their own is the next step if the seam grows again.
+    # Measured: 6.5 to 8 minutes for scenarios a to m, 9.3 minutes with scenario n (a plugin's process killed: the host finds it on its health check, up to 30 s, twice: once in the seam and once in its control). With scenarios up to w (the Ports tool's, PF1) the seam step took about 11 minutes and the controls step more than 10 on the WebKit job: it reached the 25 minute limit while the last two groups (problems-operations and ports) were still to run, so the limit is 40.
+    # The terminal channel's scenarios r6 to r8 and their two control groups (#716) add to both steps (23.6 minutes in chromium and over 25 in webkit before PF1 joined); splitting the controls into a job of their own is the next step if the seam grows again.
     timeout-minutes: 40
     # The CI image holds Node, pnpm, Task, Go, the native libraries of the host (GTK 4 and WebKitGTK, which the Wails bindings need to be generated) and the Playwright browsers of the version pnpm-lock.yaml
     # resolves. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private:
@@ -206,6 +205,7 @@ jobs:
             if (/ISOLATION_CONTROLS/.test(text)) names.push("terminal-isolation");
             // Scenario v runs every one of its controls (PT_CONTROLS) from one run: problems-operations runs them all (a name of the table makes one only).
             if (/PT_CONTROLS/.test(text)) names.push("problems-operations");
+            if (/PORTS_CONTROLS/.test(text)) names.push("ports");
             console.log(names.join(" "));
           ')"
           [ -n "$controls" ] || { echo "::error::no negative control found in seam.check.mjs"; exit 1; }

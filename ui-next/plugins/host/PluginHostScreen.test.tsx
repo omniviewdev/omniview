@@ -6,6 +6,7 @@ import type { TerminalChannels } from '../../shell/panel/terminal/channel';
 import { attachLocalTerminal, restoreLocalTerminals } from '../../shell/panel/terminal/localShell';
 import { loadAppTerminalChannels } from '../../shell/panel/terminal/terminalChannel';
 import { PluginHostScreen } from './PluginHostScreen';
+import type { PortForwardNetwork } from './portForward';
 
 // What the screen of contributed pages gives the Terminal tool for a reload (#693 step 4): the terminal channels of the page, with the capabilities its window kept, read beside its session and its notifications; and a way to
 // find the terminals the window left, and to attach one again, through those channels. The host is drawn once all three have been read, so that the terminals the window left are found from the first frame. Everything outside
@@ -13,15 +14,22 @@ import { PluginHostScreen } from './PluginHostScreen';
 
 type Inventory = { readonly plugins: readonly unknown[]; readonly state: 'ready' | 'loading' | 'failed'; readonly retry: () => void };
 
+/** What the host is given, as far as these tests read it. */
+type Given = { readonly terminals?: TerminalsOptions | undefined; readonly networker?: PortForwardNetwork | undefined };
+
 const world = vi.hoisted(() => {
   const inventory: Inventory = { plugins: [], state: 'ready', retry: () => undefined };
   return {
     /** The slots of the window, as the host's window service keeps them. */
     slots: new Map<string, string>(),
     /** The props the host was given, in order. */
-    given: [] as Array<{ readonly terminals?: TerminalsOptions | undefined }>,
+    given: [] as Given[],
     /** What the inventory says; a test changes it to have the screen drawn again. */
     inventory,
+    /** The runtime's typed start of a forward, which the screen's networker calls through to. */
+    start: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    /** The runtime's close of a forward by its id, which the screen's networker calls through to. */
+    close: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
 });
 
@@ -36,6 +44,7 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => ({
     List: async () => Promise.resolve([{ name: 'main' }]),
     OpenSettings: async () => Promise.resolve(),
   },
+  NetworkerClient: { StartResourcePortForwardingSession: async (...args: unknown[]) => world.start(...args), ClosePortForwardSession: async (...args: unknown[]) => world.close(...args) },
 }));
 
 vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
@@ -52,7 +61,7 @@ vi.mock('../../shell/panel/terminal/terminalChannel', async (importOriginal) => 
 vi.mock('./useInstalledPlugins', () => ({ useInstalledPlugins: () => world.inventory }));
 
 vi.mock('./PluginHost', () => ({
-  PluginHost: (props: { readonly terminals?: TerminalsOptions | undefined }) => {
+  PluginHost: (props: Given) => {
     world.given.push(props);
     return null;
   },
@@ -67,6 +76,8 @@ beforeEach(() => {
   vi.mocked(loadAppTerminalChannels).mockReset();
   vi.mocked(loadAppTerminalChannels).mockReturnValue(channels);
   vi.mocked(Browser.OpenURL).mockReset();
+  world.start.mockReset();
+  world.close.mockReset();
   vi.mocked(Browser.OpenURL).mockResolvedValue(undefined);
 });
 
@@ -79,7 +90,7 @@ afterEach(() => {
 });
 
 /** What the host was given when it was drawn last. */
-const drawn = (): { readonly terminals?: TerminalsOptions | undefined } | undefined => world.given.at(-1);
+const drawn = (): Given | undefined => world.given.at(-1);
 
 /** Lets the reads and writes that are ready run. */
 async function turns(): Promise<void> {
@@ -178,5 +189,80 @@ describe('the way the screen gives the Terminal tool to open an address outside 
     });
     await expect(drawn()?.terminals?.openExternal?.('https://example.com/a;b')).rejects.toBe(refused);
     expect(console.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('the way the screen gives the host to reach the networker for a port forward (PF1)', () => {
+  const options = {
+    local_port: 0,
+    remote_port: 8080,
+    protocol: 'TCP',
+    connection_type: 'RESOURCE',
+    connection: { plugin_id: 'acme', connection_id: 'north', resource_id: 'alpha', resource_key: 'widgets' },
+  } as const;
+
+  /** The networker the screen gave the host, once the host was drawn. */
+  async function networkerGiven(): Promise<PortForwardNetwork> {
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    const networker = drawn()?.networker;
+    if (networker === undefined) {
+      throw new Error('the host was given no networker');
+    }
+
+    return networker;
+  }
+
+  it('starts through the runtime\'s typed start, as it is: the plugin and the connection are its routing, the request its options, and nothing is asked before a call is made', async () => {
+    const started = { id: 'forward-1', local_port: 41_234 };
+    world.start.mockResolvedValue(started);
+    const { start } = await networkerGiven();
+    expect(start).toBeTypeOf('function');
+    expect(world.start).not.toHaveBeenCalled();
+    await expect(start('acme', 'north', options)).resolves.toBe(started);
+    expect(world.start).toHaveBeenCalledTimes(1);
+    expect(world.start).toHaveBeenCalledWith('acme', 'north', options);
+  });
+
+  it('lets the host\'s refusal of a start through as it came, for the forward to word: the screen swallows nothing and says nothing itself', async () => {
+    const refused = new Error('the host did not answer');
+    world.start.mockRejectedValue(refused);
+    const { start } = await networkerGiven();
+    await expect(start('acme', 'north', options)).rejects.toBe(refused);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('stops through the runtime\'s close of a forward, by its id, as it is: nothing is asked before a call is made, and the session the host answers is not the window\'s to read', async () => {
+    world.close.mockResolvedValue({ id: 'forward-1', state: 'STOPPED' });
+    const { stop } = await networkerGiven();
+    expect(stop).toBeTypeOf('function');
+    expect(world.close).not.toHaveBeenCalled();
+    await expect(stop('forward-1')).resolves.toBeUndefined();
+    expect(world.close).toHaveBeenCalledTimes(1);
+    expect(world.close).toHaveBeenCalledWith('forward-1');
+    expect(world.start).not.toHaveBeenCalled();
+  });
+
+  it('lets the host\'s refusal of a stop through as it came, for the forward to word: the screen swallows nothing and says nothing itself', async () => {
+    const refused = new Error('the host did not answer');
+    world.close.mockRejectedValue(refused);
+    const { stop } = await networkerGiven();
+    await expect(stop('forward-1')).rejects.toBe(refused);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('is one networker for the life of the window, however often the screen is drawn', async () => {
+    const view = render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    const before = world.given.length;
+    world.inventory = { ...world.inventory, state: 'loading' };
+    view.rerender(<PluginHostScreen />);
+    expect(world.given.length).toBeGreaterThan(before);
+    expect(drawn()?.networker).toBeDefined();
+    expect(new Set(world.given.map((props) => props.networker)).size).toBe(1);
   });
 });
