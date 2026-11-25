@@ -459,12 +459,17 @@ type aPluginThatEndsBeforeItAnswers struct {
 
 	ctrl     *controller
 	pluginID string
+	// afterEnd is what happens after the session's CLOSE and before the answer (nil: nothing).
+	afterEnd func()
 }
 
 func (p aPluginThatEndsBeforeItAnswers) CreateSession(pctx *sdktypes.PluginContext, opts sdkexec.SessionOptions) (*sdkexec.Session, error) {
 	session, err := p.aKeepingPlugin.CreateSession(pctx, opts)
 	p.write(opts.ID, "hi\n")
 	p.ctrl.dispatchOutput(p.end(opts.ID), p.pluginID)
+	if p.afterEnd != nil {
+		p.afterEnd()
+	}
 
 	return session, err
 }
@@ -474,7 +479,7 @@ func (p aPluginThatEndsBeforeItAnswers) CreateSession(pctx *sdktypes.PluginConte
 func TestASessionThatEndedBeforeItsCreateWasAnsweredIsRecordedEnded(t *testing.T) {
 	fx := newEndedSessionFixture(t)
 	const early = "early-plugin"
-	fx.install(early, aPluginThatEndsBeforeItAnswers{aKeepingPlugin: fx.plugin, ctrl: fx.ctrl, pluginID: early})
+	fx.install(early, aPluginThatEndsBeforeItAnswers{aKeepingPlugin: fx.plugin, ctrl: fx.ctrl, pluginID: early, afterEnd: nil})
 	fx.startOn(early, "short")
 	require.True(t, fx.window.told("core/exec/signal/CLOSE/short"), "the windows were told the session closed before the create was answered")
 	require.Equal(t, []string{"short"}, fx.indexed(), "the controller keeps what the plugin keeps: the session's record")
@@ -487,6 +492,35 @@ func TestASessionThatEndedBeforeItsCreateWasAnsweredIsRecordedEnded(t *testing.T
 
 	_, _, err = fx.ctrl.AttachSession("short")
 	requireSessionNotFound(t, err, "short")
+}
+
+// (g) Another plugin's CLOSE of the same id, between a session's own early CLOSE and the answer to its create, neither replaces
+// nor uses up what the session's own CLOSE left: the session is recorded ended.
+func TestAnotherPluginsCloseOfTheSameIDLeavesAnEarlyCloseAlone(t *testing.T) {
+	fx := newEndedSessionFixture(t)
+	const early, other = "early-plugin", "other-plugin"
+	fx.install(early, aPluginThatEndsBeforeItAnswers{aKeepingPlugin: fx.plugin, ctrl: fx.ctrl, pluginID: early, afterEnd: func() {
+		fx.ctrl.dispatchOutput(aCloseSignal("short"), other)
+	}})
+	fx.startOn(early, "short")
+
+	_, output, err := fx.ctrl.AttachSession("short")
+	require.NoError(t, err)
+	require.Equal(t, "hi\n", string(output))
+	require.Empty(t, fx.indexed(), "the session was recorded ended: the first attach used the record up")
+}
+
+// (h) Another plugin's CLOSE of an id, and then a create of a session with that id: the session is live.
+func TestAnotherPluginsCloseOfAnIDDoesNotEndASessionCreatedWithIt(t *testing.T) {
+	fx := newEndedSessionFixture(t)
+	fx.ctrl.dispatchOutput(aCloseSignal("short"), "other-plugin")
+	fx.start("short")
+
+	fx.ctrl.mu.RLock()
+	record := fx.ctrl.sessionIndex["short"]
+	fx.ctrl.mu.RUnlock()
+	require.False(t, record.ended, "the session is live: another plugin's CLOSE did not end it")
+	require.Equal(t, []string{"short"}, fx.indexed())
 }
 
 // An ended session is over: a window cannot write to it, resize it or read it, as it could not after its CLOSE

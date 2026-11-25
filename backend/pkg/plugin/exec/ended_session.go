@@ -53,31 +53,40 @@ func (c *controller) sessionClosed(sessionID, pluginID string) bool {
 	return true
 }
 
-// endedFirst is a CLOSE that came before the record of its session: the plugin that sent it, and when.
+// endedFirst is a CLOSE that came before the record of its session: the plugin that sent it and the session's id. The CLOSE
+// of the same id by another plugin is an entry of its own: it never replaces, ends or uses up this one.
 type endedFirst struct {
-	pluginID string
-	at       time.Time
+	pluginID  string
+	sessionID string
 }
 
 // rememberEndedFirstLocked keeps the CLOSE of a session that has no record, for the create that records it, as the ended
-// records are kept: for endedSessionTTL, and endedSessionLimit of them at most (a CLOSE no create follows, of a session the
-// host has already forgotten, goes so). The caller holds c.mu.
+// records are kept: for endedSessionTTL, and endedSessionLimit of them at most for each plugin, so that no plugin's CLOSEs
+// push out another's (a CLOSE no create follows, of a session the host has already forgotten, goes so). The caller holds c.mu.
 func (c *controller) rememberEndedFirstLocked(sessionID, pluginID string, now time.Time) {
-	for id, first := range c.endedFirst {
-		if now.Sub(first.at) > endedSessionTTL {
-			delete(c.endedFirst, id)
+	mine := 0
+	for key, at := range c.endedFirst {
+		switch {
+		case now.Sub(at) > endedSessionTTL:
+			delete(c.endedFirst, key)
+		case key.pluginID == pluginID:
+			mine++
 		}
 	}
-	for len(c.endedFirst) >= endedSessionLimit {
-		oldest := ""
-		for id, first := range c.endedFirst {
-			if oldest == "" || first.at.Before(c.endedFirst[oldest].at) {
-				oldest = id
+	for ; mine >= endedSessionLimit; mine-- {
+		var (
+			oldest   endedFirst
+			oldestAt time.Time
+			found    bool
+		)
+		for key, at := range c.endedFirst {
+			if key.pluginID == pluginID && (!found || at.Before(oldestAt)) {
+				oldest, oldestAt, found = key, at, true
 			}
 		}
 		delete(c.endedFirst, oldest)
 	}
-	c.endedFirst[sessionID] = endedFirst{pluginID: pluginID, at: now}
+	c.endedFirst[endedFirst{pluginID: pluginID, sessionID: sessionID}] = now
 }
 
 // recordCloseLocked decides the record of a session that has sent its CLOSE, and says whether it stays, marked
