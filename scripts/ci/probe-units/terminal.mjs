@@ -169,7 +169,7 @@ export const units = [
     name: 'Probe that the reattach probe sees a key and a session that are lost',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['cap-in-url', 'cap-forgotten', 'no-session', 'replay-gap'],
+    controls: ['cap-in-url', 'cap-in-state', 'cap-forgotten', 'no-session', 'replay-gap'],
     plants: 'page',
     seconds: 40,
   },

@@ -378,6 +378,8 @@ export function createHost(options = {}) {
   /** What a probe asks of the host's records: what was called, which streams attached and to what, what the page sent and what the host applied, and what it sent. `delivered` counts every byte of output the host handed to a stream. */
   const log = {
     calls: [],
+    /** What every `SaveState` call carried, in order: the window's slots are the page's own state, and a capability must never be in one. */
+    saved: [],
     created: [],
     refused: [],
     closed: [],
@@ -1327,6 +1329,7 @@ export function createHost(options = {}) {
       case 'GetState':
         return { ...slots.get(args[0]) };
       case 'SaveState':
+        log.saved.push({ slot: args[1], text: String(args[2]) });
         slots.set(args[0], { ...slots.get(args[0]), [args[1]]: args[2] });
         return undefined;
       default:

@@ -379,6 +379,7 @@
       "focus-close-button",
       "focus-delete-swallowed",
       "cap-in-url",
+      "cap-in-state",
       "cap-forgotten",
       "no-session",
       "replay-gap",
