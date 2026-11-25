@@ -363,12 +363,15 @@ func TestClosingHangsUpTheBackgroundJobsOfABashShell(t *testing.T) {
 	}, 20*time.Second, 10*time.Millisecond)
 	t.Cleanup(func() { _ = syscall.Kill(job, syscall.SIGKILL) })
 	require.False(t, gone(job))
-	// The shell is at its prompt when the window closes. (With the integration, bash runs its prompt commands as a
-	// non-interactive shell, which does not hang its jobs up, for the millisecond they take: a close in that millisecond
-	// is covered by TestAHangupDuringThePromptCommandsStillHangsUpTheJobs, and a test that closes the instant the job
-	// is named would fall into it by its own timing.)
-	time.Sleep(300 * time.Millisecond)
-
+	// The shell is at its prompt when the window closes: the prompt after the job's command has been drawn, which the integration
+	// says with its second input-start mark (the first is the first prompt). With the integration bash runs its prompt commands
+	// as a non-interactive shell, which does not hang its jobs up, between the end of a command and the first hook that sets a
+	// handler (about 0.1 ms: a DEBUG trap and a fork); a close that lands in it is a known gap (T5-inject-bash.md), and a test
+	// that closed the instant the job is named would fall into it by its own timing.
+	if info.Integration.State == IntegrationOn {
+		require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 2 },
+			20*time.Second, 5*time.Millisecond, "the prompt after the job's command was never drawn")
+	}
 	require.NoError(t, m.CloseSession(info.ID))
 	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
 }
