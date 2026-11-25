@@ -69,3 +69,7 @@ $ node ui-next/shell/probes/terminal-host-memory.mjs --json=/tmp/hostmem-t3cp-e2
 - Every host was stopped by the pid the tool started (SIGTERM, `code 0`, 0 s), and no pid was left. The temporary HOME of each case was removed.
 
 Not run: the native build (Wails WKWebView on macOS, where the stream is a held poll and not a WebSocket, and `ps` counts only resident pages); Windows; a browser reader (the reader here is the protocol, not the page's code: the emulator's parse cost is not in these numbers); a run on an idle machine (the load above is from other work on the box).
+
+## Interim: closing a tab whose feed holds no live stream
+
+A feed ends its terminal (`CloseChannelTerminal`) on a tab close only when it holds a live stream after `ready`, or made the terminal and never opened one. A feed whose stream dropped, is being connected again, or has not said `ready` leaves the terminal alone: another tab may hold it now, and a close of the capability alone would end what that tab shows. The host's lease ends the terminal if nobody holds it. The holder-bound close (the host refusing a close from a stream that is not the holder) belongs to the host, in the v2 wire PR.

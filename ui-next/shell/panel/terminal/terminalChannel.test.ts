@@ -374,6 +374,7 @@ describe('a socket that is closing before its close event', () => {
     }
 
     expect(socket.sent).toHaveLength(sent);
+    expect(said.map((one) => one[0])).toEqual(['closed']);
     socket.drop();
     expect(said.map((one) => one[0])).toEqual(['closed']);
   });

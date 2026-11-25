@@ -308,6 +308,8 @@ describe('acknowledging what the reader parsed', () => {
     r.feed.ack(0);
     r.feed.ack(-3);
     r.feed.ack(Number.NaN);
+    r.stream().output(6, 'gh');
+    r.feed.read();
     r.feed.ack(2.9);
     expect(r.stream().acks()).toEqual([0, 4, 2, 2]);
   });
@@ -736,6 +738,7 @@ describe('a terminal the feed attaches to (a page after a reload, a take-back)',
     exact.stream().ready({ start: 0, end: 4 });
     exact.stream().output(0, 'abcd');
     expect(exact.feed.getSnapshot().state).toBe('running');
+    expect(replayOf(exact.feed)).toMatchObject({ data: new Uint8Array(bytes('abcd')), end: 4 });
   });
 
   it('fails in words when a frame of the replay does not continue where the one before ended', async () => {
@@ -824,6 +827,83 @@ describe('a terminal the listing said had ended, and a stream that drops before 
   });
 });
 
+describe('a reconnect that continues the output of a terminal that had ended', () => {
+  it('is not the end until the cursor reaches the end the host advertised: a drop half way is connected again, and the retry budget is not given back', async () => {
+    const r = await running({}, { delays: [250] });
+    r.stream().output(0, 'abcd');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 4, end: 10, ended: { reason: 'exited', exit_code: 1 } });
+    again.output(4, 'ef');
+    again.drop();
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.feed.getSnapshot().exit).toBeUndefined();
+  });
+
+  it('is the end when the cursor reaches it, and a continuation with nothing to bring completes at ready', async () => {
+    const r = await running();
+    r.stream().output(0, 'abcd');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 4, end: 6, ended: { reason: 'exited', exit_code: 1 } });
+    again.output(4, 'ef');
+    again.drop();
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'ended', exit: { code: 1 } });
+    const empty = await running();
+    empty.stream().output(0, 'ab');
+    empty.stream().drop();
+    reconnect(empty).ready({ start: 2, end: 2, ended: { reason: 'exited', exit_code: 3 } });
+    empty.stream().drop();
+    expect(empty.feed.getSnapshot()).toMatchObject({ state: 'ended', exit: { code: 3 } });
+  });
+});
+
+describe('the first acknowledgement and the first running notification', () => {
+  it('goes before anything a subscriber writes when it is told the feed is running', async () => {
+    const r = await connecting();
+    let wrote = false;
+    r.feed.subscribe(() => {
+      if (r.feed.getSnapshot().state === 'running' && !wrote) {
+        wrote = true;
+        r.feed.write('x');
+      }
+    });
+    r.stream().ready();
+    expect(r.stream().sent().map((frame) => frame.kind)).toEqual(['ack', 'input']);
+  });
+
+  it('stops processing the ready when that acknowledgement finds the socket dead: the feed is not running on a stream that is over, and connects again', async () => {
+    const r = await connecting();
+    r.stream().die();
+    r.stream().ready();
+    expect(r.feed.getSnapshot().state).toBe('starting');
+    const again = reconnect(r);
+    again.ready();
+    expect(r.feed.getSnapshot().state).toBe('running');
+  });
+});
+
+describe('asking who holds a terminal for a take-back (`refresh({ fresh })`)', () => {
+  it('shares the question that is out with a poll, and waits for it and asks again for a take-back: the answer begins after the press', async () => {
+    const gates = [Promise.withResolvers<unknown>(), Promise.withResolvers<unknown>()];
+    let asked = 0;
+    const r = await running({}, { channels: { listed: async () => gates[asked++]?.promise } });
+    r.stream().takenOver();
+    const poll = r.feed.refresh?.();
+    const sharing = r.feed.refresh?.();
+    const fresh = r.feed.refresh?.({ fresh: true });
+    await turns();
+    expect(r.channels.of('listed')).toHaveLength(1);
+    gates[0]?.resolve({ id: 'term-1', attached: false });
+    await turns();
+    expect(r.channels.of('listed')).toHaveLength(2);
+    expect(r.feed.getSnapshot().detached?.free).toBe(true);
+    gates[1]?.resolve({ id: 'term-1', attached: true });
+    await Promise.all([poll, sharing, fresh]);
+    expect(r.feed.getSnapshot().detached?.free).toBeUndefined();
+  });
+});
+
 describe('a stream that dropped', () => {
   it('is connected again after 250 ms, from the offset the feed applied up to, unread output included', async () => {
     const r = await running();
@@ -871,6 +951,9 @@ describe('a stream that dropped', () => {
     vi.advanceTimersByTime(60_000);
     expect(r.channels.streams()).toHaveLength(4);
     expect(vi.getTimerCount()).toBe(0);
+    // Giving up leaves the host's terminal alone: a reload may still find it.
+    expect(r.channels.of('close')).toEqual([]);
+    expect(r.channels.of('dismiss')).toEqual([]);
   });
 
   it('starts counting again from the first delay once a stream was ready', async () => {
@@ -949,6 +1032,19 @@ describe('a stream that dropped', () => {
       expect(again.acks()).toEqual([0, 2]);
     });
 
+    it('splits ONE acknowledgement that spans the old and the new stream: the bytes of the old one are forgiven, and the new one is credited exactly for its own', async () => {
+      const r = await running();
+      r.stream().output(0, 'abcdef');
+      r.feed.read();
+      r.stream().drop();
+      const again = reconnect(r);
+      again.ready({ start: 6, end: 6 });
+      again.output(6, 'gh');
+      r.feed.read();
+      r.feed.ack(8);
+      expect(again.acks()).toEqual([0, 2]);
+    });
+
     it('fails in words when the host says nothing was lost and starts somewhere else: the output cannot be joined', async () => {
       const r = await running();
       r.stream().output(0, 'abc');
@@ -967,8 +1063,8 @@ describe('a stream that dropped', () => {
       r.feed.read();
       r.stream().output(3, 'unread');
       r.stream().drop();
-      reconnect(r);
-      r.stream().ready({ start: 50, end: 54, lost: 47, size: { cols: 100, rows: 30 }, modes: { alt_screen: true } });
+      expect(reconnect(r).fromOffset).toBe(9);
+      r.stream().ready({ start: 50, end: 54, lost: 41, size: { cols: 100, rows: 30 }, modes: { alt_screen: true } });
       r.stream().output(50, 'ring');
       r.stream().output(54, 'live');
       expect(replayOf(r.feed)).toMatchObject({ data: new Uint8Array(bytes('ring')), end: 54, size: { cols: 100, rows: 30 }, modes: { ...PLAIN, altScreen: true } });
@@ -997,9 +1093,9 @@ describe('a stream that dropped', () => {
       r.feed.read();
       r.stream().output(4, 'efgh');
       r.stream().drop();
-      reconnect(r);
-      const again = r.stream();
-      again.ready({ start: 20, end: 22, lost: 16 });
+      const again = reconnect(r);
+      expect(again.fromOffset).toBe(8);
+      again.ready({ start: 20, end: 22, lost: 12 });
       again.output(20, 'xy');
       again.output(22, 'zz');
       replayOf(r.feed);
@@ -1275,8 +1371,12 @@ describe('a terminal another page took (`taken-over`)', () => {
       }
     });
 
-    it('is not free when the host lists how it ended: nobody can take it back', async () => {
-      const r = await lost(() => ({ id: 'term-1', attached: false, ended: { reason: 'exited' } }));
+    it('is not free when the host lists how it ended, and an ended listing takes back a `free` an earlier listing gave: nobody can take it back', async () => {
+      let answer: unknown = { id: 'term-1', attached: false };
+      const r = await lost(() => answer);
+      await r.feed.refresh?.();
+      expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+      answer = { id: 'term-1', attached: false, ended: { reason: 'exited' } };
       await r.feed.refresh?.();
       expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
     });
@@ -1286,6 +1386,7 @@ describe('a terminal another page took (`taken-over`)', () => {
       await r.feed.refresh?.();
       await r.feed.refresh?.();
       expect(r.warn).toHaveBeenCalledTimes(1);
+      expect(r.channels.of('listed')).toHaveLength(2);
       expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
       expect(r.channels.streams()).toHaveLength(1);
     });
@@ -1375,19 +1476,23 @@ describe('closing the feed', () => {
     expect(r.channels.of('close')).toEqual([]);
   });
 
-  it('ends a terminal that it lost the connection to, since the person closed its tab: the shell is not left to run out its lease', async () => {
-    const r = await running({}, { delays: [] });
-    r.stream().drop();
-    expect(r.feed.getSnapshot().state).toBe('failed');
-    await r.feed.close();
-    expect(r.channels.of('close')).toHaveLength(1);
-  });
-
-  it('ends a terminal whose output could not be joined, which still runs', async () => {
-    const r = await running();
-    r.stream().output(5, 'x');
-    await r.feed.close();
-    expect(r.channels.of('close')).toHaveLength(1);
+  it('leaves a terminal alone when the feed holds no live stream to it: another tab may hold it now, and the host\'s lease ends it if nobody does', async () => {
+    const gave = await running({}, { delays: [] });
+    gave.stream().drop();
+    expect(gave.feed.getSnapshot().state).toBe('failed');
+    await gave.feed.close();
+    const waiting = await running();
+    waiting.stream().drop();
+    await waiting.feed.close();
+    const joining = await running();
+    joining.stream().output(5, 'x');
+    await joining.feed.close();
+    const early = attaching();
+    await early.feed.close();
+    for (const r of [gave, waiting, joining, early]) {
+      expect(r.channels.of('close')).toEqual([]);
+      expect(r.channels.of('dismiss')).toEqual([]);
+    }
   });
 
   it('does not end a terminal this page lost to another, nor one the host does not know: what it shows is not this page\'s to end', async () => {
@@ -1429,11 +1534,11 @@ describe('closing the feed', () => {
     expect(failed.channels.of('dismiss')).toEqual([]);
   });
 
-  it('ends the terminal of a feed that attached and was closed before the host said ready: it is there', async () => {
+  it('closes the stream of a feed that attached and was closed before the host said ready, and ends nothing: it holds no stream to the terminal yet', async () => {
     const r = attaching();
     await r.feed.close();
-    expect(r.channels.of('close')).toHaveLength(1);
     expect(r.stream().closedByFeed()).toBe(true);
+    expect(r.channels.of('close')).toEqual([]);
   });
 
   it('is no error when the host says the terminal is not there: it ended meanwhile', async () => {

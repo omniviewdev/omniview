@@ -1120,6 +1120,14 @@ describe('a terminal this page lost, and takes back (T2d: its tab says so, and a
   });
 
   describe('taking it back', () => {
+    it('asks the host anew for the take-back: the answer must begin after the press, so the feed is asked for a fresh one', async () => {
+      const { r, old } = lost();
+      const refresh = vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined);
+      Object.assign(old, { refresh });
+      await r.sessions.takeBack('term-a');
+      expect(refresh).toHaveBeenCalledWith({ fresh: true });
+    });
+
     it('attaches the terminal again for the session of its id: the window makes the target for that id, it is opened once, and its feed is the session\'s feed from then on', async () => {
       const { r, old, again, open, reattach } = lost();
       await expect(r.sessions.takeBack('term-a')).resolves.toBe(true);
