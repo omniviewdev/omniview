@@ -666,6 +666,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
   /** Lets go of every byte kept, unconfirmed: the host's count is `total` from here on, and the user is told that input typed while away may be lost. */
   const dropKept = (total: number) => {
+    const lost = keptBytes > 0;
     kept = [];
     head = 0;
     sentTo = 0;
@@ -673,8 +674,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     sentOnce = false;
     resends = 0;
     applied = total;
-    status = { ...status, inputLost: true };
-    tell();
+    // Only input that was kept and is let go of may be lost: a reconnect after nothing was typed says nothing.
+    if (lost) {
+      status = { ...status, inputLost: true };
+      tell();
+    }
   };
 
   /** The host has applied input up to `total` (its count, across streams): the kept bytes up to it are let go. A number that does not grow changes nothing; one above what the feed typed is all of it, and said once. */

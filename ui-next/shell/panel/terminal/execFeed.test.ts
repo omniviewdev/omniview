@@ -2360,3 +2360,76 @@ describe('a host that does not know the feed\'s writer (`ready.writer_known: fal
     expect(r.feed.getSnapshot().inputLost).toBeUndefined();
   });
 });
+
+describe('the writer_known rule, pinned (review of the review)', () => {
+  it('says nothing is lost when nothing was kept: a reconnect with an unknown writer after nothing was typed', async () => {
+    const r = await running();
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ writerKnown: false });
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    expect(laneOf(r.feed.getSnapshot()).words).toBe('');
+  });
+
+  it('keeps the words when nothing is typed: an empty write does not clear them, a real one does', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ writerKnown: false });
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    r.feed.write('');
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    r.feed.write('x');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+  });
+
+  it('reads a ready that does not say `writer_known` as a known writer: what it did not confirm is sent again, and nothing is said', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 0, raw: { writer_known: undefined } });
+    expect(again.typed()).toBe('abc');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+  });
+
+  it('starts counting from the count the host gives after it let go: a later `applied` is measured from there', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 5, writerKnown: false });
+    r.feed.write('x');
+    expect(again.typed()).toBe('x');
+    again.applied(6);
+    expect(r.warn).not.toHaveBeenCalled();
+    expect(r.feed.keptPieces()).toBe(0);
+  });
+
+  it('counts a resend only for bytes that were sent to a stream before: bytes no stream took (the socket died first) are not resends however many streams they wait through', async () => {
+    const r = await running({}, { delays: [10, 10, 10, 10, 10, 10, 10, 10] });
+    r.stream().drop();
+    r.feed.write('abc');
+    for (let round = 1; round <= 6; round += 1) {
+      const again = reconnect(r, 10);
+      again.die();
+      again.ready({ inputApplied: 0 });
+      expect(r.feed.getSnapshot().inputLost, `round ${String(round)}`).toBeUndefined();
+      expect(again.typed()).toBe('');
+    }
+  });
+
+  it('starts the resend count again when the `ready` itself says the host applied some: a slow reader that takes a little each time is not cut off', async () => {
+    const r = await running();
+    r.feed.write('abcdefghij');
+    r.stream().drop();
+    for (let round = 1; round <= 7; round += 1) {
+      const again = reconnect(r, round === 1 ? 250 : 1_000);
+      again.ready({ inputApplied: round });
+      expect(r.feed.getSnapshot().inputLost, `round ${String(round)}`).toBeUndefined();
+      expect(again.typed()).not.toBe('');
+      again.drop();
+    }
+  });
+});
