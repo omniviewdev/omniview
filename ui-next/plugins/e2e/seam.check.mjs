@@ -6871,8 +6871,9 @@ function watchExecCalls(page) {
     call.status = response.status();
     try {
       call.answer = JSON.parse(await response.text());
-    } catch {
+    } catch (error) {
       call.answer = null;
+      call.answerError = String(error?.message ?? error).slice(0, 200);
     }
 
     if (call.method === 'CreateTerminal' && typeof call.answer?.cap === 'string' && typeof call.answer?.id === 'string') {
@@ -7008,7 +7009,10 @@ async function watchQuestions(page) {
 async function startTerminal(page, base, button) {
   const known = await terminalIds(base);
   await button.click();
-  await waitUntil('the host to list the new shell', async () => (await terminalIds(base)).length === known.length + 1, 30_000);
+  await waitUntil('the host to list the new shell', async () => (await terminalIds(base)).length === known.length + 1, 30_000).catch((error) => {
+    const creates = evidenceOf(page).wire.of('CreateTerminal').map((call) => `${String(call.status)} answered=${String(call.answered)} ${call.answerError ?? ''}`);
+    throw new Error(`${String(error.message)}; the page's CreateTerminal calls: ${JSON.stringify(creates)}; the check knows ${String(KNOWN.size)} capabilities`);
+  });
   const id = (await terminalIds(base)).find((one) => !known.includes(one));
   await waitUntil('the emulator to have the keyboard', async () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 30_000);
   await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
