@@ -1,5 +1,5 @@
 import { MenuHost } from '@omniviewdev/kit';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from './App';
@@ -38,9 +38,7 @@ describe('ui-next App', () => {
     // The shared test setup paints color-scheme on <html> before any test; what must hold is that the screen adds nothing.
     const before = root.getAttribute('style');
     for (const name of ['Next theme', 'Next density', 'Next text size']) {
-      await act(async () => {
-        await user.click(screen.getByRole('button', { name }));
-      });
+      await user.click(screen.getByRole('button', { name }));
       expect(root.getAttribute('style')).toBe(before);
       expect([...root.style].filter((property) => property.startsWith('--'))).toEqual([]);
     }
