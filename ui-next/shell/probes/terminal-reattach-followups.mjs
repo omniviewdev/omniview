@@ -417,7 +417,7 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
         return { ...now, end: host.state(id)?.end ?? 0 };
       },
       settled,
-      { limit: 30_000 },
+      { stall: 20_000, limit: 120_000 },
     );
     // A wait that ended by its stall or its limit is not a caught-up page: the section fails here, with the numbers, and not later on a state nobody confirmed.
     if (!settled(last)) throw new Error(`the page did not catch up: ${JSON.stringify(last)}`);

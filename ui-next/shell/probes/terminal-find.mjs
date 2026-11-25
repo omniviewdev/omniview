@@ -1,3 +1,21 @@
+      // A page that was handed a replay it cannot join (the host's replay lacks its end: the stream does not continue where the replay says it ends) fails its terminal in words and shows no screen: it has nothing to find, and the check below says so.
+      const screen = await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 }).then(() => true, () => false);
+      const replayed = screen && (await waitFor(page, (last) => window.__engine.lines.last >= last, REPLAY_LINES - 1, 12_000));
+      let open = false;
+      const readings = [];
+      if (screen) {
+        await page.locator('.xterm-helper-textarea').focus();
+        const mac = await isMac(page);
+        open = await opened(page, mac);
+        // What the replay holds is searched only when it came: a page that did not take it in has nothing to find, and the check says so.
+        for (const line of replayed ? ['0002999', '0000123'] : []) {
+          await field(page).fill(line);
+          await waitFor(page, () => window.__find.count() !== null && window.__find.count() !== '');
+          const got = await countIs(page, saysFor(1));
+          readings.push({ line, got, ok: got === saysFor(1) });
+        }
+      }
+
 // The sections of the Terminal probe for T3a: find in the scrollback, the context menu and the links in the output, in a real xterm, in both engines at both viewports. The far end is the fixture's synthetic shell
 // (terminal-fixture.tsx: `known`, `dense`, `urls`, `mouse-on`, `mouse-off` print what the sections look for) and, for the replay, the probe's own T2-go host (terminal-host.mjs). Every section waits for a state and never for a time: a
 // page that is asked for something is read until it says it (`waitForFunction`, which wakes on a frame), a count is a count, and what must not happen is proven after a number of frames and not of milliseconds.

@@ -638,8 +638,8 @@ export function createHost(options = {}) {
         out(pty, 'hello from the synthetic shell\r\n');
         break;
       case 'size':
-        log.sizeReports.push({ rows: pty.rows, cols: pty.cols });
-        out(pty, `${String(pty.rows)} ${String(pty.cols)}\r\n`);
+        log.sizeReports.push({ rows: pty.rows, cols: pty.ptyCols });
+        out(pty, `${String(pty.rows)} ${String(pty.ptyCols)}\r\n`);
         break;
       case 'colors': {
         const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
@@ -1088,6 +1088,7 @@ export function createHost(options = {}) {
           const changed = pty.rows !== rows || pty.cols !== cols;
           pty.rows = rows;
           pty.cols = cols;
+          pty.ptyCols = faults.sizeOff ? cols + 1 : cols;
           pty.ring.resize(cols, rows);
           if (changed && pty.program !== undefined) frame(pty);
         }, () => pty.holder === conn && !conn.displaced);
@@ -1255,6 +1256,7 @@ export function createHost(options = {}) {
     if (!(cols >= 1 && cols <= 1000 && rows >= 1 && rows <= 1000)) throw invalid('cols', 'a size is 1 to 1,000 cells');
     serial += 1;
     const cap = newCapability();
+    // `faults.sizeOff`: the pty is one column wider than it was asked to be, and says nothing of it: the host's own records (the session, the ready) keep the size that was asked, so that only what the shell reports is wrong.
     const wide = faults.sizeOff ? cols + 1 : cols;
     const pty = {
       id: options_.id,
@@ -1265,9 +1267,10 @@ export function createHost(options = {}) {
       leaseMs: lease === 0 ? defaultLease : lease,
       lease: undefined,
       leaseExpires: 0,
-      cols: wide,
+      cols,
+      ptyCols: wide,
       rows,
-      ring: new Ring(wide, rows, ringBytes),
+      ring: new Ring(cols, rows, ringBytes),
       queue: [],
       head: 0,
       waiting: 0,

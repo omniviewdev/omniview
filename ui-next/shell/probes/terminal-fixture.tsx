@@ -168,7 +168,9 @@ const acks = { holding: false, accepting: false, held: [] as Array<{ socket: Fix
 /** The numbered lines the emulator is given while no byte is yet (`flow-late`): the first acknowledgement waits for the first write. */
 let firstAck: (() => void) | undefined;
 
-const leak: Uint8Array[] = [];
+/** What `?control=leaky-heap` holds on to: the text of every output frame, which lives on the JS heap (a typed array's bytes do not, and the probe reads the JS heap). */
+const leak: string[] = [];
+const latin1 = new TextDecoder('latin1');
 
 class FixtureSocket implements ChannelSocket {
   readonly id = String((socketSerial += 1));
@@ -424,7 +426,7 @@ class FixtureSocket implements ChannelSocket {
       }
 
       if (control === 'leaky-heap') {
-        leak.push(frame);
+        leak.push(latin1.decode(frame));
       }
 
       if (control === 'draw-hidden') {
@@ -859,7 +861,6 @@ let swapped: (() => void) | undefined;
 /** What `?control=input-serial` holds: the keys typed while a call was waiting for its answer, in the order they were typed, and whether they are being let go. */
 const typedWaiting: Array<() => void> = [];
 let letting = false;
-const latin1 = new TextDecoder('latin1');
 
 /** The numbered lines of a flood as the emulator is given them: each is the one after the last (a number skipped is a gap, one repeated a duplicate), and a full reset, which a replay begins with, starts the count again. */
 function trackLine(lines: Lines, data: Uint8Array | string): void {
