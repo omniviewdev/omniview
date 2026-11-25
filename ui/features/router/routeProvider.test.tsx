@@ -86,6 +86,8 @@ describe('Group 22: Route Building', () => {
     // Children include plugin routes + catch-all not-found
     expect(result.current.routes[0].children).toHaveLength(3); // 2 routes + notFound
     expect(result.current.routes[1].children).toHaveLength(2); // 1 route + notFound
+    // A tab that opens on a plugin path runs the wrapper's loader before its first render; the wrapper names what it draws meanwhile: nothing.
+    expect(result.current.routes[0].HydrateFallback).toBeDefined();
     expect(result.current.ready).toBe(true);
   });
 
