@@ -1,15 +1,17 @@
-// The Overview's side of the Pods cluster check (HM3c, plugin PR #287): the page a connection lands on is the cluster Overview, and it must say what kubectl alone says of the cluster. This file reads a snapshot of the
+// The Overview's side of the Pods cluster check (HM3c, plugin PR #287): the page a connection opens on is the cluster Overview, and it must say what kubectl alone says of the cluster. This file reads a snapshot of the
 // page's DOM into a model, makes the expected model from kubectl's output, compares the two, and holds the rules of the page while it loads. Pure functions only (no process, no browser), so `overview.test.mjs` proves each
 // failure mode without a cluster. The browser part is `checkOverview` and `readOverviewDom` in parity.mjs; kubectl is read there too.
 //
-// What the page is (the plugin's `ui/src/overview/`: model.ts, view.tsx, cells.tsx, assess.ts, facts.ts; the host's `ui-next/page/DetailPage.tsx` draws it): one tab, titled Overview; one h1, the connection's NAME; the sidebar's
-// Overview entry current; a summary line (`Needs attention · 4 failing`, `Everything is running`, `Checking · Not checked in full yet: Pods, Jobs`); and up to three sections, in this order:
+// What the page is (the plugin's `ui/src/overview/`: model.ts, view.tsx, cells.tsx, assess.ts, facts.ts; the host's `ui-next/page/DetailPage.tsx` draws it): two tabs, the plugin's landing, titled Kubernetes (the press on the connection in its table
+// opens the Overview in a NEW tab and leaves it where it is, landing.mjs), and then the Overview, titled Overview and on screen; one h1, the connection's NAME; the sidebar's Overview entry current; a summary line
+// (`Needs attention · 4 failing`, `Everything is running`, `Checking · Not checked in full yet: Pods, Jobs`); and up to three sections, in this order:
 //   attention  (`data-detail-section=attention`, only when something fails) a count beside the title, then one row for each group of failing objects of one kind that share a word: `3 Pods in CrashLoopBackOff` over the first
 //              two names and `and 1 more` (one object: its name, its namespace and what more is known of it, `crashloop · checkout · 1 restart`)
 //   workloads  a table of the kinds Pods, Deployments, StatefulSets, DaemonSets, Jobs and CronJobs: Status (`Needs attention`, `Healthy`, `Loading`), Total, Failing (`None failing`, `3`, `3+`, `Not checked`, a dash)
 //   cluster    Kubernetes version, Nodes (`1 · 1 ready`), Namespaces, API server (the address without credentials or query)
 // The expected page is made from kubectl and the kubeconfig and from no rule of the plugin: each kind fails by a rule written here, in the simple form (a Job whose Failed condition is True, a workload with fewer ready than wanted,
 // a Node whose Ready is not True, a Pod by kubectl's own STATUS word), so the two agree only when the plugin's rules do.
+import { LANDING_TAB } from './landing.mjs';
 import { DERIVED_ID } from './lane.mjs';
 
 export const OVERVIEW_TAB = 'Overview';
@@ -98,7 +100,7 @@ function readSummary(items) {
  *   attention   `{ count, rows }`, null when the page draws no such section; a row is `{ title, detail, kind, count, phrase, names, more, namespace?, extra? }`
  *   workloads   `[{ kind, status, total, failing }]` (the two figures through `readFigure`), null when the page draws no such section
  *   cluster     `[{ label, value, loading }]`, null when the page draws no such section                                           sections  the ids of the sections the page draws, in order
- * A page that draws no Overview (the landing of the plugin before it, a list of Pods) is a page with no sections, never an Overview with nothing in it.
+ * A page that draws no Overview (the plugin's landing, a list of Pods) is a page with no sections, never an Overview with nothing in it.
  */
 export function readOverview(dom) {
   const section = (id) => dom.sections.find((candidate) => candidate.id === id);
@@ -242,12 +244,13 @@ export function expectedOverview({ pods, objects, version, server, now }) {
 
 // --- the page against kubectl -----------------------------------------------------------------------------------------------------------------------------------------
 
-// The window: one tab, titled Overview and on screen; one heading, the connection's NAME (`context`: what kubectl calls the current context) and never its ID; the sidebar's Overview entry, and no other, current.
+// The window: two tabs, the plugin's landing, titled Kubernetes, and then the Overview, titled Overview and on screen; one heading, the connection's NAME (`context`: what kubectl calls the current context) and never its ID; the sidebar's Overview entry,
+// and no other, current.
 function compareIdentity(read, { context, id }) {
   const problems = [];
   const { tabs, headings } = read;
-  if (!(tabs.length === 1 && tabs[0].title === OVERVIEW_TAB && tabs[0].selected)) {
-    problems.push(`tab: the window's tabs are [${tabs.map((tab) => `${JSON.stringify(tab.title)}${tab.selected ? ' on screen' : ''}`).join(', ')}], wanted one tab, titled ${JSON.stringify(OVERVIEW_TAB)}, on screen`);
+  if (!(tabs.length === 2 && tabs[0].title === LANDING_TAB && tabs[1].title === OVERVIEW_TAB && tabs[1].selected)) {
+    problems.push(`tab: the window's tabs are [${tabs.map((tab) => `${JSON.stringify(tab.title)}${tab.selected ? ' on screen' : ''}`).join(', ')}], wanted two tabs: the plugin's landing, titled ${JSON.stringify(LANDING_TAB)}, then one titled ${JSON.stringify(OVERVIEW_TAB)}, on screen`);
   }
 
   const name = JSON.stringify(context);

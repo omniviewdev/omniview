@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Scratch: how many of the page's own cancelled queries does the unavailable-group check let through, on fresh hosts, with the pin (#289) and with the one before it (#288)?
+set -uo pipefail
+ROOT="$HOME/Repos/omniviewdev/worktrees/landing-pin"
+SCRATCH=/tmp/landing-pin
+export OMNIVIEW_E2E_WORK="$SCRATCH/work-ug"
+KC="$OMNIVIEW_E2E_WORK/kubeconfig"
+NAME=landing-pin-ug
+IMAGE="$(sed -n 's/^  KIND_NODE_IMAGE: //p' "$ROOT/.github/workflows/ui-next-pods.yml")"
+export PATH="$SCRATCH/bin:$PATH"
+cd "$ROOT"
+cleanup() { for h in new1 new2 new3 old1 old2 old3; do scripts/ui-next-pods/host.sh stop "$h" 2>/dev/null || true; done; unset KUBECONFIG; kind delete cluster --name "$NAME" --kubeconfig "$KC" 2>&1 | tail -1; }
+trap cleanup EXIT
+rm -rf "$OMNIVIEW_E2E_WORK"; mkdir -p "$OMNIVIEW_E2E_WORK"
+mkdir -p "$OMNIVIEW_E2E_WORK/plugin-new" "$OMNIVIEW_E2E_WORK/plugin-old"
+tar -xzf "$SCRATCH/omniview-plugin-kubernetes/dist/kubernetes-darwin_arm64.tar.gz" -C "$OMNIVIEW_E2E_WORK/plugin-new"
+tar -xzf "$SCRATCH/plugin-old/dist/kubernetes-darwin_arm64.tar.gz" -C "$OMNIVIEW_E2E_WORK/plugin-old"
+unset KUBECONFIG
+kind create cluster --name "$NAME" --kubeconfig "$KC" --image "$IMAGE" --wait 180s 2>&1 | tail -1
+( export KUBECONFIG="$KC"
+  kubectl apply -f docs/ui-next/slices/1a-pods-list/fixture.yaml >/dev/null
+  kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s >/dev/null
+  kubectl -n checkout rollout status sts/cart-cache --timeout=240s >/dev/null
+  kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s >/dev/null
+  kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s >/dev/null
+  kubectl apply -f scripts/ui-next-pods/unavailable-group.yaml >/dev/null
+  kubectl wait --for=condition=Available=false apiservice/v1beta1.inv4-unavailable.example.com --timeout=120s >/dev/null )
+port=24411
+for which in new old; do
+  for n in 1 2 3; do
+    scripts/ui-next-pods/host.sh start "$which$n" "$port" "$KC" "$OMNIVIEW_E2E_WORK/plugin-$which" | tail -1
+    echo "--- $which$n"
+    env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$port" OMNIVIEW_CHECK_KUBECONFIG="$KC" OMNIVIEW_CHECK_MODE=unavailable-group \
+      node --test --test-reporter=spec scripts/ui-next-pods/pods-cluster.check.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "✔|✖|cancelled queries|Error|ParityError" | cut -c1-300
+    port=$((port + 1))
+  done
+done

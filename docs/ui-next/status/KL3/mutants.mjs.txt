@@ -1,0 +1,54 @@
+// Scratch (not committed): rule 28 for what KL3 adds. Each mutant removes or loosens one rule in a COPY of scripts/ui-next-pods and the tests must go red, by the control named for the rule.
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const source = '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin/scripts/ui-next-pods';
+const nodeModules = '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin/node_modules';
+
+const mutants = [
+  // landing.mjs
+  { id: 'L1 listed: a page with no table passes', file: 'landing.mjs', find: "  if (read === null) {\n    return [`listed:", replace: "  if (read === null && false) {\n    return [`listed:", test: 'landing.test.mjs', named: 'control listed: a page that draws no table' },
+  { id: 'L2 listed: a table without the context passes', file: 'landing.mjs', find: '  if (!read.some((row) => row.name === context)) {', replace: '  if (false) {', test: 'landing.test.mjs', named: 'control listed: a page that draws no table' },
+  { id: 'L3 listed: a name that merely starts with the context is the context', file: 'landing.mjs', find: 'if (!read.some((row) => row.name === context)) {', replace: 'if (!read.some((row) => row.name.startsWith(context))) {', test: 'landing.test.mjs', named: 'control listed: a connection named for the ID' },
+  { id: 'L4 state: any state passes', file: 'landing.mjs', find: '  if (row.status !== CONNECTED) {', replace: '  if (false) {', test: 'landing.test.mjs', named: 'control state: a connection that the press did not start' },
+  { id: 'L5 version: any version passes', file: 'landing.mjs', find: '  } else if (row.version !== version) {', replace: '  } else if (false) {', test: 'landing.test.mjs', named: 'control version: a dash' },
+  { id: 'L6 version: a version that starts with the wanted one passes', file: 'landing.mjs', find: '  } else if (row.version !== version) {', replace: '  } else if (!String(row.version).startsWith(version)) {', test: 'landing.test.mjs', named: 'control version: a dash' },
+  { id: 'L7 no current context is a pass', file: 'landing.mjs', find: "  if (context === undefined || context === '') {\n    return ['listed:", replace: "  if (false) {\n    return ['listed:", test: 'landing.test.mjs', named: 'what cannot be compared' },
+  { id: 'L8 no server version is a pass', file: 'landing.mjs', find: "  if (version === undefined || version === '') {", replace: '  if (false) {', test: 'landing.test.mjs', named: 'what cannot be compared' },
+  { id: 'L9 columns by position, not by header', file: 'landing.mjs', find: "row.cells[column('Status')], version: row.cells[column('Kubernetes')]", replace: 'row.cells[1], version: row.cells[2]', test: 'landing.test.mjs', named: 'readLanding reads each row' },
+  // overview.mjs, the tab rule
+  { id: 'T1 tab: the number of tabs is not held', file: 'overview.mjs', find: 'tabs.length === 2 && tabs[0].title', replace: 'tabs.length >= 2 && tabs[0].title', test: 'overview.test.mjs', named: 'control tab' },
+  { id: 'T2 tab: the first tab may be any page', file: 'overview.mjs', find: 'tabs[0].title === LANDING_TAB && ', replace: '', test: 'overview.test.mjs', named: 'control tab' },
+  { id: 'T3 tab: the second tab may be any page', file: 'overview.mjs', find: 'tabs[1].title === OVERVIEW_TAB && ', replace: '', test: 'overview.test.mjs', named: 'control tab' },
+  { id: 'T4 tab: the Overview need not be on screen', file: 'overview.mjs', find: ' && tabs[1].selected', replace: '', test: 'overview.test.mjs', named: 'control tab' },
+  { id: 'T5 tab: the rule is gone', file: 'overview.mjs', find: 'if (!(tabs.length === 2 && tabs[0].title === LANDING_TAB && tabs[1].title === OVERVIEW_TAB && tabs[1].selected)) {', replace: 'if (false) {', test: 'overview.test.mjs', named: 'control tab' },
+  // detail.mjs, the link selector
+  { id: 'D1 link: the page is not held (suffix only)', file: 'detail.mjs', find: 'a[href^="${route}?"][href$="${query}"]', replace: 'a[href$="${query}"]', test: 'detail.test.mjs', named: 'linkTo selects' },
+  { id: 'D2 link: the object is not held (prefix only)', file: 'detail.mjs', find: 'a[href^="${route}?"][href$="${query}"]', replace: 'a[href^="${route}?"]', test: 'detail.test.mjs', named: 'linkTo selects' },
+  { id: 'D3 link: only a link with no connection', file: 'detail.mjs', find: 'a[href^="${route}?"][href$="${query}"]', replace: 'a[href="${route}?${query}"]', test: 'detail.test.mjs', named: 'linkTo selects' },
+];
+
+let caught = 0;
+for (const mutant of mutants) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kl3-mutant-'));
+  const work = path.join(dir, 'scripts', 'ui-next-pods');
+  cpSync(source, work, { recursive: true });
+  symlinkSync(nodeModules, path.join(dir, 'node_modules'));
+  const target = path.join(work, mutant.file);
+  const text = readFileSync(target, 'utf8');
+  if (!text.includes(mutant.find)) {
+    console.log(`SKIP ${mutant.id}: the text to change is not in ${mutant.file}`);
+    rmSync(dir, { recursive: true, force: true });
+    continue;
+  }
+  writeFileSync(target, text.replace(mutant.find, mutant.replace));
+  const run = spawnSync('node', ['--test', '--test-reporter=tap', path.join(work, mutant.test)], { encoding: 'utf8' });
+  const failed = [...run.stdout.matchAll(/^\s*not ok \d+ - (.*)$/gm)].map((match) => match[1]);
+  const named = failed.some((name) => name.includes(mutant.named));
+  if (failed.length > 0 && named) caught += 1;
+  console.log(`${failed.length > 0 && named ? 'CAUGHT' : failed.length > 0 ? 'RED-OTHER' : 'SURVIVED'} ${mutant.id} -> ${failed.length} red: ${failed.map((name) => name.slice(0, 70)).join(' | ')}`);
+  rmSync(dir, { recursive: true, force: true });
+}
+console.log(`${caught} of ${mutants.length} caught by the control named for the rule`);
