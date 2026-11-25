@@ -398,7 +398,7 @@ func TestTheNonceIsInNoLogNoErrorAndNoAnswerThatTheHostGives(t *testing.T) {
 		require.NoError(t, f.m.CloseSession(info.ID))
 		end := f.sink.waitEnd(t, info.ID, 20*time.Second)
 		assert.NotContains(t, fmt.Sprintf("%+v", end), secret, "the end")
-		assert.Positive(t, len(f.logs.Records()), "the host logged while the terminal ran")
+		assert.NotEmpty(t, f.logs.Records(), "the host logged while the terminal ran")
 		for _, record := range f.logs.Records() {
 			assert.NotContains(t, fmt.Sprintf("%v %v %v", record.Message, record.Fields, record.ToMap()), secret, "a log line of the host")
 		}

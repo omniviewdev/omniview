@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,10 +39,10 @@ exec cat > /dev/null
 `
 
 // fakeShell writes a fake shell with the name of a shell and returns its path and the file it logs to.
-func fakeShell(t *testing.T, name string) (path, log string) {
+func fakeShell(t *testing.T, name string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
-	path = filepath.Join(dir, name)
+	path := filepath.Join(dir, name)
 	require.NoError(t, os.WriteFile(path, []byte(fakeShellScript), 0o700))
 	return path, filepath.Join(dir, "log")
 }
@@ -168,7 +169,7 @@ func TestTheIntegrationDirectoryIsRemovedOnEveryEnd(t *testing.T) {
 			require.NoError(t, syscall.Kill(info.PID, syscall.SIGKILL))
 			f.sink.waitEnd(t, info.ID, 20*time.Second)
 		},
-		"a shutdown of the host": func(t *testing.T, f *integrationFixture, _ Session) { f.m.Shutdown() },
+		"a shutdown of the host": func(_ *testing.T, f *integrationFixture, _ Session) { f.m.Shutdown() },
 	}
 	for name, end := range ends {
 		t.Run(name, func(t *testing.T) {
@@ -237,35 +238,41 @@ func TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor(t *tes
 	const workers = 8
 	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
 		f := newIntegrationFixture(t, name, shell)
-		cycle := func() int {
-			info, err := f.m.Start(Options{Command: []string{shell}, Cwd: f.home, Cols: 80, Rows: 24}, nil)
-			if !assert.NoError(t, err) {
-				return 0
-			}
-			assert.Equal(t, IntegrationOn, info.Integration.State)
-			assert.NoError(t, f.m.CloseSession(info.ID))
-			return info.PID
+		type result struct {
+			pid int
+			err error
 		}
-		cycle()
+		cycle := func() result {
+			info, err := f.m.Start(Options{Command: []string{shell}, Cwd: f.home, Cols: 80, Rows: 24}, nil)
+			if err != nil {
+				return result{pid: 0, err: err}
+			}
+			if info.Integration.State != IntegrationOn {
+				return result{pid: info.PID, err: fmt.Errorf("the integration is %q", info.Integration.State)}
+			}
+			return result{pid: info.PID, err: f.m.CloseSession(info.ID)}
+		}
+		require.NoError(t, cycle().err)
 		baseline := openDescriptors(t)
-		pids := make(chan int, cycles)
+		results := make(chan result, cycles)
 		var wg sync.WaitGroup
 		for range workers {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				for range cycles / workers {
-					pids <- cycle()
+					results <- cycle()
 				}
 			}()
 		}
 		wg.Wait()
-		close(pids)
+		close(results)
 		count := 0
-		for pid := range pids {
+		for r := range results {
 			count++
-			if pid != 0 {
-				requireGone(t, pid, "a shell of a cycle")
+			assert.NoError(t, r.err)
+			if r.pid != 0 {
+				requireGone(t, r.pid, "a shell of a cycle")
 			}
 		}
 		assert.Equal(t, cycles, count)

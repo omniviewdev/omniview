@@ -13,8 +13,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -138,8 +138,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	offsets, _ := sink.(OffsetSink)
 	detachments, _ := sink.(DetachmentSink)
 	m := &Manager{
-		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
-		integrationOn: func() bool { return true },
+		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() bool { return true },
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
@@ -539,7 +538,7 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 		info: Session{
 			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
 			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: m.limits(), Environment: environmentOf(m.probe()),
-			Integration: started.fact, LeaseMs: int(lease / time.Millisecond),
+			Integration: started.fact, LeaseMs: int(lease / time.Millisecond), Cap: "",
 		},
 		nonce: started.nonce, injection: started.pending, reaped: started.reaped,
 		cmd: cmd, master: polled, cancel: started.cancel, outMu: sync.Mutex{}, emitMu: sync.Mutex{},
