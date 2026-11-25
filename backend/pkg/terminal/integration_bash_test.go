@@ -447,3 +447,37 @@ func TestACommentLineIsNotACommand(t *testing.T) {
 	}
 	assert.Equal(t, []string{"echo before", "echo after"}, lines)
 }
+
+// With extdebug a DEBUG handler that returns non-zero skips the command: the composed trap keeps the user's status.
+func TestAUsersDebugTrapThatSkipsACommandWithExtdebugStillSkipsIt(t *testing.T) {
+	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != \"touch $HOME/skipped\" ]]' DEBUG\n")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "touch $HOME/skipped")
+	f.run(info.ID, "touch $HOME/ran")
+	_, err := os.Stat(filepath.Join(f.home, "skipped"))
+	assert.True(t, os.IsNotExist(err), "the command the user's trap skipped did not run")
+	_, err = os.Stat(filepath.Join(f.home, "ran"))
+	assert.NoError(t, err, "the others ran")
+}
+
+// ---- pwsh ----
+
+// The user's prompt gets the $? of the last command, as without the integration.
+func TestPwshTheUsersPromptSeesTheStatusOfTheLastCommand(t *testing.T) {
+	f := newIntegrationFixture(t, "pwsh", integrationShell(t, "pwsh"))
+	require.NoError(t, os.WriteFile(f.files[0], []byte("function prompt { if ($?) { 'OK> ' } else { 'FAIL> ' } }\n"), 0o600))
+	info := f.start()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.sink.waitFor(t, info.ID, "OK> ")
+	count := func(text string) int { return strings.Count(string(f.sink.output(info.ID)), text) }
+	step := func(line, want string) {
+		before := count(want)
+		require.NoError(t, f.m.Write(info.ID, 0, []byte(line+"\r")))
+		require.Eventually(t, func() bool { return count(want) > before }, 20*time.Second, 5*time.Millisecond, "no %q after %q", want, line)
+	}
+	step("Get-Item /no/such/file-omniview -ErrorAction SilentlyContinue", "FAIL> ")
+	step("echo fine", "OK> ")
+	step("sh -c 'exit 3'", "FAIL> ")
+	step("true", "OK> ")
+}

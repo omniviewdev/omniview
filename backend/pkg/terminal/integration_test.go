@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,7 +43,29 @@ func integrationShell(t *testing.T, name string) string {
 	if err != nil {
 		t.Skipf("NOT RUN: no %s on this machine", name)
 	}
+	if reason := integrationShellSkip(name, func() (int, int, error) { return probeBashVersion(path) }); reason != "" {
+		t.Skipf("NOT RUN: %s", reason)
+	}
 	return path
+}
+
+// integrationShellSkip says why a real shell is not run by the tests that need the integration to be on, or nothing when it is:
+// a bash before 4.1 (macOS's system bash is 3.2) is skipped by the host, as `skipped{bash-too-old}`, and the dedicated tests of
+// that fallback stay on.
+func integrationShellSkip(name string, bashVersion func() (int, int, error)) string {
+	return ""
+}
+
+func TestARealBashTheHostSkipsIsNotRunForTheTestsThatNeedTheIntegrationOn(t *testing.T) {
+	version := func(major, minor int, err error) func() (int, int, error) {
+		return func() (int, int, error) { return major, minor, err }
+	}
+	assert.NotEmpty(t, integrationShellSkip("bash", version(3, 2, nil)), "bash 3.2")
+	assert.NotEmpty(t, integrationShellSkip("bash", version(4, 0, nil)), "bash 4.0")
+	assert.NotEmpty(t, integrationShellSkip("bash", version(0, 0, os.ErrNotExist)), "a bash that cannot say its version")
+	assert.Empty(t, integrationShellSkip("bash", version(4, 1, nil)), "bash 4.1")
+	assert.Empty(t, integrationShellSkip("bash", version(5, 3, nil)), "bash 5.3")
+	assert.Empty(t, integrationShellSkip("zsh", version(3, 2, nil)), "the version is bash's")
 }
 
 func eachIntegrationShell(t *testing.T, body func(t *testing.T, name, shell string)) {
@@ -105,20 +128,49 @@ func userEnvironment(home string, extra ...string) []string {
 }
 
 // answeringSink answers the queries that a terminal answers (fish asks the terminal what it is before it starts), as the page does.
+// reply is what it writes back to the session: the manager's Write, unless a test says another.
 type answeringSink struct {
 	*chunkSink
-	m *Manager
+	m     *Manager
+	reply func(id string, data []byte)
+}
+
+func (a *answeringSink) answer(id string, data []byte) {
+	if a.reply != nil {
+		a.reply(id, data)
+		return
+	}
+	go func() { _ = a.m.Write(id, 0, data) }()
 }
 
 func (a *answeringSink) Output(id string, data []byte) {
 	a.chunkSink.Output(id, data)
 	if bytes.Contains(data, []byte("\x1b[c")) || bytes.Contains(data, []byte("\x1b[0c")) {
-		go func() { _ = a.m.Write(id, 0, []byte("\x1b[?62;c")) }()
+		a.answer(id, []byte("\x1b[?62;c"))
 	}
 	// PSReadLine asks where the cursor is (CSI 6 n) before it draws, and waits for the answer.
 	if bytes.Contains(data, []byte("\x1b[6n")) {
-		go func() { _ = a.m.Write(id, 0, []byte("\x1b[1;1R")) }()
+		a.answer(id, []byte("\x1b[1;1R"))
 	}
+}
+
+// A pty read may cut a query in two: it is answered, once.
+func TestTheSinkThatAnswersQueriesAnswersOneThatAReadCutInTwo(t *testing.T) {
+	var mu sync.Mutex
+	var replies []string
+	sink := &answeringSink{chunkSink: newChunkSink(), reply: func(id string, data []byte) {
+		mu.Lock()
+		defer mu.Unlock()
+		replies = append(replies, id+":"+string(data))
+	}}
+	for _, chunk := range []string{"abc\x1b[", "6", "n draw \x1b[6", "nx", "\x1b[6n"} {
+		sink.Output("one", []byte(chunk))
+	}
+	sink.Output("two", []byte("\x1b[6n"))
+	sink.Output("two", []byte("more"))
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"one:\x1b[1;1R", "one:\x1b[1;1R", "one:\x1b[1;1R", "two:\x1b[1;1R"}, replies, "each query once, whichever the cut, and the sessions apart")
 }
 
 type integrationFixture struct {
@@ -144,7 +196,7 @@ func newIntegrationFixture(t *testing.T, name, shell string, env ...string) *int
 	require.NoError(t, os.Unsetenv("ZDOTDIR"))
 	f := &integrationFixture{t: t, name: name, shell: shell, home: home, tmp: tmp, files: userFiles(t, name, home), logs: &logtest.RecordingSink{}}
 	f.sink = newChunkSink()
-	answering := &answeringSink{chunkSink: f.sink, m: nil}
+	answering := &answeringSink{chunkSink: f.sink, m: nil, reply: nil}
 	logger := logging.New(logging.Config{
 		Backend: logging.NewSinkBackend(f.logs), Level: logging.NewLevelController(logging.LevelTrace),
 	})
