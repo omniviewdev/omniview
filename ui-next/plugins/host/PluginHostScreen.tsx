@@ -52,7 +52,7 @@ const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(notice
  * Closing the window is the app's own window's to do: a browser tab has none, so the host is told of none there and the close chord does nothing.
  *
  * The window's saved session is read beside all of that, and the host is drawn once it has: its tabs, the rail's choice and the panel are the first frame, so nothing is drawn and then moved. The read
- * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good. The capabilities of the window's terminals are read with it (`loadAppTerminalChannels`: a slot of their own, never failing and bounded like the session's read), so that the terminals the window left are found from the first frame.
+ * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good. The capabilities of the window's terminals are read from the tab's own storage (`loadAppTerminalChannels`: synchronous, never failing), so that the terminals the window left are found from the first frame.
  */
 export function PluginHostScreen() {
   const [store] = useState(() => new PluginStore());
@@ -68,7 +68,8 @@ export function PluginHostScreen() {
 
   useEffect(() => {
     let current = true;
-    void Promise.all([loadWindowSession(), loadWindowNotices(), loadAppTerminalChannels()]).then(([session, notices, channels]) => {
+    const channels = loadAppTerminalChannels();
+    void Promise.all([loadWindowSession(), loadWindowNotices()]).then(([session, notices]) => {
       if (current) {
         // When the window attaches, the Terminal tool asks the host for the terminals this window left (`restoreLocalTerminals`), and a terminal another tab took over is attached again (`attachLocalTerminal`), both
         // through the page's channels, which hold the capabilities. A stream that drops is connected again by its own feed, so there is no signal to forward.
