@@ -764,6 +764,28 @@ describe('a stream that is ready and drops before the replay is complete, again 
   });
 });
 
+describe('a feed that attached, failed to connect, and then completed its replay', () => {
+  it('has the whole retry budget again for a later drop: the failed attempts are forgotten once the replay is complete', async () => {
+    const r = attaching();
+    r.stream().drop();
+    reconnect(r, RECONNECT_DELAYS_MS[0]);
+    r.stream().drop();
+    reconnect(r, RECONNECT_DELAYS_MS[1]);
+    r.stream().ready({ start: 0, end: 3 });
+    r.stream().output(0, 'abc');
+    expect(replayOf(r.feed).data).toEqual(new Uint8Array(bytes('abc')));
+    // Three drops, each followed by its connection, and the feed still runs: the budget is full.
+    for (const delay of RECONNECT_DELAYS_MS) {
+      r.stream().drop();
+      reconnect(r, delay);
+    }
+
+    expect(r.feed.getSnapshot().state).toBe('running');
+    r.stream().drop();
+    expect(r.feed.getSnapshot().state).toBe('failed');
+  });
+});
+
 describe('a stream whose acknowledgement finds the socket dead in the middle of a replay', () => {
   it('does not throw: the stream ends as closed, and the feed connects again from nothing', async () => {
     const r = attaching();
