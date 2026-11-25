@@ -588,6 +588,7 @@ func TestTheReadyOfTheKeptEndOfATerminalSaysNoInputAppliedAndHowItEnded(t *testi
 	guarded(t, "ended-ready-zero", func() {
 		assert.NotNil(t, ready.Ended, "the end is kept")
 		assert.Zero(t, ready.InputApplied, "the kept end says no input applied")
+		assert.False(t, ready.WriterKnown, "and knows no writer, though the writer of this attach typed into the terminal while it ran")
 	})
 }
 

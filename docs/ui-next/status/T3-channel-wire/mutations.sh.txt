@@ -150,5 +150,12 @@ control the-host-always-knows-the-writer $T/channel.go 'TestReadySaysWhetherTheH
 control the-host-never-knows-the-writer $T/channel.go 'TestReadySaysWhetherTheHostKnowsTheWriter' 'writer-known' \
   $'\t\t\treturn w, true\n' $'\t\t\treturn w, false\n'
 
+control a-kept-end-knows-the-writer $T/channel_serve.go 'TestTheReadyOfTheKeptEndOfATerminalSaysNoInputAppliedAndHowItEnded' 'ended-ready-zero' \
+  $'&kept.end, 0, false)' $'&kept.end, 0, true)'
+
+control ack-settles-the-lane-first $T/channel_serve.go 'TestAcknowledgementsStillFreeTheWindowWhileAnInputWriteIsBlocked' 'ack-inline' \
+  $'\t\ts.ackFrom(c, binary.BigEndian.Uint32(body)) // acted on as read, like close: no order against input matters to it\n\t\treturn true' \
+  $'\t\tc.lane.settle()\n\t\ts.ackFrom(c, binary.BigEndian.Uint32(body))\n\t\treturn true'
+
 # The run fails when a selected control was not red with its fault and green with its guards off.
 exit $failed
