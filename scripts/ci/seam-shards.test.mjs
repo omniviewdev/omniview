@@ -65,7 +65,7 @@ test('the check has at least the phases and the controls it had when N29 split i
   assert.ok(LIST.controls.length >= 29);
   assert.ok(CONTROLS_IN_CHECK >= 104);
   // The controls of a table are one run for the whole table; every other one is a run of its own, the settings controls among them (`SEAM_CONTROL=settings` does not detect `settings-reach`).
-  assert.deepEqual(LIST.controls.filter((entry) => entry.proves.length > 1).map((entry) => entry.run), ['process', 'failed-load', 'plugins-page', 'connections', 'problems-operations']);
+  assert.deepEqual(LIST.controls.filter((entry) => entry.proves.length > 1).map((entry) => entry.run), ['process', 'failed-load', 'plugins-page', 'connections', 'problems-operations', 'ports']);
   assert.ok(LIST.controls.some((entry) => entry.run === 'settings-reach'));
   assert.ok(!LIST.controls.some((entry) => entry.run === 'settings'));
 });
@@ -78,7 +78,7 @@ test('the check selects its phases from one list: PHASE_IDS is the key order of 
   assert.equal(text.split('console.log(`SEAM-PHASE ${engine} ${name} ').length - 1, 1, 'a phase that passed prints one line, the one `parsePhases` reads');
   // No wait for a host to exit leaves an 8 s timer behind (N29: the 8 s every run of a control waited for at its end).
   assert.equal(/setTimeout\(resolve, 8000\)/.test(text), false);
-  assert.equal(text.split('untilExited(').length - 1, 11, 'the ten waits and the helper\'s own definition');
+  assert.equal(text.split('untilExited(').length - 1, 12, 'the eleven waits and the helper\'s own definition');
 });
 
 test('listFromText reads the phase list and the control tables, and says what is missing', () => {
@@ -103,6 +103,9 @@ test('listFromText reads the phase list and the control tables, and says what is
     'const PT_CONTROLS = {',
     "  't1': /x/,",
     '};',
+    'const PORTS_CONTROLS = {',
+    "  'w1': /x/,",
+    '};',
     'const PHASE_IDS = [',
     "  'one',",
     "  'two-b',",
@@ -118,10 +121,11 @@ test('listFromText reads the phase list and the control tables, and says what is
       { run: 'plugins-page', proves: ['g1'] },
       { run: 'connections', proves: ['c1'] },
       { run: 'problems-operations', proves: ['t1'] },
+      { run: 'ports', proves: ['w1'] },
     ],
   });
   assert.throws(() => listFromText(text.replace('const PHASE_IDS = [', 'const OTHER = [')), /no `const PHASE_IDS = \[` list/);
-  assert.throws(() => listFromText(`${text}\nconst PORTS_CONTROLS = {\n  'x': /y/,\n};`), /a table of negative controls that the plan does not know: PORTS_CONTROLS/);
+  assert.throws(() => listFromText(`${text}\nconst DOCKS_CONTROLS = {\n  'x': /y/,\n};`), /a table of negative controls that the plan does not know: DOCKS_CONTROLS/);
   assert.throws(() => listFromText(text.replace('const PT_CONTROLS = {', 'const OTHER = {')), /no `const PT_CONTROLS = \{` block/);
 });
 

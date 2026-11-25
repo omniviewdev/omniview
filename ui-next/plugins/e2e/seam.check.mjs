@@ -11743,7 +11743,7 @@ async function checkPorts(browser, engine, binary, work) {
     await planted?.close();
     if (page !== undefined && !page.isClosed()) await page.close();
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
   }
 }
 

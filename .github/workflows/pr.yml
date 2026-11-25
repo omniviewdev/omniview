@@ -118,7 +118,6 @@ jobs:
     timeout-minutes: 30
     env:
       GOWORK: "off"
-      DEVELOPER_DIR: ${{ matrix.developer-dir || '' }}
     steps:
       # Container Git must own the mount after checkout's temporary HOME expires.
       - name: Match checkout directory ownership to container user
