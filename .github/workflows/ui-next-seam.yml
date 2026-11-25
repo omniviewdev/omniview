@@ -87,7 +87,9 @@ jobs:
     name: Seam ${{ matrix.engine }}
     runs-on: ubuntu-24.04
     # Measured: 6.5 to 8 minutes for scenarios a to m, 9.3 minutes with scenario n (a plugin's process killed: the host finds it on its health check, up to 30 s, twice: once in the seam and once in its control).
-    timeout-minutes: 25
+    # 2026-11-25: 21 to 22 minutes on `main` (`45546882604`); with the terminal channel's scenarios r6 to r8 and their two control groups (#716) 23.6 minutes in chromium and over 25 in webkit, where the job was
+    # cancelled during its last control group. The budget is 40 minutes; splitting the controls into a job of their own is the next step if the seam grows again.
+    timeout-minutes: 40
     # The CI image holds Node, pnpm, Task, Go, the native libraries of the host (GTK 4 and WebKitGTK, which the Wails bindings need to be generated) and the Playwright browsers of the version pnpm-lock.yaml
     # resolves. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private:
     # the job token reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do.
