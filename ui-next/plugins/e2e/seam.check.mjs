@@ -7669,7 +7669,9 @@ function assertActivityAllowance(engine, phaseName) {
 /**
  * A transcript as a person reads it: the control sequences a shell writes around its output are taken out, and so are the carriage returns, so that a line of output starts after a line feed whichever shell wrote it. Bash ends
  * bracketed paste with `ESC [ ? 2004 l CR` right before the output of a command and zsh with a line feed, so a pattern that wants the output at the start of a line sees it in zsh and not in bash: the first CI run of scenario r
- * timed out on the runner's bash for that reason, where it had passed on a Mac's zsh (the bytes were captured in the CI image: `echo SEAM_$((6*7))` CR LF ESC[?2004l CR SEAM_42 CR LF).
+ * timed out on the runner's bash for that reason, where it had passed on a Mac's zsh (the bytes were captured in the CI image: `echo SEAM_$((6*7))` CR LF ESC[?2004l CR SEAM_42 CR LF). The marks of the shell integration (OSC 7, 133
+ * and 633, `ESC ] ... BEL`) are taken out too: since #742 bash writes `ESC ] 633;E;<the line>;<nonce> BEL ESC ] 133;C BEL` right before the output of a command, on the line the output starts (`stty size` LF ESC]633;E;stty size;<nonce>BEL
+ * ESC]133;C BEL 9 193 LF, captured from the host's bash 5.3), so every pattern that wants the output at the start of a line timed out in the nightly of 2026-11-25.
  */
 // The operating system commands (ESC ] ... BEL, or ... ESC \) go too: the host's shell integration (#694: OSC 133 marks of the prompt and the command, OSC 7, OSC 633 with the session's nonce) writes them around every prompt and every
 // output, in bash, zsh and fish, and a line of output starts right after `ESC ] 133 ; C BEL` (the first run of a bash with the integration read `9 193` after one and matched no line).
@@ -8442,10 +8444,11 @@ async function checkTerminal(page, base, engine) {
   const after = await screenSizeOf(page);
   // A resize reaches the pty in steps (one call in flight, then the newest size), so `stty size` is asked again until the pty has the rows the page draws, and the assertion below is about that size and no intermediate one.
   const ptyRows = async () => {
-    const from = (await plainTranscriptOf(base, id)).length;
+    // The offset is a RAW one: the normalized text can shrink when an OSC that was split across two reads ends, and a length of it would then skip the start of the answer.
+    const from = outputEnd(id);
     await typeLine(page, 'stty size');
-    await waitUntil('stty size to answer', async () => sttyOf((await plainTranscriptOf(base, id)).slice(from)) !== null, 15_000);
-    return sttyOf((await plainTranscriptOf(base, id)).slice(from));
+    await waitUntil('stty size to answer', async () => sttyOf(plain(outputSince(id, from))) !== null, 15_000);
+    return sttyOf(plain(outputSince(id, from)));
   };
   let second = await ptyRows();
   for (let tries = 0; tries < 10 && second.rows !== after.rows; tries += 1) {
@@ -8653,10 +8656,11 @@ async function checkTerminalPrograms(page, base, engine) {
     'profile-not-run',
     async () => {
       // A shell whose profile did not run: what the profile sets is unset in it.
-      await ask('unset SEAM_PROFILE_RAN; echo UNSET_DONE', /\nUNSET_DONE\r?\n/, 'the variable to be unset');
+      // The value it had is kept, and put back by the undo: a profile that never ran leaves nothing to put back, and the clean assertion then fails.
+      await ask('__seam_was=${SEAM_PROFILE_RAN-}; unset SEAM_PROFILE_RAN; echo UNSET_DONE', /\nUNSET_DONE\r?\n/, 'the variable to be unset');
     },
     async () => {
-      await ask('export SEAM_PROFILE_RAN=yes; echo RESET_DONE', /\nRESET_DONE\r?\n/, 'the variable to be set again');
+      await ask('if [ -n "$__seam_was" ]; then export SEAM_PROFILE_RAN="$__seam_was"; fi; unset __seam_was; echo RESET_DONE', /\nRESET_DONE\r?\n/, 'the variable to be put back as it was');
     },
     async () => assert.match(await askProfile(), /\nPROFILE=yes\r?\n/, `${engine}: the shell runs the user's profile files (as a login shell, or as the integration's bash that emulates one)`),
   );
@@ -10947,11 +10951,11 @@ async function checkTerminalFindMenu(page, base, engine) {
     return holdsWithin(async () => new RegExp(`\\n${marker}_42\\n`).test(await plainTranscriptOf(base, id)), 15_000);
   };
   const sizeNow = async () => {
-    const from = (await plainTranscriptOf(base, id)).length;
+    const from = outputEnd(id);
     await typeLine(page, 'stty size');
     let size = null;
     await waitUntil('stty size to answer', async () => {
-      size = sttyOf((await plainTranscriptOf(base, id)).slice(from));
+      size = sttyOf(plain(outputSince(id, from)));
       return size !== null;
     }, 15_000);
     return size;

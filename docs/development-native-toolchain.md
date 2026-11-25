@@ -69,9 +69,9 @@ case/drain/canonical-cleanup evidence separate.
 
 ## Application E2E feedback in GitHub Actions
 
-`PR Validation` calls `.github/workflows/e2e-runner.yml` for the canonical
-application suite. The stable `e2e-tests` check accepts only the reusable job's
-success, including an explicitly proven prose-only skip. Browser results alone
+`Nightly validation` (`.github/workflows/pr.yml`, at night and on request) calls
+`.github/workflows/e2e-runner.yml` for the full canonical application suite. The
+`e2e-tests` check accepts only the reusable job's success. Browser results alone
 do not prove canonical preparation, acceptance and cleanup succeeded.
 
 Canonical CI and whole-app profiling resolve the SDK checkout commit from the

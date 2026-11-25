@@ -16,6 +16,9 @@ export const TERMINAL_TOOL: ToolInput = { id: TERMINAL_TOOL_ID, label: 'Terminal
 /** The label of the `+` and of the empty tool's button (the mock's `New terminal`). */
 export const NEW_TERMINAL = 'New terminal';
 
+/** The name of the menu beside the `+`, which lists the shells of this machine. */
+export const CHOOSE_SHELL = 'Choose a shell';
+
 /** What the tool says when it has no session, in the mock's words. */
 export const TERMINAL_EMPTY = { title: 'No terminals', hint: 'Start a shell in this window. A session stays available when you switch tabs.' } as const;
 

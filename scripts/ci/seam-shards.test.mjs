@@ -13,10 +13,8 @@ import { parse } from 'yaml';
 import {
   CHECK,
   ENGINES,
-  JOB_TIMEOUT_MINUTES,
   LIMIT_SECONDS,
   PHASE_START_SECONDS,
-  SHARD_CEILING_SECONDS,
   checkUnits,
   driftFindings,
   listFromCheck,
@@ -334,41 +332,29 @@ test('NEGATIVE ranUnits: a phase that did not print, a run that was not detected
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The seconds are held
+// The seconds of each unit: a warning, never a failure
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const unitOf = (seconds) => [{ id: 'u', phases: ['x'], seconds }];
 
-test('driftFindings: a unit fails past its seconds and the larger of a quarter and 60 s, warns the same under, and says nothing of one that did not pass', () => {
-  const run = (took, ok = true) => driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok, seconds: took, phases: [], controls: [] }], units: unitOf(20), ceiling: 1e9 });
-  assert.equal(run(80).failures.length, 0, '20 s fails past 80 s, not at it');
-  assert.equal(run(81).failures.length, 1);
-  assert.match(run(81).failures[0], /u took 81 s on this runner, 20 s in scripts\/ci\/seam-units\.mjs \(\+61 s; a unit fails past a quarter and 60 s over\): put `seconds: 81` there/);
-  assert.equal(driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 100 }], units: unitOf(200), ceiling: 1e9 }).failures.length, 0, '200 s fails past 260, and 100 is 100 under: warns');
-  assert.equal(driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 100 }], units: unitOf(200), ceiling: 1e9 }).warnings.length, 1);
-  assert.equal(driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 100 }], units: unitOf(400), ceiling: 1e9 }).failures.length, 0);
-  assert.equal(run(500, false).failures.length, 0);
-  const quarter = driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 501 }], units: unitOf(400), ceiling: 1e9 });
-  assert.equal(quarter.failures.length, 1, '400 s fails past 500 s: a quarter is more than 60 s');
+test('driftFindings: a unit warns past its seconds and the larger of a quarter and 60 s, over or under, and says nothing of one that did not pass', () => {
+  const run = (took, ok = true) => driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok, seconds: took, phases: [], controls: [] }], units: unitOf(20) });
+  assert.equal(run(80).warnings.length, 0, '20 s warns past 80 s, not at it');
+  assert.equal(run(81).warnings.length, 1);
+  assert.match(run(81).warnings[0], /^::warning title=Seam unit seconds webkit shard 1::u took 81 s on this runner, 20 s in scripts\/ci\/seam-units\.mjs \(\+61 s; a unit warns past a quarter and 60 s over\): put `seconds: 81` there$/);
+  assert.equal(driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 100 }], units: unitOf(200) }).warnings.length, 1, '200 s warns at 100 s: 100 under');
+  assert.equal(driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 160 }], units: unitOf(200) }).warnings.length, 0, '40 s under is inside the 60 s floor');
+  assert.equal(run(500, false).warnings.length, 0);
+  const quarter = driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 501 }], units: unitOf(400) });
+  assert.equal(quarter.warnings.length, 1, '400 s warns past 500 s: a quarter is more than 60 s');
+  assert.match(quarter.warnings[0], /\(\+101 s; a unit warns past a quarter and 60 s over\): it took more than the 405 s a unit may be listed at: split it, or put `seconds: 405` there and it has a shard of its own$/, 'the number it took would fail the check');
 });
 
-test('driftFindings: a unit that is not in the table fails, and the shard fails past its ceiling with every unit named', () => {
-  const unknown = driftFindings({ engine: 'chromium', shard: 2, ran: [{ id: 'ghost', ok: true, seconds: 5 }], units: UNITS });
-  assert.match(unknown.failures[0], /the unit "ghost" ran in this shard and is not in scripts\/ci\/seam-units\.mjs/);
+test('driftFindings: units that add up far past the limit fail nothing; each says its own number', () => {
   const ran = [{ id: 'pages', ok: true, seconds: 300 }, { id: 'settings', ok: true, seconds: 247 }];
   const over = driftFindings({ engine: 'webkit', shard: 3, ran, units: UNITS });
-  assert.equal(over.shard.took, 547);
-  assert.equal(over.failures.filter((line) => /Seam shard seconds/.test(line)).length, 1);
-  assert.match(over.failures.find((line) => /Seam shard seconds/.test(line)), /pages 300 s of 85, settings 247 s of 75/);
-  assert.equal(driftFindings({ engine: 'webkit', shard: 3, ran: [{ id: 'pages', ok: true, seconds: 85 }, { id: 'settings', ok: true, seconds: 75 }], units: UNITS }).failures.length, 0);
-});
-
-test('the ceiling is the limit and the slowest machine the kit probes saw, and a job takes it to the end on the slowest setup', () => {
-  assert.equal(SHARD_CEILING_SECONDS, 546);
-  const setupSlowest = 260;
-  assert.ok(setupSlowest + SHARD_CEILING_SECONDS + PHASE_START_SECONDS < JOB_TIMEOUT_MINUTES * 60, 'the job can fail on the ceiling and say so');
-  assert.ok(setupSlowest + SHARD_CEILING_SECONDS < 14 * 60, 'the slowest job is not more than 14 minutes: the seam ran 17 to 25');
-  assert.ok(175 + LIMIT_SECONDS < 10 * 60, 'a job planned at the limit takes under ten minutes on the usual setup');
+  assert.deepEqual([over.shard.took, over.shard.planned], [547, 160]);
+  assert.deepEqual(over.warnings.map((line) => /::(\S+) took/.exec(line)?.[1]), ['pages', 'settings']);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -548,7 +534,7 @@ test('report: reads the logs of a shard, writes what it ran where the verdict re
   assert.match(missingDir.lines.err, /cannot read the reports/);
 });
 
-test('NEGATIVE report: a shard whose logs are missing, or whose control run was left out, writes a report that is red and says which unit did not pass; a slow unit is red with the number', async () => {
+test('NEGATIVE report: a shard whose logs are missing, or whose control run was left out, writes a report that is red and says which unit did not pass; a slow unit that passed is a warning with the number', async () => {
   const shard = planRun({ units: UNITS })[0];
   const mine = shard.units.map((entry) => UNITS.find((unit) => unit.id === entry.id));
   const ids = shard.units.map((entry) => entry.id).join(',');
@@ -572,8 +558,8 @@ test('NEGATIVE report: a shard whose logs are missing, or whose control run was 
   const phaseUnit = UNITS.find((unit) => unit.id === 'terminal-find');
   writeFileSync(path.join(slow, 'seam-webkit.log'), 'SEAM-PHASE webkit terminal-find 96\n');
   const over = capture();
-  assert.equal(await main(['report', '--engine', 'webkit', '--shard', '2', '--units', 'terminal-find', '--dir', slow], { env: {}, ...over.io }), 1);
-  assert.match(over.lines.out, new RegExp(`::error title=Seam unit seconds webkit shard 2::terminal-find took 96 s on this runner, ${String(phaseUnit.seconds)} s in scripts/ci/seam-units\\.mjs .*put \`seconds: 96\` there`));
+  assert.equal(await main(['report', '--engine', 'webkit', '--shard', '2', '--units', 'terminal-find', '--dir', slow], { env: {}, ...over.io }), 0);
+  assert.match(over.lines.out, new RegExp(`::warning title=Seam unit seconds webkit shard 2::terminal-find took 96 s on this runner, ${String(phaseUnit.seconds)} s in scripts/ci/seam-units\\.mjs .*put \`seconds: 96\` there`));
   const unknown = capture();
   assert.equal(await main(['report', '--engine', 'webkit', '--shard', '1', '--units', 'nope', '--dir', slow], { env: {}, ...unknown.io }), 2);
   assert.equal((await main(['report', '--engine', 'firefox', '--shard', '1', '--units', ids, '--dir', slow], { env: {}, ...capture().io })), 2);
@@ -646,10 +632,10 @@ test('N5: a shard that was cancelled (its timeout, a cancelled run) leaves no re
 test('N6: no annotation title has a comma or a colon (a workflow command takes the comma as the end of a property)', async () => {
   const source = readFileSync(path.join(repo, 'scripts/ci/seam-shards.mjs'), 'utf8');
   const titles = [...source.matchAll(/title=([^:]*?)::/g)].map((match) => match[1]);
-  assert.ok(titles.length >= 5, titles.join(' | '));
+  assert.ok(titles.length >= 4, titles.join(' | '));
   for (const title of titles) assert.equal(/[,;]/.test(title), false, title);
-  const lines = driftFindings({ engine: 'webkit', shard: 2, ran: [{ id: 'pages', ok: true, seconds: 999 }], units: UNITS }).failures;
+  const lines = driftFindings({ engine: 'webkit', shard: 2, ran: [{ id: 'pages', ok: true, seconds: 999 }], units: UNITS }).warnings;
   assert.ok(lines.length > 0);
-  for (const line of lines) assert.match(line, /^::error title=Seam (?:unit seconds|shard seconds) webkit shard 2::/);
+  for (const line of lines) assert.match(line, /^::warning title=Seam unit seconds webkit shard 2::/);
 });
 

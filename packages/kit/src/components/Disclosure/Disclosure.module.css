@@ -1,0 +1,101 @@
+@layer ov.components {
+  /* A disclosure (the mock's `.disclosure`): a bar of the trigger and the controls beside it, over a body that is there only while open.
+     The trigger is full width, at least the control height, with a 4/8 inset, a row hover and the title at weight 600; the chevron turns
+     90 degrees when it is open. The meta is muted 12 px and sits at the end; the body is inset 4/8/8. */
+  .root {
+    box-sizing: border-box;
+    min-width: 0;
+    margin: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .heading {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font: inherit;
+  }
+
+  .side {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+  }
+
+  .trigger {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--ov-spacing-8);
+    width: 100%;
+    min-width: 0;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background: transparent;
+    color: var(--ov-fg);
+    font-family: inherit;
+    font-feature-settings: inherit;
+    font-size: inherit;
+    font-synthesis: none;
+    font-weight: 600;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    white-space: normal;
+    cursor: pointer;
+  }
+
+  .trigger:hover {
+    background: var(--ov-hover-row);
+  }
+
+  .trigger:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  .trigger > svg {
+    flex: 0 0 auto;
+  }
+
+  .trigger[aria-expanded='true'] > svg {
+    transform: rotate(90deg);
+  }
+
+  .title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .meta {
+    min-width: 0;
+    margin-inline-start: auto;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+  }
+
+  .body {
+    min-width: 0;
+    padding: var(--ov-spacing-4) var(--ov-spacing-8) var(--ov-spacing-8);
+  }
+}

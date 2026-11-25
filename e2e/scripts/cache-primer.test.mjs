@@ -35,27 +35,23 @@ test('main primer skips native preparation only for all three exact lookup hits,
     for (const cacheOnly of ['true', 'false']) for (const goHit of ['true', 'false', '', 'True']) for (const pnpmHit of ['true', 'false', '', '1']) for (const browserHit of ['true', 'false', '', '1']) {
       const output = join(arena, 'output');
       rmSync(output, { force: true });
-      const child = shell(decision, { CACHE_ONLY: cacheOnly, SELECTION: 'full', GO_HIT: goHit, PNPM_HIT: pnpmHit, BROWSER_HIT: browserHit, GITHUB_OUTPUT: output });
+      const child = shell(decision, { CACHE_ONLY: cacheOnly, GO_HIT: goHit, PNPM_HIT: pnpmHit, BROWSER_HIT: browserHit, GITHUB_OUTPUT: output });
       assert.equal(child.status, 0, child.stderr);
       const skip = cacheOnly === 'true' && goHit === 'true' && pnpmHit === 'true' && browserHit === 'true';
       assert.equal(readFileSync(output, 'utf8'), `required=${!skip}\n`);
     }
-    const output = join(arena, 'prose');
-    assert.equal(shell(decision, { CACHE_ONLY: 'false', SELECTION: 'none', GITHUB_OUTPUT: output }).status, 0);
-    assert.equal(readFileSync(output, 'utf8'), 'required=false\n');
   } finally { rmSync(arena, { recursive: true, force: true }); }
 });
 
-test('canonical workflow completion refuses missing, skipped, failed or cancelled operations except proven skips', () => {
+test('canonical workflow completion refuses missing, skipped, failed or cancelled operations except the proven cache-only skip', () => {
   const completion = step(shared, 'Require completed canonical operation or proven skip');
   for (const outcome of ['success', 'failure', 'cancelled', 'skipped', '']) {
-    const child = shell(completion, { CACHE_ONLY: 'false', SELECTION: 'full', SELECTION_OUTCOME: 'success', PREPARATION: 'true', CANONICAL_OUTCOME: outcome });
+    const child = shell(completion, { CACHE_ONLY: 'false', PREPARATION: 'true', CANONICAL_OUTCOME: outcome });
     assert.equal(child.status === 0, outcome === 'success', outcome);
   }
-  assert.equal(shell(completion, { CACHE_ONLY: 'false', SELECTION: 'none', SELECTION_OUTCOME: 'success', PREPARATION: 'false', CANONICAL_OUTCOME: 'skipped' }).status, 0);
-  for (const outcome of ['failure', 'cancelled', 'skipped', '']) assert.notEqual(shell(completion, { CACHE_ONLY: 'false', SELECTION: 'none', SELECTION_OUTCOME: outcome, PREPARATION: 'false' }).status, 0);
-  assert.equal(shell(completion, { CACHE_ONLY: 'true', SELECTION: 'cache-only', PREPARATION: 'false', GO_HIT: 'true', PNPM_HIT: 'true', BROWSER_HIT: 'true' }).status, 0);
-  for (const key of ['GO_HIT', 'PNPM_HIT', 'BROWSER_HIT']) for (const hit of ['false', '', '1']) assert.notEqual(shell(completion, { CACHE_ONLY: 'true', SELECTION: 'cache-only', PREPARATION: 'false', GO_HIT: 'true', PNPM_HIT: 'true', BROWSER_HIT: 'true', [key]: hit }).status, 0);
+  assert.notEqual(shell(completion, { CACHE_ONLY: 'false', PREPARATION: 'false', CANONICAL_OUTCOME: 'skipped' }).status, 0);
+  assert.equal(shell(completion, { CACHE_ONLY: 'true', PREPARATION: 'false', GO_HIT: 'true', PNPM_HIT: 'true', BROWSER_HIT: 'true' }).status, 0);
+  for (const key of ['GO_HIT', 'PNPM_HIT', 'BROWSER_HIT']) for (const hit of ['false', '', '1']) assert.notEqual(shell(completion, { CACHE_ONLY: 'true', PREPARATION: 'false', GO_HIT: 'true', PNPM_HIT: 'true', BROWSER_HIT: 'true', [key]: hit }).status, 0);
 });
 
 test('stable e2e-tests gate accepts only a successful canonical result', () => {

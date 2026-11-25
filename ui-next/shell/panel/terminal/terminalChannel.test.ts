@@ -643,6 +643,14 @@ describe('creating a terminal', () => {
     expect(launch).toEqual({ channel: true, cols: 100, rows: 30, lease_ms: 60_000 });
   });
 
+  it('asks for the shell, directory and environment it was given, and for none of them when it was given none', async () => {
+    const r = rig();
+    await r.channels.create('t1', { cols: 80, rows: 24, command: ['/usr/bin/zsh', '-f'], cwd: '/work', env: { A: '1' } });
+    const [, options, launch] = r.calls[0] ?? [];
+    expect(options).toMatchObject({ id: 't1', command: ['/usr/bin/zsh', '-f'] });
+    expect(launch).toEqual({ channel: true, cols: 80, rows: 24, cwd: '/work', env: { A: '1' } });
+  });
+
   it('says nothing of the lease when it was not given', async () => {
     const r = rig();
     await r.channels.create('t1', { cols: 80, rows: 24 });

@@ -36,7 +36,7 @@ describe('the built-in themes', () => {
   });
 
   it('define every colour role, and nothing else', () => {
-    expect(COLOR_ROLES).toHaveLength(78);
+    expect(COLOR_ROLES).toHaveLength(85);
     for (const theme of THEME_DEFINITIONS) {
       expect(Object.keys(theme.colors).sort(), theme.id).toEqual([...COLOR_ROLES].sort());
     }

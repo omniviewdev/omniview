@@ -152,7 +152,14 @@ export type ColorRole =
   | 'brand-purple'
   | 'brand-pink'
   | 'brand-red'
-  | 'brand-teal';
+  | 'brand-teal'
+  | 'tint-blue'
+  | 'tint-green'
+  | 'tint-amber'
+  | 'tint-red'
+  | 'tint-purple'
+  | 'tint-cyan'
+  | 'tint-gray';
 export const COLOR_ROLES = [
   'bg-window',
   'bg-island',
@@ -232,6 +239,13 @@ export const COLOR_ROLES = [
   'brand-pink',
   'brand-red',
   'brand-teal',
+  'tint-blue',
+  'tint-green',
+  'tint-amber',
+  'tint-red',
+  'tint-purple',
+  'tint-cyan',
+  'tint-gray',
 ] as const satisfies readonly ColorRole[];
 
 export type TokenName =
@@ -345,7 +359,14 @@ export type TokenName =
   | '--ov-brand-purple'
   | '--ov-brand-pink'
   | '--ov-brand-red'
-  | '--ov-brand-teal';
+  | '--ov-brand-teal'
+  | '--ov-tint-blue'
+  | '--ov-tint-green'
+  | '--ov-tint-amber'
+  | '--ov-tint-red'
+  | '--ov-tint-purple'
+  | '--ov-tint-cyan'
+  | '--ov-tint-gray';
 export const TOKEN_NAMES = [
   '--ov-font-ui',
   '--ov-font-code',
@@ -458,4 +479,11 @@ export const TOKEN_NAMES = [
   '--ov-brand-pink',
   '--ov-brand-red',
   '--ov-brand-teal',
+  '--ov-tint-blue',
+  '--ov-tint-green',
+  '--ov-tint-amber',
+  '--ov-tint-red',
+  '--ov-tint-purple',
+  '--ov-tint-cyan',
+  '--ov-tint-gray',
 ] as const satisfies readonly TokenName[];

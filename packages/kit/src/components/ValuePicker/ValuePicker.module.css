@@ -1,0 +1,311 @@
+/* The value picker (the mock's `.value-picker` around `.entity-select`, base.css 1410 to 1444): a trigger that says what is chosen, and a popup in
+   the top layer with a search field and a list of checkable options. The trigger is the face of a command (shared/command.module.css) laid out
+   as the mock's `.entity-select__trigger`: its text at the start, the arrow at the end, the width of its place. The popup is at least 280 px wide,
+   its list at most 242 px high, and its rows 24 px high, or 40 px when an option has a second line; one height for every row, so that the list
+   can be windowed. Its place is the part's own: the popup is a child of the picker, in the top layer by the popover API, and its position is a
+   data parameter (`--_x`, `--_y`, `--_width`, `--_max-height`) that the part computes with the placement of the menus. */
+@layer ov.components {
+  .root {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* A block-level flex box, so that no line box around it adds height to the 28 px of the trigger. */
+  .trigger {
+    display: flex;
+    justify-content: flex-start;
+    gap: var(--ov-spacing-8);
+    width: 100%;
+    max-width: 100%;
+    text-align: start;
+  }
+
+  .summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The arrow takes the icon role, as the arrow of a select does, and the disabled role while the picker is unavailable. */
+  .chevron {
+    --_arrow: var(--ov-icon);
+
+    display: inline-flex;
+    flex: 0 0 16px;
+    margin-inline-start: auto;
+  }
+
+  .chevron > svg path[data-ov-stroke='chevron'] {
+    stroke: var(--_arrow);
+  }
+
+  .trigger[aria-disabled='true'] .chevron {
+    --_arrow: var(--ov-icon-disabled);
+  }
+
+  /* Invalid is a colour, never a width (design 16 S127): the inactive error edge at rest, the error ring with the keyboard's focus. */
+  .trigger[aria-invalid='true']:not([aria-disabled='true']) {
+    --_border: var(--ov-error-control-inactive);
+  }
+
+  .trigger[aria-invalid='true']:not([aria-disabled='true']):focus-visible {
+    outline-color: var(--ov-error-control);
+  }
+
+  .trigger[data-ov-validation='warning']:not([aria-disabled='true']) {
+    --_border: var(--ov-warning-control-inactive);
+  }
+
+  .trigger[data-ov-validation='warning']:not([aria-disabled='true']):focus-visible {
+    outline-color: var(--ov-warning-control);
+  }
+
+  /* The popup: the menu's panel (a fixed box with the popup roles) holding the search field and the list. It is hidden until the part has placed it. */
+  .popup {
+    --_row: max(var(--ov-row-target), calc(var(--ov-lh-16) + var(--ov-spacing-8)));
+
+    position: fixed;
+    inset: auto;
+    left: var(--_x, 0px);
+    top: var(--_y, 0px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    width: var(--_width, auto);
+    max-height: var(--_max-height, none);
+    margin: 0;
+    padding: var(--ov-spacing-8);
+    overflow: hidden;
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-popup);
+    background-color: var(--ov-bg-popup);
+    box-shadow: var(--ov-shadow-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    cursor: default;
+  }
+
+  /* The popover API hides a popover that is not open, and `display` here would show it again: the popup is drawn only once it is in the top layer. */
+  .popup[popover]:not(:popover-open) {
+    display: none;
+  }
+
+  .popup[data-ov-lines='2'] {
+    --_row: max(var(--ov-table-metadata-height), calc(var(--ov-lh-16) * 2 + var(--ov-spacing-8)));
+  }
+
+  .popup:not([data-ov-side]) {
+    visibility: hidden;
+  }
+
+  /* The search field: the field of a toolbar (SearchField), its glyph inside the start of the field. */
+  .search {
+    position: relative;
+    flex: 0 0 auto;
+  }
+
+  .search > svg {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 9px;
+    transform: translateY(-50%);
+    color: var(--ov-icon);
+    pointer-events: none;
+  }
+
+  .input {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: var(--ov-control-height);
+    margin: 0;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the glyph's room is the control text inset 9 px, the 16 px glyph and the 4 px gap: outside the spacing scale (design 12 section 1) */
+    padding-inline-start: 29px;
+    padding-inline-end: var(--ov-spacing-8);
+    padding-block: var(--ov-spacing-4);
+    border: 1px solid var(--ov-border-control);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-inline);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    appearance: none;
+  }
+
+  .input::-webkit-search-decoration,
+  .input::-webkit-search-cancel-button {
+    appearance: none;
+  }
+
+  .input::placeholder {
+    color: var(--ov-fg-muted);
+    opacity: 1;
+  }
+
+  .input:focus-visible {
+    border-color: var(--ov-bg-island);
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 0;
+  }
+
+  /* The list: at most 242 px, and it gives way to the popup when the window is short. It scrolls itself, and a row never takes the focus: the
+     field (or, with no field, the list) holds it, and the active row is what the focus is on. */
+  .list {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: 242px;
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .list:focus {
+    outline: 0;
+  }
+
+  /* The rows above and below the mounted window: one empty box as tall as the rows it stands for. */
+  .spacer {
+    height: var(--_height, 0);
+  }
+
+  /* An option (the mock's `.entity-select__option`): its text, and the mark of a choice at its end. Hover, then the choice, then the active row
+     paint over one another in that order. */
+  .option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16px;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    height: var(--_row);
+    padding: 0 var(--ov-spacing-8);
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg);
+    cursor: pointer;
+  }
+
+  .option:where(:not([aria-disabled='true'])):hover {
+    background-color: var(--ov-hover-row);
+  }
+
+  .option[aria-selected='true'] {
+    background-color: var(--ov-selection-inactive);
+  }
+
+  .option[data-ov-active] {
+    background-color: var(--ov-selection-active);
+    outline: 1px solid var(--ov-accent);
+    outline-offset: -1px;
+  }
+
+  .option[aria-disabled='true'] {
+    color: var(--ov-fg-disabled);
+    cursor: default;
+  }
+
+  .body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .label,
+  .description {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The second line of an option (the mock's `.entity-select__meta`): the code face, 12/16, muted. */
+  .description {
+    color: var(--ov-fg-muted);
+    font-family: var(--ov-font-code);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .option[aria-disabled='true'] .description {
+    color: var(--ov-fg-disabled);
+  }
+
+  /* The mark of a choice (the mock's `.cb`): a 16 px box with the radius of a control, the island fill and the raised edge; the accent, edge and all,
+     with the check when the option is chosen. An option that cannot be chosen draws it in the disabled roles. */
+  .mark {
+    display: inline-flex;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--ov-border-raised);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-fg-over-accent);
+  }
+
+  .option[aria-selected='true'] .mark {
+    border-color: var(--ov-accent);
+    background-color: var(--ov-accent);
+  }
+
+  .option[aria-disabled='true'] .mark {
+    border-color: var(--ov-border-disabled);
+    background-color: var(--ov-bg-island);
+    color: var(--ov-icon-disabled);
+  }
+
+  /* What the list says when it has no row: its own line, with nothing in it when there is nothing to say. */
+  .empty {
+    padding: var(--ov-spacing-8);
+    color: var(--ov-fg-muted);
+  }
+
+  .empty:empty {
+    display: none;
+  }
+
+  /* The live region that says a change politely: read, never drawn. */
+  .live {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    box-sizing: border-box;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* The probe: as tall as a row, so the part reads the row height of the density and the text size from the stylesheet and never assumes it. */
+  .probe {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    width: 0;
+    height: var(--_row);
+    visibility: hidden;
+    pointer-events: none;
+  }
+}

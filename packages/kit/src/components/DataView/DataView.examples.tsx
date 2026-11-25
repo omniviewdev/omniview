@@ -1,12 +1,15 @@
 import {
   Button,
+  Chip,
   DataView,
   KindTile,
   MiddleEllipsis,
   PageHeader,
+  ResourceCard,
   SearchField,
   Status,
   WorkspaceToolbar,
+  type CardGridGroup,
   type CollectionFooterProps,
   type DataTableColumn,
   type DataTableSort,
@@ -87,6 +90,29 @@ const COLUMNS: ReadonlyArray<DataTableColumn<Item>> = [
 
 const getRowKey = (row: Item) => row.key;
 
+// The cards of the same items: one function for all, made once, so a card is drawn again only when its item changes.
+const renderCard = (item: Item) => (
+  <ResourceCard
+    title={item.name}
+    lead={<KindTile icon="server" />}
+    status={<Status role={item.role}>{item.word}</Status>}
+    meta={item.group}
+    metrics={[
+      { label: 'Count', value: String(item.count) },
+      { label: 'Age', value: item.age },
+    ]}
+    actions={<Button>Open</Button>}
+  />
+);
+
+// The cards of a group are the items that are in it: a group with none is not drawn.
+function groupsOf(rows: readonly Item[]): Array<CardGridGroup<Item>> {
+  return GROUPS.map((name) => {
+    const items = rows.filter((row) => row.group === name);
+    return { id: name, title: name, meta: `${String(items.length)} ${items.length === 1 ? 'item' : 'items'}`, items };
+  });
+}
+
 type StateFilter = { readonly id: string; readonly label: string; readonly tone: QuickFilter['tone']; readonly test: (row: Item) => boolean };
 
 const STATES: readonly StateFilter[] = [
@@ -102,12 +128,19 @@ type PaneProps = {
   readonly initialSearch?: string | undefined;
   /** Rows still arriving: the footer says how many are loaded, and not how many there are. */
   readonly loading?: boolean | undefined;
+  /** Which body the pane starts with: the table, or the cards in groups. */
+  readonly initialView?: 'table' | 'cards' | undefined;
+  /** Offers the choice between the two at the end of the toolbar. The header, the strip, the toolbar and the footer stay where they are. */
+  readonly switchable?: boolean | undefined;
+  /** The data is being read again: the footer says so at its end. */
+  readonly refreshing?: boolean | undefined;
 };
 
-function Pane({ state = { kind: 'ready' }, initialSearch = '', loading = false }: PaneProps) {
+function Pane({ state = { kind: 'ready' }, initialSearch = '', loading = false, initialView = 'table', switchable = false, refreshing = false }: PaneProps) {
   const [draft, setDraft] = useState(initialSearch);
   const [selected, setSelected] = useState<string | null>(null);
   const [sort, setSort] = useState<DataTableSort | undefined>({ column: 'name', direction: 'ascending' });
+  const [view, setView] = useState(initialView);
 
   const listing = state.kind === 'ready';
   const query = draft.trim().toLowerCase();
@@ -118,45 +151,86 @@ function Pane({ state = { kind: 'ready' }, initialSearch = '', loading = false }
   const filtered = query !== '' || chosen !== undefined;
   const known = state.kind !== 'loading' && state.kind !== 'error';
 
-  const footer: CollectionFooterProps =
+  const counted: CollectionFooterProps =
     loading || !known
       ? { shown: rows.length, total: { kind: 'unknown' }, noun: 'item', plural: 'items' }
       : { shown: rows.length, total: { kind: 'exact', value: state.kind === 'empty' ? 0 : ITEMS.length }, noun: 'item', plural: 'items' };
+  const footer: CollectionFooterProps = refreshing ? { ...counted, status: { text: 'Refreshing…', busy: true } } : counted;
+  const header = <PageHeader title="Items" commands={{ utility: { id: 'refresh', label: 'Refresh items', onSelect: () => undefined } }} />;
+  const quickFilters = {
+    label: 'Item state',
+    total: known ? searched.length : undefined,
+    filters: STATES.map((candidate) => ({ id: candidate.id, label: candidate.label, tone: candidate.tone, count: known ? searched.filter(candidate.test).length : undefined })),
+    selected,
+    onSelect: setSelected,
+  };
+  const toolbar = (
+    <WorkspaceToolbar
+      label="Search and filter items"
+      end={
+        switchable ? (
+          <>
+            <Chip
+              pressed={view === 'table'}
+              onClick={() => {
+                setView('table');
+              }}
+            >
+              Table
+            </Chip>
+            <Chip
+              pressed={view === 'cards'}
+              onClick={() => {
+                setView('cards');
+              }}
+            >
+              Cards
+            </Chip>
+          </>
+        ) : undefined
+      }
+    >
+      <SearchField label="Search items" value={draft} onValueChange={setDraft} />
+      {filtered ? (
+        <Button
+          variant="ghost"
+          size="compact"
+          icon="close"
+          onClick={() => {
+            setDraft('');
+            setSelected(null);
+          }}
+        >
+          Clear filters
+        </Button>
+      ) : null}
+    </WorkspaceToolbar>
+  );
+  const shownState: DataViewState = listing && rows.length === 0 && filtered ? { kind: 'no-match' } : state;
 
   return (
     <div className={styles.pane}>
-      <DataView<Item>
-        label="Items"
-        header={<PageHeader title="Items" commands={{ utility: { id: 'refresh', label: 'Refresh items', onSelect: () => undefined } }} />}
-        quickFilters={{
-          label: 'Item state',
-          total: known ? searched.length : undefined,
-          filters: STATES.map((candidate) => ({ id: candidate.id, label: candidate.label, tone: candidate.tone, count: known ? searched.filter(candidate.test).length : undefined })),
-          selected,
-          onSelect: setSelected,
-        }}
-        toolbar={
-          <WorkspaceToolbar label="Search and filter items">
-            <SearchField label="Search items" value={draft} onValueChange={setDraft} />
-            {filtered ? (
-              <Button
-                variant="ghost"
-                size="compact"
-                icon="close"
-                onClick={() => {
-                  setDraft('');
-                  setSelected(null);
-                }}
-              >
-                Clear filters
-              </Button>
-            ) : null}
-          </WorkspaceToolbar>
-        }
-        table={{ rows, getRowKey, columns: COLUMNS, lines: 2, sort, onSortChange: setSort, rowsAreImmutable: true }}
-        footer={footer}
-        state={listing && rows.length === 0 && filtered ? { kind: 'no-match' } : state}
-      />
+      {view === 'cards' ? (
+        <DataView<Item>
+          label="Items"
+          header={header}
+          quickFilters={quickFilters}
+          toolbar={toolbar}
+          cards={{ groups: groupsOf(rows), getKey: getRowKey, renderCard }}
+          footer={footer}
+          state={shownState}
+        />
+      ) : (
+        <DataView<Item>
+          label="Items"
+          header={header}
+          quickFilters={quickFilters}
+          toolbar={toolbar}
+          table={{ rows, getRowKey, columns: COLUMNS, lines: 2, sort, onSortChange: setSort, rowsAreImmutable: true }}
+          footer={footer}
+          state={shownState}
+        />
+      )}
     </div>
   );
 }
@@ -181,3 +255,24 @@ export const Failure = () => <Pane state={{ kind: 'error', message: 'The server 
 
 /** The same failure when there is nothing to retry with: no Retry, because a button that does nothing is a stub. */
 export const FailureWithoutRetry = () => <Pane state={{ kind: 'error', message: 'You do not have access to these items.' }} />;
+
+/** The same collection as cards under the same header, strip, toolbar and footer: the items in groups, a card for each. Search, choose a state: the groups follow. */
+export const Cards = () => <Pane initialView="cards" />;
+
+/** The first load shown as cards: blocks in the grid's columns, after 250 ms, in a busy status named for what loads. */
+export const CardsLoading = () => <Pane initialView="cards" state={{ kind: 'loading' }} />;
+
+/** Nothing to list: one line in the body, no table header to keep, and the count says so. */
+export const CardsEmpty = () => <Pane initialView="cards" state={{ kind: 'empty', hint: 'Items appear here when they are created.' }} />;
+
+/** A search that matched nothing says "No Items match" in the body and keeps the toolbar's Clear filters. */
+export const CardsFilteredEmpty = () => <Pane initialView="cards" initialSearch="zzz" />;
+
+/** A failure with nothing to show: the same notice and Retry in place of the cards. The footer repeats nothing. */
+export const CardsFailure = () => <Pane initialView="cards" state={{ kind: 'error', message: 'The server did not answer in time.', onRetry: () => undefined }} />;
+
+/** The data is being read again: the footer says so at its end, muted, and does not announce it. */
+export const CardsRefreshing = () => <Pane initialView="cards" refreshing />;
+
+/** Switching from the table to the cards (and back) changes the body and nothing else: the header, the strip, the toolbar and the footer stay as they are. Press Cards. */
+export const SwitchingViews = () => <Pane switchable />;
