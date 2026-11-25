@@ -10376,7 +10376,7 @@ async function checkTerminalReconnect(browser, getHost, engine) {
 
           const reached = await holdsWithin(async () => deliveredInOrder(await plainTranscriptOf(base(), id), tag, n), 20_000);
           const frames = seen.streams.of(id).filter((socket) => socket.openedMs >= sinceCut - 2_000).map((socket) => `[open+${String(socket.openedMs - sinceCut)} close${socket.closedMs > 0 ? `+${String(socket.closedMs - sinceCut)}` : ' never'}: ${socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir === 'page' ? '>' : '<'}${frame.type}${frame.length === undefined ? '' : `(${String(frame.length)})`}@${String(frame.ms - sinceCut)}`).join(' ')}]`).join(' ');
-          const away = (await plainTranscriptOf(base(), id)).split(`\nAWAY_${tag}_42\n`).length - 1;
+          const away = (await plainTranscriptOf(base(), id)).split(`AWAY_${tag}_42\n`).length - 1;
           assert.ok(reached && away === 1, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, once (${String(away)} times), in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote); the streams since the cut: ${frames}; the shell wrote ${JSON.stringify(plain(outputSince(id, outputEnd(id) - 600)))}`);
         },
       );
