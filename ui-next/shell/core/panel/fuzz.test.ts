@@ -35,7 +35,7 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
     return drawn;
   };
 
-  const roll = next() % 19;
+  const roll = next() % 20;
   tick();
   let name: string;
   switch (roll) {
@@ -164,6 +164,17 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
 
       break;
 
+    case 19:
+      // A session moves to an index of its strip, sometimes past either end.
+      if (ids.length > 0) {
+        store.reorderSession(pick(ids), (next() % 6) - 1);
+        name = 'reorderSession';
+      } else {
+        name = 'reorderSession (no session)';
+      }
+
+      break;
+
     default:
       store.toggle();
       name = 'toggle';
@@ -174,7 +185,7 @@ function step(store: PanelStore, next: () => number, tick: () => void, tally: Ta
 }
 
 /** Every operation the generator can draw, as `step` names it when it acted. */
-const OPERATIONS = ['show', 'hide', 'resize', 'resetHeight', 'activateTool', 'openSession', 'setSessionState', 'closeSession', 'activateSession', 'syncPlugins', 'registerTool', 'unregisterTool', 'fitHeight', 'toggle', 'pluginLeaves', 'pluginReturns', 'openFromPlugin', 'retitleSession'];
+const OPERATIONS = ['show', 'hide', 'resize', 'resetHeight', 'activateTool', 'openSession', 'setSessionState', 'closeSession', 'activateSession', 'syncPlugins', 'registerTool', 'unregisterTool', 'fitHeight', 'toggle', 'pluginLeaves', 'pluginReturns', 'openFromPlugin', 'retitleSession', 'reorderSession'];
 
 /** The sessions of a state that are held. */
 const heldOf = (state: PanelState): Array<PanelState['sessions'][string]> => Object.values(state.sessions).filter((session) => session.held === true);

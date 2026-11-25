@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MenuHost } from '@omniviewdev/kit';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeNotices } from '../core/notices/testing';
 import { createPanelStore, type PanelStore } from '../core/panel';
+import { createNoticesAnnouncer } from '../notices/host';
 import type { ShellRegistration } from '../registration';
 import { StaticShell } from '../testing';
 import { staticPanel, type StaticSession } from './testing';
@@ -234,5 +236,62 @@ describe('the menu of a session tab', () => {
     );
     fireEvent.contextMenu(screen.getByRole('tab', { name: /^m/ }), { button: 2 });
     expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Rename session…' })).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('moving a session tab', () => {
+  // jsdom lays nothing out: three tabs 100 px wide at x = 0, 104 and 208 in a strip 400 px wide.
+  const rect = (left: number, right: number) => () => ({ left, right, width: right - left, top: 6, bottom: 34, height: 28, x: left, y: 6, toJSON: () => ({}) });
+  const pointer = (x: number) => ({ pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, clientX: x, clientY: 20 });
+
+  function mountStrip() {
+    const announcer = createNoticesAnnouncer();
+    const panel = staticPanel({ tools: [{ id: 'terminal', label: 'Terminal', icon: 'terminal', order: 10 }], open: true, sessions: ['a', 'b', 'c'].map((title) => session(title)) });
+    render(<StaticShell registration={registration} panel={panel} notices={{ store: makeNotices().store, announcer }} />);
+    const strip = screen.getByRole('tablist', { name: 'Terminal sessions' });
+    strip.getBoundingClientRect = rect(0, 400);
+    [0, 104, 208].forEach((left, at) => {
+      (strip.children[at] as HTMLElement).getBoundingClientRect = rect(left, left + 100);
+    });
+
+    return { strip, told: () => announcer.polite.getSnapshot().text };
+  }
+
+  const names = (): string[] => within(screen.getByRole('tablist', { name: 'Terminal sessions' })).getAllByRole('tab').map((one) => one.getAttribute('aria-label') ?? '');
+
+  it('moves with Alt+Shift and an arrow, Home or End, keeps the focus on it and says where it went', () => {
+    const { told } = mountStrip();
+    screen.getByRole('tab', { name: 'a' }).focus();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'a' }), { key: 'ArrowRight', altKey: true, shiftKey: true });
+    expect(names()).toEqual(['b', 'a', 'c']);
+    expect(screen.getByRole('tab', { name: 'a' })).toHaveFocus();
+    expect(told()).toBe('a moved to position 2 of 3');
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'a' }), { key: 'End', altKey: true, shiftKey: true });
+    expect(names()).toEqual(['b', 'c', 'a']);
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'a' }), { key: 'Home', altKey: true, shiftKey: true });
+    expect(names()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('moves where the pointer drops it, and nowhere for a drop where it was', async () => {
+    const { strip, told } = mountStrip();
+    const drag = async (title: string, from: number, to: number) => {
+      fireEvent.pointerDown(screen.getByRole('tab', { name: title }), pointer(from));
+      fireEvent.pointerMove(strip, pointer(to));
+      await act(async () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        requestAnimationFrame(() => {
+          resolve();
+        });
+        await promise;
+      });
+      fireEvent.pointerUp(strip, pointer(to));
+    };
+
+    await drag('b', 150, 150);
+    expect(names()).toEqual(['a', 'b', 'c']);
+    expect(told()).toBe('');
+    await drag('a', 50, 300);
+    expect(names()).toEqual(['b', 'c', 'a']);
+    expect(told()).toBe('a moved to position 3 of 3');
   });
 });

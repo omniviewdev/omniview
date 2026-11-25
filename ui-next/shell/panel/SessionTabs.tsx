@@ -2,6 +2,7 @@ import { Icon, IconButton, Text, hoverCard, hoverCardAnchor, isIconName, menuTri
 import { useState } from 'react';
 import { platformOf } from '../core/chords';
 import type { SessionId, SessionState, ToolId } from '../core/panel';
+import { useMaybeNotices } from '../notices/context';
 import { useTablist } from '../tablist';
 import { usePanel } from './context';
 import { focusTab } from './focus';
@@ -141,7 +142,7 @@ type SessionTabsProps = {
 };
 
 /**
- * The session tabs of the tool on screen, "<Tool> sessions" (S113): a scroller of faces, one tab stop, the keyboard contract of every strip of the shell (`useTablist`), Delete closes the
+ * The session tabs of the tool on screen, "<Tool> sessions" (S113): a scroller of faces, one tab stop, the keyboard contract of every strip of the shell (`useTablist`), Alt+Shift with an arrow, Home or End (or a drag with the pointer) moves a session within the strip, Delete closes the
  * session and hands the focus to its neighbour; the last session has none, and the focus goes to the tool's own tab (as the close chord does, `usePanelChords`) and not to the document, the
  * tab that had it being gone. It scrolls sideways only and keeps each tab's width: a strip squeezed to a minimum width is illegible (SCT1).
  */
@@ -151,6 +152,7 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
   const ids = useSessionIds(tool);
   const active = useActiveSession(tool);
   const [renaming, setRenaming] = useState<SessionId | null>(null);
+  const say = useMaybeNotices()?.announcer.polite.announce;
   const close = (id: SessionId): boolean => {
     const closed = store.closeSession(id);
     if (closed.status === 'done' && closed.active === null) {
@@ -216,7 +218,18 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
       closing('close-left', 'Close sessions to the left', ids.slice(0, at), 'There are no sessions to the left'),
     ];
   }, ids);
-  const { ref, stop, handlers } = useTablist({ ids, selected: active, onClose: close });
+  // The strip says where the session went, as the page strip does (ch16 S45).
+  const onMove = (id: SessionId, to: number): boolean => {
+    if (store.reorderSession(id, to).status !== 'done') {
+      return false;
+    }
+
+    const state = store.getSnapshot();
+    say?.(`${store.selectors.sessionItem(state, id)?.name ?? ''} moved to position ${String(store.selectors.sessionIds(state, tool).indexOf(id) + 1)} of ${String(ids.length)}`);
+    return true;
+  };
+
+  const { ref, stop, handlers } = useTablist({ ids, selected: active, onClose: close, onMove });
   if (ids.length === 0) {
     return null;
   }

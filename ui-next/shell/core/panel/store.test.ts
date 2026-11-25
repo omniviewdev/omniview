@@ -660,6 +660,55 @@ describe('closing a session', () => {
   });
 });
 
+describe('reordering a session (the strip\'s order is the user\'s)', () => {
+  function bootStrips() {
+    const h = boot({ hostTools: HOST_TOOLS });
+    for (const [tool, title] of [['terminal', 'zsh'], ['logs', 'x'], ['terminal', 'zsh'], ['logs', 'y'], ['terminal', 'bash']] as const) {
+      h.store.openSession(session(tool, 'host', title));
+    }
+
+    return { ...h, strip: (tool: string) => h.store.selectors.sessionIds(h.snapshot(), tool) };
+  }
+
+  it('moves a session to an index of its tool\'s strip, leaves the other tool\'s sessions in their places, and the twins renumber in strip order', () => {
+    const h = bootStrips();
+    expect(h.store.reorderSession('s5', 0)).toEqual({ status: 'done' });
+    expect(h.strip('terminal')).toEqual(['s5', 's1', 's3']);
+    expect(h.strip('logs')).toEqual(['s2', 's4']);
+    expect(h.snapshot().order).toEqual(['s5', 's2', 's1', 's4', 's3']);
+    expect(['s5', 's1', 's3'].map((id) => h.store.selectors.sessionItem(h.snapshot(), id)?.name)).toEqual(['bash', 'zsh', 'zsh (2)']);
+    h.store.reorderSession('s3', 1);
+    expect(h.strip('terminal')).toEqual(['s5', 's3', 's1']);
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's3')?.name).toBe('zsh');
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('keeps an index past either end inside the strip, and the sessions it does not hide in their places', () => {
+    const h = bootStrips();
+    h.store.reorderSession('s1', 99);
+    expect(h.strip('terminal')).toEqual(['s3', 's5', 's1']);
+    h.store.reorderSession('s1', -4);
+    expect(h.strip('terminal')).toEqual(['s1', 's3', 's5']);
+    expect(checkInvariants(h.snapshot())).toEqual([]);
+  });
+
+  it('changes nothing and tells nobody for the place it has, and refuses a session that is not there', () => {
+    const h = bootStrips();
+    const before = h.snapshot();
+    const told = h.notified();
+    expect(h.store.reorderSession('s3', 1)).toEqual({ status: 'noop' });
+    expect(h.store.reorderSession('nope', 0)).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.snapshot()).toBe(before);
+    expect(h.notified()).toBe(told);
+  });
+
+  it('is what the session saves: the saved panel lists the sessions in the new order', () => {
+    const h = bootStrips();
+    h.store.reorderSession('s5', 0);
+    expect(h.store.serialise().sessions.map((one) => one.id)).toEqual(['s5', 's2', 's1', 's4', 's3']);
+  });
+});
+
 describe('choosing a session', () => {
   it('puts its tool on screen and the session on its strip; a session that is hidden or missing is refused', () => {
     const h = boot({ hostTools: HOST_TOOLS });
