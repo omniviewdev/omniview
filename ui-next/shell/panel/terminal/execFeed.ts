@@ -62,6 +62,8 @@ export const SETTLE_MS = 100;
 /** How long the feed waits before it connects again, after the first, the second and the third stream that dropped without a word of the host (docs/ui-next/terminal-channel-protocol.md section 11). */
 export const RECONNECT_DELAYS_MS: readonly number[] = [250, 1_000, 4_000];
 
+const NO_BYTES = new Uint8Array(0);
+
 const EMPTY: TerminalOutput = Object.freeze({ chunks: Object.freeze([]), bytes: 0 });
 const IDLE: TerminalBusy = Object.freeze({ state: 'idle' });
 const UNKNOWN: TerminalBusy = Object.freeze({ state: 'unknown' });
@@ -454,7 +456,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** Where the output the host advertised for the stream now open ends: a continuation is complete when the cursor is there. */
   let resumeEnd = 0;
   /** A stream of this feed said `ready` at least once. */
-  let everReady = false;
+  /** A stream was ever opened for this feed: from then on another stream may have taken the terminal, and only the stream (or the lease) may end it. */
+  let everConnected = false;
   let retry: Timer | undefined;
   /** The offset the feed has applied up to: what a stream that drops is connected again from. A terminal the feed made starts at 0; one it attaches to has nothing until its replay is complete. */
   let next: number | undefined = attachTo === undefined ? 0 : undefined;
@@ -655,11 +658,20 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
       if (piece.length <= left) {
         left -= piece.length;
+        // The confirmed bytes are let go now, not when the array is next compacted.
+        kept[head] = NO_BYTES;
         head += 1;
       } else {
         kept[head] = piece.subarray(left);
         left = 0;
       }
+    }
+
+    if (keptBytes === 0) {
+      kept = [];
+      head = 0;
+      sentTo = 0;
+      return;
     }
 
     sentTo = Math.max(sentTo, head);
@@ -737,7 +749,6 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     streaming = true;
-    everReady = true;
     size = ready.size;
     modes = ready.modes;
     delivered = ready.size;
@@ -992,6 +1003,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   function connect(from: number | undefined): void {
     const mine = {};
     connection = mine;
+    everConnected = true;
     complete = false;
     readyEnded = undefined;
     const heard =
@@ -1016,7 +1028,14 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     try {
       link = channels.connect(id, from, {
         ready: heard(onReady),
-        output: heard(onOutput),
+        // While a close is in flight the bytes the host still sends are not the reader's, and are credited as they come: the host sends the end only after every byte, and sends bytes only against credit.
+        output: (offset, bytes) => {
+          if (connection === mine && ending !== undefined) {
+            link?.ack(bytes.length);
+          } else {
+            heard(onOutput)(offset, bytes);
+          }
+        },
         gap: heard(onGap),
         applied: heard(onApplied),
         ended: heardEnd(onEnded),
@@ -1226,7 +1245,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     inputs: () => typed,
 
     // Nothing typed waits for a stream, and nothing sent waits in the link; a session that is over sends nothing more, so nothing is left to wait for.
-    inputsSettled: () => closed() || finished() || (sentTo >= kept.length && (link?.pending() ?? 0) === 0),
+    inputsSettled: () => closed() || finished() || (keptBytes === 0 && sentTo >= kept.length && (link?.pending() ?? 0) === 0),
 
     resize: (cols, rows) => {
       const target = { cols: Math.floor(cols), rows: Math.floor(rows) };
@@ -1270,14 +1289,21 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
       // Whether this feed holds a live stream to the terminal now, or made the terminal and never opened one (nobody else can hold it): only then is it this page's to end. A stream that dropped, is being connected again or is not ready may have been
       // taken by another tab meanwhile, and a close of the capability alone would end what that tab shows: it is left to the host's lease, until the host binds a close to the holder.
-      const holding = (streaming && link !== undefined) || (attachTo === undefined && !everReady);
+      const holding = (streaming && link !== undefined) || (attachTo === undefined && !everConnected);
       // A terminal this feed holds a live stream to is ended by the stream: the host ends it only if this stream still holds it (a page that was displaced without knowing is told `close-refused`), and tells the stream. The close of the
       // capability is for a terminal that was made and never attached: nobody else can hold it.
       if (fate === 'ours' && !left && streaming && link !== undefined && status.state === 'running') {
         const stream = link;
+        // What the stream delivered and was not credited yet (what the reader has not parsed, and what it owes) is credited now: the discarded bytes would otherwise hold the end back.
+        const uncredited = owed + Math.max(0, outstanding - forgiven);
         closing = new Promise<void>((resolve) => {
           ending = resolve;
         });
+        owed = 0;
+        if (uncredited > 0) {
+          stream.ack(uncredited);
+        }
+
         dropOutgoing();
         held.clear();
         awaiting = undefined;
