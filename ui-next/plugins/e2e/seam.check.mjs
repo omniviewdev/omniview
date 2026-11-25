@@ -1535,7 +1535,7 @@ async function checkPalette(page, base, engine) {
   // The host's own commands, all of them and no others: what it can run now, with the chord each is bound to (a browser tab has no window of its own, so there is no Close window, and it keeps Command and Control W and J for itself, so the chords said are the shell's Control Option ones; Next and Previous have no chord).
   await field.fill('');
   await page.keyboard.type('>', { delay: 20 });
-  await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
+  await dialog.getByRole('option', { name: /^Command: Close tab,/ }).waitFor();
   const labels = await dialog.getByRole('option').evaluateAll((rows) => rows.map((row) => row.getAttribute('aria-label')));
   // The tab commands are `shell/tabs/commands.ts`'s, those the tab on screen allows now (which of them depends on where it sits in the strip): Close tab is first, with its chord, and Next and Previous are there with two tabs open.
   const tabLabels = labels.filter((label) => label?.endsWith(', Tabs') === true || label?.includes(', Tabs, ') === true);
@@ -1549,7 +1549,7 @@ async function checkPalette(page, base, engine) {
   await shot('commands');
   await dialog.getByRole('tab', { name: 'All' }).click();
   await field.fill('close');
-  await dialog.getByRole('option', { name: /^Command: Close tab/ }).waitFor();
+  await dialog.getByRole('option', { name: /^Command: Close tab,/ }).waitFor();
   await shot('close');
 
   // A kind with no provider behind it (Settings is the mock's, and nothing here provides it yet) says so, in the mock's words, and offers the plugin homes as somewhere to go from.
