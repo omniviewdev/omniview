@@ -446,7 +446,10 @@ func TestForegroundIsIdleForAShellAtItsPromptBusyForAProgramAndNotBusyForABackgr
 	rec.waitFor(t, info.ID, "ready-1006")
 	assert.Equal(t, StateIdle, busyState(m, info.ID).State, "a shell at its prompt")
 
-	require.NoError(t, m.Write(info.ID, 0, []byte("sleep 59\n")))
+	// The program is a shell that holds the foreground for a moment before it becomes sleep: the window between a fork and
+	// its exec, where the foreground is busy and still named for the shell, is made long enough that a test that reads the
+	// name at the first busy reading sees it every time.
+	require.NoError(t, m.Write(info.ID, 0, []byte("sh -c 'sleep 1; exec sleep 59'\n")))
 	require.Eventually(t, func() bool { return busyState(m, info.ID).State == StateBusy }, 10*time.Second, 10*time.Millisecond,
 		"the program in the foreground")
 	got := busyState(m, info.ID)
