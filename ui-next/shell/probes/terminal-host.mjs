@@ -1173,8 +1173,21 @@ export function createHost(options = {}) {
         entry.kind = 'detach';
         if (bytes.length !== 1) return protocolError(conn, 'detach size');
         entry.outcome = 'applied';
-        log.detaches.push({ stream: conn.id, id: conn.terminal ?? null, at: now() });
-        shut(conn);
+        // The frames of one stream are applied in order: a detach behind an input that is held waits for it, and the stream goes when it has been applied. With nothing held it goes at once.
+        {
+          const leave = () => {
+            log.detaches.push({ stream: conn.id, id: conn.terminal ?? null, at: now() });
+            shut(conn);
+          };
+
+          if (lag.queue !== undefined && lag.conns.has(conn)) {
+            entry.outcome = 'held';
+            lag.queue.push(leave);
+          } else {
+            leave();
+          }
+        }
+
         return undefined;
       default:
         return protocolError(conn, `type ${String(type)}`);
@@ -1534,6 +1547,8 @@ export function createHost(options = {}) {
       const holder = pty.holder;
       pty.holder = null;
       for (const wake of [...pty.room.splice(0), ...pty.empty.splice(0)]) wake();
+      // An attach that waited for the end of the shell finds nothing now, and is told so.
+      for (const go of pty.deferred.splice(0)) go();
       if (holder !== null) {
         holder.pty = null;
         shut(holder);
@@ -1541,7 +1556,9 @@ export function createHost(options = {}) {
     },
     /** The host starts afresh: every terminal is gone, with no word (a restart, which a lease or a close is not); the kept ends go with it. */
     restart: () => {
+      const waiting = [];
       for (const pty of [...ptys.values()]) {
+        waiting.push(...pty.deferred.splice(0));
         ghosts.set(pty.cap, listed(pty));
         const holder = pty.holder;
         clearTimeout(pty.lease);
@@ -1557,6 +1574,8 @@ export function createHost(options = {}) {
       }
 
       for (const cap of [...kept.keys()]) forgetEnd(cap);
+      // An attach that waited for the end of a shell finds nothing after a restart, and is closed with the answer of a capability that opens nothing.
+      for (const go of waiting) go();
     },
     /** The ring no longer reaches back to `from`: answers where it starts now. */
     trimRing: (id, from) => ptyOf(id).ring.trim(from),
