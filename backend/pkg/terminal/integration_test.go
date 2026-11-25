@@ -247,6 +247,9 @@ func TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks(t *testing.T) {
 			if integration {
 				assert.Contains(t, string(raw), "\x1b]633;E;echo hello;", "the integrated run did print its marks")
 			}
+			if name == "fish" {
+				return typedText(raw)
+			}
 			return string(oscs.ReplaceAll(raw, nil))
 		}
 		off := session(false)
@@ -254,6 +257,26 @@ func TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks(t *testing.T) {
 		assert.Contains(t, off, "hello", "the control session ran the command")
 		assert.Equal(t, off, on, "with the marks taken out, the integrated terminal shows what the plain one does")
 	})
+}
+
+// typedText is what a person reads of a stream: every escape sequence is gone and a backspace takes back the character
+// before it. fish repaints the line it edits, in the order and with the cursor moves it chooses, so for fish this and not the
+// bytes is what the two runs are held to; zsh is held to the bytes.
+func typedText(raw []byte) string {
+	escapes := regexp.MustCompile("\x1b\\][^\a\x1b]*(\a|\x1b\\\\)|\x1b\\[[0-9;?<>=]*[ -/]*[@-~]|\x1b[()][A-Z0-9]|\x1b[=>]")
+	var out []rune
+	for _, r := range string(escapes.ReplaceAll(raw, nil)) {
+		switch r {
+		case '\r':
+		case '\b':
+			if len(out) > 0 {
+				out = out[:len(out)-1]
+			}
+		default:
+			out = append(out, r)
+		}
+	}
+	return string(out)
 }
 
 func TestTheUsersStartupFilesAreByteIdenticalAfterASession(t *testing.T) {
@@ -339,7 +362,11 @@ func TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt(t *testing.T) {
 			assert.NotContains(t, f.fileOf(file), nonce, "the nonce is not in what %s lists", file)
 		}
 		if runtime.GOOS == "linux" {
-			f.run(info.ID, "tr '\\0' '\\n' < /proc/$$/environ > initial")
+			pid := "$$"
+			if name == "fish" {
+				pid = "$fish_pid"
+			}
+			f.run(info.ID, "tr '\\0' '\\n' < /proc/"+pid+"/environ > initial")
 			assert.NotContains(t, f.fileOf("initial"), nonce, "the nonce is not in the environment the shell was started with")
 		}
 		exported := f.fileOf("exported")
@@ -386,7 +413,7 @@ func TestANestedLoginShellDoesNotInheritTheIntegration(t *testing.T) {
 		// The functions of the integration all begin with the same name; a shell that has any of them has the integration.
 		probe := `print -r -- "nested zd=${ZDOTDIR-unset} functions=${(k)functions[(I)__omniview*]}"`
 		if name == "fish" {
-			probe = `echo "nested xdg="(string join : $XDG_DATA_DIRS | string match -rq omniview-integration; and echo shim; or echo clean)" functions="(functions -n | string match '__omniview*' | string join ,)`
+			probe = `set x clean; string match -q "*omniview-integration*" "$XDG_DATA_DIRS"; and set x shim; set f (functions -n | string match "__omniview*" | string join ,); echo "nested xdg=$x functions=$f"`
 		}
 		f.run(info.ID, shell+" -i -l -c '"+strings.ReplaceAll(probe, "'", `'\''`)+"' > nested")
 		seen := f.fileOf("nested")
@@ -407,11 +434,24 @@ func TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment(t *testing.T
 			require.NoError(t, os.WriteFile(filepath.Join(f.home, ".zprofile"), []byte(prepend), 0o600))
 		} else {
 			cfg := filepath.Join(f.home, ".config", "fish", "config.fish")
-			require.NoError(t, os.WriteFile(cfg, []byte("fish_add_path --prepend --path /omniview-user/shims\nfunction fish_prompt\n  echo -n '"+integrationPrompt+"'\nend\n"), 0o600))
+			require.NoError(t, os.WriteFile(cfg, []byte("set -gx PATH /omniview-user/shims $PATH\nfunction fish_prompt\n  echo -n '"+integrationPrompt+"'\nend\n"), 0o600))
 		}
 		info := f.started()
 		assert.Equal(t, IntegrationOn, info.Integration.State)
 		f.run(info.ID, "echo $PATH > path")
 		assert.True(t, strings.HasPrefix(f.fileOf("path"), "/omniview-user/shims"), "the user's directory is first, with the integration on: %q", f.fileOf("path"))
 	})
+}
+
+// The channel of the integration is closed in the shell before any program of the user's starts. fish cannot close a
+// descriptor, so for fish the descriptor stays, with the other end gone and nothing to read: the test is for zsh.
+func TestNoDescriptorOfTheChannelReachesAProgramOfTheUser(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("NOT RUN: /proc/self/fd is Linux's")
+	}
+	f := newIntegrationFixture(t, "zsh", integrationShell(t, "zsh"))
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "ls -l /proc/self/fd > descriptors")
+	assert.NotContains(t, f.fileOf("descriptors"), "socket:", "no socket reaches a program the user runs")
 }

@@ -56,6 +56,13 @@ func starts(t *testing.T, log string) []string {
 	return strings.Split(strings.TrimSpace(string(data)), "\n")
 }
 
+// waitStarts waits until the fake shell has logged n starts: it logs from its own process, after Start has answered.
+func waitStarts(t *testing.T, log string, n int) []string {
+	t.Helper()
+	require.Eventually(t, func() bool { return len(starts(t, log)) >= n }, 10*time.Second, 5*time.Millisecond, "the shell was not started %d times", n)
+	return starts(t, log)
+}
+
 func fakeFixture(t *testing.T, name, mode string, env ...string) (*integrationFixture, string, string) {
 	t.Helper()
 	path, log := fakeShell(t, name)
@@ -128,7 +135,7 @@ func TestTheSettingIsAskedForEveryTerminal(t *testing.T) {
 	assert.Equal(t, IntegrationOn, f.start().Integration.State)
 	on = false
 	assert.Equal(t, IntegrationOff, f.start().Integration.State)
-	require.Len(t, starts(t, log), 2)
+	assert.Len(t, waitStarts(t, log, 2), 2)
 }
 
 // What the host makes for a shell is private: its directory is the user's alone.
@@ -189,7 +196,7 @@ func TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt(t *tes
 			f, _, log := fakeFixture(t, name, "die-with-integration")
 			info := f.start()
 			assert.Equal(t, Integration{State: IntegrationFailed, Reason: FailExitedEarly}, info.Integration)
-			lines := starts(t, log)
+			lines := waitStarts(t, log, 2)
 			require.Len(t, lines, 2, "the shell was started twice: %v", lines)
 			assert.NotContains(t, lines[0], "zdotdir=unset xdg=unset", "the first start had the integration")
 			assert.Contains(t, lines[1], "zdotdir=unset xdg=unset", "the second had none")

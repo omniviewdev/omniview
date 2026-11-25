@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strings"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -178,6 +179,11 @@ type session struct {
 	// nonce is the secret of the session's shell integration: the host keeps it (the scanner of step 4 believes the marks that
 	// carry it) and it is in no answer, event, log or error. Zero when the shell has no integration.
 	nonce marks.Nonce
+	// injection is the host's directory and channel of the session's integration while they exist: the end of the session
+	// removes what is left of it.
+	injection *injection
+	// reaped has the result of the shell's Wait, once: the reaper of the shell runs from its start.
+	reaped <-chan error
 
 	cmd    *exec.Cmd
 	master *os.File
@@ -516,6 +522,109 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if err != nil {
 		return nil, startError(err)
 	}
+	size := &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0}
+	started, err := m.spawnIntegrated(id, path, args, dir, env, size)
+	if err != nil {
+		return nil, err
+	}
+	cmd, polled := started.cmd, started.master
+	requested := requestedShell(opts.Command, path)
+	abs, absErr := filepath.Abs(path)
+	if absErr != nil {
+		abs = path
+	}
+	s := &session{
+		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params),
+		pageKey: opts.PageKey, lease: lease, clock: m.clock,
+		info: Session{
+			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
+			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: m.limits(), Environment: environmentOf(m.probe()),
+			Integration: started.fact, LeaseMs: int(lease / time.Millisecond),
+		},
+		nonce: started.nonce, injection: started.pending, reaped: started.reaped,
+		cmd: cmd, master: polled, cancel: started.cancel, outMu: sync.Mutex{}, emitMu: sync.Mutex{},
+		ring:  newReplayRing(m.ringLimit(opts), Size{Cols: int(cols), Rows: int(rows)}),
+		queue: nil, flow: m.newCredit(id),
+		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
+		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
+		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
+		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0, channel: newChannelState(opts.Channel, secret),
+	}
+	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
+	return s, nil
+}
+
+// process is a shell that was started on a pty: the host reaps it on its own goroutine from the moment it starts, so that
+// the start of a shell with the integration can see it end.
+type process struct {
+	cmd    *exec.Cmd
+	master *os.File
+	cancel context.CancelFunc
+	// reaped has the result of the shell's Wait, once.
+	reaped chan error
+}
+
+// discard ends a shell that has already been reaped and lets its pty go.
+func (p *process) discard() {
+	p.cancel()
+	_ = p.master.Close()
+}
+
+// launched is a shell that was started and what the host did around it.
+type launched struct {
+	*process
+	// fact is what the create answer says of the integration.
+	fact Integration
+	// nonce is the session's, zero when the shell has no integration.
+	nonce marks.Nonce
+	// pending is the injection that still has a directory to remove when the session ends: nil when it has been removed
+	// (the shell said it is ready, or there is none).
+	pending *injection
+}
+
+// spawnIntegrated starts the shell with the integration the user's setting and the shell allow, and says what became of it.
+// A shell that has the integration and ends before it says it is ready is started once more, without it: once, whatever
+// happens to that one.
+func (m *Manager) spawnIntegrated(id, path string, args []string, dir string, env []string, size *pty.Winsize) (launched, error) {
+	kind, fact := integrationPlan(m.integrationOn(), path, args, env)
+	var inj *injection
+	if kind != kindNone {
+		var err error
+		if inj, err = prepareInjection(kind, env); err != nil {
+			m.log.Warnw(m.ctx, "the shell integration could not be prepared: the shell starts without it", "session", id, "error", err.Error())
+			fact = Integration{State: IntegrationFailed, Reason: FailSetup}
+		}
+	}
+	first, err := m.spawn(id, path, args, dir, env, size, inj)
+	if err != nil {
+		inj.close()
+		return launched{}, err
+	}
+	if inj == nil {
+		return launched{process: first, fact: fact, nonce: marks.Nonce{}, pending: nil}, nil
+	}
+	result, _ := inj.await(m.ctx, first.reaped)
+	switch result {
+	case outcomeReady:
+		// Every startup file has run: the directory has done its work.
+		inj.close()
+		return launched{process: first, fact: fact, nonce: inj.nonce, pending: nil}, nil
+	case outcomeSlow:
+		return launched{process: first, fact: fact, nonce: inj.nonce, pending: inj}, nil
+	case outcomeGone:
+	}
+	first.discard()
+	inj.close()
+	m.log.Debugw(m.ctx, "the shell ended within moments of its start with the integration: started once more without it", "session", id)
+	second, err := m.spawn(id, path, args, dir, env, size, nil)
+	if err != nil {
+		return launched{}, err
+	}
+	return launched{process: second, fact: Integration{State: IntegrationFailed, Reason: FailExitedEarly}, nonce: marks.Nonce{}, pending: nil}, nil
+}
+
+// spawn starts the shell on a pty of the given size, with the injection's variables and channel when it has one.
+func (m *Manager) spawn(id, path string, args []string, dir string, env []string, size *pty.Winsize, inj *injection) (*process, error) {
 	// The shell's context is not the host's: when the host's context ends the sessions are closed the way a
 	// close does it (Shutdown), with a hangup the shell can pass on to its jobs. The context kills the shell
 	// outright, and only at the end of the grace.
@@ -523,9 +632,17 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
 	cmd.Env = terminalEnvironment(env, path, dir, version.Version)
+	if inj != nil {
+		cmd.Env = replaceEnvironment(cmd.Env, inj.env)
+		cmd.ExtraFiles = []*os.File{inj.child}
+	}
 
 	// The size is set on the pty before the process starts, so the shell's first prompt is laid out for it.
-	master, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0})
+	master, err := pty.StartWithSize(cmd, size)
+	if inj != nil {
+		// The shell has its end of the channel now; the host's copy is not its to keep.
+		_ = inj.child.Close()
+	}
 	if err != nil {
 		cancel()
 		return nil, startError(err)
@@ -540,34 +657,26 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if utf8Err := utf8Input(polled); utf8Err != nil {
 		m.log.Debugw(m.ctx, "could not mark the pty as UTF-8", "session", id, "error", utf8Err)
 	}
-	requested := requestedShell(opts.Command, path)
-	abs, absErr := filepath.Abs(path)
-	if absErr != nil {
-		abs = path
+	reaped := make(chan error, 1)
+	go func() { reaped <- cmd.Wait() }()
+	return &process{cmd: cmd, master: polled, cancel: cancel, reaped: reaped}, nil
+}
+
+// replaceEnvironment is env with the entries of set in place of the ones that have the same names.
+func replaceEnvironment(env, set []string) []string {
+	out := make([]string, 0, len(env)+len(set))
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		if !slices.ContainsFunc(set, func(replacement string) bool { return strings.HasPrefix(replacement, name+"=") }) {
+			out = append(out, entry)
+		}
 	}
-	s := &session{
-		id: id, command: slices.Clone(opts.Command), labels: maps.Clone(opts.Labels), params: maps.Clone(opts.Params),
-		pageKey: opts.PageKey, lease: lease, clock: m.clock,
-		info: Session{
-			ID: id, CreatedAt: time.Now(), PID: cmd.Process.Pid, Shell: Shell{Path: abs, Name: shellenv.Name(path), Requested: requested},
-			Cwd: dir, Cols: int(cols), Rows: int(rows), Limits: m.limits(), Environment: environmentOf(m.probe()),
-			LeaseMs: int(lease / time.Millisecond),
-		},
-		cmd: cmd, master: polled, cancel: cancel, outMu: sync.Mutex{}, emitMu: sync.Mutex{},
-		ring:  newReplayRing(m.ringLimit(opts), Size{Cols: int(cols), Rows: int(rows)}),
-		queue: nil, flow: m.newCredit(id),
-		ending: atomic.Bool{}, exited: make(chan struct{}), status: exitStatus{code: 0, signal: 0, coreDumped: false, err: nil},
-		drainEnd: atomic.Int64{}, capped: false, dropped: 0, done: make(chan struct{}),
-		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
-		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0, channel: newChannelState(opts.Channel, secret),
-	}
-	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
-	return s, nil
+	return append(out, set...)
 }
 
 // wait reaps the shell and tells the reader the shell is gone.
 func (m *Manager) wait(s *session) {
-	s.status = statusOf(s.cmd.Wait())
+	s.status = statusOf(<-s.reaped)
 	if m.ctx.Err() != nil || m.closing.Load() {
 		s.decide(fate{set: true, closedBy: ClosedByShutdown, failure: nil})
 	} else {
@@ -703,6 +812,7 @@ func (m *Manager) finish(s *session, readErr error) {
 	m.mu.Unlock()
 	s.stopLease()
 	s.cancel()
+	s.injection.close()
 	close(s.done)
 	m.log.Debugw(context.Background(), "session terminated", "session", s.id, "reason", end.Reason)
 }
