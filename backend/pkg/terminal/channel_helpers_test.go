@@ -728,6 +728,29 @@ func (m *Manager) attachOn(t *testing.T, f *fakeChannel, capability string, from
 	return p
 }
 
+// attachAs opens a stream whose attach states the writer (docs/ui-next/terminal-channel-protocol.md section 5): the opaque id of one feed.
+func (m *Manager) attachAs(t *testing.T, capability, writer string) *chanPage {
+	t.Helper()
+	f := newFakeChannel(t)
+	p := newChanPage(t, f, 0)
+	served := make(chan struct{})
+	p.served = served
+	go p.run()
+	go func() {
+		defer close(served)
+		m.ServeChannel(f)
+	}()
+	f.pageSend(attachFrameAs(capability, writer))
+	return p
+}
+
+func attachFrameAs(capability, writer string) []byte {
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q}`, capability, writer)...)
+}
+
+// writerID is the id of the nth test writer: 16 bytes as 32 lowercase hex digits.
+func writerID(n int) string { return fmt.Sprintf("%032x", n) }
+
 // chanOf is the session of a channel terminal.
 func (m *Manager) chanOf(t *testing.T, info Session) *session { return m.session(t, info.ID) }
 
