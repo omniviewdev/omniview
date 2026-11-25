@@ -7,7 +7,7 @@ import { filterOptions } from './filter';
 // The picker's filter is the palette's matcher over the labels of the options (core/palette/match.ts is the oracle: its own tests pin the scores). What is proved here is what the filter adds: the order it hands back (best
 // match first, ties in the order the options were given), what it drops, what it leaves alone, and the runs it says to draw.
 
-type Option = { readonly id: string; readonly label: string };
+type Option = { readonly id: string; readonly label: string; readonly detail?: string | undefined };
 
 const named = (...labels: string[]): Option[] => labels.map((label) => ({ id: label.toLowerCase(), label }));
 const labelsOf = (options: readonly Option[], query: string): string[] => filterOptions(options, query).map(({ option }) => option.label);
@@ -92,6 +92,30 @@ describe('filterOptions', () => {
     const [[from, to] = [0, 0]] = found?.ranges ?? [];
 
     expect(found?.option.label.slice(from, to)).toBe('prod');
+  });
+});
+
+describe('the secondary text of an option', () => {
+  const options: readonly Option[] = [
+    { id: 'a', label: 'ops', detail: 'EKS \u00b7 us-east-1' },
+    { id: 'b', label: 'data', detail: 'EKS \u00b7 eu-west-1' },
+    { id: 'c', label: 'us-lab' },
+  ];
+
+  it('counts when a word of the query is not in the name: typing a region finds the connections of that region', () => {
+    expect(labelsOf(options, 'eu-west')).toEqual(['data']);
+    expect(labelsOf(options, 'ops us-east')).toEqual(['ops']);
+  });
+
+  it('ranks a match in the name above a match in the secondary text', () => {
+    expect(labelsOf(options, 'us')).toEqual(['us-lab', 'ops']);
+  });
+
+  it('draws runs in the name only, never in the secondary text', () => {
+    const found = filterOptions(options, 'eu-west');
+
+    expect(found).toHaveLength(1);
+    expect(found[0]?.ranges).toEqual([]);
   });
 });
 

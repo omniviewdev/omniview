@@ -1,4 +1,5 @@
-/* The Home page (HM1; the mock's `shell-page-home.css`): the plugins you can open and the connections of every plugin, a document the island scrolls. Host composition: every rule sits in ov.shell, above the kit's parts. */
+/* The Home page (HM1, HM2; the mock's `shell-page-home.css`): the plugins you can open in the main column and, in the side column, the connections used last and the connections of every plugin; a document the island scrolls. Host composition:
+   every rule sits in ov.shell, above the kit's parts. */
 @layer ov.shell {
   /* The page is a container: its own width, never the window's, chooses between one column and two, so a page beside an inspector or in a split gets the narrow form (the mock's `container: home / inline-size`). */
   .home {
@@ -11,7 +12,7 @@
     max-inline-size: 1120px;
   }
 
-  /* One column: the plugins, then the connections. From 760 px of the page's own width, two: the plugins take three parts and the connections two (280 px at the least), side by side from the top. */
+  /* One column: the plugins, then the side. From 760 px of the page's own width, two: the plugins take three parts and the side two (280 px at the least), side by side from the top (the mock's `home__grid`). */
   .grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -25,6 +26,42 @@
       gap: var(--ov-spacing-24);
       align-items: start;
     }
+
+    /* The field that narrows is the first row of the side column and the sections sit under it, so that the heading of the plugins and the heading of Recent stand level: the mock's grid starts both columns at the same top. The side's
+       own box goes away so that the grid places what is in it; with no field the sections start in the first row. The selectors start at the grid so that they beat the plain rules of the same parts below, whatever the order. */
+    .grid > .side {
+      display: contents;
+    }
+
+    .grid > .side > .find {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .grid > .side > .section {
+      grid-column: 2;
+    }
+
+    .grid > .main {
+      grid-column: 1;
+      grid-row: 2 / span 2;
+    }
+
+    .grid:not(:has(.find)) > .main {
+      grid-row: 1 / span 2;
+    }
+  }
+
+  .main {
+    min-inline-size: 0;
+  }
+
+  /* The side column: the field that narrows, Recent, then the connections, 20 px apart (the mock's `home__side`). */
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-20);
+    min-inline-size: 0;
   }
 
   .section {
@@ -34,13 +71,34 @@
     min-inline-size: 0;
   }
 
+  /* The field and the line under it that says what a query found. */
+  .find {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+  }
+
   /* The search field sizes itself for a row (a basis and a floor on the inline axis), so it stands in one. */
   .search {
     display: flex;
     min-inline-size: 0;
   }
 
-  /* One block for each plugin that has a connection: its name, when there are several, over its rows. */
+  /* The line is always in the page while the field is, and takes no room until it has something to say. */
+  .status {
+    margin: 0;
+  }
+
+  .status:not(:empty) {
+    margin-block-start: var(--ov-spacing-8);
+  }
+
+  .retry {
+    display: flex;
+    min-inline-size: 0;
+  }
+
+  /* One block for each plugin that has a connection: its name, when the host says to name them, over its rows. */
   .groups {
     display: flex;
     flex-direction: column;
@@ -55,7 +113,15 @@
     min-inline-size: 0;
   }
 
-  /* A row is one native button and paints its own hover; its focus ring is drawn inside it, as the mock's row button draws it. */
+  /* Rows align their text with the section title: a list reaches 12 px past the content edge so that the row's own 12 px puts its text on that edge and its hover fill is not cut (the mock's `.home .rove { margin-inline: -12px }`). */
+  .rows {
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the mock's -12px: the scale has no negative step */
+    margin-inline: calc(-1 * var(--ov-spacing-12));
+    min-inline-size: 0;
+  }
+
+  /* A row is one native button and paints its own hover; its focus ring is drawn inside it, as the mock's row button draws it. The mock's row (`.listrow__main`): the row height at the least, the row padding above and below and 12 px
+     beside the content, 8 px between its parts, the control radius. */
   .row {
     display: flex;
     align-items: center;
@@ -63,8 +129,10 @@
     box-sizing: border-box;
     inline-size: 100%;
     min-inline-size: 0;
+    min-block-size: var(--ov-row-height);
     margin: 0;
-    padding: var(--ov-spacing-4) var(--ov-spacing-8);
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the row padding is the density token (4 px, 3 px compact), as the mock's `padding: var(--int-row-pad) 12px` has it, not a step of the spacing scale */
+    padding: var(--ov-row-pad) var(--ov-spacing-12);
     border: 0;
     border-radius: var(--ov-radius-control);
     background-color: transparent;
@@ -91,7 +159,7 @@
     outline-offset: -2px;
   }
 
-  /* A connection's text: its name, and under it, when the last start failed, why. The state stays whole at the end, so the text is what gives way. */
+  /* A connection's text: its name, and under it, when there is one, the plugin's text or why the last start failed. The state stays whole at the end, so the text is what gives way. */
   .text {
     display: flex;
     flex: 1 1 auto;
@@ -104,5 +172,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* A word for assistive technology that draws nothing: the mock's `.visually-hidden` (base.css 1592), as the kit's table keeps it. */
+  .said {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    /* stylelint-disable-next-line declaration-property-value-allowed-list -- the visually hidden box takes its own pixel back (the mock's rule) */
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 }

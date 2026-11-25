@@ -1,6 +1,6 @@
 import type { ConnectionsApi, StateRecord } from './api';
 import type { ConnectOutcome, HostConnection } from './types';
-import { failureOf, nameOf, outcomeOfStatus, stateOfReadiness } from './words';
+import { detailOf, failureOf, nameOf, outcomeOfStatus, stateOfReadiness } from './words';
 
 // What the window knows of the connections of every plugin (HM1), and what it does to learn more: one list, read from the host, with a start of this window that is running shown as connecting. Framework-free, like `pluginStore.ts`:
 // React reads it through `useSyncExternalStore` (`getSnapshot` is the same object until something in it changes), and the host is injected (`ConnectionsApi`), so the rules here are tests with no runtime and no host.
@@ -87,7 +87,7 @@ function flatten(answer: Readonly<Record<string, readonly StateRecord[]>>): Host
   for (const [plugin, records] of Object.entries(answer)) {
     for (const record of records) {
       const { state, reason } = stateOfReadiness(record.readiness, record.readinessError);
-      connections.push({ plugin, key: record.connection.id, name: nameOf(record.connection), state, reason });
+      connections.push({ plugin, key: record.connection.id, name: nameOf(record.connection), detail: detailOf(record.connection), state, reason });
     }
   }
 
@@ -103,7 +103,7 @@ function reuse(previous: readonly HostConnection[], next: readonly HostConnectio
 
   const kept = next.map((entry) => {
     const before = held.get(idOf(entry.plugin, entry.key));
-    return before?.name === entry.name && before.state === entry.state && before.reason === entry.reason ? before : entry;
+    return before?.name === entry.name && before.detail === entry.detail && before.state === entry.state && before.reason === entry.reason ? before : entry;
   });
   return kept.length === previous.length && kept.every((entry, index) => entry === previous[index]) ? previous : kept;
 }

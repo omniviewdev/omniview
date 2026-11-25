@@ -73,6 +73,8 @@ export type ShellPickerOption = {
   readonly id: string;
   /** What a person reads: the name. */
   readonly label: string;
+  /** The plugin's secondary text for it, one line under the label (a provider, a region): muted, clipped with its whole text on a tip, and matched by what a person types after the name does. A `reason` takes the line when there is one. Absent: none. */
+  readonly detail?: string | undefined;
   readonly state: ShellPickerState;
   /** Why the last attempt to use it failed, in one line under the label. Absent: none failed, or none is known. */
   readonly reason?: string | undefined;

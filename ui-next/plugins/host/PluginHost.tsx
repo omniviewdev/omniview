@@ -52,13 +52,12 @@ import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1,
 import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
 import { ConnectionNames, laneFor, laneNameOf } from './connectionName';
-import { createConnectionActions, createConnectionsStore, pickerOf, type ConnectionsApi, type ConnectionsState, type HostConnections } from './connections';
+import { createConnectionActions, createConnectionsStore, createRecents, pickerOf, usesOf, type ConnectionsApi, type HostConnections } from './connections';
 import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
-import { homeGroupsOf } from './homeModel';
 import { homePage } from './homePage';
 import { HOME_PAGE_ID, HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
-import { homeEntriesOf, NoTabs } from './NoTabs';
+import { NoTabs } from './NoTabs';
 import { createHostNotices, type HostNotices } from './notices';
 import { createHostPalette, type HostPalette } from './palette';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
@@ -170,27 +169,37 @@ type Host = {
   readonly openers: { readonly problems: OpenSubject; readonly operations: OpenSubject };
 };
 
-/** The window's connections: the store over the runtime's calls (kept current for as long as the window is on screen: `attach`), and the actions that choose one. The store lists the plugins that are ready. */
+/**
+ * The window's connections: the store over the runtime's calls (kept current for as long as the window is on screen: `attach`), the connections used last (HM2: made from the tabs the window came back with, and kept current by the route of
+ * the tab on screen, `connections/recents.ts`), and the actions that choose one. The store lists the plugins that are ready.
+ */
 function makeConnections(api: ConnectionsApi | undefined, tabs: TabsStore, plugins: PluginSource): HostConnections | undefined {
   if (api === undefined) {
     return undefined;
   }
 
   const store = createConnectionsStore(api, { plugins: () => plugins.getSnapshot().flatMap((entry) => (entry.phase === 'ready' ? [entry.id] : [])) });
-  return { store, actions: createConnectionActions({ tabs, plugins, connections: store }) };
+  const recents = createRecents();
+  recents.seed(usesOf(tabs.getSnapshot()));
+  return { store, recents, actions: createConnectionActions({ tabs, plugins, connections: store }) };
 }
 
 /**
- * What a route of a plugin that names no connection is completed from (HM1; `contributions.ts`, `complete`): the keys of the connections the window knows for the plugin, and the one the plugin was last shown in in this window. Absent: the
- * window has no connection data.
+ * What a route of a plugin that names no connection is completed from (HM1; `contributions.ts`, `complete`): whether the window knows the connections, their keys for the plugin, and the one the plugin was last used in in this window.
+ * Absent: the window has no connection data.
  */
-function choiceOf(connections: HostConnections | undefined, routes: Published<Route>, plugin: string): PluginChoice | undefined {
+function choiceOf(connections: HostConnections | undefined, plugin: string): PluginChoice | undefined {
   if (connections === undefined) {
     return undefined;
   }
 
-  const last = routes.get(plugin);
-  return { keys: connections.store.getSnapshot().connections.flatMap((connection) => (connection.plugin === plugin ? [connection.key] : [])), last: last === undefined ? undefined : connectionOf(last) };
+  const { loaded, failed, connections: listed } = connections.store.getSnapshot();
+  return {
+    // A first read that failed leaves no list: nothing is known. A read that failed after one that worked leaves the earlier list, which is what the window goes by.
+    state: !loaded ? 'unread' : failed && listed.length === 0 ? 'failed' : 'ready',
+    keys: listed.flatMap((connection) => (connection.plugin === plugin ? [connection.key] : [])),
+    last: connections.recents.getSnapshot().find((use) => use.plugin === plugin)?.key,
+  };
 }
 
 /**
@@ -219,7 +228,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const routes = new Published<Route>();
   // The connections are made after the tab model, whose open they drive, and the contributions the model asks read them: a reference closes the circle.
   const known: { current: HostConnections | undefined } = { current: undefined };
-  const contributions = createContributions({ plugins, frames, names, choice: (plugin) => choiceOf(known.current, routes, plugin) });
+  const contributions = createContributions({ plugins, frames, names, choice: (plugin) => choiceOf(known.current, plugin) });
   const restored = session?.restore({ contributions });
   const store = panel ?? createPanelStore({ initial: restored?.panel });
   const logs = createLogStreams(store);
@@ -386,13 +395,13 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
 type EmptyInputs = Pick<FrameInputs, 'entries' | 'coming'> &
   Pick<PluginHostProps, 'inventory' | 'onRetryInventory'> & {
     readonly onOpen: (plugin: string) => void;
-    /** What the window has read of the connections of its plugins (HM1). Absent: the window has no connection API, and the empty window lists none. */
-    readonly connections: ConnectionsState | undefined;
-    readonly onOpenConnection: (plugin: string, key: string, event: ModifierEvent | undefined) => void;
+    /** The window's plugin store and what it knows of the connections of its plugins (HM1, HM2): the empty window is Home, which reads them itself, as the Home tab does. Absent connections: the window has no connection API, and Home lists none. */
+    readonly plugins: PluginSource;
+    readonly connections: HostConnections | undefined;
   };
 
 /** What the island shows while there is no tab: the plugins' own states, in the host's words; and once they have settled, the empty window (decision A17). */
-function emptyOf({ entries, coming, inventory, onRetryInventory, onOpen, connections, onOpenConnection }: EmptyInputs): ReactNode {
+function emptyOf({ entries, coming, inventory, onRetryInventory, onOpen, plugins, connections }: EmptyInputs): ReactNode {
   if (entries.length === 0) {
     if (inventory === 'failed') {
       return <PlaceholderPage title="Plugins" state={{ kind: 'failed', message: 'The list of installed plugins could not be read.', retry: onRetryInventory }} />;
@@ -406,8 +415,7 @@ function emptyOf({ entries, coming, inventory, onRetryInventory, onOpen, connect
     return <PlaceholderPage title={loading?.name ?? 'Plugins'} state={{ kind: 'loading' }} />;
   }
 
-  const read = connections === undefined ? 'ready' : connections.loaded ? (connections.failed ? 'failed' : 'ready') : 'loading';
-  return <NoTabs entries={homeEntriesOf(entries)} onOpen={onOpen} groups={homeGroupsOf(entries, connections?.connections ?? [])} connections={read} onOpenConnection={onOpenConnection} />;
+  return <NoTabs plugins={plugins} connections={connections} onOpen={onOpen} />;
 }
 
 type ListProps = {
@@ -690,8 +698,17 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
+  // The connections the window knows (HM1): the scope lane's picker, Home and the palette are made from them, and a link that names no connection waits for them (below).
+  const hostConnections = host.connections;
+  const knownConnections = useSyncExternalStore(hostConnections?.store.subscribe ?? ABSENT.subscribe, hostConnections?.store.getSnapshot ?? ABSENT.getSnapshot);
   const linkKey = link.plugin === undefined ? undefined : JSON.stringify([link.plugin, link.page, link.connection, link.params]);
-  const waiting = useSyncExternalStore(opened.subscribe, () => linkKey !== undefined && opened.get('link') !== linkKey);
+  const linkWaiting = useSyncExternalStore(opened.subscribe, () => linkKey !== undefined && opened.get('link') !== linkKey);
+  // A link that names no connection is read in one the window chooses (rule R4), so it waits for the list of connections: the plugin is never opened on a connection that nobody chose. A first read that failed leaves nothing to choose
+  // from: the window shows what it shows with no tab (Home, with its Retry) and the link keeps waiting for a read that works, which completes it.
+  const naming = link.connection === undefined && knownConnections !== undefined;
+  const unread = naming && !knownConnections.loaded;
+  const unreadable = naming && knownConnections.loaded && knownConnections.failed && knownConnections.connections.length === 0;
+  const waiting = linkWaiting && !unreadable;
   const known = link.plugin !== undefined && entries.some((entry) => entry.id === link.plugin);
   // Whether the screen has had its turn since the inventory came in: its effect hands the plugins to the store after this component's, so a link looked at in the commit the inventory
   // arrives in would find its plugin missing and be refused for good.
@@ -711,10 +728,15 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
       return;
     }
 
+    // The list is not known yet, or the first read failed: the window stays as it is, and with no tab open that is Home, which says so and offers the Retry. The link opens when a read that worked says which connection it is read in.
+    if (unread || unreadable) {
+      return;
+    }
+
     opened.publish('link', linkKey);
     // A link to a plugin the host does not have is refused by the model, and the window stays as it is: it opens no page of its own.
     tabs.open({ route: { plugin: link.plugin, contribution: link.page ?? HOME_PAGE, params: { ...link.params, connection: link.connection } } }, { how: 'smart', source: 'link' });
-  }, [tabs, opened, link.plugin, link.page, link.connection, link.params, linkKey, known, inventory, settled]);
+  }, [tabs, opened, link.plugin, link.page, link.connection, link.params, linkKey, known, inventory, settled, unread, unreadable]);
 
   // The session is saved from the first commit to the last: the tabs, the panel, the rail's choice and the Terminal's screen reader choice, one burst after each change and when the window is hidden. What the session restored
   // is what the models were made with; this only starts the saving.
@@ -784,8 +806,12 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   useLayoutEffect(() => {
     if (route !== undefined) {
       routes.publish(route.plugin, route);
+      const used = connectionOf(route);
+      if (used !== undefined) {
+        host.connections?.recents.touch(route.plugin, used);
+      }
     }
-  }, [routes, route]);
+  }, [routes, route, host]);
   const remembered = useSyncExternalStore(routes.subscribe, () => (railPlugin === undefined ? undefined : routes.get(railPlugin)));
   const railRoute = ((): Route | undefined => {
     if (railPlugin === undefined) {
@@ -806,9 +832,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const frame = useSyncExternalStore(frames.subscribe, () => (key === undefined ? undefined : frames.get(key)));
   const published = useSyncExternalStore(nodes.subscribe, () => (shown === undefined ? undefined : nodes.get(shown.id)));
 
-  // The connections the window knows (HM1), and the scope lane of the page on screen with its connection face made a control: the picker is the host's, made from the state of the plugin's connections, and what it chooses is the tab's change of connection (`actions.switchTab`).
-  const hostConnections = host.connections;
-  const knownConnections = useSyncExternalStore(hostConnections?.store.subscribe ?? ABSENT.subscribe, hostConnections?.store.getSnapshot ?? ABSENT.getSnapshot);
+  // The scope lane of the page on screen, with its connection face made a control (HM1): the picker is the host's, made from the state of the plugin's connections, and what it chooses is the tab's change of connection (`actions.switchTab`).
   const lane = laneFor(
     frame?.scope,
     hostConnections === undefined || knownConnections === undefined || route === undefined || activeId === null
@@ -836,25 +860,45 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
   };
 
+  // An open that names no connection waits for the list of connections when it has not come back (rule R4): the plugin is never opened on a connection nobody chose, and a press that comes first is answered when the list is known.
+  const whenListed = (run: () => void): void => {
+    const store = hostConnections?.store;
+    if (store === undefined || store.getSnapshot().loaded) {
+      run();
+      return;
+    }
+
+    const stop = store.subscribe(() => {
+      if (store.getSnapshot().loaded) {
+        stop();
+        run();
+      }
+    });
+  };
+
   const newTab =
     railPlugin === undefined
       ? undefined
       : () => {
         const home = host.contributions.home?.(railPlugin);
         if (home !== undefined) {
-          tabs.open({ route: carried === undefined ? home : { ...home, params: { ...home.params, connection: carried } } }, { how: 'new', source: 'new-tab' });
+          whenListed(() => {
+            tabs.open({ route: carried === undefined ? home : { ...home, params: { ...home.params, connection: carried } } }, { how: 'new', source: 'new-tab' });
+          });
         }
       };
 
   const open = (plugin: string): void => {
     const home = host.contributions.home?.(plugin);
     if (home !== undefined) {
-      tabs.open({ route: home }, { how: 'smart', source: 'home' });
+      whenListed(() => {
+        tabs.open({ route: home }, { how: 'smart', source: 'home' });
+      });
     }
   };
 
   // Home's rows: a plugin opens at its first page. A plugin with two or more connections and none used opens Home (`contributions.ts`, `complete`): when Home is already what is on screen that would change nothing, so the person is taken to the
-  // plugin's connections instead, which is what the row was for, and told so.
+  // plugin's connections instead, which is what the row was for, and told so; when the connections could not be read there is nothing to take them to, and they are told that.
   const openPlugin = (plugin: string, event: ModifierEvent | undefined): void => {
     const input = host.contributions.home?.(plugin);
     const home = input === undefined ? undefined : normaliseRoute(input);
@@ -862,19 +906,25 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
       return;
     }
 
-    const target = host.contributions.complete?.(home, { from: route, source: 'home' }) ?? home;
-    if (target.plugin === HOST_PLUGIN && route?.plugin === HOST_PLUGIN && route.contribution === HOME_PAGE_ID) {
-      // The rows of a Home that is kept but not on screen are drawn too, under a page that is not displayed: the first row of the page that is.
-      [...document.querySelectorAll<HTMLElement>('[data-home-part="connection"]')].find((row) => row.dataset.homePlugin === plugin && row.closest<HTMLElement>('[data-page-slot]')?.style.display !== 'none')?.focus();
-      host.notices.announcer.polite.announce(`Choose one of the connections of ${entries.find((candidate) => candidate.id === plugin)?.name ?? plugin}.`);
-      return;
-    }
+    const how = dispositionOf(event, { platform });
+    whenListed(() => {
+      const target = host.contributions.complete?.(home, { from: route, source: 'home' }) ?? home;
+      if (target.plugin === HOST_PLUGIN && route?.plugin === HOST_PLUGIN && route.contribution === HOME_PAGE_ID) {
+        const name = entries.find((candidate) => candidate.id === plugin)?.name ?? plugin;
+        const listed = hostConnections?.store.getSnapshot();
+        if (listed?.failed === true && listed.connections.length === 0) {
+          host.notices.announcer.polite.announce(`The connections of ${name} could not be read.`);
+        } else {
+          // The rows of a Home that is kept but not on screen are drawn too, under a page that is not displayed: the first row of the page that is.
+          [...document.querySelectorAll<HTMLElement>('[data-home-part="connection"]')].find((row) => row.dataset.homePlugin === plugin && row.closest<HTMLElement>('[data-page-slot]')?.style.display !== 'none')?.focus();
+          host.notices.announcer.polite.announce(`Choose one of the connections of ${name}.`);
+        }
 
-    tabs.open({ route: home }, { how: dispositionOf(event, { platform }), source: 'home' });
-  };
+        return;
+      }
 
-  const openConnection = (plugin: string, key: string, event: ModifierEvent | undefined): void => {
-    void hostConnections?.actions.go(plugin, key, { how: dispositionOf(event, { platform }), source: 'home' });
+      tabs.open({ route: home }, { how, source: 'home' });
+    });
   };
 
   // A plugin that did not load has no sidebar to show: choosing its entry opens its page, which names what happened and offers the Retry (as its row of the empty window does), and the rail's current
@@ -1007,7 +1057,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
             source={plugins}
           />
         )}
-        empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open, connections: knownConnections, onOpenConnection: openConnection })}
+        empty={emptyOf({ entries, coming, inventory, onRetryInventory, onOpen: open, plugins, connections: hostConnections })}
         onChoose={choose}
         onSidebarOpen={host.reportSidebarOpen}
         onSelectRail={selectRail}

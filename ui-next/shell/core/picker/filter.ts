@@ -4,8 +4,8 @@ import type { Range } from '../palette/types';
 // Narrowing the options of a scope picker by what a person types (HM1). Framework-free: no React, no DOM, nothing a plugin owns. It is the palette's matcher and nothing else, so a picker finds and ranks a name as the palette does:
 // every word of the query must match (AND), a whole word beats the start of the name, which beats a match inside it, and the first letters of words ("ei" for EC2 Instances) and the letters of one word in order ("dply") match too.
 
-/** What the filter needs of an option: the name a person reads, and types against. */
-type Named = { readonly label: string };
+/** What the filter needs of an option: the name a person reads, and types against, and the secondary text under it, which counts when the name does not say it. */
+type Named = { readonly label: string; readonly detail?: string | undefined };
 
 /** An option the query kept, and the runs of its label that matched: what a view draws in weight 600, never in colour alone. */
 export type Matched<T extends Named> = { readonly option: T; readonly ranges: readonly Range[] };
@@ -22,9 +22,9 @@ export function filterOptions<T extends Named>(options: readonly T[], query: str
 
   const kept: Array<{ readonly matched: Matched<T>; readonly score: number; readonly at: number }> = [];
   for (const [at, option] of options.entries()) {
-    const score = scoreCandidate(words, { title: option.label });
+    const score = scoreCandidate(words, { title: option.label, context: option.detail ?? '' });
     if (score !== undefined) {
-      kept.push({ matched: { option, ranges: highlight(words, option.label, '').title }, score, at });
+      kept.push({ matched: { option, ranges: highlight(words, option.label, option.detail ?? '').title }, score, at });
     }
   }
 

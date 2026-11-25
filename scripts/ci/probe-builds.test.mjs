@@ -175,6 +175,7 @@ const BUILD_SITES = [
   'ui-next/shell/probes/harness.mjs',
   'ui-next/shell/probes/settings-lib.mjs',
   'ui-next/shell/plugins-page/probes/plugins-probe.mjs',
+  'ui-next/plugins/host/probes/home-perf.mjs',
   'ui-next/page/probes/lib.mjs',
   'ui-next/shell/probes/logs-open-probe.mjs',
 ];

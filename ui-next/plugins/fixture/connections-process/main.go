@@ -1,5 +1,6 @@
 // The process behind the seam's connections fixture (`fixture-f-conn`, ui-next/plugins/fixture/build.mjs, `buildConnectionsProcess`): a plugin backend with a `resource` capability that serves TWO connections,
-// so that the checks of the connection picker, the Home page and the palette have real connections to list, start and fail to start, in the real host.
+// so that the checks of the connection picker, the Home page and the palette have real connections to list, start and fail to start, in the real host. Each says a `Description` besides its name (the SDK's secondary
+// text for a connection: the host lists the whole connection, and its Home and its picker draw the line under the name); `src/connection.test.ts` holds the page's copy of every fact stated here to this file.
 //
 //	north-57a082bd74   starts after about 300 ms (a "connecting" state is visible)
 //	south-0c3d9e1f42   starts as the file `connection-mode` next to bin/ says: no file or `ok` starts it at once, `unauthorized` fails it
@@ -35,6 +36,10 @@ const pluginID = "fixture-f-conn"
 const (
 	northID = "north-57a082bd74"
 	southID = "south-0c3d9e1f42"
+
+	// northDescription and southDescription are what each connection says of itself besides its name: the SDK's `Description`, which the host passes through as `connection.description`.
+	northDescription = "Fixture · region one"
+	southDescription = "Fixture · region two"
 
 	resourceType = "fixture::v1::Item"
 
@@ -74,7 +79,10 @@ func main() {
 		Registrations: []resource.Registration[client]{{Type: resourceType, Enumerate: enumerate, Get: get}},
 		Lifecycle: &resource.Lifecycle[client]{
 			LoadConnections: func(context.Context) ([]types.Connection, error) {
-				return []types.Connection{{ID: northID, Name: "north"}, {ID: southID, Name: "south"}}, nil
+				return []types.Connection{
+					{ID: northID, Name: "north", Description: northDescription},
+					{ID: southID, Name: "south", Description: southDescription},
+				}, nil
 			},
 			CreateClient:  create,
 			DestroyClient: func(context.Context, *client) error { return nil },

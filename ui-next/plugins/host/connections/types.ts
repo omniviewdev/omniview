@@ -14,6 +14,8 @@ export type HostConnection = {
   readonly plugin: string;
   /** The plugin's id for it: what a route carries. Never drawn. */
   readonly key: string;
+  /** The plugin's secondary text for it (the SDK connection's `description`: a region, a provider), one line as the host makes it: whitespace collapsed, at most `DETAIL_MAX` characters. Absent when the plugin gives none. */
+  readonly detail?: string | undefined;
   /** What a person reads. Never empty and never the key. */
   readonly name: string;
   readonly state: ConnectionState;
