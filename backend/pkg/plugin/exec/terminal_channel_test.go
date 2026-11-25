@@ -137,7 +137,7 @@ func (p *pipeChannel) waitEnded(t *testing.T) {
 }
 
 func attachRequest(capability string) []byte {
-	return append([]byte{0x01}, fmt.Sprintf(`{"v":1,"cap":%q}`, capability)...)
+	return append([]byte{0x01}, fmt.Sprintf(`{"v":2,"cap":%q}`, capability)...)
 }
 
 // openChannel opens a channel terminal through the wrapper for a call that comes from window (none: no window).

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,11 +34,16 @@ const (
 	frameEnded     byte = 0x84
 	frameTakenOver byte = 0x85
 	frameNotFound  byte = 0x86
+	// frameApplied and frameReleased are the frames of version 2; frameUnsupported is the host's refusal of any other version.
+	frameApplied     byte = 0x87
+	frameReleased    byte = 0x88
+	frameUnsupported byte = 0x89
 )
 
 const (
-	// attachVersion is the only version of the attach request there is.
-	attachVersion = 1
+	// attachVersion is the only version of the attach request the host speaks. Version 2 added the frames applied and released and
+	// the field input_applied of ready; an attach of another version is answered with the unsupported frame.
+	attachVersion = 2
 	// maxAttachBytes bounds the first frame: a capability, a version and an offset make about a hundred bytes.
 	maxAttachBytes = 1 << 10
 	// outputHeaderBytes is the type and the offset that precede the bytes of an output frame.
@@ -54,17 +60,37 @@ type attachRequest struct {
 	From *uint64 `json:"from_offset"`
 }
 
-// parseAttach reads the first frame of a stream. A frame that is not a well-formed attach request of this version that names a
-// capability is not one.
-func parseAttach(frame []byte) (attachRequest, bool) {
+// attachKind is what the first frame of a stream is.
+type attachKind int
+
+const (
+	// attachMalformed: not a well-formed attach request that names a capability.
+	attachMalformed attachKind = iota
+	// attachOtherVersion: a well-formed attach request of a version the host does not speak.
+	attachOtherVersion
+	// attachOK: a well-formed attach request of this version.
+	attachOK
+)
+
+// parseAttach reads the first frame of a stream. The version is decided from the request alone, before any capability is looked
+// at (a request that states none is malformed), so that the answer to another version says nothing about whether the capability opens a terminal.
+func parseAttach(frame []byte) (attachRequest, attachKind) {
 	var req attachRequest
 	if len(frame) < 2 || len(frame) > maxAttachBytes || frame[0] != frameAttach {
-		return req, false
+		return req, attachMalformed
 	}
-	if err := json.Unmarshal(frame[1:], &req); err != nil {
-		return req, false
+	if err := json.Unmarshal(frame[1:], &req); err != nil || req.Cap == "" || req.V == 0 {
+		return req, attachMalformed
 	}
-	return req, req.V == attachVersion && req.Cap != ""
+	if req.V != attachVersion {
+		return req, attachOtherVersion
+	}
+	return req, attachOK
+}
+
+// unsupportedFrame says which version the host speaks.
+func unsupportedFrame() []byte {
+	return append([]byte{frameUnsupported}, fmt.Sprintf(`{"v":%d}`, attachVersion)...)
 }
 
 // readyBody is the JSON of the ready frame: where the replay starts and ends, what was lost, the size and the modes the replay
@@ -232,10 +258,15 @@ func (m *Manager) ServeChannel(ch Channel) {
 	if err != nil {
 		return
 	}
-	req, ok := parseAttach(first)
-	if !ok {
+	req, kind := parseAttach(first)
+	switch kind {
+	case attachMalformed:
 		refuseChannel(ch)
 		return
+	case attachOtherVersion:
+		_ = ch.Send(unsupportedFrame())
+		return
+	case attachOK:
 	}
 	s, kept := m.lookupCap(req.Cap)
 	switch {

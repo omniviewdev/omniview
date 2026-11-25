@@ -257,7 +257,7 @@ func (c *client) requireClosed() {
 }
 
 func attach(capability string, from *uint64) []byte {
-	request := map[string]any{"v": 1, "cap": capability}
+	request := map[string]any{"v": 2, "cap": capability}
 	if from != nil {
 		request["from_offset"] = *from
 	}
@@ -325,7 +325,7 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 		page := dial(t, port)
 		page.write(attach(info.Cap, nil))
 		state := page.until("ready", func(s *streamState) bool { return s.ready != nil })
-		assert.Equal(t, 1, state.ready.V)
+		assert.Equal(t, 2, state.ready.V)
 		assert.Zero(t, state.ready.Start, "the page has nothing and the terminal has written nothing")
 		assert.Zero(t, state.ready.End)
 		assert.Positive(t, state.ready.LeaseMs, "the lease the terminal is kept for when this stream ends is stated")

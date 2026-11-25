@@ -47,6 +47,8 @@ const (
 	wEnded     byte = 0x84
 	wTakenOver byte = 0x85
 	wNotFound  byte = 0x86
+	wApplied   byte = 0x87
+	wReleased  byte = 0x88
 )
 
 // settle is the bound of a wait for an event that must come.
@@ -271,9 +273,9 @@ func (f *fakeChannel) lastSendFrame() []byte {
 
 func attachFrame(capability string, from *uint64) []byte {
 	if from == nil {
-		return append([]byte{wAttach}, fmt.Sprintf(`{"v":1,"cap":%q}`, capability)...)
+		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q}`, capability)...)
 	}
-	return append([]byte{wAttach}, fmt.Sprintf(`{"v":1,"cap":%q,"from_offset":%d}`, capability, *from)...)
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d}`, capability, *from)...)
 }
 
 func inputFrame(text string) []byte { return append([]byte{wInput}, text...) }
@@ -301,6 +303,8 @@ type readyWire struct {
 	Session    Session       `json:"session"`
 	LeaseMs    int           `json:"lease_ms"`
 	Ended      *End          `json:"ended"`
+	// InputApplied is the bytes of input the host has applied from this capability, across streams.
+	InputApplied uint64 `json:"input_applied"`
 }
 
 // hostFrame is a frame the host sent, read.
@@ -311,6 +315,7 @@ type hostFrame struct {
 	data     []byte
 	from, to uint64
 	end      End
+	applied  uint64
 }
 
 func decodeHostFrame(raw []byte) (hostFrame, error) {
@@ -339,7 +344,12 @@ func decodeHostFrame(raw []byte) (hostFrame, error) {
 		if err := json.Unmarshal(body, &frame.end); err != nil {
 			return frame, fmt.Errorf("an ended frame that is not JSON: %w", err)
 		}
-	case wTakenOver, wNotFound:
+	case wApplied:
+		if len(body) != 8 {
+			return frame, fmt.Errorf("an applied frame of %d bytes", len(raw))
+		}
+		frame.applied = binary.BigEndian.Uint64(body)
+	case wTakenOver, wNotFound, wReleased:
 		if len(body) != 0 {
 			return frame, fmt.Errorf("a frame of type %#x that has a payload", frame.kind)
 		}
@@ -374,12 +384,15 @@ type chanPage struct {
 	ended     []End
 	takenOver int
 	notFound  int
-	faults    []string
-	frames    int
-	order     []byte
-	closed    bool
-	ackEvery  int
-	unacked   int
+	// applied is the value of every applied frame, in order; released counts the released frames.
+	applied  []uint64
+	released int
+	faults   []string
+	frames   int
+	order    []byte
+	closed   bool
+	ackEvery int
+	unacked  int
 	// dead says the page has gone: what the host sent after is lost to it, as the frames queued in a closed tab are.
 	dead bool
 	// lag is how late the page's goroutine is for each frame it takes, in nanoseconds: the page of a machine that is busy. A test sets
@@ -451,6 +464,14 @@ func (p *chanPage) take(raw []byte) uint32 {
 		p.next = frame.to
 	case wEnded:
 		p.ended = append(p.ended, frame.end)
+	case wApplied:
+		p.requireReady("an applied")
+		if n := len(p.applied); n > 0 && frame.applied <= p.applied[n-1] {
+			p.faults = append(p.faults, fmt.Sprintf("an applied frame of %d after one of %d", frame.applied, p.applied[n-1]))
+		}
+		p.applied = append(p.applied, frame.applied)
+	case wReleased:
+		p.released++
 	case wTakenOver:
 		p.takenOver++
 	case wNotFound:
@@ -516,6 +537,8 @@ type pageState struct {
 	ended     []End
 	takenOver int
 	notFound  int
+	applied   []uint64
+	released  int
 	faults    []string
 	frames    int
 	order     []byte
@@ -528,7 +551,7 @@ func (p *chanPage) state() pageState {
 	defer p.mu.Unlock()
 	return pageState{
 		ready: p.ready, segs: slices.Clone(p.segs), gaps: slices.Clone(p.gaps), ended: slices.Clone(p.ended), takenOver: p.takenOver, notFound: p.notFound,
-		faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
+		applied: slices.Clone(p.applied), released: p.released, faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
 	}
 }
 
