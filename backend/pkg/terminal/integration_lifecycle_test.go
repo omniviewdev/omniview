@@ -163,9 +163,13 @@ func TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser(t *testing.T) {
 			f, _, log := fakeFixture(t, name, "silent")
 			info := f.start()
 			assert.Equal(t, Integration{State: IntegrationUnconfirmed, Reason: NoReady}, info.Integration, "the fake never says it is ready: the host does not say it is on")
-			require.Eventually(t, func() bool { _, err := os.Stat(log + ".dir"); return err == nil }, 10*time.Second, 5*time.Millisecond)
-			data, err := os.ReadFile(log + ".dir")
-			require.NoError(t, err)
+			// The fake's redirection creates the file before ls writes to it: wait for the whole line, not the file.
+			var data []byte
+			require.Eventually(t, func() bool {
+				read, err := os.ReadFile(log + ".dir")
+				data = read
+				return err == nil && strings.HasSuffix(string(read), "\n")
+			}, 10*time.Second, 5*time.Millisecond)
 			fields := strings.Fields(string(data))
 			require.GreaterOrEqual(t, len(fields), 3, "%q", data)
 			assert.Equal(t, "drwx------", fields[0], "mode of the directory")

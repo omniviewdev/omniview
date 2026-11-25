@@ -6,7 +6,7 @@ import { Row } from './PortsRow';
 
 type PortsTableProps = {
   readonly rows: readonly PortRow[];
-  /** The row whose address was copied a moment ago. */
+  /** The row whose port or address was copied a moment ago. */
   readonly copied: string | undefined;
   readonly actions: PortsActions;
 };
@@ -17,7 +17,7 @@ type PortsTableProps = {
  *
  * The row menu is one definition for the whole table, on the window's one menu host (docs/ui-next/status/kit-menus.md): each row is a trigger of it, keyed by its forward's id, and the host asks for the items of the row it opened on when it
  * opens. So a row has no menu, no popup and no listener of its own, and a table of any size adds nothing for it. The revision is the rows: a menu that is open when what a row can do changes is put away, because its items were read
- * when it opened and a stale one would offer what is no longer so. A press on the check mark of Copy address changes no row, so it puts nothing away.
+ * when it opened and a stale one would offer what is no longer so. A press on the check mark of Copy changes no row, so it puts nothing away.
  */
 export function PortsTable({ rows, copied, actions }: PortsTableProps) {
   const menu = useMenu((key) => {

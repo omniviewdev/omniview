@@ -23,6 +23,7 @@ import type { DetailPageDefinition, DetailSection, DetailSource, DetailTabConten
 import type { RouteParams } from './detailIdentity';
 import { deriveDetailModel, overviewColumns, type DetailBody } from './detailView';
 import { refreshReason } from './refresh';
+import { SectionBoundary } from './SectionBoundary';
 import { useRefreshFeedback } from './useRefreshFeedback';
 
 export type DetailPageProps = {
@@ -78,6 +79,18 @@ function SectionView({ section }: { readonly section: DetailSection }) {
   return null;
 }
 
+/**
+ * A section of the Overview in a boundary of its own (S2): what one section's data or cells do while they draw is that section's failure, said in its card, and every other section, the summary and the header stay. Overviews and detail pages
+ * share it.
+ */
+function Section({ section }: { readonly section: DetailSection }) {
+  return (
+    <SectionBoundary section={section}>
+      <SectionView section={section} />
+    </SectionBoundary>
+  );
+}
+
 type OverviewProps = {
   readonly content: Extract<DetailTabContent, { readonly kind: 'overview' }>;
   /** The object's name, for the names of the summary and the aside. */
@@ -95,7 +108,7 @@ function Overview({ content, name }: OverviewProps) {
     <Stack gap={12}>
       {summary}
       {main.map((section) => (
-        <SectionView key={section.id} section={section} />
+        <Section key={section.id} section={section} />
       ))}
     </Stack>
   );
@@ -115,7 +128,7 @@ function Overview({ content, name }: OverviewProps) {
       <div className={styles.aside} data-detail-part="aside" role="group" aria-label="Side sections">
         <Stack gap={12}>
           {aside.map((section) => (
-            <SectionView key={section.id} section={section} />
+            <Section key={section.id} section={section} />
           ))}
         </Stack>
       </div>

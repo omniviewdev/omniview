@@ -7,7 +7,7 @@
 //
 // THE SECONDS ARE ABOUT TWICE THE LAPTOP'S, ROUNDED UP, and nothing has run on the runner yet: the probe took 64 s in Chromium and 71 s in WebKit (136 s for both, 1440 x 900, 1280 x 800 and 800 x 600, a load of 6 to 10), the seven controls
 // of the counts 4 to 32 s each (about 66 s with the build shared: the render loop takes the overall wait of 30 s), the fifteen of the page 2 to 19 s each (about 66 s, a load of 12): listed at 240, 120 and 120. The summary of the first shard that runs a unit prints the real seconds and says what to put in `seconds`
-// (`node scripts/ci/probe-seconds.mjs --write`, the runner's 95th percentile, after the first CI runs). A unit that is faster than its seconds by more than the margin only warns; one that is slower fails its shard.
+// (the seconds the shard summary prints, the runner's 95th percentile, after the first CI runs). A unit that is faster than its seconds by more than the margin only warns; one that is slower fails its shard.
 
 export const units = [
   {

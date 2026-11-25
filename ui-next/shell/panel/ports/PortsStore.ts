@@ -22,8 +22,11 @@ import { availabilityOf, browserUrlOf, readForward, rowOf, sameRow, sameSession,
 //
 // WHAT IT ADDS to what the host states is four facts, each the window's own (`Facts`): that Stop was pressed, that the plugin stopped, why a Stop could not end a forward, and the name of its connection.
 
-/** How long the check mark of a press of Copy address stays: the mock's two seconds (and the Logs' and the Terminal's). */
+/** How long the check mark of a press of Copy stays: the mock's two seconds (and the Logs' and the Terminal's). */
 export const COPIED_MS = 2_000;
+
+/** A press of Copy that was made: the row, which session of it, and what was written (`noun`: the port alone, or an address with its host): what the mark and the words are for. */
+type Press = { readonly id: string; readonly incarnation: number; readonly endpoint: string; readonly noun: 'port' | 'address' };
 
 /** How many times a press asks the host again when what it answers may be older than an event, before the press is not confirmed. */
 const CONFIRMATIONS = 3;
@@ -35,7 +38,7 @@ export type PortsSnapshot = {
   /** `loading` until the host first answers, `failed` when it could not, and for as long as the tool is not looked at. */
   readonly status: 'loading' | 'ready' | 'failed';
   readonly rows: readonly PortRow[];
-  /** The row whose address was copied a moment ago: its Copy button shows a check mark. */
+  /** The row whose port or address was copied a moment ago: its Copy button shows a check mark. */
   readonly copied: string | undefined;
   readonly announcement: Announcement | undefined;
 };
@@ -54,7 +57,7 @@ export type PortsStore = {
   readonly stop: (id: string, session?: number) => void;
   /** Opens a forward that runs over TCP in the system's browser. Bound to the session the button was drawn for, as Stop is. */
   readonly open: (id: string, session?: number) => void;
-  /** Puts a forward's address on the clipboard, and marks the row for a moment. Bound to the session the button was drawn for, as Stop is. */
+  /** Puts what names a forward's local end on the clipboard (its port, or its host and port when the producer states a host), and marks the row for a moment. Bound to the session the button was drawn for, as Stop is. */
   readonly copy: (id: string, session?: number) => void;
 };
 
@@ -80,8 +83,8 @@ type Live = {
   stopping: Set<string>;
   /** Why the last Stop of a forward could not end it. */
   failures: Map<string, string>;
-  /** The row whose address was copied a moment ago, which session of it and which address: the mark is for that, and goes when either changes. */
-  copied: { readonly id: string; readonly incarnation: number; readonly address: string } | undefined;
+  /** The row whose port or address was copied a moment ago, which session of it and what was copied: the mark is for that, and goes when either changes. */
+  copied: Press | undefined;
   /** What is to be said aloud when the snapshot is next made: in the order it happened, and read as one announcement. */
   said: string[];
   announcement: Announcement | undefined;
@@ -103,11 +106,11 @@ const IDLE: PortsSnapshot = Object.freeze({ status: 'loading', rows: Object.free
 
 /** The words the tool says aloud. The mapping names the forward: two forwards of one resource are told apart by it. */
 const SAYS = {
-  copied: 'Address copied',
-  copyFailed: 'Couldn\'t copy the address',
+  copied: { port: 'Port copied', address: 'Address copied' },
+  copyFailed: { port: 'Couldn\'t copy the port', address: 'Couldn\'t copy the address' },
   stopped: (mapping: string) => `Stopped ${mapping}`,
   stopFailed: (mapping: string) => `Couldn't stop ${mapping}`,
-  openFailed: (address: string) => `Couldn't open ${address} in the browser`,
+  openFailed: (endpoint: string) => `Couldn't open ${endpoint} in the browser`,
   notOpened: 'Not opened: the forward is not running.',
   copiedNotRunning: 'Copied, but the forward is not running.',
 } as const;
@@ -163,8 +166,8 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
 
     mine.cancelFrame?.();
     mine.cancelFrame = undefined;
-    // The mark of a copy is for the address that was copied, on the session it was copied from: a row that changed either has none, and the timer of the mark goes with it.
-    if (mine.copied !== undefined && rowFor(mine, mine.copied.id, mine.copied.incarnation)?.address !== mine.copied.address) {
+    // The mark of a copy is for what was copied, on the session it was copied from: a row that changed either has none, and the timer of the mark goes with it.
+    if (mine.copied !== undefined && rowFor(mine, mine.copied.id, mine.copied.incarnation)?.endpoint !== mine.copied.endpoint) {
       mine.copied = undefined;
       mine.cancelCopied?.();
       mine.cancelCopied = undefined;
@@ -528,7 +531,7 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
 
   /**
    * The press is the moment the person trusts the row: the host is asked for the list once more, and what it says is taken, so that the row shows it. Open in browser asks first and acts after (the runtime's call needs no user gesture); Copy
-   * address has already written the address it knew, inside the press (a window that is WebKit lets a page write to the clipboard only while the gesture lasts), and what the host says is what is told. Answers the row as the host then says it
+   * has already written what it copies, inside the press (a window that is WebKit lets a page write to the clipboard only while the gesture lasts), and what the host says is what is told. Answers the row as the host then says it
    * when the forward is still the session that was pressed and runs, and `undefined` when it is not: it failed, stopped, is gone, or another session has its id. An answer that came after an event, or after another answer was taken, may be
    * older than it: it is not taken, and the host is asked again (a few times, and then the press is not confirmed). A host that cannot be asked leaves what the events hold, when that is still the session that was pressed and runs.
    */
@@ -583,7 +586,7 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
       void attempt(() => deps.openExternal(url)).catch((error: unknown) => {
         console.warn('[ports] the address could not be opened', error);
         if (live === mine) {
-          say(mine, SAYS.openFailed(now.address));
+          say(mine, SAYS.openFailed(now.endpoint));
           publish(mine);
         }
       });
@@ -591,17 +594,17 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
   };
 
   /**
-   * A press of Copy address is told when the clipboard has answered and so has the host (the address was written inside the press, before the host was heard). A write that failed is said, and nothing else. A forward that is not running any
-   * more is said to have been copied all the same, with no check mark. A forward that runs gets its row marked for two seconds, by the one timer there is, and the words; the mark is for the address that was copied, so a row that runs at
-   * another address has none, and the first write is kept: nothing more is said or written.
+   * A press of Copy is told when the clipboard has answered and so has the host (what was copied was written inside the press, before the host was heard). A write that failed is said, and nothing else. A forward that is not running any
+   * more is said to have been copied all the same, with no check mark. A forward that runs gets its row marked for two seconds, by the one timer there is, and the words; the mark is for what was copied, so a row that runs at another
+   * endpoint has none, and the first write is kept: nothing more is said or written.
    */
-  const copied = (mine: Live, press: { readonly id: string; readonly incarnation: number; readonly address: string }, done: boolean, now: PortRow | undefined): void => {
+  const copied = (mine: Live, press: Press, done: boolean, now: PortRow | undefined): void => {
     if (!done) {
-      say(mine, SAYS.copyFailed);
+      say(mine, SAYS.copyFailed[press.noun]);
     } else if (now === undefined || availabilityOf(now).copy !== undefined) {
       say(mine, SAYS.copiedNotRunning);
     } else {
-      if (now.address === press.address) {
+      if (now.endpoint === press.endpoint) {
         mine.cancelCopied?.();
         mine.copied = press;
         mine.cancelCopied = deps.schedule(() => {
@@ -611,7 +614,7 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
         }, COPIED_MS);
       }
 
-      say(mine, SAYS.copied);
+      say(mine, SAYS.copied[press.noun]);
     }
 
     publish(mine);
@@ -625,9 +628,9 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
       return;
     }
 
-    const press = { id, incarnation: held.incarnation, address: row.address };
-    // The address is written now, inside the press: a window that is WebKit lets a page write to the clipboard only while the user's gesture lasts, and the host's answer comes after it. The host is asked meanwhile.
-    const written = attempt(() => deps.copy(press.address)).then(
+    const press: Press = { id, incarnation: held.incarnation, endpoint: row.endpoint, noun: row.host === '' ? 'port' : 'address' };
+    // What is copied is written now, inside the press: a window that is WebKit lets a page write to the clipboard only while the user's gesture lasts, and the host's answer comes after it. The host is asked meanwhile.
+    const written = attempt(() => deps.copy(press.endpoint)).then(
       (done) => done,
       () => false,
     );

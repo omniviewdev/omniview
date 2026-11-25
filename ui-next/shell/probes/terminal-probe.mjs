@@ -4,7 +4,7 @@
 //   node ui-next/shell/probes/terminal-probe.mjs      builds the fixture twice (OMNIVIEW_UI=next, once for the processes of a shard that share BUILD_CACHE), serves it, probes it in WebKit and Chromium at 1440 x 900 and 1280 x 800
 //
 //   FIXTURE_DIST=<dir> FIXTURE_DIST_DEV=<dir>   probe existing builds      ENGINES=webkit,chromium      VIEWPORTS=1440x900,1280x800      SECTIONS=geometry,keys      REPORT=<file>   the report as JSON
-//   PART=view|data|reattach-a|reattach-b|reattach-c   run the sections of one part (the unit of CI that runs this script is PART=view, and terminal-data-probe.mjs, terminal-reattach-probe.mjs, terminal-reattach-b-probe.mjs and terminal-reattach-c-probe.mjs, the others, are PART=data and the three of the reattach sections): every section is in one part and only one, and the probe refuses to start when it is not
+//   PART=view|data|reattach-a|reattach-b|reattach-c|reattach-d|reattach-e|reattach-f   run the sections of one part (the unit of CI that runs this script is PART=view, and terminal-data-probe.mjs and the six terminal-reattach*-probe.mjs, the others, are PART=data and the six of the reattach sections): every section is in one part and only one, and the probe refuses to start when it is not
 //   NEGATIVE_CONTROL=<name>   perturb the page so ONE assertion must fail, in the section it belongs to; "detected" and exit 0 when only that assertion failed, "NOT DETECTED" or "failed another assertion" and exit 1 when not
 //   ASSERTION_OFF=<regex>     drops the failures whose name matches, as if the assertion were not there: the control of it must then print NOT DETECTED (the proof that it trips that assertion and no other)
 //   SCREEN_READER=on          turn the Terminal's screen reader mode on right after each terminal starts, through its palette command and by the keyboard as a person does, so that a section measures a terminal with the mode on:
@@ -14,7 +14,7 @@
 //
 // T3a (terminal-find.mjs, which has its own header): PART=find-a|find-b|find-c|find-d run the sections of find in the scrollback (find-open, find-count, find-keys, find-lazy, find-replay, find-idle, find-cap, find-axe), the context
 // menu (menu-open, menu-mouse, menu-axe) and the links in the output (links-tooltip, links-activate, links-axe); find-idle needs the development build, and every section waits for a state and never for a time.
-// Sections and their assertions (the name starts each line of a failure). PART=view: geometry, words, title, ended, start, keys, close, resize, size, bundle, paint, axe, screenreader, screenreader-cost. PART=data: hidden, idle, commits, flood, latency, memory, order. PART=reattach-a|b|c (T2b, terminal-reattach.mjs, which has its own header: a terminal survives a reload of the page, against the probe's own host, terminal-host.mjs): reattach-key, reattach-restore, reattach-exact, reattach-axe; reattach-muted, reattach-modes, reattach-size; reattach-detached, reattach-lease, reattach-restart, reattach-tombstone, reattach-leave, reattach-seq.
+// Sections and their assertions (the name starts each line of a failure). PART=view: geometry, words, title, ended, start, keys, close, resize, size, bundle, paint, axe, screenreader, screenreader-cost. PART=data: hidden, idle, commits, flood, latency, memory, order. PART=reattach-a to f (the terminal channel's capability and stream, terminal-reattach.mjs and terminal-reattach-followups.mjs, which have their own headers: a terminal survives a reload of the page, against the probe's own host, terminal-host.mjs): reattach-slot, reattach-restore, reattach-exact; reattach-muted, reattach-modes, reattach-size; reattach-detached, reattach-lease, reattach-restart, reattach-tombstone, reattach-leave, reattach-axe; restore-open; reattach-takeback, reattach-takeback-guard, reattach-takeback-offline; reattach-reconnect, reattach-reconnect-gap, reattach-gone, reattach-reconnect-keys, reattach-reconnect-acks.
 //   geometry   (both viewports, both engines)  geometry.body / tools / button / screen / lane / rows / colors: the rectangles, sizes and colours of the mock's terminal body (mock-terminal.json: the mock measured in each engine at each
 //              viewport)
 //   words      the empty state and its layout at normal and minimum panel height, the toolbar and its names, the input's name and hint, the lane for a running, ended and failed session, the exit line written into the transcript
@@ -30,9 +30,9 @@
 //   resize     the first size at once (resize.first), a drag of the splitter is one message after it settles (resize.messages) and it is the size the screen has (resize.last)
 //   size       the process starts at the size the person sees and nothing is resized after it started, in both viewports and both engines, until the panel is resized: the log holds no resize after the create call, not at the start and not after the panel
 //              was hidden and shown (resize.none); the size the shell reports is the emulator's cells and the size the GPU renderer's measure gives (resize.cells)
-//   order      the input goes to the host as numbered calls (docs/ui-next/status/T1-go.md 2.4): the numbers are 1, 2, 3 ... for the keys and the sizes together (order.seq), the old calls are never made (order.legacy), what is typed comes out in the
-//              order it was typed whatever order the calls arrive in, with one inversion that is known (the size call arrives after the keys made after it): by the host's own records every call was applied, in the order of the numbers (order.echo),
-//              and a call is made at once, while the call before it has not been answered (order.nowait)
+//   order      the input goes to the host as frames of one stream (docs/ui-next/terminal-channel-protocol.md section 4): one stream carries the terminal, with keys and a size (order.stream), what is typed comes out in the order it was typed
+//              with a size between the keys and each frame taking another time to arrive: by the host's own records every frame was applied, in the order it was sent, and the shell's size is the emulator's (order.echo), and a frame is
+//              sent at once, while the one before it has not been applied (order.nowait)
 //   bundle     the emulator costs nothing until the first terminal: not in the entry chunk or the entry stylesheet (bundle.entry), not requested before (bundle.lazy), requested after (bundle.fetched)
 //   hidden     a hidden terminal goes on reading, parsing and acknowledging, so that its shell is never stalled by the view, and draws nothing of the page's (docs/ui-next/status/T1-go.md 2.8.6, docs/ui-next/status/T2a.md): the first acknowledgement is
 //              made with the process (flow.on); the shell writes 2 MB and then 20 MB while the panel is hidden, and every byte is delivered, parsed and acknowledged (flow.hidden), the emulator is given every byte in order (hidden.drain), no
@@ -106,7 +106,7 @@ const CONTROLS = {
   'hidden-burn': { assertion: 'hidden.work', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { if (window.__burnInstalled) return; window.__burnInstalled = true; const original = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => original(typeof fn === 'function' ? (...inner) => { if (!window.__burned && window.__phase === 'flood') { window.__burned = true; const until = performance.now() + 150; while (performance.now() < until); } return fn(...inner); } : fn, ms, ...rest); }) },
   // One task of the page that holds the main thread for 400 ms while the shell's output is being taken in, and that no callback shows: it runs as a microtask after the first timer callback of the flood has returned, so the time the callbacks add up
   // to and the longest of them do not see it, and only the browser's own count of long tasks (Chromium) does: 400 ms against the bound of 250.
-  'hidden-long-task': { assertion: 'hidden.work', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { if (window.__stallInstalled) return; window.__stallInstalled = true; const original = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => original(typeof fn === 'function' ? (...inner) => { const result = fn(...inner); if (!window.__stalled && window.__phase === 'flood') { window.__stalled = true; queueMicrotask(() => { const until = performance.now() + 400; while (performance.now() < until); }); } return result; } : fn, ms, ...rest); }) },
+  'hidden-long-task': { assertion: 'hidden.longtask', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { if (window.__stallInstalled) return; window.__stallInstalled = true; const original = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => original(typeof fn === 'function' ? (...inner) => { const result = fn(...inner); if (!window.__stalled && window.__phase === 'flood') { window.__stalled = true; queueMicrotask(() => { const until = performance.now() + 400; while (performance.now() < until); }); } return result; } : fn, ms, ...rest); }) },
   // A hidden panel that is not at rest once everything was taken in: a frame loop and an interval that go on (`stage: rest`: the shell's output has all been taken in).
   'hidden-rest': { assertion: 'hidden.rest', section: 'hidden', engines: ['chromium'], stage: 'rest', after: (page) => page.evaluate(() => { const tick = () => { if (window.__phase === 'rest') requestAnimationFrame(tick); }; tick(); setInterval(() => undefined, 500); }) },
   // A page that draws what a hidden terminal is given: every event delivered changes an attribute of the document, outside the emulator's own element.
@@ -154,6 +154,8 @@ const CONTROLS = {
   // the pty one column wider than it was asked to, so that the shell's size is not the emulator's.
   'early-size': { assertion: 'resize.none', section: 'size', engines: ['chromium'], query: 'control=early-size' },
   'size-off': { assertion: 'resize.cells', section: 'size', engines: ['chromium'], query: 'control=size-off' },
+  // The input as frames of one stream (docs/ui-next/terminal-channel-protocol.md): a host that takes a size frame and keeps its size (a frame that was not applied is not a finished one: the shell's size is not the emulator's), and a page that sends what is typed one frame at a time, each after the one before was applied.
+  'resize-dropped': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=resize-dropped' },
   // The GPU addon is made once for a terminal (#698 item 15): every WebGL context the page makes is lost 100 ms after it was made, so that the addon goes with it and the next showing makes another, as an engine that made one at every showing would.
   'webgl-every-show': {
     assertion: 'gpu.once',
@@ -168,12 +170,7 @@ const CONTROLS = {
       };
     },
   },
-  // The input as numbered calls (docs/ui-next/status/T1-go.md 2.4): a host that applies the calls in the order they arrive, a host that refuses the size call (a call that was refused is not an applied one), a page that sends what is typed one call at a time, calls numbered with a number missing, and an old call made as well.
-  'arrival-order': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=arrival-order' },
-  'resize-refused': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=resize-refused' },
   'input-serial': { assertion: 'order.nowait', section: 'order', engines: ['chromium'], query: 'control=input-serial' },
-  'seq-gap': { assertion: 'order.seq', section: 'order', engines: ['chromium'], query: 'control=seq-gap' },
-  'legacy-write': { assertion: 'order.legacy', section: 'order', engines: ['chromium'], query: 'control=legacy-write' },
   // After a no on the close question the focus goes where a keyboard is: something puts it on the pointer-only close button of the tab once the question is gone.
   'focus-close-button': { assertion: 'close.focus', section: 'close', engines: ['chromium'], stage: 'start', after: (page) => page.evaluate(() => { let asked = false; new MutationObserver(() => { const open = document.querySelector('dialog[role="alertdialog"]') !== null; if (open) asked = true; else if (asked) { asked = false; setTimeout(() => document.querySelector('[data-shell-part="sessionClose"]')?.focus(), 0); } }).observe(document.body, { childList: true, subtree: true }); }) },
   // The first Delete on the tab never reaches the tab, so that the question of that path is never asked: a path that is not asked is not let go on, and its keyboard is not looked at as if it had been.
@@ -242,8 +239,8 @@ const percentile = (values, p) => {
 };
 const round = (n) => Math.round(n * 100) / 100;
 
-/** The host's own numbers for its credit flow control (docs/ui-next/status/T1-go.md 2.8.6, `limits` of the answer to the create call): it stops reading the pty at `high` bytes delivered and not acknowledged, reads again at `low`, and a read is `read` bytes at most. `frame` and `hiddenFrame` are the shares of bytes a frame of the page takes at most while its screen is shown and while it is hidden (`FLOW.frame` and `FLOW.hiddenFrame` of screen.ts). */
-const FLOW = Object.freeze({ high: 1_048_576, low: 262_144, read: 20_480, frame: 524_288, hiddenFrame: 262_144 });
+/** The host's own numbers for its flow control (docs/ui-next/terminal-channel-protocol.md section 7, `limits` of the answer to the create call): it holds at most `inflight` bytes sent and not acknowledged once the page's first acknowledgement has turned the window on, and cuts a frame to the credit that is left. `frame` and `hiddenFrame` are the shares of bytes a frame of the page takes at most while its screen is shown and while it is hidden (`FLOW.frame` and `FLOW.hiddenFrame` of screen.ts). */
+const FLOW = Object.freeze({ inflight: 1_048_576, frame: 524_288, hiddenFrame: 262_144 });
 /** The bytes of one event of a burst of the fixture (twelve lines of 80 columns and one of 40, the first line numbered): what the shell writes while the panel is hidden, 2,000 of them and then 20,000. */
 const EVENT_BYTES = 1000;
 const FLOODS = Object.freeze([
@@ -308,7 +305,7 @@ const COUNTERS = () => {
     if (context !== null && (kind === 'webgl' || kind === 'webgl2')) gl.made += 1;
     return context;
   };
-  const counts = (window.__count = { on: false, timeout: 0, interval: 0, raf: 0, fired: 0, frames: 0, busy: 0, longest: 0, active: 0 });
+  const counts = (window.__count = { on: false, timeout: 0, interval: 0, raf: 0, fired: 0, frames: 0, busy: 0, longest: 0, active: 0, what: [] });
   const alive = new Set();
   const wrap = (name, key, repeats) => {
     const original = window[name].bind(window);
@@ -325,6 +322,7 @@ const COUNTERS = () => {
               } finally {
                 const took = performance.now() - started;
                 counts.fired += 1;
+                if (counts.what.length < 8) counts.what.push(`${key}: ${String(callback).replace(/\s+/g, ' ').slice(0, 140)}`);
                 if (key === 'raf') counts.frames += 1;
                 counts.busy += took;
                 counts.longest = Math.max(counts.longest, took);
@@ -359,6 +357,7 @@ const COUNTERS = () => {
     waiting: window.__pty.log.waiting(),
     paused: window.__pty.log.paused(),
     acked: window.__pty.log.acked,
+    frames: window.__pty.log.receivedFrames,
     acks: window.__pty.log.acks.length,
     maxUnacked: window.__pty.log.maxUnacked,
     accepted: window.__engine.accepted,
@@ -1067,11 +1066,10 @@ async function size(ctx) {
 
 // ---------------------------------------------------------------------------------------------------- order
 /**
- * The input goes to the host as numbered calls (docs/ui-next/status/T1-go.md 2.4), and the host puts them in the order of their numbers whatever order they arrive in. The page numbers every call, the keys and the sizes with one
- * counter, from 1 (`order.seq`: read from the log of the calls the fixture's host took, in the order they were made), and never makes the old calls (`order.legacy`). What is typed comes out of the shell in the order it was typed
- * (`order.echo`) when the calls take up to 40 ms to arrive, each a different time, and with one inversion that is known: the call that sets the size takes 600 ms to arrive, and the keys typed right after it arrive first. The host's own
- * records of arrival and application say what happened: every call was applied (a call that was refused is not a finished one), and the calls were applied in the order of their numbers, the keys and the size together. A call is made at
- * once, whatever became of the one before it (`order.nowait`): the keys made after the size call arrive before it, and, with the host slow to apply a call (1.5 s), the next keys are made while it has not been answered.
+ * The input goes to the host as frames of ONE stream (docs/ui-next/terminal-channel-protocol.md section 4), and the order is the stream's: the keys and the sizes are applied in the order the page sent them, whatever time each takes to
+ * arrive (`order.stream`: one stream was opened for the terminal, and what was sent was keys and a size). What is typed comes out of the shell in the order it was typed (`order.echo`) when the frames take up to 40 ms to arrive, each a different
+ * time, with a size between the keys: by the host's own record every frame was applied (a frame the host took and did not apply is not a finished one), in the order they were sent, and the size the shell reports is the emulator's. A frame is sent
+ * at once, whatever became of the one before it (`order.nowait`): with the host slow to apply a frame (1.5 s), the keys that follow are sent while it has not been applied.
  */
 async function order(ctx) {
   const { browser, origin, viewport, engine } = ctx;
@@ -1079,64 +1077,64 @@ async function order(ctx) {
   const page = await open(browser, origin, viewport, { query: 'renderer=dom', control: ctx.control });
   await start(page);
   const LINE_TYPED = 'the quick brown fox jumps over the lazy dog 0123456789';
-  // Calls that take up to 40 ms to arrive, each a different time: the transport does not deliver them in the order they were made. And one inversion that is known: the call that sets the size takes 600 ms to arrive, so the keys
-  // typed right after it, which take 40 ms at most, arrive before it.
+  // Frames that take up to 40 ms to arrive, each a different time, but in order: the transport is one ordered connection.
   await page.evaluate(() => {
     window.__pty.net.latency = 40;
-    window.__pty.net.late = { kind: 'resize', calls: 1, ms: 600 };
   });
+  const before = await page.evaluate(() => window.__pty.log.calls.length);
   await page.keyboard.type(LINE_TYPED.slice(0, 20));
-  // A size between the keys: the panel's own splitter changes the height of the screen, and the feed tells the host the new size with the next number.
+  // A size between the keys: the panel's own splitter changes the height of the screen, and the feed sends the host the new size.
   await page.locator('[data-shell-part="panelHandle"]').focus();
   await page.evaluate(() => document.querySelector('[data-shell-part="panelHandle"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true })));
-  // The keys are typed as soon as the size call is made, and not at a time that was guessed.
-  const sized = await page.waitForFunction(() => window.__pty.log.calls.some((call) => call.kind === 'resize'), null, { timeout: 10_000 }).then(() => true, () => false);
+  // The keys are typed as soon as the size frame is sent, and not at a time that was guessed.
+  const sized = await page.waitForFunction((from) => window.__pty.log.calls.slice(from).some((call) => call.kind === 'resize'), before, { timeout: 10_000 }).then(() => true, () => false);
   await page.locator('.xterm-helper-textarea').focus();
   await page.keyboard.type(LINE_TYPED.slice(20));
-  // Every call the host took is applied: a call it refused is not a finished call, and the wait ends at one.
+  // Every frame the host took is applied: a frame it took and did not apply is not a finished one, and the wait ends at one.
   const finished = await page
     .waitForFunction(
-      (text) => {
+      ({ text, from }) => {
         const { calls, writes } = window.__pty.log;
-        return calls.some((call) => call.outcome !== 'sent' && call.outcome !== 'applied') || (writes.join('').length >= text.length && calls.every((call) => call.outcome === 'applied'));
+        const mine = calls.slice(from);
+        return mine.some((call) => call.outcome !== 'sent' && call.outcome !== 'applied') || (writes.join('').length >= text.length && mine.every((call) => call.outcome === 'applied'));
       },
-      LINE_TYPED,
+      { text: LINE_TYPED, from: before },
       { timeout: 10_000 },
     )
     .then(() => true, () => false);
-  await sleep(300);
-  const made = await page.evaluate(() => ({
-    calls: window.__pty.log.calls.map((call) => ({ kind: call.kind, seq: call.seq, outcome: call.outcome, arrival: call.arrival, application: call.application })),
-    applied: window.__pty.log.writes.join(''),
-    legacy: window.__pty.log.legacy,
+  // The line typed was never sent: the interrupt clears it, so that the command that follows is the command.
+  await page.keyboard.press('Control+c');
+  await typeLine(page, 'size');
+  await page.waitForFunction(() => window.__pty.log.sizeReports.length > 0, null, { timeout: 5000 }).catch(() => undefined);
+  const made = await page.evaluate((from) => ({
+    calls: window.__pty.log.calls.slice(from).map((call) => ({ kind: call.kind, outcome: call.outcome, application: call.application })),
+    applied: window.__pty.log.writes.join('').slice(0, 54),
+    streams: window.__pty.log.streams,
+    reported: window.__pty.log.sizeReports.at(-1) ?? null,
+    grid: window.__engine.grid(),
     rows: [...document.querySelectorAll('.xterm-rows > div')].map((row) => (row.textContent ?? '').trimEnd()).filter((text) => text !== ''),
-  }));
-  const seqs = made.calls.map((call) => call.seq);
-  // The host's records: the calls in the order it applied them (the numbers of the ones it applied), and how many keys made after the size call arrived before it.
-  const byApplication = made.calls.filter((call) => call.application !== null).sort((a, b) => a.application - b.application).map((call) => call.seq);
-  const sorted = byApplication.every((seq, index) => index === 0 || seq > byApplication[index - 1]);
+  }), before);
+  const byApplication = made.calls.filter((call) => call.application !== null).map((call) => call.application);
+  const sorted = byApplication.every((application, index) => index === 0 || application > byApplication[index - 1]);
   const unapplied = made.calls.filter((call) => call.application === null || call.outcome !== 'applied');
-  const resize = made.calls.find((call) => call.kind === 'resize');
-  const overtook = resize === undefined || resize.arrival === null ? 0 : made.calls.filter((call) => call.kind === 'write' && call.seq > resize.seq && call.arrival !== null && call.arrival < resize.arrival).length;
-  check('order.seq', seqs.length > 0 && seqs.every((seq, index) => seq === index + 1) && made.calls.some((call) => call.kind === 'resize') && made.calls.some((call) => call.kind === 'write'), `${engine}: the input calls were numbered ${JSON.stringify(seqs)} in the order they were made (1, 2, 3 ... with the keys and the size together is right): ${JSON.stringify(made.calls.map((call) => `${call.kind[0]}${String(call.seq)}`))}`);
-  check('order.legacy', made.legacy.length === 0, `${engine}: the page made the old calls ${JSON.stringify(made.legacy.slice(0, 4))} (${String(made.legacy.length)} in all; none is right)`);
+  check('order.stream', made.streams === 1 && made.calls.some((call) => call.kind === 'resize') && made.calls.some((call) => call.kind === 'write'), `${engine}: ${String(made.streams)} streams were opened for one terminal (one is right), and the frames sent were ${JSON.stringify(made.calls.map((call) => call.kind[0]))} (keys and a size)`);
   check(
     'order.echo',
-    finished && sized && unapplied.length === 0 && made.calls.length > 0 && sorted && made.applied === LINE_TYPED && made.rows.some((row) => row.includes(LINE_TYPED)),
-    `${engine}: with calls that arrive in another order than they were made in, the host applied ${String(byApplication.length)} of ${String(made.calls.length)} calls${unapplied.length === 0 ? '' : ` (not applied: ${JSON.stringify(unapplied.slice(0, 4).map((call) => `${call.kind[0]}${String(call.seq)} ${call.outcome}`))})`} in the order ${JSON.stringify(byApplication.slice(0, 24))} (${sorted ? 'the order of their numbers' : 'not the order of their numbers'}), the shell was given ${JSON.stringify(made.applied)} (${JSON.stringify(LINE_TYPED)} was typed) and echoed ${JSON.stringify(made.rows.at(-1))}${finished ? '' : '; the calls were not all applied in 10 s'}${sized ? '' : '; no size call was made'}`,
+    finished && sized && unapplied.length === 0 && made.calls.length > 0 && sorted && made.applied === LINE_TYPED && made.reported !== null && made.reported.rows === made.grid.rows && made.reported.cols === made.grid.cols,
+    `${engine}: with frames that take another time each to arrive, the host applied ${String(byApplication.length)} of ${String(made.calls.length)} frames${unapplied.length === 0 ? '' : ` (not applied: ${JSON.stringify(unapplied.slice(0, 4).map((call) => `${call.kind[0]} ${call.outcome}`))})`} ${sorted ? 'in the order they were sent' : 'NOT in the order they were sent'}, the shell was given ${JSON.stringify(made.applied)} (${JSON.stringify(LINE_TYPED)} was typed), the shell reports a size of ${JSON.stringify(made.reported)} and the emulator's grid is ${JSON.stringify(made.grid)}${finished ? '' : '; the frames were not all applied in 10 s'}${sized ? '' : '; no size frame was sent'}`,
   );
-  // The host is slow to apply the next call (1.5 s) and no longer takes its time to receive them: a key typed meanwhile is made at once.
+  // The host is slow to apply the next frame (1.5 s) and the frames no longer take their time to arrive: a key typed meanwhile is sent at once.
   await page.evaluate(() => { window.__pty.net.latency = 0; window.__pty.net.hold = { calls: 1, ms: 1500 }; });
   const mark = await page.evaluate(() => window.__pty.log.calls.length);
   await page.keyboard.press('Control+c');
-  await sleep(100);
   await page.keyboard.type('xy');
-  await sleep(400);
-  const slow = await page.evaluate((from) => window.__pty.log.calls.slice(from).map((call) => ({ at: call.at, answeredAt: call.answeredAt, seq: call.seq })), mark);
-  const unanswered = slow.length > 0 && slow[0].answeredAt === null;
-  check('order.nowait', overtook >= 1 && slow.length >= 3 && unanswered && slow.slice(1).every((call) => call.answeredAt === null || call.at < (slow[0].answeredAt ?? Infinity)), `${engine}: ${String(overtook)} keys made after the size call arrived before it (1 or more is right: they are made while it is on its way); with the host slow to apply a call, ${String(slow.length)} calls were made in 500 ms (3 or more is right: the one it is slow with and the keys behind it), the first answered: ${String(!unanswered)}`);
-  note(`order ${engine}: ${String(seqs.length)} calls numbered ${String(seqs[0])} to ${String(seqs.at(-1))}, applied in the order of their numbers although ${String(overtook)} keys made after the size call arrived before it, the shell was given the line typed in the order it was typed; with the first of three calls slow, ${String(slow.length)} were made in 500 ms`);
-  report.numbers[`order ${engine}`] = { calls: made.calls, overtook, slow };
+  const slow = await page
+    .waitForFunction((from) => (window.__pty.log.calls.length - from >= 3 ? window.__pty.log.calls.slice(from).map((call) => ({ kind: call.kind, appliedWhenSent: call.appliedWhenSent })) : null), mark, { timeout: 5000 })
+    .then((handle) => handle.jsonValue(), () => []);
+  // Read from what the page recorded at each send, and not from a look at the log: the third frame was sent while none of the three had been applied, however late the probe looks.
+  check('order.nowait', slow.length >= 3 && slow[2].appliedWhenSent === slow[0].appliedWhenSent, `${engine}: with the host slow to apply a frame, ${String(slow.length)} frames were sent (3 or more is right: the one it is slow with and the keys behind it) while ${String((slow[2]?.appliedWhenSent ?? 0) - (slow[0]?.appliedWhenSent ?? 0))} of them had been applied when the third was sent (none is right)`);
+  note(`order ${engine}: ${String(made.calls.length)} frames on ${String(made.streams)} stream, applied in the order they were sent, the shell was given the line typed in the order it was typed; with the first of three frames slow, ${String(slow.length)} were sent`);
+  report.numbers[`order ${engine}`] = { calls: made.calls, slow };
   await page.context().close();
 }
 
@@ -1232,9 +1230,9 @@ async function hidden(ctx) {
   if (ctx.vp !== '1440x900') return;
   const page = await open(browser, origin, viewport, { control: ctx.control });
   await start(page);
-  // The host's flow control is turned on with the process: the first acknowledgement, of nothing yet, is made as soon as the host has answered the call that started it, before any byte of the shell's was delivered to the page, given to the emulator or parsed.
+  // The host's window is turned on with the stream: the first acknowledgement, of nothing yet, is made as soon as the host's ready is read, before any byte of the shell's was given to the emulator or parsed.
   const first = await page.evaluate(() => window.__pty.log.ackState[0] ?? null);
-  check('flow.on', first !== null && first.count === 0 && first.exists && first.delivered === 0 && first.accepted === 0 && first.parsed === 0, `${engine}: the first AckTerminal call was ${JSON.stringify(first)}: it must be made with the process (count 0, the session there) before any byte was delivered, given to the emulator or parsed`);
+  check('flow.on', first !== null && first.count === 0 && first.exists && first.accepted === 0 && first.parsed === 0, `${engine}: the first acknowledgement was ${JSON.stringify(first)}: it must be made with the stream (count 0, the host's ready read) before any byte was given to the emulator or parsed`);
   await typeLine(page, 'hello');
   const cdp = engine === 'chromium' ? await page.context().newCDPSession(page) : null;
   await cdp?.send('Performance.enable');
@@ -1256,8 +1254,10 @@ async function hidden(ctx) {
     const tag = `${engine}, ${flood.name} written while the panel was hidden`;
     check('flow.hidden', calmed.calm && gained.delivered === bytes && settled.waiting === 0 && settled.paused === false && gained.acked === bytes, `${tag}: ${calmed.calm ? '' : `what came before the burst was still moving after ${String(calmed.waited)} ms (${JSON.stringify(calmed.last)}), so there was no baseline to count it from; `}the burst took the host ${burst.paused ? 'past its mark, to a pause' : 'to no pause'} (${String(burst.waiting)} B waiting in the pty), and then ${String(gained.delivered)} of ${String(bytes)} B were delivered, ${String(gained.acked)} acknowledged, ${String(settled.waiting)} B still wait in the pty and the host is ${settled.paused ? 'paused' : 'not paused'}`);
     check('hidden.drain', gained.accepted === gained.delivered && settled.parsed === settled.accepted && checked.bad === 0 && checked.checked >= Math.floor((gained.delivered / EVENT_BYTES) * 0.9), `${tag}: the emulator was given ${String(gained.accepted)} of the ${String(gained.delivered)} B delivered and parsed ${String(settled.parsed)} of ${String(settled.accepted)}, ${String(checked.bad)} of ${String(checked.checked)} numbered events looked at were not where they belong${checked.first === null ? '' : ` (first: ${JSON.stringify(checked.first)})`}`);
-    const frames = Math.ceil(5.5 * units) + 20;
-    check('hidden.frames', during.raf <= frames, `${tag}: the page asked for ${String(during.raf)} frames to take it in (${String(frames)} at most: 5.5 times the ${String(Math.round(units * 10) / 10)} frames of ${String(FLOW.hiddenFrame)} B the bytes need, and 20)`);
+    // What the page takes in follows from the bytes AND from how many frames the host delivered them in: the stream hands the page one frame in a task of its own (at most 64 KiB, and at most the credit the page's acknowledgements left), and the page asks for about one frame of its own for each one it is handed.
+    const deliveries = settled.frames - before.frames;
+    const frames = Math.ceil(1.5 * units) + 80 + deliveries;
+    check('hidden.frames', during.raf <= frames, `${tag}: the page asked for ${String(during.raf)} frames to take it in (${String(frames)} at most: 1.5 times the ${String(Math.round(units * 10) / 10)} frames of ${String(FLOW.hiddenFrame)} B the bytes need, 80, and 1 for each of the ${String(deliveries)} output frames the host delivered)`);
     const timers = Math.ceil(5 * units) + 40;
     const ran = during.fired - during.frames;
     const busy = 80 * MB + 250;
@@ -1268,13 +1268,17 @@ async function hidden(ctx) {
     // one task of the fixture's own, the shell writing the bytes: 74.5 to 157.8 ms on the runner in 228 runs (the laptop: 34 ms), and the browser reported it in none of the 205 without `draw-hidden` and in 23 of its 23, where the 20,000 changes it makes to the
     // page's document run the probe's own observer in that same task. That burst took 76.3 to 129.3 ms, median 99.4, and the old bound of 120 ms failed it 5 times in 23 (long tasks of 124, 126, 127, 128 and 130 ms; one job read 129.3 ms and, rerun, 82.8, another
     // 126.3 and 81.7). 250 ms is 1.9 times the worst of those, 2.5 times their median and 1.6 times the longest burst of any control; a task of 250 ms takes in 8.7 MB at the runner's worst cost of 28.6 ms a MB, more than 8 times the 1 MiB the host lets stay
-    // unacknowledged. Each of the two clauses has a control that only it sees: `hidden-burn` holds a callback for 150 ms (over 90, under 250) and `hidden-long-task` holds the thread for 400 ms where no callback shows it (over 250).
+    // unacknowledged. Each of the two has an assertion and a control that only it sees (`hidden.work`, `hidden.longtask`): `hidden-burn` holds a callback for 150 ms (over 90, under 250) and `hidden-long-task` holds the thread for 400 ms where no callback shows it (over 250).
     const longestCallback = 90;
     const longestTask = 250;
     const longtask = during.longtasks === null ? 0 : Math.max(0, ...during.longtasks);
-    check('hidden.work', ran <= timers && during.busy <= busy && during.longest <= longestCallback && longtask <= longestTask, `${tag}: ${String(ran)} timer callbacks ran (${String(timers)} at most: xterm's own write timers), the callbacks of the page and of xterm took ${String(round(during.busy))} ms in all (${String(busy)} at most), the longest ${String(round(during.longest))} ms (${String(longestCallback)} at most)${during.longtasks === null ? '' : `, the longest long task ${String(round(longtask))} ms (${String(longestTask)} at most)`}`);
-    const draws = Math.ceil(6000 * MB) + 2000;
-    check('hidden.draws', during.mutations.page <= 2 && during.mutations.xterm <= draws, `${tag}: the page's own document changed ${String(during.mutations.page)} times (2 at most${during.mutations.first === null ? '' : `: ${during.mutations.first}`}), xterm's own ${String(during.mutations.xterm)} times (${String(draws)} at most)`);
+    check('hidden.work', ran <= timers && during.busy <= busy && during.longest <= longestCallback, `${tag}: ${String(ran)} timer callbacks ran (${String(timers)} at most: xterm's own write timers), the callbacks of the page and of xterm took ${String(round(during.busy))} ms in all (${String(busy)} at most), the longest ${String(round(during.longest))} ms (${String(longestCallback)} at most)`);
+    // The browser's own count of a task that held the main thread, which no callback shows (Chromium): its own assertion, so that a control for it trips it and not the sum of the callbacks.
+    if (during.longtasks !== null) check('hidden.longtask', longtask <= longestTask, `${tag}: the longest long task was ${String(round(longtask))} ms (${String(longestTask)} at most)`);
+    // xterm measures and updates its scrollbar for each write it is given, so its changes grow with the bytes and with the frames they came in: 6000 a MB and 20 for each output frame.
+    const draws = Math.ceil(6000 * MB) + 5000 + 20 * deliveries;
+    note(`hidden ${engine}, ${flood.name}: ${String(deliveries)} output frames reached the page for ${String(bytes)} B`);
+    check('hidden.draws', during.mutations.page <= 2 && during.mutations.xterm <= draws, `${tag}: the page's own document changed ${String(during.mutations.page)} times (2 at most${during.mutations.first === null ? '' : `: ${during.mutations.first}`}), xterm's own ${String(during.mutations.xterm)} times (${String(draws)} at most: 6000 a MB, 5000, and 20 for each of the ${String(deliveries)} output frames)`);
     note(`hidden ${engine}${MODE}, ${flood.name} written while the panel was hidden: the host paused at its mark after ${String(burst.delivered)} B with ${String(burst.waiting)} B waiting, and everything was delivered, parsed and acknowledged (${String(settled.acks - before.acks)} acknowledgements, never more than ${String(settled.maxUnacked)} B unacknowledged); the page asked for ${String(during.raf)} frames and ${String(during.timeout)} timers, ${String(during.fired)} callbacks ran in ${String(round(during.busy))} ms (the longest ${String(round(during.longest))} ms${during.longtasks === null ? '' : `, ${String(during.longtasks.length)} long tasks`})${run.browser === null ? '' : `, the browser counts ${String(round(run.browser.task))} ms of tasks (${String(round(run.browser.script))} ms of script, ${String(round(run.browser.layout + run.browser.style))} ms of layout and style)`}; ${String(during.mutations.page)} changes of the page's document and ${String(during.mutations.xterm)} of xterm's own; the burst took ${String(round(burst.ms))} ms of the page's task`);
   }
 
@@ -1355,6 +1359,7 @@ async function idle(ctx) {
   if (READER === 'on') await switchReader(page);
   await typeLine(page, 'hello');
   const counts = await sitIdle(page, () => ctx.control?.after?.(page));
+  if (counts.fired > 0) note(`idle ${engine}: the callbacks that fired: ${JSON.stringify(counts.what)}`);
   const nodes = await page.evaluate(() => document.querySelector('[data-shell-part="terminalScreen"]').querySelectorAll('*').length);
   check('idle.timers', counts.timeout === 0 && counts.interval === 0 && counts.raf === 0 && counts.fired === 0 && counts.active === baseline, `${engine}: an idle terminal started ${String(counts.timeout)} timeouts, ${String(counts.interval)} intervals and asked for ${String(counts.raf)} frames in 3 s, ${String(counts.fired)} callbacks fired, and ${String(counts.active - baseline)} intervals are alive that the panel without a terminal does not have`);
   note(`idle ${engine}${MODE}: 3 s on screen: ${String(counts.timeout)} timeouts, ${String(counts.interval)} intervals, ${String(counts.raf)} frames, ${String(counts.fired)} callbacks fired; ${String(counts.active - baseline)} intervals more than the panel without a terminal; the screen holds ${String(nodes)} nodes`);
@@ -1430,9 +1435,9 @@ async function flood(ctx) {
   const gained = result.accepted - base.accepted;
   const parsedGained = result.parsed - base.parsed;
   check('flood.complete', (result.flood?.bytes ?? 0) >= 16_000_000 && gained >= result.flood.bytes && gained - result.flood.bytes <= 256 && parsedGained === gained, `${engine}: the flood was ${String(result.flood?.bytes)} B; from the command on the emulator accepted ${String(gained)} B (the flood and at most 256 B of echo and prompt) and parsed ${String(parsedGained)}`);
-  // The credit, exactly (docs/ui-next/status/T1-go.md 2.8.6): every byte the host delivered was given to the emulator, parsed and acknowledged once (the counts of the acknowledgements add up to what was delivered, which is what was parsed: nothing is dropped and nothing is
-  // acknowledged twice), and the host never had more than its high mark and one read delivered and not acknowledged.
-  check('flow.exact', settled.acked === settled.delivered && settled.delivered === settled.parsed && settled.parsed === settled.accepted && settled.maxUnacked <= FLOW.high + FLOW.read, `${engine}: the host delivered ${String(settled.delivered)} B, the emulator was given ${String(settled.accepted)} and parsed ${String(settled.parsed)}, the page acknowledged ${String(settled.acked)} B in ${String(settled.acks)} calls, and the host never had more than ${String(settled.maxUnacked)} B delivered and not acknowledged (${String(FLOW.high)} and one read of ${String(FLOW.read)} at most)`);
+  // The credit, exactly (docs/ui-next/terminal-channel-protocol.md section 7): every byte the host delivered was given to the emulator, parsed and acknowledged once (the counts of the acknowledgements add up to what was delivered, which is what was parsed: nothing is dropped and nothing is
+  // acknowledged twice), and the host never had more than its window, `FLOW.inflight`, sent and not acknowledged.
+  check('flow.exact', settled.acked === settled.delivered && settled.delivered === settled.parsed && settled.parsed === settled.accepted && settled.maxUnacked <= FLOW.inflight, `${engine}: the host delivered ${String(settled.delivered)} B, the emulator was given ${String(settled.accepted)} and parsed ${String(settled.parsed)}, the page acknowledged ${String(settled.acked)} B in ${String(settled.acks)} frames, and the host never had more than ${String(settled.maxUnacked)} B sent and not acknowledged (${String(FLOW.inflight)} at most)`);
   // The sample is the frames from the command on, none of them thrown away. A flood of N bytes cannot be taken in fewer than N / `FLOW.frame` frames (a frame takes that many bytes at most while the screen is shown), so a sample with fewer has
   // lost some, and one with no frames proves nothing: it does not pass.
   const needed = Math.max(1, Math.floor((result.flood?.bytes ?? 0) / FLOW.frame));
@@ -1470,7 +1475,7 @@ async function latency(ctx) {
   // or the command would be "abcd...flood" and no flood would start. The flood's start is recorded by the shell, and so is its end: both are asserted.
   await page.keyboard.press('Control+c');
   await sleep(200);
-  await page.keyboard.type('flood 1000000 80');
+  await page.keyboard.type('flood Infinity 80');
   await page.keyboard.press('Enter');
   await sleep(1500);
   const startedBefore = await page.evaluate(() => window.__pty.log.floodStarts.length);
@@ -1765,6 +1770,7 @@ async function screenreaderCost(ctx) {
   await switchReader(page);
   await typeLine(page, 'hello');
   const counts = await sitIdle(page, () => perturb(ctx, page, 'idle'));
+  if (counts.fired > 0) note(`screenreader-cost ${engine}: the callbacks that fired: ${JSON.stringify(counts.what)}`);
   const layer = () => page.evaluate(() => document.querySelector('[data-shell-part="terminalScreen"] .xterm-accessibility-tree') !== null);
   const idleLayer = await layer();
   check('screenreader.idle', idleLayer && counts.timeout === 0 && counts.interval === 0 && counts.raf === 0 && counts.fired === 0 && counts.active === baseline, `${engine}: with the mode on (accessibility layer ${idleLayer ? 'there' : 'MISSING'}) an idle terminal started ${String(counts.timeout)} timeouts, ${String(counts.interval)} intervals and asked for ${String(counts.raf)} frames in 3 s, ${String(counts.fired)} callbacks fired, and ${String(counts.active - baseline)} intervals are alive that the panel without a terminal does not have`);

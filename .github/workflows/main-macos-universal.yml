@@ -1,18 +1,16 @@
 name: Main macOS universal
 
-# The per-PR macOS build is a thin arm64 build on macos-15 (pr.yml). This
-# builds the universal (arm64 + amd64) host on every push to main, so a break
-# that only shows on x86_64 is seen minutes after the merge, not at the next
-# nightly. Compile gate only: nothing is uploaded, signed or published; the
-# signed universal build is desktop-build.yml (nightly, release, feature channel).
+# The universal (arm64 + amd64) host build: a compile gate, nothing is uploaded, signed or published (the signed build is desktop-build.yml). There is no macOS build on a pull request (N30): a break that
+# only shows on x86_64 or on darwin is seen here, in the nightly run, and `ci-main-red` opens its issue. NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25).
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "27 3 * * *"
+  workflow_dispatch:
 
-# A newer push supersedes a running build: it contains the older commit.
+# A run is never cancelled by a newer one.
 concurrency:
   group: main-macos-universal
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read

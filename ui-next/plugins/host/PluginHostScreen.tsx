@@ -1,11 +1,13 @@
 import { activityClient, ActivityProvider, useActivities } from '@omniviewdev/runtime';
 import { NetworkerClient, WindowClient } from '@omniviewdev/runtime/api';
-import { Browser, Events, onEventsReconnect, Window } from '@omniviewdev/runtime/runtime';
+import { Browser, Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
 import { createActivityFeed, type ActivityFeedControl } from '../../shell/panel/activity';
-import { attachLocalTerminal, loadPageKey, restoreLocalTerminals, terminalKeyStorage, type TerminalsOptions } from '../../shell/panel/terminal';
+import { CLOSED_EVENT } from '../../shell/panel/ports/api';
+import { attachLocalTerminal, restoreLocalTerminals, type TerminalsOptions } from '../../shell/panel/terminal';
+import { loadAppTerminalChannels } from '../../shell/panel/terminal/terminalChannel';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
@@ -54,16 +56,29 @@ async function openExternal(url: string): Promise<void> {
   await Browser.OpenURL(url);
 }
 
+/** The id of the forward a closed event of the host is about: its payload is the session, and its `id` is the only thing of it read here. */
+function closedId(data: unknown): string | undefined {
+  return typeof data === 'object' && data !== null && 'id' in data && typeof data.id === 'string' && data.id !== '' ? data.id : undefined;
+}
+
 /**
  * The host's networker as a page's forward reaches it (`ctx.panel.ports.forward`, and the `stop` of the forward it answers): the runtime's own calls, as they are, and nothing decided here. `start` is the typed start: the plugin and the
  * connection the page is read in are its routing, and the request is the typed one the host admits and hands to the plugin's forwarder. `stop` is the close of a forward by its id, and the session the host answers is not read. What comes
- * of either is worded by the forward (`portForward.ts`), so the host's refusal is the call's rejection as it came.
+ * of either is worded by the forward (`portForward.ts`), so the host's refusal is the call's rejection as it came. `onClosed` is the host's word that a forward was closed, by whoever closed it: its event, `core/networker/portforward/closed`,
+ * whose payload is the session, heard through the runtime from the moment it is asked for until the function it answers is called. The window asks only while it counts a forward, so a window that forwards nothing listens to nothing.
  */
 const networker: PortForwardNetwork = {
   start: async (plugin, connection, request) => NetworkerClient.StartResourcePortForwardingSession(plugin, connection, request),
   stop: async (sessionId) => {
     await NetworkerClient.ClosePortForwardSession(sessionId);
   },
+  onClosed: (listener) =>
+    Events.On(CLOSED_EVENT, ({ data }) => {
+      const id = closedId(data);
+      if (id !== undefined) {
+        listener(id);
+      }
+    }),
 };
 
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
@@ -82,19 +97,13 @@ const loadWindowSession = async (): Promise<LoadedSession> => loadSession(window
 const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(noticesStorage({ client: WindowClient, name: windowName }));
 
 /**
- * This window's terminal page key, read beside its session and from the same place, in a slot of its own (`shell/panel/terminal/pageKey.ts`): the secret that gives the terminals this window starts to the page that comes back after
- * a reload. It never rejects either, and is bounded like the session's read: a key that cannot be read or saved is a key that lives as long as the page, with a note on the console.
- */
-const loadWindowPageKey = async (): Promise<string> => loadPageKey(terminalKeyStorage({ client: WindowClient, name: windowName }));
-
-/**
  * The screen of contributed pages as the window mounts it: the installed plugins, their interfaces loading in a bounded pool beside the first paint (the
  * shell never waits for a plugin), the address, and the providers a plugin's hooks read through the host: the QueryClient and the theme are mounted above
  * by the entry, the activity provider here. A plugin that has no interface, or whose interface fails, is a state of its own tab, not of this screen.
  * Closing the window is the app's own window's to do: a browser tab has none, so the host is told of none there and the close chord does nothing.
  *
  * The window's saved session is read beside all of that, and the host is drawn once it has: its tabs, the rail's choice and the panel are the first frame, so nothing is drawn and then moved. The read
- * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good. The window's terminal page key is read with it, so that the host's terminals are made with it from their first press.
+ * is bounded (`READ_DEADLINE_MS`) and never fails, so the window is never held back by it for longer than that, and never blank for good. The capabilities of the window's terminals are read from the tab's own storage (`loadAppTerminalChannels`: synchronous, never failing), so that the terminals the window left are found from the first frame.
  */
 export function PluginHostScreen() {
   const [store] = useState(() => new PluginStore());
@@ -117,11 +126,12 @@ export function PluginHostScreen() {
 
   useEffect(() => {
     let current = true;
-    void Promise.all([loadWindowSession(), loadWindowNotices(), loadWindowPageKey()]).then(([session, notices, pageKey]) => {
+    const channels = loadAppTerminalChannels();
+    void Promise.all([loadWindowSession(), loadWindowNotices()]).then(([session, notices]) => {
       if (current) {
-        // The Terminal tool starts its shells under the key and, when the window attaches, asks the host for the ones this window left (`restoreLocalTerminals`). A terminal another tab took over is attached again under the key
-        // (`attachLocalTerminal`), and the page's events coming back after a gap is told to its feeds (`onEventsReconnect`: in a native window it never fires).
-        setLoaded({ session, notices, terminals: { pageKey, restore: async () => restoreLocalTerminals(pageKey), reattach: (id) => attachLocalTerminal(pageKey, id), reconnect: onEventsReconnect, openExternal } });
+        // When the window attaches, the Terminal tool asks the host for the terminals this window left (`restoreLocalTerminals`), and a terminal another tab took over is attached again (`attachLocalTerminal`), both
+        // through the page's channels, which hold the capabilities. A stream that drops is connected again by its own feed, so there is no signal to forward. A link a person follows in a terminal opens in the system browser (`openExternal`).
+        setLoaded({ session, notices, terminals: { restore: async () => restoreLocalTerminals(channels), reattach: (id) => attachLocalTerminal(id, undefined, channels), openExternal } });
       }
     });
     return () => {

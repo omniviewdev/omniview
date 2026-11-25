@@ -1,12 +1,12 @@
 import { IconButton, MiddleEllipsis, MissingValue, RovingGroup, Status, menuTrigger, tip, type StatusRole } from '@omniviewdev/kit';
 import { memo } from 'react';
-import { ACTION_WORDS, availabilityOf, type PortRow, type PortState } from './model';
+import { ACTION_WORDS, availabilityOf, copyWordOf, type PortRow, type PortState } from './model';
 import type { PortsActions } from './portsMenu';
 import styles from './PortsBody.module.css';
 import { OPEN_ICON, STOP_ICON } from './tool';
 
 // One forward's row of the table: its resource, its mapping, its connection, its state, and the three commands. A row draws only its own forward and renders when that forward changes: it is given the row object, which the store keeps
-// the same object while the forward says the same, and whether its address was just copied. The commands are always drawn (not on hover), as the mock's are, and are one Tab stop in the kit's roving group.
+// the same object while the forward says the same, and whether its port or address was just copied. The commands are always drawn (not on hover), as the mock's are, and are one Tab stop in the kit's roving group.
 
 /** The kit's role for each word of state: the glyph that the role fixes goes beside the word, and the word keeps its own spelling. A forward that is paused is stopped for a reason and nothing is wrong. */
 const ROLES: Readonly<Record<PortState, StatusRole>> = { running: 'running', paused: 'stopped', stopped: 'stopped', failed: 'error', stopping: 'progress' };
@@ -19,7 +19,7 @@ const tipOf = (label: string, reason: string | undefined): string => (reason ===
 
 type RowProps = {
   readonly row: PortRow;
-  /** Whether this row's address was copied a moment ago: its Copy button shows a check mark. */
+  /** Whether this row's port or address was copied a moment ago: its Copy button shows a check mark. */
   readonly copied: boolean;
   readonly actions: PortsActions;
   /** The id of the table's menu, which the row is a trigger of (a secondary click on it, Shift F10 or the Menu key on a button in it). */
@@ -94,12 +94,12 @@ export const Row = memo(function Row({ row, copied, actions, menu }: RowProps) {
           )}
           <IconButton
             icon={copied ? 'check' : 'copy'}
-            label={ACTION_WORDS.copy}
+            label={copyWordOf(row)}
             variant="ghost"
             size="row"
             disabledReason={reach.copy}
             data-ports-action="copy"
-            {...tip(tipOf(ACTION_WORDS.copy, reach.copy))}
+            {...tip(tipOf(copyWordOf(row), reach.copy))}
             onClick={() => {
               actions.copy(row.id, row.session);
             }}

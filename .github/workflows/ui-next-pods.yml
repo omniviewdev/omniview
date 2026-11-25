@@ -12,7 +12,7 @@ name: UI next Pods cluster check
 # the plugin connects to a cluster that already has the group, and reads that host's first Pods page, never pressing Retry: the page must list the Pods as kubectl does, the host must refuse no request of it, and the host's facts for
 # the connection must name the group (`unavailable-group` mode of pods-cluster.check.mjs, unavailable.mjs). Against the plugin before #281 (ec5a06ea) that check fails on the first load.
 #
-# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: 2b5e6847987c5395a2704f75cc29ea98b093f2c5 (#285, SDK4-k8s: the plugin's SDK is v0.22.1, the release this host pins and its floor admits, the exec lane keeps a command's last output for a late attach, 2026-11-23; before it #284, SDK3-k8s: the plugin's SDK was v0.22.0 and a Pod's logs declare the count of the lines at the head of each source's stream, the replay, which the host asks for and the Logs strip reads, 2026-11-22; before it #281, INV4: one unavailable API group no longer refuses the connection; #283, a cancelled restart reports its context's error; and #282, K3a: every kind's list sorts, 2026-11-21; before them #280, C1h: the Connection scope face carries role: 'connection'; and #279, K2c-2), the branch head
+# THE PIN. KUBERNETES_PLUGIN_REF is a commit of the plugin's `feature/ui-next` branch: c6d4665196d4ae983b09a01d160d5b5891be542c (#287, HM3-k8s: the cluster Overview is the page a connection lands on, vendored from host main 773be338 (the `overview` page kind #724 and `useConnectionMetadata` #723), 2026-11-25; before it #285, SDK4-k8s: the plugin's SDK is v0.22.1, the release this host pins and its floor admits, the exec lane keeps a command's last output for a late attach, 2026-11-23; before it #284, SDK3-k8s: the plugin's SDK was v0.22.0 and a Pod's logs declare the count of the lines at the head of each source's stream, the replay, which the host asks for and the Logs strip reads, 2026-11-22; before it #281, INV4: one unavailable API group no longer refuses the connection; #283, a cancelled restart reports its context's error; and #282, K3a: every kind's list sorts, 2026-11-21; before them #280, C1h: the Connection scope face carries role: 'connection'; and #279, K2c-2), the branch head
 # with 29 kinds: the Pods list and the Pod page (D1b #263, D1c #264), the lists of Workloads (K2a #265), of K2b-1 (#266) and of K2b-2 (#269), the Secrets projection (SEC1 #268), the Logs command (#267), the counts the plugin's
 # backend says (Q1 #270), the counts its sidebar draws (Q2 #273), the glyphs of its kinds (Q2b #274), the derived connection IDs (H6 #272), the plugin's Go CI (#277), the short names (#275), the generic detail page of nine kinds (K2c-1 #278) and the title of a deleted object's page (K2c-2 #279). The check opens the Pod page from the list, and a Deployment's page from the Deployments list (K2c-2: its Details rows against kubectl),
 # and a Pod's Logs from its page, holds the sidebar's counts to kubectl's, and holds the scope lane's Connection text to the context's NAME: the ID is derived from the path of the check's temporary kubeconfig, so it differs on every run
@@ -24,46 +24,15 @@ name: UI next Pods cluster check
 #   3. the job is green: the pinned plugin renders the Pods of the cluster as kubectl lists them, and each control turns the job red.
 # A plugin commit that was vendored from a newer host (the plugin's `hack/vendor-host.sh`) needs this host to contain that commit first.
 #
-# NOT a required check yet (R-11: a cluster job may be slow or flaky). The lead makes it required in the branch protection settings only
-# after it has been green for a while on `main` and on pull requests. It is path-filtered, so it cannot be required as it is: a required
-# check that does not run on a pull request blocks the merge.
-
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run it locally before a push when their change touches it (docs/ui-next/AGENTS.md, rule 25).
 on:
-  pull_request:
-    paths:
-      - "ui-next/**"
-      - "packages/kit/**"
-      - "packages/omniviewdev-runtime/**"
-      - "scripts/ui-next-pods/**"
-      - ".github/workflows/ui-next-pods.yml"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
-  push:
-    branches: [main]
-    paths:
-      - "ui-next/**"
-      - "packages/kit/**"
-      - "packages/omniviewdev-runtime/**"
-      - "scripts/ui-next-pods/**"
-      - ".github/workflows/ui-next-pods.yml"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
+  schedule:
+    - cron: "7 4 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: ui-next-pods-${{ github.event.pull_request.number || github.ref }}
-  # A new push to a pull request supersedes the run of the one before it; a run on main is not cancelled by a newer push (N30; a group still keeps only one pending run).
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ui-next-pods-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -83,7 +52,7 @@ env:
   # The Kubernetes plugin: its `feature/ui-next` branch at the pin described above. Bump it deliberately.
   KUBERNETES_PLUGIN_REPOSITORY: omniviewdev/omniview-plugin-kubernetes
   KUBERNETES_PLUGIN_BRANCH: feature/ui-next
-  KUBERNETES_PLUGIN_REF: 2b5e6847987c5395a2704f75cc29ea98b093f2c5
+  KUBERNETES_PLUGIN_REF: c6d4665196d4ae983b09a01d160d5b5891be542c
   # The host in the mode the skeleton used: browser server mode, channel feature-ui-next, a private HOME per host (scripts/ui-next-pods/host.sh).
   # OMNIVIEW_UI=next is set on the step that builds the host only: the plugin has no flavour switch (decision A16) and its build must not see one.
   OMNIVIEW_E2E_WORK: ${{ github.workspace }}/.ui-next-pods
@@ -150,35 +119,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # What the page may differ from kubectl by (scripts/ui-next-pods/agreement.mjs): a Pod kubectl changed between its two reads may read either way, nothing else may.
-      - name: Oracle and agreement contracts (no cluster)
-        run: node --test scripts/ui-next-pods/oracle.test.mjs scripts/ui-next-pods/agreement.test.mjs
-
-      # The script test of scripts/ui-next-pods/host.sh (PR #520): it also proves the plugin directory is installed whole, assets/ included.
-      - name: Host script contracts (no cluster)
-        run: node --test scripts/ui-next-pods/host.test.mjs
-
-      - name: Pin contracts (no cluster)
-        run: node --test scripts/ui-next-pods/pin.test.mjs
-
-      # What the Pod detail page must print against `kubectl get pod -o json` (scripts/ui-next-pods/detail.mjs), with its negative controls.
-      - name: Pod detail contracts (no cluster)
-        run: node --test scripts/ui-next-pods/detail.test.mjs
-
-      # What the sidebar's counts must say against `kubectl get <kind> -A --no-headers | wc -l` (scripts/ui-next-pods/counts.mjs), with its negative controls.
-      - name: Sidebar count contracts (no cluster)
-        run: node --test scripts/ui-next-pods/counts.test.mjs
-
-      # What a Pod's session in the Logs tool must print against `kubectl logs --timestamps` (scripts/ui-next-pods/logs.mjs), with its negative controls.
-      - name: Pod logs contracts (no cluster)
-        run: node --test scripts/ui-next-pods/logs.test.mjs
-
-      # What the scope lane's Connection face must say against `kubectl config current-context` and the ID the host lists (scripts/ui-next-pods/lane.mjs): the NAME and never the derived ID, with its negative controls.
-      - name: Scope lane contracts (no cluster)
-        run: node --test scripts/ui-next-pods/lane.test.mjs
-
-      # What the unavailable API group's facts must say and what the check must not take for it (scripts/ui-next-pods/unavailable.mjs), and the order of the steps that register the group and start the host that connects, with its negative controls.
-      - name: Unavailable API group contracts (no cluster)
-        run: node --test scripts/ui-next-pods/unavailable.test.mjs
+      # The contracts that need no cluster: the oracle and the agreement, the host script (it proves the plugin directory is installed whole, assets/ included), the pin, and what each page must say against
+      # kubectl (the Pod detail, the Overview, the sidebar's counts, a Pod's Logs session, the scope lane, the unavailable API group), each with its negative controls.
+      - name: Contracts that need no cluster
+        run: node --test scripts/ui-next-pods/*.test.mjs
 
       # Before anything is built: the pin is a commit of the plugin's branch, its list of shared names is this host's, and the host it was vendored from is in this history.
       - name: Check the pin
@@ -271,13 +215,14 @@ jobs:
           echo "::error::Playwright browser install failed twice"
           exit 1
 
+      # The host ports 24201-24204 sit below the Linux ephemeral range (32768-60999), so an outgoing connection of an earlier step cannot hold one as its source port.
       - name: Start the host with the plugin
-        run: scripts/ui-next-pods/host.sh start with-plugin 34201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+        run: scripts/ui-next-pods/host.sh start with-plugin 24201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
 
       # The cluster holds only kind's own Pods here: the check must report that the fixture is missing, not pass on kube-system.
       - name: Negative control, cluster without the fixture
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-fixture-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
@@ -294,37 +239,37 @@ jobs:
           kubectl get pods -A
 
       - name: Start the host without the plugin
-        run: scripts/ui-next-pods/host.sh start without-plugin 34202 "$KUBECONFIG_PATH" none
+        run: scripts/ui-next-pods/host.sh start without-plugin 24202 "$KUBECONFIG_PATH" none
 
       # Same check, same cluster, same fixture; the plugin is the only difference. The window has no plugin to open: it must stop at the host's own empty list of plugins.
       - name: Negative control, host without the Kubernetes plugin
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34202
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24202
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-plugin-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       - name: Start the host with the plugin installed without its bundle
-        run: scripts/ui-next-pods/host.sh start without-bundle 34203 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
+        run: scripts/ui-next-pods/host.sh start without-bundle 24203 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
 
       # Same check, same cluster, same fixture, the plugin's binary installed: only assets/entry.js is missing. The Pods list is the plugin's bundle, so the page must stop at the plugin.
       - name: Negative control, the plugin without its bundle
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34203
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24203
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-bundle-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       - name: Check that the page and kubectl agree
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       # INV4. The same check, on the cluster the main check ran on, which holds no API group that cannot answer: it must stop at the group (GROUP_MISSING) before it opens a page.
       - name: Negative control, a cluster without the unavailable API group
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-group-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
@@ -341,11 +286,11 @@ jobs:
 
       # A host with a home of its own and nothing saved, started after the group was registered: its plugin connects to a cluster that has the group, as the demo's host did.
       - name: Start a host for the cluster with the unavailable API group
-        run: scripts/ui-next-pods/host.sh start unavailable-group 34204 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+        run: scripts/ui-next-pods/host.sh start unavailable-group 24204 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
 
       - name: Check that the connection starts with an unavailable API group
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34204
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24204
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: unavailable-group
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs

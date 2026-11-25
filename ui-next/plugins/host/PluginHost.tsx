@@ -57,9 +57,9 @@ import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
-import { ConnectionNames, laneFor, laneNameOf } from './connectionName';
+import { ConnectionNames, connectionNameOf, laneFor } from './connectionName';
 import { createConnectionActions, createConnectionsStore, createRecents, pickerOf, usesOf, type ConnectionsApi, type HostConnections } from './connections';
-import { connectionOf, createContributions, describeDetail, HOME_PAGE, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
+import { connectionOf, createContributions, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
 import { homePage } from './homePage';
 import { HOME_PAGE_ID, HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
@@ -71,7 +71,7 @@ import { panelHostsOf } from './panelHost';
 import { attachPanelTools, badgesOf, cancelFailed, resolverOf, subjectOpener } from './panelTools';
 import { openExternal } from './openExternal';
 import { portNamesOf } from './portNames';
-import type { PortForwardNetwork, PortForwarding } from './portForward';
+import { windowActivation, type PortForwardNetwork, type PortForwarding } from './portForward';
 import { useGuardedDefinition, useGuardedSource } from './pageFailures';
 import { pageMemoryOf } from './pageMemory';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -138,6 +138,11 @@ export type PluginHostProps = {
    * binds. Absent: the window has no port-forward service, and the handle a page is given has no `ports` member, as a host that predates it (a test of another part).
    */
   readonly networker?: PortForwardNetwork | undefined;
+  /**
+   * Whether a user action (a click, a key press) is under way now, as a page's `ctx.panel.ports.forward` asks it at the call: a forward is started from a user action only (`portForward.ts`). `true` inside one, `false` outside, and `undefined` when
+   * the engine cannot tell, which refuses too. Absent: the window's own engine is asked (`navigator.userActivation`); a test or a probe that has no real input gives its own.
+   */
+  readonly userActivation?: (() => boolean | undefined) | undefined;
   /**
    * What the Ports tool is given beyond what the runtime gives it itself (`shell/panel/ports`): the host's calls and events, the clipboard, the names of connections, the way to open an address. Absent: the runtime's own, the names the window
    * knows for its connections, and the host's own way of opening an address (`openExternal.ts`). A test or a probe gives a fake host.
@@ -241,7 +246,7 @@ function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, portsOptions: Partial<PortsDeps> | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -256,7 +261,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again.
   const terminals = createTerminals(store, terminalOptions, { screenReader: restored?.terminalScreenReader });
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
-  // A page forwards a port where the window has a networker to ask: the Ports tool is shown once a forward has started.
+  // A page forwards a port where the window has a networker to ask, from a user action: the Ports tool is shown once a forward has started, and a plugin that stops has no forwards left (the host says nothing of it, the window's own store does).
   const forwarding: PortForwarding | undefined =
     networker === undefined
       ? undefined
@@ -264,6 +269,11 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
         ...networker,
         revealPortsTool: () => {
           revealPortsTool(store);
+        },
+        userActivation: userActivation ?? windowActivation,
+        plugins: {
+          running: (id) => plugins.getSnapshot().some((entry) => entry.id === id && entry.phase === 'ready'),
+          subscribe: plugins.subscribe,
         },
       };
   const panelHosts = panelHostsOf(logs, forwarding);
@@ -419,8 +429,8 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
     plugin: { name: contribution.plugin.name },
     ...holding,
     rail: railData,
-    // A detail page is a document: the page scrolls, header and body together (ch16 S15). A list owns its own scrolling.
-    layout: page?.kind === 'detail' ? 'document' : 'pane',
+    // A detail page is a document: the page scrolls, header and body together (ch16 S15), and so is an overview page, which draws the same anatomy for a scope. A list owns its own scrolling.
+    layout: page?.kind === 'detail' || page?.kind === 'overview' ? 'document' : 'pane',
     sidebar,
     scope: lane,
   };
@@ -513,8 +523,7 @@ function DetailContribution({ entry, route, page: pageId, frames, names, tabs, p
   const { definition } = page;
   const pluginName = entry.contribution.plugin.name;
   // The header's crumbs and the tab's path say the connection by its NAME: the one this page's lane says, else the one the window has learned for the connection, else none. The key is never drawn.
-  const lane = laneNameOf(scope);
-  const name = lane === null ? undefined : (lane ?? (connection === undefined ? undefined : names.get(entry.id, connection)));
+  const name = connectionNameOf(scope, names, entry.id, connection);
   const face = useMemo(() => describeDetail(pluginName, route, definition, name), [pluginName, route, definition, name]);
   // Before the first paint, so the scope lane is there with the page; a frame equal to the one held changes nothing.
   useLayoutEffect(() => {
@@ -538,6 +547,49 @@ function DetailContribution({ entry, route, page: pageId, frames, names, tabs, p
     };
   });
   return <DetailPage definition={definition} params={route.params} source={source} path={crumbs} />;
+}
+
+type OverviewProps = {
+  readonly entry: PluginEntry & { readonly phase: 'ready' };
+  readonly route: Route;
+  readonly page: string;
+  readonly frames: Published<FrameV1>;
+  readonly names: ConnectionNames;
+  /** What the plugin asks of the bottom panel: `ctx.panel`. */
+  readonly panelHost: PanelHostV1;
+};
+
+/**
+ * The overview page's own component (HM3), as the detail's: its data hook runs here, for the route's connection and with no parameters (the page is the page of a scope, and a route to it names no object), and the faces of the scope lane it answers are published for the
+ * frame to read. It draws the detail page unchanged, from a definition made from the overview's (`overviewAsDetail`) and the connection's NAME as the one parameter that definition names its subject by, so the heading is the connection's name (the one this page's lane says,
+ * else the one the window has learned; the key is never drawn) and the page's title while the route names none. The tab's title, glyph and path are the route's and the definition's (`describeOverview`), the same before this component has run, and the back path above the
+ * heading is the same path: the plugin and the connection.
+ */
+function OverviewContribution({ entry, route, page: pageId, frames, names, panelHost }: OverviewProps) {
+  const page = entry.contribution.pages[pageId];
+  if (page?.kind !== 'overview') {
+    throw new Error(`The plugin has no overview page "${pageId}"`);
+  }
+
+  const connection = connectionOf(route);
+  // The page of a scope has no parameters of its own (`RouteV1.params`): what an address adds to a route to it is not an identity the page reads, so its hook is told none.
+  const context = useMemo<ContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS }, panel: panelHost }), [entry.id, pageId, connection, panelHost]);
+  const { scope, source: read } = page.usePage(context);
+  const source = useGuardedSource(read, entry.id);
+  const { definition } = page;
+  const detail = useMemo(() => overviewAsDetail(definition), [definition]);
+  const pluginName = entry.contribution.plugin.name;
+  // The name the header's heading and the path say the connection by: the one this page's lane says, else the one the window has learned for the connection, else none.
+  const name = connectionNameOf(scope, names, entry.id, connection);
+  const face = useMemo(() => describeOverview(pluginName, route, definition, name), [pluginName, route, definition, name]);
+  const path = useMemo(() => (face.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)), [face]);
+  // Before the first paint, so the scope lane is there with the page; a frame equal to the one held changes nothing.
+  useLayoutEffect(() => {
+    frames.publish(routeKey(route), { tab: { title: face.title, icon: definition.tile.icon }, path, scope });
+  }, [frames, route, face, definition.tile.icon, path, scope]);
+
+  const params = useMemo(() => ({ [OVERVIEW_SUBJECT]: name ?? '' }), [name]);
+  return <DetailPage definition={detail} params={params} source={source} path={path.map((label): PageHeaderCrumb => ({ label }))} />;
 }
 
 type HostPageProps = {
@@ -639,6 +691,8 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
       >
         {found?.kind === 'detail' ? (
           <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id, connection)} />
+        ) : found?.kind === 'overview' ? (
+          <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, connection)} />
         ) : (
           <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, connection)} memory={memory} />
         )}
@@ -735,9 +789,9 @@ function portsBodyOf(ports: Ports): ReactElement {
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, ports: portsOptions }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, userActivation, ports: portsOptions }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, portsOptions));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;

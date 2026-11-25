@@ -22,13 +22,15 @@ export const units = [
   { id: 'settings', phases: ['settings'], seconds: 75 },
   { id: 'terminal-core', phases: ['terminal', 'terminal-programs', 'terminal-reattach'], seconds: 100 },
   { id: 'terminal-restart', phases: ['terminal-takeover', 'terminal-followups'], seconds: 100 },
+  // The Terminal tool's cuts of the page's two sockets (r6) and the isolation of two pages (r7): the phases' own seconds as the check prints them (`SEAM-PHASE`: 19.9 and 9.7 on the laptop, chromium; the first CI run of #716 printed the older, shorter versions of the two at 17 s and 5 s), rounded up together.
+  { id: 'terminal-channel', phases: ['terminal-reconnect', 'terminal-isolation'], seconds: 30 },
   { id: 'terminal-find', phases: ['terminal-find'], seconds: 35 },
   { id: 'session', phases: ['session'], seconds: 15 },
   // The scenarios that start a plugin's process (the Go fixture is built once for the run).
   { id: 'plugin-process', phases: ['process', 'failed-load', 'plugins-page'], seconds: 135 },
   { id: 'connections-problems', phases: ['connections', 'problems-operations'], seconds: 65 },
-  // Scenario w, the Ports tool (PF1): the port forwards the host lists, with Stop, Open and Copy, on a host of its own. The first value is an estimate (the 41 controls of the table are one run of about 45 s); the first CI run gives the real one.
-  { id: 'ports', phases: ['ports'], seconds: 45 },
+  // Scenario w, the Ports tool (PF1, PF2): the port forwards the host lists, with Stop, the disabled Open and Copy port, and the bounds of `ctx.panel.ports.forward` (a user action, a cap of 64, a bounded id) on a host of its own. It took 62 s on the laptop (load 3, both engines; 32 s before PF2: the 1,000 forwards and the 9 s the lapsed call must be left alone), so 75 s here; the first CI run gives the real one.
+  { id: 'ports', phases: ['ports'], seconds: 75 },
 
   // The negative controls. Scenario k (a plugin's unload and the Logs sessions) and the watch over failed requests with m (the identity of a Logs session).
   { id: 'controls-kept', runs: ['double-close', 'new-view', 'failed-ended', 'close-twice', 'page-error'], seconds: 55 },
@@ -57,5 +59,7 @@ export const units = [
   { id: 'controls-failed-load', runs: ['failed-load'], seconds: 40 },
   { id: 'controls-plugins-page', runs: ['plugins-page'], seconds: 60 },
   { id: 'controls-connections-problems', runs: ['connections', 'problems-operations'], seconds: 80 },
-  { id: 'controls-ports', runs: ['ports'], seconds: 55 },
+  { id: 'controls-ports', runs: ['ports'], seconds: 90 },
+  // The controls of r6 and r7, one run of each table: the first is the runner's (`control terminal-reconnect: detected (50 s)`, which the laptop measured the same), the second has no runner figure yet (the CI step that was to run it failed to start it) and is the laptop's (26 s, its four controls with the host's start).
+  { id: 'controls-terminal-channel', runs: ['terminal-reconnect', 'terminal-isolation'], seconds: 76 },
 ];

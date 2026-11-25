@@ -6,7 +6,7 @@
 // rule it names taken out (docs/ui-next/status/N24-D1.md).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
@@ -17,6 +17,8 @@ import { ALWAYS, GATED } from './changes.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const WORKFLOWS = { 'pr.yml': '.github/workflows/pr.yml', 'pr-checks.yml': '.github/workflows/pr-checks.yml' };
+// The path classifier and its table belong to PR Checks; pr.yml is the nightly workflow (N34).
+const TABLE_FILES = ['pr-checks.yml'];
 const text = Object.fromEntries(Object.entries(WORKFLOWS).map(([name, file]) => [name, readFileSync(path.join(repo, file), 'utf8')]));
 const workflow = Object.fromEntries(Object.entries(text).map(([name, source]) => [name, parse(source)]));
 
@@ -28,14 +30,14 @@ after(() => {
 const jobOf = (file, id) => workflow[file].jobs[id];
 const stepsOf = (file, id) => jobOf(file, id).steps ?? [];
 const needsOf = (job) => (Array.isArray(job.needs) ? job.needs : job.needs === undefined ? [] : [job.needs]);
-const SKIP = { host: "${{ needs.changes.outputs.skip_host != 'true' }}", ui: "${{ needs.changes.outputs.skip_ui != 'true' }}", windows: "${{ needs.changes.outputs.skip_windows != 'true' }}" };
+const SKIP = { host: "${{ needs.changes.outputs.skip_host != 'true' }}", ui: "${{ needs.changes.outputs.skip_ui != 'true' }}", code: "${{ needs.changes.outputs.skip_code != 'true' }}" };
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // The table and the workflows agree
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-test('every job of the two workflows is either gated by a flag of the table or one of the jobs that always run: none is left to chance', () => {
-  for (const file of Object.keys(WORKFLOWS)) {
+test('every job of PR Checks is either gated by a flag of the table or one of the jobs that always run: none is left to chance', () => {
+  for (const file of TABLE_FILES) {
     const listed = [...GATED, ...ALWAYS].filter((entry) => entry.workflow === file).map((entry) => entry.job).sort();
     assert.deepEqual(Object.keys(workflow[file].jobs).sort(), listed, `${file}: a job that is not in scripts/ci/changes.mjs (GATED or ALWAYS), or a listed job that is gone`);
   }
@@ -48,7 +50,6 @@ test('each gated job waits for the classifier and runs unless its flag is "true"
     assert.ok(needsOf(job).includes('changes'), `${entry.job} must need the classifier`);
     assert.equal(job.if, SKIP[entry.flag], `${entry.workflow}: ${entry.job}`);
   }
-  assert.deepEqual(needsOf(jobOf('pr-checks.yml', 'ui-runtime-contract')).sort(), ['c02-corpus', 'changes']);
 });
 
 test('NEGATIVE: no job runs only when a flag says "run": the classifier writes skip flags, and `== \'true\'` on one would skip a job whose flag is missing', () => {
@@ -57,7 +58,7 @@ test('NEGATIVE: no job runs only when a flag says "run": the classifier writes s
       const conditions = [job.if, ...(job.steps ?? []).map((step) => step.if)].filter((value) => typeof value === 'string');
       for (const condition of conditions) {
         if (!/needs\.changes\.outputs/.test(condition)) continue;
-        assert.match(condition, /needs\.changes\.outputs\.skip_(host|ui|windows) != 'true'/, `${file}: ${id}: ${condition}`);
+        assert.match(condition, /needs\.changes\.outputs\.skip_(host|ui|code) != 'true'/, `${file}: ${id}: ${condition}`);
         assert.doesNotMatch(condition, /==/, `${file}: ${id}: ${condition}`);
         assert.doesNotMatch(condition, /outputs\.class/, `${file}: ${id}: a job is gated by a flag, never by the name of a class`);
       }
@@ -65,16 +66,15 @@ test('NEGATIVE: no job runs only when a flag says "run": the classifier writes s
   }
 });
 
-test('the classifier is the same job in both workflows: a checkout of two commits, the pinned Node, the script, and three outputs, of which two are skip flags', () => {
-  const [one, other] = ['pr.yml', 'pr-checks.yml'].map((file) => jobOf(file, 'changes'));
-  assert.deepEqual(one, other, 'the same job twice, so that both workflows classify one change the same way');
+test('the classifier job: a checkout of two commits, the pinned Node, the script, and four outputs, the class and three skip flags', () => {
+  const one = jobOf('pr-checks.yml', 'changes');
   assert.equal(one.name, 'Changed paths');
   assert.equal(one['runs-on'], 'ubuntu-slim', 'the smallest runner: the job reads two commits and runs one script (N30)');
   assert.equal(one['timeout-minutes'], 5);
   assert.equal(one.needs, undefined);
   assert.equal(one.if, undefined, 'the classifier runs on every pull request');
-  assert.deepEqual(Object.keys(one.outputs).sort(), ['class', 'skip_host', 'skip_ui', 'skip_windows']);
-  for (const name of ['class', 'skip_host', 'skip_ui', 'skip_windows']) assert.equal(one.outputs[name], `\${{ steps.classify.outputs.${name} }}`);
+  assert.deepEqual(Object.keys(one.outputs).sort(), ['class', 'skip_code', 'skip_host', 'skip_ui']);
+  for (const name of ['class', 'skip_code', 'skip_host', 'skip_ui']) assert.equal(one.outputs[name], `\${{ steps.classify.outputs.${name} }}`);
   const [checkout, node, classify] = one.steps;
   assert.equal(checkout.uses, 'actions/checkout@v4');
   assert.equal(checkout.with['fetch-depth'], 2, 'HEAD^1 is the base of the merge commit: two commits are all it needs');
@@ -117,9 +117,9 @@ test('the tracked-outputs guard runs in the repository guard and nowhere else, a
   assert.equal(checkout.with?.['fetch-depth'], undefined);
 });
 
-test('the workflow tests run where the dependencies are installed, before the build: in the job that lints', () => {
-  const commands = stepsOf('pr-checks.yml', 'ui-lint').map((step) => step.run ?? '');
-  const at = commands.findIndex((command) => /node --test scripts\/ci\/changes-workflows\.test\.mjs/.test(command));
+test('the workflow tests run where the dependencies are installed, before the packages are built: in the job that builds and lints', () => {
+  const commands = stepsOf('pr-checks.yml', 'ui-build').map((step) => step.run ?? '');
+  const at = commands.findIndex((command) => /node --test scripts\/ci\/\*\.test\.mjs/.test(command));
   assert.ok(at > 0, 'a step runs them');
   assert.ok(at < commands.findIndex((command) => /task packages/.test(command)), 'before the packages are built');
 });
@@ -128,78 +128,36 @@ test('the workflow tests run where the dependencies are installed, before the bu
 // What the other jobs keep
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-test('the jobs that were there keep their names, so that no check is renamed by this change', () => {
-  const names = (file) => Object.fromEntries(Object.entries(workflow[file].jobs).map(([id, job]) => [id, job.name]));
-  assert.deepEqual(names('pr-checks.yml'), {
-    changes: 'Changed paths',
-    'repo-guard': 'Repo guard',
-    'release-packaging-checks': 'Release packaging contracts',
-    'windows-connection-profiles': 'Windows connection profiles',
-    'go-checks': 'Go checks',
-    'go-lint': 'Go lint',
-    'bindings-check': 'Bindings freshness',
-    'c02-corpus': 'C02 error transport corpus',
-    'ui-build': 'UI build',
-    'ui-lint': 'UI lint and kit contracts',
-    'ui-component-tests': 'UI component tests',
-    'ui-runtime-contract': 'UI runtime contract',
-    'ui-checks': 'UI checks',
-  });
-  assert.deepEqual(names('pr.yml'), {
-    changes: 'Changed paths',
-    'e2e-application': undefined,
-    'e2e-tests': 'e2e-tests',
-    'build-artifacts': 'build-artifacts (${{ matrix.platform }})',
-    'build-artifacts-windows': 'build-artifacts (windows/amd64)',
-  });
-  assert.equal(jobOf('pr.yml', 'e2e-application').uses, './.github/workflows/e2e-runner.yml');
-  assert.equal(jobOf('pr.yml', 'e2e-application').with.base, '${{ github.event.pull_request.base.sha }}');
-  assert.deepEqual(jobOf('pr.yml', 'build-artifacts').strategy.matrix.include.map((entry) => entry.platform), ['linux/amd64'], 'Windows is a job of its own: the new UI keeps it while the Linux build is skipped; there is no macOS build on a pull request (N30: main-macos-universal.yml builds it on every push to main)');
+// The Windows build is not a job of a pull request (N31): main-windows.yml builds it at night and on request.
+test('the Windows build runs at night and on request, on Windows, and is not a job of a pull request', () => {
+  const windows = parse(readFileSync(path.join(repo, '.github/workflows/main-windows.yml'), 'utf8'));
+  assert.equal(workflow['pr.yml'].jobs['build-artifacts-windows'], undefined);
+  assert.deepEqual(Object.keys(windows.on).sort(), ['schedule', 'workflow_dispatch']);
+  assert.equal(windows.concurrency['cancel-in-progress'], false);
+  const job = windows.jobs['build-windows'];
+  assert.deepEqual([job.name, job['runs-on'], job['timeout-minutes'], job.container], ['build-artifacts (windows/amd64)', 'windows-latest', 30, undefined]);
+  assert.match(job.steps.find((step) => step.name === 'Build Omniview').run, /-ldflags "-w -s -H windowsgui /);
 });
 
-// The Windows build is not an entry of the matrix any more, so that the new UI can keep it while the macOS and Linux builds are skipped. Its steps are the matrix job's, and a step changed in one and not the other fails here.
-const MACOS_ONLY = /\n\s*if \[\[ "\$RUNNER_OS" == macOS \]\]; then\n[^\n]*\n\s*fi/;
-const asWindows = (text) => text.replace(MACOS_ONLY, '').replaceAll('${{ matrix.build-tags }}', 'production').replaceAll('${{ matrix.extra-ldflags }}', '-H windowsgui');
-
-test('the Windows build is the matrix job\'s steps for Windows, step by step: the same actions, versions and commands, the Windows flags, no step of its own', () => {
-  const matrix = stepsOf('pr.yml', 'build-artifacts').filter((step) => step.name !== 'Match checkout directory ownership to container user' && step.name !== 'Create macOS .app bundle');
-  const all = stepsOf('pr.yml', 'build-artifacts-windows');
-  const reactCompiler = all.findIndex((step) => step.name === 'Check native Windows React compiler admission');
-  assert.equal(all[reactCompiler - 1]?.name, 'Build workspace packages');
-  assert.equal(all[reactCompiler].run, 'node --test scripts/react-compiler.test.mjs');
-  assert.equal(all[reactCompiler].if, undefined, 'the job is Windows only: the step has no condition');
-  assert.ok(!matrix.some((step) => step.name === 'Check native Windows React compiler admission'), 'and the matrix job, which has no Windows entry, has no such step');
-  const windows = all.filter((step, index) => index !== reactCompiler);
-  assert.deepEqual(windows.map((step) => step.name), matrix.map((step) => step.name), 'the same steps, in the same order, with the macOS and container ones left out');
-  for (const [index, step] of windows.entries()) {
-    const twin = matrix[index];
-    assert.equal(step.uses, twin.uses, step.name);
-    assert.deepEqual(step.with, twin.with, step.name);
-    assert.equal(step.shell, twin.shell, step.name);
-    if (step.run !== undefined) assert.equal(step.run.trim(), asWindows(twin.run).trim(), step.name);
-  }
-  const job = jobOf('pr.yml', 'build-artifacts-windows');
-  assert.equal(job['runs-on'], 'windows-latest');
-  assert.equal(job['timeout-minutes'], 30);
-  assert.equal(job.container, undefined);
-  assert.deepEqual(job.env, { GOWORK: 'off' });
-  assert.match(stepsOf('pr.yml', 'build-artifacts-windows').find((step) => step.name === 'Build Omniview').run, /-ldflags "-w -s -H windowsgui /);
-});
-
-test('the checks that start for the new UI\'s own tooling are the ones that read it: the kit probes for the probe table and its test, the Pods check for its scripts', () => {
-  const paths = (file) => parse(readFileSync(path.join(repo, `.github/workflows/${file}`), 'utf8')).on.pull_request.paths;
-  for (const entry of ['scripts/ci/probe-shards.mjs', 'scripts/ci/probe-shards.test.mjs']) assert.ok(paths('ui-next-kit-probes.yml').includes(entry), `the kit probes workflow does not start for ${entry}`);
-  assert.ok(paths('ui-next-pods.yml').includes('scripts/ui-next-pods/**'), 'the Pods workflow does not start for its scripts');
+test('the checks that start for the new UI\'s own tooling are the ones that read it: the Pods check for its scripts; the kit probes do not start on a pull request at all (N34, the owner\'s order)', () => {
+  const on = (file) => parse(readFileSync(path.join(repo, `.github/workflows/${file}`), 'utf8')).on;
+  assert.equal(on('ui-next-pods.yml').pull_request, undefined, 'the Pods cluster check is a nightly check (N34)');
+  assert.equal(on('ui-next-kit-probes.yml').pull_request, undefined, 'no probe job, plan or aggregate is on a pull request');
+  assert.equal(on('ui-next-kit-probes.yml').push, undefined, 'and none on a push to main');
   // and the UI jobs, which read the rest of the tooling (scripts/ui-next-bundle.mjs, bench/table, bench/log), are not skipped for the new UI
   assert.deepEqual(GATED.filter((entry) => entry.flag === 'ui').map((entry) => entry.job).filter((job) => !needsOf(jobOf('pr-checks.yml', job)).includes('changes')), []);
 });
 
-test('the display names of the table are the names of the jobs', () => {
-  for (const entry of GATED) {
-    const name = jobOf(entry.workflow, entry.job).name;
-    if (name === undefined) assert.equal(entry.check, entry.job, 'a reusable-workflow call has no name: its check is named by its id');
-    else assert.ok(name === entry.check || name.startsWith(`${entry.check} (`), `${entry.job}: ${name} is not ${entry.check}`);
+test('N34: nothing waits on a probe result: no workflow lists the kit probes in a `needs`, a `workflow_run` or a gate, and the nightly run stays in the list of `ci-main-red`', () => {
+  const directory = path.join(repo, '.github/workflows');
+  for (const file of readdirSync(directory).filter((name) => /\.ya?ml$/.test(name) && name !== 'ui-next-kit-probes.yml' && name !== 'ci-main-red.yml')) {
+    const text = readFileSync(path.join(directory, file), 'utf8');
+    const workflow = parse(text);
+    assert.equal(/Kit probes|ui-next-kit-probes/.test(JSON.stringify(workflow.on ?? {})), false, `${file}: a trigger names the probes`);
+    for (const [id, job] of Object.entries(workflow.jobs ?? {})) assert.equal(/kit-probes|Kit probes/i.test(JSON.stringify(job.needs ?? [])), false, `${file}: ${id} needs the probes`);
+    assert.equal(/needs\.[a-z-]*probe/i.test(text), false, `${file} reads a probe job's result`);
   }
+  assert.ok(parse(readFileSync(path.join(directory, 'ci-main-red.yml'), 'utf8')).on.workflow_run.workflows.includes('UI next kit probes'), 'the nightly probes stay in the list');
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -238,7 +196,7 @@ function runGate(file, id, env) {
 }
 
 /** The parts of the UI gate, from the table: the jobs of the UI flag. */
-const UI_PARTS = GATED.filter((entry) => entry.flag === 'ui' && entry.workflow === 'pr-checks.yml').map((entry) => entry.job);
+const UI_PARTS = GATED.filter((entry) => (entry.flag === 'ui' || entry.flag === 'code') && entry.workflow === 'pr-checks.yml').map((entry) => entry.job);
 
 /** `toJSON(needs)` of the UI gate: the classifier's result and outputs, and each part's result. `null` leaves a job, or the classifier's outputs, out altogether. */
 function uiNeeds({ changes = 'success', skip = 'false', klass = 'all', parts = {} } = {}) {
@@ -299,14 +257,14 @@ test('UI checks passes, saying why, when the classifier skipped the UI jobs and 
 
 test('NEGATIVE: a skip by path hides nothing else: a part that ran and failed, or was cancelled, fails the gate even when the classifier said skip', () => {
   for (const result of ['failure', 'cancelled']) {
-    const outcome = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-lint': result } });
+    const outcome = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-build': result } });
     assert.equal(outcome.status, 1, outcome.output);
-    assert.match(outcome.output, new RegExp(`^::error::ui-lint finished as ${result}$`, 'm'));
-    assert.doesNotMatch(outcome.output, /::error::ui-build/);
+    assert.match(outcome.output, new RegExp(`^::error::ui-build finished as ${result}$`, 'm'));
+    assert.doesNotMatch(outcome.output, /::error::c02-corpus/);
   }
-  const ran = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-lint': 'success' } });
+  const ran = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-build': 'success' } });
   assert.equal(ran.status, 0, 'a part that ran and succeeded is a success whatever the classifier said');
-  assert.match(ran.summary, /\| ui-lint \| success \|/);
+  assert.match(ran.summary, /\| ui-build \| success \|/);
 });
 
 test('NEGATIVE: UI checks fails when the classifier did not succeed, whatever the parts say: nothing says whether they had to run', () => {
@@ -329,76 +287,6 @@ test('NEGATIVE: UI checks fails on no parts at all, on a missing part and on a r
   assert.equal(uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-build': 'startup_failure' } }).status, 1);
 });
 
-const E2E = { CHANGES: 'success', SKIP: 'false', RESULT: 'success' };
-const e2eGate = (env) => runGate('pr.yml', 'e2e-tests', { ...E2E, ...env });
-
-test('the check named `e2e-tests` keeps its name and its place: after the classifier and the suite, run even when the suite did not', () => {
-  const gate = jobOf('pr.yml', 'e2e-tests');
-  assert.equal(gate.name, 'e2e-tests');
-  assert.deepEqual(needsOf(gate), ['changes', 'e2e-application']);
-  assert.equal(gate.if, 'always()');
-  assert.equal(gate['timeout-minutes'], 1);
-  assert.equal(gate.steps.length, 2);
-  // e2e/scripts/cache-primer.test.mjs finds the verdict by this name, runs it as a shell script and ends its block at the next step: the name stays, and a step follows.
-  assert.equal(gate.steps[0].name, 'Require canonical suite or explicit prose-only success');
-  assert.deepEqual(gate.steps[0].env, {
-    CHANGES: '${{ needs.changes.result }}',
-    SKIP: '${{ needs.changes.outputs.skip_host }}',
-    RESULT: '${{ needs.e2e-application.result }}',
-  });
-  assert.equal(gate.steps[1].name, 'Say why the suite was skipped');
-  assert.equal(gate.steps[1].if, "${{ needs.e2e-application.result == 'skipped' }}", 'it runs only after the verdict passed, and says something only when the suite was skipped');
-  assert.deepEqual(gate.steps[1].env, { CLASS: '${{ needs.changes.outputs.class }}' });
-});
-
-test('e2e-tests passes when the suite succeeded', () => {
-  assert.equal(e2eGate({}).status, 0);
-  assert.equal(e2eGate({ SKIP: 'true', RESULT: 'success' }).status, 0, 'a suite that ran and passed is a pass whatever the classifier said');
-});
-
-test('the verdict keeps the contract that e2e/scripts/cache-primer.test.mjs pins: given only the result of the suite, it accepts a successful one and nothing else', () => {
-  const [verdict] = jobOf('pr.yml', 'e2e-tests').steps;
-  for (const result of ['success', 'failure', 'cancelled', 'skipped', '', 'unavailable']) assert.equal(runStep(verdict, { RESULT: result }).status === 0, result === 'success', result);
-});
-
-for (const result of ['failure', 'cancelled', 'skipped', '', 'startup_failure']) {
-  test(`NEGATIVE: e2e-tests fails when the suite finished as ${result === '' ? 'nothing at all' : result} and the classifier did not skip it`, () => {
-    for (const skip of ['false', '', 'yes', 'TRUE']) {
-      const outcome = e2eGate({ SKIP: skip, RESULT: result });
-      assert.equal(outcome.status, 1, `${skip}: ${outcome.output}`);
-      assert.match(outcome.output, /^::error::/m);
-    }
-  });
-}
-
-test('e2e-tests passes when the classifier skipped the suite and it was skipped, and the step after it says why', () => {
-  const [, message] = jobOf('pr.yml', 'e2e-tests').steps;
-  for (const klass of ['docs', 'new-ui']) {
-    assert.equal(e2eGate({ SKIP: 'true', RESULT: 'skipped' }).status, 0, klass);
-    const said = runStep(message, { CLASS: klass });
-    assert.equal(said.status, 0, said.output);
-    assert.match(said.output, new RegExp(`e2e skipped by path: ${klass}`));
-    assert.match(said.summary, new RegExp(`skipped by path: ${klass}`));
-  }
-});
-
-test('NEGATIVE: a skip by path hides nothing else: e2e-tests fails when a suite that was meant to be skipped ran and failed or was cancelled', () => {
-  for (const result of ['failure', 'cancelled', 'startup_failure']) {
-    const outcome = e2eGate({ SKIP: 'true', RESULT: result });
-    assert.equal(outcome.status, 1, outcome.output);
-    assert.match(outcome.output, new RegExp(`^::error::e2e-application finished as ${result} `, 'm'));
-  }
-});
-
-test('NEGATIVE: e2e-tests fails when the classifier did not succeed and the suite was skipped: a skip then proves nothing', () => {
-  for (const changes of ['failure', 'cancelled', 'skipped', '']) {
-    for (const env of [{ SKIP: 'true', RESULT: 'skipped' }, { SKIP: '', RESULT: 'skipped' }]) {
-      const outcome = e2eGate({ CHANGES: changes, ...env });
-      assert.equal(outcome.status, 1, `${changes} ${JSON.stringify(env)}: ${outcome.output}`);
-      assert.match(outcome.output, /^::error::e2e-application finished as skipped \(the changed-path classification: (failure|cancelled|skipped|unknown),/m);
-    }
-  }
-});
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // The seam workflow names the scenario that failed (.github/workflows/ui-next-seam.yml, the step "The seam")
@@ -474,4 +362,66 @@ test('every scenario function of the seam check is named by the marker of its ow
   assert.ok(found.length >= 10, `the scenario functions with a marker: ${found.join(', ')}`);
   assert.ok(found.some((id) => id > 'n' && id.length === 1), `a scenario past n is in the check: ${found.join(', ')}`);
   assert.ok(found.some((id) => /\d/.test(id)), `a scenario with a digit is in the check: ${found.join(', ')}`);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The merged jobs (N31): seven jobs where there were thirteen, and every check of the six that were merged still runs
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const commandsOf = (id) => stepsOf('pr-checks.yml', id).map((step) => `${step.run ?? ''}\n${step.uses ?? ''}`).join('\n');
+
+test('N34: PR Checks is eight jobs and runs what the IDE needs (build, vet, tests, bindings, lint, type-check, component tests, the contracts); the old jobs\' checks are not gone, they are here or in the nightly workflow', () => {
+  assert.deepEqual(Object.keys(workflow['pr-checks.yml'].jobs), ['changes', 'repo-guard', 'go-checks', 'go-lint', 'c02-corpus', 'ui-build', 'ui-test', 'ui-checks']);
+  const mustRun = {
+    'go-checks': ['scripts/go-test-failures.test.mjs', 'task check:fmt-check', 'task check:go-build', 'task check:go-vet', 'task check:go-test GO_BUILD', 'task check:go-test-devcontrol', 'scripts/install-wails-cli.sh', 'task check:bindings-check', 'scripts/wails-tool.test.mjs'],
+    'go-lint': ['git worktree add --detach', 'golangci/golangci-lint-action@v9'],
+    // the C02 corpus and the UI runtime contract
+    'c02-corpus': ['task check:c02-corpus', 'task check:c02-runtime', 'scripts/wails-call.test.mjs', 'scripts/vitest-failures.test.mjs', 'vitest/vitest.mjs run --configLoader runner', 'scripts/vitest-failures.mjs "Runtime contract='],
+    // UI build, UI lint and kit contracts
+    'ui-build': ['scripts/react-compiler.test.mjs', 'task check:ui-build', 'scripts/ui-flavour.test.mjs', 'node --test scripts/ci/*.test.mjs', 'task packages', 'task check:ui-typecheck', 'task check:ui-lint', '@omniviewdev/kit run generate:check', '@omniviewdev/kit run test', '@omniviewdev/kit run api:check', '@omniviewdev/runtime run api:check'],
+    // UI component tests
+    'ui-test': ['task packages', 'ui/utils/ageClock.test.tsx', 'pnpm test --reporter', 'scripts/vitest-failures.mjs "Component tests='],
+  };
+  for (const [id, commands] of Object.entries(mustRun)) for (const command of commands) assert.ok(commandsOf(id).includes(command), `${id} lost: ${command}`);
+  // What left the pull request is in the nightly workflow, whole.
+  const nightly = (id) => stepsOf('pr.yml', id).map((step) => `${step.run ?? ''}\n${step.uses ?? ''}`).join('\n');
+  for (const command of ['build/homebrew/update-cask.test.mjs', 'bash -n build/darwin/build-universal.sh', 'bash -n build/darwin/verify-release-package.sh']) assert.ok(nightly('release-contracts').includes(command), `release-contracts lost: ${command}`);
+  for (const command of ['Test released-SDK connection profiles', 'go test']) assert.ok(JSON.stringify(stepsOf('pr.yml', 'windows-connection-profiles')).includes(command), `windows-connection-profiles lost: ${command}`);
+  for (const id of ['go-checks', 'go-lint', 'c02-corpus', 'ui-build', 'ui-test']) assert.equal(/homebrew|build-universal/.test(commandsOf(id)), false, `${id} still runs a release contract`);
+});
+
+test('N31: a group that comes after another in a merged job runs whatever happened before it (`!cancelled()`), so that one push shows every failing group as separate jobs did, and a cancelled job runs nothing more', () => {
+  // The exact condition of each step after the first group; the exceptions are named: the steps that name failures (`failure()` and `always()`: diagnostics), the lint (it needs its source), the package build (it has nothing to do after the build step made them).
+  const EXCEPTIONS = {
+    'go-checks: Name the failed Go tests in the job summary': 'failure()',
+    'ui-build: Build the workspace packages': "${{ !cancelled() && steps.frontend-build.outcome != 'success' }}",
+    'ui-test: Name the failed vitest tests in the job summary': 'always()',
+    'go-lint: Lint': "${{ !cancelled() && steps.lint-source.outcome == 'success' }}",
+  };
+  for (const [id, first] of [['go-checks', 'Install pinned private Wails CLI'], ['ui-build', 'Test the CI scripts'], ['ui-test', 'Component tests']]) {
+    const steps = stepsOf('pr-checks.yml', id);
+    const at = steps.findIndex((step) => step.name === first);
+    assert.ok(at > 0, `${id}: ${first}`);
+    for (const step of steps.slice(at)) {
+      const want = EXCEPTIONS[`${id}: ${step.name}`] ?? '${{ !cancelled() }}';
+      assert.equal(step.if, want, `${id}: the condition of "${step.name}"`);
+    }
+  }
+
+  const build = stepsOf('pr-checks.yml', 'ui-build').find((step) => step.name === 'Build');
+  assert.equal(build.id, 'frontend-build', 'the package build after it reads the outcome of this step');
+
+  const lint = stepsOf('pr-checks.yml', 'go-lint').find((step) => step.name === 'Lint');
+  assert.match(lint.if, /steps\.lint-source\.outcome == 'success'/, 'the lint reads its source: it does not run on a checkout that was not made');
+  for (const id of ['go-checks', 'go-lint', 'c02-corpus', 'ui-build', 'ui-test']) assert.equal(jobOf('pr-checks.yml', id)['continue-on-error'], undefined, id);
+  assert.ok(jobOf('pr-checks.yml', 'go-checks')['timeout-minutes'] >= 20 && jobOf('pr-checks.yml', 'ui-build')['timeout-minutes'] >= 20, 'a merged job is the sum of the jobs it replaced');
+});
+
+test('N34: a pull request runs PR Checks and nothing of the nightly workflow: no e2e, no Linux build, no Windows tests, no release contracts, and the nightly workflow is not triggered by a pull request', () => {
+  assert.deepEqual(Object.keys(workflow['pr.yml'].on).sort(), ['schedule', 'workflow_dispatch']);
+  assert.deepEqual(Object.keys(workflow['pr-checks.yml'].on), ['pull_request']);
+  assert.deepEqual(Object.keys(workflow['pr.yml'].jobs), ['windows-connection-profiles', 'release-contracts', 'cache-primer-go', 'cache-primer-ui', 'e2e-application', 'e2e-tests', 'build-artifacts']);
+  assert.equal(Object.hasOwn(workflow['pr.yml'].jobs, 'build-artifacts-windows'), false);
+  assert.equal(Object.keys(workflow['pr-checks.yml'].jobs).length, 8, 'the most a pull request runs: the classifier, the guard, Go (build and tests, lint), the corpus, the UI (build, tests) and the gate');
+  assert.equal(workflow['pr.yml'].concurrency['cancel-in-progress'], false);
 });

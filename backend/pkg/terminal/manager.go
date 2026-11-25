@@ -425,6 +425,9 @@ func (m *Manager) Start(opts Options, owner Owner) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
+	if err = checkLaunchEnv(opts.Env); err != nil {
+		return Session{}, err
+	}
 	if opts.Channel && owner != nil {
 		return Session{}, invalidError("a channel terminal belongs to no window: it takes no owner.")
 	}
@@ -523,6 +526,7 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if err != nil {
 		return nil, startError(err)
 	}
+	env = withLaunchEnv(env, opts.Env)
 	size := &pty.Winsize{Rows: rows, Cols: cols, X: 0, Y: 0}
 	started, err := m.spawnIntegrated(id, path, args, dir, env, size)
 	if err != nil {
@@ -689,6 +693,20 @@ func replaceEnvironment(env, set []string) []string {
 		}
 	}
 	return append(out, set...)
+}
+
+// withLaunchEnv is the environment a shell starts from with the caller's names set: a name already there takes the
+// value given. It is the base of terminalEnvironment and of the shell integration, which hands a ZDOTDIR or an
+// XDG_DATA_DIRS given here back to the shell as the user's.
+func withLaunchEnv(env []string, extra map[string]string) []string {
+	if len(extra) == 0 {
+		return env
+	}
+	set := make([]string, 0, len(extra))
+	for _, name := range slices.Sorted(maps.Keys(extra)) {
+		set = append(set, name+"="+extra[name])
+	}
+	return replaceEnvironment(env, set)
 }
 
 // wait reaps the shell and tells the reader the shell is gone.

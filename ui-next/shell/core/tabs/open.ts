@@ -202,7 +202,10 @@ export function open(state: TabsState, ctx: Context, destination: Destination, o
   return createTab(state, plan, { preview: source === 'search' && ctx.preferences().reusePreview });
 }
 
-/** Navigates a tab: pushes a new entry in its history, or replaces the current one (a change of scope), after asking about unsaved changes. */
+/**
+ * Navigates a tab: pushes a new entry in its history, or replaces the current one (a change of scope), after asking about unsaved changes. A place that another tab already shows is shown, and this tab stays where it is, when the page is a singleton (ch16 S26) and when the request
+ * says `reuse` (`NavigateOptions`): a change of scope to a place that is open is not a second copy of it.
+ */
 export function navigate(state: TabsState, ctx: Context, id: TabId, destination: Destination, options: NavigateOptions = {}): Step<TabResult> {
   const tab = state.tabs[id];
   if (!tab) {
@@ -218,8 +221,9 @@ export function navigate(state: TabsState, ctx: Context, id: TabId, destination:
     return unchanged(state);
   }
 
-  // A singleton page is one tab in the whole app (ch16 S26): going to it shows the tab that holds it, and this tab stays where it is.
-  const elsewhere = resolution.resolved.face.singleton ? findByKey(state, resolution.resolved.key) : undefined;
+  // A singleton page is one tab in the whole app (ch16 S26): going to it shows the tab that holds it, and this tab stays where it is. A request that says `reuse` asks the same of any place another tab already shows (N4 of the review of HM3b); with no other tab on it, the tab
+  // moves, as it was told to.
+  const elsewhere = resolution.resolved.face.singleton || options.reuse === true ? findByKey(state, resolution.resolved.key) : undefined;
   if (elsewhere && elsewhere.id !== id) {
     return { state: show(state, elsewhere.id), result: { status: 'done', id: elsewhere.id } };
   }

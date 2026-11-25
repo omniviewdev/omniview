@@ -1,0 +1,92 @@
+name: Main Windows build
+
+# The Windows compile gate, at night and on request (N30/N31/N34): it was a job of every pull request (322 s on a Windows runner); a break that only shows on Windows is found here, in the run that opens the
+# `ci-main-red` issue. The Windows tests of the connection profiles are in pr.yml (Nightly validation). The steps are the Linux build job's of pr.yml for Windows. NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN
+# (N34, the owner's order of 2026-11-25).
+on:
+  schedule:
+    - cron: "57 3 * * *"
+  workflow_dispatch:
+
+# A run on main is not cancelled by a newer push; a group keeps one pending run (a burst of merges can skip the ones between).
+concurrency:
+  group: main-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "26.13.0"
+  GO_VERSION: "1.27"
+
+jobs:
+  build-windows:
+    name: build-artifacts (windows/amd64)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GOWORK: "off"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wails v3
+        shell: bash
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
+
+      - name: Build workspace packages
+        shell: bash
+        run: task packages
+
+      - name: Check native Windows React compiler admission
+        run: node --test scripts/react-compiler.test.mjs
+
+      - name: Build frontend
+        shell: bash
+        run: task common:build:frontend
+
+      - name: Build Omniview
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          HOST_MODFILE="$(task --silent host:prepare)"
+          go build -o bin/Omniview -modfile="$HOST_MODFILE" -tags "production" -trimpath -buildvcs=false \
+            -ldflags "-w -s -H windowsgui \
+              -X github.com/omniviewdev/omniview/internal/version.Version=0.0.0-main.${{ github.run_number }} \
+              -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
+              -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+              -X github.com/omniviewdev/omniview/internal/version.Development=true \
+              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr"

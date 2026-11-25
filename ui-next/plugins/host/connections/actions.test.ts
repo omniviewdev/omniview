@@ -17,6 +17,7 @@ const entry = {
     pages: {
       items: { kind: 'list', definition: { title: 'Items' } },
       jobs: { kind: 'list', definition: { title: 'Jobs' } },
+      overview: { kind: 'overview', definition: { title: 'Overview' } },
       item: { kind: 'detail', definition: { list: { page: 'items', label: 'Items' } } },
       orphan: { kind: 'detail', definition: {} },
     },
@@ -55,14 +56,22 @@ function world(first: Route | undefined, outcome: Promise<ConnectOutcome> | Conn
 }
 
 describe('switching the tab on screen to another connection', () => {
-  it('starts the connection first and then replaces the tab\'s history entry with the same list page in the new connection', async () => {
+  it('starts the connection first and then replaces the tab\'s history entry with the same list page in the new connection, unless another tab already shows it (reuse)', async () => {
     const w = world(route('jobs', 'north'));
 
     await expect(w.actions.switchTab('t1', 'south')).resolves.toEqual({ ok: true });
 
     expect(w.connect).toHaveBeenCalledWith('acme', 'south');
-    expect(w.navigate).toHaveBeenCalledWith('t1', { route: route('jobs', 'south') }, { history: 'replace', source: 'connection' });
+    expect(w.navigate).toHaveBeenCalledWith('t1', { route: route('jobs', 'south') }, { history: 'replace', source: 'connection', reuse: true });
     expect(w.connect.mock.invocationCallOrder[0]).toBeLessThan(w.navigate.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it('keeps an overview page when the connection changes: it is the page of a scope, not of an object, so the new connection has its own and the tab does not go to a list', async () => {
+    const w = world(route('overview', 'north'));
+
+    await expect(w.actions.switchTab('t1', 'south')).resolves.toEqual({ ok: true });
+
+    expect(w.navigate).toHaveBeenCalledWith('t1', { route: route('overview', 'south') }, { history: 'replace', source: 'connection', reuse: true });
   });
 
   it('takes an object\'s page to the list it belongs to, since the object is the old connection\'s, and to the plugin\'s first page when it has none', async () => {

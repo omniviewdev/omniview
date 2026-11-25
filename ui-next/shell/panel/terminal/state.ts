@@ -86,11 +86,8 @@ function endedBy(snapshot: TerminalFeedSnapshot): string {
   }
 }
 
-/** Why input is off for a terminal this page lost, when its shell keeps running until its lease ends. */
-const LEASE_NOTE = 'Input is off. The shell keeps running until its lease ends.';
-
 /**
- * What this page lost, when it lost a terminal that still runs (T2-go `DETACHED`): who has it now, or that it was detached, or that the tab that took it has closed and nobody holds it (T2d: this page may take it back), and why
+ * What this page lost, when it lost a terminal that still runs (another stream took it): who has it now, or that the tab that took it has closed and nobody holds it (T2d: this page may take it back), and why
  * input is off. Nothing for a snapshot that has not ended, for one that lost nothing, and for one whose process is over: a page that lost a terminal still hears how it ended, and that is the later fact, which `endedBy` says.
  */
 function lossOf(snapshot: TerminalFeedSnapshot): { readonly words: string; readonly note: string } | undefined {
@@ -98,23 +95,17 @@ function lossOf(snapshot: TerminalFeedSnapshot): { readonly words: string; reado
     return undefined;
   }
 
-  const { by, free } = snapshot.detached;
-  if (free === true) {
+  if (snapshot.detached.free === true) {
     // The lane reads as the one sentence, the words and then the note: the tab that took the terminal has closed, and the shell keeps running until its lease ends.
     return { words: 'The tab that took this terminal has closed.', note: 'The shell keeps running until its lease ends.' };
   }
 
-  if (by === 'taken-over') {
-    return { words: 'Taken over by another tab', note: 'Input is off. The shell keeps running in the tab that took it.' };
-  }
-
-  // The owner let it go, or its window went away: the shell runs until its lease ends. A word this page does not know is read as a plain detachment.
-  return { words: by === 'window-retired' ? 'Detached with its window' : 'Detached', note: LEASE_NOTE };
+  return { words: 'Taken over by another tab', note: 'Input is off. The shell keeps running in the tab that took it.' };
 }
 
 /**
  * What a session is doing, in the mock's words for a terminal: Connecting (a first start) or Reattaching (a terminal the page is taking back: its program is known before the host has answered, where a first start learns
- * it from the answer), Connected, Ended (S116: Exited with code N when the producer said so; Taken over by another tab, Detached, Detached with its window, or that the tab that took it has closed, for a terminal this page
+ * it from the answer), Connected, Ended (S116: Exited with code N when the producer said so; Taken over by another tab, or that the tab that took it has closed, for a terminal this page
  * lost), Failed (to start). A session with no feed has ended.
  */
 export function stateWords(snapshot: TerminalFeedSnapshot | undefined): string {

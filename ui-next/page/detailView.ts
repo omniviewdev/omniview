@@ -117,15 +117,22 @@ export function deriveDetailModel(definition: DetailPageDefinition, params: Rout
   };
 }
 
-/** A section has something to say. One that has none is not drawn (design 13 OVW1): never an empty heading, never a placeholder. */
+/**
+ * A section has something to say. One that has none is not drawn (design 13 OVW1): never an empty heading, never a placeholder. A section is the plugin's data and is not trusted: a value that is no section at all is not drawn, as a kind this
+ * version does not know is not, and a section whose rows or items are not a list is DRAWN, so that its own card says it failed to display (`SectionBoundary`) and neither the page nor the other sections are lost to it.
+ */
 export function hasContent(section: DetailSection): boolean {
+  if (typeof section !== 'object' || section === null) {
+    return false;
+  }
+
   switch (section.kind) {
     case 'kv':
     case 'table':
     case 'list':
-      return section.rows.length > 0;
+      return !Array.isArray(section.rows) || section.rows.length > 0;
     case 'tags':
-      return section.items.length > 0;
+      return !Array.isArray(section.items) || section.items.length > 0;
   }
 
   // A kind this version does not draw (a plugin of a later contract): nothing to show, not a crash.

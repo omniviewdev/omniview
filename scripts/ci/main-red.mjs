@@ -1,5 +1,5 @@
 // ONE GitHub issue for what is red on main (N30): `.github/workflows/ci-main-red.yml` runs this when a workflow that checks main (the probes, the seam, the Pods check, the benchmarks, the profile, the macOS build) ends on main or in
-// the nightly run. A pull request runs less than main does (WebKit, no negative control: scripts/ci/ci-scope.mjs), so what only main runs can go red after a merge, and nothing would say so: a mail to whoever pushed is all GitHub does.
+// the nightly run. A pull request runs only PR Checks, so what only main runs can go red after a merge, and nothing would say so: a mail to whoever pushed is all GitHub does.
 //
 //   node scripts/ci/main-red.mjs        reads the finished run from the environment (below); creates, updates or closes the issue labelled `ci-main-red`
 //
@@ -94,8 +94,9 @@ export function gh(args, { input } = {}) {
 
 /** The last green run of the workflow on main that was created before this one, `{ sha, url }` or null. */
 export async function lastGreen({ ask, repository, workflowId, before, runId }) {
-  const text = await ask(['api', `repos/${repository}/actions/workflows/${workflowId}/runs?branch=main&status=success&per_page=30`, '--jq', '[.workflow_runs[] | {id, sha: .head_sha, url: .html_url, at: .created_at}]']);
-  const runs = JSON.parse(text).filter((run) => String(run.id) !== String(runId) && (before === undefined || before === '' || run.at < before));
+  const text = await ask(['api', `repos/${repository}/actions/workflows/${workflowId}/runs?branch=main&status=success&per_page=30`, '--jq', '[.workflow_runs[] | {id, sha: .head_sha, url: .html_url, at: .created_at, event, repo: .head_repository.full_name}]']);
+  // Only a push to main or the nightly run of this repository is a green baseline: a manual run (it may have asked for the pull request scope) did not run what main runs.
+  const runs = JSON.parse(text).filter((run) => String(run.id) !== String(runId) && MAIN_EVENTS.includes(run.event) && (run.repo === undefined || run.repo === repository) && (before === undefined || before === '' || run.at < before));
   return runs.length === 0 ? null : { sha: runs[0].sha, url: runs[0].url };
 }
 
@@ -110,10 +111,23 @@ export async function rangeSubjects({ ask, repository, good, bad }) {
   }
 }
 
-/** Is a run that ended `cancelled` red? Yes when one of its jobs failed or timed out (the verdict job of a shard that hit its timeout fails); no when it was only superseded. */
+/** What GitHub writes on a job that reached its `timeout-minutes` (it ends `cancelled`, like the run). */
+export const TIMEOUT_ANNOTATION = /exceeded the maximum execution time/i;
+
+/**
+ * Is a run that ended `cancelled` red? Yes when one of its jobs failed or timed out: a job that ended `failed`, `timed_out` or `startup_failure` (the verdict job of a shard that hit its timeout fails), and a job that ended `cancelled`
+ * with the annotation of a timeout ("The job has exceeded the maximum execution time of 30m0s"), which is how a hang of a workflow with no verdict job (a single job, like the Windows build) shows. No when it was only superseded.
+ */
 export async function cancelledIsRed({ ask, repository, runId }) {
-  const text = await ask(['api', `repos/${repository}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, '--jq', '[.jobs[].conclusion]']);
-  return JSON.parse(text).some((conclusion) => RED.includes(conclusion));
+  const text = await ask(['api', `repos/${repository}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, '--jq', '[.jobs[] | {id, conclusion}]']);
+  const jobs = JSON.parse(text);
+  if (jobs.some((job) => RED.includes(job.conclusion))) return true;
+  for (const job of jobs.filter((entry) => entry.conclusion === 'cancelled')) {
+    const found = await ask(['api', `repos/${repository}/check-runs/${job.id}/annotations?per_page=50`, '--jq', '[.[].message]']);
+    if (JSON.parse(found).some((message) => TIMEOUT_ANNOTATION.test(String(message)))) return true;
+  }
+
+  return false;
 }
 
 /** The open issue that carries the label (the lowest number when there are several), `{ number, body }` or null. */

@@ -193,6 +193,75 @@ describe('singleton pages (ch16 S9, S26): one tab in the whole app, whatever the
   });
 });
 
+// N4 of the review of HM3b: a place is one tab (ch16 S26), and a change of scope (the connection of the tab on screen) went to a place another tab already showed and left TWO tabs on it, both named alike. `open` shows the tab that shows the key; `navigate` moves the
+// tab it is told to, so it says `reuse` when the destination is a place that is open already.
+describe('navigating a tab to a place another tab shows (S26)', () => {
+  it('shows that tab and leaves this one where it is, with its route and its history, when the request says reuse: as a singleton page does', () => {
+    const h = boot({ home: false });
+    const north = h.open(stackPage('services', { connection: 'north' }));
+    const south = h.open(stackPage('services', { connection: 'south' }));
+    h.store.activate(north);
+    const before = tab(h, north);
+
+    const result = h.store.navigate(north, stackPage('services', { connection: 'south' }), { history: 'replace', reuse: true });
+
+    expect(result).toEqual({ status: 'done', id: south });
+    expect(h.active()).toBe(south);
+    expect(h.ids()).toEqual([north, south]);
+    expect(tab(h, north).location.route.params).toEqual({ connection: 'north' });
+    expect(tab(h, north).history).toBe(before.history);
+    expect(h.ids().filter((id) => tab(h, id).location.key === tab(h, south).location.key)).toEqual([south]);
+    sound(h);
+  });
+
+  it('shows the tab that is not on screen first, and asks no one about unsaved changes of the tab that stays', () => {
+    const h = boot({ home: false });
+    const north = h.open(stackPage('services', { connection: 'north' }));
+    const south = h.open(stackPage('services', { connection: 'south' }));
+    h.store.activate(north);
+    h.store.setUnsaved(north, true);
+
+    expect(h.store.navigate(north, stackPage('services', { connection: 'south' }), { history: 'replace', reuse: true })).toEqual({ status: 'done', id: south });
+    expect(tab(h, north).flags.unsaved).toBe(true);
+    expect(h.active()).toBe(south);
+  });
+
+  it('moves the tab to the place when no other tab shows it, with or without reuse', () => {
+    const h = boot({ home: false });
+    const north = h.open(stackPage('services', { connection: 'north' }));
+
+    expect(h.store.navigate(north, stackPage('services', { connection: 'south' }), { history: 'replace', reuse: true })).toMatchObject({ status: 'done', id: north });
+    expect(tab(h, north).location.route.params).toEqual({ connection: 'south' });
+    expect(h.ids()).toEqual([north]);
+
+    expect(h.store.navigate(north, stackPage('services', { connection: 'east' }), { history: 'replace' })).toMatchObject({ status: 'done', id: north });
+    expect(tab(h, north).location.route.params).toEqual({ connection: 'east' });
+    sound(h);
+  });
+
+  it('moves the tab there when the request does not say reuse, as it always did: two tabs may show one place, as New and Duplicate let them', () => {
+    const h = boot({ home: false });
+    const north = h.open(stackPage('services', { connection: 'north' }));
+    const south = h.open(stackPage('services', { connection: 'south' }));
+    h.store.activate(north);
+
+    expect(h.store.navigate(north, stackPage('services', { connection: 'south' }), { history: 'replace' })).toMatchObject({ status: 'done', id: north });
+
+    expect(tab(h, north).location.key).toBe(tab(h, south).location.key);
+    expect(h.active()).toBe(north);
+    sound(h);
+  });
+
+  it('changes nothing for a place the tab already shows, with reuse or without it', () => {
+    const h = boot({ home: false });
+    const north = h.open(stackPage('services', { connection: 'north' }));
+    const before = h.state();
+
+    expect(h.store.navigate(north, stackPage('services', { connection: 'north' }), { history: 'replace', reuse: true })).toEqual({ status: 'noop' });
+    expect(h.state()).toBe(before);
+  });
+});
+
 describe('preview tabs (ch16 S24)', () => {
   it('opens a search result as a preview, replaces it in place by the next preview, and makes it permanent on keep, pin and a second navigation', () => {
     const h = boot({ home: false });

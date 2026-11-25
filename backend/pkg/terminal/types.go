@@ -24,6 +24,15 @@ type Launch struct {
 	// Cwd is the directory the shell starts in: an absolute path to a directory that exists. Empty: the
 	// user's home. Anything else is refused, naming the field.
 	Cwd string `json:"cwd,omitempty"`
+	// Env is extra environment for the shell: name to value, added to the launch environment the shell starts from
+	// (T1-go.md 2.8.1), a name that is already there takes the value given. It is not the shell's login environment:
+	// the shell computes that itself, and the user's startup files may overwrite a name given here. A name is POSIX
+	// ([A-Za-z_][A-Za-z0-9_]*, at most MaxEnvName bytes) and is not one the host sets or strips (OMNIVIEW_*, PLUGIN_*,
+	// WAILS_*, GOWORK, the launching terminal's variables, TERM, COLORTERM, TERM_PROGRAM, TERM_PROGRAM_VERSION, PWD,
+	// SHELL); a value has no NUL and at most MaxEnvValue bytes; there are at most MaxEnvEntries names and MaxEnvBytes
+	// bytes of names and values in all. Anything else refuses the whole start, naming `launch.env.<NAME>`, and
+	// nothing starts. An error never carries a value.
+	Env map[string]string `json:"env,omitempty"`
 	// PageKey makes the terminal outlive the page that opened it, and is how a page that comes back finds it: the
 	// page makes one random key (a UUID in its sessionStorage serves), gives it here for every terminal it opens
 	// and gives it again to ListTerminals and AttachTerminal after a reload. A terminal with a key is not ended
@@ -67,6 +76,8 @@ type Options struct {
 	Cols    int
 	Rows    int
 	Cwd     string
+	// Env is the Launch's.
+	Env map[string]string
 	// PageKey and LeaseMs are the Launch's.
 	PageKey string
 	LeaseMs int

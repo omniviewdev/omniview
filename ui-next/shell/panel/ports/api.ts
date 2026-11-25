@@ -45,7 +45,7 @@ export type PortsDeps = {
   /** The names of the connections. Absent: the window has no connection data, and a forward's connection is a dash. */
   readonly names?: PortNames | undefined;
   readonly explain: (error: unknown) => Explained;
-  /** Runs `run` after `ms` milliseconds; answers the function that cancels it. The tool has one timer at most, started by a press of Copy address and gone with its answer. */
+  /** Runs `run` after `ms` milliseconds; answers the function that cancels it. The tool has one timer at most, started by a press of Copy and gone with its answer. */
   readonly schedule: (run: () => void, ms: number) => () => void;
   /**
    * Runs `run` at the window's next frame, never at once; answers the function that cancels it. The store asks for one at a time, and only when the host has said something: what the host says in a burst of tasks is one snapshot, shown in one

@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - ubuntu-slim
+    - macos-15-intel
+    - omniview

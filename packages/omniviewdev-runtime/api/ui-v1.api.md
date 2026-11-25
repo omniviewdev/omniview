@@ -146,6 +146,66 @@ export class ConnectionLifecycle {
 }
 
 // @public (undocumented)
+export type ConnectionMetadataEntry = {
+    state: 'current';
+    value: ConnectionMetadataValue;
+    observedAt: string;
+} | {
+    state: 'stale';
+    value: ConnectionMetadataValue;
+    observedAt: string;
+    error?: ConnectionMetadataError;
+} | {
+    state: 'unavailable';
+    error: ConnectionMetadataError;
+};
+
+// @public (undocumented)
+export interface ConnectionMetadataError {
+    // (undocumented)
+    code: string;
+    // (undocumented)
+    message: string;
+}
+
+// @public (undocumented)
+export interface ConnectionMetadataSnapshot {
+    // (undocumented)
+    active: boolean;
+    // (undocumented)
+    connectionID: string;
+    // (undocumented)
+    entries: Record<string, ConnectionMetadataEntry>;
+    // (undocumented)
+    generation: string;
+    // (undocumented)
+    lastRefreshError?: ConnectionMetadataError;
+    // (undocumented)
+    refreshing: boolean;
+    // (undocumented)
+    revision: string;
+}
+
+// @public (undocumented)
+export interface ConnectionMetadataState {
+    // (undocumented)
+    error?: unknown;
+    // (undocumented)
+    isLoading: boolean;
+    // (undocumented)
+    snapshot?: ConnectionMetadataSnapshot;
+    // (undocumented)
+    supported: boolean | undefined;
+    // (undocumented)
+    transportAvailable: boolean;
+}
+
+// @public (undocumented)
+export type ConnectionMetadataValue = null | boolean | number | string | ConnectionMetadataValue[] | {
+    [key: string]: ConnectionMetadataValue;
+};
+
+// @public (undocumented)
 export interface ConnectionReadiness {
     // (undocumented)
     connect: () => Promise<void>;
@@ -641,6 +701,19 @@ export interface SourcePage {
 
 // @public (undocumented)
 export type SourceSessionState = 'opening' | 'snapshotting' | 'following' | 'finished' | 'resetRequired' | 'failed' | 'closed';
+
+// @public
+export function useConnectionMetadata(input: UseConnectionMetadataOptions): ConnectionMetadataState & {
+    refresh: () => Promise<void>;
+};
+
+// @public (undocumented)
+export interface UseConnectionMetadataOptions {
+    connectionID: string | undefined;
+    enabled?: boolean;
+    // (undocumented)
+    pluginID?: string;
+}
 
 // @public
 export function useConnectionReadiness(input: UseConnectionReadinessOptions): ConnectionReadiness;

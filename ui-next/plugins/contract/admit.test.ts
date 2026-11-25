@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ShellTreeNode } from '../../shell';
 import { ContractError } from '../loader/failure';
 import { admit, admitOrThrow, openable, CONTRIBUTION_EXPORT_V1 } from './admit';
-import type { ContributionV1, ListPageDefinition, SidebarNodeV1 } from './v1';
+import type { ContributionV1, ListPageDefinition, PageV1, SidebarNodeV1 } from './v1';
 
 // Admission reads what a bundle hands the host as `unknown`. Each test breaks one thing in an otherwise good contribution, and the problem must name it:
 // that is what a plugin author reads in the log. The names are invented (Acme, widgets); the host knows no plugin.
@@ -75,7 +75,7 @@ describe('admit', () => {
     ['a sidebar hook that is not a function', contribution({ sidebar: sidebar({ useNodes: 'yes' }) }), 'sidebar.useNodes is not a function'],
     ['a home that is not a page', contribution({ home: 'gadgets' }), 'home "gadgets" is not one of the pages'],
     ['no pages', contribution({ pages: {} }), 'pages is not an object with a page in it'],
-    ['a page of a kind this version does not draw', contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }), 'pages.widgets.kind is "dashboard", and this version draws "list" and "detail" pages'],
+    ['a page of a kind this version does not draw', contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }), 'pages.widgets.kind is "dashboard", and this version draws "list", "detail" and "overview" pages'],
     ['a page without a data hook', contribution({ pages: { widgets: page({ usePage: undefined }) } }), 'pages.widgets.usePage is not a function'],
     ['a page without a title', contribution({ pages: { widgets: page({ definition: definition({ title: '' }) }) } }), 'pages.widgets.definition.title is not a non-empty string'],
     ['a page without nouns', contribution({ pages: { widgets: page({ definition: definition({ nouns: { one: 'Widget' } }) }) } }), 'pages.widgets.definition.nouns needs "one" and "other"'],
@@ -227,8 +227,8 @@ describe('admit: the detail page (a minor addition to version 1)', () => {
     expect(admission.ok && admission.contribution).toBe(before);
   });
 
-  it('words a kind this version does not draw with both kinds it does', () => {
-    expect(problemsOf(contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }))).toContain('pages.widgets.kind is "dashboard", and this version draws "list" and "detail" pages');
+  it('words a kind this version does not draw with the three kinds it does', () => {
+    expect(problemsOf(contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }))).toContain('pages.widgets.kind is "dashboard", and this version draws "list", "detail" and "overview" pages');
   });
 
   it.each([
@@ -272,6 +272,114 @@ describe('admit: the detail page (a minor addition to version 1)', () => {
     ];
 
     expect(openable(nodes, { widgets: page(), widget: detailPage() })).toEqual([{ id: 'widgets', label: 'Widgets', icon: 'box' }]);
+  });
+});
+
+// The overview page was added to contract version 1 as a minor addition (HM3; the rule is at the head of `v1.ts`): the page of a SCOPE (a connection), where the detail page is the page of an object. What a bundle written
+// before it said is read as before (the tests above are unchanged), and what a host that lacks it meets is a refusal by name: that host reads `kind` as `list` or `detail` only, so a bundle that writes `overview` is refused at
+// admission, in the words its own check had: `pages.<id>.kind is "overview", and this version draws "list" and "detail" pages`, which is what the first test below prints when it runs against that host's admission.
+const overviewDefinition = (patch: Loose = {}): Loose => ({
+  title: 'Overview',
+  tile: { icon: 'server', tone: 'blue' },
+  tabs: [{ id: 'overview', label: 'Overview' }],
+  ...patch,
+});
+
+const overviewPage = (patch: Loose = {}): Loose => ({ kind: 'overview', definition: overviewDefinition(), usePage: () => ({}), ...patch });
+
+describe('admit: the overview page (a minor addition to version 1)', () => {
+  it('admits a contribution with an overview page beside its list page, and hands back the plugin\'s own object', () => {
+    const value = contribution({ pages: { widgets: page(), overview: overviewPage() } });
+    // The problems first: a host that does not know the page says, by name, what it does not draw.
+    expect(problemsOf(value)).toEqual([]);
+
+    const admission = admit(exportsOf(value));
+    expect(admission.ok && admission.contribution).toBe(value);
+  });
+
+  it('admits an overview page as the home of the plugin and as an entry of its sidebar: it needs no object, so the window can open it', () => {
+    const value = contribution({
+      pages: { overview: overviewPage(), widgets: page() },
+      home: 'overview',
+      sidebar: sidebar({ nodes: [{ id: 'overview', label: 'Overview', icon: 'server' }, { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box' }] }] }),
+    });
+
+    expect(problemsOf(value)).toEqual([]);
+  });
+
+  it('admits an overview page that has only a title, a tile and tabs: no identity and no list, which is what makes it the page of a scope', () => {
+    const value = contribution({ pages: { widgets: page(), overview: overviewPage({ definition: { title: 'Overview', tile: { icon: 'server' }, tabs: [{ id: 'overview', label: 'Overview' }, { id: 'more', label: 'More', icon: 'box' }] } }) } });
+
+    expect(problemsOf(value)).toEqual([]);
+  });
+
+  it('words a page of another kind with the three kinds this version draws', () => {
+    expect(problemsOf(contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }))).toEqual(['pages.widgets.kind is "dashboard", and this version draws "list", "detail" and "overview" pages']);
+  });
+
+  it.each([
+    ['an overview page without a title', overviewPage({ definition: overviewDefinition({ title: ' ' }) }), 'pages.overview.definition.title is not a non-empty string'],
+    ['an overview page without a tile', overviewPage({ definition: overviewDefinition({ tile: {} }) }), 'pages.overview.definition.tile needs an icon'],
+    ['an overview page whose tile is not an object', overviewPage({ definition: overviewDefinition({ tile: 'server' }) }), 'pages.overview.definition.tile needs an icon'],
+    ['no tabs', overviewPage({ definition: overviewDefinition({ tabs: [] }) }), 'pages.overview.definition.tabs is not a list with a tab in it'],
+    ['tabs that are not a list', overviewPage({ definition: overviewDefinition({ tabs: 'overview' }) }), 'pages.overview.definition.tabs is not a list with a tab in it'],
+    ['a tab without a label', overviewPage({ definition: overviewDefinition({ tabs: [{ id: 'overview' }] }) }), 'pages.overview.definition.tabs[0] needs an id and a label'],
+    ['two tabs with one id', overviewPage({ definition: overviewDefinition({ tabs: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }] }) }), 'pages.overview.definition.tabs[1].id "a" is used twice'],
+    ['an overview page without a data hook', overviewPage({ usePage: undefined }), 'pages.overview.usePage is not a function'],
+    ['an overview page whose definition is not an object', overviewPage({ definition: 'Overview' }), 'pages.overview.definition is not an object'],
+  ])('refuses %s, in the words of its own member', (_name, overview, expected) => {
+    expect(problemsOf(contribution({ pages: { widgets: page(), overview } }))).toContain(expected);
+  });
+
+  it('refuses a definition one member at a time: each problem is that member\'s alone, and no other is added', () => {
+    expect(problemsOf(contribution({ pages: { widgets: page(), overview: overviewPage({ definition: overviewDefinition({ title: '' }) }) } }))).toEqual(['pages.overview.definition.title is not a non-empty string']);
+    expect(problemsOf(contribution({ pages: { widgets: page(), overview: overviewPage({ definition: overviewDefinition({ tile: {} }) }) } }))).toEqual(['pages.overview.definition.tile needs an icon']);
+    expect(problemsOf(contribution({ pages: { widgets: page(), overview: overviewPage({ definition: overviewDefinition({ tabs: [] }) }) } }))).toEqual(['pages.overview.definition.tabs is not a list with a tab in it']);
+  });
+
+  it('still refuses a detail page as an entry of the sidebar and as home beside an overview page that is both: only the detail page needs an object', () => {
+    const widget = detailPage({ definition: detailDefinition({ list: undefined }) });
+    const value = contribution({
+      pages: { overview: overviewPage(), widget },
+      home: 'overview',
+      sidebar: sidebar({ nodes: [{ id: 'overview', label: 'Overview', icon: 'server' }, { id: 'widget', label: 'Widget', icon: 'box' }] }),
+    });
+
+    expect(problemsOf(value)).toEqual(['the sidebar entry "widget" opens a detail page, which needs an object']);
+    expect(problemsOf({ ...value, home: 'widget' })).toContain('home "widget" is a detail page, which needs an object: the window could not open it');
+  });
+
+  it('offers an overview page as an entry the sidebar\'s data hook answered, where a detail page is not offered: it opens with no object', () => {
+    const nodes: readonly SidebarNodeV1[] = [
+      { id: 'overview', label: 'Overview', icon: 'server' },
+      { id: 'widget', label: 'Widget', icon: 'box' },
+      { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'overview', label: 'Overview again', icon: 'server' }, { id: 'ghost', label: 'Ghost', icon: 'box' }] },
+    ];
+
+    expect(openable(nodes, { overview: overviewPage(), widget: detailPage() })).toEqual([
+      { id: 'overview', label: 'Overview', icon: 'server' },
+      { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'overview', label: 'Overview again', icon: 'server' }] },
+    ]);
+  });
+
+  it('reads the tabs of an overview page as it reads those of a detail page: one check, the same words with the page\'s own place', () => {
+    const bad = { tabs: [{ id: 'a', label: 'A' }, { id: 'a', label: 'B' }, { id: 'c' }] };
+    const overview = problemsOf(contribution({ pages: { widgets: page(), overview: overviewPage({ definition: overviewDefinition(bad) }) } }));
+    const detail = problemsOf(contribution({ pages: { widgets: page(), widget: detailPage({ definition: detailDefinition(bad) }) } }));
+
+    expect(overview.map((problem) => problem.replace('pages.overview.', 'pages.page.'))).toEqual(detail.map((problem) => problem.replace('pages.widget.', 'pages.page.')));
+    expect(overview).toHaveLength(2);
+  });
+
+  it('is the same in types: an overview page is a page of the contribution, with the definition and the hook the contract names', () => {
+    const overview: PageV1 = {
+      kind: 'overview',
+      definition: { title: 'Overview', tile: { icon: 'server' }, tabs: [{ id: 'overview', label: 'Overview' }] },
+      usePage: () => ({ source: { state: { kind: 'loading' }, view: undefined, refreshing: false, refresh: async () => undefined } }),
+    };
+    const pages: ContributionV1['pages'] = { overview };
+
+    expect(pages.overview?.kind).toBe('overview');
   });
 });
 

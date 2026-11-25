@@ -1,7 +1,6 @@
 name: CI main red
 
-# ONE GitHub issue, labelled `ci-main-red`, for what is red on main (N30, scripts/ci/main-red.mjs). A pull request runs less than main does (the probes and the seam in WebKit, no negative control, scripts/ci/ci-scope.mjs says
-# which), so a failure that only main's run or the nightly run can see must not rot unseen: when one of the workflows below ends red on main (a push or the nightly run) the issue is created or updated with the workflow,
+# ONE GitHub issue, labelled `ci-main-red`, for what is red on main (N30, scripts/ci/main-red.mjs). A pull request runs only what the IDE needs to build and pass its unit tests (N34, the owner's order: PR Checks); everything else runs at night and on request (the seam, the probes, the Pods cluster check, the application suite, the builds, the Windows tests, the benchmarks), so a failure that only the nightly run can see must not rot unseen: when one of the workflows below ends red on main (a push or the nightly run) the issue is created or updated with the workflow,
 # the first failing run and the range of commits since the last green run of that workflow on main (the first bad commit is in it), and when the workflow is green again its row leaves; the issue closes when none is left.
 #
 # `workflow_run` runs this file as it is on the default branch. A run that is not this repository's main, started by a push or the nightly schedule, is ignored by the job's condition; a skipped one says nothing about main, and a cancelled one is read from its jobs (a shard that hit its timeout).
@@ -14,6 +13,8 @@ on:
       - Render Benchmarks
       - Whole-App Profile
       - Main macOS universal
+      - Main Windows build
+      - Nightly validation
     types: [completed]
 
 # One update at a time: two workflows ending together must not write the issue over each other. Nothing is cancelled.

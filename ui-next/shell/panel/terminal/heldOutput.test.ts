@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createHeldOutput } from './heldOutput';
 
-// The output a session holds for the view that draws it: the base64 text of each chunk exactly as it came (nothing is decoded while nobody reads, so a hidden terminal costs a push). It drops nothing: the
-// producer's pacing is the only bound on what waits here (execFeed.test.ts, 'flow control'). It is the "buffer keeps it" of a hidden panel (docs/ui-next/status/T1.md, docs/ui-next/status/T2a.md).
+// The output a session holds for the view that draws it: the bytes of each frame exactly as they came (a hidden terminal costs a push and a sum). It drops nothing: the host's flow control is the only bound on what
+// waits here (flow.test.ts). It is the "buffer keeps it" of a hidden panel (docs/ui-next/status/T1.md, docs/ui-next/status/T2a.md).
 
-const chunk = (text: string): string => btoa(text);
+const chunk = (text: string): Uint8Array => new TextEncoder().encode(text);
+const texts = (taken: { readonly chunks: readonly Uint8Array[] }): string[] => taken.chunks.map((one) => new TextDecoder().decode(one));
 
 describe('the output a session holds', () => {
   it('hands back what it was given in order, once, and holds nothing after', () => {
@@ -13,13 +14,13 @@ describe('the output a session holds', () => {
     held.push(chunk('two'));
     held.push(chunk('three'));
     const taken = held.take();
-    expect(taken.texts).toEqual([chunk('one'), chunk('two'), chunk('three')]);
+    expect(texts(taken)).toEqual(['one', 'two', 'three']);
     expect(taken.bytes).toBe(11);
-    expect(held.take()).toEqual({ texts: [], bytes: 0 });
+    expect(held.take()).toEqual({ chunks: [], bytes: 0 });
     expect(held.bytes()).toBe(0);
   });
 
-  it('counts the bytes it holds without decoding them', () => {
+  it('counts the bytes it holds', () => {
     const held = createHeldOutput();
     held.push(chunk('abcd'));
     held.push(chunk('ef'));
@@ -28,14 +29,14 @@ describe('the output a session holds', () => {
 
   it('drops NOTHING, however much it is given: a hundred thousand chunks of a pty read\'s size all come back, in order (the producer\'s pacing is the bound, the hold throws no byte away)', () => {
     const held = createHeldOutput();
-    const text = btoa('y'.repeat(20_480));
+    const text = chunk('y'.repeat(20_480));
     for (let index = 0; index < 100_000; index += 1) {
       held.push(text);
     }
 
     expect(held.bytes()).toBe(100_000 * 20_480);
     const taken = held.take();
-    expect(taken.texts).toHaveLength(100_000);
+    expect(taken.chunks).toHaveLength(100_000);
     expect(taken.bytes).toBe(100_000 * 20_480);
     expect(held.bytes()).toBe(0);
   });
@@ -46,20 +47,20 @@ describe('the output a session holds', () => {
     held.push(chunk('bbbb'));
     held.push(chunk('cccc'));
     const first = held.take(5);
-    expect(first.texts).toEqual([chunk('aaaa'), chunk('bbbb')]);
+    expect(texts(first)).toEqual(['aaaa', 'bbbb']);
     expect(first.bytes).toBe(8);
     expect(held.bytes()).toBe(4);
     const second = held.take(5);
-    expect(second.texts).toEqual([chunk('cccc')]);
+    expect(texts(second)).toEqual(['cccc']);
     expect(held.bytes()).toBe(0);
   });
 
   it('always hands back at least one chunk when it holds one, however little is asked for: a reader that asks for less than a chunk must still make progress', () => {
     const held = createHeldOutput();
     held.push(chunk('aaaaaaaa'));
-    expect(held.take(1).texts).toEqual([chunk('aaaaaaaa')]);
+    expect(texts(held.take(1))).toEqual(['aaaaaaaa']);
     held.push(chunk('bb'));
-    expect(held.take(0).texts).toEqual([chunk('bb')]);
+    expect(texts(held.take(0))).toEqual(['bb']);
   });
 
   it('reads a long backlog in slices without losing or repeating a chunk, and without holding the chunks it already gave back', () => {
@@ -70,7 +71,7 @@ describe('the output a session holds', () => {
 
     const seen: string[] = [];
     for (let guard = 0; guard < 10_000 && held.bytes() > 0; guard += 1) {
-      seen.push(...held.take(40).texts.map((text) => atob(text)));
+      seen.push(...texts(held.take(40)));
       if (guard === 100) {
         held.push(chunk('last'));
       }
@@ -82,11 +83,18 @@ describe('the output a session holds', () => {
     expect(new Set(seen).size).toBe(5_001);
   });
 
+  it('hands back the very arrays it was given: the bytes are the caller\'s to keep, and nothing is copied', () => {
+    const held = createHeldOutput();
+    const one = chunk('one');
+    held.push(one);
+    expect(held.take().chunks[0]).toBe(one);
+  });
+
   it('can drop what it holds: a session that was closed has no reader to wait for', () => {
     const held = createHeldOutput();
     held.push(chunk('abc'));
     held.clear();
     expect(held.bytes()).toBe(0);
-    expect(held.take()).toEqual({ texts: [], bytes: 0 });
+    expect(held.take()).toEqual({ chunks: [], bytes: 0 });
   });
 });

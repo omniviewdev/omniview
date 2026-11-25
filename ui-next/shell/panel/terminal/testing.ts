@@ -1,6 +1,6 @@
 import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
-import type { ExecTransport } from './execFeed';
-import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay } from './feed';
+import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
+import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -24,11 +24,10 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly acks: () => readonly number[];
   /** Tells the listeners without changing anything: what a feed does when held output became readable. */
   readonly wake: () => void;
-  /** How many times `leave` was called, and `redraw`, and `rejoin` (the page's events came back after a gap). */
+  /** How many times `leave` was called, and `redraw`. */
   readonly left: () => number;
   readonly redraws: () => number;
-  readonly rejoins: () => number;
-  /** A replay arrives now, as when a rejoin found that the host's ring no longer reaches back to what the screen has: the next `takeReplay` gives it once, `read` gives nothing until it is taken, the output held and unread is dropped (it is older), and the listeners are told. Throws, before anything changes, on a feed that has no `takeReplay` (made with neither `rejoin` nor `replay`). */
+  /** A replay arrives now, as when the host's ring no longer reaches back to what the screen has (a gap, a reconnect that lost bytes): the next `takeReplay` gives it once, `read` gives nothing until it is taken, the output held and unread is dropped (it is older), and the listeners are told. Throws, before anything changes, on a feed that has no `takeReplay` (made with neither `takeReplay` nor `replay`). */
   readonly offerReplay: (replay: TerminalReplay) => void;
   /** The reader took the replay that was offered last (or the one the feed was made with). */
   readonly replayTaken: () => boolean;
@@ -40,14 +39,14 @@ export type FakeTerminalFeedOptions = {
   readonly close?: (() => Promise<void> | void) | undefined;
   /** What the feed answers when it is asked what runs in it; default: the feed cannot tell (it has no such member). */
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
-  /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`, unless `rejoin` says it has). */
+  /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`, unless `takeReplay` says it has). */
   readonly replay?: TerminalReplay | undefined;
-  /** The feed has a `leave` (it started a terminal with a key, which outlives its page), counted by `left`. Default: it has none. */
+  /** The feed has a `leave`, counted by `left`. Default: it has none. */
   readonly leave?: boolean | undefined;
   /** The feed has a `redraw`, counted by `redraws`. Default: it has none. */
   readonly redraw?: boolean | undefined;
-  /** The feed has a `rejoin`, counted by `rejoins`, and a `takeReplay` that can be given a replay at any time (`offerReplay`), as a feed that has a key does. Default: it has neither. */
-  readonly rejoin?: boolean | undefined;
+  /** The feed has a `takeReplay` that can be given a replay at any time (`offerReplay`), as a feed of the channel has. Default: it has none. */
+  readonly takeReplay?: boolean | undefined;
 };
 
 /** A feed that is `running` (or in the state asked for) and holds nothing. */
@@ -69,7 +68,6 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   let offered = options.replay === undefined ? 0 : 1;
   let left = 0;
   let redraws = 0;
-  let rejoins = 0;
 
   const tell = () => {
     for (const listener of [...listeners]) {
@@ -86,8 +84,8 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
 
   const offerReplay = (replay: TerminalReplay) => {
     // A feed with no `takeReplay` has nobody to give the replay to: offering one is a mistake of the test, and it is made before anything changes.
-    if (options.replay === undefined && options.rejoin !== true) {
-      throw new Error('this fake feed has no `takeReplay`: make it with `rejoin: true` or a `replay` before offering it one');
+    if (options.replay === undefined && options.takeReplay !== true) {
+      throw new Error('this fake feed has no `takeReplay`: make it with `takeReplay: true` or a `replay` before offering it one');
     }
 
     waiting = replay;
@@ -105,10 +103,6 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
 
   const redraw = () => {
     redraws += 1;
-  };
-
-  const rejoin = () => {
-    rejoins += 1;
   };
 
   return {
@@ -165,13 +159,11 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       acks.push(bytes);
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
-    ...(options.replay === undefined && options.rejoin !== true ? {} : { takeReplay }),
+    ...(options.replay === undefined && options.takeReplay !== true ? {} : { takeReplay }),
     ...(options.leave === true ? { leave } : {}),
     ...(options.redraw === true ? { redraw } : {}),
-    ...(options.rejoin === true ? { rejoin } : {}),
     left: () => left,
     redraws: () => redraws,
-    rejoins: () => rejoins,
     offerReplay,
     replayTaken: () => offered > 0 && waiting === undefined,
     listeners: () => subscribed,
@@ -206,6 +198,8 @@ export type FakeEngine = Engine & {
   readonly text: () => string;
   /** The `done` callbacks not yet called: what the emulator has accepted and not parsed. */
   readonly pendingWrites: () => number;
+  /** The bytes of the writes the emulator has PARSED (their done callback ran), as against `writes`, which holds what it was handed. */
+  readonly parsedBytes: () => number;
   /** Parses the oldest accepted writes: calls their callbacks. */
   readonly complete: (count?: number) => void;
   readonly resizes: ReadonlyArray<readonly [number, number]>;
@@ -290,6 +284,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   const labels: Array<readonly [string, string]> = [];
   const writeSizes: Array<readonly [number, number]> = [];
   const emitted: string[] = [];
+  let parsedBytes = 0;
   const answers = config.answers ?? [];
   const dataListeners = new Set<(data: string, user: boolean) => void>();
   const selectionListeners = new Set<() => void>();
@@ -359,6 +354,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     resets: () => writes.reduce((sum, data) => sum + (typeof data === 'string' ? data.split('\u001bc').length - 1 : 0), 0),
     screenReaderModes,
     text: () => writes.map((data) => (typeof data === 'string' ? data : new TextDecoder().decode(data))).join(''),
+    parsedBytes: () => parsedBytes,
     pendingWrites: () => waiting.filter((done) => done !== undefined).length,
     complete: (count = Number.POSITIVE_INFINITY) => {
       let left = count;
@@ -395,6 +391,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       writeSizes.push([size.cols, size.rows]);
       // What a real emulator answers to a query it parses goes out as it parses the bytes, just before it says it has: a reply is the emulator's own output, in the middle of the stream.
       const parsed = () => {
+        parsedBytes += typeof data === 'string' ? 0 : data.length;
         answer(data);
         done?.();
       };
@@ -576,599 +573,292 @@ export function fakeEngineLoader(config: FakeEngineOptions & { readonly deferred
   };
 }
 
-// ---- a host with the credit flow control, for the tests of the whole data path ---------------------------------------------------------------------------------------------------------------------------
+// ---- the terminal channel, for the tests of the feed and of the whole data path ----------------------------------------------------------------------------------------------------------------------------
 //
-// What backend/pkg/terminal/flow.go does, as far as a page can tell (docs/ui-next/status/T1-go.md 2.8.6): the host counts the bytes it delivered that nobody has credited; at the high mark it STOPS READING the pty, so
-// the shell waits in its own write; it reads again when the count is down to the low mark. Until the client's first acknowledgement the transport credits what it took (here: at once, the page takes every event); from
-// the first on only the client's acknowledgements credit. The bytes the shell writes are a counting sequence (0, 1, ... 250, 0, ...), so a test can tell that every byte arrived, once, in order; `say` writes the
-// exact bytes a test gives. What the page types and the sizes it sends are recorded with their call numbers (`inputs`): the host puts them in order by the number, whatever order they reach it in, and nothing here
-// changes their order.
-//
-// A terminal started with a page key is the host of docs/ui-next/status/T2-go.md (backend/pkg/terminal/reattach.go): its output comes as `{offset, data}` events and is kept in a ring of whole reads, so that a
-// page that comes back is answered with a replay and the live output continues at its end; a window that goes away, or a page that leaves, DETACHES it (the reader is held, a lease runs: `expire` ends it); an attach
-// takes it over for a new window, with the next attachment number, and tells the window that held it (`DETACHED`); a shell that ends by itself leaves its end and its output for a page that comes back (a
-// tombstone), until `CloseSession` dismisses it. Every event goes to every window, as on the real host. A window is a `HostPage`: its events can be held (`hold`) and released, to put an event of the host on the far
-// side of the answer of a call, as the field showed (7 in 2,051 reattaches: an event the replay holds reaches the page after the answer). The host's input queue counts the numbered calls and refuses a number it has
-// passed (`SEQUENCE_STALE`), so a page that numbers from 1 after a reattach is seen; the answers to an attach and to a list state the number the queue takes next (`next_input_seq`, host #675: at least 1 while the terminal
-// runs, 0 once it ended), the list's as of the list and the attach's as of the attach, since the window that holds the terminal can write between the two. An attach may ask from an offset (`from_offset`: the page has the output
-// below it), and is answered from there, or, when the ring has moved past it, from the oldest byte kept; a window whose events connection drops (`disconnect`) loses what the host emits meanwhile for good, and asks again
-// (T2d); a window that attaches the terminal it holds is told of its own takeover (`DETACHED`, with the old number).
+// `TerminalChannels` (channel.ts) as the tests drive it: the test is the host. Every stream the feed opens is a `FakeStream` the test speaks on frame by frame (`ready`, `output`, `gap`, `ended`, `takenOver`,
+// `notFound`, `drop`), and what the feed sent on it is recorded as frames (`sent`), in the order it sent them. The contract of channel.ts is kept as the real one keeps it: a stream is over after one of the
+// four ends or after the feed closed it, and the host's frames after that, like the feed's, are mistakes of the test (the host's throw, the feed's are dropped and counted). The calls that answer (`create`, `close`, `dismiss`,
+// `busy`, `list`, `listed`) are answered by what the test gives, and may be answered by a promise the test holds. Nothing here is a host: no ring, no credit, no timers.
 
-/** An input call the page made, with the number it carried: a write as the text the host's pty would read, a size as the binding takes it (rows, then columns). */
-export type HostInput =
-  | { readonly kind: 'write'; readonly seq: number; readonly text: string }
-  | { readonly kind: 'resize'; readonly seq: number; readonly rows: number; readonly cols: number };
+/** What the feed sent on a stream, in order. `input` carries the bytes as text, as the shell would read them. */
+export type SentFrame =
+  | { readonly kind: 'input'; readonly bytes: Uint8Array; readonly text: string }
+  | { readonly kind: 'resize'; readonly cols: number; readonly rows: number }
+  | { readonly kind: 'ack'; readonly bytes: number }
+  | { readonly kind: 'detach' };
 
-/** What the host answered to an attach: the window, the offset the page asked from, and where the replay starts and ends (the live output continues at `end`). */
-export type HostReplay = { readonly page: number; readonly from: number | undefined; readonly start: number; readonly end: number };
-
-/** A call about the life of a terminal that a window made, in the order they reached the host. `page` is the index of the window (0 is the one the host starts with). */
-export type HostCall =
-  | { readonly kind: 'create'; readonly page: number; readonly pageKey: string | undefined }
-  | { readonly kind: 'list'; readonly page: number; readonly pageKey: string }
-  | { readonly kind: 'attach'; readonly page: number; readonly pageKey: string; readonly fromOffset: number | undefined }
-  | { readonly kind: 'detach'; readonly page: number; readonly pageKey: string }
-  | { readonly kind: 'close'; readonly page: number };
-
-/** The modes of a terminal as the host states them on the wire (`terminal.TerminalModes`). */
-export type HostModes = {
-  readonly known: boolean;
-  readonly alt_screen: boolean;
-  readonly bracketed_paste: boolean;
-  readonly application_cursor: boolean;
-  readonly focus_events: boolean;
-  readonly cursor_hidden: boolean;
-  readonly mouse_tracking: number;
-  readonly mouse_encoding: number;
-  readonly kitty_keyboard: readonly number[];
+/** What the test says in a `ready`: what it leaves out is a terminal at the start of its output, 80 by 24, with nothing switched on. */
+export type ReadyInit = {
+  readonly start?: number;
+  readonly end?: number;
+  readonly lost?: number;
+  readonly size?: { readonly cols: number; readonly rows: number };
+  readonly startSize?: { readonly cols: number; readonly rows: number };
+  /** The modes in force at `end`, in the host's words (`alt_screen`, ...). */
+  readonly modes?: Readonly<Record<string, unknown>>;
+  readonly startModes?: Readonly<Record<string, unknown>>;
+  readonly shell?: string;
+  readonly ended?: unknown;
+  /** Whole members to put in the payload as they are, or `undefined` to leave a member out. */
+  readonly raw?: Readonly<Record<string, unknown>>;
 };
 
-/** A window of the host: its own calls and its own events (every event goes to every window). */
-export type HostPage = {
-  readonly transport: ExecTransport;
-  /** The events for this window wait, in order, until `release`: an event and the answer of a call travel apart, so an event the host handed over before it answered can reach the page after the answer. */
-  readonly hold: () => void;
-  /** Delivers what waited, in order, and delivers what comes from now on at once. */
-  readonly release: () => void;
-  /** The window goes away: it hears nothing more, and the host lets go of what it held (a terminal with a key is detached, `window-retired`; one without ends). */
-  readonly die: () => void;
-  /** How many events wait in this window's wire. */
-  readonly queued: () => number;
-  /** The connection of this window's events drops: every event the host emits meanwhile is lost to it for good (nothing is replayed to a socket that was down), while its calls still work. */
-  readonly disconnect: () => void;
-  /** The connection comes back: events are delivered again from now on. */
-  readonly reconnect: () => void;
-};
-
-export type CreditHost = {
-  /** The window the host starts with (`home`, whose calls `transport` makes), and `page`, which opens another. */
-  readonly transport: ExecTransport;
-  readonly home: HostPage;
-  readonly page: () => HostPage;
-  /** The shell writes this many more bytes. What the host may read now it delivers (reads of at most 20,480 bytes); the rest waits in the pty. */
-  readonly produce: (bytes: number) => void;
-  /** The shell writes exactly this text (as UTF-8), after what it was already to write. */
-  readonly say: (text: string) => void;
-  /** Bytes the shell wrote that the host has not read: the shell, blocked in its own write. */
-  readonly waiting: () => number;
-  /** Bytes the host delivered to the page. */
-  readonly delivered: () => number;
-  /** Bytes it delivered that nobody credited, now, and the most that count ever was. */
-  readonly unacked: () => number;
-  readonly mostUnacked: () => number;
-  /** The client's acknowledgements are the only credit: it made its first call. */
-  readonly explicit: () => boolean;
-  /** The host stopped reading the pty. */
-  readonly paused: () => boolean;
-  /** The count of every `AckTerminal` call, in order. */
+export type FakeStream = {
+  /** The terminal this stream is for, and the offset the feed asked from (`undefined`: the feed had nothing). */
+  readonly id: string;
+  readonly fromOffset: number | undefined;
+  /** The first frame of the host. */
+  readonly ready: (init?: ReadyInit) => void;
+  /** Output from `offset`, as the bytes or the text as UTF-8. */
+  readonly output: (offset: number, data: string | Uint8Array) => void;
+  readonly gap: (from: number, to: number) => void;
+  /** How the terminal ended: `terminal.End` as the host sends it. Default: the shell exited with code 0. */
+  readonly ended: (end?: unknown) => void;
+  readonly takenOver: () => void;
+  readonly notFound: () => void;
+  /** The stream ends without a word of the host: a connection that dropped. */
+  readonly drop: () => void;
+  /** What the feed sent on it, in order, and how many frames it tried to send after the stream was over. */
+  readonly sent: () => readonly SentFrame[];
+  readonly dropped: () => number;
+  /** What the feed typed, as text, in order (the `input` frames joined). */
+  readonly typed: () => string;
+  /** The acknowledgements, in order. */
   readonly acks: () => readonly number[];
-  /** The byte a sequence has at this offset: what the shell wrote at it. */
-  readonly byteAt: (offset: number) => number;
-  /** Every input call the page made, in the order it made them, with its number. */
-  readonly inputs: () => readonly HostInput[];
-  /** The shell exits by itself, once the host has read all it wrote. A terminal with a key is kept, with its end and its output, until a page closes it. */
-  readonly exit: (code?: number) => void;
-  /** The lease of a detached terminal runs out: the host ends it (`closed_by: 'detach-timeout'`). */
-  readonly expire: () => void;
-  /** The modes in force at the end of the output, and, when given, the modes under which the oldest byte the host kept was written. */
-  readonly modes: (now: Partial<HostModes>, atStart?: Partial<HostModes>) => void;
-  /** Who holds the terminal: the number of the attachment, whether it is detached, and the window that owns it. */
-  readonly holder: () => { readonly attachment: number; readonly detached: boolean; readonly owner: number | undefined };
-  /** The offsets the host keeps of a terminal with a key: [start, end). */
-  readonly kept: () => { readonly start: number; readonly end: number };
-  /** Every call about the life of the terminal that reached the host, in order. */
-  readonly calls: () => readonly HostCall[];
-  /** Every answer to an attach, in order: the window, the offset it asked from (none: all the host kept), and the offsets [start, end) of the replay. */
-  readonly replays: () => readonly HostReplay[];
-  /** The number the host's input queue expects next. */
-  readonly nextInput: () => number;
+  /** Whether the stream is still open: no end came, and the feed did not close it. */
+  readonly open: () => boolean;
+  /** Whether the feed closed it (`ChannelLink.close`). */
+  readonly closedByFeed: () => boolean;
+  /** The socket dies after this many more input frames went: the next one is refused. */
+  readonly dieAfterInputs: (frames: number) => void;
+  /** The socket is dead before its close event: the next frame the feed sends finds it so, the stream ends as `closed` (once) and input is refused. */
+  readonly die: () => void;
+  /** What `ChannelLink.pending` says: the test sets it. */
+  readonly setPending: (bytes: number) => void;
 };
 
-export type CreditHostOptions = {
-  readonly high?: number;
-  readonly low?: number;
-  /** The size of one pty read. */
-  readonly read?: number;
-  /** Bytes the host keeps of a terminal with a key, in whole reads, for a replay. Default: 1,310,720, as the host. */
-  readonly ring?: number;
-  /** The close of a terminal whose shell ended by itself dismisses it, as the host's contract says. Default: no, as the real host (it answers not-found and the terminal stays listed until its lease runs out). */
-  readonly dismissEnded?: boolean;
-  /** The host keeps its ring in chunks of this many bytes: an attach from an offset is answered from the start of the chunk that holds it, never from before the oldest byte kept. Default: 1, the offset itself, as the host says. */
-  readonly chunk?: number;
+/** A call that is not a stream, in the order the feed made them. */
+export type ChannelCall =
+  | { readonly kind: 'create'; readonly id: string; readonly cols: number; readonly rows: number; readonly leaseMs: number | undefined }
+  | { readonly kind: 'close'; readonly id: string }
+  | { readonly kind: 'dismiss'; readonly id: string }
+  | { readonly kind: 'busy'; readonly id: string }
+  | { readonly kind: 'listed'; readonly id: string }
+  | { readonly kind: 'list' };
+
+export type FakeChannelsOptions = {
+  /** What `create` answers (the host's session). Default: a session of a shell called `zsh`. A function may answer with a promise the test holds. */
+  readonly create?: ((id: string) => unknown) | undefined;
+  readonly close?: ((id: string) => Promise<void> | void) | undefined;
+  readonly dismiss?: ((id: string) => Promise<void> | void) | undefined;
+  readonly busy?: ((id: string) => unknown) | undefined;
+  readonly list?: (() => unknown) | undefined;
+  readonly listed?: ((id: string) => unknown) | undefined;
 };
 
-function base64Of(bytes: Uint8Array): string {
-  let text = '';
-  for (let at = 0; at < bytes.length; at += 4_096) {
-    text += String.fromCharCode(...bytes.subarray(at, at + 4_096));
-  }
-
-  return btoa(text);
-}
-
-const noModes = (): HostModes => ({ known: true, alt_screen: false, bracketed_paste: false, application_cursor: false, focus_events: false, cursor_hidden: false, mouse_tracking: 0, mouse_encoding: 0, kitty_keyboard: [] });
-
-/** What the shell has yet to write: a count of the sequence, or the bytes of a text. */
-type Segment = { readonly kind: 'count'; left: number } | { readonly kind: 'bytes'; readonly data: Uint8Array; at: number };
-
-/** One window's events: what listens, what waits while the wire is held, and whether the connection is down. */
-type Wire = {
-  readonly listeners: Map<string, Set<(data: unknown) => void>>;
-  readonly queue: Array<readonly [string, unknown]>;
-  holding: boolean;
-  /** The connection of the page's events is down: what the host emits meanwhile is lost to this window for good (nothing is replayed to a socket that was down), while its calls still work. */
-  offline: boolean;
-  dead: boolean;
+export type FakeChannels = TerminalChannels & {
+  /** Every stream the feed opened, oldest first. */
+  readonly streams: () => readonly FakeStream[];
+  /** The newest stream; throws when the feed opened none (a mistake of the test). */
+  readonly stream: () => FakeStream;
+  readonly calls: () => readonly ChannelCall[];
+  /** The calls of one kind. */
+  readonly of: <K extends ChannelCall['kind']>(kind: K) => ReadonlyArray<Extract<ChannelCall, { readonly kind: K }>>;
 };
 
-/** One read of the pty that the host kept for a replay. */
-type Kept = { readonly offset: number; readonly bytes: Uint8Array };
+/** An error of the host that `isGone` recognises. */
+export const goneError = (): Error => Object.assign(new Error('Session not found'), { gone: true });
 
-/** What the host says of a terminal that is not there, or that a key does not open: the same words for both. */
-const notThere = (id: string): Error => Object.assign(new Error(`Session ${id} not found`), { gone: true });
+const PLAIN_MODES = { alt_screen: false, bracketed_paste: false, application_cursor: false, focus_events: false, cursor_hidden: false, mouse_tracking: 0, mouse_encoding: 0, kitty_keyboard: [] as number[] };
 
-export function fakeCreditHost(options: CreditHostOptions = {}): CreditHost {
-  const high = options.high ?? 1_048_576;
-  const low = options.low ?? 262_144;
-  const readSize = options.read ?? 20_480;
-  const ringLimit = options.ring ?? 1_310_720;
-  const dismissEnded = options.dismissEnded ?? false;
-  const chunk = options.chunk ?? 1;
-  const wires: Wire[] = [];
-  const replays: HostReplay[] = [];
-  const acks: number[] = [];
-  const inputs: HostInput[] = [];
-  const calls: HostCall[] = [];
-  const segments: Segment[] = [];
-  let ring: Kept[] = [];
-  let ringBytes = 0;
-  let session: string | undefined;
-  let key: string | undefined;
-  let owner: number | undefined;
-  let attachment = 0;
-  let detached = false;
-  let ended: Record<string, unknown> | undefined;
-  let size = { cols: 80, rows: 24 };
-  let startSize = size;
-  let modesNow = noModes();
-  let modesStart = noModes();
-  let nextInput = 1;
-  let queued = 0;
-  let delivered = 0;
-  let unacked = 0;
-  let most = 0;
-  let explicit = false;
-  let paused = false;
-  let pumping = false;
+export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
+  const streams: FakeStream[] = [];
+  const calls: ChannelCall[] = [];
+  const text = new TextDecoder();
 
-  const byteAt = (offset: number): number => offset % 251;
-
-  const deliverTo = (wire: Wire, name: string, data: unknown) => {
-    for (const listener of [...(wire.listeners.get(name) ?? [])]) {
-      listener(data);
-    }
-  };
-
-  /** Every event goes to every window, as it does on the real host; a window whose wire is held keeps it for later, and one whose connection is down loses it for good. */
-  const emit = (name: string, data: unknown) => {
-    for (const wire of wires) {
-      if (wire.dead || wire.offline) {
-        continue;
+  const connect = (id: string, fromOffset: number | undefined, events: ChannelEvents): ChannelLink => {
+    const sent: SentFrame[] = [];
+    let open = true;
+    let byFeed = false;
+    let dropped = 0;
+    let pending = 0;
+    let dead = false;
+    let inputsLeft = Number.POSITIVE_INFINITY;
+    const alive = (what: string): void => {
+      if (!open) {
+        throw new Error(`the test spoke on a stream that is over (${what})`);
       }
-
-      if (wire.holding) {
-        wire.queue.push([name, data]);
-      } else {
-        deliverTo(wire, name, data);
-      }
-    }
-  };
-
-  /** The next `count` bytes of what the shell wrote, in order: the bytes of a count are a function of their offset. */
-  const take = (count: number): Uint8Array => {
-    const chunk = new Uint8Array(count);
-    let filled = 0;
-    while (filled < count) {
-      const head = segments[0];
-      if (head === undefined) {
-        break;
-      }
-
-      if (head.kind === 'count') {
-        const piece = Math.min(count - filled, head.left);
-        for (let index = 0; index < piece; index += 1) {
-          chunk[filled + index] = byteAt(delivered + filled + index);
-        }
-
-        head.left -= piece;
-        filled += piece;
-        if (head.left === 0) {
-          segments.shift();
-        }
-      } else {
-        const piece = Math.min(count - filled, head.data.length - head.at);
-        chunk.set(head.data.subarray(head.at, head.at + piece), filled);
-        head.at += piece;
-        filled += piece;
-        if (head.at === head.data.length) {
-          segments.shift();
-        }
-      }
-    }
-
-    return chunk;
-  };
-
-  /** The host reads the pty: nothing while it is paused for credit, nothing while a terminal with a key is detached (its reader is held), nothing once the shell has ended. */
-  const readable = (): boolean => queued > 0 && !paused && session !== undefined && ended === undefined && !(key !== undefined && detached);
-
-  const pump = () => {
-    // An acknowledgement that comes while the host is delivering (the page parses in the listener) is credited by the loop that is running.
-    if (pumping) {
-      return;
-    }
-
-    pumping = true;
-    while (readable()) {
-      const count = Math.min(readSize, queued);
-      const offset = delivered;
-      const chunk = take(count);
-      queued -= count;
-      unacked += count;
-      most = Math.max(most, unacked);
-      delivered += count;
-      if (key === undefined) {
-        emit(`core/exec/stream/stdout/${String(session)}`, base64Of(chunk));
-      } else {
-        ring.push({ offset, bytes: chunk });
-        ringBytes += count;
-        while (ringBytes > ringLimit && ring.length > 1) {
-          ringBytes -= ring.shift()?.bytes.length ?? 0;
-        }
-
-        emit(`core/exec/stream/output/${String(session)}`, { offset, data: base64Of(chunk) });
-      }
-
-      // Until the client takes over the credit, the transport's is what counts, and the page took the event.
-      if (!explicit) {
-        unacked = Math.max(0, unacked - count);
-      }
-
-      if (unacked >= high) {
-        paused = true;
-      }
-    }
-
-    pumping = false;
-  };
-
-  /** The terminal is over: every window hears it end. One that has a key and whose shell ended by itself is kept, with its output, for a page that comes back; any other end leaves nothing. */
-  const finish = (end: Record<string, unknown>) => {
-    emit(`core/exec/signal/CLOSE/${String(session)}`, end);
-    if (key !== undefined && end.reason !== 'closed') {
-      ended = end;
-      return;
-    }
-
-    session = undefined;
-    ring = [];
-    ringBytes = 0;
-    segments.length = 0;
-    queued = 0;
-  };
-
-  const sessionInfo = (id: string): Record<string, unknown> => ({ id, pid: 4242, shell: { path: '/bin/sh', name: 'sh' }, cwd: '/home/u', cols: 80, rows: 24, lease_ms: key === undefined ? 0 : 300_000 });
-
-  /**
-   * What a page needs of the terminal as it is now: the bytes the host kept from `start` to the end, the sizes and the modes they were written under, and where the live output continues. A page that asks from an offset the
-   * host still has is answered from that offset rounded down to a chunk of the ring (`chunk`; never before the oldest byte kept); one that asks from none, or from an offset the ring has moved past, from the oldest byte kept,
-   * which is above the offset it asked for (the gap the page is told of). The sizes and the modes are those of the start of the ring: right for a page that starts from there, and not read by one that continues.
-   */
-  const replayFrom = (from: number | undefined): { readonly wire: Record<string, unknown>; readonly start: number; readonly end: number } => {
-    const oldest = ring[0]?.offset ?? delivered;
-    const start = from === undefined || from < oldest ? oldest : Math.max(oldest, from - (from % chunk));
-    const data = new Uint8Array(delivered - start);
-    for (const kept of ring) {
-      const cut = Math.max(0, start - kept.offset);
-      if (cut < kept.bytes.length) {
-        data.set(kept.bytes.subarray(cut), kept.offset + cut - start);
-      }
-    }
-
-    return {
-      start,
-      end: delivered,
-      wire: { start, end: delivered, data: base64Of(data), start_size: { ...startSize }, start_modes: { ...modesStart }, size: { ...size }, modes: { ...modesNow } },
     };
-  };
 
-  /** The input queue: a numbered call is refused when the number was passed, as the host refuses a number it applied or gave up. Number 0 is no number: arrival order. */
-  const admit = (seq: number) => {
-    if (seq > 0) {
-      if (seq < nextInput) {
-        throw Object.assign(new Error(`Sequence number ${String(seq)} was already applied or given up; the next expected is ${String(nextInput)}.`), { code: 'SEQUENCE_STALE' });
+    const send = (frame: SentFrame): boolean => {
+      if (open && dead) {
+        finish();
+        events.closed();
+        return false;
       }
 
-      nextInput = seq + 1;
-    }
-  };
-
-  const open = (index: number): HostPage => {
-    const wire: Wire = { listeners: new Map(), queue: [], holding: false, offline: false, dead: false };
-    wires.push(wire);
-    const transport: ExecTransport = {
-      create: async (id, area, launch) => {
-        calls.push({ kind: 'create', page: index, pageKey: launch?.pageKey });
-        session = id;
-        key = launch?.pageKey;
-        owner = index;
-        attachment = 0;
-        detached = false;
-        ended = undefined;
-        size = { cols: area.cols, rows: area.rows };
-        startSize = size;
-        nextInput = 1;
-        pump();
-        return Promise.resolve(sessionInfo(id));
-      },
-      list: async (pageKey) => {
-        calls.push({ kind: 'list', page: index, pageKey });
-        if (session === undefined || key === undefined || key !== pageKey) {
-          return Promise.resolve([]);
+      if (open) {
+        sent.push(frame);
+        if (frame.kind === 'input') {
+          inputsLeft -= 1;
+          dead ||= inputsLeft <= 0;
         }
 
-        return Promise.resolve([
-          {
-            id: session,
-            created_at: '2026-11-23T10:00:00Z',
-            pid: 4242,
-            shell: { path: '/bin/sh', name: 'sh' },
-            labels: {},
-            params: {},
-            size: { ...size },
-            attached: !detached,
-            next_offset: delivered,
-            replay_start: ring[0]?.offset ?? delivered,
-            // As of the list: the window that holds the terminal can write before the attach, and the answer to the attach states the number to continue from.
-            next_input_seq: ended === undefined ? nextInput : 0,
-            lease_expires_unix_ms: detached ? 1 : 0,
-            ...(ended === undefined ? {} : { ended }),
-          },
-        ]);
-      },
-      attach: async (id, request) => {
-        calls.push({ kind: 'attach', page: index, pageKey: request.pageKey, fromOffset: request.fromOffset });
-        if (session !== id || key === undefined || key !== request.pageKey) {
-          throw notThere(id);
-        }
+        return true;
+      }
 
-        const from = request.fromOffset;
-        if (from !== undefined && from > delivered) {
-          throw Object.assign(new Error(`from_offset ${String(from)} is past the end of the output, ${String(delivered)}.`), { code: 'INVALID_REQUEST' });
-        }
+      dropped += 1;
+      return false;
+    };
 
-        if (ended === undefined) {
-          // The page that held the terminal is told, with the number of the attachment that ended; the new page holds the next one. A window that attaches the terminal it holds itself (a page that asks again after a gap in its
-          // events) is told of its own takeover too, with the old number. A terminal nobody held tells nobody.
-          if (!detached && owner !== undefined) {
-            emit(`core/exec/signal/DETACHED/${id}`, { by: 'taken-over', attachment });
-          }
+    const finish = (): void => {
+      open = false;
+    };
 
-          attachment += 1;
-          owner = index;
-          detached = false;
-          // The attach forgets what was owed for everything below the end of the replay, and lets the reader go.
-          unacked = 0;
-          paused = false;
-        }
-
-        const replay = replayFrom(from);
-        replays.push({ page: index, from, start: replay.start, end: replay.end });
-        const answer: Record<string, unknown> = {
-          session: sessionInfo(id),
-          replay: replay.wire,
+    streams.push({
+      id,
+      fromOffset,
+      ready: (init = {}) => {
+        alive('ready');
+        const size = init.size ?? { cols: 80, rows: 24 };
+        const payload: Record<string, unknown> = {
+          v: 1,
+          start: init.start ?? 0,
+          end: init.end ?? init.start ?? 0,
+          lost: init.lost ?? 0,
+          size,
+          start_size: init.startSize ?? size,
+          modes: { ...PLAIN_MODES, ...init.modes },
+          start_modes: { ...PLAIN_MODES, ...init.startModes },
           cwd: { path: '/home/u' },
           busy: { state: 'idle' },
-          attachment,
-          ...(ended === undefined ? {} : { ended }),
-          // The number the input queue takes next as of this attach: at least 1 while the terminal runs, 0 for one that ended (it takes no input).
-          next_input_seq: ended === undefined ? nextInput : 0,
+          session: { id, pid: 4242, shell: { path: `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
+          lease_ms: 300_000,
+          ended: init.ended ?? null,
+          ...init.raw,
         };
-        pump();
-        return Promise.resolve(answer);
-      },
-      detach: async (id, request) => {
-        calls.push({ kind: 'detach', page: index, pageKey: request.pageKey });
-        // The window that owns the terminal detaches it; the key detaches only a terminal that no window owns: a page that was displaced cannot detach what the page that took it shows.
-        if (session !== id || key === undefined || key !== request.pageKey || (owner !== undefined && owner !== index)) {
-          throw notThere(id);
-        }
-
-        if (!detached && ended === undefined) {
-          detached = true;
-          owner = undefined;
-          emit(`core/exec/signal/DETACHED/${id}`, { by: 'requested', attachment });
-        }
-
-        return Promise.resolve({ lease_ms: 300_000, lease_expires_unix_ms: 1 });
-      },
-      write: async (_id, seq, base64) => {
-        admit(seq);
-        inputs.push({ kind: 'write', seq, text: new TextDecoder().decode(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))) });
-        return Promise.resolve();
-      },
-      resize: async (_id, seq, rows, cols) => {
-        admit(seq);
-        inputs.push({ kind: 'resize', seq, rows, cols });
-        size = { cols, rows };
-        return Promise.resolve();
-      },
-      close: async (id) => {
-        calls.push({ kind: 'close', page: index });
-        // A terminal with no key has no history here: it is closed as it always was, with nothing to say.
-        if (key === undefined) {
-          return Promise.resolve();
-        }
-
-        if (session !== id) {
-          throw notThere(id);
-        }
-
-        if (ended !== undefined) {
-          // The host's own contract dismisses what a shell that ended by itself left. The real host does not (S1): the close of an ended terminal answers not-found, and the terminal stays listed until its lease runs out.
-          if (!dismissEnded) {
-            throw notThere(id);
+        for (const [name, value] of Object.entries(payload)) {
+          if (value === undefined) {
+            Reflect.deleteProperty(payload, name);
           }
-
-          session = undefined;
-          ended = undefined;
-          ring = [];
-          ringBytes = 0;
-        } else {
-          finish({ reason: 'closed', closed_by: 'request', last_offset: delivered });
         }
 
-        return Promise.resolve();
+        events.ready(payload);
       },
-      ack: async (_id, bytes) => {
-        explicit = true;
-        acks.push(bytes);
-        unacked = Math.max(0, unacked - bytes);
-        if (paused && unacked <= low) {
-          paused = false;
-        }
-
-        pump();
-        return Promise.resolve();
+      output: (offset, data) => {
+        alive('output');
+        events.output(offset, typeof data === 'string' ? new TextEncoder().encode(data) : data);
       },
-      busy: async () => Promise.resolve({ state: 'idle' }),
-      on: (name, listener) => {
-        const set = wire.listeners.get(name) ?? new Set();
-        set.add(listener);
-        wire.listeners.set(name, set);
-        return () => {
-          set.delete(listener);
-        };
+      gap: (from, to) => {
+        alive('gap');
+        events.gap(from, to);
       },
-      describe: (error) => (error instanceof Error ? error.message : String(error)),
-      isGone: (error) => typeof error === 'object' && error !== null && Reflect.get(error, 'gone') === true,
-      codeOf: (error) => (typeof error === 'object' && error !== null && typeof Reflect.get(error, 'code') === 'string' ? String(Reflect.get(error, 'code')) : undefined),
-      triedOf: () => undefined,
-    };
+      ended: (end = { reason: 'exited', exit_code: 0 }) => {
+        alive('ended');
+        finish();
+        events.ended(end);
+      },
+      takenOver: () => {
+        alive('taken-over');
+        finish();
+        events.takenOver();
+      },
+      notFound: () => {
+        alive('not-found');
+        finish();
+        events.notFound();
+      },
+      drop: () => {
+        alive('drop');
+        finish();
+        events.closed();
+      },
+      sent: () => sent,
+      dropped: () => dropped,
+      typed: () => sent.reduce((all, frame) => (frame.kind === 'input' ? all + frame.text : all), ''),
+      acks: () => sent.flatMap((frame) => (frame.kind === 'ack' ? [frame.bytes] : [])),
+      open: () => open,
+      closedByFeed: () => byFeed,
+      die: () => {
+        dead = true;
+      },
+      dieAfterInputs: (frames) => {
+        inputsLeft = frames;
+      },
+      setPending: (bytes) => {
+        pending = bytes;
+      },
+    });
 
     return {
-      transport,
-      hold: () => {
-        wire.holding = true;
+      input: (bytes) => {
+        return send({ kind: 'input', bytes: bytes.slice(), text: text.decode(bytes) });
       },
-      release: () => {
-        wire.holding = false;
-        for (const [name, data] of wire.queue.splice(0)) {
-          if (!wire.dead) {
-            deliverTo(wire, name, data);
-          }
+      resize: (cols, rows) => {
+        send({ kind: 'resize', cols, rows });
+      },
+      ack: (bytes) => {
+        send({ kind: 'ack', bytes });
+      },
+      detach: () => {
+        send({ kind: 'detach' });
+      },
+      close: () => {
+        if (open) {
+          byFeed = true;
+          finish();
         }
       },
-      die: () => {
-        wire.dead = true;
-        wire.queue.length = 0;
-        if (session === undefined || owner !== index || detached || ended !== undefined) {
-          return;
-        }
-
-        if (key === undefined) {
-          finish({ reason: 'closed', closed_by: 'window', last_offset: delivered });
-        } else {
-          detached = true;
-          owner = undefined;
-          emit(`core/exec/signal/DETACHED/${session}`, { by: 'window-retired', attachment });
-        }
-      },
-      queued: () => wire.queue.length,
-      disconnect: () => {
-        wire.offline = true;
-        wire.queue.length = 0;
-      },
-      reconnect: () => {
-        wire.offline = false;
-      },
+      pending: () => pending,
     };
   };
 
-  const first = open(0);
-
   return {
-    transport: first.transport,
-    home: first,
-    page: () => open(wires.length),
-    produce: (bytes) => {
-      segments.push({ kind: 'count', left: bytes });
-      queued += bytes;
-      pump();
+    create: async (id, launch) => {
+      calls.push({ kind: 'create', id, cols: launch.cols, rows: launch.rows, leaseMs: launch.leaseMs });
+      return options.create === undefined ? { id, shell: { path: '/bin/zsh', name: 'zsh' } } : options.create(id);
     },
-    say: (text) => {
-      const data = new TextEncoder().encode(text);
-      segments.push({ kind: 'bytes', data, at: 0 });
-      queued += data.length;
-      pump();
+    connect,
+    close: async (id) => {
+      calls.push({ kind: 'close', id });
+      await options.close?.(id);
     },
-    waiting: () => queued,
-    delivered: () => delivered,
-    unacked: () => unacked,
-    mostUnacked: () => most,
-    explicit: () => explicit,
-    paused: () => paused,
-    acks: () => acks,
-    inputs: () => inputs,
-    byteAt,
-    exit: (code = 0) => {
-      if (session === undefined || ended !== undefined) {
-        throw new Error('no shell runs in this host');
+    dismiss: async (id) => {
+      calls.push({ kind: 'dismiss', id });
+      await options.dismiss?.(id);
+    },
+    busy: async (id) => {
+      calls.push({ kind: 'busy', id });
+      return options.busy === undefined ? { state: 'idle' } : options.busy(id);
+    },
+    list: async () => {
+      calls.push({ kind: 'list' });
+      return (options.list === undefined ? [] : options.list()) as readonly unknown[];
+    },
+    listed: async (id) => {
+      calls.push({ kind: 'listed', id });
+      return options.listed?.(id);
+    },
+    describe: (error) => (error instanceof Error ? error.message : String(error)),
+    isGone: (error) => typeof error === 'object' && error !== null && Reflect.get(error, 'gone') === true,
+    codeOf: (error) => {
+      const code: unknown = typeof error === 'object' && error !== null ? Reflect.get(error, 'code') : undefined;
+      return typeof code === 'string' ? code : undefined;
+    },
+    triedOf: (error) => {
+      const tried: unknown = typeof error === 'object' && error !== null ? Reflect.get(error, 'tried') : undefined;
+      return Array.isArray(tried) ? (tried as readonly TerminalShellAttempt[]) : undefined;
+    },
+    streams: () => streams,
+    stream: () => {
+      const latest = streams.at(-1);
+      if (latest === undefined) {
+        throw new Error('the feed opened no stream');
       }
 
-      if (queued > 0) {
-        throw new Error('the shell exits when the host has read what it wrote: it has not');
-      }
-
-      finish({ reason: 'exited', exit_code: code, last_offset: delivered });
+      return latest;
     },
-    expire: () => {
-      if (session === undefined || !detached || ended !== undefined) {
-        throw new Error('no lease runs: the terminal is not detached');
-      }
-
-      finish({ reason: 'closed', closed_by: 'detach-timeout', last_offset: delivered });
-    },
-    modes: (now, atStart) => {
-      modesNow = { ...modesNow, ...now };
-      if (atStart !== undefined) {
-        modesStart = { ...modesStart, ...atStart };
-      }
-    },
-    holder: () => ({ attachment, detached, owner }),
-    kept: () => ({ start: ring[0]?.offset ?? delivered, end: delivered }),
     calls: () => calls,
-    replays: () => replays,
-    nextInput: () => nextInput,
+    of: <K extends ChannelCall['kind']>(kind: K) => calls.filter((call): call is Extract<ChannelCall, { readonly kind: K }> => call.kind === kind),
   };
 }

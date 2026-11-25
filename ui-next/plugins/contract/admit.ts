@@ -80,29 +80,16 @@ function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set
 /** A detail page: the page of one object. */
 const isDetail = (page: unknown): boolean => isRecord(page) && page.kind === 'detail';
 
-/** What a detail page's static definition must say: the words and the identity the host draws its heading, its tab and its strip from, before any data is read. */
-function checkDetailDefinition(definition: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
-  if (!isText(definition.kind)) {
-    problems.push(`${at}.kind is not a non-empty string`);
-  }
-
+/** What a page's tile must say: the glyph of its kind, before the heading. A detail page and an overview page have the same one. */
+function checkTile(definition: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
   const tile = definition.tile;
   if (!isRecord(tile) || !isText(tile.icon)) {
     problems.push(`${at}.tile needs an icon`);
   }
+}
 
-  const identity = definition.identity;
-  if (!isRecord(identity) || !isText(identity.name)) {
-    problems.push(`${at}.identity needs a name: the route parameter that holds it`);
-  } else if (identity.facets !== undefined && !(Array.isArray(identity.facets) && identity.facets.every(isText))) {
-    problems.push(`${at}.identity.facets is not a list of parameter names`);
-  }
-
-  const list = definition.list;
-  if (list !== undefined && !(isRecord(list) && isText(list.page) && isText(list.label))) {
-    problems.push(`${at}.list needs a page and a label`);
-  }
-
+/** The in-page tabs of a page that has them (a detail page, an overview page): at least one, each with an id and a label, and no id twice. The page draws its strip from them before any data is read. */
+function checkTabs(definition: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
   const tabs = definition.tabs;
   if (!Array.isArray(tabs) || tabs.length === 0) {
     problems.push(`${at}.tabs is not a list with a tab in it`);
@@ -119,6 +106,39 @@ function checkDetailDefinition(definition: Readonly<Record<string, unknown>>, at
       seen.add(tab.id);
     }
   });
+}
+
+/** What a detail page's static definition must say: the words and the identity the host draws its heading, its tab and its strip from, before any data is read. */
+function checkDetailDefinition(definition: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
+  if (!isText(definition.kind)) {
+    problems.push(`${at}.kind is not a non-empty string`);
+  }
+
+  checkTile(definition, at, problems);
+
+  const identity = definition.identity;
+  if (!isRecord(identity) || !isText(identity.name)) {
+    problems.push(`${at}.identity needs a name: the route parameter that holds it`);
+  } else if (identity.facets !== undefined && !(Array.isArray(identity.facets) && identity.facets.every(isText))) {
+    problems.push(`${at}.identity.facets is not a list of parameter names`);
+  }
+
+  const list = definition.list;
+  if (list !== undefined && !(isRecord(list) && isText(list.page) && isText(list.label))) {
+    problems.push(`${at}.list needs a page and a label`);
+  }
+
+  checkTabs(definition, at, problems);
+}
+
+/** What an overview page's static definition must say: the page's name, its tile and its tabs. It has no identity and no list: it is the page of a scope, and nothing leads back above it. */
+function checkOverviewDefinition(definition: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
+  if (!isText(definition.title)) {
+    problems.push(`${at}.title is not a non-empty string`);
+  }
+
+  checkTile(definition, at, problems);
+  checkTabs(definition, at, problems);
 }
 
 /** A detail page's list is a list page of this contribution: its crumb and its sidebar entry would lead nowhere otherwise. */
@@ -140,8 +160,8 @@ function checkPage(page: unknown, at: string, problems: Problems): void {
     return;
   }
 
-  if (page.kind !== 'list' && page.kind !== 'detail') {
-    problems.push(`${at}.kind is "${String(page.kind)}", and this version draws "list" and "detail" pages`);
+  if (page.kind !== 'list' && page.kind !== 'detail' && page.kind !== 'overview') {
+    problems.push(`${at}.kind is "${String(page.kind)}", and this version draws "list", "detail" and "overview" pages`);
   }
 
   if (!isFunction(page.usePage)) {
@@ -156,6 +176,11 @@ function checkPage(page: unknown, at: string, problems: Problems): void {
 
   if (page.kind === 'detail') {
     checkDetailDefinition(definition, `${at}.definition`, problems);
+    return;
+  }
+
+  if (page.kind === 'overview') {
+    checkOverviewDefinition(definition, `${at}.definition`, problems);
     return;
   }
 

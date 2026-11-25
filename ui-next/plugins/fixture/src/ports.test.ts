@@ -3,7 +3,15 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   AGAIN_LABEL,
+  ASKED,
+  FORWARD_HOST,
   FORWARD_LABEL,
+  LAPSED_LABEL,
+  LAPSE_MS,
+  LAPSE_WORDS,
+  LONG_ID_LABEL,
+  LONG_ID_LENGTH,
+  MANY_LABEL,
   NO_CONNECTION_WORDS,
   NO_FORWARD_WORDS,
   NO_PORTS_WORDS,
@@ -11,12 +19,16 @@ import {
   PORTS_CONNECTION_KEY,
   PORTS_CONNECTION_NAME,
   PORTS_ID,
+  STOP_ALL_LABEL,
   STOP_LABEL,
   TARGET_GREETING,
   TARGET_ID,
   TARGET_PORT,
   TARGET_RESOURCE_KEY,
+  askedOf,
   forwardRequest,
+  limitOf,
+  longIdRequest,
   outcomeWords,
   refusalOf,
 } from './ports';
@@ -43,6 +55,12 @@ describe('what the page and the Go side both say', () => {
     expect(Number(/\bTargetPort\s+int32\s*=\s*(\d+)/.exec(forwarder)?.[1])).toBe(TARGET_PORT);
     // The Go line ends in its newline, which is how a client knows it has all of the line.
     expect(goString(server, 'Greeting')).toBe(`${TARGET_GREETING}\\n`);
+  });
+
+  it('says the address its own forwarder listens on when the host states none: the Go side listens on the loopback, and says it once', async () => {
+    const endpoint = await goSource('portforward/endpoint.go');
+    expect(goString(endpoint, 'loopbackHost')).toBe(FORWARD_HOST);
+    expect(FORWARD_HOST).toBe('127.0.0.1');
   });
 
   it('makes a connection key the way the host makes its own: the name and ten hexadecimal digits', () => {
@@ -90,11 +108,11 @@ describe('the names the page uses', () => {
 describe('what the page says', () => {
   const id = '4f9d2c1e-aaaa-bbbb-cccc-0123456789ab';
 
-  it('says nothing before a press and while a call is under way', () => {
+  it('says nothing before a press and while a call is under way, whichever button it is of', () => {
     expect(outcomeWords({ kind: 'idle' })).toBeUndefined();
-    expect(outcomeWords({ kind: 'pending', action: 'forward' })).toBeUndefined();
-    expect(outcomeWords({ kind: 'pending', action: 'stop' })).toBeUndefined();
-    expect(outcomeWords({ kind: 'pending', action: 'again' })).toBeUndefined();
+    for (const action of ['forward', 'stop', 'again', 'many', 'stop-all', 'long-id', 'lapsed'] as const) {
+      expect(outcomeWords({ kind: 'pending', action })).toBeUndefined();
+    }
   });
 
   it('says the forward the host started and where to connect to it, from the host’s answer', () => {
@@ -144,5 +162,113 @@ describe('a refusal, as the page says it', () => {
     expect(refusalOf(undefined, 'The host could not stop the forward.')).toEqual({ code: 'UNKNOWN', message: 'The host could not stop the forward.' });
     expect(refusalOf({ code: 7 }, 'The host could not start the forward.')).toEqual({ code: 'UNKNOWN', message: 'The host could not start the forward.' });
     expect(refusalOf(hostRefusal('CONFLICT', ' '), 'The host could not start the forward.')).toEqual({ code: 'CONFLICT', message: 'The host could not start the forward.' });
+  });
+});
+
+describe('the buttons that ask for more', () => {
+  it('are named the way the check looks for them', () => {
+    expect(MANY_LABEL).toBe('Forward 1,000 times');
+    expect(STOP_ALL_LABEL).toBe('Stop all of them');
+    expect(LONG_ID_LABEL).toBe('Forward with a 1 MiB id');
+    expect(LAPSED_LABEL).toBe('Forward after 6 seconds');
+  });
+
+  it('ask a thousand forwards, with an id of a mebibyte, and wait six seconds: the numbers their labels say', () => {
+    expect(ASKED).toBe(1000);
+    expect(LONG_ID_LENGTH).toBe(1_048_576);
+    expect(LAPSE_MS).toBe(6000);
+  });
+
+  it('say what the page is waiting for while it waits, and why it waits that long', () => {
+    expect(LAPSE_WORDS).toBe('Asking in 6 seconds, after the action has lapsed.');
+    expect(outcomeWords({ kind: 'waiting' })).toBe(LAPSE_WORDS);
+  });
+});
+
+describe('the request with an id of a mebibyte', () => {
+  it('is the request of the first button with an id of 1,048,576 characters and nothing else different', () => {
+    const { resourceId, ...rest } = longIdRequest();
+
+    expect(resourceId.length).toBe(1_048_576);
+    expect({ ...rest, resourceId: 'fixture-target' }).toEqual(forwardRequest());
+  });
+
+  it('is a new object each time, so a host that keeps one cannot change the next', () => {
+    expect(longIdRequest()).not.toBe(longIdRequest());
+  });
+});
+
+describe('what the page says of the stops of all of them', () => {
+  it('says how many forwards were stopped when the host stopped each', () => {
+    expect(outcomeWords({ kind: 'stopped-all', stopped: 64, of: 64 })).toBe('Stopped 64 forwards.');
+  });
+
+  it('says how many of them were stopped and how many the host refused', () => {
+    expect(outcomeWords({ kind: 'stopped-all', stopped: 60, of: 64 })).toBe('Stopped 60 of 64 forwards; 4 were refused.');
+    expect(outcomeWords({ kind: 'stopped-all', stopped: 0, of: 2 })).toBe('Stopped 0 of 2 forwards; 2 were refused.');
+  });
+});
+
+describe('the number a refusal is about', () => {
+  const hostRefusal = (limit: unknown) => Object.assign(new Error('Full.'), { name: 'PortForwardError', code: 'RESOURCE_LIMIT', limit });
+
+  it('is the limit the host’s error carries when it is a whole number', () => {
+    expect(limitOf(hostRefusal(64))).toBe(64);
+    expect(limitOf(hostRefusal(0))).toBe(0);
+  });
+
+  it('is nothing for an error that has none, for one that is not the host’s and for a limit that is not a whole number', () => {
+    expect(limitOf(hostRefusal(undefined))).toBeUndefined();
+    expect(limitOf(hostRefusal('64'))).toBeUndefined();
+    expect(limitOf(hostRefusal(6.4))).toBeUndefined();
+    expect(limitOf(hostRefusal(Number.NaN))).toBeUndefined();
+    expect(limitOf(Object.assign(new Error('Full.'), { limit: 64 }))).toBeUndefined();
+    expect(limitOf({ name: 'PortForwardError', limit: 64 })).toBeUndefined();
+    expect(limitOf('64')).toBeUndefined();
+    expect(limitOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('what the page says of a thousand asks', () => {
+  const started = (): PromiseSettledResult<unknown> => ({ status: 'fulfilled', value: undefined });
+  const refused = (reason: unknown): PromiseSettledResult<unknown> => ({ status: 'rejected', reason });
+  const hostRefusal = (code: string, message: string, limit?: number) => Object.assign(new Error(message), { name: 'PortForwardError', code, ...(limit === undefined ? {} : { limit }) });
+  const wordsOfAsked = (results: ReadonlyArray<PromiseSettledResult<unknown>>) => outcomeWords(askedOf(results));
+
+  it('says that all of them started when the host refused none', () => {
+    expect(wordsOfAsked(Array.from({ length: 1000 }, started))).toBe('Asked 1000 forwards: 1000 started, 0 refused.');
+  });
+
+  it('says how many started and how many were refused, by their code and with the limit, and the first words the host said', () => {
+    const full = hostRefusal('RESOURCE_LIMIT', 'This plugin already holds 64 forwards in this connection. Stop one first.', 64);
+    const results = [...Array.from({ length: 64 }, started), ...Array.from({ length: 936 }, () => refused(full))];
+
+    expect(wordsOfAsked(results)).toBe('Asked 1000 forwards: 64 started, 936 refused (RESOURCE_LIMIT 936, limit 64). The host said: This plugin already holds 64 forwards in this connection. Stop one first.');
+  });
+
+  it('says the codes in the order they were first seen in the calls, each with how many there were', () => {
+    const results = [refused(hostRefusal('FORBIDDEN', 'A.')), started(), refused(hostRefusal('RESOURCE_LIMIT', 'B.')), refused(hostRefusal('FORBIDDEN', 'C.')), refused(new Error('D.')), refused(hostRefusal('RESOURCE_LIMIT', 'E.'))];
+
+    expect(wordsOfAsked(results)).toBe('Asked 6 forwards: 1 started, 5 refused (FORBIDDEN 2, RESOURCE_LIMIT 2, UNKNOWN 1). The host said: A.');
+  });
+
+  it('says no limit when no refusal carries one', () => {
+    expect(wordsOfAsked([refused(hostRefusal('FORBIDDEN', 'A.')), refused(hostRefusal('FORBIDDEN', 'A.'))])).toBe('Asked 2 forwards: 0 started, 2 refused (FORBIDDEN 2). The host said: A.');
+  });
+
+  it('says the limit of the first refusal that carries one, and the words of the first refusal, which may be another', () => {
+    const results = [refused(hostRefusal('FORBIDDEN', 'First words.')), refused(hostRefusal('RESOURCE_LIMIT', 'Second.', 64)), refused(hostRefusal('RESOURCE_LIMIT', 'Third.', 128))];
+
+    expect(wordsOfAsked(results)).toBe('Asked 3 forwards: 0 started, 3 refused (FORBIDDEN 1, RESOURCE_LIMIT 2, limit 64). The host said: First words.');
+  });
+
+  it('takes a limit only from the host’s error, says UNKNOWN for what is not, and gives words of its own for a refusal that says none', () => {
+    expect(wordsOfAsked([refused(Object.assign(new Error('Plain.'), { limit: 64 }))])).toBe('Asked 1 forwards: 0 started, 1 refused (UNKNOWN 1). The host said: Plain.');
+    expect(wordsOfAsked([refused(undefined)])).toBe('Asked 1 forwards: 0 started, 1 refused (UNKNOWN 1). The host said: The host could not start the forward.');
+  });
+
+  it('counts what it was given and nothing it was not: the tally, as data', () => {
+    expect(askedOf([started(), refused(hostRefusal('FORBIDDEN', 'A.')), started()])).toEqual({ kind: 'asked', asked: 3, started: 2, refused: 1, codes: [['FORBIDDEN', 1]], limit: undefined, said: 'A.' });
+    expect(askedOf([started()])).toEqual({ kind: 'asked', asked: 1, started: 1, refused: 0, codes: [], limit: undefined, said: undefined });
   });
 });

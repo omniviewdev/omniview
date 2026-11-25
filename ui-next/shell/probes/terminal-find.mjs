@@ -29,7 +29,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AXE } from './harness.mjs';
-import { createHost, serveContext } from './terminal-host.mjs';
+import { createHost } from './terminal-host.mjs';
+import { serveContext } from './terminal-serve.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -783,7 +784,7 @@ export function createFindSections({ check, note, report, runAxe }) {
     const tag = `${engine} ${vp}`;
     const host = createHost({ ...control?.host?.options, faults: { ...control?.host?.faults } });
     const context = await browser.newContext({ viewport, locale: 'en-US', timezoneId: 'UTC' });
-    const served = await serveContext(context, host, { sweepMs: 0 });
+    const served = await serveContext(context, host);
     try {
       await installIn(context, ctx);
       const query = ['host=shared', 'renderer=dom', control?.query].filter((part) => part !== undefined && part !== '').join('&');
@@ -809,18 +810,22 @@ export function createFindSections({ check, note, report, runAxe }) {
       // The panel comes back as it was left, and one left open a moment before the reload comes back closed in an engine that saves its state late (Chromium): a person opens it, and so does this.
       const shown = await page.evaluate(() => (document.querySelector('[data-shell-part="panel"]')?.getBoundingClientRect().height ?? 0) > 0);
       if (!shown) await page.click('[data-shell-part="panelToggle"]');
-      await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
-      const replayed = await waitFor(page, (last) => window.__engine.lines.last >= last, REPLAY_LINES - 1, 12_000);
-      await page.locator('.xterm-helper-textarea').focus();
-      const mac = await isMac(page);
-      const open = await opened(page, mac);
+      // A page that was handed a replay it cannot join (the host's replay lacks its end: the stream does not continue where the replay says it ends) fails its terminal in words and shows no screen: it has nothing to find, and the check below says so.
+      const screen = await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 }).then(() => true, () => false);
+      const replayed = screen && (await waitFor(page, (last) => window.__engine.lines.last >= last, REPLAY_LINES - 1, 12_000));
+      let open = false;
       const readings = [];
-      // What the replay holds is searched only when it came: a page that did not take it in has nothing to find, and the check says so.
-      for (const line of replayed ? ['0002999', '0000123'] : []) {
-        await field(page).fill(line);
-        await waitFor(page, () => window.__find.count() !== null && window.__find.count() !== '');
-        const got = await countIs(page, saysFor(1));
-        readings.push({ line, got, ok: got === saysFor(1) });
+      if (screen) {
+        await page.locator('.xterm-helper-textarea').focus();
+        const mac = await isMac(page);
+        open = await opened(page, mac);
+        // What the replay holds is searched only when it came: a page that did not take it in has nothing to find, and the check says so.
+        for (const line of replayed ? ['0002999', '0000123'] : []) {
+          await field(page).fill(line);
+          await waitFor(page, () => window.__find.count() !== null && window.__find.count() !== '');
+          const got = await countIs(page, saysFor(1));
+          readings.push({ line, got, ok: got === saysFor(1) });
+        }
       }
 
       const wrong = readings.filter((reading) => !reading.ok);
