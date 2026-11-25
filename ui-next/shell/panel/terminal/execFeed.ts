@@ -547,9 +547,13 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const pump = () => {
     while (waiting !== '' && usable()) {
       const length = pieceLength(waiting);
-      const piece = encoder.encode(waiting.slice(0, length));
+      const text = waiting.slice(0, length);
       waiting = waiting.slice(length);
-      link?.input(piece);
+      // A link that refuses the bytes is over (it has told `closed`): they go back to the front, to be sent after the next `ready`.
+      if (link?.input(encoder.encode(text)) === false) {
+        waiting = text + waiting;
+        return;
+      }
     }
   };
 
