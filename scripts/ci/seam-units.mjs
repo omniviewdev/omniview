@@ -27,8 +27,8 @@ export const units = [
   // The scenarios that start a plugin's process (the Go fixture is built once for the run).
   { id: 'plugin-process', phases: ['process', 'failed-load', 'plugins-page'], seconds: 135 },
   { id: 'connections-problems', phases: ['connections', 'problems-operations'], seconds: 65 },
-  // Scenario w, the Ports tool (PF1): the port forwards the host lists, with Stop, Open and Copy, on a host of its own. The first value is an estimate (the 41 controls of the table are one run of about 45 s); the first CI run gives the real one.
-  { id: 'ports', phases: ['ports'], seconds: 45 },
+  // Scenario w, the Ports tool (PF1, PF2): the port forwards the host lists, with Stop, the disabled Open and Copy port, and the bounds of `ctx.panel.ports.forward` (a user action, a cap of 64, a bounded id) on a host of its own. It took 62 s on the laptop (load 3, both engines; 32 s before PF2: the 1,000 forwards and the 9 s the lapsed call must be left alone), so 75 s here; the first CI run gives the real one.
+  { id: 'ports', phases: ['ports'], seconds: 75 },
 
   // The negative controls. Scenario k (a plugin's unload and the Logs sessions) and the watch over failed requests with m (the identity of a Logs session).
   { id: 'controls-kept', runs: ['double-close', 'new-view', 'failed-ended', 'close-twice', 'page-error'], seconds: 55 },
@@ -57,5 +57,5 @@ export const units = [
   { id: 'controls-failed-load', runs: ['failed-load'], seconds: 40 },
   { id: 'controls-plugins-page', runs: ['plugins-page'], seconds: 60 },
   { id: 'controls-connections-problems', runs: ['connections', 'problems-operations'], seconds: 80 },
-  { id: 'controls-ports', runs: ['ports'], seconds: 55 },
+  { id: 'controls-ports', runs: ['ports'], seconds: 90 },
 ];

@@ -52,6 +52,33 @@ const NAMES = [
 ];
 /** The five forwards the mock's own measurement has, in its order: running, stopped, failed, stopping and the long name. */
 const MOCK_FIVE = NAMED_FIVE;
+/** The same five with no host stated, which is what the SDK's session says: the tool's own words for the Mapping, Open in browser and Copy (and the difference from the mock's). */
+const UNSTATED_FIVE = NAMED_FIVE.map((entry) => ({ ...entry, local_host: undefined }));
+/** One forward for each way a producer may state where it listens, or not (the section `hosts` of the probe holds the words). */
+const HOSTS = [
+  ['h-none', {}],
+  ['h-v4', { local_host: '127.0.0.1' }],
+  ['h-v6', { local_host: '::1' }],
+  ['h-name', { local_host: 'localhost' }],
+  ['h-all', { local_host: '0.0.0.0' }],
+  ['h-all6', { local_host: '::' }],
+  ['h-udp', { protocol: 'UDP', remote_port: 53 }],
+  ['h-auto', { local_port: 0 }],
+  ['h-auto4', { local_host: '127.0.0.1', local_port: 0 }],
+  ['h-fail', { state: 'FAILED' }],
+  ['h-failb', { state: 'FAILED', local_host: '0.0.0.0' }],
+].map(([id, patch], index) => ({
+  ...SET[0],
+  id,
+  created_at: new Date(Date.parse(SET[0].created_at) + index * 1000).toISOString(),
+  connection: { ...SET[0].connection, resource_id: id },
+  local_host: undefined,
+  local_port: 8081 + index,
+  remote_port: 8080,
+  protocol: 'TCP',
+  state: 'ACTIVE',
+  ...patch,
+}));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const dist = build();
 const { server, url } = await serve(dist);
@@ -131,8 +158,8 @@ try {
       };
 
       /** The mock's photograph above and the tool's below, each cut from its own panel (where the mock's was measured at this size and where the tool's was when it was photographed), a little above it, to a height that holds both panels whole. */
-      const compare = async (name, mockFile, own) => {
-        const file = path.join(shots, `compare-${name}-${engine}-${sizeName}.png`);
+      const compare = async (name, mockFile, own, as = name) => {
+        const file = path.join(shots, `compare-${as}-${engine}-${sizeName}.png`);
         const mockPanel = reference?.data?.[engine]?.[sizeName]?.[name]?.panel ?? null;
         if (!existsSync(mockFile) || mockPanel === null || own.panel === null) {
           // A comparison of an earlier run must not stand where this run made none: it would show a fixture that is not this one (the photograph of this run's own is kept).
@@ -173,6 +200,13 @@ try {
       await compare('table', mockShot('table'), await photograph(page, 'table'));
       await page.context().close();
 
+      // 1b. The same five with no host stated, as the SDK says them: beside the mock's table, what the tool says for itself shows.
+      page = await open({ sessions: UNSTATED_FIVE });
+      await settled(page, UNSTATED_FIVE.length);
+      await facts(page, { plugin: false });
+      await compare('table', mockShot('table'), await photograph(page, 'unstated'), 'unstated');
+      await page.context().close();
+
       // 2. Every state the tool has, with the panel at its largest: running over TCP and over UDP, paused, stopped, failed, stopping, a plugin that stopped, a long name, a static target, a connection with a name and one without.
       page = await open({ sessions: SET });
       await settled(page, SET.length);
@@ -188,6 +222,12 @@ try {
       await page.locator('[data-ports-id="api"]').getByRole('button', { name: 'Copy address' }).click();
       await page.waitForFunction(() => document.querySelector('[data-ports-id="api"] [data-ports-action="copy"] svg')?.getAttribute('data-ov-glyph') === 'check');
       await photograph(page, 'refused-and-copied');
+      await page.context().close();
+      // Every way of stating a host, or not.
+      page = await open({ sessions: HOSTS });
+      await settled(page, HOSTS.length);
+      await tall(page);
+      await photograph(page, 'hosts');
       await page.context().close();
 
       // 3. The states with nothing to show.
@@ -231,6 +271,20 @@ try {
       await photograph(page, 'focus');
       const theme = await page.evaluate(() => ({ theme: document.documentElement.getAttribute('data-ov-theme'), attributes: [...document.documentElement.attributes].map((attribute) => attribute.name) }));
       console.log('the window is in the theme', JSON.stringify(theme));
+      // The menu and the tip of a forward that runs and whose host is not stated.
+      await page.locator('[data-ports-id="db"] [data-column="mapping"]').click({ button: 'right' });
+      await page.waitForSelector('[role="menu"]');
+      await sleep(300);
+      await photograph(page, 'menu-unstated');
+      await page.keyboard.press('Escape');
+      await page.locator('[data-ports-id="db"] button[data-ports-action="open"]').hover();
+      await page.waitForFunction(() => document.querySelector('[role="tooltip"]')?.matches(':popover-open') === true, null, { timeout: 8000 });
+      const stated = await page.evaluate(() => document.querySelector('[role="tooltip"]')?.textContent);
+      console.log('the tip of an Open in browser whose host is not stated says', JSON.stringify(stated));
+      await sleep(200);
+      const hoveredUnstated = path.join(shots, `ports-tip-unstated-${engine}-${sizeName}.png`);
+      await page.screenshot({ path: hoveredUnstated });
+      console.log('wrote', hoveredUnstated);
       await page.context().close();
 
       // 5. In the faces the window ships.

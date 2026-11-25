@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
 import { createActivityFeed, type ActivityFeedControl } from '../../shell/panel/activity';
+import { CLOSED_EVENT } from '../../shell/panel/ports/api';
 import { attachLocalTerminal, loadPageKey, restoreLocalTerminals, terminalKeyStorage, type TerminalsOptions } from '../../shell/panel/terminal';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
@@ -54,16 +55,29 @@ async function openExternal(url: string): Promise<void> {
   await Browser.OpenURL(url);
 }
 
+/** The id of the forward a closed event of the host is about: its payload is the session, and its `id` is the only thing of it read here. */
+function closedId(data: unknown): string | undefined {
+  return typeof data === 'object' && data !== null && 'id' in data && typeof data.id === 'string' && data.id !== '' ? data.id : undefined;
+}
+
 /**
  * The host's networker as a page's forward reaches it (`ctx.panel.ports.forward`, and the `stop` of the forward it answers): the runtime's own calls, as they are, and nothing decided here. `start` is the typed start: the plugin and the
  * connection the page is read in are its routing, and the request is the typed one the host admits and hands to the plugin's forwarder. `stop` is the close of a forward by its id, and the session the host answers is not read. What comes
- * of either is worded by the forward (`portForward.ts`), so the host's refusal is the call's rejection as it came.
+ * of either is worded by the forward (`portForward.ts`), so the host's refusal is the call's rejection as it came. `onClosed` is the host's word that a forward was closed, by whoever closed it: its event, `core/networker/portforward/closed`,
+ * whose payload is the session, heard through the runtime from the moment it is asked for until the function it answers is called. The window asks only while it counts a forward, so a window that forwards nothing listens to nothing.
  */
 const networker: PortForwardNetwork = {
   start: async (plugin, connection, request) => NetworkerClient.StartResourcePortForwardingSession(plugin, connection, request),
   stop: async (sessionId) => {
     await NetworkerClient.ClosePortForwardSession(sessionId);
   },
+  onClosed: (listener) =>
+    Events.On(CLOSED_EVENT, ({ data }) => {
+      const id = closedId(data);
+      if (id !== undefined) {
+        listener(id);
+      }
+    }),
 };
 
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */

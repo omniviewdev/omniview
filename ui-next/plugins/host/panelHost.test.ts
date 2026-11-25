@@ -4,6 +4,7 @@ import { fakeFeed } from '../../shell/panel/logs/testing';
 import type { LogTargetV1, PanelHostV1 } from '../contract/v1';
 import { panelHostsOf } from './panelHost';
 import type { PortForwardStart, PortForwardStop, PortForwarding } from './portForward';
+import { ledgerWorld } from './portTesting';
 
 // What a plugin's `ctx.panel` is: the host's Logs registry, bound to the plugin that holds it. The registry is tested in ui-next/shell/panel/logs; what is under test here is the plugin's side of the
 // handle: a target in the plugin's words (a `RouteV1`, no plugin id) becomes the host's descriptor in the plugin's name, and the plugin gets back a session it may close.
@@ -21,6 +22,20 @@ function harness(forwarding?: PortForwarding): Harness {
   streams.attach();
   return { store, streams, hostOf: panelHostsOf(streams, forwarding) };
 }
+
+/** A port-forward service for a window: a networker that starts forward after forward and stops what it is asked to, the Ports tool, a window in the middle of a user action, and the feeds the window's count listens to. */
+const forwarding = () => {
+  const world = ledgerWorld();
+  return {
+    start: vi.fn<PortForwardStart>(async () => Promise.resolve({ id: 'forward-1', local_port: 41_234 })),
+    stop: vi.fn<PortForwardStop>(async () => Promise.resolve(undefined)),
+    revealPortsTool: vi.fn<() => void>(),
+    userActivation: () => true,
+    onClosed: world.deps.onClosed,
+    plugins: world.deps.plugins,
+    world,
+  } satisfies PortForwarding & { readonly world: unknown };
+};
 
 const target = (patch: Partial<LogTargetV1> = {}): LogTargetV1 => ({ id: 'item/orders-api/app', title: 'orders-api/app', scope: 'north', open: () => fakeFeed(), ...patch });
 
@@ -103,11 +118,6 @@ describe('a target that is not well formed', () => {
 // the Ports tool are fakes. A page that is read in a connection has the member. A page that is read in none, and a palette command (which runs from the palette and not from a page), have not: a member that is there and can
 // never work is worse than one that is absent, and a plugin tests for it as it does for a host that predates it.
 describe('the ports member of the handle (PF1)', () => {
-  const forwarding = () => ({
-    start: vi.fn<PortForwardStart>(async () => Promise.resolve({ id: 'forward-1', local_port: 41_234 })),
-    stop: vi.fn<PortForwardStop>(async () => Promise.resolve(undefined)),
-    revealPortsTool: vi.fn<() => void>(),
-  });
   const request = { resourceId: 'alpha', resourceKey: 'widgets', remotePort: 8080 };
 
   /** The ports member of a handle, which a test that goes on to call it has checked is there. */
@@ -208,7 +218,8 @@ describe('the ports member of the handle (PF1)', () => {
     const forward = forwarding();
     const { hostOf } = harness(forward);
     const answer = await portsMember(hostOf('acme', 'north')).forward(request);
-    expect(answer).toMatchObject({ sessionId: 'forward-1', localPort: 41_234, localHost: '127.0.0.1' });
+    expect(answer).toMatchObject({ sessionId: 'forward-1', localPort: 41_234 });
+    expect('localHost' in answer).toBe(false);
     expect(forward.stop).not.toHaveBeenCalled();
     await answer.stop();
     expect(forward.stop).toHaveBeenCalledTimes(1);
@@ -216,15 +227,74 @@ describe('the ports member of the handle (PF1)', () => {
   });
 });
 
+// PF2: the count of the forwards a window has started (`portLedger.ts`) is the window's, made once with the handles and shared by every one of them: the caps on what a plugin may hold in a connection and on what the window may
+// hold are what that one count says, whichever plugin and connection a handle is for. Another window has handles of its own and a count of its own: across windows the host has no owner of a forward.
+describe('the count of forwards of a window (PF2)', () => {
+  const request = { resourceId: 'alpha', resourceKey: 'widgets', remotePort: 8080 };
+
+  /** A service whose networker answers each start with a forward of its own. */
+  function numbering() {
+    const forward = forwarding();
+    let issued = 0;
+    forward.start.mockImplementation(async () => {
+      issued += 1;
+      return Promise.resolve({ id: `forward-${String(issued)}`, local_port: 40_000 + issued });
+    });
+    return forward;
+  }
+
+  async function forwardTimes(handle: PanelHostV1, count: number): Promise<void> {
+    for (let one = 0; one < count; one += 1) {
+      await handle.ports?.forward(request);
+    }
+  }
+
+  it('is shared by every handle of the window: forwards in two connections of one plugin and in another plugin count towards one cap on the window', async () => {
+    const forward = numbering();
+    const { hostOf } = harness(forward);
+    await forwardTimes(hostOf('acme', 'north'), 64);
+    await forwardTimes(hostOf('acme', 'south'), 64);
+    await expect(hostOf('beta', 'east').ports?.forward(request)).rejects.toMatchObject({ name: 'PortForwardError', code: 'RESOURCE_LIMIT', limit: 128 });
+    expect(forward.start).toHaveBeenCalledTimes(128);
+  });
+
+  it('is shared by a handle that is made after the others have forwarded: it is the window\'s count it joins, not a new one', async () => {
+    const forward = numbering();
+    const { hostOf } = harness(forward);
+    await forwardTimes(hostOf('acme', 'north'), 64);
+    await forwardTimes(hostOf('beta', 'south'), 64);
+    await expect(hostOf('gamma', 'east').ports?.forward(request)).rejects.toMatchObject({ code: 'RESOURCE_LIMIT', limit: 128 });
+  });
+
+  it('holds a plugin to its cap in each connection on its own: the same handle asks the same count', async () => {
+    const forward = numbering();
+    const { hostOf } = harness(forward);
+    await forwardTimes(hostOf('acme', 'north'), 64);
+    await expect(hostOf('acme', 'north').ports?.forward(request)).rejects.toMatchObject({ code: 'RESOURCE_LIMIT', limit: 64 });
+    await expect(hostOf('acme', 'south').ports?.forward(request)).resolves.toMatchObject({ localPort: expect.any(Number) });
+  });
+
+  it('is a window\'s own: another window has handles and a count of its own, and the host has no owner of a forward to join them', async () => {
+    const first = harness(numbering());
+    const second = harness(numbering());
+    await forwardTimes(first.hostOf('acme', 'north'), 64);
+    await expect(first.hostOf('acme', 'north').ports?.forward(request)).rejects.toMatchObject({ code: 'RESOURCE_LIMIT' });
+    await expect(second.hostOf('acme', 'north').ports?.forward(request)).resolves.toMatchObject({ localPort: expect.any(Number) });
+  });
+
+  it('listens to nothing until a handle has forwarded: making handles, and reading them, costs the window no listener', () => {
+    const forward = numbering();
+    const { hostOf } = harness(forward);
+    hostOf('acme', 'north');
+    hostOf('beta');
+    expect(forward.world.listening()).toEqual({ closed: 0, plugins: 0 });
+    expect(forward.world.subscribed()).toEqual({ closed: 0, plugins: 0 });
+  });
+});
+
 // PF1, N3 of the review: a handle is the plugin's and the connection's, and every page of that plugin in that connection is given the same one. A page that replaced a member would replace it for all of them, so the handle
 // and each member are frozen.
 describe('a handle a page is given cannot be changed by the page (PF1)', () => {
-  const forwarding = () => ({
-    start: vi.fn<PortForwardStart>(async () => Promise.resolve({ id: 'forward-1', local_port: 41_234 })),
-    stop: vi.fn<PortForwardStop>(async () => Promise.resolve(undefined)),
-    revealPortsTool: vi.fn<() => void>(),
-  });
-
   it('is frozen, and so is each member it holds', () => {
     const { hostOf } = harness(forwarding());
     const handle = hostOf('acme', 'north');

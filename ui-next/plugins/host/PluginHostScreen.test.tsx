@@ -35,6 +35,8 @@ const world = vi.hoisted(() => {
     start: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     /** The runtime's close of a forward by its id, which the screen's networker calls through to. */
     close: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    /** The runtime's `Events.On`, which the screen's lifecycle listeners and its networker's closed feed subscribe through. */
+    on: vi.fn<(name: string, callback: (event: { readonly data?: unknown }) => void) => () => void>(),
   };
 });
 
@@ -62,7 +64,7 @@ vi.mock('@omniviewdev/runtime/api', async (importOriginal) => ({
 vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   Window: { Name: async () => Promise.resolve('main'), Close: async () => Promise.resolve() },
-  Events: { On: () => () => undefined },
+  Events: { On: (name: string, callback: (event: { readonly data?: unknown }) => void) => world.on(name, callback) },
   // eslint-disable-next-line @typescript-eslint/naming-convention -- the runtime names its browser call `OpenURL`
   Browser: { OpenURL: vi.fn() },
   onEventsReconnect: vi.fn(),
@@ -89,6 +91,8 @@ beforeEach(() => {
   vi.mocked(Browser.OpenURL).mockReset();
   world.start.mockReset();
   world.close.mockReset();
+  world.on.mockReset();
+  world.on.mockImplementation(() => () => undefined);
   vi.mocked(Browser.OpenURL).mockResolvedValue(undefined);
 });
 
@@ -302,5 +306,71 @@ describe('the way the screen gives the host to reach the networker for a port fo
     expect(world.given.length).toBeGreaterThan(before);
     expect(drawn()?.networker).toBeDefined();
     expect(new Set(world.given.map((props) => props.networker)).size).toBe(1);
+  });
+});
+
+// PF2: the networker's word that a forward is closed is the host's event of that name, heard through the runtime. The screen subscribes to it only when the host asks for it (the window asks while it counts a forward), and it
+// gives the host the id of the forward that was closed and nothing else: what the event carries beyond it is the Ports tool's to read.
+describe('the closed events the screen gives the host\'s count of forwards (PF2)', () => {
+  const CLOSED = 'core/networker/portforward/closed';
+
+  /** The networker the screen gave the host. */
+  async function networkerGiven(): Promise<PortForwardNetwork> {
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    const networker = drawn()?.networker;
+    if (networker === undefined) {
+      throw new Error('the host was given no networker');
+    }
+
+    return networker;
+  }
+
+  /** The callbacks the runtime was given for the closed event, in order. */
+  const closedHandlers = () => world.on.mock.calls.filter(([name]) => name === CLOSED).map(([, callback]) => callback);
+
+  it('are not listened to until the host asks: the screen subscribes to nothing of the host\'s forwards by itself', async () => {
+    await networkerGiven();
+    expect(closedHandlers()).toHaveLength(0);
+  });
+
+  it('are listened to through the runtime when the host asks, once for each ask, and give the host the id of the forward that was closed', async () => {
+    const { onClosed } = await networkerGiven();
+    const closed: string[] = [];
+    onClosed((sessionId) => {
+      closed.push(sessionId);
+    });
+    expect(closedHandlers()).toHaveLength(1);
+    closedHandlers()[0]?.({ data: { id: 'forward-7', state: 'STOPPED', local_port: 41_234 } });
+    expect(closed).toEqual(['forward-7']);
+  });
+
+  it.each([
+    ['no payload', {}],
+    ['a payload that is nothing', { data: null }],
+    ['a payload that is text', { data: 'forward-7' }],
+    ['a payload with no id', { data: { state: 'STOPPED' } }],
+    ['a payload whose id is not text', { data: { id: 7 } }],
+    ['a payload whose id is empty', { data: { id: '' } }],
+  ])('does not tell the host of an event with %s: there is no forward to say it was closed', async (_name, event) => {
+    const { onClosed } = await networkerGiven();
+    const closed: string[] = [];
+    onClosed((sessionId) => {
+      closed.push(sessionId);
+    });
+    closedHandlers()[0]?.(event);
+    expect(closed).toEqual([]);
+  });
+
+  it('stops listening with the function the runtime answered, when the host says so, and not before', async () => {
+    const unsubscribe = vi.fn();
+    world.on.mockImplementation((name) => (name === CLOSED ? unsubscribe : () => undefined));
+    const { onClosed } = await networkerGiven();
+    const stop = onClosed(() => undefined);
+    expect(unsubscribe).not.toHaveBeenCalled();
+    stop();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

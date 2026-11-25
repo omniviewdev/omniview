@@ -149,9 +149,9 @@ describe('the Ports tool in the window', () => {
     const { fake, user } = mount();
     await showPorts(user);
     await act(async () => {
-      await fake.answer([session('a', { local_port: 3000 })]);
+      await fake.answer([session('a', { local_port: 3000, local_host: '127.0.0.1' })]);
     });
-    fake.serve([session('a', { local_port: 3000 })]);
+    fake.serve([session('a', { local_port: 3000, local_host: '127.0.0.1' })]);
     const row = document.querySelector<HTMLElement>('[data-ports-id="a"]');
     if (row === null) {
       throw new Error('there is no row a');

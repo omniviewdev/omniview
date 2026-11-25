@@ -17,6 +17,7 @@ const forward = (patch: Partial<Forward> = {}): Forward => ({
   protocol: 'TCP',
   state: 'running',
   created: 0,
+  host: '127.0.0.1',
   ...patch,
 });
 
@@ -77,5 +78,16 @@ describe('the menu of a row', () => {
   it('names no shortcut: the row\'s actions have no chord, and a menu that drew one would not be named by all that it draws', () => {
     const items = portsMenu(rowOf(forward(), facts()), actions());
     expect(items.every((item) => item.kind !== 'action' || item.shortcut === undefined)).toBe(true);
+  });
+});
+
+describe('the menu of a row whose producer states no host', () => {
+  it('says Copy port, and has Open in browser as an item that cannot be used, with the reason: nothing says where the forward listens', () => {
+    const items = portsMenu(rowOf(forward({ host: '' }), facts()), actions());
+    expect(items.map((item) => (item.kind === 'action' ? [item.id, item.label, item.disabled] : [item.kind]))).toEqual([
+      ['stop', 'Stop', undefined],
+      ['open', 'Open in browser', 'Where this forward listens is not stated, so it cannot be opened from here.'],
+      ['copy', 'Copy port', undefined],
+    ]);
   });
 });

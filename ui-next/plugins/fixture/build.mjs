@@ -17,7 +17,7 @@
 //   fixture-d-missing  a plugin whose `assets/` holds no bundle
 // A fifth plugin, `fixture-f-conn` (Seam Connections), is written only on request (`writeConnectionsPlugin`, see below): it has a process of its own, with a `resource` capability and two connections.
 // A sixth, `fixture-g-ports` (Seam Ports), is written only on request too (`writePortsPlugin`): its process (`./ports-process`) has the `resource` capability, for the one connection the host needs to start a forward in, and the
-// `networker` capability, a real forwarder to a TCP server of its own (`./portforward`), and its page has the three buttons that ask the host to forward that port, to stop what was forwarded and to forward the same port again (`src/ports.ts` says what it is).
+// `networker` capability, a real forwarder to a TCP server of its own (`./portforward`), and its page has seven buttons: three that ask the host to forward that port, to stop what was forwarded and to forward the same port again, and four that drive the host's rules of a forward (a thousand asked at once, the stop of all of them, an id of a mebibyte, and an ask made after the action has lapsed) (`src/ports.ts` says what it is).
 import { execFile } from 'node:child_process';
 import { chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -57,10 +57,16 @@ const CONNECTIONS = { variant: 'connections', name: 'Seam Connections', rail: { 
 
 // The ports plugin is NOT in `PLUGINS` either, for the same reason, and a check that wants it writes it with `writePortsPlugin(root, binary)`. It has one connection, `harbor`, because the host starts a forward in a connection
 // it knows, and a `networker` capability whose forwarder relays to a TCP server of the plugin's own (`./ports-process`, built by `buildPortsProcess`, and `./portforward`, the Go package it is made of). Its bundle is
-// `src/entry-ports.tsx`: one page, `targets`, whose one row has the three buttons that ask the host to forward the target's port, to stop the forward it answered last and to forward the same port again. Everything the check needs to name of it is exported here, from the one file that says it (`src/ports.ts`).
+// `src/entry-ports.tsx`: one page, `targets`, whose one row has the seven buttons. Everything the check needs to name of it is exported here, from the one file that says it (`src/ports.ts`).
 export {
   AGAIN_LABEL,
+  ASKED,
   FORWARD_LABEL,
+  LAPSED_LABEL,
+  LAPSE_MS,
+  LAPSE_WORDS,
+  LONG_ID_LABEL,
+  MANY_LABEL,
   NO_CONNECTION_WORDS,
   NO_FORWARD_WORDS,
   NO_PORTS_WORDS,
@@ -68,6 +74,7 @@ export {
   PORTS_CONNECTION_NAME,
   PORTS_ID,
   PORTS_NAME,
+  STOP_ALL_LABEL,
   STOP_LABEL,
   TARGET_GREETING,
   TARGET_ID,
@@ -241,11 +248,15 @@ export async function writeConnectionsPlugin(root, binary = undefined) {
  *
  * What a check does with it: the process starts its target server when it starts, so a forward needs nothing but a connection that is STARTED (the host's `StartConnection` of `PORTS_ID` and `PORTS_CONNECTION_KEY`, which a
  * person's press on Home makes; a forward on one that was not started is refused by the plugin's SDK, and the page shows the refusal) and the press of the button `FORWARD_LABEL` on the page
- * `#/fixture-g-ports/targets?connection=harbor-9c41e07ab2`, which says `Forward session <id> on <localHost>:<localPort>` from the host's answer. The button `STOP_LABEL` stops the forward the page was last answered and says
+ * `#/fixture-g-ports/targets?connection=harbor-9c41e07ab2`, which says `Forward session <id> on <host>:<port>` (the address the host's answer states, else the loopback its own forwarder listens on, `FORWARD_HOST`). The button `STOP_LABEL` stops the forward the page was last answered and says
  * `Stopped forward <id>`; the button `AGAIN_LABEL` asks for the local port of that answer again, and says `Forward session ...` or, when the host refuses it, `Refused <CODE>: <message>` with the code and the words of the host's
- * error (a stop that is refused says `Stop refused <CODE>: <message>`). Neither has a forward to act on until the host has answered one (`NO_FORWARD_WORDS`), and while the host answers a press the two buttons that were not pressed are
- * unavailable (`aria-disabled`, with the words `The host has not answered the last press yet.`), so that a press of one of them waits for the answer. A page read in no connection (no `connection` in its route) is
- * given no handle to forward with and says `NO_CONNECTION_WORDS`, where a host with no such member says `NO_PORTS_WORDS`. The Ports tool shows `127.0.0.1:<local> → :8080/TCP` (`TARGET_PORT`), and a client of that local port reads
+ * error (a stop that is refused says `Stop refused <CODE>: <message>`). The four that drive the host's rules of a forward have one press each. `MANY_LABEL` asks `ASKED` forwards in one synchronous loop, every call made in the press and all in flight at once,
+ * holds the answers that started and says `Asked 1000 forwards: <n> started, <m> refused (<CODE> <count>[, <CODE> <count>...][, limit <limit>]). The host said: <the first refusal's words>` (the codes in the order first seen, the limit only when a
+ * refusal carries one; with none refused it says `Asked 1000 forwards: 1000 started, 0 refused.`). `STOP_ALL_LABEL` stops every forward the page holds, each stop asked at once, and says `Stopped <n> forwards.` or `Stopped <k> of <n> forwards; <r> were refused.`.
+ * `LONG_ID_LABEL` asks one forward whose id is 1,048,576 characters long and says what it was refused with, `Refused <CODE>: <words>`. `LAPSED_LABEL` says `LAPSE_WORDS` and, when `LAPSE_MS` have passed, asks one forward from a timer of the page,
+ * which the host refuses `FORBIDDEN` for want of a user action (a forward the host unexpectedly starts is said and held as any other is). The buttons that stop and the one that asks again have nothing to act on until the host has answered a forward
+ * (`NO_FORWARD_WORDS`), and while the host answers a press the buttons that were not pressed are unavailable (`aria-disabled`, with the words `The host has not answered the last press yet.`), so that a press of one of them waits for the answer. A page
+ * read in no connection (no `connection` in its route) is given no handle to forward with and says `NO_CONNECTION_WORDS`, where a host with no such member says `NO_PORTS_WORDS`. The Ports tool shows `port <local> → :8080/TCP` (`TARGET_PORT`), and a client of that local port reads
  * the line `TARGET_GREETING` and then gets back what it sends. Stopping the forward, stopping the connection (`StopConnection`) or ending the plugin closes the local port and every client of it. The plugin is ended from outside as the
  * checks of the other fixture processes do it: the pid the host reports for the process keyed `plugin:fixture-g-ports` (`processinfo` `GetSnapshot`), `SIGKILL`, and `bin/plugin` made not executable first so that the host's
  * recovery cannot start it again.

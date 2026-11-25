@@ -53,12 +53,12 @@ describe('the member is optional: a host that lacks it leaves it `undefined`, an
 });
 
 describe('forward', () => {
-  it('takes a request and answers the forward the host started: its id, the port it listens on, the address the host reaches it at, and a way to stop it', () => {
+  it('takes a request and answers the forward the host started: its id, the port it listens on, a way to stop it, and the address when the producer states one', () => {
     expectTypeOf<Ports['forward']>().toEqualTypeOf<(request: PortForwardRequestV1) => Promise<PortForwardSessionV1>>();
     expectTypeOf<PortForwardSessionV1>().toEqualTypeOf<{
       readonly sessionId: string;
       readonly localPort: number;
-      readonly localHost: string;
+      readonly localHost?: string | undefined;
       readonly stop: () => Promise<void>;
     }>();
   });
@@ -69,9 +69,13 @@ describe('forward', () => {
     expectTypeOf<PortForwardSessionV1['stop']>().returns.toEqualTypeOf<Promise<void>>();
   });
 
-  it('answers the port as a number and the address as text, which a plugin reads as `localHost:localPort`', () => {
+  it('answers the port as a number, and the address as text that may be absent: it is there only when the producer states where the forward listens', () => {
     expectTypeOf<PortForwardSessionV1['localPort']>().toEqualTypeOf<number>();
-    expectTypeOf<PortForwardSessionV1['localHost']>().toEqualTypeOf<string>();
+    expectTypeOf<PortForwardSessionV1['localHost']>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<RequiredKeys<PortForwardSessionV1>>().toEqualTypeOf<'sessionId' | 'localPort' | 'stop'>();
+    const stated: PortForwardSessionV1 = { sessionId: 'a', localPort: 8080, localHost: '127.0.0.1', stop: async () => Promise.resolve() };
+    const unstated: PortForwardSessionV1 = { sessionId: 'a', localPort: 8080, stop: async () => Promise.resolve() };
+    expect([stated.localHost, unstated.localHost]).toEqual(['127.0.0.1', undefined]);
   });
 });
 
@@ -115,6 +119,14 @@ describe('a refusal', () => {
     expectTypeOf<PortForwardErrorV1['cause']>().toEqualTypeOf<unknown>();
     const refusal = (error: PortForwardErrorV1): Error => error;
     expect(typeof refusal).toBe('function');
+  });
+
+  it('says the number it is about when the host\'s own count refused, and says nothing otherwise: `limit` is optional', () => {
+    expectTypeOf<PortForwardErrorV1['limit']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<PortForwardErrorV1>().toExtend<{ readonly limit?: number | undefined }>();
+    const full: PortForwardErrorV1 = Object.assign(new Error('This plugin already holds 64 forwards in this connection. Stop one first.'), { name: 'PortForwardError' as const, code: 'RESOURCE_LIMIT' as const, limit: 64 });
+    const plain: PortForwardErrorV1 = Object.assign(new Error('The forward names no resource.'), { name: 'PortForwardError' as const, code: 'INVALID_REQUEST' as const });
+    expect([full.limit, plain.limit]).toEqual([64, undefined]);
   });
 
   it('has the codes the contract lists and no others: the host\'s own classes that a forward can meet, and `UNKNOWN` for an answer that has none of them', () => {
@@ -225,5 +237,13 @@ describe('the checks above can fail', () => {
     // @ts-expect-error `name` says which error this is
     const named = (error: Omit<PortForwardErrorV1, 'name'> & { readonly name: 'Error' }): PortForwardErrorV1 => error;
     expect(typeof named).toBe('function');
+  });
+
+  it('an address is text and a limit is a number', () => {
+    // @ts-expect-error an address is text, whatever the producer states
+    const address: PortForwardSessionV1 = { sessionId: 'a', localPort: 8080, localHost: 7, stop: async () => Promise.resolve() };
+    // @ts-expect-error a limit is the number the refusal is about
+    const limit: PortForwardErrorV1 = Object.assign(new Error('no'), { name: 'PortForwardError' as const, code: 'RESOURCE_LIMIT' as const, limit: '64' });
+    expect([address, limit]).toHaveLength(2);
   });
 });

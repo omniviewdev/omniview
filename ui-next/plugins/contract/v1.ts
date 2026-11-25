@@ -121,7 +121,10 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // worse than one that is absent), so a plugin that offers a forward tests for it, `ctx.panel?.ports?.forward(...)`, and a command may say why it is unavailable; no bundle is drawn wrong, because a page has the member or has not. What
 // the host fills in is what the page's own scope already says: the plugin that asks and the connection the page is read in (`ContextV1.route.connection`), so a page forwards in its own connection and in no other, whatever its request
 // carries. What the plugin is answered is a forward it can read and stop (`PortForwardSessionV1`), and what it is refused with is a `PortForwardErrorV1`: the host's own code and plain words, never a stack and never raw JSON. How long a forward
-// lives, what address it is reached at and which codes a refusal has are written where the member is (`PanelHostV1.ports`, `PortForwardSessionV1`, `PortForwardErrorCodeV1`), and a change to any of them is a change to this contract.
+// lives, which rules a call is held to (a user action; the bounds on the request; the caps on what a plugin and a window may hold), what address it is reached at (none unless the producer states one) and which codes a refusal has are written where the
+// member is (`PanelHostV1.ports`, `PortForwardRequestV1`, `PortForwardSessionV1`, `PortForwardErrorCodeV1`), and a change to any of them is a change to this contract. The rules of a call were written before any plugin used the member, because
+// a rule can only be tightened while nothing depends on it (a plugin that calls from an effect, or that holds many forwards, would break) and loosening one never breaks a plugin. For the same reason `localHost` of the answer became optional,
+// and `limit` of a refusal was added as an optional member, then.
 //
 // The overview page (HM3) is minor, on the terms of the detail page, the other kind of page version 1 gained after its first release: `overview` is a NEW kind of page (`OverviewPageV1`, a member of the `PageV1` union) and optional, and a contribution that has none is what it was.
 // It is the page of a SCOPE, a connection, where a detail page is the page of an object: it draws the detail page's anatomy (the page header, the in-page tabs and the Overview's typed summary and sections, with the connection's NAME as the heading) for the connection the
@@ -452,15 +455,19 @@ export type LogSessionV1 = {
  * request: the host fills them in from the page's own scope (the plugin's id, and `ContextV1.route.connection`), so a page forwards in its own connection and in no other. The members after the resource's id are the ones the plugin's
  * forwarder reads, written as the runtime's typed start has them (`NetworkerClient.StartResourcePortForwardingSession`): a plugin that holds a `ResourceReference` of the resource, or its body, hands them over as they are. The request has no
  * `route`: the host's networker admits a reference only with a route of the connection the forward is started in, which is the page's, so the host writes that route itself whenever there is a reference. A member this type does not list is not read.
+ *
+ * THE BOUNDS (PF2). Every text of the request and its size are bounded, and a request over a bound is refused `INVALID_REQUEST`, in words that name the member and the number, before the plugin's forwarder is asked: `resourceId` at most 1024
+ * characters, `resourceKey` at most 256, every text in `reference` (a value or a name) at most 1024, `resourceData` at most 64 KiB as the JSON it is sent as (UTF-8) and the whole request, as the host sends it, at most 128 KiB. A value that nests
+ * more than 64 levels deep, which one that refers to itself does, is refused too. A text is counted in characters and the sizes in the bytes of the JSON; the host measures without serialising what is far too large.
  */
 export type PortForwardRequestV1 = {
-  /** The resource whose port is forwarded, by the id the plugin knows it by. A blank id is refused. */
+  /** The resource whose port is forwarded, by the id the plugin knows it by. A blank id is refused, and so is one of more than 1024 characters. */
   readonly resourceId: string;
-  /** The plugin's key for the kind of resource it is, which says which of its forwarders takes the request. Absent: the empty key, which only a forwarder registered under it takes. */
+  /** The plugin's key for the kind of resource it is, which says which of its forwarders takes the request. Absent: the empty key, which only a forwarder registered under it takes. At most 256 characters. */
   readonly resourceKey?: string | undefined;
-  /** The resource's reference, when the plugin holds one. The host's networker admits it only for the connection the forward is started in, which is the page's own: the host writes the route that says so. */
+  /** The resource's reference, when the plugin holds one. The host's networker admits it only for the connection the forward is started in, which is the page's own: the host writes the route that says so. Every text in it is at most 1024 characters. */
   readonly reference?: ResourceReference | undefined;
-  /** The resource's body, for a forwarder that reads it. */
+  /** The resource's body, for a forwarder that reads it. At most 64 KiB as the JSON it is sent as, and no more than 64 levels deep. */
   readonly resourceData?: Value | undefined;
   /** The port of the resource to forward: a whole number from 1 to 65535. */
   readonly remotePort: number;
@@ -472,7 +479,7 @@ export type PortForwardRequestV1 = {
 
 /**
  * A forward the host started for a plugin (PF1), as the page that asked holds it. The forward is the HOST's, not the page's: how long it lives is written at `PanelHostV1.ports`. The answer is frozen. `sessionId` and `localPort` are what the
- * host's session states; `localHost` is the host's assumption, and is written as one below.
+ * host's session states; `localHost` is there only when the producer states it, and is written so below.
  */
 export type PortForwardSessionV1 = {
   /** The id the host and the Ports tool know the forward by. */
@@ -483,11 +490,11 @@ export type PortForwardSessionV1 = {
    */
   readonly localPort: number;
   /**
-   * The address of this computer at which the host reaches the forward, so that `localHost` and `localPort` together are where to connect: `127.0.0.1`, always, today. It is the HOST's ASSUMPTION and not a fact the producer states: the
-   * session carries `local_port` and nothing about where the plugin's forwarder listens, and the SDK does not require a forwarder to listen on the loopback (neither `forwarder.go` nor the session states an address), so a forwarder that
-   * listens elsewhere is still said to be here. The Ports tool says the same address, from the same constant, in its Mapping, its Copy address and its Open in browser. A plugin that needs more than the loopback has to know it of its own forwarder.
+   * The address of this computer at which the forward listens, present ONLY when the producer states it. The host's session carries `local_port` and no address (the SDK's session has no `local_host` yet, and its forwarder contract does not
+   * require a forwarder to listen on the loopback), so the host answers without one and the member is absent: a plugin must not read an address into its absence, and one that needs the address has to know it of its own forwarder. A plugin that
+   * reads `answer.localHost` when it is there is right on a host whose SDK states it and on one whose SDK does not. The Ports tool says a host in its rows in the same way: only when the session carries one.
    */
-  readonly localHost: string;
+  readonly localHost?: string | undefined;
   /**
    * Stops this forward: the host closes its session (`ClosePortForwardSession`), which ends the tunnel and removes the forward from the host's list and from the Ports tool. It closes the session the forward was answered with, by that session's
    * id, and asks the host once: a second call, and one made while the first is under way, is the first's outcome (it resolves when the first did, and rejects with the same error when it did not). It resolves for a forward the host no longer has
@@ -507,11 +514,11 @@ export type PortForwardSessionV1 = {
  * the review of the host's PR #710, and are not read from the host's Go [INFERENCE].
  */
 export type PortForwardErrorCodeV1 =
-  /** The request is not one the host or the plugin's forwarder takes: no resource, a port that is not a whole number from 1 to 65535, a protocol that is not TCP or UDP (the host refuses these itself), or one the forwarder does not take (UDP, for a TCP forwarder). */
+  /** The request is not one the host or the plugin's forwarder takes: no resource, a port that is not a whole number from 1 to 65535, a protocol that is not TCP or UDP, a text or a body over the host's bounds (the host refuses these itself, in words that name the member and the number: the request's size, a resource id of more than 1024 characters), or one the forwarder does not take (UDP, for a TCP forwarder). */
   | 'INVALID_REQUEST'
   /** The plugin cannot forward ports. */
   | 'UNSUPPORTED'
-  /** Access to the resource or the connection is refused. */
+  /** Access to the resource or the connection is refused, or the call was not made from a user action (a click or a key press): a forward cannot be started from a render, an effect or a timer, and a window whose engine cannot tell the two apart cannot start one. */
   | 'FORBIDDEN'
   /** The connection needs the person to sign in. */
   | 'UNAUTHORIZED'
@@ -527,7 +534,7 @@ export type PortForwardErrorCodeV1 =
   | 'UNAVAILABLE'
   /** The connection is not started, or could not be verified: starting it is what helps. */
   | 'CONNECTION_ERROR'
-  /** The request is over a limit of the host, such as the size of the resource's body. */
+  /** The request is over a limit: the host's (such as the size of the resource's body), or the window's cap on the forwards a plugin may hold (`limit` of the refusal says the number). */
   | 'RESOURCE_LIMIT'
   /** The plugin's forwarder could not do it, and the host does not say why: a local port that is in use and a resource that no forwarder takes both arrive as this code (a gap of the producer's, which states no more than the class). */
   | 'PROVIDER_ERROR'
@@ -546,6 +553,11 @@ export type PortForwardErrorV1 = Error & {
   readonly name: 'PortForwardError';
   readonly code: PortForwardErrorCodeV1;
   readonly cause?: unknown;
+  /**
+   * The number the refusal is about, when the host's own count is what refused: for `RESOURCE_LIMIT` from the window's cap, how many forwards the plugin may hold in the connection (64) or the window in all (128); the message says it in
+   * words too. Absent for every other refusal, and for a `RESOURCE_LIMIT` that is the host's own (the size of a body, for instance), which states no number the window knows.
+   */
+  readonly limit?: number | undefined;
 };
 
 /**
@@ -558,11 +570,24 @@ export type PortForwardErrorV1 = Error & {
 export type PanelHostV1 = {
   readonly logs: { readonly open: (target: LogTargetV1) => LogSessionV1 | undefined };
   /**
-   * PF1. `forward` forwards a port of one of the plugin's resources to this computer and answers the forward (`PortForwardSessionV1`: its id, the port it listens on, the address the host reaches it at, and a way to stop it) once the host has
-   * started it, and the Ports tool is shown then. Call it from a user's action on a resource, as `logs.open`. It is bound to the plugin and to the connection the page is read in, and fills both in: the request names neither. It rejects with a
-   * `PortForwardErrorV1`, in the host's own code and plain words, when the request names no resource, a port that is not a whole number from 1 to 65535 or a protocol that is not TCP or UDP, and when the host could not start the forward. The member
-   * is absent on a host that predates it, in a window with no port-forward service, and from the handle of a page that is read in no connection and of a palette command (nothing says which connection to forward in): a plugin tests for it,
-   * `ctx.panel?.ports?.forward`.
+   * PF1, PF2. `forward` forwards a port of one of the plugin's resources to this computer and answers the forward (`PortForwardSessionV1`: its id, the port it listens on and a way to stop it, and the address when the producer states one) once the
+   * host has started it, and the Ports tool is shown then. It is bound to the plugin and to the connection the page is read in, and fills both in: the request names neither. It rejects with a `PortForwardErrorV1`, in the host's own code and plain
+   * words, when the call is not from a user action, when the request names no resource, a port that is not a whole number from 1 to 65535 or a protocol that is not TCP or UDP or is over a bound, when the plugin or the window already holds as many
+   * forwards as it may, and when the host could not start the forward. The member is absent on a host that predates it, in a window with no port-forward service, and from the handle of a page that is read in no connection and of a palette command
+   * (nothing says which connection to forward in): a plugin tests for it, `ctx.panel?.ports?.forward`.
+   *
+   * FROM A USER ACTION ONLY. A forward is started from a click or a key press, never from a render, an effect, a timer or a message: it starts a listener in the plugin's process. The host asks the engine at the call, before it reads the request
+   * or awaits anything (`navigator.userActivation.isActive`), and refuses `FORBIDDEN` when none is under way: 'A forward can only be started from a user action: a click or a key press.' An action's activation lasts about five seconds, so a page
+   * that awaits slow work between the click and the call (a read from the network, say) may lose it: call `forward` in the handler, or after work that is short. An engine that cannot tell a user action from a script (it has no `navigator.userActivation`)
+   * is refused as well, `FORBIDDEN` with words of its own, 'This window cannot tell a user action from a script, so it cannot start a forward.': the rule is gesture only, so a forward cannot be started in such an engine. `stop()` asks for no user action.
+   *
+   * THE BOUNDS are written at `PortForwardRequestV1`: a request over one is `INVALID_REQUEST`, and the check is made before anything is asked of the plugin's forwarder.
+   *
+   * THE CAPS. A plugin may hold 64 forwards in one connection and a window 128 in all. A call that would pass either is refused `RESOURCE_LIMIT` with the cap as the error's `limit` and in words: 'This plugin already holds 64 forwards in this
+   * connection. Stop one first.' and 'This window already holds 128 forwards. Stop one first.' (the connection's is said when both are full). The window counts a forward from the call, before the host answers, so calls made while the host is still
+   * answering are counted, and it counts it until `stop()` of its answer has closed it, until the host says it is closed (the person stopped it in the Ports tool, or another window did) or until its plugin stops. A forward whose tunnel ended on
+   * its own is counted until it is closed, as it stays listed. The count is the WINDOW's: the host has no owner of a forward, so across windows, and across a reload of the page, it cannot say how many a window started, and another window counts
+   * its own. The caps bound what one window asks, not what the host holds.
    *
    * THE FORWARD'S LIFETIME. A forward belongs to the HOST, not to the page that asked, the window it was asked in or the plugin code that holds its answer: it outlives the page, a reload of it and every window (nothing in the host's networker
    * releases a forward when a page or a window goes: `backend/pkg/plugin/networker` keeps the plugin's sessions with no owner), and nothing the page does ends it but `stop()`. It ends when
