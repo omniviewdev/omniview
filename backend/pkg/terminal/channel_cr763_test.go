@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -147,10 +148,19 @@ func TestAcknowledgementsStillFreeTheWindowWhileAnInputWriteIsBlocked(t *testing
 	require.Equal(t, "w:"+chunk, dev.waitEntered(t), "the write is blocked in the device")
 	a.input(chunk)
 	waitHost(t, s, a, "the second input never waited for room", func(cs channelStats) bool { return cs.roomWaits >= 1 })
+	// The lane is frozen by the test: its lock is held, so that an acknowledgement that waits for the lane in any form (behind the
+	// input, for it to settle, for its lock) cannot be acted on; an acknowledgement that is acted on as it is read does not touch it.
+	s.mu.Lock()
+	lane := s.channel.holder.lane
+	s.mu.Unlock()
+	lane.mu.Lock()
+	unfreeze := sync.OnceFunc(lane.mu.Unlock)
+	defer unfreeze()
 	hold.release(t)
 	guarded(t, "ack-inline", func() {
 		a.waitBytes(4 * 64 << 10)
 	})
+	unfreeze()
 	dev.openAll()
 }
 
