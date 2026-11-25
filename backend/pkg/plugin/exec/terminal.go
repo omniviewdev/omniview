@@ -157,6 +157,7 @@ func (c *controller) CreateTerminal(
 	if opts.ID == "" {
 		opts.ID = uuid.NewString()
 	}
+	opts.Command = withDefaultShell(opts.Command, c.defaultShellSetting)
 	if opts.Channel {
 		return c.createChannelTerminal(ctx, opts)
 	}

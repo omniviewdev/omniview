@@ -90,6 +90,17 @@ func TestForwardResourceIsReadyWhenItListens(t *testing.T) {
 	require.Equal(t, Greeting, conn.greeting(t), "ready means the listener accepts at once")
 }
 
+// The forwarder states where it listens, read from the address its listener really bound (`networker.LocalHostOf`), so that what the session says is where a client connects.
+func TestForwardResourceStatesTheHostItListensOn(t *testing.T) {
+	f := startForward(t, startTarget(t))
+
+	require.Equal(t, "127.0.0.1", f.result.LocalHost)
+	_, port, err := net.SplitHostPort(f.address)
+	require.NoError(t, err)
+	conn := connect(t, net.JoinHostPort(f.result.LocalHost, port))
+	require.Equal(t, Greeting, conn.greeting(t), "the host it states is where the listener accepts")
+}
+
 func TestForwardResourceSuppliesAUniqueSessionID(t *testing.T) {
 	target := startTarget(t)
 	first := startForward(t, target)

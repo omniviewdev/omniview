@@ -83,4 +83,31 @@ export const entries = {
       'Text defaults to a span with the body variant. Use as="p" for paragraphs and tone="muted" for secondary text.',
     ],
   },
+  Avatar: {
+    category: 'Primitives',
+    summary: 'A small fixed-size box that stands for someone or something: initials, a glyph, or a picture.',
+    guidance: [
+      'Pass name; the initials and, without color, a tint from four hues come from it, so one name looks the same everywhere. Use color for a solid data-palette fill.',
+      'Use icon for a glyph or image for a picture from a data: or blob: URL. Never both. Sizes are 16, 20, 24, and 28; the shape is circle or square.',
+      'An avatar is decoration, because the name sits beside it. Pass label only when the avatar alone means something; it then becomes an image.',
+    ],
+  },
+  Disclosure: {
+    category: 'Layout',
+    summary: 'A heading with one full-width trigger over a body that is mounted only while open.',
+    guidance: [
+      'Give it a title and optional muted meta, such as a count. Use level 3 below a page section and 4 below that; the look is the same.',
+      'Own it with open and onOpenChange, or use defaultOpen. The trigger is a native button with aria-expanded, and the body is a region while it exists.',
+      'lead and aside are controls beside the trigger, such as a select-all checkbox or a Remove button. They are siblings of the heading and their own Tab stops.',
+    ],
+  },
+  ToolHeader: {
+    category: 'Layout',
+    summary: 'The compact header of a side tool: a title and a cluster of icon buttons.',
+    guidance: [
+      'Name the region with label. The title is one line and clips with an ellipsis.',
+      'Pass actions as icon buttons: a command with onSelect and optional disabledReason, or a menu with the ID useMenu returned. Mount a MenuHost for menus.',
+      'The actions are one Tab stop moved by the arrow keys. They are hidden by opacity until the pointer or focus is in the header, and stay available to keyboard and assistive technology.',
+    ],
+  },
 } satisfies Record<string, Guide>;

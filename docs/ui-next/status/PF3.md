@@ -1,0 +1,73 @@
+# PF3: the host consumes `local_host` (plugin-sdk v0.23.0): the Ports tool shows the stated host, Open and Copy address for loopback only
+
+State 2026-11-25: complete and proven locally (below); the pull request's own checks are `PR Checks` only (docs/ui-next/AGENTS.md rule 39), the probes and the seam run nightly and were run here. Closes W-PF7 of `PF2.md`.
+
+## 1. What this does
+
+1. **The SDK pin, v0.23.0** (commit `9d5baaf9192d90233b74c823e66e89e8d9d294db`): `SDK1/bump.sh v0.23.0` (root module and `e2e/fixtures/workspace-probe`), `FloorVersion` v0.23.0 and its reviewed row (module `h1:VG9cWxXZ1vaOjP3qYbg04gaKK7jkUqTBuiVajnf1yXU=`, go.mod `h1:4y3rIPpRzF3N1SvC73cjJX1jcp+cnJ4dikaXuKlZs7E=`), `docs/development-cli.md`. `SDK3/derive-sums.sh v0.23.0` exit 0: git, the proxy, the checksum database, both `go.sum` and the row agree. `task bindings`: the only change is `PortForwardSession.local_host?: string`.
+2. **The Ports tool reads the host a forward states** (`ui-next/shell/panel/ports/model.ts`, `PortsStore.ts`). A stated host is kept only when it is one the SDK could have stated: `localhost` in any case, or a strict IP address (IPv6 may carry a zone of `[A-Za-z0-9._-]{1,64}`), nothing trimmed; anything else reads as unstated. Loopback is the SDK's rule (`ForwarderResult.LocalHost` in plugin-sdk): `localhost`, 127.0.0.0/8, `::1` and `::ffff:127.x.y.z` in any textual form. **Loopback**: the Mapping shows the host as stated, Open in browser is offered at `http://<connect host>:<port>` (the IPv4 as stated, a mapped IPv4 unmapped, `[::1]`, or `localhost`; a zone dropped), Copy is Copy address (`<host>:<port>`). **Every interface** (`0.0.0.0`, `::`) **or another address** (LAN, link-local): the Mapping shows the host as stated, a running row says on its second line `Reachable from other computers: it listens on every network interface.` (or `... it listens on <host>.`), Open is disabled with `This forward listens beyond this computer, so it is not opened from here.`, Copy is Copy port (the number), and the Open URL is never built from `0.0.0.0` or `::` (`browserUrlOf` is `undefined` for any non-loopback row). **Unstated** (a producer that says none, or text that is not a host): `port N`, Open disabled (`Where this forward listens is not stated, ...`), Copy port.
+3. **The fixture's Go forwarder states where it listens** (`networker.LocalHostOf(listener.Addr())`: `127.0.0.1`), so the real chain (fixture forwarder, SDK manager, plugin gRPC, host binding, Ports tool) carries `local_host` for real.
+4. **`ctx.panel.ports.forward` answers `localHost`** when the session states it, as stated and unread, and leaves the member absent when it is empty; the contract's comment carries the reader's rule.
+5. **The seam, scenario `w`**, is back on the stated-loopback truth (`127.0.0.1:<local> → :8080/TCP`, Open makes one `Browser.OpenURL` of `http://127.0.0.1:<local>`, Copy address `Address copied`, the host's list carries `local_host`); `open-disabled`, `open-asks-nothing` and `menu-open-no-call` are dropped with their controls (the fixture always states now; the unstated and exposed branches are the probe's). **The probe family** has the fake host's pages for every class (`hosts`, `exposed`, `reaches`) with three new controls (`exposed-line-dropped`, `exposed-copy-label`, `exposed-copy-address`); `reach-unstated` and `endpoint-guessed` moved to the new `reaches` page.
+
+## 2. Proof (laptop, clean environment, WebKit 27.2 and Chromium 156, both viewports for the probes)
+
+| Command | Result |
+|---|---|
+| `task local:seam -- ports,controls-ports` | exit 0, 302 s: scenario `w` 64.4 s (WebKit) and 61.6 s (Chromium), its table of 62 controls detected in both (72.5 s and 72.4 s); the 15 changed controls also pass undetected with their assertion removed in both engines (30 of 30) |
+| `task local:probes -- --changed` | exit 0, 514 s, 11 units in both engines (ports-a to e and six control units); one `NEGATIVE_CONTROL=all` sweep: 63 controls, each detected by its own assertion and undetected with it removed |
+| `go test -short ./...` (whole module) | every package ok except `backend/pkg/terminal` `TestZshXtraceNeverPrintsTheNonce` (`unconfirmed`, not `on`), which fails identically on a plain `origin/main` checkout (`816e3b2a0`): not this change |
+| `SDK1/bump.sh --check v0.23.0` (the pin's dependent packages in full) | ok, except `internal/devworkspace` `TestWatchRecoveryCannotDeclareReadyWithUnrebuiltSDKBackend`, which hit its own context deadline at load 34 and passed on its one rerun (1.8 s, load 21): a watcher timing test, not the pin |
+| `go test -race ./ui-next/plugins/fixture/...` | ok (two new tests seen red first) |
+| `vitest run` (root) | 451 files, 9,943 tests; the ports directory 8 files, 480 tests (94 red before any product code); the contract answer 7 new cases (5 red first) |
+| `tsc` app, test and node; `pnpm lint` (ui-audit); kit `verify`; `node --test scripts/ci/` (440); `seam-shards check` (29 phases, 204 controls); `probe-shards check` (432 controls) | pass |
+
+## 3. Order rule and a compatibility finding
+
+**A host on SDK v0.22.1 or older REFUSES every forward of a plugin that states `local_host`.** The old SDK's resource-wire admission rejects any message with an unknown field (`pkg/resource/v2/adapter_admission.go:47`: `UNSUPPORTED`, `unknown resource protobuf field`, HTTP 422 at the host), so the note of plugin-sdk #94 that an old host ignores field 10 holds for the protobuf decoder only. Measured on a real host built from `origin/main` (SDK v0.22.1) with the Kubernetes plugin on v0.23.0 stating `localhost`: refused; the same plugin without `LocalHost` forwards. The plugin may also keep a running tunnel the host never hears of. **So the host that pins v0.23.0 merges first and the Kubernetes plugin PR after it**; an SDK-side negotiation (a wire version or a capability, so that an old host refuses the plugin at load with words) would be a separate SDK change (W-PF12).
+
+## 4. Differences from the mock
+
+| Difference | Approval |
+|---|---|
+| A running forward that listens beyond this computer has a second line of words (the mock has none); it is drawn as the mock draws a two-line row (40 px, same type) | the lead's PF3 order ("shown as exposed with words") |
+| Open in browser is dimmed for `0.0.0.0` and `::` although this computer reaches them at `127.0.0.1` | the lead's PF3 order (loopback only); offering Open through `127.0.0.1` for them is a one-line change |
+| Copy is Copy port for an unstated or exposed forward | the lead's PF2 and PF3 orders |
+
+## 5. Catalogue
+
+| Id | Finding | Class | State |
+|---|---|---|---|
+| W-PF7 | the SDK states `local_host` (v0.23.0) and the tool and the contract read it | SDK | **closed here** |
+| W-PF12 | an old host refuses every forward of a plugin that states `local_host` (section 3) | SDK | open; the order rule is the answer for now |
+| W-PF13 | the floor moves with the pin: the Kubernetes plugin on SDK v0.22.1 is refused in a published-mode dev workspace until its own bump (`SDK4.md` section 4); an installed plugin is not affected | host | **closed:** the plugin's #288 is on v0.23.0 and `KUBERNETES_PLUGIN_REF` of the Pods check is its merge commit (section 8) |
+| W-PF14 | a window with ONE connection gave no page `ctx.panel.ports`: a route of a plugin with one connection names none (`complete`), so the host bound no handle to it, and the Pod page of the Kubernetes plugin kept its unavailable `Forward port…` (found by the Pods check's new step on the pin of #288) | host | **closed here** (A27, section 8) |
+
+## 6. Screenshots (WebKit, void, 1440x900, beside the mock) and what is wrong
+
+`/Users/joshuapare/Notes/omniview/ui-migration/status/PF3-assets/` (`compare-exposed`, `ports-hosts`, `k8s-*` for the real host with the Kubernetes plugin). Looked at: (1) the exposed line is the same muted grey as a cause line, with no glyph or warning colour, so only the sentence marks it; (2) a long mapped-IPv6 Mapping such as `[::ffff:127.0.0.1]:8085 → :8080/TCP` widens the column and pushes Connection and Status right (no clipping); (3) the PF1 differences from the mock remain (`PF1.md` section 3).
+
+## 7. Not verified
+
+Linux and Windows CI (the seam and the probes ran on macOS only); the nightly runners' seconds for the new units (the table says the laptop's times x1.3); an engine older than WebKit 27.2 or Chromium 156; the Menu key on the row menu. Section 8: the Pods check on the Linux runner (the local run was macOS arm64 with a `darwin_arm64` build of the plugin); a window with two or more connections in a real browser (the rule is proven by the window-level tests and the pure table, and the check's window has one connection); the lane's connection picker choosing a connection for a page (the picker is not touched, and its route case is the named one the tests cover).
+
+## 8. The plugin pin moves to #288, and a page of a one-connection plugin can forward a port (PF3-pin, 2026-11-25)
+
+The plugin's #288 (PF3-k8s) is merged: `feature/ui-next` is `6635c9192e6b6358b87ff13a1f4fffc701cf97dc`. The lead asked for the Pods check's pin to move to it and for the nightly check to press the Pod page's Forward port entry. The first local run of that step FAILED, and the failure is a host defect, not the plugin's (the lead ruled: fix it in this change, A27 in `decisions.md`).
+
+1. **Finding (W-PF14).** A page's `ctx.panel` is bound to the connection its route names, and a handle made for no connection has no `ports` member. A route of a plugin that has ONE connection names none (HM1, `complete`: there is nothing to choose between, and the plugin reads it in that one), so in a window of one cluster (kind, minikube, Docker Desktop, the check's own) no page had `ctx.panel.ports`: the Pod page's menu kept the plugin's unavailable `Forward port…` and had no `Forward port 8080`. #288 had been proven on routes that named a connection, which hid it.
+2. **The rule, in one place (A27).** `panelConnectionOf(route, choice)` (`contributions.ts`, beside `connectionOf`) says the connection a page is read in for the panel: the route's, else the plugin's ONLY connection when the window has read the plugin's connections and there is exactly one. None, two or more, or a list not read: no connection, as before, and the host does not guess. `usePanelConnection` (`PluginHost.tsx`) asks it for every page and for the sidebar of the plugin on the rail, through the window's connections store, so the answer follows the list while the page is open: the only connection replaced gives the page the new connection's handle, removed or joined by a second gives it none. The route is not changed: it still names none, and its links, its tab and its saved face are as they were.
+3. **What else it touches.** `PanelHostV1` has two members. `logs` is the plugin's and never took a connection: nothing changes. `ports` is the only member bound to a connection, so it is the only one affected. The Terminal and the Problems and Operations tools are not `ctx.panel` members, and a palette command has no page (still no `ports`). `ui-next/plugins/contract/v1.ts` changes in two comments (the rule at the head of the ports paragraph and the doc of `PanelHostV1.ports`): no type, no member.
+4. **The pin.** `KUBERNETES_PLUGIN_REF` in `.github/workflows/ui-next-pods.yml`, the only pin of the plugin's `feature/ui-next`, is `6635c9192e6b6358b87ff13a1f4fffc701cf97dc`, with its comment block. `render-bench.yml` and `app-profile.yml` also set `KUBERNETES_PLUGIN_REF`, but to a commit of the plugin's `main` (the old UI, `524d1232a499cf868eb028af61912499736a37a5`); their bump rule is `refs/heads/main`, and moving them to a `feature/ui-next` commit would change what they measure, so they are NOT moved.
+5. **The check's step** (`checkForward` in `scripts/ui-next-pods/parity.mjs`, one test in the parity mode of `pods-cluster.check.mjs`). The fixture declares no container port, so the Pod is the check's own: a busybox that declares TCP 8080, made in `checkout` and deleted whatever happens (`withOwnedPod`, as the Logs steps do). The check opens its page from the list as the other steps do, opens the header's overflow menu, presses `Forward port 8080` and reads the Ports tool: the row of the RUNNING forward (a failed, paused or stopped row draws a mapping too; CodeRabbit on this PR), whose mapping must be `localhost:<port> → :8080/TCP`. It stops the forward from the row, also when it fails. The function is 38 lines: 24 are the clicks and the reading (the lead's bar was about 30), 14 the owned Pod and its wait.
+6. **Proof** (laptop, macOS arm64, clean environment; load at each start in the PR body):
+
+| Command | Result |
+|---|---|
+| tests first | `contributions.test.ts` `panelConnectionOf` 3 cases: red (the function did not exist); `PluginHost.ports.test.tsx` 6 new cases: 2 red (one connection unnamed has the member; the member follows the list), 4 green before and after (two or none: none; list not read: none; named: as before) |
+| mutations of the rule, on a throwaway copy | 5 of 5 caught: first of many connections (3 tests fail), list not read ignored (1), the route's own connection never wins (2), the hook reads once and never follows (4), no rule (3) |
+| `vitest run ui-next/plugins` / `pnpm test` | 77 files, 2,179 tests / 451 files, 9,952 tests |
+| `tsc` app, node and test; `eslint` of the changed files | exit 0; exit 0 (the one error found, a blank line in the new test, fixed) |
+| `task local:seam -- ports,controls-ports,connections-problems,controls-connections-problems` | exit 0, 648 s, both engines: `ports` 62.9 s WebKit, 62.6 s Chromium; `connections` 32.8 s, 29.8 s; `problems-operations` 46.6 s, 46.6 s; the controls tables 73.3 s / 73.4 s (ports), 39.3 s / 39.8 s and 47.6 s / 47.6 s (connections, problems and operations): 131 controls detected per engine, none undetected |
+| the Pods check, every mode, fresh kind cluster (kind v0.30.0, node v1.35.0), plugin built from `6635c91` (`darwin_arm64`), the host built from this tree | `control-fixture-absent`, `control-plugin-absent` (59 s), `control-bundle-absent` (54 s), `parity` (14 of 14 tests, 41 s, the new step 3.4 s), `control-group-absent`, `unavailable-group` (3 s): all exit 0 |
+| the new step against the defect, and against the plugin before #288 | host WITHOUT this change and the plugin at the pin: failed with `FORWARD_MISMATCH: the Pod page's menu has no Forward port 8080 entry` (the first run, the finding); the host WITH it and the plugin at the PREVIOUS pin (`c6d4665`): the same failure, 15 s, the other 13 tests skipped by name; so the step is blind to neither |

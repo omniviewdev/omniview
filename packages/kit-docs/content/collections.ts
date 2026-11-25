@@ -89,4 +89,35 @@ export const entries = {
       'Keep result counts in CollectionFooter. Use QuickFilters for counted state choices, or Stack for a layout without a named command group.',
     ],
   },
+  IdentityCell: {
+    category: 'Collections',
+    summary: 'The identity of a row: a lead, the name, marks, and a muted detail line.',
+    guidance: [
+      'Use it as the cell of the fit="id" column of a DataTable. A detail line needs lines={2} on the table.',
+      'Pass an Avatar or 16 px KindTile as lead. The name gives way with an ellipsis, and its full text is the tooltip while it is cut; the lead and the marks never shrink.',
+      'Use to to make the name a Link, which needs a LinkProvider. It is the cell’s only Tab stop.',
+      'Each mark is a 12 px glyph with a one-word label, which is its tooltip and accessible name.',
+    ],
+  },
+  ResourceCard: {
+    category: 'Collections',
+    summary: 'The card for one thing in a collection: identity, up to three facts, and commands.',
+    guidance: [
+      'Give it a title, an optional lead, a status, and one muted meta line. Add up to three metrics, each with a label and a value.',
+      'The card itself is never a control. Use to to make the title a Link, and put commands in actions as sibling buttons, each its own Tab stop.',
+      'tone="warning" or "error" colors the border; say the same state in words through status.',
+      'Pass menu with the id from useMenu and this card’s key to make it a context trigger. The card registers no menu, and only a title link or action lets the keyboard reach it, so give such a card a to or actions.',
+      'Use inside CardGrid so cards in a row match in height. Use DataTable to compare many fields across records.',
+    ],
+  },
+  CardGrid: {
+    category: 'Collections',
+    summary: 'A responsive grid of cards, optionally in titled groups.',
+    guidance: [
+      'Pass items or groups, a stable getKey for each item, and a renderCard that returns a ResourceCard. Name the list with label.',
+      'Keep item objects and renderCard stable so a change to one item draws one card.',
+      'Columns are at least 280 px wide and fill the available width; a narrow box shows one column. Groups are labelled sections with headings; set level to fit the page’s outline.',
+      'The grid has no Tab stop or state. It holds the whole collection in the page, so window a collection of thousands instead.',
+    ],
+  },
 } satisfies Record<string, Guide>;

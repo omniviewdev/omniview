@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPanelStore, HOST, type PanelStore, type Session, type SessionInput, type ToolId, type ToolInput } from '../core/panel';
-import type { PanelBindings } from './host';
+import type { PanelBindings, PanelNewSessionMenu } from './host';
 
 // Test and probe support: a panel whose tools and sessions are invented, so a test or a probe can draw the bottom panel without a plugin host. Nothing in the product imports this file; the
 // panel's tests, the shell probe's fixture and the panel probe's fixture do. The model is the real one (core/panel): only what a tool's body says, what a card says and what a `+` opens
@@ -46,7 +46,7 @@ export type StaticPanelOptions = {
   /** Where the panel starts: open on its tool, or hidden. Default: hidden. */
   readonly open?: boolean | undefined;
   /** What the `+` of a tool opens, by tool id: a tool that is not listed has no `+`. */
-  readonly start?: Readonly<Record<ToolId, { readonly label: string; readonly open: () => Omit<StaticSession, 'tool'> }>> | undefined;
+  readonly start?: Readonly<Record<ToolId, { readonly label: string; readonly open: () => Omit<StaticSession, 'tool'>; readonly menu?: PanelNewSessionMenu }>> | undefined;
   readonly renderBody?: PanelBindings['renderBody'] | undefined;
   readonly cardOf?: PanelBindings['cardOf'] | undefined;
   readonly linkOf?: PanelBindings['linkOf'] | undefined;
@@ -86,6 +86,7 @@ export function staticPanel(options: StaticPanelOptions = {}): PanelBindings {
           start: () => {
             store.openSession({ ...add.open(), tool, plugin: HOST });
           },
+          ...(add.menu === undefined ? {} : { menu: add.menu }),
         };
     },
     linkOf: options.linkOf ?? ((route) => ({ href: `#/${route.plugin}/${route.contribution}`, open: () => undefined })),

@@ -91,3 +91,23 @@ describe('the menu of a row whose producer states no host', () => {
     ]);
   });
 });
+
+describe('the menu of a row that listens beyond this computer', () => {
+  it.each(['0.0.0.0', '::', '10.0.0.7'])('says Copy port, and has Open in browser as an item that cannot be used, with the reason: a forward at %s is not opened from here', (host) => {
+    const items = portsMenu(rowOf(forward({ host }), facts()), actions());
+    expect(items.map((item) => (item.kind === 'action' ? [item.id, item.label, item.disabled] : [item.kind]))).toEqual([
+      ['stop', 'Stop', undefined],
+      ['open', 'Open in browser', 'This forward listens beyond this computer, so it is not opened from here.'],
+      ['copy', 'Copy port', undefined],
+    ]);
+  });
+
+  it('says Copy address, and offers Open in browser, for a loopback host written another way', () => {
+    const items = portsMenu(rowOf(forward({ host: '::ffff:127.0.0.1' }), facts()), actions());
+    expect(items.map((item) => (item.kind === 'action' ? [item.id, item.label, item.disabled] : [item.kind]))).toEqual([
+      ['stop', 'Stop', undefined],
+      ['open', 'Open in browser', undefined],
+      ['copy', 'Copy address', undefined],
+    ]);
+  });
+});

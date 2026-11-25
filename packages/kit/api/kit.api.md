@@ -22,6 +22,26 @@ export type AgeLabel = {
 export function ageTip(date: Date, now: number): string;
 
 // @public
+export function Avatar(input: AvatarProps): JSX.Element;
+
+// Warning: (ae-forgotten-export) The symbol "AvatarFace" needs to be exported by the entry point index.d.ts
+//
+// @public (undocumented)
+export type AvatarProps = {
+    readonly name: string;
+    readonly size?: AvatarSize | undefined;
+    readonly shape?: AvatarShape | undefined;
+    readonly color?: DataColor | undefined;
+    readonly label?: string | undefined;
+} & AvatarFace & DataAttributes;
+
+// @public
+export type AvatarShape = 'circle' | 'square';
+
+// @public
+export type AvatarSize = 16 | 20 | 24 | 28;
+
+// @public
 export function Button(input: ButtonProps): JSX.Element;
 
 // @public (undocumented)
@@ -45,6 +65,47 @@ export type ButtonTone = 'neutral' | 'danger';
 
 // @public
 export type ButtonVariant = 'secondary' | 'primary' | 'ghost';
+
+// @public
+export function CardGrid<T>(input: CardGridProps<T>): JSX.Element | null;
+
+// @public
+export type CardGridContent<T> = {
+    readonly getKey: (item: T) => string;
+    readonly renderCard: (item: T) => ReactNode;
+    readonly level?: 2 | 3 | 4 | undefined;
+} & ({
+    readonly items: readonly T[];
+    readonly groups?: undefined;
+} | {
+    readonly groups: ReadonlyArray<CardGridGroup<T>>;
+    readonly items?: undefined;
+});
+
+// @public
+export type CardGridGroup<T> = {
+    readonly id: string;
+    readonly title: string;
+    readonly meta?: string | undefined;
+    readonly items: readonly T[];
+};
+
+// @public (undocumented)
+export type CardGridProps<T> = {
+    readonly label: string;
+} & CardGridContent<T> & DataAttributes;
+
+// @public
+export function Checkbox(input: CheckboxProps): JSX.Element;
+
+// @public (undocumented)
+export type CheckboxProps = {
+    readonly checked: boolean | 'mixed';
+    readonly onCheckedChange: (checked: boolean) => void;
+    readonly label?: string | undefined;
+    readonly readOnly?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
 
 // @public
 export function Chip(input: ChipProps): JSX.Element;
@@ -83,6 +144,10 @@ export type CollectionFooterProps = {
     readonly hiddenColumns?: {
         readonly names: readonly string[];
     } | undefined;
+    readonly status?: {
+        readonly text: string;
+        readonly busy?: boolean | undefined;
+    } | undefined;
 } & DataAttributes;
 
 // @public
@@ -101,16 +166,47 @@ export type CollectionTotal = {
 };
 
 // @public (undocumented)
-export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 'bg-inline' | 'bg-popup' | 'bg-feedback' | 'fg' | 'fg-muted' | 'fg-secondary' | 'fg-disabled' | 'fg-editor' | 'fg-over-accent' | 'fg-on-data' | 'icon' | 'icon-disabled' | 'icon-active' | 'border-subtle' | 'border-popup' | 'border-control' | 'border-disabled' | 'border-raised' | 'accent' | 'link' | 'selection-active' | 'selection-inactive' | 'tab-bg' | 'tab-border' | 'tab-inactive-bg' | 'tab-inactive-border' | 'segment-bg' | 'segment-border' | 'segment-focused-bg' | 'hover-row' | 'hover-toolbar' | 'pressed' | 'success-fg' | 'warning-fg' | 'error-fg' | 'info-bg' | 'info-border' | 'warning-bg' | 'warning-border' | 'error-bg' | 'error-border' | 'success-bg' | 'success-border' | 'error-control' | 'error-control-inactive' | 'warning-control' | 'warning-control-inactive' | 'progress-track' | 'chart-purple' | 'chart-teal' | 'syntax-keyword' | 'syntax-string' | 'syntax-number' | 'syntax-comment' | 'syntax-function' | 'syntax-key' | 'syntax-type' | 'syntax-variable' | 'syntax-annotation' | 'syntax-operator' | 'icon-info' | 'icon-success' | 'icon-warning' | 'icon-warning-mark' | 'icon-error' | 'icon-chevron' | 'icon-help' | 'brand-orange' | 'brand-green' | 'brand-blue' | 'brand-purple' | 'brand-pink' | 'brand-red' | 'brand-teal';
+export type ColorRole = 'bg-window' | 'bg-island' | 'bg-editor' | 'bg-dialog' | 'bg-inline' | 'bg-popup' | 'bg-feedback' | 'fg' | 'fg-muted' | 'fg-secondary' | 'fg-disabled' | 'fg-editor' | 'fg-over-accent' | 'fg-on-data' | 'icon' | 'icon-disabled' | 'icon-active' | 'border-subtle' | 'border-popup' | 'border-control' | 'border-disabled' | 'border-raised' | 'accent' | 'link' | 'selection-active' | 'selection-inactive' | 'tab-bg' | 'tab-border' | 'tab-inactive-bg' | 'tab-inactive-border' | 'segment-bg' | 'segment-border' | 'segment-focused-bg' | 'hover-row' | 'hover-toolbar' | 'pressed' | 'success-fg' | 'warning-fg' | 'error-fg' | 'info-bg' | 'info-border' | 'warning-bg' | 'warning-border' | 'error-bg' | 'error-border' | 'success-bg' | 'success-border' | 'error-control' | 'error-control-inactive' | 'warning-control' | 'warning-control-inactive' | 'progress-track' | 'chart-purple' | 'chart-teal' | 'syntax-keyword' | 'syntax-string' | 'syntax-number' | 'syntax-comment' | 'syntax-function' | 'syntax-key' | 'syntax-type' | 'syntax-variable' | 'syntax-annotation' | 'syntax-operator' | 'icon-info' | 'icon-success' | 'icon-warning' | 'icon-warning-mark' | 'icon-error' | 'icon-chevron' | 'icon-help' | 'brand-orange' | 'brand-green' | 'brand-blue' | 'brand-purple' | 'brand-pink' | 'brand-red' | 'brand-teal' | 'tint-blue' | 'tint-green' | 'tint-amber' | 'tint-red' | 'tint-purple' | 'tint-cyan' | 'tint-gray';
 
 // @public
 export const compactAge: AgeFormatter;
 
 // @public
+export function ConfirmDialog(input: ConfirmDialogProps): JSX.Element;
+
+// Warning: (ae-forgotten-export) The symbol "ConfirmBase" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type ConfirmDialogProps = ConfirmBase & ({
+    readonly tier?: 'plain' | undefined;
+    readonly subject?: ConfirmSubject | undefined;
+} | {
+    readonly tier: 'destructive';
+    readonly subject: ConfirmSubject;
+});
+
+// @public
+export type ConfirmSubject = {
+    readonly name: string;
+    readonly kind?: string | undefined;
+    readonly meta?: string | undefined;
+    readonly status?: {
+        readonly role: StatusRole;
+        readonly label: string;
+    } | undefined;
+};
+
+// @public
 export function createLogViewControls(): LogViewControls;
 
 // @public
+export const DATA_COLORS: readonly ['blue', 'green', 'amber', 'red', 'purple', 'cyan', 'gray'];
+
+// @public
 export type DataAttributes = Readonly<Record<`data-${string}`, string | number | boolean | undefined>>;
+
+// @public (undocumented)
+export type DataColor = (typeof DATA_COLORS)[number];
 
 // @public
 export function DataTable<TRow>(input: DataTableProps<TRow>): JSX.Element;
@@ -154,6 +250,7 @@ export type DataTableProps<TRow> = {
     readonly onRowActivate?: ((row: TRow, event: MouseEvent_2<HTMLElement>) => void) | undefined;
     readonly rowsAreImmutable?: boolean | undefined;
     readonly maxHeight?: number | undefined;
+    readonly rowMenu?: string | undefined;
 } & DataAttributes;
 
 // @public
@@ -187,10 +284,15 @@ export type DataViewProps<TRow> = {
     readonly header?: ReactNode;
     readonly quickFilters?: QuickFiltersProps | undefined;
     readonly toolbar?: ReactNode;
-    readonly table: Omit<DataTableProps<TRow>, 'label'>;
     readonly footer: CollectionFooterProps;
     readonly state?: DataViewState | undefined;
-} & DataAttributes;
+} & DataAttributes & ({
+    readonly table: Omit<DataTableProps<TRow>, 'label'>;
+    readonly cards?: undefined;
+} | {
+    readonly cards: CardGridContent<TRow>;
+    readonly table?: undefined;
+});
 
 // @public
 export type DataViewState = {
@@ -224,6 +326,19 @@ export const DENSITIES: readonly ["comfortable", "compact"];
 export type Density = 'comfortable' | 'compact';
 
 // @public
+export function Disclosure(input: DisclosureProps): JSX.Element;
+
+// @public (undocumented)
+export type DisclosureProps = {
+    readonly title: string;
+    readonly meta?: string | undefined;
+    readonly level?: 3 | 4 | undefined;
+    readonly lead?: ReactNode;
+    readonly aside?: ReactNode;
+    readonly children?: ReactNode;
+} & ExpandState & DataAttributes;
+
+// @public
 export function EmptyBody(input: {
     readonly title: string;
     readonly hint?: string | undefined;
@@ -251,6 +366,17 @@ export function ErrorBody(input: {
     readonly message?: string | undefined;
     readonly onRetry?: (() => void) | undefined;
 }): JSX.Element;
+
+// @public
+export type ExpandState = {
+    readonly open: boolean;
+    readonly onOpenChange: (open: boolean) => void;
+    readonly defaultOpen?: undefined;
+} | {
+    readonly open?: undefined;
+    readonly defaultOpen?: boolean | undefined;
+    readonly onOpenChange?: ((open: boolean) => void) | undefined;
+};
 
 // @public
 export function Field(input: FieldProps): JSX.Element;
@@ -288,6 +414,48 @@ export type FieldProps = {
     readonly layout: 'row';
     readonly trailing?: ReactNode;
 });
+
+// @public
+export function FileButton(input: FileButtonProps): JSX.Element;
+
+// @public (undocumented)
+export type FileButtonProps = {
+    readonly children: string;
+    readonly accept?: readonly string[] | undefined;
+    readonly multiple?: boolean | undefined;
+    readonly icon?: IconName | undefined;
+    readonly busy?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+    readonly onFiles: (files: readonly File[]) => void;
+} & DataAttributes;
+
+// @public
+export type FormAction = {
+    readonly label: string;
+    readonly onSelect: () => void;
+    readonly icon?: IconName | undefined;
+    readonly disabledReason?: string | undefined;
+    readonly busy?: boolean | undefined;
+};
+
+// @public
+export function FormActions(input: FormActionsProps): JSX.Element;
+
+// @public (undocumented)
+export type FormActionsProps = {
+    readonly primary?: FormAction | undefined;
+    readonly secondary?: readonly FormAction[] | undefined;
+    readonly cancel?: FormCancel | undefined;
+    readonly tone?: ButtonTone | undefined;
+    readonly lead?: ReactNode;
+    readonly autoFocus?: 'cancel' | 'primary' | undefined;
+} & DataAttributes;
+
+// @public
+export type FormCancel = {
+    readonly label: string;
+    readonly onSelect: () => void;
+};
 
 // @public
 export function hoverCard(key: string | undefined, options?: {
@@ -344,7 +512,7 @@ export type IconButtonProps = {
 export type IconButtonSize = 'standard' | 'row';
 
 // @public
-export type IconName = 'activity' | 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-up-wide-narrow' | 'beaker' | 'bell' | 'bell-off' | 'blocks' | 'box' | 'brick-wall' | 'calendar-clock' | 'case-sensitive' | 'check' | 'check-check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-check' | 'circle-minus' | 'clipboard-check' | 'clock' | 'close' | 'code' | 'columns' | 'copy' | 'cpu' | 'database' | 'ellipsis' | 'eraser' | 'external-link' | 'eye' | 'eye-off' | 'file-cog' | 'filter-x' | 'folder-tree' | 'gauge' | 'globe' | 'hard-drive' | 'hard-drive-download' | 'hourglass' | 'house' | 'key-round' | 'layers' | 'layout-template' | 'list-filter' | 'list-ordered' | 'loader' | 'loader-circle' | 'minus' | 'network' | 'package' | 'paintbrush' | 'panel-bottom' | 'paste' | 'pause' | 'pin' | 'play' | 'plus' | 'power' | 'power-off' | 'puzzle' | 'refresh' | 'regex' | 'repeat' | 'rocket' | 'rotate-ccw' | 'rotate-cw' | 'ruler' | 'scaling' | 'scroll-text' | 'search' | 'search-x' | 'select-all' | 'server' | 'server-cog' | 'settings' | 'settings-2' | 'shield' | 'shield-check' | 'split' | 'square-terminal' | 'status-error' | 'status-info' | 'status-success' | 'status-warning' | 'target' | 'trash' | 'triangle-alert' | 'umbrella' | 'undo' | 'waypoints' | 'whole-word';
+export type IconName = 'activity' | 'archive' | 'arrow-down' | 'arrow-down-to-line' | 'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-up-wide-narrow' | 'beaker' | 'bell' | 'bell-off' | 'blocks' | 'bookmark' | 'box' | 'boxes' | 'brick-wall' | 'calendar-clock' | 'case-sensitive' | 'check' | 'check-check' | 'chevron-down' | 'chevron-right' | 'chevron-up' | 'circle' | 'circle-check' | 'circle-minus' | 'clipboard-check' | 'clock' | 'close' | 'code' | 'columns' | 'copy' | 'cpu' | 'database' | 'ellipsis' | 'eraser' | 'external-link' | 'eye' | 'eye-off' | 'file-cog' | 'filter-x' | 'flask-conical' | 'folder' | 'folder-plus' | 'folder-tree' | 'gauge' | 'globe' | 'grip-vertical' | 'hard-drive' | 'hard-drive-download' | 'history' | 'hourglass' | 'house' | 'key-round' | 'layers' | 'layout-grid' | 'layout-list' | 'layout-template' | 'list-filter' | 'list-ordered' | 'loader' | 'loader-circle' | 'log-in' | 'minus' | 'network' | 'package' | 'paintbrush' | 'panel-bottom' | 'panel-right-open' | 'paste' | 'pause' | 'pencil' | 'pin' | 'play' | 'plug' | 'plus' | 'power' | 'power-off' | 'puzzle' | 'refresh' | 'regex' | 'repeat' | 'rocket' | 'rotate-ccw' | 'rotate-cw' | 'ruler' | 'scaling' | 'scroll-text' | 'search' | 'search-x' | 'select-all' | 'server' | 'server-cog' | 'settings' | 'settings-2' | 'shield' | 'shield-check' | 'ship' | 'sliders-horizontal' | 'split' | 'square-terminal' | 'status-error' | 'status-info' | 'status-success' | 'status-warning' | 'table' | 'target' | 'trash' | 'triangle-alert' | 'umbrella' | 'undo' | 'unplug' | 'waypoints' | 'whole-word' | 'wrench';
 
 // @public (undocumented)
 export type IconProps = {
@@ -354,6 +522,24 @@ export type IconProps = {
 
 // @public
 export type IconSize = 12 | 16 | 20;
+
+// @public
+export function IdentityCell(input: IdentityCellProps): JSX.Element;
+
+// @public (undocumented)
+export type IdentityCellProps = {
+    readonly name: string;
+    readonly to?: LinkTarget | undefined;
+    readonly lead?: ReactNode;
+    readonly marks?: readonly IdentityMark[] | undefined;
+    readonly detail?: string | undefined;
+} & DataAttributes;
+
+// @public
+export type IdentityMark = {
+    readonly icon: IconName;
+    readonly label: string;
+};
 
 // @public
 export const isIconName: (name: string) => name is IconName;
@@ -444,14 +630,21 @@ export type LinkTarget = {
     readonly params?: Readonly<Record<string, string>> | undefined;
 };
 
-// @public (undocumented)
-export type ListRow = {
-    readonly id: string;
-    readonly title: ReactNode;
-    readonly detail?: ReactNode;
-    readonly meta?: ReactNode;
-    readonly icon?: ReactNode;
-};
+// Warning: (ae-forgotten-export) The symbol "ListRowCells" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type ListRow = ListRowCells & ({
+    readonly onActivate?: undefined;
+    readonly to?: undefined;
+} | {
+    readonly onActivate: () => void;
+    readonly to?: undefined;
+    readonly selected?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} | {
+    readonly to: LinkTarget;
+    readonly onActivate?: undefined;
+});
 
 // @public
 export function ListRows(input: ListRowsProps): JSX.Element | null;
@@ -692,6 +885,21 @@ export type MissingValueProps = {
 } & DataAttributes;
 
 // @public
+export function Notice(input: NoticeProps): JSX.Element;
+
+// @public (undocumented)
+export type NoticeProps = {
+    readonly tone?: NoticeTone | undefined;
+    readonly title?: string | undefined;
+    readonly children: string;
+    readonly live?: 'alert' | 'status' | undefined;
+    readonly actions?: ReactNode;
+} & DataAttributes;
+
+// @public
+export type NoticeTone = 'info' | 'success' | 'warning' | 'error';
+
+// @public
 export function NumberInput(input: NumberInputProps): JSX.Element;
 
 // @public (undocumented)
@@ -751,10 +959,10 @@ export type PageHeaderFact = {
     } | undefined;
 };
 
-// Warning: (ae-forgotten-export) The symbol "MenuEntry_2" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "OverflowEntry" needs to be exported by the entry point index.d.ts
 //
 // @public
-export type PageHeaderMenuItem = MenuEntry_2;
+export type PageHeaderMenuItem = OverflowEntry;
 
 // @public (undocumented)
 export type PageHeaderProps = {
@@ -841,6 +1049,34 @@ export type QuickFiltersProps = {
 export type RadiusRole = 'mark' | 'control' | 'tab' | 'popup' | 'island';
 
 // @public
+export function ResourceCard(input: ResourceCardProps): JSX.Element;
+
+// @public
+export type ResourceCardMetric = {
+    readonly label: string;
+    readonly value: ReactNode;
+};
+
+// @public (undocumented)
+export type ResourceCardProps = {
+    readonly title: string;
+    readonly to?: LinkTarget | undefined;
+    readonly lead?: ReactNode;
+    readonly status?: ReactNode;
+    readonly meta?: string | undefined;
+    readonly metrics?: readonly ResourceCardMetric[] | undefined;
+    readonly tone?: ResourceCardTone | undefined;
+    readonly actions?: ReactNode;
+    readonly menu?: {
+        readonly id: string;
+        readonly key: string;
+    } | undefined;
+} & DataAttributes;
+
+// @public
+export type ResourceCardTone = 'warning' | 'error';
+
+// @public
 export function RovingGroup(input: RovingGroupProps): JSX.Element;
 
 // @public
@@ -902,8 +1138,26 @@ export type SectionCardProps = {
     readonly meta?: string | undefined;
     readonly actions?: ReactNode;
     readonly pad?: boolean | undefined;
+    readonly collapse?: ExpandState | undefined;
     readonly children?: ReactNode;
 } & DataAttributes;
+
+// @public
+export function SegmentedControl<Value extends string>(input: SegmentedControlProps<Value>): JSX.Element;
+
+// @public (undocumented)
+export type SegmentedControlProps<Value extends string = string> = {
+    readonly label: string;
+    readonly options: ReadonlyArray<SegmentedOption<Value>>;
+    readonly value: Value;
+    readonly onValueChange: (value: Value) => void;
+} & DataAttributes;
+
+// Warning: (ae-forgotten-export) The symbol "TextOption" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "IconOption" needs to be exported by the entry point index.d.ts
+//
+// @public (undocumented)
+export type SegmentedOption<Value extends string = string> = TextOption<Value> | IconOption<Value>;
 
 // @public
 export function Select(input: SelectProps): JSX.Element;
@@ -940,7 +1194,15 @@ export type SheetProps = {
     readonly title: string;
     readonly onClose: () => void;
     readonly children: ReactNode;
+    readonly size?: SheetSize | undefined;
+    readonly icon?: IconName | undefined;
+    readonly meta?: string | undefined;
+    readonly footer?: ReactNode;
+    readonly describedBy?: string | undefined;
 } & DataAttributes;
+
+// @public
+export type SheetSize = 'narrow' | 'standard' | 'wide' | 'settings';
 
 // @public (undocumented)
 export type SpacingStep = 2 | 4 | 6 | 8 | 12 | 16 | 20 | 24;
@@ -1013,6 +1275,24 @@ export type StatusSummaryProps = {
 
 // @public
 export type StatusSummaryTone = 'success' | 'warning' | 'error' | 'info' | 'muted';
+
+// @public (undocumented)
+export type SwatchOption = {
+    readonly color: DataColor;
+    readonly label: string;
+    readonly disabledReason?: string | undefined;
+};
+
+// @public
+export function SwatchPicker(input: SwatchPickerProps): JSX.Element;
+
+// @public (undocumented)
+export type SwatchPickerProps = {
+    readonly label?: string | undefined;
+    readonly options: readonly SwatchOption[];
+    readonly value: DataColor | null;
+    readonly onValueChange: (color: DataColor) => void;
+} & DataAttributes;
 
 // @public
 export function TabPanel(input: TabPanelProps): ReactElement;
@@ -1091,6 +1371,7 @@ export type TextInputProps = {
     readonly invalid?: boolean | undefined;
     readonly readOnly?: boolean | undefined;
     readonly disabledReason?: string | undefined;
+    readonly autoFocus?: boolean | undefined;
 } & DataAttributes;
 
 // @public
@@ -1214,10 +1495,39 @@ export type ToggleProps = {
 } & DataAttributes;
 
 // @public (undocumented)
-export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features' | '--ov-text-scale' | '--ov-fs-12' | '--ov-fs-13' | '--ov-fs-16' | '--ov-fs-18' | '--ov-lh-16' | '--ov-lh-18' | '--ov-lh-20' | '--ov-lh-24' | '--ov-spacing-2' | '--ov-spacing-4' | '--ov-spacing-6' | '--ov-spacing-8' | '--ov-spacing-12' | '--ov-spacing-16' | '--ov-spacing-20' | '--ov-spacing-24' | '--ov-radius-mark' | '--ov-radius-control' | '--ov-radius-tab' | '--ov-radius-popup' | '--ov-radius-island' | '--ov-control-height' | '--ov-shadow-tooltip' | '--ov-shadow-popup' | '--ov-row-height' | '--ov-row-pad' | '--ov-row-target' | '--ov-table-metadata-height' | '--ov-table-header-height' | '--ov-bg-window' | '--ov-bg-island' | '--ov-bg-editor' | '--ov-bg-dialog' | '--ov-bg-inline' | '--ov-bg-popup' | '--ov-bg-feedback' | '--ov-fg' | '--ov-fg-muted' | '--ov-fg-secondary' | '--ov-fg-disabled' | '--ov-fg-editor' | '--ov-fg-over-accent' | '--ov-fg-on-data' | '--ov-icon' | '--ov-icon-disabled' | '--ov-icon-active' | '--ov-border-subtle' | '--ov-border-popup' | '--ov-border-control' | '--ov-border-disabled' | '--ov-border-raised' | '--ov-accent' | '--ov-link' | '--ov-selection-active' | '--ov-selection-inactive' | '--ov-tab-bg' | '--ov-tab-border' | '--ov-tab-inactive-bg' | '--ov-tab-inactive-border' | '--ov-segment-bg' | '--ov-segment-border' | '--ov-segment-focused-bg' | '--ov-hover-row' | '--ov-hover-toolbar' | '--ov-pressed' | '--ov-success-fg' | '--ov-warning-fg' | '--ov-error-fg' | '--ov-info-bg' | '--ov-info-border' | '--ov-warning-bg' | '--ov-warning-border' | '--ov-error-bg' | '--ov-error-border' | '--ov-success-bg' | '--ov-success-border' | '--ov-error-control' | '--ov-error-control-inactive' | '--ov-warning-control' | '--ov-warning-control-inactive' | '--ov-progress-track' | '--ov-chart-purple' | '--ov-chart-teal' | '--ov-syntax-keyword' | '--ov-syntax-string' | '--ov-syntax-number' | '--ov-syntax-comment' | '--ov-syntax-function' | '--ov-syntax-key' | '--ov-syntax-type' | '--ov-syntax-variable' | '--ov-syntax-annotation' | '--ov-syntax-operator' | '--ov-icon-info' | '--ov-icon-success' | '--ov-icon-warning' | '--ov-icon-warning-mark' | '--ov-icon-error' | '--ov-icon-chevron' | '--ov-icon-help' | '--ov-brand-orange' | '--ov-brand-green' | '--ov-brand-blue' | '--ov-brand-purple' | '--ov-brand-pink' | '--ov-brand-red' | '--ov-brand-teal';
+export type TokenName = '--ov-font-ui' | '--ov-font-code' | '--ov-font-features' | '--ov-text-scale' | '--ov-fs-12' | '--ov-fs-13' | '--ov-fs-16' | '--ov-fs-18' | '--ov-lh-16' | '--ov-lh-18' | '--ov-lh-20' | '--ov-lh-24' | '--ov-spacing-2' | '--ov-spacing-4' | '--ov-spacing-6' | '--ov-spacing-8' | '--ov-spacing-12' | '--ov-spacing-16' | '--ov-spacing-20' | '--ov-spacing-24' | '--ov-radius-mark' | '--ov-radius-control' | '--ov-radius-tab' | '--ov-radius-popup' | '--ov-radius-island' | '--ov-control-height' | '--ov-shadow-tooltip' | '--ov-shadow-popup' | '--ov-row-height' | '--ov-row-pad' | '--ov-row-target' | '--ov-table-metadata-height' | '--ov-table-header-height' | '--ov-bg-window' | '--ov-bg-island' | '--ov-bg-editor' | '--ov-bg-dialog' | '--ov-bg-inline' | '--ov-bg-popup' | '--ov-bg-feedback' | '--ov-fg' | '--ov-fg-muted' | '--ov-fg-secondary' | '--ov-fg-disabled' | '--ov-fg-editor' | '--ov-fg-over-accent' | '--ov-fg-on-data' | '--ov-icon' | '--ov-icon-disabled' | '--ov-icon-active' | '--ov-border-subtle' | '--ov-border-popup' | '--ov-border-control' | '--ov-border-disabled' | '--ov-border-raised' | '--ov-accent' | '--ov-link' | '--ov-selection-active' | '--ov-selection-inactive' | '--ov-tab-bg' | '--ov-tab-border' | '--ov-tab-inactive-bg' | '--ov-tab-inactive-border' | '--ov-segment-bg' | '--ov-segment-border' | '--ov-segment-focused-bg' | '--ov-hover-row' | '--ov-hover-toolbar' | '--ov-pressed' | '--ov-success-fg' | '--ov-warning-fg' | '--ov-error-fg' | '--ov-info-bg' | '--ov-info-border' | '--ov-warning-bg' | '--ov-warning-border' | '--ov-error-bg' | '--ov-error-border' | '--ov-success-bg' | '--ov-success-border' | '--ov-error-control' | '--ov-error-control-inactive' | '--ov-warning-control' | '--ov-warning-control-inactive' | '--ov-progress-track' | '--ov-chart-purple' | '--ov-chart-teal' | '--ov-syntax-keyword' | '--ov-syntax-string' | '--ov-syntax-number' | '--ov-syntax-comment' | '--ov-syntax-function' | '--ov-syntax-key' | '--ov-syntax-type' | '--ov-syntax-variable' | '--ov-syntax-annotation' | '--ov-syntax-operator' | '--ov-icon-info' | '--ov-icon-success' | '--ov-icon-warning' | '--ov-icon-warning-mark' | '--ov-icon-error' | '--ov-icon-chevron' | '--ov-icon-help' | '--ov-brand-orange' | '--ov-brand-green' | '--ov-brand-blue' | '--ov-brand-purple' | '--ov-brand-pink' | '--ov-brand-red' | '--ov-brand-teal' | '--ov-tint-blue' | '--ov-tint-green' | '--ov-tint-amber' | '--ov-tint-red' | '--ov-tint-purple' | '--ov-tint-cyan' | '--ov-tint-gray';
 
 // @public
 export function tokenVar<Name extends TokenName>(name: Name): `var(${Name})`;
+
+// @public
+export function ToolHeader(input: ToolHeaderProps): JSX.Element;
+
+// @public (undocumented)
+export type ToolHeaderAction = ToolHeaderCommand | ToolHeaderMenu;
+
+// Warning: (ae-forgotten-export) The symbol "ToolHeaderActionBase" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type ToolHeaderCommand = ToolHeaderActionBase & {
+    readonly onSelect: () => void;
+    readonly disabledReason?: string | undefined;
+    readonly menu?: undefined;
+};
+
+// @public
+export type ToolHeaderMenu = ToolHeaderActionBase & {
+    readonly menu: string;
+    readonly onSelect?: undefined;
+    readonly disabledReason?: undefined;
+};
+
+// @public (undocumented)
+export type ToolHeaderProps = {
+    readonly label: string;
+    readonly title: string;
+    readonly actions?: readonly ToolHeaderAction[] | undefined;
+} & DataAttributes;
 
 // @public
 export function TooltipHost(): JSX.Element;
@@ -1230,6 +1540,28 @@ export function useMenu(definition: MenuDefinition, revision?: unknown): string;
 
 // @public (undocumented)
 export function useTheme(): ThemeState;
+
+// @public
+export function ValuePicker(input: ValuePickerProps): JSX.Element;
+
+// @public (undocumented)
+export type ValuePickerOption = {
+    readonly value: string;
+    readonly label: string;
+    readonly description?: string | undefined;
+    readonly disabledReason?: string | undefined;
+};
+
+// @public (undocumented)
+export type ValuePickerProps = {
+    readonly label: string;
+    readonly options: readonly ValuePickerOption[];
+    readonly value: readonly string[];
+    readonly onValueChange: (value: readonly string[]) => void;
+    readonly allOption?: string | undefined;
+    readonly searchable?: boolean | undefined;
+    readonly disabledReason?: string | undefined;
+} & DataAttributes;
 
 // @public
 export function WorkspaceToolbar(input: WorkspaceToolbarProps): JSX.Element;

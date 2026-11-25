@@ -18,6 +18,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/plugin/telemetryutil"
 	internaltypes "github.com/omniviewdev/omniview/backend/pkg/plugin/types"
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
+	"github.com/omniviewdev/omniview/internal/shellenv"
 	"github.com/omniviewdev/omniview/internal/telemetry"
 	logging "github.com/omniviewdev/plugin-sdk/log"
 	"github.com/omniviewdev/plugin-sdk/pkg/config"
@@ -54,6 +55,8 @@ type Controller interface {
 	AckTerminal(sessionID string, n int) error
 	// IsBusy says whether something other than the shell holds a terminal's foreground.
 	IsBusy(sessionID string) (terminal.Foreground, error)
+	// ListTerminalShells says which shells of this machine a terminal can be started with, and which one starts when the caller names none.
+	ListTerminalShells() []shellenv.Shell
 	// GetCwd says which directory a terminal's shell is in now.
 	GetCwd(sessionID string) (terminal.Directory, error)
 	// ReleaseOwnedTerminals is what a window going away does to its local terminals: those with a page key are

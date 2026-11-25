@@ -44,12 +44,19 @@ const SHELL_INT_UI_GLYPHS = ['settings', 'square-terminal'];
 // G3: the glyphs other steps asked for (status/T3a.md section 6, the Problems and Operations tools). Lucide, 24 artboard: the empty Problems check, the filter that clears, the find bar's whole-word switch and the
 // terminal menu's Select all (the mock has no select-all glyph; its text-select is the nearest). Int UI, 16 artboard, one even-odd ink fill each: the warning triangle, the external link and the paste.
 const ASKED_LUCIDE_GLYPHS = ['circle-check', 'filter-x', 'select-all', 'whole-word'];
-const ASKED_INT_UI_GLYPHS = ['external-link', 'paste', 'pin', 'triangle-alert'];
+const ASKED_INT_UI_GLYPHS = ['external-link', 'paste', 'triangle-alert'];
+
+// The landing page's glyphs: the plugin tile, scopes, view modes, the connection menu, folder presets and the reorder handle. Lucide, 24 artboard, one ink stroke of 2 each; Int UI, 16 artboard, with the paints of its artwork.
+// `history` draws the artwork of `clock` (the mock maps both to Int UI's history icon) under the name of what it means.
+const LANDING_LUCIDE_GLYPHS = [
+  'archive', 'bookmark', 'boxes', 'flask-conical', 'grip-vertical', 'layout-grid', 'layout-list', 'log-in', 'panel-right-open', 'plug', 'ship', 'sliders-horizontal', 'unplug', 'wrench',
+];
+const LANDING_INT_UI_GLYPHS = ['folder', 'folder-plus', 'history', 'pencil', 'pin', 'table'];
 
 describe('the glyph registry', () => {
   it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
     expect([...names].sort()).toEqual(
-      [...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...HOME_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS, ...SHELL_LUCIDE_GLYPHS, ...SHELL_INT_UI_GLYPHS, ...ASKED_LUCIDE_GLYPHS, ...ASKED_INT_UI_GLYPHS].sort(),
+      [...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...HOME_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS, ...SHELL_LUCIDE_GLYPHS, ...SHELL_INT_UI_GLYPHS, ...ASKED_LUCIDE_GLYPHS, ...ASKED_INT_UI_GLYPHS, ...LANDING_LUCIDE_GLYPHS, ...LANDING_INT_UI_GLYPHS].sort(),
     );
   });
 
@@ -111,15 +118,15 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs, for the key (a filled dot), for the bell (a clapper at its own stroke width) and for the terminal screen (a filled frame and a prompt at its own stroke width)', () => {
-    const twoTone = ['bell', 'key-round', 'square-terminal', 'status-error', 'status-info', 'status-success', 'status-warning'];
+  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs, for the key (a filled dot), for the bell (a clapper at its own stroke width), for the terminal screen (a filled frame and a prompt at its own stroke width) and for the table (a filled frame and its rules), four for the new-folder glyph (a plus, a body and an outline)', () => {
+    const twoTone = ['bell', 'key-round', 'square-terminal', 'status-error', 'status-info', 'status-success', 'status-warning', 'table'];
     for (const name of names) {
       const elements = 1 + GLYPHS[name].layers.length;
-      expect(elements, name).toBe(twoTone.includes(name) ? 3 : 2);
+      expect(elements, name).toBe(name === 'folder-plus' ? 4 : twoTone.includes(name) ? 3 : 2);
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes but the gear, which is 1,735 as the mock draws it and may be 1,800; the registry 25,420: 7,000 for slice 1a, 18,400 after G1 and the steps that followed it, 22,450 after the eleven glyphs of G2, then 2,288 bytes for the seven of G3, then 780 for the pin of a tab; the real total is 25,418 with 96 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not: status/G2.md measures it)', () => {
+  it('stays within its byte budget (one glyph 800 bytes but the gear, which is 1,735 as the mock draws it and may be 1,800; the registry 30,666: 7,000 for slice 1a, 18,400 after G1 and the steps that followed it, 22,450 after the eleven glyphs of G2, then 2,288 bytes for the seven of G3, then 5,925 for the 20 of the landing page; the real total is 30,555 with 115 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not: status/G2.md measures it)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -127,7 +134,24 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(25420);
+    expect(total).toBeLessThanOrEqual(30666);
+  });
+
+  it('draws the landing glyphs as their families are drawn here: Lucide on 24 in one ink stroke of 2 with no relative moveto, Int UI on 16, each a name of the registry', () => {
+    for (const name of LANDING_LUCIDE_GLYPHS as IconName[]) {
+      expect(isIconName(name), name).toBe(true);
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(24);
+      expect(glyph.layers.length, name).toBe(1);
+      expect(glyph.layers[0], name).toMatchObject({ stroke: 'ink', width: 2, cap: 'round', join: 'round' });
+      expect(glyph.layers[0].fill, name).toBeUndefined();
+      expect(glyph.layers[0].d, name).not.toMatch(/m/);
+    }
+
+    for (const name of LANDING_INT_UI_GLYPHS as IconName[]) {
+      expect(isIconName(name), name).toBe(true);
+      expect(GLYPHS[name].box, name).toBe(16);
+    }
   });
 
   it('draws the shell glyphs from Lucide as the family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke, no relative moveto', () => {

@@ -4,7 +4,7 @@ import type { FrameV1, OverviewPageV1 } from '../contract/v1';
 import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
 import { ConnectionNames } from './connectionName';
-import { createContributions, describeDetail, HOME_PAGE, routeKey, type PluginChoice, type PluginSource } from './contributions';
+import { createContributions, describeDetail, HOME_PAGE, panelConnectionOf, routeKey, type PluginChoice, type PluginSource } from './contributions';
 import { HOME_ROUTE } from './hostPages';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -415,5 +415,34 @@ describe('complete, with what the window knows of the plugin\'s connections', ()
     it('says nothing for a plugin the window has no data for: only a plugin whose connections are listed is held back', () => {
       expect(choose([], undefined, state).complete?.(route('other', 'gadgets'), nowhere)).toEqual(route('other', 'gadgets'));
     });
+  });
+});
+
+// The connection a page is read in, for what it asks of the bottom panel (PF3): the one its route names, else the plugin's only connection. A route of a plugin with one connection stays unnamed (`complete`: there is nothing to
+// choose between) and the plugin reads it in that one; with two or more, with none, or with no list that was read, nothing says which one, and the panel has none (no guess).
+describe('panelConnectionOf', () => {
+  const unnamed = route('acme', 'widgets');
+  const named = route('acme', 'widgets', { connection: 'east' });
+  const listed = (keys: readonly string[], state: PluginChoice['state'] = 'ready'): PluginChoice => ({ state, keys, last: undefined });
+
+  it('is the connection the route names, whatever the window knows of the plugin\'s connections', () => {
+    expect(panelConnectionOf(named, listed(['north']))).toBe('east');
+    expect(panelConnectionOf(named, listed(['north', 'south']))).toBe('east');
+    expect(panelConnectionOf(named, listed([]))).toBe('east');
+    expect(panelConnectionOf(named, listed([], 'unread'))).toBe('east');
+    expect(panelConnectionOf(named, undefined)).toBe('east');
+  });
+
+  it('is the plugin\'s only connection when the route names none', () => {
+    expect(panelConnectionOf(unnamed, listed(['north']))).toBe('north');
+  });
+
+  it('is none when nothing says which one: two connections or more, none, a list that was not read, and a window with no data about connections', () => {
+    expect(panelConnectionOf(unnamed, listed(['north', 'south']))).toBeUndefined();
+    expect(panelConnectionOf(unnamed, listed(['north', 'south', 'west']))).toBeUndefined();
+    expect(panelConnectionOf(unnamed, listed([]))).toBeUndefined();
+    expect(panelConnectionOf(unnamed, listed(['north'], 'unread'))).toBeUndefined();
+    expect(panelConnectionOf(unnamed, listed(['north'], 'failed'))).toBeUndefined();
+    expect(panelConnectionOf(unnamed, undefined)).toBeUndefined();
   });
 });

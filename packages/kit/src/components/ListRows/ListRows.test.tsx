@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentType, ReactElement } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { cssRules, declarationsOf } from '../../../scripts/cssRules.ts';
 import { rootWrites } from '../../../scripts/rootWrites.ts';
+import { LinkProvider } from '../Link';
 import { ListRows, type ListRowsProps } from './ListRows';
 import * as examples from './ListRows.examples';
 
@@ -162,6 +163,48 @@ describe('ListRows', () => {
     expect(count(<ListRows label="Groups" rows={[{ id: 'a', title: 'checkout', detail: 'x', meta: 'x', icon: 'x' }]} />)).toBe(1 + 6);
   });
 
+  it('is a button row when given onActivate: one Tab stop for its cells, its aside controls are siblings and never activate it', () => {
+    const onActivate = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <ListRows
+        label="Members"
+        rows={[{ id: 'a', title: 'Connection A', detail: 'Production', selected: true, onActivate, aside: <button type="button" onClick={onRemove}>Remove</button> }]}
+      />,
+    );
+    const row = screen.getByRole('button', { name: /Connection A/ });
+    expect(row.getAttribute('aria-pressed')).toBe('true');
+    expect(row.querySelector('button')).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(onActivate).not.toHaveBeenCalled();
+    fireEvent.click(row);
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a row that is unavailable focusable, described by its reason, and does nothing when it is activated', () => {
+    const onActivate = vi.fn();
+    render(<ListRows label="Views" rows={[{ id: 'a', title: 'Archive', onActivate, disabledReason: 'Archived views cannot be opened' }]} />);
+    const row = screen.getByRole('button', { name: /Archive/ });
+    expect(row.getAttribute('aria-disabled')).toBe('true');
+    expect(row.hasAttribute('disabled')).toBe(false);
+    expect(document.getElementById(row.getAttribute('aria-describedby') ?? '')?.textContent).toBe('Archived views cannot be opened');
+    fireEvent.click(row);
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it('is a native link when given a target, and its aside controls stay outside the anchor', () => {
+    render(
+      <LinkProvider handler={{ hrefOf: (target) => `#/${target.page}`, onOpen: () => undefined }}>
+        <ListRows label="Groups" rows={[{ id: 'a', title: 'north-yard', to: { page: 'groups' }, aside: <button type="button">Menu</button> }]} />
+      </LinkProvider>,
+    );
+    const link = screen.getByRole('link', { name: 'north-yard' });
+    expect(link.getAttribute('href')).toBe('#/groups');
+    expect(link.contains(screen.getByRole('button', { name: 'Menu' }))).toBe(false);
+  });
+
   it('has no tab stop, no button and no title of its own: a row is text', () => {
     const { container } = render(<ListRows label="Events" rows={[{ id: 'a', title: 'one', detail: 'two', meta: '3d' }]} />);
     for (const element of container.querySelectorAll('*')) {
@@ -287,6 +330,18 @@ const MATRIX: Readonly<Record<string, Row>> = {
     meta: true,
   },
   RecentWarnings: { label: 'Recent warnings', rows: WARNINGS, icon: true, meta: true },
+  Actionable: { label: 'Saved views', rows: [{ title: 'Production', detail: '12 connections' }, { title: 'Staging', detail: '4 connections' }], icon: true, meta: false, links: ['Production12 connections', 'Staging4 connections'] },
+  AsLink: { label: 'Groups', rows: [{ title: 'north-yard', detail: 'Platform' }, { title: 'checkout', detail: 'Storefront' }], icon: false, meta: false, links: ['north-yardPlatform', 'checkoutStorefront'] },
+  Selected: { label: 'Saved views', rows: [{ title: 'Production' }, { title: 'Staging' }], icon: false, meta: false, links: ['Production', 'Staging'] },
+  DisabledWithReason: {
+    label: 'Saved views',
+    rows: [{ title: 'Production' }, { title: 'Archive', detail: 'Read only' }],
+    icon: false,
+    meta: false,
+    links: ['Production', 'ArchiveRead onlyArchived views cannot be opened'],
+  },
+  AsideOneControl: { label: 'Members', rows: [{ title: 'Connection A', detail: 'Production' }, { title: 'Connection B', detail: 'Staging' }], icon: true, meta: false, links: ['', ''] },
+  AsideTwoControls: { label: 'Members', rows: [{ title: 'Connection A', detail: 'Production', meta: '3d' }, { title: 'Connection B', detail: 'Staging', meta: '12d' }], icon: true, meta: true, links: ['Connection AProduction3d', '', '', 'Connection BStaging12d'] },
 };
 
 describe('ListRows examples: the a11y matrix', () => {
@@ -352,7 +407,13 @@ describe('the ListRows stylesheet', () => {
   });
 
   it('names no grid line: a CSS Module scopes the names, so the lines are numbered', () => {
-    expect(css).not.toMatch(/\[[a-z-]+(?: [a-z-]+)*\]/);
+    for (const entry of cssRules(css)) {
+      for (const [property, value] of Object.entries(entry.declarations)) {
+        if (property.startsWith('grid-')) {
+          expect(value, `${entry.selector} ${property}`).not.toMatch(/\[[a-z-]+(?: [a-z-]+)*\]/);
+        }
+      }
+    }
   });
 
   it('is a grid with the mock\'s tracks: a 4 px edge, the text, a 4 px edge, 8 px apart, with no bullets', () => {
@@ -416,7 +477,10 @@ describe('the ListRows stylesheet', () => {
     expect(rule('.meta')['font-size']).toBeUndefined();
   });
 
-  it('is not a control: no pointer, no hover, no focus rule, no fill', () => {
-    expect(css).not.toMatch(/cursor|outline|:hover|:focus|background/);
+  it('is not a control unless the row is actionable: no pointer, no hover, no focus rule, no fill outside the action rules', () => {
+    for (const entry of cssRules(css).filter((candidate) => !candidate.selector.includes('data-ov-action'))) {
+      expect(Object.keys(entry.declarations).join(' '), entry.selector).not.toMatch(/cursor|outline|background/);
+      expect(entry.selector).not.toMatch(/:hover|:focus/);
+    }
   });
 });

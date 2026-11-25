@@ -187,7 +187,7 @@ func channelBindingKinds() ([]string, []string, []string) {
 	byCapability := []string{"CloseChannelTerminal", "ChannelTerminalBusy", "ChannelTerminalCwd", "ListChannelTerminals", "DismissChannelTerminal"}
 	unrelated := []string{
 		"ServiceStartup", "ServiceShutdown", "CreateSession", "OpenNativeSession", "GetNativeTerminalSupport", "GetNativeTerminalApplications",
-		"CreateTerminal", "ListSessions", "ListTerminals", "GetHandler", "GetHandlers", "GetPluginHandlers", "ListPlugins", "HasPlugin",
+		"CreateTerminal", "ListTerminalShells", "ListSessions", "ListTerminals", "GetHandler", "GetHandlers", "GetPluginHandlers", "ListPlugins", "HasPlugin",
 	}
 	return byID, byCapability, unrelated
 }

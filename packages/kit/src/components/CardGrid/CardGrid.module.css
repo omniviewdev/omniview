@@ -1,0 +1,68 @@
+@layer ov.components {
+  /* The grid of cards (the mock's `.resource-card-grid`): columns of 280 px at the least that share the width, 12 px apart. `auto-fit` drops the
+     columns that have no card, so a few cards share the whole width, and `min(100%, 280px)` lets one column be narrower than 280 px in a narrow box. */
+  .list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* A card's cell fills the row, so the card in it is as tall as the tallest of its row. The cell is plain: what lets a long list cost what is on screen
+     (`content-visibility: auto`: the browser lays out and draws only the bodies of the cards near the viewport, and the others stay in the accessibility
+     tree and in the Tab order) is the containment of each card's body, inside its edge (ResourceCard). It is not the cell's: a contained box that is not on a
+     whole pixel is painted up to a pixel past its edge in Chromium, and the last column of a scrolling body would lose its right edge. A cell must not be a
+     subgrid either; each card keeps its own bands in line instead (ResourceCard). */
+  .item {
+    display: grid;
+    min-width: 0;
+  }
+
+  /* With groups the sections are the grid's children: 20 px apart (the mock's `.form-section + .form-section`). */
+  .groups {
+    min-width: 0;
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .group {
+    min-width: 0;
+  }
+
+  .group + .group {
+    margin-block-start: var(--ov-spacing-20);
+  }
+
+  /* The heading (the mock's `.form-section__head`): the title 13/16 semibold and a muted 12/16 line beside it, 8 px apart, 8 px over the cards. */
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    margin-block-end: var(--ov-spacing-8);
+  }
+
+  .title {
+    min-width: 0;
+    margin: 0;
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
+  .meta {
+    min-width: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+  }
+}

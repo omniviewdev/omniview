@@ -46,7 +46,7 @@ import (
 // when the shell has run every startup file: that is how the host knows the shell came up with it, and the
 // directory is removed at that moment, so that a crash of the host later leaves nothing.
 
-//go:embed integration_scripts/zsh/zshenv integration_scripts/zsh/zprofile integration_scripts/zsh/zshrc integration_scripts/zsh/zlogin integration_scripts/fish/omniview-integration.fish
+//go:embed integration_scripts/zsh/zshenv integration_scripts/zsh/zprofile integration_scripts/zsh/zshrc integration_scripts/zsh/zlogin integration_scripts/fish/omniview-integration.fish integration_scripts/bash/bashrc integration_scripts/pwsh/integration.ps1
 var integrationScripts embed.FS
 
 const (
@@ -56,6 +56,8 @@ const (
 	// earlyExit is how long a shell that has the integration has to come up. One that ends within it is started once
 	// more without the integration; one that is neither ready nor gone by then is taken to be a slow startup.
 	earlyExit = 500 * time.Millisecond
+	// pwshReadyWait is earlyExit for pwsh, which takes about a second to start.
+	pwshReadyWait = 4 * time.Second
 	// channelWrite bounds the host's write of the two lines the shell reads, which a socket takes at once.
 	channelWrite = time.Second
 	// readyLine is what the script writes when the shell is up.
@@ -69,6 +71,8 @@ const (
 	kindNone shellKind = ""
 	kindZsh  shellKind = "zsh"
 	kindFish shellKind = "fish"
+	kindBash shellKind = "bash"
+	kindPwsh shellKind = "pwsh"
 )
 
 // integrationPlan decides, with no effect, what the host does for a shell: the kind of script to inject or why not.
@@ -84,10 +88,14 @@ func integrationPlan(enabled bool, shellPath string, args, env []string) (shellK
 		kind = kindZsh
 	case "fish":
 		kind = kindFish
+	case "bash":
+		kind = kindBash
+	case "pwsh":
+		kind = kindPwsh
 	default:
 		return kindNone, skipped(SkipUnsupportedShell)
 	}
-	if reason := unknownArguments(args); reason != "" {
+	if reason := unknownArguments(kind, args); reason != "" {
 		return kindNone, skipped(reason)
 	}
 	if envValue(env, "P9K_VERSION") != "" {
@@ -105,9 +113,21 @@ func skipped(reason IntegrationReason) Integration {
 
 // unknownArguments says why the arguments of the shell rule the integration out, or nothing when they are the login
 // flags and options that only say the same. The user's profile is not broken for a flag the host does not know.
-func unknownArguments(args []string) IntegrationReason {
+func unknownArguments(kind shellKind, args []string) IntegrationReason {
 	var unknown bool
 	for _, arg := range args {
+		if kind == kindPwsh {
+			// pwsh's options are case-insensitive and may be cut short (-c, -com, -command).
+			lower := strings.ToLower(arg)
+			switch {
+			case lower == "-login" || lower == "-nologo":
+			case lower == "-file" || lower == "-f" || lower == "-encodedcommand" || lower == "-e" || lower == "-ec" || (len(lower) >= 2 && isPrefixOf(lower, "-command")):
+				return SkipCommand
+			default:
+				unknown = true
+			}
+			continue
+		}
 		switch {
 		case arg == "-i" || arg == "-l" || arg == "--login" || arg == "--interactive":
 		case arg == "--command" || (strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "c")):
@@ -140,6 +160,9 @@ func envValue(env []string, key string) string {
 	return ""
 }
 
+// isPrefixOf says whether short is the beginning of full (pwsh takes -c, -com, -command).
+func isPrefixOf(short, full string) bool { return strings.HasPrefix(full, short) }
+
 // injection is what the host made for one start of one shell: its directory, the channel the shell reads the nonce on
 // and writes "ready" to, and the variables it adds. It is closed once, when it has done its work or the shell is gone.
 type injection struct {
@@ -148,7 +171,12 @@ type injection struct {
 	child *os.File
 	nonce marks.Nonce
 	// env replaces the entries of the shell's environment with the same names.
-	env  []string
+	env []string
+	// readyWait is how long the host waits for the shell to say it is ready.
+	readyWait time.Duration
+	// args, when set, are the arguments the shell starts with in place of the ones of the shell contract: bash is
+	// started with its own rcfile and without -l (bash ignores --rcfile under -l), pwsh with a command to run.
+	args []string
 	once sync.Once
 }
 
@@ -159,7 +187,7 @@ func prepareInjection(kind shellKind, env []string) (_ *injection, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("making the nonce: %w", err)
 	}
-	inj := &injection{dir: "", host: nil, child: nil, nonce: nonce, env: nil, once: sync.Once{}}
+	inj := &injection{dir: "", host: nil, child: nil, nonce: nonce, env: nil, args: nil, readyWait: earlyExit, once: sync.Once{}}
 	defer func() {
 		if err != nil {
 			inj.close()
@@ -197,6 +225,21 @@ func prepareInjection(kind shellKind, env []string) (_ *injection, err error) {
 			inherited = "/usr/local/share:/usr/share"
 		}
 		inj.env = []string{"XDG_DATA_DIRS=" + filepath.Join(inj.dir, "data") + ":" + inherited}
+	case kindBash:
+		script := filepath.Join(inj.dir, "bashrc")
+		if err = copyScript("integration_scripts/bash/bashrc", script); err != nil {
+			return nil, err
+		}
+		// No -l: the script emulates the login (/etc/profile, then the first of ~/.bash_profile, ~/.bash_login and ~/.profile).
+		inj.args = []string{"--rcfile", script, "-i"}
+	case kindPwsh:
+		script := filepath.Join(inj.dir, "integration.ps1")
+		if err = copyScript("integration_scripts/pwsh/integration.ps1", script); err != nil {
+			return nil, err
+		}
+		// pwsh takes about a second to start: it is given time, a shell that ends within it is still started once more without.
+		inj.readyWait = pwshReadyWait
+		inj.args = []string{"-Login", "-NoLogo", "-NoExit", "-Command", ". '" + strings.ReplaceAll(script, "'", "''") + "'"}
 	case kindNone:
 		return nil, errors.New("no shell to make an integration for")
 	}
@@ -296,7 +339,7 @@ func (i *injection) await(ctx context.Context, reaped <-chan error) (outcome, er
 		line, err := bufio.NewReader(i.host).ReadString('\n')
 		said <- err == nil && strings.TrimSpace(line) == readyLine
 	}()
-	timer := time.NewTimer(earlyExit)
+	timer := time.NewTimer(i.readyWait)
 	defer timer.Stop()
 	select {
 	case ok := <-said:

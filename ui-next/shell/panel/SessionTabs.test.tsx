@@ -302,3 +302,16 @@ describe('moving a session tab', () => {
     expect(told()).toBe('a moved to position 3 of 3');
   });
 });
+
+describe('the `+` of the real header', () => {
+  it('draws the arrow of the choice the tool offers, beside the `+` (the header passes the tool\'s menu on)', () => {
+    const items = [{ kind: 'action' as const, id: 'bash', label: 'bash', onSelect: () => undefined }];
+    const panel = staticPanel({
+      tools: [{ id: 'terminal', label: 'Terminal', icon: 'terminal', order: 10 }],
+      open: true,
+      start: { terminal: { label: 'New terminal', open: () => ({ title: 'zsh', state: 'running' }), menu: { label: 'Choose a shell', subscribe: () => () => undefined, getSnapshot: () => items } } },
+    });
+    render(<StaticShell registration={registration} panel={panel} />);
+    expect(document.querySelector('[data-shell-part="sessionAddChoice"]')?.getAttribute('aria-haspopup')).toBe('menu');
+  });
+});
