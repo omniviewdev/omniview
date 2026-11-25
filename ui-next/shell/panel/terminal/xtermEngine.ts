@@ -38,6 +38,9 @@ function themeOf(appearance: EngineAppearance): ITheme {
   };
 }
 
+/** The contexts a terminal may lose, or the times its addon may fail to be made, before it stays on the DOM renderer for its life. */
+const GPU_FAILURES = 2;
+
 /** The pitch of a row the host wants, in pixels: the font's size times the multiple it asked for. */
 const pitchOf = (appearance: EngineAppearance): number => Math.round(appearance.fontSize * appearance.lineHeight);
 
@@ -107,6 +110,8 @@ export function createXtermEngine(options: EngineOptions): Engine {
   terminal.unicode.activeVersion = '11';
   let renderer: EngineRenderer = 'dom';
   let gpu: WebglAddon | undefined;
+  /** The contexts lost and the addons that could not be made so far: at `GPU_FAILURES` the terminal stays on the DOM's renderer for its life. */
+  let gpuFailures = 0;
   let disposed = false;
   let element: HTMLElement | undefined;
   let pitch = pitchOf(appearance);
@@ -509,10 +514,16 @@ export function createXtermEngine(options: EngineOptions): Engine {
         return;
       }
 
+      // The addon is made once for a terminal and kept while the screen is hidden: in addon-webgl 0.19.0 `dispose()` does not release the GL context (WebKit allows 16 live ones in a page), so a hiding that
+      // disposed it would leak one context for every showing. A hidden terminal is not on screen, and the emulator's own render service pauses what is not intersecting, so it draws nothing there. The addon goes on
+      // a lost context and with the terminal; a terminal that lost two, or could not make one twice, stays on the DOM's renderer for its life.
       renderer = next;
-      if (next === 'dom') {
-        gpu?.dispose();
-        gpu = undefined;
+      if (next === 'dom' || gpu !== undefined) {
+        return;
+      }
+
+      if (gpuFailures >= GPU_FAILURES) {
+        renderer = 'dom';
         return;
       }
 
@@ -529,6 +540,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
           addon.dispose();
           if (gpu === addon) {
             gpu = undefined;
+            gpuFailures += 1;
           }
         });
         terminal.loadAddon(addon);
@@ -538,6 +550,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
         // No chunk, or no context: the DOM's renderer stays, and draws the same screen.
         renderer = 'dom';
         gpu = undefined;
+        gpuFailures += 1;
       }
     },
 

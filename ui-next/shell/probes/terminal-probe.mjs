@@ -154,6 +154,20 @@ const CONTROLS = {
   // the pty one column wider than it was asked to, so that the shell's size is not the emulator's.
   'early-size': { assertion: 'resize.none', section: 'size', engines: ['chromium'], query: 'control=early-size' },
   'size-off': { assertion: 'resize.cells', section: 'size', engines: ['chromium'], query: 'control=size-off' },
+  // The GPU addon is made once for a terminal (#698 item 15): every WebGL context the page makes is lost 100 ms after it was made, so that the addon goes with it and the next showing makes another, as an engine that made one at every showing would.
+  'webgl-every-show': {
+    assertion: 'gpu.once',
+    section: 'size',
+    engines: ['chromium'],
+    init: () => {
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+        const context = getContext.call(this, kind, ...rest);
+        if (context !== null && (kind === 'webgl' || kind === 'webgl2')) setTimeout(() => context.getExtension('WEBGL_lose_context')?.loseContext(), 100);
+        return context;
+      };
+    },
+  },
   // The input as numbered calls (docs/ui-next/status/T1-go.md 2.4): a host that applies the calls in the order they arrive, a host that refuses the size call (a call that was refused is not an applied one), a page that sends what is typed one call at a time, calls numbered with a number missing, and an old call made as well.
   'arrival-order': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=arrival-order' },
   'resize-refused': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=resize-refused' },
@@ -286,6 +300,14 @@ async function calm(page, { stall = 400, limit = 15_000 } = {}) {
  * began is still a timer that fires). Installed before the page's own scripts.
  */
 const COUNTERS = () => {
+  // The WebGL contexts the page asked for (the GPU addon's dispose() does not release its context in 0.19.0, and WebKit allows 16 live ones in a page): `gl.made` is every one made, `gl.live` is those not lost by the page.
+  const gl = (window.__gl = { made: 0 });
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+    const context = getContext.call(this, kind, ...rest);
+    if (context !== null && (kind === 'webgl' || kind === 'webgl2')) gl.made += 1;
+    return context;
+  };
   const counts = (window.__count = { on: false, timeout: 0, interval: 0, raf: 0, fired: 0, frames: 0, busy: 0, longest: 0, active: 0 });
   const alive = new Set();
   const wrap = (name, key, repeats) => {
@@ -1017,6 +1039,22 @@ async function size(ctx) {
     await page.click('[data-shell-part="panelToggle"]');
     await sleep(600);
     cycled = await sizes();
+  }
+
+  if (vp === '1440x900') {
+    // The panel hidden and shown 40 times: one terminal, one GPU context (#698 item 15: the addon is made once for a terminal, not at every showing).
+    const before = await page.evaluate(() => window.__gl.made);
+    for (let cycle = 0; cycle < 40; cycle += 1) {
+      await page.click('[data-shell-part="panelToggle"]');
+      await sleep(60);
+      await page.click('[data-shell-part="panelToggle"]');
+      await sleep(120);
+    }
+
+    await sleep(300);
+    const after = await page.evaluate(() => window.__gl.made);
+    check('gpu.once', after - before === 0 && after <= 1, `${engine} ${vp}: ${String(before)} WebGL contexts were made before 40 hidings and showings of the panel and ${String(after)} after them (one terminal: at most 1, and none made by a showing)`);
+    note(`gpu ${engine} ${vp}: ${String(after)} WebGL contexts after 40 hidings and showings of one terminal`);
   }
 
   check('resize.none', started.length === 1 && (vp !== '1440x900' || cycled.length === 1), `${engine} ${vp}: the log of sizes holds ${String(started.length)} after the start and ${vp === '1440x900' ? String(cycled.length) : 'no look'} after the panel was hidden and shown (the create call's, and nothing after it, is right): ${JSON.stringify(cycled.length > 0 ? cycled : started)}`);
