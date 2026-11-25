@@ -72,7 +72,12 @@ vi.mock('@xterm/addon-webgl', () => {
         throw new Error('no WebGL');
       }
 
-      this.seen = { disposed: false, lose: () => this.listeners.forEach((listener) => listener()) };
+      this.seen = { disposed: false, lose: () => {
+        for (const listener of this.listeners) {
+          listener();
+        }
+      },
+      };
       gpus.made.push(this.seen);
     }
 
@@ -81,7 +86,9 @@ vi.mock('@xterm/addon-webgl', () => {
       return { dispose: () => undefined };
     }
 
-    activate(): void {}
+    activate(): void {
+      // The real addon makes its context here.
+    }
 
     dispose(): void {
       this.seen.disposed = true;
