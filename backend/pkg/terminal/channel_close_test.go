@@ -19,15 +19,17 @@ func TestTheHoldersCloseOnItsStreamEndsTheTerminalAndTellsTheStreamHowItEnded(t 
 	a := m.attach(t, info.Cap, nil)
 	a.waitReady()
 	a.closeTerminal()
-	st := a.waitClosed()
 	guarded(t, "holder-close-ends", func() {
+		st := a.waitClosed()
 		require.Len(t, st.ended, 1, "the holder is told how it ended")
 		assert.Equal(t, EndClosed, st.ended[0].Reason)
 		assert.Zero(t, st.closeRefused)
 		assert.True(t, s.hasExited() || s.ending.Load(), "the terminal is ending")
+		m.awaitGone([]*session{s})
+		err := m.CloseChannel(info.Cap)
+		require.Error(t, err, "and its capability opens nothing")
+		assert.Equal(t, ChannelNotFound().Error(), err.Error())
 	})
-	m.awaitGone([]*session{s})
-	assert.ErrorIs(t, m.CloseChannel(info.Cap), ChannelNotFound(), "and its capability opens nothing")
 }
 
 func TestADisplacedHoldersCloseIsRefusedAndTheNewHolderKeepsTheTerminalAndIsNotToldOfAnEnd(t *testing.T) {
@@ -50,11 +52,13 @@ func TestADisplacedHoldersCloseIsRefusedAndTheNewHolderKeepsTheTerminalAndIsNotT
 		assert.Empty(t, b.state().ended, "the holder is told of no end")
 		assert.False(t, b.isClosed())
 	})
-	b.input("still")
-	b.waitFor("applied 5", appliedIs(5))
-	b.close()
-	st := a.waitClosed()
-	assert.Equal(t, 1, st.released, "and the watcher is told the terminal is free, as before")
+	guarded(t, "displaced-close-refused", func() {
+		b.input("still")
+		b.waitFor("applied 5", appliedIs(5))
+		b.close()
+		st := a.waitClosed()
+		assert.Equal(t, 1, st.released, "and the watcher is told the terminal is free, as before")
+	})
 }
 
 func TestEveryWatchersCloseIsRefusedAndTheirReleaseStillComes(t *testing.T) {
@@ -78,10 +82,12 @@ func TestEveryWatchersCloseIsRefusedAndTheirReleaseStillComes(t *testing.T) {
 		}
 		assert.False(t, s.settled().set)
 	})
-	pages[3].close()
-	for _, p := range pages[:3] {
-		assert.Equal(t, 1, p.waitClosed().released)
-	}
+	guarded(t, "displaced-close-refused", func() {
+		pages[3].close()
+		for _, p := range pages[:3] {
+			assert.Equal(t, 1, p.waitClosed().released)
+		}
+	})
 }
 
 // The close against a takeover, both orders. The takeover first: the close is the displaced stream's and is refused. The close first: the
@@ -108,9 +114,9 @@ func TestACloseAndATakeoverAtOnceHaveOneOutcomeInEitherOrder(t *testing.T) {
 		guarded(t, "holder-close-ends", func() {
 			require.Eventually(t, func() bool { return s.settled().set }, settle, 1e6, "the close decided the end")
 		})
-		b := m.attach(t, info.Cap, nil)
-		st := b.waitClosed()
 		guarded(t, "holder-close-ends", func() {
+			b := m.attach(t, info.Cap, nil)
+			st := b.waitClosed()
 			assert.Equal(t, 1, st.notFound, "a terminal whose end is decided cannot be claimed")
 			assert.Zero(t, st.takenOver)
 			assert.Equal(t, 1, len(a.waitClosed().ended), "the holder is told the end")

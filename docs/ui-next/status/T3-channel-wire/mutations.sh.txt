@@ -109,3 +109,12 @@ control ended-ready-says-the-count $T/channel_serve.go 'TestTheReadyOfTheKeptEnd
 
 control version-before-capability-shape $T/channel_serve.go 'TestTheAttachIsParsedCapabilityShapeFirstThenVersionAndNeitherAnswerLooksAtATerminal' 'cap-shape-before-version' \
   $'err != nil || req.Cap == "" || req.V == 0 {' $'err != nil || req.V == 0 {'
+
+control close-ends-for-any-stream $T/channel_serve.go 'TestADisplacedHoldersCloseIsRefusedAndTheNewHolderKeepsTheTerminalAndIsNotToldOfAnEnd|TestEveryWatchersCloseIsRefusedAndTheirReleaseStillComes|TestACloseAndATakeoverAtOnceHaveOneOutcomeInEitherOrder' 'displaced-close-refused' \
+  $'\tif s.channel.holder != c {\n\t\ts.mu.Unlock()\n\t\tc.closeRefused.Store(true)' $'\tif false {\n\t\ts.mu.Unlock()\n\t\tc.closeRefused.Store(true)'
+
+control close-of-the-holder-is-ignored $T/channel_serve.go 'TestTheHoldersCloseOnItsStreamEndsTheTerminalAndTellsTheStreamHowItEnded|TestACloseAndATakeoverAtOnceHaveOneOutcomeInEitherOrder' 'holder-close-ends' \
+  $'\tdecided := !s.fate.set\n' $'\tdecided := false\n'
+
+control refused-close-is-not-answered $T/channel_serve.go 'TestADisplacedHoldersCloseIsRefusedAndTheNewHolderKeepsTheTerminalAndIsNotToldOfAnEnd|TestEveryWatchersCloseIsRefusedAndTheirReleaseStillComes' 'displaced-close-refused' \
+  $'\t\tc.closeRefused.Store(true)\n\t\tc.signal()\n\t\treturn' $'\t\treturn'

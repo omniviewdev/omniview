@@ -24,11 +24,13 @@ import (
 
 // The frame types: the first byte of every frame. The page's are below 0x80 and the host's above.
 const (
-	frameAttach    byte = 0x01
-	frameInput     byte = 0x02
-	frameResize    byte = 0x03
-	frameAck       byte = 0x04
-	frameDetach    byte = 0x05
+	frameAttach byte = 0x01
+	frameInput  byte = 0x02
+	frameResize byte = 0x03
+	frameAck    byte = 0x04
+	frameDetach byte = 0x05
+	// frameClose is the page asking the host to end the terminal, on its own stream: it ends it only for the stream that holds it.
+	frameClose     byte = 0x06
 	frameReady     byte = 0x81
 	frameOutput    byte = 0x82
 	frameGap       byte = 0x83
@@ -39,6 +41,8 @@ const (
 	frameApplied     byte = 0x87
 	frameReleased    byte = 0x88
 	frameUnsupported byte = 0x89
+	// frameCloseRefused answers a close from a stream that does not hold the terminal.
+	frameCloseRefused byte = 0x8a
 )
 
 const (
@@ -198,6 +202,8 @@ type channelConn struct {
 	// released says the terminal was let go by the stream that held it while this stream watched it, and evicted that this watcher
 	// was one too many: both are set once, under the session's mu, and wake the sender.
 	released, evicted atomic.Bool
+	// closeRefused says a close of this stream was refused and the sender owes it the frame that says so.
+	closeRefused atomic.Bool
 	// reported is the input count this stream was last told: set by claim (what its ready states), and from then on only by the
 	// sender, which sends an applied frame when the host's count passes it.
 	reported uint64
@@ -214,7 +220,7 @@ func newChannelConn(ch Channel, clk clock) *channelConn {
 	return &channelConn{
 		ch: ch, clock: clk, sent: atomic.Uint64{}, begun: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
 		ackSeen: atomic.Bool{}, began: clk.Now(), progressAt: atomic.Int64{}, replayEnd: 0, displaced: atomic.Bool{}, stopped: atomic.Bool{},
-		released: atomic.Bool{}, evicted: atomic.Bool{}, reported: 0,
+		released: atomic.Bool{}, evicted: atomic.Bool{}, closeRefused: atomic.Bool{}, reported: 0,
 		gone: make(chan struct{}), goneOnce: sync.Once{}, wake: make(chan struct{}, 1), finished: make(chan struct{}),
 	}
 }
@@ -480,6 +486,12 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 		}
 		m.applyFrom(s, c, resizeOp(rows, cols))
 		return true
+	case frameClose:
+		if len(body) != 0 {
+			return false
+		}
+		s.closeFrom(c)
+		return true
 	case frameAck:
 		if len(body) != ackBodyBytes {
 			return false
@@ -552,6 +564,28 @@ func (s *session) admitFrom(c *channelConn, o *op) bool {
 			s.channel.refused.Add(1)
 			return false
 		}
+	}
+}
+
+// closeFrom is the page asking, on its stream, that the terminal end. The decision that the stream holds the terminal and the decision
+// that the terminal ends are one step under the terminal's lock, so that a close that loses a race with a takeover ends nothing and one that
+// wins it ends the terminal before anyone else can claim it. A stream that does not hold the terminal is sent close-refused, by its sender,
+// and the stream goes on. A terminal whose end is decided already is ending: the holder is told the end as for any end.
+func (s *session) closeFrom(c *channelConn) {
+	s.mu.Lock()
+	if s.channel.holder != c {
+		s.mu.Unlock()
+		c.closeRefused.Store(true)
+		c.signal()
+		return
+	}
+	decided := !s.fate.set
+	if decided {
+		s.fate = fate{set: true, closedBy: ClosedByRequest, failure: nil}
+	}
+	s.mu.Unlock()
+	if decided {
+		s.startClose()
 	}
 }
 
@@ -692,6 +726,8 @@ func (sd *sender) step() bool {
 	switch {
 	case c.stopped.Load():
 		return false
+	case c.closeRefused.Swap(false):
+		return c.ch.Send([]byte{frameCloseRefused}) == nil
 	case c.displaced.Load():
 		return sd.watch()
 	}
