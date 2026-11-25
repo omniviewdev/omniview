@@ -152,8 +152,7 @@ describe('the window\'s notification centre', () => {
     await waitFor(() => {
       expect(toasts()).toHaveLength(0);
     });
-    expect(report).toHaveBeenCalledTimes(bodies.length);
-    expect(report).toHaveBeenCalledWith('[notices] a command of acme failed', expect.any(Error));
+    expect(report.mock.calls).toEqual(bodies.map(() => ['[notices] a command of acme failed', expect.any(Error)]));
     report.mockRestore();
   });
 

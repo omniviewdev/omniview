@@ -84,8 +84,10 @@ describe('a command of a page that fails', () => {
       expect(toasts()).toHaveLength(1);
       expect(toasts()[0]).toHaveAttribute('aria-label', 'Error: Timed out 2 times');
     });
-    expect(report).toHaveBeenCalledTimes(2);
-    expect(report).toHaveBeenCalledWith('[notices] a command of acme failed', expect.any(Error));
+    expect(report.mock.calls).toEqual([
+      ['[notices] a command of acme failed', expect.any(Error)],
+      ['[notices] a command of acme failed', expect.any(Error)],
+    ]);
     report.mockRestore();
   });
 
