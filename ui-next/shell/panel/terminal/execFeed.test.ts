@@ -1643,6 +1643,8 @@ describe('closing the feed', () => {
   it('takes the rest of the output the host sends before the end, and nothing of it reaches the reader', async () => {
     const r = await running();
     const closing = r.feed.close();
+    expect(r.stream().sent().at(-1)).toEqual({ kind: 'close' });
+    expect(r.stream().open()).toBe(true);
     r.stream().output(0, 'last words');
     r.stream().applied(0);
     r.stream().ended({ reason: 'closed', closed_by: 'request', last_offset: 10 });
@@ -1654,6 +1656,8 @@ describe('closing the feed', () => {
     const r = await running();
     const closing = r.feed.close();
     await turns();
+    expect(r.stream().sent().at(-1)).toEqual({ kind: 'close' });
+    expect(r.stream().open()).toBe(true);
     r.stream().takenOver();
     r.stream().closeRefused();
     await closing;
@@ -1666,6 +1670,8 @@ describe('closing the feed', () => {
     const r = await running();
     const closing = r.feed.close();
     await turns();
+    expect(r.stream().sent().at(-1)).toEqual({ kind: 'close' });
+    expect(r.stream().open()).toBe(true);
     r.stream().drop();
     await closing;
     expect(r.channels.of('close')).toEqual([]);

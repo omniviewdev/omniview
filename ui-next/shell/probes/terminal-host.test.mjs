@@ -913,18 +913,20 @@ test('close on the stream (0x06): the holder ends the terminal as a close does a
   await second.until('ready', () => second.ready !== undefined);
   await first.until('taken', () => first.taken);
   first.stream.send(pageFrames.close());
-  await first.until('refused', () => first.refused === 1);
+  assert.equal(first.refused, 1, 'a close from a watcher is answered close-refused');
   assert.equal(first.closed, false, 'a watcher stays a watcher');
   assert.equal(host.state('t').holder, second.stream.id, 'nothing ended');
   assert.equal(host.log.closed.length, 0);
   first.stream.send(pageFrames.close());
-  await first.until('refused twice', () => first.refused === 2);
+  assert.equal(first.refused, 2);
   second.stream.send(pageFrames.close());
-  await second.until('ended', () => second.ended !== undefined && second.closed);
+  assert.notEqual(second.ended, undefined, 'the holder is sent the end');
+  assert.equal(second.closed, true);
   assert.equal(second.ended.reason, 'closed');
   assert.equal(second.ended.closed_by, 'request');
   assert.equal(host.state('t'), undefined, 'the terminal is gone');
-  await first.until('watcher ended', () => first.ended !== undefined && first.closed);
+  assert.notEqual(first.ended, undefined, 'the watcher is told how it ended');
+  assert.equal(first.closed, true);
   assert.equal(first.released, false);
   assert.deepEqual(await host.call('ListChannelTerminals', [[cap]]), []);
 
