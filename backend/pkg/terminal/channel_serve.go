@@ -138,21 +138,24 @@ type readyBody struct {
 	Session    Session       `json:"session"`
 	LeaseMs    int           `json:"lease_ms"`
 	Ended      *End          `json:"ended,omitempty"`
-	// InputApplied is the bytes of input the host has applied from this capability, across streams, plus those it has queued ahead of
+	// InputApplied is the bytes of input the host has applied from this stream's writer, plus those of the writer still queued ahead of
 	// this stream's input (section 5 of the protocol): the page resends what it sent after it. Zero for the kept end of a terminal.
 	InputApplied uint64 `json:"input_applied"`
+	// WriterKnown says the host had a count for the attach's writer before this attach. When it is false and the page had input of that
+	// writer that the host had not confirmed, the host cannot say what it applied of it and the page drops it.
+	WriterKnown bool `json:"writer_known"`
 }
 
 // readyFrame is the host's answer to a request that opens a terminal. lost is how much of what the page asked for is gone: the
 // distance from its offset up to the first byte the host still has, nothing for a page that gave no offset.
-func readyFrame(info Session, view *replayView, from *uint64, leaseMs int, cwd Directory, busy Foreground, ended *End, inputApplied uint64) ([]byte, error) {
+func readyFrame(info Session, view *replayView, from *uint64, leaseMs int, cwd Directory, busy Foreground, ended *End, inputApplied uint64, writerKnown bool) ([]byte, error) {
 	var lost uint64
 	if from != nil && *from < view.start {
 		lost = view.start - *from
 	}
 	raw, err := json.Marshal(readyBody{
 		V: attachVersion, Start: view.start, End: view.end, Lost: lost, Size: view.size, StartSize: view.startSize, Modes: view.now,
-		StartModes: view.startModes(), Cwd: cwd, Busy: busy, Session: info, LeaseMs: leaseMs, Ended: ended, InputApplied: inputApplied,
+		StartModes: view.startModes(), Cwd: cwd, Busy: busy, Session: info, LeaseMs: leaseMs, Ended: ended, InputApplied: inputApplied, WriterKnown: writerKnown,
 	})
 	if err != nil {
 		return nil, err
@@ -233,7 +236,9 @@ type channelConn struct {
 	// writerID is the writer the attach named, writer its count (set by claim), and lane the stream's input (taken by one worker).
 	writerID string
 	writer   *writerCount
-	lane     *inputLane
+	// writerKnown says the host remembered the writer when the stream took the terminal.
+	writerKnown bool
+	lane        *inputLane
 	// gone is closed when another stream takes the terminal: an input of this stream that waits for room in the queue looks again.
 	gone     chan struct{}
 	goneOnce sync.Once
@@ -247,7 +252,7 @@ func newChannelConn(ch Channel, clk clock) *channelConn {
 	return &channelConn{
 		ch: ch, clock: clk, sent: atomic.Uint64{}, begun: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
 		ackSeen: atomic.Bool{}, began: clk.Now(), progressAt: atomic.Int64{}, replayEnd: 0, displaced: atomic.Bool{}, stopped: atomic.Bool{},
-		released: atomic.Bool{}, evicted: atomic.Bool{}, closeRefused: atomic.Bool{}, reported: 0, writerID: "", writer: nil, lane: newInputLane(),
+		released: atomic.Bool{}, evicted: atomic.Bool{}, closeRefused: atomic.Bool{}, reported: 0, writerID: "", writer: nil, writerKnown: false, lane: newInputLane(),
 		gone: make(chan struct{}), goneOnce: sync.Once{}, wake: make(chan struct{}, 1), finished: make(chan struct{}),
 	}
 }
@@ -353,7 +358,7 @@ func (m *Manager) serveLive(ch Channel, s *session, from *uint64, writer string)
 		return // an offset that is not this terminal's: the stream closes, with no answer
 	}
 	cwd, busy := s.whereAndWhat()
-	ready, err := readyFrame(s.info, &view, from, int(s.lease/time.Millisecond), cwd, busy, nil, c.reported)
+	ready, err := readyFrame(s.info, &view, from, int(s.lease/time.Millisecond), cwd, busy, nil, c.reported, c.writerKnown)
 	if err != nil || ch.Send(ready) != nil {
 		m.release(s, c)
 		return
@@ -387,7 +392,7 @@ func (m *Manager) serveEnded(ch Channel, kept *tombstone, from *uint64) {
 	if err != nil {
 		return
 	}
-	ready, err := readyFrame(kept.info, &view, from, 0, Directory{Path: "", Reason: ReasonEnded}, UnknownForeground(ReasonEnded), &kept.end, 0)
+	ready, err := readyFrame(kept.info, &view, from, 0, Directory{Path: "", Reason: ReasonEnded}, UnknownForeground(ReasonEnded), &kept.end, 0, false)
 	if err != nil || ch.Send(ready) != nil {
 		return
 	}
@@ -432,7 +437,7 @@ func (s *session) claim(c *channelConn, from *uint64) (replayView, error) {
 	}
 	// The count this stream's ready states, the writer's: what the device took and what the queue holds ahead of its next input, read in
 	// the step that decides the holder, so that no input of the writer is admitted between this number and the stream's first one.
-	c.writer = s.channel.writerLocked(c.writerID)
+	c.writer, c.writerKnown = s.channel.writerLocked(c.writerID)
 	c.reported = c.writer.admitted.Load()
 	s.channel.holder = c
 	s.channel.holderPtr.Store(c)
@@ -513,7 +518,7 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 				c.writer.done(took, given)
 				s.channel.signalHolder()
 			}
-			return c.lane.push(laneItem{o: o, ack: 0, isAck: false})
+			return c.lane.push(laneItem{o: o})
 		}
 		return true
 	case frameResize:
@@ -524,7 +529,7 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 		if err != nil {
 			return false
 		}
-		return c.lane.push(laneItem{o: resizeOp(rows, cols), ack: 0, isAck: false})
+		return c.lane.push(laneItem{o: resizeOp(rows, cols)})
 	case frameClose:
 		if len(body) != 0 {
 			return false
@@ -535,7 +540,8 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 		if len(body) != ackBodyBytes {
 			return false
 		}
-		return c.lane.push(laneItem{o: nil, ack: binary.BigEndian.Uint32(body), isAck: true})
+		s.ackFrom(c, binary.BigEndian.Uint32(body)) // acted on as read, like close: no order against input matters to it
+		return true
 	default: // a detach, an attach again, a frame that is the host's, a type nobody has
 		return false
 	}

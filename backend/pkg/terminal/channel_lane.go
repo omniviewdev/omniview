@@ -7,9 +7,9 @@ import "sync"
 // THE LANE OF A STREAM'S INPUT (docs/ui-next/terminal-channel-protocol.md section 8).
 //
 // The stream's reader takes frames from the transport and does nothing that waits for the terminal. A frame that goes to the terminal's
-// queue (input, resize) or is an acknowledgement is put on the stream's lane, which one worker takes in order and admits to the queue,
+// queue (input, resize) is put on the stream's lane, which one worker takes in order and admits to the queue,
 // waiting for room when the queue is full (a program that does not read its terminal keeps its bytes in it). A frame that is a
-// control (close, detach, a violation) is acted on by the reader at once, whatever the lane waits for: a close that arrives while a
+// control (close, detach, ack, a violation) is acted on by the reader at once, whatever the lane waits for: a close that arrives while a
 // write is blocked ends the terminal, and the kill wakes the write. Order is the lane's and then the queue's: what the stream sent
 // is admitted in the order it sent it, and applied in that order.
 //
@@ -19,12 +19,9 @@ import "sync"
 // laneBytes is how much input may wait on one stream's lane for room in the terminal's queue.
 const laneBytes = 8 << 20
 
-// laneItem is one frame on the lane: an operation for the queue, or an acknowledgement.
-type laneItem struct {
-	o     *op
-	ack   uint32
-	isAck bool
-}
+// laneItem is one frame on the lane: an operation for the queue. (An acknowledgement is not on the lane: it is acted on as it is read,
+// so that a write that blocks does not freeze the output's flow control.)
+type laneItem struct{ o *op }
 
 type inputLane struct {
 	mu    sync.Mutex
@@ -55,10 +52,7 @@ func (l *inputLane) notifyLocked() {
 func (l *inputLane) push(it laneItem) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	size := 0
-	if it.o != nil {
-		size = len(it.o.data)
-	}
+	size := len(it.o.data)
 	if l.bytes+size > laneBytes {
 		return false
 	}
@@ -126,18 +120,12 @@ func (m *Manager) runLane(s *session, c *channelConn) {
 		}
 		it := l.items[0]
 		l.items = l.items[1:]
-		if it.o != nil {
-			l.bytes -= len(it.o.data)
-		}
+		l.bytes -= len(it.o.data)
 		l.admitting = true
 		l.notifyLocked()
 		l.mu.Unlock()
 
-		if it.isAck {
-			s.ackFrom(c, it.ack)
-		} else {
-			s.admitFrom(c, it.o)
-		}
+		s.admitFrom(c, it.o)
 		l.mu.Lock()
 		l.admitting = false
 		l.notifyLocked()
