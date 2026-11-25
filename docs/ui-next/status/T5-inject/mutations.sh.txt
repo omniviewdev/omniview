@@ -152,7 +152,7 @@ run bash-xtrace-stays-on "$B" \
   'TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight'
 
 run bash-hup-handler-never-set "$B" \
-  "s|    if \[ \"\$__omniview_hup_scoped\" = 1 \]; then trap -- '__omniview_hup' HUP; fi|    :|" \
+  "s|      trap -- '__omniview_hup' HUP|      :|" \
   'TestAHangupDuringThePromptCommandsStillHangsUpTheJobs'
 
 run bash-3-2-not-skipped "$IB" \

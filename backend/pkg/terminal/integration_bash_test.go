@@ -42,7 +42,7 @@ func TestBashIsStartedWithItsOwnRcfileAndWithoutTheLoginFlag(t *testing.T) {
 	line := waitStarts(t, log, 1)[0]
 	assert.Contains(t, line, "args=--rcfile ")
 	assert.Contains(t, line, "-i", "interactive")
-	assert.NotRegexp(t, regexp.MustCompile(`(^| )-l( |$)`), line, "bash ignores --rcfile under -l: the login is emulated by the script")
+	assert.NotRegexp(t, `(^| )-l( |$)`, line, "bash ignores --rcfile under -l: the login is emulated by the script")
 }
 
 func TestBashBefore4_1IsSkippedAndStartedAsBefore(t *testing.T) {

@@ -28,11 +28,35 @@
 
 ## Negative controls (AGENTS 28)
 
-`docs/ui-next/status/T5-inject/mutations.sh.txt` (extended; run from the worktree, with fish and pwsh on `PATH` for their subtests): __CONTROLS__
+`docs/ui-next/status/T5-inject/mutations.sh.txt` (extended; run from the worktree, with fish and pwsh on `PATH` for their subtests): 27 controls in all (the 15 of step 2 and 12 new), both halves, each on this head: half 1 red in exactly the named tests, half 2 (those skipped) green. The new ones:
+
+| Control (the fault) | Red in (half 1) |
+|---|---|
+| bash-login-flag-kept (`-l` added to the bash arguments: bash then ignores the rcfile) | 20 tests: every test that needs the integration of bash, `TestBashIsStartedWithItsOwnRcfileAndWithoutTheLoginFlag` first |
+| bash-every-login-file-runs (the loop does not stop at the first file) | `TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne` |
+| bash-nonce-exported (`export __omniview_nonce`) | `TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt` |
+| bash-history-line-always (no `HISTCMD` guard) | `TestAHistoryThatDoesNotHaveTheLineGivesNoLineAndNeverAWrongOne` |
+| bash-status-not-handed-on (`return 0` in the hooks) | `TestAUserPromptCommandStillSeesTheStatusOfTheCommand` |
+| bash-rematch-clobbered (a `[[ =~ ]]` in the hook) | `TestTheScriptNeverClobbersBASHREMATCHOrTheStatus` |
+| bash-xtrace-stays-on (`set +x` replaced by `:`) | `TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight` |
+| bash-hup-handler-never-set (the scoped HUP handler is never installed) | `TestAHangupDuringThePromptCommandsStillHangsUpTheJobs` |
+| bash-3-2-not-skipped (the version test never says too old) | `TestBashBefore4_1IsSkippedAndStartedAsBefore` |
+| pwsh-ready-wait-too-short (`pwshReadyWait` 500 ms) | 8 tests: those that need pwsh to be `on` |
+| pwsh-native-code-lost (the native code is never used) | `TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet` |
+| pwsh-line-not-escaped (the escape takes only `\x00-\x08`) | `TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem`, `TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand` |
+
+A control is run with fish and pwsh on `PATH` (a subtest that cannot start is skipped by name, and the control that needs it is then reported as undetected). The full script takes about 80 minutes here.
 
 ## Verification
 
-__VERIFICATION__
+Linux amd64, Go 1.27.4, bash 5.3, zsh 5.9, fish 4.0.2 (the Debian package under an overlay mount, as in step 2), PowerShell 7.5.1 (the release tarball, scratch directory).
+
+- Tests: `go test -race -count=3` on the integration tests of the three files and the PATH-order test: green (270 s). The whole `./backend/pkg/terminal/...`, `./internal/shellenv/...`, `./internal/settings/...` once: green (the last run, 248 s), after one failure found and fixed on the way: `TestTheKillAtTheGraceTargetsTheForegroundThatIsThereThenAndNotTheOneTheHangupFound/bash` failed because the scoped HUP handler replaced the `trap '' HUP` that the test (a user) typed; the hooks now put their handler only when none is set and remove only their own.
+- `go vet` for windows and darwin (`./backend/pkg/terminal/ ./internal/shellenv/ ./internal/settings/`): clean.
+- golangci-lint v2.15.0, the CI form of `N24-L2.md`: see the last commit; the first run found two (gocritic `argOrder`, testifylint `NotRegexp`), fixed.
+- `TestClosingHangsUpTheBackgroundJobsOfABashShell` (a close the instant the job is named) failed 3 to 5 of 8 runs with the integration until its timing was made honest (above); 12 of 12 after.
+- The shell contract: `TestTheShellStartsFromTheLaunchEnvironmentSoTheUsersPathOrderSurvives` is green for zsh and bash; `TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment` is the same with the integration on for zsh, fish, bash and pwsh; `TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne` and `TestTheBashrcThatTheLoginFileSourcesRunsOnce` pin that no login file runs twice.
+- The bash `history 1` form, `HISTCONTROL=ignoreboth`: a line the history has is trusted; one it does not (a space first, a repeat) has none (the test accepts "no line" or "the line typed" and never another).
 
 ## Not verified
 

@@ -121,7 +121,7 @@ func unknownArguments(kind shellKind, args []string) IntegrationReason {
 			lower := strings.ToLower(arg)
 			switch {
 			case lower == "-login" || lower == "-nologo":
-			case lower == "-file" || lower == "-f" || lower == "-encodedcommand" || lower == "-e" || lower == "-ec" || (len(lower) >= 2 && strings.HasPrefix("-command", lower)):
+			case lower == "-file" || lower == "-f" || lower == "-encodedcommand" || lower == "-e" || lower == "-ec" || (len(lower) >= 2 && isPrefixOf(lower, "-command")):
 				return SkipCommand
 			default:
 				unknown = true
@@ -159,6 +159,9 @@ func envValue(env []string, key string) string {
 	}
 	return ""
 }
+
+// isPrefixOf says whether short is the beginning of full (pwsh takes -c, -com, -command).
+func isPrefixOf(short, full string) bool { return strings.HasPrefix(full, short) }
 
 // injection is what the host made for one start of one shell: its directory, the channel the shell reads the nonce on
 // and writes "ready" to, and the variables it adds. It is closed once, when it has done its work or the shell is gone.
