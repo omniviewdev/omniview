@@ -56,7 +56,12 @@ func starts(t *testing.T, log string) []string {
 		return nil
 	}
 	require.NoError(t, err)
-	return strings.Split(strings.TrimSpace(string(data)), "\n")
+	// The shell makes the file before it writes its line: a file with no line has no start.
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return nil
+	}
+	return strings.Split(text, "\n")
 }
 
 // waitStarts waits until the fake shell has logged n starts: it logs from its own process, after Start has answered.
