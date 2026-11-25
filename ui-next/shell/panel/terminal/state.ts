@@ -141,7 +141,7 @@ export function stateWords(snapshot: TerminalFeedSnapshot | undefined): string {
 export function laneOf(snapshot: TerminalFeedSnapshot | undefined): { readonly words: string; readonly note: string } {
   switch (snapshot?.state) {
     case 'running':
-      return { words: '', note: '' };
+      return snapshot.inputLost === true ? { words: 'Input may be lost', note: 'What was typed while the connection was away may not have reached the shell.' } : { words: '', note: '' };
     case 'starting':
       return { words: stateWords(snapshot), note: '' };
     case 'failed':
