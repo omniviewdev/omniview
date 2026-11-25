@@ -1070,6 +1070,16 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   useEffect(() => logs.attach(), [logs]);
   // The terminals are the host's too: each process is released with its session, with its plugin, and with the window.
   useEffect(() => terminals.attach(), [terminals]);
+  // View > New Terminal Session of the native menu (`backend/menus`): the app event reaches every window, and the one that has the focus does what the Terminal's `+` does. A browser tab has no window service and listens to nothing.
+  useEffect(
+    () =>
+      windows?.on('menu/view/terminal/create', () => {
+        if (document.hasFocus()) {
+          terminals.newSession.start();
+        }
+      }),
+    [windows, terminals],
+  );
   // What the two tools list is read from the producers the window already holds, and kept true by their events for as long as the window is on screen (`panelTools.ts`).
   useEffect(() => attachPanelTools({ plugins, connections: host.connections?.store, feed: host.feed, problems: host.problems, operations: host.operations, resolve: host.resolve }), [plugins, host]);
   // Command K clears a terminal that has the focus (VS Code and JetBrains agree) and is also the palette's chord: a layout effect runs before every passive one, so this listener is the window's first and sees the key first.
