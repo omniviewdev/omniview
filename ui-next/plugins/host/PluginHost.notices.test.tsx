@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DetailPageV1, DetailView } from '../contract/v1';
@@ -75,7 +75,7 @@ describe('a command of a page that fails', () => {
     const { user } = mount();
     await user.click(await screen.findByRole('button', { name: 'Scale' }));
     await user.click(await screen.findByRole('button', { name: 'Retry' }));
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(scale).toHaveBeenCalledTimes(2);
       expect(toasts()).toHaveLength(1);
       expect(toasts()[0]).toHaveAttribute('aria-label', 'Error: Timed out 2 times');
