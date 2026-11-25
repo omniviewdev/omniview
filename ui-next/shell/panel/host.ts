@@ -1,6 +1,6 @@
 import type { LinkActivation } from '@omniviewdev/kit';
 import type { ReactElement } from 'react';
-import type { PanelStore, Route, Session, ToolId } from '../core/panel';
+import type { PanelStore, Route, Session, SessionId, ToolId } from '../core/panel';
 import type { ToolBadges } from './badge';
 
 // What the shell asks of its host to draw the panel. The shell knows a tool by the data the model holds (an id, a label, a glyph) and a session by its record; what a session's body draws and
@@ -60,6 +60,8 @@ export type PanelBindings = {
   readonly renderTool?: ((tool: ToolId) => ReactElement | undefined) | undefined;
   /** What each tool tab carries beside its words: a count or a dot (`badge.ts`). Member absent: no tab carries one. */
   readonly badges?: ToolBadges | undefined;
+  /** What stops a session and keeps its tab (Stop session), or `undefined` when the host holds nothing of it to stop. Member absent: the menu has no Stop. */
+  readonly stopOf?: ((id: SessionId) => (() => void) | undefined) | undefined;
   /** Where the resource of a session is: its address, and what opening it does. The shell knows no address grammar and no tab disposition: the host does. */
   readonly linkOf: (route: Route) => PanelLink;
 };

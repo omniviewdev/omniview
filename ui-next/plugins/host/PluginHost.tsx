@@ -1121,6 +1121,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
           }
         });
       },
+      stopOf: (id) => terminals.sessions.stopOf(id) ?? logs.stopOf(id),
       linkOf: (route) => ({
         href: routeAddressOf(route),
         open: (activation) => {

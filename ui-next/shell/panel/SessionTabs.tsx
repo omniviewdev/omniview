@@ -1,11 +1,14 @@
-import { Icon, IconButton, Text, hoverCard, hoverCardAnchor, isIconName, tip, type IconName } from '@omniviewdev/kit';
+import { Icon, IconButton, Text, hoverCard, hoverCardAnchor, isIconName, menuTrigger, tip, useMenu, type IconName, type MenuItem } from '@omniviewdev/kit';
+import { useState } from 'react';
+import { platformOf } from '../core/chords';
 import type { SessionId, SessionState, ToolId } from '../core/panel';
 import { useTablist } from '../tablist';
 import { usePanel } from './context';
 import { focusTab } from './focus';
 import { useActiveSession, useSessionIds, useSessionItem, useToolItem } from './hooks';
 import styles from './Header.module.css';
-import { sessionName, sessionTabId } from './words';
+import { SessionRename } from './SessionRename';
+import { closeChordText, sessionName, sessionTabId } from './words';
 
 /** What the lead slot draws while a session is not steady (ch16 S116): the loader while it starts, an info mark when it ended, the error mark when it failed. A running session shows its tool's glyph. */
 const STATE_GLYPHS: Readonly<Record<Exclude<SessionState, 'running'>, IconName>> = { starting: 'loader', ended: 'status-info', failed: 'status-error' };
@@ -18,6 +21,11 @@ type SessionTabProps = {
   readonly selected: boolean;
   readonly controls: string;
   readonly prefix: string;
+  /** The id of the strip's menu, which the tab is a context trigger of. */
+  readonly menu: string;
+  /** The name is being edited: the tab draws the field in place of its button. */
+  readonly renaming: boolean;
+  readonly onRenamed: (id: SessionId, title: string | null, refocus: boolean) => void;
 };
 
 /**
@@ -29,7 +37,7 @@ type SessionTabProps = {
  * tooltip. The close control is the pointer's, as the document tab's is: a tablist owns tabs and nothing else, so it is hidden from the accessibility tree and out of the tab order, and the keyboard
  * closes a session with Delete.
  */
-function SessionTab({ id, stop, selected, controls, prefix }: SessionTabProps) {
+function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRenamed }: SessionTabProps) {
   const { store } = usePanel();
   const item = useSessionItem(id);
   const tool = useToolItem(item?.tool ?? '');
@@ -37,10 +45,23 @@ function SessionTab({ id, stop, selected, controls, prefix }: SessionTabProps) {
     return null;
   }
 
+  if (renaming) {
+    return (
+      <div className={styles.sessionItem} data-tab-id={id} data-selected={selected ? '' : undefined} data-shell-part="sessionTab">
+        <SessionRename
+          title={item.title}
+          onDone={(title, refocus) => {
+            onRenamed(id, title, refocus);
+          }}
+        />
+      </div>
+    );
+  }
+
   const stateGlyph = item.state === 'running' ? undefined : STATE_GLYPHS[item.state];
   const toolGlyph = tool !== undefined && isIconName(tool.icon) ? tool.icon : FALLBACK_GLYPH;
   return (
-    <div className={styles.sessionItem} data-tab-id={id} data-selected={selected ? '' : undefined} data-shell-part="sessionTab" {...hoverCardAnchor()}>
+    <div className={styles.sessionItem} data-tab-id={id} data-selected={selected ? '' : undefined} data-shell-part="sessionTab" data-ov-menu-label={`Actions for ${item.name}`} {...menuTrigger(menu, id, 'context')} {...hoverCardAnchor()}>
       <button
         type="button"
         role="tab"
@@ -125,22 +146,77 @@ type SessionTabsProps = {
  * tab that had it being gone. It scrolls sideways only and keeps each tab's width: a strip squeezed to a minimum width is illegible (SCT1).
  */
 export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
-  const { store } = usePanel();
+  const { store, stopOf } = usePanel();
   const label = useToolItem(tool)?.label ?? 'Tool';
   const ids = useSessionIds(tool);
   const active = useActiveSession(tool);
-  const { ref, stop, handlers } = useTablist({
-    ids,
-    selected: active,
-    onClose: (id) => {
-      const closed = store.closeSession(id);
-      if (closed.status === 'done' && closed.active === null) {
-        focusTab('panelTools', tool);
-      }
+  const [renaming, setRenaming] = useState<SessionId | null>(null);
+  const close = (id: SessionId): boolean => {
+    const closed = store.closeSession(id);
+    if (closed.status === 'done' && closed.active === null) {
+      focusTab('panelTools', tool);
+    }
 
-      return closed.status === 'done';
-    },
-  });
+    return closed.status === 'done';
+  };
+
+  // One menu for the strip, keyed by the session it opened on (docs/ui-next/status/kit-menus.md). Every close is the panel's own `closeSession`: a terminal that runs something asks first, one question at a time.
+  const menu = useMenu((key) => {
+    const at = key === undefined ? -1 : ids.indexOf(key);
+    if (key === undefined || at < 0) {
+      return null;
+    }
+
+    const closing = (id: string, text: string, set: readonly SessionId[], none: string): MenuItem => ({
+      kind: 'action',
+      id,
+      label: text,
+      disabled: set.length === 0 ? none : false,
+      onSelect: () => {
+        for (const one of set) {
+          store.closeSession(one);
+        }
+      },
+    });
+    return [
+      {
+        kind: 'action',
+        id: 'rename',
+        label: 'Rename session…',
+        disabled: store.getSnapshot().sessions[key]?.held === true ? 'The plugin was unloaded: this session stays as it is until it is closed.' : false,
+        onSelect: () => {
+          setRenaming(key);
+        },
+      },
+      ...(stopOf === undefined
+        ? []
+        : [
+          {
+            kind: 'action' as const,
+            id: 'stop',
+            label: 'Stop session',
+            disabled: stopOf(key) !== undefined && ['starting', 'running'].includes(store.getSnapshot().sessions[key]?.state ?? '') ? false : 'The session isn\'t running.',
+            onSelect: () => {
+              stopOf(key)?.();
+            },
+          },
+        ]),
+      { kind: 'separator', id: 'close-group' },
+      {
+        kind: 'action',
+        id: 'close',
+        label: 'Close session',
+        shortcut: closeChordText(platformOf(navigator)),
+        onSelect: () => {
+          close(key);
+        },
+      },
+      closing('close-others', 'Close other sessions', ids.filter((one) => one !== key), 'There are no other sessions'),
+      closing('close-right', 'Close sessions to the right', ids.slice(at + 1), 'There are no sessions to the right'),
+      closing('close-left', 'Close sessions to the left', ids.slice(0, at), 'There are no sessions to the left'),
+    ];
+  }, ids);
+  const { ref, stop, handlers } = useTablist({ ids, selected: active, onClose: close });
   if (ids.length === 0) {
     return null;
   }
@@ -148,7 +224,26 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
   return (
     <div ref={ref} className={styles.sessionList} role="tablist" aria-label={`${label} sessions`} data-shell-part="sessionTabs" {...handlers}>
       {ids.map((id) => (
-        <SessionTab key={id} id={id} stop={id === stop} selected={id === active} controls={controls} prefix={prefix} />
+        <SessionTab
+          key={id}
+          id={id}
+          stop={id === stop}
+          selected={id === active}
+          controls={controls}
+          prefix={prefix}
+          menu={menu}
+          renaming={id === renaming}
+          onRenamed={(session, title, refocus) => {
+            setRenaming(null);
+            if (title !== null) {
+              store.retitleSession(session, title);
+            }
+
+            if (refocus) {
+              focusTab('sessionTabs', session);
+            }
+          }}
+        />
       ))}
     </div>
   );

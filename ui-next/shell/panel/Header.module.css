@@ -119,6 +119,13 @@
     background-color: var(--ov-tab-bg);
   }
 
+  /* The name of a session being renamed: the field takes the tab's width, within its 208 px. */
+  .sessionRename {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding-inline: var(--ov-spacing-4);
+  }
+
   .sessionTab {
     display: flex;
     flex: 1 1 auto;
