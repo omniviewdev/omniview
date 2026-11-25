@@ -161,43 +161,56 @@ func TestTheKillAtTheGraceTargetsTheForegroundThatIsThereThenAndNotTheOneTheHang
 	shells := loginShells(t)
 	shells["sh"] = sh(t)
 	for name, path := range shells {
-		t.Run(name, func(t *testing.T) {
-			quietHome(t)
-			dir := t.TempDir()
-			gate := filepath.Join(dir, "gate")
-			pidFile := filepath.Join(dir, "pid")
-			require.NoError(t, unix.Mkfifo(gate, 0o600))
-			sink := newChunkSink()
-			m := newChunkManager(t, sink)
-			info, err := m.Start(Options{Command: []string{path}}, nil)
-			require.NoError(t, err)
-			send(t, m, info.ID, "trap '' HUP")
-			send(t, m, info.ID, "cat "+gate+"; sh -c 'echo $$ > "+pidFile+"; exec sleep 60012'")
-			require.Eventually(t, func() bool {
-				busy, busyErr := m.Busy(info.ID)
-				return busyErr == nil && busy.State == StateBusy
-			}, 20*time.Second, 10*time.Millisecond, "cat never became the foreground")
-
-			closed := make(chan error, 1)
-			begin := time.Now()
-			go func() { closed <- m.CloseSession(info.ID) }()
-			time.Sleep(300 * time.Millisecond)
-			// The first foreground program ends now, after the hangup began and was ignored.
-			openGate(t, gate)
-			pid := pidIn(t, pidFile)
-
-			select {
-			case closeErr := <-closed:
-				require.NoError(t, closeErr)
-			case <-time.After(10 * time.Second):
-				t.Fatal("CloseSession did not return")
-			}
-			assert.GreaterOrEqual(t, time.Since(begin), HangupGrace-200*time.Millisecond, "the shell ignored the hangup: it lived to the grace")
-			require.Eventually(t, func() bool { return ended(pid) }, 10*time.Second, 20*time.Millisecond,
-				"the program the shell started after the hangup began was not killed")
-			assert.True(t, ended(info.PID))
-		})
+		t.Run(name, func(t *testing.T) { killAtGrace(t, path, "") })
 	}
+}
+
+// A login shell may run programs of its own in the foreground at its start (the files of /etc/profile.d run `locale` and `sh`):
+// the test waits for `cat`, the program it started, and not for any foreground.
+func TestTheKillAtTheGraceWaitsForTheProgramItStartedAndNotForOneOfTheShellsStartup(t *testing.T) {
+	killAtGrace(t, sh(t), "sleep 1\n")
+}
+
+// killAtGrace is the scenario; profile is the text of the shell's ~/.profile.
+func killAtGrace(t *testing.T, path, profile string) {
+	t.Helper()
+	home := quietHome(t)
+	if profile != "" {
+		require.NoError(t, os.WriteFile(filepath.Join(home, ".profile"), []byte(profile), 0o600))
+	}
+	dir := t.TempDir()
+	gate := filepath.Join(dir, "gate")
+	pidFile := filepath.Join(dir, "pid")
+	require.NoError(t, unix.Mkfifo(gate, 0o600))
+	sink := newChunkSink()
+	m := newChunkManager(t, sink)
+	info, err := m.Start(Options{Command: []string{path}}, nil)
+	require.NoError(t, err)
+	send(t, m, info.ID, "trap '' HUP")
+	send(t, m, info.ID, "cat "+gate+"; sh -c 'echo $$ > "+pidFile+"; exec sleep 60012'")
+	require.Eventually(t, func() bool {
+		busy, busyErr := m.Busy(info.ID)
+		return busyErr == nil && busy.State == StateBusy
+	}, 20*time.Second, 10*time.Millisecond, "cat never became the foreground")
+
+	closed := make(chan error, 1)
+	begin := time.Now()
+	go func() { closed <- m.CloseSession(info.ID) }()
+	time.Sleep(300 * time.Millisecond)
+	// The first foreground program ends now, after the hangup began and was ignored.
+	openGate(t, gate)
+	pid := pidIn(t, pidFile)
+
+	select {
+	case closeErr := <-closed:
+		require.NoError(t, closeErr)
+	case <-time.After(10 * time.Second):
+		t.Fatal("CloseSession did not return")
+	}
+	assert.GreaterOrEqual(t, time.Since(begin), HangupGrace-200*time.Millisecond, "the shell ignored the hangup: it lived to the grace")
+	require.Eventually(t, func() bool { return ended(pid) }, 10*time.Second, 20*time.Millisecond,
+		"the program the shell started after the hangup began was not killed")
+	assert.True(t, ended(info.PID))
 }
 
 // openGate writes a line into a FIFO a program is reading, and fails the test, instead of hanging it, when
