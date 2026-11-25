@@ -55,10 +55,15 @@ test('the text the plan reads is what the check says of itself: SEAM_LIST=1 prin
   assert.deepEqual(JSON.parse(ran.stdout), LIST);
 });
 
-test('the check has the phases and the controls it had when N29 split it: 26 phases, 104 controls in 29 runs', () => {
-  assert.equal(LIST.phases.length, 26);
-  assert.equal(LIST.controls.length, 29);
-  assert.equal(LIST.controls.reduce((sum, entry) => sum + entry.proves.length, 0), 104);
+// The counts of the check move with every scenario and control added to it (that is the point of the plan: it names what is missing), so they are read from the check and only a FLOOR is pinned: the phases and the controls it had
+// when N29 split it. A deletion shows as a number under the floor; an addition is not a test failure.
+const CONTROLS_IN_CHECK = LIST.controls.reduce((sum, entry) => sum + entry.proves.length, 0);
+const PHASES_IN_CHECK = LIST.phases.length;
+const PR_UNITS = UNITS.filter((unit) => unit.phases !== undefined).length;
+test('the check has at least the phases and the controls it had when N29 split it (26 phases, 104 controls in 29 runs)', () => {
+  assert.ok(LIST.phases.length >= 26);
+  assert.ok(LIST.controls.length >= 29);
+  assert.ok(CONTROLS_IN_CHECK >= 104);
   // The controls of a table are one run for the whole table; every other one is a run of its own, the settings controls among them (`SEAM_CONTROL=settings` does not detect `settings-reach`).
   assert.deepEqual(LIST.controls.filter((entry) => entry.proves.length > 1).map((entry) => entry.run), ['process', 'failed-load', 'plugins-page', 'connections', 'problems-operations']);
   assert.ok(LIST.controls.some((entry) => entry.run === 'settings-reach'));
@@ -233,7 +238,7 @@ test('the matrix is every shard in every engine, with the phases in the check\'s
 
 test('the plan states what it plans', () => {
   const text = renderPlan(planRun({ units: UNITS }), UNITS, LIST);
-  assert.match(text, /26 phases and 104 controls, 16 units, \d+ s listed in 3 shards of at most 420 s each/);
+  assert.match(text, new RegExp(`${String(PHASES_IN_CHECK)} phases and ${String(CONTROLS_IN_CHECK)} controls, ${String(UNITS.length)} units, \\d+ s listed in 3 shards of at most 420 s each`));
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -440,7 +445,7 @@ test('check and plan, on this repository: ok, and the plan writes the matrix and
   const summary = path.join(dir, 'summary');
   const checked = capture();
   assert.equal(await main(['check'], { env: {}, ...checked.io }), 0);
-  assert.match(checked.lines.out, /seam-shards: ok \(26 phases, 104 controls, in 16 units\)/);
+  assert.match(checked.lines.out, new RegExp(`seam-shards: ok \\(${String(PHASES_IN_CHECK)} phases, ${String(CONTROLS_IN_CHECK)} controls, in ${String(UNITS.length)} units\\)`));
   const planned = capture();
   assert.equal(await main(['plan'], { env: { GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, ...planned.io }), 0);
   const written = readFileSync(output, 'utf8');
@@ -512,7 +517,7 @@ test('report: reads the logs of a shard, writes what it ran where the verdict re
   assert.deepEqual(read.problems, []);
   const verified = capture();
   assert.equal(await main(['verify', '--reports', reports, '--shards', '3'], { env: { GITHUB_STEP_SUMMARY: path.join(root, 'verdict') }, ...verified.io }), 0, verified.lines.err);
-  assert.match(verified.lines.out, /seam-shards: ok \(26 phases and 104 controls, in 16 units, ran once and passed in webkit and chromium, in 3 shards each\)/);
+  assert.match(verified.lines.out, new RegExp(`seam-shards: ok \\(${String(PHASES_IN_CHECK)} phases and ${String(CONTROLS_IN_CHECK)} controls, in ${String(UNITS.length)} units, ran once and passed in webkit and chromium, in 3 shards each\\)`));
   assert.match(readFileSync(path.join(root, 'verdict'), 'utf8'), /\| webkit \| 1 \|/);
 
   // The same run with one shard of one engine gone is red, and with a plan that says four shards is red.
@@ -682,7 +687,7 @@ test('the plan command for a pull request writes the scope and a WebKit matrix, 
   const matrix = JSON.parse(/^matrix=(.*)$/m.exec(written)[1]);
   assert.equal(matrix.include.length, 2);
   assert.ok(matrix.include.every((entry) => entry.engine === 'webkit' && entry.controls === ''));
-  assert.match(planned.lines.out, /Pull request scope \(4 changed files, none of them test infrastructure\): 26 phases in webkit; the negative controls and Chromium are NOT run on pull requests/);
+  assert.match(planned.lines.out, new RegExp(`Pull request scope \\(4 changed files, none of them test infrastructure\\): ${String(PHASES_IN_CHECK)} phases in webkit; the negative controls and Chromium are NOT run on pull requests`));
   const bad = capture();
   assert.equal(await main(['plan', '--scope', 'nope'], { env: {}, ...bad.io }), 2);
 });
@@ -703,8 +708,8 @@ test('the verdict of a pull request requires the phases in WebKit only, and says
   const summary = path.join(root, 'summary.md');
   const ok = capture();
   assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length), '--scope', 'pr', '--reason', 'a docs change'], { env: { GITHUB_STEP_SUMMARY: summary }, ...ok.io }), 0, ok.lines.err);
-  assert.match(ok.lines.out, /seam-shards: ok \(26 phases and 0 controls, in 8 units, ran once and passed in webkit, in 2 shards each\)/);
-  assert.match(ok.lines.out, /seam-shards: not run on pull requests: the 104 negative controls and Chromium were NOT RUN on this pull request \(they run on main, every night, and on a change to the test infrastructure\): a docs change/);
+  assert.match(ok.lines.out, new RegExp(`seam-shards: ok \\(${String(PHASES_IN_CHECK)} phases and 0 controls, in ${String(PR_UNITS)} units, ran once and passed in webkit, in 2 shards each\\)`));
+  assert.match(ok.lines.out, new RegExp(`seam-shards: not run on pull requests: the ${String(CONTROLS_IN_CHECK)} negative controls and Chromium were NOT RUN on this pull request \\(they run on main, every night, and on a change to the test infrastructure\\): a docs change`));
   assert.match(readFileSync(summary, 'utf8'), /\*\*Not run on pull requests:\*\*/);
   const full = capture();
   assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length)], { env: {}, ...full.io }), 1, 'the same reports are not a full run');
