@@ -387,6 +387,74 @@ if (NAMED_TWICE.length > 0) {
   throw new Error(`a control's name belongs to one table of the check: ${NAMED_TWICE.map(([name, tables]) => `${name} (${tables.join(' and ')})`).join(', ')}`);
 }
 
+// The phases of a full run, in the order they run: `phase(<id>, ...)` below is called for each one. SEAM_PHASES=<id>,<id> runs only those, in this order, on a host of their own, for a job that holds a share of the run (N29:
+// scripts/ci/seam-shards.mjs packs the phases and the controls into the jobs of one engine, and the job that gathers them fails when one is in no job, so this list is the one place the phases are named). An id that is not
+// here is an error. A selected run prints `SEAM-PHASE <engine> <id> <seconds>` for each phase that passed; scripts/ci/seam-shards.mjs reads those lines. Every phase starts from a window with nothing saved and opens its own
+// pages, so a phase that runs without the ones before it is the same phase.
+const PHASE_IDS = [
+  'healthy',
+  'rail',
+  'panel',
+  'panel-late',
+  'logs',
+  'palette',
+  'twins',
+  'connection',
+  'providers',
+  'kept',
+  'identity',
+  'toasts',
+  'centre',
+  'settings',
+  'terminal',
+  'terminal-programs',
+  'terminal-reattach',
+  'terminal-takeover',
+  'terminal-followups',
+  'terminal-find',
+  'session',
+  'process',
+  'failed-load',
+  'plugins-page',
+  'connections',
+  'problems-operations',
+];
+const PHASES_ASKED = (process.env.SEAM_PHASES ?? '').split(',').filter((id) => id !== '');
+const PHASES_UNKNOWN = PHASES_ASKED.filter((id) => !PHASE_IDS.includes(id));
+if (PHASES_UNKNOWN.length > 0) throw new Error(`SEAM_PHASES names phases the check does not have: ${PHASES_UNKNOWN.join(', ')} (it has ${PHASE_IDS.join(', ')})`);
+if (PHASES_ASKED.length > 0 && (CONTROL !== '' || ONLY !== '' || process.env.SEAM_PROVIDERS_REPEAT !== undefined || process.env.SEAM_PANEL_REPEAT !== undefined || process.env.SEAM_TERMINAL_REPEAT !== undefined)) {
+  throw new Error('SEAM_PHASES selects the phases of a full run: it is not used with SEAM_CONTROL, SEAM_ONLY or a *_REPEAT');
+}
+
+// SEAM_LIST=1 prints what the check has, as JSON, and runs nothing: the phases, and the negative controls by the run that makes them (`SEAM_CONTROL=<run>`) with the controls that run proves. A control that has a table of its own
+// (the plugin that stops, the load that fails, the Plugins page, the connections, Problems and Operations) is made by one run for the whole table; every other one, one run each (the settings controls too: `SEAM_CONTROL=settings`
+// makes them all in one run and does not detect `settings-reach` there, which each of them does alone).
+if (process.env.SEAM_LIST !== undefined) {
+  const controls = [
+    ...Object.keys(CONTROLS).map((name) => ({ run: name, proves: [name] })),
+    { run: 'process', proves: Object.keys(PROCESS_CONTROLS) },
+    { run: FAILED_GROUP, proves: Object.keys(FAILED_CONTROLS) },
+    { run: PAGE_GROUP, proves: Object.keys(PAGE_CONTROLS) },
+    { run: CONNECTIONS_GROUP, proves: Object.keys(CONNECTIONS_CONTROLS) },
+    { run: PT_GROUP, proves: Object.keys(PT_CONTROLS) },
+  ];
+  console.log(JSON.stringify({ phases: PHASE_IDS, controls }));
+  process.exit(0);
+}
+
+/**
+ * Waits for a host to exit, at most 8 s, and leaves nothing behind. The 8 s was a timer that every wait left running: a run of the check that was done (a control: 1 s of work) went on for 8 s more because the timer held the
+ * process open, and the 27 runs of the negative controls that CI made in each engine paid it (N29: 216 s of the 560 the controls took).
+ */
+async function untilExited(exited, ms = 8000) {
+  let timer;
+  try {
+    await Promise.race([exited, new Promise((resolve) => { timer = setTimeout(resolve, ms); })]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function freePort() {
   return new Promise((resolve, reject) => {
     const probe = net.createServer();
@@ -609,6 +677,7 @@ async function phase(name, engine, run) {
   // A page a scenario leaves open would go on calling the host (the activity provider's heartbeat is every 10 s) and its failures would land in the phase that follows, so the phase closes what it opened.
   for (const page of phasePages.splice(0)) if (!page.isClosed()) await page.close();
   await assertExpectedFailures(name, engine);
+  console.log(`SEAM-PHASE ${engine} ${name} ${((Date.now() - currentPhaseStartedAt) / 1000).toFixed(1)}`);
 }
 
 /**
@@ -2373,7 +2442,7 @@ async function checkProcess(browser, engine, binary, work) {
   } finally {
     await page.close();
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
   }
 }
 
@@ -2764,7 +2833,7 @@ async function checkFailedLoad(browser, engine, binary, work) {
   } finally {
     await page.close();
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
   }
 }
 
@@ -3515,7 +3584,7 @@ async function checkPluginsPage(browser, engine, binary, work) {
     await page.close();
     await second.close();
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
   }
 }
 
@@ -4148,7 +4217,7 @@ async function checkConnectionsAndHome(browser, engine, binary, work) {
 
     // Nothing of the plugin is left when the host is: its process ends with the host's, and the file that made south fail is gone.
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
     await waitUntil("the plugin's process to end with the host", async () => !alive(pluginPid), 10_000);
     await assert.rejects(stat(modeFile), { code: 'ENOENT' }, `${engine}: the file that makes south fail is not left behind`);
     console.log(`${engine}: the connections: Home lists them, a rule for a plugin with two and none used, the chip's picker, Home and the palette start a connection and say how it went (a start refused for sign-in and for a server that does not answer is said on the row, in the picker, in Home and in the palette), and a Logs session of the host's panel stays when the tab's connection changes`);
@@ -4157,7 +4226,7 @@ async function checkConnectionsAndHome(browser, engine, binary, work) {
     await rm(modeFile, { force: true });
     for (const target of windows) await target.close().catch(() => undefined);
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
     if (pluginPid !== undefined && alive(pluginPid)) process.kill(pluginPid, 'SIGKILL');
   }
 }
@@ -5008,14 +5077,14 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
     );
     console.log(`${engine}: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid ${String(first.pid)} were rows (the alert and the task became Not confirmed and Outcome unknown), Retry ran the plugin again, and both tools were reached by the keys`);
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
     for (const [pid, identity] of pids) await waitUntil(`the process ${String(pid)} to end with the host`, async () => !(await isNamed(pid, identity)), 10_000);
     verdict(engine);
   } finally {
     await rm(modeFile, { force: true });
     await page.close().catch(() => undefined);
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
     // A process that cannot be told from the one the host named is left alone: its number may be another's now.
     for (const [pid, identity] of pids) if (await isNamed(pid, identity).catch(() => false)) process.kill(pid, 'SIGKILL');
   }
@@ -6424,7 +6493,7 @@ async function checkSettings(browser, engine, work) {
   } finally {
     for (const page of pages.splice(0)) if (!page.isClosed()) await page.close();
     host.child.kill();
-    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 8000))]);
+    await untilExited(exited);
   }
 }
 
@@ -9779,11 +9848,10 @@ try {
   const restart = async () => {
     const stopped = host;
     stopped.child.kill('SIGTERM');
-    await new Promise((resolve) => {
+    await untilExited(new Promise((resolve) => {
       if (stopped.child.exitCode !== null) resolve();
       else stopped.child.once('exit', resolve);
-      setTimeout(resolve, 8000);
-    });
+    }));
     host = await startHost(work, port, stopped.built);
   };
 
@@ -9957,37 +10025,46 @@ try {
         continue;
       }
 
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-      await phase('healthy', name, async () => {
-        await checkHealthy(page, host.base, name);
-        await checkRefusals(page, host.base, name);
-        await page.close();
-      });
-      await phase('rail', name, async () => checkRail(await freshPage(browser, host.base), host.base, name));
-      await phase('panel', name, async () => checkPanel(await freshPage(browser, host.base), host.base, name));
-      await phase('panel-late', name, async () => checkPanelLate(await freshPage(browser, host.base), host.base, name));
-      await phase('logs', name, async () => checkLogs(await freshPage(browser, host.base), host.base, name));
-      await phase('palette', name, async () => checkPalette(await freshPage(browser, host.base), host.base, name));
-      await phase('twins', name, async () => checkTwins(await freshPage(browser, host.base), host.base, name));
-      await phase('connection', name, async () => checkConnection(await freshPage(browser, host.base), host.base, name));
-      await phase('providers', name, async () => checkProviders(await freshPage(browser, host.base), host.base, name));
-      await phase('kept', name, async () => checkKept(await freshPage(browser, host.base), host.base, name));
-      await phase('identity', name, async () => checkIdentity(await freshPage(browser, host.base), host.base, name));
-      await phase('toasts', name, async () => checkToasts(await freshPage(browser, host.base), host.base, name));
-      await phase('centre', name, async () => checkCentre(await freshPage(browser, host.base), host.base, name));
-      await phase('settings', name, async () => checkSettings(browser, name, work));
-      await phase('terminal', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminal(page, host.base, name)));
-      await phase('terminal-programs', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalPrograms(page, host.base, name)));
-      await phase('terminal-reattach', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalReattach(page, host.base, name)));
-      await phase('terminal-takeover', name, async () => checkTerminalTakeover(browser, () => host, restart, name, work));
-      await phase('terminal-followups', name, async () => checkTerminalFollowups(browser, () => host, name));
-      await phase('terminal-find', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)));
-      await phase('session', name, () => checkSession(browser, () => host, restart, name));
-      await phase('process', name, async () => checkProcess(browser, name, await processFixture(), work));
-      await phase('failed-load', name, async () => checkFailedLoad(browser, name, await processFixture(), work));
-      await phase('plugins-page', name, async () => checkPluginsPage(browser, name, await processFixture(), work));
-      await phase(CONNECTIONS_GROUP, name, async () => checkConnectionsAndHome(browser, name, await connectionsFixture(), work));
-      await phase(PT_GROUP, name, async () => checkProblemsOperations(browser, name, { fixture: await processFixture(), connections: await connectionsFixture() }, work));
+      const phases = {
+        healthy: async () => {
+          const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+          await checkHealthy(page, host.base, name);
+          await checkRefusals(page, host.base, name);
+          await page.close();
+        },
+        rail: async () => checkRail(await freshPage(browser, host.base), host.base, name),
+        panel: async () => checkPanel(await freshPage(browser, host.base), host.base, name),
+        'panel-late': async () => checkPanelLate(await freshPage(browser, host.base), host.base, name),
+        logs: async () => checkLogs(await freshPage(browser, host.base), host.base, name),
+        palette: async () => checkPalette(await freshPage(browser, host.base), host.base, name),
+        twins: async () => checkTwins(await freshPage(browser, host.base), host.base, name),
+        connection: async () => checkConnection(await freshPage(browser, host.base), host.base, name),
+        providers: async () => checkProviders(await freshPage(browser, host.base), host.base, name),
+        kept: async () => checkKept(await freshPage(browser, host.base), host.base, name),
+        identity: async () => checkIdentity(await freshPage(browser, host.base), host.base, name),
+        toasts: async () => checkToasts(await freshPage(browser, host.base), host.base, name),
+        centre: async () => checkCentre(await freshPage(browser, host.base), host.base, name),
+        settings: async () => checkSettings(browser, name, work),
+        terminal: async () => onTerminalPage(browser, host.base, (page) => checkTerminal(page, host.base, name)),
+        'terminal-programs': async () => onTerminalPage(browser, host.base, (page) => checkTerminalPrograms(page, host.base, name)),
+        'terminal-reattach': async () => onTerminalPage(browser, host.base, (page) => checkTerminalReattach(page, host.base, name)),
+        'terminal-takeover': async () => checkTerminalTakeover(browser, () => host, restart, name, work),
+        'terminal-followups': async () => checkTerminalFollowups(browser, () => host, name),
+        'terminal-find': async () => onTerminalPage(browser, host.base, (page) => checkTerminalFindMenu(page, host.base, name)),
+        session: async () => checkSession(browser, () => host, restart, name),
+        process: async () => checkProcess(browser, name, await processFixture(), work),
+        'failed-load': async () => checkFailedLoad(browser, name, await processFixture(), work),
+        'plugins-page': async () => checkPluginsPage(browser, name, await processFixture(), work),
+        [CONNECTIONS_GROUP]: async () => checkConnectionsAndHome(browser, name, await connectionsFixture(), work),
+        [PT_GROUP]: async () => checkProblemsOperations(browser, name, { fixture: await processFixture(), connections: await connectionsFixture() }, work),
+      };
+      assert.deepEqual(Object.keys(phases), PHASE_IDS, 'the phases that run are the phases PHASE_IDS names, in its order');
+      for (const id of PHASE_IDS) if (PHASES_ASKED.length === 0 || PHASES_ASKED.includes(id)) await phase(id, name, phases[id]);
+      if (PHASES_ASKED.length > 0) {
+        console.log(`PASS ${name}: ${PHASE_IDS.filter((id) => PHASES_ASKED.includes(id)).join(', ')}`);
+        continue;
+      }
+
       console.log(`PASS ${name}: contribute (sidebar entry, page, no route), one React and one kit, the control fails, containment, refusal, named states, the rail, the empty window, the bottom panel, the command palette, a failed page command's toast, the notification centre (the history read at the bell, one presenter, restored after a reload), the session (reload, restart, a plugin that is gone, a session kept aside), a plugin whose process is killed (the window drops it, keeps its Logs session and loads it again when the host says it runs), a plugin whose load fails (the window says so, Retry asks the host and ends in what it says, bounded by the loader's timeout), the Plugins page (the list is the host's inventory; a reload, a disable and an enable, an enable that leaves a plugin on and not started, a process killed by its pid and an uninstall are each read from the host's events, in two windows, with no raw text of the host or of a plugin on screen), the connections (the chip's picker, Home and the palette start a connection and say how it went, a start the host refuses is said where it was chosen, a Logs session of the host's panel stays when the tab's connection changes), the Problems and Operations tools (a plugin whose process is killed, an alert, a connection that does not answer and a failed task are each a row, with the tab's count or dot, live from the host's events; each row leaves when it stops being true and goes to its plugin or connection; a task's progress follows the plugin's own reports; the dot of an unread failure is cleared by the host's own mark)`);
     } finally {
       await browser.close();
@@ -10001,10 +10078,9 @@ try {
   process.exitCode = 1;
 } finally {
   host?.child.kill();
-  await new Promise((resolve) => {
+  await untilExited(new Promise((resolve) => {
     if (host === undefined || host.child.exitCode !== null) resolve();
     else host.child.once('exit', resolve);
-    setTimeout(resolve, 8000);
-  });
+  }));
   await rm(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 }

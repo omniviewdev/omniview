@@ -45,6 +45,7 @@ const NEW_UI_ROOTS = ['ui-next/', 'packages/kit/', 'docs/ui-next/'];
 // A new probe or control is a unit file of the probe table, so every pull request that adds one changes it: it must not turn a change to the new UI into a change to everything.
 //   scripts/ci/probe-units/, probe-units.manifest.json  the probe table, one file for each probe, and the floor of what it must hold (N25): the kit probes workflow (the plan, every shard and `Kit probes`) is the only reader
 //   scripts/ci/probe-shards.mjs, probe-pack.mjs, probe-seconds.mjs, probe-builds.mjs, their tests and probe-shards.runs.json  the engine of the table (the same workflow is the only reader): the check, the packing, the runner, the shared builds and the verification
+//   scripts/ci/seam-shards.mjs, seam-units.mjs and the test of the first  the seam workflow's plan, report and verdict, and the units it packs (N29): the seam workflow is the only reader
 //   scripts/ui-next-pods/                               the Pods cluster check is the only reader
 //   scripts/ui-next-bundle.mjs                          scripts/ui-flavour.test.mjs, in the UI build job
 //   bench/table/, bench/log/                            the kit's benches: no workflow runs them (the UI lint job lints them)
@@ -58,6 +59,9 @@ const NEW_UI_TOOLING_FILES = new Set([
   'scripts/ci/probe-pack.test.mjs',
   'scripts/ci/probe-seconds.mjs',
   'scripts/ci/probe-seconds.test.mjs',
+  'scripts/ci/seam-shards.mjs',
+  'scripts/ci/seam-shards.test.mjs',
+  'scripts/ci/seam-units.mjs',
   'scripts/ci/probe-builds.mjs',
   'scripts/ci/probe-builds.test.mjs',
   'scripts/ci/probe-units.manifest.json',
