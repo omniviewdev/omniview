@@ -30,7 +30,11 @@ done
 unset __omniview_file
 
 if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
-  # The marks. Everything below prints only inside an OSC sequence, and nothing else. Each function that touches the nonce
+  # The marks. Every one is written to /dev/tty, not to stdout: the DEBUG trap fires inside a compound command's redirect
+  # (`for ...; done > file`), and a user's `exec > file` redirects the shell's own stdout for good, so stdout is not the terminal
+  # and a mark there would land in the user's data, the nonce with it. (A descriptor kept for the terminal would be inherited
+  # by every child: bash does not close the ones it opens with {var}.) The shell has a controlling terminal under the host;
+  # with none the marks are not written. Everything below prints only inside an OSC sequence, and nothing else. Each function that touches the nonce
   # puts xtrace out first (and back at the end), so that a user's `set -x` never prints it. Nothing uses [[ =~ ]] (it
   # would clobber the user's BASH_REMATCH).
 
@@ -115,9 +119,9 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     __omniview_ran=1
     if [ -n "$__omniview_line" ]; then
       __omniview_escape "$__omniview_line"
-      builtin printf '\e]633;E;%s;%s\a\e]133;C\a' "$REPLY" "$__omniview_nonce"
+      builtin printf '\e]633;E;%s;%s\a\e]133;C\a' "$REPLY" "$__omniview_nonce" 2>/dev/null >/dev/tty
     else
-      builtin printf '\e]133;C\a'
+      builtin printf '\e]133;C\a' 2>/dev/null >/dev/tty
     fi
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
@@ -133,7 +137,7 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     __omniview_hup_on
     if [ "${__omniview_ran:-0}" = 1 ]; then
       __omniview_ran=0
-      builtin printf '\e]133;D;%d\a' "$__omniview_status"
+      builtin printf '\e]133;D;%d\a' "$__omniview_status" 2>/dev/null >/dev/tty
     fi
     return "$__omniview_status"
   }
@@ -154,9 +158,9 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
       esac
       __omniview_encoded+=$__omniview_char
     done
-    builtin printf '\e]7;file://%s%s\a' "${HOSTNAME-}" "$__omniview_encoded"
+    builtin printf '\e]7;file://%s%s\a' "${HOSTNAME-}" "$__omniview_encoded" 2>/dev/null >/dev/tty
     __omniview_escape "$__omniview_path"
-    builtin printf '\e]633;P;Cwd=%s;%s\a' "$REPLY" "$__omniview_nonce"
+    builtin printf '\e]633;P;Cwd=%s;%s\a' "$REPLY" "$__omniview_nonce" 2>/dev/null >/dev/tty
     case $PS1 in
       *'133;A'*) ;;
       *) PS1='\[\e]133;A\a\]'"$PS1"'\[\e]133;B\a\]' ;;

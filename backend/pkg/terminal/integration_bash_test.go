@@ -647,7 +647,11 @@ func TestTheMarksOfZshAndFishAndPwshNeverLandInAFileThatTheUserRedirectsTo(t *te
 				assert.Equal(t, c.want, strings.ReplaceAll(f.fileOf(c.file), "\r\n", "\n"), "%s holds only what the user wrote", c.file)
 			}
 			if name == "zsh" {
-				assert.Equal(t, "in-file\n", f.fileOf("e"), "a zsh whose stdout is a file prints no mark into it")
+				// (zle writes its own mode switches, ESC [ ? 1 h, to a stdout that is a file; the marks are OSC sequences.)
+				e := f.fileOf("e")
+				assert.Contains(t, e, "in-file\n")
+				assert.NotContains(t, e, "\x1b]", "a zsh whose stdout is a file prints no mark into it")
+				assert.NotContains(t, e, f.m.session(t, info.ID).nonce.Reveal())
 			}
 			var n int
 			for _, r := range f.scanned(info.ID).Records() {
