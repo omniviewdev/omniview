@@ -220,8 +220,8 @@ describe('when there are no rows to show', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Couldn\'t list the installed plugins');
     expect(container.querySelector('[data-pl-part="list-foot"]')).toBeNull();
 
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }));
     await act(async () => {
-      await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }));
       await settle();
     });
 
