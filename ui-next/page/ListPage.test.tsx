@@ -316,6 +316,8 @@ describe('ListPage: the user\'s own Refresh is felt (in the header\'s slot, not 
 describe('ListPage: a Refresh that does not finish (S3)', () => {
   // The source's `refresh` resolves when the read is over, and a plugin's may reject or never answer. The page is not left at "Refreshing…" with the command unavailable for as long as it is open: it says so in the slot, with a Retry.
   beforeEach(() => {
+    // The thirty seconds are counted by the fake clock alone: with `shouldAdvanceTime` the real time a render takes is added to it, and the limit fires before 29.999 s have been advanced.
+    vi.useFakeTimers();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
