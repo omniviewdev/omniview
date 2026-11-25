@@ -64,6 +64,13 @@ export const RECONNECT_DELAYS_MS: readonly number[] = [250, 1_000, 4_000];
 
 const NO_BYTES = new Uint8Array(0);
 
+/** A new writer id: 16 random bytes as 32 lowercase hex digits. It is not a secret and opens nothing. */
+function writerId(): string {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 const EMPTY: TerminalOutput = Object.freeze({ chunks: Object.freeze([]), bytes: 0 });
 const IDLE: TerminalBusy = Object.freeze({ state: 'idle' });
 const UNKNOWN: TerminalBusy = Object.freeze({ state: 'unknown' });
@@ -456,6 +463,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** Where the output the host advertised for the stream now open ends: a continuation is complete when the cursor is there. */
   let resumeEnd = 0;
   /** A stream of this feed said `ready` at least once. */
+  /** The id this feed types under (16 random bytes, 32 lowercase hex digits): said in every attach, so that the host counts the input applied for this feed alone and the count in `ready` and `applied` is this feed's own. */
+  const writer = writerId();
   /** A stream was ever opened for this feed: from then on another stream may have taken the terminal, and only the stream (or the lease) may end it. */
   let everConnected = false;
   let retry: Timer | undefined;
@@ -1045,7 +1054,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         unsupported: heardEnd(onUnsupported),
         notFound: heardEnd(onNotFound),
         closed: heardEnd(onClosed),
-      });
+      }, writer);
     } catch (error) {
       connection = undefined;
       over({ state: 'failed', cause: causeOf('start', error) });

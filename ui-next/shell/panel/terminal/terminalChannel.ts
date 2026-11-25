@@ -284,7 +284,7 @@ function createCore(deps: ChannelDeps): Core {
       return rest;
     },
 
-    connect: (id, fromOffset, events) => connect(id, fromOffset, events),
+    connect: (id, fromOffset, events, writer) => connect(id, fromOffset, events, writer),
 
     close: async (id) => {
       await named(id, async (cap) => client.CloseChannelTerminal(cap), true);
@@ -350,7 +350,7 @@ function createCore(deps: ChannelDeps): Core {
     pending: () => 0,
   };
 
-  function connect(id: string, fromOffset: number | undefined, events: ChannelEvents): ChannelLink {
+  function connect(id: string, fromOffset: number | undefined, events: ChannelEvents, writer?: string): ChannelLink {
     const cap = caps.get(id);
     let socket: ChannelSocket | undefined;
     if (cap !== undefined) {
@@ -589,7 +589,7 @@ function createCore(deps: ChannelDeps): Core {
     stream.addEventListener('error', listeners.error);
 
     // The attach is the first frame and nothing goes before it. An offset of 0 is an offset: it is said when it is given, and not when the page has nothing.
-    const request = { v: CHANNEL_VERSION, cap, ...(fromOffset !== undefined && Number.isSafeInteger(fromOffset) && fromOffset >= 0 ? { from_offset: fromOffset } : {}) };
+    const request = { v: CHANNEL_VERSION, cap, ...(writer === undefined ? {} : { writer }), ...(fromOffset !== undefined && Number.isSafeInteger(fromOffset) && fromOffset >= 0 ? { from_offset: fromOffset } : {}) };
     send(frameOf(ATTACH, encoder.encode(JSON.stringify(request))));
 
     return {
