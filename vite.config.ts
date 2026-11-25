@@ -81,6 +81,8 @@ export default defineConfig({
     ? path.join(ownedViteCacheDirectory, 'node_modules', '.vite')
     : testCaches.cacheDir,
   test: {
+    // The desktop runtime's API without its boot, which a test has no host for (the file says why). Exact match: `@wailsio/runtime/cancellable` stays the package's.
+    alias: [{ find: /^@wailsio\/runtime$/, replacement: path.resolve(__dirname, 'ui/wails-runtime.mock.mjs') }],
     fsModuleCachePath: testCaches.fsModuleCachePath,
     globals: true,
     environment: 'jsdom',
@@ -169,7 +171,8 @@ export default defineConfig({
       include: new RegExp(String.raw`^${reactCompilerSourceRoot}[/\\](?:ui[/\\]|ui-next[/\\]|bench[/\\]|packages[/\\][^/\\]+[/\\]src[/\\]|plugins[/\\][^/\\]+[/\\]ui[/\\]src[/\\]).*\.(?:[jt]sx?|[cm][jt]s)(?:$|\?)`),
       babel: { plugins: [['babel-plugin-react-compiler', { target: '19' }]] },
     }),
-    wails(wailsBindings),
+    // It rewrites one import of the runtime entry, which no test loads (`test.alias` above); under Vitest its startup lookup of that entry would find the alias and fail.
+    !process.env.VITEST && wails(wailsBindings),
     {
       name: 'optional-local-react-devtools',
       transformIndexHtml(html, ctx) {
