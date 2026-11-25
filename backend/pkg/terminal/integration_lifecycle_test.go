@@ -315,3 +315,13 @@ func TestASettingThatCannotBeReadFailsClosed(t *testing.T) {
 	assert.Contains(t, line, "zdotdir=unset xdg=unset")
 	assert.Empty(t, f.integrationDirs())
 }
+
+// The fake shell logs with `echo >> file`: the shell makes the file before it writes the line, and a test that reads in
+// between sees a file with no line. That is not a start (a CI run counted it as one, and read "" as the line of the shell).
+func TestAFakeShellLogThatHasNoLineYetHasNoStart(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "log")
+	require.NoError(t, os.WriteFile(log, nil, 0o600))
+	assert.Empty(t, starts(t, log), "an empty log has no start")
+	require.NoError(t, os.WriteFile(log, []byte("start a\n"), 0o600))
+	assert.Equal(t, []string{"start a"}, starts(t, log))
+}
