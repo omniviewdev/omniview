@@ -431,6 +431,7 @@ jobs:
         run: node --test scripts/react-compiler.test.mjs
 
       - name: Build
+        id: frontend-build
         run: task check:ui-build
 
       - name: Check each frontend flavour ships only its own tree
@@ -444,8 +445,9 @@ jobs:
         run: node --test scripts/ci/changes-workflows.test.mjs
 
       # The typed lint, the typecheck and the API reports resolve the workspace packages through their built output (task check:ui-build runs this step inside the build step above; the component tests need them too).
+      # `task check:ui-build` runs `task packages` first: when that step succeeded the packages are built and this one has nothing to do (N32: it repeated four package builds, 33 s).
       - name: Build the workspace packages
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.frontend-build.outcome != 'success' }}
         run: task packages
 
       - name: Typecheck

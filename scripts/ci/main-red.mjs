@@ -111,10 +111,23 @@ export async function rangeSubjects({ ask, repository, good, bad }) {
   }
 }
 
-/** Is a run that ended `cancelled` red? Yes when one of its jobs failed or timed out (the verdict job of a shard that hit its timeout fails); no when it was only superseded. */
+/** What GitHub writes on a job that reached its `timeout-minutes` (it ends `cancelled`, like the run). */
+export const TIMEOUT_ANNOTATION = /exceeded the maximum execution time/i;
+
+/**
+ * Is a run that ended `cancelled` red? Yes when one of its jobs failed or timed out: a job that ended `failed`, `timed_out` or `startup_failure` (the verdict job of a shard that hit its timeout fails), and a job that ended `cancelled`
+ * with the annotation of a timeout ("The job has exceeded the maximum execution time of 30m0s"), which is how a hang of a workflow with no verdict job (a single job, like the Windows build) shows. No when it was only superseded.
+ */
 export async function cancelledIsRed({ ask, repository, runId }) {
-  const text = await ask(['api', `repos/${repository}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, '--jq', '[.jobs[].conclusion]']);
-  return JSON.parse(text).some((conclusion) => RED.includes(conclusion));
+  const text = await ask(['api', `repos/${repository}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, '--jq', '[.jobs[] | {id, conclusion}]']);
+  const jobs = JSON.parse(text);
+  if (jobs.some((job) => RED.includes(job.conclusion))) return true;
+  for (const job of jobs.filter((entry) => entry.conclusion === 'cancelled')) {
+    const found = await ask(['api', `repos/${repository}/check-runs/${job.id}/annotations?per_page=50`, '--jq', '[.[].message]']);
+    if (JSON.parse(found).some((message) => TIMEOUT_ANNOTATION.test(String(message)))) return true;
+  }
+
+  return false;
 }
 
 /** The open issue that carries the label (the lowest number when there are several), `{ number, body }` or null. */
