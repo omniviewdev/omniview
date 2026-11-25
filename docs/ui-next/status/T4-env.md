@@ -13,6 +13,12 @@
 - `PATH` is allowed. The login shell's own files may replace it (`/etc/profile` on Debian does), so no test claims it survives; `launch.env` is not the login environment (T1-go 2.8.1).
 - Canary: `WAILS_MCP_TOKEN` in the host's environment and in `launch.env` together: refused, and without `launch.env` it is still stripped.
 
+## Review notes (ReviewLaunchEnv)
+
+- `LD_PRELOAD`, `DYLD_*`, `BASH_ENV`, `ENV`, `PROMPT_COMMAND` are allowed in `launch.env`, on purpose. `CreateTerminal` is denied to audit browsers, and a plugin's UI already has a shell of its own, so these names give a caller nothing that a typed command does not. The closed list is the host's secrets and the terminal's own identity, not a list of dangerous names.
+- Names are matched case-sensitively. On Windows environment names are case-insensitive: #701 (Windows) must fold case in `reservedEnvName` and in the replace of `withLaunchEnv` before `launch.env` is offered there.
+- Tests added for the review: the wrapper's two lanes pass `launch.env` to the manager; the total is accepted at exactly 256 KiB; a long refused name is shown cut at 64 bytes; the same refused name answers every time.
+
 ## Checks run
 
 - `go test -race -count=3` on the launch.env tests and the neighbours (PATH order, strip list, PWD): ok. The whole terminal package once with `-race` and the exec package once: ok.

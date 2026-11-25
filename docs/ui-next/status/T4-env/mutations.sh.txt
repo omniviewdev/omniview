@@ -8,6 +8,7 @@
 export GOWORK=off GOTOOLCHAIN=local
 WT=$(git rev-parse --show-toplevel) || exit 2
 PKG=./backend/pkg/terminal/
+RUN="LaunchEnv|TheNamesTheHostStrips|AHostVariableNever|InLaunchEnv|ARefusedLaunchEnv"
 M=$(mktemp -d "${TMPDIR:-/tmp}/t4env-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
@@ -23,7 +24,7 @@ run() {
   if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
   printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
 
-  out=$(go test -overlay="$M/$name.json" "$PKG" -run "LaunchEnv|TheNamesTheHostStrips|AHostVariableNever|InLaunchEnv" -timeout 300s 2>&1)
+  out=$(go test -overlay="$M/$name.json" "$PKG" -run "$RUN" -timeout 300s 2>&1)
   code=$?
   failed=$(echo "$out" | grep -E '^--- FAIL' | sed -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | sed 's/ $//')
   if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
@@ -32,7 +33,7 @@ run() {
   else half1="RED in exactly [$failed]"; fi
 
   skip="^($(echo "$named" | sed 's/ /|/g'))\$"
-  out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -run "LaunchEnv|TheNamesTheHostStrips|AHostVariableNever|InLaunchEnv" -timeout 300s 2>&1)
+  out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -run "$RUN" -timeout 300s 2>&1)
   if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
   else half2="without them: STILL RED [$(echo "$out2" | grep -E '^--- FAIL' | tr '\n' ' ')]"; bad=1; fi
   echo "CONTROL $name: $half1 | $half2"
@@ -42,7 +43,7 @@ R='TestARefusedLaunchEnvNamesTheFieldStartsNothingAndNeverEchoesAValue'
 
 run stripped-name-accepted backend/pkg/terminal/env.go \
   's/return ownEnvironment\[name\] || hostPrivate(name)/return ownEnvironment[name]/' \
-  "TestAHostVariableNeverReachesTheShellThroughLaunchEnv $R TestTheNamesTheHostStripsAreExactlyTheNamesLaunchEnvRefuses"
+  "TestAHostVariableNeverReachesTheShellThroughLaunchEnv TestARefusedLaunchEnvNameIsShownCutAndTheFieldIsStable $R TestTheNamesTheHostStripsAreExactlyTheNamesLaunchEnvRefuses"
 
 run value-over-bound-accepted backend/pkg/terminal/env.go \
   's/if len(value) > MaxEnvValue {/if len(value) > MaxEnvValue*100 {/' \
@@ -59,6 +60,29 @@ run value-echoed-in-the-error backend/pkg/terminal/env.go \
 run launch-env-not-applied backend/pkg/terminal/manager.go \
   's/	env = withLaunchEnv(env, opts.Env)//' \
   'TestALaunchEnvValueIsVisibleToTheShell TestAZDOTDIRInLaunchEnvIsTheUsersAndTheIntegrationStillWorks TestLaunchEnvBoundsAreInclusive'
+
+run total-bound-exclusive backend/pkg/terminal/env.go \
+  's/if total > MaxEnvBytes {/if total >= MaxEnvBytes {/' \
+  'TestLaunchEnvTotalAtExactlyTheBoundIsAccepted'
+
+run shown-name-not-cut backend/pkg/terminal/env.go \
+  's/if len(shown) > maxEnvNameShown {/if false {/' \
+  'TestARefusedLaunchEnvNameIsShownCutAndTheFieldIsStable'
+
+run names-read-unsorted backend/pkg/terminal/env.go \
+  's/names := slices.Sorted(maps.Keys(env))/names := slices.Collect(maps.Keys(env))/' \
+  'TestARefusedLaunchEnvNameIsShownCutAndTheFieldIsStable'
+
+# The wrapper's two lanes are the exec package's tests (line numbers: the events lane's Options, then the channel lane's).
+PKG=./backend/pkg/plugin/exec/
+RUN="LaunchEnvOf"
+run wrapper-drops-env-events-lane backend/pkg/plugin/exec/service_wrapper.go \
+  '132s/Env: launch.Env/Env: nil/' \
+  'TestLaunchEnvOfTheEventsLaneReachesTheManager'
+
+run wrapper-drops-env-channel-lane backend/pkg/plugin/exec/service_wrapper.go \
+  '156s/Env: launch.Env/Env: nil/' \
+  'TestLaunchEnvOfTheChannelLaneReachesTheManager'
 
 [ $bad -eq 0 ] && echo "ALL CONTROLS DETECTED" || echo "SOME CONTROL FAILED"
 exit $bad

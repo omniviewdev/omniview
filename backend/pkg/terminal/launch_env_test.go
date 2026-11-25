@@ -191,3 +191,47 @@ func TestXDGDataDirsInLaunchEnvIsTheUsersAndTheIntegrationStillWorks(t *testing.
 	f.run(info.ID, "echo $XDG_DATA_DIRS > seen")
 	assert.Equal(t, "/opt/share:/usr/share\n", f.fileOf("seen"), "fish sees the value given")
 }
+
+// The total is inclusive: exactly MaxEnvBytes of names and values is allowed, one byte more is not.
+func TestLaunchEnvTotalAtExactlyTheBoundIsAccepted(t *testing.T) {
+	env := map[string]string{}
+	left := MaxEnvBytes
+	for i := 0; left > 0; i++ {
+		name := "OMNI_" + string(rune('A'+i))
+		size := min(MaxEnvValue, left-len(name))
+		env[name] = strings.Repeat("v", size)
+		left -= len(name) + size
+	}
+	total := 0
+	for k, v := range env {
+		total += len(k) + len(v)
+	}
+	require.Equal(t, MaxEnvBytes, total)
+	require.NoError(t, checkLaunchEnv(env), "exactly the bound is allowed")
+	env["OMNI_Z"] = "v"
+	require.Error(t, checkLaunchEnv(env), "one entry more passes the bound")
+}
+
+// A bad name is shown quoted and cut at 64 bytes, so the detail stays small; several bad names get the same field.
+func TestARefusedLaunchEnvNameIsShownCutAndTheFieldIsStable(t *testing.T) {
+	long := strings.Repeat("N", MaxEnvName+500) + "-"
+	err := checkLaunchEnv(map[string]string{long: envCanary})
+	require.Error(t, err)
+	detail := appErr(t, err).Detail
+	assert.Contains(t, detail, strings.Repeat("N", maxEnvNameShown)+"...")
+	assert.NotContains(t, detail, strings.Repeat("N", maxEnvNameShown+1), "the name is cut at 64 bytes")
+	assert.Less(t, len(detail), 400)
+
+	// Names are read in order: of several refused names the same one answers every time.
+	env := map[string]string{"TERM": "1", "OMNI_OK": "1", "PWD": "1", "SHELL": "1", "GOWORK": "1", "WAILS_X": "1"}
+	for range 50 {
+		err = checkLaunchEnv(env)
+		require.Error(t, err)
+		assert.Contains(t, appErr(t, err).Detail, "launch.env.GOWORK", "the first refused name in sorted order")
+	}
+	bad := map[string]string{"B-2": "1", "A=1": "1", "9X": "1", "": "1"}
+	for range 50 {
+		err = checkLaunchEnv(bad)
+		assert.Contains(t, appErr(t, err).Detail, `""`, "the empty name sorts first")
+	}
+}
