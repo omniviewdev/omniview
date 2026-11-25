@@ -41,7 +41,10 @@ test('a dry run prints the commands and starts nothing; a missing or unknown uni
     process.stdout.write = write;
   }
   const text = written.join('');
-  assert.match(text, /\+ task packages/);
+  // The probes and the seam read the NEXT UI: every build command names it.
+  assert.match(text, /\+ OMNIVIEW_UI=next task packages/);
+  assert.match(text, /\+ OMNIVIEW_UI=next OMNIVIEW_BUILD_OUTPUT_DIRECTORY=\S+ pnpm exec vite build/);
+  assert.doesNotMatch(text, /\+ task packages/);
   assert.match(text, /probe-shards\.mjs run local tour/);
   assert.match(text, /ENGINES=webkit SEAM_PHASES=ports node ui-next\/plugins\/e2e\/seam\.check\.mjs/);
   assert.match(text, /ENGINES=chromium SEAM_PHASES=ports/);

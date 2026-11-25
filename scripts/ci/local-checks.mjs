@@ -92,11 +92,13 @@ export async function main(argv = process.argv.slice(2)) {
     const run = withSiblings(ids, units).map((id) => id);
     const temp = dry ? path.join(tmpdir(), 'local-probes') : mkdtempSync(path.join(tmpdir(), 'local-probes-'));
     process.stdout.write(`local-checks: ${run.length} units, both engines: ${run.join(', ')}\n`);
+    // The probes read the NEXT UI: without OMNIVIEW_UI the build is the stable one.
     if (build) {
-      if (sh('task', ['packages'], { dry }) !== 0) return 1;
-      if (sh('pnpm', ['exec', 'vite', 'build'], { dry, env: { OMNIVIEW_BUILD_OUTPUT_DIRECTORY: path.join(temp, 'ui-next-dist') } }) !== 0) return 1;
+      if (sh('task', ['packages'], { dry, env: { OMNIVIEW_UI: 'next' } }) !== 0) return 1;
+      if (sh('pnpm', ['exec', 'vite', 'build'], { dry, env: { OMNIVIEW_UI: 'next', OMNIVIEW_BUILD_OUTPUT_DIRECTORY: path.join(temp, 'ui-next-dist') } }) !== 0) return 1;
     }
-    return sh('node', ['scripts/ci/probe-shards.mjs', 'run', 'local', run.join(',')], { dry, env: { RUNNER_TEMP: temp, PROBE_DIST: path.join(temp, 'ui-next-dist') } });
+    // With --no-build nothing was built into the temporary directory: the units read the caller's PROBE_DIST (or their own default).
+    return sh('node', ['scripts/ci/probe-shards.mjs', 'run', 'local', run.join(',')], { dry, env: build ? { RUNNER_TEMP: temp, PROBE_DIST: path.join(temp, 'ui-next-dist') } : { RUNNER_TEMP: temp } });
   }
 
   if (verb === 'seam') {
@@ -112,13 +114,15 @@ export async function main(argv = process.argv.slice(2)) {
     }
     const check = 'ui-next/plugins/e2e/seam.check.mjs';
     if (build) {
-      if (sh('task', ['packages'], { dry }) !== 0) return 1;
+      if (sh('task', ['packages'], { dry, env: { OMNIVIEW_UI: 'next' } }) !== 0) return 1;
       if (sh('task', ['build:server'], { dry, env: { OMNIVIEW_UI: 'next', GOWORK: 'off', GOFLAGS: '', GOTOOLCHAIN: 'local' } }) !== 0) return 1;
     }
+    // Every selected run runs, whatever failed before it; the first failure is the answer.
     let status = 0;
+    const keep = (code) => { status ||= code; };
     for (const engine of ['webkit', 'chromium']) {
-      if (plan.phases.length > 0) status ||= sh('node', [check], { dry, env: { ENGINES: engine, SEAM_PHASES: plan.phases.join(',') } });
-      for (const control of plan.runs) status ||= sh('node', [check], { dry, env: { ENGINES: engine, SEAM_CONTROL: control } });
+      if (plan.phases.length > 0) keep(sh('node', [check], { dry, env: { ENGINES: engine, SEAM_PHASES: plan.phases.join(',') } }));
+      for (const control of plan.runs) keep(sh('node', [check], { dry, env: { ENGINES: engine, SEAM_CONTROL: control } }));
     }
     return status;
   }
