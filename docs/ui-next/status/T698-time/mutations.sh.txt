@@ -27,6 +27,14 @@ names=''
 TOUCHED='^(TestClosingASessionThatIsPausedForCreditEndsItAndDeliversItsClose|TestShutdownEndsEverySessionAndRefusesNewOnes|TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace|TestAWindowGoingAwayDetachesATerminalWithAPageKeyAndEndsAnyOther|TestDetachKeepsTheTerminalForALeaseThatIsCutToTheMostAndIsIdempotent|TestALeaseThatRunsOutEndsTheTerminalTheWayACloseDoes)$'
 BASELINE=TestAShellThatIsNotInstalledFallsBackAndTheAnswerSaysWhichStarted
 
+# unfinished says whether a go test run did not finish: a panic, a timeout, a build or setup failure, or no final
+# package line (ok or FAIL), whatever tests had failed before it.
+unfinished() {
+  echo "$1" | grep -Eq '^panic:|test timed out|\[build failed\]|\[setup failed\]' && return 0
+  echo "$1" | grep -Eq '^(ok|FAIL)[[:space:]]+[^[:space:]]+terminal[[:space:]]' || return 0
+  return 1
+}
+
 # name | file | sed expression | the tests named for it (sorted, separated by spaces)
 run() {
   name="$1"; file="$2"; expr="$3"; named="$4"
@@ -40,7 +48,8 @@ run() {
   out=$(go test -overlay="$M/$name.json" "$PKG" -run "$TOUCHED" -count=1 -timeout 300s 2>&1)
   code=$?
   failed=$(echo "$out" | grep -E '^--- FAIL' | "$SED" -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | "$SED" 's/ $//')
-  if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
+  if unfinished "$out"; then half1="HARNESS FAILURE (the run panicked, timed out, did not build or did not finish)"; bad=1
+  elif [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
   elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
   elif [ "$failed" != "$named" ]; then half1="RED in [$failed], named [$named]"; bad=1
   else half1="RED in exactly [$failed]"; fi
@@ -49,8 +58,9 @@ run() {
   out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -count=1 -timeout 600s 2>&1)
   code2=$?
   caught=$(echo "$out2" | grep -E '^--- FAIL' | "$SED" -E 's/ \(.*//' | tr '\n' ' ')
-  if [ $code2 -eq 0 ]; then half2="without them: PASS (undetected)"
-  elif [ -z "$caught" ]; then half2="without them: HARNESS FAILURE (the run failed, timed out or panicked with no failed test named)"; bad=1
+  if unfinished "$out2"; then half2="without them: HARNESS FAILURE (the run panicked, timed out, did not build or did not finish)"; bad=1
+  elif [ $code2 -eq 0 ]; then half2="without them: PASS (undetected)"
+  elif [ -z "$caught" ]; then half2="without them: HARNESS FAILURE (the run failed with no failed test named)"; bad=1
   else half2="without them: ALSO CAUGHT by other tests [$caught]"; fi
   echo "CONTROL $name: $half1 | $half2"
 }
