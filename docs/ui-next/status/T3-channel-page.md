@@ -29,6 +29,10 @@
 ## Dev tools
 
 - `ui-next/shell/panel/terminal/testing.ts` `fakeChannels`: a fake `TerminalChannels` driven frame by frame.
+- `ui-next/shell/probes/terminal-host.mjs` (rewritten): the probes' far end as a channel host, plain JS for Node and the page: capabilities, the frames, the holder, takeover, the lease, the ring and `gap`, and the host's credit window counted as `channel_serve.go` counts it (every output frame, the replay included). `terminal-serve.mjs` serves it to the page; `terminal-host.d.mts` types it; `terminal-host.test.mjs` pins it.
+- `ui-next/shell/probes/terminal-host-memory.mjs` (rewritten): starts the real server build on a fresh HOME, makes a channel terminal through `CreateTerminal`, reads `/wails/stream/ws?name=terminal` over a raw socket (so a stalled reader really stops reading), types `exec yes`, and samples the host's RSS by its pid; four cases (no acks, acks, two terminals one stalled, a 20 s stall then resume). Manual, not CI.
+- Seam: `SEAM_TERMINAL_ONLY=r,...,r8`, `SEAM_TERMINAL_REPEAT=n`, control groups `terminal-reconnect` and `terminal-isolation` (with `cap-in-window-state`), `SEAM_REMOVE=<control>`; the r6 failure message lists each stream since the cut with its frames (`3c352111`).
+- WebKit on this Linux box: Playwright's WebKit needs libraries the machine lacks; they were unpacked under `/tmp/c-libs` and passed with `LD_LIBRARY_PATH=/tmp/c-libs/ex/usr/lib/x86_64-linux-gnu` (not installed system-wide). The Go toolchain the build needs: `PATH=$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/bin:$PATH` (the machine's `go` is 1.26.1).
 
 ## Backend catalog
 
