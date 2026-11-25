@@ -36,19 +36,21 @@ import (
 
 // The frame types of the protocol.
 const (
-	wAttach    byte = 0x01
-	wInput     byte = 0x02
-	wResize    byte = 0x03
-	wAck       byte = 0x04
-	wDetach    byte = 0x05
-	wReady     byte = 0x81
-	wOutput    byte = 0x82
-	wGap       byte = 0x83
-	wEnded     byte = 0x84
-	wTakenOver byte = 0x85
-	wNotFound  byte = 0x86
-	wApplied   byte = 0x87
-	wReleased  byte = 0x88
+	wAttach       byte = 0x01
+	wInput        byte = 0x02
+	wResize       byte = 0x03
+	wAck          byte = 0x04
+	wDetach       byte = 0x05
+	wClose        byte = 0x06
+	wReady        byte = 0x81
+	wOutput       byte = 0x82
+	wGap          byte = 0x83
+	wEnded        byte = 0x84
+	wTakenOver    byte = 0x85
+	wNotFound     byte = 0x86
+	wApplied      byte = 0x87
+	wReleased     byte = 0x88
+	wCloseRefused byte = 0x8a
 )
 
 // settle is the bound of a wait for an event that must come.
@@ -288,6 +290,8 @@ func ackFrame(n uint32) []byte { return binary.BigEndian.AppendUint32([]byte{wAc
 
 func detachFrame() []byte { return []byte{wDetach} }
 
+func closeFrame() []byte { return []byte{wClose} }
+
 // readyWire is the JSON of the ready frame, as the page reads it.
 type readyWire struct {
 	V          int           `json:"v"`
@@ -349,7 +353,7 @@ func decodeHostFrame(raw []byte) (hostFrame, error) {
 			return frame, fmt.Errorf("an applied frame of %d bytes", len(raw))
 		}
 		frame.applied = binary.BigEndian.Uint64(body)
-	case wTakenOver, wNotFound, wReleased:
+	case wTakenOver, wNotFound, wReleased, wCloseRefused:
 		if len(body) != 0 {
 			return frame, fmt.Errorf("a frame of type %#x that has a payload", frame.kind)
 		}
@@ -385,14 +389,15 @@ type chanPage struct {
 	takenOver int
 	notFound  int
 	// applied is the value of every applied frame, in order; released counts the released frames.
-	applied  []uint64
-	released int
-	faults   []string
-	frames   int
-	order    []byte
-	closed   bool
-	ackEvery int
-	unacked  int
+	applied      []uint64
+	released     int
+	closeRefused int
+	faults       []string
+	frames       int
+	order        []byte
+	closed       bool
+	ackEvery     int
+	unacked      int
 	// dead says the page has gone: what the host sent after is lost to it, as the frames queued in a closed tab are.
 	dead bool
 	// lag is how late the page's goroutine is for each frame it takes, in nanoseconds: the page of a machine that is busy. A test sets
@@ -472,6 +477,8 @@ func (p *chanPage) take(raw []byte) uint32 {
 		p.applied = append(p.applied, frame.applied)
 	case wReleased:
 		p.released++
+	case wCloseRefused:
+		p.closeRefused++
 	case wTakenOver:
 		p.takenOver++
 	case wNotFound:
@@ -514,6 +521,7 @@ func (p *chanPage) input(text string)        { p.f.pageSend(inputFrame(text)) }
 func (p *chanPage) resize(cols, rows uint16) { p.f.pageSend(resizeFrame(cols, rows)) }
 func (p *chanPage) ack(n uint32)             { p.f.pageSend(ackFrame(n)) }
 func (p *chanPage) detach()                  { p.f.pageSend(detachFrame()) }
+func (p *chanPage) closeTerminal()           { p.f.pageSend(closeFrame()) }
 func (p *chanPage) send(frame []byte)        { p.f.pageSend(frame) }
 func (p *chanPage) close()                   { _ = p.f.Close() }
 func (p *chanPage) isClosed() bool           { return p.f.isClosed() }
@@ -531,19 +539,20 @@ func (p *chanPage) die() pageState {
 
 // state is a copy of what the page saw.
 type pageState struct {
-	ready     *readyWire
-	segs      []pageSegment
-	gaps      [][2]uint64
-	ended     []End
-	takenOver int
-	notFound  int
-	applied   []uint64
-	released  int
-	faults    []string
-	frames    int
-	order     []byte
-	closed    bool
-	next      uint64
+	ready        *readyWire
+	segs         []pageSegment
+	gaps         [][2]uint64
+	ended        []End
+	takenOver    int
+	notFound     int
+	applied      []uint64
+	released     int
+	closeRefused int
+	faults       []string
+	frames       int
+	order        []byte
+	closed       bool
+	next         uint64
 }
 
 func (p *chanPage) state() pageState {
@@ -551,7 +560,7 @@ func (p *chanPage) state() pageState {
 	defer p.mu.Unlock()
 	return pageState{
 		ready: p.ready, segs: slices.Clone(p.segs), gaps: slices.Clone(p.gaps), ended: slices.Clone(p.ended), takenOver: p.takenOver, notFound: p.notFound,
-		applied: slices.Clone(p.applied), released: p.released, faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
+		applied: slices.Clone(p.applied), released: p.released, closeRefused: p.closeRefused, faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
 	}
 }
 
