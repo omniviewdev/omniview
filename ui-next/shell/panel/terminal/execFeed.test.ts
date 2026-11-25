@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { MAX_INPUT_BYTES } from './channel';
+import { MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES } from './channel';
 import { RECONNECT_DELAYS_MS, createExecFeed, listedOf, type ExecAttach, type ExecFeed } from './execFeed';
 import type { TerminalFeedHandle, TerminalModes, TerminalReplay, TerminalShellAttempt } from './feed';
 import { fakeChannels, goneError, type FakeChannels, type FakeChannelsOptions, type FakeStream, type ReadyInit } from './testing';
@@ -437,7 +437,7 @@ describe('what the user types', () => {
     reconnect(r);
     const again = r.stream();
     expect(again.sent()).toEqual([]);
-    again.ready();
+    again.ready({ inputApplied: 3 });
     expect(again.sent().map((frame) => frame.kind)).toEqual(['ack', 'input']);
     expect(again.typed()).toBe('twothree');
     expect(r.channels.streams()[0]?.typed()).toBe('one');
@@ -454,7 +454,7 @@ describe('what the user types', () => {
     expect(r.channels.streams()).toHaveLength(1);
     const again = reconnect(r);
     expect(again.sent()).toEqual([]);
-    again.ready();
+    again.ready({ inputApplied: 3 });
     expect(again.typed()).toBe('twothree');
     expect(again.sent().filter((frame) => frame.kind === 'input')).toHaveLength(1);
     vi.advanceTimersByTime(60_000);
@@ -473,7 +473,7 @@ describe('what the user types', () => {
     r.feed.write(piece('b') + piece('c'));
     expect(first.typed()).toHaveLength(MAX_INPUT_BYTES);
     const again = reconnect(r);
-    again.ready();
+    again.ready({ inputApplied: MAX_INPUT_BYTES });
     expect(again.typed()).toBe(piece('b') + piece('c'));
     expect(first.typed() + again.typed()).toBe(paste);
     expect(again.sent().filter((frame) => frame.kind === 'input').map((frame) => (frame.kind === 'input' ? frame.bytes.length : 0))).toEqual([MAX_INPUT_BYTES, MAX_INPUT_BYTES]);
@@ -487,7 +487,7 @@ describe('what the user types', () => {
     r.feed.write(piece('a') + piece('b') + piece('c') + 'd');
     expect(first.typed()).toBe(piece('a'));
     const again = reconnect(r);
-    again.ready();
+    again.ready({ inputApplied: MAX_INPUT_BYTES });
     expect(again.typed()).toBe(piece('b') + piece('c') + 'd');
     expect(r.feed.inputsSettled?.()).toBe(true);
   });
@@ -1389,6 +1389,64 @@ describe('a terminal another page took (`taken-over`)', () => {
     expect(readText(r.feed)).toBe('abc');
   });
 
+  it('keeps the stream open as a watcher: the feed does not close it, and sends nothing on it', async () => {
+    const r = await running();
+    r.stream().takenOver();
+    expect(r.stream().open()).toBe(true);
+    expect(r.stream().closedByFeed()).toBe(false);
+    const sent = r.stream().sent().length;
+    r.feed.write('b');
+    r.feed.resize(120, 40);
+    vi.advanceTimersByTime(1_000);
+    expect(r.stream().sent()).toHaveLength(sent);
+    await r.feed.close();
+    expect(r.stream().closedByFeed()).toBe(true);
+  });
+
+  it('is free to take back the moment the host says `released`, with no question asked and no timer', async () => {
+    const r = await running();
+    r.stream().takenOver();
+    const wakes = r.wakes();
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    r.stream().released();
+    expect(r.feed.getSnapshot()).toEqual({ state: 'ended', program: 'zsh', detached: { by: 'taken-over', free: true } });
+    expect(r.wakes()).toBe(wakes + 1);
+    vi.advanceTimersByTime(60_000);
+    expect(r.channels.calls().filter((call) => call.kind === 'listed' || call.kind === 'list')).toEqual([]);
+    expect(r.channels.streams()).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('says how the terminal ended when the host tells the watcher `ended`: not free, and not this page\'s to end or dismiss', async () => {
+    const r = await running();
+    r.stream().takenOver();
+    r.stream().ended({ reason: 'exited', exit_code: 7, last_offset: 0 });
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'ended', program: 'zsh', exit: { code: 7 }, detached: { by: 'taken-over' } });
+    expect(r.feed.getSnapshot().detached?.free).toBeUndefined();
+    await r.feed.close();
+    expect(r.channels.of('close')).toEqual([]);
+    expect(r.channels.of('dismiss')).toEqual([]);
+    expect(r.channels.of('listed')).toEqual([]);
+  });
+
+  it('asks the host once who holds the terminal when the watcher closes with no word (it watched longest of five, or the connection dropped), and never connects again', async () => {
+    const r = await running({}, { channels: { listed: () => ({ id: 'term-1', attached: false }) } });
+    r.stream().takenOver();
+    r.stream().drop();
+    await turns();
+    expect(r.channels.of('listed')).toEqual([{ kind: 'listed', id: 'term-1' }]);
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    vi.advanceTimersByTime(60_000);
+    expect(r.channels.streams()).toHaveLength(1);
+    expect(r.channels.of('listed')).toHaveLength(1);
+    const held = await running({}, { channels: { listed: () => ({ id: 'term-1', attached: true }) } });
+    held.stream().takenOver();
+    held.stream().drop();
+    await turns();
+    expect(held.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    expect(held.channels.streams()).toHaveLength(1);
+  });
+
   describe('`refresh`: who holds it now', () => {
     const lost = async (listed: FakeChannelsOptions['listed']): Promise<Rig> => {
       const r = await running({}, { channels: { listed } });
@@ -1727,5 +1785,154 @@ describe('the terminals the host lists (`ListChannelTerminals`)', () => {
     for (const answer of [undefined, null, {}, 'a', 7, { id: 'a' }]) {
       expect(listedOf(answer)).toEqual([]);
     }
+  });
+});
+
+describe('input the host has not said it applied (protocol version 2)', () => {
+  it('sends exactly the bytes after `input_applied` after the next `ready`, before anything typed since, and each byte once', async () => {
+    const r = await running();
+    r.feed.write('one');
+    const first = r.stream();
+    first.drop();
+    r.feed.write('two');
+    const again = reconnect(r);
+    r.feed.write('new');
+    expect(again.sent()).toEqual([]);
+    // The host took the `o` of `one` and nothing else.
+    again.ready({ inputApplied: 1 });
+    expect(again.typed()).toBe('netwonew');
+    r.feed.write('!');
+    expect(again.typed()).toBe('netwonew!');
+    expect(r.feed.inputs?.()).toBe(4);
+  });
+
+  it('trims what each `applied` confirms: the bytes the host gave a number for are never sent again, and a number that does not grow changes nothing', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().applied(2);
+    r.feed.write('de');
+    r.stream().applied(2);
+    r.stream().applied(1);
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 2 });
+    expect(again.typed()).toBe('cde');
+    again.applied(5);
+    again.drop();
+    const third = reconnect(r, 1_000);
+    third.ready({ inputApplied: 5 });
+    expect(third.sent()).toEqual([{ kind: 'ack', bytes: 0 }]);
+  });
+
+  it('sends the tail of a paste the stream dropped in the middle of: what the host took of the first piece is not sent again, and the pieces it never saw are', async () => {
+    const r = await running();
+    const piece = (letter: string): string => letter.repeat(MAX_INPUT_BYTES);
+    const first = r.stream();
+    first.dieAfterInputs(1);
+    const paste = piece('a') + piece('b') + piece('c') + 'd';
+    r.feed.write(paste);
+    expect(first.typed()).toBe(piece('a'));
+    const again = reconnect(r);
+    again.ready({ inputApplied: 10 });
+    expect(paste.slice(0, 10) + again.typed()).toBe(paste);
+    expect(again.typed()).toHaveLength(paste.length - 10);
+  });
+
+  it('sends what a refused frame left, once, when the socket died before its close was told', async () => {
+    const r = await running();
+    r.feed.write('one');
+    const first = r.stream();
+    first.die();
+    r.feed.write('two');
+    expect(first.typed()).toBe('one');
+    const again = reconnect(r);
+    again.ready({ inputApplied: 3 });
+    expect(again.typed()).toBe('two');
+    vi.advanceTimersByTime(60_000);
+    expect(again.typed()).toBe('two');
+  });
+
+  it('counts from the `ready` of a terminal it attaches to: what an earlier page typed is not its own, and what was typed before the stream was ready is sent once', async () => {
+    const r = attaching();
+    r.feed.write('x');
+    r.stream().ready({ start: 0, end: 0, inputApplied: 500 });
+    expect(r.stream().typed()).toBe('x');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 0, end: 0, inputApplied: 500 });
+    expect(again.typed()).toBe('x');
+    again.drop();
+    const third = reconnect(r, 1_000);
+    third.ready({ start: 0, end: 0, inputApplied: 501 });
+    expect(third.typed()).toBe('');
+  });
+
+  it('gives the terminal up in words when the `ready` does not say how much input was applied', async () => {
+    for (const bad of [undefined, -1, 1.5, '3', null]) {
+      const r = await connecting();
+      r.stream().ready({ raw: { input_applied: bad } });
+      expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { stage: 'start' } });
+    }
+  });
+
+  it('does not resend what the host says it applied above what this page sent, and says so', async () => {
+    const r = await running();
+    r.feed.write('ab');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 9 });
+    expect(again.typed()).toBe('');
+    expect(r.feed.getSnapshot().state).toBe('running');
+    expect(r.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails in words when more than 1 MiB is typed that the host has not said it applied, and takes the room back when it does', async () => {
+    const r = await running();
+    r.feed.write('a'.repeat(MAX_KEPT_INPUT_BYTES));
+    expect(r.feed.getSnapshot().state).toBe('running');
+    r.stream().applied(MAX_KEPT_INPUT_BYTES);
+    r.feed.write('b'.repeat(MAX_KEPT_INPUT_BYTES));
+    expect(r.feed.getSnapshot().state).toBe('running');
+    r.feed.write('c');
+    const status = r.feed.getSnapshot();
+    expect(status.state).toBe('failed');
+    expect(status.cause?.message).toMatch(/1 MiB/);
+    expect(r.stream().closedByFeed()).toBe(true);
+    vi.advanceTimersByTime(60_000);
+    expect(r.channels.streams()).toHaveLength(1);
+  });
+
+  it('keeps what is typed before the stream is ready within the same bound', async () => {
+    const r = await connecting();
+    r.feed.write('a'.repeat(MAX_KEPT_INPUT_BYTES + 1));
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed' });
+    expect(r.feed.getSnapshot().cause?.message).toMatch(/1 MiB/);
+  });
+
+  it('treats an `applied` before `ready` as a stream it cannot join', async () => {
+    const r = await connecting();
+    r.stream().applied(1);
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { stage: 'start' } });
+  });
+});
+
+describe('a host of another version (`unsupported`)', () => {
+  it('fails in words that say the version the host speaks, and never connects again', async () => {
+    const r = await connecting();
+    r.stream().unsupported(3);
+    const status = r.feed.getSnapshot();
+    expect(status.state).toBe('failed');
+    expect(status.cause?.stage).toBe('start');
+    expect(status.cause?.message).toMatch(/version 3/);
+    vi.advanceTimersByTime(60_000);
+    expect(r.channels.streams()).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('fails in words when the version it names is not a number, too', async () => {
+    const r = await connecting();
+    r.stream().unsupported('x');
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { stage: 'start' } });
+    expect(r.feed.getSnapshot().cause?.message).toMatch(/another version/);
   });
 });

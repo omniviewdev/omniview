@@ -1990,61 +1990,11 @@ describe('the feed a session has can be followed (T2d: a body that was drawn bef
   });
 });
 
-describe('asking who holds the terminals this page lost (`refreshLost`)', () => {
-  const asking = (): FakeTerminalFeed & { readonly refresh: Mock<() => Promise<void>> } => ({ ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) });
-
-  it('asks `refresh` of every feed this page lost, once each, and of no other: not a running feed, not one that ended by itself', () => {
+describe('who holds the terminals this page lost', () => {
+  it('is not asked on a poll: the registry has no way to ask every lost feed, because the host says when a terminal is free (`released`)', () => {
     const r = harness();
-    const [held, free, running, finished] = [asking(), asking(), asking(), asking()];
-    for (const [index, feed] of [held, free, running, finished].entries()) {
-      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
-    }
-
-    lostTo(held, { by: 'taken-over' });
-    lostTo(free);
-    finished.set({ state: 'ended', exit: { code: 0 } });
-    expect(r.sessions.refreshLost()).toBe(true);
-    expect([held, free, running, finished].map((feed) => feed.refresh.mock.calls.length)).toEqual([1, 1, 0, 0]);
-  });
-
-  it('is a no-op, and says so, with nothing lost', () => {
-    const r = harness();
-    const running = asking();
-    r.sessions.open(terminalOf(running, 'term-a'));
-    expect(r.sessions.refreshLost()).toBe(false);
-    expect(running.refresh).not.toHaveBeenCalled();
-  });
-
-  it('contains a refresh that throws or rejects: one warning each, the others are asked, and it never throws', async () => {
-    const r = harness();
-    const throwing: FakeTerminalFeed = { ...keyedFeed(), refresh: (): never => {
-      throw new Error('threw'); 
-    } };
-    const rejecting: FakeTerminalFeed = { ...keyedFeed(), refresh: async () => Promise.reject(new Error('no')) };
-    const fine = asking();
-    for (const [index, feed] of [throwing, rejecting, fine].entries()) {
-      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
-      lostTo(feed);
-    }
-
-    expect(() => r.sessions.refreshLost()).not.toThrow();
-    expect(fine.refresh).toHaveBeenCalledTimes(1);
-    await flush();
-    expect(r.warn).toHaveBeenCalledTimes(2);
-  });
-
-  it('counts only a lost feed that can be asked: one with no `refresh` is not lost for the poll', () => {
-    const r = harness();
-    const mute = keyedFeed();
-    r.sessions.open(terminalOf(mute, 'term-a'));
-    lostTo(mute);
-    expect(r.sessions.hasLost()).toBe(false);
-    expect(r.sessions.refreshLost()).toBe(false);
-    const askable = asking();
-    r.sessions.open(terminalOf(askable, 'term-b'));
-    lostTo(askable);
-    expect(r.sessions.hasLost()).toBe(true);
-    expect(r.sessions.refreshLost()).toBe(true);
+    expect(r.sessions).not.toHaveProperty('refreshLost');
+    expect(r.sessions).not.toHaveProperty('hasLost');
   });
 });
 

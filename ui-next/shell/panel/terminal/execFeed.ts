@@ -838,7 +838,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         output: heard(onOutput),
         gap: heard(onGap),
         ended: heard(onEnded),
+        applied: heard(() => undefined),
         takenOver: heard(onTakenOver),
+        released: heard(() => undefined),
+        unsupported: heard(() => undefined),
         notFound: heard(onNotFound),
         closed: heard(onClosed),
       });

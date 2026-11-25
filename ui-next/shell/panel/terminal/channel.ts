@@ -4,9 +4,9 @@ import type { TerminalShellAttempt } from './feed';
 // (docs/ui-next/terminal-channel-protocol.md). The feed never sees a capability: it names a terminal by its id, which is a label that opens nothing, and `terminalChannel.ts` finds the capability for it. The
 // binary framing is `terminalChannel.ts`'s; the JSON a frame carries (`ready`, `ended`) is handed on parsed and unchecked, and the feed reads it, as it reads every answer of the host.
 
-/** What one stream of a terminal tells the feed that opened it. Each is called in the order the host sent it; none after `ended`, `takenOver`, `notFound` or `closed`, and exactly one of those four ends the stream. */
+/** What one stream of a terminal tells the feed that opened it. Each is called in the order the host sent it; none after `ended`, `released`, `notFound`, `unsupported` or `closed`, and exactly one of those five ends the stream. `takenOver` does not end it: the stream is then a watcher, which hears `released` or `ended` and nothing else. */
 export type ChannelEvents = {
-  /** The first frame of the host (`0x81`), its JSON parsed: `start`, `end`, `lost`, `size`, `start_size`, `modes`, `start_modes`, `cwd`, `busy`, `session`, `lease_ms`, `ended`. */
+  /** The first frame of the host (`0x81`), its JSON parsed: `start`, `end`, `lost`, `input_applied`, `size`, `start_size`, `modes`, `start_modes`, `cwd`, `busy`, `session`, `lease_ms`, `ended`. */
   readonly ready: (ready: unknown) => void;
   /** `0x82`: the bytes of the terminal's output from `offset`. The array is the feed's to keep. */
   readonly output: (offset: number, bytes: Uint8Array) => void;
@@ -14,8 +14,14 @@ export type ChannelEvents = {
   readonly gap: (from: number, to: number) => void;
   /** `0x84`: how the terminal ended (`terminal.End`, parsed), after its last byte. The stream is over. */
   readonly ended: (end: unknown) => void;
-  /** `0x85`: another stream took the terminal. The stream is over; the capability is kept, so that the terminal can be taken back. */
+  /** `0x87`: the bytes of input the host has applied from the capability, across streams, so far (a number that never goes down). */
+  readonly applied: (total: number) => void;
+  /** `0x85`: another stream took the terminal. This stream stays open as a watcher: the host sends it no output and refuses what is sent on it, and tells it `released` or `ended` and closes it. The capability is kept, so that the terminal can be taken back. */
   readonly takenOver: () => void;
+  /** `0x88`, to a watcher: the stream that held the terminal ended and the terminal runs and is free. The stream is over. */
+  readonly released: () => void;
+  /** `0x89`: the host speaks another version of the stream (its number, parsed from `{"v":n}` and unchecked). The stream is over; nothing is tried again. */
+  readonly unsupported: (version: unknown) => void;
   /** `0x86`, or no capability is held for the id: the terminal is not there for this page. The stream is over and the capability is forgotten. */
   readonly notFound: () => void;
   /** The stream ended without any of the four above (the connection dropped, the host closed it, a frame that could not be read). The terminal may still run: the feed may connect again from its offset. */
@@ -24,7 +30,7 @@ export type ChannelEvents = {
 
 /** What the feed sends on a stream it opened. Frames sent before the stream is open wait, in order, behind the attach; frames sent after the stream is over are dropped. */
 export type ChannelLink = {
-  /** `0x02`: what was typed, at most `MAX_INPUT_BYTES` in one frame (the feed cuts larger pieces). False: the bytes were not sent because the stream is over (the link tells `closed`, once); the feed keeps them for the next stream. */
+  /** `0x02`: what was typed, at most `MAX_INPUT_BYTES` in one frame (the feed cuts larger pieces). False: the bytes were not sent because the stream is over (the link tells `closed`, once); the feed keeps every byte it has not been told was applied and sends them again after the next `ready`. */
   readonly input: (bytes: Uint8Array) => boolean;
   /** `0x03`: the size, each from 1 to 1,000. */
   readonly resize: (cols: number, rows: number) => void;
@@ -69,6 +75,9 @@ export type TerminalChannels = {
   /** The shells the host tried before it refused to start one (`SHELL_UNAVAILABLE`), as tokens: `source`, `path`, `reason`, `detail`. */
   readonly triedOf: (error: unknown) => readonly TerminalShellAttempt[] | undefined;
 };
+
+/** The most input the page keeps that the host has not said it applied (`channel_max_input_bytes`, the host's own queue): the bytes after the last `applied` are kept to be sent again after a reconnect, and a page that has typed more than this fails in words. */
+export const MAX_KEPT_INPUT_BYTES = 1_048_576;
 
 /** The most bytes one input frame carries (`channel_max_input_bytes` is 1 MiB; a paste goes in pieces of this size). */
 export const MAX_INPUT_BYTES = 65_536;
