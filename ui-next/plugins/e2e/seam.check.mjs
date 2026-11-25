@@ -313,6 +313,7 @@ const ISOLATION_CONTROLS = {
   'isolation-frames': /the second page received 0 frames of the first/,
   'isolation-bare-id': /named with the first terminal's id answers omniview:session\/not-found/,
   'isolation-wrong-cap': /gets exactly one 0x86 frame/,
+  'cap-in-window-state': /no call of the window's state \(SaveState, GetState\) carries a terminal's capability/,
 };
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
 const ISOLATION_PAGES = new WeakSet();
@@ -8522,7 +8523,7 @@ async function checkTerminalIsolation(browser, getHost, engine) {
   const capA = capOf(idA);
   // The second page is a page of its own with a terminal of its own. The window's saved session is forgotten first, so that it does not restore the first page's tab (and so does not take its terminal); it watches every frame it receives or sends, on every socket, from before
   // it loads (the watcher of payloads is made before the one of streams, so that a frame is in the first when the second's transcript has it).
-  // The host keeps ONE window state for every page of its main window, and the page that is open writes it again at every change, so the second page is given the view of a window that never held the first's terminal: what it reads of the window's state has neither the saved session nor the capabilities (a stand-in for the host in this page only, as `standIn` is: the host is never changed).
+  // The host keeps ONE window state for every page of its main window, and the page that is open writes it again at every change, so the second page is given the view of a window that never held the first's terminal: what it reads of the window's state has no saved session, so it restores none of the first's tabs (a stand-in for the host in this page only, as `standIn` is: the host is never changed). Capabilities are not in the window's state at all (they live in each tab's sessionStorage), so there is nothing of them to strip.
   await forgetSession(base());
   const second = await browser.newPage({ viewport });
   PAGE_LABELS.set(second, 'the second page of the isolation scenario');
@@ -8630,6 +8631,22 @@ async function checkTerminalIsolation(browser, getHost, engine) {
         assert.equal(result.closed, true, `${engine}: a stream opened with ${what} is closed by the host after its 0x86`);
       }
     },
+  );
+  // The capability never goes to the window's state: the page's code path is perturbed in the browser to save a slot that carries the recorded capability (a call the page itself would have made), and the assertion that reads the window-state calls must see it.
+  await asserting(
+    'cap-in-window-state',
+    async () => {
+      await first.evaluate(async ({ id, cap }) => {
+        await fetch('/wails/runtime', { method: 'POST', headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId }, body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': 'control-cap', methodID: id, args: ['main', 'seam-canary', JSON.stringify({ t: cap })] } }) });
+      }, { id: methodIdOf(WINDOW_SERVICE, 'SaveState'), cap: capA });
+      await waitUntil('the perturbed call to be recorded', async () => evidenceOf(first).windowCalls.some((body) => body.includes(capA)), 10_000);
+    },
+    async () => {
+      const calls = evidenceOf(first).windowCalls;
+      for (let at = calls.length - 1; at >= 0; at -= 1) if (calls[at].includes(capA)) calls.splice(at, 1);
+      await callHost(base(), 'SaveState', 'main', 'seam-canary', 'null');
+    },
+    async () => assertNoCapabilityInWindowState(evidenceOf(first), engine),
   );
   verdict(engine);
   const stillA = (await listedTerminals(base(), { ended: true })).find((entry) => entry.id === idA);
