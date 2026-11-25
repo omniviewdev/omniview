@@ -20,6 +20,8 @@ export type Tablist = {
   readonly ref: RefObject<HTMLDivElement | null>;
   /** The tab that is the strip's one tab stop: the one the focus is on, else the tab on screen. */
   readonly stop: string | null;
+  /** Puts the focus on a tab once the strip is drawn again: for a close that did not come from the keyboard, where the focus would otherwise fall to the page's body. */
+  readonly focus: (id: string) => void;
   /** Spread on the strip's element. */
   readonly handlers: {
     readonly onFocus: (event: FocusEvent<HTMLDivElement>) => void;
@@ -115,6 +117,9 @@ export function useTablist({ ids, selected, onClose }: TablistOptions): Tablist 
   return {
     ref,
     stop,
+    focus: (id) => {
+      refocus.current = id;
+    },
     handlers: {
       onFocus: (event) => {
         const hit = tabOf(event.target);

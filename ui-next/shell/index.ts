@@ -17,6 +17,7 @@ export type {
   ShellTreeNode,
 } from './registration';
 export type { PageTab } from './tabs/PageHost';
+export { TAB_PALETTE_COMMANDS, tabCommands } from './tabs/commands';
 export { platformOf } from './core/chords';
 export { clip, createTabsStore, dispositionOf, LIMITS, normaliseRoute } from './core/tabs';
 export type { Contributions, Description, Destination, Face, Location, ModifierEvent, Route, RouteInput, TabId, TabsStore } from './core/tabs';

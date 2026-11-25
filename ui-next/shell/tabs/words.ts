@@ -1,3 +1,4 @@
+import type { Platform } from '../core/chords';
 import type { StripItem, TabId } from '../core/tabs';
 
 // The words a tab is read and described with. The model's identity is the one answer for what a tab is called (core/tabs/identity.ts: label, accessible name, tooltip); what the strip
@@ -23,3 +24,6 @@ export function tabTip(item: StripItem): string {
 export function tabDomId(prefix: string, id: TabId): string {
   return `${prefix}-${id}`;
 }
+
+/** The Close tab chord: Command W on a Mac and Control W elsewhere in the app's own window; a browser tab keeps those for itself, so the shell's Control Option (Control Alt) chord is the one that works, and the one said there. */
+export const tabCloseChordText = (platform: Platform, native: boolean): string => (native ? { mac: '⌘W', other: 'Ctrl+W' } : { mac: '⌃⌥W', other: 'Ctrl+Alt+W' })[platform];

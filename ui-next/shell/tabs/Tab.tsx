@@ -1,4 +1,5 @@
-import { Icon, Text, isIconName, tip } from '@omniviewdev/kit';
+import { Icon, Text, isIconName, menuTrigger, tip } from '@omniviewdev/kit';
+import { platformOf } from '../core/chords';
 import { splitTitle } from '../core/title';
 import type { TabId } from '../core/tabs';
 import { useTabs } from './context';
@@ -15,6 +16,8 @@ type TabProps = {
   /** The shell's id prefix for the tabs' DOM ids, and the id of the one page region every tab controls. */
   readonly prefix: string;
   readonly panelId: string;
+  /** The id of the strip's one menu, which the face is a context trigger of. */
+  readonly menu: string;
 };
 
 /** A plugin's glyph name is data from outside: a name the kit does not have draws the generic one rather than throwing in the strip. */
@@ -25,9 +28,9 @@ const FALLBACK_GLYPH = 'box';
  * and a close control that is always there (ch16 S17, S17b). It subscribes to its own slice of the model and renders when that changes: a title changing in another tab does not
  * touch this one. The tab is one tab stop of the strip's roving tablist. The close control is the pointer's: a tablist owns tabs and nothing else (axe: aria-required-children, a button
  * among them is "not allowed"), so the control is hidden from the accessibility tree and out of the tab order, and the keyboard and assistive technology close a tab the ways the tab itself
- * offers: Delete or Backspace on the focused tab (S54), the close chord, and the tab's context menu when it exists (S55). Kit part it should become: Tab, in TabStrip.
+ * offers: Delete or Backspace on the focused tab (S54), the close chord, and the tab's context menu (S55), which the whole face opens: right click, Control click on a Mac, Shift+F10 or the Menu key. Kit part it should become: Tab, in TabStrip.
  */
-export function Tab({ id, stop, active, prefix, panelId }: TabProps) {
+export function Tab({ id, stop, active, prefix, panelId, menu }: TabProps) {
   const store = useTabs();
   const item = useStripItem(store, id);
   if (item === undefined) {
@@ -46,6 +49,8 @@ export function Tab({ id, stop, active, prefix, panelId }: TabProps) {
       data-active={active ? '' : undefined}
       data-pinned={item.pinned ? '' : undefined}
       data-preview={item.preview ? '' : undefined}
+      data-ov-menu-label={`Actions for ${identity.title}`}
+      {...menuTrigger(menu, id, 'context')}
     >
       <button
         type="button"
@@ -61,8 +66,8 @@ export function Tab({ id, stop, active, prefix, panelId }: TabProps) {
         data-shell-focus={stop ? '' : undefined}
         {...tip(tabTip(item))}
         onPointerDown={(event) => {
-          // A mouse or a pen selects on the press, as a browser's tabs do; a touch selects on the click, so a swipe still scrolls the strip.
-          if (event.button === 0 && event.pointerType !== 'touch') {
+          // A mouse or a pen selects on the press, as a browser's tabs do; a touch selects on the click, so a swipe still scrolls the strip. Control click on a Mac is a right click: it opens the menu and selects nothing.
+          if (event.button === 0 && event.pointerType !== 'touch' && !(event.ctrlKey && platformOf(navigator) === 'mac')) {
             store.activate(id);
           }
         }}

@@ -6,6 +6,8 @@ import {
   screenReaderSaid,
   seedChips,
   settingsChordText,
+  TAB_PALETTE_COMMANDS,
+  tabCommands,
   TERMINAL_TOOL,
   toggleChordText,
   togglePanel,
@@ -104,15 +106,10 @@ export type HostPalette = PaletteBindings & {
 /** What the model calls the host's own sources, and the plugin it says owns them. */
 const OWN = { plugin: 'host', pluginName: 'Omniview' } as const;
 
-const NO_TAB = 'There is no tab to close.';
-const NO_OTHER_TAB = 'There is no other tab.';
 const UNSAVED = 'This tab has unsaved changes.';
-/** Command W on a Mac and Control W elsewhere, as the panel's toggle chord is written (`toggleChordText`). */
-const CLOSE_TAB_CHORD = { mac: '⌘W', other: 'Ctrl+W' } as const;
 /** The app menu's Close Window. Only a Mac has it, and only a Mac is offered the command. */
 const CLOSE_WINDOW_CHORD = '⌘⇧W';
-/** A browser tab keeps Command or Control W and J for itself, so the shell also binds Control Option (Control Alt): that is the chord that works where the window is not the app's own, and the one said there. */
-const WEB_CLOSE_TAB_CHORD = { mac: '⌃⌥W', other: 'Ctrl+Alt+W' } as const;
+/** A browser tab keeps Command or Control J for itself, so the shell also binds Control Option (Control Alt): that is the chord that works where the window is not the app's own, and the one said there. */
 const WEB_TOGGLE_CHORD = { mac: '⌃⌥J', other: 'Ctrl+Alt+J' } as const;
 /** The most distinct things the host says of one plugin's sidebar, whatever the plugin does next (`tell`). */
 const MAX_SAID = 8;
@@ -386,26 +383,23 @@ type HostCommand = {
 };
 
 /**
- * The commands the host can run from here, made from what is true now: Close tab, Toggle panel (when there is a panel), the Terminal's screen reader switch (when the window has the Terminal tool), Settings (when the window has them),
- * Close window (only on a Mac, and only when the app can close its window: elsewhere the main window hides and nothing brings it back, decision A17), and Next tab and Previous tab. The palette lists them and the runner looks them
+ * The commands the host can run from here, made from what is true now: the tab commands (`shell/tabs/commands.ts`, the tab context menu's too), Toggle panel (when there is a panel), the Terminal's screen reader switch (when the window has the Terminal tool), Settings (when the window has them),
+ * Close window (only on a Mac, and only when the app can close its window: elsewhere the main window hides and nothing brings it back, decision A17). The palette lists them and the runner looks them
  * up here, so what it runs is what it checked a moment before.
  */
 function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, terminalScreenReader }: HostPaletteDeps): HostCommand[] {
-  const state = tabs.getSnapshot();
-  const others = state.order.length > 1 ? undefined : NO_OTHER_TAB;
   // The app's own window gets the chords the shell binds natively; a browser tab keeps those for itself, and the shell's Control Option chords are what work there.
   const native = onCloseWindow !== undefined;
-  const commands: HostCommand[] = [
-    {
-      id: 'host.tab.close',
-      title: 'Close tab',
-      context: 'Tabs',
-      icon: 'close',
-      shortcut: native ? CLOSE_TAB_CHORD[platform] : WEB_CLOSE_TAB_CHORD[platform],
-      unavailable: state.active === null ? NO_TAB : undefined,
-      run: () => outcomeOf(tabs.close()),
-    },
-  ];
+  const tabRows = tabCommands({ tabs, platform, native }, tabs.getSnapshot().active);
+  const commands: HostCommand[] = TAB_PALETTE_COMMANDS.map((id) => ({
+    id: `host.tab.${id}`,
+    title: tabRows[id].title,
+    context: 'Tabs',
+    icon: tabRows[id].icon,
+    shortcut: tabRows[id].shortcut,
+    unavailable: tabRows[id].unavailable,
+    run: () => outcomeOf(tabRows[id].run()),
+  }));
   if (panel !== undefined) {
     commands.push({
       id: 'host.panel.toggle',
@@ -468,11 +462,6 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
     });
   }
 
-  // No chord is bound to either of these today, so none is shown.
-  commands.push(
-    { id: 'host.tab.next', title: 'Next tab', context: 'Tabs', icon: 'arrow-right', unavailable: others, run: () => outcomeOf(tabs.next()) },
-    { id: 'host.tab.previous', title: 'Previous tab', context: 'Tabs', icon: 'arrow-left', unavailable: others, run: () => outcomeOf(tabs.previous()) },
-  );
   // The host's own pages (Plugins, Home): Plugins opens in its singleton tab wherever the person is (ch16 S9, S26) and is shown, as any other tab, if it is already open; Home is an ordinary tab and the command opens a new one every
   // time, as the design lab's does (`openHostPage`, `plain: 'new'`, shell-regions.js).
   for (const page of allHostPages()) {
