@@ -606,6 +606,10 @@ test('the step that names the scenario that failed is the one the shards run: it
   assert.match(seam.run, /exit 1\s*$/);
 });
 
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The workflow, again: what the review of #718 asked to hold (N1, N5, N6, N7) and what N30 and N34 changed
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 test('N1: nothing in the seam, probe and main-red workflows can hide a failed job: no continue-on-error on a job or a step', () => {
   for (const file of ['ui-next-seam.yml', 'ui-next-kit-probes.yml', 'ci-main-red.yml']) {
     const text = readFileSync(path.join(repo, '.github/workflows', file), 'utf8').replace(/^\s*#.*$/gm, '');
