@@ -14,6 +14,7 @@ on:
       - Render Benchmarks
       - Whole-App Profile
       - Main macOS universal
+      - Main Windows build
     types: [completed]
 
 # One update at a time: two workflows ending together must not write the issue over each other. Nothing is cancelled.

@@ -1,4 +1,5 @@
 import { ErrorTypes, parseAppError, type AppError } from '@omniviewdev/runtime/ui/v1';
+import { nameText } from '../connectionName';
 import type { ConnectOutcome, ConnectionState, StateFace } from './types';
 
 // The words of a connection (HM1): what each state is called, which of the host's answers is which state, and the one line a person may be shown about a failure. The host says what happened in its own
@@ -146,10 +147,12 @@ export function outcomeOfStatus(status: { readonly status: string; readonly erro
   }
 }
 
-/** What a person reads for a connection: its name trimmed, else `Unnamed connection`. Never its key. */
+/**
+ * What a person reads for a connection: its name trimmed and clipped to `NAME_MAX` (`connectionName.ts`: the host's list is one of the places a name comes in, so Home's rows, the picker's options and the palette's rows never draw a longer one), else
+ * `Unnamed connection`. Never its key.
+ */
 export function nameOf(connection: { readonly name?: string | undefined }): string {
-  const name = typeof connection.name === 'string' ? connection.name.trim() : '';
-  return name === '' ? UNNAMED : name;
+  return nameText(connection.name) ?? UNNAMED;
 }
 
 /** The longest secondary text Home and the picker draw: the line is clipped and its tip says the rest, and a plugin's text is only a description a person may have written. */

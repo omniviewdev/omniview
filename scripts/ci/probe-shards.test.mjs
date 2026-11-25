@@ -1052,7 +1052,7 @@ test('negative control: the ceiling is not a number that lets anything through: 
 test('the job timeout leaves a shard at its ceiling, on the slowest setup of the 70 shard jobs, time to finish and say why it failed, and is not much more: that is a hang', () => {
   assert.equal(engine.SETUP_MAX_SECONDS, 137, 'the slowest setup of the 70 shard jobs (median 87.5 s, 90th percentile 105 s)');
   const needed = Math.ceil((SHARD_CEILING_SECONDS + engine.SETUP_MAX_SECONDS) / 60);
-  // The timeout is an expression of the plan's scope (N30): 15 minutes for a full run, 36 for a pull request's longer shards.
+  // The timeout is an expression of the plan's scope (N30): 15 minutes for a full run, 38 for a pull request's longer shards.
   const [, longer, usual] = /^\$\{\{ needs\.plan\.outputs\.scope == 'pr' && (\d+) \|\| (\d+) \}\}$/.exec(workflow.jobs.shard['timeout-minutes']);
   for (const [timeout, ceiling] of [[Number(usual), SHARD_CEILING_SECONDS], [Number(longer), engine.PR_SHARD_CEILING_SECONDS]]) {
     const required = Math.ceil((ceiling + engine.SETUP_MAX_SECONDS) / 60);
@@ -1061,7 +1061,7 @@ test('the job timeout leaves a shard at its ceiling, on the slowest setup of the
   }
 
   assert.equal(Number(usual), 15);
-  assert.equal(Number(longer), 36);
+  assert.equal(Number(longer), 38);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1905,8 +1905,15 @@ test('the verdict of a pull request requires the probes only, passes without a c
   const failing = structuredClone(reports);
   failing[0].units[0].ok = false;
   writeFileSync(path.join(reportsDir, `kit-probe-reports-${failing[0].shard}`, `ran-${failing[0].shard}-probe.json`), JSON.stringify(failing[0]));
-  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]).status, 1);
-  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length + 1)]).status, 1);
+  const failed = cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]);
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /did not pass in shard 1/);
+  // The passing report is put back, so that the next assertion is about the missing shard and nothing else.
+  writeFileSync(path.join(reportsDir, `kit-probe-reports-${reports[0].shard}`, `ran-${reports[0].shard}-probe.json`), JSON.stringify(reports[0]));
+  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]).status, 0, 'with every report back it passes again');
+  const missing = cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length + 1)]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, new RegExp(`shard ${String(pr.shards.length + 1)} did not report`));
 });
 
 test('a pull request\'s shard runs its probes with ENGINES=webkit, does not warn about a probe that is faster than its two-engine seconds, and fails past its own ceiling', () => {

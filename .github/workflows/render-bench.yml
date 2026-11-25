@@ -43,10 +43,23 @@ on:
       - ".github/workflows/render-bench.yml"
   push:
     branches: [main]
+    # The same inputs as a pull request's (N31): a path that starts the run on a pull request starts it on main.
     paths:
       - "ui/**"
       - "bench/render/**"
       - "bench/vite/**"
+      - "packages/omniviewdev-runtime/**"
+      - "packages/omniviewdev-providers/**"
+      - "packages/omniviewdev-vite-plugin/**"
+      - "vite.config.ts"
+      - "vitest.render.config.ts"
+      - "vitest.cache.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "patches/**"
+      - "tsconfig*.json"
+      - "Taskfile.yml"
       - ".github/workflows/render-bench.yml"
   schedule:
     - cron: "37 4 * * *"

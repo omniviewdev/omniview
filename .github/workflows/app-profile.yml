@@ -49,11 +49,30 @@ on:
       - ".github/workflows/app-profile.yml"
   push:
     branches: [main]
+    # The same inputs as a pull request's (N31): a path that starts the run on a pull request starts it on main.
     paths:
       - "ui/**"
+      - "index.html"
+      - "public/**"
       - "bench/app/**"
+      - "bench/vite/**"
+      - "packages/omniviewdev-runtime/**"
+      - "packages/omniviewdev-providers/**"
+      - "packages/omniviewdev-vite-plugin/**"
+      - "vite.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "patches/**"
+      - "tsconfig*.json"
+      - "Taskfile.yml"
       - "internal/**"
       - "backend/**"
+      - "pkg/**"
+      - "scripts/hostmod/**"
+      - "go.mod"
+      - "go.sum"
+      - "e2e/scripts/sdk-source.mjs"
       - ".github/workflows/app-profile.yml"
   schedule:
     - cron: "27 4 * * *"

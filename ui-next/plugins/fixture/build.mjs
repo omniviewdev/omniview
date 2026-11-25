@@ -51,7 +51,7 @@ export const PLUGINS = {
 
 // The connections plugin is NOT in `PLUGINS`, and `writeAll` does not write it: the seam check installs every plugin of `PLUGINS` in most scenarios and counts rail entries, palette sections and plugins, so a
 // plugin added there would change what they see. It has a process (`./connections-process`, built by `buildConnectionsProcess`) with a `resource` capability and two connections (`north` and `south`), and a
-// check that wants it writes it itself with `writeConnectionsPlugin(root, binary)` (scenario u of the seam check, `checkConnectionsAndHome`, does). Its bundle is `src/entry-connections.tsx`; the name of each row of its one page opens that item's Logs session in the host's panel.
+// check that wants it writes it itself with `writeConnectionsPlugin(root, binary)` (scenario u of the seam check, `checkConnectionsAndHome`, does). Its bundle is `src/entry-connections.tsx`: an overview, the page a connection lands on (HM3: the plugin's home and the first entry of its sidebar), and a list of items whose row names open that item's Logs session in the host's panel.
 export const CONNECTIONS_ID = 'fixture-f-conn';
 const CONNECTIONS = { variant: 'connections', name: 'Seam Connections', rail: { label: 'Seam Connections', order: 30 } };
 

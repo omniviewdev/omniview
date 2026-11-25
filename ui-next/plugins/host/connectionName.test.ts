@@ -5,7 +5,7 @@ import { restoreTabs, STATE_VERSION } from '../../shell/core/tabs';
 import { createTabsStore, type Face, type Route, type ShellScopeFace } from '../../shell';
 import type { FrameV1 } from '../contract/v1';
 import { acme } from '../testing';
-import { ConnectionNames, laneFor, laneNameOf, pathSaid, restoredFace, said } from './connectionName';
+import { ConnectionNames, connectionNameOf, laneFor, laneNameOf, NAME_MAX, pathSaid, restoredFace, said } from './connectionName';
 import { createContributions, routeKey, type PluginSource } from './contributions';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -133,6 +133,36 @@ describe('hearing that a learned name changed', () => {
     second();
     names.learn('acme', KEY, 'again');
     expect(told).toBe(3);
+  });
+});
+
+describe('connectionNameOf', () => {
+  const learned = (): ConnectionNames => {
+    const names = new ConnectionNames();
+    names.learn('acme', KEY, 'learned');
+    return names;
+  };
+
+  it('is the name the page\'s own lane says, whatever the window has learned', () => {
+    expect(connectionNameOf([face('Cluster', NAME, 'connection')], learned(), 'acme', KEY)).toBe(NAME);
+  });
+
+  it('is the name the window has learned for the connection when the lane says none of it', () => {
+    expect(connectionNameOf(undefined, learned(), 'acme', KEY)).toBe('learned');
+    expect(connectionNameOf([face('Zone', 'All zones')], learned(), 'acme', KEY)).toBe('learned');
+  });
+
+  it('is none when the lane says it has none, though the window learned one: a marked face with no text', () => {
+    expect(connectionNameOf([face('Cluster', ' ', 'connection')], learned(), 'acme', KEY)).toBeUndefined();
+  });
+
+  it('is none when nothing says it: no lane and no connection, or a connection the window has not learned the name of', () => {
+    expect(connectionNameOf(undefined, learned(), 'acme', undefined)).toBeUndefined();
+    expect(connectionNameOf(undefined, learned(), 'acme', OTHER_KEY)).toBeUndefined();
+  });
+
+  it('is the lane\'s name for a route that names no connection: a plugin that chose its first connection itself says which', () => {
+    expect(connectionNameOf([face('Connection', NAME)], learned(), 'acme', undefined)).toBe(NAME);
   });
 });
 
@@ -555,5 +585,86 @@ describe('the lane the shell draws', () => {
     expect(laneFor([{ label: 'x' } as unknown as ShellScopeFace, { label: 'Connection', icon: 'server', text: 'a', role: 'connection' }], undefined)?.length).toBe(1);
     expect(laneFor([{ label: 'Connection', icon: 'server', text: 'a', role: 'connection' }], undefined)?.[0]?.picker).toBeUndefined();
     expect(laneFor(undefined, () => picker)).toBeUndefined();
+  });
+});
+
+// N2 of the review of HM3b: a connection NAME of 1,000,000 characters stalled WebKit for more than 45 s in the heading of the overview (the tab clipped it at `LIMITS.scopeLabel`, the heading did not). A name is clipped ONCE, where it comes in, so that no surface of the
+// window (a heading, a path, a tab, a Home row, a picker option) can draw an unclipped one: here the lane a page publishes and the names a window learns. The host's own list is held in `connections/words.test.ts` and `store.test.ts`.
+describe('a name too long to read (N2)', () => {
+  const HUGE = 'n'.repeat(1_000_000);
+  const CLIPPED = `${'n'.repeat(NAME_MAX - 1)}…`;
+
+  it('is clipped where the lane says it, with an ellipsis, whichever way the lane marks the face: nothing made from the name can be longer', () => {
+    expect(laneNameOf([face('Zone', HUGE, 'connection')])).toBe(CLIPPED);
+    expect(laneNameOf([face('Connection', HUGE)])).toBe(CLIPPED);
+    expect(connectionNameOf([face('Zone', HUGE, 'connection')], new ConnectionNames(), 'acme', KEY)).toBe(CLIPPED);
+  });
+
+  it('is clipped where a window learns it, and what it gives back is the clipped one', () => {
+    const names = new ConnectionNames();
+
+    names.learn('acme', KEY, HUGE);
+
+    expect(names.get('acme', KEY)).toBe(CLIPPED);
+    expect(connectionNameOf(undefined, names, 'acme', KEY)).toBe(CLIPPED);
+  });
+
+  it('is clipped in the face the shell draws, and the picker is made from the clipped text: the name and the face say one thing', () => {
+    const seen: string[] = [];
+    const lane = laneFor([face('Zone', HUGE, 'connection'), face('Region', HUGE)], (made) => {
+      seen.push(made.text);
+      return undefined;
+    });
+
+    expect(lane?.map((each) => each.text)).toEqual([CLIPPED, CLIPPED]);
+    expect(seen).toEqual([CLIPPED]);
+  });
+
+  it('does not touch a name a person could have given a connection: up to NAME_MAX characters are kept whole, and the white space round a name is trimmed as it was', () => {
+    for (const length of [1, 24, 25, 110, NAME_MAX]) {
+      const name = `a${'b'.repeat(length - 1)}`;
+      expect(laneNameOf([face('Zone', `  ${name} `, 'connection')]), String(length)).toBe(name);
+      const names = new ConnectionNames();
+      names.learn('acme', KEY, name);
+      expect(names.get('acme', KEY), String(length)).toBe(name);
+      expect(laneFor([face('Zone', name, 'connection')], undefined)?.[0]?.text, String(length)).toBe(name);
+    }
+  });
+
+  it('clips the first name that is too long and no other: one more than NAME_MAX is clipped, to NAME_MAX', () => {
+    const over = 'c'.repeat(NAME_MAX + 1);
+
+    expect(laneNameOf([face('Zone', over, 'connection')])).toBe(`${'c'.repeat(NAME_MAX - 1)}…`);
+    expect(laneNameOf([face('Zone', over, 'connection')])?.length).toBe(NAME_MAX);
+  });
+
+  it('is the same name however it is read: a name that was clipped is not clipped again', () => {
+    const once = laneNameOf([face('Zone', HUGE, 'connection')]);
+    const names = new ConnectionNames();
+    names.learn('acme', KEY, once ?? '');
+
+    expect(names.get('acme', KEY)).toBe(once);
+    expect(laneNameOf([face('Zone', once ?? '', 'connection')])).toBe(once);
+  });
+
+  it('tells a listener once for a name of a million characters learned twice: what is compared, stored and told is the clipped name', () => {
+    const names = new ConnectionNames();
+    let told = 0;
+    names.subscribe(() => {
+      told += 1;
+    });
+
+    names.learn('acme', KEY, HUGE);
+    names.learn('acme', KEY, HUGE);
+    names.learn('acme', KEY, `  ${HUGE}  `);
+
+    expect(told).toBe(1);
+    expect(names.get('acme', KEY)).toBe(CLIPPED);
+
+    // Another name is another name, and is told; so is a long one that clips to something else.
+    names.learn('acme', KEY, `x${HUGE}`);
+    expect(told).toBe(2);
+    names.learn('acme', KEY, `x${HUGE}`);
+    expect(told).toBe(2);
   });
 });

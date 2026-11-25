@@ -1,6 +1,6 @@
 name: Main macOS universal
 
-# The per-PR macOS build is a thin arm64 build on macos-15 (pr.yml). This
+# There is no macOS build on a pull request (N30). This
 # builds the universal (arm64 + amd64) host on every push to main, so a break
 # that only shows on x86_64 is seen minutes after the merge, not at the next
 # nightly. Compile gate only: nothing is uploaded, signed or published; the
@@ -9,10 +9,10 @@ on:
   push:
     branches: [main]
 
-# A newer push supersedes a running build: it contains the older commit.
+# A run on main is not cancelled by a newer push (N32: a cancelled run is read from its jobs by `ci-main-red`, and a superseded build is not a failed one); a group keeps one pending run.
 concurrency:
   group: main-macos-universal
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -124,3 +124,21 @@ jobs:
             echo "- The per-PR build is arm64 only: an x86_64-only break is first seen here."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error title=main macOS universal build failed::commit ${SHA} (${pr:-no PR found}) ${RUN_URL}"
+
+  # The verdict (N32): a job that reaches its timeout ends `cancelled`, like the run, and `ci-main-red` reads a cancelled run from its jobs. This job fails when build-universal did not succeed (it runs whatever
+  # happened: `always()`), so that a hang is a failed job and not only a cancelled one. It is on the smallest runner and checks out nothing.
+  verdict:
+    name: macOS build verdict
+    needs: build-universal
+    if: ${{ always() }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Require the build to have succeeded
+        env:
+          RESULT: ${{ needs.build-universal.result }}
+        run: |
+          if [ "$RESULT" != success ]; then
+            echo "::error title=macOS build verdict::the build finished as '${RESULT:-unknown}', not as success (a timeout is 'cancelled')"
+            exit 1
+          fi
