@@ -62,4 +62,6 @@ export const units = [
   { id: 'controls-ports', runs: ['ports'], seconds: 90 },
   // The controls of r6 and r7, one run of each table: the first is the runner's (`control terminal-reconnect: detected (50 s)`, which the laptop measured the same), the second has no runner figure yet (the CI step that was to run it failed to start it) and is the laptop's (26 s, its four controls with the host's start).
   { id: 'controls-terminal-channel', runs: ['terminal-reconnect', 'terminal-isolation'], seconds: 76 },
+  // The control of the profile assertion of scenario r2: one run of r2 (the phase's own figure of the runner, 50 s in the CI run of #716, and the host's start of about 15 s).
+  { id: 'controls-terminal-profile', runs: ['terminal-profile'], seconds: 65 },
 ];
