@@ -496,7 +496,8 @@ export function createHost(options = {}) {
         if (pty.paused ? behind > limits.channel_low_bytes : behind > limits.channel_high_bytes) {
           // The pump waits only for a page that is alive: one that made no progress (a frame the transport took, or an acknowledgement) within `channel_stall_ms` is let be, and the pump reads on (the ring overwrites, and the stream says so with a gap when it wakes).
           const idle = pty.holder === null ? Infinity : now() - pty.holder.progressAt;
-          if (idle < stallMs) {
+          // `faults.ackLost`: the credit that comes while the pump waits is lost AND the host never gives up waiting: a host that paused never reads again.
+          if (idle < stallMs || faults.ackLost) {
             pty.paused = true;
             clearTimeout(pty.stallTimer);
             pty.stallTimer = setTimeout(() => pump(pty), stallMs - idle + 1);
@@ -506,6 +507,12 @@ export function createHost(options = {}) {
         }
 
         pty.paused = false;
+        // Nothing waits any more: the stall wake is not needed (a timer left running would fire in a page that is at rest).
+        if (pty.stallTimer !== undefined) {
+          clearTimeout(pty.stallTimer);
+          pty.stallTimer = undefined;
+        }
+
         if (queued(pty) === 0) break;
         const bytes = take(pty, READ_MAX);
         pty.ring.record(bytes);
