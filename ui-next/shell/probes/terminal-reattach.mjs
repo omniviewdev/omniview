@@ -412,7 +412,8 @@ export function createReattachSections({ check, note, report, runAxe }) {
       const page = await w.open();
       await start(page);
       await typeLine(page, 'query');
-      const asked = await until(() => REPLY.test(wroteBy(host)), (answered) => answered, 8000);
+      // The program asks twice (where the cursor is, and what the terminal is) and the emulator answers both: the mark is taken once BOTH answers have reached the shell, so that a late answer of the first page is not counted as the new page's.
+      const asked = await until(() => /\u001b\[\d+;\d+R/.test(wroteBy(host)) && /\u001b\[\?[\d;]*c/.test(wroteBy(host)), (answered) => answered, 8000);
       const mark = host.log.writes.length;
       await reload(page, w);
       await until(async () => rowsOf(page), (rows) => rows.some((row) => /asking:/.test(row)), 8000);

@@ -570,11 +570,27 @@ test('faults are single ways of getting the host wrong: a replay that lacks its 
   const a = pageOf(lacking, one.cap);
   await a.until('ready', () => a.ready !== undefined);
   lacking.flood('t', 2000, 80);
-  await until(() => lacking.log.floods.length === 1);
+  await until(() => lacking.log.floods.length === 1, 'the flood to end');
   a.stream.close();
   const b = pageOf(lacking, one.cap, { from: 0, join: false });
   await b.until('ready', () => b.ready !== undefined);
   assert.ok(b.ready.end > 100_000);
+  await b.until('output', () => b.frames.some((read) => read.kind === 'output'));
+  // The fault removes the end of the replay's first bytes: the first output frame starts past `ready.start`, and what was omitted is absent; the same attach without the fault starts at it.
+  const firstOf = (page) => page.frames.find((read) => read.kind === 'output');
+  assert.ok(firstOf(b).offset > b.ready.start, 'the replay does not start where ready says');
+  const whole = createHost({ leaseMs: 60_000 });
+  const w = await make(whole);
+  const c0 = pageOf(whole, w.cap);
+  await c0.until('ready', () => c0.ready !== undefined);
+  whole.flood('t', 2000, 80);
+  await until(() => whole.log.floods.length === 1, 'the flood to end');
+  c0.stream.close();
+  const d0 = pageOf(whole, w.cap, { from: 0 });
+  await d0.until('ready', () => d0.ready !== undefined);
+  await d0.until('output', () => d0.frames.some((read) => read.kind === 'output'));
+  assert.equal(firstOf(d0).offset, d0.ready.start, 'without the fault the replay starts where ready says');
+  whole.stop();
   lacking.stop();
 
   const hidden = createHost({ leaseMs: 60_000, ringBytes: 200_000, faults: { attachedHidden: true, modesLost: true, noTakenOver: true } });
@@ -671,4 +687,62 @@ test('a frame that waited and lost its right meanwhile is refused, a hold ends o
   await assert.rejects(host.call('DismissChannelTerminal', [other.cap]), (error) => JSON.parse(error.message).type === 'omniview:session/not-found');
   assert.equal(page.ended.closed_by, 'request');
   host.stop();
+});
+
+test('a frame behind a held input of the same stream waits for it; an attach during a natural exit is served the kept end, or told nothing when a close won; a page that stops acknowledging is let be after the stall; a read of a large write is copied', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000, stallMs: 50 });
+  const { cap } = await make(host);
+  const page = pageOf(host, cap, { ack: false });
+  await page.until('ready', () => page.ready !== undefined);
+  page.stream.send(pageFrames.ack(0));
+  host.append('t', 'a'.repeat(2_000_000));
+  await until(() => host.state('t').unsent > 0);
+  const sent = page.next;
+  // An acknowledgement behind a held input is not read until the input is done.
+  host.slow(1, Infinity);
+  page.stream.send(pageFrames.input('x'));
+  let credited = page.next - page.ready.start;
+  page.stream.send(pageFrames.ack(credited));
+  assert.equal(page.next, sent, 'no credit while the input of the same stream is held');
+  host.release();
+  await until(() => page.next > sent, 'the credit after the release');
+  // A page that stops acknowledging: the pump reads on after the stall, the ring overwrites, and the stream says so with a gap.
+  host.append('t', 'b'.repeat(12_000_000));
+  await until(() => host.state('t').waiting === 0, 'the pump to read on past the stall');
+  assert.ok(host.state('t').overwritten > 0);
+  // A shell that ends while the holder is behind: a stream that attaches then is deferred, and served the kept end.
+  const late = pageOf(host, cap, { sendAttach: false });
+  host.type('t', '\u0003exit 2\r');
+  late.stream.send(pageFrames.attach(cap));
+  // The holder takes what it is sent until the shell's end has been told to it; the deferred attach is served once the end is decided.
+  const stop = Date.now() + 15_000;
+  while (!(late.closed || late.ended !== undefined)) {
+    if (Date.now() > stop) throw new Error(`the deferred attach was not served: ${JSON.stringify(host.state('t'))} ${JSON.stringify(late.frames.map((read) => read.kind))}`);
+    const owed = page.next - page.ready.start - credited - page.gaps.reduce((sum, gap) => sum + (gap.to - gap.from), 0);
+    if (owed > 0) {
+      page.stream.send(pageFrames.ack(owed));
+      credited += owed;
+    }
+
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  assert.ok(late.frames.some((read) => read.kind === 'ready'), 'served the kept end');
+  host.stop();
+  // A close that wins: the deferred attach is told nothing is there.
+  const closing = createHost({ leaseMs: 60_000 });
+  const c = await make(closing);
+  const holder = pageOf(closing, c.cap, { ack: false });
+  await holder.until('ready', () => holder.ready !== undefined);
+  holder.stream.send(pageFrames.ack(0));
+  closing.append('t', 'z'.repeat(3_000_000));
+  closing.type('t', 'exit 0\r');
+  const waiting = pageOf(closing, c.cap);
+  await closing.call('CloseChannelTerminal', [c.cap]);
+  await waiting.until('closed', () => waiting.closed);
+  assert.deepEqual(
+    waiting.frames.map((read) => read.kind),
+    ['not-found'],
+  );
+  closing.stop();
 });
