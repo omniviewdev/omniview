@@ -56,10 +56,14 @@ export function seamPlanOf(ids, table = seamUnits) {
   return { phases: chosen.flatMap((unit) => unit.phases ?? []), runs: chosen.flatMap((unit) => unit.runs ?? []) };
 }
 
+// What the shell the author runs it from may have left over (AGENTS 35): the selectors of the seam and the engine come from the invocation, never from the environment.
+export const INHERITED = ['SEAM_PHASES', 'SEAM_CONTROL', 'SEAM_ONLY', 'SEAM_REMOVE', 'ENGINES'];
+export const cleanEnv = (base = process.env) => Object.fromEntries(Object.entries(base).filter(([name]) => !INHERITED.includes(name)));
+
 const sh = (command, args, { dry, env = {}, cwd = REPO } = {}) => {
   process.stdout.write(`+ ${Object.entries(env).map(([key, value]) => `${key}=${value} `).join('')}${command} ${args.join(' ')}\n`);
   if (dry) return 0;
-  return spawnSync(command, args, { cwd, env: { ...process.env, ...env }, stdio: 'inherit' }).status ?? 1;
+  return spawnSync(command, args, { cwd, env: { ...cleanEnv(), ...env }, stdio: 'inherit' }).status ?? 1;
 };
 
 const changedFiles = () => {

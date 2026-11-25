@@ -5,20 +5,15 @@
 // It lists the paths the change touches (`git diff --name-only` between <base> and <head>, default `HEAD^1` and `HEAD`: the base of the merge commit a pull request is checked out as, and
 // that commit), puts each in an area, and decides a class for the whole change:
 //
-//   docs    every path is documentation: README.md, Markdown under docs/, anything under docs/ui-next/status/ (the proof-tool copies, YAML, JSON, images: evidence that nothing reads, see below). The host jobs, the
-//           Windows build and the UI jobs are skipped; the repository guard is not.
-//   new-ui  every path is the new UI (ui-next/, packages/kit/), its documentation (docs/ui-next/) or its own tooling (NEW_UI_TOOLING below). The stable build, the Go host and the e2e suite never
-//           read them, so the host jobs are skipped; the UI jobs, the Windows build (it runs the kit's build and generate scripts on a shipping platform), the kit probes and the Pods cluster check are not.
-//   all     anything else, and a change with no path: every job runs. A path the script has never seen is "other", and "other" is absorbing.
+//   docs    every path is documentation: README.md, Markdown under docs/, anything under docs/ui-next/status/. The host and UI jobs are skipped; the repository guard is not.
+//   new-ui  every path is the new UI (ui-next/, packages/kit/), its documentation (docs/ui-next/) or its own tooling (NEW_UI_TOOLING below): the Go jobs are skipped, the UI jobs and the corpus are not.
+//   go      every path is a Go source file (N34): the UI build and the component tests are skipped, the Go jobs and the C02 corpus (Go makes it, the runtime reads it) are not.
+//   all     anything else, and a change with no path: every job runs. A path the script has never seen is "other", and "other" is absorbing. A run that is not a pull request (the nightly run) is `all`.
 //
-// The workflows read three flags, `skip_host`, `skip_ui` and `skip_code`, as `needs.changes.outputs.skip_host != 'true'`: a classifier that wrote nothing skips nothing. On a runner the command also writes
-// one `::notice title=Changed paths::class=<class> skip_host=<bool> skip_ui=<bool> skip_code=<bool>`, which the check run keeps as an annotation: the merge gate reads the class there. The jobs are listed in
-// GATED, the jobs that always run in ALWAYS, and scripts/ci/changes-workflows.test.mjs holds both workflows to the two lists. A new job goes in one of them, or that test fails.
-//
-// WHAT "CANNOT BE REACHED" MEANS. The host jobs (Go checks, Go lint, Windows connection profiles, Bindings freshness, Release packaging contracts, the macOS and Linux build-artifacts, the e2e suite) build
-// the stable frontend from `index.html` and `ui/` (vite.config.ts: OMNIVIEW_UI unset is `current`), the Go module, the Wails bindings and the plugin UIs from the runtime, providers and
-// vite-plugin packages. No file of those imports ui-next/ or the kit, no `go:embed` or Go test opens one, and no `.go` file lives in them; docs/ is read by nothing but the Pods workflow (its
-// fixture, which is not prose). When a path might be read, it is not in a class: add it here only with the search that shows nothing reads it.
+// The workflows read three flags, `skip_host`, `skip_ui` and `skip_code` (set only for documentation), as `needs.changes.outputs.skip_host != 'true'`: a classifier that wrote nothing skips nothing. On a runner
+// the command also writes one `::notice title=Changed paths::class=... skip_host=... skip_ui=... skip_code=...`. The jobs are listed in GATED, the jobs that always run in ALWAYS, and
+// scripts/ci/changes-workflows.test.mjs holds PR Checks to the two lists. A new job goes in one of them, or that test fails. When a path might be read by a job, it is not in a class: add it here only with
+// the search that shows nothing reads it.
 import { spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import path from 'node:path';
@@ -44,7 +39,7 @@ const NEW_UI_ROOTS = ['ui-next/', 'packages/kit/', 'docs/ui-next/'];
 // The new UI's own tooling: files that only a check which stays for a change to the new UI reads, or that no workflow reads at all (docs/ui-next/status/N24-D1.md has the search for each).
 // A new probe or control is a unit file of the probe table, so every pull request that adds one changes it: it must not turn a change to the new UI into a change to everything.
 //   scripts/ci/probe-units/, probe-units.manifest.json  the probe table, one file for each probe, and the floor of what it must hold (N25): the kit probes workflow (the plan, every shard and `Kit probes`) is the only reader
-//   scripts/ci/probe-shards.mjs, probe-pack.mjs, probe-seconds.mjs, probe-builds.mjs, their tests and probe-shards.runs.json  the engine of the table (the same workflow is the only reader): the check, the packing, the runner, the shared builds and the verification
+//   scripts/ci/probe-shards.mjs, probe-pack.mjs, probe-builds.mjs, their tests  the engine of the table (the same workflow is the only reader): the check, the packing, the runner, the shared builds and the verification
 //   scripts/ci/seam-shards.mjs, seam-units.mjs and the test of the first  the seam workflow's plan, report and verdict, and the units it packs (N29): the seam workflow is the only reader
 //   scripts/ui-next-pods/                               the Pods cluster check is the only reader
 //   scripts/ui-next-bundle.mjs                          scripts/ui-flavour.test.mjs, in the UI build job
@@ -53,17 +48,11 @@ const NEW_UI_TOOLING_ROOTS = ['scripts/ci/probe-units/', 'scripts/ui-next-pods/'
 const NEW_UI_TOOLING_FILES = new Set([
   'scripts/ci/probe-shards.mjs',
   'scripts/ci/probe-shards.test.mjs',
-  'scripts/ci/probe-shards.runs.json',
-  'scripts/ci/probe-shards.layout.json',
   'scripts/ci/probe-pack.mjs',
   'scripts/ci/probe-pack.test.mjs',
-  'scripts/ci/probe-seconds.mjs',
-  'scripts/ci/probe-seconds.test.mjs',
   'scripts/ci/seam-shards.mjs',
   'scripts/ci/seam-shards.test.mjs',
   'scripts/ci/seam-units.mjs',
-  'scripts/ci/ci-scope.mjs',
-  'scripts/ci/ci-scope.test.mjs',
   'scripts/ci/main-red.mjs',
   'scripts/ci/main-red.test.mjs',
   'scripts/ci/probe-builds.mjs',
@@ -72,10 +61,6 @@ const NEW_UI_TOOLING_FILES = new Set([
   'scripts/ui-next-bundle.mjs',
 ]);
 
-// What a host job executes from the new trees, and so is NOT the new UI: vite.config.ts names `./ui-next/test-setup.ts` among the root vitest configuration's `setupFiles` (vite.config.ts:55), and
-// the e2e runner runs `vitest run ui/features/plugins/adapters/clearPlugin.test.ts` with that configuration in every run that is not cache-only (e2e/scripts/cohort.mjs:74, run.mjs:229).
-// The file imports nothing (changes.test.mjs fails if it starts to, and if vite.config.ts names another file of the new trees), so the path is all there is to carve out.
-const LOADED_BY_THE_HOST = new Set(['ui-next/test-setup.ts']);
 
 // The Go sources alone (N34: a change of only these is class `go`; a module file, a C file of a cgo package and everything else the Go jobs read stay `other`).
 const GO_SOURCE = /\.go$/;
@@ -90,7 +75,7 @@ const isPlain = (file) => !/[\u0000-\u001f\u007f\\]/.test(file) && !file.startsW
 export function pathArea(file) {
   if (typeof file !== 'string' || file === '' || !isPlain(file)) return 'other';
   if (file === 'README.md' || DOCS_MARKDOWN.test(file) || (STATUS_EVIDENCE.test(file) && !GO_INPUT.test(file))) return 'docs';
-  if (!LOADED_BY_THE_HOST.has(file) && (NEW_UI_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_FILES.has(file)) && !GO_INPUT.test(file)) return 'new-ui';
+  if ((NEW_UI_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_FILES.has(file)) && !GO_INPUT.test(file)) return 'new-ui';
   // N34: a Go source file anywhere else is the Go host's alone: the frontend builds, lints and tests from index.html, ui/, the packages and the new trees, and reads no Go file (the bindings it imports are
   // TypeScript and tracked: a Go change that changes them changes those files too, and `Check bindings are up to date` fails when it did not).
   if (GO_SOURCE.test(file)) return 'go';
@@ -140,7 +125,7 @@ export function outputsOf(result) {
 // The jobs
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-export const WORKFLOW_NAMES = { 'pr.yml': 'Nightly validation', 'pr-checks.yml': 'PR Checks' };
+export const WORKFLOW_NAMES = { 'pr-checks.yml': 'PR Checks' };
 
 /**
  * The jobs a flag skips: `host` is the Go host and what builds or runs it, `ui` the UI jobs, `code` the jobs that read both sides (only documentation skips them: the C02 error transport corpus is made by Go and read by the
@@ -152,21 +137,11 @@ export const GATED = [
   { flag: 'code', workflow: 'pr-checks.yml', job: 'c02-corpus', check: 'C02 error transport corpus and runtime contract' },
   { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-build', check: 'UI build, lint and contracts' },
   { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-test', check: 'UI component tests' },
-  // The nightly workflow (pr.yml, N34): every job runs there, since the classifier says `all` for an event that is not a pull request.
-  { flag: 'host', workflow: 'pr.yml', job: 'windows-connection-profiles', check: 'Windows connection profiles' },
-  { flag: 'host', workflow: 'pr.yml', job: 'release-contracts', check: 'Release packaging contracts' },
-  { flag: 'host', workflow: 'pr.yml', job: 'e2e-application', check: 'e2e-application' },
-  { flag: 'host', workflow: 'pr.yml', job: 'build-artifacts', check: 'build-artifacts' },
 ];
 export const ALWAYS = [
   { workflow: 'pr-checks.yml', job: 'changes' },
   { workflow: 'pr-checks.yml', job: 'repo-guard' },
   { workflow: 'pr-checks.yml', job: 'ui-checks' },
-  { workflow: 'pr.yml', job: 'changes' },
-  { workflow: 'pr.yml', job: 'e2e-tests' },
-  // The nightly primers of the caches a pull request restores (N34): they run whatever the classifier says.
-  { workflow: 'pr.yml', job: 'cache-primer-go' },
-  { workflow: 'pr.yml', job: 'cache-primer-ui' },
 ];
 
 /** The gated jobs a change skips, in the order of the table. */

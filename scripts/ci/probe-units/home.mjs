@@ -6,7 +6,7 @@
 // ui-next/shell/probes and ui-next/page/probes) does not read that directory, and the engine's tests build their scratch tree from what the scan finds: a unit that names a script outside it turns two of them red. So the units run
 // ui-next/shell/probes/home-perf-probe.mjs, which only names the probe, as plugins-page-perf-probe.mjs does (scripts/ci/probe-units/plugins-page.mjs). When PROBE_DIRS holds ui-next/plugins/host/probes the wrapper can go.
 //
-// THE SECONDS ARE THE RUNNER'S (HM3c). They began as estimates, four times the laptop's (85 and 75); `node scripts/ci/probe-seconds.mjs --few-samples max --write` set them from the runner's logs: 17 samples of `home-perf` (min 18 s, median 29 s, p95 34.2 s, max 35 s) and 12 of `home-controls-perf`
+// THE SECONDS ARE THE RUNNER'S (HM3c). They began as estimates, four times the laptop's (85 and 75); `node the shard summary --few-samples max --write` set them from the runner's logs: 17 samples of `home-perf` (min 18 s, median 29 s, p95 34.2 s, max 35 s) and 12 of `home-controls-perf`
 // (min 10 s, median 11.5 s, p95 21 s, max 21 s), each rounded up to 5 s (35 and 25). A unit that is faster than its seconds by more than the margin only warns; one that is slower fails its shard, so they are rounded up. Set them again with the
 // same command when the probe changes.
 
