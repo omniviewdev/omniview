@@ -53,7 +53,7 @@ run default-replaces-the-shell-asked-for "$EXEC" "$EXEC_RUN" backend/pkg/plugin/
   "TestAShellTheCallerNamesBeatsTheDefaultShellSetting TestAnExplicitProgramThatIsNotAShellIsStillRefusedWithADefaultShell TestWithDefaultShellFillsOnlyAnEmptyCommandAndNeverKeepsTheArgumentsOfNoShell"
 
 run default-not-checked-before-use "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
-  's/if _, err := shellenv.Check(value); err != nil {/if false {/' \
+  's/if _, checkErr := shellenv.Check(value); checkErr != nil {/if false {/' \
   "TestADefaultShellThatCannotStartLeavesTheTerminalToTheStatedOrder TestTheListOfShellsMarksTheShellThatStartsWhenTheSettingCannotStart"
 
 run arguments-of-no-shell-go-to-the-default "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
