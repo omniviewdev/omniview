@@ -1482,6 +1482,21 @@ const joined = (parts: readonly Uint8Array[]): Uint8Array => {
   return out;
 };
 
+/**
+ * Where two runs of bytes first differ (their length when one is a prefix of the other), or -1 when they are equal. A deep `toEqual` of a megabyte walks it element by element with a diff, which took more than the
+ * test's whole time budget on a busy runner; this compares the same bytes in a loop and says where they part.
+ */
+const firstDifference = (got: Uint8Array, want: Uint8Array): number => {
+  const shorter = Math.min(got.length, want.length);
+  for (let index = 0; index < shorter; index += 1) {
+    if (got[index] !== want[index]) {
+      return index;
+    }
+  }
+
+  return got.length === want.length ? -1 : shorter;
+};
+
 /** Mounts and shows a screen over a feed that was reattached, and lets the emulator come; the first frame is the test's. */
 async function reattached(replay: TerminalReplay | undefined, options: RigOptions = {}): Promise<Rig> {
   const r = rig({ ...options, reattach: { ...options.reattach, ...(replay === undefined ? {} : { replay }) } });
@@ -1686,7 +1701,7 @@ describe('a replay: a terminal the page took back after a reload', () => {
       expect(slice.length).toBeLessThanOrEqual(FLOW.slice);
     }
 
-    expect(joined(slices)).toEqual(kept);
+    expect(firstDifference(joined(slices), kept)).toBe(-1);
     // Applied: no frame is asked for at rest.
     const asked = r.frames().asked;
     r.frame();
