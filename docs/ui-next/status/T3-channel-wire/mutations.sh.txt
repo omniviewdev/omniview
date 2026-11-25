@@ -100,3 +100,12 @@ control the-queue-count-is-not-kept $T/channel_serve.go 'TestAStormOfStreamsKeep
 
 control another-version-opens-the-terminal $T/channel_serve.go 'TestAnAttachOfVersionOneIsRefusedWithTheUnsupportedFrameWhateverTheCapability' 'unsupported-closes,version-refusal-opens-nothing' \
   $'\t\t_ = ch.Send(unsupportedFrame())\n\t\treturn' $'\t\t_ = ch.Send(unsupportedFrame())'
+
+control no-unwatch $T/channel_serve.go 'TestAWatcherThatLeftTakesNoPlaceOfTheFourAndNoLiveWatcherIsEvictedForIt' 'left-watcher-forgotten' \
+  $'\ts.channel.unwatchLocked(c)\n\tif s.channel.holder == c {' $'\tif s.channel.holder == c {'
+
+control ended-ready-says-the-count $T/channel_serve.go 'TestTheReadyOfTheKeptEndOfATerminalSaysNoInputAppliedAndHowItEnded' 'ended-ready-zero' \
+  $'&kept.end, 0)' $'&kept.end, 7)'
+
+control version-before-capability-shape $T/channel_serve.go 'TestTheAttachIsParsedCapabilityShapeFirstThenVersionAndNeitherAnswerLooksAtATerminal' 'cap-shape-before-version' \
+  $'err != nil || req.Cap == "" || req.V == 0 {' $'err != nil || req.V == 0 {'

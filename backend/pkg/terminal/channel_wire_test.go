@@ -540,3 +540,73 @@ func requireTheStormPageKeptTheProtocol(t *testing.T, i int, st pageState, input
 		assert.NotContains(t, st.order[at:], wApplied, "page %d: nor an applied", i)
 	}
 }
+
+// A watcher that leaves is forgotten: it holds no place of the four. Watchers P0, P1, P2 and a holder P3; P1 leaves; two more
+// displacements make four live watchers, and not one of them is evicted for the one that left.
+func TestAWatcherThatLeftTakesNoPlaceOfTheFourAndNoLiveWatcherIsEvictedForIt(t *testing.T) {
+	m, info, _, _ := wireTerminal(t, `sleep 600`)
+	pages := make([]*chanPage, 0, 6)
+	attach := func() {
+		p := m.attach(t, info.Cap, nil)
+		p.waitReady()
+		if n := len(pages); n > 0 {
+			pages[n-1].waitFor("taken-over", func(st pageState) bool { return st.takenOver == 1 })
+		}
+		pages = append(pages, p)
+	}
+	for range 4 {
+		attach()
+	}
+	pages[1].close()
+	pages[1].waitServed()
+	attach()
+	attach() // watchers now: P0, P2, P3, P4 live; P5 holds
+	guarded(t, "left-watcher-forgotten", func() {
+		for _, i := range []int{0, 2, 3, 4} {
+			assert.False(t, pages[i].isClosed(), "watcher %d is live and kept", i)
+		}
+	})
+	pages[5].close()
+	for _, i := range []int{0, 2, 3, 4} {
+		st := pages[i].waitClosed()
+		guarded(t, "left-watcher-forgotten", func() { assert.Equal(t, 1, st.released, "watcher %d is told the terminal is free", i) })
+	}
+}
+
+// The kept end of a terminal says no input applied: nothing more is written to a terminal that ended, so the page resends nothing,
+// even when the terminal had taken input before it ended.
+func TestTheReadyOfTheKeptEndOfATerminalSaysNoInputAppliedAndHowItEnded(t *testing.T) {
+	m, _ := newChannelManager(t, smallChannel)
+	info := m.startChannel(t, `stty -echo -opost; read line; printf 'bye\n'`, Options{})
+	a := m.attach(t, info.Cap, nil)
+	a.waitReady()
+	a.input("go\n")
+	st := a.waitFor("ended", func(st pageState) bool { return len(st.ended) >= 1 })
+	require.Equal(t, []uint64{3}, st.applied, "the shell took the three bytes")
+	b := m.attach(t, info.Cap, nil)
+	ready := b.waitReady()
+	guarded(t, "ended-ready-zero", func() {
+		assert.NotNil(t, ready.Ended, "the end is kept")
+		assert.Zero(t, ready.InputApplied, "the kept end says no input applied")
+	})
+}
+
+// The order of the parse is pinned: the capability is looked at before the version, as the shape of the request, never against the
+// terminals. A version 1 request with a capability gets unsupported, one with an empty capability is malformed (not-found); both
+// answers are decided from the request alone, so neither is an oracle for whether any capability opens a terminal.
+func TestTheAttachIsParsedCapabilityShapeFirstThenVersionAndNeitherAnswerLooksAtATerminal(t *testing.T) {
+	m, _ := newChannelManager(t, smallChannel)
+	unsupported := append([]byte{0x89}, `{"v":2}`...)
+	for name, tc := range map[string]struct {
+		raw  []byte
+		want []byte
+	}{
+		"v 1 with a capability":        {rawAttach(1, "nope"), unsupported},
+		"v 3 with a capability":        {rawAttach(3, "nope"), unsupported},
+		"v 1 with an empty capability": {rawAttach(1, ""), []byte{wNotFound}},
+		"v 2 with an empty capability": {rawAttach(2, ""), []byte{wNotFound}},
+	} {
+		_, frame := firstFrame(t, m, tc.raw)
+		guarded(t, "cap-shape-before-version", func() { assert.Equal(t, tc.want, frame, name) })
+	}
+}
