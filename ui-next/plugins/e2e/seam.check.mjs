@@ -6852,6 +6852,27 @@ function watchExecCalls(page) {
   if (existing !== undefined) return existing;
   const calls = [];
   const asked = new Map();
+  // The capability is learned where the answer is read whole and reliably: a handler of the page's route fetches the answer of `CreateTerminal`, keeps what it carries and hands the page the same answer (reading a response's body after the fact failed in WebKit now and then, and a terminal the check did not know was a terminal the host seemed not to list). A route that takes the call before this one must `fallback()`.
+  void page.route('**/wails/runtime', async (route) => {
+    let body;
+    try {
+      body = JSON.parse(route.request().postData() ?? '{}');
+    } catch {
+      return route.fallback();
+    }
+
+    if (body?.args?.methodID !== methodIdOf(EXEC_SERVICE, 'CreateTerminal') || String(body.args?.['call-id'] ?? '').startsWith('seam-')) return route.fallback();
+    const response = await route.fetch();
+    const text = await response.text();
+    try {
+      const answer = JSON.parse(text);
+      if (typeof answer?.cap === 'string' && typeof answer?.id === 'string') learnCap(answer.id, answer.cap);
+    } catch {
+      // an answer that is no terminal: the page says so
+    }
+
+    return route.fulfill({ response, body: text });
+  });
   page.on('request', (request) => {
     const method = EXEC_CALLS.get(calledMethod(request));
     if (method === undefined) return;
@@ -6871,8 +6892,9 @@ function watchExecCalls(page) {
     call.status = response.status();
     try {
       call.answer = JSON.parse(await response.text());
-    } catch {
+    } catch (error) {
       call.answer = null;
+      call.answerError = String(error?.message ?? error).slice(0, 200);
     }
 
     if (call.method === 'CreateTerminal' && typeof call.answer?.cap === 'string' && typeof call.answer?.id === 'string') {
@@ -7008,7 +7030,10 @@ async function watchQuestions(page) {
 async function startTerminal(page, base, button) {
   const known = await terminalIds(base);
   await button.click();
-  await waitUntil('the host to list the new shell', async () => (await terminalIds(base)).length === known.length + 1, 30_000);
+  await waitUntil('the host to list the new shell', async () => (await terminalIds(base)).length === known.length + 1, 30_000).catch((error) => {
+    const creates = evidenceOf(page).wire.of('CreateTerminal').map((call) => `${String(call.status)} answered=${String(call.answered)} ${call.answerError ?? ''}`);
+    throw new Error(`${String(error.message)}; the page's CreateTerminal calls: ${JSON.stringify(creates)}; the check knows ${String(KNOWN.size)} capabilities`);
+  });
   const id = (await terminalIds(base)).find((one) => !known.includes(one));
   await waitUntil('the emulator to have the keyboard', async () => page.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') ?? false), 30_000);
   await waitUntil('the shell to say its prompt', async () => (await transcriptOf(base, id)).trim() !== '', 20_000);
@@ -9492,7 +9517,7 @@ async function checkTerminalIsolation(browser, getHost, engine) {
   payloads.look('the first terminal\'s capability', capA);
   await spoofPlatform(second);
   await second.route('**/wails/runtime', async (route) => {
-    if (calledMethod(route.request()) !== methodIdOf(WINDOW_SERVICE, 'GetState')) return route.continue();
+    if (calledMethod(route.request()) !== methodIdOf(WINDOW_SERVICE, 'GetState')) return route.fallback();
     const response = await route.fetch();
     const state = await response.json();
     delete state.session;
