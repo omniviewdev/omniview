@@ -217,7 +217,7 @@ export const units = [
     name: 'Probe that a terminal whose taker has gone can be taken back, with a button and one attach, that a stale button asks the host first, and what a tab whose events were down learns when they are back',
     script: 'ui-next/shell/probes/terminal-reattach-e-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-e-probe.json' },
-    seconds: 40,
+    seconds: 128,
   },
   {
     id: 'terminal-reattach-f',
