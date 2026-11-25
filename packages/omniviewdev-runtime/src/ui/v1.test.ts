@@ -10,6 +10,7 @@ const VALUES = [
   'jsonToValue',
   'openLogStream',
   'parseAppError',
+  'useConnectionMetadata',
   'useConnectionReadiness',
   'useConnections',
   'useResolvedResourceTarget',
@@ -18,8 +19,10 @@ const VALUES = [
   'valueToJSON',
 ] as const;
 
-// Names this entry has and the main entry does not: the log stream is a contract of the new shell, not a hook the old shell's providers serve.
-const ONLY_HERE: readonly string[] = ['openLogStream'];
+// Names this entry does not serve as the main entry's own function: the log stream is a contract of the new shell, not a hook the old shell's providers serve;
+// `useConnectionMetadata` is a wrapper in the options form over the main entry's positional hook, which is a shipped API and stays (`ui/useConnectionMetadata.ts`;
+// its test holds that both share one cache).
+const ONLY_HERE: readonly string[] = ['openLogStream', 'useConnectionMetadata'];
 
 describe('@omniviewdev/runtime/ui/v1', () => {
   it('exposes exactly the data layer the first plugin reads through, and the log stream', () => {
