@@ -518,3 +518,44 @@ func TestACommandThatTheUsersDebugTrapSkipsIsNotRecordedAsRun(t *testing.T) {
 	assert.Equal(t, []string{"touch $HOME/ran", "echo done"}, lines, "the skipped command is no record")
 	assert.Equal(t, 2, strings.Count(string(f.sink.output(info.ID)), "\x1b]633;E;"))
 }
+
+// With extdebug or `set -T` the DEBUG trap is inherited by subshells, command substitutions and the parts of a pipeline: what
+// it prints must never land in the user's data, and a command is recorded once.
+func TestTheDebugTrapOfASubshellNeverWritesIntoTheUsersData(t *testing.T) {
+	for name, profile := range map[string]string{"extdebug": "shopt -s extdebug\n", "functrace": "set -T\n"} {
+		t.Run(name, func(t *testing.T) {
+			f := bashFixture(t, profile)
+			info := f.started()
+			require.Equal(t, IntegrationOn, info.Integration.State)
+			f.run(info.ID, "(echo sub) > $HOME/q")
+			f.run(info.ID, "x=$(echo a); echo \"$x\" > $HOME/s")
+			f.run(info.ID, "echo a | cat > $HOME/p")
+			f.run(info.ID, "(exit 3)")
+			for file, want := range map[string]string{"q": "sub\n", "s": "a\n", "p": "a\n"} {
+				assert.Equal(t, want, f.fileOf(file), "%s holds only what the user wrote: no mark, no nonce", file)
+			}
+			var lines []string
+			var codes []int32
+			for _, r := range f.scanned(info.ID).Records() {
+				if r.Ran {
+					lines = append(lines, r.CommandLine)
+					codes = append(codes, r.ExitCode)
+				}
+			}
+			assert.Equal(t, []string{"(echo sub) > $HOME/q", "x=$(echo a); echo \"$x\" > $HOME/s", "echo a | cat > $HOME/p", "(exit 3)"}, lines, "each command once")
+			assert.Equal(t, []int32{0, 0, 0, 3}, codes)
+			out := string(f.sink.output(info.ID))
+			assert.Equal(t, 4, strings.Count(out, "\x1b]633;E;"), "four lines, four marks")
+		})
+	}
+}
+
+// A function of the user's with a name that begins like ours is the user's: their trap's skip applies to it.
+func TestAUsersFunctionNamedLikeOursIsStillTheirs(t *testing.T) {
+	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != \"touch \\$HOME/skipped\" ]]' DEBUG\n__omniview_mine() { touch $HOME/skipped; }\n")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "__omniview_mine")
+	_, err := os.Stat(filepath.Join(f.home, "skipped"))
+	assert.True(t, os.IsNotExist(err), "the user's trap skipped the command in the user's own function")
+}
