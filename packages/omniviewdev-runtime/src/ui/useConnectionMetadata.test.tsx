@@ -89,4 +89,23 @@ describe('the curated useConnectionMetadata (options form)', () => {
     expect(transport.refresh).toHaveBeenCalledTimes(1);
     expect(hook.result.current[1].snapshot?.revision).toBe('2');
   });
+
+  it('a refresh kept across a disable resolves without a request or a change to the shared cache while another consumer listens, and works again once re-enabled', async () => {
+    const hook = renderHook(({ enabled }) => [useConnectionMetadata({ pluginID: 'plugin', connectionID: 'cluster', enabled }), rootHook('plugin', 'cluster')] as const, { initialProps: { enabled: true } });
+    await waitFor(() => expect(hook.result.current[1].snapshot?.revision).toBe('1'));
+    const kept = hook.result.current[0].refresh;
+    hook.rerender({ enabled: false });
+    expect(hook.result.current[0].snapshot).toBeUndefined();
+    const subscriptions = transport.subscriptions;
+    await act(async () => { await kept(); });
+    expect(transport.refresh).not.toHaveBeenCalled();
+    expect(hook.result.current[1].snapshot?.revision).toBe('1');
+    expect(transport.subscriptions).toBe(subscriptions);
+    expect(transport.listener).toBeDefined();
+
+    hook.rerender({ enabled: true });
+    await act(async () => { await kept(); });
+    expect(transport.refresh).toHaveBeenCalledTimes(1);
+    expect(hook.result.current[1].snapshot?.revision).toBe('2');
+  });
 });
