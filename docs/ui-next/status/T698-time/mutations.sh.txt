@@ -8,12 +8,15 @@
 # TestAShellThatIsNotInstalledFallsBack... fails on a clean origin/main of this machine (no shell fallback here): it is
 # skipped in half 2 so that it does not read as a detection.
 # Run from anywhere in the worktree:  bash docs/ui-next/status/T698-time/mutations.sh.txt [control-name]
-# Needs the Go toolchain on PATH.
+# Needs the Go toolchain on PATH and GNU sed (the faults use \t and a range with a block): on macOS `brew install
+# gnu-sed`, which is found as gsed. The scratch copy is written by redirection, never with `sed -i`.
 export GOWORK=off GOTOOLCHAIN=local
 WT=$(git rev-parse --show-toplevel) || exit 2
 PKG=./backend/pkg/terminal/
 M=$(mktemp -d "${TMPDIR:-/tmp}/t698time-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
+SED=$(command -v gsed || command -v sed)
+"$SED" --version 2>/dev/null | grep -q 'GNU sed' || { echo "needs GNU sed (gsed on macOS)" >&2; exit 2; }
 cd "$WT" || exit 2
 only="${1:-}"
 bad=0
@@ -24,23 +27,22 @@ BASELINE=TestAShellThatIsNotInstalledFallsBackAndTheAnswerSaysWhichStarted
 run() {
   name="$1"; file="$2"; expr="$3"; named="$4"
   [ -n "$only" ] && [ "$only" != "$name" ] && return
-  cp "$WT/$file" "$M/$name.go"
-  sed -i -E -e "$expr" "$M/$name.go"
+  "$SED" -E -e "$expr" "$WT/$file" > "$M/$name.go"
   if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
   printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
 
   out=$(go test -overlay="$M/$name.json" "$PKG" -run "$TOUCHED" -count=1 -timeout 300s 2>&1)
   code=$?
-  failed=$(echo "$out" | grep -E '^--- FAIL' | sed -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | sed 's/ $//')
+  failed=$(echo "$out" | grep -E '^--- FAIL' | "$SED" -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | "$SED" 's/ $//')
   if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
   elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
   elif [ "$failed" != "$named" ]; then half1="RED in [$failed], named [$named]"; bad=1
   else half1="RED in exactly [$failed]"; fi
 
-  skip="^($(echo "$named $BASELINE" | sed 's/ /|/g'))\$"
+  skip="^($(echo "$named $BASELINE" | "$SED" 's/ /|/g'))\$"
   out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -count=1 -timeout 600s 2>&1)
   if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
-  else half2="without them: ALSO CAUGHT by other tests [$(echo "$out2" | grep -E '^--- FAIL' | sed -E 's/ \(.*//' | tr '\n' ' ')]"; fi
+  else half2="without them: ALSO CAUGHT by other tests [$(echo "$out2" | grep -E '^--- FAIL' | "$SED" -E 's/ \(.*//' | tr '\n' ' ')]"; fi
   echo "CONTROL $name: $half1 | $half2"
 }
 

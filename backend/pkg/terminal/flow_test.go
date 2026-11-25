@@ -209,12 +209,12 @@ func TestClosingASessionThatIsPausedForCreditEndsItAndDeliversItsClose(t *testin
 
 			flow := m.session(t, info.ID).flow
 			require.NoError(t, m.CloseSession(info.ID))
+			assert.Empty(t, m.running(), "CloseSession returned with the session gone, not because closeWait passed")
 			released, _, _ := flow.check()
 			assert.True(t, released, "closing releases the pacing: a shell that is dying has to be read to finish exiting")
 			end := sink.waitEnd(t, 5*time.Second)
 			assert.Equal(t, EndClosed, end.Reason)
 			assert.Equal(t, ClosedByRequest, end.ClosedBy)
-			assert.Empty(t, m.running(), "CloseSession returned with the session gone, not because closeWait passed")
 			assert.True(t, ended(info.PID), "the shell is gone")
 		})
 	}

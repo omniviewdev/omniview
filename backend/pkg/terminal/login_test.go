@@ -297,12 +297,18 @@ func TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace(t *te
 	})
 
 	t.Run("a program that ignores the hangup lives until the grace and is killed by it", func(t *testing.T) {
+		perl, lookErr := exec.LookPath("perl")
+		if lookErr != nil {
+			t.Skip("no perl on this machine: not run")
+		}
 		info, err := m.Start(Options{Command: []string{shell}}, nil)
 		require.NoError(t, err)
 		send(t, m, info.ID, "trap '' HUP")
 		send(t, m, info.ID, "echo trapped-$((40+2))")
 		sink.waitFor(t, info.ID, "trapped-42")
-		send(t, m, info.ID, "sleep 600")
+		// The program takes the hangup and says so: the signal having arrived is the event the survival is observed from.
+		send(t, m, info.ID, perl+` -e '$|=1; $SIG{HUP}=sub{print "got-hup-",40+2,"\n"}; print "armed-",40+2,"\n"; sleep 1 while 1'`)
+		sink.waitFor(t, info.ID, "armed-42")
 		var foreground Foreground
 		require.Eventually(t, func() bool {
 			busy, busyErr := m.Busy(info.ID)
@@ -313,14 +319,15 @@ func TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace(t *te
 			return true
 		}, 20*time.Second, 10*time.Millisecond)
 
-		// The hangup, and a grace that does not come: what ignores it lives. A wait that says nothing happens can
-		// only get weaker on a busy machine.
+		// The hangup, and a grace that does not come: what ignores it lives. The wait for what the program printed
+		// is for an event; the one after it, that nothing ended, can only get weaker on a busy machine.
 		s := m.session(t, info.ID)
 		go s.hangup(time.Hour)
+		sink.waitFor(t, info.ID, "got-hup-42")
 		select {
 		case <-s.exited:
 			require.FailNow(t, "what ignores the hangup ended before any grace was over")
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(300 * time.Millisecond):
 		}
 		assert.False(t, ended(foreground.PGID), "the program that ignored the hangup lives")
 
