@@ -1657,6 +1657,57 @@ describe('a paste into a real emulator', () => {
   });
 });
 
+describe('one paste path into a real emulator (#698 item 13)', () => {
+  const HOSTILE = 'a\u001b[201~rm -rf x\r';
+  const BRACKETED = '\u001b[200~a[201~rm -rf x\r\u001b[201~';
+
+  function pasting() {
+    const { engine, terminal, write, close } = emulator();
+    const sent: Array<readonly [string, boolean]> = [];
+    engine.onData((data, user) => {
+      sent.push([data, user]);
+    });
+    return { engine, input: inputOf(terminal), write, sent, close };
+  }
+
+  it('cannot end the bracket from inside the text: ESC, ETX and C1 0x9b are gone and the whole text is inside one bracket', async () => {
+    const { input, write, sent, close } = pasting();
+    await write('\u001b[?2004h');
+    pasteInto(input, HOSTILE);
+    expect(sent).toEqual([[BRACKETED, true]]);
+    pasteInto(input, 'x\u0003y\u009bz');
+    expect(sent.at(-1)).toEqual(['\u001b[200~xyz\u001b[201~', true]);
+    close();
+  });
+
+  it('gives the same bytes for the menu\'s paste and the chord\'s paste event', async () => {
+    const { engine, input, write, sent, close } = pasting();
+    await write('\u001b[?2004h');
+    engine.paste(HOSTILE);
+    pasteInto(input, HOSTILE);
+    expect(sent).toEqual([[BRACKETED, true], [BRACKETED, true]]);
+    close();
+  });
+
+  it('is one write for one paste event, with the line endings as xterm makes them', async () => {
+    const { input, write, sent, close } = pasting();
+    pasteInto(input, 'one\ntwo\r\nthree');
+    expect(sent).toEqual([['one\rtwo\rthree', true]]);
+    await write('\u001b[?2004h');
+    pasteInto(input, 'one\ntwo\n');
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(['\u001b[200~one\rtwo\r\u001b[201~', true]);
+    close();
+  });
+
+  it('leaves the text alone when the program did not ask for brackets: nothing can end a bracket that is not there', () => {
+    const { input, sent, close } = pasting();
+    pasteInto(input, 'a\u001b[201~b');
+    expect(sent).toEqual([['a\u001b[201~b', true]]);
+    close();
+  });
+});
+
 describe('the input of a real emulator', () => {
   it('has the attributes the host gives it, and only those: a call replaces what an earlier call set, and the emulator\'s own attributes stay', () => {
     const { engine, terminal, close } = emulator();
