@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -248,7 +249,9 @@ func TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet(t *testing.T
 // A hangup that arrives while the prompt commands run (bash runs them as a non-interactive shell, which does not hang up
 // its jobs) still takes the background jobs with the shell, as the host's close promises (login_test.go).
 func TestAHangupDuringThePromptCommandsStillHangsUpTheJobs(t *testing.T) {
-	f := bashFixture(t, "PROMPT_COMMAND='sleep 3'\n")
+	// The prompt command that follows the job's command stays 3 s when the test says so (a file), so that the hangup arrives
+	// while the prompt commands run, and with `sleep` already running: not before it (that one has nothing to kill).
+	f := bashFixture(t, "PROMPT_COMMAND='echo x >> $HOME/started; sleep 3'\n")
 	info := f.start()
 	require.Equal(t, IntegrationOn, info.Integration.State)
 	require.NoError(t, f.m.Write(info.ID, 0, []byte("sleep 587 & echo job-$!\r")))
@@ -262,6 +265,12 @@ func TestAHangupDuringThePromptCommandsStillHangsUpTheJobs(t *testing.T) {
 		return job > 0
 	}, 20*time.Second, 10*time.Millisecond)
 	t.Cleanup(func() { _ = syscall.Kill(job, syscall.SIGKILL) })
+	// The first prompt command ran before the job's command was read, the second runs after it: wait until it is in its sleep.
+	require.Eventually(t, func() bool {
+		data, _ := os.ReadFile(filepath.Join(f.home, "started"))
+		return strings.Count(string(data), "x") >= 2
+	}, 20*time.Second, 5*time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
 	require.NoError(t, f.m.CloseSession(info.ID))
 	require.Eventually(t, func() bool { return ended(job) }, 8*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
 }
