@@ -3,7 +3,7 @@
 - Agent: ChannelWire (for Main). Ask: the two backend-catalog WIRE items of the page work, asked on #693: (1) a displaced holder is not told when the terminal is free again (the page polls `ListChannelTerminals` every 5 s); (2) input the page sent on a stream that dropped may be lost and the page cannot tell what the host applied. Rule of the owner: the producer states the fact, the consumer never guesses; a breaking change once, with a version bump and a plain refusal (HOW-WE-WORK 11).
 - Worktree: `~/omniview/wt/t693-wire`. Branch: `feat/terminal-channel-released-and-applied`, from `origin/main` `13af4d32`. **Host side only; not pushed.** The page consumes it in the next change.
 - Owned and changed: `backend/pkg/terminal/{channel.go,channel_serve.go,ordered.go}` (`ordered.go` only for the input accounting: one optional callback of an operation), the tests `channel_wire_test.go`, `channel_wire_version_test.go`, `channel_holder_test.go` (two tests of the old "a displaced stream is closed"), the helpers of the channel tests, the protocol document, this file and `T3-channel-wire/mutations.sh.txt`. Not touched: `manager.go`, `env.go`, `integration*`, `internal/shellenv`, `terminal_stream.go` (the adapter needed nothing: every frame is one `Send` of the sender's goroutine, as before).
-- Commits: red `88bd7b76` (version tests), green `e7272e64` (version 2 and `unsupported`), red `d2206b7c` (applied, released, watchers, the pairs, the end state), green `686f2390` (the host), then the test and document commits that follow it on the branch.
+- Commits: red `88bd7b76` (version tests), green `e7272e64` (version 2 and `unsupported`), red `d2206b7c` (applied, released, watchers, the pairs, the end state), green `686f2390` (the host), `f8d5245c` (the controls, the documents), `ed40236b` (the route test reads `applied`; the storm checks as a helper).
 
 ## 1. The wire (protocol document sections 4, 5, 8 and the worked example say it in full)
 
@@ -72,7 +72,15 @@ Each is a fault in a scratch copy of one source file, built with `go test -overl
 
 ## 3. Checks run
 
-See the end of this file (section 4), filled in with what was run and what was not.
+Run from the worktree with the Go 1.27.4 toolchain first on `PATH`, `GOWORK=off GOTOOLCHAIN=local`:
+
+- `go test -race -count=3` of the 70 tests of the `channel*_test.go` files: ok.
+- `go test -count=1 ./backend/pkg/terminal` (the package once): everything passes except `TestAShellThatIsNotInstalledFallsBackAndTheAnswerSaysWhichStarted` (section 4).
+- `go test -count=1 -tags server ./backend/pkg/plugin/exec/...` (the streamroute test, over a real route, included): ok. The route test now decodes `applied` and sees the six bytes of a line.
+- `golangci-lint` v2.15.0 in the CI form (`--new-from-patch` of the diff against `origin/main`, `--new=false --new-from-rev= --new-from-merge-base= --path-prefix=`, `GOWORK=off GOFLAGS=`): 0 issues (it found one, the cognitive complexity of the storm test, fixed by a helper).
+- `GOOS=windows go vet ./backend/pkg/terminal/ ./backend/pkg/plugin/exec/...`, with and without `-tags server`: clean.
+- The 17 controls above (three of them rerun after the storm test's checks became a helper).
+- No CPU burner was run; no soak.
 
 ## 4. Not verified
 
