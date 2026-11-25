@@ -38,6 +38,10 @@ const (
 	SkipMultiplexer IntegrationReason = "multiplexer"
 	// SkipUnsupportedShell: the integration has no script for this shell yet.
 	SkipUnsupportedShell IntegrationReason = "unsupported-shell"
+	// SkipBashTooOld: bash before 4.1 (macOS's system bash is 3.2) lacks what the script needs.
+	SkipBashTooOld IntegrationReason = "bash-too-old"
+	// SkipBashVersionUnknown: the host could not ask the bash which version it is.
+	SkipBashVersionUnknown IntegrationReason = "bash-version-unknown"
 	// SkipSettingUnreadable: the setting could not be read, so the host does not touch the user's shell (fail closed).
 	SkipSettingUnreadable IntegrationReason = "setting-unreadable"
 	// NoReady: the shell did not say it was up within the wait.
