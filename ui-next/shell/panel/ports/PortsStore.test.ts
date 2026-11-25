@@ -20,6 +20,9 @@ function mount(subscribe = true): Rig {
 const ids = (store: PortsStore): string[] => store.getSnapshot().rows.map((row) => row.id);
 const words = (store: PortsStore): string[] => store.getSnapshot().rows.map((row) => `${row.id} ${row.stateWord}`);
 
+/** A session of a producer that states where the forward listens (`local_host`), which the SDK's session does not today: the only kind that Open in browser is offered for, and that Copy says an address for. */
+const listening = (id: string, patch: Record<string, unknown> = {}) => session(id, { local_host: '127.0.0.1', ...patch });
+
 /** The store listened to, and its first read answered with these sessions. */
 async function ready(sessions: readonly unknown[], subscribe = true): Promise<Rig> {
   const rig = mount(subscribe);
@@ -156,7 +159,7 @@ describe('reading the list', () => {
 
   it('makes the row of a forward from what the host states: the resource, the mapping, the state in words', async () => {
     const { store } = await ready([session('a', { state: 'PAUSED', local_port: 9000, remote_port: 80 })]);
-    expect(store.getSnapshot().rows[0]).toMatchObject({ id: 'a', resource: 'res-a', mapping: '127.0.0.1:9000 → :80/TCP', stateWord: 'Paused', reason: undefined });
+    expect(store.getSnapshot().rows[0]).toMatchObject({ id: 'a', resource: 'res-a', mapping: 'port 9000 → :80/TCP', stateWord: 'Paused', reason: undefined });
   });
 
   it('is ready with no row for a host that holds no forward, and for one that answers nothing', async () => {
@@ -446,7 +449,7 @@ describe('Stop', () => {
     store.stop('a');
     fake.emit(CLOSED_EVENT, session('a', { state: 'STOPPED' }));
     expect(ids(store)).toEqual(['b']);
-    expect(store.getSnapshot().announcement).toMatchObject({ text: 'Stopped 127.0.0.1:8081 → :8080/TCP' });
+    expect(store.getSnapshot().announcement).toMatchObject({ text: 'Stopped port 8081 → :8080/TCP' });
     await fake.closeAnswer();
     expect(store.getSnapshot().announcement?.id).toBe(1);
   });
@@ -456,7 +459,7 @@ describe('Stop', () => {
     store.stop('a');
     await fake.closeAnswer();
     expect(ids(store)).toEqual([]);
-    expect(store.getSnapshot().announcement).toMatchObject({ id: 1, text: 'Stopped 127.0.0.1:8081 → :8080/TCP' });
+    expect(store.getSnapshot().announcement).toMatchObject({ id: 1, text: 'Stopped port 8081 → :8080/TCP' });
     fake.emit(CLOSED_EVENT, session('a'));
     expect(store.getSnapshot().announcement?.id).toBe(1);
   });
@@ -467,7 +470,7 @@ describe('Stop', () => {
     await fake.closeFail(new Error('The plugin is busy.'));
     expect(words(store)).toEqual(['a Running']);
     expect(store.getSnapshot().rows[0]?.reason).toBe('Couldn\'t stop it. The plugin is busy.');
-    expect(store.getSnapshot().announcement).toMatchObject({ text: 'Couldn\'t stop 127.0.0.1:8081 → :8080/TCP' });
+    expect(store.getSnapshot().announcement).toMatchObject({ text: 'Couldn\'t stop port 8081 → :8080/TCP' });
   });
 
   it('says it could not stop with no more words when the host gives none', async () => {
@@ -535,8 +538,8 @@ describe('Stop', () => {
 
 describe('Open in browser', () => {
   it('opens the forward\'s own end on this computer, over http, for a forward that runs over TCP', async () => {
-    const { fake, store } = await ready([session('a', { local_port: 3000 })]);
-    fake.serve([session('a', { local_port: 3000 })]);
+    const { fake, store } = await ready([listening('a', { local_port: 3000 })]);
+    fake.serve([listening('a', { local_port: 3000 })]);
     store.open('a');
     await settle();
     expect(fake.opened).toEqual(['http://127.0.0.1:3000']);
@@ -563,8 +566,8 @@ describe('Open in browser', () => {
   });
 
   it('says so when the system does not open it, and does not throw', async () => {
-    const { fake, store } = await ready([session('a')]);
-    fake.serve([session('a')]);
+    const { fake, store } = await ready([listening('a')]);
+    fake.serve([listening('a')]);
     fake.browser.reject = true;
     store.open('a');
     await settle();
@@ -573,14 +576,14 @@ describe('Open in browser', () => {
   });
 });
 
-describe('Copy address', () => {
-  it('puts the forward\'s address on the clipboard, marks the row, says so aloud, and starts the one timer that takes the mark away', async () => {
+describe('Copy', () => {
+  it('puts the forward\'s port on the clipboard, marks the row, says so aloud, and starts the one timer that takes the mark away', async () => {
     const { fake, store } = await ready([session('a')]);
     fake.serve([session('a')]);
     store.copy('a');
     await settle();
-    expect(fake.copied).toEqual(['127.0.0.1:8081']);
-    expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { id: 1, text: 'Address copied' } });
+    expect(fake.copied).toEqual(['8081']);
+    expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { id: 1, text: 'Port copied' } });
     expect(fake.timers()).toBe(1);
     fake.fire();
     expect(store.getSnapshot().copied).toBeUndefined();
@@ -600,7 +603,7 @@ describe('Copy address', () => {
     await settle();
     expect(store.getSnapshot().copied).toBe('b');
     expect(fake.timers()).toBe(1);
-    expect(fake.copied).toEqual(['127.0.0.1:8081', '127.0.0.1:9000']);
+    expect(fake.copied).toEqual(['8081', '9000']);
     expect(store.getSnapshot().announcement?.id).toBe(2);
   });
 
@@ -610,7 +613,7 @@ describe('Copy address', () => {
     fake.clipboard.works = false;
     store.copy('a');
     await settle();
-    expect(store.getSnapshot()).toMatchObject({ copied: undefined, announcement: { text: 'Couldn\'t copy the address' } });
+    expect(store.getSnapshot()).toMatchObject({ copied: undefined, announcement: { text: 'Couldn\'t copy the port' } });
     expect(fake.timers()).toBe(0);
   });
 
@@ -624,12 +627,12 @@ describe('Copy address', () => {
     expect(fake.timers()).toBe(0);
   });
 
-  it('copies the address of a UDP forward: it is an address all the same', async () => {
+  it('copies the port of a UDP forward: it is a port all the same', async () => {
     const { fake, store } = await ready([session('a', { protocol: 'UDP' })]);
     fake.serve([session('a', { protocol: 'UDP' })]);
     store.copy('a');
     await settle();
-    expect(fake.copied).toEqual(['127.0.0.1:8081']);
+    expect(fake.copied).toEqual(['8081']);
   });
 
   it('has no timer at rest: reading, events and a stop start none, and one that is waiting goes with the last subscriber', async () => {
@@ -974,7 +977,7 @@ describe('a press is for the session its button was drawn for', () => {
   });
 
   it('does not open or copy the address of the session that took the id: the press carries the session it was drawn for', async () => {
-    const { fake, store, seen } = await replaced({ local_port: 9000 });
+    const { fake, store, seen } = await replaced({ local_port: 9000, local_host: '127.0.0.1' });
     store.open('a', seen);
     store.copy('a', seen);
     await settle();
@@ -982,7 +985,7 @@ describe('a press is for the session its button was drawn for', () => {
     expect(fake.copied).toEqual([]);
     fake.frames.tick();
     const now = store.getSnapshot().rows[0].session;
-    fake.serve([session('a', { created_at: later, local_port: 9000 })]);
+    fake.serve([listening('a', { created_at: later, local_port: 9000 })]);
     store.open('a', now);
     store.copy('a', now);
     await settle();
@@ -991,10 +994,10 @@ describe('a press is for the session its button was drawn for', () => {
   });
 
   it('is for the same session when only its local port changed: the button that was drawn still acts, at the address the row has now', async () => {
-    const { fake, store } = await ready([session('a')]);
+    const { fake, store } = await ready([listening('a')]);
     const seen = store.getSnapshot().rows[0].session;
-    fake.deliver(CREATED_EVENT, session('a', { local_port: 9000 }));
-    fake.serve([session('a', { local_port: 9000 })]);
+    fake.deliver(CREATED_EVENT, listening('a', { local_port: 9000 }));
+    fake.serve([listening('a', { local_port: 9000 })]);
     store.open('a', seen);
     await settle();
     expect(fake.opened).toEqual(['http://127.0.0.1:9000']);
@@ -1012,7 +1015,7 @@ describe('the check mark of Copy address', () => {
     store.copy('a');
     fake.emit(CREATED_EVENT, session('a', { created_at: later }));
     await settle();
-    expect(fake.copied).toEqual(['127.0.0.1:8081']);
+    expect(fake.copied).toEqual(['8081']);
     expect(store.getSnapshot().copied).toBeUndefined();
     expect(fake.timers()).toBe(0);
     expect(store.getSnapshot().announcement?.text).toBe('Copied, but the forward is not running.');
@@ -1024,10 +1027,10 @@ describe('the check mark of Copy address', () => {
     store.copy('a');
     fake.emit(CREATED_EVENT, session('a', { local_port: 9000 }));
     await settle();
-    expect(fake.copied).toEqual(['127.0.0.1:8081']);
+    expect(fake.copied).toEqual(['8081']);
     expect(store.getSnapshot().copied).toBeUndefined();
     expect(fake.timers()).toBe(0);
-    expect(store.getSnapshot().announcement?.text).toBe('Address copied');
+    expect(store.getSnapshot().announcement?.text).toBe('Port copied');
   });
 
   it('is for the address that was copied, for two seconds: it goes when the row changes within them, and the timer with it', async () => {
@@ -1105,7 +1108,7 @@ describe('what is said aloud when forwards close in one frame', () => {
     fake.deliver(CLOSED_EVENT, session('b', { local_port: 8082 }));
     expect(store.getSnapshot()).toBe(shown);
     fake.frames.tick();
-    expect(store.getSnapshot().announcement?.text).toBe('Stopped 127.0.0.1:8081 → :8080/TCP. Stopped 127.0.0.1:8082 → :8080/TCP');
+    expect(store.getSnapshot().announcement?.text).toBe('Stopped port 8081 → :8080/TCP. Stopped port 8082 → :8080/TCP');
     expect(ids(store)).toEqual([]);
   });
 });
@@ -1231,8 +1234,8 @@ describe('a window that comes back to a person', () => {
   });
 });
 
-describe('before Open in browser or Copy address acts', () => {
-  // Open in browser asks the host first and acts after: the runtime's call needs no user gesture. Copy address writes the address it knows inside the press, because a window that is WebKit lets a page write to the clipboard only while
+describe('before Open in browser or Copy acts', () => {
+  // Open in browser asks the host first and acts after: the runtime's call needs no user gesture. Copy writes what it copies inside the press (the producer states a host here, so it is an address), because a window that is WebKit lets a page write to the clipboard only while
   // the gesture of the press lasts, and asks the host meanwhile: what the host says is what is told, and the check mark waits for it. `early` is how many times the action has been made at the press, before the host answers.
   const ACTIONS = [
     {
@@ -1246,7 +1249,7 @@ describe('before Open in browser or Copy address acts', () => {
       early: 0,
     },
     {
-      name: 'Copy address',
+      name: 'Copy',
       press: (store: PortsStore, session?: number) => {
         store.copy('a', session);
       },
@@ -1259,19 +1262,19 @@ describe('before Open in browser or Copy address acts', () => {
 
   describe.each(ACTIONS)('$name', ({ press, done, said, at, early }) => {
     it('asks the host for the list once more: the press is the moment the person trusts the row', async () => {
-      const { fake, store } = await ready([session('a', { local_port: 9000 })]);
+      const { fake, store } = await ready([listening('a', { local_port: 9000 })]);
       press(store);
       await settle();
       expect(fake.listed()).toBe(2);
       expect(done(fake)).toHaveLength(early);
-      await fake.answer([session('a', { local_port: 9000 })]);
+      await fake.answer([listening('a', { local_port: 9000 })]);
       expect(done(fake)).toEqual([at]);
     });
 
     it('tells that the forward is not running when the host says it failed: the row shows what the host said, and an announcement says so', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       press(store);
-      await fake.answer([session('a', { state: 'FAILED' })]);
+      await fake.answer([listening('a', { state: 'FAILED' })]);
       expect(done(fake)).toHaveLength(early);
       expect(words(store)).toEqual(['a Failed']);
       expect(store.getSnapshot().announcement?.text).toBe(said);
@@ -1279,7 +1282,7 @@ describe('before Open in browser or Copy address acts', () => {
     });
 
     it('tells that the forward is not running when the host no longer lists it: the row goes, and an announcement says so', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       press(store);
       await fake.answer([]);
       expect(done(fake)).toHaveLength(early);
@@ -1288,18 +1291,18 @@ describe('before Open in browser or Copy address acts', () => {
     });
 
     it('tells that the forward is not running when another session took the id: the press was for the first', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       press(store);
-      await fake.answer([session('a', { created_at: '2026-11-24T12:00:00Z', local_port: 9000 })]);
+      await fake.answer([listening('a', { created_at: '2026-11-24T12:00:00Z', local_port: 9000 })]);
       expect(done(fake)).toHaveLength(early);
       expect(words(store)).toEqual(['a Running']);
       expect(store.getSnapshot().announcement?.text).toBe(said);
     });
 
     it('does not ask the host, and does nothing, for a press that is not for the session shown: a button drawn for the first session acts on nothing', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       const seen = store.getSnapshot().rows[0].session;
-      fake.deliver(CREATED_EVENT, session('a', { created_at: '2026-11-24T12:00:00Z' }));
+      fake.deliver(CREATED_EVENT, listening('a', { created_at: '2026-11-24T12:00:00Z' }));
       press(store, seen);
       await settle();
       expect(fake.listed()).toBe(1);
@@ -1307,7 +1310,7 @@ describe('before Open in browser or Copy address acts', () => {
     });
 
     it('goes on with the row that was pressed when the host cannot be asked: there is nothing better to go on, and nothing is said of it', async () => {
-      const { fake, store } = await ready([session('a', { local_port: 9000 })]);
+      const { fake, store } = await ready([listening('a', { local_port: 9000 })]);
       press(store);
       await fake.fail(new Error('down'));
       expect(done(fake)).toEqual([at]);
@@ -1315,39 +1318,39 @@ describe('before Open in browser or Copy address acts', () => {
     });
 
     it('says nothing when the tool is left before the host answers', async () => {
-      const { fake, store, stop } = await ready([session('a')]);
+      const { fake, store, stop } = await ready([listening('a')]);
       press(store);
       stop();
-      await fake.answer([session('a')]);
+      await fake.answer([listening('a')]);
       expect(done(fake)).toHaveLength(early);
       expect(store.getSnapshot().announcement).toBeUndefined();
     });
 
     it('tells that the forward is not running when it was closed while the read failed: the events say what the host cannot, and a press is not for a row that is gone', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       press(store);
-      fake.emit(CLOSED_EVENT, session('a'));
+      fake.emit(CLOSED_EVENT, listening('a'));
       await fake.fail(new Error('down'));
       expect(done(fake)).toHaveLength(early);
       expect(store.getSnapshot().announcement?.text).toBe(said);
     });
 
     it('does not take an older answer over a newer read that has landed: the press asks again, and follows the later answer', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       press(store);
       fake.woken.fire();
-      await fake.answer([session('a', { state: 'FAILED' })], 1);
+      await fake.answer([listening('a', { state: 'FAILED' })], 1);
       expect(words(store)).toEqual(['a Failed']);
-      await fake.answer([session('a')], 0);
+      await fake.answer([listening('a')], 0);
       expect(words(store)).toEqual(['a Failed']);
-      await fake.answer([session('a', { state: 'FAILED' })]);
+      await fake.answer([listening('a', { state: 'FAILED' })]);
       expect(done(fake)).toHaveLength(early);
       expect(store.getSnapshot().announcement?.text).toBe(said);
     });
 
     it('does not trust the row the events held when one came while the host was being asked: the connection that changed may have ended it, and the host is asked again', async () => {
-      const { fake, store } = await ready([session('a')]);
-      fake.serve([session('a', { state: 'FAILED' })]);
+      const { fake, store } = await ready([listening('a')]);
+      fake.serve([listening('a', { state: 'FAILED' })]);
       press(store);
       fake.emit(CONNECTION_EVENT);
       await settle();
@@ -1357,8 +1360,8 @@ describe('before Open in browser or Copy address acts', () => {
     });
 
     it('still goes on when an event that does not touch the forward came while the host was being asked: the host is asked again, and says it runs', async () => {
-      const { fake, store } = await ready([session('a', { local_port: 9000 })]);
-      fake.serve([session('a', { local_port: 9000 }), session('b')]);
+      const { fake, store } = await ready([listening('a', { local_port: 9000 })]);
+      fake.serve([listening('a', { local_port: 9000 }), session('b')]);
       press(store);
       fake.emit(CREATED_EVENT, session('b'));
       await settle();
@@ -1368,16 +1371,16 @@ describe('before Open in browser or Copy address acts', () => {
 
   describe('Open in browser', () => {
     it('acts on the address the host says now, for the same session: a local port that was assigned meanwhile is the one', async () => {
-      const { fake, store } = await ready([session('a', { local_port: 8081 })]);
+      const { fake, store } = await ready([listening('a', { local_port: 8081 })]);
       store.open('a');
-      await fake.answer([session('a', { local_port: 9000 })]);
+      await fake.answer([listening('a', { local_port: 9000 })]);
       expect(fake.opened).toEqual(['http://127.0.0.1:9000']);
     });
   });
 
-  describe('Copy address', () => {
-    it('writes the address it knows inside the press, before the host answers: the write needs the gesture of the press, which the host\'s answer would outlast', async () => {
-      const { fake, store } = await ready([session('a')]);
+  describe('Copy', () => {
+    it('writes what it knows inside the press, before the host answers: the write needs the gesture of the press, which the host\'s answer would outlast', async () => {
+      const { fake, store } = await ready([listening('a')]);
       store.copy('a');
       expect(fake.copied).toEqual(['127.0.0.1:8081']);
       expect(fake.listed()).toBe(2);
@@ -1385,20 +1388,20 @@ describe('before Open in browser or Copy address acts', () => {
     });
 
     it('marks the row and says that it was copied once the host says that the forward runs, and not before: the mark waits for the host', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       store.copy('a');
       await settle();
       expect(store.getSnapshot().copied).toBeUndefined();
       expect(store.getSnapshot().announcement).toBeUndefined();
-      await fake.answer([session('a')]);
+      await fake.answer([listening('a')]);
       expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { text: 'Address copied' } });
       expect(fake.timers()).toBe(1);
     });
 
     it('keeps the first write when the forward runs at another address and says nothing more: no mark, and no second write', async () => {
-      const { fake, store } = await ready([session('a', { local_port: 8081 })]);
+      const { fake, store } = await ready([listening('a', { local_port: 8081 })]);
       store.copy('a');
-      await fake.answer([session('a', { local_port: 9000 })]);
+      await fake.answer([listening('a', { local_port: 9000 })]);
       expect(fake.copied).toEqual(['127.0.0.1:8081']);
       expect(store.getSnapshot().copied).toBeUndefined();
       expect(fake.timers()).toBe(0);
@@ -1406,10 +1409,10 @@ describe('before Open in browser or Copy address acts', () => {
     });
 
     it('says only that the clipboard refused when it did, whatever the host says: a write that failed is the one thing to tell', async () => {
-      const { fake, store } = await ready([session('a')]);
+      const { fake, store } = await ready([listening('a')]);
       fake.clipboard.works = false;
       store.copy('a');
-      await fake.answer([session('a', { state: 'FAILED' })]);
+      await fake.answer([listening('a', { state: 'FAILED' })]);
       expect(store.getSnapshot().announcement?.text).toBe('Couldn\'t copy the address');
       expect(store.getSnapshot().copied).toBeUndefined();
     });
@@ -1476,5 +1479,82 @@ describe('a plugin that runs again while the events connection is down', () => {
     fake.reconnected.fire();
     await fake.answer([]);
     expect(words(store)).toEqual(['a Stopped']);
+  });
+});
+
+describe('where a forward listens, as the producer states it', () => {
+  const hosted = (patch: Record<string, unknown> = {}): Record<string, unknown> => session('a', { local_port: 3000, local_host: '127.0.0.1', ...patch });
+  const plain = (): Record<string, unknown> => session('a', { local_port: 3000 });
+
+  it('never opens a forward whose host is not stated: Open in browser is unavailable, the host is not asked and nothing is opened', async () => {
+    const { fake, store } = await ready([plain()]);
+    store.open('a');
+    await settle();
+    expect(fake.listed()).toBe(1);
+    expect(fake.opened).toEqual([]);
+  });
+
+  it('opens a forward that states a loopback host at that host and port, once the host has said that it still runs', async () => {
+    const { fake, store } = await ready([hosted()]);
+    fake.serve([hosted()]);
+    store.open('a');
+    await settle();
+    expect(fake.opened).toEqual(['http://127.0.0.1:3000']);
+  });
+
+  it('brackets an IPv6 host when it opens', async () => {
+    const { fake, store } = await ready([hosted({ local_host: '::1' })]);
+    fake.serve([hosted({ local_host: '::1' })]);
+    store.open('a');
+    await settle();
+    expect(fake.opened).toEqual(['http://[::1]:3000']);
+  });
+
+  it('does not open a forward that listens beyond this computer', async () => {
+    const { fake, store } = await ready([hosted({ local_host: '0.0.0.0' })]);
+    store.open('a');
+    await settle();
+    expect(fake.listed()).toBe(1);
+    expect(fake.opened).toEqual([]);
+  });
+
+  it('copies the port alone for a forward whose host is not stated, and says Port copied', async () => {
+    const { fake, store } = await ready([plain()]);
+    fake.serve([plain()]);
+    store.copy('a');
+    expect(fake.copied).toEqual(['3000']);
+    await settle();
+    expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { text: 'Port copied' } });
+  });
+
+  it('copies host and port for a forward that states a host, and says Address copied', async () => {
+    const { fake, store } = await ready([hosted()]);
+    fake.serve([hosted()]);
+    store.copy('a');
+    expect(fake.copied).toEqual(['127.0.0.1:3000']);
+    await settle();
+    expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { text: 'Address copied' } });
+  });
+
+  it('says that it could not copy the port, or the address, by what it copied', async () => {
+    const bare = await ready([plain()]);
+    bare.fake.serve([plain()]);
+    bare.fake.clipboard.works = false;
+    bare.store.copy('a');
+    await settle();
+    expect(bare.store.getSnapshot().announcement?.text).toBe('Couldn\'t copy the port');
+    const stated = await ready([hosted()]);
+    stated.fake.serve([hosted()]);
+    stated.fake.clipboard.works = false;
+    stated.store.copy('a');
+    await settle();
+    expect(stated.store.getSnapshot().announcement?.text).toBe('Couldn\'t copy the address');
+  });
+
+  it('names a forward by its port when it says that one was stopped: no host is invented', async () => {
+    const { fake, store } = await ready([plain()]);
+    store.stop('a');
+    await fake.closeAnswer(0);
+    expect(store.getSnapshot().announcement?.text).toBe('Stopped port 3000 → :8080/TCP');
   });
 });

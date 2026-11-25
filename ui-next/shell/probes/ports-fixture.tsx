@@ -6,6 +6,7 @@
 // are refused); how a close answers is `closes.mode` (`ok` at once, `hold` until the probe answers it, `refuse`: the host would not, `gone`: the host has no such forward).
 // `emit` tells every handler of an event, as the runtime does, and `flood` tells many, each in a task of its own, as the runtime's socket does. The calls the product made are in `reads.listed`, `closes.ids` and `opened`; what it
 // listens to is `handlers`, `on()` and `off()`; the names of the connections are `names`. The page's own commits are `window.__commits` (React's Profiler: the probe reads them in the development build, where the Profiler reports).
+// A session carries `local_host` only when the probe gives one: the SDK's session does not, and the tool says what the producer states and makes no host up.
 // The events connection coming back after a gap is `reconnected.fire()`, and how many listen for it is `reconnected.listeners()`; how many listen for the window coming back to a person is `woken.listeners()` (the window's own events are the
 // page's to dispatch: a `focus` of the window, a `visibilitychange` of the document).
 //

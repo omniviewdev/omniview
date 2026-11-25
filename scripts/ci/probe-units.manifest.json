@@ -300,7 +300,10 @@
       "hint-size",
       "footer-singular",
       "footer-suffix-stuck",
-      "section-timeout"
+      "section-timeout",
+      "hosts-guessed",
+      "reach-unstated",
+      "endpoint-guessed"
     ]
   },
   "ui-next/shell/probes/ports-d-probe.mjs": {
