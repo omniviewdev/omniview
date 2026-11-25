@@ -41,11 +41,11 @@ export function describeFailure(operation: Operation, name: string, error: unkno
 /** Tells the person: a sticky error toast of the host, whose Retry runs the call again. A second failure of the same words is a count on the one toast. */
 export function reportFailure(store: NoticesStore, failure: ActionFailure): void {
   const said = describeFailure(failure.operation, failure.name, failure.error);
-  console.error(`[plugins] ${failure.operation} of ${failure.id} failed`, failure.error);
   if (said === undefined) {
     return;
   }
 
+  console.error(`[plugins] ${failure.operation} of ${failure.id} failed`, failure.error);
   store.notify({
     severity: 'error',
     title: said.title,
