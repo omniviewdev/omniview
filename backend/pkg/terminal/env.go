@@ -142,3 +142,17 @@ func requestedShell(command []string, started string) string {
 	}
 	return command[0]
 }
+
+// The bounds of Launch.Env.
+const (
+	// MaxEnvName is the most bytes of a name.
+	MaxEnvName = 256
+	// MaxEnvValue is the most bytes of a value.
+	MaxEnvValue = 32 << 10
+	// MaxEnvEntries is the most names.
+	MaxEnvEntries = 64
+	// MaxEnvBytes is the most bytes of all names and values together.
+	MaxEnvBytes = 256 << 10
+)
+
+func checkLaunchEnv(env map[string]string) error { return nil }
