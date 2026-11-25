@@ -493,6 +493,31 @@ func TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem(t *testing.
 	})
 }
 
+// fishMajor is the major version of the fish at path: the script's path to the trusted line depends on it.
+func fishMajor(t *testing.T, path string) int {
+	t.Helper()
+	out, err := exec.Command(path, "--version").Output()
+	require.NoError(t, err)
+	return fishMajorOf(string(out))
+}
+
+// fishMajorOf reads "fish, version 4.0.2" (or "fish, version 3.7.1-12-gabc").
+func fishMajorOf(text string) int {
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return 0
+	}
+	major, _, _ := strings.Cut(fields[len(fields)-1], ".")
+	n, _ := strconv.Atoi(major)
+	return n
+}
+
+func TestTheFishVersionGateReadsTheMajorVersion(t *testing.T) {
+	assert.Equal(t, 4, fishMajorOf("fish, version 4.0.2\n"))
+	assert.Equal(t, 3, fishMajorOf("fish, version 3.7.1-12-gabc1234\n"))
+	assert.Equal(t, 0, fishMajorOf(""))
+}
+
 // A user who binds Enter keeps their binding: the host adds nothing to it, so the command has no trusted line, and runs.
 func TestAFishUserWhoBoundEnterKeepsTheirBindingAndTheCommandHasNoTrustedLine(t *testing.T) {
 	f := newIntegrationFixture(t, "fish", integrationShell(t, "fish"))
@@ -503,7 +528,12 @@ func TestAFishUserWhoBoundEnterKeepsTheirBindingAndTheCommandHasNoTrustedLine(t 
 	info := f.started()
 	f.run(info.ID, "echo hello > ran")
 	assert.Equal(t, "hello\n", f.fileOf("ran"), "the command ran")
-	assert.NotContains(t, string(f.sink.output(info.ID)), "\x1b]633;E;", "no trusted line: the user's binding wins")
+	if fishMajor(t, f.shell) >= 4 {
+		assert.NotContains(t, string(f.sink.output(info.ID)), "\x1b]633;E;", "no trusted line: the user's binding wins")
+	} else {
+		// Before fish 4 the script prints the line from fish_preexec, whatever Enter is bound to: the mark may be there.
+		t.Log("fish below 4: the binding and the command ran; a preexec mark is allowed")
+	}
 }
 
 // An abbreviation is recorded as what ran: the expanded text, as fish_preexec and VS Code's own script have it.
