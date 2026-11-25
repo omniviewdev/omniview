@@ -210,10 +210,14 @@ func TestAppliedAndATakeoverAtOnceCountEveryByteOnceAndTellOnlyTheHolder(t *test
 	require.Equal(t, "w:B", dev.waitEntered(t))
 	dev.letThrough()
 	guarded(t, "applied-from-the-ready-value", func() { b.waitFor("applied 3", appliedIs(3)) })
+	require.Eventually(t, func() bool { return len(dev.log()) == 2 }, settle, 1e6, "both writes returned")
+	b.close() // the terminal is free: the watcher is woken, and told, and closed
+	st := a.waitClosed()
 	guarded(t, "only-the-holder-is-told", func() {
-		assert.Empty(t, a.state().applied, "a watcher is sent no applied frame")
-		assert.Equal(t, []string{"w:A1", "w:B"}, dev.log())
+		assert.Empty(t, st.applied, "a watcher is sent no applied frame")
+		assert.Equal(t, 1, st.released)
 	})
+	assert.Equal(t, []string{"w:A1", "w:B"}, dev.log())
 }
 
 // ---- released ----
