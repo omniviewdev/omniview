@@ -4,7 +4,7 @@ import type { FrameV1 } from '../contract/v1';
 import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
 import { ConnectionNames } from './connectionName';
-import { createContributions, describeDetail, HOME_PAGE, routeKey, type PluginSource } from './contributions';
+import { createContributions, describeDetail, HOME_PAGE, routeKey, type PluginChoice, type PluginSource } from './contributions';
 import { HOME_ROUTE } from './hostPages';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -300,9 +300,9 @@ describe('subscribe', () => {
 
 // A route that names no connection would be read in the plugin's first one, an arbitrary one when there are two or more: the window completes it from what it knows (HM1).
 describe('complete, with what the window knows of the plugin\'s connections', () => {
-  const choose = (keys: readonly string[], last?: string) => {
+  const choose = (keys: readonly string[], last?: string, state: PluginChoice['state'] = 'ready') => {
     const plugins: PluginSource = { getSnapshot: () => [ready()], subscribe: () => () => undefined };
-    return createContributions({ plugins, frames: new Published<FrameV1>(), choice: (plugin) => (plugin === 'acme' ? { keys, last } : undefined) });
+    return createContributions({ plugins, frames: new Published<FrameV1>(), choice: (plugin) => (plugin === 'acme' ? { state, keys, last } : undefined) });
   };
 
   const at = route('acme', 'gadgets');
@@ -340,5 +340,26 @@ describe('complete, with what the window knows of the plugin\'s connections', ()
     expect(choose([]).complete?.(at, nowhere)).toBe(at);
     expect(world([ready()]).contributions.complete?.(at, nowhere)).toBe(at);
     expect(choose(['north', 'south']).complete?.(route('other', 'gadgets'), nowhere)).toEqual(route('other', 'gadgets'));
+  });
+
+  // The list of connections is not known (HM2; CodeRabbit on #676): nothing can be chosen, and the plugin is never opened on the first connection it would take.
+  describe.each([['unread' as const], ['failed' as const]])('while the list is %s', (state) => {
+    it('opens Home, not the plugin, whatever the plugin would have taken', () => {
+      expect(choose([], undefined, state).complete?.(at, nowhere)).toEqual(HOME_ROUTE);
+      expect(choose(['north', 'south'], 'south', state).complete?.(at, nowhere)).toEqual(HOME_ROUTE);
+      expect(choose(['north'], undefined, state).complete?.(route('acme', HOME_PAGE), nowhere)).toEqual(HOME_ROUTE);
+    });
+
+    it('leaves alone a route that names a connection, one opened from a tab of the plugin, and a tab that is only described again', () => {
+      const named = route('acme', 'gadgets', { connection: 'east' });
+
+      expect(choose([], undefined, state).complete?.(named, nowhere)).toBe(named);
+      expect(choose([], undefined, state).complete?.(at, from('acme', { connection: 'north' }))).toEqual(route('acme', 'gadgets', { connection: 'north' }));
+      expect(choose([], undefined, state).complete?.(at, { from: undefined, source: 'refresh' })).toBe(at);
+    });
+
+    it('says nothing for a plugin the window has no data for: only a plugin whose connections are listed is held back', () => {
+      expect(choose([], undefined, state).complete?.(route('other', 'gadgets'), nowhere)).toEqual(route('other', 'gadgets'));
+    });
   });
 });

@@ -151,6 +151,28 @@ describe('what it draws', () => {
     expect(options()[0]?.querySelector('[data-shell-part="pickerReason"]')).toBeNull();
   });
 
+  it('draws the plugin\'s secondary text as a second line with its full text as its tip, and lets a reason take the line when there is one', async () => {
+    const detailed = OPTIONS.map((option) => ({ ...option, detail: `EKS \u00b7 ${option.id}-1` }));
+    await open(make({ options: detailed }));
+
+    const north = options()[0];
+    const detail = north?.querySelector('[data-shell-part="pickerDetail"]');
+    expect(detail).toHaveTextContent('EKS \u00b7 north-1');
+    expect(detail).toHaveAttribute('data-ov-tip', 'EKS \u00b7 north-1');
+    // `east` failed: its reason is the second line, and its secondary text is not drawn beside it.
+    expect(options()[2]?.querySelector('[data-shell-part="pickerDetail"]')).toBeNull();
+    expect(options()[2]?.querySelector('[data-shell-part="pickerReason"]')).toHaveTextContent('certificate has expired');
+  });
+
+  it('finds an option by what its secondary text says, and keeps the name\'s runs for the name', async () => {
+    const detailed: ShellPickerOption = { id: 'north', label: 'north', state: { role: 'healthy', word: 'Connected' }, detail: 'EKS \u00b7 eu-west-1' };
+    const { user } = await open(make({ options: [detailed, ...OPTIONS.slice(1)] }));
+
+    await user.keyboard('eu-west');
+
+    expect(names()).toEqual(['\u2022north Connected EKS \u00b7 eu-west-1']);
+  });
+
   it('shows what the host says when there is no option, and closes on Enter: nothing is active', async () => {
     const { user, picker } = await open(make({ options: [], current: undefined }));
 

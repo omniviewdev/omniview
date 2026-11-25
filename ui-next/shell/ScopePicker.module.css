@@ -199,7 +199,8 @@
     min-inline-size: 0;
   }
 
-  .reason {
+  .reason,
+  .detail {
     grid-column: 3 / -1;
     grid-row: 2;
     min-inline-size: 0;

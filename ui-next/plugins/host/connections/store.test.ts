@@ -178,6 +178,37 @@ describe('the list', () => {
     expect(world.store.getSnapshot()).toEqual({ loaded: true, failed: false, connections: [] });
   });
 
+  it('carries the plugin\'s description as the connection\'s detail, as one line, and none when the plugin gave none', async () => {
+    const world = build();
+
+    await loadedWith(world, {
+      acme: [
+        { connection: { id: 'with', name: 'With', description: '  EKS \n us-east-1 ' }, readiness: 'CONNECTED' },
+        { connection: { id: 'without', name: 'Without', description: '   ' }, readiness: 'CONNECTED' },
+        record('absent', 'Absent'),
+      ],
+    });
+
+    expect(world.store.getSnapshot().connections.map((entry) => [entry.key, entry.detail])).toEqual([
+      ['absent', undefined],
+      ['with', 'EKS us-east-1'],
+      ['without', undefined],
+    ]);
+  });
+
+  it('makes a new connection when only the detail changed, and keeps the very object when nothing did', async () => {
+    const world = build();
+    await loadedWith(world, { acme: [{ connection: { id: 'a', name: 'A', description: 'one' }, readiness: 'CONNECTED' }] });
+    const first = connection(world, 'acme', 'a');
+
+    await loadedWith(world, { acme: [{ connection: { id: 'a', name: 'A', description: 'one' }, readiness: 'CONNECTED' }] });
+    expect(connection(world, 'acme', 'a')).toBe(first);
+
+    await loadedWith(world, { acme: [{ connection: { id: 'a', name: 'A', description: 'two' }, readiness: 'CONNECTED' }] });
+    expect(connection(world, 'acme', 'a')).not.toBe(first);
+    expect(connection(world, 'acme', 'a')?.detail).toBe('two');
+  });
+
   it('says each connection\'s state as the host\'s readiness says it, with the host\'s own line for a failure it classified', async () => {
     const world = build();
 

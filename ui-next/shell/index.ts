@@ -26,6 +26,7 @@ export type { PanelStore, PanelState, PluginTools, Session as PanelSession, Sess
 export type { PanelBindings, PanelCard, PanelCardAction, PanelEmpty, PanelLink, PanelNewSession } from './panel/host';
 export { completeLogCard, createLogStreams, LogsBody, logCardOf, LOGS_EMPTY, LOGS_TOOL, LOGS_TOOL_ID } from './panel/logs';
 export type { LogFeedHandle, LogOpened, LogStreams, LogTarget } from './panel/logs';
+export { copyToClipboard } from './panel/logs/clipboard';
 export { createRailChoice, loadSession, resolveWindowName, windowStorage } from './session';
 export type { LoadedSession, RailChoice, WindowState } from './session';
 export { createPaletteStore, seedChips } from './core/palette';

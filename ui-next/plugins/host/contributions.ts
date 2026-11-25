@@ -57,6 +57,11 @@ export type PluginSource = {
 
 /** What the window knows of a plugin's connections (`ContributionsDeps.choice`). */
 export type PluginChoice = {
+  /**
+   * What the window knows of the plugin's connections: `ready` (it read them, and `keys` are all there are, possibly none), `unread` (the first read has not come back) or `failed` (it came back failing and there is no earlier list
+   * to go by). Only a `ready` list says which connection a route that names none is read in (`complete`).
+   */
+  readonly state: 'ready' | 'unread' | 'failed';
   /** The keys of the connections the window has read for the plugin. */
   readonly keys: readonly string[];
   /** The key of the connection the plugin was last shown in, in this window. */
@@ -217,10 +222,15 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
       const inherited = from?.plugin === route.plugin ? from.params.connection : undefined;
       let params = route.params.connection === undefined && typeof inherited === 'string' ? { ...route.params, connection: inherited } : route.params;
       // A route that still names no connection is read by the plugin in its first one, which with two or more is an arbitrary one: the window chooses instead (HM1). The connection the plugin was last used in; with none used there is nothing
-      // to choose from, and the destination is Home, where they are listed. With one connection (or none) there is nothing to choose between and the route stays as it is. A tab that is already open keeps the route it has (`refresh`): this is
-      // for what the person opens.
+      // to choose from, and the destination is Home, where they are listed. With one connection (or none) there is nothing to choose between and the route stays as it is. While the list is not known (HM2: not read yet, or the read failed and
+      // there is no earlier list) nothing can be chosen either, and the destination is Home too: the plugin is never opened on a connection that nobody chose. A tab that is already open keeps the route it has (`refresh`): this is for what
+      // the person opens.
       if (params.connection === undefined && entry?.phase === 'ready' && source !== 'refresh') {
         const known = choice?.(route.plugin);
+        if (known !== undefined && known.state !== 'ready') {
+          return HOME_ROUTE;
+        }
+
         if (known !== undefined && known.keys.length > 1) {
           if (known.last === undefined || !known.keys.includes(known.last)) {
             return HOME_ROUTE;

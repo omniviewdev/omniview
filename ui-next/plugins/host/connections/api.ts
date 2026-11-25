@@ -7,7 +7,7 @@ import type { AppError } from '@omniviewdev/runtime/ui/v1';
 
 /** One connection as the host lists it: the plugin's id for it, its name, and where its client stands. Not a probe of the network: the host says what it holds. */
 export type StateRecord = {
-  readonly connection: { readonly id: string; readonly name?: string | undefined };
+  readonly connection: { readonly id: string; readonly name?: string | undefined; readonly description?: string | undefined };
   /** `UNKNOWN`, `DISCONNECTED`, `PENDING`, `CONNECTED` or `FAILED`. */
   readonly readiness: string;
   /** Why the last start failed, as the host classified it. Meaningful only when the readiness is `FAILED`. */

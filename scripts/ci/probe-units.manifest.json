@@ -82,6 +82,16 @@
     "probe": true,
     "controls": []
   },
+  "ui-next/shell/probes/home-perf-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "late-change",
+      "second-row",
+      "key-commits",
+      "idle-timer",
+      "push-out"
+    ]
+  },
   "ui-next/shell/probes/logs-open-probe.mjs": {
     "probe": true,
     "controls": [

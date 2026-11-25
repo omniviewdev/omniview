@@ -151,3 +151,12 @@ export function nameOf(connection: { readonly name?: string | undefined }): stri
   const name = typeof connection.name === 'string' ? connection.name.trim() : '';
   return name === '' ? UNNAMED : name;
 }
+
+/** The longest secondary text Home and the picker draw: the line is clipped and its tip says the rest, and a plugin's text is only a description a person may have written. */
+export const DETAIL_MAX = 200;
+
+/** The plugin's secondary text for a connection (the SDK connection's `description`) as one line: whitespace collapsed, at most `DETAIL_MAX` characters; undefined when there is none. */
+export function detailOf(connection: { readonly description?: string | undefined }): string | undefined {
+  const text = typeof connection.description === 'string' ? connection.description.replace(/\s+/g, ' ').trim() : '';
+  return text === '' ? undefined : text.length > DETAIL_MAX ? `${text.slice(0, DETAIL_MAX - 1)}…` : text;
+}

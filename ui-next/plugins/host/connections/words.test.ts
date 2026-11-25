@@ -1,7 +1,7 @@
 import { parseAppError, type AppError } from '@omniviewdev/runtime/ui/v1';
 import { describe, expect, it } from 'vitest';
 import type { ConnectionState } from './types';
-import { faceOf, failureOf, nameOf, outcomeOfStatus, safeReason, stateOfReadiness, type FailedState } from './words';
+import { DETAIL_MAX, detailOf, faceOf, failureOf, nameOf, outcomeOfStatus, safeReason, stateOfReadiness, type FailedState } from './words';
 
 // The words of a connection (words.ts): what each state is called, what the host's answers (a readiness word, an `apperror` envelope, a status) come to, and the one line a person may be shown about a failure.
 // No runtime and no host: the envelopes are the ones the host sends, and the errors are delivered the way the runtime delivers them.
@@ -175,6 +175,37 @@ describe('nameOf', () => {
     const connection = { id: 'a1b2c3-secret-id', name: undefined };
 
     expect(nameOf(connection)).toBe('Unnamed connection');
+  });
+});
+
+describe('detailOf', () => {
+  it('is the plugin\'s secondary text, as the plugin gave it', () => {
+    expect(detailOf({ description: 'EKS \u00b7 us-east-1' })).toBe('EKS \u00b7 us-east-1');
+  });
+
+  it('is one line: the whitespace between the words is one space and the ends are trimmed', () => {
+    expect(detailOf({ description: '  EKS \n\t us-east-1  \r\n' })).toBe('EKS us-east-1');
+  });
+
+  it.each([
+    ['none', {}],
+    ['undefined', { description: undefined }],
+    ['empty', { description: '' }],
+    ['blank', { description: ' \n\t ' }],
+    ['not text', { description: 42 as unknown as string }],
+  ])('is undefined when the description is %s: the row has no second line', (_name, connection) => {
+    expect(detailOf(connection)).toBeUndefined();
+  });
+
+  it('is cut at DETAIL_MAX characters, the cut said by an ellipsis, so that a long text a person wrote never grows the row', () => {
+    const text = detailOf({ description: 'w'.repeat(DETAIL_MAX + 50) });
+
+    expect(text).toHaveLength(DETAIL_MAX);
+    expect(text?.endsWith('\u2026')).toBe(true);
+  });
+
+  it('keeps a text of exactly DETAIL_MAX characters whole', () => {
+    expect(detailOf({ description: 'w'.repeat(DETAIL_MAX) })).toBe('w'.repeat(DETAIL_MAX));
   });
 });
 

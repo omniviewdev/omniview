@@ -83,7 +83,9 @@
   "terminal-controls-find-f": 68,
   "problems-operations": 240,
   "problems-operations-controls-counts": 120,
-  "problems-operations-controls-page": 120
+  "problems-operations-controls-page": 120,
+  "home-perf": 85,
+  "home-controls-perf": 75
  },
  "sharedLayoutRuns": [
   {
