@@ -729,6 +729,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       sentTo -= head;
       head = 0;
     }
+
     return drop;
   };
 
@@ -814,7 +815,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     forgiven = outstanding;
     // What the host applied is not sent again; what it did not is, from the first kept byte, before anything typed since.
-    if (ready.writerKnown === false && attachedBefore) {
+    if (!ready.writerKnown && attachedBefore) {
       // The host has no count for this feed's writer (it restarted, or forgot the writer): what it applied of the kept bytes is not known, and sending them again could type them twice. They are let go, and the user is told.
       dropKept(ready.inputApplied);
     } else {
