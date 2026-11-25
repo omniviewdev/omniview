@@ -11,8 +11,8 @@
 //           read them, so the host jobs are skipped; the UI jobs, the Windows build (it runs the kit's build and generate scripts on a shipping platform), the kit probes and the Pods cluster check are not.
 //   all     anything else, and a change with no path: every job runs. A path the script has never seen is "other", and "other" is absorbing.
 //
-// The workflows read three flags, `skip_host`, `skip_ui` and `skip_windows`, as `needs.changes.outputs.skip_host != 'true'`: a classifier that wrote nothing skips nothing. On a runner the command also writes
-// one `::notice title=Changed paths::class=<class> skip_host=<bool> skip_ui=<bool> skip_windows=<bool>`, which the check run keeps as an annotation: the merge gate reads the class there. The jobs are listed in
+// The workflows read three flags, `skip_host`, `skip_ui` and `skip_code`, as `needs.changes.outputs.skip_host != 'true'`: a classifier that wrote nothing skips nothing. On a runner the command also writes
+// one `::notice title=Changed paths::class=<class> skip_host=<bool> skip_ui=<bool> skip_code=<bool>`, which the check run keeps as an annotation: the merge gate reads the class there. The jobs are listed in
 // GATED, the jobs that always run in ALWAYS, and scripts/ci/changes-workflows.test.mjs holds both workflows to the two lists. A new job goes in one of them, or that test fails.
 //
 // WHAT "CANNOT BE REACHED" MEANS. The host jobs (Go checks, Go lint, Windows connection profiles, Bindings freshness, Release packaging contracts, the macOS and Linux build-artifacts, the e2e suite) build
@@ -26,7 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-export const CLASSES = ['docs', 'new-ui', 'all'];
+export const CLASSES = ['docs', 'new-ui', 'go', 'all'];
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Areas
@@ -77,17 +77,23 @@ const NEW_UI_TOOLING_FILES = new Set([
 // The file imports nothing (changes.test.mjs fails if it starts to, and if vite.config.ts names another file of the new trees), so the path is all there is to carve out.
 const LOADED_BY_THE_HOST = new Set(['ui-next/test-setup.ts']);
 
+// The Go sources alone (N34: a change of only these is class `go`; a module file, a C file of a cgo package and everything else the Go jobs read stay `other`).
+const GO_SOURCE = /\.go$/;
+
 // What the Go jobs read wherever it sits: Go sources and modules, and the C family a cgo package compiles. There is none under the new UI today; if one appears, the Go jobs run.
 const GO_INPUT = /(?:^|\/)(?:go\.(?:mod|sum|work|work\.sum)|[^/]*\.(?:go|c|cc|cpp|cxx|h|hh|hpp|m|mm|s|S|syso))$/;
 
 /** A plain repository-relative path: no control character (a newline in a name must not be able to write a line of a log), no backslash, no empty, `.` or `..` segment. */
 const isPlain = (file) => !/[\u0000-\u001f\u007f\\]/.test(file) && !file.startsWith('/') && !file.endsWith('/') && file.split('/').every((part) => part !== '' && part !== '.' && part !== '..');
 
-/** `docs`, `new-ui` or `other`. A path that is not known to be the first two is `other`, which runs everything. */
+/** `docs`, `new-ui`, `go` or `other`. A path that is not known to be one of the first three is `other`, which runs everything. */
 export function pathArea(file) {
   if (typeof file !== 'string' || file === '' || !isPlain(file)) return 'other';
   if (file === 'README.md' || DOCS_MARKDOWN.test(file) || (STATUS_EVIDENCE.test(file) && !GO_INPUT.test(file))) return 'docs';
   if (!LOADED_BY_THE_HOST.has(file) && (NEW_UI_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_ROOTS.some((root) => file.startsWith(root)) || NEW_UI_TOOLING_FILES.has(file)) && !GO_INPUT.test(file)) return 'new-ui';
+  // N34: a Go source file anywhere else is the Go host's alone: the frontend builds, lints and tests from index.html, ui/, the packages and the new trees, and reads no Go file (the bindings it imports are
+  // TypeScript and tracked: a Go change that changes them changes those files too, and `Check bindings are up to date` fails when it did not).
+  if (GO_SOURCE.test(file)) return 'go';
   return 'other';
 }
 
@@ -101,7 +107,7 @@ export function pathArea(file) {
  */
 export function classify(paths) {
   if (!Array.isArray(paths)) throw new TypeError('classify needs the array of changed paths');
-  const counts = { docs: 0, 'new-ui': 0, other: 0 };
+  const counts = { docs: 0, 'new-ui': 0, go: 0, other: 0 };
   const deciding = [];
   for (const file of new Set(paths)) {
     const area = pathArea(file);
@@ -109,41 +115,48 @@ export function classify(paths) {
     if (area === 'other') deciding.push(String(file));
   }
   let klass = 'all';
-  let reason = 'a changed path is not documentation or the new UI: nothing can be skipped';
-  if (counts.docs + counts['new-ui'] + counts.other === 0) {
+  let reason = 'a changed path is not documentation, the new UI or Go: nothing can be skipped';
+  if (counts.docs + counts['new-ui'] + counts.go + counts.other === 0) {
     reason = 'no changed path: nothing proves that a job can be skipped';
-  } else if (counts.other === 0 && counts['new-ui'] === 0) {
+  } else if (counts.other === 0 && counts.go === 0 && counts['new-ui'] === 0) {
     klass = 'docs';
     reason = 'every changed path is documentation that nothing builds, tests or reads';
-  } else if (counts.other === 0) {
+  } else if (counts.other === 0 && counts.go === 0) {
     klass = 'new-ui';
     reason = 'every changed path is the new UI or its documentation, which the host jobs never read';
+  } else if (counts.other === 0 && counts['new-ui'] === 0) {
+    klass = 'go';
+    reason = 'every changed path is a Go source file (or documentation), which the frontend jobs never read';
   }
-  return { class: klass, skipHost: klass !== 'all', skipUi: klass === 'docs', skipWindows: klass === 'docs', counts, deciding, reason };
+  return { class: klass, skipHost: klass === 'docs' || klass === 'new-ui', skipUi: klass === 'docs' || klass === 'go', skipCode: klass === 'docs', counts, deciding, reason };
 }
 
 /** What the workflows read: the class, and the two flags as the strings `true` and `false`. */
 export function outputsOf(result) {
-  return { class: result.class, skip_host: String(result.skipHost), skip_ui: String(result.skipUi), skip_windows: String(result.skipWindows) };
+  return { class: result.class, skip_host: String(result.skipHost), skip_ui: String(result.skipUi), skip_code: String(result.skipCode) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // The jobs
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-export const WORKFLOW_NAMES = { 'pr.yml': 'PR Validation', 'pr-checks.yml': 'PR Checks' };
+export const WORKFLOW_NAMES = { 'pr.yml': 'Nightly validation', 'pr-checks.yml': 'PR Checks' };
 
 /**
- * The jobs a flag skips: `host` is the Go host and what builds or runs it, `ui` the UI jobs, `windows` the Windows build (a change to the new UI keeps it: it builds the kit and runs its scripts on a shipping platform; only
- * documentation skips it). `check` is the name the job's check has (a matrix job has one check per entry; a call of a reusable workflow has its id). Each is `needs: changes` with `if: needs.changes.outputs.skip_<flag> != 'true'`.
+ * The jobs a flag skips: `host` is the Go host and what builds or runs it, `ui` the UI jobs, `code` the jobs that read both sides (only documentation skips them: the C02 error transport corpus is made by Go and read by the
+ * runtime's tests, so a Go change and a UI change both run it). `check` is the name the job's check has (a matrix job has one check per entry; a call of a reusable workflow has its id). Each is `needs: changes` with `if: needs.changes.outputs.skip_<flag> != 'true'`.
  */
 export const GATED = [
-  { flag: 'host', workflow: 'pr-checks.yml', job: 'windows-connection-profiles', check: 'Windows connection profiles' },
   { flag: 'host', workflow: 'pr-checks.yml', job: 'go-checks', check: 'Go checks' },
+  { flag: 'host', workflow: 'pr-checks.yml', job: 'go-lint', check: 'Go lint' },
+  { flag: 'code', workflow: 'pr-checks.yml', job: 'c02-corpus', check: 'C02 error transport corpus and runtime contract' },
+  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-build', check: 'UI build, lint and contracts' },
+  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-test', check: 'UI component tests' },
+  // The nightly workflow (pr.yml, N34): every job runs there, since the classifier says `all` for an event that is not a pull request.
+  { flag: 'host', workflow: 'pr.yml', job: 'windows-connection-profiles', check: 'Windows connection profiles' },
+  { flag: 'host', workflow: 'pr.yml', job: 'release-contracts', check: 'Release packaging contracts' },
   { flag: 'host', workflow: 'pr.yml', job: 'e2e-application', check: 'e2e-application' },
   { flag: 'host', workflow: 'pr.yml', job: 'build-artifacts', check: 'build-artifacts' },
-  { flag: 'ui', workflow: 'pr-checks.yml', job: 'c02-corpus', check: 'C02 error transport corpus and runtime contract' },
-  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-build', check: 'UI build, lint and component tests' },
 ];
 export const ALWAYS = [
   { workflow: 'pr-checks.yml', job: 'changes' },
@@ -151,11 +164,14 @@ export const ALWAYS = [
   { workflow: 'pr-checks.yml', job: 'ui-checks' },
   { workflow: 'pr.yml', job: 'changes' },
   { workflow: 'pr.yml', job: 'e2e-tests' },
+  // The nightly primers of the caches a pull request restores (N34): they run whatever the classifier says.
+  { workflow: 'pr.yml', job: 'cache-primer-go' },
+  { workflow: 'pr.yml', job: 'cache-primer-ui' },
 ];
 
 /** The gated jobs a change skips, in the order of the table. */
 export function skippedBy(result) {
-  return GATED.filter((entry) => result[{ host: 'skipHost', ui: 'skipUi', windows: 'skipWindows' }[entry.flag]]);
+  return GATED.filter((entry) => result[{ host: 'skipHost', ui: 'skipUi', code: 'skipCode' }[entry.flag]]);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -172,8 +188,8 @@ const show = (file) => {
 
 function countsLine(result) {
   const { counts } = result;
-  const total = counts.docs + counts['new-ui'] + counts.other;
-  return `${total} changed path${total === 1 ? '' : 's'}: ${counts.docs} documentation, ${counts['new-ui']} new UI, ${counts.other} elsewhere.`;
+  const total = counts.docs + counts['new-ui'] + counts.go + counts.other;
+  return `${total} changed path${total === 1 ? '' : 's'}: ${counts.docs} documentation, ${counts['new-ui']} new UI, ${counts.go} Go, ${counts.other} elsewhere.`;
 }
 
 /** The job summary (Markdown): the class, the counts, and what was skipped by path, or the paths that made everything run. */
@@ -187,7 +203,7 @@ export function renderSummary(result) {
       if (result.deciding.length > SHOWN) lines.push(`- (${result.deciding.length - SHOWN} more)`);
     }
   } else {
-    lines.push(`This change is ${result.class === 'docs' ? 'documentation only' : 'the new UI and its documentation only'}: ${result.reason}.`, '');
+    lines.push(`This change is ${result.class === 'docs' ? 'documentation only' : result.class === 'go' ? 'Go sources only' : 'the new UI and its documentation only'}: ${result.reason}.`, '');
     lines.push(`| Check skipped by path: ${result.class} | Workflow |`, '|---|---|');
     for (const entry of skippedBy(result)) lines.push(`| ${entry.check} | ${WORKFLOW_NAMES[entry.workflow]} |`);
   }
@@ -242,7 +258,9 @@ export function main(argv = process.argv.slice(2), { env = process.env, out = (v
 
   let result;
   try {
-    result = classify(changedPaths({ ...options, env }));
+    // An event that is not a pull request (the nightly run, a manual one) has no change to classify: nothing is skipped (N34).
+    const event = env.GITHUB_EVENT_NAME ?? 'pull_request';
+    result = classify(event === 'pull_request' ? changedPaths({ ...options, env }) : []);
   } catch (error) {
     const message = show(error.message);
     err(`changes: ${message}\n`);
@@ -251,7 +269,7 @@ export function main(argv = process.argv.slice(2), { env = process.env, out = (v
   }
 
   const outputs = outputsOf(result);
-  out(`changed paths: ${result.counts.docs + result.counts['new-ui'] + result.counts.other} (docs ${result.counts.docs}, new-ui ${result.counts['new-ui']}, other ${result.counts.other})\n`);
+  out(`changed paths: ${result.counts.docs + result.counts['new-ui'] + result.counts.go + result.counts.other} (docs ${result.counts.docs}, new-ui ${result.counts['new-ui']}, go ${result.counts.go}, other ${result.counts.other})\n`);
   for (const [name, value] of Object.entries(outputs)) out(`${name}=${value}\n`);
   if (env.GITHUB_ACTIONS === 'true') out(`::notice title=Changed paths::${Object.entries(outputs).map(([name, value]) => `${name}=${value}`).join(' ')}\n`);
   if (result.deciding.length > 0) {

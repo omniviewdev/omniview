@@ -34,7 +34,7 @@ jobs:
       class: ${{ steps.classify.outputs.class }}
       skip_host: ${{ steps.classify.outputs.skip_host }}
       skip_ui: ${{ steps.classify.outputs.skip_ui }}
-      skip_windows: ${{ steps.classify.outputs.skip_windows }}
+      skip_code: ${{ steps.classify.outputs.skip_code }}
     steps:
       # HEAD^1 is the base of the merge commit a pull request is checked out as: two commits are all the script needs.
       - uses: actions/checkout@v4
@@ -75,76 +75,6 @@ jobs:
       - name: Check the path classifier
         run: node --test scripts/ci/changes.test.mjs
 
-  windows-connection-profiles:
-    name: Windows connection profiles
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_host != 'true' }}
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: Test released-SDK connection profiles and private credentials
-        run: go test ./backend/pkg/plugin/resource -count=1
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test plugin archive and startup validation on Windows
-        run: go test ./backend/pkg/plugin -run '^(TestCheckTarball|TestValidateHasBinary|TestValidateForStart|TestValidateForPhase)'
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test native output ownership and handle observations
-        run: go test ./internal/devoutputs -count=1
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test exclusive private directory creation
-        run: go test ./internal/devsession -run '^TestCreatePrivateDirectoryAt' -count=1
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test Windows channel profile deletion
-        run: go test . -run '^(TestWindowsDelete|TestUpdateServiceListCurrentCustomRoot)'
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      # CI5 (docs/ui-next/status/CI5.md): packages whose behaviour differs on Windows. A test that cannot pass there is skipped in the test with its reason (`WINDOWS DEFECT <id>` for a
-      # product defect, a plain reason when the test is Unix-only by nature); the step after them lists every skip with its reason in the job summary, so a skip is never silent.
-      - name: Test cached plugin roots, the settings file and plugin settings on Windows
-        shell: bash
-        run: go test -v -count=1 ./internal/appstate ./internal/settings/store ./backend/pkg/plugin/settings 2>&1 | tee "$RUNNER_TEMP/windows-packages.log"
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test plugin uninstall, reinstall and update, and the channel mTLS tests, on Windows
-        shell: bash
-        run: |
-          go test -v -count=1 ./backend/pkg/plugin \
-            -run 'TestPluginFixture|Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate|TestHostChannelSyncInstallsSignedFeatureArchive|TestChannelInstallsAndHostSyncSerialize|TestCreateBackend|TestChannel|TestInstalledNative|TestAProcessThat|TestPinnedSDKLoader' \
-            2>&1 | tee "$RUNNER_TEMP/windows-plugin-lifecycle.log"
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: List the tests Windows skipped, with their reasons
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          {
-            echo "### Tests skipped on Windows (CI5)"
-            echo
-            echo "| Test | Reason |"
-            echo "|---|---|"
-            cat "$RUNNER_TEMP"/windows-packages.log "$RUNNER_TEMP"/windows-plugin-lifecycle.log 2>/dev/null |
-              awk '/^=== (RUN|CONT) +/{cur=$3; next} /^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /{r=$0; sub(/^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /,"",r); sub(/: rename C:.*/,"",r); if (!(cur in why)) why[cur]=r; next} /^ *--- SKIP: /{n=$3; r=why[n]; if (r=="") r="(no reason logged)"; gsub(/\|/,"\\|",r); print "| " n " | " r " |"}'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-
-  # Go checks, Go lint, Bindings freshness and the release packaging contracts are ONE job (N31): four jobs each paid a container, a checkout, Go and Task (about 2 minutes of setup apiece) and a slot. The groups run
-  # one after the other in the same checkout, and a group that comes after another runs whatever happened before it (`!cancelled()`), so one push shows every failing group, as four jobs did. A cancelled
-  # job runs nothing more. The lint reads the patch of the pull request against its base, in a detached worktree of the committed go.mod/go.sum graph (docs/ui-next/status/N24-L2.md).
   go-checks:
     name: Go checks
     needs: changes
@@ -230,17 +160,6 @@ jobs:
       - name: Test development control (devcontrol tag)
         run: task check:go-test-devcontrol GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
-      # The release packaging contracts (they were a job of their own): the Homebrew cask publication and the syntax of the macOS packaging scripts.
-      - name: Check Homebrew cask publication
-        if: ${{ !cancelled() }}
-        run: node --test build/homebrew/update-cask.test.mjs
-
-      - name: Check macOS packaging shell syntax
-        if: ${{ !cancelled() }}
-        run: |
-          bash -n build/darwin/build-universal.sh
-          bash -n build/darwin/verify-release-package.sh
-
       # Bindings freshness (it was a job of its own).
       - name: Install pinned private Wails CLI
         if: ${{ !cancelled() }}
@@ -254,7 +173,53 @@ jobs:
         if: ${{ !cancelled() }}
         run: GOWORK=off GOFLAGS= node --test scripts/wails-tool.test.mjs
 
-      # Go lint (it was a job of its own). The Lint step blocks: a finding on a line the PR changes (`--new-from-patch`) fails this job. Reproduce locally: see docs/ui-next/status/N24-L2.md.
+  # Go lint is a job of its own again (N34): it runs beside the build and the tests, not after them (68 s of a 427 s job on the runner). It needs no build: it reads a detached worktree of the head.
+  go-lint:
+    name: Go lint
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_host != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner
+      # as the container user after checkout's temporary HOME goes away.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Select restored Go cache for Task
+        id: go-cache
+        run: |
+          GO_BUILD_CACHE_DIRECTORY="$(GOWORK=off GOFLAGS= go env GOCACHE)"
+          printf 'directory=%s\n' "$GO_BUILD_CACHE_DIRECTORY" >> "$GITHUB_OUTPUT"
+          GOWORK=off GOFLAGS= go env -json GOVERSION GOOS GOARCH GOCACHE
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify effective Task Go cache
+        run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      # The Lint step blocks: a finding on a line the PR changes (`--new-from-patch`) fails this job. Reproduce locally: see docs/ui-next/status/N24-L2.md.
       # Lint runs in a detached worktree on the committed go.mod/go.sum graph.
       - name: Prepare isolated checkout for lint
         id: lint-source
@@ -293,7 +258,7 @@ jobs:
   c02-corpus:
     name: C02 error transport corpus and runtime contract
     needs: changes
-    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
+    if: ${{ needs.changes.outputs.skip_code != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container:
@@ -387,7 +352,7 @@ jobs:
   # Task and the install, and built the workspace packages twice. The groups run in order in one checkout; a group that comes after another runs whatever happened before it (`!cancelled()`), so one push shows
   # every failing group. A new step goes into the group that has what it needs.
   ui-build:
-    name: UI build, lint and component tests
+    name: UI build, lint and contracts
     needs: changes
     if: ${{ needs.changes.outputs.skip_ui != 'true' }}
     runs-on: ubuntu-latest
@@ -438,11 +403,11 @@ jobs:
         run: node --test scripts/ui-flavour.test.mjs
 
       # The static checks, the kit's contracts and the runtime's API report. All of them read the built workspace packages.
-      # The two workflows' tables and gates, read with `yaml` (scripts/ci/changes-workflows.test.mjs): it needs the installed dependencies, so it runs here. A change to a workflow or to the
+      # The unit tests of the CI scripts (N34: the path gating of the workflows, the probe and seam plans, the scope, `ci-main-red`; about 11 s), read with `yaml`: they need the installed dependencies, so they run here. A change to a workflow or to the
       # classifier is a path the classifier does not know, so no UI job is skipped for it.
-      - name: Check the path gating of the workflows
+      - name: Test the CI scripts
         if: ${{ !cancelled() }}
-        run: node --test scripts/ci/changes-workflows.test.mjs
+        run: node --test scripts/ci/*.test.mjs
 
       # The typed lint, the typecheck and the API reports resolve the workspace packages through their built output (task check:ui-build runs this step inside the build step above; the component tests need them too).
       # `task check:ui-build` runs `task packages` first: when that step succeeded the packages are built and this one has nothing to do (N32: it repeated four package builds, 33 s).
@@ -472,6 +437,50 @@ jobs:
         if: ${{ !cancelled() }}
         run: pnpm --filter @omniviewdev/runtime run api:check
 
+  # The component tests are a job of their own (N34): they were 249 s of a 571 s job, and run beside the build, the lint and the contracts.
+  ui-test:
+    name: UI component tests
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: task check:ui-install
+
+      # The tests import the built workspace packages (the kit's output).
+      - name: Build the workspace packages
+        run: task packages
+
       # The root vitest run. The kit has to be built: ui-next imports its output.
       # The JSON reports go to the runner's temp directory (outside tracked paths) beside the default reporter; the exit code stays vitest's.
       # The last step of the job names what failed in the job summary. The one-file run is the cheap one, so it goes first.
@@ -494,7 +503,7 @@ jobs:
   # had to run. A cancelled run does not run it. List a new part in `needs`.
   ui-checks:
     name: UI checks
-    needs: [changes, c02-corpus, ui-build]
+    needs: [changes, c02-corpus, ui-build, ui-test]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-slim
     timeout-minutes: 2

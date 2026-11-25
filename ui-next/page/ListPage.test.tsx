@@ -6,6 +6,9 @@ import { ListPage } from './ListPage';
 import { FELT_MS, REFRESH_LIMIT_MS } from './useRefreshFeedback';
 import { SEARCH_DELAY_MS } from './useSearchDraft';
 
+// The real `setTimeout`, taken at import, before any test installs a fake clock: a test that has to let REAL time go by (a slow machine) sleeps with it.
+const realSetTimeout = globalThis.setTimeout;
+
 // jsdom lays nothing out: the table's region gets the size a browser would give it, so rows are in view.
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 600 : 0;
@@ -366,6 +369,29 @@ describe('ListPage: a Refresh that does not finish (S3)', () => {
     fireEvent.click(within(header).getByRole('button', { name: 'Retry' }));
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(within(header).getByRole('article', { name: 'Info: Refresh Items' })).toHaveTextContent('Refreshing…');
+  });
+
+  it('is not moved by real time passing: the thirty seconds are the fake clock\'s, so a starved machine says it at the same tick', async () => {
+    // The file's clock follows the real one (`shouldAdvanceTime`, which the user-event tests below rely on), and this test stands one millisecond from the limit: a CI machine that is starved for a few tens of
+    // milliseconds between two awaits of the test moved the clock past it, and the page had already said "did not finish" when the test looked for "Refreshing…". Real time that goes by must not matter here.
+    const refresh = vi.fn(async () => new Promise<void>(() => undefined));
+    const { container } = render(page({ refresh }));
+    const header = container.querySelector('header')!;
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Items' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REFRESH_LIMIT_MS - 1);
+    });
+    await new Promise<void>((resolve) => {
+      realSetTimeout(resolve, 100);
+    });
+
+    expect(within(header).getByRole('article', { name: 'Info: Refresh Items' })).toHaveTextContent('Refreshing…');
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(within(header).getByRole('article', { name: 'Error: Refresh Items' })).toHaveTextContent('Refresh did not finish');
   });
 
   it('does not say it for a read that answers in time', async () => {

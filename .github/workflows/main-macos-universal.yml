@@ -5,9 +5,11 @@ name: Main macOS universal
 # that only shows on x86_64 is seen minutes after the merge, not at the next
 # nightly. Compile gate only: nothing is uploaded, signed or published; the
 # signed universal build is desktop-build.yml (nightly, release, feature channel).
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run it locally before a push when their change touches it (docs/ui-next/AGENTS.md, rule 25).
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "27 3 * * *"
+  workflow_dispatch:
 
 # A run on main is not cancelled by a newer push (N32: a cancelled run is read from its jobs by `ci-main-red`, and a superseded build is not a failed one); a group keeps one pending run.
 concurrency:
