@@ -243,11 +243,11 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     }
   };
 
-  /** Whether the feed of an entry was lost to another tab and its end is not known. A status that cannot be read is one warning and no loss. */
+  /** Whether the feed of an entry was lost to another tab, its end is not known, and it can be asked who holds the terminal. A status that cannot be read is one warning and no loss. */
   const isLost = (entry: Entry): boolean => {
     try {
       const status = entry.feed.getSnapshot();
-      return status.state === 'ended' && status.detached !== undefined && status.exit === undefined;
+      return status.state === 'ended' && status.detached !== undefined && status.exit === undefined && typeof entry.feed.refresh === 'function';
     } catch (error) {
       warn(`[panel] ${entry.plugin} could not ask who holds the terminal`, error);
       return false;

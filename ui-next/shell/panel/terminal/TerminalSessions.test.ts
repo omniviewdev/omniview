@@ -2012,15 +2012,31 @@ describe('asking who holds the terminals this page lost (`refreshLost`)', () => 
     const throwing: FakeTerminalFeed = { ...keyedFeed(), refresh: (): never => {
       throw new Error('threw'); 
     } };
+    const rejecting: FakeTerminalFeed = { ...keyedFeed(), refresh: async () => Promise.reject(new Error('no')) };
     const fine = asking();
-    for (const [index, feed] of [throwing, fine].entries()) {
+    for (const [index, feed] of [throwing, rejecting, fine].entries()) {
       r.sessions.open(terminalOf(feed, `term-${String(index)}`));
       lostTo(feed);
     }
 
     expect(() => r.sessions.refreshLost()).not.toThrow();
     expect(fine.refresh).toHaveBeenCalledTimes(1);
-    expect(r.warn).toHaveBeenCalledTimes(1);
+    await flush();
+    expect(r.warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts only a lost feed that can be asked: one with no `refresh` is not lost for the poll', () => {
+    const r = harness();
+    const mute = keyedFeed();
+    r.sessions.open(terminalOf(mute, 'term-a'));
+    lostTo(mute);
+    expect(r.sessions.hasLost()).toBe(false);
+    expect(r.sessions.refreshLost()).toBe(false);
+    const askable = asking();
+    r.sessions.open(terminalOf(askable, 'term-b'));
+    lostTo(askable);
+    expect(r.sessions.hasLost()).toBe(true);
+    expect(r.sessions.refreshLost()).toBe(true);
   });
 });
 

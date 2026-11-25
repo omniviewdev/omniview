@@ -394,7 +394,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** The call that makes the terminal, while it is out: a close waits for it, so that what the host made is ended. */
   let creating: Promise<void> | undefined;
   let createdProgram: string | undefined;
-  let fate: Fate = 'ours';
+  let fate: Fate = attachTo?.ended === true ? 'dismiss' : 'ours';
   let closing: Promise<void> | undefined;
   let woken = false;
   let warnedRefresh = false;
@@ -422,6 +422,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** How the terminal ended, when the host's `ready` said it had. */
   let readyEnded: unknown;
   let attempts = 0;
+  /** The stream now open has brought the terminal's whole replay, or continues the output with none to bring: what it said of the end is complete, and the connection is good. */
+  let complete = false;
   let retry: Timer | undefined;
   /** The offset the feed has applied up to: what a stream that drops is connected again from. A terminal the feed made starts at 0; one it attaches to has nothing until its replay is complete. */
   let next: number | undefined = attachTo === undefined ? 0 : undefined;
@@ -601,6 +603,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const publishGathered = () => {
     const replay = gathering;
     gathering = undefined;
+    complete = true;
+    attempts = 0;
     if (replay !== undefined) {
       publish(cursor, { data: joined(replay.parts), startSize: replay.startSize, startModes: replay.startModes, size: replay.size, modes: replay.modes });
     }
@@ -622,7 +626,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     streaming = true;
-    attempts = 0;
+    complete = resumed;
     readyEnded = ready.ended;
     size = ready.size;
     modes = ready.modes;
@@ -645,6 +649,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     link?.ack(0);
+    if (complete) {
+      attempts = 0;
+    }
+
     if (gathering !== undefined && ready.end === ready.start) {
       publishGathered();
     }
@@ -674,7 +682,13 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       gathering.parts.push(bytes);
       // The host counts every output frame against its window, a replay's too: they are credited as they arrive, since the reader takes the replay only when it is complete (a replay larger than the window would never be).
       owed += bytes.length;
+      const mine = connection;
       sendAck();
+      // The acknowledgement may have found the socket dead: the stream is over and the feed waits to connect again.
+      if (connection !== mine || gathering === undefined) {
+        return;
+      }
+
       if (cursor === gathering.end) {
         publishGathered();
       }
@@ -762,10 +776,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
   /** The stream ended with no word of the host: when the host had said the terminal ended that is its end, and otherwise it is connected again from the offset the feed has, and then given up in words. */
   const onClosed = () => {
-    const midReplay = gathering !== undefined;
     unlink(false);
-    // A terminal that had ended ends the feed only with its whole replay: a stream that dropped before that is connected again, from nothing.
-    const hint = midReplay ? undefined : (readyEnded ?? (attachTo?.ended === true ? {} : undefined));
+    // A terminal that had ended ends the feed only with its whole replay: a stream that dropped before that (before `ready`, or part of the way) is connected again, from nothing.
+    const hint = complete ? (readyEnded ?? (attachTo?.ended === true ? {} : undefined)) : undefined;
     if (hint !== undefined) {
       fate = 'dismiss';
       over(withProgram(endOf(hint), status.program));
@@ -786,6 +799,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   function connect(from: number | undefined): void {
     const mine = {};
     connection = mine;
+    complete = false;
+    readyEnded = undefined;
     const heard =
       <Args extends unknown[]>(listener: (...args: Args) => void) =>
         (...args: Args): void => {

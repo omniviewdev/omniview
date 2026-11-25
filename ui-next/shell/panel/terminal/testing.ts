@@ -198,6 +198,8 @@ export type FakeEngine = Engine & {
   readonly text: () => string;
   /** The `done` callbacks not yet called: what the emulator has accepted and not parsed. */
   readonly pendingWrites: () => number;
+  /** The bytes of the writes the emulator has PARSED (their done callback ran), as against `writes`, which holds what it was handed. */
+  readonly parsedBytes: () => number;
   /** Parses the oldest accepted writes: calls their callbacks. */
   readonly complete: (count?: number) => void;
   readonly resizes: ReadonlyArray<readonly [number, number]>;
@@ -282,6 +284,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   const labels: Array<readonly [string, string]> = [];
   const writeSizes: Array<readonly [number, number]> = [];
   const emitted: string[] = [];
+  let parsedBytes = 0;
   const answers = config.answers ?? [];
   const dataListeners = new Set<(data: string, user: boolean) => void>();
   const selectionListeners = new Set<() => void>();
@@ -351,6 +354,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     resets: () => writes.reduce((sum, data) => sum + (typeof data === 'string' ? data.split('\u001bc').length - 1 : 0), 0),
     screenReaderModes,
     text: () => writes.map((data) => (typeof data === 'string' ? data : new TextDecoder().decode(data))).join(''),
+    parsedBytes: () => parsedBytes,
     pendingWrites: () => waiting.filter((done) => done !== undefined).length,
     complete: (count = Number.POSITIVE_INFINITY) => {
       let left = count;
@@ -387,6 +391,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       writeSizes.push([size.cols, size.rows]);
       // What a real emulator answers to a query it parses goes out as it parses the bytes, just before it says it has: a reply is the emulator's own output, in the middle of the stream.
       const parsed = () => {
+        parsedBytes += typeof data === 'string' ? 0 : data.length;
         answer(data);
         done?.();
       };
@@ -624,6 +629,8 @@ export type FakeStream = {
   readonly open: () => boolean;
   /** Whether the feed closed it (`ChannelLink.close`). */
   readonly closedByFeed: () => boolean;
+  /** The socket dies after this many more input frames went: the next one is refused. */
+  readonly dieAfterInputs: (frames: number) => void;
   /** The socket is dead before its close event: the next frame the feed sends finds it so, the stream ends as `closed` (once) and input is refused. */
   readonly die: () => void;
   /** What `ChannelLink.pending` says: the test sets it. */
@@ -633,7 +640,10 @@ export type FakeStream = {
 /** A call that is not a stream, in the order the feed made them. */
 export type ChannelCall =
   | { readonly kind: 'create'; readonly id: string; readonly cols: number; readonly rows: number; readonly leaseMs: number | undefined }
-  | { readonly kind: 'close' | 'dismiss' | 'busy' | 'listed'; readonly id: string }
+  | { readonly kind: 'close'; readonly id: string }
+  | { readonly kind: 'dismiss'; readonly id: string }
+  | { readonly kind: 'busy'; readonly id: string }
+  | { readonly kind: 'listed'; readonly id: string }
   | { readonly kind: 'list' };
 
 export type FakeChannelsOptions = {
@@ -673,6 +683,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     let dropped = 0;
     let pending = 0;
     let dead = false;
+    let inputsLeft = Number.POSITIVE_INFINITY;
     const alive = (what: string): void => {
       if (!open) {
         throw new Error(`the test spoke on a stream that is over (${what})`);
@@ -688,6 +699,11 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
 
       if (open) {
         sent.push(frame);
+        if (frame.kind === 'input') {
+          inputsLeft -= 1;
+          dead ||= inputsLeft <= 0;
+        }
+
         return true;
       }
 
@@ -765,6 +781,9 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       closedByFeed: () => byFeed,
       die: () => {
         dead = true;
+      },
+      dieAfterInputs: (frames) => {
+        inputsLeft = frames;
       },
       setPending: (bytes) => {
         pending = bytes;

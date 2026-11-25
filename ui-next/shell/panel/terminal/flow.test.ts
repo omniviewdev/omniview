@@ -216,9 +216,12 @@ describe('a terminal the page made', () => {
     let parsed = 0;
     for (let guard = 0; guard < 2_000 && (acked(w.stream()) < total || w.frames() > 0); guard += 1) {
       w.frame();
+      await turns();
+      // What the emulator was handed and has not parsed is not credited yet.
+      expect(acked(w.stream())).toBeLessThanOrEqual(w.engine().parsedBytes());
       w.engine().complete();
       await turns();
-      parsed = written(w.engine()).length;
+      parsed = w.engine().parsedBytes();
       expect(acked(w.stream())).toBeLessThanOrEqual(parsed);
     }
 
@@ -273,13 +276,17 @@ describe('a reload: a page takes a terminal over', () => {
 
   it('is brought to a terminal of the size and the modes it has: the screen takes the replay\'s own, which the feed read from the host\'s ready', async () => {
     const w = await wire({ attach: { id: 'term-1' } });
-    w.stream().ready({ start: 0, end: 4, size: { cols: 132, rows: 43 }, startSize: { cols: 80, rows: 24 }, modes: { alt_screen: true, bracketed_paste: true } });
+    w.stream().ready({ start: 0, end: 4, size: { cols: 132, rows: 43 }, startSize: { cols: 80, rows: 24 }, startModes: { alt_screen: true, bracketed_paste: true }, modes: { alt_screen: true, bracketed_paste: true } });
     w.stream().output(0, 'vim!');
     await w.drain();
     expect(w.engine().text()).toContain('vim!');
-    const resizes = w.engine().resizes;
-    expect(resizes.some(([cols, rows]) => cols === 80 && rows === 24)).toBe(true);
-    expect(resizes.at(-1)?.[0]).toBeGreaterThan(0);
+    // The bytes were written at the size they were written under, after the modes they were written under were put on; the terminal's size at the end follows them.
+    const at = w.engine().writes.findIndex((data) => typeof data !== 'string' && new TextDecoder().decode(data) === 'vim!');
+    expect(w.engine().writeSizes[at]).toEqual([80, 24]);
+    const before = w.engine().writes.slice(0, at).filter((data): data is string => typeof data === 'string').join('');
+    expect(before).toContain('\u001b[?1049h');
+    expect(before).toContain('\u001b[?2004h');
+    expect(w.engine().resizes).toContainEqual([132, 43]);
   });
 });
 

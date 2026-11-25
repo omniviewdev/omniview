@@ -260,6 +260,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       window.addEventListener('focus', ask);
       const stopStore = store.subscribe(arm);
       const stopFeeds = sessions.subscribeFeeds(arm);
+      arm();
       attached += 1;
       findTerminals();
       openFound();
