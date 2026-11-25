@@ -30,47 +30,25 @@ name: UI next kit probes
 # NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull
 # request blocks the merge. The lead makes `Kit probes` (the aggregating job, whose name does not change) required in the branch protection settings once it has been green for a while.
 
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25: "remove the probes from running in CI. 42 minutes is insane."). The probes run LOCALLY, by the author before the push
+# (docs/ui-next/AGENTS.md, rule 25) and by the merger on the merged tree (`pnpm probes`); CI runs them only here: every night and on request, everything (both engines, every negative control), and `ci-main-red` opens
+# its issue when the nightly run is red. No other workflow needs a probe result.
 on:
-  pull_request:
-    paths:
-      - "packages/kit/**"
-      - "ui-next/**"
-      - "packages/omniviewdev-runtime/**"
-      - "pnpm-lock.yaml"
-      - "scripts/ci/probe-shards.mjs"
-      - "scripts/ci/probe-shards.test.mjs"
-      - "scripts/ci/probe-*"
-      - "scripts/ci/probe-units/**"
-      - "scripts/ci/ci-scope*"
-      - ".github/workflows/ui-next-kit-probes.yml"
-  push:
-    branches: [main]
-    paths:
-      - "packages/kit/**"
-      - "ui-next/**"
-      - "packages/omniviewdev-runtime/**"
-      - "pnpm-lock.yaml"
-      - "scripts/ci/probe-shards.mjs"
-      - "scripts/ci/probe-shards.test.mjs"
-      - "scripts/ci/probe-*"
-      - "scripts/ci/probe-units/**"
-      - "scripts/ci/ci-scope*"
-      - ".github/workflows/ui-next-kit-probes.yml"
-  # The nightly run: everything (N30). A pull request runs the probes in WebKit and no negative control; this and every push to main run every probe and every control in both engines.
+  # The nightly run: everything (N30).
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       scope:
-        description: "full (everything: the default) or pr (what a pull request runs: WebKit, no negative controls)"
+        description: "full (everything: the default) or pr (WebKit, no negative controls: what a pull request used to run)"
         type: choice
         options: [full, pr]
         default: full
 
-# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled by a newer push (the latest commit of main is always verified; a group keeps one running and one pending run, so a burst of merges can skip the ones between).
+# A run is never cancelled by a newer one (a group keeps one running and one pending run).
 concurrency:
-  group: ui-next-kit-probes-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ui-next-kit-probes-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

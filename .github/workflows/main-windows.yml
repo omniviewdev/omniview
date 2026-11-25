@@ -4,9 +4,8 @@ name: Main Windows build
 # Windows build of the frontend) is found here, in the run that opens the `ci-main-red` issue (`.github/workflows/ci-main-red.yml`), with the commit range since the last green run. The Windows TESTS of a pull
 # request stay (`Windows connection profiles` in pr-checks.yml). The steps are the Linux build job's of pr.yml for Windows, step by step (scripts/ci/changes-workflows.test.mjs holds the two together).
 
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run it locally before a push when their change touches it (docs/ui-next/AGENTS.md, rule 25).
 on:
-  push:
-    branches: [main]
   schedule:
     - cron: "57 3 * * *"
   workflow_dispatch:
