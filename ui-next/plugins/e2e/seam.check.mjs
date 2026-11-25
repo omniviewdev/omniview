@@ -487,6 +487,7 @@ const ISOLATION_GROUP = 'terminal-isolation';
 // The negative controls of scenario r6, a terminal across the cuts of the page's two sockets (the review of #677, B1). As in n, p, t and u each is a perturbation made just before the assertion that must see it and undone right after, on the first cut only, and the assertion must fail with ITS
 // words and no other. One run serves them all (SEAM_CONTROL=terminal-reconnect); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
 const RECONNECT_CONTROLS = {
+  'reconnect-order': /the check of the order of the two lines/,
   'reconnect-typing': /what was typed after the cut reached the shell/,
   'reconnect-pid': /the terminal is the same shell after the cut/,
   'reconnect-calls': /no call of the page answered not-found or FORBIDDEN/,
@@ -519,7 +520,7 @@ if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTR
   throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PROFILE_GROUP, ...Object.keys(PROFILE_CONTROLS), RECONNECT_GROUP, ...Object.keys(RECONNECT_CONTROLS), ISOLATION_GROUP, ...Object.keys(ISOLATION_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
 if (REMOVE !== '' && PROFILE_CONTROLS[REMOVE] === undefined && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && RECONNECT_CONTROLS[REMOVE] === undefined && ISOLATION_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROFILE_CONTROLS), ...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 // A control's name belongs to one table. The dispatch at the end of this file runs the scenario of the first group that holds the name, so a name that two tables held would run one scenario and never the other: `page-error` was the control of the Logs scenari
@@ -7543,7 +7544,7 @@ const attachedSince = (streams, id, ms) => streams.of(id).filter((socket) => soc
 /** The planted text of the control `isolation-frames`: a needle of its own (the label of its hits). */
 const PLANTED = 'the text the control planted in the second terminal';
 /** The faults of the controls of the payload search: the old scan (a match is held against the carry AFTER it was replaced) and the old cleanup (every hit from an index on is dropped). */
-const LEGACY = { scan: false, cleanup: false };
+const LEGACY = { scan: false, cleanup: false, order: false };
 
 /**
  * One frame's bytes against the needles, for a socket and direction (`state.carry` is the tail of the frames before): the labels of the needles that end in THIS frame (a match inside what was carried was found when it was new). The carry is the longest needle less one byte,
@@ -7585,6 +7586,30 @@ function assertPayloadScan(engine) {
   assert.deepEqual(scanPayload(fresh(), Buffer.from('CANARYXYZ'), needles), ['canary'], `${engine}: the payload search finds a needle in the short first frame of a socket (an output frame that carries a foreign text before the host's ready)`);
   const split = fresh();
   assert.deepEqual([scanPayload(split, Buffer.from('xxCANA'), needles), scanPayload(split, Buffer.from('RYXYZyy'), needles), scanPayload(split, Buffer.from('zz'), needles)], [[], ['canary'], []], `${engine}: the payload search finds a needle split across two frames, once, and not again with the next frame`);
+}
+
+/**
+ * Whether the line typed during a cut (`AWAY_<tag>_42`) and the line typed after it (`KEEP_<tag>_<n>_42`) both came back from the shell, in that order. The output of the first is searched without a line start before it: a character typed ahead is echoed by the tty
+ * into the line of the output that is running (`KAWAY_ST1_42`), and the echo of a line carries `$((6*7))`, never `42`, so only the output can match. The control `reconnect-order` makes the fault of a check that finds both and asks no order.
+ */
+function deliveredInOrder(text, tag, n) {
+  if (LEGACY.order) return text.includes(`AWAY_${tag}_42\n`) && text.includes(`\nKEEP_${tag}_${n}_42\n`);
+  return new RegExp(`AWAY_${tag}_42\\n[\\s\\S]*\\nKEEP_${tag}_${n}_42\\n`).test(text);
+}
+
+/** The check of the order of the two lines, held to what it must do before it is trusted with a shell's output: the order they came in passes, a type-ahead echo in the output's line passes, the other order and a missing line do not. */
+function assertDeliveryOrder(engine) {
+  const lines = (...parts) => parts.join('');
+  assert.deepEqual(
+    [
+      deliveredInOrder(lines('$ echo AWAY_ST1_$((6*7))\nAWAY_ST1_42\n$ echo KEEP_ST1_5_$((6*7))\nKEEP_ST1_5_42\n'), 'ST1', '5'),
+      deliveredInOrder(lines('$ echo AWAY_ST1_$((6*7))\nKAWAY_ST1_42\n$ \nKEEP_ST1_5_42\n'), 'ST1', '5'),
+      deliveredInOrder(lines('$ \nKEEP_ST1_5_42\nAWAY_ST1_42\n'), 'ST1', '5'),
+      deliveredInOrder(lines('AWAY_ST1_42\n'), 'ST1', '5'),
+    ],
+    [true, true, false, false],
+    `${engine}: the check of the order of the two lines passes the order they came in and a type-ahead echo in the output's line, and fails the other order and a missing line`,
+  );
 }
 
 /** The cleanup of the control `isolation-frames` takes out its planted hits and only those: a real foreign hit that came meanwhile is still there. */
@@ -7658,7 +7683,7 @@ function assertActivityAllowance(engine, phaseName) {
  */
 // The operating system commands (ESC ] ... BEL, or ... ESC \) go too: the host's shell integration (#694: OSC 133 marks of the prompt and the command, OSC 7, OSC 633 with the session's nonce) writes them around every prompt and every
 // output, in bash, zsh and fish, and a line of output starts right after `ESC ] 133 ; C BEL` (the first run of a bash with the integration read `9 193` after one and matched no line).
-const plain = (text) => text.replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, '').replace(/\u001b\[[0-9;?<>=]*[ -/]*[@-~]/g, '').replaceAll('\r', '');
+const plain = (text) => text.replace(/\u001b\][^\u0007\u001b\n]*(?:\u0007|\u001b\\)/g, '').replace(/\u001b\[[0-9;?<>=]*[ -/]*[@-~]/g, '').replaceAll('\r', '');
 async function plainTranscriptOf(base, id) {
   return plain(await transcriptOf(base, id));
 }
@@ -8299,7 +8324,17 @@ async function terminalCloseKeys({ page, base, engine, questions, note }) {
  * `ack` frames adding up to the bytes of each. Closing: a terminal at its prompt closes with no question, by the pointer and by Delete, the focus staying in the panel, with one CloseChannelTerminal; with `sleep 60` running the question names it, Cancel and Escape keep both and the focus goes to
  * the tab, and Terminate session ends them. A shell that runs `exit 3` is an ended session that says `Exited with code 3`, which the host keeps until the page dismisses it (one DismissChannelTerminal, closing it asks nothing). `r2` below is the emulator against the programs of the machine.
  */
+/** What `plain` takes out of a transcript and what it leaves: the operating system commands of the shell integration (BEL or ST terminated) go, and an OSC that never ends does not eat the text after it, up to a BEL of a later line. */
+function assertPlainStrips(engine) {
+  assert.deepEqual(
+    [plain('\u001b]133;C\u00079 193\r\n'), plain('\u001b]7;file://host/dir\u001b\\hi'), plain('\u001b]133;Aunended\nkept text\u0007after'), plain('\u001b[1mbold\u001b[0m')],
+    ['9 193\n', 'hi', '\u001b]133;Aunended\nkept text\u0007after', 'bold'],
+    `${engine}: plain takes out an OSC ended by BEL or by ST, leaves the text after one that never ends (it stops at the line end), and still takes out CSI`,
+  );
+}
+
 async function checkTerminal(page, base, engine) {
+  assertPlainStrips(engine);
   const errors = [];
   const chunks = [];
   const observed = [];
@@ -8640,7 +8675,7 @@ async function checkTerminalPrograms(page, base, engine) {
     },
     async () => assert.match(await askProfile(), /\nPROFILE=yes\r?\n/, `${engine}: the shell runs the user's profile files (as a login shell, or as the integration's bash that emulates one)`),
   );
-  note('login shell', 'yes: the profile files run (the Dock-launched PATH defect needs the packaged app and is not covered here)');
+  note('login shell', 'yes: the user\'s profile files run (as a login shell, or as the integration\'s emulation of one; the Dock-launched PATH defect needs the packaged app and is not covered here)');
   if (hostMac) {
     const paths = await ask('if [ -r /etc/paths ]; then { cat /etc/paths; find /etc/paths.d -type f -exec cat {} + 2>/dev/null; } | while read -r p; do case ":$PATH:" in *":$p:"*) ;; *) echo "PATH_MISSING=$p";; esac; done; echo PATH_CHECKED; else echo PATH_UNREADABLE; fi', /\nPATH_(CHECKED|UNREADABLE)\r?\n/, 'the PATH check');
     assert.match(paths, /\nPATH_CHECKED\r?\n/, `${engine}: /etc/paths could be read, so the check is about something`);
@@ -10254,6 +10289,8 @@ async function checkTerminalFollowups(browser, getHost, engine) {
  */
 async function checkTerminalReconnect(browser, getHost, engine) {
   const { asserting, verdict } = withControls(RECONNECT_GROUP, RECONNECT_CONTROLS);
+  // The check of the order of the two lines is held to what it must do before it reads a shell's output.
+  await asserting('reconnect-order', () => { LEGACY.order = true; }, () => { LEGACY.order = false; }, () => assertDeliveryOrder(engine));
   const errors = [];
   const observed = [];
   const note = (name, text) => observed.push(`${name}: ${text}`);
@@ -10334,12 +10371,10 @@ async function checkTerminalReconnect(browser, getHost, engine) {
           let n = planted;
           if (n === undefined) {
             n = String((control += 1));
-            // The line that was typed during the cut has printed its output before the next one is typed: a character typed ahead is echoed in the middle of what a running command prints, and the output is then no longer at the start of its line.
-            await waitUntil(`the line typed during ${label} to print its output`, async () => (await plainTranscriptOf(base(), id)).includes(`AWAY_${tag}_42`), 30_000);
             await typeLine(page, `echo KEEP_${tag}_${n}_$((6*7))`);
           }
 
-          const reached = await holdsWithin(async () => new RegExp(`AWAY_${tag}_42\\n[\\s\\S]*\\nKEEP_${tag}_${n}_42\\n`).test(await plainTranscriptOf(base(), id)), 20_000);
+          const reached = await holdsWithin(async () => deliveredInOrder(await plainTranscriptOf(base(), id), tag, n), 20_000);
           const frames = seen.streams.of(id).filter((socket) => socket.openedMs >= sinceCut - 2_000).map((socket) => `[open+${String(socket.openedMs - sinceCut)} close${socket.closedMs > 0 ? `+${String(socket.closedMs - sinceCut)}` : ' never'}: ${socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir === 'page' ? '>' : '<'}${frame.type}${frame.length === undefined ? '' : `(${String(frame.length)})`}@${String(frame.ms - sinceCut)}`).join(' ')}]`).join(' ');
           const away = (await plainTranscriptOf(base(), id)).split(`\nAWAY_${tag}_42\n`).length - 1;
           assert.ok(reached && away === 1, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, once (${String(away)} times), in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote); the streams since the cut: ${frames}; the shell wrote ${JSON.stringify(plain(outputSince(id, outputEnd(id) - 600)))}`);
