@@ -544,6 +544,14 @@ func TestZshXtraceNeverPrintsTheNonce(t *testing.T) {
 	require.Equal(t, IntegrationOn, info.Integration.State)
 	f.run(info.ID, "echo hello")
 	f.run(info.ID, "false")
+	f.run(info.ID, "(exit 7)")
+	f.run(info.ID, "true")
+	// The status the hooks report is the command's, with xtrace on too: the hooks read $? before anything else.
+	var codes []int32
+	for _, r := range f.endedCommands(info.ID, 4) {
+		codes = append(codes, r.ExitCode)
+	}
+	assert.Equal(t, []int32{0, 1, 7, 0}, codes, "the exit codes of echo, false, (exit 7) and true under xtrace")
 	nonce := f.m.session(t, info.ID).nonce.Reveal()
 	out := regexp.MustCompile("\x1b\\][^\a\x1b]*(\a|\x1b\\\\)").ReplaceAll(f.sink.output(info.ID), nil)
 	assert.Contains(t, string(out), "+", "xtrace is on: the shell traces")
