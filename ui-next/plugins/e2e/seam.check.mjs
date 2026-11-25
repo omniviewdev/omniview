@@ -7683,7 +7683,8 @@ function assertActivityAllowance(engine, phaseName) {
  * and 633, `ESC ] ... BEL`) are taken out too: since #742 bash writes `ESC ] 633;E;<the line>;<nonce> BEL ESC ] 133;C BEL` right before the output of a command, on the line the output starts (`stty size` LF ESC]633;E;stty size;<nonce>BEL
  * ESC]133;C BEL 9 193 LF, captured from the host's bash 5.3), so every pattern that wants the output at the start of a line timed out in the nightly of 2026-11-25.
  */
-// An OSC ends at the end of its line at the latest: an unterminated one is left as it is, never taken with the lines after it.
+// The operating system commands (ESC ] ... BEL, or ... ESC \) go too: the host's shell integration (#694: OSC 133 marks of the prompt and the command, OSC 7, OSC 633 with the session's nonce) writes them around every prompt and every
+// output, in bash, zsh and fish, and a line of output starts right after `ESC ] 133 ; C BEL` (the first run of a bash with the integration read `9 193` after one and matched no line).
 const plain = (text) => text.replace(/\u001b\][^\u0007\u001b\n]*(?:\u0007|\u001b\\)/g, '').replace(/\u001b\[[0-9;?<>=]*[ -/]*[@-~]/g, '').replaceAll('\r', '');
 async function plainTranscriptOf(base, id) {
   return plain(await transcriptOf(base, id));
