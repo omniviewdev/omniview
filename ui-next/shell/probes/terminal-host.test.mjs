@@ -996,11 +996,14 @@ test('the input applied is counted for each writer: another writer\'s input is i
   const two = pageOf(host, cap, { writer: OTHER });
   await two.until('ready', () => two.ready !== undefined);
   assert.equal(two.ready.input_applied, 0, 'a writer the host does not know starts at 0');
+  assert.equal(one.ready.writer_known, false, 'a first attach');
+  assert.equal(two.ready.writer_known, false, 'a first attach of another writer');
   two.stream.send(pageFrames.input('wxyz'));
   await two.until('applied 4', () => two.counts.at(-1) === 4);
   two.stream.close();
   const back = pageOf(host, cap, { writer: WRITER });
   await back.until('ready', () => back.ready !== undefined);
+  assert.equal(back.ready.writer_known, true, 'the host had a count for this writer');
   assert.equal(back.ready.input_applied, 3, 'the first writer\'s count is its own: the 4 bytes of the other are not in it');
   back.stream.send(pageFrames.input('d'));
   await back.until('applied 4', () => back.counts.at(-1) === 4);
@@ -1009,12 +1012,14 @@ test('the input applied is counted for each writer: another writer\'s input is i
   const anonymous = pageOf(host, cap);
   await anonymous.until('ready', () => anonymous.ready !== undefined);
   assert.equal(anonymous.ready.input_applied, 0);
+  assert.equal(anonymous.ready.writer_known, false, 'no writer: nothing is known');
   anonymous.stream.send(pageFrames.input('q'));
   await anonymous.until('applied 1', () => anonymous.counts.at(-1) === 1);
   anonymous.stream.close();
   const again = pageOf(host, cap);
   await again.until('ready', () => again.ready !== undefined);
   assert.equal(again.ready.input_applied, 0, 'a writer of its own is gone with its stream');
+  assert.equal(again.ready.writer_known, false);
   again.stream.close();
 
   for (const bad of ['A1'.repeat(16), 'a1'.repeat(15), 'a1'.repeat(17), 'zz'.repeat(16), 7, '']) {
@@ -1037,9 +1042,11 @@ test('the input applied is counted for each writer: another writer\'s input is i
   const forgotten = pageOf(host, cap, { writer: ids[0] });
   await forgotten.until('ready', () => forgotten.ready !== undefined);
   assert.equal(forgotten.ready.input_applied, 0, 'the writer that attached least recently was forgotten');
+  assert.equal(forgotten.ready.writer_known, false, 'an evicted writer is not known');
   forgotten.stream.close();
   const kept = pageOf(host, cap, { writer: ids[8] });
   await kept.until('ready', () => kept.ready !== undefined);
   assert.equal(kept.ready.input_applied, 1);
+  assert.equal(kept.ready.writer_known, true);
   host.stop();
 });

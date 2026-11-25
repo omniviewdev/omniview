@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES } from './channel';
 import { offersTakeBack } from './feed';
+import { laneOf } from './state';
 import { RECONNECT_DELAYS_MS, createExecFeed, listedOf, type ExecAttach, type ExecFeed } from './execFeed';
 import type { TerminalFeedHandle, TerminalModes, TerminalReplay, TerminalShellAttempt } from './feed';
 import { fakeChannels, goneError, type FakeChannels, type FakeChannelsOptions, type FakeStream, type ReadyInit } from './testing';
@@ -2282,5 +2283,80 @@ describe('review of #763, round 2', () => {
     reachable = true;
     await r.feed.refresh?.({ fresh: true });
     expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true, free: false });
+  });
+});
+
+describe('a host that does not know the feed\'s writer (`ready.writer_known: false`)', () => {
+  it('drops what it typed and the host did not confirm when the feed had attached before, sends none of it, and tells the user that input typed while away may be lost', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    r.feed.write('def');
+    const again = reconnect(r);
+    again.ready({ inputApplied: 0, writerKnown: false });
+    expect(again.typed()).toBe('');
+    expect(r.feed.keptPieces()).toBe(0);
+    expect(r.feed.inputsSettled?.()).toBe(true);
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    expect(laneOf(r.feed.getSnapshot()).words).toBe('Input may be lost');
+    expect(laneOf(r.feed.getSnapshot()).note).toMatch(/while the connection was away/);
+    // The count starts again from the host's: what is typed now is kept and confirmed as usual, and the notice goes with the next thing typed.
+    r.feed.write('g');
+    expect(again.typed()).toBe('g');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    again.applied(1);
+    again.drop();
+    const third = reconnect(r);
+    third.ready({ inputApplied: 1 });
+    expect(third.typed()).toBe('');
+  });
+
+  it('does nothing extra on a first attach, which no host knows the writer of: what was typed before the stream was ready is sent, and nothing is said', async () => {
+    const r = await connecting();
+    r.feed.write('abc');
+    r.stream().ready({ inputApplied: 0, writerKnown: false });
+    expect(r.stream().typed()).toBe('abc');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    const attached = attaching();
+    attached.feed.write('x');
+    attached.stream().ready({ start: 0, end: 0, writerKnown: false });
+    expect(attached.stream().typed()).toBe('x');
+    expect(attached.feed.getSnapshot().inputLost).toBeUndefined();
+  });
+
+  it('resends what the host knows nothing of only a few times when it applies none of it (a program that never reads): then drops it and says so, instead of cycling', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    for (let round = 1; round <= 3; round += 1) {
+      const again = reconnect(r, round === 1 ? 250 : 1_000);
+      again.ready({ inputApplied: 0 });
+      expect(again.typed(), `resend ${String(round)}`).toBe('abc');
+      expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+      again.drop();
+    }
+
+    const last = reconnect(r, 4_000);
+    last.ready({ inputApplied: 0 });
+    expect(last.typed()).toBe('');
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    expect(r.feed.keptPieces()).toBe(0);
+  });
+
+  it('counts a resend only when the host applied none of it: progress in between starts the count again', async () => {
+    const r = await running();
+    r.feed.write('abcdef');
+    r.stream().drop();
+    let applied = 0;
+    for (let round = 1; round <= 6; round += 1) {
+      const again = reconnect(r, round === 1 ? 250 : 1_000);
+      again.ready({ inputApplied: applied });
+      expect(again.typed()).not.toBe('');
+      applied = Math.min(5, applied + 1);
+      again.applied(applied);
+      again.drop();
+    }
+
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
   });
 });

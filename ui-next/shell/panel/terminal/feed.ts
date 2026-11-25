@@ -106,6 +106,8 @@ export type TerminalFeedSnapshot = {
   readonly program?: string | undefined;
   /** Set when this page lost a terminal that still runs (T2-go `DETACHED`): the state is `ended` for this page, the process is not. Input is off; nothing more comes. */
   readonly detached?: TerminalDetached | undefined;
+  /** The host did not know this feed's writer when its stream came back (a host restart, an evicted writer), or applied none of what was resent: what was typed while the connection was away may be lost, and the lane says so until the next thing is typed. */
+  readonly inputLost?: boolean | undefined;
 };
 
 /** What the process wrote since the last read, oldest first: its bytes (an escape sequence may be cut between two chunks, the emulator keeps its state). */

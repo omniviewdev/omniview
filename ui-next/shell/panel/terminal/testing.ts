@@ -603,6 +603,8 @@ export type ReadyInit = {
   readonly ended?: unknown;
   /** The bytes of input the host has applied from the capability, across streams (`ready.input_applied`). Default: 0. */
   readonly inputApplied?: number;
+  /** Whether the host had a count for this feed's writer before this attach (`ready.writer_known`). Default: true. */
+  readonly writerKnown?: boolean;
   /** Whole members to put in the payload as they are, or `undefined` to leave a member out. */
   readonly raw?: Readonly<Record<string, unknown>>;
 };
@@ -754,6 +756,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
           end: init.end ?? init.start ?? 0,
           lost: init.lost ?? 0,
           input_applied: init.inputApplied ?? 0,
+          writer_known: init.writerKnown ?? true,
           size,
           start_size: init.startSize ?? size,
           modes: { ...PLAIN_MODES, ...init.modes },
