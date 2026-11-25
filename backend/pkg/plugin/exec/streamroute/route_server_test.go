@@ -50,6 +50,10 @@ const (
 	hGap      byte = 0x83
 	hEnded    byte = 0x84
 	hNotFound byte = 0x86
+	hApplied  byte = 0x87
+	hTaken    byte = 0x85
+	hRefused  byte = 0x8a
+	pClose    byte = 0x06
 )
 
 // bound is how long an event that must come may take.
@@ -154,7 +158,11 @@ type streamState struct {
 	gaps     [][2]uint64
 	ended    int
 	notFound int
-	faults   []string
+	// applied is the number of every applied frame, in order: the bytes of input the host has written from the capability.
+	applied []uint64
+	// takenOver and closeRefused count the frames of those types.
+	takenOver, closeRefused int
+	faults                  []string
 }
 
 func (s *streamState) take(frame []byte) {
@@ -200,6 +208,16 @@ func (s *streamState) take(frame []byte) {
 		s.ended++
 	case hNotFound:
 		s.notFound++
+	case hTaken:
+		s.takenOver++
+	case hRefused:
+		s.closeRefused++
+	case hApplied:
+		if len(body) != 8 {
+			s.faults = append(s.faults, fmt.Sprintf("an applied frame of %d bytes", len(body)))
+			return
+		}
+		s.applied = append(s.applied, binary.BigEndian.Uint64(body))
 	default:
 		s.faults = append(s.faults, fmt.Sprintf("a frame of type %#x", frame[0]))
 	}
@@ -257,7 +275,7 @@ func (c *client) requireClosed() {
 }
 
 func attach(capability string, from *uint64) []byte {
-	request := map[string]any{"v": 1, "cap": capability}
+	request := map[string]any{"v": 2, "cap": capability}
 	if from != nil {
 		request["from_offset"] = *from
 	}
@@ -325,7 +343,7 @@ func TestTheRealRouteOfTheTerminalChannel(t *testing.T) {
 		page := dial(t, port)
 		page.write(attach(info.Cap, nil))
 		state := page.until("ready", func(s *streamState) bool { return s.ready != nil })
-		assert.Equal(t, 1, state.ready.V)
+		assert.Equal(t, 2, state.ready.V)
 		assert.Zero(t, state.ready.Start, "the page has nothing and the terminal has written nothing")
 		assert.Zero(t, state.ready.End)
 		assert.Positive(t, state.ready.LeaseMs, "the lease the terminal is kept for when this stream ends is stated")
@@ -442,4 +460,32 @@ func TestAStreamThatSendsNothingIsClosedByTheHostOnTheRealRouteAndAStreamThatAtt
 	page.write(append([]byte{pInput}, "hello\n"...))
 	state := page.until("the echo", func(s *streamState) bool { return bytes.Count(s.output, []byte("hello\r\n")) >= 2 })
 	assert.Equal(t, "hello\r\nhello\r\n", string(state.output), "the stream that showed its capability in time was not closed by the first-frame wait")
+	state = page.until("the applied frame", func(s *streamState) bool {
+		return len(s.applied) > 0 && s.applied[len(s.applied)-1] == uint64(len("hello\n"))
+	})
+	assert.Equal(t, uint64(len("hello\n")), state.applied[len(state.applied)-1], "the host says it wrote the six bytes of the line, on the real route")
+}
+
+// The close on the stream, over the real route: a stream that was displaced asks for the terminal to end and is refused (the terminal runs
+// and the stream that holds it is told no end); the stream that holds it asks and the terminal ends and it is told how.
+func TestACloseOnTheStreamEndsTheTerminalOnlyForTheHolderOnTheRealRoute(t *testing.T) {
+	port, wrapper := theRoute(t)
+	info := startTerminal(t, wrapper, "sh", "-c", "cat")
+	a := dial(t, port)
+	a.write(attach(info.Cap, nil))
+	a.until("ready", func(s *streamState) bool { return s.ready != nil })
+	b := dial(t, port)
+	b.write(attach(info.Cap, nil))
+	b.until("ready", func(s *streamState) bool { return s.ready != nil })
+	a.until("taken-over", func(s *streamState) bool { return s.takenOver > 0 })
+
+	a.write([]byte{pClose})
+	a.until("close-refused", func(s *streamState) bool { return s.closeRefused > 0 })
+	listed := waitListed(t, wrapper, info.Cap, func(l terminal.ChannelListed) bool { return l.Attached })
+	assert.Nil(t, listed.Ended, "the terminal runs and its holder holds it")
+	assert.Zero(t, b.state.ended, "the holder is told of no end")
+
+	b.write([]byte{pClose})
+	b.until("ended", func(s *streamState) bool { return s.ended > 0 })
+	a.until("the watcher is told the end", func(s *streamState) bool { return s.ended > 0 })
 }

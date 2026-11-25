@@ -284,22 +284,22 @@ func TestTheFirstFrameIsTheAttachAndAnythingElseGetsTheOneNotFoundAndTheStreamCl
 	cases := map[string][]byte{
 		"a wrong capability of the right length": attachFrame(wrong, nil),
 		"a capability of another length":         attachFrame(info.Cap[:20], nil),
-		"no capability":                          raw(wAttach, `{"v":1}`),
-		"an empty capability":                    raw(wAttach, `{"v":1,"cap":""}`),
-		"a request that is not JSON":             raw(wAttach, `{"v":1,"cap":`),
+		"no capability":                          raw(wAttach, `{"v":2}`),
+		"an empty capability":                    raw(wAttach, `{"v":2,"cap":""}`),
+		"a request that is not JSON":             raw(wAttach, `{"v":2,"cap":`),
 		"a request that is not an object":        raw(wAttach, `[1,2,3]`),
-		"another version, a good capability":     raw(wAttach, `{"v":2,"cap":"`+info.Cap+`"}`),
+		"a version that is not a number":         raw(wAttach, `{"v":"2","cap":"`+info.Cap+`"}`),
 		"no version, a good capability":          raw(wAttach, `{"cap":"`+info.Cap+`"}`),
-		"an offset that is not a number":         raw(wAttach, `{"v":1,"cap":"`+info.Cap+`","from_offset":"0"}`),
-		"a negative offset":                      raw(wAttach, `{"v":1,"cap":"`+info.Cap+`","from_offset":-1}`),
+		"an offset that is not a number":         raw(wAttach, `{"v":2,"cap":"`+info.Cap+`","from_offset":"0"}`),
+		"a negative offset":                      raw(wAttach, `{"v":2,"cap":"`+info.Cap+`","from_offset":-1}`),
 		"an empty frame":                         {},
 		"input first":                            inputFrame("hello\n"),
 		"resize first":                           resizeFrame(80, 24),
 		"ack first":                              ackFrame(1),
 		"detach first":                           detachFrame(),
-		"a frame of a type nobody knows":         raw(0x7f, `{"v":1,"cap":"`+info.Cap+`"}`),
-		"a frame of the host's type":             raw(wReady, `{"v":1,"cap":"`+info.Cap+`"}`),
-		"an attach that is too big":              raw(wAttach, `{"v":1,"cap":"`+info.Cap+`","pad":"`+strings.Repeat("p", 4096)+`"}`),
+		"a frame of a type nobody knows":         raw(0x7f, `{"v":2,"cap":"`+info.Cap+`"}`),
+		"a frame of the host's type":             raw(wReady, `{"v":2,"cap":"`+info.Cap+`"}`),
+		"an attach that is too big":              raw(wAttach, `{"v":2,"cap":"`+info.Cap+`","pad":"`+strings.Repeat("p", 4096)+`"}`),
 	}
 	var first []byte
 	for name, frame := range cases {
@@ -336,7 +336,7 @@ func TestTheFirstFrameIsTheAttachAndAnythingElseGetsTheOneNotFoundAndTheStreamCl
 
 	// And the capability that opens the terminal still does.
 	page := m.attach(t, info.Cap, nil)
-	assert.Equal(t, 1, page.waitReady().V)
+	assert.Equal(t, 2, page.waitReady().V)
 	assert.True(t, m.chanOf(t, info).channelStats().held)
 }
 
@@ -390,7 +390,7 @@ func TestAProtocolTableNeverPanicsAndAlwaysClosesCleanly(t *testing.T) {
 		})
 		assert.False(t, gone(info.PID), "%s: the shell was not touched", name)
 	}
-	assert.Equal(t, 1, m.attach(t, info.Cap, nil).waitReady().V, "the capability attaches it again")
+	assert.Equal(t, 2, m.attach(t, info.Cap, nil).waitReady().V, "the capability attaches it again")
 }
 
 // Input, resize and acknowledgements travel on the stream and are applied in the order the page sent them: the same queue as

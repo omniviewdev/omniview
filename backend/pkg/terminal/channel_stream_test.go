@@ -45,7 +45,7 @@ func TestAttachSendsReadyThenTheReplayThenLiveOutputOnOneOrderedStream(t *testin
 
 	guarded(t, "ready-first", func() {
 		assert.Equal(t, wReady, st.order[0], "the first frame is ready")
-		assert.Equal(t, 1, ready.V)
+		assert.Equal(t, 2, ready.V)
 		assert.Zero(t, ready.Start, "the replay starts at the first byte the host kept")
 		assert.EqualValues(t, 8, ready.End, "and ends where the shell had written to when the page took the terminal")
 		assert.Zero(t, ready.Lost)

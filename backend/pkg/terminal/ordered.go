@@ -28,13 +28,16 @@ type op struct {
 	rows uint16
 	cols uint16
 	kind opKind
-	once sync.Once
+	// applied, when set, is told how many bytes of a write the device took, the moment the write returns and before the call is
+	// answered: a channel terminal counts the input it has applied by it (docs/ui-next/terminal-channel-protocol.md section 5).
+	applied func(n int)
+	once    sync.Once
 	// done receives the one answer; it has room for it, so answering never blocks.
 	done chan error
 }
 
 func newOp(kind opKind, seq uint64) *op {
-	return &op{data: nil, seq: seq, rows: 0, cols: 0, kind: kind, once: sync.Once{}, done: make(chan error, 1)}
+	return &op{data: nil, seq: seq, rows: 0, cols: 0, kind: kind, applied: nil, once: sync.Once{}, done: make(chan error, 1)}
 }
 
 // finish answers the caller, once: whoever ends the operation first decides the answer.
@@ -305,7 +308,10 @@ func (q *inputQueue) apply(o *op) error {
 		if len(o.data) == 0 {
 			return nil
 		}
-		_, err := q.dev.Write(o.data)
+		n, err := q.dev.Write(o.data)
+		if o.applied != nil && n > 0 {
+			o.applied(n)
+		}
 		return err
 	case opResize:
 		return q.dev.Resize(o.rows, o.cols)
