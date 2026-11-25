@@ -1,0 +1,64 @@
+#!/bin/bash
+# Negative controls for T4-env (launch.env, backend/pkg/terminal/env.go). Each fault is put into a SCRATCH copy of
+# one source file and built with `go test -overlay`; the worktree is never edited. A control has two halves:
+#   1. with every test, the tests that go red are exactly the ones named for it (a fault that goes red in a test it
+#      is not named for, or in none, is reported);
+#   2. with the named tests skipped (the assertion removed), the same fault passes: nothing else sees it.
+# Run from anywhere in the worktree:  bash docs/ui-next/status/T4-env/mutations.sh.txt [control-name]
+export GOWORK=off GOTOOLCHAIN=local
+WT=$(git rev-parse --show-toplevel) || exit 2
+PKG=./backend/pkg/terminal/
+M=$(mktemp -d "${TMPDIR:-/tmp}/t4env-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M"' EXIT
+cd "$WT" || exit 2
+only="${1:-}"
+bad=0
+
+# name | file | sed expression | the tests named for it (sorted, separated by spaces)
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  cp "$WT/$file" "$M/$name.go"
+  sed -i -e "$expr" "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+
+  out=$(go test -overlay="$M/$name.json" "$PKG" -run "LaunchEnv|TheNamesTheHostStrips|AHostVariableNever|InLaunchEnv" -timeout 300s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E '^--- FAIL' | sed -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | sed 's/ $//')
+  if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
+  elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
+  elif [ "$failed" != "$named" ]; then half1="RED in [$failed], named [$named]"; bad=1
+  else half1="RED in exactly [$failed]"; fi
+
+  skip="^($(echo "$named" | sed 's/ /|/g'))\$"
+  out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -run "LaunchEnv|TheNamesTheHostStrips|AHostVariableNever|InLaunchEnv" -timeout 300s 2>&1)
+  if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
+  else half2="without them: STILL RED [$(echo "$out2" | grep -E '^--- FAIL' | tr '\n' ' ')]"; bad=1; fi
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+R='TestARefusedLaunchEnvNamesTheFieldStartsNothingAndNeverEchoesAValue'
+
+run stripped-name-accepted backend/pkg/terminal/env.go \
+  's/return ownEnvironment\[name\] || hostPrivate(name)/return ownEnvironment[name]/' \
+  "TestAHostVariableNeverReachesTheShellThroughLaunchEnv $R TestTheNamesTheHostStripsAreExactlyTheNamesLaunchEnvRefuses"
+
+run value-over-bound-accepted backend/pkg/terminal/env.go \
+  's/if len(value) > MaxEnvValue {/if len(value) > MaxEnvValue*100 {/' \
+  "$R"
+
+run name-with-equals-accepted backend/pkg/terminal/env.go \
+  "s/case c == '_', c >= 'A'/case c == '=', c == '_', c >= 'A'/" \
+  "$R"
+
+run value-echoed-in-the-error backend/pkg/terminal/env.go \
+  's/must not contain NUL\."\)/must not contain NUL: "+value)/' \
+  "$R"
+
+run launch-env-not-applied backend/pkg/terminal/manager.go \
+  's/	env = withLaunchEnv(env, opts.Env)//' \
+  'TestALaunchEnvValueIsVisibleToTheShell TestAZDOTDIRInLaunchEnvIsTheUsersAndTheIntegrationStillWorks TestLaunchEnvBoundsAreInclusive'
+
+[ $bad -eq 0 ] && echo "ALL CONTROLS DETECTED" || echo "SOME CONTROL FAILED"
+exit $bad

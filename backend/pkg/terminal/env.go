@@ -1,8 +1,12 @@
 package terminal
 
 import (
+	"fmt"
+	"maps"
 	"os/exec"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/omniviewdev/omniview/internal/shellenv"
@@ -54,7 +58,7 @@ func environmentOf(probe shellenv.ProbeResult) Environment {
 // as it was given and not as a symlink resolves it, and a UTF-8 locale when the user has set none. A locale
 // the user chose is theirs and stays.
 func terminalEnvironment(base []string, shellPath, dir, version string) []string {
-	own := map[string]bool{"SHELL": true, "PWD": true, "TERM": true, "COLORTERM": true, "TERM_PROGRAM": true, "TERM_PROGRAM_VERSION": true}
+	own := ownEnvironment
 	environment := make([]string, 0, len(base)+len(own)+1)
 	localeSet := false
 	for _, entry := range base {
@@ -155,4 +159,70 @@ const (
 	MaxEnvBytes = 256 << 10
 )
 
-func checkLaunchEnv(env map[string]string) error { return nil }
+// ownEnvironment are the variables the terminal sets on purpose.
+//
+//nolint:gochecknoglobals // A fixed table of names, read only.
+var ownEnvironment = map[string]bool{"SHELL": true, "PWD": true, "TERM": true, "COLORTERM": true, "TERM_PROGRAM": true, "TERM_PROGRAM_VERSION": true}
+
+// reservedEnvName says whether the host owns a name: the terminal sets it (ownEnvironment) or the host strips it
+// from the launch environment (hostPrivate). One list serves both, so a name a terminal never inherits is a name
+// launch.env never sets.
+func reservedEnvName(name string) bool {
+	return ownEnvironment[name] || hostPrivate(name)
+}
+
+// validEnvName is the POSIX shell's name: [A-Za-z_][A-Za-z0-9_]*.
+func validEnvName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := range len(name) {
+		c := name[i]
+		switch {
+		case c == '_', c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// maxEnvNameShown is the most of a refused name an error repeats.
+const maxEnvNameShown = 64
+
+// checkLaunchEnv refuses a Launch.Env that is not allowed (Launch.Env says what is). The error names the field
+// (`launch.env.<NAME>`, or `launch.env` for a name that is not one) and never carries a value. The names are read
+// in order, so the same request always gets the same answer.
+func checkLaunchEnv(env map[string]string) error {
+	if len(env) > MaxEnvEntries {
+		return invalidError(fmt.Sprintf("launch.env has %d names; at most %d are allowed.", len(env), MaxEnvEntries))
+	}
+	names := slices.Sorted(maps.Keys(env))
+	total := 0
+	for _, name := range names {
+		if !validEnvName(name) || len(name) > MaxEnvName {
+			shown := name
+			if len(shown) > maxEnvNameShown {
+				shown = shown[:maxEnvNameShown] + "..."
+			}
+			return invalidError(fmt.Sprintf("launch.env has a name that is not valid: %s. A name is at most %d bytes of [A-Za-z_][A-Za-z0-9_]*.", strconv.Quote(shown), MaxEnvName))
+		}
+		field := "launch.env." + name
+		if reservedEnvName(name) {
+			return invalidError(field + " is a name the host sets or strips and cannot be set here.")
+		}
+		value := env[name]
+		if strings.IndexByte(value, 0) >= 0 {
+			return invalidError(field + " must not contain NUL.")
+		}
+		if len(value) > MaxEnvValue {
+			return invalidError(fmt.Sprintf("%s must be at most %d bytes; got %d.", field, MaxEnvValue, len(value)))
+		}
+		total += len(name) + len(value)
+		if total > MaxEnvBytes {
+			return invalidError(fmt.Sprintf("launch.env is too large at %s: all names and values together are at most %d bytes.", field, MaxEnvBytes))
+		}
+	}
+	return nil
+}
