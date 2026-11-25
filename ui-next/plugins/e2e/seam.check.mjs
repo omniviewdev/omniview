@@ -529,6 +529,8 @@ const PHASE_IDS = [
   'ports',
 ];
 const PHASES_ASKED = (process.env.SEAM_PHASES ?? '').split(',').filter((id) => id !== '');
+// A selection that selects nothing must not be a full run: SEAM_PHASES set to an empty list, or to commas, is an error.
+if (process.env.SEAM_PHASES !== undefined && PHASES_ASKED.length === 0) throw new Error(`SEAM_PHASES is set and names no phase (${JSON.stringify(process.env.SEAM_PHASES)}): leave it unset for the whole run`);
 const PHASES_UNKNOWN = PHASES_ASKED.filter((id) => !PHASE_IDS.includes(id));
 if (PHASES_UNKNOWN.length > 0) throw new Error(`SEAM_PHASES names phases the check does not have: ${PHASES_UNKNOWN.join(', ')} (it has ${PHASE_IDS.join(', ')})`);
 if (PHASES_ASKED.length > 0 && (CONTROL !== '' || ONLY !== '' || process.env.SEAM_PROVIDERS_REPEAT !== undefined || process.env.SEAM_PANEL_REPEAT !== undefined || process.env.SEAM_TERMINAL_REPEAT !== undefined)) {
@@ -11780,7 +11782,10 @@ try {
   const portsFixture = async () => (portsBinary ??= await buildPortsProcess(path.join(work, 'ports-binary')));
 
   // ENGINES=webkit (or chromium) runs one engine, for a developer who is chasing one.
-  for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => (process.env.ENGINES ?? 'webkit,chromium').split(',').includes(name))) {
+  const engineNames = (process.env.ENGINES ?? 'webkit,chromium').split(',');
+  const unknownEngines = engineNames.filter((name) => name !== 'webkit' && name !== 'chromium');
+  if (unknownEngines.length > 0 || engineNames.length === 0) throw new Error(`ENGINES names engines the check does not have: ${JSON.stringify(process.env.ENGINES)} (webkit, chromium)`);
+  for (const [name, engine] of [['webkit', webkit], ['chromium', chromium]].filter(([name]) => engineNames.includes(name))) {
     const browser = await engine.launch();
     failedRequests.length = 0;
     // Every page of the engine's run, whoever opens it, has its failed requests recorded (`watchRequests`).

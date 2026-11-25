@@ -69,7 +69,7 @@ test('the classifier is the same job in both workflows: a checkout of two commit
   const [one, other] = ['pr.yml', 'pr-checks.yml'].map((file) => jobOf(file, 'changes'));
   assert.deepEqual(one, other, 'the same job twice, so that both workflows classify one change the same way');
   assert.equal(one.name, 'Changed paths');
-  assert.equal(one['runs-on'], 'ubuntu-latest');
+  assert.equal(one['runs-on'], 'ubuntu-slim', 'the smallest runner: the job reads two commits and runs one script (N30)');
   assert.equal(one['timeout-minutes'], 5);
   assert.equal(one.needs, undefined);
   assert.equal(one.if, undefined, 'the classifier runs on every pull request');
@@ -154,7 +154,7 @@ test('the jobs that were there keep their names, so that no check is renamed by 
   });
   assert.equal(jobOf('pr.yml', 'e2e-application').uses, './.github/workflows/e2e-runner.yml');
   assert.equal(jobOf('pr.yml', 'e2e-application').with.base, '${{ github.event.pull_request.base.sha }}');
-  assert.deepEqual(jobOf('pr.yml', 'build-artifacts').strategy.matrix.include.map((entry) => entry.platform), ['darwin/arm64', 'linux/amd64'], 'Windows is a job of its own: the new UI keeps it while the other two builds are skipped');
+  assert.deepEqual(jobOf('pr.yml', 'build-artifacts').strategy.matrix.include.map((entry) => entry.platform), ['linux/amd64'], 'Windows is a job of its own: the new UI keeps it while the Linux build is skipped; there is no macOS build on a pull request (N30: main-macos-universal.yml builds it on every push to main)');
 });
 
 // The Windows build is not an entry of the matrix any more, so that the new UI can keep it while the macOS and Linux builds are skipped. Its steps are the matrix job's, and a step changed in one and not the other fails here.

@@ -21,6 +21,8 @@ name: Render Benchmarks
 
 on:
   pull_request:
+    # `labeled`: the label `ci:bench` on a pull request starts it (a pull request runs this only when it carries that label, N30: 171 s of a runner on 9 of 20 pull requests for a gate that main and the nightly run hold).
+    types: [opened, synchronize, reopened, labeled]
     branches: [main]
     paths:
       - "ui/**"
@@ -39,11 +41,21 @@ on:
       - "tsconfig*.json"
       - "Taskfile.yml"
       - ".github/workflows/render-bench.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "bench/render/**"
+      - "bench/vite/**"
+      - ".github/workflows/render-bench.yml"
+  schedule:
+    - cron: "37 4 * * *"
   workflow_dispatch:
 
 concurrency:
   group: render-bench-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled (N30).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: "26.13.0"
@@ -52,6 +64,7 @@ env:
 jobs:
   render-bench:
     name: Render benchmarks
+    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:bench') }}
     # Keep browser benchmarks on the same Ubuntu 24.04 baseline as native CI.
     runs-on: ubuntu-24.04
     timeout-minutes: 30

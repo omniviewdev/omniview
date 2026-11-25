@@ -1,9 +1,9 @@
 // The seam check's shards (N29): the phases and negative controls of ui-next/plugins/e2e/seam.check.mjs, packed at run time into the fewest jobs of one engine, held to their seconds, and verified as a whole.
 //
 //   node scripts/ci/seam-shards.mjs check                                               exit 1, one line per problem: a phase or a control the check has and no unit runs, one that a unit names and the check lacks, one that two units run
-//   node scripts/ci/seam-shards.mjs plan                                                packs the units into the fewest shards under LIMIT_SECONDS; writes `matrix=<json>` (one entry for each engine and shard) and `shards=<n>` to $GITHUB_OUTPUT
+//   node scripts/ci/seam-shards.mjs plan [--scope pr|full]                              packs the units into the fewest shards under LIMIT_SECONDS; writes `matrix=<json>` (one entry for each engine and shard) and `shards=<n>` to $GITHUB_OUTPUT
 //   node scripts/ci/seam-shards.mjs report --engine <e> --shard <n> --units <id>,<id>   after a shard ran: reads the logs in $RUNNER_TEMP, writes seam-ran-<engine>-<shard>.json, holds each unit and the shard to their seconds
-//   node scripts/ci/seam-shards.mjs verify --reports <dir> --shards <n>                 what the shards reported against the table, for both engines: every phase and every control, once, passed, in as many shards as the plan made
+//   node scripts/ci/seam-shards.mjs verify --reports <dir> --shards <n> [--scope pr|full]  what the shards reported against the table, for both engines: every phase and every control, once, passed, in as many shards as the plan made
 //   --root <dir>                                                                        another tree than this repository (the tests)
 //
 // WHY. The seam is the only check that drives the real host with a browser, and it ran in one job for each engine: setup, the whole seam (10 minutes, one host, one scenario after the other) and then every negative control
@@ -31,6 +31,14 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 export const CHECK = 'ui-next/plugins/e2e/seam.check.mjs';
 export const UNITS_FILE = 'scripts/ci/seam-units.mjs';
 export const ENGINES = ['webkit', 'chromium'];
+/** THE SCOPE (N30, scripts/ci/ci-scope.mjs says which a run is). `full`: every phase and every control in both engines. `pr`: the phases, in WebKit (the desktop application's engine), and no negative control; the controls and Chromium run on main, every night, and on a change to the test infrastructure. */
+export const SCOPES = ['pr', 'full'];
+export const PR_ENGINES = ['webkit'];
+/** The units a scope runs: every one for `full`, the phases (no control run) for `pr`. */
+export const unitsOfScope = (units, scope) => (scope === 'pr' ? units.filter((unit) => unit.phases !== undefined) : units);
+/** What the check has that a scope holds a run to: the controls are not required of a pull request. */
+export const listOfScope = (list, scope) => (scope === 'pr' ? { phases: list.phases, controls: [] } : list);
+export const enginesOfScope = (scope) => (scope === 'pr' ? PR_ENGINES : ENGINES);
 
 /** What a shard's work may add up to, in the units' listed seconds. The job is this plus its setup (container, install, packages, the host build: about 175 s, the slowest 260) plus the start of the phases' host. */
 export const LIMIT_SECONDS = 420;
@@ -184,14 +192,16 @@ export function matrixOf(shards, order, engines = ENGINES) {
   return { include };
 }
 
-export function renderPlan(shards, units, list) {
+export function renderPlan(shards, units, list, { scope = 'full', reason = '' } = {}) {
   const total = units.reduce((sum, unit) => sum + unit.seconds, 0);
   const phases = units.filter((unit) => unit.phases !== undefined).reduce((sum, unit) => sum + unit.phases.length, 0);
   const controls = list.controls.reduce((sum, entry) => sum + entry.proves.length, 0);
   const lines = [
     '### Seam plan',
     '',
-    `Every phase and every control runs, in each of ${ENGINES.join(' and ')}: ${phases} phases and ${controls} controls, ${units.length} units, ${total} s listed in ${shards.length} shard${shards.length === 1 ? '' : 's'} of at most ${LIMIT_SECONDS} s each (the shard's work, its start included).`,
+    scope === 'pr'
+      ? `Pull request scope (${reason}): ${phases} phases in ${PR_ENGINES.join(' and ')}; the negative controls and Chromium are NOT run on pull requests (they run on main, every night, and on a change to the test infrastructure). ${units.length} units`
+      : `Every phase and every control runs, in each of ${ENGINES.join(' and ')}: ${phases} phases and ${controls} controls, ${units.length} units, ${total} s listed in ${shards.length} shard${shards.length === 1 ? '' : 's'} of at most ${LIMIT_SECONDS} s each (the shard's work, its start included).`,
     '',
     '| Shard | Seconds | Units |',
     '|---|--:|---|',
@@ -274,7 +284,7 @@ export function ranUnits({ units, list, engine, seamLog, controlRuns, controlLog
  * to put in its file; it warns when it took more than that under. A unit that did not pass says nothing of the cost (a phase that stopped early). The shard fails when its units add up to more than `ceiling`.
  */
 export function driftFindings({ engine, shard, ran, units, ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS, ceiling = SHARD_CEILING_SECONDS }) {
-  const title = `Seam unit seconds (${engine}, shard ${shard})`;
+  const title = `Seam unit seconds ${engine} shard ${shard}`;
   const failures = [];
   const warnings = [];
   const rows = [];
@@ -299,7 +309,7 @@ export function driftFindings({ engine, shard, ran, units, ratio = DRIFT_RATIO, 
   const planned = ran.reduce((sum, entry) => sum + (units.find((candidate) => candidate.id === entry.id)?.seconds ?? 0), 0);
   if (took > ceiling) {
     const parts = ran.map((entry) => `${entry.id} ${whole(entry.seconds)} s of ${units.find((candidate) => candidate.id === entry.id)?.seconds ?? '?'}`);
-    failures.push(`::error title=Seam shard seconds (${engine}, shard ${shard})::${escapeData(`shard ${shard} took ${took} s of units in ${engine}, over the ${ceiling} s a shard may take (${planned} s in the table: ${parts.join(', ')})`)}`);
+    failures.push(`::error title=Seam shard seconds ${engine} shard ${shard}::${escapeData(`shard ${shard} took ${took} s of units in ${engine}, over the ${ceiling} s a shard may take (${planned} s in the table: ${parts.join(', ')})`)}`);
   }
 
   return { failures, warnings, rows, shard: { took, planned, ceiling } };
@@ -396,9 +406,9 @@ export function verifyRan({ units, list, reports, shards, engines = ENGINES }) {
 
 const USAGE = [
   'usage: node scripts/ci/seam-shards.mjs check',
-  '       node scripts/ci/seam-shards.mjs plan',
+  '       node scripts/ci/seam-shards.mjs plan [--scope pr|full] [--reason <text>]',
   '       node scripts/ci/seam-shards.mjs report --engine <webkit|chromium> --shard <n> --units <id>,<id>',
-  '       node scripts/ci/seam-shards.mjs verify --reports <dir> --shards <n>',
+  '       node scripts/ci/seam-shards.mjs verify --reports <dir> --shards <n> [--scope pr|full] [--reason <text>]',
   '       (--root <dir>: another tree than this repository)',
 ].join('\n');
 
@@ -406,13 +416,19 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
   const options = { root: REPO_ROOT };
   const words = [];
   for (let i = 0; i < argv.length; i += 1) {
-    if (['--root', '--engine', '--shard', '--units', '--reports', '--shards', '--dir'].includes(argv[i]) && argv[i + 1] !== undefined) {
+    if (['--root', '--engine', '--shard', '--units', '--reports', '--shards', '--dir', '--scope', '--reason'].includes(argv[i]) && argv[i + 1] !== undefined) {
       options[argv[i].slice(2)] = argv[i] === '--root' ? path.resolve(argv[i + 1]) : argv[i + 1];
       i += 1;
     } else words.push(argv[i]);
   }
 
   const [verb] = words;
+  const scope = options.scope ?? 'full';
+  if (!SCOPES.includes(scope)) {
+    err(`${USAGE}\n`);
+    return 2;
+  }
+
   const needs = { check: [], plan: [], report: ['engine', 'shard', 'units'], verify: ['reports', 'shards'] };
   if (words.length !== 1 || !Object.hasOwn(needs, verb) || needs[verb].some((key) => options[key] === undefined || options[key] === '')) {
     err(`${USAGE}\n`);
@@ -451,19 +467,20 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
 
   if (verb === 'plan') {
     let shards;
+    const scoped = unitsOfScope(units, scope);
     try {
-      shards = planRun({ units });
+      shards = planRun({ units: scoped });
     } catch (error) {
       err(`seam-shards: ${error.message}\n`);
       return 1;
     }
 
-    const text = renderPlan(shards, units, list);
+    const text = renderPlan(shards, scoped, listOfScope(list, scope), { scope, reason: options.reason ?? '' });
     out(text);
-    const matrix = matrixOf(shards, list.phases);
+    const matrix = matrixOf(shards, list.phases, enginesOfScope(scope));
     try {
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${text}\n`);
-      if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nshards=${shards.length}\n`);
+      if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nshards=${shards.length}\nscope=${scope}\n`);
     } catch (error) {
       err(`seam-shards: could not write the outputs: ${firstLine(error.message)}\n`);
       return 1;
@@ -481,19 +498,24 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
       return 1;
     }
 
-    const problems = [...read.problems, ...verifyRan({ units, list, reports: read.reports, shards: options.shards })];
+    const scoped = unitsOfScope(units, scope);
+    const problems = [...read.problems, ...verifyRan({ units: scoped, list: listOfScope(list, scope), reports: read.reports, shards: options.shards, engines: enginesOfScope(scope) })];
     for (const message of problems) {
       if (env.GITHUB_ACTIONS === 'true') out(`::error title=Seam check::${escapeData(message)}\n`);
       else err(`seam-shards: ${message}\n`);
     }
 
     if (problems.length > 0) return 1;
-    const what = `${list.phases.length} phases and ${list.controls.reduce((sum, entry) => sum + entry.proves.length, 0)} controls, in ${units.length} units, ran once and passed in ${ENGINES.join(' and ')}, in ${options.shards} shards each`;
+    const shown = listOfScope(list, scope);
+    const what = `${shown.phases.length} phases and ${shown.controls.reduce((sum, entry) => sum + entry.proves.length, 0)} controls, in ${scoped.length} units, ran once and passed in ${enginesOfScope(scope).join(' and ')}, in ${options.shards} shards each`;
+    // What a pull request does not run is said in its own line: a control that was not run is not a control that passed.
+    const notRun = scope === 'pr' ? `the ${list.controls.reduce((sum, entry) => sum + entry.proves.length, 0)} negative controls and Chromium were NOT RUN on this pull request (they run on main, every night, and on a change to the test infrastructure)${options.reason === undefined ? '' : `: ${options.reason}`}` : '';
     out(`seam-shards: ok (${what})\n`);
+    if (notRun !== '') out(`seam-shards: not run on pull requests: ${notRun}\n`);
     if (env.GITHUB_STEP_SUMMARY) {
       try {
         const rows = [...read.reports].sort((a, b) => a.engine.localeCompare(b.engine) || a.shard - b.shard).map((report) => `| ${report.engine} | ${report.shard} | ${report.units.map((entry) => entry.id).join(', ')} |`);
-        appendFileSync(env.GITHUB_STEP_SUMMARY, `### Seam check\n\nEvery phase and every control of the check ran once and passed: ${what}.\n\n| Engine | Shard | Units that ran |\n|---|--:|---|\n${rows.join('\n')}\n\n`);
+        appendFileSync(env.GITHUB_STEP_SUMMARY, `### Seam check\n\n${scope === 'pr' ? 'Every phase of the check ran once and passed' : 'Every phase and every control of the check ran once and passed'}: ${what}.\n\n${notRun === '' ? '' : `**Not run on pull requests:** ${notRun}.\n\n`}| Engine | Shard | Units that ran |\n|---|--:|---|\n${rows.join('\n')}\n\n`);
       } catch (error) {
         err(`seam-shards: could not write the summary: ${firstLine(error.message)}\n`);
         return 1;
@@ -535,7 +557,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
   const text = renderRan({ engine, shard, ran, drift });
   out(`\n${text}\n`);
   for (const line of [...drift.warnings, ...drift.failures]) out(`${line}\n`);
-  for (const entry of ran.filter((candidate) => !candidate.ok)) out(`::error title=Seam unit (${engine}, shard ${shard})::${escapeData(`the unit "${entry.id}" did not pass: ${table.get(entry.id).phases !== undefined ? `phases seen ${entry.phases.join(', ') || 'none'} of ${table.get(entry.id).phases.join(', ')}` : `controls detected ${entry.controls.join(', ') || 'none'} in the runs ${table.get(entry.id).runs.join(', ')}`}`)}\n`);
+  for (const entry of ran.filter((candidate) => !candidate.ok)) out(`::error title=Seam unit ${engine} shard ${shard}::${escapeData(`the unit "${entry.id}" did not pass: ${table.get(entry.id).phases !== undefined ? `phases seen ${entry.phases.join(', ') || 'none'} of ${table.get(entry.id).phases.join(', ')}` : `controls detected ${entry.controls.join(', ') || 'none'} in the runs ${table.get(entry.id).runs.join(', ')}`}`)}\n`);
   try {
     if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${text}\n`);
     writeFileSync(path.join(dir, `seam-ran-${engine}-${shard}.json`), `${JSON.stringify(ranReport(engine, shard, ran), null, 2)}\n`);

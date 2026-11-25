@@ -84,11 +84,21 @@ on:
       - "scripts/ci/seam-*"
       - ".github/workflows/ui-next-seam.yml"
       - "!**/*.md"
+  # The nightly run: everything (N30). A pull request runs the phases in WebKit and no negative control; this and every push to main run every phase and every control in both engines.
+  schedule:
+    - cron: "47 3 * * *"
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "full (everything: the default) or pr (what a pull request runs: WebKit, no negative controls)"
+        type: choice
+        options: [full, pr]
+        default: full
 
+# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled (every commit of main is verified).
 concurrency:
   group: ui-next-seam-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -98,25 +108,41 @@ jobs:
   # engine and shard) and the number of shards, which `Seam check` compares with what the shards report. It fails when it would plan no shard.
   plan:
     name: Seam plan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
+      scope: ${{ steps.plan.outputs.scope }}
+      reason: ${{ steps.scope.outputs.reason }}
     steps:
+      # Two commits: the base of the merge commit a pull request is checked out as, and the pull request (scripts/ci/ci-scope.mjs reads the diff between them).
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 2
           persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: .tool-versions
 
+      # The ONE place that says what this run does (scripts/ci/ci-scope.mjs, the same step as the kit probes'): everything on main, every night, on request and for a change to the test infrastructure; a pull request's scope
+      # (WebKit, the phases, no negative control) otherwise.
+      - name: Decide the scope of this run
+        id: scope
+        env:
+          SCOPE_INPUT: ${{ inputs.scope }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: node scripts/ci/ci-scope.mjs
+
       - name: Check the units against the check and pack the shards
         id: plan
+        env:
+          SCOPE: ${{ steps.scope.outputs.scope }}
+          REASON: ${{ steps.scope.outputs.reason }}
         run: |
           node scripts/ci/seam-shards.mjs check
-          node scripts/ci/seam-shards.mjs plan
+          node scripts/ci/seam-shards.mjs plan --scope "$SCOPE" --reason "$REASON"
 
   seam:
     name: Seam ${{ matrix.engine }} shard ${{ matrix.shard }}
@@ -165,7 +191,7 @@ jobs:
       - name: Check the units and the tests of the plan
         run: |
           node scripts/ci/seam-shards.mjs check
-          node --test scripts/ci/seam-*.test.mjs
+          node --test scripts/ci/seam-*.test.mjs scripts/ci/ci-scope.test.mjs scripts/ci/main-red.test.mjs
 
       - name: Build the workspace packages (the kit among them)
         run: |
@@ -267,9 +293,9 @@ jobs:
 
       # What this shard ran, from the logs of the steps above, and the seconds of each unit against the table (`scripts/ci/seam-shards.mjs`): a unit that took more than its seconds plus the larger of a quarter of them and 60 s,
       # and a shard that took more than its ceiling, fail here with the number to change. It writes seam-ran-<engine>-<shard>.json, which `Seam check` compares with the check. It runs when an earlier step failed too, so that the
-      # verdict has a report to read; the failure is the earlier step's.
+      # verdict has a report to read; the failure is the earlier step's. It does NOT run when the job was cancelled (its timeout, a cancelled run): a shard that hung and was killed must not leave a report that says it passed.
       - name: Hold the seconds and write what this shard ran
-        if: ${{ always() }}
+        if: ${{ !cancelled() }}
         env:
           ENGINE: ${{ matrix.engine }}
           SHARD: ${{ matrix.shard }}
@@ -277,7 +303,7 @@ jobs:
         run: node scripts/ci/seam-shards.mjs report --engine "$ENGINE" --shard "$SHARD" --units "$UNITS" --dir "$RUNNER_TEMP"
 
       - name: Keep what the shard ran
-        if: ${{ always() }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: seam-ran-${{ matrix.engine }}-${{ matrix.shard }}
@@ -294,16 +320,21 @@ jobs:
     name: Seam check
     needs: [plan, seam]
     if: ${{ always() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     permissions:
       actions: read
       checks: read
       contents: read
     steps:
+      # The verdict needs the table and the check's own list, nothing else: a sparse checkout of three paths, on the smallest runner, and nothing is built.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          sparse-checkout: |
+            scripts/ci
+            ui-next/plugins/e2e/seam.check.mjs
+            .tool-versions
 
       - uses: actions/setup-node@v4
         with:
@@ -346,7 +377,9 @@ jobs:
       - name: Require every phase and every control to have run and passed, in both engines
         env:
           PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
+          SCOPE: ${{ needs.plan.outputs.scope }}
+          REASON: ${{ needs.plan.outputs.reason }}
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download "$GITHUB_RUN_ID" --pattern 'seam-ran-*' --dir "$RUNNER_TEMP/reports"
-          node scripts/ci/seam-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"
+          node scripts/ci/seam-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS" --scope "$SCOPE" --reason "$REASON"

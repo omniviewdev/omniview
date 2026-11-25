@@ -1,0 +1,57 @@
+name: CI main red
+
+# ONE GitHub issue, labelled `ci-main-red`, for what is red on main (N30, scripts/ci/main-red.mjs). A pull request runs less than main does (the probes and the seam in WebKit, no negative control, scripts/ci/ci-scope.mjs says
+# which), so a failure that only main's run or the nightly run can see must not rot unseen: when one of the workflows below ends red on main (a push or the nightly run) the issue is created or updated with the workflow,
+# the first failing run and the range of commits since the last green run of that workflow on main (the first bad commit is in it), and when the workflow is green again its row leaves; the issue closes when none is left.
+#
+# `workflow_run` runs this file as it is on the default branch. A run that is not on main (a pull request's) is ignored by the job's condition, and one that was cancelled or skipped says nothing about main.
+on:
+  workflow_run:
+    workflows:
+      - UI next kit probes
+      - UI next seam check
+      - UI next Pods cluster check
+      - Render Benchmarks
+      - Whole-App Profile
+      - Main macOS universal
+    types: [completed]
+
+# One update at a time: two workflows ending together must not write the issue over each other. Nothing is cancelled.
+concurrency:
+  group: ci-main-red
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  issue:
+    name: Update the ci-main-red issue
+    if: ${{ github.event.workflow_run.head_branch == 'main' && contains(fromJSON('["success", "failure", "timed_out", "startup_failure"]'), github.event.workflow_run.conclusion) }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.13.0"
+
+      - name: Create, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT: ${{ github.event.workflow_run.event }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}
+        run: node scripts/ci/main-red.mjs

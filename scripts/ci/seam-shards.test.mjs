@@ -2,7 +2,7 @@
 // that carries them. No network: the check is read, and run only for its own list (`SEAM_LIST=1`), which needs the repository's dependencies as the shards have them.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -13,6 +13,7 @@ import { parse } from 'yaml';
 import {
   CHECK,
   ENGINES,
+  PR_ENGINES,
   JOB_TIMEOUT_MINUTES,
   LIMIT_SECONDS,
   PHASE_START_SECONDS,
@@ -32,6 +33,9 @@ import {
   ranUnits,
   readReports,
   renderPlan,
+  unitsOfScope,
+  enginesOfScope,
+  listOfScope,
   verifyRan,
 } from './seam-shards.mjs';
 
@@ -441,7 +445,7 @@ test('check and plan, on this repository: ok, and the plan writes the matrix and
   assert.equal(await main(['plan'], { env: { GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, ...planned.io }), 0);
   const written = readFileSync(output, 'utf8');
   assert.match(written, /^matrix=\{"include":\[/);
-  assert.match(written, /\nshards=3\n$/);
+  assert.match(written, /\nshards=3\nscope=full\n$/);
   assert.equal(JSON.parse(/^matrix=(.*)$/m.exec(written)[1]).include.length, 6);
   assert.match(readFileSync(summary, 'utf8'), /### Seam plan/);
 });
@@ -535,7 +539,7 @@ test('NEGATIVE report: a shard whose logs are missing, or whose control run was 
   const empty = mkdtempSync(path.join(tmpdir(), 'seam-empty-'));
   const none = capture();
   assert.equal(await main(['report', '--engine', 'webkit', '--shard', '1', '--units', ids, '--dir', empty], { env: {}, ...none.io }), 1);
-  assert.match(none.lines.out, /::error title=Seam unit \(webkit, shard 1\)::the unit ".*" did not pass/);
+  assert.match(none.lines.out, /::error title=Seam unit webkit shard 1::the unit ".*" did not pass/);
   assert.ok(existsSync(path.join(empty, 'seam-ran-webkit-1.json')), 'a report is written for the verdict to read even when nothing ran');
   const report = JSON.parse(readFileSync(path.join(empty, 'seam-ran-webkit-1.json'), 'utf8'));
   assert.equal(report.units.every((entry) => entry.ok === false), true);
@@ -546,14 +550,14 @@ test('NEGATIVE report: a shard whose logs are missing, or whose control run was 
   writeLogs(dir, mine, 'chromium', { drop: [runs[0]] });
   const left = capture();
   assert.equal(await main(['report', '--engine', 'chromium', '--shard', '1', '--units', ids, '--dir', dir], { env: {}, ...left.io }), 1);
-  assert.match(left.lines.out, /::error title=Seam unit \(chromium, shard 1\)::the unit ".*" did not pass: controls detected/);
+  assert.match(left.lines.out, /::error title=Seam unit chromium shard 1::the unit ".*" did not pass: controls detected/);
 
   const slow = mkdtempSync(path.join(tmpdir(), 'seam-slow-'));
   const phaseUnit = UNITS.find((unit) => unit.id === 'terminal-find');
   writeFileSync(path.join(slow, 'seam-webkit.log'), 'SEAM-PHASE webkit terminal-find 96\n');
   const over = capture();
   assert.equal(await main(['report', '--engine', 'webkit', '--shard', '2', '--units', 'terminal-find', '--dir', slow], { env: {}, ...over.io }), 1);
-  assert.match(over.lines.out, new RegExp(`::error title=Seam unit seconds \\(webkit, shard 2\\)::terminal-find took 96 s on this runner, ${String(phaseUnit.seconds)} s in scripts/ci/seam-units\\.mjs .*put \`seconds: 96\` there`));
+  assert.match(over.lines.out, new RegExp(`::error title=Seam unit seconds webkit shard 2::terminal-find took 96 s on this runner, ${String(phaseUnit.seconds)} s in scripts/ci/seam-units\\.mjs .*put \`seconds: 96\` there`));
   const unknown = capture();
   assert.equal(await main(['report', '--engine', 'webkit', '--shard', '1', '--units', 'nope', '--dir', slow], { env: {}, ...unknown.io }), 2);
   assert.equal((await main(['report', '--engine', 'firefox', '--shard', '1', '--units', ids, '--dir', slow], { env: {}, ...capture().io })), 2);
@@ -575,7 +579,7 @@ test('the workflow plans, runs the plan\'s shards in both engines and gathers th
   assert.equal(WORKFLOW.jobs['seam-check'].name, 'Seam check');
   assert.deepEqual(WORKFLOW.jobs['seam-check'].needs, ['plan', 'seam']);
   assert.equal(WORKFLOW.jobs['seam-check'].if, '${{ always() }}', 'a cancelled run leaves a check, not an absence');
-  assert.deepEqual(WORKFLOW.jobs.plan.outputs, { matrix: '${{ steps.plan.outputs.matrix }}', shards: '${{ steps.plan.outputs.shards }}' });
+  assert.deepEqual(WORKFLOW.jobs.plan.outputs, { matrix: '${{ steps.plan.outputs.matrix }}', shards: '${{ steps.plan.outputs.shards }}', scope: '${{ steps.plan.outputs.scope }}', reason: '${{ steps.scope.outputs.reason }}' });
   assert.match(WORKFLOW.jobs.plan.steps.at(-1).run, /seam-shards\.mjs check\n.*seam-shards\.mjs plan/);
 });
 
@@ -611,10 +615,10 @@ test('a shard\'s steps: the tests, the host build, the phases only when it has a
   assert.match(controls.run, /seam-controls-\$ENGINES\.tsv/);
   assert.match(controls.run, /control-\$ENGINES-\$control\.log/);
   const report = stepOf('seam', 'Hold the seconds');
-  assert.equal(report.if, '${{ always() }}');
+  assert.equal(report.if, '${{ !cancelled() }}', 'a shard that was cancelled (its timeout, a cancelled run) leaves no report that says it passed');
   assert.match(report.run, /seam-shards\.mjs report --engine "\$ENGINE" --shard "\$SHARD" --units "\$UNITS" --dir "\$RUNNER_TEMP"/);
   const keep = WORKFLOW.jobs.seam.steps.find((step) => step.name === 'Keep what the shard ran');
-  assert.equal(keep.if, '${{ always() }}');
+  assert.equal(keep.if, '${{ !cancelled() }}');
   assert.equal(keep.with.name, 'seam-ran-${{ matrix.engine }}-${{ matrix.shard }}');
   assert.equal(keep.with.overwrite, true);
   assert.equal(keep.with.path, '${{ runner.temp }}/seam-ran-*.json');
@@ -640,4 +644,141 @@ test('the step that names the scenario that failed is the one the shards run: it
   const seam = stepOf('seam', 'The seam (');
   assert.match(seam.run, /letter="\$\(awk -v n="\$line" '[^']+' "\$check"\)"/);
   assert.match(seam.run, /exit 1\s*$/);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The scope of a run (N30): a pull request runs the phases in WebKit and no negative control; main, the nightly run and a manual run run everything
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+test('a pull request\'s scope is the phases, in WebKit, no control run: two shards of the phases; a full run is the table in both engines', () => {
+  const pr = unitsOfScope(UNITS, 'pr');
+  assert.ok(pr.length > 0 && pr.every((unit) => unit.phases !== undefined));
+  assert.deepEqual(unitsOfScope(UNITS, 'full'), UNITS);
+  assert.deepEqual(enginesOfScope('pr'), PR_ENGINES);
+  assert.deepEqual(PR_ENGINES, ['webkit']);
+  assert.deepEqual(enginesOfScope('full'), ENGINES);
+  assert.deepEqual(listOfScope(LIST, 'pr'), { phases: LIST.phases, controls: [] });
+  assert.equal(listOfScope(LIST, 'full'), LIST);
+  const shards = planRun({ units: pr });
+  assert.equal(shards.length, 2, `${pr.reduce((sum, unit) => sum + unit.seconds, 0)} s of phases`);
+  const matrix = matrixOf(shards, LIST.phases, PR_ENGINES);
+  assert.equal(matrix.include.length, 2);
+  for (const entry of matrix.include) {
+    assert.equal(entry.engine, 'webkit');
+    assert.equal(entry.controls, '', 'no control step is scheduled');
+    assert.ok(entry.phases.length > 0);
+  }
+
+  assert.deepEqual(matrix.include.flatMap((entry) => entry.phases.split(',')).sort(), [...LIST.phases].sort());
+});
+
+test('the plan command for a pull request writes the scope and a WebKit matrix, and says in the summary that the controls and Chromium are not run', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'seam-pr-plan-'));
+  const output = path.join(dir, 'output');
+  const planned = capture();
+  assert.equal(await main(['plan', '--scope', 'pr', '--reason', '4 changed files, none of them test infrastructure'], { env: { GITHUB_OUTPUT: output }, ...planned.io }), 0);
+  const written = readFileSync(output, 'utf8');
+  assert.match(written, /\nscope=pr\n$/);
+  const matrix = JSON.parse(/^matrix=(.*)$/m.exec(written)[1]);
+  assert.equal(matrix.include.length, 2);
+  assert.ok(matrix.include.every((entry) => entry.engine === 'webkit' && entry.controls === ''));
+  assert.match(planned.lines.out, /Pull request scope \(4 changed files, none of them test infrastructure\): 26 phases in webkit; the negative controls and Chromium are NOT run on pull requests/);
+  const bad = capture();
+  assert.equal(await main(['plan', '--scope', 'nope'], { env: {}, ...bad.io }), 2);
+});
+
+test('the verdict of a pull request requires the phases in WebKit only, and says in its own line what was not run; the full verdict still requires every control and both engines', async () => {
+  const pr = unitsOfScope(UNITS, 'pr');
+  const shards = planRun({ units: pr });
+  const reports = shards.map((shard) => {
+    const mine = shard.units.map((entry) => UNITS.find((unit) => unit.id === entry.id));
+    return ranReport('webkit', shard.shard, ranUnits({ units: mine, list: LIST, engine: 'webkit', ...logsOf(mine, 'webkit') }));
+  });
+  const root = mkdtempSync(path.join(tmpdir(), 'seam-pr-verify-'));
+  for (const report of reports) {
+    mkdirSync(path.join(root, `seam-ran-webkit-${String(report.shard)}`), { recursive: true });
+    writeFileSync(path.join(root, `seam-ran-webkit-${String(report.shard)}`, `seam-ran-webkit-${String(report.shard)}.json`), JSON.stringify(report));
+  }
+
+  const summary = path.join(root, 'summary.md');
+  const ok = capture();
+  assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length), '--scope', 'pr', '--reason', 'a docs change'], { env: { GITHUB_STEP_SUMMARY: summary }, ...ok.io }), 0, ok.lines.err);
+  assert.match(ok.lines.out, /seam-shards: ok \(26 phases and 0 controls, in 8 units, ran once and passed in webkit, in 2 shards each\)/);
+  assert.match(ok.lines.out, /seam-shards: not run on pull requests: the 104 negative controls and Chromium were NOT RUN on this pull request \(they run on main, every night, and on a change to the test infrastructure\): a docs change/);
+  assert.match(readFileSync(summary, 'utf8'), /\*\*Not run on pull requests:\*\*/);
+  const full = capture();
+  assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length)], { env: {}, ...full.io }), 1, 'the same reports are not a full run');
+  assert.match(full.lines.err, /chromium: shard 1 of 2 did not report/);
+  // A pull request's verdict still fails for a missing shard and for a phase that did not run.
+  rmSync(path.join(root, 'seam-ran-webkit-2'), { recursive: true });
+  const gone = capture();
+  assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length), '--scope', 'pr'], { env: {}, ...gone.io }), 1);
+  assert.match(gone.lines.err, /webkit: shard 2 of 2 did not report/);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The workflow, again: what the review of #718 asked to hold (N1, N5, N6, N7) and what N30 changed
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+test('N1: nothing in the seam, probe and main-red workflows can hide a failed job: no continue-on-error on a job or a step', () => {
+  for (const file of ['ui-next-seam.yml', 'ui-next-kit-probes.yml', 'ci-main-red.yml']) {
+    const text = readFileSync(path.join(repo, '.github/workflows', file), 'utf8').replace(/^\s*#.*$/gm, '');
+    assert.equal(/continue-on-error/.test(text), false, `${file}: continue-on-error`);
+    const workflow = parse(text);
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      assert.equal(job['continue-on-error'], undefined, `${file}: ${id}`);
+      for (const step of job.steps ?? []) assert.equal(step['continue-on-error'], undefined, `${file}: ${id}: ${step.name ?? step.uses}`);
+    }
+  }
+});
+
+test('N5: a shard that was cancelled (its timeout, a cancelled run) leaves no report: the report and the upload do not run for it, and the verdict is red for the shard that did not report', () => {
+  for (const name of ['Hold the seconds', 'Keep what the shard ran']) {
+    const step = WORKFLOW.jobs.seam.steps.find((entry) => entry.name?.startsWith(name));
+    assert.equal(step.if, '${{ !cancelled() }}', name);
+  }
+
+  assert.equal(/always\(\)/.test(JSON.stringify(WORKFLOW.jobs.seam.steps)), false, 'no step of a shard runs when the job was cancelled');
+});
+
+test('N6: no annotation title has a comma or a colon (a workflow command takes the comma as the end of a property)', async () => {
+  const source = readFileSync(path.join(repo, 'scripts/ci/seam-shards.mjs'), 'utf8');
+  const titles = [...source.matchAll(/title=([^:]*?)::/g)].map((match) => match[1]);
+  assert.ok(titles.length >= 5, titles.join(' | '));
+  for (const title of titles) assert.equal(/[,;]/.test(title), false, title);
+  const lines = driftFindings({ engine: 'webkit', shard: 2, ran: [{ id: 'pages', ok: true, seconds: 999 }], units: UNITS }).failures;
+  assert.ok(lines.length > 0);
+  for (const line of lines) assert.match(line, /^::error title=Seam (?:unit seconds|shard seconds) webkit shard 2::/);
+});
+
+test('N7: a selection that selects nothing, and an engine that is not one, are errors in the check and not a full run or no run', () => {
+  const run = (env) => spawnSync(process.execPath, [path.join(repo, CHECK)], { cwd: repo, env: { ...process.env, ...env }, encoding: 'utf8', timeout: 60_000 });
+  for (const phases of ['', ',', ',,']) {
+    const ran = run({ SEAM_PHASES: phases });
+    assert.equal(ran.status, 1, `SEAM_PHASES=${JSON.stringify(phases)}: ${ran.stdout}${ran.stderr}`);
+    assert.match(ran.stderr, /SEAM_PHASES is set and names no phase/);
+  }
+
+  const ran = run({ SEAM_PHASES: 'nope' });
+  assert.equal(ran.status, 1);
+  assert.match(ran.stderr, /SEAM_PHASES names phases the check does not have: nope/);
+  const text = readFileSync(path.join(repo, CHECK), 'utf8');
+  assert.match(text, /ENGINES names engines the check does not have/, 'an ENGINES that names none of the two is an error: zero engines is not a pass');
+});
+
+test('N30: the plan and the verdict run on the smallest runner with a sparse checkout, a pull request supersedes its older run and main\'s run is never cancelled, and the nightly run is the full one', () => {
+  assert.equal(WORKFLOW.jobs.plan['runs-on'], 'ubuntu-slim');
+  assert.equal(WORKFLOW.jobs['seam-check']['runs-on'], 'ubuntu-slim');
+  const verdictCheckout = WORKFLOW.jobs['seam-check'].steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+  assert.match(verdictCheckout.with['sparse-checkout'], /scripts\/ci\nui-next\/plugins\/e2e\/seam\.check\.mjs/);
+  assert.equal(WORKFLOW.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
+  assert.ok('schedule' in WORKFLOW.on);
+  assert.ok('workflow_dispatch' in WORKFLOW.on);
+  assert.deepEqual(WORKFLOW.on.workflow_dispatch.inputs.scope.options, ['full', 'pr']);
+  assert.equal(WORKFLOW.on.workflow_dispatch.inputs.scope.default, 'full');
+  const scope = WORKFLOW.jobs.plan.steps.find((step) => step.id === 'scope');
+  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs');
+  assert.equal(WORKFLOW.jobs.plan.steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 2);
+  const verdict = WORKFLOW.jobs['seam-check'].steps.find((step) => step.name?.startsWith('Require every phase'));
+  assert.match(verdict.run, /--scope "\$SCOPE" --reason "\$REASON"/);
 });

@@ -18,6 +18,8 @@ name: Whole-App Profile
 
 on:
   pull_request:
+    # `labeled`: the label `ci:bench` on a pull request starts it (a pull request runs this only when it carries that label, N30: 329 s of a runner on 9 of 20 pull requests; main and the nightly run it).
+    types: [opened, synchronize, reopened, labeled]
     paths:
       # Host frontend that `bench/app` builds and profiles (`pnpm bench:app`: bench/app/vite.config.ts loads the root vite.config.ts), and what `pnpm install` and `task packages` read.
       - "ui/**"
@@ -45,11 +47,22 @@ on:
       - "go.sum"
       - "e2e/scripts/sdk-source.mjs"
       - ".github/workflows/app-profile.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "bench/app/**"
+      - "internal/**"
+      - "backend/**"
+      - ".github/workflows/app-profile.yml"
+  schedule:
+    - cron: "27 4 * * *"
   workflow_dispatch:
 
 concurrency:
   group: app-profile-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled (N30).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -63,6 +76,7 @@ env:
 jobs:
   production-profile:
     name: Production profile (${{ matrix.channel }})
+    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:bench') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -93,6 +107,7 @@ jobs:
 
   app-profile:
     name: Whole-app profile
+    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:bench') }}
     # Playwright 1.50.1 supports Ubuntu 24.04, not ubuntu-latest's Ubuntu 26.04.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
