@@ -135,11 +135,9 @@ type channelState struct {
 	waits, stallReleases, noHolderReleases, admitted, refused atomic.Uint64
 	// roomWaits counts the times an input of the stream that holds the terminal waited for room in the queue.
 	roomWaits atomic.Uint64
-	// inputAdmitted is the bytes of input the queue has taken in from this terminal's streams, counted under the session's mu in the
-	// step that admits them; inputApplied is the bytes the device took, counted when each write returns. The first is read in the step
-	// that gives the terminal to a stream (it is the number that stream's ready states), so it is never less than the second, and
-	// neither decreases.
-	inputAdmitted, inputApplied atomic.Uint64
+	// writers are the last channelWriters feeds that typed into this terminal, oldest first: each has its own count of input. Guarded
+	// by the session's mu.
+	writers []*writerCount
 	// watchers are the streams that were displaced and wait to be told that the terminal is free or ended, oldest first, at most
 	// channelWatchers of them. Guarded by the session's mu.
 	watchers []*channelConn
@@ -157,14 +155,56 @@ func newChannelState(channel bool, secret capability) *channelState {
 		capability: secret, holder: nil, holderPtr: atomic.Pointer[channelConn]{}, ended: atomic.Pointer[End]{}, wake: make(chan struct{}, 1),
 		paused: false, stalled: false, waits: atomic.Uint64{}, stallReleases: atomic.Uint64{}, noHolderReleases: atomic.Uint64{},
 		admitted: atomic.Uint64{}, refused: atomic.Uint64{}, roomWaits: atomic.Uint64{},
-		inputAdmitted: atomic.Uint64{}, inputApplied: atomic.Uint64{}, watchers: nil,
+		writers: nil, watchers: nil,
 	}
 }
 
-// noteApplied is what a write of a stream of this terminal does when it returns: the bytes the device took are applied, and the
-// stream that holds the terminal is told. It is called by the queue's executor.
-func (c *channelState) noteApplied(n int) {
-	c.inputApplied.Add(uint64(n)) //nolint:gosec // n is a positive count of bytes.
+// channelWriters is how many feeds the host remembers a count of input for, for one terminal: the one that has typed least recently
+// is forgotten when a new one comes, and a feed that is not remembered starts at 0.
+const channelWriters = 8
+
+// writerCount is what one feed (one writer: the opaque id the page makes for it and states in its attach) has typed into a terminal.
+// admitted is the bytes the queue holds from it, written or waiting, counted under the session's mu in the step that admits them, less
+// what a write that failed part of the way did not write; applied is the bytes the device took, counted when each write returns. The
+// first is what a ready states for the writer (what it has been applied and what it must not send again), so it is never less than the
+// second, and neither decreases but by the unwritten rest of a write that failed.
+type writerCount struct {
+	id                string
+	admitted, applied atomic.Uint64
+}
+
+// done is what a write of the writer does when it returns: the bytes the device took are applied, and the bytes it did not are not
+// the writer's input any more.
+func (w *writerCount) done(took, given int) {
+	w.applied.Add(uint64(took)) //nolint:gosec // took is not negative.
+	if given > took {
+		w.admitted.Add(^uint64(given-took) + 1) //nolint:gosec // subtracts the unwritten rest.
+	}
+}
+
+// writerLocked is the count of the writer an attach names: a remembered one, moved to the newest place, or a new one at 0 that makes
+// the oldest forgotten when there are too many. An attach that names no writer gets a count of its own that nothing remembers. The
+// caller holds the session's mu.
+func (c *channelState) writerLocked(id string) *writerCount {
+	if id == "" {
+		return &writerCount{id: "", admitted: atomic.Uint64{}, applied: atomic.Uint64{}}
+	}
+	for i, w := range c.writers {
+		if w.id == id {
+			c.writers = append(slices.Delete(c.writers, i, i+1), w)
+			return w
+		}
+	}
+	w := &writerCount{id: id, admitted: atomic.Uint64{}, applied: atomic.Uint64{}}
+	c.writers = append(c.writers, w)
+	if len(c.writers) > channelWriters {
+		c.writers = slices.Delete(c.writers, 0, 1)
+	}
+	return w
+}
+
+// signalHolder wakes the sender of the stream that holds the terminal: a write returned, and it may owe the page an applied frame.
+func (c *channelState) signalHolder() {
 	if holder := c.holderPtr.Load(); holder != nil {
 		holder.signal()
 	}

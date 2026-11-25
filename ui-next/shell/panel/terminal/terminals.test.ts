@@ -1050,6 +1050,27 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       stop();
     });
 
+    it('asks a terminal whose watcher was lost once when the person comes back to the tab (visible), and not when it is hidden, on the focus or on a timer', async () => {
+      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined) };
+      const stop = r.terminals.attach();
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over', unwatched: true } });
+      await vi.advanceTimersByTimeAsync(60_000);
+      window.dispatchEvent(new Event('focus'));
+      visibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).not.toHaveBeenCalled();
+      visibility('visible');
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).toHaveBeenCalledTimes(1);
+      expect(feed.refresh).toHaveBeenCalledWith({ fresh: true });
+      expect(vi.getTimerCount()).toBe(0);
+      stop();
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).toHaveBeenCalledTimes(1);
+    });
+
     it('does not export the poll interval', async () => {
       expect(await import('./terminals')).not.toHaveProperty('LOST_REFRESH_MS');
     });

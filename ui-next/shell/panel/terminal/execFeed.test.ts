@@ -70,6 +70,18 @@ async function running(init: ReadyInit = {}, options: RigOptions = {}): Promise<
   return r;
 }
 
+/** A feed that made its terminal and was closed before it opened a stream: it holds nothing but the capability, which nobody else can hold. */
+async function madeWithNoStream(options: RigOptions = {}): Promise<Rig> {
+  const created = Promise.withResolvers<unknown>();
+  const r = rig({ ...options, channels: { ...options.channels, create: async () => created.promise } });
+  r.feed.resize(80, 24);
+  await turns();
+  const closing = r.feed.close();
+  created.resolve({});
+  await Promise.resolve(closing).catch(() => undefined);
+  return { ...r, feed: { ...r.feed, close: async () => closing } };
+}
+
 /** A feed that attaches to `term-1` (a page after a reload): its stream is open and has not said `ready`. */
 function attaching(attach: Partial<ExecAttach> = {}, options: RigOptions = {}): Rig {
   return rig({ ...options, attach: { id: 'term-1', ...attach } });
@@ -375,7 +387,8 @@ describe('acknowledging what the reader parsed', () => {
     gone.stream().output(0, 'abc');
     await closeLive(gone);
     gone.feed.ack(3);
-    expect(gone.stream().acks()).toEqual([0]);
+    // What the stream had delivered and was not credited is credited when the close goes on it, and nothing after the feed was closed.
+    expect(gone.stream().acks()).toEqual([0, 3]);
 
     const left = await running();
     left.stream().output(0, 'abc');
@@ -500,6 +513,7 @@ describe('what the user types', () => {
     const again = reconnect(r);
     again.ready({ inputApplied: MAX_INPUT_BYTES });
     expect(again.typed()).toBe(piece('b') + piece('c') + 'd');
+    again.applied(MAX_INPUT_BYTES * 3 + 1);
     expect(r.feed.inputsSettled?.()).toBe(true);
   });
 
@@ -541,6 +555,8 @@ describe('what the user types', () => {
     r.feed.write('a');
     expect(r.feed.inputsSettled?.()).toBe(false);
     r.stream().ready();
+    expect(r.feed.inputsSettled?.()).toBe(false);
+    r.stream().applied(1);
     expect(r.feed.inputsSettled?.()).toBe(true);
     r.stream().setPending(3);
     expect(r.feed.inputsSettled?.()).toBe(false);
@@ -1456,7 +1472,7 @@ describe('a terminal another page took (`taken-over`)', () => {
     expect(r.channels.of('listed')).toHaveLength(1);
   });
 
-  it('keeps offering it when the host cannot say, and stops when the host says another tab holds the terminal', async () => {
+  it('keeps offering it when the host cannot say, and when the host says another tab holds the terminal (the press asks again and attaches only when nobody does)', async () => {
     const down = await running({}, { channels: { listed: async () => Promise.reject(new Error('offline')) } });
     down.stream().takenOver();
     down.stream().drop();
@@ -1467,7 +1483,7 @@ describe('a terminal another page took (`taken-over`)', () => {
     held.stream().drop();
     await turns();
     expect(held.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true, free: false });
-    expect(offersTakeBack(held.feed.getSnapshot().detached)).toBe(false);
+    expect(offersTakeBack(held.feed.getSnapshot().detached)).toBe(true);
     expect(held.channels.streams()).toHaveLength(1);
   });
 
@@ -1687,11 +1703,10 @@ describe('closing the feed', () => {
   });
 
   it('ends a terminal it made and never opened a stream to by the capability: nobody else can hold it', async () => {
-    const r = await connecting();
+    const r = await madeWithNoStream();
     await r.feed.close();
     expect(r.channels.of('close')).toEqual([{ kind: 'close', id: 'term-1' }]);
-    expect(r.stream().sent().filter((frame) => frame.kind === 'close')).toEqual([]);
-    expect(r.stream().closedByFeed()).toBe(true);
+    expect(r.channels.streams()).toHaveLength(0);
   });
 
   it('dismisses a terminal that ended by itself instead of closing it, once: the host keeps its end until a page does', async () => {
@@ -1786,7 +1801,7 @@ describe('closing the feed', () => {
   });
 
   it('is no error when the host says the terminal is not there: it ended meanwhile', async () => {
-    const r = await connecting({ channels: { close: async () => Promise.reject(goneError()) } });
+    const r = await madeWithNoStream({ channels: { close: async () => Promise.reject(goneError()) } });
     await expect(r.feed.close()).resolves.toBeUndefined();
     const dismissed = await running({}, { channels: { dismiss: async () => Promise.reject(goneError()) } });
     dismissed.stream().ended();
@@ -1794,7 +1809,7 @@ describe('closing the feed', () => {
   });
 
   it('rejects with any other refusal of the host, and asks it once: the registry logs it', async () => {
-    const r = await connecting({ channels: { close: async () => Promise.reject(new Error('host on fire')) } });
+    const r = await madeWithNoStream({ channels: { close: async () => Promise.reject(new Error('host on fire')) } });
     await expect(r.feed.close()).rejects.toThrow('host on fire');
     await expect(r.feed.close()).rejects.toThrow('host on fire');
     expect(r.channels.of('close')).toHaveLength(1);
@@ -2116,5 +2131,92 @@ describe('the kept input stays bounded and exact', () => {
       r.stream().ready({ raw });
       expect(r.feed.getSnapshot().state).toBe('failed');
     }
+  });
+});
+
+describe('review of #763: the kept input, the settled input and the close', () => {
+  it('lets go of every piece the host confirmed at once, not when it next compacts', async () => {
+    const r = await running();
+    for (let key = 1; key <= 10; key += 1) {
+      r.feed.write('k');
+    }
+
+    expect(r.feed.keptPieces()).toBe(10);
+    r.stream().applied(10);
+    expect(r.feed.keptPieces()).toBe(0);
+    r.feed.write('x');
+    r.stream().applied(11);
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 11 });
+    expect(again.typed()).toBe('');
+  });
+
+  it('keeps the unconfirmed suffix of a piece the host confirmed part of', async () => {
+    const r = await running();
+    r.feed.write('abcdef');
+    r.stream().applied(2);
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 2 });
+    expect(again.typed()).toBe('cdef');
+  });
+
+  it('is not settled while the host has not said it applied what was sent: a command on its way is not nothing', async () => {
+    const r = await running();
+    r.feed.write('ls\r');
+    expect(r.feed.inputsSettled?.()).toBe(false);
+    r.stream().applied(3);
+    expect(r.feed.inputsSettled?.()).toBe(true);
+  });
+
+  it('leaves a terminal to the host\'s lease when it is closed after its stream opened and before `ready`: another stream may have taken it, and the capability close would end what that stream shows', async () => {
+    const r = await connecting();
+    await r.feed.close();
+    expect(r.channels.of('close')).toEqual([]);
+    expect(r.stream().sent().filter((frame) => frame.kind === 'close')).toEqual([]);
+    expect(r.stream().closedByFeed()).toBe(true);
+  });
+
+  it('keeps acknowledging what the host sends while a close is in flight, so that the end is never held back for credit: the bytes read and not parsed, and every frame that comes', async () => {
+    const r = await running();
+    r.stream().output(0, 'abc');
+    const closing = r.feed.close();
+    await turns();
+    expect(r.stream().acks().reduce((sum, bytes) => sum + bytes, 0)).toBe(3);
+    r.stream().output(3, 'defgh');
+    r.stream().gap(8, 20);
+    r.stream().output(20, 'ij');
+    expect(r.stream().acks().reduce((sum, bytes) => sum + bytes, 0)).toBe(10);
+    r.stream().ended({ reason: 'closed', closed_by: 'request', last_offset: 22 });
+    await closing;
+  });
+});
+
+describe('the count of input applied is the writer\'s own (a host that counts for each writer)', () => {
+  it('resends what it typed when the host\'s count for this writer does not include it, whatever another writer wrote meanwhile', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    const again = reconnect(r);
+    // Another writer's 40 bytes were applied while this stream was down; the count the host reports for this writer is still 0.
+    again.ready({ inputApplied: 0 });
+    expect(again.typed()).toBe('abc');
+  });
+});
+
+describe('the writer of a feed', () => {
+  it('says one writer id in every attach of the feed: 32 lowercase hex digits, the same across its reconnects, and another for another feed', async () => {
+    const r = await running();
+    const first = r.stream().writer;
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    r.stream().drop();
+    const again = reconnect(r);
+    expect(again.writer).toBe(first);
+    const other = await running();
+    expect(other.stream().writer).toMatch(/^[0-9a-f]{32}$/);
+    expect(other.stream().writer).not.toBe(first);
+    const attached = attaching();
+    expect(attached.stream().writer).toMatch(/^[0-9a-f]{32}$/);
   });
 });

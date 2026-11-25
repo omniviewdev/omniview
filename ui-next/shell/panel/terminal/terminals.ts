@@ -229,6 +229,14 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       };
 
       window.addEventListener('pagehide', hide);
+      // A terminal whose watcher was lost cannot be told when it is free: when the person comes back to the tab the host is asked, once, with no timer.
+      const shown = (): void => {
+        if (document.visibilityState === 'visible') {
+          sessions.refreshUnwatched();
+        }
+      };
+
+      document.addEventListener('visibilitychange', shown);
       attached += 1;
       findTerminals();
       openFound();
@@ -241,6 +249,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         on = false;
         attached -= 1;
         window.removeEventListener('pagehide', hide);
+        document.removeEventListener('visibilitychange', shown);
         stop();
       };
     },

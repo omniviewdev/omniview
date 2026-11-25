@@ -46,6 +46,8 @@ export const KEPT_ENDS = 16;
 const MAX_ATTACH = 1024;
 /** How many displaced streams watch one terminal: the one that has watched longest is closed when there are more. */
 const WATCHERS = 4;
+/** How many writers of a terminal the host remembers. */
+const WRITERS = 8;
 const PROMPT = '\u001b[32muser@synthetic\u001b[0m:\u001b[34m~\u001b[0m$ ';
 const BANNER = `\u001b[90mSynthetic shell: hello, size, colors, flood N [W], sleep N, exit [code], kill, quit, fail\u001b[0m\r\n${PROMPT}`;
 
@@ -98,7 +100,7 @@ const gapFrame = (from, to) => {
 
 /** The frames a page sends, as a test or a probe makes them. */
 export const pageFrames = {
-  attach: (cap, fromOffset, version = VERSION) => withType(FRAME.attach, encoder.encode(JSON.stringify({ v: version, cap, ...(fromOffset === undefined ? {} : { from_offset: fromOffset }) }))),
+  attach: (cap, fromOffset, version = VERSION, writer = undefined) => withType(FRAME.attach, encoder.encode(JSON.stringify({ v: version, cap, ...(fromOffset === undefined ? {} : { from_offset: fromOffset }), ...(writer === undefined ? {} : { writer }) }))),
   input: (bytes) => withType(FRAME.input, typeof bytes === 'string' ? encoder.encode(bytes) : bytes),
   resize: (cols, rows) => {
     const payload = new Uint8Array(4);
@@ -978,7 +980,9 @@ export function createHost(options = {}) {
       if (typeof request !== 'object' || request === null || !Number.isSafeInteger(request.v) || request.v === 0 || typeof request.cap !== 'string' || request.cap === '') return undefined;
       const from = request.from_offset;
       if (from !== undefined && from !== null && (!Number.isSafeInteger(from) || from < 0)) return undefined;
-      return { cap: request.cap, from: from ?? undefined, v: request.v };
+      // A writer that is present and is not 32 lowercase hex digits makes the attach malformed.
+      if (request.writer !== undefined && (typeof request.writer !== 'string' || !/^[0-9a-f]{32}$/.test(request.writer))) return undefined;
+      return { cap: request.cap, from: from ?? undefined, v: request.v, writer: request.writer };
     } catch {
       return undefined;
     }
@@ -1009,7 +1013,7 @@ export function createHost(options = {}) {
     const pty = find(request.cap);
     const end = kept.get(request.cap);
     if (pty !== undefined && !pty.finishing) {
-      claim(conn, pty, request.from);
+      claim(conn, pty, request.from, request.writer);
     } else if (end !== undefined) {
       serveEnded(conn, end, request.from);
     } else if (pty !== undefined) {
@@ -1036,7 +1040,7 @@ export function createHost(options = {}) {
       end: ring.end,
       lost,
       // What the host has admitted, and not only what it has written: the input the stream that held the terminal had queued is applied before anything this stream sends, so the page must not send it again.
-      input_applied: pty.admitted,
+      input_applied: conn.w.admitted,
       size: { cols: pty.cols, rows: pty.rows },
       start_size: ring.sizeAt(start),
       modes: modesNow(pty),
@@ -1053,13 +1057,24 @@ export function createHost(options = {}) {
    * One step under one lock in the real host, one task here: the stream takes the terminal. The stream that held it is sent `taken-over` and stays as a watcher, and from now on cannot type. A `from_offset` past the end of the output is not this terminal's:
    * the stream closes with no answer.
    */
-  function claim(conn, pty, from) {
+  /** The counts of a writer: a writer the host keeps (the last eight) or, with none stated, one of its own that nothing remembers. */
+  function writerOf(pty, id) {
+    if (id === undefined) return { admitted: 0, applied: 0 };
+    const known = pty.writers.get(id) ?? { admitted: 0, applied: 0 };
+    pty.writers.delete(id);
+    pty.writers.set(id, known);
+    while (pty.writers.size > WRITERS) pty.writers.delete(pty.writers.keys().next().value);
+    return known;
+  }
+
+  function claim(conn, pty, from, writer) {
     if (from !== undefined && from > pty.ring.end) {
       log.attaches.push({ stream: conn.id, id: pty.id, from_offset: from, outcome: 'bad-offset', at: now() });
       shut(conn);
       return;
     }
 
+    conn.w = writerOf(pty, writer);
     const previous = pty.holder;
     if (previous !== null) {
       previous.displaced = true;
@@ -1148,9 +1163,9 @@ export function createHost(options = {}) {
   /** The stream that holds the terminal is told how much input the host has applied, when that is more than it was told (its `ready` included): never a number that goes down or repeats, and a watcher is told nothing. */
   function tellApplied(pty) {
     const holder = pty.holder;
-    if (holder === null || holder.over || holder.displaced || holder.held || pty.applied <= holder.told) return;
-    holder.told = pty.applied;
-    deliver(holder, appliedFrame(pty.applied));
+    if (holder === null || holder.over || holder.displaced || holder.held || holder.w.applied <= holder.told) return;
+    holder.told = holder.w.applied;
+    deliver(holder, appliedFrame(holder.w.applied));
   }
 
   /** What a frame of an attached stream does. Frames of one stream are applied in order, one at a time; those of a stream that does not hold the terminal are refused. */
@@ -1176,13 +1191,14 @@ export function createHost(options = {}) {
 
         // Admitted: from here it is applied, and counted, whoever holds the terminal when its turn comes (what a displaced stream had admitted is applied before anything the new holder sends).
         const size = bytes.length - 1;
-        pty.admitted += size;
+        const writer = conn.w;
+        writer.admitted += size;
         const apply = () => {
           const text = decoder.decode(bytes.subarray(1));
           log.writes.push({ stream: conn.id, id: pty.id, data: text, at: now() });
           log.writeAt.push(performance.now());
           typed(pty, text);
-          pty.applied += size;
+          writer.applied += size;
           tellApplied(pty);
         };
 
@@ -1361,7 +1377,7 @@ export function createHost(options = {}) {
    */
   function openStream(deliver_, onClosed = () => undefined) {
     streamSerial += 1;
-    const conn = { progressAt: 0, id: streamSerial, deliver: deliver_, onClosed, over: false, pty: null, terminal: undefined, cursor: 0, replayEnd: 0, begun: 0, acked: 0, explicit: false, displaced: false, held: false, sending: false, attached: false, watched: null, told: 0 };
+    const conn = { progressAt: 0, id: streamSerial, deliver: deliver_, onClosed, over: false, pty: null, terminal: undefined, cursor: 0, replayEnd: 0, begun: 0, acked: 0, explicit: false, displaced: false, held: false, sending: false, attached: false, watched: null, told: 0, w: { admitted: 0, applied: 0 } };
     conns.add(conn);
     log.streams.push({ id: conn.id, at: now() });
     return {
@@ -1452,8 +1468,8 @@ export function createHost(options = {}) {
       waiting: 0,
       unacked: 0,
       /** Version 2: the bytes of input the host has admitted (applied, or queued ahead of the applied) and the bytes it has written to the shell, across streams; the streams that were displaced and wait (`watchers`, at most four). */
-      admitted: 0,
-      applied: 0,
+      /** The input counts for each writer, the last eight (the one that attached least recently is forgotten): `{ admitted, applied }`. */
+      writers: new Map(),
       watchers: [],
       paused: false,
       pumping: false,
@@ -1712,8 +1728,9 @@ export function createHost(options = {}) {
       return {
         holder: pty.holder?.id ?? null,
         watchers: pty.watchers.length,
-        applied: pty.applied,
-        admitted: pty.admitted,
+        applied: [...pty.writers.values()].reduce((sum, one) => sum + one.applied, 0),
+        admitted: [...pty.writers.values()].reduce((sum, one) => sum + one.admitted, 0),
+        writers: pty.writers.size,
         leaseExpires: pty.leaseExpires,
         start: pty.ring.start,
         end: pty.ring.end,

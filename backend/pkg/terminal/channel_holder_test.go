@@ -79,10 +79,10 @@ func TestInputThatWasTakenInBeforeAHandoverIsAppliedBeforeTheNewHoldersAndNothin
 	require.Equal(t, "w:A1\n", dev.waitEntered(t), "A's input was admitted and is being applied")
 	begun, _ := fa.counts()
 	fa.park(begun) // A's connection outlives the handover: its stream goes on reading frames
-	a.input("A2\n")
 
 	b := m.attach(t, info.Cap, nil)
 	b.waitReady()
+	a.input("A2\n") // sent after the handover: the stream's reader no longer waits for the write that is blocked, so the order is the test's
 	b.input("B1\n")
 	guarded(t, "decide-and-act", func() {
 		require.Eventually(t, func() bool { return s.channelStats().admitted >= 2 }, settle, time.Millisecond, "B's input is behind A's")
@@ -113,10 +113,10 @@ func TestAResizeThatWasTakenInBeforeAHandoverIsAppliedBeforeTheNewHoldersAndNoth
 	require.Equal(t, "r:31x91", dev.waitEntered(t))
 	begun, _ := fa.counts()
 	fa.park(begun)
-	a.resize(92, 32)
 
 	b := m.attach(t, info.Cap, nil)
 	b.waitReady()
+	a.resize(92, 32) // sent after the handover, as above
 	b.resize(101, 41)
 	guarded(t, "decide-and-act", func() {
 		require.Eventually(t, func() bool { return s.channelStats().admitted >= 2 }, settle, time.Millisecond, "B's resize is behind A's")
@@ -248,6 +248,15 @@ func TestOneWinnerOfManyStreamsThatAttachAtOnce(t *testing.T) {
 			return n
 		}
 		require.Eventually(t, func() bool { return told() == claimants-1 }, settle, time.Millisecond, "round %d: every stream but one lost the terminal and was told", round)
+		require.Eventually(t, func() bool {
+			n := 0
+			for _, p := range pages {
+				if p.isClosed() {
+					n++
+				}
+			}
+			return n == claimants-1-channelWatchers
+		}, settle, time.Millisecond, "round %d: the oldest watchers are closed", round)
 
 		guarded(t, "one-winner", func() {
 			holders, closed := 0, 0

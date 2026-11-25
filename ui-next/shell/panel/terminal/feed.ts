@@ -90,8 +90,8 @@ export type TerminalDetached = {
   readonly unwatched?: boolean | undefined;
 };
 
-/** Whether the way back is offered: the taker has gone (`free`), or the page can no longer be told and the host has not said another tab holds the terminal. */
-export const offersTakeBack = (detached: TerminalDetached | undefined): boolean => detached?.free === true || (detached?.unwatched === true && detached.free !== false);
+/** Whether the way back is offered: the taker has gone (`free`), or the page can no longer be told (`unwatched`): then the button stays whatever the host last said, because nothing will tell the page when the holder leaves; the press asks the host anew and attaches only when it says nobody holds the terminal. */
+export const offersTakeBack = (detached: TerminalDetached | undefined): boolean => detached?.free === true || detached?.unwatched === true;
 
 /** The status of a feed: the same object until something in it changes. */
 export type TerminalFeedSnapshot = {

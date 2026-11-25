@@ -10,7 +10,7 @@ export const FRAME: Readonly<{ attach: 1; input: 2; resize: 3; ack: 4; detach: 5
 /** The one version of the stream the host speaks (`attach.v`). */
 export const VERSION: number;
 export const pageFrames: {
-  attach(cap: string, fromOffset?: number, version?: number): Uint8Array;
+  attach(cap: string, fromOffset?: number, version?: number, writer?: unknown): Uint8Array;
   input(bytes: Uint8Array | string): Uint8Array;
   resize(cols: number, rows: number): Uint8Array;
   ack(n: number): Uint8Array;

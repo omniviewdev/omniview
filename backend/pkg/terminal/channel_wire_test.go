@@ -56,7 +56,7 @@ func TestAppliedCountsTheBytesWrittenWhenTheWriteReturnsAndNotBefore(t *testing.
 	a.input("abc")
 	require.Equal(t, "w:abc", dev.waitEntered(t), "the write is inside the device")
 	guarded(t, "applied-after-the-write", func() {
-		assert.Zero(t, s.channel.inputApplied.Load(), "the write has not returned: the host has applied nothing")
+		assert.Zero(t, s.writerApplied(writerID(0)), "the write has not returned: the host has applied nothing")
 		assert.Empty(t, a.state().applied, "and the page was told nothing")
 	})
 	dev.letThrough()
@@ -98,7 +98,7 @@ func (shortDevice) Resize(uint16, uint16) error { return nil }
 // While the page does not take frames the writes pile up, and the page is told once for the batch, with the total: at most one
 // `applied` frame for each batch, never one for each write.
 func TestAppliedIsCoalescedWhileThePageTakesNothing(t *testing.T) {
-	m, info, _, dev := wireTerminal(t, `sleep 600`)
+	m, info, s, dev := wireTerminal(t, `sleep 600`)
 	dev.openAll()
 	f := newFakeChannel(t)
 	a := m.attachOn(t, f, info.Cap, nil, 0)
@@ -109,7 +109,7 @@ func TestAppliedIsCoalescedWhileThePageTakesNothing(t *testing.T) {
 	require.Eventually(t, func() bool { begun, _ := f.counts(); return begun >= 2 }, settle, 1e6, "the first applied frame was begun")
 	a.input("22")
 	a.input("333")
-	require.Eventually(t, func() bool { return len(dev.log()) == 3 }, settle, 1e6, "the three writes were applied")
+	require.Eventually(t, func() bool { return len(dev.log()) == 3 && s.writerApplied(writerID(0)) == 6 }, settle, 1e6, "the three writes were applied and counted")
 	f.release()
 	guarded(t, "applied-coalesced", func() {
 		st := a.waitFor("applied 1 then 6", appliedIs(1, 6))

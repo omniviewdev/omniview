@@ -89,6 +89,11 @@ export type TerminalSessions = {
    */
   readonly leave: () => void;
   /**
+   * Asks every feed that can no longer be told when its lost terminal is free (`detached.unwatched`, its end not known) who holds it now, anew (`TerminalFeedHandle.refresh` with `fresh`): what a tab does when the person comes back to it. Answers whether any feed
+   * was asked. No timer is behind it.
+   */
+  readonly refreshUnwatched: () => boolean;
+  /**
    * Opens a session in the Terminal tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). Every call is a new process, except for a target that names the id of its session
    * (`TerminalTarget.sessionId`): a terminal has one session. When the panel has a session of that id (a saved tab: the restore makes every terminal session `ended`, with no feed) the session is GIVEN the feed, stays
    * where it is under the title it has, and follows the feed from then on; when it has none, a session of that id is made. `undefined` when it could not, and why is in the log: the target is not well formed, its id names
@@ -501,6 +506,30 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       }
     },
 
+    refreshUnwatched: () => {
+      let asked = false;
+      for (const entry of [...entries.values()]) {
+        if (entry.ended || typeof entry.feed.refresh !== 'function') {
+          continue;
+        }
+
+        let unwatched = false;
+        try {
+          const status = entry.feed.getSnapshot();
+          unwatched = status.state === 'ended' && status.exit === undefined && status.detached?.unwatched === true;
+        } catch (error) {
+          warn(`[panel] ${entry.plugin} could not ask who holds the terminal`, error);
+        }
+
+        if (unwatched) {
+          asked = true;
+          tellFeed(entry.plugin, (): Promise<void> | undefined => entry.feed.refresh?.({ fresh: true }), 'could not ask who holds the terminal');
+        }
+      }
+
+      return asked;
+    },
+
     open: (target, opening = {}) => {
       const plugin = text(target.plugin);
       const targetId = typeof target.id === 'string' ? target.id : '';
@@ -655,7 +684,8 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         // The page's word that nobody holds the terminal may be old (a tab may have attached it since), and attaching takes a terminal from whoever holds it: the feed that lost it asks the host and puts the answer in its status.
         await askFeed(old.plugin, (): Promise<void> | undefined => old.feed.refresh?.({ fresh: true }), 'could not ask who holds the terminal');
         // The answer came, and the session may not be what it was: its tab closed, the window stopped, the terminal ended, or somebody holds it now. Then nothing is attached.
-        return lostEntry(session) === old && replaceFeed(session, old, reattach);
+        // The answer is the host's: a terminal it did not say is free (a holder it names, or no answer at all) is not attached, because attaching takes a terminal from whoever holds it.
+        return lostEntry(session) === old && old.feed.getSnapshot().detached?.free === true && replaceFeed(session, old, reattach);
       } finally {
         old.taking = false;
       }

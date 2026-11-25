@@ -4,7 +4,7 @@ import type { TerminalShellAttempt } from './feed';
 // (docs/ui-next/terminal-channel-protocol.md). The feed never sees a capability: it names a terminal by its id, which is a label that opens nothing, and `terminalChannel.ts` finds the capability for it. The
 // binary framing is `terminalChannel.ts`'s; the JSON a frame carries (`ready`, `ended`) is handed on parsed and unchecked, and the feed reads it, as it reads every answer of the host.
 
-/** What one stream of a terminal tells the feed that opened it. Each is called in the order the host sent it; none after `ended`, `released`, `notFound`, `unsupported` or `closed`, and exactly one of those five ends the stream. `takenOver` does not end it: the stream is then a watcher, which hears `released` or `ended` and nothing else. */
+/** What one stream of a terminal tells the feed that opened it. Each is called in the order the host sent it; none after `ended`, `released`, `notFound`, `unsupported` or `closed`, and exactly one of those five ends the stream. `takenOver` does not end it: the stream is then a watcher, which hears `released` or `ended` (each ends the stream), `closeRefused` for a `close` sent before the takeover was heard (`takenOver` then `closeRefused`; the stream stays), and nothing else from the host; it may also end as `closed` with no host frame (the host evicted it as the longest-watching of five, or the connection dropped). */
 export type ChannelEvents = {
   /** The first frame of the host (`0x81`), its JSON parsed: `start`, `end`, `lost`, `input_applied`, `size`, `start_size`, `modes`, `start_modes`, `cwd`, `busy`, `session`, `lease_ms`, `ended`. */
   readonly ready: (ready: unknown) => void;
@@ -58,8 +58,8 @@ export type ChannelLaunch = { readonly cols: number; readonly rows: number; read
 export type TerminalChannels = {
   /** Starts a channel terminal under `id` (`CreateTerminal` with `launch.channel`) and keeps its capability. Answers the host's session, without the capability. */
   readonly create: (id: string, launch: ChannelLaunch) => Promise<unknown>;
-  /** Opens a stream to the terminal and attaches it, from `fromOffset` when the page has the bytes before it (absent: the page has nothing). */
-  readonly connect: (id: string, fromOffset: number | undefined, events: ChannelEvents) => ChannelLink;
+  /** Opens a stream to the terminal and attaches it, saying the feed's `writer` (32 lowercase hex digits, one for each feed, kept across its streams: the host counts input applied for each writer), from `fromOffset` when the page has the bytes before it (absent: the page has nothing). */
+  readonly connect: (id: string, fromOffset: number | undefined, events: ChannelEvents, writer?: string) => ChannelLink;
   /** Ends the terminal (`CloseChannelTerminal`) and forgets its capability. */
   readonly close: (id: string) => Promise<void>;
   /** Forgets the end a terminal left (`DismissChannelTerminal`) and its capability. */

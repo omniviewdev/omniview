@@ -611,6 +611,8 @@ export type FakeStream = {
   /** The terminal this stream is for, and the offset the feed asked from (`undefined`: the feed had nothing). */
   readonly id: string;
   readonly fromOffset: number | undefined;
+  /** The writer id the feed said in its attach (`undefined`: it said none). */
+  readonly writer: string | undefined;
   /** The first frame of the host. */
   readonly ready: (init?: ReadyInit) => void;
   /** Output from `offset`, as the bytes or the text as UTF-8. */
@@ -691,7 +693,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
   const calls: ChannelCall[] = [];
   const text = new TextDecoder();
 
-  const connect = (id: string, fromOffset: number | undefined, events: ChannelEvents): ChannelLink => {
+  const connect = (id: string, fromOffset: number | undefined, events: ChannelEvents, writer?: string): ChannelLink => {
     const sent: SentFrame[] = [];
     let open = true;
     let byFeed = false;
@@ -742,6 +744,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     streams.push({
       id,
       fromOffset,
+      writer,
       ready: (init = {}) => {
         holder('ready');
         const size = init.size ?? { cols: 80, rows: 24 };

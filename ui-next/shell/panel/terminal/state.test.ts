@@ -426,3 +426,12 @@ describe('a terminal whose watcher the host closed with no word (`detached.unwat
     expect(lane.note).toBe(TAKEN_NOTE);
   });
 });
+
+describe('a terminal another tab holds that this page can no longer be told about (`unwatched`, `free: false`)', () => {
+  it('says so in the lane: another tab holds it, and Take it back asks again and attaches only when nobody does', () => {
+    const lane = laneOf(snap('ended', { detached: { by: 'taken-over', unwatched: true, free: false } }));
+    expect(lane.words).toBe('Taken over by another tab');
+    expect(lane.note).toMatch(/asks again/);
+    expect(lane.note).toMatch(/nobody holds it/);
+  });
+});
