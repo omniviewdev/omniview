@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES } from './channel';
+import { offersTakeBack } from './feed';
 import { RECONNECT_DELAYS_MS, createExecFeed, listedOf, type ExecAttach, type ExecFeed } from './execFeed';
 import type { TerminalFeedHandle, TerminalModes, TerminalReplay, TerminalShellAttempt } from './feed';
 import { fakeChannels, goneError, type FakeChannels, type FakeChannelsOptions, type FakeStream, type ReadyInit } from './testing';
@@ -1429,22 +1430,55 @@ describe('a terminal another page took (`taken-over`)', () => {
     expect(r.channels.of('listed')).toEqual([]);
   });
 
-  it('asks the host once who holds the terminal when the watcher closes with no word (it watched longest of five, or the connection dropped), and never connects again', async () => {
-    const r = await running({}, { channels: { listed: () => ({ id: 'term-1', attached: false }) } });
+  it('offers the way back at once when the watcher closes with no word (the page can no longer be told when the terminal is free), asks the host, and never connects again', async () => {
+    const answer = Promise.withResolvers<unknown>();
+    const r = await running({}, { channels: { listed: async () => answer.promise } });
     r.stream().takenOver();
     r.stream().drop();
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true });
+    expect(offersTakeBack(r.feed.getSnapshot().detached)).toBe(true);
+    answer.resolve({ id: 'term-1', attached: false });
     await turns();
     expect(r.channels.of('listed')).toEqual([{ kind: 'listed', id: 'term-1' }]);
-    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true, free: true });
     vi.advanceTimersByTime(60_000);
     expect(r.channels.streams()).toHaveLength(1);
     expect(r.channels.of('listed')).toHaveLength(1);
-    const held = await running({}, { channels: { listed: () => ({ id: 'term-1', attached: true }) } });
+  });
+
+  it('keeps offering it when the host cannot say, and stops when the host says another tab holds the terminal', async () => {
+    const down = await running({}, { channels: { listed: async () => Promise.reject(new Error('offline')) } });
+    down.stream().takenOver();
+    down.stream().drop();
+    await turns();
+    expect(offersTakeBack(down.feed.getSnapshot().detached)).toBe(true);
+    const held = await running({}, { channels: { listed: async () => ({ id: 'term-1', attached: true }) } });
     held.stream().takenOver();
     held.stream().drop();
     await turns();
-    expect(held.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    expect(held.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true, free: false });
+    expect(offersTakeBack(held.feed.getSnapshot().detached)).toBe(false);
     expect(held.channels.streams()).toHaveLength(1);
+  });
+
+  it('is never unwatched while a watcher is open: only a `released` or an answer of the host changes what is offered', async () => {
+    const r = await running();
+    r.stream().takenOver();
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    expect(offersTakeBack(r.feed.getSnapshot().detached)).toBe(false);
+  });
+
+  it('fails the stream when `released` comes to a stream that holds the terminal', async () => {
+    const r = await running();
+    r.stream().raw.released();
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { stage: 'start' } });
+  });
+
+  it('keeps who took the terminal, exactly, when a watcher is told how it ended', async () => {
+    const r = await running();
+    r.stream().takenOver();
+    r.stream().ended({ reason: 'exited', exit_code: 7, last_offset: 0 });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
   });
 
   it('asks again, on the schedule of a reconnect, while the host cannot be reached for the question, and stops when it answers', async () => {
@@ -1454,11 +1488,11 @@ describe('a terminal another page took (`taken-over`)', () => {
     r.stream().drop();
     await turns();
     expect(r.channels.of('listed')).toHaveLength(1);
-    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true });
     reachable = true;
     await vi.advanceTimersByTimeAsync(250);
     expect(r.channels.of('listed')).toHaveLength(2);
-    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true, free: true });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(r.channels.of('listed')).toHaveLength(2);
     expect(vi.getTimerCount()).toBe(0);
@@ -1470,7 +1504,7 @@ describe('a terminal another page took (`taken-over`)', () => {
     r.stream().drop();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(r.channels.of('listed')).toHaveLength(1 + RECONNECT_DELAYS_MS.length);
-    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true });
     const closed = await running({}, { channels: { listed: async () => Promise.reject(new Error('offline')) } });
     closed.stream().takenOver();
     closed.stream().drop();
@@ -1967,5 +2001,46 @@ describe('a host of another version (`unsupported`)', () => {
     r.stream().unsupported('x');
     expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { stage: 'start' } });
     expect(r.feed.getSnapshot().cause?.message).toMatch(/another version/);
+  });
+});
+
+describe('the kept input stays bounded and exact', () => {
+  it('lets go of a number above what was typed as all of it, once, and resends nothing', async () => {
+    const r = await running();
+    r.feed.write('ab');
+    r.stream().applied(5);
+    expect(r.warn).toHaveBeenCalledTimes(1);
+    r.feed.write('cd');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 2 });
+    expect(again.typed()).toBe('cd');
+    expect(r.feed.getSnapshot().state).toBe('running');
+  });
+
+  it('does not grow what it keeps over 10,000 keystrokes that the host applied', async () => {
+    const r = await running();
+    const bytesOf = (): number => r.feed.keptPieces();
+    let most = 0;
+    for (let key = 1; key <= 10_000; key += 1) {
+      r.feed.write('k');
+      r.stream().applied(key);
+      most = Math.max(most, bytesOf());
+    }
+
+    expect(most).toBeGreaterThanOrEqual(0);
+    expect(most).toBeLessThan(200);
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 10_000 });
+    expect(again.typed()).toBe('');
+  });
+
+  it('fails the stream of a `ready` that does not say how much input was applied, and one that says it wrongly', async () => {
+    for (const raw of [{ input_applied: undefined }, { input_applied: -1 }, { input_applied: 0.5 }]) {
+      const r = await connecting();
+      r.stream().ready({ raw });
+      expect(r.feed.getSnapshot().state).toBe('failed');
+    }
   });
 });

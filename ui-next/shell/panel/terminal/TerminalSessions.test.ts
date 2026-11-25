@@ -1991,6 +1991,18 @@ describe('the feed a session has can be followed (T2d: a body that was drawn bef
 });
 
 describe('who holds the terminals this page lost', () => {
+  it('can take back a terminal whose watcher the host closed with no word, until the host says another tab holds it', () => {
+    const r = harness({ reattach: (id) => terminalOf(keyedFeed(), id) });
+    const feed = keyedFeed();
+    r.sessions.open(terminalOf(feed, 'term-u'));
+    feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+    expect(r.sessions.canTakeBack('term-u')).toBe(false);
+    feed.set({ detached: { by: 'taken-over', unwatched: true } });
+    expect(r.sessions.canTakeBack('term-u')).toBe(true);
+    feed.set({ detached: { by: 'taken-over', unwatched: true, free: false } });
+    expect(r.sessions.canTakeBack('term-u')).toBe(false);
+  });
+
   it('is not asked on a poll: the registry has no way to ask every lost feed, because the host says when a terminal is free (`released`)', () => {
     const r = harness();
     expect(r.sessions).not.toHaveProperty('refreshLost');

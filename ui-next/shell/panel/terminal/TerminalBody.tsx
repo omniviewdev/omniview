@@ -7,7 +7,7 @@ import { PanelEmpty } from '../PanelEmpty';
 import { toggleChordText } from '../words';
 import { readAppearance, SWATCH_ROLES } from './appearance';
 import type { EngineLoader } from './engine';
-import type { TerminalFeedHandle, TerminalFeedSnapshot } from './feed';
+import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot } from './feed';
 import { createFindSession, useTerminalFind } from './find';
 import { loadXtermEngine } from './loadEngine';
 import { useTerminalLinks, useTerminalMenu } from './menu';

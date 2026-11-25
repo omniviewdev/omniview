@@ -1,5 +1,5 @@
 import { HOST, type PanelStore, type Session, type SessionId } from '../../core/panel';
-import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './feed';
+import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot, type TerminalTarget } from './feed';
 import { sessionStateOf } from './state';
 import { TERMINAL_TOOL_ID } from './tool';
 

@@ -418,3 +418,11 @@ describe('the shells the host tried, when no shell could be started (host #672: 
     expect(failureLines(snap('failed', { cause: { stage: 'session', message: 'x', tried: [attempt('requested', '/bin/zsh', 'not-found')] } }))).toEqual([]);
   });
 });
+
+describe('a terminal whose watcher the host closed with no word (`detached.unwatched`)', () => {
+  it('does not say the taker has gone: the lane keeps the words of a terminal another tab holds', () => {
+    const lane = laneOf(snap('ended', { detached: { by: 'taken-over', unwatched: true } }));
+    expect(lane.words).toBe('Taken over by another tab');
+    expect(lane.note).toBe(TAKEN_NOTE);
+  });
+});

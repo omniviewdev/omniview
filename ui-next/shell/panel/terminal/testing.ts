@@ -621,6 +621,8 @@ export type FakeStream = {
   readonly ended: (end?: unknown) => void;
   /** Another stream took the terminal: this stream stays open as a watcher, which hears `released` or `ended` and nothing else. */
   readonly takenOver: () => void;
+  /** Frames the host may never send, for a test of how the feed takes a host that breaks the protocol: they reach the feed with no check of the stream's state. */
+  readonly raw: { readonly released: () => void };
   /** To a watcher: the terminal is running and free. The stream is over. */
   readonly released: () => void;
   /** The host speaks another version than the attach said (`{"v": version}`). The stream is over. */
@@ -786,6 +788,11 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         holder('taken-over');
         watching = true;
         events.takenOver();
+      },
+      raw: {
+        released: () => {
+          events.released();
+        },
       },
       released: () => {
         alive('released');
