@@ -52,7 +52,8 @@ export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
     return strip === null ? undefined : windows?.receive(stripReceiver(strip));
   }, [windows, ref]);
 
-  // The menu gives the focus back to the tab it opened on before a row runs, and a close takes that tab away: the focus goes to the tab the model shows next, never to the page's body.
+  // The menu gives the focus back to the tab it opened on before a row runs. A row that moves that tab in the strip (Pin) or takes it out of it (a close, a move to a window) would leave the focus on the page's body: after a close it goes to the tab the model shows next,
+  // after a move to a window, which takes the tab out a moment later, to the tab on screen once it has gone, and after any other row to the tab the row was for.
   const menu = useMenu((key) => {
     if (key === undefined || store.getSnapshot().tabs[key] === undefined) {
       return null;
@@ -66,8 +67,16 @@ export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
         const { title, shortcut, unavailable, choices } = commands[id];
         const select = (choice?: string) => () => {
           const answer = commands[id].run(choice);
-          if (answer.status === 'done' && 'active' in answer && answer.active !== null) {
-            focus(answer.active);
+          if (answer.status !== 'done') {
+            return;
+          }
+
+          const { active, order } = store.getSnapshot();
+          const index = order.indexOf(key);
+          const staying = key === active ? (order[index + 1] ?? order[index - 1]) : active;
+          const next = 'active' in answer ? answer.active : group === WINDOW_GROUP ? staying : key;
+          if (next !== null && next !== undefined) {
+            focus(next);
           }
         };
 

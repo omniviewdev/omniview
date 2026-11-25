@@ -64,6 +64,14 @@ describe('reopen, next and previous', () => {
     expect(chordOf(key('KeyT', { metaKey: true, shiftKey: true }), 'other')).toBeUndefined();
   });
 
+  it('reopen in the app\'s own window on Windows and Linux is Control Option Shift T alone, because its menu owns Control Shift T; a Mac and a browser tab keep theirs', () => {
+    const ctrlShiftT = key('KeyT', { ctrlKey: true, shiftKey: true });
+    expect(chordOf(ctrlShiftT, 'other', true)).toBeUndefined();
+    expect(chordOf(key('KeyT', { ctrlKey: true, altKey: true, shiftKey: true }), 'other', true)).toEqual({ action: 'reopen' });
+    expect(chordOf(ctrlShiftT, 'other', false)).toEqual({ action: 'reopen' });
+    expect(chordOf(key('KeyT', { metaKey: true, shiftKey: true }), 'mac', true)).toEqual({ action: 'reopen' });
+  });
+
   it('next is Control Tab, Command Shift ] on a Mac, and Control Option Right for the web; previous is the mirror', () => {
     expect(chordOf(key('Tab', { ctrlKey: true }), 'mac')).toEqual({ action: 'next' });
     expect(chordOf(key('Tab', { ctrlKey: true }), 'other')).toEqual({ action: 'next' });
@@ -72,6 +80,11 @@ describe('reopen, next and previous', () => {
     expect(chordOf(key('Tab', { ctrlKey: true, shiftKey: true }), 'mac')).toEqual({ action: 'previous' });
     expect(chordOf(key('BracketLeft', { metaKey: true, shiftKey: true }), 'mac')).toEqual({ action: 'previous' });
     expect(chordOf(key('ArrowLeft', { ctrlKey: true, altKey: true }), 'mac')).toEqual({ action: 'previous' });
+  });
+
+  it('binds the bracket chords on a Mac and nowhere else: Control Shift ] and [ are not chords elsewhere', () => {
+    expect(chordOf(key('BracketRight', { ctrlKey: true, shiftKey: true }), 'other')).toBeUndefined();
+    expect(chordOf(key('BracketLeft', { ctrlKey: true, shiftKey: true }), 'other')).toBeUndefined();
   });
 
   it('leave the keys of the text under the caret alone: Command Right, Option Right, a bare Tab, a bracket without Shift', () => {

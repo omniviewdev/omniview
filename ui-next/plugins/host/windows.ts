@@ -22,7 +22,7 @@ export type WindowService = {
   readonly viewport: (name: string, width: number, height: number) => Promise<unknown>;
   /**
    * The service's drag session of a tab dragged out of a strip over the other windows (`backend/window/drag.go`). `beginDrag` starts it with the tab as saved, `moveDrag` follows the pointer in this window's pixels, `endDrag` drops the tab on the window under the
-   * pointer and answers whether that window took it and which it is, and `cancelDrag` ends it with no drop. The window dropped on answers with `respondDrop`: whether it took the tab, and the id the tab has there.
+   * pointer and answers whether that window took it and which window was under the pointer (empty when none was), and `cancelDrag` ends it with no drop. The window dropped on answers with `respondDrop`: whether it took the tab, and the id the tab has there.
    */
   readonly beginDrag: (drag: { readonly sessionId: string; readonly sourceWindow: string; readonly dragType: string; readonly payload: string }) => Promise<unknown>;
   readonly moveDrag: (sessionId: string, x: number, y: number) => Promise<unknown>;
@@ -63,7 +63,10 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
   }
 
   let named: Promise<string> | undefined;
-  const own = async () => (named ??= service.name());
+  const own = async () => (named ??= service.name().catch((error: unknown) => {
+    named = undefined;
+    throw error;
+  }));
   const launch = async (tab: Pick<PersistedTab, 'id' | 'route'>, at?: WindowPoint) => service.open(JSON.stringify({ version: SESSION_VERSION, tabs: { version: STATE_VERSION, active: tab.id, tabs: [tab] } }), at === undefined ? undefined : { window: await own(), ...at });
 
   // Told when the window starts, when its size changes and when a drag begins (every window reports then, so the service can find the one under the pointer), and not again for a size it has.
@@ -106,7 +109,6 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
 
   // The service finds the window under the pointer, which marks where the tab would land (`receive`) and answers a drop; the tab leaves this window once that window has taken it. The calls run in order: a move waits for the one before it and is replaced by a newer
   // point, so a drag has one in flight and one waiting at most (HSH-27), and begin, drop and cancel are never skipped. A drop that no window took because none was under the pointer opens a window of its own (S58); one that a window under it refused leaves the tab where it is.
-  let hovered: string | undefined;
   const dragOut: TabWindows['dragOut'] = (id) => {
     const sessionId = newUuid();
     const payload = JSON.stringify(tabs.serialise().tabs.find((tab) => tab.id === id));
@@ -142,7 +144,7 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
             return service.focus(targetWindow);
           }
 
-          return hovered === sessionId ? false : tearOff(tab, { x, y });
+          return targetWindow === '' ? tearOff(tab, { x, y }) : false;
         });
         if (moved.status !== 'done') {
           cancel();
@@ -218,17 +220,15 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
   });
 
   // The strip that takes a tab another window drags over this one (`receive`): the service says where the pointer is in this window while it is over it, and that it is gone; a drop asks whether the strip takes the tab where it is dropped, and the end of any
-  // drag takes the marker away. The source of a drag learns from the same events whether its pointer is over a window.
+  // drag takes the marker away.
   let strip: TabReceiver | undefined;
   service.on('windows/drag/hover', (data) => {
-    hovered = (data as Pointed).sessionId;
     addressed<Pointed>(data, ({ clientX, clientY }) => {
       strip?.({ x: clientX, y: clientY });
     });
   });
 
   service.on('windows/drag/leave', (data) => {
-    hovered = hovered === (data as Pointed).sessionId ? undefined : hovered;
     addressed<Pointed>(data, () => {
       strip?.(undefined);
     });
@@ -282,7 +282,7 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
   tabs.subscribeTo((state) => state.order.length === 0, (empty) => {
     const live = Object.values(panel.getSnapshot().sessions).some((session) => session.state === 'starting' || session.state === 'running');
     if (empty && !live) {
-      void own().then(async (name) => name === MAIN_WINDOW ? undefined : service.close(name)).catch(warn('the window could not be closed'));
+      void own().then(async (name) => (name !== MAIN_WINDOW && tabs.getSnapshot().order.length === 0 ? service.close(name) : undefined)).catch(warn('the window could not be closed'));
     }
   });
 

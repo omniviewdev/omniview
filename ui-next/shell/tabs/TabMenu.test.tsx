@@ -172,4 +172,31 @@ describe('the focus', () => {
       expect(tab('Page3')).toHaveFocus();
     });
   });
+
+  it('Move to new window leaves the focus on the tab that is on screen once the tab has left, not on the page\'s body', async () => {
+    const h = boot({ home: false });
+    const ids = h.openAll(['page1', 'page2', 'page3']);
+    h.store.activate(ids[1]);
+    // The tab leaves once the other window has it, a moment after the menu's row has run.
+    const moveToNew = vi.fn((id: string) => {
+      queueMicrotask(() => {
+        h.store.detach(id);
+      });
+      return { status: 'done' as const };
+    });
+    const windows = { others: () => [], moveToNew, moveTo: vi.fn(), dragOut: vi.fn(), receive: vi.fn() };
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={{ ...h.store, windows }} renderPage={() => <p>page</p>} empty={null} />, { wrapper: MenuHost });
+    const focused = tab('Page2');
+    focused.focus();
+    fireEvent.keyDown(focused, { key: 'F10', shiftKey: true });
+
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Actions for Page2' })).getByRole('menuitem', { name: 'Move to new window' }));
+
+    await waitFor(() => {
+      expect(h.titles()).toEqual(['Page1', 'Page3']);
+    });
+    await waitFor(() => {
+      expect(tab('Page3')).toHaveFocus();
+    });
+  });
 });

@@ -192,7 +192,7 @@ export type Selectors = {
   readonly activeSession: (state: PanelState, tool: ToolId) => SessionId | null;
   /** The record of a visible session: what its body and its card read. */
   readonly session: (state: PanelState, id: SessionId) => Session | undefined;
-  /** The sessions whose body is mounted, in `order`. */
+  /** The sessions whose body is mounted, in the order they were first shown and never in the strip's: a session moved in its strip keeps its body where it is in the document. */
   readonly mounted: (state: PanelState) => readonly SessionId[];
   readonly shown: (state: PanelState) => Shown | null;
   /** Whether this session's body is the one on screen: the panel is open, its tool is the tool on screen and it is the tool's session on screen. */

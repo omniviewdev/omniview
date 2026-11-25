@@ -76,7 +76,7 @@ function coordinator(events: ReturnType<typeof bus>) {
       const accepted = target !== undefined && (await answer.promise);
       sessions.delete(sessionId);
       await say('end', { sessionId });
-      return { accepted, targetWindow: accepted ? target : '' };
+      return { accepted, targetWindow: target ?? '' };
     }),
     cancelDrag: vi.fn<WindowService['cancelDrag']>(async (sessionId) => {
       log.push('cancel');
@@ -96,10 +96,10 @@ function coordinator(events: ReturnType<typeof bus>) {
 
 type Listed = ReadonlyArray<{ readonly name: string; readonly kind: string }>;
 
-function world(name = 'main', panel = createPanelStore(), events = bus(), listed: Listed = [{ name, kind: 'workspace' }], drag = coordinator(events)) {
+function world(name = 'main', panel = createPanelStore(), events = bus(), listed: Listed = [{ name, kind: 'workspace' }], drag = coordinator(events), naming: WindowService['name'] = async () => name) {
   const h = boot();
   const service = {
-    name: vi.fn(async () => name),
+    name: vi.fn(naming),
     open: vi.fn<WindowService['open']>(async () => 'window-2'),
     close: vi.fn<WindowService['close']>(async () => undefined),
     focus: vi.fn<WindowService['focus']>(async () => undefined),
@@ -250,6 +250,25 @@ describe('a window whose last tab leaves (S30)', () => {
     other.h.store.close(other.h.current());
     await settled();
     expect(other.service.close).toHaveBeenCalledExactlyOnceWith('window-2');
+  });
+
+  it('stays open when a tab arrives before the window knows its name: the last tab is checked again just before the window closes', async () => {
+    const { h, service } = world('window-2');
+    await settled();
+    h.store.close(h.current());
+    h.openAll(['instances']);
+    await settled();
+    expect(service.close).not.toHaveBeenCalled();
+  });
+
+  it('asks the service for its name again after it failed once: a rejection is not kept', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const name = vi.fn<WindowService['name']>().mockRejectedValueOnce(new Error('not yet')).mockResolvedValue('window-2');
+    const { h, service } = world('window-2', undefined, undefined, undefined, undefined, name);
+    await settled();
+    h.store.close(h.current());
+    await settled();
+    expect(service.close).toHaveBeenCalledExactlyOnceWith('window-2');
   });
 });
 
@@ -529,6 +548,25 @@ describe('a tab dragged out of the strip over another window (the service\'s dra
     expect(here.service.open).not.toHaveBeenCalled();
     expect(here.service.focus).not.toHaveBeenCalled();
     expect(strip).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it.each([
+    ['opens a window of its own when no window was under the pointer at the drop, though one was a moment before', true, '', 1],
+    ['keeps the tab when a window declined it, though no hover of that window reached this one', false, 'window-2', 0],
+  ] as const)('takes the answer to the drop and not the events before it: it %s', async (_what, moved, targetWindow, opened) => {
+    const { here, drag, id, start } = crossing();
+    drag.endDrag.mockResolvedValue({ accepted: false, targetWindow });
+    const way = start();
+    if (moved) {
+      way?.move(500, 20);
+      await settled();
+    }
+
+    way?.drop(500, 20);
+    await settled();
+
+    expect(here.service.open).toHaveBeenCalledTimes(opened);
+    expect(here.h.ids().includes(id)).toBe(opened === 0);
   });
 
   it('keeps the tab when the service cannot end the drag', async () => {

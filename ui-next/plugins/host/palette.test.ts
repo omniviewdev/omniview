@@ -342,7 +342,7 @@ describe('the pages source', () => {
     expect(rowTitled(w, 'Gadgets').route).toEqual({ plugin: 'acme', contribution: 'gadgets', params: {} });
   });
 
-  it('says only the keys that work for a place: the four open keys of the tab model, no New window (the palette does not offer it yet), and refuses Shift+Enter with the reason', () => {
+  it('says only the keys that work for a place: in a browser tab, which has one window, the four open keys of the tab model and no New window, and Shift+Enter is refused with the reason', () => {
     const w = build();
     w.store.open({ kind: 'goto' });
     expect(w.store.getSnapshot().hints.map((hint) => hint.label)).toEqual(['Open', 'Here', 'New tab', 'Background tab']);
@@ -351,6 +351,16 @@ describe('the pages source', () => {
     expect(w.store.activate(undefined, { shiftKey: true })).toMatchObject({ status: 'refused', message: 'This window cannot open another one yet.' });
     expect(w.store.getSnapshot().open).toBe(true);
     expect(w.tabs.getSnapshot().order).toHaveLength(tabsBefore);
+  });
+
+  it('says New window and opens the place in a window of its own on Shift+Enter where the app has windows', () => {
+    const windows: NonNullable<TabsStore['windows']> = { others: () => [], moveToNew: vi.fn(), moveTo: vi.fn(), dragOut: vi.fn(), receive: vi.fn() };
+    const w = build({ tabs: (real) => ({ ...real, windows }) });
+    w.store.open({ kind: 'goto' });
+    expect(w.store.getSnapshot().hints.map((hint) => hint.label)).toEqual(['Open', 'Here', 'New tab', 'Background tab', 'New window']);
+
+    expect(w.store.activate(undefined, { shiftKey: true })).toMatchObject({ status: 'opened', result: { status: 'window' } });
+    expect(w.store.getSnapshot().open).toBe(false);
   });
 
   it('does not offer the leaf that opens the plugin\'s home as a second row: its label joins the home\'s context when that was empty, and the home\'s keywords in any case', () => {

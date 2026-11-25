@@ -1,6 +1,7 @@
 package menus
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,6 +34,16 @@ func rendered(chord string) string {
 	return application.NewMenu().Add("chord").SetAccelerator(chord).GetAccelerator()
 }
 
+// newTerminalAccelerator is what View > New Terminal Session carries on this OS:
+// Ctrl+Shift+` on macOS, where Cmd+Shift+T belongs to the page (it reopens a
+// closed tab), and Ctrl+Shift+T elsewhere, where Wails cannot match the backtick key.
+func newTerminalAccelerator() string {
+	if runtime.GOOS == "darwin" {
+		return rendered("Ctrl+Shift+`")
+	}
+	return accel("Shift", "T")
+}
+
 // developmentViewMenu is the View menu exactly as it shipped before decision
 // A18, written out by hand: label, accelerator, separator, in order.
 func developmentViewMenu() []menuRow {
@@ -44,7 +55,7 @@ func developmentViewMenu() []menuRow {
 		{Label: "Zoom Out", Accelerator: accel("", "-")},
 		{Label: "Reset Zoom", Accelerator: accel("", "0")},
 		{Separator: true},
-		{Label: "New Terminal Session", Accelerator: rendered("Ctrl+Shift+`")},
+		{Label: "New Terminal Session", Accelerator: newTerminalAccelerator()},
 		{Label: "Minimize Bottom Menu", Accelerator: accel("Shift", "B")},
 		{Label: "Maximize Bottom Menu", Accelerator: accel("Alt", "B")},
 		{Separator: true},

@@ -5,7 +5,7 @@
 //   close  W        the tab on screen            (S41: Command W, web Control Option W)
 //   jump   1 to 8   the Nth tab of the strip     (S47: Command 1 to 8, web Control Option 1 to 8)
 //   last   9        the last tab, whatever N     (S47: Command 9)
-//   reopen T        the tab closed last          (S43: Command Shift T, web Control Option Shift T)
+//   reopen T        the tab closed last          (S43: Command Shift T, web Control Option Shift T; in the app's own window on Windows and Linux its menu owns Control Shift T, so there only Control Option Shift T)
 //   next   Tab      the tab to the right         (S48: Control Tab, Command Shift ], web Control Option Right; previous is the mirror: Control Shift Tab, Command Shift [, Control Option Left)
 
 export type Platform = 'mac' | 'other';
@@ -33,8 +33,11 @@ export function platformOf(scope: { readonly platform?: string | undefined; read
   return /mac/i.test(scope?.platform ?? scope?.userAgent ?? '') ? 'mac' : 'other';
 }
 
-/** The chord a key event is, or `undefined`. Shift with a chord is another chord (reopen, next, previous: close and the digits have none), and a key something else already took is theirs. */
-export function chordOf(event: KeyLike, platform: Platform): TabChord | undefined {
+/**
+ * The chord a key event is, or `undefined`. Shift with a chord is another chord (reopen, next, previous: close and the digits have none), and a key something else already took is theirs. `appWindow` is whether the page is in the app's own window and not
+ * in a browser tab, which keeps every chord (the default).
+ */
+export function chordOf(event: KeyLike, platform: Platform, appWindow = false): TabChord | undefined {
   // An input method that is composing owns the keys (ch16 S52), and so does whatever already took this one.
   if (event.defaultPrevented === true || event.isComposing === true || event.keyCode === 229) {
     return undefined;
@@ -54,7 +57,13 @@ export function chordOf(event: KeyLike, platform: Platform): TabChord | undefine
 
   const mod = native && !event.altKey;
   if (event.shiftKey) {
-    return event.code === 'KeyT' ? { action: 'reopen' } : mod && event.code === 'BracketRight' ? { action: 'next' } : mod && event.code === 'BracketLeft' ? { action: 'previous' } : undefined;
+    const mac = platform === 'mac';
+    // The app's menu owns Control Shift T in its own window on Windows and Linux (New Terminal Session): there reopen is the alternate alone.
+    if (event.code === 'KeyT') {
+      return web || mac || !appWindow ? { action: 'reopen' } : undefined;
+    }
+
+    return mod && mac && event.code === 'BracketRight' ? { action: 'next' } : mod && mac && event.code === 'BracketLeft' ? { action: 'previous' } : undefined;
   }
 
   if (web && (event.code === 'ArrowRight' || event.code === 'ArrowLeft')) {

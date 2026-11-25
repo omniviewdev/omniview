@@ -11,7 +11,7 @@ The bottom panel's state and its rules, as pure TypeScript: no React, no DOM, no
 | tools | A registry: tools of the host by plain id (`logs`), tools of a plugin by `plugin:local`. Each has a label, a glyph, an order. A plugin's tools leave with the plugin (`syncPlugins`). **The strip's order (R2, `visibleTools`)**: lowest `order` first, as the mock sorts them (`a.order - b.order`); a tie goes to the host's own tools, then to the plugins in the order the caller listed them in `syncPlugins` (the host lists them in the order of its rail), then to the order a plugin brought its own tools in. Nothing is ordered by the moment a plugin arrived: a plugin that loads late takes its place and is not appended. |
 | sessions | Per tool: id, title (head and tail truncate in the strip), scope (the muted qualifier of its tab, drawn only when it tells twins apart: below), state (`starting` `running` `ended` `failed`), `since` (moves only with the state), cause, owning plugin, an optional route to the resource, and `held` (below). |
 | `active` | The session on screen per tool; `tool` is the tool on screen. |
-| `mounted` | Sessions whose body has been shown, in insertion order. A body stays mounted until its session closes or its plugin leaves (a streaming session keeps its buffer: HLT-32). |
+| `mounted` | Sessions whose body has been shown, in the order they were first shown, never reordered: a session moved in its strip keeps its body where it is in the document (`selectors.mounted` hands the list back as it is). A body stays mounted until its session closes or its plugin leaves (a streaming session keeps its buffer: HLT-32). |
 
 ## Rules
 

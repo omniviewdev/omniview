@@ -820,7 +820,7 @@ describe('the body of a session (docs/ui-next/optimisations.md HLT-32, MNR-X4)',
     expect(h.store.selectors.mounted(h.snapshot())).toEqual(['s1']);
   });
 
-  it('is listed in the order the sessions were opened, whatever order they were shown in', () => {
+  it('is listed in the order the bodies were first shown and never reordered, so a session moved in its strip keeps its body where it is in the document', () => {
     const h = boot({ hostTools: HOST_TOOLS });
     h.store.openSession(session('terminal', 'host', 'a'), { reveal: false });
     h.store.openSession(session('terminal', 'host', 'b'), { reveal: false });
@@ -828,8 +828,12 @@ describe('the body of a session (docs/ui-next/optimisations.md HLT-32, MNR-X4)',
     h.store.show();
     h.store.activateSession('s3');
     h.store.activateSession('s2');
-    expect(h.snapshot().mounted).toEqual(['s1', 's3', 's2']);
-    expect(h.store.selectors.mounted(h.snapshot())).toEqual(['s1', 's2', 's3']);
+    const mounted = h.store.selectors.mounted(h.snapshot());
+    expect(mounted).toEqual(['s1', 's3', 's2']);
+
+    h.store.reorderSession('s2', 0);
+    expect(h.store.selectors.sessionIds(h.snapshot(), 'terminal')).toEqual(['s2', 's1', 's3']);
+    expect(h.store.selectors.mounted(h.snapshot())).toBe(mounted);
   });
 
   it('isShown is true for the one body on screen, and for none while the panel is hidden', () => {

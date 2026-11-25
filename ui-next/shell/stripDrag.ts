@@ -76,7 +76,7 @@ function stage(home: HTMLElement, ...parts: HTMLElement[]): Stage {
   layer.setAttribute('inert', '');
   layer.append(marker, ...parts);
   home.append(layer);
-  layer.showPopover();
+  layer.showPopover?.();
   return { layer, marker };
 }
 
@@ -127,7 +127,7 @@ export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: nu
   let press: Press | undefined;
   let drag: Drag | undefined;
 
-  // The one place a drag ends. With the release of the pointer it drops the tab where the marker is, or through its way out when the pointer is out of the strip; without, the tab stays where it was.
+  // The one place a drag ends. With the release of the pointer it drops the tab where the pointer is let go (the frame is drawn once more, there): where the marker stands, or through its way out when the pointer is out of the strip; without, the tab stays where it was.
   function end(release?: PointerEvent): void {
     const pressed = press;
     const dragged = drag;
@@ -136,6 +136,13 @@ export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: nu
     pressed?.stop.abort();
     if (pressed === undefined || dragged === undefined) {
       return;
+    }
+
+    if (release !== undefined) {
+      pressed.x = release.clientX;
+      pressed.y = release.clientY;
+      cancelAnimationFrame(dragged.frame);
+      draw(pressed, dragged);
     }
 
     cancelAnimationFrame(dragged.frame);

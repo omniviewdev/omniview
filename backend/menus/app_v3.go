@@ -158,8 +158,14 @@ func addViewMenu(
 
 	viewMenu.AddSeparator()
 
+	// The page reopens a closed tab with Cmd+Shift+T, so on macOS the menu takes Ctrl+Shift+` instead. Wails cannot match the backtick key on Windows
+	// and Linux (keys_windows.go names it OEM_3): there the chord stays Ctrl+Shift+T and the page reopens with Ctrl+Alt+Shift+T.
+	newTerminal := "CmdOrCtrl+Shift+T"
+	if runtime.GOOS == "darwin" {
+		newTerminal = "Ctrl+Shift+`"
+	}
 	viewMenu.Add("New Terminal Session").
-		SetAccelerator("Ctrl+Shift+`").
+		SetAccelerator(newTerminal).
 		OnClick(func(_ *application.Context) {
 			app.Event.Emit(EventTerminalCreate)
 		})

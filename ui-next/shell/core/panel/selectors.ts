@@ -106,7 +106,7 @@ const sameItem = (a: SessionItem, b: SessionItem): boolean =>
 /** The selectors of one store. Their caches belong to it: two stores share nothing. */
 export function createSelectors(): Selectors {
   let derived: Derived | undefined;
-  let mounted: { readonly source: PanelState['mounted']; readonly order: PanelState['order']; readonly list: readonly SessionId[] } | undefined;
+  let mounted: { readonly source: PanelState['mounted']; readonly list: readonly SessionId[] } | undefined;
   let shown: Shown | null = null;
 
   const derive = (state: PanelState): Derived => {
@@ -161,12 +161,12 @@ export function createSelectors(): Selectors {
       return session !== undefined && sessionVisible(state, session) ? session : undefined;
     },
     mounted: (state) => {
-      if (mounted?.source === state.mounted && mounted.order === state.order) {
+      if (mounted?.source === state.mounted) {
         return mounted.list;
       }
 
-      const list = sameItems(mounted?.list, Object.freeze(state.order.filter((id) => state.mounted.includes(id))));
-      mounted = { source: state.mounted, order: state.order, list };
+      const list = sameItems(mounted?.list, state.mounted);
+      mounted = { source: state.mounted, list };
       return list;
     },
     shown: (state) => {

@@ -402,8 +402,8 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       return;
     }
 
-    entry.title = named;
     store.retitleSession(id, named);
+    entry.title = store.getSnapshot().sessions[id]?.title ?? entry.title;
   };
 
   /** A feed told its listeners something: only a new status is the session's business, and not once the registry has closed the feed (the session is ended for good, with its own cause). */

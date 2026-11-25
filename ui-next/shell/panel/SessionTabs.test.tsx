@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MenuHost } from '@omniviewdev/kit';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeNotices } from '../core/notices/testing';
 import { createPanelStore, type PanelStore } from '../core/panel';
@@ -148,6 +148,20 @@ describe('the menu of a session tab', () => {
     mountMenu(['a', 'b', 'c', 'd']);
     fireEvent.click(within(openOn('b')).getByRole('menuitem', { name: label }));
     expect(names()).toEqual(remaining);
+  });
+
+  it('puts the focus on the session that is on screen next after Close session, not on the page\'s body', async () => {
+    mountMenu(['a', 'b', 'c']);
+    fireEvent.click(tab('b'));
+    const focused = tab('b');
+    focused.focus();
+    fireEvent.keyDown(focused, { key: 'F10', shiftKey: true });
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Actions for b' })).getByRole('menuitem', { name: 'Close session' }));
+
+    expect(names()).toEqual(['a', 'c']);
+    await waitFor(() => {
+      expect(tab('c')).toHaveFocus();
+    });
   });
 
   it('offers Stop session after Rename when the host can stop sessions, and stops the session it opened on', () => {

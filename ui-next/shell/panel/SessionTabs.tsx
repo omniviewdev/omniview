@@ -210,7 +210,13 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
         label: 'Close session',
         shortcut: closeChordText(platformOf(navigator)),
         onSelect: () => {
-          close(key);
+          // The menu gave the focus back to the tab it opened on, which this takes away: the focus goes to the session on screen next, as a close from the keyboard hands it to the neighbour.
+          if (close(key)) {
+            const next = store.selectors.activeSession(store.getSnapshot(), tool);
+            if (next !== null) {
+              focusTab('sessionTabs', next);
+            }
+          }
         },
       },
       closing('close-others', 'Close other sessions', ids.filter((one) => one !== key), 'There are no other sessions'),

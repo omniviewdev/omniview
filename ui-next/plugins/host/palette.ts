@@ -559,7 +559,7 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     describe: described,
     announce: announcer.announce,
     platform,
-    // `windows` is not passed: the palette does not offer New window yet, so the footer does not say it and Shift+Enter is refused with the reason.
+    windows: tabs.windows !== undefined,
     // The command is looked up again, and checked against what is true now, immediately before it runs: the palette may have listed it a moment ago, and the host answers for the rest.
     run: (command): PaletteCommandOutcome | Promise<PaletteCommandOutcome> => {
       const found = commandsOf(deps).find((candidate) => candidate.id === command.id);

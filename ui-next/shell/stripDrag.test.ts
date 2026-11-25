@@ -186,6 +186,29 @@ describe('a drag', () => {
     expect(shell).not.toHaveAttribute('data-tab-dragging');
   });
 
+  it('drops where the pointer is let go and not where the last frame drew it: a release before any frame has drawn the drag still asks for the move', () => {
+    const { tab, scroller, onMove } = setup();
+    fire(tab('a'), 'pointerdown', 50);
+    fire(scroller, 'pointermove', 300);
+    fire(scroller, 'pointerup', 300);
+
+    expect(onMove.mock.calls).toEqual([['a', 2, undefined]]);
+  });
+
+  it('draws in an engine that has no Popover API: the drag begins, drops and leaves nothing behind', () => {
+    const popover = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'showPopover');
+    Reflect.deleteProperty(HTMLElement.prototype, 'showPopover');
+    try {
+      const { shell, scroller, onMove } = drag(300);
+      fire(scroller, 'pointerup', 300);
+
+      expect(onMove.mock.calls).toEqual([['a', 2, undefined]]);
+      expect(shell.querySelector('[data-tab-dragging], [data-dragging], [data-shell-part="tabDrag"]')).toBeNull();
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, 'showPopover', popover!);
+    }
+  });
+
   it('takes Escape before whatever is below it in the window', () => {
     const { scroller } = drag(300);
     const below = vi.fn();
@@ -328,6 +351,16 @@ describe('a drag out of the strip (ch16 S58)', () => {
     fire(strip.scroller, 'pointerup', 300);
     expect(inside.onDragOut).not.toHaveBeenCalled();
     expect(strip.onMove.mock.calls).toEqual([['a', 2, undefined]]);
+  });
+
+  it('goes out of the strip when the pointer is let go outside it before a frame has drawn it there', () => {
+    const { session, onDragOut } = way();
+    const { scroller, onMove } = drag(300, 20, onDragOut);
+    fire(scroller, 'pointermove', 300, 70);
+    fire(scroller, 'pointerup', 300, 70);
+
+    expect(session.drop.mock.calls).toEqual([[300, 70]]);
+    expect(onMove).not.toHaveBeenCalled();
   });
 
   it.each([

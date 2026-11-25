@@ -76,4 +76,15 @@ describe('what the commands are called, and what they show', () => {
 
     expect(tabCommands({ tabs: h.store, platform, native }, null).close.shortcut).toBe(chord);
   });
+
+  it.each([
+    ['mac', true, '⌘⇧T'],
+    ['other', true, 'Ctrl+Alt+Shift+T'],
+    ['mac', false, '⌃⌥⇧T'],
+    ['other', false, 'Ctrl+Alt+Shift+T'],
+  ] as const)('writes the reopen chord that works for %s, in the app\'s own window (%s): the app\'s menu owns Control Shift T on Windows and Linux', (platform, native, chord) => {
+    const { h } = world(1);
+
+    expect(tabCommands({ tabs: h.store, platform, native }, null).reopen.shortcut).toBe(chord);
+  });
 });
