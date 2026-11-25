@@ -4,8 +4,11 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { cssRules, declarationsOf } from '../../../scripts/cssRules.ts';
+import type { CardGridContent } from '../CardGrid';
+import type { CollectionFooterProps } from '../CollectionFooter';
 import type { DataTableColumn } from '../DataTable';
-import { DataView, type DataViewProps } from './DataView';
+import { ResourceCard } from '../ResourceCard';
+import { DataView, type DataViewProps, type DataViewState } from './DataView';
 import * as examples from './DataView.examples';
 
 // jsdom lays nothing out: the table's region gets the size a browser would give it, so rows are in view.
@@ -31,7 +34,7 @@ const columns: ReadonlyArray<DataTableColumn<Item>> = [
 const FILTERS = { label: 'Item state', total: 3, filters: [{ id: 'running', label: 'Running', count: 2, tone: 'success' as const }, { id: 'failed', label: 'Failed', count: 1, tone: 'error' as const }], selected: null, onSelect: () => undefined };
 const FOOTER = { shown: 3, total: { kind: 'exact' as const, value: 3 }, noun: 'item', plural: 'items' };
 
-const view = (props: Partial<DataViewProps<Item>> = {}) => (
+const view = (props: Partial<Extract<DataViewProps<Item>, { readonly table: unknown }>> = {}) => (
   <DataView<Item>
     label="Items"
     header={<h1>Items</h1>}
@@ -299,19 +302,104 @@ describe('DataView, a failure with no rows (design 15 5.8, 17 K18)', () => {
   });
 });
 
+const CARDS: CardGridContent<Item> = {
+  items: ITEMS,
+  getKey: (row) => row.key,
+  renderCard: (row) => <ResourceCard title={row.name} status={<span>{row.status}</span>} actions={<button type="button">Open</button>} />,
+};
+
+const cardsView = (props: { readonly state?: DataViewState; readonly footer?: CollectionFooterProps } = {}) => (
+  <DataView<Item>
+    label="Items"
+    header={<h1>Items</h1>}
+    quickFilters={FILTERS}
+    toolbar={<div role="group" aria-label="Tools"><input aria-label="Search items" /></div>}
+    cards={CARDS}
+    footer={props.footer ?? FOOTER}
+    state={props.state}
+  />
+);
+
+describe('DataView, cards (the mock\'s card view of the one collection)', () => {
+  it('shows the cards under the same header, strip, toolbar and footer: the body is the one named region, and switching from the table draws the body again and nothing else', () => {
+    const { container, rerender } = render(view());
+    const [header, , footer] = [...root(container).children];
+    expect(screen.getByRole('table')).toBeTruthy();
+
+    rerender(cardsView());
+    expect(root(container).getAttribute('data-ov-view')).toBe('cards');
+    expect([...root(container).children].map((child) => child.getAttribute('data-ov-part'))).toEqual(['header', 'body', 'footer']);
+    expect([...root(container).children][0]).toBe(header);
+    expect([...root(container).children][2]).toBe(footer);
+    expect(screen.queryByRole('table')).toBeNull();
+
+    const region = screen.getByRole('region', { name: 'Items' });
+    expect(screen.getAllByRole('region')).toHaveLength(1);
+    expect(region.getAttribute('data-ov-part')).toBe('body');
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(within(within(region).getByRole('list', { name: 'Items' })).getAllByRole('listitem').map((cell) => cell.textContent)).toEqual([
+      'orders-apiRunningOpen',
+      'orders-dbFailedOpen',
+      'orders-queueRunningOpen',
+    ]);
+    expect(screen.getByRole('status').textContent).toBe('3 items');
+
+    rerender(view());
+    expect(root(container).getAttribute('data-ov-view')).toBe('table');
+    expect([...root(container).children][0]).toBe(header);
+    expect([...root(container).children][2]).toBe(footer);
+    expect(screen.getByRole('table')).toBeTruthy();
+  });
+
+  it('has the states of the table as cards: a busy skeleton of blocks, one line for nothing to list, and the notice with its Retry and no footer', () => {
+    const onRetry = vi.fn();
+    const { container, rerender } = render(cardsView({ state: { kind: 'loading' } }));
+    const skeleton = screen.getByRole('status', { name: 'Loading Items' });
+    expect(skeleton.getAttribute('aria-busy')).toBe('true');
+    expect(container.querySelectorAll('[data-ov-skeleton-card]')).toHaveLength(8);
+    expect(screen.getByRole('region', { name: 'Items' }).contains(skeleton)).toBe(true);
+
+    rerender(cardsView({ state: { kind: 'empty', hint: 'Items appear here when they are created.' } }));
+    expect(screen.getByText('No Items')).toBeTruthy();
+    expect(screen.getByText('Items appear here when they are created.')).toBeTruthy();
+    expect(screen.queryByRole('list')).toBeNull();
+
+    rerender(cardsView({ state: { kind: 'no-match' } }));
+    expect(screen.getByText('No Items match')).toBeTruthy();
+    expect(screen.queryByRole('list')).toBeNull();
+
+    rerender(cardsView({ state: { kind: 'error', message: 'The server did not answer.', onRetry } }));
+    fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-ov-part="footer"]')).toBeNull();
+    expect(screen.getAllByRole('region')).toHaveLength(1);
+  });
+
+  it('hands the footer its status and the table its row menu', () => {
+    render(view({ footer: { ...FOOTER, status: { text: 'Refreshing…', busy: true } }, table: { rows: ITEMS, getRowKey: (row) => row.key, columns, rowMenu: 'row-menu' } }));
+    expect(screen.getByText('Refreshing…').closest('[data-ov-part="footer"]')).not.toBeNull();
+    const row = screen.getByText('orders-db').closest('tr');
+    expect(row?.getAttribute('data-ov-menu')).toBe('row-menu');
+    expect(row?.getAttribute('data-ov-menu-key')).toBe('b');
+  });
+});
+
 describe('the examples of DataView', () => {
   const entries = Object.entries(examples) as Array<[string, ComponentType]>;
 
   it('has an example for the rows and for every state', () => {
-    expect(entries.map(([name]) => name).sort()).toEqual(['Empty', 'Failure', 'FailureWithoutRetry', 'FilteredEmpty', 'Loaded', 'Loading', 'Ready'].sort());
+    expect(entries.map(([name]) => name).sort()).toEqual(
+      ['Cards', 'CardsEmpty', 'CardsFailure', 'CardsFilteredEmpty', 'CardsLoading', 'CardsRefreshing', 'Empty', 'Failure', 'FailureWithoutRetry', 'FilteredEmpty', 'Loaded', 'Loading', 'Ready', 'SwitchingViews'].sort(),
+    );
   });
 
   for (const [name, Example] of entries) {
     it(`renders ${name} with the view's one named region and its count`, () => {
       const { container } = render(<Example />);
-      expect(screen.getAllByRole('region').length).toBe(1);
+      // The groups of cards are regions of their own: the view's one scroll region is the one named for the collection.
+      expect(screen.getAllByRole('region', { name: 'Items' }).length).toBe(1);
       expect(container.querySelector('[title]')).toBeNull();
-      expect(container.querySelector('[data-ov-part="footer"]') === null).toBe(name === 'Failure' || name === 'FailureWithoutRetry');
+      expect(container.querySelector('[data-ov-part="footer"]') === null).toBe(name === 'Failure' || name === 'FailureWithoutRetry' || name === 'CardsFailure');
     });
   }
 });

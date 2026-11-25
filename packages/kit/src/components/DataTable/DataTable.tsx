@@ -69,6 +69,7 @@ export function DataTable<TRow>({
   onRowActivate,
   rowsAreImmutable = false,
   maxHeight,
+  rowMenu,
   ...rest
 }: DataTableProps<TRow>) {
   const regionRef = useRef<HTMLDivElement>(null);
@@ -183,6 +184,7 @@ export function DataTable<TRow>({
           columns={columns}
           selection={selection}
           pins={pins}
+          menu={rowMenu}
           span={fitted.length}
           onClick={onBodyClick}
         />

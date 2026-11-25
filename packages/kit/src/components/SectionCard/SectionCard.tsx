@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
 import { dataAttributes, type DataAttributes } from '../../shared/dataAttributes';
+import commandStyles from '../../shared/command.module.css';
+import { useExpanded, type ExpandState } from '../Disclosure/useExpanded';
+import { Icon } from '../Icon';
 import styles from './SectionCard.module.css';
 
 export type SectionCardProps = {
@@ -12,8 +15,15 @@ export type SectionCardProps = {
   readonly actions?: ReactNode;
   /** The body sits on the section's inset (12px above and below): key-value rows, chips, text. A table sits flush: no `pad`. */
   readonly pad?: boolean | undefined;
+  /**
+   * Makes the body collapsible: the lane draws a chevron toggle as its last control, and the body is not mounted while closed. The
+   * title, the meta and the actions stay. Controlled (`open` and `onOpenChange`) or uncontrolled (`defaultOpen`, closed when absent).
+   */
+  readonly collapse?: ExpandState | undefined;
   readonly children?: ReactNode;
 } & DataAttributes;
+
+const ALWAYS_OPEN = { open: true } as const;
 
 const HEADINGS = { 2: 'h2', 3: 'h3', 4: 'h4' } as const;
 
@@ -25,10 +35,12 @@ const drawn = (node: ReactNode) => node !== undefined && node !== null && node !
  * The lane holds the title (13/16, 600, a real `h2`, `h3` or `h4`: the heading is the page's outline, so the card itself is a plain `div`),
  * an optional muted fragment after it (a count, a scope), and the commands at the end. A body with `pad` sits on the 12 px inset; a table
  * sits flush. A command in the lane keeps the lane at its height when it is a `row` size button (24 px): the lane takes the button's
- * padding back. Props are closed: no `className`, no `style`; `data-*` passes through.
+ * padding back. With `collapse` the body unmounts while closed. Props are closed: no `className`, no `style`; `data-*` passes through.
  */
-export function SectionCard({ title, level = 2, meta, actions, pad, children, ...rest }: SectionCardProps) {
+export function SectionCard({ title, level = 2, meta, actions, pad, collapse, children, ...rest }: SectionCardProps) {
   const Heading = HEADINGS[level];
+  const { open, toggle, bodyId } = useExpanded(collapse ?? ALWAYS_OPEN);
+  const hasBody = drawn(children) && open;
   return (
     <div {...dataAttributes(rest)} className={styles.root} data-ov-part="section-card">
       <div className={styles.lane} data-ov-part="lane">
@@ -42,14 +54,31 @@ export function SectionCard({ title, level = 2, meta, actions, pad, children, ..
             </span>
           ) : null}
         </div>
-        {drawn(actions) ? (
+        {drawn(actions) || collapse !== undefined ? (
           <div className={styles.actions} data-ov-part="actions">
             {actions}
+            {collapse === undefined ? null : (
+              <button
+                type="button"
+                className={commandStyles.root}
+                data-ov-shape="icon"
+                data-ov-variant="ghost"
+                data-ov-tone="neutral"
+                data-ov-size="row"
+                data-ov-part="toggle"
+                aria-label={`${open ? 'Collapse' : 'Expand'} ${title}`}
+                aria-expanded={open}
+                aria-controls={hasBody ? bodyId : undefined}
+                onClick={toggle}
+              >
+                <Icon name={open ? 'chevron-up' : 'chevron-down'} />
+              </button>
+            )}
           </div>
         ) : null}
       </div>
-      {drawn(children) ? (
-        <div className={styles.body} data-ov-part="body" data-ov-pad={pad === true ? 'true' : undefined}>
+      {hasBody ? (
+        <div id={collapse === undefined ? undefined : bodyId} className={styles.body} data-ov-part="body" data-ov-pad={pad === true ? 'true' : undefined}>
           {children}
         </div>
       ) : null}

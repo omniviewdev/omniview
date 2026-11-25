@@ -170,6 +170,14 @@
     --ov-brand-pink: #E7157B;
     --ov-brand-red: #DD344C;
     --ov-brand-teal: #01A88D;
+    /* tint */
+    --ov-tint-blue: #2E3A52;
+    --ov-tint-green: #2D3E35;
+    --ov-tint-amber: #463822;
+    --ov-tint-red: #4E3235;
+    --ov-tint-purple: #3B3750;
+    --ov-tint-cyan: #2C3E3D;
+    --ov-tint-gray: #393B3E;
   }
 
   [data-ov-theme='dark'] {
@@ -252,6 +260,13 @@
     --ov-brand-pink: #E7157B;
     --ov-brand-red: #DD344C;
     --ov-brand-teal: #01A88D;
+    --ov-tint-blue: #394356;
+    --ov-tint-green: #314239;
+    --ov-tint-amber: #4A3C27;
+    --ov-tint-red: #52363A;
+    --ov-tint-purple: #3F3B55;
+    --ov-tint-cyan: #304142;
+    --ov-tint-gray: #3E3F43;
   }
 
   [data-ov-theme='light'] {
@@ -334,6 +349,13 @@
     --ov-brand-pink: #C31268;
     --ov-brand-red: #C32138;
     --ov-brand-teal: #017260;
+    --ov-tint-blue: #C6D9FB;
+    --ov-tint-green: #C9DFD0;
+    --ov-tint-amber: #E3D7C2;
+    --ov-tint-red: #F0CACD;
+    --ov-tint-purple: #DBD7F5;
+    --ov-tint-cyan: #C9E0DE;
+    --ov-tint-gray: #D9D9DB;
   }
 
   [data-ov-theme='obsidian'] {
@@ -416,6 +438,13 @@
     --ov-brand-pink: #E7157B;
     --ov-brand-red: #DD344C;
     --ov-brand-teal: #01A88D;
+    --ov-tint-blue: #373248;
+    --ov-tint-green: #26362C;
+    --ov-tint-amber: #3F2F19;
+    --ov-tint-red: #462A2C;
+    --ov-tint-purple: #342F47;
+    --ov-tint-cyan: #253534;
+    --ov-tint-gray: #2E2E30;
   }
 
   [data-ov-theme='carbon'] {
@@ -498,6 +527,13 @@
     --ov-brand-pink: #E7157B;
     --ov-brand-red: #DD344C;
     --ov-brand-teal: #01A88D;
+    --ov-tint-blue: #374555;
+    --ov-tint-green: #2F423B;
+    --ov-tint-amber: #483C29;
+    --ov-tint-red: #50363B;
+    --ov-tint-purple: #3E3B56;
+    --ov-tint-cyan: #2F4143;
+    --ov-tint-gray: #3A3E45;
   }
 
   [data-ov-theme='solarized-dark'] {
@@ -580,6 +616,13 @@
     --ov-brand-pink: #E7157B;
     --ov-brand-red: #DD344C;
     --ov-brand-teal: #01A88D;
+    --ov-tint-blue: #154455;
+    --ov-tint-green: #144344;
+    --ov-tint-amber: #263E36;
+    --ov-tint-red: #2C3A44;
+    --ov-tint-purple: #1E3E59;
+    --ov-tint-cyan: #13434A;
+    --ov-tint-gray: #1C414A;
   }
 
   [data-ov-theme='solarized-light'] {
@@ -662,6 +705,13 @@
     --ov-brand-pink: #DE1476;
     --ov-brand-red: #DC2B44;
     --ov-brand-teal: #01836E;
+    --ov-tint-blue: #CBD7D6;
+    --ov-tint-green: #CCDABD;
+    --ov-tint-amber: #E4D4B1;
+    --ov-tint-red: #F0C7BB;
+    --ov-tint-purple: #DDD3E0;
+    --ov-tint-cyan: #CCDCCB;
+    --ov-tint-gray: #D8D6C9;
   }
 
   [data-ov-theme='high-contrast-dark'] {
@@ -744,6 +794,13 @@
     --ov-brand-pink: #E7157B;
     --ov-brand-red: #DD344C;
     --ov-brand-teal: #01A88D;
+    --ov-tint-blue: #27343D;
+    --ov-tint-green: #1C3422;
+    --ov-tint-amber: #3D2E12;
+    --ov-tint-red: #3D2121;
+    --ov-tint-purple: #28243B;
+    --ov-tint-cyan: #192A28;
+    --ov-tint-gray: #313131;
   }
 
   [data-ov-theme='high-contrast-light'] {
@@ -826,5 +883,12 @@
     --ov-brand-pink: #A50F58;
     --ov-brand-red: #A51C2F;
     --ov-brand-teal: #016051;
+    --ov-tint-blue: #C5D4E2;
+    --ov-tint-green: #C2D7C9;
+    --ov-tint-amber: #DBD2C2;
+    --ov-tint-red: #E8C2C6;
+    --ov-tint-purple: #DBD7F5;
+    --ov-tint-cyan: #C9E0DE;
+    --ov-tint-gray: #CECECE;
   }
 }

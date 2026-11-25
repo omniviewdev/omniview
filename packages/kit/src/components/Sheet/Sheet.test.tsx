@@ -195,7 +195,7 @@ describe('Sheet', () => {
     }
   });
 
-  it('has closed props: a title, a way to close and a body, no className, no style, no size', () => {
+  it('has closed props: a title, a way to close and a body, no className, no style, and a size that is one of the named ones', () => {
     // Types only: these are never rendered.
     const accepted: SheetProps[] = [
       { title: 'Example', onClose: noop, children: null },
@@ -205,7 +205,7 @@ describe('Sheet', () => {
     const withClass: SheetProps = { title: 'Example', onClose: noop, children: null, className: 'x' };
     // @ts-expect-error style is not a prop of a kit part
     const withStyle: SheetProps = { title: 'Example', onClose: noop, children: null, style: { color: 'red' } };
-    // @ts-expect-error there is one size so far: the next screen that needs another adds the prop
+    // @ts-expect-error a size is one of the four named ones, never any string
     const withSize: SheetProps = { title: 'Example', onClose: noop, children: null, size: 'large' };
     // @ts-expect-error a title is text, not an element
     const elementTitle: SheetProps = { title: <b>Example</b>, onClose: noop, children: null };
@@ -216,6 +216,64 @@ describe('Sheet', () => {
     // @ts-expect-error a sheet has a body
     const empty: SheetProps = { title: 'Example', onClose: noop };
     expect([accepted, withClass, withStyle, withSize, elementTitle, withoutClose, untitled, empty]).toHaveLength(8);
+  });
+
+  it('draws an icon and a meta line in its header, and the title alone names the dialog', () => {
+    render(
+      <Sheet title="Edit connection" icon="server" meta="Connection A · production" onClose={noop}>
+        <p>Body text</p>
+      </Sheet>,
+    );
+    const header = dialog().querySelector<HTMLElement>('[data-ov-part="header"]')!;
+    expect(screen.getByRole('dialog', { name: 'Edit connection' })).toBe(dialog());
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Edit connection');
+    expect(header.querySelector('[data-ov-part="meta"]')?.textContent).toBe('Connection A · production');
+    // The icon is decoration, and Close is still the last of the header and the first stop.
+    expect(header.querySelector('[data-ov-part="icon"]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(header.lastElementChild).toBe(close());
+    expect(header.contains(dialog().querySelector('[data-ov-part="body"]'))).toBe(false);
+  });
+
+  it('puts a footer after the body and outside it, and Tab wraps through its controls to Close', () => {
+    const view = render(
+      <Sheet title="Example" onClose={noop} footer={null}>
+        <input aria-label="Field" />
+      </Sheet>,
+    );
+    expect(dialog().querySelector('[data-ov-part="footer"]')).toBeNull();
+    view.rerender(
+      <Sheet title="Example" onClose={noop} footer={<button type="button">Save</button>}>
+        <input aria-label="Field" />
+      </Sheet>,
+    );
+    const body = dialog().querySelector<HTMLElement>('[data-ov-part="body"]')!;
+    const footer = dialog().querySelector<HTMLElement>('[data-ov-part="footer"]')!;
+    expect(body.contains(footer)).toBe(false);
+    expect(body.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const save = screen.getByRole('button', { name: 'Save' });
+    save.focus();
+    // The footer's last control is the last stop of the sheet: Tab on it is taken over and wraps to the first, Close.
+    expect(fireEvent.keyDown(save, { key: 'Tab' })).toBe(false);
+    expect(document.activeElement).toBe(close());
+  });
+
+  it('is a standard dialog unless told another size, and is described by the element of its body that it names', () => {
+    const view = render(
+      <Sheet title="Example" onClose={noop} describedBy="why">
+        <p id="why">The reason.</p>
+      </Sheet>,
+    );
+    const frame = () => dialog().querySelector<HTMLElement>('[data-ov-part="frame"]')!;
+    expect(frame()).toHaveProperty('dataset.ovSize', 'standard');
+    expect(screen.getByRole('dialog', { name: 'Example', description: 'The reason.' })).toBe(dialog());
+    for (const size of ['narrow', 'wide', 'settings'] as const) {
+      view.rerender(
+        <Sheet title="Example" onClose={noop} size={size}>
+          {null}
+        </Sheet>,
+      );
+      expect(frame()).toHaveProperty('dataset.ovSize', size);
+    }
   });
 
   it('writes nothing to the document root: no attribute, no style, no custom property', () => {

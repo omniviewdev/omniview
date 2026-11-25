@@ -1,0 +1,22 @@
+/* The boxes the examples sit in. The grid fills the width it is given, so each example gives it the width of a page's body: a frame, a narrow
+   frame for one column, and a scrolling frame for the long collection, which is the way a pane holds it. */
+@layer ov.components {
+  .frame {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .narrow {
+    width: 240px;
+    max-width: 100%;
+  }
+
+  .scroll {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 480px;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}

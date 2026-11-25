@@ -1,0 +1,7 @@
+/* The box the clipping example sits in: 200 px, narrower than the title it holds. */
+@layer ov.components {
+  .narrow {
+    width: 200px;
+    max-width: 100%;
+  }
+}

@@ -24,12 +24,14 @@ export const Status = () => (
 
 // Every glyph of the registry, for review: the test of this file fails when the registry and this list differ.
 const ALL: readonly IconName[] = [
-  'activity', 'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'arrow-up-wide-narrow', 'beaker', 'bell', 'bell-off', 'blocks', 'box', 'brick-wall', 'calendar-clock',
-  'case-sensitive', 'check', 'check-check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle', 'circle-check', 'circle-minus', 'clipboard-check', 'clock', 'close', 'code', 'columns', 'copy', 'cpu',
-  'database', 'ellipsis', 'eraser', 'external-link', 'eye', 'eye-off', 'file-cog', 'filter-x', 'folder-tree', 'gauge', 'globe', 'hard-drive', 'hard-drive-download', 'hourglass', 'house', 'key-round', 'layers',
-  'layout-template', 'list-filter', 'list-ordered', 'loader', 'loader-circle', 'minus', 'network', 'package', 'paintbrush', 'panel-bottom', 'paste', 'pause', 'play', 'plus', 'power', 'power-off', 'puzzle',
-  'refresh', 'regex', 'repeat', 'rocket', 'rotate-ccw', 'rotate-cw', 'ruler', 'scaling', 'scroll-text', 'search', 'search-x', 'select-all', 'server', 'server-cog', 'settings', 'settings-2', 'shield',
-  'shield-check', 'split', 'square-terminal', 'status-error', 'status-info', 'status-success', 'status-warning', 'target', 'trash', 'triangle-alert', 'umbrella', 'undo', 'waypoints', 'whole-word',
+  'activity', 'archive', 'arrow-down', 'arrow-down-to-line', 'arrow-left', 'arrow-right', 'arrow-up', 'arrow-up-wide-narrow', 'beaker', 'bell', 'bell-off', 'blocks', 'bookmark', 'box',
+  'boxes', 'brick-wall', 'calendar-clock', 'case-sensitive', 'check', 'check-check', 'chevron-down', 'chevron-right', 'chevron-up', 'circle', 'circle-check', 'circle-minus',
+  'clipboard-check', 'clock', 'close', 'code', 'columns', 'copy', 'cpu', 'database', 'ellipsis', 'eraser', 'external-link', 'eye', 'eye-off', 'file-cog', 'filter-x', 'flask-conical',
+  'folder', 'folder-plus', 'folder-tree', 'gauge', 'globe', 'grip-vertical', 'hard-drive', 'hard-drive-download', 'history', 'hourglass', 'house', 'key-round', 'layers', 'layout-grid',
+  'layout-list', 'layout-template', 'list-filter', 'list-ordered', 'loader', 'loader-circle', 'log-in', 'minus', 'network', 'package', 'paintbrush', 'panel-bottom', 'panel-right-open',
+  'paste', 'pause', 'pencil', 'pin', 'play', 'plug', 'plus', 'power', 'power-off', 'puzzle', 'refresh', 'regex', 'repeat', 'rocket', 'rotate-ccw', 'rotate-cw', 'ruler', 'scaling',
+  'scroll-text', 'search', 'search-x', 'select-all', 'server', 'server-cog', 'settings', 'settings-2', 'shield', 'shield-check', 'ship', 'sliders-horizontal', 'split', 'square-terminal',
+  'status-error', 'status-info', 'status-success', 'status-warning', 'table', 'target', 'trash', 'triangle-alert', 'umbrella', 'undo', 'unplug', 'waypoints', 'whole-word', 'wrench',
 ];
 
 // Six to a row: eight 20 px glyphs and their gaps (216 px) are wider than the stage of one example (200 px) and would stand outside its border.
