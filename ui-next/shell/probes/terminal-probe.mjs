@@ -1434,7 +1434,7 @@ async function latency(ctx) {
   // or the command would be "abcd...flood" and no flood would start. The flood's start is recorded by the shell, and so is its end: both are asserted.
   await page.keyboard.press('Control+c');
   await sleep(200);
-  await page.keyboard.type('flood 1000000 80');
+  await page.keyboard.type('flood Infinity 80');
   await page.keyboard.press('Enter');
   await sleep(1500);
   const startedBefore = await page.evaluate(() => window.__pty.log.floodStarts.length);

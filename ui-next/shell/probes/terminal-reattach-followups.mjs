@@ -438,7 +438,9 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
     const attach = host.log.attaches[mark];
     await finished(w, page, id);
     const lines = await page.evaluate(() => window.__engine.lines);
-    const screen = await rowsOf(page);
+    // The emulator's DOM renderer draws a frame after it parsed the last byte: the screen is read when it shows the last line of the flood (what is waited for is the draw, bounded; a page that never draws it ends the wait and fails the assertion).
+    const lastLine = String(LINES - 1).padStart(7, '0');
+    const screen = await until(async () => rowsOf(page), (rows) => rows.some((row) => row.startsWith(lastLine)), 8000);
     // What the shell writes now is live whatever the page did before, and what is typed reaches the shell through the new stream.
     host.append(id, TAIL);
     await typeLine(page, 'hello');
