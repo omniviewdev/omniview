@@ -249,10 +249,13 @@ func TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks(t *testing.T) {
 			if integration {
 				assert.Contains(t, string(raw), "\x1b]633;E;echo hello;", "the integrated run did print its marks")
 			}
+			text := string(oscs.ReplaceAll(raw, nil))
 			if name == "fish" {
-				return typedText(raw)
+				text = typedText(raw)
 			}
-			return string(oscs.ReplaceAll(raw, nil))
+			// What the shell draws after the last command is repainted at its own pace (a trailing space, the cursor moves
+			// of the next prompt): the runs are held to what comes before it.
+			return text[:strings.LastIndex(text, "false")+len("false")]
 		}
 		off := session(false)
 		on := session(true)
