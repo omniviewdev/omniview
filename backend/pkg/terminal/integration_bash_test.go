@@ -486,3 +486,35 @@ func TestPwshTheUsersPromptSeesTheStatusOfTheLastCommand(t *testing.T) {
 	step("sh -c 'exit 3'", "FAIL> ")
 	step("true", "OK> ")
 }
+
+// With extdebug a user's DEBUG trap that says no to our own hooks must not take them away: the marks and the prompt stay.
+func TestAUsersDebugTrapThatRefusesOurHooksDoesNotTakeThemAway(t *testing.T) {
+	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != *omniview* ]]' DEBUG\n")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "echo hi")
+	out := string(f.sink.output(info.ID))
+	for _, want := range []string{"\x1b]133;A", "\x1b]133;B", "\x1b]133;C", "\x1b]133;D;0", "\x1b]633;P;Cwd="} {
+		assert.Contains(t, out, want, "the hooks ran: %q", want)
+	}
+	ran := f.endedCommands(info.ID, 1)
+	assert.Equal(t, "echo hi", ran[0].CommandLine)
+}
+
+// A command the user's trap skips (extdebug) does not run, and is not recorded as run.
+func TestACommandThatTheUsersDebugTrapSkipsIsNotRecordedAsRun(t *testing.T) {
+	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != \"touch \\$HOME/skipped\" ]]' DEBUG\n")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "touch $HOME/skipped")
+	f.run(info.ID, "touch $HOME/ran")
+	f.run(info.ID, "echo done")
+	var lines []string
+	for _, r := range f.scanned(info.ID).Records() {
+		if r.Ran {
+			lines = append(lines, r.CommandLine)
+		}
+	}
+	assert.Equal(t, []string{"touch $HOME/ran", "echo done"}, lines, "the skipped command is no record")
+	assert.Equal(t, 2, strings.Count(string(f.sink.output(info.ID)), "\x1b]633;E;"))
+}
