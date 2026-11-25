@@ -275,9 +275,9 @@ func (f *fakeChannel) lastSendFrame() []byte {
 
 func attachFrame(capability string, from *uint64) []byte {
 	if from == nil {
-		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q}`, capability)...)
+		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q}`, capability, writerID(0))...)
 	}
-	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d}`, capability, *from)...)
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d,"writer":%q}`, capability, *from, writerID(0))...)
 }
 
 func inputFrame(text string) []byte { return append([]byte{wInput}, text...) }
@@ -746,6 +746,18 @@ func (m *Manager) attachAs(t *testing.T, capability, writer string) *chanPage {
 
 func attachFrameAs(capability, writer string) []byte {
 	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q}`, capability, writer)...)
+}
+
+// writerApplied is the bytes the device took from the writer, as the host counts them.
+func (s *session) writerApplied(id string) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.channel.writers {
+		if w.id == id {
+			return w.applied.Load()
+		}
+	}
+	return 0
 }
 
 // writerID is the id of the nth test writer: 16 bytes as 32 lowercase hex digits.

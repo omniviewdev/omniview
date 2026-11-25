@@ -27,8 +27,8 @@ func TestTheHoldersCloseIsReadWhileAnInputWaitsForAProgramThatNeverReads(t *test
 	}
 	waitHost(t, s, a, "the input never waited for room: the write is not blocked", func(cs channelStats) bool { return cs.roomWaits >= 1 })
 	a.closeTerminal()
-	st := a.waitClosed()
 	guarded(t, "close-while-input-waits", func() {
+		st := a.waitClosed()
 		require.Len(t, st.ended, 1, "the holder is told how it ended")
 		assert.Equal(t, EndClosed, st.ended[0].Reason)
 	})
