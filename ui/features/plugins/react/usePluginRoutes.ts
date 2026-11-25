@@ -35,6 +35,8 @@ export function usePluginRoutes(): UsePluginRoutesResult {
       wrappedRoutes.push({
         path: pluginId,
         loader: () => ({ pluginID: pluginId }),
+        // A tab that opens on a plugin path runs the loader above before its first render (react-router's initial hydration): it draws nothing meanwhile.
+        HydrateFallback: () => null,
         Component: PluginRenderer,
         ErrorBoundary: RouterErrorBoundary,
         children: [...normalizePluginRoutes(reg.routes, pluginId), notFoundRoute],
