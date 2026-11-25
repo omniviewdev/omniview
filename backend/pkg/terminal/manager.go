@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/omniviewdev/omniview/backend/pkg/apperror"
+	"github.com/omniviewdev/omniview/backend/pkg/terminal/marks"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/shellenv"
 	"github.com/omniviewdev/omniview/internal/version"
@@ -62,6 +63,10 @@ type Manager struct {
 	base    func() []string
 	resolve func(command []string) (string, []string, error)
 	probe   func() shellenv.ProbeResult
+
+	// integrationOn says whether the user has the shell integration on (the setting `terminal.shellIntegration`):
+	// SetIntegration sets it before sessions start, and it is on until then.
+	integrationOn func() bool
 
 	ctx  context.Context
 	log  logging.Logger
@@ -121,6 +126,10 @@ func (m *Manager) rememberEnded(id string) {
 	}
 }
 
+// SetIntegration sets how the manager asks whether the user has the shell integration on, once for every terminal that
+// starts. It is called before any terminal starts.
+func (m *Manager) SetIntegration(on func() bool) { m.integrationOn = on }
+
 // NewManager makes a manager whose events go to sink. Its sessions end when ctx ends, the way a close
 // ends them (Shutdown): the host's application context is cancelled first when it quits.
 func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
@@ -129,6 +138,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	detachments, _ := sink.(DetachmentSink)
 	m := &Manager{
 		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe,
+		integrationOn: func() bool { return true },
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
@@ -164,6 +174,10 @@ type session struct {
 	// window. lease is how long it is kept once it is detached.
 	pageKey string
 	lease   time.Duration
+
+	// nonce is the secret of the session's shell integration: the host keeps it (the scanner of step 4 believes the marks that
+	// carry it) and it is in no answer, event, log or error. Zero when the shell has no integration.
+	nonce marks.Nonce
 
 	cmd    *exec.Cmd
 	master *os.File

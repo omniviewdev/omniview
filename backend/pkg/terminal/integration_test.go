@@ -1,0 +1,417 @@
+//go:build !windows
+
+package terminal
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/omniviewdev/omniview/backend/pkg/terminal/marks"
+	logging "github.com/omniviewdev/plugin-sdk/log"
+	"github.com/omniviewdev/plugin-sdk/log/logtest"
+)
+
+// The tests of the shell integration (issue #694, step 2) run the user's real zsh and fish on a pty, with a home of
+// their own whose startup files the tests write. A shell that is not installed is skipped by name: the test says
+// "NOT RUN" and the report of the pull request names it.
+
+// integrationPrompt is the prompt of the user's configuration in these tests.
+const integrationPrompt = "P> "
+
+// integrationDirPrefix is what the name of the host's temporary directory of an integration begins with.
+const integrationDirPrefix = "omniview-integration-"
+
+func integrationShell(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		t.Skipf("NOT RUN: no %s on this machine", name)
+	}
+	return path
+}
+
+func eachIntegrationShell(t *testing.T, body func(t *testing.T, name, shell string)) {
+	t.Helper()
+	for _, name := range []string{"zsh", "fish"} {
+		t.Run(name, func(t *testing.T) { body(t, name, integrationShell(t, name)) })
+	}
+}
+
+// userFiles writes the startup files of a user of the shell, with a prompt of the tests' own, and returns them.
+func userFiles(t *testing.T, name, home string) []string {
+	t.Helper()
+	write := func(path, text string) string {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+		require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
+		return path
+	}
+	if name == "fish" {
+		return []string{write(filepath.Join(home, ".config", "fish", "config.fish"),
+			"set -g fish_greeting\nfunction fish_prompt\n  echo -n '"+integrationPrompt+"'\nend\nfunction fish_right_prompt\nend\n")}
+	}
+	return []string{
+		write(filepath.Join(home, ".zshenv"), "# the user's zshenv\n"),
+		write(filepath.Join(home, ".zprofile"), "# the user's zprofile\n"),
+		write(filepath.Join(home, ".zshrc"), "PS1='"+integrationPrompt+"'\nRPS1=\nHISTFILE=/dev/null\nunsetopt PROMPT_SP\n"),
+		write(filepath.Join(home, ".zlogin"), "# the user's zlogin\n"),
+	}
+}
+
+func digests(t *testing.T, files []string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		require.NoError(t, err, "the user's file %s is gone", path)
+		sum := sha256.Sum256(data)
+		out[path] = hex.EncodeToString(sum[:])
+	}
+	return out
+}
+
+// userEnvironment is the environment the host was launched with, as the tests state it.
+func userEnvironment(home string, extra ...string) []string {
+	return append([]string{
+		"HOME=" + home, "USER=omniview-test", "LOGNAME=omniview-test", "PATH=" + os.Getenv("PATH"),
+		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "XDG_DATA_HOME=" + filepath.Join(home, ".local", "share"),
+		"XDG_CACHE_HOME=" + filepath.Join(home, ".cache"), "XDG_STATE_HOME=" + filepath.Join(home, ".local", "state"),
+	}, extra...)
+}
+
+// answeringSink answers the queries that a terminal answers (fish asks the terminal what it is before it starts), as the page does.
+type answeringSink struct {
+	*chunkSink
+	m *Manager
+}
+
+func (a *answeringSink) Output(id string, data []byte) {
+	a.chunkSink.Output(id, data)
+	if bytes.Contains(data, []byte("\x1b[c")) || bytes.Contains(data, []byte("\x1b[0c")) {
+		go func() { _ = a.m.Write(id, 0, []byte("\x1b[?62;c")) }()
+	}
+}
+
+type integrationFixture struct {
+	t     *testing.T
+	name  string
+	shell string
+	home  string
+	tmp   string
+	files []string
+	m     *Manager
+	sink  *chunkSink
+	logs  *logtest.RecordingSink
+}
+
+// newIntegrationFixture is a manager whose shells start from a launch environment of a home the test owns.
+func newIntegrationFixture(t *testing.T, name, shell string, env ...string) *integrationFixture {
+	t.Helper()
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZDOTDIR", "")
+	require.NoError(t, os.Unsetenv("ZDOTDIR"))
+	f := &integrationFixture{t: t, name: name, shell: shell, home: home, tmp: tmp, files: userFiles(t, name, home), logs: &logtest.RecordingSink{}}
+	f.sink = newChunkSink()
+	answering := &answeringSink{chunkSink: f.sink, m: nil}
+	logger := logging.New(logging.Config{
+		Backend: logging.NewSinkBackend(f.logs), Level: logging.NewLevelController(logging.LevelTrace),
+	})
+	f.m = NewManager(t.Context(), logger, answering)
+	answering.m = f.m
+	t.Cleanup(func() {
+		for _, id := range f.m.running() {
+			_ = f.m.CloseSession(id)
+		}
+	})
+	f.m.base = func() []string { return userEnvironment(home, env...) }
+	return f
+}
+
+func (f *integrationFixture) start(args ...string) Session {
+	f.t.Helper()
+	info, err := f.m.Start(Options{Command: append([]string{f.shell}, args...), Cwd: f.home, Cols: 100, Rows: 30}, nil)
+	require.NoError(f.t, err)
+	return info
+}
+
+// started is a shell that is at its first prompt.
+func (f *integrationFixture) started(args ...string) Session {
+	f.t.Helper()
+	info := f.start(args...)
+	f.sink.waitFor(f.t, info.ID, integrationPrompt)
+	return info
+}
+
+// prompts is how many prompts the shell has drawn.
+func (f *integrationFixture) prompts(id string) int {
+	return bytes.Count(f.sink.output(id), []byte(integrationPrompt))
+}
+
+// run types a line and waits for the prompt that follows it.
+func (f *integrationFixture) run(id, line string) {
+	f.t.Helper()
+	before := f.prompts(id)
+	send(f.t, f.m, id, line)
+	require.Eventually(f.t, func() bool { return f.prompts(id) > before }, 20*time.Second, 5*time.Millisecond, "no prompt after %q", line)
+}
+
+// scanned is what the host's scanner (step 1) makes of everything the shell wrote, with the session's own nonce.
+func (f *integrationFixture) scanned(id string) *marks.Log {
+	f.t.Helper()
+	scanner := marks.New(marks.Config{Nonce: f.m.session(f.t, id).nonce, Now: time.Now, MaxRecords: 0, StartOffset: 0})
+	scanner.Feed(f.sink.output(id), nil)
+	return scanner.Log()
+}
+
+// fileOf is what a shell command of the test wrote into a file of the test: the shell's own words, not the stream's.
+func (f *integrationFixture) fileOf(name string) string {
+	f.t.Helper()
+	data, err := os.ReadFile(filepath.Join(f.home, name))
+	require.NoError(f.t, err)
+	return string(data)
+}
+
+func (f *integrationFixture) integrationDirs() []string {
+	f.t.Helper()
+	found, err := filepath.Glob(filepath.Join(f.tmp, integrationDirPrefix+"*"))
+	require.NoError(f.t, err)
+	return found
+}
+
+func TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		f := newIntegrationFixture(t, name, shell)
+		info := f.started()
+		assert.Equal(t, Integration{State: IntegrationOn, Reason: ""}, info.Integration, "the create answer says the integration is on")
+		nonce := f.m.session(t, info.ID).nonce
+		require.False(t, nonce.IsZero(), "the host keeps a nonce for the session")
+
+		f.run(info.ID, "echo hello")
+		f.run(info.ID, "false")
+		f.run(info.ID, `echo "a;b\\c"`)
+		out := string(f.sink.output(info.ID))
+		reveal := nonce.Reveal()
+		for _, want := range []string{
+			"\x1b]133;A", "\x1b]133;B", "\x1b]133;C", "\x1b]133;D;0", "\x1b]133;D;1", "\x1b]7;file://",
+			"\x1b]633;E;echo hello;" + reveal, "\x1b]633;P;Cwd=" + info.Cwd + ";" + reveal,
+		} {
+			assert.Contains(t, out, want, "the shell prints this mark")
+		}
+
+		records := f.scanned(info.ID).Records()
+		var lines []string
+		for _, record := range records {
+			if record.Ran {
+				lines = append(lines, record.CommandLine)
+				assert.Equal(t, marks.TrustNonce, record.Trust, "the command line %q carries the nonce", record.CommandLine)
+				assert.Equal(t, marks.TrustNonce, record.CwdTrust, "the directory of %q carries the nonce", record.CommandLine)
+				assert.Equal(t, info.Cwd, record.Cwd, "the directory of %q", record.CommandLine)
+			}
+		}
+		assert.Equal(t, []string{"echo hello", "false", `echo "a;b\\c"`}, lines, "the commands, as typed")
+		if len(records) >= 3 {
+			assert.True(t, records[0].HasExitCode)
+			assert.Equal(t, int32(0), records[0].ExitCode)
+			assert.True(t, records[1].HasExitCode)
+			assert.Equal(t, int32(1), records[1].ExitCode, "`false` ended with 1")
+		}
+	})
+}
+
+func TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		oscs := regexp.MustCompile("\x1b\\][^\a\x1b]*(\a|\x1b\\\\)")
+		session := func(integration bool) string {
+			f := newIntegrationFixture(t, name, shell)
+			f.m.SetIntegration(func() bool { return integration })
+			info := f.started()
+			f.run(info.ID, "echo hello")
+			f.run(info.ID, "false")
+			raw := f.sink.output(info.ID)
+			if integration {
+				assert.Contains(t, string(raw), "\x1b]633;E;echo hello;", "the integrated run did print its marks")
+			}
+			return string(oscs.ReplaceAll(raw, nil))
+		}
+		off := session(false)
+		on := session(true)
+		assert.Contains(t, off, "hello", "the control session ran the command")
+		assert.Equal(t, off, on, "with the marks taken out, the integrated terminal shows what the plain one does")
+	})
+}
+
+func TestTheUsersStartupFilesAreByteIdenticalAfterASession(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		f := newIntegrationFixture(t, name, shell)
+		before := digests(t, f.files)
+		homeBefore := entries(t, f.home)
+		info := f.started()
+		require.Equal(t, IntegrationOn, info.Integration.State)
+		f.run(info.ID, "echo hello")
+		require.NoError(t, f.m.CloseSession(info.ID))
+		assert.Equal(t, before, digests(t, f.files), "no file of the user's changed (sha256)")
+		if name == "zsh" {
+			assert.Equal(t, homeBefore, entries(t, f.home), "no file appeared in the user's home")
+		}
+	})
+}
+
+func entries(t *testing.T, dir string) []string {
+	t.Helper()
+	list, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	names := make([]string, 0, len(list))
+	for _, e := range list {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+func TestAZDOTDIRTheUserSetIsHonouredAndRestored(t *testing.T) {
+	shell := integrationShell(t, "zsh")
+	for name, setup := range map[string]func(t *testing.T, home string) (env []string, files []string, want string){
+		"in the launch environment": func(t *testing.T, home string) ([]string, []string, string) {
+			zd := filepath.Join(home, "zd")
+			require.NoError(t, os.MkdirAll(zd, 0o700))
+			rc := filepath.Join(zd, ".zshrc")
+			env := filepath.Join(zd, ".zshenv")
+			require.NoError(t, os.WriteFile(rc, []byte("PS1='"+integrationPrompt+"'\nHISTFILE=/dev/null\nUSER_RC=ran\n"), 0o600))
+			require.NoError(t, os.WriteFile(env, []byte("USER_ENV=ran\n"), 0o600))
+			return []string{"ZDOTDIR=" + zd}, []string{rc, env}, zd
+		},
+		"set by the user's own .zshenv": func(t *testing.T, home string) ([]string, []string, string) {
+			zd := filepath.Join(home, ".config", "zsh")
+			require.NoError(t, os.MkdirAll(zd, 0o700))
+			rc := filepath.Join(zd, ".zshrc")
+			env := filepath.Join(home, ".zshenv")
+			require.NoError(t, os.WriteFile(rc, []byte("PS1='"+integrationPrompt+"'\nHISTFILE=/dev/null\nUSER_RC=ran\n"), 0o600))
+			require.NoError(t, os.WriteFile(env, []byte("export ZDOTDIR="+zd+"\nUSER_ENV=ran\n"), 0o600))
+			return nil, []string{rc, env}, zd
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newIntegrationFixture(t, "zsh", shell)
+			env, files, want := setup(t, f.home)
+			f.m.base = func() []string { return userEnvironment(f.home, env...) }
+			before := digests(t, files)
+			info := f.started()
+			assert.Equal(t, IntegrationOn, info.Integration.State)
+			f.run(info.ID, "print -r -- zd=$ZDOTDIR env=$USER_ENV rc=$USER_RC > seen; env > exported")
+			assert.Equal(t, "zd="+want+" env=ran rc=ran\n", f.fileOf("seen"), "the user's files ran, from the user's directory, and ZDOTDIR is theirs again")
+			assert.Contains(t, f.fileOf("exported"), "\nZDOTDIR="+want+"\n", "the exported ZDOTDIR is the user's")
+			assert.NotContains(t, f.fileOf("exported"), integrationDirPrefix, "no trace of the shim in the environment")
+			require.NoError(t, f.m.CloseSession(info.ID))
+			assert.Equal(t, before, digests(t, files), "the user's files are byte-identical")
+		})
+	}
+}
+
+func TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		f := newIntegrationFixture(t, name, shell)
+		info := f.started()
+		require.Equal(t, IntegrationOn, info.Integration.State)
+		nonce := f.m.session(t, info.ID).nonce.Reveal()
+		require.NotEmpty(t, nonce)
+		// A shell variable that is not exported is where the script keeps the nonce: only what is exported reaches a child.
+		command := "env > exported; command printenv > printed; set -x > exportedvars"
+		if name == "zsh" {
+			command = "env > exported; /usr/bin/env > printed; typeset -x > exportedvars"
+		}
+		f.run(info.ID, command)
+		for _, file := range []string{"exported", "printed", "exportedvars"} {
+			assert.NotContains(t, f.fileOf(file), nonce, "the nonce is not in what %s lists", file)
+		}
+		if runtime.GOOS == "linux" {
+			f.run(info.ID, "tr '\\0' '\\n' < /proc/$$/environ > initial")
+			assert.NotContains(t, f.fileOf("initial"), nonce, "the nonce is not in the environment the shell was started with")
+		}
+		exported := f.fileOf("exported")
+		assert.NotContains(t, exported, integrationDirPrefix, "the integration's directory is in no exported variable once the shell is up")
+		for _, line := range strings.Split(exported, "\n") {
+			assert.False(t, strings.HasPrefix(line, "ZDOTDIR="), "the shell has a ZDOTDIR the user never set: %q", line)
+		}
+	})
+}
+
+func TestTheNonceIsInNoLogNoErrorAndNoAnswerThatTheHostGives(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		f := newIntegrationFixture(t, name, shell)
+		info := f.started()
+		f.run(info.ID, "echo hello")
+		nonce := f.m.session(t, info.ID).nonce
+		require.False(t, nonce.IsZero())
+		secret := nonce.Reveal()
+		answer, err := json.Marshal(info)
+		require.NoError(t, err)
+		listed, err := json.Marshal(f.m.ListSessions())
+		require.NoError(t, err)
+		got, err := f.m.GetSession(info.ID)
+		require.NoError(t, err)
+		shown := fmt.Sprintf("%v %+v %#v %s %v", info, info, info, answer, got)
+		assert.NotContains(t, shown, secret, "the answer of the create")
+		assert.NotContains(t, string(listed), secret, "the list")
+		assert.NotContains(t, fmt.Sprintf("%v %+v %#v", f.m.session(t, info.ID).info, info.Integration, f.m.session(t, info.ID).nonce), secret, "what prints the session")
+		require.NoError(t, f.m.CloseSession(info.ID))
+		end := f.sink.waitEnd(t, info.ID, 20*time.Second)
+		assert.NotContains(t, fmt.Sprintf("%+v", end), secret, "the end")
+		assert.Positive(t, len(f.logs.Records()), "the host logged while the terminal ran")
+		for _, record := range f.logs.Records() {
+			assert.NotContains(t, fmt.Sprintf("%v %v %v", record.Message, record.Fields, record.ToMap()), secret, "a log line of the host")
+		}
+	})
+}
+
+func TestANestedLoginShellDoesNotInheritTheIntegration(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		f := newIntegrationFixture(t, name, shell)
+		info := f.started()
+		require.Equal(t, IntegrationOn, info.Integration.State)
+		// The functions of the integration all begin with the same name; a shell that has any of them has the integration.
+		probe := `print -r -- "nested zd=${ZDOTDIR-unset} functions=${(k)functions[(I)__omniview*]}"`
+		if name == "fish" {
+			probe = `echo "nested xdg="(string join : $XDG_DATA_DIRS | string match -rq omniview-integration; and echo shim; or echo clean)" functions="(functions -n | string match '__omniview*' | string join ,)`
+		}
+		f.run(info.ID, shell+" -i -l -c '"+strings.ReplaceAll(probe, "'", `'\''`)+"' > nested")
+		seen := f.fileOf("nested")
+		assert.NotContains(t, seen, "shim", "the nested shell does not find the shim")
+		assert.NotContains(t, seen, integrationDirPrefix, "the nested shell does not find the integration's directory")
+		assert.True(t, strings.HasSuffix(strings.TrimSpace(seen), "functions="), "the nested shell has none of the integration's functions: %q", seen)
+		if name == "zsh" {
+			assert.Contains(t, seen, "zd=unset", "the nested shell reads the user's own files")
+		}
+	})
+}
+
+func TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		f := newIntegrationFixture(t, name, shell)
+		prepend := "case \":$PATH:\" in *\":/omniview-user/shims:\"*) ;; *) PATH=\"/omniview-user/shims:$PATH\" ;; esac\nexport PATH\n"
+		if name == "zsh" {
+			require.NoError(t, os.WriteFile(filepath.Join(f.home, ".zprofile"), []byte(prepend), 0o600))
+		} else {
+			cfg := filepath.Join(f.home, ".config", "fish", "config.fish")
+			require.NoError(t, os.WriteFile(cfg, []byte("fish_add_path --prepend --path /omniview-user/shims\nfunction fish_prompt\n  echo -n '"+integrationPrompt+"'\nend\n"), 0o600))
+		}
+		info := f.started()
+		assert.Equal(t, IntegrationOn, info.Integration.State)
+		f.run(info.ID, "echo $PATH > path")
+		assert.True(t, strings.HasPrefix(f.fileOf("path"), "/omniview-user/shims"), "the user's directory is first, with the integration on: %q", f.fileOf("path"))
+	})
+}
