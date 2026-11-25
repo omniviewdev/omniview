@@ -2,8 +2,9 @@ import { Icon, tip, useMenu, type MenuItem } from '@omniviewdev/kit';
 import { platformOf } from '../core/chords';
 import { isNativeWindow } from '../core/native';
 import type { TabId } from '../core/tabs';
+import { useMaybeNotices } from '../notices/context';
 import { useTablist } from '../tablist';
-import { tabCommands, TAB_MENU_GROUPS } from './commands';
+import { tabCommands, TAB_MENU_GROUPS, WINDOW_GROUP } from './commands';
 import { useTabs } from './context';
 import { useActiveId, useTabIds } from './hooks';
 import { Tab } from './Tab';
@@ -19,14 +20,28 @@ type TabStripProps = {
 /**
  * The strip of the top row (ch16 S4, S53, S54): the tabs in one scroller, then the new-tab control. The faces share the strip's width equally, 208 px at most, and give way together
  * down to 96 px before the scroller scrolls; the wheel scrolls it sideways and the tab on screen is always brought into view. It is a roving tablist with one tab stop: the arrows
- * move the focus and never load a page, Home and End jump, Enter and Space select, Delete closes and puts the focus on the neighbour (`useTablist`, the contract every strip of the shell
+ * move the focus and never load a page, Home and End jump, Enter and Space select, Delete closes and puts the focus on the neighbour, Alt+Shift with those keys moves the tab (`useTablist`, the contract every strip of the shell
  * shares). A tab's context menu (S55) is one menu for the strip, resolved for the tab it opens on, and its rows are `commands.ts`'s, the palette's too. It reads the order and the tab on screen and nothing else: each `Tab` reads its own slice, so a change in one tab does not render the strip. Kit part it should become: TabStrip.
  */
 export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
   const store = useTabs();
   const ids = useTabIds(store);
   const active = useActiveId(store);
-  const { ref, stop, focus, handlers } = useTablist({ ids, selected: active, onClose: (id) => store.close(id).status === 'done' });
+  const say = useMaybeNotices()?.announcer.polite.announce;
+  // The model's own reorder decides where the tab lands and whether it crosses the pinned boundary; the strip says where it went (ch16 S45).
+  const onMove = (id: TabId, to: number): boolean => {
+    const before = store.getSnapshot().tabs[id];
+    if (before === undefined || store.reorder(id, to).status !== 'done') {
+      return false;
+    }
+
+    const { order, tabs } = store.getSnapshot();
+    const { face, flags } = tabs[id] ?? before;
+    say?.(`${face.title} moved to position ${String(order.indexOf(id) + 1)} of ${String(order.length)}${flags.pinned === before.flags.pinned ? '' : flags.pinned ? ', pinned' : ', unpinned'}`);
+    return true;
+  };
+
+  const { ref, stop, focus, handlers } = useTablist({ ids, selected: active, onClose: (id) => store.close(id).status === 'done', onMove });
   // The menu gives the focus back to the tab it opened on before a row runs, and a close takes that tab away: the focus goes to the tab the model shows next, never to the page's body.
   const menu = useMenu((key) => {
     if (key === undefined || store.getSnapshot().tabs[key] === undefined) {
@@ -34,21 +49,22 @@ export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
     }
 
     const commands = tabCommands({ tabs: store, platform: platformOf(navigator), native: isNativeWindow(), onNewTab }, key);
-    return TAB_MENU_GROUPS.flatMap((group, at): MenuItem[] => [
+    const groups = store.windows === undefined ? TAB_MENU_GROUPS.filter((group) => group !== WINDOW_GROUP) : TAB_MENU_GROUPS;
+    return groups.flatMap((group, at): MenuItem[] => [
       ...(at === 0 ? [] : [{ kind: 'separator' as const, id: `group-${String(at)}` }]),
-      ...group.map((id) => ({
-        kind: 'action' as const,
-        id,
-        label: commands[id].title,
-        shortcut: commands[id].shortcut,
-        disabled: commands[id].unavailable ?? false,
-        onSelect: () => {
-          const answer = commands[id].run();
+      ...group.map((id): MenuItem => {
+        const { title, shortcut, unavailable, choices } = commands[id];
+        const select = (choice?: string) => () => {
+          const answer = commands[id].run(choice);
           if (answer.status === 'done' && 'active' in answer && answer.active !== null) {
             focus(answer.active);
           }
-        },
-      })),
+        };
+
+        return choices === undefined
+          ? { kind: 'action', id, label: title, shortcut, disabled: unavailable ?? false, onSelect: select() }
+          : { kind: 'submenu', id, label: title, disabled: unavailable ?? false, items: choices.map((choice) => ({ kind: 'action', id: choice.id, label: choice.title, onSelect: select(choice.id) })) };
+      }),
     ]);
   }, ids);
 

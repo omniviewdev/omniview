@@ -94,6 +94,60 @@ describe('the web alternate (Control and Option)', () => {
   });
 });
 
+describe('reopen, next and previous', () => {
+  it('reopens the tab closed last, at its old place, with Command Shift T on a Mac', () => {
+    const { h, ids } = mount('MacIntel');
+    h.store.close(ids[3]);
+
+    expect(press({ code: 'KeyT', metaKey: true, shiftKey: true })).toBe(false);
+    expect(titles(h)).toEqual(['One', 'Two', 'Three', 'Four', 'Five']);
+  });
+
+  it('reopens with Control Shift T elsewhere and Control Option Shift T for the web', () => {
+    const { h, ids } = mount();
+    h.store.close(ids[3]);
+    press({ code: 'KeyT', ctrlKey: true, shiftKey: true });
+    expect(h.ids()).toHaveLength(5);
+
+    h.store.close(ids[3]);
+    press({ code: 'KeyT', ctrlKey: true, altKey: true, shiftKey: true });
+    expect(h.ids()).toHaveLength(5);
+  });
+
+  it('shows the next and the previous tab, wrapping', () => {
+    const { h, ids } = mount('MacIntel');
+
+    press({ code: 'Tab', ctrlKey: true });
+    expect(h.active()).toBe(ids[1]);
+    press({ code: 'BracketRight', metaKey: true, shiftKey: true });
+    expect(h.active()).toBe(ids[2]);
+    press({ code: 'BracketLeft', metaKey: true, shiftKey: true });
+    expect(h.active()).toBe(ids[1]);
+    press({ code: 'Tab', ctrlKey: true, shiftKey: true });
+    expect(h.active()).toBe(ids[0]);
+    press({ code: 'ArrowLeft', ctrlKey: true, altKey: true });
+    expect(h.active()).toBe(ids[4]);
+    press({ code: 'ArrowRight', ctrlKey: true, altKey: true });
+    expect(h.active()).toBe(ids[0]);
+  });
+
+  it('leaves each to the field that took it', () => {
+    const { h, ids } = mount('MacIntel');
+    h.store.close(ids[3]);
+    const stop = (event: Event) => {
+      event.preventDefault();
+    };
+
+    field().addEventListener('keydown', stop);
+    for (const init of [{ code: 'KeyT', metaKey: true, shiftKey: true }, { code: 'Tab', ctrlKey: true }, { code: 'ArrowRight', ctrlKey: true, altKey: true }]) {
+      field().dispatchEvent(new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }));
+    }
+
+    expect(h.ids()).toHaveLength(4);
+    expect(h.active()).toBe(ids[0]);
+  });
+});
+
 describe('what is not a chord', () => {
   it('is a key with Shift, one that is composing, one something else already took, and another key', () => {
     const { h, ids } = mount('MacIntel');

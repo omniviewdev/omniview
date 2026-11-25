@@ -5,6 +5,8 @@
 //   close  W        the tab on screen            (S41: Command W, web Control Option W)
 //   jump   1 to 8   the Nth tab of the strip     (S47: Command 1 to 8, web Control Option 1 to 8)
 //   last   9        the last tab, whatever N     (S47: Command 9)
+//   reopen T        the tab closed last          (S43: Command Shift T, web Control Option Shift T)
+//   next   Tab      the tab to the right         (S48: Control Tab, Command Shift ], web Control Option Right; previous is the mirror: Control Shift Tab, Command Shift [, Control Option Left)
 
 export type Platform = 'mac' | 'other';
 
@@ -22,7 +24,7 @@ export type KeyLike = {
   readonly getModifierState?: ((key: string) => boolean) | undefined;
 };
 
-export type TabChord = { readonly action: 'close' } | { readonly action: 'jump'; readonly n: number } | { readonly action: 'last' };
+export type TabChord = { readonly action: 'close' | 'reopen' | 'next' | 'previous' | 'last' } | { readonly action: 'jump'; readonly n: number };
 
 const DIGIT = /^Digit([1-9])$/;
 
@@ -31,11 +33,16 @@ export function platformOf(scope: { readonly platform?: string | undefined; read
   return /mac/i.test(scope?.platform ?? scope?.userAgent ?? '') ? 'mac' : 'other';
 }
 
-/** The chord a key event is, or `undefined`. Shift with a chord is another chord (next, previous, reopen), and a key something else already took is theirs. */
+/** The chord a key event is, or `undefined`. Shift with a chord is another chord (reopen, next, previous: close and the digits have none), and a key something else already took is theirs. */
 export function chordOf(event: KeyLike, platform: Platform): TabChord | undefined {
   // An input method that is composing owns the keys (ch16 S52), and so does whatever already took this one.
-  if (event.defaultPrevented === true || event.isComposing === true || event.keyCode === 229 || event.shiftKey) {
+  if (event.defaultPrevented === true || event.isComposing === true || event.keyCode === 229) {
     return undefined;
+  }
+
+  // Control Tab is the same key on every platform (Command Tab is the system's), so it is neither the native chord nor the web alternate.
+  if (event.code === 'Tab' && event.ctrlKey && !event.metaKey && !event.altKey) {
+    return { action: event.shiftKey ? 'previous' : 'next' };
   }
 
   const native = platform === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
@@ -43,6 +50,15 @@ export function chordOf(event: KeyLike, platform: Platform): TabChord | undefine
   const web = event.ctrlKey && event.altKey && !event.metaKey && event.getModifierState?.('AltGraph') !== true;
   if ((!native || event.altKey) && !web) {
     return undefined;
+  }
+
+  const mod = native && !event.altKey;
+  if (event.shiftKey) {
+    return event.code === 'KeyT' ? { action: 'reopen' } : mod && event.code === 'BracketRight' ? { action: 'next' } : mod && event.code === 'BracketLeft' ? { action: 'previous' } : undefined;
+  }
+
+  if (web && (event.code === 'ArrowRight' || event.code === 'ArrowLeft')) {
+    return { action: event.code === 'ArrowRight' ? 'next' : 'previous' };
   }
 
   if (event.code === 'KeyW') {

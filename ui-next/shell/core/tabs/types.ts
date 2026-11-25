@@ -310,6 +310,14 @@ export type OpenOptions = {
 
 export type Guard = { readonly confirmed?: boolean | undefined };
 
+/** What a tab can do about the other windows of the app. A move answers at once and runs on: the tab leaves this window only after the other one has it, so a move that fails loses nothing. */
+export type TabWindows = {
+  /** The other workspace windows, in creation order, named by that order. */
+  readonly others: () => ReadonlyArray<{ readonly name: string; readonly label: string }>;
+  readonly moveToNew: (id: TabId, guard?: Guard) => Done | Noop | Confirm;
+  readonly moveTo: (window: string, id: TabId, guard?: Guard) => Done | Noop | Confirm;
+};
+
 export type NavigateOptions = Guard & {
   /** `push` (the default) adds an entry to the tab's history; `replace` swaps the current one, as a change of scope does (ch16 S60). */
   readonly history?: 'push' | 'replace' | undefined;

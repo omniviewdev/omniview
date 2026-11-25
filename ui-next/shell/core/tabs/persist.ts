@@ -186,7 +186,7 @@ function settle(read: readonly Tab[], problems: string[]): Tab[] {
   return kept;
 }
 
-function readTab(entry: unknown, plugins: Plugins, note: (why: string) => void): Tab | undefined {
+export function readTab(entry: unknown, plugins: Plugins, note: (why: string) => void): Tab | undefined {
   if (!isPlainObject(entry)) {
     note('is not an object');
     return undefined;

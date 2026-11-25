@@ -1,8 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { makeNotices } from '../core/notices/testing';
 import { createTabsStore } from '../core/tabs';
 import { boot, cloudPage, dest, stackPage } from '../core/tabs/testing';
+import { createNoticesAnnouncer } from '../notices/host';
 import { Shell } from '../Shell';
 
 // The strip is read through the whole shell: it needs the tab model, the page region it controls and the ids they share. The model is the real one, over the fixture world's
@@ -353,6 +355,57 @@ describe('keys on a focused tab', () => {
     expect(tab('Alpha')).toHaveFocus();
     await user.keyboard('{Delete}');
     expect(screen.getByText('Nothing open')).toBeInTheDocument();
+  });
+});
+
+describe('moving the focused tab with Alt and Shift (ch16 S45)', () => {
+  /** Alpha and Beta pinned, then Gamma and Delta, with notices so the move can be heard. */
+  function mountMovable() {
+    const h = boot({ home: false });
+    const ids = h.openAll(['alpha', 'beta', 'gamma', 'delta']);
+    h.store.pin(ids[0], true);
+    h.store.pin(ids[1], true);
+    const announcer = createNoticesAnnouncer();
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ id }) => <p>{`page of ${id}`}</p>} empty={null} notices={{ store: makeNotices().store, announcer }} />);
+    act(() => {
+      tab(/^Beta/).focus();
+    });
+    return { h, user: userEvent.setup(), told: () => announcer.polite.getSnapshot().text };
+  }
+
+  it('moves the tab to the end with Alt+Shift+End, keeps the focus on it and says where it went and that it is no longer pinned', async () => {
+    const { h, user, told } = mountMovable();
+
+    await user.keyboard('{Alt>}{Shift>}{End}{/Shift}{/Alt}');
+    expect(h.titles()).toEqual(['Alpha', 'Gamma', 'Delta', 'Beta']);
+    expect(tab('Beta')).toHaveFocus();
+    expect(told()).toBe('Beta moved to position 4 of 4, unpinned');
+  });
+
+  it('moves one place at a time with the arrows, and a tab crossing the end of the pinned tabs is pinned or unpinned by it', async () => {
+    const { h, user, told } = mountMovable();
+
+    await user.keyboard('{Alt>}{Shift>}{ArrowRight}{/Shift}{/Alt}');
+    expect(h.titles()).toEqual(['Alpha', 'Gamma', 'Beta', 'Delta']);
+    expect(told()).toBe('Beta moved to position 3 of 4, unpinned');
+    await user.keyboard('{Alt>}{Shift>}{ArrowLeft}{/Shift}{/Alt}');
+    expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+    expect(told()).toBe('Beta moved to position 2 of 4');
+    await user.keyboard('{Alt>}{Shift>}{ArrowLeft}{/Shift}{/Alt}');
+    expect(h.titles()).toEqual(['Beta', 'Alpha', 'Gamma', 'Delta']);
+    expect(told()).toBe('Beta moved to position 1 of 4, pinned');
+    expect(tab(/^Beta/)).toHaveFocus();
+  });
+
+  it('says nothing and moves nothing at an end of the strip', async () => {
+    const { h, user, told } = mountMovable();
+    act(() => {
+      tab(/^Alpha/).focus();
+    });
+
+    await user.keyboard('{Alt>}{Shift>}{ArrowLeft}{Home}{/Shift}{/Alt}');
+    expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+    expect(told()).toBe('');
   });
 });
 

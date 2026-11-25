@@ -25,7 +25,12 @@ func accel(modifier, key string) string {
 	if modifier != "" {
 		chord += modifier + "+"
 	}
-	return application.NewMenu().Add("chord").SetAccelerator(chord + key).GetAccelerator()
+	return rendered(chord + key)
+}
+
+// rendered returns the accelerator string the library reports for a chord written as the menu is specified.
+func rendered(chord string) string {
+	return application.NewMenu().Add("chord").SetAccelerator(chord).GetAccelerator()
 }
 
 // developmentViewMenu is the View menu exactly as it shipped before decision
@@ -39,7 +44,7 @@ func developmentViewMenu() []menuRow {
 		{Label: "Zoom Out", Accelerator: accel("", "-")},
 		{Label: "Reset Zoom", Accelerator: accel("", "0")},
 		{Separator: true},
-		{Label: "New Terminal Session", Accelerator: accel("Shift", "T")},
+		{Label: "New Terminal Session", Accelerator: rendered("Ctrl+Shift+`")},
 		{Label: "Minimize Bottom Menu", Accelerator: accel("Shift", "B")},
 		{Label: "Maximize Bottom Menu", Accelerator: accel("Alt", "B")},
 		{Separator: true},

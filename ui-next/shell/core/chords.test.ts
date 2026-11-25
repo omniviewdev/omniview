@@ -54,6 +54,36 @@ describe('the web alternate (Control and Option)', () => {
   });
 });
 
+describe('reopen, next and previous', () => {
+  it('reopen is Command Shift T on a Mac, Control Shift T elsewhere, and Control Option Shift T for the web', () => {
+    expect(chordOf(key('KeyT', { metaKey: true, shiftKey: true }), 'mac')).toEqual({ action: 'reopen' });
+    expect(chordOf(key('KeyT', { ctrlKey: true, shiftKey: true }), 'other')).toEqual({ action: 'reopen' });
+    expect(chordOf(key('KeyT', { ctrlKey: true, altKey: true, shiftKey: true }), 'mac')).toEqual({ action: 'reopen' });
+    expect(chordOf(key('KeyT', { metaKey: true }), 'mac')).toBeUndefined();
+    expect(chordOf(key('KeyT', { ctrlKey: true, shiftKey: true }), 'mac')).toBeUndefined();
+    expect(chordOf(key('KeyT', { metaKey: true, shiftKey: true }), 'other')).toBeUndefined();
+  });
+
+  it('next is Control Tab, Command Shift ] on a Mac, and Control Option Right for the web; previous is the mirror', () => {
+    expect(chordOf(key('Tab', { ctrlKey: true }), 'mac')).toEqual({ action: 'next' });
+    expect(chordOf(key('Tab', { ctrlKey: true }), 'other')).toEqual({ action: 'next' });
+    expect(chordOf(key('BracketRight', { metaKey: true, shiftKey: true }), 'mac')).toEqual({ action: 'next' });
+    expect(chordOf(key('ArrowRight', { ctrlKey: true, altKey: true }), 'other')).toEqual({ action: 'next' });
+    expect(chordOf(key('Tab', { ctrlKey: true, shiftKey: true }), 'mac')).toEqual({ action: 'previous' });
+    expect(chordOf(key('BracketLeft', { metaKey: true, shiftKey: true }), 'mac')).toEqual({ action: 'previous' });
+    expect(chordOf(key('ArrowLeft', { ctrlKey: true, altKey: true }), 'mac')).toEqual({ action: 'previous' });
+  });
+
+  it('leave the keys of the text under the caret alone: Command Right, Option Right, a bare Tab, a bracket without Shift', () => {
+    expect(chordOf(key('ArrowRight', { metaKey: true }), 'mac')).toBeUndefined();
+    expect(chordOf(key('ArrowRight', { altKey: true }), 'mac')).toBeUndefined();
+    expect(chordOf(key('Tab'), 'mac')).toBeUndefined();
+    expect(chordOf(key('Tab', { ctrlKey: true, altKey: true }), 'mac')).toBeUndefined();
+    expect(chordOf(key('BracketRight', { metaKey: true }), 'mac')).toBeUndefined();
+    expect(chordOf(key('Tab', { ctrlKey: true, isComposing: true }), 'mac')).toBeUndefined();
+  });
+});
+
 describe('what is not a chord', () => {
   it('is a key with no modifier, or with Shift (another chord: next, previous, reopen)', () => {
     expect(chordOf(key('KeyW'), 'mac')).toBeUndefined();

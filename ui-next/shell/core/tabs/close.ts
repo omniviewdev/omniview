@@ -1,4 +1,5 @@
 import { findByKey } from './open';
+import { readTab } from './persist';
 import { repairHistory, type Context } from './resolve';
 import { sameRoute } from './route';
 import { closedEntry, freshId, historyOf, makeTab, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
@@ -204,6 +205,12 @@ export function reopen(state: TabsState, ctx: Context, options: ReopenOptions = 
     ? { status: 'refused', reason: 'nothing-closed', message: 'There are no recently closed tabs.' }
     : { status: 'refused', reason: 'unavailable', message: refusal };
   return { state: remaining, result };
+}
+
+/** A tab that arrives from another window, as it was saved there (`serialise`): shown with its id, route, history and pin, by the way a closed tab comes back (a singleton that is open is shown instead; an id taken here is made fresh). */
+export function adopt(state: TabsState, ctx: Context, saved: unknown): Step<TabResult> {
+  const tab = readTab(saved, ctx.plugins, () => undefined);
+  return tab === undefined ? refuse(state, 'invalid', 'That is not a tab.') : bringBack(state, ctx, closedEntry(tab, state.order.length), tab.location.route);
 }
 
 /** A new tab on the route of `id`, right of it, in the foreground, with a history of its own that starts there and no page state (ch16 S37). A singleton cannot be duplicated. */

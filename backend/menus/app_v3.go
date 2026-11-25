@@ -159,7 +159,7 @@ func addViewMenu(
 	viewMenu.AddSeparator()
 
 	viewMenu.Add("New Terminal Session").
-		SetAccelerator("CmdOrCtrl+Shift+T").
+		SetAccelerator("Ctrl+Shift+`").
 		OnClick(func(_ *application.Context) {
 			app.Event.Emit(EventTerminalCreate)
 		})

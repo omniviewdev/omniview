@@ -1541,7 +1541,7 @@ async function checkPalette(page, base, engine) {
   // The tab commands are `shell/tabs/commands.ts`'s, those the tab on screen allows now (which of them depends on where it sits in the strip): Close tab is first, with its chord, and Next and Previous are there with two tabs open.
   const tabLabels = labels.filter((label) => label?.endsWith(', Tabs') === true || label?.includes(', Tabs, ') === true);
   assert.equal(tabLabels[0], `Command: Close tab, Tabs, ${mac ? '⌃⌥W' : 'Ctrl+Alt+W'}`, `${engine}: Close tab is the first tab command, with the chord of a browser tab`);
-  assert.ok(tabLabels.includes('Command: Next tab, Tabs') && tabLabels.includes('Command: Previous tab, Tabs'), `${engine}: Next and Previous tab have no chord`);
+  assert.ok(tabLabels.includes(`Command: Next tab, Tabs, ${mac ? '⌃⌥→' : 'Ctrl+Alt+→'}`) && tabLabels.includes(`Command: Previous tab, Tabs, ${mac ? '⌃⌥←' : 'Ctrl+Alt+←'}`), `${engine}: Next and Previous tab carry the chord of a browser tab`);
   assert.deepEqual(
     labels.filter((label) => !tabLabels.includes(label)),
     [`Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Plugins, Window', 'Command: Home, Window'],

@@ -1182,8 +1182,8 @@ describe('the commands', () => {
       ['Duplicate tab', 'copy', undefined, 'host.tab.duplicate'],
       ['Pin tab', 'pin', undefined, 'host.tab.pin'],
       ['Reload tab', 'refresh', undefined, 'host.tab.reload'],
-      ['Next tab', 'arrow-right', undefined, 'host.tab.next'],
-      ['Previous tab', 'arrow-left', undefined, 'host.tab.previous'],
+      ['Next tab', 'arrow-right', '⌃Tab', 'host.tab.next'],
+      ['Previous tab', 'arrow-left', '⌃⇧Tab', 'host.tab.previous'],
     ]);
   });
 

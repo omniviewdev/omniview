@@ -1,5 +1,5 @@
 import { activate, activateOffset, canGo, consumeReveal, goto, historyList, keep, last, markAttention, pin, refresh, reload, reorder, setKeepAlive, setPageState, setUnsaved, step } from './arrange';
-import { canReopen, close, closeMany, closePlugin, detach, duplicate, reopen } from './close';
+import { adopt, canReopen, close, closeMany, closePlugin, detach, duplicate, reopen } from './close';
 import { normaliseKeepAlive } from './keepAlive';
 import { ensureHome, navigate, open, replace } from './open';
 import { serialise } from './persist';
@@ -29,6 +29,7 @@ import type {
   TabId,
   TabResult,
   TabsState,
+  TabWindows,
 } from './types';
 
 // The store: one immutable snapshot, `subscribe`, and the operations. It is the shape `useSyncExternalStore` wants (`getSnapshot` and `subscribe`), and nothing in it knows
@@ -75,6 +76,8 @@ export type TabsStore = {
   readonly close: (id?: TabId, guard?: Guard) => CloseResult;
   /** Takes a tab out of the strip because it now lives in another window: like `close`, but it is not offered under Recently closed. */
   readonly detach: (id: TabId, guard?: Guard) => CloseResult;
+  /** Shows a tab that arrives from another window, as `serialise` saved it there: with its id, route, history and pin. */
+  readonly adopt: (tab: unknown) => TabResult;
   readonly closeMany: (scope: CloseScope, id?: TabId, guard?: Guard) => CloseResult;
   readonly closePlugin: (plugin: string, guard?: Guard) => CloseResult;
   readonly reopen: (options?: ReopenOptions) => TabResult;
@@ -105,6 +108,8 @@ export type TabsStore = {
   readonly setKeepAlive: (change: Partial<KeepAlive>) => boolean;
   /** What the session saves; see `restoreTabs` for the way back and `createSaver` for the writing. */
   readonly serialise: () => PersistedTabs;
+  /** What a tab can do about the other windows of the app. Absent where the app has one window (a browser tab). */
+  readonly windows?: TabWindows | undefined;
   /** Stops listening to the plugins and drops the listeners. */
   readonly dispose: () => void;
 };
@@ -205,6 +210,7 @@ export function createTabsStore(options: TabsStoreOptions): TabsStore {
 
     close: (id, guard) => run(close(state, target(id), guard)),
     detach: (id, guard) => run(detach(state, id, guard)),
+    adopt: (saved) => run(adopt(state, ctx, saved)),
     closeMany: (scope, id, guard) => run(closeMany(state, scope, target(id), guard)),
     closePlugin: (plugin, guard) => run(closePlugin(state, plugin, guard)),
     reopen: (reopenOptions) => run(reopen(state, ctx, reopenOptions)),

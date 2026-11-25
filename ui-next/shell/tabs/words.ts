@@ -25,5 +25,12 @@ export function tabDomId(prefix: string, id: TabId): string {
   return `${prefix}-${id}`;
 }
 
-/** The Close tab chord: Command W on a Mac and Control W elsewhere in the app's own window; a browser tab keeps those for itself, so the shell's Control Option (Control Alt) chord is the one that works, and the one said there. */
-export const tabCloseChordText = (platform: Platform, native: boolean): string => (native ? { mac: '⌘W', other: 'Ctrl+W' } : { mac: '⌃⌥W', other: 'Ctrl+Alt+W' })[platform];
+const CHORDS = {
+  close: { native: { mac: '⌘W', other: 'Ctrl+W' }, web: { mac: '⌃⌥W', other: 'Ctrl+Alt+W' } },
+  reopen: { native: { mac: '⌘⇧T', other: 'Ctrl+Shift+T' }, web: { mac: '⌃⌥⇧T', other: 'Ctrl+Alt+Shift+T' } },
+  next: { native: { mac: '⌃Tab', other: 'Ctrl+Tab' }, web: { mac: '⌃⌥→', other: 'Ctrl+Alt+→' } },
+  previous: { native: { mac: '⌃⇧Tab', other: 'Ctrl+Shift+Tab' }, web: { mac: '⌃⌥←', other: 'Ctrl+Alt+←' } },
+} as const;
+
+/** The chord of a tab command as it is said: the one of the app's own window, or, in a browser tab, which keeps those for itself, the shell's Control Option (Control Alt) one. */
+export const tabChordText = (command: keyof typeof CHORDS, platform: Platform, native: boolean): string => CHORDS[command][native ? 'native' : 'web'][platform];

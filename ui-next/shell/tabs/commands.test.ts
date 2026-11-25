@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { boot, dest } from '../core/tabs/testing';
 import { tabCommands, type TabCommandId } from './commands';
 
@@ -22,6 +22,7 @@ describe('why a command cannot run', () => {
       'close-others': 'There are no other tabs',
       'close-right': 'There are no tabs to the right',
       'close-left': 'There are no tabs to the left',
+      'move-to': 'There is no other window',
       reopen: 'There are no recently closed tabs',
       next: 'There is no other tab.',
       previous: 'There is no other tab.',
@@ -74,5 +75,33 @@ describe('what the commands are called, and what they show', () => {
     const { h } = world(1);
 
     expect(tabCommands({ tabs: h.store, platform, native }, null).close.shortcut).toBe(chord);
+  });
+});
+
+describe('the window commands', () => {
+  const windowed = (others: ReadonlyArray<{ name: string; label: string }>) => {
+    const h = boot({ home: false });
+    const [id = ''] = h.openAll(['page1']);
+    const windows = { others: () => others, moveToNew: vi.fn(() => ({ status: 'done' as const })), moveTo: vi.fn(() => ({ status: 'done' as const })) };
+    return { id, windows, commands: tabCommands({ tabs: { ...h.store, windows }, platform: 'mac', native: true }, id) };
+  };
+
+  it('say there is no other window to move to, and offer none', () => {
+    const { commands } = windowed([]);
+
+    expect(commands['move-to']).toMatchObject({ title: 'Move to window', unavailable: 'There is no other window', choices: [] });
+    expect(commands['move-new'].unavailable).toBeUndefined();
+  });
+
+  it('move the tab the menu is for: to a new window, or to the one picked from the other windows', () => {
+    const { commands, id, windows } = windowed([{ name: 'main', label: 'Window 1' }, { name: 'window-3', label: 'Window 3' }]);
+
+    expect(commands['move-to'].unavailable).toBeUndefined();
+    expect(commands['move-to'].choices).toEqual([{ id: 'main', title: 'Window 1' }, { id: 'window-3', title: 'Window 3' }]);
+    commands['move-new'].run();
+    commands['move-to'].run('window-3');
+
+    expect(windows.moveToNew).toHaveBeenCalledWith(id);
+    expect(windows.moveTo).toHaveBeenCalledExactlyOnceWith('window-3', id);
   });
 });

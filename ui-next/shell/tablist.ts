@@ -3,7 +3,7 @@ import { tablistKey } from './core/tablist';
 
 // The one tab stop and the keys of a strip of tabs, for every strip of the shell: the tab strip of the top row and the panel's tool and session strips. `core/tablist.ts` holds the rule (what a
 // key does); this holds the DOM that carries it out: which tab is the stop, where the focus goes, that the tab on screen is brought into view, that the wheel scrolls the strip sideways, and
-// that a tab closed from the keyboard hands the focus to its neighbour. A strip is a scroller whose direct children are the tabs' faces, each carrying `data-tab-id` (a face is the
+// that a tab closed from the keyboard hands the focus to its neighbour and one moved from it keeps the focus. A strip is a scroller whose direct children are the tabs' faces, each carrying `data-tab-id` (a face is the
 // `role="tab"` button itself, or an element that holds it and its close control).
 
 export type TablistOptions = {
@@ -13,6 +13,8 @@ export type TablistOptions = {
   readonly selected: string | null;
   /** Delete or Backspace on a tab. It answers whether the tab closed: the focus then goes to its neighbour. Absent: the strip cannot close a tab from the keyboard. */
   readonly onClose?: ((id: string) => boolean) | undefined;
+  /** Alt+Shift with an arrow, Home or End on a tab asks to move it to an index of `ids`. It answers whether the tab moved: the focus then stays on it. Absent: the strip cannot move a tab from the keyboard. */
+  readonly onMove?: ((id: string, to: number) => boolean) | undefined;
 };
 
 export type Tablist = {
@@ -59,7 +61,7 @@ function reveal(scroller: HTMLElement, face: HTMLElement): void {
   }
 }
 
-export function useTablist({ ids, selected, onClose }: TablistOptions): Tablist {
+export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): Tablist {
   // Where the focus is in the strip: the roving stop. Out of the strip, the stop is the tab on screen, so Tab and Shift+Tab always land on it.
   const [roving, setRoving] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -134,12 +136,13 @@ export function useTablist({ ids, selected, onClose }: TablistOptions): Tablist 
       },
       onKeyDown: (event) => {
         const hit = tabOf(event.target);
-        if (hit === undefined || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) {
+        const moving = onMove !== undefined && event.altKey && event.shiftKey;
+        if (hit === undefined || event.ctrlKey || event.metaKey || ((event.altKey || event.shiftKey) && !moving) || event.nativeEvent.isComposing) {
           return;
         }
 
         const at = ids.indexOf(hit.id);
-        const answer = tablistKey(event.key, at, ids.length, getComputedStyle(event.currentTarget).direction === 'rtl', onClose !== undefined);
+        const answer = tablistKey(event.key, at, ids.length, getComputedStyle(event.currentTarget).direction === 'rtl', onClose !== undefined, moving);
         if (answer === undefined) {
           return;
         }
@@ -151,6 +154,10 @@ export function useTablist({ ids, selected, onClose }: TablistOptions): Tablist 
           if (face !== undefined) {
             buttonOf(face)?.focus({ preventScroll: true });
             reveal(event.currentTarget, face);
+          }
+        } else if ('move' in answer) {
+          if (onMove?.(hit.id, answer.move) === true) {
+            refocus.current = hit.id;
           }
         } else {
           const neighbour = ids[at + 1] ?? ids[at - 1];

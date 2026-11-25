@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariants } from './index';
-import { boot, cloudPage, dest, doneId, makeWorld, stackPage, tabOf, type Harness } from './testing';
+import { boot, cloudPage, dest, doneId, hostPage, makeWorld, stackPage, tabOf, type Harness } from './testing';
 
 // Closing and reopening (ch16 S30, S41 to S43), the guard for unsaved changes (S27) and duplicating (S37).
 // Ported from the design lab's harness (tests/shell-model-harness/R2Store/unit.cjs).
@@ -415,5 +415,65 @@ describe('detach (a tab that moved to another window)', () => {
     expect(h.state()).toBe(before);
     expect(h.store.detach(a, { confirmed: true })).toMatchObject({ status: 'done', closed: [a] });
     expect(h.ids()).not.toContain(a);
+  });
+});
+
+describe('adopt (a tab that arrives from another window)', () => {
+  const moved = (h: Harness, id: string) => h.store.serialise().tabs.find((saved) => saved.id === id);
+
+  it('shows the tab with its id, route, history and pin, in the pinned zone when it was pinned', () => {
+    const source = boot();
+    const [a] = source.openAll(['instances']);
+    source.store.navigate(a, cloudPage('buckets'));
+    source.store.navigate(a, cloudPage('volumes'));
+    source.store.pin(a);
+    const saved = { ...moved(source, a), id: 'from-another-window' };
+
+    const target = boot({ home: false });
+    const [first, second] = target.openAll(['images', 'snapshots']);
+    target.store.pin(first);
+    expect(target.store.adopt(saved)).toEqual({ status: 'done', id: saved.id });
+
+    expect(target.ids()).toEqual([first, saved.id, second]);
+    expect(target.active()).toBe(saved.id);
+    expect(moved(target, saved.id)).toEqual(saved);
+    expect(target.store.canBack(saved.id)).toBe(true);
+    sound(target);
+  });
+
+  it('gives the tab a new id when the window has one of that id, and puts an unpinned tab last', () => {
+    const source = boot();
+    const [a] = source.openAll(['instances']);
+    const target = boot();
+    const [b] = target.openAll(['buckets']);
+    expect(b).toBe(a);
+
+    const result = target.store.adopt(moved(source, a));
+
+    expect(doneId(result)).not.toBe(a);
+    expect(target.ids().at(-1)).toBe(doneId(result));
+    expect(target.ids()).toHaveLength(3);
+    sound(target);
+  });
+
+  it('shows the tab already open instead when the page is a singleton, and adds none', () => {
+    const source = boot();
+    const settings = source.open(hostPage('settings'), { how: 'new' });
+    const target = boot({ home: false });
+    const open = target.open(hostPage('settings'), { how: 'new' });
+    target.openAll(['instances']);
+
+    expect(target.store.adopt(moved(source, settings))).toEqual({ status: 'done', id: open });
+
+    expect(target.ids()).toHaveLength(2);
+    expect(target.active()).toBe(open);
+    sound(target);
+  });
+
+  it('refuses what is not a tab and changes nothing', () => {
+    const target = boot();
+    const before = target.state();
+    expect(target.store.adopt({ id: 'x' })).toMatchObject({ status: 'refused', reason: 'invalid' });
+    expect(target.state()).toBe(before);
   });
 });

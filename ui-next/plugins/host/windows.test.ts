@@ -13,22 +13,45 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function world(name = 'main', panel = createPanelStore()) {
+// What the host's events do: every window hears an event, a moment after it was sent.
+function bus() {
+  const heard = new Map<string, Set<(data: unknown) => void>>();
+  return {
+    emit: vi.fn<WindowService['emit']>(async (event, data) => {
+      for (const listener of heard.get(event) ?? []) {
+        queueMicrotask(() => {
+          listener(data);
+        });
+      }
+    }),
+    on: (event: string, listener: (data: unknown) => void) => {
+      heard.set(event, (heard.get(event) ?? new Set()).add(listener));
+      return () => heard.get(event)?.delete(listener);
+    },
+  };
+}
+
+type Listed = ReadonlyArray<{ readonly name: string; readonly kind: string }>;
+
+function world(name = 'main', panel = createPanelStore(), events = bus(), listed: Listed = [{ name, kind: 'workspace' }]) {
   const h = boot();
   const service = {
     name: vi.fn(async () => name),
     open: vi.fn<WindowService['open']>(async () => 'window-2'),
     close: vi.fn<WindowService['close']>(async () => undefined),
+    focus: vi.fn<WindowService['focus']>(async () => undefined),
+    list: vi.fn<WindowService['list']>(async () => listed),
+    ...events,
   };
   const tabs: TabsStore = withWindows(h.store, panel, service);
-  return { h, panel, service, tabs };
+  return { h, panel, service, tabs, events };
 }
 
 const sessionOf = (text: string | undefined) => JSON.parse(text ?? 'null') as { version: number; tabs: { version: number; active: string; tabs: Array<{ id: string; route: unknown }> } };
 
 // The stand-in service answers at once, so what the host does after an answer has happened within a few microtask turns.
 const settled = async () => {
-  for (let turn = 0; turn < 10; turn += 1) {
+  for (let turn = 0; turn < 30; turn += 1) {
     await Promise.resolve();
   }
 };
@@ -164,5 +187,168 @@ describe('a window whose last tab leaves (S30)', () => {
     other.h.store.close(other.h.current());
     await settled();
     expect(other.service.close).toHaveBeenCalledExactlyOnceWith('window-2');
+  });
+});
+
+const windowNames = (tabs: TabsStore) => tabs.windows?.others().map((other) => [other.name, other.label]);
+
+describe('the other windows', () => {
+  const three: Listed = [{ name: 'main', kind: 'workspace' }, { name: 'settings', kind: 'settings' }, { name: 'window-2', kind: 'workspace' }, { name: 'window-3', kind: 'workspace' }];
+
+  it('are the other workspace windows, named by their order of creation, and follow the service as windows come and go', async () => {
+    const { events, tabs } = world('window-2', createPanelStore(), bus(), three);
+    await settled();
+    expect(windowNames(tabs)).toEqual([['main', 'Window 1'], ['window-3', 'Window 3']]);
+
+    void events.emit('windows/changed', { windows: [{ name: 'main', kind: 'workspace' }, { name: 'window-2', kind: 'workspace' }] });
+    await settled();
+    expect(windowNames(tabs)).toEqual([['main', 'Window 1']]);
+
+    void events.emit('windows/changed', { windows: [{ name: 'window-2', kind: 'workspace' }] });
+    await settled();
+    expect(windowNames(tabs)).toEqual([]);
+  });
+
+  it('are none in a browser tab, which has no window to move to', () => {
+    expect(withWindows(boot().store, createPanelStore(), undefined).windows).toBeUndefined();
+  });
+});
+
+describe('moving a tab to a new window', () => {
+  const moving = () => {
+    const w = world();
+    const id = w.h.open(cloudPage('buckets'), { how: 'new' });
+    w.h.store.navigate(id, cloudPage('volumes'));
+    w.h.store.pin(id);
+    return { ...w, id };
+  };
+
+  it('opens a window that starts with that tab, as it is saved, and takes it out of this strip only once the window exists, without a place under Recently closed', async () => {
+    const { h, id, service, tabs } = moving();
+    const closed = h.state().closed;
+    let exists: () => void = () => undefined;
+    service.open.mockReturnValue(new Promise((resolve) => {
+      exists = () => {
+        resolve('window-2');
+      };
+    }));
+
+    expect(tabs.windows?.moveToNew(id)).toEqual({ status: 'done' });
+    await settled();
+
+    const started = sessionOf(service.open.mock.calls[0]?.[0]).tabs.tabs[0];
+    expect(started).toMatchObject({ id, pinned: true, route: { contribution: 'volumes' }, history: { entries: expect.arrayContaining([expect.anything(), expect.anything()]) as unknown[] } });
+    expect(h.ids()).toContain(id);
+
+    exists();
+    await settled();
+    expect(h.ids()).not.toContain(id);
+    expect(h.state().closed).toBe(closed);
+    expect(checkInvariants(h.state())).toEqual([]);
+  });
+
+  it('keeps the tab where it is when the window cannot be opened', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { h, id, service, tabs } = moving();
+    service.open.mockRejectedValue(new Error('no window'));
+
+    tabs.windows?.moveToNew(id);
+    await settled();
+
+    expect(h.ids()).toContain(id);
+  });
+
+  it('asks first when the tab has unsaved changes, and opens nothing', () => {
+    const { h, id, service, tabs } = moving();
+    h.store.setUnsaved(id, true);
+
+    expect(tabs.windows?.moveToNew(id)).toEqual({ status: 'confirm', action: 'close', tabs: [id] });
+    expect(service.open).not.toHaveBeenCalled();
+    expect(tabs.windows?.moveToNew(id, { confirmed: true })).toEqual({ status: 'done' });
+    expect(service.open).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('moving a tab to another window', () => {
+  const two = () => {
+    const events = bus();
+    const listed: Listed = [{ name: 'main', kind: 'workspace' }, { name: 'window-2', kind: 'workspace' }];
+    const here = world('main', createPanelStore(), events, listed);
+    const there = world('window-2', createPanelStore(), events, listed);
+    const id = here.h.open(cloudPage('buckets'), { how: 'new' });
+    here.h.store.navigate(id, cloudPage('volumes'));
+    here.h.store.pin(id);
+    return { here, there, id, events };
+  };
+
+  it('delivers the tab to that window, which shows it with its id, route, history and pin, and then takes it out of this one and focuses the other', async () => {
+    const { here, there, id } = two();
+    const saved = here.h.store.serialise().tabs.find((tab) => tab.id === id);
+    const closed = here.h.state().closed;
+
+    expect(here.tabs.windows?.moveTo('window-2', id)).toEqual({ status: 'done' });
+    await settled();
+
+    expect(there.h.store.serialise().tabs.find((tab) => tab.id === id)).toEqual(saved);
+    expect(there.h.active()).toBe(id);
+    expect(here.h.ids()).not.toContain(id);
+    expect(here.h.state().closed).toBe(closed);
+    expect(here.service.focus).toHaveBeenCalledExactlyOnceWith('window-2');
+    expect(checkInvariants(there.h.state())).toEqual([]);
+    expect(checkInvariants(here.h.state())).toEqual([]);
+  });
+
+  it('changes nothing in a window the delivery is not addressed to, and the sender keeps its tab', async () => {
+    vi.useFakeTimers();
+    const { here, there, id, events } = two();
+    const bystander = world('window-3', createPanelStore(), events);
+    const before = bystander.h.state();
+
+    here.tabs.windows?.moveTo('window-2', id);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(there.h.ids()).toContain(id);
+    expect(bystander.h.state()).toBe(before);
+    expect(events.emit.mock.calls.filter(([event]) => event === 'windows/tab/delivered')).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('keeps the tab when no window answers within 2000 ms', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { here, id } = two();
+
+    here.tabs.windows?.moveTo('window-9', id);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(warn).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(warn).toHaveBeenCalled();
+    expect(here.h.ids()).toContain(id);
+    expect(here.service.focus).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('keeps the tab when the window refuses it', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { here, there, id } = two();
+    vi.spyOn(there.h.store, 'adopt').mockReturnValue({ status: 'refused', reason: 'invalid', message: 'no' });
+
+    here.tabs.windows?.moveTo('window-2', id);
+    await settled();
+
+    expect(here.h.ids()).toContain(id);
+    expect(here.service.focus).not.toHaveBeenCalled();
+  });
+
+  it('keeps the tab when the event cannot be sent', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { here, id } = two();
+    here.service.emit.mockRejectedValue(new Error('no bus'));
+
+    here.tabs.windows?.moveTo('window-2', id);
+    await settled();
+
+    expect(here.h.ids()).toContain(id);
   });
 });

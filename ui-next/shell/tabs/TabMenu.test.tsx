@@ -50,7 +50,7 @@ describe('the rows', () => {
     expect(labels(menu)).toEqual(ITEMS);
     expect(resolved).toHaveBeenCalledTimes(1);
     expect(within(menu).getByRole('menuitem', { name: 'Close tab' }).getAttribute('aria-description')).toMatch(/Ctrl\+Alt\+W|⌃⌥W/);
-    expect(disabled(menu)).toEqual({ 'Reopen closed tab': 'There are no recently closed tabs' });
+    expect(disabled(menu)).toEqual({ 'Reopen closed tab': 'There are no recently closed tabs; Ctrl+Alt+Shift+T' });
   });
 
   it('draws a separator between groups and none for the empty one between the first and the closes', () => {
@@ -65,7 +65,7 @@ describe('the rows', () => {
       'Close other tabs': 'There are no other tabs',
       'Close tabs to the right': 'There are no tabs to the right',
       'Close tabs to the left': 'There are no tabs to the left',
-      'Reopen closed tab': 'There are no recently closed tabs',
+      'Reopen closed tab': 'There are no recently closed tabs; Ctrl+Alt+Shift+T',
     });
 
     act(() => {
@@ -85,6 +85,40 @@ describe('the rows', () => {
 
     expect(disabled(open('Page1'))['Close tabs to the right']).toBe('The tabs to the right are pinned');
     expect(disabled(open('Page2'))['Close tabs to the left']).toBe('The tabs to the left are pinned');
+  });
+});
+
+describe('the rows that move a tab to a window', () => {
+  const windowed = (others: ReadonlyArray<{ name: string; label: string }>) => {
+    const h = boot({ home: false });
+    const ids = h.openAll(['page1', 'page2']);
+    const windows = { others: () => others, moveToNew: vi.fn(() => ({ status: 'done' as const })), moveTo: vi.fn(() => ({ status: 'done' as const })) };
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={{ ...h.store, windows }} renderPage={() => <p>page</p>} empty={null} />, { wrapper: MenuHost });
+    return { h, ids, windows };
+  };
+
+  it('are there natively, between the first group and the closes, and Move to window says why it cannot open when there is no other window', () => {
+    windowed([]);
+
+    const menu = open('Page2');
+
+    expect(labels(menu)).toEqual([...ITEMS.slice(0, 4), 'Move to new window', 'Move to window', ...ITEMS.slice(4)]);
+    expect(within(menu).getAllByRole('separator')).toHaveLength(3);
+    expect(disabled(menu)['Move to window']).toBe('There is no other window');
+  });
+
+  it('move the tab the menu is for: Move to new window, and the window picked from the submenu', async () => {
+    const { ids, windows } = windowed([{ name: 'main', label: 'Window 1' }, { name: 'window-3', label: 'Window 3' }]);
+
+    fireEvent.click(within(open('Page2')).getByRole('menuitem', { name: 'Move to new window' }));
+    expect(windows.moveToNew).toHaveBeenCalledWith(ids[1]);
+
+    const menu = open('Page1');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Move to window' }));
+    expect(screen.getAllByRole('menuitem', { name: /^Window \d$/ }).map((item) => item.getAttribute('aria-label'))).toEqual(['Window 1', 'Window 3']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Window 3' }));
+
+    expect(windows.moveTo).toHaveBeenCalledExactlyOnceWith('window-3', ids[0]);
   });
 });
 
