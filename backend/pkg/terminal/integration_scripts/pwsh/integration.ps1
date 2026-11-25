@@ -75,10 +75,13 @@
     function global:PSConsoleHostReadLine {
         $lastRunStatus = $?
         $line = [Microsoft.PowerShell.PSConsoleReadLine]::ReadLine($Host.Runspace, $ExecutionContext, $lastRunStatus)
-        $esc = [char]27; $bel = [char]7
-        [Console]::Write("$esc]633;E;$(__omniview_escape $line);$($global:__omniview_nonce)$bel$esc]133;C$bel")
-        $global:__omniview_ran = $true
-        $global:__omniview_error = $global:Error[0]
+        # An empty line (or one of blanks) runs no command: no mark, as in the other shells.
+        if ($line -and $line.Trim().Length -gt 0) {
+            $esc = [char]27; $bel = [char]7
+            [Console]::Write("$esc]633;E;$(__omniview_escape $line);$($global:__omniview_nonce)$bel$esc]133;C$bel")
+            $global:__omniview_ran = $true
+            $global:__omniview_error = $global:Error[0]
+        }
         $line
     }
 

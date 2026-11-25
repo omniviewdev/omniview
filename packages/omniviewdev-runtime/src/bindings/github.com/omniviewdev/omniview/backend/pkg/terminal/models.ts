@@ -675,6 +675,16 @@ export enum IntegrationReason {
     SkipUnsupportedShell = "unsupported-shell",
 
     /**
+     * SkipBashTooOld: bash before 4.1 (macOS's system bash is 3.2) lacks what the script needs.
+     */
+    SkipBashTooOld = "bash-too-old",
+
+    /**
+     * SkipBashVersionUnknown: the host could not ask the bash which version it is.
+     */
+    SkipBashVersionUnknown = "bash-version-unknown",
+
+    /**
      * SkipSettingUnreadable: the setting could not be read, so the host does not touch the user's shell (fail closed).
      */
     SkipSettingUnreadable = "setting-unreadable",

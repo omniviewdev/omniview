@@ -60,9 +60,16 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
   __omniview_debug() {
     [ "${__omniview_armed:-0}" = 1 ] || return 0
     __omniview_armed=0
+    # The prompt commands run again for an empty line and for Ctrl-C, and the first of them is then not the user's command. It
+    # is the first command this trap sees for one that bash runs without it, a subshell `(exit 7)` for one: so it is taken for the
+    # user's only when the history has grown since the prompt (the line was taken). An empty line and Ctrl-C add none.
+    if [ "$BASH_COMMAND" = __omniview_precmd_first ] && ! [ "${HISTCMD:-0}" -gt "${__omniview_histcmd:-0}" ] 2>/dev/null; then
+      return 0
+    fi
     __omniview_hup_on
-    local __omniview_xtrace=0
+    local __omniview_xtrace=0 __omniview_errexit=0
     case $- in *x*) __omniview_xtrace=1; { set +x; } 2>/dev/null ;; esac
+    case $- in *e*) __omniview_errexit=1; set +e ;; esac
     __omniview_ran=1
     local LC_ALL=C REPLY __omniview_history __omniview_line=
     # The line as typed is in the history, when the history took it (HISTCONTROL=ignorespace or ignoredups, or no history,
@@ -83,12 +90,15 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     fi
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
+    if [ "$__omniview_errexit" = 1 ]; then set -e; fi
     return 0
   }
 
   # The first of the prompt commands: the end of the command, with its status, which it hands on in $?.
   __omniview_precmd_first() {
     local __omniview_status=$?
+    # errexit (a user's `set -e`) is put out until the last hook: `return` of a status that is not zero would end their shell.
+    case $- in *e*) __omniview_errexit=1; set +e ;; esac
     __omniview_hup_on
     if [ "${__omniview_ran:-0}" = 1 ]; then
       __omniview_ran=0
@@ -124,6 +134,11 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     __omniview_armed=1
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
+    if [ "${__omniview_errexit:-0}" = 1 ]; then
+      __omniview_errexit=0
+      set -e
+      return 0
+    fi
     return "$__omniview_status"
   }
 
@@ -148,20 +163,23 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
   # A hangup that comes while the prompt commands or the DEBUG trap run does not reach the jobs: bash runs those as a
   # non-interactive shell, and a non-interactive shell does not hang up its jobs. So while the hooks run (and only then: a
   # handler that stays would keep bash from handling a hangup in readline) a handler hangs the jobs up as bash does, each
-  # job's process group getting SIGHUP and SIGCONT, and lets the hangup take its course. A user who has a HUP handler of
-  # their own at this point keeps it: the hooks do not touch it.
-  # A handler of the user's (anything `trap -p HUP` shows) is never replaced, and never removed: the hooks put theirs only when
-  # there is none, and take it away only when it is still theirs.
+  # job's process group getting SIGHUP and SIGCONT, and lets the hangup take its course.
+  #
+  # A HUP handler of the user's is never replaced and never taken away, and the hooks must not ask bash whether there is one
+  # (a command substitution is a fork, and the time before the handler is in place is the time a hangup can be lost in). So
+  # the script keeps the answer in __omniview_hup_user: it is read once, here, after the user's own files ran, and a function
+  # named trap (a shell function of this shell only: it is not exported, and `builtin trap` bypasses it) reads it again
+  # whenever a command of the user's names HUP (SIGHUP or 1), in the shell or in a file it sources.
   __omniview_hup_on() {
-    if [ -z "$(trap -p HUP)" ]; then
-      trap -- '__omniview_hup' HUP
+    if [ "${__omniview_hup_user:-1}" = 0 ]; then
+      builtin trap -- '__omniview_hup' HUP
       __omniview_hup_set=1
     fi
   }
   __omniview_hup_off() {
     if [ "${__omniview_hup_set:-0}" = 1 ]; then
       __omniview_hup_set=0
-      case $(trap -p HUP) in *"'__omniview_hup'"*) trap - HUP ;; esac
+      builtin trap - HUP
     fi
   }
   __omniview_hup() {
@@ -170,8 +188,26 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
       builtin kill -HUP -- "-$__omniview_job" 2>/dev/null
       builtin kill -CONT -- "-$__omniview_job" 2>/dev/null
     done
-    trap - HUP
+    builtin trap - HUP
     builtin kill -HUP $$
+  }
+  __omniview_hup_read() {
+    local __omniview_current
+    __omniview_current=$(builtin trap -p HUP)
+    case $__omniview_current in
+      '') __omniview_hup_user=0 ;;
+      *"'__omniview_hup'"*) ;;
+      *) __omniview_hup_user=1 ;;
+    esac
+  }
+  __omniview_hup_read
+  trap() {
+    builtin trap "$@"
+    local __omniview_status=$?
+    case " ${*^^} " in
+      *' HUP '*|*' SIGHUP '*|*' 1 '*|*' -HUP '*|*' -1 '*) __omniview_hup_read ;;
+    esac
+    return "$__omniview_status"
   }
 
   # Tell the host the shell is up, and give the channel back.
