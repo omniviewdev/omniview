@@ -1,4 +1,4 @@
-import { parseAppError } from '@omniviewdev/runtime/ui/v1';
+import { isCancelledError, parseAppError } from '@omniviewdev/runtime/ui/v1';
 import { createCentre, createNoticesAnnouncer, createNoticesStore, type Contributions, type LoadedNotices, type NoticesBindings, type NoticesStore, type Route, type TabsStore } from '../../shell';
 import { routeKey, type PluginSource } from './contributions';
 import type { PluginEntry } from './pluginStore';
@@ -44,7 +44,10 @@ export type HostNotices = NoticesBindings & {
  * What the runtime's parser makes of the error is all that is read of it: a cancellation is no notice, and what is not the host's envelope is a generic failure that shows none of its text.
  */
 export function failureNotice(store: NoticesStore, plugin: string, error: unknown, retry: () => void): void {
-  console.error(`[notices] a command of ${plugin} failed`, error);
+  if (!isCancelledError(error)) {
+    console.error(`[notices] a command of ${plugin} failed`, error);
+  }
+
   store.forSource(plugin).fromError(parseAppError(error), { actions: [{ id: 'again', label: 'Retry', icon: 'rotate-cw', primary: true, run: retry }] });
 }
 
