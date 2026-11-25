@@ -4,7 +4,7 @@ name: CI main red
 # which), so a failure that only main's run or the nightly run can see must not rot unseen: when one of the workflows below ends red on main (a push or the nightly run) the issue is created or updated with the workflow,
 # the first failing run and the range of commits since the last green run of that workflow on main (the first bad commit is in it), and when the workflow is green again its row leaves; the issue closes when none is left.
 #
-# `workflow_run` runs this file as it is on the default branch. A run that is not on main (a pull request's) is ignored by the job's condition, and one that was cancelled or skipped says nothing about main.
+# `workflow_run` runs this file as it is on the default branch. A run that is not this repository's main, started by a push or the nightly schedule, is ignored by the job's condition; a skipped one says nothing about main, and a cancelled one is read from its jobs (a shard that hit its timeout).
 on:
   workflow_run:
     workflows:
@@ -29,7 +29,9 @@ permissions:
 jobs:
   issue:
     name: Update the ci-main-red issue
-    if: ${{ github.event.workflow_run.head_branch == 'main' && contains(fromJSON('["success", "failure", "timed_out", "startup_failure"]'), github.event.workflow_run.conclusion) }}
+    # Only this repository's main, started by a push or the nightly schedule (not a fork's branch called main, not a manual run that may have asked for the pull request scope, not a pull request's run); a cancelled run is read from its
+    # jobs by the script (a shard that hit its timeout makes the run cancelled).
+    if: ${{ github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository && contains(fromJSON('["push", "schedule"]'), github.event.workflow_run.event) && contains(fromJSON('["success", "failure", "timed_out", "startup_failure", "cancelled"]'), github.event.workflow_run.conclusion) }}
     runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:
@@ -50,6 +52,7 @@ jobs:
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
           EVENT: ${{ github.event.workflow_run.event }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}

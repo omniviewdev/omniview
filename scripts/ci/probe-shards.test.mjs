@@ -1925,9 +1925,9 @@ test('a pull request\'s scope is decided in one place: the plan reads the output
   const scope = workflow.jobs.plan.steps.find((step) => step.id === 'scope');
   assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs');
   assert.equal(scope.env.SCOPE_INPUT, '${{ inputs.scope }}');
-  assert.equal(scope.env.PR_LABELS, '${{ toJSON(github.event.pull_request.labels.*.name) }}');
+  assert.equal(scope.env.PR_LABELS, undefined, 'a label does not change the scope (a manual run does)');
   const text = workflowText.replace(/^\s*#.*$/gm, '');
-  assert.equal((text.match(/github\.event\.pull_request\.labels/g) ?? []).length, 1, 'the labels are read once');
+  assert.equal(/github\.event\.pull_request\.labels/.test(text), false);
   assert.equal(/steps\.scope\.outputs\.scope/.test(text), true);
   assert.equal(/github\.event_name == 'pull_request'/.test(text), true);
 });

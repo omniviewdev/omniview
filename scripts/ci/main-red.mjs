@@ -7,7 +7,11 @@
 // A workflow that fails again keeps its first range and updates its latest; one that goes green leaves the table; when the table is empty the issue is closed with a comment. The state lives in the body, in a comment
 // (`<!-- ci-main-red {...} -->`), so that a person can edit the text around it and nothing else reads GitHub's search.
 //
-// Environment: GH_TOKEN, GITHUB_REPOSITORY, WORKFLOW_NAME, WORKFLOW_ID, CONCLUSION, HEAD_SHA, HEAD_BRANCH, EVENT, RUN_ID, RUN_URL, RUN_CREATED_AT.
+// WHAT COUNTS. Only a run of THIS repository's main that was started by a push or by the nightly schedule says anything about main: a pull request's run, a manual run (it may have asked for the pull request scope), a run of a fork whose
+// branch is called main and a re-run of an older commit do not, red or green. A run that ended `cancelled` is read from its jobs: a shard that reaches its timeout makes the run cancelled while the verdict job fails, so a failed or
+// timed-out job is red and a run that was only superseded (nothing failed) is not. A run older than the newest one the issue has seen for that workflow is ignored.
+//
+// Environment: GH_TOKEN, GITHUB_REPOSITORY, WORKFLOW_NAME, WORKFLOW_ID, CONCLUSION, HEAD_SHA, HEAD_BRANCH, HEAD_REPOSITORY, EVENT, RUN_ID, RUN_URL, RUN_CREATED_AT.
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -16,6 +20,8 @@ export const TITLE = 'CI is red on main';
 const MARK = /<!-- ci-main-red (\{[\s\S]*?\}) -->/;
 /** A run that ended like this is red; `success` is green; anything else (cancelled, skipped, neutral) says nothing about main. */
 export const RED = ['failure', 'timed_out', 'startup_failure'];
+/** The events that run main's checks: a push to main and the nightly schedule. */
+export const MAIN_EVENTS = ['push', 'schedule'];
 
 export const emptyState = () => ({ workflows: {} });
 
@@ -104,6 +110,12 @@ export async function rangeSubjects({ ask, repository, good, bad }) {
   }
 }
 
+/** Is a run that ended `cancelled` red? Yes when one of its jobs failed or timed out (the verdict job of a shard that hit its timeout fails); no when it was only superseded. */
+export async function cancelledIsRed({ ask, repository, runId }) {
+  const text = await ask(['api', `repos/${repository}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, '--jq', '[.jobs[].conclusion]']);
+  return JSON.parse(text).some((conclusion) => RED.includes(conclusion));
+}
+
 /** The open issue that carries the label (the lowest number when there are several), `{ number, body }` or null. */
 export async function findIssue({ ask, repository }) {
   const text = await ask(['issue', 'list', '--repo', repository, '--label', LABEL, '--state', 'open', '--json', 'number,body', '--limit', '20']);
@@ -123,14 +135,21 @@ export async function ensureLabel({ ask, repository }) {
  * What to do for a finished run: `{ action, message }`. A run that is not on main, or that ended neither red nor green, changes nothing. Everything goes through `ask` (`gh`), so a test gives it a stand-in.
  */
 export async function handle({ env, ask = gh }) {
-  const { WORKFLOW_NAME: name, CONCLUSION: conclusion, HEAD_SHA: sha, HEAD_BRANCH: branch, EVENT: event = '', RUN_URL: url = '', RUN_ID: runId = '', RUN_CREATED_AT: at = '', WORKFLOW_ID: workflowId = '', GITHUB_REPOSITORY: repository } = env;
+  const { WORKFLOW_NAME: name, CONCLUSION: conclusion, HEAD_SHA: sha, HEAD_BRANCH: branch, HEAD_REPOSITORY: headRepository = '', EVENT: event = '', RUN_URL: url = '', RUN_ID: runId = '', RUN_CREATED_AT: at = '', WORKFLOW_ID: workflowId = '', GITHUB_REPOSITORY: repository } = env;
   if (!name || !sha || !repository) throw new Error('main-red: WORKFLOW_NAME, HEAD_SHA and GITHUB_REPOSITORY are needed');
   if (branch !== 'main') return { action: 'none', message: `${name} ended on ${branch}, not on main` };
-  const red = RED.includes(conclusion);
-  if (!red && conclusion !== 'success') return { action: 'none', message: `${name} ended as ${conclusion}: it says nothing about main` };
+  if (headRepository !== repository) return { action: 'none', message: `${name} ran for ${headRepository === '' ? 'an unknown repository' : headRepository}, not for ${repository}: a fork's branch called main is not main` };
+  if (!MAIN_EVENTS.includes(event)) return { action: 'none', message: `${name} was started by ${JSON.stringify(event)}, not by a push to main or the nightly run: it says nothing about main` };
+  let red = RED.includes(conclusion);
+  if (conclusion === 'cancelled') red = await cancelledIsRed({ ask, repository, runId });
+  if (!red && conclusion !== 'success' && conclusion !== 'cancelled') return { action: 'none', message: `${name} ended as ${conclusion}: it says nothing about main` };
+  if (!red && conclusion === 'cancelled') return { action: 'none', message: `${name} was cancelled and no job of it failed: it was superseded, it says nothing about main` };
 
   const issue = await findIssue({ ask, repository });
   const state = parseState(issue?.body);
+  // A run older than the newest this issue has seen for the workflow (a re-run of an old commit) changes nothing: it would clear a row that a newer failure wrote, or move `latest` back.
+  const seen = state.workflows[name]?.latest?.at;
+  if (seen !== undefined && at !== '' && at < seen) return { action: 'none', message: `${name}: the run is older (${at}) than the newest the issue has seen (${seen})` };
   if (!red) {
     if (state.workflows[name] === undefined) return { action: 'none', message: `${name} is green and was not in the issue` };
     const next = applyRecovery(state, name);

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import { INFRASTRUCTURE, changedFiles, infrastructureIn, main, scopeOf } from './ci-scope.mjs';
+import { INFRASTRUCTURE, changedFiles, infrastructureIn, main, printable, scopeOf } from './ci-scope.mjs';
 
 const pr = (files, extra = {}) => scopeOf({ event: 'pull_request', files, ...extra });
 
@@ -63,10 +63,15 @@ test('FAIL CLOSED: a diff that cannot be read, an empty diff and an event that i
   assert.equal(scopeOf({ event: 'pull_request' }).scope, 'full', 'no files at all is an unreadable diff');
 });
 
-test('the label ci:full makes a pull request a full run', () => {
-  assert.equal(pr(['ui-next/a.tsx'], { labels: ['ci:full'] }).scope, 'full');
-  assert.match(pr(['ui-next/a.tsx'], { labels: ['x', 'ci:full'] }).reason, /ci:full/);
-  assert.equal(pr(['ui-next/a.tsx'], { labels: ['ci:bench'] }).scope, 'pr');
+test('a label does not change the scope: ci:full is not a way in (a manual run is), and an injected name cannot write a log line', () => {
+  assert.equal(pr(['ui-next/a.tsx'], { labels: ['ci:full'] }).scope, 'pr');
+  const name = 'scripts/ci/x\n::warning title=forged::injected\r\u001b[31m';
+  const result = pr(['ui-next/a.tsx', name]);
+  assert.equal(result.scope, 'full');
+  assert.equal(/[\n\r\u001b]/.test(result.reason), false, JSON.stringify(result.reason));
+  assert.ok(result.reason.startsWith('scripts/ci/x?::warning title=forged::injected??[31m changes'), result.reason);
+  assert.equal(printable('a\nb\rc\td'), 'a?b?c?d');
+  assert.equal(printable('plain/é/名.mjs'), 'plain/é/名.mjs');
 });
 
 test('every pattern of the list says what it is, and the first match is the one named', () => {
@@ -96,13 +101,17 @@ test('main writes the scope and the reason where the workflow reads them, and th
   const summary = path.join(dir, 'sum');
   let text = '';
   const ran = (stdout) => () => ({ status: 0, stdout });
-  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', PR_LABELS: '[]', GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, out: (chunk) => { text += chunk; }, run: ran('ui-next/a.tsx\0') }), 0);
+  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, out: (chunk) => { text += chunk; }, run: ran('ui-next/a.tsx\0') }), 0);
   assert.equal(readFileSync(output, 'utf8'), 'scope=pr\nreason=1 changed file, none of them test infrastructure\n');
   assert.match(readFileSync(summary, 'utf8'), /Scope of this run: pr\n\nWebKit, no negative controls/);
   assert.match(text, /ci-scope: pr/);
-  const full = path.join(dir, 'out2');
-  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', PR_LABELS: '["ci:full"]', GITHUB_OUTPUT: full }, out: () => {}, run: ran('ui-next/a.tsx\0') }), 0);
-  assert.match(readFileSync(full, 'utf8'), /^scope=full\nreason=the label ci:full\n$/);
+  const injected = path.join(dir, 'out2');
+  const summaryTwo = path.join(dir, 'sum2');
+  let log = '';
+  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: injected, GITHUB_STEP_SUMMARY: summaryTwo }, out: (chunk) => { log += chunk; }, run: ran('scripts/ci/x\n::warning title=forged::y\0') }), 0);
+  assert.equal(log.split('\n').some((line) => line.startsWith('::')), false, 'no line of the log is a workflow command');
+  assert.equal(readFileSync(summaryTwo, 'utf8').split('\n').some((line) => line.startsWith('::')), false);
+  assert.match(readFileSync(injected, 'utf8'), /^scope=full\nreason=scripts\/ci\/x\?::warning title=forged::y changes /);
   const broken = path.join(dir, 'out3');
   assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: broken }, out: () => {}, run: () => ({ status: 1, stdout: '' }) }), 0);
   assert.match(readFileSync(broken, 'utf8'), /^scope=full\nreason=the changed files could not be read\n$/);
@@ -110,13 +119,4 @@ test('main writes the scope and the reason where the workflow reads them, and th
   assert.equal(main(['--nope'], { env: {}, err: (chunk) => { err += chunk; } }), 2);
   assert.match(err, /usage: node scripts\/ci\/ci-scope\.mjs/);
   assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'push', GITHUB_OUTPUT: path.join(dir, 'no-such-dir/out') }, out: () => {}, err: () => {} }), 1, 'an output that cannot be written is an error');
-});
-
-test('PR_LABELS that is not a list is no label, and a label that is not a string is ignored: the label can only add scope', () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'ci-scope-labels-'));
-  for (const labels of ['not json', '{"a":1}', 'null', '[1,2]']) {
-    const output = path.join(dir, `o${labels.length}`);
-    main([], { env: { GITHUB_EVENT_NAME: 'pull_request', PR_LABELS: labels, GITHUB_OUTPUT: output }, out: () => {}, run: () => ({ status: 0, stdout: 'ui-next/a.tsx\0' }) });
-    assert.match(readFileSync(output, 'utf8'), /^scope=pr\n/, labels);
-  }
 });

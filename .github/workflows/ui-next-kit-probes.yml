@@ -67,7 +67,7 @@ on:
         options: [full, pr]
         default: full
 
-# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled (every commit of main is verified).
+# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled by a newer push (the latest commit of main is always verified; a group keeps one running and one pending run, so a burst of merges can skip the ones between).
 concurrency:
   group: ui-next-kit-probes-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -106,7 +106,6 @@ jobs:
         id: scope
         env:
           SCOPE_INPUT: ${{ inputs.scope }}
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: node scripts/ci/ci-scope.mjs
 
       - name: Check the table and pack the shards

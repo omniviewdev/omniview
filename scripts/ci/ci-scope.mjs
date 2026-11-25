@@ -4,7 +4,7 @@
 //   --base <rev>                            what the diff is taken against (default HEAD^1: the pull request is checked out as a merge commit, as scripts/ci/changes.mjs reads it)
 //
 // `full` is everything: every probe and every negative control in both engines (WebKit and Chromium), the seam's controls and both of its engines. `pr` is what a pull request gets: the probes and the seam's scenarios, in WebKit (the
-// desktop application's engine), and NOT the negative controls. The controls and the second engine run on every push to main, every night and on request (`workflow_dispatch`, or the label `ci:full` on a pull request), and on a pull
+// desktop application's engine), and NOT the negative controls. The controls and the second engine run on every push to main, every night and on request (`workflow_dispatch`), and on a pull
 // request that changes the test infrastructure itself: the files below. A control can go inert through a change to the product that no probe sees; that is the accepted cost of not running 370 of them on every pull request, and the
 // run on main is where it is found (`scripts/ci/main-red.mjs` opens the issue).
 //
@@ -24,6 +24,9 @@ export const INFRASTRUCTURE = [
   [/(?:^|\/)probes\//, 'a probe, its control or its harness'],
 ];
 
+/** A file name as text for a log and a summary: every control character (a newline, a carriage return, an escape) becomes `?`, so that a name cannot write a line of its own (a workflow command, a Markdown heading). */
+export const printable = (text) => String(text).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, '?');
+
 /** The first changed file that is test infrastructure, `{ file, what }`, or null. */
 export function infrastructureIn(files) {
   for (const file of files) {
@@ -34,19 +37,18 @@ export function infrastructureIn(files) {
 }
 
 /**
- * The scope of a run: `{ scope, reason }`. `event` is GITHUB_EVENT_NAME, `files` the changed paths of a pull request (null when the diff could not be read), `labels` the pull request's labels, `input` the scope a person asked for on
+ * The scope of a run: `{ scope, reason }`. `event` is GITHUB_EVENT_NAME, `files` the changed paths of a pull request (null when the diff could not be read), `input` the scope a person asked for on
  * `workflow_dispatch` ('pr' runs the pull request's scope, for the proof that it does not catch what the main run does; 'full' or nothing is full).
  */
-export function scopeOf({ event, files = null, labels = [], input = '' }) {
+export function scopeOf({ event, files = null, input = '' }) {
   if (event === 'workflow_dispatch') return input === 'pr' ? { scope: 'pr', reason: 'a manual run that asked for the pull request scope' } : { scope: 'full', reason: 'a manual run' };
   if (event === 'push') return { scope: 'full', reason: 'a push to main' };
   if (event === 'schedule') return { scope: 'full', reason: 'the nightly run' };
   if (event !== 'pull_request') return { scope: 'full', reason: `the event ${JSON.stringify(event)}, which this script does not know` };
-  if (labels.includes('ci:full')) return { scope: 'full', reason: 'the label ci:full' };
   if (files === null) return { scope: 'full', reason: 'the changed files could not be read' };
   if (files.length === 0) return { scope: 'full', reason: 'the diff is empty' };
   const found = infrastructureIn(files);
-  if (found !== null) return { scope: 'full', reason: `${found.file} changes ${found.what}` };
+  if (found !== null) return { scope: 'full', reason: `${printable(found.file)} changes ${found.what}` };
   return { scope: 'pr', reason: `${files.length} changed file${files.length === 1 ? '' : 's'}, none of them test infrastructure` };
 }
 
@@ -55,15 +57,6 @@ export function changedFiles(base = 'HEAD^1', run = spawnSync) {
   const ran = run('git', ['diff', '--name-only', '--no-renames', '-z', base, 'HEAD'], { encoding: 'utf8', maxBuffer: 1 << 26 });
   if (ran.error !== undefined || ran.status !== 0 || typeof ran.stdout !== 'string') return null;
   return ran.stdout.split('\0').filter((file) => file !== '');
-}
-
-function labelsOf(text) {
-  try {
-    const parsed = JSON.parse(text ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((label) => typeof label === 'string') : [];
-  } catch {
-    return [];
-  }
 }
 
 export function main(argv = process.argv.slice(2), { env = process.env, out = (text) => process.stdout.write(text), err = (text) => process.stderr.write(text), run = spawnSync } = {}) {
@@ -77,11 +70,11 @@ export function main(argv = process.argv.slice(2), { env = process.env, out = (t
   }
 
   const event = env.GITHUB_EVENT_NAME ?? '';
-  const result = scopeOf({ event, files: event === 'pull_request' ? changedFiles(base, run) : null, labels: labelsOf(env.PR_LABELS), input: env.SCOPE_INPUT ?? '' });
+  const result = scopeOf({ event, files: event === 'pull_request' ? changedFiles(base, run) : null, input: env.SCOPE_INPUT ?? '' });
   out(`ci-scope: ${result.scope} (${result.reason})\n`);
   try {
     if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `scope=${result.scope}\nreason=${result.reason.replaceAll('\n', ' ')}\n`);
-    if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `### Scope of this run: ${result.scope}\n\n${result.scope === 'pr' ? 'WebKit, no negative controls (they run on main, every night, and on a pull request that changes test infrastructure or carries the label `ci:full`)' : 'everything: both engines and every negative control'}. Because ${result.reason}.\n\n`);
+    if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `### Scope of this run: ${result.scope}\n\n${result.scope === 'pr' ? 'WebKit, no negative controls (they run on main, every night, and on a pull request that changes test infrastructure)' : 'everything: both engines and every negative control'}. Because ${result.reason}.\n\n`);
   } catch (error) {
     err(`ci-scope: could not write the outputs: ${String(error.message).split('\n')[0]}\n`);
     return 1;

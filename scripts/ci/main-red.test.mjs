@@ -53,7 +53,7 @@ test('the body names the commit range of the first failure and survives a round 
 });
 
 /** A stand-in for `gh` with a small state: the issues, the runs of the workflow and the commits of a range; every call is recorded. */
-function fakeGh({ issues = [], runs = [], commits = [], failCompare = false, failLabel = false } = {}) {
+function fakeGh({ issues = [], runs = [], commits = [], failCompare = false, failLabel = false, jobs = [] } = {}) {
   const calls = [];
   const ask = async (args, { input } = {}) => {
     calls.push({ args, input });
@@ -65,6 +65,7 @@ function fakeGh({ issues = [], runs = [], commits = [], failCompare = false, fai
       if (failLabel) throw new Error('gh label create: already exists');
       return '';
     }
+    if (first === 'api' && /\/actions\/runs\/\d+\/jobs/.test(args[1])) return JSON.stringify(jobs);
     if (first === 'api' && /\/actions\/workflows\/\d+\/runs/.test(args[1])) return JSON.stringify(runs);
     if (first === 'api' && /\/compare\//.test(args[1])) {
       if (failCompare) throw new Error('gh api: 404');
@@ -74,7 +75,7 @@ function fakeGh({ issues = [], runs = [], commits = [], failCompare = false, fai
   };
   return { ask, calls };
 }
-const env = (extra = {}) => ({ WORKFLOW_NAME: 'UI next seam check', WORKFLOW_ID: '42', CONCLUSION: 'failure', HEAD_SHA: 'bad11111bad11111', HEAD_BRANCH: 'main', EVENT: 'push', RUN_ID: '900', RUN_URL: 'https://github.com/o/r/actions/runs/900', RUN_CREATED_AT: '2026-11-25T03:00:00Z', GITHUB_REPOSITORY: R, ...extra });
+const env = (extra = {}) => ({ WORKFLOW_NAME: 'UI next seam check', WORKFLOW_ID: '42', CONCLUSION: 'failure', HEAD_SHA: 'bad11111bad11111', HEAD_BRANCH: 'main', HEAD_REPOSITORY: R, EVENT: 'push', RUN_ID: '900', RUN_URL: 'https://github.com/o/r/actions/runs/900', RUN_CREATED_AT: '2026-11-25T03:00:00Z', GITHUB_REPOSITORY: R, ...extra });
 const goodRuns = [
   { id: 900, sha: 'bad11111bad11111', url: 'u900', at: '2026-11-25T03:00:00Z' },
   { id: 800, sha: 'f00df00df00d', url: 'u800', at: '2026-11-24T03:00:00Z' },
@@ -137,8 +138,8 @@ test('a workflow that goes green leaves the issue; the issue is closed, with a c
   assert.equal(none.calls.some((call) => call.args[1] === 'create' || call.args[1] === 'edit' || call.args[1] === 'close'), false);
 });
 
-test('a run that is not on main, or that ended cancelled, skipped or neutral, changes nothing; timed out and startup failure are red', async () => {
-  for (const extra of [{ HEAD_BRANCH: 'ui-next/some-branch' }, { CONCLUSION: 'cancelled' }, { CONCLUSION: 'skipped' }, { CONCLUSION: 'neutral' }, { CONCLUSION: 'action_required' }]) {
+test('a run that is not on main, or that ended skipped or neutral, changes nothing; timed out and startup failure are red', async () => {
+  for (const extra of [{ HEAD_BRANCH: 'ui-next/some-branch' }, { CONCLUSION: 'skipped' }, { CONCLUSION: 'neutral' }, { CONCLUSION: 'action_required' }]) {
     const gh = fakeGh();
     assert.equal((await handle({ env: env(extra), ask: gh.ask })).action, 'none', JSON.stringify(extra));
     assert.deepEqual(gh.calls, [], 'nothing is asked of GitHub');
@@ -166,15 +167,69 @@ test('the workflow runs on the completion of the workflows that check main, only
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
   const job = workflow.jobs.issue;
   assert.match(job.if, /workflow_run\.head_branch == 'main'/);
-  assert.match(job.if, /"failure", "timed_out", "startup_failure"/);
+  assert.match(job.if, /workflow_run\.head_repository\.full_name == github\.repository/, 'a fork\'s branch called main is not main');
+  assert.match(job.if, /contains\(fromJSON\('\["push", "schedule"\]'\), github\.event\.workflow_run\.event\)/, 'a push or the nightly run, not a manual or a pull request run');
+  assert.match(job.if, /"failure", "timed_out", "startup_failure", "cancelled"/, 'a cancelled run is read from its jobs');
   assert.equal(job['runs-on'], 'ubuntu-slim');
   const step = job.steps.at(-1);
   assert.equal(step.run, 'node scripts/ci/main-red.mjs');
-  for (const name of ['WORKFLOW_NAME', 'WORKFLOW_ID', 'CONCLUSION', 'HEAD_SHA', 'HEAD_BRANCH', 'EVENT', 'RUN_ID', 'RUN_URL', 'RUN_CREATED_AT', 'GH_TOKEN']) assert.ok(step.env[name], name);
+  for (const name of ['WORKFLOW_NAME', 'WORKFLOW_ID', 'CONCLUSION', 'HEAD_SHA', 'HEAD_BRANCH', 'HEAD_REPOSITORY', 'EVENT', 'RUN_ID', 'RUN_URL', 'RUN_CREATED_AT', 'GH_TOKEN']) assert.ok(step.env[name], name);
   // Every workflow it listens to has that name, and runs on main (a push or the nightly run).
   for (const [file, name] of [['ui-next-kit-probes.yml', 'UI next kit probes'], ['ui-next-seam.yml', 'UI next seam check'], ['ui-next-pods.yml', 'UI next Pods cluster check'], ['render-bench.yml', 'Render Benchmarks'], ['app-profile.yml', 'Whole-App Profile'], ['main-macos-universal.yml', 'Main macOS universal']]) {
     const listened = parse(readFileSync(path.join(repo, '.github/workflows', file), 'utf8'));
     assert.equal(listened.name, name, file);
     assert.ok('push' in listened.on || 'schedule' in listened.on, `${file} runs on main or at night`);
   }
+});
+
+test('S1: only a push to this repository\'s main or its nightly run counts, red or green: a fork\'s branch called main, a manual run (it may have asked for the pull request scope) and a pull request\'s run change nothing', async () => {
+  const red = applyFailure(emptyState(), 'UI next seam check', run('bad11111'), good, []);
+  const open = [{ number: 5, body: renderBody(red, { repository: R }) }];
+  for (const extra of [{ HEAD_REPOSITORY: 'someone/fork' }, { HEAD_REPOSITORY: '' }, { EVENT: 'workflow_dispatch' }, { EVENT: 'pull_request' }, { EVENT: '' }, { EVENT: 'workflow_run' }]) {
+    for (const conclusion of ['success', 'failure']) {
+      const gh = fakeGh({ issues: open, runs: goodRuns });
+      const result = await handle({ env: env({ ...extra, CONCLUSION: conclusion, HEAD_SHA: 'new22222' }), ask: gh.ask });
+      assert.equal(result.action, 'none', `${JSON.stringify(extra)} ${conclusion}`);
+      assert.deepEqual(gh.calls, [], 'GitHub is not asked, nothing is written');
+    }
+  }
+
+  for (const event of ['push', 'schedule']) assert.notEqual((await handle({ env: env({ EVENT: event, CONCLUSION: 'success', RUN_CREATED_AT: '2026-11-26T03:00:00Z' }), ask: fakeGh({ issues: open }).ask })).action, 'none', event);
+});
+
+test('S1: a run older than the newest the issue has seen for that workflow changes nothing: a re-run of an old commit cannot clear a newer failure or move it back', async () => {
+  const red = applyFailure(emptyState(), 'UI next seam check', run('bad22222', { at: '2026-11-26T03:00:00Z' }), good, []);
+  const open = [{ number: 5, body: renderBody(red, { repository: R }) }];
+  for (const conclusion of ['success', 'failure']) {
+    const gh = fakeGh({ issues: open, runs: goodRuns });
+    const result = await handle({ env: env({ CONCLUSION: conclusion, RUN_CREATED_AT: '2026-11-25T03:00:00Z' }), ask: gh.ask });
+    assert.equal(result.action, 'none', conclusion);
+    assert.match(result.message, /older/);
+    assert.equal(gh.calls.some((call) => call.args[1] === 'edit' || call.args[1] === 'close'), false);
+  }
+
+  const newer = fakeGh({ issues: open });
+  assert.equal((await handle({ env: env({ CONCLUSION: 'success', RUN_CREATED_AT: '2026-11-27T03:00:00Z' }), ask: newer.ask })).action, 'closed');
+});
+
+test('S2: a run that ended cancelled is red when a job of it failed or timed out (a shard that hit its timeout cancels the run), and nothing when it was only superseded', async () => {
+  const hang = fakeGh({ runs: goodRuns, jobs: ['success', 'cancelled', 'failure', 'success'] });
+  const result = await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: hang.ask });
+  assert.equal(result.action, 'created');
+  assert.ok(hang.calls.some((call) => /\/actions\/runs\/900\/jobs/.test(call.args[1] ?? '')), 'the jobs of the run are read');
+  assert.equal((await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: fakeGh({ runs: goodRuns, jobs: ['timed_out', 'cancelled'] }).ask })).action, 'created');
+  const superseded = fakeGh({ jobs: ['success', 'cancelled', 'cancelled', 'skipped'] });
+  const none = await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: superseded.ask });
+  assert.equal(none.action, 'none');
+  assert.match(none.message, /superseded/);
+  assert.equal(superseded.calls.some((call) => call.args[0] === 'issue'), false);
+  assert.equal((await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: fakeGh({ jobs: [] }).ask })).action, 'none');
+});
+
+test('a change to main-red.mjs or its test starts the run whose shards run that test, and a label is not a trigger', () => {
+  const seam = parse(readFileSync(path.join(repo, '.github/workflows/ui-next-seam.yml'), 'utf8'));
+  for (const event of ['pull_request', 'push']) assert.ok(seam.on[event].paths.includes('scripts/ci/main-red*'), `${event} does not start for scripts/ci/main-red*`);
+  const shard = seam.jobs.seam.steps.find((step) => step.name === 'Check the units and the tests of the plan');
+  assert.match(shard.run, /scripts\/ci\/main-red\.test\.mjs/);
+  assert.equal(seam.on.pull_request.types, undefined, 'the default types: no `labeled` run for a label that changes nothing');
 });
