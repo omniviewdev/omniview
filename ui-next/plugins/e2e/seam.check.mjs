@@ -8457,10 +8457,11 @@ async function checkTerminal(page, base, engine) {
   const after = await screenSizeOf(page);
   // A resize reaches the pty in steps (one call in flight, then the newest size), so `stty size` is asked again until the pty has the rows the page draws, and the assertion below is about that size and no intermediate one.
   const ptyRows = async () => {
-    const from = (await plainTranscriptOf(base, id)).length;
+    // The offset is a RAW one: the normalized text can shrink when an OSC that was split across two reads ends, and a length of it would then skip the start of the answer.
+    const from = outputEnd(id);
     await typeLine(page, 'stty size');
-    await waitUntil('stty size to answer', async () => sttyOf((await plainTranscriptOf(base, id)).slice(from)) !== null, 15_000);
-    return sttyOf((await plainTranscriptOf(base, id)).slice(from));
+    await waitUntil('stty size to answer', async () => sttyOf(plain(outputSince(id, from))) !== null, 15_000);
+    return sttyOf(plain(outputSince(id, from)));
   };
   let second = await ptyRows();
   for (let tries = 0; tries < 10 && second.rows !== after.rows; tries += 1) {
@@ -8668,10 +8669,11 @@ async function checkTerminalPrograms(page, base, engine) {
     'profile-not-run',
     async () => {
       // A shell whose profile did not run: what the profile sets is unset in it.
-      await ask('unset SEAM_PROFILE_RAN; echo UNSET_DONE', /\nUNSET_DONE\r?\n/, 'the variable to be unset');
+      // The value it had is kept, and put back by the undo: a profile that never ran leaves nothing to put back, and the clean assertion then fails.
+      await ask('__seam_was=${SEAM_PROFILE_RAN-}; unset SEAM_PROFILE_RAN; echo UNSET_DONE', /\nUNSET_DONE\r?\n/, 'the variable to be unset');
     },
     async () => {
-      await ask('export SEAM_PROFILE_RAN=yes; echo RESET_DONE', /\nRESET_DONE\r?\n/, 'the variable to be set again');
+      await ask('if [ -n "$__seam_was" ]; then export SEAM_PROFILE_RAN="$__seam_was"; fi; unset __seam_was; echo RESET_DONE', /\nRESET_DONE\r?\n/, 'the variable to be put back as it was');
     },
     async () => assert.match(await askProfile(), /\nPROFILE=yes\r?\n/, `${engine}: the shell runs the user's profile files (as a login shell, or as the integration's bash that emulates one)`),
   );
@@ -11049,11 +11051,11 @@ async function checkTerminalFindMenu(page, base, engine) {
     return holdsWithin(async () => new RegExp(`\\n${marker}_42\\n`).test(await plainTranscriptOf(base, id)), 15_000);
   };
   const sizeNow = async () => {
-    const from = (await plainTranscriptOf(base, id)).length;
+    const from = outputEnd(id);
     await typeLine(page, 'stty size');
     let size = null;
     await waitUntil('stty size to answer', async () => {
-      size = sttyOf((await plainTranscriptOf(base, id)).slice(from));
+      size = sttyOf(plain(outputSince(id, from)));
       return size !== null;
     }, 15_000);
     return size;
