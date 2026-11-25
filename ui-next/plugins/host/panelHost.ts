@@ -7,8 +7,8 @@ import { createForwardLedger } from './portLedger';
 // The plugin's side of the panel handle (contract/v1.ts, `ContextV1.panel`): what a plugin asks of the window's bottom panel, bound to the plugin that asks. The Logs registry (ui-next/shell/panel/logs) is
 // the host's; this only writes the plugin's words in the host's: a target with no plugin id (the handle knows whose it is, so a plugin cannot open a session in another's name) and a `RouteV1` for the
 // resource, which becomes a route of the tab model in the plugin's own name. `LogStreams.open` is the one entry point; who supplies a target is not decided here (decision A20). The ports member (PF1) is bound to the
-// plugin as well, and to the connection the page is read in: the host fills both in when a page forwards a port (`portForward.ts`), so a page forwards in its own connection and in no other. A handle made for no connection has no
-// ports member at all: a member that is there and can only refuse is worse than one that is absent. Every handle is shared by the pages of its plugin (and connection), so each is frozen with the members it holds: a page cannot
+// plugin as well, and to the connection the page is read in (the route's, else the plugin's only one: `panelConnectionOf` in `contributions.ts`, which the window asks before it asks for a handle): the host fills both in when a page forwards a port (`portForward.ts`), so a page forwards
+// in its own connection and in no other. A handle made for no connection has no ports member at all: a member that is there and can only refuse is worse than one that is absent. Every handle is shared by the pages of its plugin (and connection), so each is frozen with the members it holds: a page cannot
 // replace what the others call.
 
 /** The host's descriptor for a plugin's target. A member the plugin did not write well is passed on as it is, for the registry to refuse by name. */

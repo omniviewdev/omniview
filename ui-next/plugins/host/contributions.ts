@@ -45,6 +45,16 @@ export function connectionOf(route: Route): string | undefined {
   return typeof connection === 'string' ? connection : undefined;
 }
 
+/**
+ * The connection a page is read in, for what it asks of the bottom panel (`ctx.panel`, PF3): the one its route names, else the plugin's only connection. `complete` leaves a route of a plugin that has one connection unnamed (there is
+ * nothing to choose between) and the plugin reads it in that one, so the window knows it, and a page that forwards a port needs it. With two or more connections, with none, or with a list the window has not read (`choice.state`), nothing
+ * says which one the page is read in, and the panel has none: the host does not guess.
+ */
+export function panelConnectionOf(route: Route, choice: PluginChoice | undefined): string | undefined {
+  const named = connectionOf(route);
+  return named ?? (choice?.state === 'ready' && choice.keys.length === 1 ? choice.keys[0] : undefined);
+}
+
 /** The route's parameters a page's hook is told besides the connection (`RouteV1.params`): the ones that are text. For a detail page they are the object's identity. */
 export const textParamsOf = (route: Route): Readonly<Record<string, string>> =>
   Object.fromEntries(Object.entries(route.params).flatMap(([name, value]) => (name !== 'connection' && typeof value === 'string' ? [[name, value] as const] : [])));

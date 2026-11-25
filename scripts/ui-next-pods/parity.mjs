@@ -986,6 +986,51 @@ async function readRate({ browser, baseURL, kubeconfig, timeoutMs = 90_000 }) {
   }
 }
 
+// The Forward port entry of a Pod's page (PF3-k8s, plugin #288). The Pod is the check's own, as the press-twice one: the fixture declares no container port, so a busybox that declares TCP 8080 is made in `checkout`. Its page is
+// opened from the list as a person opens it, the header's overflow menu must offer `Forward port 8080`, and its press must list a forward in the Ports tool whose mapping says where the plugin states the forward listens:
+// `localhost:<port> → :8080/TCP` (the host never guesses an address). The forward is stopped from its row, and when the check fails too: a forward left running would outlive the Pod.
+// Throws ParityError('FORWARD_MISMATCH') when the entry is absent (a plugin before #288 has none) or the row says anything else.
+const FORWARD_POD = { namespace: 'checkout', name: 'forward-port' };
+const FORWARD_MAPPING = /^localhost:\d+ → :8080\/TCP$/;
+
+export async function checkForward({ browser, baseURL, kubeconfig, timeoutMs = 60_000 }) {
+  const pod = FORWARD_POD;
+  const at = ['-n', pod.namespace];
+  return withOwnedPod(
+    {
+      exists: async () => (await kubectl(kubeconfig, ['get', 'pod', pod.name, ...at, '--ignore-not-found', '-o', 'name'])).trim() !== '',
+      create: () => kubectl(kubeconfig, ['run', pod.name, ...at, '--image=busybox:1.37.0', '--restart=Never', '--port=8080', '--', 'sleep', '3600']),
+      remove: () => kubectl(kubeconfig, ['delete', 'pod', pod.name, ...at, '--ignore-not-found', '--grace-period=0', '--force', '--wait=false']),
+    },
+    async () => {
+      await kubectl(kubeconfig, ['wait', '--for=condition=Ready', `pod/${pod.name}`, ...at, `--timeout=${String(READY_SECONDS)}s`], { timeoutMs: waitProcessMs(READY_SECONDS) });
+      const page = await openPods(browser, baseURL);
+      const mapping = page.locator('[data-ports-part="mapping"]');
+      try {
+        const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+        await link.waitFor({ timeout: timeoutMs });
+        await link.click();
+        await page.getByRole('button', { name: /^More actions for / }).first().click({ timeout: timeoutMs });
+        const entry = page.getByRole('menuitem', { name: 'Forward port 8080' });
+        await entry.waitFor({ timeout: 10_000 }).catch(() => {
+          throw new ParityError('FORWARD_MISMATCH', `${pod.namespace}/${pod.name}: the Pod page's menu has no Forward port 8080 entry`, { pod });
+        });
+        await entry.click();
+        await mapping.waitFor({ timeout: timeoutMs });
+        const read = (await mapping.textContent()) ?? '';
+        if (!FORWARD_MAPPING.test(read)) {
+          throw new ParityError('FORWARD_MISMATCH', `${pod.namespace}/${pod.name}: the Ports tool lists ${JSON.stringify(read)}, not localhost:<port> → :8080/TCP`, { read });
+        }
+
+        return { read, pod };
+      } finally {
+        await page.locator('[data-ports-action="stop"]').first().click({ timeout: 2_000 }).then(() => mapping.waitFor({ state: 'detached', timeout: 15_000 })).catch(() => undefined);
+        await page.close().catch(() => undefined);
+      }
+    },
+  );
+}
+
 // The host's own list of the plugin's connections, asked as the page asks (`ServiceWrapper.ListConnections` of the resource service). Since plugin PR #272 a connection's ID is derived from the path of its kubeconfig and
 // the name of its context (`<slug>-<10 hex>`), and the check's kubeconfig lives in a temporary directory: the ID is another one on every run, so it is read here and never written into the check.
 const RESOURCE_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
