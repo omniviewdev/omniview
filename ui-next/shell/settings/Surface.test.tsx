@@ -361,7 +361,9 @@ describe('a secret the host refused', () => {
 
     const { form } = state;
     m.host.next.commit = async () => Promise.reject(new Error('refused'));
-    form.setValue('telemetry.loki_auth_value', SENTINEL);
+    act(() => {
+      form.setValue('telemetry.loki_auth_value', SENTINEL);
+    });
     await act(async () => {
       await form.commit('telemetry.loki_auth_value');
     });
@@ -385,7 +387,9 @@ describe('a secret typed while the other window changes it', () => {
       throw new Error('not ready');
     }
 
-    state.form.setValue('telemetry.auth_value', SENTINEL);
+    act(() => {
+      state.form.setValue('telemetry.auth_value', SENTINEL);
+    });
     await m.host.client.commit({ 'telemetry.auth_value': '' });
     m.host.change('telemetry.auth_value', '');
     await settle(m.clock);
@@ -406,7 +410,9 @@ describe('a body that is mounted anew', () => {
 
     const { form } = state;
     m.host.next.commit = async () => Promise.reject(new Error('refused'));
-    form.setValue('telemetry.loki_auth_value', SENTINEL);
+    act(() => {
+      form.setValue('telemetry.loki_auth_value', SENTINEL);
+    });
     await act(async () => {
       await form.commit('telemetry.loki_auth_value');
     });

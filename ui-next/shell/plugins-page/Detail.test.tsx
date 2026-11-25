@@ -187,6 +187,9 @@ describe('the actions are the model\'s', () => {
     const { h } = await open([inventoryEntry('alpha')]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    await act(async () => {
+      await settle();
+    });
 
     expect(h.actions.reload).toHaveBeenCalledWith('alpha');
   });
@@ -195,6 +198,9 @@ describe('the actions are the model\'s', () => {
     const { h } = await open([inventoryEntry('alpha', { phase: 'Stopped' })]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    await act(async () => {
+      await settle();
+    });
 
     expect(h.actions.reload).toHaveBeenCalledWith('alpha');
   });
@@ -215,6 +221,9 @@ describe('the actions are the model\'s', () => {
     const { h } = await open([inventoryEntry('alpha', { phase: 'Failed' })]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await act(async () => {
+      await settle();
+    });
 
     expect(h.actions.reload).toHaveBeenCalledWith('alpha');
   });

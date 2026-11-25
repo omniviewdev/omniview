@@ -66,7 +66,9 @@ describe('the Search control', () => {
   it('is one Tab stop of its own, reached with Tab after the tab strip: a disabled or skipped control would not be', async () => {
     const { user } = mountShell();
     const strip = screen.getByRole('tablist', { name: 'Open tabs' });
-    within(strip).getByRole('tab', { selected: true }).focus();
+    act(() => {
+      within(strip).getByRole('tab', { selected: true }).focus();
+    });
     for (let presses = 0; presses < 8 && document.activeElement !== control(); presses += 1) {
       await user.tab();
     }
