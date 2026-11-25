@@ -15,6 +15,7 @@ import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReade
 import { closeQuestionOf, type CloseQuestion } from './state';
 import { TerminalBody } from './TerminalBody';
 import { createTerminalSessions, type TerminalSessions } from './TerminalSessions';
+import type { ShellList } from './profiles';
 import { NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_TOOL_ID } from './tool';
 
 /**
@@ -69,6 +70,7 @@ function focusIsOn(session: SessionId, onScreen: SessionId | null): boolean {
 // host's wiring is a line for each thing the panel asks and the tool's own rules stay in this folder.
 
 export type TerminalsOptions = {
+  readonly shells?: ShellList | undefined;
   /** What "New terminal" starts: a target the registry opens. Default: the host's own shell. A probe gives a synthetic one. */
   readonly target?: (() => TerminalTarget) | undefined;
   /** Where the emulator's code comes from. Default: the lazy chunk. A test gives a fake emulator. */

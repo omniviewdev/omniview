@@ -3,6 +3,7 @@ import type { TerminalChannels } from './channel';
 import { createExecFeed, newTerminalId } from './execFeed';
 import type { TerminalTarget } from './feed';
 import { appTerminalChannels } from './terminalChannel';
+import type { TerminalProfile } from './profiles';
 
 // The host's own shell as a feed, on the terminal channel (docs/ui-next/terminal-channel-protocol.md): `CreateTerminal` with `launch.channel` starts the user's login shell on a pty of this machine
 // (backend/pkg/terminal/manager.go: an empty command is the account shell, with `TERM=xterm-256color`), and the terminal is reached by one stream (`terminalChannel.ts`, which holds the capabilities and speaks the frames).
@@ -77,4 +78,8 @@ export async function restoreLocalTerminals(channels: TerminalChannels = appTerm
   }
 
   return targets;
+}
+
+export function localProfileTarget(profile: TerminalProfile, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
+  return { ...localShellTarget(channels, leaseMs), title: profile.path };
 }

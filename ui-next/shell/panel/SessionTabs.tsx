@@ -2,6 +2,7 @@ import { Icon, IconButton, Text, hoverCard, hoverCardAnchor, isIconName, tip, ty
 import type { SessionId, SessionState, ToolId } from '../core/panel';
 import { useTablist } from '../tablist';
 import { usePanel } from './context';
+import type { PanelNewSessionMenu } from './host';
 import { focusTab } from './focus';
 import { useActiveSession, useSessionIds, useSessionItem, useToolItem } from './hooks';
 import styles from './Header.module.css';
@@ -155,7 +156,7 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
 }
 
 /** The `+` of a tool that can start a session: a ghost icon button, last in the strip. The mock's `▾` beside it opens a menu of targets, which is not built (docs/ui-next/status/P1a.md). */
-export function NewSession({ label, onStart }: { readonly label: string; readonly onStart: () => void }) {
+export function NewSession({ label, onStart }: { readonly label: string; readonly onStart: () => void; readonly menu?: PanelNewSessionMenu }) {
   return (
     <div className={styles.add} data-shell-part="sessionAdd">
       <IconButton icon="plus" label={label} variant="ghost" onClick={onStart} {...tip(label)} />

@@ -1,0 +1,91 @@
+#!/bin/bash
+# Negative controls for T4-profiles, the Go half (the default shell and the list of installed shells:
+# internal/shellenv/installed.go, backend/pkg/plugin/exec/terminal_shells.go and terminal.go, internal/settings/terminal.go).
+# Each fault is put into a SCRATCH copy of one source file and built with `go test -overlay`; the worktree is never edited.
+# A control has two halves:
+#   1. with every test of the package, the tests that go red are exactly the ones named for it (a fault that goes red in
+#      a test it is not named for, or in none, is reported);
+#   2. with the named tests skipped (the assertion removed), the same fault passes: nothing else sees it.
+# Run from anywhere in the worktree:  bash docs/ui-next/status/T4-profiles/mutations.sh.txt [control-name]
+export GOWORK=off GOTOOLCHAIN=local
+WT=$(git rev-parse --show-toplevel) || exit 2
+M=$(mktemp -d "${TMPDIR:-/tmp}/t4prof-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M"' EXIT
+cd "$WT" || exit 2
+only="${1:-}"
+bad=0
+
+SHELLENV=./internal/shellenv/
+EXEC=./backend/pkg/plugin/exec/
+SETTINGS=./internal/settings/
+EXEC_RUN='DefaultShell|ShellOfAn|ShellTheCaller|ShellThatCannot|WithDefaultShell|ExplicitProgram|ListOfShells'
+
+# name | package | run pattern | file | sed expression | the tests named for it (sorted, separated by spaces)
+run() {
+  name="$1"; pkg="$2"; pattern="$3"; file="$4"; expr="$5"; named="$6"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  cp "$WT/$file" "$M/$name.go"
+  sed -i -e "$expr" "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+
+  out=$(go test -overlay="$M/$name.json" "$pkg" -run "$pattern" -timeout 300s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E '^--- FAIL' | sed -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | sed 's/ $//')
+  if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
+  elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
+  elif [ "$failed" != "$named" ]; then half1="RED in [$failed], named [$named]"; bad=1
+  else half1="RED in exactly [$failed]"; fi
+
+  skip="^($(echo "$named" | sed 's/ /|/g'))\$"
+  out2=$(go test -overlay="$M/$name.json" "$pkg" -skip "$skip" -run "$pattern" -timeout 300s 2>&1)
+  if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
+  else half2="without them: STILL RED [$(echo "$out2" | grep -E '^--- FAIL' | tr '\n' ' ')]"; bad=1; fi
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+run default-setting-never-read "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal.go \
+  's/^\topts.Command = withDefaultShell(opts.Command, c.defaultShellSetting)$//' \
+  "TestTheDefaultShellSettingIsTheShellOfAnEmptyCommandOnBothLanes"
+
+run default-replaces-the-shell-asked-for "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
+  's/if len(command) > 0 && command\[0\] != "" {/if false {/' \
+  "TestAShellTheCallerNamesBeatsTheDefaultShellSetting TestAnExplicitProgramThatIsNotAShellIsStillRefusedWithADefaultShell TestWithDefaultShellFillsOnlyAnEmptyCommandAndNeverKeepsTheArgumentsOfNoShell"
+
+run default-not-checked-before-use "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
+  's/if _, err := shellenv.Check(value); err != nil {/if false {/' \
+  "TestADefaultShellThatCannotStartLeavesTheTerminalToTheStatedOrder TestTheListOfShellsMarksTheShellThatStartsWhenTheSettingCannotStart"
+
+run arguments-of-no-shell-go-to-the-default "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
+  's/return \[\]string{value}$/return append([]string{value}, command[min(1, len(command)):]...)/' \
+  "TestWithDefaultShellFillsOnlyAnEmptyCommandAndNeverKeepsTheArgumentsOfNoShell"
+
+run list-marks-the-login-shell-not-the-setting "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
+  's/shellenv.List(chosen\[0\])/shellenv.List(shellenv.Default())/' \
+  "TestTheListOfShellsMarksTheDefaultShellOfTheSetting"
+
+run list-offers-a-shell-twice "$SHELLENV" 'TestList' internal/shellenv/installed.go \
+  's/ || seen\[realPath(path)\]//' \
+  "TestListOffersAShellOnceWhateverNumberOfDirectoriesReachIt"
+
+run list-offers-a-file-that-cannot-run "$SHELLENV" 'TestList' internal/shellenv/installed.go \
+  's/path, err := Check(filepath.Join(dir, name))/path := filepath.Join(dir, name); _, err := os.Stat(path)/;s/^import "path\/filepath"$/import ("os"; "path\/filepath")/' \
+  "TestListDoesNotOfferAShellThatCannotRun"
+
+run list-marks-the-default-by-its-spelling "$SHELLENV" 'TestList' internal/shellenv/installed.go \
+  's/if realPath(shells\[i\].Path) == realPath(path) {/if shells[i].Path == path {/' \
+  "TestListMarksTheDefaultByTheFileItIs"
+
+run list-invents-a-default-that-is-not-there "$SHELLENV" 'TestList' internal/shellenv/installed.go \
+  's/path, err := Check(defaultPath)$/path, err := defaultPath, error(nil)/' \
+  "TestListOffersTheDefaultEvenWhereNoStandardDirectoryHoldsIt"
+
+run list-leaves-out-a-default-outside-the-standard-directories "$SHELLENV" 'TestList' internal/shellenv/installed.go \
+  's/return append(\[\]Shell{{Name: Name(path), Path: path, Default: true}}, shells...)/return shells/' \
+  "TestListOffersTheDefaultEvenWhereNoStandardDirectoryHoldsIt"
+
+run settings-accept-a-typo-as-the-default-shell "$SETTINGS" 'DefaultShellSetting' internal/settings/terminal.go \
+  's/path, err := shellenv.Check(val)/path, err := val, error(nil)/' \
+  "TestDefaultShellSettingRefusesWhatTheHostCannotStart"
+
+exit $bad
