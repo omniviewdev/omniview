@@ -16,7 +16,7 @@ PKG=./backend/pkg/terminal/
 M=$(mktemp -d "${TMPDIR:-/tmp}/t698time-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
 SED=$(command -v gsed || command -v sed)
-"$SED" --version 2>/dev/null | grep -q 'GNU sed' || { echo "needs GNU sed (gsed on macOS)" >&2; exit 2; }
+[ "$(echo a | "$SED" -E 's/a/\t/' | od -An -c | tr -d ' ')" = '\t\n' ] || { echo "needs GNU sed (gsed on macOS)" >&2; exit 2; }
 cd "$WT" || exit 2
 only="${1:-}"
 bad=0
@@ -63,7 +63,7 @@ run lease-timer-fires-early $R \
 run lease-timer-fires-late $R \
   's/s.clock.AfterFunc\(lease, func\(\) \{ s.expire\(gen\) \}\)/s.clock.AfterFunc(lease*2, func() { s.expire(gen) })/' "$RUNOUT"
 run close-does-not-wait-for-the-session $G \
-  's/^\tm.awaitGone\(\[\]\*session\{s\}\)$/\t_ = s/' "$HANG"
+  's/^\tm.awaitGone\(\[\]\*session\{s\}\)$/\t_ = s/' "$PAUSED $HANG"
 run shutdown-does-not-wait-for-the-sessions $G \
   's/^\tm.awaitGone\(sessions\)$/\t_ = sessions/' "$SHUT"
 run close-does-not-release-the-pacing $G \

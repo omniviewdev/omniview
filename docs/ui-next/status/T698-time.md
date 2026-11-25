@@ -15,7 +15,7 @@ Branch `test/terminal-time-decided`, from `origin/main` `30df52ea`. Tests only; 
 
 The grace stays on the wall clock by design (`clock.go`); the tests give `hangup` a grace of an hour where they mean "no kill is due", so no assertion reads wall time. The remaining `time.After` and `Eventually` are kinds b and c (negative waits, bounded waits for an event).
 
-Controls: `T698-time/mutations.sh.txt` (fault in a scratch copy, `go test -overlay`, worktree untouched). Result of the run on this base: 11 of 11 red (lease expiry read from the wall clock; one second late; timer early; timer late; close does not await the session; shutdown does not await; close does not release the pacing; hangup does not reach the shell; grace never kills; grace is no grace). The first run showed two controls undetected because their test regexp matched no test (`go test -run` of a name that the top-level test does not have), and a third (pacing) undetected because on Linux the shell ends by SIGHUP whether or not the pacing was released (the macOS defect of B1): the test now reads the released state directly, and the control is red.
+Controls: `T698-time/mutations.sh.txt` (fault in a scratch copy, `go test -overlay`, worktree untouched). Result of the run on this base: 10 of 10 red (lease expiry read from the wall clock; one second late; timer early; timer late; close does not await the session; shutdown does not await; close does not release the pacing; hangup does not reach the shell; grace never kills; grace is no grace). The first run showed two controls undetected because their test regexp matched no test (`go test -run` of a name that the top-level test does not have), and a third (pacing) undetected because on Linux the shell ends by SIGHUP whether or not the pacing was released (the macOS defect of B1): the test now reads the released state directly, and the control is red.
 
 ## Both halves (AGENTS 28), run on this branch
 
@@ -27,14 +27,14 @@ Half 1: with the six touched tests, the ones that go red are exactly the ones na
 | lease-end-one-second-late | yes: the same two | also caught by the same tombstone test |
 | lease-timer-fires-early | yes: `TestALeaseThatRunsOut...` | also caught by `TestAnAttachBeforeTheLeaseEndsKeeps...` |
 | lease-timer-fires-late | yes: `TestALeaseThatRunsOut...` | also caught by `TestTwoHundredDetachedTerminals...`, `TestAttachAgainstLeaseExpiryHasExactlyOneWinner`, `TestAnAttachBeforeTheLeaseEndsKeeps...` |
-| close-does-not-wait-for-the-session | yes: `TestClosingHangsUpAtOnce...` (not the paused-for-credit test: a Linux close that is not awaited still sees the session gone by the time it asserts) | also caught by `TestClosedByCloseSessionIsTyped...`, `TestASessionIdInUseIsRefused...`, `TestTheKillAtTheGraceTargets...` |
+| close-does-not-wait-for-the-session | yes: `TestClosingASessionThatIsPausedForCredit...` and `TestClosingHangsUpAtOnce...` (the paused test asserts `running()` empty right after `CloseSession` returns) | also caught by `TestClosedByCloseSessionIsTyped...`, `TestASessionIdInUseIsRefused...`, `TestTheKillAtTheGraceTargets...` |
 | shutdown-does-not-wait-for-the-sessions | yes: `TestShutdownEndsEverySession...` | also caught by `TestShutdownWaitsForAShellThatIsStarting...` |
-| close-does-not-release-the-pacing | yes: `TestClosingASessionThatIsPausedForCredit...` | PASS: undetected, the paused-for-credit test is the only one |
+| close-does-not-release-the-pacing | yes: `TestClosingASessionThatIsPausedForCredit...` | also caught by `TestTheKillAtTheGraceTargets...` in the second run (the first run: PASS, only the paused-for-credit test sees it; that other test is timing-sensitive) |
 | hangup-does-not-reach-the-shell | yes: `TestClosingHangsUpAtOnce...` | also caught by `TestClosingHangsUpTheBackgroundJobsOfABashShell`, `TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell` |
 | grace-never-kills | `TestALeaseThatRunsOut...` and `TestClosingHangsUpAtOnce...` (both end a shell by the grace's kill; the script names both now) | also caught by `TestTheKillAtTheGraceTargets...` |
 | grace-is-no-grace | yes: `TestClosingHangsUpAtOnce...` | also caught by `TestClosingHangsUpTheBackgroundJobsOfABashShell`, `TestAGracefulShutdown...`, `TestTheKillAtTheGraceTargets...` |
 
-Half 1 holds for 11 of 11 (10 as first named; `grace-never-kills` also reddens the lease test, named now). Half 2 is a clean pass for 1 of 11 (the pacing); for the other 10 an older test of the package also catches the fault, so the rewritten test is not the only guard there. That is more cover, not less; the rewritten tests still go red on their own, which is half 1.
+Half 1 holds for 10 of 10 controls (there are ten controls: the "11" counted earlier in this file and in the commit message was a miscount) in the last run, after the names of `grace-never-kills` and `close-does-not-wait` were fixed. Half 2 is never a clean pass in the last run; an older test of the package also catches the fault, so the rewritten test is not the only guard there. That is more cover, not less; the rewritten tests still go red on their own, which is half 1.
 
 ## Item 10 (the launch environment before anything reads it): NOT PINNED, stopped
 
