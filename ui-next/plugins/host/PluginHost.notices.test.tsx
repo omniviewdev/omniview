@@ -93,7 +93,8 @@ describe('a command of a page that fails', () => {
     expect(document.body.textContent).not.toContain('hunter2');
   });
 
-  it('is no toast when the command works, and none when it was a cancellation', async () => {
+  it('is no toast when the command works, and none when it was a cancellation, which reports no failure on the console', async () => {
+    const report = vi.spyOn(console, 'error');
     scale.mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'));
     const { user } = mount();
     await user.click(await screen.findByRole('button', { name: 'Pause' }));
@@ -105,6 +106,8 @@ describe('a command of a page that fails', () => {
     });
     expect(fine).toHaveBeenCalled();
     expect(toasts()).toEqual([]);
+    expect(report).not.toHaveBeenCalled();
+    report.mockRestore();
   });
 });
 

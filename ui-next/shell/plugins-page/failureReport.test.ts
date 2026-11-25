@@ -89,11 +89,14 @@ describe('reportFailure', () => {
     expect(JSON.stringify(store.getSnapshot())).not.toMatch(/Users|token|exec|exited/);
   });
 
-  it('makes no toast for a cancellation', () => {
+  it('makes no toast for a cancellation, and reports no failure on the console: a cancellation is not a failure', () => {
+    const report = vi.spyOn(console, 'error');
     const store = createNoticesStore({});
 
     reportFailure(store, failure(vi.fn(), wails('omniview:cancelled', 499, 'cancelled')));
 
     expect(store.getSnapshot().toasts.items).toEqual([]);
+    expect(report).not.toHaveBeenCalled();
+    report.mockRestore();
   });
 });
