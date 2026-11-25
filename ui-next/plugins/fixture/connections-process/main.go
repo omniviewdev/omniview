@@ -3,8 +3,10 @@
 //
 //	north-57a082bd74   starts after about 300 ms (a "connecting" state is visible)
 //	south-0c3d9e1f42   starts as the file `connection-mode` next to bin/ says: no file or `ok` starts it at once, `unauthorized` fails it
-//	                   with the SDK's UNAUTHORIZED class, `unreachable` with its UNAVAILABLE class (the server did not answer), `hang` keeps
-//	                   the start waiting for 20 s (it ends at once when the host cancels it)
+//	                   with the SDK's UNAUTHORIZED class, `unreachable` with its UNAVAILABLE class (the server did not answer),
+//	                   `unreachable-path` with the same class and a sentence that names a path under a home directory (a sentence the
+//	                   host never shows: it refuses it and says its own for the class, so a check can tell the plugin's text from the host's),
+//	                   `hang` keeps the start waiting for 20 s (it ends at once when the host cancels it)
 //
 // The file is read on every start, so a check can change it between two presses. A failed start leaves the process running and both connections configured: the SDK keeps a failed start as FAILED until the
 // next start or stop. One resource type, `fixture::v1::Item`, makes the controller valid; it lists three records whose names depend on the connection.
@@ -43,6 +45,10 @@ const (
 	northDelay = 300 * time.Millisecond
 	// hangFor is how long a start that was told to hang waits.
 	hangFor = 20 * time.Second
+
+	// unreachableWithPath is the sentence the `unreachable-path` mode fails with. The path in it is what the host's public-text rules refuse (a path
+	// into a user's home directory), so none of this text may reach a window: the seam looks for `/Users/seam/.config/fixture/address` and `Its address is in`.
+	unreachableWithPath = "The server did not answer. Its address is in /Users/seam/.config/fixture/address."
 
 	// coverageComplete is the coverage every answer of this process says.
 	coverageComplete = "complete"
@@ -100,6 +106,8 @@ func create(ctx context.Context, connection types.Connection) (*client, error) {
 			return nil, resource.NewError("UNAUTHORIZED", "The server refused the credentials.")
 		case "unreachable":
 			return nil, resource.NewError("UNAVAILABLE", "The server did not answer.")
+		case "unreachable-path":
+			return nil, resource.NewError("UNAVAILABLE", unreachableWithPath)
 		case "hang":
 			return wait(ctx, connection.ID, hangFor)
 		}

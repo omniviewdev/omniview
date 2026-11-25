@@ -97,6 +97,7 @@ func (c *controller) invalidateSourceRoutesWithRecoveryLocked(pluginID string, c
 			}
 		}
 		c.connections[pluginID] = cached
+		c.pruneStartFailuresLocked(pluginID)
 		c.connsMu.Unlock()
 	}
 	return nil

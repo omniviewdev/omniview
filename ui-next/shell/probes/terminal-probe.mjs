@@ -9,6 +9,8 @@
 //   ASSERTION_OFF=<regex>     drops the failures whose name matches, as if the assertion were not there: the control of it must then print NOT DETECTED (the proof that it trips that assertion and no other)
 //   SCREEN_READER=on          turn the Terminal's screen reader mode on right after each terminal starts, through its palette command and by the keyboard as a person does, so that a section measures a terminal with the mode on:
 //                             `SECTIONS=flood,hidden,idle,commits SCREEN_READER=on` is what the mode costs (docs/ui-next/status/T1.md section 16). Every other section is written for the mode off.
+//   CPU_SLOWDOWN=<n>          Chromium, section `hidden` only, for a PROOF and never for CI (no unit sets it): the page's main thread runs n times slower (`Emulation.setCPUThrottlingRate`), so that a laptop reads what a shared runner reads and a
+//                             bound can be shown to have room: `CPU_SLOWDOWN=3.5 NEGATIVE_CONTROL=draw-hidden` (docs/ui-next/status/PT2/red-terminal.txt). The section's notes say when it is on.
 //
 // T3a (terminal-find.mjs, which has its own header): PART=find-a|find-b|find-c|find-d run the sections of find in the scrollback (find-open, find-count, find-keys, find-lazy, find-replay, find-idle, find-cap, find-axe), the context
 // menu (menu-open, menu-mouse, menu-axe) and the links in the output (links-tooltip, links-activate, links-axe); find-idle needs the development build, and every section waits for a state and never for a time.
@@ -34,7 +36,7 @@
 //   bundle     the emulator costs nothing until the first terminal: not in the entry chunk or the entry stylesheet (bundle.entry), not requested before (bundle.lazy), requested after (bundle.fetched)
 //   hidden     a hidden terminal goes on reading, parsing and acknowledging, so that its shell is never stalled by the view, and draws nothing of the page's (docs/ui-next/status/T1-go.md 2.8.6, docs/ui-next/status/T2a.md): the first acknowledgement is
 //              made with the process (flow.on); the shell writes 2 MB and then 20 MB while the panel is hidden, and every byte is delivered, parsed and acknowledged (flow.hidden), the emulator is given every byte in order (hidden.drain), no
-//              byte is acknowledged before it was parsed (flow.paced), in a number of frames that follows from the bytes (hidden.frames) and in callbacks of bounded number, total time and length (hidden.work); the page's own document is not
+//              byte is acknowledged before it was parsed (flow.paced), in a number of frames that follows from the bytes (hidden.frames) and in callbacks of bounded number, total time and length, and in no task that is long (hidden.work; the browser counts long tasks in Chromium alone); the page's own document is not
 //              touched and xterm's own changes are bounded (hidden.draws); once everything was taken in it is at rest: no frame, no timer, no change of the document (hidden.rest)
 //   idle       an idle terminal runs no timer and asks for no frame (idle.timers), and renders nothing (idle.commits, development build)
 //   commits    no React commit for an output chunk (commits.chunk, development build)
@@ -75,6 +77,9 @@ const PART = process.env.PART ?? '';
 const READER = process.env.SCREEN_READER ?? '';
 if (READER !== '' && READER !== 'on') throw new Error(`SCREEN_READER must be on or not set, it is ${JSON.stringify(READER)}`);
 const MODE = READER === 'on' ? ' [screen reader mode on]' : '';
+/** The main thread slowed this many times in the section `hidden` of Chromium (`CPU_SLOWDOWN=<n>`): a proof that a bound has room on a slower machine, set by no unit of CI. 1 is no slowdown. */
+const SLOWDOWN = process.env.CPU_SLOWDOWN === undefined || process.env.CPU_SLOWDOWN === '' ? 1 : Number(process.env.CPU_SLOWDOWN);
+if (!Number.isFinite(SLOWDOWN) || SLOWDOWN < 1) throw new Error(`CPU_SLOWDOWN must be a number of 1 or more, or not set, it is ${JSON.stringify(process.env.CPU_SLOWDOWN)}`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -97,8 +102,11 @@ const CONTROLS = {
   'resize-chatty': { assertion: 'resize.messages', section: 'resize', init: () => { const original = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...rest) => original(fn, ms === 100 ? 0 : ms, ...rest); } },
   // A hidden panel that asks for frames it has no use for: six loops of animation frames, for as long as the shell's output is being taken in (`stage: flood`, which is the 2 MB and then the 20 MB written while the panel is hidden).
   'hidden-frames': { assertion: 'hidden.frames', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { for (let n = 0; n < 6; n += 1) { const tick = () => { if (window.__phase === 'flood') requestAnimationFrame(tick); }; tick(); } }) },
-  // One callback of the page that holds the main thread for 150 ms while the shell's output is being taken in: the longest task, and a long task in Chromium, which the count of callbacks and the frames never see.
+  // One callback of the page that holds the main thread for 150 ms while the shell's output is being taken in: the longest callback (90 ms at most), which the count of callbacks and the frames never see. It is under the bound of a long task (250 ms): `hidden-long-task` is the one that is over it.
   'hidden-burn': { assertion: 'hidden.work', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { if (window.__burnInstalled) return; window.__burnInstalled = true; const original = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => original(typeof fn === 'function' ? (...inner) => { if (!window.__burned && window.__phase === 'flood') { window.__burned = true; const until = performance.now() + 150; while (performance.now() < until); } return fn(...inner); } : fn, ms, ...rest); }) },
+  // One task of the page that holds the main thread for 400 ms while the shell's output is being taken in, and that no callback shows: it runs as a microtask after the first timer callback of the flood has returned, so the time the callbacks add up
+  // to and the longest of them do not see it, and only the browser's own count of long tasks (Chromium) does: 400 ms against the bound of 250.
+  'hidden-long-task': { assertion: 'hidden.work', section: 'hidden', engines: ['chromium'], stage: 'flood', after: (page) => page.evaluate(() => { if (window.__stallInstalled) return; window.__stallInstalled = true; const original = window.setTimeout; window.setTimeout = (fn, ms, ...rest) => original(typeof fn === 'function' ? (...inner) => { const result = fn(...inner); if (!window.__stalled && window.__phase === 'flood') { window.__stalled = true; queueMicrotask(() => { const until = performance.now() + 400; while (performance.now() < until); }); } return result; } : fn, ms, ...rest); }) },
   // A hidden panel that is not at rest once everything was taken in: a frame loop and an interval that go on (`stage: rest`: the shell's output has all been taken in).
   'hidden-rest': { assertion: 'hidden.rest', section: 'hidden', engines: ['chromium'], stage: 'rest', after: (page) => page.evaluate(() => { const tick = () => { if (window.__phase === 'rest') requestAnimationFrame(tick); }; tick(); setInterval(() => undefined, 500); }) },
   // A page that draws what a hidden terminal is given: every event delivered changes an attribute of the document, outside the emulator's own element.
@@ -1176,7 +1184,7 @@ const earlyAcks = (page) => page.evaluate(() => window.__pty.log.ackState.filter
  * acknowledged, and the host has no pause left (`flow.hidden`); the emulator was given every byte in the order the shell wrote them (`hidden.drain`: the numbered events are where they belong); in a number of frames that follows from the bytes
  * (`hidden.frames`: a frame takes `FLOW.hiddenFrame` bytes, and what xterm asks for besides is counted too); in callbacks that are bounded in number, in their time added up and in the longest of them (`hidden.work`); and the page's own
  * document is not touched while xterm's own is bounded (`hidden.draws`: xterm measures and updates its scrollbar in a hidden element, which costs mutations that grow with what it is given). No byte is acknowledged before it was
- * parsed (`flow.paced`). Once everything is in, the page is at rest: no frame, no timer, no change (`hidden.rest`). The bounds are counts, and times with at least 3 times the room the laptop needs.
+ * parsed (`flow.paced`). Once everything is in, the page is at rest: no frame, no timer, no change (`hidden.rest`). The bounds are counts, and times that keep at least 3 times the laptop's figure and 1.5 times the worst the runner showed (the comment above `hidden.work`).
  */
 async function hidden(ctx) {
   const { browser, origin, viewport, engine } = ctx;
@@ -1189,6 +1197,10 @@ async function hidden(ctx) {
   await typeLine(page, 'hello');
   const cdp = engine === 'chromium' ? await page.context().newCDPSession(page) : null;
   await cdp?.send('Performance.enable');
+  if (cdp !== null && SLOWDOWN > 1) {
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: SLOWDOWN });
+    note(`hidden ${engine}: the main thread is slowed ${String(SLOWDOWN)} times (CPU_SLOWDOWN: a proof, no unit of CI sets it)`);
+  }
   await page.click('[data-shell-part="panelToggle"]');
   await sleep(400);
   const hooks = { cdp, perturb: (stage) => perturb(ctx, page, stage) };
@@ -1209,9 +1221,19 @@ async function hidden(ctx) {
     check('hidden.frames', during.raf <= frames, `${tag}: the page asked for ${String(during.raf)} frames to take it in (${String(frames)} at most: 1.5 times the ${String(Math.round(units * 10) / 10)} frames of ${String(FLOW.hiddenFrame)} B the bytes need, 80, and 1 for each of the ${String(deliveries)} output frames the host delivered)`);
     const timers = Math.ceil(5 * units) + 40;
     const ran = during.fired - during.frames;
-    const busy = 80 * MB + 150;
+    const busy = 80 * MB + 250;
+    // The bounds that are times come from the runner, not the laptop (docs/ui-next/status/PT2/terminal-samples.txt: 228 processes of this section in the logs of 21 runs of the kit probes workflow on 2026-11-24, in Chromium, and WebKit in the 21 of the probe
+    // itself); each keeps at least 1.5 times the worst the runner showed, and 3 times the laptop's. A CALLBACK (a timer or a frame, the page's or xterm's), 2 MB burst: 13.2 to 45.7 ms, median 18.3, in Chromium and 17 to 33 ms in WebKit; 90 ms is 2.0 and
+    // 2.7 times the worst and 4.9 times the median (it was 60: 1.3 times). The TIME ADDED UP, 2 MB burst: 54 to 156 ms in Chromium and 126 to 249 in WebKit; 410 is 2.6 and 1.65 times the worst (it was 310: 1.2 times in WebKit); 20 MB burst: 270 to 571 ms
+    // and 587 to 1,065; 1,850 is 3.2 and 1.7 times the worst. A LONG TASK (the browser's own count, 50 ms and over): none in the 205 runs of the 20 MB burst without `draw-hidden`, none in the 205 of the 2 MB burst without `hidden-burn`. The 20 MB burst is
+    // one task of the fixture's own, the shell writing the bytes: 74.5 to 157.8 ms on the runner in 228 runs (the laptop: 34 ms), and the browser reported it in none of the 205 without `draw-hidden` and in 23 of its 23, where the 20,000 changes it makes to the
+    // page's document run the probe's own observer in that same task. That burst took 76.3 to 129.3 ms, median 99.4, and the old bound of 120 ms failed it 5 times in 23 (long tasks of 124, 126, 127, 128 and 130 ms; one job read 129.3 ms and, rerun, 82.8, another
+    // 126.3 and 81.7). 250 ms is 1.9 times the worst of those, 2.5 times their median and 1.6 times the longest burst of any control; a task of 250 ms takes in 8.7 MB at the runner's worst cost of 28.6 ms a MB, more than 8 times the 1 MiB the host lets stay
+    // unacknowledged. Each of the two clauses has a control that only it sees: `hidden-burn` holds a callback for 150 ms (over 90, under 250) and `hidden-long-task` holds the thread for 400 ms where no callback shows it (over 250).
+    const longestCallback = 90;
+    const longestTask = 250;
     const longtask = during.longtasks === null ? 0 : Math.max(0, ...during.longtasks);
-    check('hidden.work', ran <= timers && during.busy <= busy && during.longest <= 60 && longtask <= 120, `${tag}: ${String(ran)} timer callbacks ran (${String(timers)} at most: xterm's own write timers), the callbacks of the page and of xterm took ${String(round(during.busy))} ms in all (${String(busy)} at most), the longest ${String(round(during.longest))} ms (60 at most)${during.longtasks === null ? '' : `, the longest long task ${String(round(longtask))} ms (120 at most)`}`);
+    check('hidden.work', ran <= timers && during.busy <= busy && during.longest <= longestCallback && longtask <= longestTask, `${tag}: ${String(ran)} timer callbacks ran (${String(timers)} at most: xterm's own write timers), the callbacks of the page and of xterm took ${String(round(during.busy))} ms in all (${String(busy)} at most), the longest ${String(round(during.longest))} ms (${String(longestCallback)} at most)${during.longtasks === null ? '' : `, the longest long task ${String(round(longtask))} ms (${String(longestTask)} at most)`}`);
     // xterm measures and updates its scrollbar for each write it is given, so its changes grow with the bytes and with the frames they came in: 6000 a MB and 20 for each output frame.
     const draws = Math.ceil(6000 * MB) + 5000 + 20 * deliveries;
     note(`hidden ${engine}, ${flood.name}: ${String(deliveries)} output frames reached the page for ${String(bytes)} B`);

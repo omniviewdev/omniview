@@ -86,7 +86,7 @@ function ProgressCell({ row }: { readonly row: Operation }) {
   );
 }
 
-/** When the host first had the record: the mock's words on the page's one age clock, and the absolute stamp in UTC as the tip (it has no words of its own: they would be a second rule to disagree with the first). */
+/** When the host first had the record: the mock's words on the page's one age clock, and the instant in the machine's own time with the seconds as the tip (it has no words of its own: they would be a second rule to disagree with the first). */
 function StartedCell({ at }: { readonly at: number }) {
   const words = useAge(at, ago);
   if (!Number.isFinite(at)) {

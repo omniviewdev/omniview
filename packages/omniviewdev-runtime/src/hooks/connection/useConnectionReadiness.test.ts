@@ -430,3 +430,84 @@ describe('imperative connection readiness', () => {
     expect(result.current.phase).toBe('connected');
   });
 });
+
+// A start that fails with an error is told twice: by its own rejection and by the host's FAILED `connection/status` event, which carries the
+// same public error. Whichever is heard first, the phase and the message are what the rejection alone gives: the class of the failure and its sentence.
+describe('a start that fails with an error', () => {
+  const failures = [
+    { code: 'UNAUTHORIZED', status: 401, type: 'omniview:resource/unauthorized', title: 'Authentication required', detail: 'The provider requires authentication.', phase: 'unauthorized' },
+    { code: 'FORBIDDEN', status: 403, type: 'omniview:resource/forbidden', title: 'Access denied', detail: 'The operation is not permitted.', phase: 'forbidden' },
+    { code: 'NOT_FOUND', status: 404, type: 'omniview:resource/not-found', title: 'Not found', detail: 'The requested resource was not found.', phase: 'not-found' },
+  ] as const;
+  type Failure = (typeof failures)[number];
+  // The error as the host builds it (`apperror.ForResource`). The event carries it as a field. The rejection carries the same error twice, as the host's answer to a failed call does
+  // (HTTP 422, read on the real host: `{ message: <the JSON of the error>, cause: <the error>, kind: 'RuntimeError' }`).
+  const envelope = (failure: Failure) => ({ type: failure.type, title: failure.title, status: failure.status, detail: failure.detail, code: failure.code, requestId: 'request-1', recovery: 'none' });
+  const rejection = (failure: Failure) => Object.assign(new Error(JSON.stringify(envelope(failure))), { cause: envelope(failure), kind: 'RuntimeError' });
+  const failedEvent = (error: unknown) => ({ ...options, status: 'FAILED', name: 'Cluster', error });
+  const shown = (result: { current: { phase: string; message?: string | undefined } }) => ({ phase: result.current.phase, message: result.current.message });
+
+  /** A window whose connection is starting: `reject` is the host answering that start with an error. */
+  async function starting() {
+    const start = deferred();
+    transport.start.mockReturnValue(start.promise);
+    const hook = renderHook(() => useConnectionReadiness(options));
+    await waitFor(() => expect(hook.result.current.phase).toBe('disconnected'));
+    let action!: Promise<void>;
+    act(() => { action = hook.result.current.connect(); });
+    await waitFor(() => expect(transport.start).toHaveBeenCalledTimes(1));
+    return {
+      result: hook.result,
+      reject: (error: unknown) => act(async () => {
+        start.reject(error);
+        await action;
+      }),
+    };
+  }
+
+  describe.each(failures)('of the class $code', (failure) => {
+    const expected = { phase: failure.phase, message: failure.detail };
+
+    it('is its class and its sentence when only the rejection is heard', async () => {
+      const { result, reject } = await starting();
+      await reject(rejection(failure));
+      expect(shown(result)).toEqual(expected);
+    });
+
+    it('is its class and its sentence when the event is heard before the rejection', async () => {
+      const { result, reject } = await starting();
+      emit('connection/status', failedEvent(envelope(failure)));
+      await reject(rejection(failure));
+      expect(shown(result)).toEqual(expected);
+    });
+
+    it('is its class and its sentence when the event is heard after the rejection', async () => {
+      const { result, reject } = await starting();
+      await reject(rejection(failure));
+      emit('connection/status', failedEvent(envelope(failure)));
+      expect(shown(result)).toEqual(expected);
+    });
+
+    it('is its class and its sentence for a window that was only checking when the host started it', async () => {
+      const check = deferred();
+      transport.check.mockReturnValue(check.promise);
+      const { result } = renderHook(() => useConnectionReadiness(options));
+      await waitFor(() => expect(transport.check).toHaveBeenCalledTimes(1));
+      emit('connection/status', failedEvent(envelope(failure)));
+      await act(async () => check.resolve(status('DISCONNECTED')));
+      expect(shown(result)).toEqual(expected);
+    });
+  });
+
+  it.each([
+    ['a stack trace', 'Error: private diagnostic\n    at backend (server.go:42:1)'],
+    ['a payload', '{"error":"private backend payload"}'],
+    ['a number', 42],
+    ['an object that is not the host\'s error', { message: 'private diagnostic', path: '/Users/someone/.kube/config' }],
+  ])('shows nothing of an event error that is %s', async (_name, error) => {
+    const { result, reject } = await starting();
+    emit('connection/status', failedEvent(error));
+    await reject(rejection(failures[0]));
+    expect(shown(result)).toEqual({ phase: 'error', message: 'The operation could not be completed.' });
+  });
+});

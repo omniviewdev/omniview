@@ -1,0 +1,22 @@
+#!/bin/bash
+# Re-creates the RED run of the host half of PT2 item (1) (docs/ui-next/status/PT2/red-go.txt) after the implementation is in the tree:
+# the tests run against a SCRATCH copy of the three files that call the new code, with those calls taken out, through `go test -overlay`.
+# What is left of the change is what the first red run had: two data-only declarations (ConnectionStatusPayload.Error, controller.startFailures),
+# so the tests compile and fail by their own assertions. The worktree is never edited. Run from the repo root.
+export GOWORK=off GOTOOLCHAIN=local
+WT=${ROOT:-$PWD}
+S=${SKEL:-/tmp/pt2-skel}
+R=backend/pkg/plugin/resource
+rm -rf "$S" && mkdir -p "$S" && cd "$WT" || exit 2
+for f in controller.go connection_change.go profile_invalidation.go; do
+  sed -e '/c\.pruneStartFailuresLocked(pluginID)$/d' \
+      -e '/c\.publishStartFailure(ctx, pluginID, connectionID, startGeneration, startEpoch, err)$/d' \
+      -e '/c\.forgetStartFailure(pluginID, connectionID)$/d' \
+      -e 's/c\.withStartFailure(pluginID, &state)/_ = state/' \
+      -e '/A start that answered ends the failure of an earlier one/d' "$R/$f" > "$S/$f"
+done
+printf '{"Replace":{"%s":"%s","%s":"%s","%s":"%s"}}' \
+  "$WT/$R/controller.go" "$S/controller.go" "$WT/$R/connection_change.go" "$S/connection_change.go" "$WT/$R/profile_invalidation.go" "$S/profile_invalidation.go" > "$S/overlay.json"
+# The names of the new tests: every test function of connection_start_failure_test.go.
+RUN=$(grep -o '^func Test[A-Za-z0-9_]*' "$R/connection_start_failure_test.go" | sed 's/^func //' | paste -sd'|' -)
+go test -overlay="$S/overlay.json" -count=1 -timeout 300s -run "^($RUN)\$" "./$R/"

@@ -148,6 +148,16 @@ an `activity/observation-error` diagnostic. The runtime shows safe, copyable tex
 without persisting another notification, changing the action result, or replaying
 the mutation. Verify the actual remote outcome before retrying.
 
+`useActivities()` reports a failure in two fields. `unavailable` is the provider's own: a
+subscription or a heartbeat failed and none has succeeded since, so the records it holds may be
+stale. A heartbeat that gets through while the subscription is down makes the subscription again.
+`error` is what the toast and the Notification Center say, the first failure the provider holds:
+the `activity/observation-error` diagnostic, then `unavailable`, then a failed `notify`, then a
+failed `openDetails`. Each clears when its own source recovers and no other recovery clears it:
+the diagnostic with the next heartbeat or subscription that succeeds, a failed call with the next
+success of the same call. Read `unavailable`, not `error`, to learn whether the service can be
+observed.
+
 #### Host reporting and persistence
 
 The host owns one profile-local activity history. Task execution, alert condition,

@@ -1,0 +1,16 @@
+#!/bin/bash
+# Re-creates the RED run of the follow-up of PT2 item (1) (docs/ui-next/status/PT2/red-go-answered.txt) with the FINAL tests, after the implementation is in the tree:
+# the tests run against a SCRATCH copy of controller.go in which the branch of StartConnection that handles an answered failure status never runs
+# (the condition is made false), through `go test -overlay`. What is left is the tree before the change: the error path, the record, the list. The worktree is never edited.
+# Run from the repo root.
+export GOWORK=off GOTOOLCHAIN=local
+WT=${ROOT:-$PWD}
+S=${SKEL:-/tmp/pt2-answered-skel}
+R=backend/pkg/plugin/resource
+rm -rf "$S" && mkdir -p "$S" && cd "$WT" || exit 2
+sed -e 's/if code := answeredFailureCode(conn.Status); code != "" {/if code := ""; code != "" {/' "$R/controller.go" > "$S/controller.go"
+cmp -s "$R/controller.go" "$S/controller.go" && { echo "FAULT NOT APPLIED"; exit 2; }
+printf '{"Replace":{"%s":"%s"}}' "$WT/$R/controller.go" "$S/controller.go" > "$S/overlay.json"
+# The names of the tests: every test function of connection_start_failure_test.go.
+RUN=$(grep -o '^func Test[A-Za-z0-9_]*' "$R/connection_start_failure_test.go" | sed 's/^func //' | paste -sd'|' -)
+go test -overlay="$S/overlay.json" -count=1 -timeout 300s -run "^($RUN)\$" "./$R/"

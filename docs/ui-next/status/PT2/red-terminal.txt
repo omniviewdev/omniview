@@ -1,0 +1,272 @@
+PT2 item 5: the proof for the time bounds of `hidden.work` (ui-next/shell/probes/terminal-probe.mjs, section `hidden`, Chromium 1440 x 900)
+============================================================================================================================================
+
+MACHINE AND METHOD
+  Darwin arm64 laptop shared with other agents; node v26.12.0; Playwright 1.64.1 (its Chromium); 2026-11-24, 18:15 to 18:35 local. The load average is printed before every run (it was 4 to 11: AGENTS 27).
+  Every run starts from a clean environment: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=<control> [ASSERTION_OFF=<regex>] [CPU_SLOWDOWN=<n>] node ui-next/shell/probes/terminal-probe.mjs
+  The fixture was built once, `env -i HOME="$HOME" PATH="$PATH" OMNIVIEW_UI=next NODE_ENV=production node ui-next/shell/probes/terminal-build.mjs /tmp/pt2-terminal-dist` (4 s), and every run reads it with FIXTURE_DIST: what changed is the probe script, not what it loads.
+  NEW, this PR, set by no unit of CI: CPU_SLOWDOWN=<n> makes the main thread of Chromium n times slower in the section `hidden` (CDP Emulation.setCPUThrottlingRate on the probe's own session). Without it this laptop reads a 20 MB burst of
+  34 ms in `draw-hidden` (the runner: 76 to 130 ms, median 99, in 23 runs); at 4 it reads 136 to 148 ms and the browser reports one long task, as the runner does. A run prints the command, the load, the exit status, the 20 MB line of the section (shortened to what
+  matters here: the callbacks of the page and xterm added up, the longest callback, the long tasks the browser reported, the burst in ms) and the probe's verdict. "detected by X" and exit 0 is right for a control; "NOT DETECTED" and exit 1 is right with its assertion removed.
+
+1. RED, from CI: the planted control `draw-hidden` (it must fail `hidden.draws` and nothing else) failed `hidden.work` on the 120 ms bound in 5 of 23 runs of the kit probes workflow (the table: docs/ui-next/status/PT2/terminal-samples.txt)
+  run 45438893162 (ui-next/t3a-terminal-find-menu @ 6fbf62b8), Kit probes shard 8, attempt 1:
+      NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 78 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 549.9 ms in all (1750 at most), the longest 9.3 ms (60 at most), the longest long task 124 ms (120 at most)
+  run 45476530200 (main @ e70aa2ce), Kit probes shard 7, attempt 1:
+      NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 78 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 499.1 ms in all (1750 at most), the longest 5.3 ms (60 at most), the longest long task 128 ms (120 at most)
+  run 45494937546 (docs/kit-pilot @ 265498d7), Kit probes shard 7, attempt 1:
+      NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 77 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 529.3 ms in all (1750 at most), the longest 7.5 ms (60 at most), the longest long task 130 ms (120 at most)
+  run 45497840091 (ui-next/pt1-problems-operations @ ac2743a3), Kit probes shard 15, attempt 1:
+      NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 78 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 531.9 ms in all (1750 at most), the longest 5.6 ms (60 at most), the longest long task 126 ms (120 at most)
+  run 45503108915 (ui-next/pt1-problems-operations @ 2e932c40), Kit probes shard 15, attempt 1:
+      NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 78 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 502.1 ms in all (1750 at most), the longest 5.5 ms (60 at most), the longest long task 127 ms (120 at most)
+
+2. RED, reproduced here with the OLD bounds (callback 60, added up 80 ms a MB + 150, long task 120): `draw-hidden` with the main thread slowed 4 times, 5 runs: 5 of 5 FAIL on `hidden.work` ("failed another assertion"), exit 1
+   (the probe at this point held only the new CPU_SLOWDOWN knob; the bounds were the old ones: the messages say "(60 at most)" and "(120 at most)")
+--- RED, old bound (120 ms), main thread slowed 4 times, run 1 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.69 6.07 6.39
+    exit status: 1
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 707.3 ms of callbacks, the longest callback 12.7 ms, 1 long tasks; the burst took 136.8 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 77 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 707.3 ms in all (1750 at most), the longest 12.7 ms (60 at most), the longest long task 138 ms (120 at most)
+--- RED, old bound (120 ms), main thread slowed 4 times, run 2 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.35 5.99 6.36
+    exit status: 1
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 714.2 ms of callbacks, the longest callback 8.4 ms, 1 long tasks; the burst took 140.9 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 77 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 714.2 ms in all (1750 at most), the longest 8.4 ms (60 at most), the longest long task 142 ms (120 at most)
+--- RED, old bound (120 ms), main thread slowed 4 times, run 3 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.24 5.96 6.34
+    exit status: 1
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 702.2 ms of callbacks, the longest callback 11.6 ms, 1 long tasks; the burst took 136 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 77 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 702.2 ms in all (1750 at most), the longest 11.6 ms (60 at most), the longest long task 138 ms (120 at most)
+--- RED, old bound (120 ms), main thread slowed 4 times, run 4 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.46 5.99 6.35
+    exit status: 1
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 714.4 ms of callbacks, the longest callback 10.5 ms, 1 long tasks; the burst took 137.7 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 77 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 714.4 ms in all (1750 at most), the longest 10.5 ms (60 at most), the longest long task 138 ms (120 at most)
+--- RED, old bound (120 ms), main thread slowed 4 times, run 5 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 6.48 6.20 6.42
+    exit status: 1
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 714.3 ms of callbacks, the longest callback 11.1 ms, 1 long tasks; the burst took 139.1 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 77 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 714.3 ms in all (1750 at most), the longest 11.1 ms (60 at most), the longest long task 140 ms (120 at most)
+
+3. GREEN: the same command, the NEW bounds (callback 90, added up 80 ms a MB + 250, long task 250), 5 runs: 5 of 5 "detected by hidden.draws", exit 0, with the long task of 140 to 148 ms still reported by the browser
+--- GREEN, new bounds (callback 90, busy +250, long task 250 ms), main thread slowed 4 times, run 1 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 16.86 10.20 7.91
+    exit status: 0
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 734.4 ms of callbacks, the longest callback 12.3 ms, 1 long tasks; the burst took 145 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 6358 times (14000 at most)
+--- GREEN, new bounds (callback 90, busy +250, long task 250 ms), main thread slowed 4 times, run 2 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 15.91 10.11 7.89
+    exit status: 0
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 725.4 ms of callbacks, the longest callback 10.2 ms, 1 long tasks; the burst took 147.6 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 6262 times (14000 at most)
+--- GREEN, new bounds (callback 90, busy +250, long task 250 ms), main thread slowed 4 times, run 3 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 15.04 10.02 7.87
+    exit status: 0
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 720.2 ms of callbacks, the longest callback 9.1 ms, 1 long tasks; the burst took 144.8 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 6501 times (14000 at most)
+--- GREEN, new bounds (callback 90, busy +250, long task 250 ms), main thread slowed 4 times, run 4 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 13.33 9.82 7.83
+    exit status: 0
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 711.4 ms of callbacks, the longest callback 8.3 ms, 1 long tasks; the burst took 142.1 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 6270 times (14000 at most)
+--- GREEN, new bounds (callback 90, busy +250, long task 250 ms), main thread slowed 4 times, run 5 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 13.06 9.83 7.84
+    exit status: 0
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 709.1 ms of callbacks, the longest callback 10.5 ms, 1 long tasks; the burst took 139.7 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 6429 times (14000 at most)
+
+4. THE MARGIN, and where the bound is. 1.5 times the worst runner sample (130 ms) is 195 ms: the main thread slowed 5.6 times gives a burst of 199 to 207 ms, 3 runs: 3 of 3 detected by hidden.draws. Slowed 8 times the burst is 301 and 302 ms:
+   2 of 2 fail `hidden.work`, and only its long task clause is over (the added-up callbacks 1,593 and 1,608 of 1,850 and the longest callback 20.5 and 24.1 of 90 are inside; the 2 MB burst is inside too: the message is the 20 MB one)
+   A burst that is not planted is not reported by the browser even above the old bound: `hidden-rest` (nothing planted in the burst) at 4 times slower, burst 138.6 ms, 0 long tasks.
+--- MARGIN: the worst runner sample x1.5 (burst about 195 ms): main thread slowed 5.6 times, run 1 of 3: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=5.6 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.17 6.99 7.02
+    exit status: 0
+    hidden chromium: the main thread is slowed 5.6 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 1051.5 ms of callbacks, the longest callback 16 ms, 1 long tasks; the burst took 199.5 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 6991 times (14000 at most)
+--- MARGIN: the worst runner sample x1.5 (burst about 195 ms): main thread slowed 5.6 times, run 2 of 3: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=5.6 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.39 7.01 7.02
+    exit status: 0
+    hidden chromium: the main thread is slowed 5.6 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 1033.5 ms of callbacks, the longest callback 14.9 ms, 1 long tasks; the burst took 202.3 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 7008 times (14000 at most)
+--- MARGIN: the worst runner sample x1.5 (burst about 195 ms): main thread slowed 5.6 times, run 3 of 3: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=5.6 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.27 6.93 6.99
+    exit status: 0
+    hidden chromium: the main thread is slowed 5.6 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 1029.6 ms of callbacks, the longest callback 14.7 ms, 1 long tasks; the burst took 207.3 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 6960 times (14000 at most)
+--- OVER THE BOUND: burst over 250 ms: main thread slowed 8 times, run 1 of 2: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=8 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.89 7.03 7.03
+    exit status: 1
+    hidden chromium: the main thread is slowed 8 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 1592.7 ms of callbacks, the longest callback 20.5 ms, 1 long tasks; the burst took 302.1 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 83 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 1592.7 ms in all (1850 at most), the longest 20.5 ms (90 at most), the longest long task 305 ms (250 at most)
+--- OVER THE BOUND: burst over 250 ms: main thread slowed 8 times, run 2 of 2: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=8 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.44 6.90 6.98
+    exit status: 1
+    hidden chromium: the main thread is slowed 8 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 1607.5 ms of callbacks, the longest callback 24.1 ms, 1 long tasks; the burst took 301.4 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: 85 timer callbacks ran (422 at most: xterm's own write timers), the callbacks of the page and of xterm took 1607.5 ms in all (1850 at most), the longest 24.1 ms (90 at most), the longest long task 302 ms (250 at most)
+--- A PLAIN BURST IS NOT REPORTED: hidden-rest (nothing planted in the burst), main thread slowed 4 times, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-rest CPU_SLOWDOWN=4 node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.48 6.88 6.97
+    exit status: 0
+    hidden chromium: the main thread is slowed 4 times (CPU_SLOWDOWN: a proof, no unit of CI sets it)
+    hidden chromium, 20 MB written while the panel was hidden: 745.2 ms of callbacks, the longest callback 8.6 ms, 0 long tasks; the burst took 138.6 ms of the page's task
+    NEGATIVE CONTROL "hidden-rest": detected by hidden.rest: hidden.rest: chromium: once everything was taken in the hidden page asked for 72 frames and 0 timeouts and 0 intervals in 1.2 s, 74 callbacks ran, and the document changed 0 times (xterm's own 0): non
+
+5. NOT SLOWED, `draw-hidden`: the control 5 runs (5 of 5 "detected by hidden.draws", exit 0) and with its assertion removed, `ASSERTION_OFF=^hidden\.draws$`, 5 runs (5 of 5 "NOT DETECTED (hidden.draws did not fail)", exit 1, so no other assertion failed)
+--- draw-hidden, control, run 1 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 7.37 8.82 7.59
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 181.8 ms of callbacks, the longest callback 2.2 ms, 0 long tasks; the burst took 33.7 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 5405 times (14000 at most)
+--- draw-hidden, control, run 2 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 7.02 8.72 7.56
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 177.5 ms of callbacks, the longest callback 2.6 ms, 0 long tasks; the burst took 34.5 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 5405 times (14000 at most)
+--- draw-hidden, control, run 3 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 6.46 8.58 7.52
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 179.6 ms of callbacks, the longest callback 2.2 ms, 0 long tasks; the burst took 35 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 5405 times (14000 at most)
+--- draw-hidden, control, run 4 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.61 8.33 7.44
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 181.1 ms of callbacks, the longest callback 2.5 ms, 0 long tasks; the burst took 36.5 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 4811 times (14000 at most)
+--- draw-hidden, control, run 5 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.32 8.22 7.41
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 182 ms of callbacks, the longest callback 2.1 ms, 0 long tasks; the burst took 33.9 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 4811 times (14000 at most)
+--- draw-hidden, assertion removed, run 1 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden ASSERTION_OFF=^hidden\.draws$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.06 8.12 7.38
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 178.7 ms of callbacks, the longest callback 2.1 ms, 0 long tasks; the burst took 34.2 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": NOT DETECTED (hidden.draws did not fail)
+--- draw-hidden, assertion removed, run 2 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden ASSERTION_OFF=^hidden\.draws$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.51 7.90 7.31
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 183.1 ms of callbacks, the longest callback 2.2 ms, 0 long tasks; the burst took 35.3 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": NOT DETECTED (hidden.draws did not fail)
+--- draw-hidden, assertion removed, run 3 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden ASSERTION_OFF=^hidden\.draws$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.31 7.80 7.28
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 179.5 ms of callbacks, the longest callback 2.5 ms, 0 long tasks; the burst took 35.4 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": NOT DETECTED (hidden.draws did not fail)
+--- draw-hidden, assertion removed, run 4 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden ASSERTION_OFF=^hidden\.draws$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.44 7.77 7.27
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 177.3 ms of callbacks, the longest callback 2.4 ms, 0 long tasks; the burst took 36.1 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": NOT DETECTED (hidden.draws did not fail)
+--- draw-hidden, assertion removed, run 5 of 5: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden ASSERTION_OFF=^hidden\.draws$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.29 7.63 7.22
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 176.8 ms of callbacks, the longest callback 2.1 ms, 0 long tasks; the burst took 35.4 ms of the page's task
+    NEGATIVE CONTROL "draw-hidden": NOT DETECTED (hidden.draws did not fail)
+
+6. THE OTHER CONTROLS OF THE SECTION, once each, with the assertion removed beside them: `hidden-burn` (hidden.work), `hidden-frames` (hidden.frames), `hidden-rest` (hidden.rest) and the new `hidden-long-task` (hidden.work): 4 of 4 detected, 4 of 4 NOT DETECTED with the assertion removed
+--- hidden-burn, control, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-burn  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.12 7.38 7.14
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 179.8 ms of callbacks, the longest callback 2.2 ms, 0 long tasks; the burst took 34 ms of the page's task
+    NEGATIVE CONTROL "hidden-burn": detected by hidden.work: hidden.work: chromium, 2 MB written while the panel was hidden: 9 timer callbacks ran (79 at most: xterm's own write timers), the callbacks of the page and of xterm took 182.6 ms in all (410 at most),
+--- hidden-burn, assertion removed, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-burn ASSERTION_OFF=^hidden\.work$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.03 7.30 7.12
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 184.9 ms of callbacks, the longest callback 2.5 ms, 0 long tasks; the burst took 35.3 ms of the page's task
+    NEGATIVE CONTROL "hidden-burn": NOT DETECTED (hidden.work did not fail)
+--- hidden-frames, control, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-frames  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 3.79 7.14 7.06
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 183.2 ms of callbacks, the longest callback 2.4 ms, 0 long tasks; the burst took 39.5 ms of the page's task
+    NEGATIVE CONTROL "hidden-frames": detected by hidden.frames: hidden.frames: chromium, 2 MB written while the panel was hidden: the page asked for 96 frames to take it in (62 at most: 5.5 times the 7.6 frames of 262144 B the bytes need, and 20)
+--- hidden-frames, assertion removed, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-frames ASSERTION_OFF=^hidden\.frames$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 3.80 7.09 7.05
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 179.3 ms of callbacks, the longest callback 2.4 ms, 0 long tasks; the burst took 34.5 ms of the page's task
+    NEGATIVE CONTROL "hidden-frames": NOT DETECTED (hidden.frames did not fail)
+--- hidden-rest, control, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-rest  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.60 7.15 7.07
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 181 ms of callbacks, the longest callback 3 ms, 0 long tasks; the burst took 34.3 ms of the page's task
+    NEGATIVE CONTROL "hidden-rest": detected by hidden.rest: hidden.rest: chromium: once everything was taken in the hidden page asked for 72 frames and 0 timeouts and 0 intervals in 1.2 s, 74 callbacks ran, and the document changed 0 times (xterm's own 0): non
+--- hidden-rest, assertion removed, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-rest ASSERTION_OFF=^hidden\.rest$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 4.87 7.17 7.07
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 182.7 ms of callbacks, the longest callback 2.9 ms, 0 long tasks; the burst took 35.8 ms of the page's task
+    NEGATIVE CONTROL "hidden-rest": NOT DETECTED (hidden.rest did not fail)
+--- hidden-long-task, control, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-long-task  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.12 7.18 7.08
+    exit status: 0
+    hidden chromium, 20 MB written while the panel was hidden: 185.5 ms of callbacks, the longest callback 2.6 ms, 0 long tasks; the burst took 35.1 ms of the page's task
+    NEGATIVE CONTROL "hidden-long-task": detected by hidden.work: hidden.work: chromium, 2 MB written while the panel was hidden: 9 timer callbacks ran (79 at most: xterm's own write timers), the callbacks of the page and of xterm took 34.8 ms in all (410 at most), 
+--- hidden-long-task, assertion removed, run 1 of 1: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-long-task ASSERTION_OFF=^hidden\.work$ node ui-next/shell/probes/terminal-probe.mjs
+    load before: 5.64 7.22 7.09
+    exit status: 1
+    hidden chromium, 20 MB written while the panel was hidden: 191.9 ms of callbacks, the longest callback 3.1 ms, 0 long tasks; the burst took 36.4 ms of the page's task
+    NEGATIVE CONTROL "hidden-long-task": NOT DETECTED (hidden.work did not fail)
+
+   What `hidden-long-task` fails with, in full (REPORT=<file> keeps the whole message; the probe prints 200 characters of it): one failure, `hidden.work`, and only the long task is over:
+      hidden.work: chromium, 2 MB written while the panel was hidden: 9 timer callbacks ran (79 at most: xterm's own write timers), the callbacks of the page and of xterm took 32.5 ms in all (410 at most), the longest 10.7 ms (90 at most), the longest long task 410 ms (250 at most)
+      failures: 1      (env -i ... NEGATIVE_CONTROL=hidden-long-task REPORT=/tmp/pt2-proof/hlt.json node ui-next/shell/probes/terminal-probe.mjs; jq -r '.failures[]')
+
+7. MUTANTS, the proof that each clause I touched is kept by a control and by only one: scratch copies of the probe (deleted after the runs) with the long-task clause removed, and with the callback clause removed
+--- MUTANT 1 (the long-task clause removed): hidden-long-task: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-long-task  node ui-next/shell/probes/terminal-probe.pt2-mutant-no-task.mjs
+    load before: 5.57, 6.40, 6.76
+    exit status: 1
+    NEGATIVE CONTROL "hidden-long-task": NOT DETECTED (hidden.work did not fail)
+--- MUTANT 1 (the long-task clause removed): hidden-burn still seen: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-burn  node ui-next/shell/probes/terminal-probe.pt2-mutant-no-task.mjs
+    load before: 7.52, 6.79, 6.90
+    exit status: 0
+    NEGATIVE CONTROL "hidden-burn": detected by hidden.work: hidden.work: chromium, 2 MB written while the panel was hidden: 9 timer callbacks ran (79 at most: xterm's own write timers), the callbacks of the page and of xterm took 183.8 ms in all (410 at most),
+--- MUTANT 1 (the long-task clause removed): draw-hidden, slowed 8 times, no longer fails hidden.work: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=draw-hidden CPU_SLOWDOWN=8 node ui-next/shell/probes/terminal-probe.pt2-mutant-no-task.mjs
+    load before: 7.51, 6.81, 6.91
+    exit status: 0
+    NEGATIVE CONTROL "draw-hidden": detected by hidden.draws: hidden.draws: chromium, 2 MB written while the panel was hidden: the page's own document changed 2001 times (2 at most: attributes BODY data-delivered), xterm's own 9640 times (14000 at most)
+--- MUTANT 2 (the callback clause removed): hidden-burn: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-burn  node ui-next/shell/probes/terminal-probe.pt2-mutant-no-callback.mjs
+    load before: 9.71, 7.28, 7.07
+    exit status: 1
+    NEGATIVE CONTROL "hidden-burn": NOT DETECTED (hidden.work did not fail)
+--- MUTANT 2 (the callback clause removed): hidden-long-task still seen: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-long-task  node ui-next/shell/probes/terminal-probe.pt2-mutant-no-callback.mjs
+    load before: 9.53, 7.32, 7.09
+    exit status: 0
+    NEGATIVE CONTROL "hidden-long-task": detected by hidden.work: hidden.work: chromium, 2 MB written while the panel was hidden: 9 timer callbacks ran (79 at most: xterm's own write timers), the callbacks of the page and of xterm took 33.8 ms in all (410 at most), 
+--- THE FILE ITSELF: hidden-burn: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-burn  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 10.45, 7.54, 7.17
+    exit status: 0
+    NEGATIVE CONTROL "hidden-burn": detected by hidden.work: hidden.work: chromium, 2 MB written while the panel was hidden: 9 timer callbacks ran (79 at most: xterm's own write timers), the callbacks of the page and of xterm took 182.4 ms in all (410 at most),
+--- THE FILE ITSELF: hidden-long-task: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist NEGATIVE_CONTROL=hidden-long-task  node ui-next/shell/probes/terminal-probe.mjs
+    load before: 9.85, 7.51, 7.16
+    exit status: 0
+    NEGATIVE CONTROL "hidden-long-task": detected by hidden.work: hidden.work: chromium, 2 MB written while the panel was hidden: 9 timer callbacks ran (79 at most: xterm's own write timers), the callbacks of the page and of xterm took 32.2 ms in all (410 at most), 
+   so: without the long-task clause `hidden-long-task` is NOT DETECTED and `hidden-burn` and the 8-times-slowed `draw-hidden` are unchanged; without the callback clause `hidden-burn` is NOT DETECTED and `hidden-long-task` is detected.
+
+8. THE UNIT AS CI RUNS IT: `env -i HOME="$HOME" PATH="$PATH" RUNNER_TEMP=/tmp/pt2-runner-temp node scripts/ci/probe-shards.mjs run 1 terminal-controls-hidden` (ten controls, the new one in it): "10 runs, all passed, 82 s" against the 95 s now listed (the runner read 71 to 85 s for nine controls in 18 runs, 7 to 13 s a control); exit 0
+
+9. THE SECTION UNPLANTED, both engines: `env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 ENGINES=webkit,chromium SECTIONS=hidden FIXTURE_DIST=/tmp/pt2-terminal-dist node ui-next/shell/probes/terminal-probe.mjs`: PASS (26 assertions), exit 0, load 9.1 before, "probe took 13.59 s"
+
+10. OTHER CHECKS
+   node scripts/ci/probe-shards.mjs check            probe-shards: ok (83 units, 46 control units, 368 controls (367 before: hidden-long-task), 37 probe scripts, 0 by hand)
+   node --test scripts/ci/probe-shards.test.mjs scripts/ci/probe-seconds.test.mjs scripts/ci/probe-pack.test.mjs      158 tests, 158 pass, 0 fail
+   pnpm exec eslint ui-next/shell/probes/terminal-probe.mjs scripts/ci/probe-units/terminal.mjs --report-unused-disable-directives      0 errors, 0 warnings (both files linted: --format json shows each)
+   tsc: neither tsconfig.app.json nor tsconfig.test.json includes a .mjs file, so there is nothing of these files for it to check.
+
+NOT VERIFIED
+  - Nothing ran on the runner: the new bounds, the new control and the 95 s are untested on Linux in the container until the first CI run; `CPU_SLOWDOWN` was used on macOS only (CDP throttling is Chromium's own, the knob is read by no unit).
+  - The slowdown is an emulation: it made this laptop read what the runner reads for the burst (136 to 148 ms at 4 times against 124 to 130 on the runner), not every cost of the runner (the callbacks added up for 20 MB were 270 to 571 ms there, median 418, and 702 to 734 ms here at 4 times slower).
+  - The "no callback in the burst task" account of why the browser reports the burst of `draw-hidden` and of no other control is read from the data (23 of 23 and 0 of 205) and from section 4 here (a plain burst of 138.6 ms is not reported); the mechanism inside Chromium was not read [INFERENCE].
+  - The clauses `ran <= timers` and `busy` have no control of their own (nothing plants a page that runs 422 timer callbacks or 1,850 ms of them): the mutation proof above covers the two clauses touched for their time bounds, the callback and the long task, not those two.

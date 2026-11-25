@@ -75,16 +75,16 @@ export const units = [
 
   // A hidden panel (docs/ui-next/status/T2a.md: it goes on reading, parsing and acknowledging, in frames of a smaller share, and draws nothing of the page's), each in Chromium: the create call answers after the shell's first output (the first
   // acknowledgement comes late, with something owed), the output is credited as it is delivered and not when it is parsed, the credit that comes while the host is paused is lost (it never reads again), two slices of the output never reach
-  // the emulator and are acknowledged all the same, the fifth slice comes after the sixth, three more loops of animation frames than the bytes need, one callback that holds the main thread for 150 ms, a frame loop and an interval at rest, a page that
-  // changes its own document for every event it is given.
+  // the emulator and are acknowledged all the same, the fifth slice comes after the sixth, three more loops of animation frames than the bytes need, one callback that holds the main thread for 150 ms, one task that holds it for 400 ms where no callback
+  // shows it (PT2: the long task bound, docs/ui-next/status/PT2/terminal-samples.txt), a frame loop and an interval at rest, a page that changes its own document for every event it is given.
   {
     id: 'terminal-controls-hidden',
     name: 'Probe that the terminal probe sees a hidden terminal that stalls its shell, loses output or works too much',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['flow-late', 'ack-on-receipt', 'ack-lost', 'drop-held', 'swap-held', 'hidden-frames', 'hidden-burn', 'hidden-rest', 'draw-hidden'],
+    controls: ['flow-late', 'ack-on-receipt', 'ack-lost', 'drop-held', 'swap-held', 'hidden-frames', 'hidden-burn', 'hidden-long-task', 'hidden-rest', 'draw-hidden'],
     plants: 'page',
-    seconds: 85,
+    seconds: 95,
   },
 
   // The input and the size (docs/ui-next/terminal-channel-protocol.md section 4, T2a), each in Chromium: a host that takes a size frame and keeps its size, a page that sends what is typed one frame at a time, each after the one before was applied, a size told before

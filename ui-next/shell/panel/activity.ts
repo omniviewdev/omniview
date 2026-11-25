@@ -32,8 +32,8 @@ export type ActivityRecordLike = {
 export type ActivityFeed = {
   readonly getSnapshot: () => readonly ActivityRecordLike[];
   /**
-   * The sentence for a failed observation of the activity service (the provider could not read it), or `undefined` while it can be observed. Records held beside a sentence are what the window saw last, and stay: a tool lists them, and
-   * for none it says the service could not be read, never "no activity", which a read that failed does not mean.
+   * The sentence for a failed observation of the activity service (the provider could not read it), or `undefined` while it can be observed: the runtime provider's `unavailable`, never its wider `error`, which a notice that could not be
+   * published sets too. Records held beside a sentence are what the window saw last, and stay: a tool lists them, and for none it says the service could not be read, never "no activity", which a read that failed does not mean.
    */
   readonly getError: () => string | undefined;
   /** Told when the records or the error change, once for each push. */
@@ -69,10 +69,10 @@ export function subjectOf(source: ActivityRecordLike['source'], resolve: SourceR
 export type ActivityFeedControl = {
   readonly feed: ActivityFeed;
   /**
-   * Gives the feed what the provider holds now: its records, and `error`, the sentence for a failed observation of the service. A push with no `error` says the service can be observed, so it clears the one before. Listeners hear
-   * of it only when the records are not the array the feed already has or the sentence is not the one it has, and once when both are new.
+   * Gives the feed what the provider holds now: its records, and `unavailable`, the sentence for why it cannot observe the service right now. A push with no `unavailable` says the service can be observed, so it clears the one before.
+   * Listeners hear of it only when the records are not the array the feed already has or the sentence is not the one it has, and once when both are new.
    */
-  readonly push: (records: readonly ActivityRecordLike[], error?: string) => void;
+  readonly push: (records: readonly ActivityRecordLike[], unavailable?: string) => void;
 };
 
 const NONE: readonly ActivityRecordLike[] = Object.freeze([]);
@@ -94,13 +94,13 @@ export function createActivityFeed(calls: Pick<ActivityFeed, 'cancel' | 'markRea
       cancel: async (id) => calls.cancel(id),
       markRead: async (id) => calls.markRead(id),
     },
-    push: (next, error) => {
-      if (next === records && error === failure) {
+    push: (next, unavailable) => {
+      if (next === records && unavailable === failure) {
         return;
       }
 
       records = next;
-      failure = error;
+      failure = unavailable;
       for (const listener of [...listeners]) {
         listener();
       }

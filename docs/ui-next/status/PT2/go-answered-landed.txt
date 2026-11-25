@@ -1,0 +1,49 @@
+2026-11-25 host change landed (backend/pkg/plugin/resource): a start that ANSWERS a failure status without an error is a failed start (agent ProblemsOperations.GoAnsweredStatus).
+Before: only a start whose provider call RETURNED AN ERROR was kept and told (FAILED event with `error`, readiness FAILED + readinessError). An answered UNAUTHORIZED, FORBIDDEN, FAILED, ERROR... kept nothing, so the
+class the window used to remember itself (outcomeOfStatus, ui-next/plugins/host/connections/words.ts) was lost from the list. Now:
+
+Files: connection_start_failures.go (answeredFailureCode; publishAnsweredFailure; announceStartFailure, the one place that admits, keeps and emits, which publishStartFailure now also calls),
+controller.go (the branch of StartConnection placed right after the provider call, the payload's doc comment, the comment at forgetStartFailure that says what the answers that are not failures do),
+types.go (doc comment of ReadinessError), connection_start_failure_test.go (27 test functions, 134 subtests; the error path's tables now run for each way a start fails).
+
+What a start that answers does (UNAUTHORIZED, FORBIDDEN, FAILED, ERROR, BAD_REQUEST, NOT_FOUND, and the SDK's TIMEOUT, UNAVAILABLE, REQUEST_ENTITY_TOO_LARGE):
+  - one connection/status event: the status the provider answered, named as every answered start's event is (the connection the provider returned, else the id), and `error`;
+  - `error` is the public error of the CLASS of the status, built through the same gate as the error path (apperror.ForResource(resource.NewError(code, ""), request.ID())), with no text of the status
+    (its Error and Details are never read);
+  - the failure is kept, under pluginsMu.RLock after the same re-admission as the error path (a retired generation, a caller that gave up, a route reconfigured meanwhile: nothing kept, nothing emitted, the
+    refusal is the start's answer), before the event is emitted; a later failure replaces it; a later answer that is not a failure, a stop, a removal, a sync that drops the connection and a plugin
+    init or unload clear it, as for the error path;
+  - GetAllConnectionStates then reads FAILED + readinessError (the same error).
+Classes: UNAUTHORIZED -> UNAUTHORIZED; FORBIDDEN -> FORBIDDEN; the rest -> INTERNAL, NOT PROVIDER_ERROR as the brief said: PROVIDER_ERROR is a 502, which classOf reads as `unreachable`
+("Not responding"), and the brief's own acceptance is that the rest read `failed` (run with bun on stateOfReadiness: red-go-answered.txt). The three SDK failure words the brief did not list
+(TIMEOUT, UNAVAILABLE, REQUEST_ENTITY_TOO_LARGE) are failures too: the window made `failed` of every answer but CONNECTED.
+Not failures (no record, today's single event with no error key, and they end an older failure as every answered start does): CONNECTED, PENDING, DISCONNECTED, UNKNOWN, no status at all, and a word
+this host does not know.
+The status the caller of StartConnection is given is the provider's own answer, untouched, as before (the window's outcomeOfStatus and safeReason read it).
+
+Checks (repo root, 2026-11-25):
+  GOWORK=off go build ./backend/...                                                              exit 0
+  GOWORK=off go vet ./backend/pkg/plugin/resource/                                               exit 0, no output
+  GOWORK=off go test -race -count=5 -run '^(<the 27 test functions of the file>)$' ./backend/pkg/plugin/resource/    ok
+  GOWORK=off go test -race -count=1 -v -run '^(<the 27>)$' ./backend/pkg/plugin/resource/        27 functions PASS, 134 subtests PASS, 0 FAIL, 0 SKIP
+  GOWORK=off go test -race -count=1 ./backend/pkg/plugin/resource/                                ok  68.5 s (the whole package)
+  gofmt -l backend/pkg/plugin/resource/                                                           no output
+  GOWORK=off /tmp/lintbin215/golangci-lint run --new=false --new-from-patch=<working tree vs HEAD, new files as added> --path-prefix= ./backend/pkg/plugin/resource/...    0 issues
+  bash docs/ui-next/status/PT2/go-answered-red.sh.txt                                             13 of the 27 functions FAIL (86 subtests) on the tree before the change: red-go-answered.txt
+  bash docs/ui-next/status/PT2/go-answered-mutations.sh.txt                                       18 of 18 controls red as named, nothing else red: go-answered-mutations-run.txt
+
+Old-shell runtime hook (packages/omniviewdev-runtime/src/connection/connectionReadiness.ts): no change needed, none made. The listener reads `data.error` only for a FAILED event; every other status goes through
+statusSnapshot by its word (UNAUTHORIZED -> unauthorized, FORBIDDEN -> forbidden, NOT_FOUND -> not-found, any other -> error), so an UNAUTHORIZED, FORBIDDEN or NOT_FOUND event that now carries `error` gives the
+phase its word already gave. Applying the error to those events would be WRONG for NOT_FOUND: its error is INTERNAL (500), which failureSnapshot reads as `error`, and the phase would change from not-found.
+
+Not verified: the real host and a browser (seam, WebKit, Chromium) were not run; no real plugin was started; `task bindings` was not run (the payload and the state keep the shape they had); the old-shell
+runtime hook's tests were not run (the package is untouched by this change).
+
+The error path's own controls (docs/ui-next/status/PT2/go-mutations.sh.txt, 36 controls) were run again on this tree and are NOT all valid for it: 20 of 36 are still red as named. The others
+need their patterns brought up to date, none of them reports a hole in the new code: 2 patch a line that changed (`event-status-wrong`: the event's status is now `string(status)`; `kept-after-it-is-announced-not-before`),
+4 patch code that moved (`raw-error-kept` and `raw-text-in-the-detail` now match two `failure.Err = nil` lines, one of them in publishAnsweredFailure where `startErr` does not exist;
+`no-admission-before-publishing` and `no-event-for-an-unnamed-or-unlisted-connection` name lines now in announceStartFailure), 1 encodes the contract this change replaces
+(`a-returned-status-is-kept-as-a-failure`: UNDETECTED, because an answered failure status IS kept now), and 9 (`no-event`, `two-events`, `state-not-folded`, `state-keeps-the-readiness`,
+`state-gives-no-reason`, `answer-clears-every-failure-of-the-plugin`, `nothing-kept`, `every-error-of-a-start-is-published`, `a-returned-status-is-published-twice`) are red as named but also trip the new tests, which their ALLOW lists do not know.
+go-red.sh.txt was not re-run (it is written for the previous tests of the file). go-answered-mutations.sh.txt holds the controls of the code added here (answeredFailureCode, publishAnsweredFailure,
+announceStartFailure, the branch in StartConnection); the admission, the order of keeping and emitting and the single event are controlled there for both paths.
