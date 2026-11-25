@@ -86,13 +86,16 @@ type inputQueue struct {
 	pending int            // operations held, ready or running
 	bytes   int            // their bytes
 	running *op
+	// changed is closed, and set to nil, when room in the queue may have grown or the queue is closed, for a caller that waits for
+	// room (admitOrWait). It is made when one waits: an operation that finishes with nobody waiting allocates nothing.
+	changed chan struct{}
 }
 
 func newInputQueue(dev device, limit queueLimits) *inputQueue {
 	q := &inputQueue{
 		dev: dev, limit: limit,
 		ready: make(chan *op, limit.ops), quit: make(chan struct{}), stopped: make(chan struct{}),
-		mu: sync.Mutex{}, err: nil, next: 1, held: make(map[uint64]*op), gap: nil, pending: 0, bytes: 0, running: nil,
+		mu: sync.Mutex{}, err: nil, next: 1, held: make(map[uint64]*op), gap: nil, pending: 0, bytes: 0, running: nil, changed: nil,
 	}
 	go q.run()
 	return q
@@ -134,10 +137,50 @@ func (q *inputQueue) submit(o *op) error {
 func (q *inputQueue) admit(o *op) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	return q.admitLocked(o)
+}
+
+// admitOrWait is admit for a caller that can wait for room. A queue with no room says so, as admit does, and returns as well the
+// channel that is closed when room may have grown or the queue is closed: the caller waits on it and asks again.
+func (q *inputQueue) admitOrWait(o *op) (<-chan struct{}, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.err == nil && q.fullFor(o) {
+		if q.changed == nil {
+			q.changed = make(chan struct{})
+		}
+		return q.changed, backlogError()
+	}
+	return nil, q.admitLocked(o)
+}
+
+// full says the queue has no room for the operation: too many operations pending, or, for a call that carries bytes, too many bytes.
+func (q *inputQueue) full(o *op) bool {
+	return q.pending >= q.limit.ops || (len(o.data) > 0 && q.bytes >= q.limit.bytes)
+}
+
+// fullFor is full for a caller that waits for room: an input that does not fit the room that is left waits for it, so that the bytes
+// pending never pass the bound. (full lets an input in whenever less than the bound is pending, which is the rule of the queue of the
+// events lane, whose calls are refused and sent again, and lets a queue hold nearly twice its bound.) A queue that holds no bytes takes
+// any input: it never waits for room it cannot have.
+func (q *inputQueue) fullFor(o *op) bool {
+	return q.pending >= q.limit.ops || (len(o.data) > 0 && q.bytes > 0 && q.bytes+len(o.data) > q.limit.bytes)
+}
+
+// roomLocked tells whoever waits for room that it may have grown, or that the queue is closed. The caller holds q.mu.
+func (q *inputQueue) roomLocked() {
+	if q.changed != nil {
+		close(q.changed)
+		q.changed = nil
+	}
+}
+
+// admitLocked is admit with q.mu held.
+func (q *inputQueue) admitLocked(o *op) error {
 	if q.err != nil {
 		return q.err
 	}
-	if q.pending >= q.limit.ops || (len(o.data) > 0 && q.bytes >= q.limit.bytes) {
+	if q.full(o) {
 		return backlogError()
 	}
 	switch {
@@ -249,6 +292,7 @@ func (q *inputQueue) run() {
 			q.running = nil
 			q.pending--
 			q.bytes -= len(o.data)
+			q.roomLocked()
 			q.mu.Unlock()
 			o.finish(err)
 		}
@@ -286,6 +330,7 @@ func (q *inputQueue) close(cause error) {
 		return
 	}
 	q.err = cause
+	q.roomLocked()
 	q.disarmGap()
 	held := q.held
 	q.held = nil

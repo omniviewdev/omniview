@@ -111,9 +111,17 @@ func (s *ServiceWrapper) GetNativeTerminalApplications() (_ []nativeapps.Applica
 // AttachTerminal, and what the shell wrote meanwhile is replayed (docs/ui-next/status/T2-go.md). Its output
 // then arrives on core/exec/stream/output/<id> with an offset. A call that comes from no window starts
 // nothing: a terminal that nothing could ever retire would outlive everything.
+//
+// With launch.channel the terminal is a channel terminal instead (docs/ui-next/terminal-channel-protocol.md): the answer
+// carries a capability, once, and the terminal is reached by it and by one stream, and by nothing that names it by its id.
+// It uses no window: it is not admitted, not owned, and nothing a window does ends it; a call from no window may start one.
+// It excludes launch.page_key, which is the events lane's.
 func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.SessionOptions, launch terminal.Launch) (*terminal.Session, error) {
 	if opts.HasResourceIntent() {
 		return nil, resourcev2.NewError("INVALID_REQUEST", "A local terminal cannot execute a resource request.")
+	}
+	if launch.Channel {
+		return s.createChannelTerminal(ctx, opts, launch)
 	}
 	window, _ := ctx.Value(application.WindowKey).(application.Window)
 	owner, err := s.terminalOwner(window)
@@ -122,7 +130,7 @@ func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.Sessio
 	}
 	session, err := s.Ctrl.CreateTerminal(ctx, owner, terminal.Options{
 		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd,
-		PageKey: launch.PageKey, LeaseMs: launch.LeaseMs, Labels: opts.Labels, Params: opts.Params,
+		PageKey: launch.PageKey, LeaseMs: launch.LeaseMs, Channel: false, Labels: opts.Labels, Params: opts.Params,
 	})
 	if err != nil {
 		return nil, err
@@ -138,6 +146,16 @@ func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.Sessio
 		return nil, admitErr
 	}
 	return session, nil
+}
+
+// createChannelTerminal starts a channel terminal for a call that comes from any page, or none. The terminal has no owner: it is
+// not admitted to the window realm, it is not released when a window is retired, and the controller keeps no record of it that
+// the events lane's calls could find.
+func (s *ServiceWrapper) createChannelTerminal(ctx context.Context, opts execsdk.SessionOptions, launch terminal.Launch) (*terminal.Session, error) {
+	return s.Ctrl.CreateTerminal(ctx, nil, terminal.Options{
+		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd,
+		PageKey: launch.PageKey, LeaseMs: launch.LeaseMs, Channel: true, Labels: opts.Labels, Params: opts.Params,
+	})
 }
 
 // terminalOwner admits the window and names it as the owner of the terminals it opens.
@@ -293,4 +311,36 @@ func (s *ServiceWrapper) GetCwd(sessionID string) (terminal.Directory, error) {
 // is an event whose offset is below the replay's end: the attach forgot what was owed for it.
 func (s *ServiceWrapper) AckTerminal(sessionID string, n int) error {
 	return s.Ctrl.AckTerminal(sessionID, n)
+}
+
+// CloseChannelTerminal ends the channel terminal that the capability names, as the user pressing Close does, and returns
+// when the terminal is gone. Whatever the reason a capability opens nothing (it is wrong, the terminal ended and was
+// dismissed, it is closing) the answer is the one `omniview:session/not-found`, and its words hold nothing the caller sent.
+func (s *ServiceWrapper) CloseChannelTerminal(capability string) error {
+	return s.Ctrl.CloseChannelTerminal(capability)
+}
+
+// ChannelTerminalBusy says whether something other than the shell holds the foreground of the channel terminal that the
+// capability names: idle, busy (with the program's name where the platform gives it) or unknown.
+func (s *ServiceWrapper) ChannelTerminalBusy(capability string) (terminal.Foreground, error) {
+	return s.Ctrl.ChannelTerminalBusy(capability)
+}
+
+// ChannelTerminalCwd says which directory the shell of the channel terminal that the capability names is in now.
+func (s *ServiceWrapper) ChannelTerminalCwd(capability string) (terminal.Directory, error) {
+	return s.Ctrl.ChannelTerminalCwd(capability)
+}
+
+// ListChannelTerminals says what the capabilities a page holds open: one entry for each of those that names a channel terminal
+// (or the end of one that is kept), in the order given, naming the terminal by its id. A capability that opens nothing has no
+// entry, and nothing lists a terminal for a capability that was not given, so a page cannot enumerate terminals it was not given.
+// More than 1,024 capabilities are refused.
+func (s *ServiceWrapper) ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error) {
+	return s.Ctrl.ListChannelTerminals(capabilities)
+}
+
+// DismissChannelTerminal forgets the end that a channel terminal that ended by itself left, which the host keeps until it is
+// dismissed or its lease would have run out. A terminal that is alive is not dismissed: it is closed.
+func (s *ServiceWrapper) DismissChannelTerminal(capability string) error {
+	return s.Ctrl.DismissChannelTerminal(capability)
 }

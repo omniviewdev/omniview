@@ -832,6 +832,10 @@ func main() {
 	for _, service := range services {
 		app.RegisterService(service)
 	}
+	// The terminal channel: one stream for each terminal, named by the capability its first frame shows. The same handler
+	// serves the native build (a held poll) and the server build (a WebSocket on the application's port), because GoStream
+	// is one programming model on both (docs/ui-next/terminal-channel-protocol.md).
+	app.HandleStream(exec.TerminalStreamName, exec.TerminalStreamHandler(execController))
 	runtimeReady, err := controlhost.Register(
 		app, profile,
 		appService.GetInstanceInfo, appService.updateInstanceInfo,

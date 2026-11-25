@@ -35,7 +35,7 @@ import (
 func (c *controller) sessionClosed(sessionID, pluginID string) bool {
 	now := c.clock()
 	c.mu.Lock()
-	if record, recorded := c.sessionIndex[sessionID]; heldByAnother(record, recorded, pluginID) {
+	if record, recorded := c.sessionIndex[sessionID]; heldByAnother(record, recorded, pluginID, c.channelHoldsLocked(sessionID)) {
 		c.mu.Unlock()
 		return false
 	}

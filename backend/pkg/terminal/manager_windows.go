@@ -100,3 +100,36 @@ func (m *Manager) Shutdown() {}
 
 // SetFlowStall does nothing: no session can exist.
 func (m *Manager) SetFlowStall(_ time.Duration) {}
+
+// ServeChannel ends the stream at once: no channel terminal can exist.
+func (m *Manager) ServeChannel(ch Channel) { _ = ch.Close() }
+
+// CloseChannel is not supported.
+func (m *Manager) CloseChannel(_ string) error { return unsupportedError() }
+
+// ChannelBusy is not supported.
+func (m *Manager) ChannelBusy(_ string) (Foreground, error) {
+	var none Foreground
+	return none, unsupportedError()
+}
+
+// ChannelCwd is not supported.
+func (m *Manager) ChannelCwd(_ string) (Directory, error) {
+	var none Directory
+	return none, unsupportedError()
+}
+
+// ListChannels lists nothing: no channel terminal can exist. It is an empty list, as on any platform, and not none, for a request that
+// is valid; one that is longer than a page holds is refused as it is everywhere.
+func (m *Manager) ListChannels(presented []string) ([]ChannelListed, error) {
+	if err := checkListedCaps(len(presented)); err != nil {
+		return nil, err
+	}
+	return []ChannelListed{}, nil
+}
+
+// HoldsID says no terminal is held: none can exist.
+func (m *Manager) HoldsID(_ string) bool { return false }
+
+// DismissChannel is not supported.
+func (m *Manager) DismissChannel(_ string) error { return unsupportedError() }

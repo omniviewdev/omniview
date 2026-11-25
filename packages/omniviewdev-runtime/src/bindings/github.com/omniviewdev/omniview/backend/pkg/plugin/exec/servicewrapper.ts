@@ -68,6 +68,34 @@ export function AttachTerminal(sessionID: string, request: terminal$0.AttachRequ
     });
 }
 
+/**
+ * ChannelTerminalBusy says whether something other than the shell holds the foreground of the channel terminal that the
+ * capability names: idle, busy (with the program's name where the platform gives it) or unknown.
+ */
+export function ChannelTerminalBusy(capability: string): $CancellablePromise<terminal$0.Foreground> {
+    return $Call.ByID(2096929222, capability).then(($result: any) => {
+        return $$createType4($result);
+    });
+}
+
+/**
+ * ChannelTerminalCwd says which directory the shell of the channel terminal that the capability names is in now.
+ */
+export function ChannelTerminalCwd(capability: string): $CancellablePromise<terminal$0.Directory> {
+    return $Call.ByID(4276309675, capability).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
+ * CloseChannelTerminal ends the channel terminal that the capability names, as the user pressing Close does, and returns
+ * when the terminal is gone. Whatever the reason a capability opens nothing (it is wrong, the terminal ended and was
+ * dismissed, it is closing) the answer is the one `omniview:session/not-found`, and its words hold nothing the caller sent.
+ */
+export function CloseChannelTerminal(capability: string): $CancellablePromise<void> {
+    return $Call.ByID(312647519, capability);
+}
+
 export function CloseSession(sessionID: string): $CancellablePromise<void> {
     return $Call.ByID(1353297556, sessionID);
 }
@@ -93,10 +121,15 @@ export function CreateSession(plugin: string, connectionID: string, encoded: str
  * AttachTerminal, and what the shell wrote meanwhile is replayed (docs/ui-next/status/T2-go.md). Its output
  * then arrives on core/exec/stream/output/<id> with an offset. A call that comes from no window starts
  * nothing: a terminal that nothing could ever retire would outlive everything.
+ * 
+ * With launch.channel the terminal is a channel terminal instead (docs/ui-next/terminal-channel-protocol.md): the answer
+ * carries a capability, once, and the terminal is reached by it and by one stream, and by nothing that names it by its id.
+ * It uses no window: it is not admitted, not owned, and nothing a window does ends it; a call from no window may start one.
+ * It excludes launch.page_key, which is the events lane's.
  */
 export function CreateTerminal(opts: exec$0.SessionOptions, launch: terminal$0.Launch): $CancellablePromise<terminal$0.Session | null> {
     return $Call.ByID(4182196712, opts, launch).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -117,8 +150,16 @@ export function DetachSession(sessionID: string): $CancellablePromise<exec$0.Ses
  */
 export function DetachTerminal(sessionID: string, request: terminal$0.DetachRequest): $CancellablePromise<terminal$0.Detached | null> {
     return $Call.ByID(3844471071, sessionID, request).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType9($result);
     });
+}
+
+/**
+ * DismissChannelTerminal forgets the end that a channel terminal that ended by itself left, which the host keeps until it is
+ * dismissed or its lease would have run out. A terminal that is alive is not dismissed: it is closed.
+ */
+export function DismissChannelTerminal(capability: string): $CancellablePromise<void> {
+    return $Call.ByID(649742055, capability);
 }
 
 /**
@@ -128,19 +169,19 @@ export function DetachTerminal(sessionID: string, request: terminal$0.DetachRequ
  */
 export function GetCwd(sessionID: string): $CancellablePromise<terminal$0.Directory> {
     return $Call.ByID(3534704186, sessionID).then(($result: any) => {
-        return $$createType8($result);
+        return $$createType5($result);
     });
 }
 
 export function GetHandler(plugin: string, resource: string): $CancellablePromise<exec$0.Handler | null> {
     return $Call.ByID(1779192716, plugin, resource).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType11($result);
     });
 }
 
 export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: exec$0.Handler } }> {
     return $Call.ByID(4033362541).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
@@ -149,7 +190,7 @@ export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in str
  */
 export function GetNativeTerminalApplications(): $CancellablePromise<nativeapps$0.Application[]> {
     return $Call.ByID(2940999236).then(($result: any) => {
-        return $$createType14($result);
+        return $$createType15($result);
     });
 }
 
@@ -159,7 +200,7 @@ export function GetNativeTerminalSupport(): $CancellablePromise<boolean> {
 
 export function GetPluginHandlers(plugin: string): $CancellablePromise<{ [_ in string]?: exec$0.Handler }> {
     return $Call.ByID(2619212338, plugin).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType12($result);
     });
 }
 
@@ -179,19 +220,31 @@ export function HasPlugin(pluginID: string): $CancellablePromise<boolean> {
  */
 export function IsBusy(sessionID: string): $CancellablePromise<terminal$0.Foreground> {
     return $Call.ByID(2676831401, sessionID).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType4($result);
+    });
+}
+
+/**
+ * ListChannelTerminals says what the capabilities a page holds open: one entry for each of those that names a channel terminal
+ * (or the end of one that is kept), in the order given, naming the terminal by its id. A capability that opens nothing has no
+ * entry, and nothing lists a terminal for a capability that was not given, so a page cannot enumerate terminals it was not given.
+ * More than 1,024 capabilities are refused.
+ */
+export function ListChannelTerminals(capabilities: string[]): $CancellablePromise<terminal$0.ChannelListed[]> {
+    return $Call.ByID(3911742752, capabilities).then(($result: any) => {
+        return $$createType17($result);
     });
 }
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3006426324).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType18($result);
     });
 }
 
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType19($result);
     });
 }
 
@@ -204,7 +257,7 @@ export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
  */
 export function ListTerminals(pageKey: string): $CancellablePromise<terminal$0.Listed[]> {
     return $Call.ByID(867361533, pageKey).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType21($result);
     });
 }
 
@@ -245,19 +298,21 @@ const $$createType0 = exec$0.Session.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = terminal$0.Attached.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = terminal$0.Session.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = terminal$0.Detached.createFrom;
+const $$createType4 = terminal$0.Foreground.createFrom;
+const $$createType5 = terminal$0.Directory.createFrom;
+const $$createType6 = terminal$0.Session.createFrom;
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = terminal$0.Directory.createFrom;
-const $$createType9 = exec$0.Handler.createFrom;
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = $Create.Map($Create.Any, $$createType9);
-const $$createType12 = $Create.Map($Create.Any, $$createType11);
-const $$createType13 = nativeapps$0.Application.createFrom;
-const $$createType14 = $Create.Array($$createType13);
-const $$createType15 = terminal$0.Foreground.createFrom;
-const $$createType16 = $Create.Array($Create.Any);
-const $$createType17 = $Create.Array($$createType1);
-const $$createType18 = terminal$0.Listed.createFrom;
-const $$createType19 = $Create.Array($$createType18);
+const $$createType8 = terminal$0.Detached.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = exec$0.Handler.createFrom;
+const $$createType11 = $Create.Nullable($$createType10);
+const $$createType12 = $Create.Map($Create.Any, $$createType10);
+const $$createType13 = $Create.Map($Create.Any, $$createType12);
+const $$createType14 = nativeapps$0.Application.createFrom;
+const $$createType15 = $Create.Array($$createType14);
+const $$createType16 = terminal$0.ChannelListed.createFrom;
+const $$createType17 = $Create.Array($$createType16);
+const $$createType18 = $Create.Array($Create.Any);
+const $$createType19 = $Create.Array($$createType1);
+const $$createType20 = terminal$0.Listed.createFrom;
+const $$createType21 = $Create.Array($$createType20);

@@ -52,19 +52,22 @@ func checkPageKey(key string) error {
 	return nil
 }
 
-// resolveKeep reads what keeps a terminal for its page: the key, and the lease, which is the default when the
-// opener gave none. A terminal without a key has no lease. A lease without a key, one below zero and one over the
-// most are refused, naming the field.
+// resolveKeep reads what keeps a terminal for its page or its stream: the key, or the channel, and the lease, which is the
+// default when the opener gave none. A terminal that has neither has no lease. A lease without either, one below zero and one
+// over the most are refused, naming the field; so is a channel terminal that has a page key, naming it.
 func resolveKeep(opts Options) (time.Duration, error) {
 	if err := checkPageKey(opts.PageKey); err != nil {
 		return 0, err
 	}
+	kept := opts.PageKey != "" || opts.Channel
 	switch {
+	case opts.Channel && opts.PageKey != "":
+		return 0, invalidError("page_key is the events lane's: a channel terminal is reached by its capability and takes no page_key.")
 	case opts.LeaseMs < 0 || opts.LeaseMs > int(LeaseMax/time.Millisecond):
 		return 0, invalidError(fmt.Sprintf("lease_ms must be from 0 to %d; got %d.", int(LeaseMax/time.Millisecond), opts.LeaseMs))
-	case opts.PageKey == "" && opts.LeaseMs != 0:
-		return 0, invalidError("lease_ms means something only with a page_key: a terminal without one ends with its window.")
-	case opts.PageKey == "":
+	case !kept && opts.LeaseMs != 0:
+		return 0, invalidError("lease_ms means something only with a page_key or a channel: a terminal without either ends with its window.")
+	case !kept:
 		return 0, nil
 	case opts.LeaseMs == 0:
 		return LeaseDefault, nil
@@ -120,8 +123,13 @@ func (s *session) noteSize(rows, cols uint16) {
 // deliver numbers a read of the shell's output and hands it to the sink. For a terminal that has a page key the
 // two are one step with respect to an attach (emitMu): the attach comes either before the read, which then lies
 // at or above the end of its replay, or after the sink has the event, so that no event the replay holds is
-// handed to the sink once the attach has answered.
+// handed to the sink once the attach has answered. A channel terminal's output goes to its ring and to no sink:
+// the stream that holds it reads the ring.
 func (m *Manager) deliver(s *session, data []byte) {
+	if s.channel != nil {
+		m.deliverChannel(s, data)
+		return
+	}
 	if s.pageKey != "" {
 		s.emitMu.Lock()
 		defer s.emitMu.Unlock()
@@ -178,16 +186,25 @@ func (s *session) detachLocked(lease time.Duration, by DetachedBy) (time.Time, *
 	if s.heldLocked() {
 		left = &Detachment{By: by, Attachment: s.attachment}
 	}
-	s.detached = true
-	s.attached = false
 	s.owner = nil
 	s.flow.hold()
+	return s.armLeaseLocked(lease), left
+}
+
+// armLeaseLocked starts the lease of a terminal that nobody holds: it is detached, and it ends at the end of the lease unless
+// something takes it first. A lease that is running is replaced. It returns when the lease ends. The caller holds s.mu.
+func (s *session) armLeaseLocked(lease time.Duration) time.Time {
+	if s.leaseTimer != nil {
+		s.leaseTimer.Stop()
+	}
+	s.detached = true
+	s.attached = false
 	s.leaseGen++
 	gen := s.leaseGen
 	s.leaseLen = lease
 	s.leaseEnd = s.clock.Now().Add(lease)
 	s.leaseTimer = s.clock.AfterFunc(lease, func() { s.expire(gen) })
-	return s.leaseEnd, left
+	return s.leaseEnd
 }
 
 // takeOverLocked makes owner the owner of the terminal, as its next attachment: a lease that is running is over
@@ -537,15 +554,18 @@ func (s *session) listed(caller Owner, key string) (Listed, bool) {
 
 // ---- what is left of a terminal that ended while no page was attached ----
 
-// tombstone is the end of a terminal that has a page key and ended by itself, and what it wrote: the page that
-// comes back reads how it ended, for what is left of the lease it was kept under.
+// tombstone is the end of a terminal that has a page key, or is a channel terminal, and ended by itself, and what it wrote:
+// the page that comes back reads how it ended, for what is left of the lease it was kept under. A channel terminal's is
+// reached by its capability and by nothing else: its key is empty, and no page key opens it.
 type tombstone struct {
-	id    string
-	key   string
-	info  Session
-	ring  *replayRing
-	end   End
-	until time.Time
+	id  string
+	key string
+	// capability is the capability of a channel terminal's tombstone, none for the events lane's.
+	capability capability
+	info       Session
+	ring       *replayRing
+	end        End
+	until      time.Time
 	// attachment is the number of the last attachment the terminal had.
 	attachment uint64
 	labels     map[string]string
@@ -553,7 +573,7 @@ type tombstone struct {
 }
 
 func (t *tombstone) holdsKey(key string) bool {
-	return subtle.ConstantTimeCompare([]byte(t.key), []byte(key)) == 1
+	return t.key != "" && subtle.ConstantTimeCompare([]byte(t.key), []byte(key)) == 1
 }
 
 func (t *tombstone) attached(from *uint64) (*Attached, error) {
@@ -562,7 +582,7 @@ func (t *tombstone) attached(from *uint64) (*Attached, error) {
 		return nil, err
 	}
 	return &Attached{
-		Session: t.info, Replay: view.replay(), Cwd: Directory{Path: "", Reason: ReasonEnded}, Busy: UnknownForeground(ReasonEnded), Ended: new(t.end),
+		Session: t.info, Replay: view.replay(), Cwd: Directory{Path: "", Reason: ReasonEnded}, Busy: UnknownForeground(ReasonEnded), Ended: t.endCopy(),
 		Attachment: t.attachment, NextInputSeq: 0,
 	}, nil
 }
@@ -571,15 +591,22 @@ func (t *tombstone) listed() Listed {
 	return Listed{
 		ID: t.id, CreatedAt: t.info.CreatedAt, PID: t.info.PID, Shell: t.info.Shell, Labels: nonNil(t.labels), Params: nonNil(t.params),
 		Size: t.ring.size(t.ring.end), Attached: false, NextOffset: t.ring.end, ReplayStart: t.ring.start(), NextInputSeq: 0,
-		LeaseExpiresUnixMs: t.until.UnixMilli(), Ended: new(t.end),
+		LeaseExpiresUnixMs: t.until.UnixMilli(), Ended: t.endCopy(),
 	}
 }
 
-// keepTombstone remembers how a terminal ended, when a page may be waiting to read it: the terminal has a key and
-// its shell ended by itself (a close of the host's has nothing to tell). The oldest tombstone goes when there
-// are TombstoneLimit, and each is freed by a timer when its lease is over.
+// endCopy is how the tombstone ended, as a copy that shares nothing with it: what a caller does to what it was given is its own.
+func (t *tombstone) endCopy() *End {
+	end := t.end.clone()
+	return &end
+}
+
+// keepTombstone remembers how a terminal ended, when a page may be waiting to read it: the terminal has a key or is a channel
+// terminal, and its shell ended by itself (a close of the host's has nothing to tell). The ends of each lane are kept under a budget
+// of the lane's own (TombstoneLimit for the events lane's, ChannelTombstoneLimit for the channel terminals'): the oldest of the lane
+// goes when it has more, and neither lane takes what the other is owed. Each is freed by a timer when its lease is over.
 func (m *Manager) keepTombstone(s *session, end End) {
-	if s.pageKey == "" || end.Reason == EndClosed {
+	if (s.pageKey == "" && s.channel == nil) || end.Reason == EndClosed {
 		return
 	}
 	s.outMu.Lock()
@@ -588,17 +615,41 @@ func (m *Manager) keepTombstone(s *session, end End) {
 	now := m.clock.Now()
 	until, attachment := s.tombstoneTerms(now)
 	t := &tombstone{
-		id: s.id, key: s.pageKey, info: s.info, ring: frozen, end: end, until: until, attachment: attachment,
+		id: s.id, key: s.pageKey, capability: s.capabilityOf(), info: s.info, ring: frozen, end: end, until: until, attachment: attachment,
 		labels: s.labels, params: s.params,
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pruneTombstonesLocked(now)
 	m.tombs = append(m.tombs, t)
-	if len(m.tombs) > TombstoneLimit {
-		m.tombs = slices.Delete(m.tombs, 0, len(m.tombs)-TombstoneLimit)
-	}
+	m.trimTombstonesLocked(!t.capability.none())
 	m.armTombstoneTimerLocked(now)
+}
+
+// trimTombstonesLocked keeps the ends of one lane (the channel terminals', or the events lane's) at the budget of that lane, the
+// oldest first, and leaves the other lane's alone. The tombstones are in the order they were kept in. The caller holds m.mu.
+func (m *Manager) trimTombstonesLocked(channel bool) {
+	limit, held := TombstoneLimit, 0
+	if channel {
+		limit = ChannelTombstoneLimit
+	}
+	inLane := func(t *tombstone) bool { return !t.capability.none() == channel }
+	for _, t := range m.tombs {
+		if inLane(t) {
+			held++
+		}
+	}
+	excess := held - limit
+	if excess <= 0 {
+		return
+	}
+	m.tombs = slices.DeleteFunc(m.tombs, func(t *tombstone) bool {
+		if excess > 0 && inLane(t) {
+			excess--
+			return true
+		}
+		return false
+	})
 }
 
 // tombstoneTerms are when the tombstone of the terminal is forgotten and the number of its last attachment. The
@@ -651,11 +702,14 @@ func (m *Manager) find(id string) (*session, *tombstone) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if s := m.sessions[id]; s != nil {
+		if s.channel != nil {
+			return nil, nil // a channel terminal is reached by its capability, and nothing finds it by its id
+		}
 		return s, nil
 	}
 	now := m.clock.Now()
 	for _, t := range m.tombs {
-		if t.id == id && now.Before(t.until) {
+		if t.id == id && t.capability.none() && now.Before(t.until) {
 			return nil, t
 		}
 	}
@@ -672,6 +726,6 @@ func (m *Manager) dropTombstone(id string) bool {
 // dropTombstoneLocked is dropTombstone for a caller that holds m.mu.
 func (m *Manager) dropTombstoneLocked(id string) bool {
 	before := len(m.tombs)
-	m.tombs = slices.DeleteFunc(m.tombs, func(t *tombstone) bool { return t.id == id })
+	m.tombs = slices.DeleteFunc(m.tombs, func(t *tombstone) bool { return t.id == id && t.capability.none() })
 	return len(m.tombs) != before
 }

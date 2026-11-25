@@ -69,6 +69,17 @@ type Controller interface {
 	DetachTerminal(ctx context.Context, owner terminal.Owner, sessionID string, request terminal.DetachRequest) (*terminal.Detached, error)
 	// ListTerminals says which local terminals the owner, or whoever holds the key, may attach.
 	ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed
+	// ServeTerminalChannel serves one stream of the terminal channel until it ends (terminal.Manager.ServeChannel). The
+	// stream names its terminal by a capability, never by an id, and uses no window.
+	ServeTerminalChannel(ch terminal.Channel)
+	// CloseChannelTerminal, ChannelTerminalBusy, ChannelTerminalCwd, ListChannelTerminals and DismissChannelTerminal are
+	// the calls that name a channel terminal by its capability. Each answers one not-found for a capability that opens
+	// nothing, whatever the reason.
+	CloseChannelTerminal(capability string) error
+	ChannelTerminalBusy(capability string) (terminal.Foreground, error)
+	ChannelTerminalCwd(capability string) (terminal.Directory, error)
+	ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error)
+	DismissChannelTerminal(capability string) error
 	ListSessions() ([]*exec.Session, error)
 	GetSession(sessionID string) (*exec.Session, error)
 	AttachSession(sessionID string) (*exec.Session, []byte, error)
@@ -120,6 +131,7 @@ func NewController(
 		mu:               sync.RWMutex{},
 		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
+		channelMaking:    make(map[string]bool),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -143,9 +155,12 @@ type controller struct {
 	mu           sync.RWMutex
 	clients      map[string]Provider
 	sessionIndex map[string]sessionIndex
-	inChans      map[string]chan exec.StreamInput
-	handlerMap   map[string]map[string]exec.Handler
-	streams      map[string]execProviderStream
+	// channelMaking holds the id of each channel terminal whose shell is being started: the manager does not hold it yet and the
+	// index never will, and the id is not free (see idHeldLocked). Guarded by mu.
+	channelMaking map[string]bool
+	inChans       map[string]chan exec.StreamInput
+	handlerMap    map[string]map[string]exec.Handler
+	streams       map[string]execProviderStream
 
 	// Publication and retirement share this outer lock. Never acquire it with mu held.
 	outputMu sync.Mutex
@@ -306,6 +321,7 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 	c.mu.RLock()
 	stream, active := c.streams[output.pluginID]
 	record, recorded := c.sessionIndex[output.SessionID]
+	channelHeld := c.channelHoldsLocked(output.SessionID)
 	c.mu.RUnlock()
 	if !active || stream.done != output.done || stream.ctx.Err() != nil {
 		// Output from a replaced or stopped provider stream is discarded.
@@ -314,10 +330,10 @@ func (c *controller) dispatchProviderOutput(output execProviderOutput) {
 		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
 		return
 	}
-	if heldByAnother(record, recorded, output.pluginID) {
-		// The host routes by session id, and this id is recorded for another session: a terminal of this host (it
-		// has no plugin) or a session of another plugin. A plugin speaks for the sessions it made, so the frame is
-		// not that session's.
+	if heldByAnother(record, recorded, output.pluginID, channelHeld) {
+		// The host routes by session id, and this id is held by another session: recorded for a terminal of this host (it
+		// has no plugin) or a session of another plugin, or held by a channel terminal (it has no record). A plugin speaks
+		// for the sessions it made, so the frame is not that session's.
 		c.logger.Warnw(context.Background(), "dropped output of a session id the plugin does not hold",
 			"pluginID", output.pluginID, "sessionID", output.SessionID)
 		telemetry.RecordPluginStreamEvent(context.Background(), output.pluginID, "exec", "dropped")
@@ -689,7 +705,7 @@ func (c *controller) CreateSession(
 	}
 
 	c.mu.Lock()
-	if held, taken := c.sessionIndex[session.ID]; taken {
+	if held, taken := c.sessionIndex[session.ID]; taken || c.channelHoldsLocked(session.ID) {
 		c.mu.Unlock()
 		c.closeRefusedSession(ctx, pctx, client, plugin, held.pluginID, session.ID)
 		return nil, terminal.IDInUse(session.ID)
@@ -711,21 +727,36 @@ func (c *controller) CreateSession(
 	return session, nil
 }
 
-// hasSession says the host holds a record for the session id: a terminal of this host, a session of a plugin, or one
-// that ended with nobody attached and waits for its first attach.
+// hasSession says the id is not free: the host holds a record for it (a terminal of this host, a session of a plugin, or one that
+// ended with nobody attached and waits for its first attach), or a channel terminal holds it.
 func (c *controller) hasSession(sessionID string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	_, found := c.sessionIndex[sessionID]
-	return found
+	return c.idHeldLocked(sessionID)
 }
 
-// heldByAnother says a frame from plugin names a session id the host recorded for another session: a terminal of this
-// host (its record has no plugin) or a session of another plugin. A plugin speaks for the sessions it made. A frame
-// whose id has no record is nobody's yet and is delivered: output and the end of a session can come before the host
-// has recorded it.
-func heldByAnother(record sessionIndex, recorded bool, pluginID string) bool {
-	return recorded && record.pluginID != pluginID
+// idHeldLocked is the one predicate of every lane that makes a session or a terminal with an id the page chose, taken under mu:
+// the index of the events lane has a record of the id, or a channel terminal holds it. Of two creates of one id there is one
+// winner, whatever lanes they come from, because each decides here, under the same lock, from the same places.
+func (c *controller) idHeldLocked(id string) bool {
+	if _, found := c.sessionIndex[id]; found {
+		return true
+	}
+	return c.channelHoldsLocked(id)
+}
+
+// channelHoldsLocked says a channel terminal holds the id: its shell is being started, or the manager has it. A channel terminal
+// has no record in the index, which is how no call that names a terminal by its id can reach it.
+func (c *controller) channelHoldsLocked(id string) bool {
+	return c.channelMaking[id] || (c.terminalManager != nil && c.terminalManager.HoldsID(id))
+}
+
+// heldByAnother says a frame from plugin names a session id that another session holds: the host recorded it for a terminal of
+// this host (its record has no plugin) or for a session of another plugin, or a channel terminal holds it (it has no record: the
+// caller asks channelHoldsLocked, under the lock it read the record under). A plugin speaks for the sessions it made. A frame
+// whose id nobody holds is nobody's yet and is delivered: output and the end of a session can come before the host has recorded it.
+func heldByAnother(record sessionIndex, recorded bool, pluginID string, channelHeld bool) bool {
+	return channelHeld || (recorded && record.pluginID != pluginID)
 }
 
 // closeRefusedSession ends the session a plugin made with an id the host holds for another session. It is closed with

@@ -34,13 +34,24 @@ type Launch struct {
 	// is refused, naming the field).
 	PageKey string `json:"page_key,omitempty"`
 	// LeaseMs is how long the terminal is kept for a page that comes back once its page is gone, in
-	// milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something only
-	// with a PageKey.
+	// milliseconds. Zero is LeaseDefault; above LeaseMax is refused, naming the field. It means something
+	// only for a terminal that is kept: one with a PageKey (the events lane) or a Channel terminal (the
+	// channel lane), which exclude each other. A lease for a terminal that is neither is refused.
 	LeaseMs int `json:"lease_ms,omitempty"`
-	// There is no flow-control option: every terminal is paced by credit (FlowHighBytes, FlowLowBytes), so
-	// the host never has more than that delivered and not credited for a client. That bounds what the
-	// terminal manager hands on, not what the transport keeps after it credits (docs/ui-next/status/T1-go.md,
-	// 2.8.6). See Manager.Ack and Manager.Delivered for where credit comes from.
+	// Channel makes the terminal a channel terminal: it is reached by the capability that the answer of CreateTerminal
+	// carries (Session.Cap, once) and by one stream for each terminal (docs/ui-next/terminal-channel-protocol.md), it
+	// has no window and no event, and it is invisible to every call that names a terminal by its id. The stream that
+	// holds it is its holder: when that stream ends the terminal is kept for LeaseMs, and a stream that shows the
+	// capability takes it over. The host never lets a page that sleeps block the shell (Limits.ChannelRingBytes).
+	// It excludes PageKey, which is the events lane's.
+	Channel bool `json:"channel,omitempty"`
+	// There is no flow-control option; what paces a terminal depends on its lane. A terminal of the events lane is
+	// paced by credit (FlowHighBytes, FlowLowBytes), so the host never has more than that delivered and not
+	// credited for a client; that bounds what the terminal manager hands on, not what the transport keeps after it
+	// credits (docs/ui-next/status/T1-go.md, 2.8.6), and the credit comes from Manager.Ack and Manager.Delivered.
+	// A channel terminal does not use that credit: it is paced between ChannelHighBytes and ChannelLowBytes while
+	// its page is alive, and its acknowledgements are frames of its own stream
+	// (docs/ui-next/terminal-channel-protocol.md).
 }
 
 // Options is what the manager starts a terminal from. CreateTerminal builds it from the SDK's session
@@ -59,6 +70,8 @@ type Options struct {
 	// PageKey and LeaseMs are the Launch's.
 	PageKey string
 	LeaseMs int
+	// Channel is the Launch's: the terminal is reached by a capability and a stream, and has no owner.
+	Channel bool
 	// Labels and Params are what the caller attached to the session; the exec lane lists them with it.
 	Labels map[string]string
 	Params map[string]string
@@ -116,6 +129,18 @@ type Limits struct {
 	ReplayBytes    int `json:"replay_bytes"`
 	LeaseDefaultMs int `json:"lease_default_ms"`
 	LeaseMaxMs     int `json:"lease_max_ms"`
+	// ChannelRingBytes is how much output a channel terminal keeps whatever its page does; ChannelHighBytes and
+	// ChannelLowBytes are the marks between which the shell is paced while its page is alive; ChannelStallMs is how long
+	// a page may make no progress before the shell is let go; ChannelInflightBytes is the most a page that acknowledges
+	// holds unacknowledged; ChannelFrameBytes is the largest output frame and ChannelMaxInputBytes the largest input
+	// frame (the channel's protocol is in docs/ui-next/terminal-channel-protocol.md).
+	ChannelRingBytes     int `json:"channel_ring_bytes"`
+	ChannelHighBytes     int `json:"channel_high_bytes"`
+	ChannelLowBytes      int `json:"channel_low_bytes"`
+	ChannelStallMs       int `json:"channel_stall_ms"`
+	ChannelInflightBytes int `json:"channel_inflight_bytes"`
+	ChannelFrameBytes    int `json:"channel_frame_bytes"`
+	ChannelMaxInputBytes int `json:"channel_max_input_bytes"`
 }
 
 // Session is what the host says about a terminal it started.
@@ -138,6 +163,10 @@ type Session struct {
 	// LeaseMs is how long the terminal is kept for its page once the page is gone, in milliseconds. Zero: it
 	// has no page key and ends with its window.
 	LeaseMs int `json:"lease_ms"`
+	// Cap is the terminal's capability, set only in the answer of CreateTerminal for a channel terminal (Launch.Channel):
+	// 32 random bytes of the host's, base64url, one for the terminal. It is the only way to reach the terminal, it is
+	// answered once, and nothing lists it, logs it, puts it in an event, a URL or an error.
+	Cap string `json:"cap,omitempty"`
 }
 
 // EndReason says how a session ended. It is the one field every End has.
@@ -212,6 +241,20 @@ type End struct {
 	// that the events of a terminal with a page key and Replay.End use. A page that has taken in LastOffset bytes
 	// has it all.
 	LastOffset uint64 `json:"last_offset"`
+}
+
+// clone is a copy of the end that shares nothing with it: its pointers are copies too, so that a caller that changes what it was
+// given changes its own copy.
+func (e End) clone() End {
+	if e.ExitCode != nil {
+		code := *e.ExitCode
+		e.ExitCode = &code
+	}
+	if e.Failure != nil {
+		failure := *e.Failure
+		e.Failure = &failure
+	}
+	return e
 }
 
 // State is the answer to "is something other than the shell in the foreground of the terminal?".
@@ -374,6 +417,26 @@ const (
 	// TombstoneLimit is how many terminals that ended while no page was attached the host remembers, so that the
 	// page that comes back can still read how they ended.
 	TombstoneLimit = 16
+	// ChannelTombstoneLimit is how many ends of channel terminals the host remembers. The ends of the events lane have the budget
+	// above and neither lane takes the other's: the oldest of a lane goes first, even before its lease is over, so the time an end is
+	// listed with is not a promise that it is still there.
+	ChannelTombstoneLimit = 16
+	// The channel of a terminal opened with Launch.Channel (docs/ui-next/terminal-channel-protocol.md): the host
+	// reads the shell into a ring of ChannelRingBytes whatever the page does, and the ring overwrites its oldest
+	// bytes, counting them, when it is full. A stream's sender reads the ring in frames of at most ChannelFrameBytes
+	// at the pace of its page. While the page is alive (a frame was taken or acknowledged within ChannelStall) and
+	// more than ChannelHighBytes wait unsent the shell is paced until ChannelLowBytes wait (lossless); a page that
+	// made no progress for ChannelStall, or none attached, never holds the shell. A page that acknowledges holds at
+	// most ChannelInflightBytes sent and not acknowledged. ChannelMaxInputBytes bounds one input frame.
+	ChannelRingBytes     = 8 << 20
+	ChannelHighBytes     = 1 << 20
+	ChannelLowBytes      = 256 << 10
+	ChannelStall         = 2 * time.Second
+	ChannelInflightBytes = 1 << 20
+	ChannelFrameBytes    = 64 << 10
+	ChannelMaxInputBytes = 1 << 20
+	// MaxListedCaps bounds the capabilities one ListChannels call may carry.
+	MaxListedCaps = 1024
 
 	maxIDLength = 128
 )
@@ -396,5 +459,12 @@ func defaultLimits() Limits {
 		ReplayBytes:           ReplayBytes,
 		LeaseDefaultMs:        int(LeaseDefault / time.Millisecond),
 		LeaseMaxMs:            int(LeaseMax / time.Millisecond),
+		ChannelRingBytes:      ChannelRingBytes,
+		ChannelHighBytes:      ChannelHighBytes,
+		ChannelLowBytes:       ChannelLowBytes,
+		ChannelStallMs:        int(ChannelStall / time.Millisecond),
+		ChannelInflightBytes:  ChannelInflightBytes,
+		ChannelFrameBytes:     ChannelFrameBytes,
+		ChannelMaxInputBytes:  ChannelMaxInputBytes,
 	}
 }

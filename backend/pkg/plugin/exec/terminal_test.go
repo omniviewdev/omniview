@@ -102,11 +102,17 @@ type terminalFixture struct {
 
 func newTerminalFixture(t *testing.T) *terminalFixture {
 	t.Helper()
+	return newTerminalFixtureLogged(t, logging.NewNop())
+}
+
+// newTerminalFixtureLogged is newTerminalFixture with a logger of the test's choice: a test that reads what the host logs.
+func newTerminalFixtureLogged(t *testing.T, logger logging.Logger) *terminalFixture {
+	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	pages := &terminalPages{open: map[string]bool{}}
 	realm := invocation.NewWindowRealm(nil, invocation.WithPageSweep(pages.connected, 5*time.Millisecond))
-	ctrl, ok := NewController(logging.NewNop(), nil, nil).(*controller)
+	ctrl, ok := NewController(logger, nil, nil).(*controller)
 	require.True(t, ok)
 	fx := &terminalFixture{t: t, ctrl: ctrl, pages: pages, realm: realm, wrapper: &ServiceWrapper{Ctrl: ctrl, Realm: realm}}
 	ctrl.events = execTestEmitter(func(name string, data ...any) bool {

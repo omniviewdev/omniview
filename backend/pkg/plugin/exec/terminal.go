@@ -134,7 +134,8 @@ func (c *controller) startTerminals(ctx context.Context) {
 	c.terminalManager = terminal.NewManager(ctx, c.logger, localSink{c: c})
 }
 
-// CreateTerminal starts a shell on this machine. The session belongs to owner and ends with it.
+// CreateTerminal starts a shell on this machine. The session belongs to owner and ends with it; a channel terminal
+// (opts.Channel) belongs to no one: see createChannelTerminal.
 //
 //nolint:nonamedreturns // The deferred span records the returned error.
 func (c *controller) CreateTerminal(
@@ -144,6 +145,9 @@ func (c *controller) CreateTerminal(
 	defer end(&err)
 	if opts.ID == "" {
 		opts.ID = uuid.NewString()
+	}
+	if opts.Channel {
+		return c.createChannelTerminal(ctx, opts)
 	}
 	// The id is in the index before the shell starts: its output, even its CLOSE, can come before this
 	// call returns. It also keeps a terminal from taking the id of a session of a plugin.
@@ -163,6 +167,31 @@ func (c *controller) CreateTerminal(
 	}
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", info.ID))
 	c.logger.Infow(ctx, "exec session created", "sessionID", info.ID, "pluginID", "local")
+	return &info, nil
+}
+
+// createChannelTerminal starts a channel terminal. It has no record in the index of the events lane, so every call that names a
+// terminal by its id finds nothing, it has no owner and no window, and nothing of it goes out as an event: the page reaches it by
+// the capability in the answer, which is never logged or put in a span. Its id is held from the check to the manager's own hold,
+// under the one lock that every lane decides an id under (idHeldLocked): an id that a session has or that is being made is
+// refused, as for any terminal.
+func (c *controller) createChannelTerminal(ctx context.Context, opts terminal.Options) (*terminal.Session, error) {
+	c.mu.Lock()
+	if c.idHeldLocked(opts.ID) {
+		c.mu.Unlock()
+		return nil, terminal.IDInUse(opts.ID)
+	}
+	c.channelMaking[opts.ID] = true
+	c.mu.Unlock()
+	info, err := c.terminalManager.Start(opts, nil)
+	c.mu.Lock()
+	delete(c.channelMaking, opts.ID)
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", info.ID))
+	c.logger.Infow(ctx, "exec channel terminal created", "sessionID", info.ID)
 	return &info, nil
 }
 
@@ -285,4 +314,52 @@ func (c *controller) DetachTerminal(
 // a page asks it once as it loads.
 func (c *controller) ListTerminals(owner terminal.Owner, pageKey string) []terminal.Listed {
 	return c.terminalManager.List(owner, pageKey)
+}
+
+// ServeTerminalChannel serves one stream of the terminal channel until it ends: the stream's first frame names the
+// terminal by its capability, and the connection is the terminal's holder for as long as it lasts. It opens no span: a
+// stream lives as long as a page does.
+func (c *controller) ServeTerminalChannel(ch terminal.Channel) { c.terminalManager.ServeChannel(ch) }
+
+// CloseChannelTerminal ends the channel terminal that the capability names. The capability is never an attribute of
+// the span, and the answer for a capability that opens nothing holds nothing the caller sent.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) CloseChannelTerminal(capability string) (err error) {
+	_, span := tracer.Start(context.Background(), "exec.CloseChannelTerminal")
+	defer finishOp(span, &err)
+	return c.terminalManager.CloseChannel(capability)
+}
+
+// ChannelTerminalBusy says whether something other than the shell holds the foreground of a channel terminal.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ChannelTerminalBusy(capability string) (_ terminal.Foreground, err error) {
+	_, span := tracer.Start(context.Background(), "exec.ChannelTerminalBusy")
+	defer finishOp(span, &err)
+	return c.terminalManager.ChannelBusy(capability)
+}
+
+// ChannelTerminalCwd says which directory the shell of a channel terminal is in now.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ChannelTerminalCwd(capability string) (_ terminal.Directory, err error) {
+	_, span := tracer.Start(context.Background(), "exec.ChannelTerminalCwd")
+	defer finishOp(span, &err)
+	return c.terminalManager.ChannelCwd(capability)
+}
+
+// ListChannelTerminals lists the channel terminals of the capabilities given, and only those, in the order given. It
+// opens no span: a page asks it once as it loads.
+func (c *controller) ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error) {
+	return c.terminalManager.ListChannels(capabilities)
+}
+
+// DismissChannelTerminal forgets the end that a channel terminal left.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) DismissChannelTerminal(capability string) (err error) {
+	_, span := tracer.Start(context.Background(), "exec.DismissChannelTerminal")
+	defer finishOp(span, &err)
+	return c.terminalManager.DismissChannel(capability)
 }
