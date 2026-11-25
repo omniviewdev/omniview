@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { isIconName } from '@omniviewdev/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPanelStore, createTabsStore, seedChips, SCREEN_READER_COMMAND, TERMINAL_TOOL, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
+import { createPanelStore, createTabsStore, NEW_TERMINAL, seedChips, SCREEN_READER_COMMAND, TERMINAL_TOOL, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
 import type { FrameV1, PaletteCommandV1, PaletteJsonV1, PaletteMatchProviderV1, PaletteRowV1, PaletteSearchProviderV1, PaletteV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { acme, answering, widgetPage } from '../testing';
 import { createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
@@ -155,6 +157,8 @@ type Setup = {
   readonly terminalScreenReader?: HostPaletteDeps['terminalScreenReader'];
   /** Opens Settings: the window's own, or the sheet. Present, the palette offers the Settings command. */
   readonly openSettings?: () => void;
+  /** Starts a session in the Terminal tool. Present, the palette offers the New terminal command. */
+  readonly newTerminal?: () => void;
 };
 
 /** What a test holds of the palette it built: the palette and its store, the tab store, what the plugins and the published values are, and the handles that change them. */
@@ -198,7 +202,7 @@ function build(setup: Setup = {}): World {
     },
   });
   const watched = watching(setup.tabs === undefined ? tabs : setup.tabs(tabs));
-  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader, openSettings: setup.openSettings });
+  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader, openSettings: setup.openSettings, newTerminal: setup.newTerminal });
   return {
     palette,
     store: palette.store,
@@ -1325,6 +1329,17 @@ describe('the commands', () => {
     });
   });
 
+  it('offers New terminal when the window has the Terminal tool: in the tool\'s own words and glyph, in the Panel context, and with no chord, which only the app\'s menu binds', () => {
+    const without = build({ platform: 'mac', panel: createPanelStore() });
+    without.store.open({ kind: 'commands' });
+    expect(titlesOf(without, 'commands')).not.toContain(NEW_TERMINAL);
+
+    const w = build({ platform: 'mac', panel: createPanelStore(), newTerminal: vi.fn() });
+    w.store.open({ kind: 'commands' });
+    const row = rowTitled(w, NEW_TERMINAL);
+    expect({ context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, command: row.action.type === 'run' ? row.action.command.id : row.action.type }).toEqual({ context: 'Panel', icon: TERMINAL_TOOL.icon, shortcut: undefined, command: 'host.terminal.new' });
+  });
+
   it('offers Settings with the mock\'s gear when the window can open it', () => {
     const w = build({ platform: 'mac', openSettings: vi.fn() });
     w.open(at('acme', 'widgets'));
@@ -1501,6 +1516,57 @@ describe('running a command', () => {
     vi.advanceTimersByTime(0);
     expect(say).toHaveBeenCalledTimes(1);
     expect(say).toHaveBeenCalledWith('Terminal screen reader mode off.');
+  });
+});
+
+describe('running a command by its id: what the app menu does', () => {
+  const UNKNOWN = { ok: false, reason: 'This command is not available.' };
+
+  it('runs it as a chosen row does, and answers in the command\'s own words when it cannot', () => {
+    const w = build({ panel: createPanelStore() });
+    w.open(at('acme', 'widgets'));
+    w.open(at('beta', 'items'));
+
+    expect(w.palette.run({ id: 'host.tab.close' })).toBe(true);
+    expect(stripOf(w)).toEqual(['acme/widgets']);
+    expect(w.palette.run({ id: 'host.tab.next' })).toEqual({ ok: false, reason: 'There is no other tab.' });
+  });
+
+  it('starts a terminal for host.terminal.new where the window has the Terminal tool, and knows no such command where it has none', () => {
+    const newTerminal = vi.fn();
+    expect(build({ newTerminal }).palette.run({ id: 'host.terminal.new' })).toBe(true);
+    expect(newTerminal).toHaveBeenCalledTimes(1);
+    expect(build().palette.run({ id: 'host.terminal.new' })).toEqual(UNKNOWN);
+  });
+
+  it('opens the palette for host.search as its chord does, on the place on screen and narrowed to it, and never lists it', () => {
+    const w = build();
+    nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
+    w.open(at('acme', 'widgets', 'north'));
+    w.store.open({ kind: 'commands' });
+    w.store.setQuery('search');
+    expect(titlesOf(w, 'commands')).toEqual([]);
+    w.store.close();
+
+    expect(w.palette.run({ id: 'host.search' })).toBe(true);
+
+    expect(w.store.getSnapshot().open).toBe(true);
+    expect(w.store.getSnapshot().chips.map((chip) => chip.label)).toEqual(['Acme', 'north']);
+  });
+
+  it('knows no command it was not given', () => {
+    expect(build().palette.run({ id: 'host.nope' })).toEqual(UNKNOWN);
+  });
+
+  it('runs every command the app menu\'s table names (backend/menus/app_v3.go): the table and the host\'s commands cannot drift apart', () => {
+    const source = readFileSync(path.join(__dirname, '../../../backend/menus/app_v3.go'), 'utf8');
+    const ids = [...source.matchAll(/\bid: "([^"]*)"/g)].map((match) => match[1] ?? '');
+    const w = build({ panel: createPanelStore(), newTerminal: vi.fn() });
+
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(w.palette.run({ id }), id).not.toEqual(UNKNOWN);
+    }
   });
 });
 

@@ -1543,7 +1543,7 @@ async function checkPalette(page, base, engine) {
   assert.ok(tabLabels.includes(`Command: Next tab, Tabs, ${mac ? '⌃⌥→' : 'Ctrl+Alt+→'}`) && tabLabels.includes(`Command: Previous tab, Tabs, ${mac ? '⌃⌥←' : 'Ctrl+Alt+←'}`), `${engine}: Next and Previous tab carry the chord of a browser tab`);
   assert.deepEqual(
     labels.filter((label) => !tabLabels.includes(label)),
-    [`Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Plugins, Window', 'Command: Home, Window'],
+    [`Command: Toggle panel, Panel, ${mac ? '⌃⌥J' : 'Ctrl+Alt+J'}`, 'Command: New terminal, Panel', 'Command: Terminal: Toggle Screen Reader Mode, Panel', `Command: Settings, Window, ${mac ? '⌃⌥,' : 'Ctrl+Alt+,'}`, 'Command: Plugins, Window', 'Command: Home, Window'],
     `${engine}: the other commands are the host's, and only those`,
   );
   await shot('commands');

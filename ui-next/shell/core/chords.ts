@@ -58,7 +58,7 @@ export function chordOf(event: KeyLike, platform: Platform, appWindow = false): 
   const mod = native && !event.altKey;
   if (event.shiftKey) {
     const mac = platform === 'mac';
-    // The app's menu owns Control Shift T in its own window on Windows and Linux (New Terminal Session): there reopen is the alternate alone.
+    // The app's menu owns Control Shift T in its own window on Windows and Linux (New Terminal): there reopen is the alternate alone.
     if (event.code === 'KeyT') {
       return web || mac || !appWindow ? { action: 'reopen' } : undefined;
     }

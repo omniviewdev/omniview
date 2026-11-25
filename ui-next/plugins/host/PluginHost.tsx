@@ -323,7 +323,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce } }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce }, newTerminal: terminals.newSession.start }),
     notices,
     settings,
     connections,
@@ -1070,15 +1070,22 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   useEffect(() => logs.attach(), [logs]);
   // The terminals are the host's too: each process is released with its session, with its plugin, and with the window.
   useEffect(() => terminals.attach(), [terminals]);
-  // View > New Terminal Session of the native menu (`backend/menus`): the app event reaches every window, and the one that has the focus does what the Terminal's `+` does. A browser tab has no window service and listens to nothing.
+  // The items of the native menu (`backend/menus`) arrive as the app event `menu/command`, with a host command id, at every window: the one that has the focus runs the command as the palette runs a chosen row, unless the palette is open (a modal keeps
+  // the window's chords from what is behind it), and says why when it cannot. A browser tab has no window service and listens to nothing.
   useEffect(
     () =>
-      windows?.on('menu/view/terminal/create', () => {
-        if (document.hasFocus()) {
-          terminals.newSession.start();
+      windows?.on('menu/command', (id) => {
+        if (typeof id !== 'string' || !document.hasFocus() || host.palette.store.getSnapshot().open) {
+          return;
         }
+
+        void Promise.resolve(host.palette.run({ id })).then((outcome) => {
+          if (typeof outcome === 'object' && outcome.ok === false) {
+            host.notices.announcer.polite.announce(outcome.reason ?? 'It could not run.');
+          }
+        });
       }),
-    [windows, terminals],
+    [windows, host],
   );
   // What the two tools list is read from the producers the window already holds, and kept true by their events for as long as the window is on screen (`panelTools.ts`).
   useEffect(() => attachPanelTools({ plugins, connections: host.connections?.store, feed: host.feed, problems: host.problems, operations: host.operations, resolve: host.resolve }), [plugins, host]);
