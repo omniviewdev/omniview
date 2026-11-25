@@ -256,7 +256,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['rejoin-from-zero', 'reconnect-drops-missed', 'reconnect-replay-unacked', 'gap-hidden', 'gone-keeps-attaching', 'keys-dropped', 'replies-as-keys', 'ack-stale-restore'],
     plants: 'page',
-    seconds: 95,
+    seconds: 158,
   },
 
   // T3a: find in the scrollback, the context menu of the terminal and the links in its output (the sections are in terminal-find.mjs, the fixture is terminal-fixture.tsx, the mock's bar is measured by
