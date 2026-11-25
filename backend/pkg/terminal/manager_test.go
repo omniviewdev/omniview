@@ -450,10 +450,10 @@ func TestForegroundIsIdleForAShellAtItsPromptBusyForAProgramAndNotBusyForABackgr
 	// its exec, where the foreground is busy and still named for the shell, is made long enough that a test that reads the
 	// name at the first busy reading sees it every time.
 	require.NoError(t, m.Write(info.ID, 0, []byte("sh -c 'sleep 1; exec sleep 59'\n")))
-	require.Eventually(t, func() bool { return busyState(m, info.ID).State == StateBusy }, 10*time.Second, 10*time.Millisecond,
-		"the program in the foreground")
+	// Busy comes first and the name follows the exec: wait for the program by its name.
+	require.True(t, busyAs(m, info.ID, "sleep", 10*time.Second), "the platform names the foreground program")
 	got := busyState(m, info.ID)
-	assert.Equal(t, "sleep", got.Name, "the platform names the foreground program")
+	assert.Equal(t, StateBusy, got.State, "the program in the foreground")
 	assert.Positive(t, got.PGID)
 	assert.NotEqual(t, info.PID, got.PGID, "the foreground group is not the shell's")
 	assert.Empty(t, got.Reason)
