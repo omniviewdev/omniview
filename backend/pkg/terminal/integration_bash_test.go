@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -29,7 +30,11 @@ func bashFixture(t *testing.T, profile string, env ...string) *integrationFixtur
 
 func bashMajorMinor(t *testing.T) (int, int) {
 	t.Helper()
-	major, minor, err := probeBashVersion(integrationShell(t, "bash"))
+	path, lookErr := exec.LookPath("bash")
+	if lookErr != nil {
+		t.Skip("NOT RUN: no bash on this machine")
+	}
+	major, minor, err := probeBashVersion(path)
 	require.NoError(t, err)
 	return major, minor
 }
@@ -450,7 +455,7 @@ func TestACommentLineIsNotACommand(t *testing.T) {
 
 // With extdebug a DEBUG handler that returns non-zero skips the command: the composed trap keeps the user's status.
 func TestAUsersDebugTrapThatSkipsACommandWithExtdebugStillSkipsIt(t *testing.T) {
-	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != \"touch $HOME/skipped\" ]]' DEBUG\n")
+	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != \"touch \\$HOME/skipped\" ]]' DEBUG\n")
 	info := f.started()
 	require.Equal(t, IntegrationOn, info.Integration.State)
 	f.run(info.ID, "touch $HOME/skipped")

@@ -56,15 +56,16 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     REPLY=$__omniview_text
   }
 
-  # The DEBUG trap: before each simple command, and only the first one after a prompt is the user's command.
+  # The DEBUG trap: before each simple command, and only the first one after a prompt is the user's command. It returns the status
+  # that the user's own DEBUG trap left in __omniview_rc (zero when there is none).
   __omniview_debug() {
-    [ "${__omniview_armed:-0}" = 1 ] || return 0
+    [ "${__omniview_armed:-0}" = 1 ] || return "${__omniview_rc:-0}"
     __omniview_armed=0
     # The prompt commands run again for an empty line and for Ctrl-C, and the first of them is then not the user's command. It
     # is the first command this trap sees for one that bash runs without it, a subshell `(exit 7)` for one: so it is taken for the
     # user's only when the history has grown since the prompt (the line was taken). An empty line and Ctrl-C add none.
     if [ "$BASH_COMMAND" = __omniview_precmd_first ] && ! [ "${HISTCMD:-0}" -gt "${__omniview_histcmd:-0}" ] 2>/dev/null; then
-      return 0
+      return "${__omniview_rc:-0}"
     fi
     __omniview_hup_on
     local __omniview_xtrace=0 __omniview_errexit=0
@@ -87,7 +88,7 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
       __omniview_hup_off
       if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
       if [ "$__omniview_errexit" = 1 ]; then set -e; fi
-      return 0
+      return "${__omniview_rc:-0}"
     fi
     __omniview_ran=1
     if [ -n "$__omniview_line" ]; then
@@ -99,7 +100,7 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
     if [ "$__omniview_errexit" = 1 ]; then set -e; fi
-    return 0
+    return "${__omniview_rc:-0}"
   }
 
   # The first of the prompt commands: the end of the command, with its status, which it hands on in $?.
@@ -162,7 +163,9 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
   __omniview_trap=$(trap -p DEBUG)
   if [ -n "$__omniview_trap" ]; then
     eval "__omniview_trap=(${__omniview_trap#trap -- })"
-    trap -- "${__omniview_trap[0]}"$'\n''__omniview_debug' DEBUG
+    # The user's status is kept: with extdebug a DEBUG trap that returns non-zero (or 2) skips the command (or simulates a return),
+    # and the status of the trap is the status of its last command, which has to be the user's, so ours hands it on.
+    trap -- "${__omniview_trap[0]}"$'\n''__omniview_rc=$?'$'\n''__omniview_debug' DEBUG
   else
     trap -- '__omniview_debug' DEBUG
   fi

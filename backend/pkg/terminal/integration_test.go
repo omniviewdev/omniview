@@ -53,6 +53,16 @@ func integrationShell(t *testing.T, name string) string {
 // a bash before 4.1 (macOS's system bash is 3.2) is skipped by the host, as `skipped{bash-too-old}`, and the dedicated tests of
 // that fallback stay on.
 func integrationShellSkip(name string, bashVersion func() (int, int, error)) string {
+	if name != "bash" {
+		return ""
+	}
+	major, minor, err := bashVersion()
+	switch {
+	case err != nil:
+		return "bash cannot say its version: the host skips its integration"
+	case major < 4 || (major == 4 && minor < 1):
+		return fmt.Sprintf("bash %d.%d is before 4.1: the host skips its integration (skipped{bash-too-old})", major, minor)
+	}
 	return ""
 }
 
@@ -133,6 +143,31 @@ type answeringSink struct {
 	*chunkSink
 	m     *Manager
 	reply func(id string, data []byte)
+	// tails is the end of the last read of each session that may be the beginning of a query: a read can cut one in two.
+	mu    sync.Mutex
+	tails map[string][]byte
+}
+
+// queriesIn counts the queries in the read, with what the last read left before it, and keeps the end that may begin one.
+func (a *answeringSink) queriesIn(id string, data []byte) (cursor, attributes int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.tails == nil {
+		a.tails = map[string][]byte{}
+	}
+	window := append(append([]byte(nil), a.tails[id]...), data...)
+	cursor = bytes.Count(window, []byte("\x1b[6n"))
+	attributes = bytes.Count(window, []byte("\x1b[c")) + bytes.Count(window, []byte("\x1b[0c"))
+	// Keep the last three bytes (a query is four at most), unless they belong to a query that is complete: it is not carried on.
+	keep := min(3, len(window))
+	tail := window[len(window)-keep:]
+	for _, query := range []string{"\x1b[6n", "\x1b[c", "\x1b[0c"} {
+		if end := bytes.LastIndex(window, []byte(query)); end >= 0 && end+len(query) > len(window)-keep {
+			tail = window[end+len(query):]
+		}
+	}
+	a.tails[id] = append([]byte(nil), tail...)
+	return cursor, attributes
 }
 
 func (a *answeringSink) answer(id string, data []byte) {
@@ -145,11 +180,12 @@ func (a *answeringSink) answer(id string, data []byte) {
 
 func (a *answeringSink) Output(id string, data []byte) {
 	a.chunkSink.Output(id, data)
-	if bytes.Contains(data, []byte("\x1b[c")) || bytes.Contains(data, []byte("\x1b[0c")) {
+	cursor, attributes := a.queriesIn(id, data)
+	for range attributes {
 		a.answer(id, []byte("\x1b[?62;c"))
 	}
 	// PSReadLine asks where the cursor is (CSI 6 n) before it draws, and waits for the answer.
-	if bytes.Contains(data, []byte("\x1b[6n")) {
+	for range cursor {
 		a.answer(id, []byte("\x1b[1;1R"))
 	}
 }
@@ -158,7 +194,7 @@ func (a *answeringSink) Output(id string, data []byte) {
 func TestTheSinkThatAnswersQueriesAnswersOneThatAReadCutInTwo(t *testing.T) {
 	var mu sync.Mutex
 	var replies []string
-	sink := &answeringSink{chunkSink: newChunkSink(), reply: func(id string, data []byte) {
+	sink := &answeringSink{chunkSink: newChunkSink(), mu: sync.Mutex{}, tails: nil, m: nil, reply: func(id string, data []byte) {
 		mu.Lock()
 		defer mu.Unlock()
 		replies = append(replies, id+":"+string(data))
@@ -196,7 +232,7 @@ func newIntegrationFixture(t *testing.T, name, shell string, env ...string) *int
 	require.NoError(t, os.Unsetenv("ZDOTDIR"))
 	f := &integrationFixture{t: t, name: name, shell: shell, home: home, tmp: tmp, files: userFiles(t, name, home), logs: &logtest.RecordingSink{}}
 	f.sink = newChunkSink()
-	answering := &answeringSink{chunkSink: f.sink, m: nil, reply: nil}
+	answering := &answeringSink{chunkSink: f.sink, m: nil, reply: nil, mu: sync.Mutex{}, tails: nil}
 	logger := logging.New(logging.Config{
 		Backend: logging.NewSinkBackend(f.logs), Level: logging.NewLevelController(logging.LevelTrace),
 	})
