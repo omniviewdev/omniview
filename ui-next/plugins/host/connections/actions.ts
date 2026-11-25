@@ -7,8 +7,9 @@ import type { ConnectionsStore } from './store';
 // the store saying "connecting" while it runs and why it failed when it did (`store.ts`); only a connection that is connected is routed to. A page is never left to start the connection it finds stopped: the person has said which one
 // they want, and the window says what became of it where they said it.
 //
-//   `switchTab`  the tab on screen goes to another connection of ITS plugin: the same page when the page is a list (the lists change), the list the page belongs to when it is an object's page (the object is the old connection's), and
-//                the change replaces the tab's history entry, as a change of scope does (ch16 S60). The tab keeps its place, its pin, and its panel sessions: sessions of the host's tools belong to the host (A21).
+//   `switchTab`  the tab on screen goes to another connection of ITS plugin: the same page when the page is a list or an overview (the page of a scope: the new connection has its own), the list the page belongs to when it is an object's page (the object is the old connection's), and
+//                the change replaces the tab's history entry, as a change of scope does (ch16 S60). The tab keeps its place, its pin, and its panel sessions: sessions of the host's tools belong to the host (A21). A place is one tab (ch16 S26): when another tab already shows
+//                where it would go, that tab is shown and this one keeps its own connection, as `go` does (N4 of the review of HM3b: there were two tabs on one place, named alike).
 //   `go`         from anywhere (Home): the plugin's own first page in that connection, in a tab, by the open model's rules (a tab that already shows it is shown).
 //   `goOrSwitch` from the palette: `switchTab` when the tab on screen is the connection's plugin's, else `go`.
 
@@ -46,7 +47,7 @@ export function createConnectionActions({ tabs, plugins, connections }: Connecti
   const homeIn = (entry: Ready, key: string): Route => ({ plugin: entry.id, contribution: entry.contribution.home, params: { connection: key } });
 
   /**
-   * Where a tab of the plugin goes when its connection changes: the page it is on, in the new connection, when that page is a list; the list an object's page belongs to when it is a detail page (the object is the old
+   * Where a tab of the plugin goes when its connection changes: the page it is on, in the new connection, when that page is a list or an overview (the page of a scope, which the new connection has as well); the list an object's page belongs to when it is a detail page (the object is the old
    * connection's, and the new one has no page for it); the plugin's first page when the tab is on a page the plugin no longer has.
    */
   const targetOf = (entry: Ready, from: Route, key: string): Route => {
@@ -108,7 +109,8 @@ export function createConnectionActions({ tabs, plugins, connections }: Connecti
       return { ok: true };
     }
 
-    return answerOf(tabs.navigate(tab, { route: targetOf(entry, now, key) }, { history: 'replace', source: 'connection' }));
+    // `reuse`: the open model shows a tab that already shows the destination's place, and leaves this tab where it is, instead of making a second tab of that place.
+    return answerOf(tabs.navigate(tab, { route: targetOf(entry, now, key) }, { history: 'replace', source: 'connection', reuse: true }));
   };
 
   const go: ConnectionActions['go'] = async (plugin, key, options) => {

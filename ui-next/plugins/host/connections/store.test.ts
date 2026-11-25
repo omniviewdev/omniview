@@ -1,8 +1,10 @@
 import type { AppError } from '@omniviewdev/runtime/ui/v1';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionsApi, StartStatus, StateRecord } from './api';
+import { NAME_MAX } from '../connectionName';
 import { createConnectionsStore, type ConnectionsStore, type ConnectionsStoreOptions } from './store';
 import type { ConnectOutcome, ConnectionState } from './types';
+import { DETAIL_MAX } from './words';
 
 // The connection store (store.ts) over a fake host: every call it makes is a promise the test settles, so the order in which the host answers is the test's. No runtime, no host, no timers except where a test says so.
 
@@ -194,6 +196,17 @@ describe('the list', () => {
       ['with', 'EKS us-east-1'],
       ['without', undefined],
     ]);
+  });
+
+  it('clips a name that is too long where the host\'s list comes in, with the same limit as a name a page\'s lane says: one million characters are NAME_MAX, and a name that fits is untouched (N2)', async () => {
+    const world = build();
+    const normal = 'gke_project-123456_europe-west1-b_production-cluster-1';
+
+    await loadedWith(world, { acme: [{ connection: { id: 'huge', name: 'n'.repeat(1_000_000), description: 'd'.repeat(1_000_000) }, readiness: 'CONNECTED' }, record('normal', normal)] });
+
+    expect(connection(world, 'acme', 'huge')?.name).toBe(`${'n'.repeat(NAME_MAX - 1)}…`);
+    expect(connection(world, 'acme', 'huge')?.detail).toHaveLength(DETAIL_MAX);
+    expect(connection(world, 'acme', 'normal')?.name).toBe(normal);
   });
 
   it('makes a new connection when only the detail changed, and keeps the very object when nothing did', async () => {

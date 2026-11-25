@@ -73,6 +73,9 @@ export type ListSource<TRow> = {
   readonly complete: boolean;
   /** A refresh runs on rows that stay on screen, whoever asked for it. */
   readonly refreshing: boolean;
-  /** The user's Refresh. Resolves when the read is over and never rejects: a failure is the source's `state`. */
+  /**
+   * The user's Refresh. Resolves when the read is over and never rejects: a failure is the source's `state`. The page does not trust it to: a refresh that rejects, throws, or has not answered in `REFRESH_LIMIT_MS` (`useRefreshFeedback.ts`, 30 s) is said in the header's slot, "Refresh did not finish", with a Retry,
+   * and Refresh is available again; its error goes to the log.
+   */
   readonly refresh: () => Promise<void>;
 };

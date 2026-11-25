@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Route } from '../../shell';
-import type { FrameV1 } from '../contract/v1';
+import type { FrameV1, OverviewPageV1 } from '../contract/v1';
 import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
 import { ConnectionNames } from './connectionName';
@@ -185,6 +185,60 @@ describe('describe', () => {
     const named = contributions.restoreFace?.({ ...saved, scope: { id: 'north-0123456789', label: 'north' } }, at);
     expect(named?.scope).toEqual({ id: 'north-0123456789', label: 'north' });
     expect(names.get('slow', 'north-0123456789')).toBe('north');
+  });
+});
+
+// The face of an overview page's tab (HM3): the page of a scope is named by its definition, the connection's NAME and the plugin, and nothing else, so it is the same before the page's hook has run (a tab restored in the
+// background, never drawn) and after it (the frame the page published): the title is the page's, the glyph the tile's and not the sidebar entry's, the path the plugin and the connection.
+describe('describe: an overview page', () => {
+  const overview: OverviewPageV1 = {
+    kind: 'overview',
+    definition: { title: 'Overview', tile: { icon: 'server' }, tabs: [{ id: 'overview', label: 'Overview' }] },
+    usePage: () => ({ source: { state: { kind: 'loading' }, view: undefined, refreshing: false, refresh: async () => undefined } }),
+  };
+  /** A plugin whose home is the overview, with a sidebar entry for it that wears another glyph than the page's tile. */
+  const home = (): PluginEntry => {
+    const base = acme();
+    return ready('acme', 'Acme plugin', { pages: { overview, ...base.pages }, home: 'overview', sidebar: { ...base.sidebar, nodes: [{ id: 'overview', label: 'Overview', icon: 'layers' }, ...base.sidebar.nodes] } });
+  };
+
+  const KEY = 'north-0123456789';
+
+  it('names the tab from the definition and the connection\'s name alone, before its page has published anything: the title, the tile\'s glyph, the path, the scope and the qualifier', () => {
+    const { contributions, names } = world([home()]);
+    names.learn('acme', KEY, 'north');
+
+    expect(contributions.describe(route('acme', 'overview', { connection: KEY }))).toEqual({
+      title: 'Overview',
+      icon: 'server',
+      pluginName: 'Acme',
+      path: ['Acme', 'north'],
+      scope: { id: KEY, label: 'north' },
+      facets: ['north'],
+    });
+  });
+
+  it('says no connection when none is known: the plugin alone in the path, no qualifier, and the scope the key tells places apart by, with no label', () => {
+    const { contributions } = world([home()]);
+
+    expect(contributions.describe(route('acme', 'overview', { connection: KEY }))).toEqual({ title: 'Overview', icon: 'server', pluginName: 'Acme', path: ['Acme'], scope: { id: KEY, label: '' }, facets: [] });
+    expect(contributions.describe(route('acme', 'overview'))).toEqual({ title: 'Overview', icon: 'server', pluginName: 'Acme', path: ['Acme'], scope: undefined, facets: [] });
+  });
+
+  it('is the face the page publishes: the same title, glyph and path before and after the frame, and the name its lane says is the connection\'s', () => {
+    const { contributions, frames } = world([home()]);
+    const at = route('acme', 'overview', { connection: KEY });
+    const frame: FrameV1 = { tab: { title: 'Overview', icon: 'server' }, path: ['Acme', 'north'], scope: [{ label: 'Zone', icon: 'server', text: 'north', role: 'connection' }] };
+    frames.publish(routeKey(at), frame);
+
+    expect(contributions.describe(at)).toEqual({ title: 'Overview', icon: 'server', pluginName: 'Acme', path: ['Acme', 'north'], scope: { id: KEY, label: 'north' }, facets: ['north'] });
+  });
+
+  it('describes the plugin\'s home as the overview, and the route a sidebar entry or a connection opens at it: the same face', () => {
+    const { contributions, names } = world([home()]);
+    names.learn('acme', KEY, 'north');
+
+    expect(contributions.describe(route('acme', HOME_PAGE, { connection: KEY }))).toEqual(contributions.describe(route('acme', 'overview', { connection: KEY })));
   });
 });
 
