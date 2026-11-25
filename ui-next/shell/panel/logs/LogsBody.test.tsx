@@ -414,8 +414,10 @@ describe('the source of a line (L2)', () => {
 
   it('names a source by the label the stream lists for it', () => {
     const { feed } = mount();
-    feed.set({ sources: [{ id: 'item/app', label: 'app' }, { id: 'item/worker', label: 'worker' }] });
-    feed.push(2, 'item/worker');
+    act(() => {
+      feed.set({ sources: [{ id: 'item/app', label: 'app' }, { id: 'item/worker', label: 'worker' }] });
+      feed.push(2, 'item/worker');
+    });
     frames();
     expect(heads()).toEqual(['Time', 'Level', 'Source', 'Message']);
     expect(dataRows().map((row) => cells(row)[2])).toEqual(['worker', 'worker']);

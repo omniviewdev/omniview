@@ -188,7 +188,7 @@ describe('the session strip', () => {
     });
   });
 
-  it('closes the log session, not the workspace tab, on Command+W from its overflow menu', () => {
+  it('closes the log session, not the workspace tab, on Command+W from its overflow menu', async () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
     const popoverRule = document.createElement('style');
     // jsdom's popover shim does not enter :popover-open; show the mounted menu for focus and role queries.
@@ -225,6 +225,9 @@ describe('the session strip', () => {
       expect(Object.keys(panel.store.getSnapshot().sessions)).toEqual([]);
       expect(tabs.getSnapshot().active).toBe(active);
       expect(screen.getByRole('tab', { name: 'Current page' })).toHaveAttribute('aria-selected', 'true');
+      await waitFor(() => {
+        expect(tab('Logs')).toHaveFocus();
+      });
     } finally {
       popoverRule.remove();
       platform.mockRestore();
