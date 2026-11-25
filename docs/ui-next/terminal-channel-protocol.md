@@ -15,12 +15,20 @@ A terminal opened with `launch.channel` is reached by a **capability** and by **
 
 ```ts
 const session = await ExecClient.CreateTerminal(opts, { channel: true, cols, rows, cwd, lease_ms })
-session.cap   // the capability: keep it in memory and in the host window-state slot id -> cap; never log it
+session.cap   // the capability: keep it in memory and in the tab's sessionStorage (id -> cap), which survives a reload and which no other window reads; NOT in the host window-state slot (WindowClient.GetState / ListStates answer any window and any caller, and windows.json keeps the slots on disk); never log it
 ```
 
 - `launch.channel` excludes `launch.page_key` (refused `INVALID_REQUEST`, naming `page_key`).
 - `lease_ms` means what it means for a keyed terminal: how long the terminal is kept once nothing holds it. Zero is five minutes, the most is thirty minutes. **A new channel terminal is on its lease from the moment it is made**, and the first stream that shows the capability ends it: a page that dies before it opens the stream leaves no shell behind.
 - The answer's `limits` state every number below that applies to this terminal (`channel_ring_bytes`, `channel_high_bytes`, `channel_low_bytes`, `channel_stall_ms`, `channel_inflight_bytes`, `channel_frame_bytes`, `channel_max_input_bytes`).
+
+### Where the capability lives
+
+The page keeps the capability **in memory and in its own tab's `sessionStorage`, as `id -> cap`**. A reload of the tab keeps that storage and no other window and no other caller can read it, so a reload re-attaches by the capability with `from_offset`: on the native build, in a real WKWebView, the old stream ended 18 ms after the reload and the new one got `ready` with `lost` 0 and the output the shell had written meanwhile. It does **not** keep it in the host window-state slot (`WindowClient.SaveState`, `GetState`, `ListStates`): those calls take a window *name* and answer any window and any caller (in the server build every page is named `main`), and `windows.json` keeps the slots on disk in plaintext; the review of PR 704 had a second window read the first one's capability from its slot and drive its terminal. The page key (`terminal-page-key`) is a label of the keyed terminals of the events lane and opens nothing of a channel terminal (`launch.channel` refuses `page_key`).
+
+- A reload recovers a channel terminal **only** by the capability from the tab's own storage. `ListChannelTerminals` answers only for capabilities it is given, so recovery by reload widens nothing. A tab whose storage is gone has lost its capabilities, and its terminals end at their lease.
+- `sessionStorage` is not a boundary against code that runs in the same page (B-112); it is one against other windows and other callers, which is what the capability needs.
+- The UI change that opens a channel terminal must carry a test that its code never passes a capability to `WindowClient.SaveState`.
 
 ## 3. The calls (all additive, all denied to remote audit browsers)
 
@@ -56,7 +64,7 @@ There is no `lease` frame: while a stream holds the terminal no lease runs, and 
 
 ## 5. The handshake
 
-1. The page opens the stream and sends `attach`. **Nothing is read before it.** A wrong, missing or malformed capability, a request of another version, a frame of another type, a frame over 1,024 bytes: the host sends exactly one frame, `0x86`, byte for byte the same whatever the reason, and closes. There is no other answer: a stream cannot ask whether a capability exists.
+1. The page opens the stream and sends `attach`. **Nothing is read before it.** A wrong, missing or malformed capability, a request of another version, a frame of another type, a frame over 1,024 bytes: the host sends exactly one frame, `0x86`, byte for byte the same whatever the reason, and closes. There is no other answer: a stream cannot ask whether a capability exists. **A page sends its `attach` as soon as the stream opens**: a stream that has sent nothing 10 s after it opened is closed by the host, with no answer (the 10 s is not one of the `limits` fields). The transport has no ping and no read deadline of its own, so a connection that says nothing would otherwise keep its slot for ever. The boundary is not exact: an `attach` that arrives at the very moment the wait ends may find the stream closed, and the page attaches again, as it does for any stream that ends.
 2. The host answers `ready`:
 
 ```json
@@ -91,7 +99,7 @@ A locked screen or a hidden window suspends the page: it cannot read or acknowle
 ## 8. Holder, detach, takeover, lease
 
 - **The connection is the holder.** When the stream ends however it ends (the page is gone, Wails closed it, the host is shutting down) the terminal is *detached*: nobody holds it, its shell goes on (its output goes into the ring), and its lease runs. A new stream that shows the capability, with `from_offset`, takes it again, byte-exact. At the end of the lease the terminal ends as a close does, `closed_by: "detach-timeout"`.
-- **A second stream with the same capability takes the terminal** (a duplicated tab carries a copy of the slot). The first stream is sent `taken-over` after the frame it may be parked in, and closes; from the moment of the handover it cannot type: its input and acknowledgements are refused. The displaced tab takes it back by attaching again.
+- **A second stream with the same capability takes the terminal** (a duplicated tab carries a copy of the tab's `sessionStorage`). The first stream is sent `taken-over` after the frame it may be parked in, and closes; from the moment of the handover it cannot type: its input and acknowledgements are refused. The displaced tab takes it back by attaching again.
 - Who holds the terminal and what a frame does to it are decided in one step under the terminal's lock. Input admitted before a handover is applied before the new holder's, input after it is refused, a close that wins a race with an attach wins entirely, two attaches at once have one winner, and a terminal whose end is decided cannot be claimed (the attach is told `not-found`).
 - A frame that is too short or too long for its type, a size that is not one, an unknown type, a type that is the host's, a second `attach`, or a first frame that is not an `attach`: the host closes the stream, with no answer once it has attached (and `not-found` before). The terminal is detached as for any end of a stream, and nothing panics.
 - Frames of one stream are applied in order, one at a time: a write that blocks in the kernel (a program that does not read its terminal) holds up that stream's later frames, `ack` included. The input queue holds at most 1 MiB of unapplied input (`channel_max_input_bytes`): **input that does not fit the room that is left waits for room**, and is never dropped, so that a write of 512 KiB that is blocked and a frame of 1 MiB do not make 1.5 MiB. While it waits the stream's right to type is looked at again at every change: if another stream took the terminal meanwhile, the input is refused (it was the displaced stream's) and the new holder's goes on to wait in its turn. A page that has typed more than the shell reads therefore sees its later frames (acknowledgements too) held up until the shell has read.

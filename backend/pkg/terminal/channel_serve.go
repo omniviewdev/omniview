@@ -218,10 +218,17 @@ var errNotClaimable = errors.New("the terminal cannot be claimed")
 // ServeChannel serves one stream until it ends: it reads the attach request, and if the capability opens a terminal the stream
 // holds it, is handed the replay of what the page lacks and then the live output on the same ordered connection, and carries the
 // page's input, resizes and acknowledgements. When the stream ends, however it ends, a terminal it holds is detached and its lease
-// runs. A request that is not an attach, or whose capability opens nothing, gets the one not-found frame and the stream closes.
+// runs. A request that is not an attach, or whose capability opens nothing, gets the one not-found frame and the stream closes. A
+// stream that has sent nothing when the first-frame wait is over (channelFirstFrameWait) is closed with no answer.
 func (m *Manager) ServeChannel(ch Channel) {
 	defer func() { _ = ch.Close() }()
+	// The transport has no ping and no read deadline of its own, so a connection that never sends would keep its slot of the transport
+	// and this goroutine for ever: the wait is on the manager's clock, and the close wakes the Recv below. The boundary is not exact: a
+	// first frame that arrives at the very moment the wait ends may find the stream closed, and the page that finds its stream closed
+	// attaches again, as it does for any stream that ends.
+	idle := m.clock.AfterFunc(m.channel.firstFrame, func() { _ = ch.Close() })
 	first, err := ch.Recv()
+	idle.Stop()
 	if err != nil {
 		return
 	}

@@ -10,7 +10,8 @@
 #      every named test must pass, which shows that nothing else of that test catches the fault.
 # The faults are the ones a careless change would make; each is the smallest edit that breaks the property. Other tests of the
 # package may catch the same fault as well: a control says that the named test does, by that assertion, and that it is the only
-# thing in that test that does.
+# thing in that test that does. (Control 37 is the one fault that is in a test file: the host never writes a capability to the window
+# service, so the fault is the harness of the guard doing what the old document advised, and the guard must see it.)
 import json
 import os
 import re
@@ -32,6 +33,9 @@ ORDERED = TERMINAL + "/ordered.go"
 TOMBS = TERMINAL + "/reattach.go"
 TYPES = TERMINAL + "/types.go"
 CONTROLLER = EXEC + "/controller.go"
+STREAMROUTE = EXEC + "/streamroute"
+# The packages whose tests are built with a tag (the real route is the server build's).
+TAGS = {STREAMROUTE: "server"}
 
 BY_CAP = "TestEveryCallThatNamesAChannelTerminalByItsCapabilityAnswersTheOneNotFoundForAnyThatOpensNothing"
 BY_ID = "TestAChannelTerminalIsInvisibleToEveryCallThatNamesATerminalByItsId"
@@ -71,6 +75,10 @@ END_COPY_LISTED = "TestAChannelListedEndIsACopyThatNoCallerCanChange"
 END_COPY_UNIT = "TestAnEndsCopyShareNothingWithTheEnd"
 NO_OWNER = "TestAChannelTerminalTakesNoOwner"
 LIST_SNAPSHOT = "TestAChannelListedIsNotTakenOfATerminalThatEndedBeforeItsSnapshot"
+IDLE_STREAM = "TestAStreamThatSendsNothingIsClosedWhenTheFirstFrameWaitIsOverAndNotBefore"
+IDLE_STREAM_STOPPED = "TestAStreamThatShowsItsCapabilityInTimeIsNotClosedWhenTheFirstFrameWaitIsOver"
+WINDOW_STATE = "TestNoWindowStateCallReturnsTheCapabilityOfAChannelTerminalAtAnyStepOfItsLife"
+WINDOW_STATE_TEST = STREAMROUTE + "/route_window_state_test.go"
 
 # number, what the fault is, file, the edits (each: the text it replaces, once, and the text it puts there), then the checks: for
 # each package the tests named for the fault with a part of the message of the assertion that must fail, and the guards (names in
@@ -235,6 +243,22 @@ CONTROLS = [
     (34, "a listing says a terminal is running although it ended between the test and the snapshot", CHANNEL,
      [("\t}, !s.ending.Load()\n", "\t}, true\n")],
      [(TERMINAL, [(LIST_SNAPSHOT, "a snapshot taken once the terminal has ended is not an entry of a running terminal")], ["list-after-snapshot"])]),
+
+    # The first-frame wait (S2 of the review of PR 704).
+    (35, "the wait for the first frame is never armed on the manager's clock: a stream that sends nothing is never closed", SERVE,
+     [("idle := m.clock.AfterFunc(m.channel.firstFrame, func() { _ = ch.Close() })", "var idle timer = time.NewTimer(time.Hour)")],
+     [(TERMINAL, [(IDLE_STREAM, "the host never armed a deadline for the first frame")], ["first-frame-deadline"])]),
+
+    (36, "the wait for the first frame is not stopped once the first frame has come: it closes a stream that attached in time", SERVE,
+     [("\tfirst, err := ch.Recv()\n\tidle.Stop()\n", "\tfirst, err := ch.Recv()\n\t_ = idle\n")],
+     [(TERMINAL, [(IDLE_STREAM_STOPPED, "the stream closed before the page saw the line it typed")], ["first-frame-wait-stopped"])]),
+
+    # The capability is not in the window state (S3 of the review of PR 704): a guard that is green from the start, so the proof is that
+    # a harness that does what the old document advised (a slot of the window service holds id -> cap) makes it red by its assertion.
+    (37, "the capability is saved in a slot of the window service, as the old document advised: any window and any caller can read it", WINDOW_STATE_TEST,
+     [("\tstate.know(info.Cap)\n",
+       "\tstate.know(info.Cap)\n\trequire.NoError(t, state.service.SaveState(window.MainWindowName, \"terminals\", `{\"`+info.ID+`\":\"`+info.Cap+`\"}`))\n")],
+     [(STREAMROUTE, [(WINDOW_STATE, "holds the capability of a channel terminal")], ["no-window-state-holds-the-capability"])]),
 ]
 
 
@@ -264,10 +288,10 @@ def run(package, tests, overlay_files, off):
     env.pop(OFF, None)
     if off:
         env[OFF] = ",".join(off)
-    done = subprocess.run(
-        ["go", "test", "-overlay=" + overlay, "-run", "^(" + "|".join(tests) + ")$", "-count=1", "-timeout", "300s", "-v",
-         "./" + package + "/"],
-        cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    command = ["go", "test", "-overlay=" + overlay, "-run", "^(" + "|".join(tests) + ")$", "-count=1", "-timeout", "300s", "-v", "./" + package + "/"]
+    if package in TAGS:
+        command[2:2] = ["-tags", TAGS[package]]
+    done = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
     return done.returncode, done.stdout + done.stderr
 
 

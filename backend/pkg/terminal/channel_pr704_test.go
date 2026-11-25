@@ -23,6 +23,13 @@ func headGateTail(head string, hold gate, tail string) string {
 		`my $line = <$g>; close($g); print "` + tail + `"; exec("sleep", "3600")'`
 }
 
+// headGateFlood is a script that writes head, waits for the gate and then writes for ever, in blocks: a terminal whose first bytes
+// are there before the flood, which begins when the test says. The shell forks nothing, as the counting script's does.
+func headGateFlood(head string, hold gate) string {
+	return `exec perl -e 'system("stty -opost -echo"); $|=1; print "` + head + `"; open(my $g, "<", "` + hold.path + `") or exit 2; ` +
+		`my $line = <$g>; close($g); my $block = "y" x 4096; while (1) { syswrite(STDOUT, $block) or exit 1 }'`
+}
+
 // The replay and the live output. The ready frame says where the replay ends (`end`, where the shell had written to when the page took
 // the terminal), and the page writes what is below it muted, with the size and the modes it began under, and then resizes: a frame
 // that begins in the replay and ends past it mixes the two, and the page cannot tell where the replay stops. The shell wrote four
@@ -126,17 +133,25 @@ func TestAChannelStreamsProgressKeepsTheMonotonicReadingOfTheClock(t *testing.T)
 // The stall timer is armed for the deadline. The clock moves half of the stall while the timer is being registered, after the pump
 // has computed how long to wait: a timer that waits for what was computed fires half a stall late. The clock then moves to exactly
 // the deadline, and the pump must be let go.
+//
+// The deadline is the stamp of the page's last progress and the stall, so the stamp has to be settled before the clock moves: the
+// sender stamps its first progress when it first sees output, and a stamp that lands after the clock has moved puts the deadline half
+// a stall later than the clock is then moved to (the pump then keeps waiting, and is right to). The order is forced, not waited out:
+// the child writes a small head, below the high mark, and waits for the gate; the hook that moves the clock is not armed, and the
+// flood does not begin, until the sender is parked in the first frame of the head, and a Send that has begun comes after the stamp and
+// before anything that could stamp again (a frame the page takes, an acknowledgement: the page takes nothing).
 func TestAChannelStallTimerIsArmedForTheDeadlineWhenTheClockMovesPartwayWhileItIsArmed(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	clock := &armingClock{fakeClock: newFakeClock(), mu: sync.Mutex{}, onArm: nil}
 	m.clock = clock
 	hold := newGate(t)
-	info := m.startChannel(t, countingScript(-1, hold), Options{})
+	info := m.startChannel(t, headGateFlood("head", hold), Options{})
 	s := m.chanOf(t, info)
 	f := newFakeChannel(t)
 	f.park(1)
 	page := m.attachOn(t, f, info.Cap, nil, 0)
 	page.waitReady()
+	waitSenderParked(t, f)
 	// What the attach left in the pump's wake is taken out (the pump is in a read of the shell, not in a wait), so that nothing but
 	// the clock can end the wait it makes next.
 	select {
