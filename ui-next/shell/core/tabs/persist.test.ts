@@ -276,6 +276,7 @@ describe('a damaged session is repaired, never discarded (ch16 S32, CO-20)', () 
   });
 
   it('leaves a saved face as it was saved when the host\'s restoreFace throws or answers what is not a face (C1g)', () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const world = makeWorld();
     world.install({ id: 'later', name: 'Later', describe: () => ({ title: 'Later', icon: 'box', provisional: true }) });
     const face = { title: 'Later page', icon: 'clock', scope: { id: 'key-1', label: 'key-1' }, path: [], facets: [], pluginName: 'Later', singleton: false, identity: 'key' };
@@ -298,9 +299,13 @@ describe('a damaged session is repaired, never discarded (ch16 S32, CO-20)', () 
       const h = boot({ home: false, initial: result.state, world });
       expect(tab(h, 'a').face).toMatchObject({ title: 'Later page', scope: { id: 'key-1', label: 'key-1' } });
     }
+
+    expect(report).toHaveBeenCalledExactlyOnceWith('[tabs] restoreFace() of later', expect.any(Error));
+    report.mockRestore();
   });
 
   it('lets a plugin rewrite or drop a saved tab when it comes back (DM1), and one that throws or answers nonsense costs a tab at most', () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const world = makeWorld();
     // A plugin that ignores the types and answers something that is not a route.
     const nonsense = { plugin: 5 } as unknown as Route;
@@ -320,6 +325,10 @@ describe('a damaged session is repaired, never discarded (ch16 S32, CO-20)', () 
     expect(tab(h, 'd').face.title).toBe('Whatever');
     expect(result.repaired).toBe(true);
     sound(h);
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenCalledWith('[tabs] describe() of broken', expect.any(Error));
+    expect(report).toHaveBeenCalledWith('[tabs] restore() of broken', expect.any(Error));
+    report.mockRestore();
   });
 });
 

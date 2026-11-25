@@ -44,6 +44,7 @@ describe('opening', () => {
   });
 
   it('says it could not list the plugins when the host does not answer and there is nothing to show, and lists them when asked again', async () => {
+    const report = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { deps, read } = harness(four);
     read.mockRejectedValueOnce(new Error('the host is not there'));
     const model = createPluginsModel(deps);
@@ -56,9 +57,12 @@ describe('opening', () => {
     await settle();
 
     expect(model.getSnapshot()).toMatchObject({ status: 'ready', ids: ['alpha', 'beta', 'delta', 'gamma'] });
+    expect(report).toHaveBeenCalledExactlyOnceWith('[plugins] the list of installed plugins could not be read', expect.any(Error));
+    report.mockRestore();
   });
 
   it('keeps the list it has when a later read fails: the plugins are still there', async () => {
+    const report = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { deps, read } = harness(four);
     const model = createPluginsModel(deps);
     model.refresh();
@@ -68,6 +72,8 @@ describe('opening', () => {
     await settle();
 
     expect(model.getSnapshot()).toMatchObject({ status: 'ready', ids: ['alpha', 'beta', 'delta', 'gamma'] });
+    expect(report).toHaveBeenCalledExactlyOnceWith('[plugins] the list of installed plugins could not be read', expect.any(Error));
+    report.mockRestore();
   });
 
   it('asks the host once at a time: a request that comes while one is out is answered by one more read, not many', async () => {
