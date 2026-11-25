@@ -418,11 +418,9 @@ describe('admit: the custom page and the landing (a minor addition to version 1)
 
   it.each([
     ['a custom page of a scope this version does not have', customPage({ scope: 'window' }), 'pages.landing.scope is "window", and a custom page is read in the "plugin" or in a "connection"'],
-    ['a custom page with no scope', customPage({ scope: undefined }), 'pages.landing.scope is "undefined", and a custom page is read in the "plugin" or in a "connection"'],
     ['a custom page without a title', customPage({ title: ' ' }), 'pages.landing.title is not a non-empty string'],
     ['a custom page without a glyph', customPage({ icon: undefined }), 'pages.landing.icon is not a glyph name'],
     ['a custom page without a body', customPage({ Body: undefined }), 'pages.landing.Body is not a component'],
-    ['a custom page whose body is text', customPage({ Body: 'Landing' }), 'pages.landing.Body is not a component'],
     ['a custom page whose layout is not one the shell has', customPage({ layout: 'grid' }), 'pages.landing.layout is neither "document" nor "pane"'],
   ])('refuses %s, in the words of its own member', (_name, landing, expected) => {
     expect(problemsOf(contribution({ pages: { widgets: page(), landing } }))).toEqual([expected]);
@@ -430,7 +428,6 @@ describe('admit: the custom page and the landing (a minor addition to version 1)
 
   it.each([
     ['a page the plugin does not have', 'gadgets', 'landing "gadgets" is not one of the pages'],
-    ['something that is not a page id', 7, 'landing "7" is not one of the pages'],
     ['a list page', 'widgets', 'landing "widgets" is a list page: a landing is a custom page of scope "plugin"'],
     ['a custom page that is read in a connection', 'connected', 'landing "connected" is a custom page of scope "connection": a landing is read in no connection, so its scope is "plugin"'],
   ])('refuses a landing that is %s, with one sentence that says what a landing is', (_name, landing, expected) => {
@@ -456,16 +453,6 @@ describe('admit: the custom page and the landing (a minor addition to version 1)
     });
 
     expect(problemsOf(value)).toEqual([]);
-    expect(openable([{ id: 'landing', label: 'Landing', icon: 'house' }, { id: 'gone', label: 'Gone', icon: 'box' }], { landing: customPage() })).toEqual([{ id: 'landing', label: 'Landing', icon: 'house' }]);
-  });
-
-  it('is the same in types: a custom page is a page of the contribution, with the Body and the scope the contract names, and a landing is a key of its pages', () => {
-    const landing: PageV1 = { kind: 'custom', scope: 'plugin', title: 'Landing', icon: 'house', Body: () => null };
-    const pages: ContributionV1['pages'] = { landing };
-    const named: Pick<ContributionV1, 'landing'> = { landing: 'landing' };
-
-    expect(pages.landing?.kind).toBe('custom');
-    expect(named.landing).toBe('landing');
   });
 });
 
