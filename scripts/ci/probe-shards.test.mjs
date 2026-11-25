@@ -1445,7 +1445,7 @@ test('the plan job is the first job, runs on a plain runner, installs the pinned
   assert.equal(job.if, undefined, 'it runs on every event: a plan that is skipped is a run with no shard');
   assert.equal(job['continue-on-error'], undefined);
   assert.equal(job.container, undefined, 'it does not pull the CI image: it is on the critical path of every shard');
-  assert.deepEqual(Object.keys(job.outputs).sort(), ['matrix', 'reason', 'scope', 'shards']);
+  assert.deepEqual(Object.keys(job.outputs).sort(), ['full_units', 'matrix', 'reason', 'scope', 'shards']);
   assert.equal(job.outputs.matrix, '${{ steps.plan.outputs.matrix }}');
   assert.equal(job.outputs.shards, '${{ steps.plan.outputs.shards }}');
   const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
@@ -1455,11 +1455,11 @@ test('the plan job is the first job, runs on a plain runner, installs the pinned
   assert.equal(node.with['node-version'], undefined);
   const planStep = job.steps.find((step) => step.id === 'plan');
   assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs check/);
-  assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" plan/);
+  assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" --full-units "\$FULL_UNITS" plan/);
   assert.ok(planStep.run.indexOf('probe-shards.mjs check') < planStep.run.indexOf('probe-shards.mjs --scope'), 'the check first');
   assert.doesNotMatch(planStep.run, /--base|changed|CHANGED/, 'the plan does not read the diff itself: scripts/ci/ci-scope.mjs, the one place, does');
   const scopeStep = job.steps.find((step) => step.id === 'scope');
-  assert.equal(scopeStep.run, 'node scripts/ci/ci-scope.mjs');
+  assert.equal(scopeStep.run, 'node scripts/ci/ci-scope.mjs --for probes');
   assert.equal(checkout.with['fetch-depth'], 2, 'the diff of a pull request is two commits');
   assert.equal(planStep.env.SCOPE, '${{ steps.scope.outputs.scope }}');
   assert.equal(job.outputs.scope, '${{ steps.plan.outputs.scope }}');
@@ -1478,7 +1478,7 @@ test('the shard job needs the plan, takes its matrix from the plan\'s output, no
   assert.match(commands, /node --test scripts\/ci\/probe-\*\.test\.mjs/);
   assert.doesNotMatch(commands, /node (packages\/kit\/probes|ui-next\/(shell|page)\/probes)\//, 'a probe run from the workflow file is a probe no table knows');
   const runStep = stepNamed('shard', 'Run the units of this shard');
-  assert.equal(runStep.run, 'node scripts/ci/probe-shards.mjs --scope "$SCOPE" run "$SHARD" "$UNITS"', 'the shard\'s step is the command and nothing after it: no `|| true`');
+  assert.equal(runStep.run, 'node scripts/ci/probe-shards.mjs --scope "$SCOPE" --full-units "$FULL_UNITS" run "$SHARD" "$UNITS"', 'the shard\'s step is the command and nothing after it: no `|| true`');
   assert.equal(runStep.env.SCOPE, '${{ needs.plan.outputs.scope }}');
   assert.equal(runStep.env.SHARD, '${{ matrix.shard }}');
   assert.equal(runStep.env.UNITS, '${{ matrix.units }}');
@@ -1627,7 +1627,7 @@ test('the verdict step reads the number of shards the PLAN made, downloads every
   const upload = stepsOf('shard').find((entry) => entry.uses?.startsWith('actions/upload-artifact'));
   const prefix = upload.with.name.replace('${{ matrix.shard }}', '');
   assert.match(step.run, new RegExp(`gh run download "\\$GITHUB_RUN_ID" --pattern '${prefix}\\*' --dir "\\$RUNNER_TEMP/reports"`));
-  assert.match(step.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" verify --reports "\$RUNNER_TEMP\/reports" --shards "\$PLAN_SHARDS"/);
+  assert.match(step.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" --full-units "\$FULL_UNITS" verify --reports "\$RUNNER_TEMP\/reports" --shards "\$PLAN_SHARDS"/);
   assert.equal(/\$\{\{/.test(step.run), false, 'nothing of the run reaches the command but through env');
 });
 
@@ -1930,11 +1930,98 @@ test('a pull request\'s shard runs its probes with ENGINES=webkit, does not warn
 
 test('a pull request\'s scope is decided in one place: the plan reads the output of scripts/ci/ci-scope.mjs, and the shards and the verdict read the plan\'s', () => {
   const scope = workflow.jobs.plan.steps.find((step) => step.id === 'scope');
-  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs');
+  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs --for probes');
   assert.equal(scope.env.SCOPE_INPUT, '${{ inputs.scope }}');
   assert.equal(scope.env.PR_LABELS, undefined, 'a label does not change the scope (a manual run does)');
   const text = workflowText.replace(/^\s*#.*$/gm, '');
   assert.equal(/github\.event\.pull_request\.labels/.test(text), false);
   assert.equal(/steps\.scope\.outputs\.scope/.test(text), true);
   assert.equal(/github\.event_name == 'pull_request'/.test(text), true);
+});
+
+// -- N33: the full treatment of the units a pull request changes ---------------------------------------------------------------------------------------------------------------
+
+const TREATED = ['form', 'form-controls'];
+
+test('N33: a pull request runs the probes and, for the units named, their control units too', () => {
+  const none = engine.unitsOfScope(UNITS, 'pr');
+  assert.equal(none.some((entry) => entry.controls !== undefined), false);
+  const treated = engine.unitsOfScope(UNITS, 'pr', new Set(TREATED));
+  assert.deepEqual(treated.filter((entry) => entry.controls !== undefined).map((entry) => entry.id), ['form-controls']);
+  assert.equal(treated.length, none.length + 1);
+  assert.equal(engine.unitsOfScope(UNITS, 'full', new Set(TREATED)).length, UNITS.length, 'a full run runs every unit already');
+  assert.deepEqual(engine.unitsOfScope(UNITS, 'pr', new Set(['no-such-unit'])), none, 'the table is the one that says what exists (the command refuses a name it does not have)');
+});
+
+test('N33: a unit of the full treatment is not told the engine; the units that are not, are', async () => {
+  const root = scratch({ 'ui-next/shell/probes/engines-probe.mjs': "console.log(`engines ${process.env.ENGINES ?? 'unset'}`);\n" });
+  const units = [unit('treated', 'ui-next/shell/probes/engines-probe.mjs', { name: 'Treated' }), unit('plain', 'ui-next/shell/probes/engines-probe.mjs', { name: 'Plain' })];
+  const chunks = [];
+  const results = await runShard(units, '1', { root, env: { ...callerEnv(), RUNNER_TEMP: '/tmp/runner', ENGINES: 'webkit' }, out: (text) => chunks.push(text), bothEngines: new Set(['treated']) });
+  assert.ok(results.every((result) => result.ok));
+  assert.deepEqual([...chunks.join('').matchAll(/^engines (.*)$/gm)].map((match) => match[1]), ['unset', 'webkit']);
+});
+
+test('N33: the plan names the units of the full treatment, packs them with the probes, and a name that is no unit is an error that plans nothing', () => {
+  const root = treeOfTheUnits();
+  const output = path.join(root, 'github-output');
+  const result = cli(root, ['--scope', 'pr', '--reason', 'one unit file', '--full-units', TREATED.join(','), 'plan'], { GITHUB_OUTPUT: output });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const planned = JSON.parse(outputs(output).matrix).include.flatMap((entry) => entry.units.split(','));
+  assert.ok(planned.includes('form-controls'), 'the control unit of the treated probe is planned');
+  assert.equal(planned.filter((id) => byId(id)?.controls !== undefined).length, 1, 'and no other control unit');
+  assert.match(result.stdout, /\*\*Full treatment \(every negative control, both engines\) on this pull request:\*\* form, form-controls\. Every other unit runs as on any pull request\./);
+  const unknown = cli(root, ['--scope', 'pr', '--full-units', 'form,ghost', 'plan']);
+  assert.equal(unknown.status, 2);
+  assert.match(unknown.stderr, /--full-units names "ghost", which is no unit of the table/);
+  const full = cli(root, ['--scope', 'full', '--full-units', 'form', 'plan'], { GITHUB_OUTPUT: path.join(root, 'out-full') });
+  assert.equal(full.status, 0, 'a full run takes the names and runs every unit anyway');
+  assert.equal(JSON.parse(outputs(path.join(root, 'out-full')).matrix).include.flatMap((entry) => entry.units.split(',')).length, UNITS.length);
+});
+
+test('N33: the verdict requires the controls of the treated units too, says in its own line which units had the full treatment, and counts only the controls that did not run as not run', () => {
+  const root = treeOfTheUnits();
+  const full = new Set(TREATED);
+  const scoped = engine.unitsOfScope(UNITS, 'pr', full);
+  const planned = planRun({ units: scoped, limit: engine.PR_LIMIT_SECONDS });
+  const reportsDir = path.join(root, 'reports');
+  for (const shard of planned.shards) {
+    const report = ranReport(shard.shard, resultsOf(shard.units.map((entry) => byId(entry.id))));
+    mkdirSync(path.join(reportsDir, `kit-probe-reports-${report.shard}`), { recursive: true });
+    writeFileSync(path.join(reportsDir, `kit-probe-reports-${report.shard}`, `ran-${report.shard}-probe.json`), JSON.stringify(report));
+  }
+
+  const summary = path.join(root, 'summary.md');
+  const args = ['--scope', 'pr', '--reason', 'one unit file', '--full-units', TREATED.join(','), 'verify', '--reports', reportsDir, '--shards', String(planned.shards.length)];
+  const ok = cli(root, args, { GITHUB_STEP_SUMMARY: summary });
+  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  const controlsOf = sum(controlUnits, (entry) => entry.controls.length);
+  const ran = byId('form-controls').controls.length;
+  assert.match(ok.stdout, /probe-shards: the full treatment \(every negative control, both engines\) ran on 2 units: form, form-controls \(one unit file\)/);
+  assert.match(ok.stdout, new RegExp(`${String(controlsOf - ran)} negative controls in ${String(UNITS.length - scoped.length)} units were NOT RUN`));
+  assert.match(readFileSync(summary, 'utf8'), /\*\*Full treatment:\*\* the full treatment/);
+  // The same reports without the names are red: the control unit of the treated probe is in the reports and not in the plan.
+  const unnamed = cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(planned.shards.length)]);
+  assert.equal(unnamed.status, 1);
+  // And reports that lack the treated control unit are red with the names.
+  const lacking = path.join(root, 'lacking');
+  for (const shard of planned.shards) {
+    const report = ranReport(shard.shard, resultsOf(shard.units.filter((entry) => entry.id !== 'form-controls').map((entry) => byId(entry.id))));
+    mkdirSync(path.join(lacking, `kit-probe-reports-${report.shard}`), { recursive: true });
+    writeFileSync(path.join(lacking, `kit-probe-reports-${report.shard}`, `ran-${report.shard}-probe.json`), JSON.stringify(report));
+  }
+  const red = cli(root, ['--scope', 'pr', '--full-units', TREATED.join(','), 'verify', '--reports', lacking, '--shards', String(planned.shards.length)]);
+  assert.equal(red.status, 1);
+  assert.match(red.stderr, /form-controls/);
+});
+
+test('N33: a shard of the pull request tells the engine to every unit but those of the full treatment, in the code and in the workflow', () => {
+  const text = readFileSync(path.join(repo, 'scripts/ci/probe-shards.mjs'), 'utf8');
+  assert.match(text, /bothEngines: full/);
+  const workflow = parse(readFileSync(path.join(repo, '.github/workflows/ui-next-kit-probes.yml'), 'utf8'));
+  assert.equal(workflow.on.workflow_dispatch.inputs.full_units.type, 'string');
+  assert.equal(workflow.jobs.plan.outputs.full_units, '${{ steps.scope.outputs.full_units }}');
+  const named = (job, step) => workflow.jobs[job].steps.find((entry) => entry.name === step);
+  assert.equal(named('plan', 'Decide the scope of this run').env.FULL_UNITS_INPUT, '${{ inputs.full_units }}');
+  assert.equal(named('shard', 'Run the units of this shard').env.FULL_UNITS, '${{ needs.plan.outputs.full_units }}');
 });

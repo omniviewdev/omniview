@@ -2498,21 +2498,11 @@ async function checkProcess(browser, engine, binary, work) {
     // What the window was told of the stop: the crash, then each attempt of the recovery, which reloads the plugin (`reloaded`) and fails because the binary cannot run (`failed`, PU2: a load that fails says so), and nothing else.
     const recovering = (causes) => causes[0] === 'crashed' && causes.length > 1 && causes.slice(1).every((cause) => cause === 'reloaded' || cause === 'failed');
     assert.ok(recovering(told().map((data) => data.cause)), `${engine}: the window was told the crash and then the reload that recovers it and the failure of its load, and nothing else (${JSON.stringify(told().map((data) => data.cause))})`);
-    await waitUntil('the host to give up the recovery', () => host.output().includes('max crash recovery attempts reached'), 45_000);
-    await waitUntil('the window to be told that the recovery\'s last load failed', () => told().at(-1)?.cause === 'failed', 15_000);
-    // The recovery's attempts come one after another, each a `reloaded` and a `failed`, and the host says it gives up when it makes the last: a `failed` that is the last thing told is the end of an attempt, not of the
-    // recovery (N32: a run on the runner was told one more pair after this point, and the check that took its snapshot here compared it with a list that was one pair short). What the window was told is final when
-    // nothing more has come for as long as an attempt takes.
-    let toldCount = -1;
-    let quietSince = Date.now();
-    await waitUntil('the window to be told nothing more of the recovery', () => {
-      if (told().length !== toldCount) {
-        toldCount = told().length;
-        quietSince = Date.now();
-      }
-
-      return Date.now() - quietSince >= 6_000;
-    }, 40_000);
+    // The host says that the recovery ended with an event of its own, `plugin/crash_recovery_failed`, emitted when the attempts are used up (the host's beginRecoveryAttempt), after every attempt's `plugin/unloaded`; the frames of
+    // one window come in the order the host emitted them, so what the window was told is final once this one has come. (N32 waited for the host's log line and for a `failed` as the last thing told, which is true between two
+    // attempts as well; N33 waits for the event that ends it, not for a time.)
+    await waitUntil('the window to be told that the host gave up the recovery', () => frames.slice(mark).some((frame) => frame.name === 'plugin/crash_recovery_failed'), 60_000);
+    assert.equal(told().at(-1)?.cause, 'failed', `${engine}: the recovery's last attempt failed to load the plugin and said so before the host said it gave up`);
     const stopped = told().map((data) => data.cause);
     assert.ok(recovering(stopped) && stopped.at(-1) === 'failed', `${engine}: the recovery's last attempt failed to load the plugin and said so (${JSON.stringify(stopped)})`);
     assert.equal(frames.slice(mark).some((frame) => frame.name === 'plugin/state_change' && frame.data?.to === 'Running'), false, `${engine}: the plugin did not run while the binary could not`);

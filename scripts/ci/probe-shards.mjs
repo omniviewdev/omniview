@@ -103,8 +103,11 @@ export const PR_SHARD_CEILING_SECONDS = Math.ceil(PR_LIMIT_SECONDS * 1.3);
 export const PR_ENGINES = 'webkit';
 export const SCOPES = ['pr', 'full'];
 
-/** The units a scope runs: every one for `full`, the probes (no negative control) for `pr`. */
-export const unitsOfScope = (units, scope) => (scope === 'pr' ? units.filter((unit) => unit.controls === undefined) : units);
+/**
+ * The units a scope runs: every one for `full`; for `pr` the probes (no negative control) and the units of `full` (N33: the units of the probes that a pull request changes, scripts/ci/ci-scope.mjs says which), which run with
+ * their controls and in both engines.
+ */
+export const unitsOfScope = (units, scope, full = new Set()) => (scope === 'pr' ? units.filter((unit) => unit.controls === undefined || full.has(unit.id)) : units);
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Which files are probe scripts
@@ -377,7 +380,7 @@ export function matrixOf(shards, { engines = '' } = {}) {
 }
 
 /** The summary of a plan (Markdown): the counts, and every shard with its units. */
-export function renderPlan({ shards }, units, { scope = 'full', reason = '', limit = LIMIT_SECONDS } = {}) {
+export function renderPlan({ shards }, units, { scope = 'full', reason = '', limit = LIMIT_SECONDS, full = new Set() } = {}) {
   const controlUnits = units.filter((unit) => unit.controls !== undefined);
   const controls = controlUnits.reduce((sum, unit) => sum + unit.controls.length, 0);
   const work = units.reduce((sum, unit) => sum + unit.seconds, 0);
@@ -386,6 +389,7 @@ export function renderPlan({ shards }, units, { scope = 'full', reason = '', lim
     '',
     `${scope === 'pr' ? `Pull request scope (${reason}): the probes in WebKit, the negative controls are NOT run on pull requests (they run on main, every night, and on a change to the test infrastructure): ` : 'Every probe and every control runs: '}${units.length - controlUnits.length} probes and ${controlUnits.length} control units (${controls} controls), ${work} s of units in ${shards.length} shard${shards.length === 1 ? '' : 's'} of at most ${limit} s each.`,
     '',
+    ...(full.size === 0 ? [] : [`**Full treatment (every negative control, both engines) on this pull request:** ${[...full].sort().join(', ')}. Every other unit runs as on any pull request.`, '']),
     '| Shard | Seconds | Units |',
     '|---|--:|---|',
   ];
@@ -456,10 +460,13 @@ function runOne(run, { id, root, env, out, node }) {
  * Runs every run of every unit given, one at a time, to the end: the results are `{ label, unit, script, control, ok, code, signal, seconds, builds }` in order (`unit` is the id of the unit the run belongs to; `builds` the builds the
  * process said it made or read). `buildCache` is the directory the processes of the shard share their builds in (every unit but those that plant at build time is given it). A failure does not stop the shard.
  */
-export async function runShard(units, id, { root = REPO_ROOT, env = process.env, out = (text) => process.stdout.write(text), node = process.execPath, buildCache } = {}) {
+export async function runShard(units, id, { root = REPO_ROOT, env = process.env, out = (text) => process.stdout.write(text), node = process.execPath, buildCache, bothEngines = new Set() } = {}) {
   const results = [];
   for (const unit of units) {
-    for (const run of expandUnit(unit, env, { buildCache })) results.push({ ...(await runOne(run, { id, root, env, out, node })), unit: unit.id });
+    // The units of `bothEngines` (N33: the full treatment of a pull request) are not told the engine: they run in the probe's own default, both.
+    const { ENGINES: _told, ...rest } = env;
+    const unitEnv = bothEngines.has(unit.id) ? rest : env;
+    for (const run of expandUnit(unit, unitEnv, { buildCache })) results.push({ ...(await runOne(run, { id, root, env: unitEnv, out, node })), unit: unit.id });
   }
   return results;
 }
@@ -639,7 +646,7 @@ export function verifyRan({ units, reports, shards }) {
 // The command
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const USAGE = 'usage: node scripts/ci/probe-shards.mjs [--root <repository>] [--scope pr|full] check | plan | run <shard> <unit>,<unit>,... | verify --reports <directory> --shards <n>';
+const USAGE = 'usage: node scripts/ci/probe-shards.mjs [--root <repository>] [--scope pr|full] [--full-units <id>,<id>,...] check | plan | run <shard> <unit>,<unit>,... | verify --reports <directory> --shards <n>';
 
 export async function main(
   argv = process.argv.slice(2),
@@ -650,11 +657,13 @@ export async function main(
   let planned;
   let scope = 'full';
   let reason = '';
+  let fullIds = [];
   const words = [];
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--root' && argv[i + 1] !== undefined) root = path.resolve(argv[(i += 1)]);
     else if (argv[i] === '--scope' && SCOPES.includes(argv[i + 1])) scope = argv[(i += 1)];
     else if (argv[i] === '--reason' && argv[i + 1] !== undefined) reason = argv[(i += 1)];
+    else if (argv[i] === '--full-units' && argv[i + 1] !== undefined) fullIds = argv[(i += 1)].split(',').filter((id) => id !== '');
     else if (argv[i] === '--reports' && argv[i + 1] !== undefined) reportsDir = argv[(i += 1)];
     else if (argv[i] === '--shards' && argv[i + 1] !== undefined) planned = argv[(i += 1)];
     else words.push(argv[i]);
@@ -695,16 +704,25 @@ export async function main(
     return 1;
   }
 
+  // The units that get the full treatment on a pull request (N33). A name that is no unit of the table is an error, not a unit that is skipped; a full run runs every unit in both engines already.
+  const known = new Set(units.map((unit) => unit.id));
+  const unknown = fullIds.filter((id) => !known.has(id));
+  if (unknown.length > 0) {
+    err(`probe-shards: --full-units names ${unknown.map((id) => JSON.stringify(id)).join(', ')}, which ${unknown.length === 1 ? 'is' : 'are'} no unit of the table\n`);
+    return 2;
+  }
+  const full = new Set(scope === 'pr' ? fullIds : []);
+
   if (verb === 'plan') {
     let result;
-    const scoped = unitsOfScope(units, scope);
+    const scoped = unitsOfScope(units, scope, full);
     try {
       result = planRun({ units: scoped, limit: scope === 'pr' ? PR_LIMIT_SECONDS : LIMIT_SECONDS });
     } catch (error) {
       err(`probe-shards: ${error.message}\n`);
       return 1;
     }
-    const text = renderPlan(result, scoped, { scope, reason, limit: scope === 'pr' ? PR_LIMIT_SECONDS : LIMIT_SECONDS });
+    const text = renderPlan(result, scoped, { scope, reason, limit: scope === 'pr' ? PR_LIMIT_SECONDS : LIMIT_SECONDS, full });
     out(text);
     const matrix = matrixOf(result.shards, { engines: scope === 'pr' ? PR_ENGINES : '' });
     try {
@@ -725,7 +743,7 @@ export async function main(
       err(`probe-shards: cannot read the reports in ${reportsDir}: ${firstLine(error.message)}\n`);
       return 1;
     }
-    const scoped = unitsOfScope(units, scope);
+    const scoped = unitsOfScope(units, scope, full);
     const problems = [...read.problems, ...verifyRan({ units: scoped, reports: read.reports, shards: planned })];
     for (const message of problems) {
       if (env.GITHUB_ACTIONS === 'true') out(`::error title=Kit probes::${escapeData(message)}\n`);
@@ -734,16 +752,18 @@ export async function main(
     if (problems.length > 0) return 1;
     const probes = scoped.filter((unit) => unit.controls === undefined).length;
     const controlsRun = scoped.reduce((sum, unit) => sum + (unit.controls?.length ?? 0), 0);
-    const what = `${probes} probes and ${controlsRun} controls, in ${scoped.length} units, ran once and passed, in ${read.reports.length} shards${scope === 'pr' ? ' (WebKit)' : ''}`;
+    const what = `${probes} probes and ${controlsRun} controls, in ${scoped.length} units, ran once and passed, in ${read.reports.length} shards${scope === 'pr' ? (full.size === 0 ? ' (WebKit)' : ' (WebKit, both engines for the full treatment)') : ''}`;
     // A control that a pull request does not run is not a control that passed: the verdict says so in its own line and its summary.
-    const notRun = scope === 'pr' ? `${controlsOf} negative controls in ${units.length - scoped.length} units were NOT RUN on this pull request (they run on main, every night, and on a change to the test infrastructure)${reason === '' ? '' : `: ${reason}`}` : '';
+    const treated = full.size === 0 ? '' : `the full treatment (every negative control, both engines) ran on ${full.size} unit${full.size === 1 ? '' : 's'}: ${[...full].sort().join(', ')}${reason === '' ? '' : ` (${reason})`}`;
+    if (treated !== '') out(`probe-shards: ${treated}\n`);
+    const notRun = scope === 'pr' ? `${controlsOf - controlsRun} negative controls in ${units.length - scoped.length} units were NOT RUN on this pull request (they run on main, every night, and on a change to the test infrastructure)${reason === '' ? '' : `: ${reason}`}` : '';
     if (notRun !== '') out(`probe-shards: not run on pull requests: ${notRun}\n`);
     out(`probe-shards: ok (${what})\n`);
     // The verdict's own summary: what was required and what each shard ran, so that a reader of the check sees the run was whole without opening a shard.
     if (env.GITHUB_STEP_SUMMARY) {
       const rows = [...read.reports].sort((a, b) => a.shard - b.shard).map((report) => `| ${report.shard} | ${report.units.map((entry) => entry.id).join(', ')} |`);
       try {
-        appendFileSync(env.GITHUB_STEP_SUMMARY, `### Kit probes\n\n${scope === 'pr' ? 'Every probe of the table ran once and passed' : 'Every probe and every control of the table ran once and passed'}: ${what}.\n\n${notRun === '' ? '' : `**Not run on pull requests:** ${notRun}.\n\n`}| Shard | Units that ran |\n|---|---|\n${rows.join('\n')}\n\n`);
+        appendFileSync(env.GITHUB_STEP_SUMMARY, `### Kit probes\n\n${scope === 'pr' ? 'Every probe of the table ran once and passed' : 'Every probe and every control of the table ran once and passed'}: ${what}.\n\n${treated === '' ? '' : `**Full treatment:** ${treated}.\n\n`}${notRun === '' ? '' : `**Not run on pull requests:** ${notRun}.\n\n`}| Shard | Units that ran |\n|---|---|\n${rows.join('\n')}\n\n`);
       } catch (error) {
         err(`probe-shards: could not write the summary: ${firstLine(error.message)}\n`);
         return 1;
@@ -778,7 +798,7 @@ export async function main(
   // A pull request's shard tells its probes the engine to use (`ENGINES`); a full run leaves them their own default, both.
   const shardEnv = scope === 'pr' ? { ...env, ENGINES: PR_ENGINES } : env;
   try {
-    results = await runShard(chosen, shard, { root, env: shardEnv, out, buildCache });
+    results = await runShard(chosen, shard, { root, env: shardEnv, out, buildCache, bothEngines: full });
   } catch (error) {
     err(`probe-shards: ${error.message}\n`);
     return 1;

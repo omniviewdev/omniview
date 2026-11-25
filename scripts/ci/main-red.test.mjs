@@ -67,7 +67,11 @@ function fakeGh({ issues = [], runs = [], commits = [], failCompare = false, fai
       return '';
     }
     if (first === 'api' && /\/actions\/runs\/\d+\/jobs/.test(args[1])) return JSON.stringify(jobs.map((conclusion, index) => ({ id: index + 1, conclusion })));
-    if (first === 'api' && /\/check-runs\/\d+\/annotations/.test(args[1])) return JSON.stringify(annotations[/check-runs\/(\d+)\//.exec(args[1])[1]] ?? []);
+    const annotated = args.find((argument) => /\/check-runs\/\d+\/annotations/.test(argument));
+    if (first === 'api' && annotated !== undefined) {
+      calls.at(-1).paginated = args.includes('--paginate');
+      return (annotations[/check-runs\/(\d+)\//.exec(annotated)[1]] ?? []).map((message) => JSON.stringify(message)).join('\n');
+    }
     if (first === 'api' && /\/actions\/workflows\/\d+\/runs/.test(args[1])) return JSON.stringify(runs);
     if (first === 'api' && /\/compare\//.test(args[1])) {
       if (failCompare) throw new Error('gh api: 404');
@@ -242,11 +246,16 @@ test('S1 of #726: a job that reached its timeout (cancelled, with the annotation
   const hang = fakeGh({ runs: goodRuns, jobs: ['cancelled'], annotations: { 1: ['The job has exceeded the maximum execution time of 30m0s'] } });
   const result = await handle({ env: env({ WORKFLOW_NAME: 'Main Windows build', CONCLUSION: 'cancelled' }), ask: hang.ask });
   assert.equal(result.action, 'created');
-  assert.ok(hang.calls.some((call) => /\/check-runs\/1\/annotations/.test(call.args[1] ?? '')), 'the annotations of the cancelled job are read');
+  assert.ok(hang.calls.some((call) => /\/check-runs\/1\/annotations/.test(call.args.join(' '))), 'the annotations of the cancelled job are read');
   const manual = fakeGh({ jobs: ['success', 'cancelled'], annotations: { 2: ['The run was canceled by @someone.', 'Node.js 20 is deprecated'] } });
   assert.equal((await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: manual.ask })).action, 'none');
   const second = fakeGh({ runs: goodRuns, jobs: ['success', 'cancelled', 'cancelled'], annotations: { 3: ['The job has exceeded the maximum execution time of 1m0s'] } });
   assert.equal((await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: second.ask })).action, 'created', 'any job of the run');
+  // N33 (CodeRabbit on #728): the annotations of every page are read, and a message with a newline is one message.
+  const many = Array.from({ length: 80 }, (_, index) => `Node.js 20 is deprecated (${index})\nsecond line`);
+  const late = fakeGh({ runs: goodRuns, jobs: ['cancelled'], annotations: { 1: [...many, 'The job has exceeded the maximum execution time of 30m0s'] } });
+  assert.equal((await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: late.ask })).action, 'created', 'a timeout annotation past the first page is found');
+  assert.equal(late.calls.find((call) => call.args.some((argument) => /annotations/.test(argument))).paginated, true);
   assert.equal(TIMEOUT_ANNOTATION.test('The job has exceeded the maximum execution time of 1m0s'), true);
 });
 

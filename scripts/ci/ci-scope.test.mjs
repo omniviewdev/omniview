@@ -105,28 +105,28 @@ test('changedFiles reads git\'s NUL-separated names, and says null when git fail
   assert.deepEqual(seen, ['git', 'diff', '--name-only', '--no-renames', '-z', 'abc', 'HEAD']);
 });
 
-test('main writes the scope and the reason where the workflow reads them, and the summary says what each scope is', () => {
+test('main writes the scope and the reason where the workflow reads them, and the summary says what each scope is', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'ci-scope-'));
   const output = path.join(dir, 'out');
   const summary = path.join(dir, 'sum');
   let text = '';
   const ran = (stdout) => () => ({ status: 0, stdout });
-  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, out: (chunk) => { text += chunk; }, run: ran('ui-next/a.tsx\0') }), 0);
-  assert.equal(readFileSync(output, 'utf8'), 'scope=pr\nreason=1 changed file, none of them test infrastructure\n');
+  assert.equal(await main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, out: (chunk) => { text += chunk; }, run: ran('ui-next/a.tsx\0') }), 0);
+  assert.equal(readFileSync(output, 'utf8'), 'scope=pr\nreason=1 changed file, none of them test infrastructure\nfull_units=\n');
   assert.match(readFileSync(summary, 'utf8'), /Scope of this run: pr\n\nWebKit, no negative controls/);
   assert.match(text, /ci-scope: pr/);
   const injected = path.join(dir, 'out2');
   const summaryTwo = path.join(dir, 'sum2');
   let log = '';
-  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: injected, GITHUB_STEP_SUMMARY: summaryTwo }, out: (chunk) => { log += chunk; }, run: ran('scripts/ci/x\n::warning title=forged::y\0') }), 0);
+  assert.equal(await main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: injected, GITHUB_STEP_SUMMARY: summaryTwo }, out: (chunk) => { log += chunk; }, run: ran('scripts/ci/x\n::warning title=forged::y\0') }), 0);
   assert.equal(log.split('\n').some((line) => line.startsWith('::')), false, 'no line of the log is a workflow command');
   assert.equal(readFileSync(summaryTwo, 'utf8').split('\n').some((line) => line.startsWith('::')), false);
   assert.match(readFileSync(injected, 'utf8'), /^scope=full\nreason=scripts\/ci\/x\?::warning title=forged::y changes /);
   const broken = path.join(dir, 'out3');
-  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: broken }, out: () => {}, run: () => ({ status: 1, stdout: '' }) }), 0);
-  assert.match(readFileSync(broken, 'utf8'), /^scope=full\nreason=the changed files could not be read\n$/);
+  assert.equal(await main([], { env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_OUTPUT: broken }, out: () => {}, run: () => ({ status: 1, stdout: '' }) }), 0);
+  assert.match(readFileSync(broken, 'utf8'), /^scope=full\nreason=the changed files could not be read\nfull_units=\n$/);
   let err = '';
-  assert.equal(main(['--nope'], { env: {}, err: (chunk) => { err += chunk; } }), 2);
+  assert.equal(await main(['--nope'], { env: {}, err: (chunk) => { err += chunk; } }), 2);
   assert.match(err, /usage: node scripts\/ci\/ci-scope\.mjs/);
-  assert.equal(main([], { env: { GITHUB_EVENT_NAME: 'push', GITHUB_OUTPUT: path.join(dir, 'no-such-dir/out') }, out: () => {}, err: () => {} }), 1, 'an output that cannot be written is an error');
+  assert.equal(await main([], { env: { GITHUB_EVENT_NAME: 'push', GITHUB_OUTPUT: path.join(dir, 'no-such-dir/out') }, out: () => {}, err: () => {} }), 1, 'an output that cannot be written is an error');
 });

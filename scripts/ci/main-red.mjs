@@ -123,8 +123,9 @@ export async function cancelledIsRed({ ask, repository, runId }) {
   const jobs = JSON.parse(text);
   if (jobs.some((job) => RED.includes(job.conclusion))) return true;
   for (const job of jobs.filter((entry) => entry.conclusion === 'cancelled')) {
-    const found = await ask(['api', `repos/${repository}/check-runs/${job.id}/annotations?per_page=50`, '--jq', '[.[].message]']);
-    if (JSON.parse(found).some((message) => TIMEOUT_ANNOTATION.test(String(message)))) return true;
+    // Every page of the annotations (a job has up to 10 warnings and 10 errors for each step): `--paginate` prints each page's own lines, one JSON text for each annotation.
+    const found = await ask(['api', '--paginate', `repos/${repository}/check-runs/${job.id}/annotations?per_page=100`, '--jq', '.[].message | @json']);
+    if (found.split('\n').filter((line) => line.trim() !== '').some((line) => TIMEOUT_ANNOTATION.test(String(JSON.parse(line))))) return true;
   }
 
   return false;

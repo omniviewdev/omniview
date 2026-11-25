@@ -37,6 +37,8 @@ on:
       - "ui-next/**"
       - "packages/omniviewdev-runtime/**"
       - "pnpm-lock.yaml"
+      - "Taskfile.yml"
+      - "build/Taskfile.yml"
       - "scripts/ci/probe-shards.mjs"
       - "scripts/ci/probe-shards.test.mjs"
       - "scripts/ci/probe-*"
@@ -50,6 +52,8 @@ on:
       - "ui-next/**"
       - "packages/omniviewdev-runtime/**"
       - "pnpm-lock.yaml"
+      - "Taskfile.yml"
+      - "build/Taskfile.yml"
       - "scripts/ci/probe-shards.mjs"
       - "scripts/ci/probe-shards.test.mjs"
       - "scripts/ci/probe-*"
@@ -66,6 +70,10 @@ on:
         type: choice
         options: [full, pr]
         default: full
+      full_units:
+        description: "with scope pr: the units that also get every negative control in both engines (ids, with commas; what a pull request that changes those units' files gets)"
+        type: string
+        default: ""
 
 # A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled by a newer push (the latest commit of main is always verified; a group keeps one running and one pending run, so a burst of merges can skip the ones between).
 concurrency:
@@ -90,6 +98,7 @@ jobs:
       shards: ${{ steps.plan.outputs.shards }}
       scope: ${{ steps.plan.outputs.scope }}
       reason: ${{ steps.scope.outputs.reason }}
+      full_units: ${{ steps.scope.outputs.full_units }}
     steps:
       # Two commits: the base of the merge commit a pull request is checked out as, and the pull request (scripts/ci/ci-scope.mjs reads the diff between them).
       - uses: actions/checkout@v4
@@ -106,16 +115,18 @@ jobs:
         id: scope
         env:
           SCOPE_INPUT: ${{ inputs.scope }}
-        run: node scripts/ci/ci-scope.mjs
+          FULL_UNITS_INPUT: ${{ inputs.full_units }}
+        run: node scripts/ci/ci-scope.mjs --for probes
 
       - name: Check the table and pack the shards
         id: plan
         env:
           SCOPE: ${{ steps.scope.outputs.scope }}
           REASON: ${{ steps.scope.outputs.reason }}
+          FULL_UNITS: ${{ steps.scope.outputs.full_units }}
         run: |
           node scripts/ci/probe-shards.mjs check
-          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" plan
+          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" --full-units "$FULL_UNITS" plan
 
   shard:
     name: Kit probes shard ${{ matrix.shard }}
@@ -204,7 +215,8 @@ jobs:
           SHARD: ${{ matrix.shard }}
           UNITS: ${{ matrix.units }}
           SCOPE: ${{ needs.plan.outputs.scope }}
-        run: node scripts/ci/probe-shards.mjs --scope "$SCOPE" run "$SHARD" "$UNITS"
+          FULL_UNITS: ${{ needs.plan.outputs.full_units }}
+        run: node scripts/ci/probe-shards.mjs --scope "$SCOPE" --full-units "$FULL_UNITS" run "$SHARD" "$UNITS"
 
       # The probes' reports and what the shard says it ran (`ran-<shard>-probe.json`): `Kit probes` downloads them all.
       - name: Keep the reports
@@ -271,7 +283,8 @@ jobs:
           PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
           SCOPE: ${{ needs.plan.outputs.scope }}
           REASON: ${{ needs.plan.outputs.reason }}
+          FULL_UNITS: ${{ needs.plan.outputs.full_units }}
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download "$GITHUB_RUN_ID" --pattern 'kit-probe-reports-*' --dir "$RUNNER_TEMP/reports"
-          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"
+          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" --full-units "$FULL_UNITS" verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"

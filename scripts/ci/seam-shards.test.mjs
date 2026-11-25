@@ -786,7 +786,7 @@ test('N30: the plan and the verdict run on the smallest runner with a sparse che
   assert.deepEqual(WORKFLOW.on.workflow_dispatch.inputs.scope.options, ['full', 'pr']);
   assert.equal(WORKFLOW.on.workflow_dispatch.inputs.scope.default, 'full');
   const scope = WORKFLOW.jobs.plan.steps.find((step) => step.id === 'scope');
-  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs');
+  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs --for seam');
   assert.equal(WORKFLOW.jobs.plan.steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 2);
   const verdict = WORKFLOW.jobs['seam-check'].steps.find((step) => step.name?.startsWith('Require every phase'));
   assert.match(verdict.run, /--scope "\$SCOPE" --reason "\$REASON"/);

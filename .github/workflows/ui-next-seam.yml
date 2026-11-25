@@ -136,7 +136,7 @@ jobs:
         id: scope
         env:
           SCOPE_INPUT: ${{ inputs.scope }}
-        run: node scripts/ci/ci-scope.mjs
+        run: node scripts/ci/ci-scope.mjs --for seam
 
       - name: Check the units against the check and pack the shards
         id: plan

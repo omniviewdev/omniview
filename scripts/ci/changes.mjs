@@ -64,6 +64,8 @@ const NEW_UI_TOOLING_FILES = new Set([
   'scripts/ci/seam-units.mjs',
   'scripts/ci/ci-scope.mjs',
   'scripts/ci/ci-scope.test.mjs',
+  'scripts/ci/ci-scope-units.mjs',
+  'scripts/ci/ci-scope-units.test.mjs',
   'scripts/ci/main-red.mjs',
   'scripts/ci/main-red.test.mjs',
   'scripts/ci/probe-builds.mjs',
