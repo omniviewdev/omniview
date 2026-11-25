@@ -120,7 +120,8 @@ func startAShortCommandPlugin(t *testing.T, script string, forwarding bool) *aSh
 
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer(grpc.UnaryInterceptor(interceptors.UnaryPluginContext()), grpc.StreamInterceptor(interceptors.StreamPluginContext()))
-	execPlugin := &sdkexec.Plugin{Impl: manager}
+	watched := aManagerWhoseStreamIsWatched{Manager: manager, opened: make(chan struct{}), once: &sync.Once{}}
+	execPlugin := &sdkexec.Plugin{Impl: watched}
 	require.NoError(t, execPlugin.GRPCServer(nil, server))
 	go func() { _ = server.Serve(listener) }()
 	//nolint:staticcheck // Match the existing host bufconn integration convention.
@@ -143,11 +144,34 @@ func startAShortCommandPlugin(t *testing.T, script string, forwarding bool) *aSh
 	ctrl.OnPluginInit(shortCommandPlugin, config.PluginMeta{})
 	require.NoError(t, ctrl.OnPluginStart(shortCommandPlugin, config.PluginMeta{}, backend))
 	t.Cleanup(func() { cancel(); _ = ctrl.OnPluginStop(shortCommandPlugin, config.PluginMeta{}) })
+	// The host's start of the plugin returns before the plugin has the stream it opened, and the SDK drops what a session says
+	// before then (emitOutput has no sink): a command that ends at once would say its CLOSE to nobody. In the application a
+	// window creates a session long after its plugin started; here the create comes at once, so it waits for the stream.
+	select {
+	case <-watched.opened:
+	case <-time.After(shortCommandWait):
+		require.FailNow(t, "the plugin never had the host's stream")
+	}
 	if forwarding {
 		go ctrl.runMux()
 	}
 
 	return &aShortCommandPlugin{ctrl: ctrl, manager: manager, window: window}
+}
+
+// aManagerWhoseStreamIsWatched is the plugin's exec manager, and the moment the host's stream reaches it.
+type aManagerWhoseStreamIsWatched struct {
+	*sdkexec.Manager
+
+	opened chan struct{}
+	once   *sync.Once
+}
+
+func (m aManagerWhoseStreamIsWatched) Stream(ctx context.Context, in chan sdkexec.StreamInput) (chan sdkexec.StreamOutput, error) {
+	out, err := m.Manager.Stream(ctx, in)
+	m.once.Do(func() { close(m.opened) })
+
+	return out, err
 }
 
 // create is the window's CreateSession of the command: a session with an ID of the window's choosing.

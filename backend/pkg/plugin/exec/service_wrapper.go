@@ -12,6 +12,7 @@ import (
 	"github.com/omniviewdev/omniview/backend/pkg/terminal"
 	"github.com/omniviewdev/omniview/backend/pkg/transportjson"
 	"github.com/omniviewdev/omniview/internal/nativeapps"
+	"github.com/omniviewdev/omniview/internal/shellenv"
 	resourcev2 "github.com/omniviewdev/plugin-sdk/pkg/resource/v2"
 	execsdk "github.com/omniviewdev/plugin-sdk/pkg/v1/exec"
 )
@@ -289,6 +290,13 @@ func (s *ServiceWrapper) ListPlugins() ([]string, error) {
 }
 func (s *ServiceWrapper) HasPlugin(pluginID string) bool {
 	return s.Ctrl.HasPlugin(pluginID)
+}
+
+// ListTerminalShells says which shells of this machine a terminal can be started with (bash, zsh, fish and pwsh where they are installed,
+// and the default shell wherever it is), and marks the one that starts when CreateTerminal is given no command: the setting terminal.defaultShell
+// when it is a shell the host starts, else the first of the stated order.
+func (s *ServiceWrapper) ListTerminalShells() []shellenv.Shell {
+	return s.Ctrl.ListTerminalShells()
 }
 
 // GetCwd says which directory a terminal's shell is in now: the shell's own current working directory,

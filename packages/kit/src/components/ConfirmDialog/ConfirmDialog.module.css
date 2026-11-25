@@ -1,0 +1,55 @@
+/* The body of a confirmation (the mock's `.record-dialog`, shell-page-kit.css 190 to 197): who it is about, one line, and the name field, 12 px apart. The type, the colours and the font come from the frame it sits in. */
+@layer ov.components {
+  .body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+  }
+
+  /* The subject's name and kind at the start of the row and its state at the end. */
+  .identity {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+  }
+
+  .who {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .name {
+    font-weight: 600;
+  }
+
+  .kind {
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    line-height: var(--ov-lh-16);
+  }
+
+  .message {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* The failure in the footer's lead (the mock's `.record-dialog__lane`): the error glyph and one line in the error role, wrapping when it is long. */
+  .error {
+    display: flex;
+    align-items: center;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    color: var(--ov-error-fg);
+    overflow-wrap: anywhere;
+  }
+
+  .error > svg {
+    flex-shrink: 0;
+  }
+}

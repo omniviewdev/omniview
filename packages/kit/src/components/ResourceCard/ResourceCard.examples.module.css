@@ -1,0 +1,12 @@
+/* The boxes the examples sit in: a card fills the width it is given, so each example gives it the width a column of a grid would. */
+@layer ov.components {
+  .frame {
+    width: 320px;
+    max-width: 100%;
+  }
+
+  .narrow {
+    width: 240px;
+    max-width: 100%;
+  }
+}

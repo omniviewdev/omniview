@@ -66,7 +66,7 @@ export type ChannelClient = {
       readonly resource_plugin: string;
       readonly resource_key: string;
     },
-    launch: { readonly channel: boolean; readonly cols: number; readonly rows: number; readonly lease_ms?: number },
+    launch: { readonly channel: boolean; readonly cols: number; readonly rows: number; readonly lease_ms?: number; readonly cwd?: string; readonly env?: Readonly<Record<string, string>> },
   ): PromiseLike<unknown>;
   CloseChannelTerminal(capability: string): PromiseLike<unknown>;
   DismissChannelTerminal(capability: string): PromiseLike<unknown>;
@@ -263,8 +263,15 @@ function createCore(deps: ChannelDeps): Core {
     create: async (id: string, launch: ChannelLaunch) => {
       const session = await Promise.resolve(
         client.CreateTerminal(
-          { id, tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' },
-          { channel: true, cols: launch.cols, rows: launch.rows, ...(launch.leaseMs === undefined ? {} : { lease_ms: launch.leaseMs }) },
+          { id, tty: true, command: launch.command === undefined ? [] : [...launch.command], labels: {}, params: {}, resource_plugin: '', resource_key: '' },
+          {
+            channel: true,
+            cols: launch.cols,
+            rows: launch.rows,
+            ...(launch.leaseMs === undefined ? {} : { lease_ms: launch.leaseMs }),
+            ...(launch.cwd === undefined ? {} : { cwd: launch.cwd }),
+            ...(launch.env === undefined ? {} : { env: launch.env }),
+          },
         ),
       ).catch((error: unknown) => {
         throw clean(error);

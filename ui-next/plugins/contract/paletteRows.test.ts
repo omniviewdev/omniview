@@ -12,6 +12,7 @@ const rules: RowRules = {
     widgets: { kind: 'list', definition: { title: 'Widgets' } },
     widget: { kind: 'detail', definition: { identity: { name: 'name' } } },
     overview: { kind: 'overview', definition: { title: 'Overview' } },
+    landing: { kind: 'custom', scope: 'plugin', title: 'Landing' },
   },
   commands: { reset: {} },
 };
@@ -94,6 +95,7 @@ describe('admitRow', () => {
     ['a route with no parameters member', row({ route: { page: 'widgets' } }), 'row "w:one": route.params is not an object'],
     ['a list page given a parameter', row({ route: { page: 'widgets', params: { name: 'a' } } }), 'row "w:one": route.page "widgets" is a list page and takes no parameters'],
     ['an overview page given a parameter', row({ route: { page: 'overview', params: { name: 'a' } } }), 'row "w:one": route.page "overview" is an overview page and takes no parameters'],
+    ['a custom page given a parameter', row({ route: { page: 'landing', params: { name: 'a' } } }), 'row "w:one": route.page "landing" is a custom page and takes no parameters'],
     ['a detail page without the parameter that names its object', row({ route: { page: 'widget', params: {} } }), 'row "w:one": route.page "widget" is a detail page and needs the parameter "name"'],
     ['a detail page whose object is named by blank text', row({ route: { page: 'widget', params: { name: ' ' } } }), 'row "w:one": route.page "widget" is a detail page and needs the parameter "name"'],
     ['a parameter that is not text', row({ route: { page: 'widget', params: { name: 3 } } }), 'row "w:one": route.params.name is not a string of at most 256 characters'],

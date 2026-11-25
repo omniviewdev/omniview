@@ -7,10 +7,6 @@ on:
         description: Prepare native payloads on trusted main pushes, without application assertions
         type: boolean
         default: false
-      base:
-        description: PR base commit for conservative application selection
-        type: string
-        default: ''
       host-ref:
         description: Host source ref; defaults to the host caller's selected commit
         type: string
@@ -56,7 +52,6 @@ jobs:
       CACHE_ONLY: ${{ inputs.cache-only && 'true' || 'false' }}
       KUBERNETES_CHECKS: ${{ inputs.kubernetes-checks && 'true' || 'false' }}
       OMNIVIEW_E2E_PREINSTALLED_LINUX: "true"
-      SELECTION_BASE: ${{ inputs.base }}
     steps:
       - name: Checkout host implementation
         uses: actions/checkout@v4
@@ -119,32 +114,15 @@ jobs:
       - name: Selector and cache-mode boundary contracts
         run: node --test e2e/scripts/*.test.mjs
 
-      - name: Select conservative application impact
-        id: selection
+      - name: Refuse cache-only Kubernetes acceptance
         run: |
           if [[ "$CACHE_ONLY" == true && "$KUBERNETES_CHECKS" == true ]]; then
             echo "::error::Cache-only preparation cannot satisfy Kubernetes acceptance"
             exit 1
           fi
-          if [[ "$CACHE_ONLY" == true ]]; then
-            echo "kind=cache-only" >> "$GITHUB_OUTPUT"
-            echo "requires_application=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$KUBERNETES_CHECKS" == true ]]; then
-            echo "kind=full" >> "$GITHUB_OUTPUT"
-            echo "requires_application=true" >> "$GITHUB_OUTPUT"
-          elif ! node e2e/scripts/run.mjs --changed --base "$SELECTION_BASE" --select; then
-            echo "::warning::Selection failed; requiring the full application path rather than skipping."
-            echo "kind=full" >> "$GITHUB_OUTPUT"
-            echo "requires_application=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Explain no application impact
-        if: steps.selection.outputs.kind == 'none'
-        run: echo "Application E2E preparation skipped only for explicitly allowlisted prose changes."
 
       - name: Select exact native payload keys
         id: cache-keys
-        if: steps.selection.outputs.kind != 'none'
         env:
           PNPM_KEY: ${{ runner.os }}-${{ runner.arch }}-e2e-native-pnpm-12.14.0-v1-${{ hashFiles('host/pnpm-lock.yaml', 'omniview-plugin-kubernetes/ui/pnpm-lock.yaml') }}
           GO_KEY: setup-go-Linux-x64-ubuntu24-go-${{ steps.go.outputs.go-version }}-${{ hashFiles('host/go.sum', 'omniview-plugin-kubernetes/go.sum', 'host/e2e/fixtures/workspace-probe/go.sum', 'host/e2e/scripts/tool-cache.mjs') }}
@@ -188,12 +166,11 @@ jobs:
       - name: Decide native preparation
         id: preparation
         env:
-          SELECTION: ${{ steps.selection.outputs.kind }}
           GO_HIT: ${{ steps.go-lookup.outputs.cache-hit }}
           PNPM_HIT: ${{ steps.pnpm-lookup.outputs.cache-hit }}
           BROWSER_HIT: ${{ steps.browser-lookup.outputs.cache-hit }}
         run: |
-          if [[ "$SELECTION" == none || ( "$CACHE_ONLY" == true && "$GO_HIT" == true && "$PNPM_HIT" == true && "$BROWSER_HIT" == true ) ]]; then
+          if [[ "$CACHE_ONLY" == true && "$GO_HIT" == true && "$PNPM_HIT" == true && "$BROWSER_HIT" == true ]]; then
             echo "required=false" >> "$GITHUB_OUTPUT"
           else
             echo "required=true" >> "$GITHUB_OUTPUT"
@@ -235,7 +212,7 @@ jobs:
 
       - name: Restore native Go module and compiler payloads
         id: go-cache
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
+        if: steps.preparation.outputs.required == 'true'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -254,7 +231,7 @@ jobs:
           key: ${{ steps.cache-keys.outputs.browser }}
 
       - name: Install Task
-        if: steps.preparation.outputs.required == 'true' && steps.selection.outputs.requires_application != 'false'
+        if: steps.preparation.outputs.required == 'true'
         uses: arduino/setup-task@v2
         with:
           version: 3.x
@@ -266,17 +243,13 @@ jobs:
       - name: Run canonical preparation or application suite once
         id: canonical
         if: steps.preparation.outputs.required == 'true'
-        env:
-          SELECTION: ${{ steps.selection.outputs.kind }}
         run: |
           if [[ "$CACHE_ONLY" == true ]]; then
             node e2e/scripts/run.mjs --cache-only
           elif [[ "$KUBERNETES_CHECKS" == true ]]; then
             node e2e/scripts/run.mjs --full --kubernetes-checks
-          elif [[ "$SELECTION" == selected ]]; then
-            node e2e/scripts/run.mjs --changed --base "$SELECTION_BASE"
           else
-            node e2e/scripts/run.mjs --full --base "$SELECTION_BASE"
+            node e2e/scripts/run.mjs --full
           fi
 
       - name: Save pinned Chromium payload independently of application assertions
@@ -305,17 +278,12 @@ jobs:
       - name: Require completed canonical operation or proven skip
         if: ${{ !cancelled() }}
         env:
-          SELECTION: ${{ steps.selection.outputs.kind }}
-          SELECTION_OUTCOME: ${{ steps.selection.outcome }}
           PREPARATION: ${{ steps.preparation.outputs.required }}
           CANONICAL_OUTCOME: ${{ steps.canonical.outcome }}
           GO_HIT: ${{ steps.go-lookup.outputs.cache-hit }}
           PNPM_HIT: ${{ steps.pnpm-lookup.outputs.cache-hit }}
           BROWSER_HIT: ${{ steps.browser-lookup.outputs.cache-hit }}
         run: |
-          if [[ "$SELECTION_OUTCOME" == success && "$SELECTION" == none && "$CACHE_ONLY" == false ]]; then
-            exit 0
-          fi
           if [[ "$CACHE_ONLY" == true && "$PREPARATION" == false && "$GO_HIT" == true && "$PNPM_HIT" == true && "$BROWSER_HIT" == true ]]; then
             exit 0
           fi
@@ -355,8 +323,6 @@ jobs:
         working-directory: /
         env:
           JOB_STATUS: ${{ job.status }}
-          SELECTION: ${{ steps.selection.outputs.kind }}
-          SELECTION_OUTCOME: ${{ steps.selection.outcome }}
           CANONICAL_OUTCOME: ${{ steps.canonical.outcome }}
           REPORT_URL: ${{ steps.html-report.outputs.artifact-url }}
           EVIDENCE_URL: ${{ steps.test-evidence.outputs.artifact-url }}
@@ -369,8 +335,6 @@ jobs:
             echo
             if [[ "$JOB_STATUS" == cancelled || "$CANONICAL_OUTCOME" == cancelled ]]; then
               echo '**Interrupted/cancelled.** Any report or evidence may be partial; no completed acceptance is claimed.'
-            elif [[ "$SELECTION_OUTCOME" == success && "$SELECTION" == none ]]; then
-              echo '**Skipped: proven no application impact.** The conservative selector allowed only prose with an unchanged source cohort.'
             elif [[ "$CANONICAL_OUTCOME" == success ]]; then
               echo '**Canonical operation succeeded.** This includes runner acceptance and cleanup, not merely browser assertions.'
             elif [[ "$CANONICAL_OUTCOME" == failure ]]; then

@@ -1,0 +1,116 @@
+@layer ov.components {
+  /* The mock's checkbox (base.css 1137 to 1144, 1679 to 1682, 1936 to 1940): a 24 px target around a 16 px mark. The mark is the input's own
+     pseudo-elements: a box (an island fill and the raised edge; accent when checked or mixed) and a check or a dash over it. */
+  .box {
+    position: relative;
+    display: inline-grid;
+    flex-shrink: 0;
+    appearance: none;
+    place-items: center;
+    box-sizing: border-box;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background: transparent;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+
+  .box:not([aria-disabled='true']):hover,
+  .root:hover > .box:not([aria-disabled='true']) {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .box::before {
+    content: '';
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--ov-border-raised);
+    border-radius: var(--ov-radius-control);
+    background-color: var(--ov-bg-island);
+  }
+
+  .box:checked::before,
+  .box:indeterminate::before {
+    border-color: var(--ov-accent);
+    background-color: var(--ov-accent);
+  }
+
+  /* The mark over the box: a check, or a dash when mixed, so a checkbox is one element. */
+  .box::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 4px;
+    border-inline-start: 2px solid var(--ov-fg-over-accent);
+    border-block-end: 2px solid var(--ov-fg-over-accent);
+    opacity: 0;
+    transform: translateY(-1px) rotate(-45deg);
+  }
+
+  .box:checked::after {
+    opacity: 1;
+  }
+
+  .box:indeterminate::after {
+    height: 0;
+    border-inline-start: 0;
+    opacity: 1;
+    transform: none;
+  }
+
+  .box:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: -2px;
+  }
+
+  /* Unavailable for a reason, or read-only: the disabled roles on the box and the mark, never opacity; it stays focusable. */
+  .box[aria-disabled='true'] {
+    cursor: default;
+  }
+
+  .box[aria-disabled='true']::before,
+  .box[aria-disabled='true']:checked::before,
+  .box[aria-disabled='true']:indeterminate::before {
+    border-color: var(--ov-border-disabled);
+    background-color: var(--ov-bg-island);
+  }
+
+  .box[aria-disabled='true']::after {
+    border-color: var(--ov-icon-disabled);
+  }
+
+  /* With a text: one wrapping label, the box top-aligned with the first line, and a click on the text toggles. */
+  .root {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    cursor: pointer;
+  }
+
+  .root[data-ov-locked='true'] {
+    color: var(--ov-fg-disabled);
+    cursor: default;
+  }
+
+  .text {
+    min-width: 0;
+    padding-block: var(--ov-spacing-4);
+    overflow-wrap: anywhere;
+  }
+}

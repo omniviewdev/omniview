@@ -54,12 +54,13 @@ import { createProblems, ProblemsBody, PROBLEMS_TOOL, PROBLEMS_TOOL_ID, type Pro
 import type { OpenSubject } from '../../shell/panel/subject';
 import { pluginsPage } from '../../shell/plugins-page';
 import { openable } from '../contract/admit';
-import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
+import type { ConnectionsHostV1, ContextV1, ContributionV1, CustomPageContextV1, CustomPageV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
 import { ConnectionNames, connectionNameOf, laneFor } from './connectionName';
 import { createConnectionActions, createConnectionsStore, createRecents, pickerOf, usesOf, type ConnectionsApi, type HostConnections } from './connections';
-import { connectionOf, createContributions, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
+import { connectionsHostsOf } from './connectionsHost';
+import { connectionOf, createContributions, describeCustom, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, panelConnectionOf, readsNoConnection, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
 import { homePage } from './homePage';
 import { HOME_PAGE_ID, HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
@@ -185,6 +186,8 @@ type Host = {
   readonly settings: SettingsControl;
   /** The connections of the plugins and what choosing one does (HM1; `connections/`). Absent: the window has no connection API. */
   readonly connections: HostConnections | undefined;
+  /** What `context.connections` is for each plugin: the window's connections cut to the plugin, with the way to open one and to read them again (`connectionsHost.ts`). A custom page is given it (KL2). */
+  readonly connectionsHosts: (plugin: string) => ConnectionsHostV1;
   /** The Problems and Operations tools of the bottom panel: their models, fed by what the window already holds (`panelTools.ts`), the badges their tabs carry, and the answer to "what is this plugin or connection called". */
   readonly problems: Problems;
   readonly operations: Operations;
@@ -226,6 +229,15 @@ function choiceOf(connections: HostConnections | undefined, plugin: string): Plu
     keys: listed.flatMap((connection) => (connection.plugin === plugin ? [connection.key] : [])),
     last: connections.recents.getSnapshot().find((use) => use.plugin === plugin)?.key,
   };
+}
+
+/**
+ * The connection a page, or the sidebar of the plugin on the rail, is read in for what it asks of the bottom panel (`panelConnectionOf`, `contributions.ts`): the route's, else the plugin's only connection. It follows the window's list of
+ * connections, so a page whose only connection is replaced, removed or joined by another is given the handle of the connection it is read in now, or none. It is the one place the panel's connection is decided: every member of `ctx.panel`
+ * that needs one (`ports`) takes it from the handle this makes. The answer is a string or nothing, so a change of the list that leaves it as it was draws nothing again.
+ */
+function usePanelConnection(connections: HostConnections | undefined, route: Route | undefined): string | undefined {
+  return useSyncExternalStore(connections?.store.subscribe ?? ABSENT.subscribe, () => (route === undefined ? undefined : panelConnectionOf(route, choiceOf(connections, route.plugin))));
 }
 
 /**
@@ -315,6 +327,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     notices,
     settings,
     connections,
+    connectionsHosts: connectionsHostsOf(connections),
     problems,
     operations,
     toolBadges: badgesOf(problems, operations),
@@ -367,6 +380,9 @@ type FrameInputs = {
 /** The page of a contribution a route names, as the host draws it: the plugin's own first page for one it does not have. */
 const pageOf = (contribution: ContributionV1, route: Route): string => (Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home);
 
+/** Whether a plugin that is ready declares a landing (KL2): what it opens when it is opened and no connection is named is the landing, which needs no list of connections to be chosen from. */
+const hasLanding = (entries: readonly PluginEntry[], plugin: string | undefined): boolean => entries.some((entry) => entry.id === plugin && entry.phase === 'ready' && entry.contribution.landing !== undefined);
+
 /** What the window reads where it has no connection API: nothing, ever. */
 const ABSENT = { subscribe: (): (() => void) => () => undefined, getSnapshot: (): undefined => undefined };
 
@@ -390,6 +406,11 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
     const { contribution } = shown;
     // The entry that stays selected while an object is open is the list it belongs to.
     const onScreen = route?.plugin === shown.id ? contribution.pages[pageOf(contribution, route)] : undefined;
+    // A page that is read in no connection (the landing) has no sidebar (KL2): the entries of a sidebar are pages of a connection and there is none to open them in, so the window draws that page with the rail and no tree, and not a tree whose every entry would open the landing again.
+    if (readsNoConnection(onScreen)) {
+      return undefined;
+    }
+
     const current = route?.plugin === shown.id ? (onScreen?.kind === 'detail' ? onScreen.definition.list?.page : pageOf(contribution, route)) : undefined;
     return sidebarOf(contribution, nodes ?? contribution.sidebar.nodes, current);
   })();
@@ -429,8 +450,8 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
     plugin: { name: contribution.plugin.name },
     ...holding,
     rail: railData,
-    // A detail page is a document: the page scrolls, header and body together (ch16 S15), and so is an overview page, which draws the same anatomy for a scope. A list owns its own scrolling.
-    layout: page?.kind === 'detail' || page?.kind === 'overview' ? 'document' : 'pane',
+    // A detail page is a document: the page scrolls, header and body together (ch16 S15), and so is an overview page, which draws the same anatomy for a scope, and a custom page unless it says it owns its scrolling (`layout`). A list owns its own scrolling.
+    layout: page?.kind === 'detail' || page?.kind === 'overview' ? 'document' : page?.kind === 'custom' ? (page.layout ?? 'document') : 'pane',
     sidebar,
     scope: lane,
   };
@@ -592,6 +613,67 @@ function OverviewContribution({ entry, route, page: pageId, frames, names, panel
   return <DetailPage definition={detail} params={params} source={source} path={path.map((label): PageHeaderCrumb => ({ label }))} />;
 }
 
+type ConnectionFaceProps = {
+  readonly pluginId: string;
+  readonly pluginName: string;
+  readonly route: Route;
+  readonly page: CustomPageV1;
+  readonly frames: Published<FrameV1>;
+  readonly names: ConnectionNames;
+  readonly connections: ConnectionsHostV1;
+};
+
+/**
+ * The face and the scope lane of a custom page that is read in a connection (KL2), published as a list page's frame is: the connection's NAME, from the window's own list of connections (else the one this window has learned for it), as the face that says the connection, which the host makes
+ * the control of the picker every lane has. It draws nothing, and it is mounted for a page of a connection alone: a page that is read in no connection publishes none, so no lane claims a connection for it.
+ */
+function ConnectionFace({ pluginId, pluginName, route, page, frames, names, connections }: ConnectionFaceProps) {
+  const connection = connectionOf(route);
+  const listed = useSyncExternalStore(connections.subscribe, connections.getSnapshot);
+  const name = connection === undefined ? undefined : (listed.connections.find((candidate) => candidate.key === connection)?.name ?? names.get(pluginId, connection));
+  const face = useMemo(() => describeCustom(pluginName, route, page, name), [pluginName, route, page, name]);
+  const path = useMemo(() => (face.path ?? []).map((crumb) => (typeof crumb === 'string' ? crumb : crumb.label)), [face]);
+  // Before the first paint, so the scope lane is there with the page; a frame equal to the one held changes nothing.
+  useLayoutEffect(() => {
+    frames.publish(routeKey(route), { tab: { title: page.title, icon: page.icon }, path, scope: name === undefined ? undefined : [{ label: 'Connection', icon: 'server', text: name, role: 'connection' }] });
+  }, [frames, route, page, path, name]);
+
+  return null;
+}
+
+type CustomProps = {
+  readonly entry: PluginEntry & { readonly phase: 'ready' };
+  readonly route: Route;
+  readonly page: string;
+  readonly frames: Published<FrameV1>;
+  readonly names: ConnectionNames;
+  /** What the plugin asks of the bottom panel: `ctx.panel`. */
+  readonly panelHost: PanelHostV1;
+  /** What the plugin asks of the window about its connections: `context.connections`. */
+  readonly connections: ConnectionsHostV1;
+};
+
+/**
+ * The custom page's own component (KL2): the plugin's Body runs here, in its tab's own subtree and the page's own boundary, and is told its context. The host draws nothing around it: no header, no heading, and for a page read in no connection no lane. The page has no parameters of its own
+ * (`RouteV1.params` is empty: what an address adds to its route is not an identity it reads), and a page read in no connection is told none, whatever its route carries. The tab's face is the route's and the definition's (`describeCustom`), the same before this component has run.
+ */
+function CustomContribution({ entry, route, page: pageId, frames, names, panelHost, connections }: CustomProps) {
+  const page = entry.contribution.pages[pageId];
+  if (page?.kind !== 'custom') {
+    throw new Error(`The plugin has no custom page "${pageId}"`);
+  }
+
+  const connection = page.scope === 'plugin' ? undefined : connectionOf(route);
+  const context = useMemo<CustomPageContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS }, panel: panelHost, connections }), [entry.id, pageId, connection, panelHost, connections]);
+  const { Body } = page;
+  return (
+    <>
+      {page.scope === 'connection' ? <ConnectionFace pluginId={entry.id} pluginName={entry.contribution.plugin.name} route={route} page={page} frames={frames} names={names} connections={connections} /> : null}
+      <Body context={context} />
+    </>
+  );
+}
+
 type HostPageProps = {
   readonly entries: readonly PluginEntry[];
   readonly route: Route;
@@ -612,6 +694,8 @@ type HostPageProps = {
   readonly source: PluginSource;
   /** The window's connections: what it knows of them and what choosing one does. Absent: it has no connection API. */
   readonly connections: HostConnections | undefined;
+  /** What each plugin is told of the window's connections: its `context.connections` on a custom page (KL2). */
+  readonly connectionsHosts: (plugin: string) => ConnectionsHostV1;
   /** Opens a plugin at its first page, for the Home page's rows. */
   readonly openPlugin: (plugin: string, event: ModifierEvent | undefined) => void;
 };
@@ -621,7 +705,9 @@ type HostPageProps = {
  * way (a tab restored from a session is drawn before any plugin is known), says the list could not be read when it could not, and says the plugin is not installed, or is turned off, when the
  * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
  */
-function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts, source, connections, openPlugin }: HostPageProps) {
+function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts, connectionsHosts, source, connections, openPlugin }: HostPageProps) {
+  // What the page asks of the bottom panel is bound to the connection it is read in, which is the route's or, when the route names none, the plugin's only one (`usePanelConnection`).
+  const panelConnection = usePanelConnection(connections, route);
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
@@ -681,7 +767,7 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
   const { contribution } = entry;
   const page = pageOf(contribution, route);
   const found = contribution.pages[page];
-  const title = found === undefined ? entry.name : found.kind === 'detail' ? found.definition.kind : found.definition.title;
+  const title = found === undefined ? entry.name : found.kind === 'detail' ? found.definition.kind : found.kind === 'custom' ? found.title : found.definition.title;
   return (
     <LinkProvider handler={handler}>
       <ContributionBoundary
@@ -690,11 +776,14 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
         fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
       >
         {found?.kind === 'detail' ? (
-          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id, connection)} />
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id, panelConnection)} />
         ) : found?.kind === 'overview' ? (
-          <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, connection)} />
+          <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} />
+        ) : found?.kind === 'custom' ? (
+          // A page read in no connection is read in none for the panel too: the plugin's only connection is not the one it is read in, and a handle with a `ports` member that could not say which connection to forward in is worse than one without.
+          <CustomContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, readsNoConnection(found) ? undefined : panelConnection)} connections={connectionsHosts(entry.id)} />
         ) : (
-          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, connection)} memory={memory} />
+          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, panelConnection)} memory={memory} />
         )}
       </ContributionBoundary>
     </LinkProvider>
@@ -801,8 +890,8 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const linkKey = link.plugin === undefined ? undefined : JSON.stringify([link.plugin, link.page, link.connection, link.params]);
   const linkWaiting = useSyncExternalStore(opened.subscribe, () => linkKey !== undefined && opened.get('link') !== linkKey);
   // A link that names no connection is read in one the window chooses (rule R4), so it waits for the list of connections: the plugin is never opened on a connection that nobody chose. A first read that failed leaves nothing to choose
-  // from: the window shows what it shows with no tab (Home, with its Retry) and the link keeps waiting for a read that works, which completes it.
-  const naming = link.connection === undefined && knownConnections !== undefined;
+  // from: the window shows what it shows with no tab (Home, with its Retry) and the link keeps waiting for a read that works, which completes it. A plugin that declares a landing (KL2) opens it for such a link, which needs no list.
+  const naming = link.connection === undefined && knownConnections !== undefined && !hasLanding(entries, link.plugin);
   const unread = naming && !knownConnections.loaded;
   const unreadable = naming && knownConnections.loaded && knownConnections.failed && knownConnections.connections.length === 0;
   const waiting = linkWaiting && !unreadable;
@@ -922,6 +1011,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     const home = host.contributions.home?.(railPlugin);
     return remembered ?? (home === undefined ? undefined : { plugin: home.plugin, contribution: home.contribution, params: NO_PARAMS });
   })();
+  const railConnection = usePanelConnection(hostConnections, railRoute);
   // What a page of the plugin on the rail opens at when the tab on screen is another plugin's: the connection that plugin was last used in.
   const carried = route?.plugin === railPlugin || remembered === undefined ? undefined : connectionOf(remembered);
 
@@ -957,10 +1047,11 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
   };
 
-  // An open that names no connection waits for the list of connections when it has not come back (rule R4): the plugin is never opened on a connection nobody chose, and a press that comes first is answered when the list is known.
-  const whenListed = (run: () => void): void => {
+  // An open that names no connection waits for the list of connections when it has not come back (rule R4): the plugin is never opened on a connection nobody chose, and a press that comes first is answered when the list is known. A plugin that
+  // declares a landing (KL2) opens it with no list: the landing is what it opens, and says itself that it is reading the connections.
+  const whenListed = (plugin: string, run: () => void): void => {
     const store = hostConnections?.store;
-    if (store === undefined || store.getSnapshot().loaded) {
+    if (store === undefined || store.getSnapshot().loaded || hasLanding(entries, plugin)) {
       run();
       return;
     }
@@ -979,7 +1070,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
       : () => {
         const home = host.contributions.home?.(railPlugin);
         if (home !== undefined) {
-          whenListed(() => {
+          whenListed(railPlugin, () => {
             tabs.open({ route: carried === undefined ? home : { ...home, params: { ...home.params, connection: carried } } }, { how: 'new', source: 'new-tab' });
           });
         }
@@ -988,7 +1079,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const open = (plugin: string): void => {
     const home = host.contributions.home?.(plugin);
     if (home !== undefined) {
-      whenListed(() => {
+      whenListed(plugin, () => {
         tabs.open({ route: home }, { how: 'smart', source: 'home' });
       });
     }
@@ -1004,7 +1095,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     }
 
     const how = dispositionOf(event, { platform });
-    whenListed(() => {
+    whenListed(plugin, () => {
       const target = host.contributions.complete?.(home, { from: route, source: 'home' }) ?? home;
       if (target.plugin === HOST_PLUGIN && route?.plugin === HOST_PLUGIN && route.contribution === HOME_PAGE_ID) {
         const name = entries.find((candidate) => candidate.id === plugin)?.name ?? plugin;
@@ -1134,7 +1225,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     <>
       {shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
         <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={nodes} />}>
-          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, connectionOf(railRoute))} />
+          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, railConnection)} />
         </ContributionBoundary>
       ) : null}
       <Shell
@@ -1154,6 +1245,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
             onRetry={onRetry}
             onRetryInventory={onRetryInventory}
             panelHosts={panelHosts}
+            connectionsHosts={host.connectionsHosts}
             connections={hostConnections}
             openPlugin={openPlugin}
             source={plugins}

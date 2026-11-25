@@ -96,4 +96,65 @@ export const entries = {
       'Use disabledReason for an unavailable change or readOnly for a fixed value. Both keep the switch focusable without letting it change.',
     ],
   },
+  SegmentedControl: {
+    category,
+    summary: 'Choose one option from a few joined buttons, such as a view mode.',
+    guidance: [
+      'Name the choice with label. Own value and update it in onValueChange. Give each option a stable value.',
+      'Use text labels, with an optional icon. An icon-only option needs a tip, which is its accessible name.',
+      'The group is one Tab stop. The arrows move to the next available option and choose it; Home and End go to the ends. It scrolls sideways instead of wrapping.',
+      'Use disabledReason on an option to explain why it cannot be chosen. Arrows skip it, and the tooltip and description say why.',
+    ],
+  },
+  SwatchPicker: {
+    category,
+    summary: 'Choose one color from a short row of data-palette swatches.',
+    guidance: [
+      'Give each option a color from the data palette and a name such as “Blue” as its label. Name the group with label, or put it in a Field.',
+      'Own value; null means the default color and checks nothing. onValueChange is not called for the color that is already chosen.',
+      'The chosen swatch shows a ring and a check mark, so color is never the only cue. The group is one Tab stop; arrows only move focus, and Enter or Space chooses.',
+      'A swatch with disabledReason stays reachable and explains itself in its tooltip and description. Offer the command that returns to the default color beside the picker.',
+    ],
+  },
+  Checkbox: {
+    category,
+    summary: 'A native checkbox for a choice that is kept with a form’s other values.',
+    guidance: [
+      'Own checked and apply onCheckedChange. A click on a mixed box asks for true. Use "mixed" for a choice that covers some of a set.',
+      'Give it a label. Without one the box is bare, and a Field’s label names it.',
+      'Use readOnly for a fixed value, or disabledReason for an unavailable change. Both keep the box focusable without letting it change; show the same reason where the user reads the page.',
+      'Use Toggle for a setting that applies at once.',
+    ],
+  },
+  FileButton: {
+    category,
+    summary: 'A button that opens the system file picker.',
+    guidance: [
+      'Label it with a verb in sentence case, such as “Import image…”. It is one Tab stop and reads like a button.',
+      'accept filters the picker; it is not a check. Validate, read, and limit the files in onFiles, which receives at least one file and never none.',
+      'Use multiple to allow more than one file. The same file can be picked twice in a row.',
+      'Use busy while the caller works on the files, and disabledReason to explain why the button is unavailable. Either stops the picker from opening.',
+    ],
+  },
+  ValuePicker: {
+    category,
+    summary: 'Choose several values from a list that may be long, with a trigger, a search field, and checkable options.',
+    guidance: [
+      'Name what is chosen with label. Own value, the chosen values in the order they were chosen, and replace it in onValueChange. Each change applies at once and the popup stays open.',
+      'Use allOption for a filter that means no narrowing, such as “All platforms”. It is the first row and the trigger’s text while nothing is chosen; otherwise the trigger says “None selected”.',
+      'Give options a description for a second line, or disabledReason to keep an option listed but unavailable. The search reads label, description, or the reason.',
+      'Focus stays in the search field: Up and Down move through options, Enter chooses, Escape closes and returns focus. Turn searchable off for a short list.',
+      'Use Select to choose one value. Use disabledReason on the picker when it cannot change.',
+    ],
+  },
+  FormActions: {
+    category,
+    summary: 'The lane of commands at the end of a dialog, drawer, or form.',
+    guidance: [
+      'Pass the form’s main command as primary, up to two secondary commands, and cancel. They render in that order, with the primary last and filled.',
+      'Label commands with sentence-case verbs, never with a count. Use disabledReason on a command that cannot run; it stays in the Tab order. busy marks a command in flight without changing its label.',
+      'Use tone="danger" when the primary removes or loses something. Use lead for a short muted note or operation state at the start of the lane.',
+      'autoFocus is for dialogs only: use cancel where the safe answer should be under Enter. The lane has no label; the dialog or form around it provides one.',
+    ],
+  },
 } satisfies Record<string, Guide>;

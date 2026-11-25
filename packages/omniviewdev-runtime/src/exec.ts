@@ -5,7 +5,7 @@ import { encodeRequestJSON } from './resource/v2/requestJSON';
 export {
   AckTerminal, AttachSession, AttachTerminal, ChannelTerminalBusy, CloseChannelTerminal, CloseSession, CreateTerminal,
   DetachSession, DetachTerminal, DismissChannelTerminal, GetHandler, GetHandlers, GetNativeTerminalSupport,
-  GetPluginHandlers, GetSession, HasPlugin, IsBusy, ListChannelTerminals, ListPlugins, ListSessions, ListTerminals,
+  GetPluginHandlers, GetSession, HasPlugin, IsBusy, ListChannelTerminals, ListPlugins, ListSessions, ListTerminals, ListTerminalShells,
   ResizeSession, ResizeTerminal, WriteSession, WriteTerminal,
 } from './bindings/github.com/omniviewdev/omniview/backend/pkg/plugin/exec/servicewrapper';
 

@@ -1,5 +1,5 @@
 import type { Route, TabId, TabsStore } from '../../../shell';
-import { connectionOf, type PluginSource } from '../contributions';
+import { connectionOf, readsNoConnection, type PluginSource } from '../contributions';
 import type { PluginEntry } from '../pluginStore';
 import type { ConnectionsStore } from './store';
 
@@ -47,12 +47,12 @@ export function createConnectionActions({ tabs, plugins, connections }: Connecti
   const homeIn = (entry: Ready, key: string): Route => ({ plugin: entry.id, contribution: entry.contribution.home, params: { connection: key } });
 
   /**
-   * Where a tab of the plugin goes when its connection changes: the page it is on, in the new connection, when that page is a list or an overview (the page of a scope, which the new connection has as well); the list an object's page belongs to when it is a detail page (the object is the old
-   * connection's, and the new one has no page for it); the plugin's first page when the tab is on a page the plugin no longer has.
+   * Where a tab of the plugin goes when its connection changes: the page it is on, in the new connection, when that page is a list, an overview or a custom page of a connection (the page of a scope, which the new connection has as well); the list an object's page belongs to when it is a detail
+   * page (the object is the old connection's, and the new one has no page for it); the plugin's first page when the tab is on a page the plugin no longer has, and when it is on a page that is read in no connection (the landing: there is no connection to change, and the person chose one).
    */
   const targetOf = (entry: Ready, from: Route, key: string): Route => {
     const { pages } = entry.contribution;
-    if (!Object.hasOwn(pages, from.contribution)) {
+    if (!Object.hasOwn(pages, from.contribution) || readsNoConnection(pages[from.contribution])) {
       return homeIn(entry, key);
     }
 

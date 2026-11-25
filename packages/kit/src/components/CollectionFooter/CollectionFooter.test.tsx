@@ -158,6 +158,28 @@ describe('CollectionFooter', () => {
     });
   });
 
+  describe('the status of the data (the mock\'s `status`)', () => {
+    it('says "Refreshing…" or "Updated just now" at the end of the lane, after the width note, and is not a live region', () => {
+      render(footer({ hiddenColumns: { names: ['Node'] }, status: { text: 'Refreshing…', busy: true } }));
+      const status = screen.getByText('Refreshing…');
+      const end = status.closest('[data-ov-cluster="end"]');
+      expect(end).not.toBeNull();
+      expect([...(end?.children ?? [])].map((child) => child.textContent)).toEqual(['1 column hidden at this width', 'Refreshing…']);
+      // The count is the lane's one live region: the page's operation slot announces the refresh, so it is not said twice.
+      expect(status.closest('[role="status"], [aria-live]')).toBeNull();
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+    it('marks work under way as busy, and says nothing for words that are empty', () => {
+      const { container, rerender } = render(footer({ status: { text: 'Refreshing…', busy: true } }));
+      expect(screen.getByText('Refreshing…').getAttribute('aria-busy')).toBe('true');
+      rerender(footer({ status: { text: 'Updated just now' } }));
+      expect(screen.getByText('Updated just now').hasAttribute('aria-busy')).toBe(false);
+      rerender(footer({ status: { text: ' ' } }));
+      expect(container.querySelector('[data-ov-cluster="end"]')).toBeNull();
+    });
+  });
+
   describe('the count it shows', () => {
     it('is the count of the collection, in every wording', () => {
       const { rerender } = render(footer({ shown: 12, total: { kind: 'exact', value: 89 } }));
@@ -189,7 +211,7 @@ describe('the examples of CollectionFooter', () => {
 
   it('has an example for every wording of the count and for each ambient item', () => {
     expect(entries.map(([name]) => name).sort()).toEqual(
-      ['Default', 'Estimated', 'Filtered', 'HiddenColumns', 'Loaded', 'LoadedAndFiltered', 'Selected'].sort(),
+      ['Default', 'Estimated', 'Filtered', 'HiddenColumns', 'Loaded', 'LoadedAndFiltered', 'Refreshing', 'Selected', 'StatusWithHiddenColumns', 'Updated'].sort(),
     );
   });
 

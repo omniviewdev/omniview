@@ -5,8 +5,8 @@ name: UI next seam check
 #
 # THE PLAN (`Seam plan`) checks the units of scripts/ci/seam-units.mjs against the check (every phase and every negative control in exactly one unit) and packs them into shards of at most 420 s of work
 # (scripts/ci/seam-shards.mjs). `Seam <engine> shard <n>` runs one shard in one engine in the CI image (pinned by digest): the host build, the shard's phases (`SEAM_PHASES=<ids>`), then its negative controls
-# (`SEAM_CONTROL=<run>`, exit 0 when the assertion it targets fired); every control of the shard runs even when one fails. A unit that took more than its seconds plus a quarter and 60 s, or a shard past its
-# ceiling, fails (rule 25 of docs/ui-next/AGENTS.md). THE VERDICT, the job named `Seam check`, runs whatever happened: it requires the plan and every shard to have succeeded and every phase and every control
+# (`SEAM_CONTROL=<run>`, exit 0 when the assertion it targets fired); every control of the shard runs even when one fails. A unit that took more or less than its seconds by a quarter and 60 s is a warning, never a failure
+# (rule 25 of docs/ui-next/AGENTS.md). THE VERDICT, the job named `Seam check`, runs whatever happened: it requires the plan and every shard to have succeeded and every phase and every control
 # of the check to have run once and passed in both engines; when it is red it names the scenario that failed and the assertion.
 #
 # NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run the scenarios they
@@ -53,8 +53,8 @@ jobs:
     name: Seam ${{ matrix.engine }} shard ${{ matrix.shard }}
     needs: plan
     runs-on: ubuntu-24.04
-    # A shard is planned at 420 s of work (scripts/ci/seam-shards.mjs, LIMIT_SECONDS) plus a setup of about 175 s (container 36, install, packages 25, the host build 105; 260 s on the slowest machine seen), and fails past 546 s
-    # of units. Measured in one job: 17 to 25 minutes, which is what this replaces (the limit was 25). 20 is the wall for a shard that hangs: the slowest setup and the ceiling are 13.5 minutes.
+    # A shard is planned at 420 s of work (scripts/ci/seam-shards.mjs, LIMIT_SECONDS) plus a setup of about 175 s (container 36, install, packages 25, the host build 105; 260 s on the slowest machine seen). No unit and no shard
+    # fails on its seconds (they only pack the shards). Measured in one job: 17 to 25 minutes, which is what this replaces (the limit was 25). 20 is the one wall, for a shard that hangs or whose units outgrew their seconds.
     timeout-minutes: 20
     # The CI image holds Node, pnpm, Task, Go, the native libraries of the host (GTK 4 and WebKitGTK, which the Wails bindings need to be generated) and the Playwright browsers of the version pnpm-lock.yaml
     # resolves. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private:
@@ -196,8 +196,8 @@ jobs:
           done
           [ -z "$failed" ] || { echo "::error::controls that failed:$failed"; exit 1; }
 
-      # What this shard ran, from the logs of the steps above, and the seconds of each unit against the table (`scripts/ci/seam-shards.mjs`): a unit that took more than its seconds plus the larger of a quarter of them and 60 s,
-      # and a shard that took more than its ceiling, fail here with the number to change. It writes seam-ran-<engine>-<shard>.json, which `Seam check` compares with the check. It runs when an earlier step failed too, so that the
+      # What this shard ran, from the logs of the steps above, and the seconds of each unit against the table (`scripts/ci/seam-shards.mjs`): a unit that took more or less than its seconds by the larger of a quarter of them and
+      # 60 s is a warning with the number to change, never a failure. It writes seam-ran-<engine>-<shard>.json, which `Seam check` compares with the check. It runs when an earlier step failed too, so that the
       # verdict has a report to read; the failure is the earlier step's. It does NOT run when the job was cancelled (its timeout, a cancelled run): a shard that hung and was killed must not leave a report that says it passed.
       - name: Hold the seconds and write what this shard ran
         if: ${{ !cancelled() }}

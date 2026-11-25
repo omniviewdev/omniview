@@ -48,8 +48,18 @@ export type ChannelLink = {
   readonly pending: () => number;
 };
 
-/** The size a terminal starts at, and how long the host keeps it once no stream holds it. */
-export type ChannelLaunch = { readonly cols: number; readonly rows: number; readonly leaseMs?: number | undefined };
+/**
+ * The size a terminal starts at, and how long the host keeps it once no stream holds it. `command` is the shell (its first element, a name or a path) and the arguments that follow it, `cwd` the directory it starts in and `env` what the
+ * host adds to its environment: each absent when the person chose none, so that the host's own choice (the default shell, the home directory) applies.
+ */
+export type ChannelLaunch = {
+  readonly cols: number;
+  readonly rows: number;
+  readonly leaseMs?: number | undefined;
+  readonly command?: readonly string[] | undefined;
+  readonly cwd?: string | undefined;
+  readonly env?: Readonly<Record<string, string>> | undefined;
+};
 
 /**
  * The terminals of this page, by id. The capabilities are held behind it and never handed out. Every call that names an id this page holds no capability for answers as the host does for a capability that opens nothing:

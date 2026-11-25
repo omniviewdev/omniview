@@ -5,6 +5,7 @@ import { createPanelStore, PORTS_TOOL, PORTS_TOOL_ID, type PanelStore } from '..
 import type { ContextV1, PanelHostV1, PortForwardErrorV1, SidebarContextV1 } from '../contract/v1';
 import { unloadedFailure } from '../loader/failure';
 import { acme, answering, startedOn, widgetPage, WIDGETS } from '../testing';
+import type { ConnectionsApi, StateRecord } from './connections/api';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import type { PortForwardNetwork, PortForwardStart, PortForwardStop } from './portForward';
@@ -50,6 +51,42 @@ function numbering(): Networker {
   });
 }
 
+type Listed = Readonly<Record<string, readonly StateRecord[]>>;
+
+/** What the host lists for the plugin when it has these connections, all connected: none is an answer with no entry for the plugin. */
+const known = (...ids: readonly string[]): Listed => (ids.length === 0 ? {} : { acme: ids.map((id): StateRecord => ({ connection: { id, name: id }, readiness: 'CONNECTED' })) });
+
+/** The host's list of connections as a test says it: what the window reads, how often it has read, and the host telling the window that something changed (the store reads again a moment after the first of a burst). */
+function listing(initial: Listed) {
+  let answer = initial;
+  let reads = 0;
+  const heard = new Set<() => void>();
+  const api: ConnectionsApi = {
+    states: async () => {
+      reads += 1;
+      return Promise.resolve(answer);
+    },
+    start: async () => Promise.resolve({ status: 'CONNECTED' }),
+    onStatus: (listener) => {
+      heard.add(listener);
+      return () => {
+        heard.delete(listener);
+      };
+    },
+    onSync: () => () => undefined,
+  };
+  return {
+    api,
+    reads: () => reads,
+    change: (next: Listed) => {
+      answer = next;
+      for (const listener of [...heard]) {
+        listener();
+      }
+    },
+  };
+}
+
 /** The plugins of the window as a test changes them: what the store holds, and how many listeners are on it. */
 function changing(initial: readonly PluginEntry[]) {
   let entries = initial;
@@ -75,6 +112,8 @@ function changing(initial: readonly PluginEntry[]) {
 type MountOptions = {
   readonly link?: HostRoute;
   readonly networker?: PortForwardNetwork | undefined;
+  /** What the window knows of the plugin's connections: absent, the window has no connection data. */
+  readonly connections?: ConnectionsApi | undefined;
   /** Whether a user action is under way, as the window is told: inside one unless the test says otherwise. `'window'` gives the host no reading, so that it asks the window's own engine. */
   readonly userActivation?: (() => boolean | undefined) | 'window';
 };
@@ -116,6 +155,7 @@ function mount(options: MountOptions = {}) {
     panel,
     session: options.link === undefined ? startedOn(entries) : undefined,
     networker: options.networker,
+    connections: options.connections,
     userActivation: options.userActivation === 'window' ? undefined : (options.userActivation ?? (() => true)),
   };
   const view = render(<PluginHost {...props} />);
@@ -294,6 +334,118 @@ describe('a page that is read in no connection', () => {
     expect(given.logs.open).toBeTypeOf('function');
     expect(networker.start).not.toHaveBeenCalled();
     expect(panel.getSnapshot().open).toBe(false);
+  });
+});
+
+// PF3. A route of a plugin that has one connection names none (`complete`: there is nothing to choose between) and the plugin reads it in that one, so the window knows which connection the page is read in and gives it the ports member:
+// without it a window of one cluster could forward no port from any page. Two or more connections with the route naming none, none at all, or a list the window has not read: nothing says which one, and the page has no ports member.
+describe('a page whose route names no connection, in a window that knows the plugin\'s connections (PF3)', () => {
+  /** Lets the window read the host's list (asked for at the mount) and draw what it came to. */
+  async function settled(): Promise<void> {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+
+  it('is read in the plugin\'s only connection: the page and the sidebar have the ports member, and a forward starts in that connection', async () => {
+    const networker = numbering();
+    const { seen } = mount({ connections: listing(known('north')).api, networker });
+    await waitFor(() => {
+      expect(seen.page.at(-1)?.panel?.ports).toBeDefined();
+      expect(seen.sidebar.at(-1)?.panel?.ports).toBeDefined();
+    });
+    expect(seen.page.at(-1)?.route.connection).toBeUndefined();
+    await act(async () => {
+      await seen.page.at(-1)?.panel?.ports?.forward(request);
+      await seen.sidebar.at(-1)?.panel?.ports?.forward(request);
+    });
+    expect(networker.start.mock.calls.map(([plugin, connection]) => [plugin, connection])).toEqual([
+      ['acme', 'north'],
+      ['acme', 'north'],
+    ]);
+  });
+
+  it.each([
+    ['two connections', listing(known('north', 'south'))],
+    ['no connection', listing(known())],
+  ])('is given no ports member when the plugin has %s: nothing says which one it is read in', async (_name, hosting) => {
+    const { seen } = mount({ connections: hosting.api, networker: networking() });
+    await settled();
+    expect(hosting.reads()).toBeGreaterThanOrEqual(1);
+    expect(seen.page.at(-1)?.panel?.logs.open).toBeTypeOf('function');
+    expect(seen.page.at(-1)?.panel?.ports).toBeUndefined();
+    expect(seen.sidebar.at(-1)?.panel?.ports).toBeUndefined();
+  });
+
+  it('is given no ports member while the window has not read the list', async () => {
+    const api: ConnectionsApi = { ...listing(known('north')).api, states: async () => new Promise<Listed>(() => undefined) };
+    const { seen } = mount({ connections: api, networker: networking() });
+    await settled();
+    expect(seen.page.at(-1)?.panel?.logs.open).toBeTypeOf('function');
+    expect(seen.page.at(-1)?.panel?.ports).toBeUndefined();
+  });
+
+  it('is read in the connection its route names, as before, whatever the plugin has', async () => {
+    for (const listed of [known('north', 'south'), known('south'), known()]) {
+      const networker = networking();
+      const { seen, unmount } = mount({ link: link('north'), connections: listing(listed).api, networker });
+      const ports = portsOf(await handle(seen));
+      await act(async () => {
+        await ports.forward(request);
+      });
+      expect(networker.start.mock.calls.map(([plugin, connection]) => [plugin, connection])).toEqual([['acme', 'north']]);
+      unmount();
+    }
+  });
+
+  it('follows the plugin\'s connections while the page is open: the only one replaced, removed, joined by a second, and alone again', async () => {
+    const networker = numbering();
+    const hosting = listing(known('north'));
+    const { seen } = mount({ connections: hosting.api, networker });
+    const forwardedIn = async (): Promise<unknown> => {
+      await act(async () => {
+        await seen.page.at(-1)?.panel?.ports?.forward(request);
+      });
+      return networker.start.mock.calls.at(-1)?.[1];
+    };
+
+    await waitFor(() => {
+      expect(seen.page.at(-1)?.panel?.ports).toBeDefined();
+    });
+    expect(await forwardedIn()).toBe('north');
+
+    // Replaced: the one connection is another one now, and the page forwards in it.
+    const north = seen.page.at(-1)?.panel?.ports;
+    hosting.change(known('south'));
+    await waitFor(() => {
+      expect(seen.page.at(-1)?.panel?.ports).toBeDefined();
+      expect(seen.page.at(-1)?.panel?.ports).not.toBe(north);
+      expect(seen.sidebar.at(-1)?.panel?.ports).toBe(seen.page.at(-1)?.panel?.ports);
+    });
+    expect(await forwardedIn()).toBe('south');
+
+    // Removed: none, and the page and the sidebar have no member to call.
+    hosting.change(known());
+    await waitFor(() => {
+      expect(seen.page.at(-1)?.panel?.ports).toBeUndefined();
+      expect(seen.sidebar.at(-1)?.panel?.ports).toBeUndefined();
+    });
+
+    // Joined by a second: two connections and a route that names none, so none, and the window read the list before it said so.
+    const before = hosting.reads();
+    hosting.change(known('south', 'west'));
+    await waitFor(() => {
+      expect(hosting.reads()).toBe(before + 1);
+    });
+    await settled();
+    expect(seen.page.at(-1)?.panel?.ports).toBeUndefined();
+
+    // Alone again.
+    hosting.change(known('west'));
+    await waitFor(() => {
+      expect(seen.page.at(-1)?.panel?.ports).toBeDefined();
+    });
+    expect(await forwardedIn()).toBe('west');
   });
 });
 

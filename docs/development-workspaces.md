@@ -558,11 +558,11 @@ unknown files, foreign sources and production credentials are never adopted.
 
 ### Main-scope native cache preparation
 
-PR validation and trusted pushes to `main` share `.github/workflows/e2e-runner.yml`.
-PRs execute the selected application suite once. The small, always-evaluated
-`e2e-tests` check preserves the required check name and succeeds only when that
-canonical job succeeded, including an explicitly proven prose-only skip. Failed,
-cancelled, missing or skipped jobs cannot make the gate green.
+The nightly validation and trusted pushes to `main` share `.github/workflows/e2e-runner.yml`.
+The nightly runs the full application suite once; change selection is local only.
+The small, always-evaluated `e2e-tests` check succeeds only when that canonical
+job succeeded. Failed, cancelled, missing or skipped jobs cannot make the gate
+green.
 
 Canonical E2E and whole-app profiling resolve the SDK commit from the host's
 `go.mod` using Go module download metadata. The SDK checkout must match that

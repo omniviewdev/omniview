@@ -1,4 +1,4 @@
-import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, type ChannelLink, type TerminalChannels } from './channel';
+import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
 import type { TerminalBusy, TerminalClosedBy, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
 import { createHeldOutput } from './heldOutput';
 
@@ -46,6 +46,8 @@ export type ExecFeedOptions = {
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
   /** How long the host keeps a terminal this feed made once no stream holds it, in milliseconds. Absent: the host's own. */
   readonly leaseMs?: number | undefined;
+  /** The shell, directory and environment the terminal is made with (`ChannelLaunch`). Absent: the host's own choices. */
+  readonly launch?: Pick<ChannelLaunch, 'command' | 'cwd' | 'env'> | undefined;
   /** How long the feed waits before it connects again after each stream that dropped; the feed fails when they are used up. Default: `RECONNECT_DELAYS_MS`. */
   readonly reconnectDelaysMs?: readonly number[] | undefined;
 };
@@ -1130,7 +1132,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const start = (first: Size) => {
     started = true;
     delivered = first;
-    creating = channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }) }).then(
+    creating = channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...options.launch }).then(
       (answer: unknown) => {
         created = true;
         createdProgram = programOf(answer);

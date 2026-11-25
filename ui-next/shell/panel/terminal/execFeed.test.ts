@@ -25,6 +25,7 @@ type RigOptions = {
   readonly attach?: ExecAttach;
   readonly settleMs?: number;
   readonly leaseMs?: number;
+  readonly launch?: { readonly command: readonly string[]; readonly cwd?: string; readonly env?: Readonly<Record<string, string>> };
   readonly delays?: readonly number[];
 };
 
@@ -47,6 +48,7 @@ function rig(options: RigOptions = {}): Rig {
     settleMs: options.settleMs ?? 100,
     ...(options.attach === undefined ? {} : { attach: options.attach }),
     ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }),
+    ...(options.launch === undefined ? {} : { launch: options.launch }),
     ...(options.delays === undefined ? {} : { reconnectDelaysMs: options.delays }),
   });
   let wakes = 0;
@@ -136,6 +138,17 @@ describe('making a terminal', () => {
     r.feed.resize(120, 40);
     await turns();
     expect(r.channels.of('create')).toEqual([{ kind: 'create', id: 'term-1', cols: 100, rows: 30, leaseMs: 60_000 }]);
+  });
+
+  it('asks for the shell, directory and environment of its launch, and for none when it has none', async () => {
+    const r = rig({ launch: { command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' } } });
+    r.feed.resize(100, 30);
+    await turns();
+    expect(r.channels.of('create')).toEqual([{ kind: 'create', id: 'term-1', cols: 100, rows: 30, leaseMs: undefined, command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' } }]);
+    const plain = rig();
+    plain.feed.resize(100, 30);
+    await turns();
+    expect(plain.channels.of('create')[0]).not.toHaveProperty('command');
   });
 
   it('names its own id: the one the caller supplies, and a different one for each feed by default', () => {

@@ -4,7 +4,7 @@ name: UI next kit probes
 # difference. They are listed in scripts/ci/probe-units (one file for each probe: its units, each with the seconds it takes on the runner and its negative controls) and in scripts/ci/probe-units.manifest.json.
 #
 # THE PLAN packs every unit into the fewest shards of at most 432 s (scripts/ci/probe-pack.mjs) and fails when it would plan no shard; each `Kit probes shard <n>` runs its units in the CI image (pinned by digest,
-# .github/ci/image.lock) one after the other, sharing the builds of the fixtures (scripts/ci/probe-builds.mjs), and fails a unit that took more than its seconds plus a quarter and 60 s. THE VERDICT, the job named
+# .github/ci/image.lock) one after the other, sharing the builds of the fixtures (scripts/ci/probe-builds.mjs), and warns, never fails, for a unit that took more or less than its seconds by a quarter and 60 s. THE VERDICT, the job named
 # `Kit probes`, runs whatever happened: it requires the plan and every shard to have succeeded and every unit and every control of the table to have run once and passed, in as many shards as the plan made.
 #
 # NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25: "remove the probes from running in CI. 42 minutes is insane."). Authors run the probes they touch locally before a push
@@ -58,9 +58,8 @@ jobs:
     # Playwright 1.64 supports Ubuntu 24.04, not ubuntu-latest. The reference widths hold on Linux because the probes launch Chromium with
     # --font-render-hinting=none (probes/probe-lib.mjs): with the default hinting its text is rounded to whole pixels, unlike every other engine.
     runs-on: ubuntu-24.04
-    # A shard is planned at 432 s of units (scripts/ci/probe-shards.mjs, LIMIT_SECONDS) plus a setup of 88 s (median), and fails past 614 s of units (SHARD_CEILING_SECONDS, derived from the runner's own 70 shard jobs). The job must be
-    # able to take that ceiling and the slowest setup seen (137 s) to the end, so that a slow shard says what it is: 751 s, 13 minutes. 15 is the wall for a shard that hangs, and a test pins both. The 30 it had was for the bounded
-    # browser install of #557 (a first attempt killed after 15 minutes, then a second), which the image made unnecessary.
+    # A shard is planned at 432 s of units (scripts/ci/probe-shards.mjs, LIMIT_SECONDS) plus a setup of 88 s (median; 137 s the slowest seen). No unit and no shard fails on its seconds (they only pack the shards): 15 minutes is
+    # the one wall, for a shard that hangs or whose units outgrew their seconds. The 30 it had was for the bounded browser install of #557 (a first attempt killed after 15 minutes, then a second), which the image made unnecessary.
     timeout-minutes: 15
     # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
     # them. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private: the job token
@@ -131,8 +130,8 @@ jobs:
           OMNIVIEW_BUILD_OUTPUT_DIRECTORY="$RUNNER_TEMP/ui-next-dist" pnpm exec vite build
 
       # Every unit of the shard, one after the other, as the single job ran them (scripts/ci/probe-shards.mjs: the same scripts, the same env, FONT_DELAY_MS=40 included). All of them run even when one fails, so that a push
-      # shows every failing probe; the step fails when any did, names each in an error line with the last lines of its output, writes the seconds of every probe to the job summary, FAILS when a unit took more than its `seconds`
-      # plus the larger of a quarter of them and 60 s, or the shard took more than 614 s of units (naming the numbers), and writes ran-<shard>-probe.json, which `Kit probes` compares with the table. The matrix reaches the command
+      # shows every failing probe; the step fails when any did, names each in an error line with the last lines of its output, writes the seconds of every probe to the job summary, warns (never fails) when a unit took more or
+      # less than its `seconds` by the larger of a quarter of them and 60 s, naming the number to put there, and writes ran-<shard>-probe.json, which `Kit probes` compares with the table. The matrix reaches the command
       # through env, never through the text of the command.
       - name: Run the units of this shard
         env:

@@ -18,6 +18,8 @@ const entry = {
       items: { kind: 'list', definition: { title: 'Items' } },
       jobs: { kind: 'list', definition: { title: 'Jobs' } },
       overview: { kind: 'overview', definition: { title: 'Overview' } },
+      landing: { kind: 'custom', scope: 'plugin', title: 'Landing' },
+      settings: { kind: 'custom', scope: 'connection', title: 'Settings' },
       item: { kind: 'detail', definition: { list: { page: 'items', label: 'Items' } } },
       orphan: { kind: 'detail', definition: {} },
     },
@@ -72,6 +74,16 @@ describe('switching the tab on screen to another connection', () => {
     await expect(w.actions.switchTab('t1', 'south')).resolves.toEqual({ ok: true });
 
     expect(w.navigate).toHaveBeenCalledWith('t1', { route: route('overview', 'south') }, { history: 'replace', source: 'connection', reuse: true });
+  });
+
+  it('goes from a page that is read in no connection to the plugin\'s first page in the connection: the page has no connection to change, and a page of a connection that is a custom page is kept like a list', async () => {
+    const landing = world(route('landing'));
+    await expect(landing.actions.switchTab('t1', 'south')).resolves.toEqual({ ok: true });
+    expect(landing.navigate).toHaveBeenCalledWith('t1', { route: route('items', 'south') }, { history: 'replace', source: 'connection', reuse: true });
+
+    const settings = world(route('settings', 'north'));
+    await settings.actions.switchTab('t1', 'south');
+    expect(settings.navigate).toHaveBeenCalledWith('t1', { route: route('settings', 'south') }, expect.anything());
   });
 
   it('takes an object\'s page to the list it belongs to, since the object is the old connection\'s, and to the plugin\'s first page when it has none', async () => {

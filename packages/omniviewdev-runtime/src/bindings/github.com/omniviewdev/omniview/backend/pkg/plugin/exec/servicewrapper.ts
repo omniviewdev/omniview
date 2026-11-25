@@ -21,6 +21,9 @@ import * as terminal$0 from "../../terminal/models.js";
 import * as nativeapps$0 from "../../../../internal/nativeapps/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as shellenv$0 from "../../../../internal/shellenv/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as exec$0 from "../../../../../plugin-sdk/pkg/v1/exec/models.js";
 
 /**
@@ -249,6 +252,17 @@ export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
 }
 
 /**
+ * ListTerminalShells says which shells of this machine a terminal can be started with (bash, zsh, fish and pwsh where they are installed,
+ * and the default shell wherever it is), and marks the one that starts when CreateTerminal is given no command: the setting terminal.defaultShell
+ * when it is a shell the host starts, else the first of the stated order.
+ */
+export function ListTerminalShells(): $CancellablePromise<shellenv$0.Shell[]> {
+    return $Call.ByID(2954183303).then(($result: any) => {
+        return $$createType21($result);
+    });
+}
+
+/**
  * ListTerminals says which terminals the calling page may attach: those of its window that have a page key,
  * and those that carry the page key it gives (a server-mode reload is a new window: the key is how the page
  * finds its terminals again). A terminal without a key is not listed, and nothing lists another page's
@@ -257,7 +271,7 @@ export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
  */
 export function ListTerminals(pageKey: string): $CancellablePromise<terminal$0.Listed[]> {
     return $Call.ByID(867361533, pageKey).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType23($result);
     });
 }
 
@@ -314,5 +328,7 @@ const $$createType16 = terminal$0.ChannelListed.createFrom;
 const $$createType17 = $Create.Array($$createType16);
 const $$createType18 = $Create.Array($Create.Any);
 const $$createType19 = $Create.Array($$createType1);
-const $$createType20 = terminal$0.Listed.createFrom;
+const $$createType20 = shellenv$0.Shell.createFrom;
 const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = terminal$0.Listed.createFrom;
+const $$createType23 = $Create.Array($$createType22);

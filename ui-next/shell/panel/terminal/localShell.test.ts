@@ -3,7 +3,7 @@ import { HOST } from '../../core/panel';
 import type { TerminalChannels } from './channel';
 import { createExecFeed } from './execFeed';
 import type { TerminalFeedHandle } from './feed';
-import { attachLocalTerminal, localShellTarget, restoreLocalTerminals } from './localShell';
+import { attachLocalTerminal, localProfileTarget, localShellTarget, restoreLocalTerminals } from './localShell';
 import { appTerminalChannels } from './terminalChannel';
 
 // The host's own shell as a feed, on the terminal channel: `localShell.ts` only maps the targets of the Terminal tool onto `TerminalChannels` (`channel.ts`): which feed a target opens, under which id, with which lease, and
@@ -47,6 +47,38 @@ beforeEach(() => {
   vi.mocked(createExecFeed).mockReset();
   vi.mocked(createExecFeed).mockReturnValue(feed as never);
   vi.mocked(appTerminalChannels).mockReset();
+});
+
+describe('the target of a terminal started from a profile', () => {
+  const profile = { name: 'zsh', path: '/usr/bin/zsh', args: ['-f'], env: { A: '1' }, cwd: '/work' };
+
+  it('is called by the profile until the host says which shell it started, and asks the host for the profile\'s shell, directory and environment', () => {
+    const target = localProfileTarget(profile, channels());
+    expect(target.title).toBe('zsh');
+    target.open();
+    expect(made().launch).toEqual({ command: ['/usr/bin/zsh', '-f'], cwd: '/work', env: { A: '1' } });
+  });
+
+  it('starts under the id of its session, with the lease it was asked for, on the channels it was given, like the target of the `+`', () => {
+    const given = channels();
+    const target = localProfileTarget(profile, given, 90_000);
+    expect(target).toMatchObject({ plugin: HOST, id: 'local' });
+    expect(typeof target.sessionId).toBe('string');
+    target.open();
+    const options = made();
+    expect(options.channels).toBe(given);
+    expect(options.newId?.()).toBe(target.sessionId);
+    expect(options.leaseMs).toBe(90_000);
+  });
+
+  it('is named by the shell the host says it started, as the target of the `+` is', () => {
+    expect(localProfileTarget(profile, channels()).retitle?.({ program: 'zsh' } as never)).toBe('zsh');
+  });
+
+  it('asks for no shell when it is the target of the `+`, which has no profile: the host starts the default', () => {
+    localShellTarget(channels()).open();
+    expect(made()).not.toHaveProperty('launch');
+  });
 });
 
 describe('the target of "New terminal"', () => {

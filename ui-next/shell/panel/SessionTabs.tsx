@@ -1,7 +1,9 @@
-import { Icon, IconButton, Text, hoverCard, hoverCardAnchor, isIconName, tip, type IconName } from '@omniviewdev/kit';
+import { Icon, IconButton, Text, hoverCard, hoverCardAnchor, isIconName, menuTrigger, tip, useMenu, type IconName } from '@omniviewdev/kit';
+import { useSyncExternalStore } from 'react';
 import type { SessionId, SessionState, ToolId } from '../core/panel';
 import { useTablist } from '../tablist';
 import { usePanel } from './context';
+import type { PanelNewSessionMenu } from './host';
 import { focusTab } from './focus';
 import { useActiveSession, useSessionIds, useSessionItem, useToolItem } from './hooks';
 import styles from './Header.module.css';
@@ -154,11 +156,25 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
   );
 }
 
-/** The `+` of a tool that can start a session: a ghost icon button, last in the strip. The mock's `▾` beside it opens a menu of targets, which is not built (docs/ui-next/status/P1a.md). */
-export function NewSession({ label, onStart }: { readonly label: string; readonly onStart: () => void }) {
+/**
+ * The `+` of a tool that can start a session: a ghost icon button, last in the strip, which starts the tool's default. A tool that offers a choice of what to start (the Terminal tool's shells) has an arrow beside it, which
+ * opens the choice on the window's menu host; a tool whose choice is empty draws no arrow.
+ */
+export function NewSession({ label, onStart, menu }: { readonly label: string; readonly onStart: () => void; readonly menu?: PanelNewSessionMenu }) {
   return (
     <div className={styles.add} data-shell-part="sessionAdd">
       <IconButton icon="plus" label={label} variant="ghost" onClick={onStart} {...tip(label)} />
+      {menu === undefined ? null : <NewSessionChoice menu={menu} />}
     </div>
   );
+}
+
+function NewSessionChoice({ menu }: { readonly menu: PanelNewSessionMenu }) {
+  const items = useSyncExternalStore(menu.subscribe, menu.getSnapshot);
+  const id = useMenu(items, items);
+  if (items.length === 0) {
+    return null;
+  }
+
+  return <IconButton icon="chevron-down" label={menu.label} variant="ghost" data-shell-part="sessionAddChoice" data-ov-menu-label={menu.label} {...tip(menu.label)} {...menuTrigger(id)} />;
 }

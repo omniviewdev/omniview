@@ -1,0 +1,7 @@
+/* The box the long-title example sits in. */
+@layer ov.components {
+  .narrow {
+    width: 280px;
+    max-width: 100%;
+  }
+}

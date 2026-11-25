@@ -39,6 +39,8 @@ export type TextInputProps = {
   readonly readOnly?: boolean | undefined;
   /** Why the field cannot change. It stays focusable and selectable with `aria-disabled`, does nothing, and has this as its description. Print the same reason in the lane (design P2, 04 DR1). */
   readonly disabledReason?: string | undefined;
+  /** Take the focus once, when the field mounts: the first field of a dialog, so that typing starts there. Use it only in a dialog, never on a page: a page that moves the focus on load takes it from where the person was. */
+  readonly autoFocus?: boolean | undefined;
 } & DataAttributes;
 
 /**
@@ -62,6 +64,7 @@ export function TextInput({
   invalid,
   readOnly,
   disabledReason,
+  autoFocus,
   ...rest
 }: TextInputProps) {
   const control = useFieldControl({ label, invalid, readOnly, disabledReason });
@@ -90,6 +93,14 @@ export function TextInput({
       element.removeEventListener('beforeinput', refuse);
     };
   }, [allows]);
+
+  // The focus is taken in a passive effect, after the layout effects of the commit: a `Sheet` goes modal in its layout effect, and a field of a dialog that is not open yet cannot take the focus. It runs after the dialog's
+  // own move to its first control, so the field wins over Close.
+  useEffect(() => {
+    if (autoFocus === true) {
+      input.current?.focus();
+    }
+  }, [autoFocus]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (control.locked || event.nativeEvent.isComposing || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
