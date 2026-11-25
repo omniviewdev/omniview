@@ -18,8 +18,6 @@ Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: tru
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 1117 : 0;
 } });
-// jsdom has no canvas: the table measures text with an estimate and says nothing (the kit's own tests stub it the same way).
-HTMLCanvasElement.prototype.getContext = () => null;
 
 // The columns the body hands to the kit's table, as the table gets them: the kit's DataView is wrapped to keep hold of them, and delegates to the real one. The table renders a row by calling its columns' cells, so a test that
 // watches those calls (`watchCells`) counts the rows that rendered, whatever the React Compiler did to the content of a cell.

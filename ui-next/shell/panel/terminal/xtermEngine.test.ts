@@ -10,11 +10,6 @@ import { createScreenReaderChoice } from './screenReader';
 import { fakeTerminalFeed, type FakeTerminalFeed } from './testing';
 import { createXtermEngine } from './xtermEngine';
 
-// jsdom has no canvas, and the emulator's colour code asks for a 2D context when it is imported (it never draws here): without this stand-in jsdom says so in the log once for every run.
-vi.hoisted(() => {
-  HTMLCanvasElement.prototype.getContext = () => null;
-});
-
 // The emulators the module made, in order: the engine makes its own inside, and the cursor tests read the one the screen drove (and the private flag it keeps) through it.
 const made = vi.hoisted((): Terminal[] => []);
 vi.mock('@xterm/xterm', async (importOriginal) => {

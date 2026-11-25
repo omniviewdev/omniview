@@ -11,11 +11,6 @@ import { createTerminalSessions } from '../TerminalSessions';
 import { TERMINAL_TOOL } from '../tool';
 import { createXtermEngine } from '../xtermEngine';
 
-// jsdom has no canvas, and the emulator's colour code asks for a 2D context when it is imported (it never draws here): without this stand-in jsdom says so in the log once for every run.
-vi.hoisted(() => {
-  HTMLCanvasElement.prototype.getContext = () => null;
-});
-
 // The terminal's context menu and its links in the body that draws them: the real body, screen and registry, the kit's real menu host, and a fake emulator for the first two sections, the real one (xterm.js, in jsdom: no layout, no
 // drawing) for the last. What is checked here is the hook-up: that the body's elements and the screen carry what the two hooks give them, and that what a person does reaches the emulator and the registry. What a real renderer
 // does with a pointer, and where a link is on a screen with a layout, is the probes' to prove.
