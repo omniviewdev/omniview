@@ -13,7 +13,7 @@
 //   --seconds=30     the length of the sample window of every case
 //   --stall=20       case d: seconds the reader stalls, after --stall-at seconds of reading
 //   --stall-at=2     case d: seconds of reading before the stall begins
-//   --limit-mib=100  the acceptance of #693: the most the resident set may pass its start by. The report says PASS or FAIL against it, and the exit code does not depend on it
+//   --limit-mib=100  the acceptance of #693: the most the resident set may pass its start by. The report says PASS or FAIL against it in the `memory` column, and the exit code does not depend on it; the `integrity` column (the flood ran, every byte and offset exact, exactly one gap in case d) does set the exit code
 //   --server=<path>  the host's binary (default bin/Omniview-server, which `OMNIVIEW_UI=next GOWORK=off GOFLAGS= GOTOOLCHAIN=local task build:server` builds)
 //   --json=<file>    every sample of every case, and the figures, as JSON
 //
@@ -35,6 +35,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 
@@ -71,7 +72,8 @@ const LIMIT_MIB = number('limit-mib', 0);
 const CASES = { a: 'reads, never acknowledges', b: 'reads and acknowledges', c: 'two terminals, the second never reads', d: `reads ${String(STALL_AT)} s, stalls ${String(STALL)} s, resumes` };
 const CASE_IDS = flags.cases.split(',').map((id) => id.trim());
 for (const id of CASE_IDS) if (CASES[id] === undefined) throw new Error(`--cases names a, b, c and d, it has ${JSON.stringify(id)}`);
-if (CASE_IDS.includes('d') && STALL_AT + STALL >= SECONDS) throw new Error(`--stall-at (${String(STALL_AT)}) and --stall (${String(STALL)}) leave no time to resume inside --seconds (${String(SECONDS)})`);
+// The loop pauses at floor(stall-at) and resumes when `second - 1` reaches floor(stall-at) + ceil(stall): that tick has to be at most SECONDS - 1, so that a sample follows the resume.
+if (CASE_IDS.includes('d') && Math.floor(STALL_AT) + Math.ceil(STALL) > SECONDS - 1) throw new Error(`--stall-at (${String(STALL_AT)}) and --stall (${String(STALL)}) leave no sample after the resume inside --seconds (${String(SECONDS)})`);
 
 const EXEC_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper';
 const PROMPT = 'READY> ';
@@ -250,6 +252,7 @@ async function openStream(port, cap, { ack }) {
     seen: '',
     typed: false,
     floodStart: null,
+    failure: null,
     badBytes: 0,
     badOffsets: 0,
     ended: null,
@@ -267,6 +270,10 @@ async function openStream(port, cap, { ack }) {
     readyReject = reject;
   });
   readyPromise.catch(() => undefined);
+  let floodResolve;
+  stream.flooding = new Promise((resolve) => {
+    floodResolve = resolve;
+  });
   const send = (type, payload = Buffer.alloc(0)) => {
     if (!socket.destroyed) socket.write(clientFrame(Buffer.concat([Buffer.from([type]), payload])));
   };
@@ -305,6 +312,7 @@ async function openStream(port, cap, { ack }) {
         if (found >= 0) {
           // The offset of the byte at `found` of the joined head: the frames of the head follow each other (a bad offset is counted), so it is the first frame's offset plus `found`.
           stream.floodStart = stream.head[0].offset + found;
+          floodResolve();
           const rest = joined.subarray(found);
           if (!PATTERN.subarray(0, rest.length).equals(rest)) stream.badBytes += rest.length;
           stream.head = [];
@@ -388,7 +396,14 @@ async function openStream(port, cap, { ack }) {
       send(ATTACH, Buffer.from(JSON.stringify({ v: 1, cap })));
     }
 
-    parse();
+    // A frame that cannot be parsed (a type byte alone where an offset is due) is the stream's failure: it is recorded, the open that waits for `ready` is refused, and the socket is destroyed, so that the exception never leaves the callback and `runCase` still stops its host.
+    try {
+      parse();
+    } catch (error) {
+      stream.failure = String(error?.message ?? error);
+      readyReject(new Error(`the stream failed: ${stream.failure}`));
+      socket.destroy();
+    }
   });
   socket.on('close', () => {
     stream.closed = true;
@@ -402,11 +417,32 @@ async function openStream(port, cap, { ack }) {
   stream.close = () => {
     socket.destroy();
   };
-  const ready = await Promise.race([readyPromise, sleep(30_000).then(() => {
-    throw new Error('no ready in 30 s');
-  })]);
-  stream.readyFrame = ready;
+  // The caller has no handle until this returns, so a failed open destroys the socket itself; the timer is cleared on either outcome.
+  const timer = new AbortController();
+  try {
+    stream.readyFrame = await Promise.race([readyPromise, delay(30_000, undefined, { signal: timer.signal }).then(() => {
+      throw new Error('no ready in 30 s');
+    })]);
+  } catch (error) {
+    socket.destroy();
+    throw error;
+  } finally {
+    timer.abort();
+  }
+
   return stream;
+}
+
+/** Waits for the first run of `yes` output on a stream, within 30 s: `ready` only says the terminal is attached, and a reader whose flood never started would sample an idle host. */
+async function flooded(stream, what) {
+  const timer = new AbortController();
+  try {
+    await Promise.race([stream.flooding, delay(30_000, undefined, { signal: timer.signal }).then(() => {
+      throw new Error(`workload setup failed: no output of \`yes\` on ${what} in 30 s (the shell did not show the prompt \`${PROMPT.trim()}\`, or did not run \`exec yes\`)`);
+    })]);
+  } finally {
+    timer.abort();
+  }
 }
 
 const mib = (kib) => kib / 1024;
@@ -431,9 +467,15 @@ async function runCase(id) {
     streams.push(reader);
     if (id === 'c') {
       const stalled = await openStream(host.port, caps[1], { ack: false });
-      stalled.pause();
       streams.push(stalled);
       result.marks.stalledReaderReadyEnd = stalled.readyFrame.end;
+    }
+
+    // The sample window starts when every flood runs: `ready` is not that, and the second reader is stopped only once its own flood is confirmed.
+    await flooded(reader, 'the first stream');
+    if (id === 'c') {
+      await flooded(streams[1], 'the second stream');
+      streams[1].pause();
     }
 
     result.marks.readyLimits = reader.readyFrame.session?.limits ?? null;
@@ -460,6 +502,7 @@ async function runCase(id) {
       process.stdout.write(`  ${String(second).padStart(2)} s  rss ${mib(rssKiB).toFixed(1)} MiB  received ${(reader.received / MIB).toFixed(1)} MiB  gaps ${String(reader.gaps.length)}\n`);
     }
 
+    for (const stream of streams) if (stream.failure !== null) throw new Error(`a stream failed: ${stream.failure}`);
     result.marks.stalledAtSecond = stalledAt;
     result.marks.resumedAtSecond = resumedAt;
     if (id === 'c') {
@@ -468,24 +511,27 @@ async function runCase(id) {
       await sleep(2000);
     }
 
-    result.marks.streams = streams.map((stream) => ({
-      received: stream.received,
-      outputFrames: stream.outputFrames,
-      gaps: stream.gaps,
-      nextOffset: stream.next,
-      readyStart: stream.ready.start,
-      readyEnd: stream.ready.end,
-      readyLost: stream.ready.lost,
-      badBytes: stream.badBytes,
-      badOffsets: stream.badOffsets,
-      ended: stream.ended,
-      closed: stream.closed,
-    }));
     result.uptimeAfter = await uptime();
   } catch (error) {
     result.error = String(error?.stack ?? error).replaceAll(/[A-Za-z0-9_-]{43}/g, '<43 characters>');
     console.log(`  ERROR ${result.error}`);
   } finally {
+    // Whatever happened, what the streams counted is kept: a case that failed halfway still reports its figures and its error.
+    result.marks.streams = streams.map((stream) => ({
+      received: stream.received,
+      outputFrames: stream.outputFrames,
+      gaps: stream.gaps,
+      nextOffset: stream.next,
+      readyStart: stream.ready?.start ?? null,
+      readyEnd: stream.ready?.end ?? null,
+      readyLost: stream.ready?.lost ?? null,
+      floodStart: stream.floodStart,
+      badBytes: stream.badBytes,
+      badOffsets: stream.badOffsets,
+      failure: stream.failure,
+      ended: stream.ended,
+      closed: stream.closed,
+    }));
     for (const stream of streams) stream.close();
     if (host !== undefined) {
       for (const cap of caps) await call(host.port, 'CloseChannelTerminal', cap).catch(() => undefined);
@@ -498,6 +544,23 @@ async function runCase(id) {
   }
 
   return result;
+}
+
+/** What is wrong with the bytes a case received, apart from the memory: the flood did not start, a frame could not be parsed, a byte or an offset was not what `yes` and the protocol say, or case d had not exactly one gap. Empty is sound. The memory limit is not part of it. */
+function integrity(result) {
+  const streams = result.marks.streams ?? [];
+  if (streams.length === 0) return ['no stream counters'];
+  const problems = [];
+  for (const [index, stream] of streams.entries()) {
+    const name = `stream ${String(index + 1)}`;
+    if (stream.failure !== null) problems.push(`${name} failed: ${stream.failure}`);
+    if (stream.floodStart === null) problems.push(`${name} saw no flood`);
+    if (stream.badBytes !== 0) problems.push(`${name} has ${String(stream.badBytes)} bad bytes`);
+    if (stream.badOffsets !== 0) problems.push(`${name} has ${String(stream.badOffsets)} bad offsets`);
+  }
+
+  if (result.id === 'd' && streams[0].gaps.length !== 1) problems.push(`stream 1 had ${String(streams[0].gaps.length)} gaps, the stall of case d must give exactly one`);
+  return problems;
 }
 
 function figures(result) {
@@ -515,16 +578,19 @@ function figures(result) {
     pass: max - start <= LIMIT_MIB,
     receivedMiB: first === undefined ? null : round(first.received / MIB),
     gaps: first?.gaps ?? null,
+    badBytes: first?.badBytes ?? null,
+    badOffsets: first?.badOffsets ?? null,
   };
 }
 
 function printReport(results) {
   console.log(`\n=== host resident set (ps -o rss= of the pid this tool started) under \`yes\` on the terminal channel; MiB = 1,048,576 bytes; limit: at most ${String(LIMIT_MIB)} MiB over the start; ${String(SECONDS)} s a case ===`);
-  const rows = [['case', 'start', 'max', 'end', 'max-start', 'received MiB', 'gaps', 'bad bytes', 'bad offsets', 'verdict']];
+  const rows = [['case', 'start', 'max', 'end', 'max-start', 'received MiB', 'gaps', 'bad bytes', 'bad offsets', 'memory', 'integrity']];
   for (const result of results) {
     const f = figures(result);
-    const first = result.marks.streams?.[0];
-    rows.push(f === undefined ? [result.id, 'no samples', '', '', '', '', '', '', '', 'ERROR'] : [result.id, f.startMiB.toFixed(1), f.maxMiB.toFixed(1), f.endMiB.toFixed(1), f.maxOverStartMiB.toFixed(1), String(f.receivedMiB), String(f.gaps.length), String(first.badBytes), String(first.badOffsets), result.error === null && f.pass ? 'PASS' : 'FAIL']);
+    const sound = integrity(result).length === 0 && result.error === null ? 'PASS' : 'FAIL';
+    const count = (value) => (value === null ? '-' : String(value));
+    rows.push(f === undefined ? [result.id, 'no samples', '', '', '', '', '', '', '', 'ERROR', sound] : [result.id, f.startMiB.toFixed(1), f.maxMiB.toFixed(1), f.endMiB.toFixed(1), f.maxOverStartMiB.toFixed(1), count(f.receivedMiB), f.gaps === null ? '-' : String(f.gaps.length), count(f.badBytes), count(f.badOffsets), f.pass ? 'PASS' : 'FAIL', sound]);
   }
 
   const widths = rows[0].map((_, column) => Math.max(...rows.map((row) => String(row[column]).length)));
@@ -538,6 +604,7 @@ function printReport(results) {
     }
 
     if (result.marks.stalledAtSecond !== undefined && result.marks.stalledAtSecond !== null) console.log(`  stalled after second ${String(result.marks.stalledAtSecond)}, resumed after second ${String(result.marks.resumedAtSecond)}`);
+    for (const problem of integrity(result)) console.log(`  INTEGRITY ${problem}`);
     if (result.error !== null) console.log(`  ERROR ${result.error.split('\n')[0]}`);
     if (result.cleanup !== null) console.log(`  cleanup: host ${result.cleanup.exit}${result.cleanup.killed ? ' (killed by pid)' : ''}${result.cleanup.pidLeft ? '; PID LEFT' : '; pid gone'}`);
   }
@@ -551,4 +618,4 @@ if (flags.json !== undefined) {
   console.log(`\nwritten: ${flags.json}`);
 }
 
-process.exitCode = results.some((result) => result.error !== null || result.cleanup?.pidLeft === true) ? 1 : 0;
+process.exitCode = results.some((result) => result.error !== null || integrity(result).length > 0 || result.cleanup?.pidLeft === true) ? 1 : 0;

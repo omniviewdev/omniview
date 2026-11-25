@@ -43,27 +43,27 @@
 
 The acceptance of #693: the host's resident set stays at most 100 MiB over its start while a reader floods, stalls and resumes. Measured with `ui-next/shell/probes/terminal-host-memory.mjs`, a manual dev tool (not CI; it asserts nothing about memory, it measures and prints, and it holds every received byte to the pattern of `yes`). It starts the real server build over a fresh HOME, makes a channel terminal through the bound call `CreateTerminal` (`launch.channel`), opens `/wails/stream/ws?name=terminal` from Node over a raw socket (so that a stalled reader really stops reading the kernel's buffer), attaches with the capability, types `exec yes` once the shell shows its prompt, and samples `ps -o rss= -p <pid>` of the host process it started once a second for 30 s. No browser, no page code.
 
-Run 2026-11-24 21:37 to 21:40, Linux x64 (Node v26.13.0, Go 1.27.4), branch `wip/t3cp-e` at `0514d47f`:
+Run 2026-11-25 04:38 to 04:40 (after the review fixes of #716), Linux x64 (Node v26.13.0, Go 1.27.4), branch `wip/t3cp-e` merged with `ui-next/t3-channel-page` at `f0bdfc2d`. The tool now waits for the first output of `yes` on every stream before the sample window starts, and its `integrity` column (flood ran, every byte and offset exact, exactly one gap in case d) sets the exit code; the memory limit stays report-only:
 
 ```
 $ uptime
- 21:37:57  up 26 days  5:12,  0 users,  load average: 6.90, 9.28, 6.96
+ 04:38:44  up 26 days 12:12,  0 users,  load average: 11.63, 8.03, 6.32
 $ GO_TOOLCHAIN="$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64"; PATH="$GO_TOOLCHAIN/bin:$PATH" OMNIVIEW_UI=next GOWORK=off GOFLAGS= GOTOOLCHAIN=local task build:server
-$ node ui-next/shell/probes/terminal-host-memory.mjs --json=/tmp/hostmem-t3cp-e.json
+$ node ui-next/shell/probes/terminal-host-memory.mjs --json=/tmp/hostmem-t3cp-e2.json
 ```
 
-(The `go` of the machine's PATH is 1.26.1 and `go.mod` wants 1.27.0, which `GOTOOLCHAIN=local` refuses: the build ran with the 1.27.4 toolchain of the module cache first on PATH.) The load of the machine at the start of each case was 6.9, 8.3, 8.4 and 10.0 (the `uptime` line of each case is in the JSON).
+(The `go` of the machine's PATH is 1.26.1 and `go.mod` wants 1.27.0, which `GOTOOLCHAIN=local` refuses: the build ran with the 1.27.4 toolchain of the module cache first on PATH.) The load of the machine at the start of each case was 11.6, 11.4, 12.0 and 14.6 (the `uptime` line of each case is in the JSON).
 
-| Case | Start MiB | Max MiB | End MiB | Max - start | Received (reader 1) | Gaps | Bad bytes / offsets | Verdict (limit 100) |
-|---|---|---|---|---|---|---|---|---|
-| a: reads, never `ack` | 103.2 | 142.7 | 142.7 | 39.6 | 187,685,227 B (179 MiB) | 0 | 0 / 0 | PASS |
-| b: reads and acks every frame | 104.1 | 145.0 | 145.0 | 40.9 | 160,875,858 B (153.4 MiB) | 0 | 0 / 0 | PASS |
-| c: two terminals; stream 1 reads and acks, stream 2 never reads | 106.1 | 161.6 | 161.6 | 55.5 | 223,533,643 B (213.2 MiB) | 0 | 0 / 0 | PASS |
-| d: reads 2 s, stalls 20 s (seconds 3 to 22), resumes | 106.2 | 144.9 | 144.9 | 38.8 | 76,443,791 B (72.9 MiB) | 1 | 0 / 0 | PASS |
+| Case | Start MiB | Max MiB | End MiB | Max - start | Received (reader 1) | Gaps | Bad bytes / offsets | Memory (limit 100) | Integrity |
+|---|---|---|---|---|---|---|---|---|---|
+| a: reads, never `ack` | 103.5 | 141.3 | 141.3 | 37.9 | 159,113,416 B (151.7 MiB) | 0 | 0 / 0 | PASS | PASS |
+| b: reads and acks every frame | 107.0 | 146.3 | 146.3 | 39.3 | 183,936,658 B (175.4 MiB) | 0 | 0 / 0 | PASS | PASS |
+| c: two terminals; stream 1 reads and acks, stream 2 never reads | 108.9 | 162.4 | 162.4 | 53.4 | 173,361,249 B (165.3 MiB) | 0 | 0 / 0 | PASS | PASS |
+| d: reads 2 s, stalls 20 s (seconds 3 to 22), resumes | 104.4 | 143.5 | 143.5 | 39.1 | 63,417,625 B (60.5 MiB) | 1 | 0 / 0 | PASS | PASS |
 
 - Start is the host's resident set after the terminal was made and before the stream attached (the host itself is about 104 MiB at rest: this is over that).
-- Case c, stream 2 (the one that never read): `ready` end 167, then, read in the 2 s after the 30 s window, 22,835,911 B in 77,879 frames and one `gap [2514432, 142737408)` of 140,222,976 B; received + gap = 163,058,887 = its next offset. Its bytes and offsets are exact too (0 bad). It was resumed only after the 30 s of samples, so the RSS above is with it stalled.
-- Case d: one `gap [12726649, 115408896)` of 102,682,247 B after the stall, then exact bytes to the end: received + gap = 179,126,038 = the next offset, 0 bad bytes, 0 bad offsets.
+- Case c, stream 2 (the one that never read): `ready` end 167, then, read in the 2 s after the 30 s window, 22,702,794 B in 48,290 frames and one `gap [4028331, 147456000)` of 143,427,669 B; received + gap = 166,130,463 = its next offset. Its bytes and offsets are exact too (0 bad). It was resumed only after the 30 s of samples, so the RSS above is with it stalled.
+- Case d: one `gap [15731643, 89784320)` of 74,052,677 B after the stall, then exact bytes to the end: received + gap = 137,470,302 = the next offset, 0 bad bytes, 0 bad offsets.
 - Every case: `received + gaps = next offset` (start 0) and the pattern of `yes` held byte for byte (`y`, CR, LF from the first run of three lines).
 - A 4 s stall (a shorter earlier run) made no gap: the kernel's socket buffers took what the host sent. Only the 20 s of the acceptance was run for the table.
 - Every host was stopped by the pid the tool started (SIGTERM, `code 0`, 0 s), and no pid was left. The temporary HOME of each case was removed.
