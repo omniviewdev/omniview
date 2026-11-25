@@ -458,6 +458,23 @@ describe('what the user types', () => {
     expect(r.feed.inputs?.()).toBe(3);
   });
 
+  it('keeps a paste of three pieces that the link refuses part of the way, and sends it whole and in order on the next stream', async () => {
+    const r = await running();
+    const piece = (letter: string): string => letter.repeat(MAX_INPUT_BYTES);
+    const paste = piece('a') + piece('b') + piece('c');
+    const first = r.stream();
+    // The socket dies after the first piece went: the second is refused.
+    r.feed.write(piece('a'));
+    first.die();
+    r.feed.write(piece('b') + piece('c'));
+    expect(first.typed()).toHaveLength(MAX_INPUT_BYTES);
+    const again = reconnect(r);
+    again.ready();
+    expect(again.typed()).toBe(piece('b') + piece('c'));
+    expect(first.typed() + again.typed()).toBe(paste);
+    expect(again.sent().filter((frame) => frame.kind === 'input').map((frame) => (frame.kind === 'input' ? frame.bytes.length : 0))).toEqual([MAX_INPUT_BYTES, MAX_INPUT_BYTES]);
+  });
+
   it('drops a size and an acknowledgement sent on a dead link: the next stream sends the size the screen wants', async () => {
     const r = await running();
     r.stream().die();

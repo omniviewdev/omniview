@@ -56,8 +56,13 @@ class FakeSocket implements ChannelSocket {
   }
 
   send(data: Uint8Array): void {
-    if (this.readyState !== 1) {
+    if (this.readyState === 0) {
       throw new Error('InvalidStateError: the stream is not open');
+    }
+
+    // A WebSocket that is closing or closed discards what it is given, with no error.
+    if (this.readyState !== 1) {
+      return;
     }
 
     this.sent.push(Uint8Array.from(data));
