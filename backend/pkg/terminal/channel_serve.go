@@ -63,6 +63,29 @@ type attachRequest struct {
 	V    int     `json:"v"`
 	Cap  string  `json:"cap"`
 	From *uint64 `json:"from_offset"`
+	// Writer is the opaque id of the feed that types into the terminal on this stream: 32 lowercase hex digits (16 random bytes the page
+	// makes for each feed, not a secret). The input counts of ready and applied are the writer's. Absent: the stream is a writer of its own
+	// that nothing remembers.
+	Writer string `json:"writer"`
+}
+
+// writerIDLen is the length of a writer id: 16 bytes as lowercase hex digits.
+const writerIDLen = 32
+
+// validWriter says a writer id is absent or is 32 lowercase hex digits.
+func validWriter(id string) bool {
+	if id == "" {
+		return true
+	}
+	if len(id) != writerIDLen {
+		return false
+	}
+	for i := range len(id) {
+		if ch := id[i]; (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // attachKind is what the first frame of a stream is.
@@ -84,7 +107,7 @@ func parseAttach(frame []byte) (attachRequest, attachKind) {
 	if len(frame) < 2 || len(frame) > maxAttachBytes || frame[0] != frameAttach {
 		return req, attachMalformed
 	}
-	if err := json.Unmarshal(frame[1:], &req); err != nil || req.Cap == "" || req.V == 0 {
+	if err := json.Unmarshal(frame[1:], &req); err != nil || req.Cap == "" || req.V == 0 || !validWriter(req.Writer) {
 		return req, attachMalformed
 	}
 	if req.V != attachVersion {
@@ -207,6 +230,10 @@ type channelConn struct {
 	// reported is the input count this stream was last told: set by claim (what its ready states), and from then on only by the
 	// sender, which sends an applied frame when the host's count passes it.
 	reported uint64
+	// writerID is the writer the attach named, writer its count (set by claim), and lane the stream's input (taken by one worker).
+	writerID string
+	writer   *writerCount
+	lane     *inputLane
 	// gone is closed when another stream takes the terminal: an input of this stream that waits for room in the queue looks again.
 	gone     chan struct{}
 	goneOnce sync.Once
@@ -220,7 +247,7 @@ func newChannelConn(ch Channel, clk clock) *channelConn {
 	return &channelConn{
 		ch: ch, clock: clk, sent: atomic.Uint64{}, begun: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
 		ackSeen: atomic.Bool{}, began: clk.Now(), progressAt: atomic.Int64{}, replayEnd: 0, displaced: atomic.Bool{}, stopped: atomic.Bool{},
-		released: atomic.Bool{}, evicted: atomic.Bool{}, closeRefused: atomic.Bool{}, reported: 0,
+		released: atomic.Bool{}, evicted: atomic.Bool{}, closeRefused: atomic.Bool{}, reported: 0, writerID: "", writer: nil, lane: newInputLane(),
 		gone: make(chan struct{}), goneOnce: sync.Once{}, wake: make(chan struct{}, 1), finished: make(chan struct{}),
 	}
 }
@@ -293,7 +320,7 @@ func (m *Manager) ServeChannel(ch Channel) {
 	s, kept := m.lookupCap(req.Cap)
 	switch {
 	case s != nil:
-		m.serveLive(ch, s, req.From)
+		m.serveLive(ch, s, req.From, req.Writer)
 	case kept != nil:
 		m.serveEnded(ch, kept, req.From)
 	default:
@@ -305,8 +332,9 @@ func (m *Manager) ServeChannel(ch Channel) {
 func refuseChannel(ch Channel) { _ = ch.Send([]byte{frameNotFound}) }
 
 // serveLive serves a stream that opened a terminal that is running.
-func (m *Manager) serveLive(ch Channel, s *session, from *uint64) {
+func (m *Manager) serveLive(ch Channel, s *session, from *uint64, writer string) {
 	c := newChannelConn(ch, m.clock)
+	c.writerID = writer
 	view, err := s.claim(c, from)
 	switch {
 	case errors.Is(err, errEndingByItself):
@@ -331,6 +359,7 @@ func (m *Manager) serveLive(ch Channel, s *session, from *uint64) {
 		return
 	}
 	go m.runSender(s, c)
+	go m.runLane(s, c)
 	m.takeFrames(s, c)
 	// The stream ended, or broke the protocol: the terminal is let go, the sender stops, and a Send that is parked returns.
 	m.release(s, c)
@@ -338,6 +367,7 @@ func (m *Manager) serveLive(ch Channel, s *session, from *uint64) {
 	c.signal()
 	_ = ch.Close()
 	<-c.finished
+	<-c.lane.done
 }
 
 // whereAndWhat reads where the shell is and what holds its terminal, from the system and outside every lock.
@@ -400,9 +430,10 @@ func (s *session) claim(c *channelConn, from *uint64) (replayView, error) {
 		old.displace()
 		s.channel.watchLocked(old)
 	}
-	// The count this stream's ready states: what the device took and what the queue holds ahead of this stream's input, read in the
-	// step that decides the holder, so that no input is admitted between this number and the stream's first one.
-	c.reported = s.channel.inputAdmitted.Load()
+	// The count this stream's ready states, the writer's: what the device took and what the queue holds ahead of its next input, read in
+	// the step that decides the holder, so that no input of the writer is admitted between this number and the stream's first one.
+	c.writer = s.channel.writerLocked(c.writerID)
+	c.reported = c.writer.admitted.Load()
 	s.channel.holder = c
 	s.channel.holderPtr.Store(c)
 	s.endLeaseLocked()
@@ -447,8 +478,14 @@ func (m *Manager) channelEnded(s *session, end End) {
 	}
 }
 
-// takeFrames reads the page's frames, in order, until the stream ends or breaks the protocol.
+// takeFrames reads the page's frames, in order, until the stream ends or breaks the protocol. It waits for nothing the terminal does:
+// frames for the terminal go on the stream's lane, and a close is acted on as it is read. When it ends, what the host could take in of
+// what was sent is taken in before the terminal is let go.
 func (m *Manager) takeFrames(s *session, c *channelConn) {
+	defer func() {
+		c.lane.settle()
+		c.lane.close()
+	}()
 	for {
 		frame, err := c.ch.Recv()
 		if err != nil || !m.takeFrame(s, c, frame) {
@@ -472,8 +509,11 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 		}
 		if len(body) > 0 {
 			o := writeOp(body)
-			o.applied = s.channel.noteApplied
-			m.applyFrom(s, c, o)
+			o.applied = func(took, given int) {
+				c.writer.done(took, given)
+				s.channel.signalHolder()
+			}
+			return c.lane.push(laneItem{o: o, ack: 0, isAck: false})
 		}
 		return true
 	case frameResize:
@@ -484,8 +524,7 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 		if err != nil {
 			return false
 		}
-		m.applyFrom(s, c, resizeOp(rows, cols))
-		return true
+		return c.lane.push(laneItem{o: resizeOp(rows, cols), ack: 0, isAck: false})
 	case frameClose:
 		if len(body) != 0 {
 			return false
@@ -496,8 +535,7 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 		if len(body) != ackBodyBytes {
 			return false
 		}
-		s.ackFrom(c, binary.BigEndian.Uint32(body))
-		return true
+		return c.lane.push(laneItem{o: nil, ack: binary.BigEndian.Uint32(body), isAck: true})
 	default: // a detach, an attach again, a frame that is the host's, a type nobody has
 		return false
 	}
@@ -515,21 +553,6 @@ func resizeOp(rows, cols uint16) *op {
 	return o
 }
 
-// applyFrom hands an input operation of the stream's to the terminal's queue, in one step with the decision that the stream holds
-// the terminal, and waits for the answer: the frames of one stream are applied in order, and a write that blocks in the kernel
-// (a program that does not read its terminal) holds up this stream's later frames and nobody else's. A stream that does not hold
-// the terminal types nothing: its operation is refused, and counted.
-func (m *Manager) applyFrom(s *session, c *channelConn, o *op) {
-	if !s.admitFrom(c, o) {
-		return
-	}
-	select {
-	case err := <-o.done:
-		_ = err // The shell's answer to input is nothing the stream acts on: a shell that is gone is the end the page is told of.
-	case <-c.ch.Done():
-	}
-}
-
 // admitFrom admits the operation to the terminal's queue if the stream holds the terminal and the terminal's end is not decided,
 // in the same step under the lock that decides who holds it: the operations admitted before a handover are applied before the new
 // holder's, and one admitted after is not. A queue that has no room (a write that blocks in the kernel keeps its bytes in it) is
@@ -545,7 +568,7 @@ func (s *session) admitFrom(c *channelConn, o *op) bool {
 		}
 		room, err := s.queue.admitOrWait(o)
 		if err == nil && o.kind == opWrite {
-			s.channel.inputAdmitted.Add(uint64(len(o.data)))
+			c.writer.admitted.Add(uint64(len(o.data)))
 		}
 		s.mu.Unlock()
 		if err == nil {
@@ -557,13 +580,16 @@ func (s *session) admitFrom(c *channelConn, o *op) bool {
 			return false
 		}
 		s.channel.roomWaits.Add(1)
+		c.lane.setWaitingRoom(true)
 		select {
 		case <-room:
 		case <-c.gone:
 		case <-c.ch.Done():
+			c.lane.setWaitingRoom(false)
 			s.channel.refused.Add(1)
 			return false
 		}
+		c.lane.setWaitingRoom(false)
 	}
 }
 
@@ -731,7 +757,7 @@ func (sd *sender) step() bool {
 	case c.displaced.Load():
 		return sd.watch()
 	}
-	if n := sd.s.channel.inputApplied.Load(); n > sd.reported {
+	if n := c.writer.applied.Load(); n > sd.reported {
 		// At most one frame for the writes that returned since the last: a page that takes frames slowly is told once, with the total.
 		sd.reported = n
 		return c.ch.Send(appliedFrame(n)) == nil

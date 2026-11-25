@@ -275,9 +275,9 @@ func (f *fakeChannel) lastSendFrame() []byte {
 
 func attachFrame(capability string, from *uint64) []byte {
 	if from == nil {
-		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q}`, capability)...)
+		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q}`, capability, writerID(0))...)
 	}
-	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d}`, capability, *from)...)
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d,"writer":%q}`, capability, *from, writerID(0))...)
 }
 
 func inputFrame(text string) []byte { return append([]byte{wInput}, text...) }
@@ -727,6 +727,41 @@ func (m *Manager) attachOn(t *testing.T, f *fakeChannel, capability string, from
 	f.pageSend(attachFrame(capability, from))
 	return p
 }
+
+// attachAs opens a stream whose attach states the writer (docs/ui-next/terminal-channel-protocol.md section 5): the opaque id of one feed.
+func (m *Manager) attachAs(t *testing.T, capability, writer string) *chanPage {
+	t.Helper()
+	f := newFakeChannel(t)
+	p := newChanPage(t, f, 0)
+	served := make(chan struct{})
+	p.served = served
+	go p.run()
+	go func() {
+		defer close(served)
+		m.ServeChannel(f)
+	}()
+	f.pageSend(attachFrameAs(capability, writer))
+	return p
+}
+
+func attachFrameAs(capability, writer string) []byte {
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q}`, capability, writer)...)
+}
+
+// writerApplied is the bytes the device took from the writer, as the host counts them.
+func (s *session) writerApplied(id string) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.channel.writers {
+		if w.id == id {
+			return w.applied.Load()
+		}
+	}
+	return 0
+}
+
+// writerID is the id of the nth test writer: 16 bytes as 32 lowercase hex digits.
+func writerID(n int) string { return fmt.Sprintf("%032x", n) }
 
 // chanOf is the session of a channel terminal.
 func (m *Manager) chanOf(t *testing.T, info Session) *session { return m.session(t, info.ID) }

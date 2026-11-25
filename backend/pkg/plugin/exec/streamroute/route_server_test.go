@@ -147,6 +147,8 @@ type readyFrame struct {
 	End     uint64 `json:"end"`
 	Lost    uint64 `json:"lost"`
 	LeaseMs int    `json:"lease_ms"`
+	// InputApplied is the bytes of input the host has applied from the stream's writer.
+	InputApplied uint64 `json:"input_applied"`
 }
 
 // streamState is what a page that follows the protocol knows of a stream: the output it has, where it stands, the gaps it was told
@@ -274,8 +276,13 @@ func (c *client) requireClosed() {
 	assert.Equal(c.t, websocket.StatusNormalClosure, websocket.CloseStatus(err), "the host closed the stream normally")
 }
 
-func attach(capability string, from *uint64) []byte {
-	request := map[string]any{"v": 2, "cap": capability}
+// theWriter is the writer id of the pages of these tests: 16 bytes as 32 lowercase hex digits.
+const theWriter = "000102030405060708090a0b0c0d0e0f"
+
+func attach(capability string, from *uint64) []byte { return attachAs(capability, from, theWriter) }
+
+func attachAs(capability string, from *uint64, writer string) []byte {
+	request := map[string]any{"v": 2, "cap": capability, "writer": writer}
 	if from != nil {
 		request["from_offset"] = *from
 	}
@@ -488,4 +495,26 @@ func TestACloseOnTheStreamEndsTheTerminalOnlyForTheHolderOnTheRealRoute(t *testi
 	b.write([]byte{pClose})
 	b.until("ended", func(s *streamState) bool { return s.ended > 0 })
 	a.until("the watcher is told the end", func(s *streamState) bool { return s.ended > 0 })
+}
+
+// The input count is a writer's, over the real route: what one feed typed is in its own count and not in another feed's, and the
+// writer is validated.
+func TestTheInputCountIsTheWritersOwnOnTheRealRoute(t *testing.T) {
+	port, wrapper := theRoute(t)
+	info := startTerminal(t, wrapper, "sh", "-c", "cat")
+	a := dial(t, port)
+	a.write(attachAs(info.Cap, nil, "ffffffffffffffffffffffffffffffff"))
+	a.until("ready", func(s *streamState) bool { return s.ready != nil })
+	a.write(append([]byte{pInput}, "hello\n"...))
+	a.until("applied", func(s *streamState) bool { return len(s.applied) > 0 && s.applied[len(s.applied)-1] == 6 })
+
+	b := dial(t, port)
+	b.write(attachAs(info.Cap, nil, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"))
+	state := b.until("ready", func(s *streamState) bool { return s.ready != nil })
+	assert.Zero(t, state.ready.InputApplied, "what feed a typed is not feed b's")
+
+	c := dial(t, port)
+	c.write(attachAs(info.Cap, nil, "not a writer"))
+	require.Equal(t, []byte{hNotFound}, c.read(), "a writer that is not 32 lowercase hex digits is a malformed attach")
+	c.requireClosed()
 }
