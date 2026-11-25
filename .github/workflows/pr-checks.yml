@@ -317,6 +317,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # The image of this tag holds Go and Task's inputs but not pnpm (the runtime contract installs the dependencies): the pinned one, as Go checks does.
+      - name: Setup pnpm
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}

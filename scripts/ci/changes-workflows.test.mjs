@@ -511,8 +511,11 @@ test('N31: a group that comes after another in a merged job runs whatever happen
   assert.ok(jobOf('pr-checks.yml', 'go-checks')['timeout-minutes'] >= 20 && jobOf('pr-checks.yml', 'ui-build')['timeout-minutes'] >= 20, 'a merged job is the sum of the jobs it replaced');
 });
 
-test('N31: the corpus is made and read in one job, not carried by an artifact: no upload, no download, and the consumer reads the producer\'s step output', () => {
+test('N31: the job that reads the corpus sets up the pinned pnpm (the image of its tag has none), and the corpus is made and read in one job, not carried by an artifact: no upload, no download, and the consumer reads the producer\'s step output', () => {
   const uses = stepsOf('pr-checks.yml', 'c02-corpus').map((step) => step.uses ?? '');
+  assert.ok(uses.some((use) => use.startsWith('pnpm/setup@')), 'pnpm is set up before the dependencies are installed');
+  const names = stepsOf('pr-checks.yml', 'c02-corpus').map((step) => step.name ?? '');
+  assert.ok(names.indexOf('Setup pnpm') >= 0 && names.indexOf('Setup pnpm') < names.indexOf('Install dependencies'));
   assert.equal(uses.some((use) => /upload-artifact|download-artifact/.test(use)), false);
   const check = stepsOf('pr-checks.yml', 'c02-corpus').find((step) => step.name === 'Check actual C02 runtime error transport');
   assert.match(check.env.C02_ERROR_CORPUS, /steps\.c02-corpus\.outputs\.corpus_name/);
