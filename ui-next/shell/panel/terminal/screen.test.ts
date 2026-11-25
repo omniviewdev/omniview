@@ -1482,19 +1482,29 @@ const joined = (parts: readonly Uint8Array[]): Uint8Array => {
   return out;
 };
 
+/** Bytes that count up and wrap at 256, so that no position is told from the next but by its place. Filled by a loop: `Uint8Array.from` with a mapping is a call for each of a million bytes. */
+const counting = (length: number): Uint8Array => {
+  const out = new Uint8Array(length);
+  for (let index = 0; index < out.length; index += 1) {
+    out[index] = index & 0xff;
+  }
+
+  return out;
+};
+
 /**
- * Where two runs of bytes first differ (their length when one is a prefix of the other), or -1 when they are equal. A deep `toEqual` of a megabyte walks it element by element with a diff, which took more than the
- * test's whole time budget on a busy runner; this compares the same bytes in a loop and says where they part.
+ * Where two runs of bytes first differ (where the shorter one ends, when one is the start of the other), or -1 when they are the same run. `toEqual` over a run of a million bytes is a deep equality of a million numbers, about a
+ * second of CPU on an idle machine, which a loaded runner turns into a timeout (CI: `Test timed out in 5000ms`); this is one pass over the bytes, and it says WHERE they differ.
  */
-const firstDifference = (got: Uint8Array, want: Uint8Array): number => {
-  const shorter = Math.min(got.length, want.length);
-  for (let index = 0; index < shorter; index += 1) {
-    if (got[index] !== want[index]) {
+const firstDifference = (a: Uint8Array, b: Uint8Array): number => {
+  const shared = Math.min(a.length, b.length);
+  for (let index = 0; index < shared; index += 1) {
+    if (a[index] !== b[index]) {
       return index;
     }
   }
 
-  return got.length === want.length ? -1 : shorter;
+  return a.length === b.length ? -1 : shared;
 };
 
 /** Mounts and shows a screen over a feed that was reattached, and lets the emulator come; the first frame is the test's. */
@@ -1634,11 +1644,11 @@ describe('a replay: a terminal the page took back after a reload', () => {
     });
 
     it('is written once for a replay of many slices, and the bytes are the replay\'s own, whole and in order: the bounce is not one of them', async () => {
-      const kept = Uint8Array.from({ length: FLOW.slice * 2 + 3 }, (_, index) => index & 0xff);
+      const kept = counting(FLOW.slice * 2 + 3);
       const r = await reattached(replayOf(kept));
       r.frame();
       expect(r.engine().writes.filter((data) => typeof data === 'string')).toEqual([`${RESET}${CURSOR}`]);
-      expect(joined(bytesWritten(r.engine()))).toEqual(kept);
+      expect(firstDifference(joined(bytesWritten(r.engine())), kept)).toBe(-1);
     });
 
     it('is written for a replay with no bytes too, and the live output follows it', async () => {
@@ -1688,7 +1698,7 @@ describe('a replay: a terminal the page took back after a reload', () => {
   });
 
   it('writes what the host kept in slices of at most a slice, in order and whole, and takes no more of it in a frame than a frame\'s share: the next frame goes on', async () => {
-    const kept = Uint8Array.from({ length: FLOW.frame * 2 + FLOW.slice + 17 }, (_, index) => index & 0xff);
+    const kept = counting(FLOW.frame * 2 + FLOW.slice + 17);
     const r = await reattached(replayOf(kept));
     r.frame();
     expect(lengthOf(bytesWritten(r.engine()))).toBe(FLOW.frame);

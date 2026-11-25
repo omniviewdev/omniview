@@ -34,7 +34,7 @@ jobs:
       class: ${{ steps.classify.outputs.class }}
       skip_host: ${{ steps.classify.outputs.skip_host }}
       skip_ui: ${{ steps.classify.outputs.skip_ui }}
-      skip_windows: ${{ steps.classify.outputs.skip_windows }}
+      skip_code: ${{ steps.classify.outputs.skip_code }}
     steps:
       # HEAD^1 is the base of the merge commit a pull request is checked out as: two commits are all the script needs.
       - uses: actions/checkout@v4
@@ -75,97 +75,12 @@ jobs:
       - name: Check the path classifier
         run: node --test scripts/ci/changes.test.mjs
 
-  release-packaging-checks:
-    name: Release packaging contracts
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_host != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - name: Check Homebrew cask publication
-        run: node --test build/homebrew/update-cask.test.mjs
-      - name: Check macOS packaging shell syntax
-        run: |
-          bash -n build/darwin/build-universal.sh
-          bash -n build/darwin/verify-release-package.sh
-
-  windows-connection-profiles:
-    name: Windows connection profiles
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_host != 'true' }}
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: Test released-SDK connection profiles and private credentials
-        run: go test ./backend/pkg/plugin/resource -count=1
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test plugin archive and startup validation on Windows
-        run: go test ./backend/pkg/plugin -run '^(TestCheckTarball|TestValidateHasBinary|TestValidateForStart|TestValidateForPhase)'
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test native output ownership and handle observations
-        run: go test ./internal/devoutputs -count=1
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test exclusive private directory creation
-        run: go test ./internal/devsession -run '^TestCreatePrivateDirectoryAt' -count=1
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test Windows channel profile deletion
-        run: go test . -run '^(TestWindowsDelete|TestUpdateServiceListCurrentCustomRoot)'
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      # CI5 (docs/ui-next/status/CI5.md): packages whose behaviour differs on Windows. A test that cannot pass there is skipped in the test with its reason (`WINDOWS DEFECT <id>` for a
-      # product defect, a plain reason when the test is Unix-only by nature); the step after them lists every skip with its reason in the job summary, so a skip is never silent.
-      - name: Test cached plugin roots, the settings file and plugin settings on Windows
-        shell: bash
-        run: go test -v -count=1 ./internal/appstate ./internal/settings/store ./backend/pkg/plugin/settings 2>&1 | tee "$RUNNER_TEMP/windows-packages.log"
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: Test plugin uninstall, reinstall and update, and the channel mTLS tests, on Windows
-        shell: bash
-        run: |
-          go test -v -count=1 ./backend/pkg/plugin \
-            -run 'TestPluginFixture|Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate|TestHostChannelSyncInstallsSignedFeatureArchive|TestChannelInstallsAndHostSyncSerialize|TestCreateBackend|TestChannel|TestInstalledNative|TestAProcessThat|TestPinnedSDKLoader' \
-            2>&1 | tee "$RUNNER_TEMP/windows-plugin-lifecycle.log"
-        env:
-          GOWORK: "off"
-          GOFLAGS: ""
-      - name: List the tests Windows skipped, with their reasons
-        if: ${{ !cancelled() }}
-        shell: bash
-        run: |
-          {
-            echo "### Tests skipped on Windows (CI5)"
-            echo
-            echo "| Test | Reason |"
-            echo "|---|---|"
-            cat "$RUNNER_TEMP"/windows-packages.log "$RUNNER_TEMP"/windows-plugin-lifecycle.log 2>/dev/null |
-              awk '/^=== (RUN|CONT) +/{cur=$3; next} /^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /{r=$0; sub(/^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /,"",r); sub(/: rename C:.*/,"",r); if (!(cur in why)) why[cur]=r; next} /^ *--- SKIP: /{n=$3; r=why[n]; if (r=="") r="(no reason logged)"; gsub(/\|/,"\\|",r); print "| " n " | " r " |"}'
-          } | tee -a "$GITHUB_STEP_SUMMARY"
-
   go-checks:
     name: Go checks
     needs: changes
     if: ${{ needs.changes.outputs.skip_host != 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
       options: --init
@@ -245,14 +160,26 @@ jobs:
       - name: Test development control (devcontrol tag)
         run: task check:go-test-devcontrol GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
-  # Go lint is its own job with no `needs`: it starts with the other jobs and a lint failure shows as soon as the lint has run, not after the build, the vet and the tests.
-  # The Lint step blocks: a finding on a line the PR changes (`--new-from-patch`) fails this job. Reproduce locally: see docs/ui-next/status/N24-L2.md.
+      # Bindings freshness (it was a job of its own).
+      - name: Install pinned private Wails CLI
+        if: ${{ !cancelled() }}
+        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
+
+      - name: Check bindings are up to date
+        if: ${{ !cancelled() }}
+        run: task check:bindings-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      - name: Check native Wails capability contracts
+        if: ${{ !cancelled() }}
+        run: GOWORK=off GOFLAGS= node --test scripts/wails-tool.test.mjs
+
+  # Go lint is a job of its own again (N34): it runs beside the build and the tests, not after them (68 s of a 427 s job on the runner). It needs no build: it reads a detached worktree of the head.
   go-lint:
     name: Go lint
     needs: changes
     if: ${{ needs.changes.outputs.skip_host != 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
       options: --init
@@ -276,9 +203,27 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
+      - name: Select restored Go cache for Task
+        id: go-cache
+        run: |
+          GO_BUILD_CACHE_DIRECTORY="$(GOWORK=off GOFLAGS= go env GOCACHE)"
+          printf 'directory=%s\n' "$GO_BUILD_CACHE_DIRECTORY" >> "$GITHUB_OUTPUT"
+          GOWORK=off GOFLAGS= go env -json GOVERSION GOOS GOARCH GOCACHE
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify effective Task Go cache
+        run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      # The Lint step blocks: a finding on a line the PR changes (`--new-from-patch`) fails this job. Reproduce locally: see docs/ui-next/status/N24-L2.md.
       # Lint runs in a detached worktree on the committed go.mod/go.sum graph.
       - name: Prepare isolated checkout for lint
         id: lint-source
+        if: ${{ !cancelled() }}
         run: |
           lint_directory="$RUNNER_TEMP/omniview-lint"
           mkdir -m 700 "$lint_directory"
@@ -294,6 +239,7 @@ jobs:
       # Supply the root-relative patch directly: the action would filter it out
       # because the private working directory is outside GITHUB_WORKSPACE.
       - name: Lint
+        if: ${{ !cancelled() && steps.lint-source.outcome == 'success' }}
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.15.0
@@ -307,72 +253,14 @@ jobs:
           GOWORK: "off"
           GOFLAGS: ""
 
-  bindings-check:
-    name: Bindings freshness
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_host != 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    container:
-      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
-      options: --init
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      # Keep Git ownership checks enabled instead of adding safe.directory trust.
-      - name: Match checkout directory ownership to container user
-        run: chown "$(id -u):$(id -g)" "$PWD"
-
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26.13.0"
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Select restored Go cache for Task
-        id: go-cache
-        run: |
-          GO_BUILD_CACHE_DIRECTORY="$(GOWORK=off GOFLAGS= go env GOCACHE)"
-          printf 'directory=%s\n' "$GO_BUILD_CACHE_DIRECTORY" >> "$GITHUB_OUTPUT"
-          GOWORK=off GOFLAGS= go env -json GOVERSION GOOS GOARCH GOCACHE
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify effective Task Go cache
-        run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
-
-      - name: Install pinned private Wails CLI
-        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
-
-      - name: Check bindings are up to date
-        run: task check:bindings-check GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
-
-      - name: Check native Wails capability contracts
-        run: GOWORK=off GOFLAGS= node --test scripts/wails-tool.test.mjs
-
-  # The UI checks are five jobs that run side by side, and `UI checks`, the last job of this file, which is green only when every one of them succeeded (a new UI job must be added to its `needs`).
-  # They were one job that waited for Go checks (`needs: go-checks`) only to receive the C02 error transport corpus. This job generates it by itself, in the same image with the same
-  # task and the same artifact name; the jobs that read it take the name from this job's output. The UI jobs do not share a workspace, so each one repeats the setup block. A new step goes into the job that has what it needs.
+  # The C02 error transport corpus and the UI runtime contract are ONE job (N31): the Go side makes the corpus and the node side reads it, so the artifact that carried it between two jobs, and the second job's setup, are gone.
+  # The same image holds Go, Node, pnpm and Task. The checks that need the installed dependencies only (no built workspace package) and, for the transport check and the runtime's tests, the C02 corpus.
   c02-corpus:
-    name: C02 error transport corpus
+    name: C02 error transport corpus and runtime contract
     needs: changes
-    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
+    if: ${{ needs.changes.outputs.skip_code != 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     container:
       image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
       options: --init
@@ -382,8 +270,6 @@ jobs:
     defaults:
       run:
         shell: bash
-    outputs:
-      c02_corpus_name: ${{ steps.c02-corpus.outputs.corpus_name }}
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner
       # as the container user after checkout's temporary HOME goes away.
@@ -392,6 +278,18 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The image of this tag holds Go and Task's inputs but not pnpm (the runtime contract installs the dependencies): the pinned one, as Go checks does.
+      - name: Setup pnpm
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -414,245 +312,23 @@ jobs:
       - name: Verify effective Task Go cache
         run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
+      # The corpus is made here and read below: its name is the job's own, in the runner's temp directory.
       - name: Generate fresh C02 error transport corpus
         id: c02-corpus
         run: |
           CORPUS_NAME="c02-error-corpus-${GITHUB_RUN_ATTEMPT}"
           export C02_ERROR_CORPUS="$RUNNER_TEMP/${CORPUS_NAME}.json"
           task check:c02-corpus GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+          test -s "$C02_ERROR_CORPUS"
           printf 'corpus_name=%s\n' "$CORPUS_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Upload C02 error transport corpus
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.c02-corpus.outputs.corpus_name }}
-          path: ${{ runner.temp }}/${{ steps.c02-corpus.outputs.corpus_name }}.json
-          if-no-files-found: error
-
-  # The frontend build and the guards that read its output.
-  ui-build:
-    name: UI build
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
-
       - name: Install dependencies
         run: task check:ui-install
-
-      # Needs only the installed dependencies, so it runs before the build.
-      - name: Check React compiler source admission
-        run: node --test scripts/react-compiler.test.mjs
-
-      - name: Build
-        run: task check:ui-build
-
-      - name: Check each frontend flavour ships only its own tree
-        run: node --test scripts/ui-flavour.test.mjs
-
-  # The static checks, the kit's contracts and the runtime's API report. All of them read the built workspace packages.
-  ui-lint:
-    name: UI lint and kit contracts
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: task check:ui-install
-
-      # The two workflows' tables and gates, read with `yaml` (scripts/ci/changes-workflows.test.mjs): it needs the installed dependencies, so it runs here. A change to a workflow or to the
-      # classifier is a path the classifier does not know, so no UI job is skipped for it.
-      - name: Check the path gating of the workflows
-        run: node --test scripts/ci/changes-workflows.test.mjs
-
-      # The typed lint, the typecheck and the API reports resolve the workspace packages through their built output (task check:ui-build runs this step inside the UI build job).
-      - name: Build the workspace packages
-        run: task packages
-
-      - name: Typecheck
-        run: task check:ui-typecheck
-
-      - name: Lint
-        run: task check:ui-lint
-
-      # The kit's build, typecheck and stylelint already ran above (task packages, task check:ui-typecheck, task check:ui-lint).
-      - name: Kit contracts (generated tokens, tests, API report)
-        run: |
-          pnpm --filter @omniviewdev/kit run generate:check
-          pnpm --filter @omniviewdev/kit run test
-          pnpm --filter @omniviewdev/kit run api:check
-
-      # The runtime's curated entry for new-UI plugins (`@omniviewdev/runtime/ui/v1`). Its build (task packages) already proved that nothing of the previous UI library
-      # is reachable from it in source, declarations and scripts (packages/omniviewdev-runtime/scripts/check-ui-v1.ts); this fails when its API report is stale.
-      - name: Runtime curated entry (API report)
-        run: pnpm --filter @omniviewdev/runtime run api:check
-
-  # The root vitest run. The kit has to be built: ui-next imports its output.
-  ui-component-tests:
-    name: UI component tests
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: task check:ui-install
-
-      - name: Build the workspace packages
-        run: task packages
-
-      # The JSON reports go to the runner's temp directory (outside tracked paths) beside the default reporter; the exit code stays vitest's.
-      # The last step of the job names what failed in the job summary. The one-file run is the cheap one, so it goes first.
-      - name: Age clock DST regressions
-        run: pnpm exec vitest run ui/utils/ageClock.test.tsx --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-ageclock.json"
-        env:
-          TZ: America/New_York
-
-      - name: Component tests
-        run: pnpm test --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-component.json"
-
-      - name: Name the failed vitest tests in the job summary
-        if: always()
-        run: node scripts/vitest-failures.mjs "Component tests=$RUNNER_TEMP/vitest-component.json" "Age clock=$RUNNER_TEMP/vitest-ageclock.json"
-
-  # The checks that need the installed dependencies only (no built workspace package) and, for the transport check and the runtime's tests, the C02 corpus.
-  ui-runtime-contract:
-    name: UI runtime contract
-    needs: [changes, c02-corpus]
-    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: task check:ui-install
-
-      - name: Download producer C02 error transport corpus
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.c02-corpus.outputs.c02_corpus_name }}
-          path: ${{ runner.temp }}
 
       - name: Check actual C02 runtime error transport
         run: task check:c02-runtime
         env:
-          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.c02-corpus.outputs.c02_corpus_name }}.json
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ steps.c02-corpus.outputs.corpus_name }}.json
 
       - name: Check Wails Call settlement ownership
         run: node --test scripts/wails-call.test.mjs
@@ -666,18 +342,168 @@ jobs:
         working-directory: packages/omniviewdev-runtime
         run: node ../../node_modules/vitest/vitest.mjs run --configLoader runner --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-runtime.json"
         env:
-          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ needs.c02-corpus.outputs.c02_corpus_name }}.json
+          C02_ERROR_CORPUS: ${{ runner.temp }}/${{ steps.c02-corpus.outputs.corpus_name }}.json
 
       - name: Name the failed vitest tests in the job summary
         if: always()
         run: node scripts/vitest-failures.mjs "Runtime contract=$RUNNER_TEMP/vitest-runtime.json"
+
+  # The frontend build and the guards that read its output, the static checks, the kit's contracts, the runtime's API report and the root vitest run are ONE job (N31): three jobs each repeated the checkout, Node, pnpm,
+  # Task and the install, and built the workspace packages twice. The groups run in order in one checkout; a group that comes after another runs whatever happened before it (`!cancelled()`), so one push shows
+  # every failing group. A new step goes into the group that has what it needs.
+  ui-build:
+    name: UI build, lint and contracts
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: task check:ui-install
+
+      # The build, and the guards that read its output.
+      # Needs only the installed dependencies, so it runs before the build.
+      - name: Check React compiler source admission
+        run: node --test scripts/react-compiler.test.mjs
+
+      - name: Build
+        id: frontend-build
+        run: task check:ui-build
+
+      - name: Check each frontend flavour ships only its own tree
+        run: node --test scripts/ui-flavour.test.mjs
+
+      # The static checks, the kit's contracts and the runtime's API report. All of them read the built workspace packages.
+      # The unit tests of the CI scripts (N34: the path gating of the workflows, the probe and seam plans, the scope, `ci-main-red`; about 11 s), read with `yaml`: they need the installed dependencies, so they run here. A change to a workflow or to the
+      # classifier is a path the classifier does not know, so no UI job is skipped for it.
+      - name: Test the CI scripts
+        if: ${{ !cancelled() }}
+        run: node --test scripts/ci/*.test.mjs
+
+      # The typed lint, the typecheck and the API reports resolve the workspace packages through their built output (task check:ui-build runs this step inside the build step above; the component tests need them too).
+      # `task check:ui-build` runs `task packages` first: when that step succeeded the packages are built and this one has nothing to do (N32: it repeated four package builds, 33 s).
+      - name: Build the workspace packages
+        if: ${{ !cancelled() && steps.frontend-build.outcome != 'success' }}
+        run: task packages
+
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: task check:ui-typecheck
+
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: task check:ui-lint
+
+      # The kit's build, typecheck and stylelint already ran above (task packages, task check:ui-typecheck, task check:ui-lint).
+      - name: Kit contracts (generated tokens, tests, API report)
+        if: ${{ !cancelled() }}
+        run: |
+          pnpm --filter @omniviewdev/kit run generate:check
+          pnpm --filter @omniviewdev/kit run test
+          pnpm --filter @omniviewdev/kit run api:check
+
+      # The runtime's curated entry for new-UI plugins (`@omniviewdev/runtime/ui/v1`). Its build (task packages) already proved that nothing of the previous UI library
+      # is reachable from it in source, declarations and scripts (packages/omniviewdev-runtime/scripts/check-ui-v1.ts); this fails when its API report is stale.
+      - name: Runtime curated entry (API report)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @omniviewdev/runtime run api:check
+
+  # The component tests are a job of their own (N34): they were 249 s of a 571 s job, and run beside the build, the lint and the contracts.
+  ui-test:
+    name: UI component tests
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_ui != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: task check:ui-install
+
+      # The tests import the built workspace packages (the kit's output).
+      - name: Build the workspace packages
+        run: task packages
+
+      # The root vitest run. The kit has to be built: ui-next imports its output.
+      # The JSON reports go to the runner's temp directory (outside tracked paths) beside the default reporter; the exit code stays vitest's.
+      # The last step of the job names what failed in the job summary. The one-file run is the cheap one, so it goes first.
+      - name: Age clock DST regressions
+        if: ${{ !cancelled() }}
+        run: pnpm exec vitest run ui/utils/ageClock.test.tsx --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-ageclock.json"
+        env:
+          TZ: America/New_York
+
+      - name: Component tests
+        if: ${{ !cancelled() }}
+        run: pnpm test --reporter=default --reporter=json --outputFile.json="${{ runner.temp }}/vitest-component.json"
+
+      - name: Name the failed vitest tests in the job summary
+        if: always()
+        run: node scripts/vitest-failures.mjs "Component tests=$RUNNER_TEMP/vitest-component.json" "Age clock=$RUNNER_TEMP/vitest-ageclock.json"
 
   # Green only when every part above succeeded, or was skipped by path (the classifier skipped the UI jobs: a documentation-only change). A part that failed, timed out (cancelled) or was
   # skipped for any other reason (the corpus job failed, or the classifier did not say skip) fails this job, and so does a classifier that did not succeed: nothing then says whether the parts
   # had to run. A cancelled run does not run it. List a new part in `needs`.
   ui-checks:
     name: UI checks
-    needs: [changes, c02-corpus, ui-build, ui-lint, ui-component-tests, ui-runtime-contract]
+    needs: [changes, c02-corpus, ui-build, ui-test]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-slim
     timeout-minutes: 2

@@ -314,6 +314,11 @@ export type NavigateOptions = Guard & {
   /** `push` (the default) adds an entry to the tab's history; `replace` swaps the current one, as a change of scope does (ch16 S60). */
   readonly history?: 'push' | 'replace' | undefined;
   readonly source?: string | undefined;
+  /**
+   * A place is one tab (ch16 S26: `{plugin}:{scope}:{page}`): `open` shows the tab that already shows a key instead of opening a second one, but a navigation moves THIS tab, so two tabs may come to show one place, as `new` and Duplicate let them. With `reuse`, a destination that another tab already
+   * shows is that tab's: it is shown, and this tab stays where it is with its route and its history, as it does for a singleton page. A change of scope asks it (the connection of a tab chosen while an overview or a list of that connection is open in another tab: N4 of the review of HM3b).
+   */
+  readonly reuse?: boolean | undefined;
 };
 
 export type ReopenOptions = {

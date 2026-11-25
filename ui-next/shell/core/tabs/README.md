@@ -14,13 +14,15 @@ A tab record is split into the parts that different consumers read: `location` (
 open(destination, { how?, source?, after?, confirmed? }): OpenResult   // smart | here | new | background | window
 activate(id) · next() · previous() · goto(n) · last()
 close(id?) · closeMany('others' | 'right' | 'left' | 'unpinned') · reopen({ id? }) · duplicate(id?)
-navigate(id, destination, { history?: 'push' | 'replace' }) · replace(id, route)   // replace: an in-page change
+navigate(id, destination, { history?: 'push' | 'replace', reuse? }) · replace(id, route)   // replace: an in-page change; reuse: show the tab that already shows the destination
 back(id?) · forward(id?) · canBack(id?) · canForward(id?) · historyList(id?, 'back' | 'forward')
 ```
 
 Every operation answers a plain result (`done`, `noop`, `confirm`, `refused`, and for `open` also `window`), never a string meant for a person and never a promise. **`confirm`** means the request would discard unsaved changes (S27): ask the user, then repeat it with `confirmed: true`. **`window`** means the destination wants a window of its own (S64): the model has none and changes nothing. A `noop` returns the same snapshot object and notifies nobody.
 
 `open` follows ch16 S26 and S64. Smart open (Enter): a singleton page that is open is shown whatever the disposition; else a tab that shows the key is shown; else the tab on screen is navigated when it is the same plugin and scope; else a new tab after the tab on screen (a preview tab when `source` is `search`). `new` never deduplicates, `background` leaves the focus and the result says `focused: false`, `here` navigates the tab on screen. `dispositionOf(event, { platform })` maps modifiers to a disposition.
+
+`navigate` moves the tab it is told to, so by default two tabs may come to show one place, as `new` and `duplicate` let them. A singleton page is the exception (ch16 S26: going to it shows the tab that holds it and the tab stays where it is), and `reuse: true` asks the same of any place another tab already shows: the tab that shows the key is shown (the one on screen first, else the first in the strip), the tab that was asked to move keeps its route, its history and its unsaved changes, and nothing is asked about them. With no other tab on the place it moves as it was told. A change of scope uses it (the host's `switchTab`, `ui-next/plugins/host/connections/actions.ts`: the connection chosen on a tab while another tab already shows that connection's page), so that no two tabs show one place by that way (N4 of the review of HM3b).
 
 ## The seam: `Contributions`
 

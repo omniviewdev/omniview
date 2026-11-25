@@ -15,7 +15,7 @@
 // a task is under 120 ms, and the flood's frames are a COUNT, not a percentile of milliseconds (a tenth at most may take longer than two frames; the laptop has none to one in 300). What a hidden panel costs is bounded by counts
 // and by milliseconds with at least 3 times the laptop's room (docs/ui-next/status/T2a.md has the numbers). The first CI run of the final head measured: terminal 131, terminal-data 121, body 97, close 46, cost 66, facts 26, hidden 76,
 // input 43, reader 43, work 73 s, all under what is listed here; the numbers stay conservative on purpose, because the same unit has measured 1.6 to 3 times slower on another run (reader 43 and 90, facts 26 and 81, body 97 and 156)
-// and a one-sample proposal of probe-seconds.mjs would fail the drift gate on a slow runner; `terminal` is 160 (the view half: 131 on the runner, 106 on the laptop).
+// and a one-sample proposal of the shard summary would fail the drift gate on a slow runner; `terminal` is 160 (the view half: 131 on the runner, 106 on the laptop).
 
 export const units = [
   {

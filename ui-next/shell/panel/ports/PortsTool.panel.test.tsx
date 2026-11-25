@@ -198,7 +198,7 @@ describe('the body in the panel', () => {
       fake.emit(CLOSED_EVENT, session('a'));
     });
     expect(screen.getAllByRole('row')).toHaveLength(3);
-    expect(document.querySelector('[data-ports-part="live"]')?.textContent).toBe('Stopped 127.0.0.1:8081 → :8080/TCP');
+    expect(document.querySelector('[data-ports-part="live"]')?.textContent).toBe('Stopped port 8081 → :8080/TCP');
   });
 
   it('puts the keyboard on the Ports tab when the last forward goes, the one stop that is left in the tool: it is not lost on the page', async () => {

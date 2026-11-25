@@ -451,6 +451,17 @@ tasks:
   # Workspace packages
   # ──────────────────────────────────────────────
 
+  # The checks that do not run on a pull request (N34, docs/ui-next/AGENTS.md rule 39): one command each, scripts/ci/local-checks.mjs.
+  local:probes:
+    summary: "Run kit probe units locally, both engines, with their controls: task local:probes -- <unit>,<unit> | --changed | --all"
+    cmds:
+      - node scripts/ci/local-checks.mjs probes {{.CLI_ARGS}}
+
+  local:seam:
+    summary: "Run seam units locally, both engines: task local:seam -- <unit>,<unit> | --all"
+    cmds:
+      - node scripts/ci/local-checks.mjs seam {{.CLI_ARGS}}
+
   packages:
     summary: Build all workspace packages in dependency order
     cmds:

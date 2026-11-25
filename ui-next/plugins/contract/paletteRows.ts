@@ -159,7 +159,8 @@ function routeOf(raw: unknown, rules: RowRules, at: string): Route | string {
   const names = Object.keys(params);
   const shape = isRecord(found) ? found : undefined;
   if (shape?.kind !== 'detail' && names.length > 0) {
-    return `${at}: route.page "${page}" is a list page and takes no parameters`;
+    // A list page is the page of a collection and an overview page the page of a scope: neither is the page of one object, so a route to it names the page and, as every route may, the connection, and nothing else.
+    return `${at}: route.page "${page}" is ${shape?.kind === 'overview' ? 'an overview' : 'a list'} page and takes no parameters`;
   }
 
   if (names.length > PALETTE_LIMITS.params) {

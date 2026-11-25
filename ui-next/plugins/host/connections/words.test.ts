@@ -1,5 +1,6 @@
 import { parseAppError, type AppError } from '@omniviewdev/runtime/ui/v1';
 import { describe, expect, it } from 'vitest';
+import { NAME_MAX } from '../connectionName';
 import type { ConnectionState } from './types';
 import { DETAIL_MAX, detailOf, faceOf, failureOf, nameOf, outcomeOfStatus, safeReason, stateOfReadiness, type FailedState } from './words';
 
@@ -175,6 +176,19 @@ describe('nameOf', () => {
     const connection = { id: 'a1b2c3-secret-id', name: undefined };
 
     expect(nameOf(connection)).toBe('Unnamed connection');
+  });
+
+  // N2 of the review of HM3b: the host's own list is one of the two places a name comes in (the other is a page's lane, `connectionName.test.ts`), and Home's rows, the picker's options and the palette's rows all draw what this says.
+  it('is clipped to NAME_MAX characters, the cut said by an ellipsis, so that a name of a million characters never reaches a row, an option or a heading', () => {
+    expect(nameOf({ name: 'n'.repeat(1_000_000) })).toBe(`${'n'.repeat(NAME_MAX - 1)}…`);
+    expect(nameOf({ name: `  ${'n'.repeat(NAME_MAX + 1)}  ` })).toHaveLength(NAME_MAX);
+  });
+
+  it('keeps a name whole that a person could have given a connection: up to NAME_MAX characters, a hundred and ten among them', () => {
+    for (const length of [1, 24, 25, 110, NAME_MAX]) {
+      const name = `a${'b'.repeat(length - 1)}`;
+      expect(nameOf({ name }), String(length)).toBe(name);
+    }
   });
 });
 

@@ -1,9 +1,25 @@
 import { parseAppError } from '@omniviewdev/runtime/ui/v1';
 import type { ResourceReference, Value } from '@omniviewdev/runtime/ui/v1';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { LOOPBACK } from '../../shell/panel/ports/model';
 import type { PortForwardErrorCodeV1, PortForwardRequestV1 } from '../contract/v1';
-import { PortForwardError, portsOf, type PortForwardStart, type PortForwardStarted, type PortForwardStop } from './portForward';
+import {
+  MAX_FORWARDS_PER_CONNECTION,
+  MAX_FORWARDS_PER_WINDOW,
+  MAX_REFERENCE_TEXT_LENGTH,
+  MAX_REQUEST_BYTES,
+  MAX_RESOURCE_DATA_BYTES,
+  MAX_RESOURCE_ID_LENGTH,
+  MAX_RESOURCE_KEY_LENGTH,
+  PortForwardError,
+  portsOf,
+  windowActivation,
+  type PortForwardStart,
+  type PortForwardStarted,
+  type PortForwardStop,
+  type PortForwarding,
+} from './portForward';
+import { createForwardLedger } from './portLedger';
+import { ledgerWorld } from './portTesting';
 
 // What a page's `ctx.panel.ports.forward` does (PF1, `portForward.ts`): the plugin and the connection are the page's own, which the handle was made with; the request is the page's words (a resource and ports) and
 // becomes the runtime's typed start; the host's answer becomes the forward the page holds (its id, the port it listens on, where the host reaches it and a way to stop it), and the Ports tool is shown once the forward
@@ -18,6 +34,17 @@ const REFUSED = {
   protocol: 'The protocol must be TCP or UDP.',
   none: 'The host did not start the forward.',
   noPort: 'The host did not say which port the forward listens on.',
+  action: 'A forward can only be started from a user action: a click or a key press.',
+  actionUnknown: 'This window cannot tell a user action from a script, so it cannot start a forward.',
+  id: 'The resourceId is longer than 1024 characters.',
+  key: 'The resourceKey is longer than 256 characters.',
+  text: 'A text in the reference is longer than 1024 characters.',
+  reference: 'The reference is larger than 128 KiB.',
+  referenceDeep: 'The reference is nested more than 64 levels deep, or refers to itself.',
+  data: 'The resourceData is larger than 64 KiB.',
+  dataDeep: 'The resourceData is nested more than 64 levels deep, or refers to itself.',
+  request: 'The request is larger than 128 KiB.',
+  requestDeep: 'The request is nested more than 64 levels deep, or refers to itself.',
 } as const;
 
 /** The words a code is given when the host gave none of its own that a person can read: the sentences of the host's own classes of error (`backend/pkg/apperror/resource.go`, `classifyResource`). */
@@ -46,18 +73,24 @@ type Setup = {
   readonly reveal?: (() => void) | undefined;
   readonly plugin?: string;
   readonly connection?: string;
+  /** What the window says of a user action in progress when the page asks: inside one, unless a test says otherwise. */
+  readonly activation?: (() => boolean | undefined) | undefined;
 };
 
 /** What a host answers for a forward it started: the session, as far as the window reads it. */
 const started = (id = 'forward-1', port = 41_234): PortForwardStarted => ({ id, local_port: port });
 
-/** The handle of a page of `acme` in `north`, over a networker that starts and stops a forward and a Ports tool that can be shown, unless the test says otherwise. */
+/** The handle of a page of `acme` in `north`, over a networker that starts and stops a forward, a Ports tool that can be shown and a window that is in the middle of a user action, unless the test says otherwise. */
 function setup(over: Setup = {}) {
   const start = vi.fn<PortForwardStart>(over.start ?? (async () => started()));
   const stop = vi.fn<PortForwardStop>(over.stop ?? (async () => undefined));
   const reveal = vi.fn<() => void>(over.reveal ?? (() => undefined));
-  const ports = portsOf({ start, stop, revealPortsTool: reveal }, over.plugin ?? 'acme', over.connection ?? 'north');
-  return { ports, start, stop, reveal };
+  const activation = vi.fn<() => boolean | undefined>(over.activation ?? (() => true));
+  const world = ledgerWorld();
+  const forwarding: PortForwarding = { start, stop, onClosed: world.deps.onClosed, plugins: world.deps.plugins, revealPortsTool: reveal, userActivation: activation };
+  const ledger = createForwardLedger(forwarding, { connection: MAX_FORWARDS_PER_CONNECTION, window: MAX_FORWARDS_PER_WINDOW });
+  const ports = portsOf(forwarding, ledger, over.plugin ?? 'acme', over.connection ?? 'north');
+  return { ports, start, stop, reveal, activation, world };
 }
 
 const request = (patch: Partial<PortForwardRequestV1> = {}): PortForwardRequestV1 => ({ resourceId: 'alpha', resourceKey: 'widgets', remotePort: 8080, ...patch });
@@ -222,9 +255,9 @@ describe('the route of a forward', () => {
 });
 
 describe('the forward a page is answered', () => {
-  it('is the host\'s session as the page needs it: its id, the port it listens on, where the host reaches it, and a way to stop it', async () => {
+  it('is the host\'s session as the page needs it: its id, the port it listens on, and a way to stop it', async () => {
     const { ports } = setup({ start: async () => started('forward-7', 41_999) });
-    await expect(ports.forward(request())).resolves.toStrictEqual({ sessionId: 'forward-7', localPort: 41_999, localHost: '127.0.0.1', stop: expect.any(Function) });
+    await expect(ports.forward(request())).resolves.toStrictEqual({ sessionId: 'forward-7', localPort: 41_999, stop: expect.any(Function) });
   });
 
   it('says the port the host chose when the page asked for a free one: the answer is how a page learns it', async () => {
@@ -239,11 +272,11 @@ describe('the forward a page is answered', () => {
     expect((await ports.forward(request({ localPort: 9_090 }))).localPort).toBe(9_191);
   });
 
-  it('says the address as the loopback, the one the Ports tool says too: a single constant, because the host assumes it and the producer states no address', async () => {
+  it('says no address: the session states a port and none, so the host does not say where else the forward listens, and the member is absent rather than a guess', async () => {
     const { ports } = setup();
     const answer = await ports.forward(request());
-    expect(answer.localHost).toBe(LOOPBACK);
-    expect(answer.localHost).toBe('127.0.0.1');
+    expect(answer.localHost).toBeUndefined();
+    expect('localHost' in answer).toBe(false);
   });
 
   it('is one object nobody can change: a page that holds it cannot make it say another port or another way to stop', async () => {
@@ -660,5 +693,283 @@ describe('PortForwardError', () => {
   it('has a cause only when it is given one', () => {
     expect(new PortForwardError('INVALID_REQUEST', 'The forward names no resource.').cause).toBeUndefined();
     expect('cause' in new PortForwardError('INVALID_REQUEST', 'The forward names no resource.')).toBe(false);
+  });
+});
+
+// PF2, S4 of the review: a forward is started from a user action only. The window's engine says whether one is under way (`navigator.userActivation.isActive`: true for about five seconds after a click or a key press), and
+// the page is asked at the call, before anything else, so a call from a render, an effect or a timer is refused and asks nothing of the host.
+describe('a forward asked outside a user action', () => {
+  it('is refused FORBIDDEN, in words that say what a forward needs, and nothing is asked of the host', async () => {
+    const { ports, start, stop, reveal } = setup({ activation: () => false });
+    const error = await refused(ports.forward(request()));
+    expect(error).toMatchObject({ name: 'PortForwardError', code: 'FORBIDDEN', message: REFUSED.action });
+    expect(start).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+    expect(reveal).not.toHaveBeenCalled();
+  });
+
+  it('is refused all the same when the engine cannot say whether a user action is under way: a window that cannot tell a click from a script starts no forward, and says why in words of its own', async () => {
+    const { ports, start } = setup({ activation: () => undefined });
+    const error = await refused(ports.forward(request()));
+    expect(error).toMatchObject({ name: 'PortForwardError', code: 'FORBIDDEN', message: REFUSED.actionUnknown });
+    expect(REFUSED.actionUnknown).not.toBe(REFUSED.action);
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('is allowed inside a user action: the forward starts as it always did', async () => {
+    const { ports, start, reveal } = setup({ activation: () => true });
+    await expect(ports.forward(request())).resolves.toMatchObject({ sessionId: 'forward-1', localPort: 41_234 });
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(reveal).toHaveBeenCalledTimes(1);
+  });
+
+  it('is asked at the call itself, before the call gives up its turn: a user action lasts a few seconds, and whatever is awaited first is time it does not have', async () => {
+    const { ports, activation } = setup();
+    const pending = ports.forward(request());
+    expect(activation).toHaveBeenCalledTimes(1);
+    await pending;
+    expect(activation).toHaveBeenCalledTimes(1);
+  });
+
+  it('is asked before the request is read: a call made outside a user action says FORBIDDEN whatever is wrong with its request, and not what is wrong', async () => {
+    const loop: Record<string, unknown> = {};
+    loop.again = loop;
+    const { ports, start } = setup({ activation: () => false });
+    const calls: unknown[] = [
+      undefined,
+      { remotePort: 8080 },
+      { ...request(), remotePort: 0 },
+      request({ resourceId: 'x'.repeat(MAX_RESOURCE_ID_LENGTH + 1) }),
+      { ...request(), resourceData: loop },
+    ];
+    for (const given of calls) {
+      const error = await refused(ports.forward(given as PortForwardRequestV1));
+      expect([error.code, error.message]).toEqual(['FORBIDDEN', REFUSED.action]);
+    }
+
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('is asked again for each call: what one user action allowed is not allowed to the next call made outside it', async () => {
+    let inside = true;
+    const { ports, start } = setup({ activation: () => inside });
+    await ports.forward(request());
+    inside = false;
+    await refused(ports.forward(request()));
+    expect(start).toHaveBeenCalledTimes(1);
+    inside = true;
+    await ports.forward(request());
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it('is not asked of a stop: the page ends what it started whenever it likes, in a user action or not', async () => {
+    let inside = true;
+    const { ports, stop, activation } = setup({ activation: () => inside });
+    const answer = await ports.forward(request());
+    inside = false;
+    activation.mockClear();
+    await expect(answer.stop()).resolves.toBeUndefined();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(activation).not.toHaveBeenCalled();
+  });
+});
+
+describe('what the window says of a user action in progress', () => {
+  const engine = (value: unknown): void => {
+    Object.defineProperty(navigator, 'userActivation', { value, configurable: true });
+  };
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'userActivation');
+  });
+
+  it('is `true` inside a user action, as the engine says it: its `isActive`', () => {
+    engine({ isActive: true, hasBeenActive: true });
+    expect(windowActivation()).toBe(true);
+  });
+
+  it('is `false` outside one, though the person has acted before: a click a minute ago is not an action under way', () => {
+    engine({ isActive: false, hasBeenActive: true });
+    expect(windowActivation()).toBe(false);
+  });
+
+  it('is `undefined` where the engine has no such API, which the window then cannot tell a click from a script by', () => {
+    expect(Reflect.get(navigator, 'userActivation')).toBeUndefined();
+    expect(windowActivation()).toBeUndefined();
+  });
+
+  it('is read from the engine at each call, and kept from none: the same window is inside an action and then outside it', () => {
+    const activation = { isActive: true, hasBeenActive: true };
+    engine(activation);
+    expect(windowActivation()).toBe(true);
+    activation.isActive = false;
+    expect(windowActivation()).toBe(false);
+    activation.isActive = true;
+    expect(windowActivation()).toBe(true);
+  });
+});
+
+// PF2, S4 of the review: every text of the request is bounded, and so are the body and the whole request, by what the host would send. The check is the host's own, before the plugin's forwarder is asked: a request over a bound
+// is the host's INVALID_REQUEST in words that name the member and the number, and the networker is never called.
+describe('a request over the host\'s bounds', () => {
+  /** The bytes the JSON of a value takes in UTF-8: what the runtime's encoder sends for plain data. */
+  const sent = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length;
+
+  /** A text of `length` characters. */
+  const text = (length: number): string => 'x'.repeat(length);
+
+  /** A body that is one string of `length` characters. */
+  const stringBody = (length: number): Value => ({ kind: 'string', value: text(length) });
+
+  /** A request with members as a plugin written without the types may give them. */
+  const written = (patch: Record<string, unknown>): PortForwardRequestV1 => ({ ...request(), ...patch });
+
+  /** A value that nests `levels` arrays, the innermost one empty. */
+  function nest(levels: number): unknown {
+    let value: unknown = [];
+    for (let level = 1; level < levels; level += 1) {
+      value = [value];
+    }
+
+    return value;
+  }
+
+  /** A reference whose scope holds `entries` values of 1000 characters each. */
+  const heavy = (entries: number): ResourceReference => ({
+    address: { ...reference.address, scope: Array.from({ length: entries }, (_, index) => ({ dimension: `d${String(index)}`, value: text(1000) })) },
+  });
+
+  /** The call is refused as the host's own INVALID_REQUEST, in the words, and neither the networker nor the Ports tool was asked. */
+  async function refusesBound(given: PortForwardRequestV1, words: string): Promise<void> {
+    const { ports, start, reveal } = setup();
+    const error = await refused(ports.forward(given));
+    expect(error).toMatchObject({ name: 'PortForwardError', code: 'INVALID_REQUEST', message: words });
+    expect(start).not.toHaveBeenCalled();
+    expect(reveal).not.toHaveBeenCalled();
+  }
+
+  /** The call is started: the networker is asked once. */
+  async function startsWith(given: PortForwardRequestV1): Promise<void> {
+    const { ports, start } = setup();
+    await ports.forward(given);
+    expect(start).toHaveBeenCalledTimes(1);
+  }
+
+  it('has the numbers the contract says', () => {
+    expect([MAX_RESOURCE_ID_LENGTH, MAX_RESOURCE_KEY_LENGTH, MAX_REFERENCE_TEXT_LENGTH, MAX_RESOURCE_DATA_BYTES, MAX_REQUEST_BYTES]).toEqual([1024, 256, 1024, 64 * 1024, 128 * 1024]);
+    expect([MAX_FORWARDS_PER_CONNECTION, MAX_FORWARDS_PER_WINDOW]).toEqual([64, 128]);
+  });
+
+  it('refuses a resource id of a megabyte, before the plugin\'s forwarder is asked', async () => {
+    await refusesBound(request({ resourceId: text(1024 * 1024) }), REFUSED.id);
+  });
+
+  it('refuses a body of twenty megabytes, before the plugin\'s forwarder is asked', async () => {
+    await refusesBound(request({ resourceData: stringBody(20 * 1024 * 1024) }), REFUSED.data);
+  });
+
+  it('takes a resource id of the most the host allows, and refuses one character more', async () => {
+    await startsWith(request({ resourceId: text(MAX_RESOURCE_ID_LENGTH) }));
+    await refusesBound(request({ resourceId: text(MAX_RESOURCE_ID_LENGTH + 1) }), REFUSED.id);
+  });
+
+  it('takes a resource key of the most the host allows, and refuses one character more', async () => {
+    await startsWith(request({ resourceKey: text(MAX_RESOURCE_KEY_LENGTH) }));
+    await refusesBound(request({ resourceKey: text(MAX_RESOURCE_KEY_LENGTH + 1) }), REFUSED.key);
+  });
+
+  it.each([
+    ['the id of its address', (value: string): ResourceReference => ({ address: { ...reference.address, id: value } })],
+    ['its provider', (value: string): ResourceReference => ({ address: { ...reference.address, provider: value } })],
+    ['a value of its scope', (value: string): ResourceReference => ({ address: { ...reference.address, scope: [{ dimension: 'zone', value }] } })],
+    ['a dimension of its scope', (value: string): ResourceReference => ({ address: { ...reference.address, scope: [{ dimension: value, value: 'a' }] } })],
+    ['its incarnation', (value: string): ResourceReference => ({ ...reference, incarnation: value })],
+  ])('takes %s of the most the host allows, and refuses one character more: every text of a reference is bounded', async (_name, make) => {
+    await startsWith(request({ reference: make(text(MAX_REFERENCE_TEXT_LENGTH)) }));
+    await refusesBound(request({ reference: make(text(MAX_REFERENCE_TEXT_LENGTH + 1)) }), REFUSED.text);
+  });
+
+  it('refuses a name in a reference that is longer than a text may be: a name is a text too', async () => {
+    await refusesBound(written({ reference: { address: reference.address, [text(MAX_REFERENCE_TEXT_LENGTH + 1)]: 'a' } }), REFUSED.text);
+  });
+
+  it('refuses a reference that is larger than a whole request may be, though none of its texts is too long', async () => {
+    await refusesBound(request({ reference: heavy(150) }), REFUSED.reference);
+  });
+
+  it('refuses a reference that refers to itself', async () => {
+    const loop: Record<string, unknown> = {};
+    loop.address = loop;
+    await refusesBound(written({ reference: loop }), REFUSED.referenceDeep);
+  });
+
+  it('takes a body of exactly the most the host allows, and refuses one byte more: it is measured as the JSON it is sent as', async () => {
+    const room = MAX_RESOURCE_DATA_BYTES - sent(stringBody(0));
+    expect(sent(stringBody(room))).toBe(MAX_RESOURCE_DATA_BYTES);
+    await startsWith(request({ resourceData: stringBody(room) }));
+    await refusesBound(request({ resourceData: stringBody(room + 1) }), REFUSED.data);
+  });
+
+  it('measures a body by the bytes of its JSON in UTF-8, and not by its characters: a text of three-byte characters is three times as long', async () => {
+    const euro = '€';
+    const room = Math.floor((MAX_RESOURCE_DATA_BYTES - sent({ kind: 'string', value: '' })) / 3);
+    expect(sent({ kind: 'string', value: euro.repeat(room) })).toBeLessThanOrEqual(MAX_RESOURCE_DATA_BYTES);
+    await startsWith(request({ resourceData: { kind: 'string', value: euro.repeat(room) } }));
+    await refusesBound(request({ resourceData: { kind: 'string', value: euro.repeat(room + 1) } }), REFUSED.data);
+  });
+
+  it('refuses a body that refers to itself, and one that nests more than 64 levels: a loop is a refusal and not a call that never ends', async () => {
+    const loop: Record<string, unknown> = { kind: 'list' };
+    loop.value = [loop];
+    await refusesBound(written({ resourceData: loop }), REFUSED.dataDeep);
+    await refusesBound(written({ resourceData: nest(70) }), REFUSED.dataDeep);
+  });
+
+  it('refuses a body the runtime would refuse for how deep it nests inside the request, and takes the deepest it would take', async () => {
+    // The body is the request's third level (`connection`, then `resource_data`): the runtime's encoder takes 64 levels in all, which is 63 arrays of a body, and 64 are one too many.
+    await startsWith(written({ resourceData: nest(63) }));
+    await refusesBound(written({ resourceData: nest(64) }), REFUSED.requestDeep);
+  });
+
+  it('takes a request of exactly the most the host allows, and refuses one byte more: each part is within its own bound, and the whole is measured as the typed start would send it', async () => {
+    // What the typed start is given for a body of no length, to know how much room the body has.
+    const probe = setup();
+    await probe.ports.forward(request({ reference: heavy(70), resourceData: stringBody(0) }));
+    const room = MAX_REQUEST_BYTES - sent(probe.start.mock.calls[0]?.[2]);
+    // The precondition: the body's own bound is not what refuses the request with one byte more.
+    expect(room + 1).toBeLessThan(MAX_RESOURCE_DATA_BYTES);
+    const exact = setup();
+    await exact.ports.forward(request({ reference: heavy(70), resourceData: stringBody(room) }));
+    expect(sent(exact.start.mock.calls[0]?.[2])).toBe(MAX_REQUEST_BYTES);
+    await refusesBound(request({ reference: heavy(70), resourceData: stringBody(room + 1) }), REFUSED.request);
+  });
+
+  it('refuses a request whose parts are each within their bounds and whose whole is not: a reference of 100 KB and a body of 60 KB', async () => {
+    expect(sent(heavy(100))).toBeLessThan(MAX_REQUEST_BYTES);
+    await refusesBound(request({ reference: heavy(100), resourceData: stringBody(60 * 1024) }), REFUSED.request);
+  });
+
+  it('bounds the whole request whatever a member is: a key that is not text and is two hundred kilobytes is over the request\'s bound, and the networker is not asked', async () => {
+    await refusesBound(written({ resourceKey: { notText: text(200 * 1024) } }), REFUSED.request);
+  });
+
+  it('says the first thing wrong, in the order of the request: its id, then its key, its reference, its body and the whole', async () => {
+    await refusesBound(request({ resourceId: text(MAX_RESOURCE_ID_LENGTH + 1), resourceKey: text(MAX_RESOURCE_KEY_LENGTH + 1), resourceData: stringBody(MAX_REQUEST_BYTES) }), REFUSED.id);
+    await refusesBound(request({ resourceKey: text(MAX_RESOURCE_KEY_LENGTH + 1), resourceData: stringBody(MAX_REQUEST_BYTES) }), REFUSED.key);
+    await refusesBound(request({ reference: heavy(150), resourceData: stringBody(MAX_REQUEST_BYTES) }), REFUSED.reference);
+    await refusesBound(request({ resourceData: stringBody(MAX_REQUEST_BYTES) }), REFUSED.data);
+  });
+
+  it('says what is wrong with a port before what is large: the checks of the shape come first, which cost nothing', async () => {
+    await refusesBound({ ...request({ resourceData: stringBody(MAX_REQUEST_BYTES) }), remotePort: 0 }, REFUSED.remote);
+  });
+
+  it('is a rejection and never a throw, whatever is too large: the page that awaits the answer hears of it', async () => {
+    const { ports } = setup();
+    let pending: Promise<unknown> | undefined;
+    expect(() => {
+      pending = ports.forward(request({ resourceId: text(1024 * 1024) }));
+    }).not.toThrow();
+    await expect(pending).rejects.toBeInstanceOf(PortForwardError);
   });
 });

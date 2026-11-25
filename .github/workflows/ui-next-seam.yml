@@ -1,108 +1,25 @@
 name: UI next seam check
 
 # The seam check (ui-next/plugins/e2e/seam.check.mjs, docs/ui-next/slices/n19-plugin-seam.md): the REAL Go host in server mode, built from `OMNIVIEW_UI=next`, loading the fixture plugins that
-# ui-next/plugins/fixture/build.mjs builds outside the host's tree, driven by a browser. Plugin loading, the pages, the rail, the bottom panel and the Logs tool, the command palette and its plugin providers,
-# the session (reload and a restart of the host), a plugin's unload, the identity of a Logs session, and a plugin's process that is killed and comes back. It is the only check that drives the real host with a
-# browser; until this workflow nothing ran it but agents, by hand (docs/ui-next/AGENTS.md, rule 17: "the seam check").
+# ui-next/plugins/fixture/build.mjs builds, driven by a browser, in WebKit and Chromium. It is the only check that drives the real host with a browser.
 #
-# THE JOBS (N29). The seam took 17 to 25 minutes in one job for each engine (setup 3 minutes, the whole seam 10, then every negative control 10) and hit the job's 25-minute limit. It is the same work in as many jobs of each
-# engine as it takes to keep each under about 10 minutes: `Seam plan` packs the units of scripts/ci/seam-units.mjs (the phases of the check, and its negative controls, each with the seconds it takes on the runner) into the fewest
-# shards of at most 420 s of work (scripts/ci/seam-shards.mjs), and `Seam <engine> shard <n>` runs one shard in one engine, in the CI image pinned by digest (the guard step below, as in the kit probes workflow): install,
-# `task packages`, the host the way agents build it for the seam (`OMNIVIEW_UI=next task build:server`, with `GOWORK=off GOTOOLCHAIN=local`), then the shard's phases in that engine (`SEAM_PHASES=<ids>`: one run of the check that does
-# only those scenarios, on a host of its own) and the shard's negative controls in that engine. A control runs the scenario it belongs to alone with one perturbation and exits 0 when the assertion it is named for saw it
-# (`SEAM_CONTROL=<run>`); the step runs every control of the shard even when one fails. The seam and the controls run in a clean environment: only the engine, the phases or the control are set, nothing of the build's (the check
-# starts the host with a minimal environment of its own, and the Go toolchain settings it needs for the fixture plugin's process are its own). NOTHING is selected: every phase and every control runs on every run, in both engines.
+# THE PLAN (`Seam plan`) checks the units of scripts/ci/seam-units.mjs against the check (every phase and every negative control in exactly one unit) and packs them into shards of at most 420 s of work
+# (scripts/ci/seam-shards.mjs). `Seam <engine> shard <n>` runs one shard in one engine in the CI image (pinned by digest): the host build, the shard's phases (`SEAM_PHASES=<ids>`), then its negative controls
+# (`SEAM_CONTROL=<run>`, exit 0 when the assertion it targets fired); every control of the shard runs even when one fails. A unit that took more than its seconds plus a quarter and 60 s, or a shard past its
+# ceiling, fails (rule 25 of docs/ui-next/AGENTS.md). THE VERDICT, the job named `Seam check`, runs whatever happened: it requires the plan and every shard to have succeeded and every phase and every control
+# of the check to have run once and passed in both engines; when it is red it names the scenario that failed and the assertion.
 #
-# THE VERDICT. The job named `Seam check` runs whatever happened (`always()`), with the repository checked out: it requires the plan and every shard to have succeeded, then downloads what each shard wrote about itself
-# (`seam-ran-<engine>-<shard>.json`, from the logs of its steps: the phases that printed `SEAM-PHASE`, the controls that said `detected`) and compares it with the table and with the check itself: every phase and every control
-# of the check, once, passed, in both engines, in as many shards as the plan made. A shard that failed, timed out (cancelled) or never reported, a shard that ran no scenario, and a phase or control that is in no unit are red. When a
-# job is not green it names the scenario that failed and the assertion, from the annotation its failed step wrote.
-#
-# THE SECONDS ARE HELD (rule 25 of docs/ui-next/AGENTS.md, as the kit probes'): after a shard ran, a unit that took more than its seconds plus the larger of a quarter of them and 60 s fails the shard with the number to put in
-# scripts/ci/seam-units.mjs, and so does a shard whose units took more than 546 s. To add a scenario or a control, add it to the check and to a unit (`node scripts/ci/seam-shards.mjs check` fails, naming it, until it is).
-#
-# Why the shards each build the host (measured, docs/ui-next/status/N29.md): the host build is 105 s of a job of 9 to 10 minutes; one build job and an artifact would save runner time and cost a job in the critical path and an
-# upload and a download of the binary and of the packages the fixture plugins are built from. No Go cache: restoring the module and build caches (512 MB) saved 10 s of 95 and the repository's caches are over their limit.
-# The seam's own time was 8 s a run too long: every wait for a host to exit left an 8 s timer that held the process open, in each of the 27 runs of the negative controls of each engine (`untilExited` in the check).
-#
-# NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull request blocks the merge. The lead makes `Seam check` (the aggregating job,
-# whose name does not change) required once it has been green for a while.
-#
-# PATHS. What the seam reads: the new UI and the kit (`ui-next/**`, `packages/**`: the kit, the runtime's curated entry the fixture imports, the providers and the Vite plugin that `vite.config.ts` and `task packages`
-# build), the dependency lock, the flavour switch and the frontend build inputs, and the Go host that `build:server` compiles (`go list -deps -tags production,server .`: the root package, `backend/`, `internal/`, `pkg/`,
-# `go.mod`, `go.sum`, the host module bootstrap in `scripts/hostmod/`, the Taskfiles). Markdown is never an input. A pull request that changes only documentation does not start this workflow.
-
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run the scenarios they
+# touch locally before a push (`task local:seam`, docs/ui-next/AGENTS.md rule 39).
 on:
-  pull_request:
-    paths:
-      - "ui-next/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
-      - "vite.config.ts"
-      - "index.html"
-      - "public/**"
-      - "patches/**"
-      - "tsconfig*.json"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "scripts/hostmod/**"
-      - "Taskfile.yml"
-      - "build/Taskfile.yml"
-      - ".github/ci/image.lock"
-      - "scripts/ci/seam-*"
-      - "scripts/ci/main-red*"
-      - "scripts/ci/ci-scope*"
-      - ".github/workflows/ui-next-seam.yml"
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths:
-      - "ui-next/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
-      - "vite.config.ts"
-      - "index.html"
-      - "public/**"
-      - "patches/**"
-      - "tsconfig*.json"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "scripts/hostmod/**"
-      - "Taskfile.yml"
-      - "build/Taskfile.yml"
-      - ".github/ci/image.lock"
-      - "scripts/ci/seam-*"
-      - "scripts/ci/main-red*"
-      - "scripts/ci/ci-scope*"
-      - ".github/workflows/ui-next-seam.yml"
-      - "!**/*.md"
-  # The nightly run: everything (N30). A pull request runs the phases in WebKit and no negative control; this and every push to main run every phase and every control in both engines.
   schedule:
     - cron: "47 3 * * *"
   workflow_dispatch:
-    inputs:
-      scope:
-        description: "full (everything: the default) or pr (what a pull request runs: WebKit, no negative controls)"
-        type: choice
-        options: [full, pr]
-        default: full
 
-# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled by a newer push (the latest commit of main is always verified; a group keeps one running and one pending run, so a burst of merges can skip the ones between).
+# A run is never cancelled by a newer one (a group keeps one running and one pending run).
 concurrency:
-  group: ui-next-seam-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ui-next-seam-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -117,35 +34,20 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
-      scope: ${{ steps.plan.outputs.scope }}
-      reason: ${{ steps.scope.outputs.reason }}
     steps:
-      # Two commits: the base of the merge commit a pull request is checked out as, and the pull request (scripts/ci/ci-scope.mjs reads the diff between them).
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
           persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: .tool-versions
 
-      # The ONE place that says what this run does (scripts/ci/ci-scope.mjs, the same step as the kit probes'): everything on main, every night, on request and for a change to the test infrastructure; a pull request's scope
-      # (WebKit, the phases, no negative control) otherwise.
-      - name: Decide the scope of this run
-        id: scope
-        env:
-          SCOPE_INPUT: ${{ inputs.scope }}
-        run: node scripts/ci/ci-scope.mjs
-
       - name: Check the units against the check and pack the shards
         id: plan
-        env:
-          SCOPE: ${{ steps.scope.outputs.scope }}
-          REASON: ${{ steps.scope.outputs.reason }}
         run: |
           node scripts/ci/seam-shards.mjs check
-          node scripts/ci/seam-shards.mjs plan --scope "$SCOPE" --reason "$REASON"
+          node scripts/ci/seam-shards.mjs plan
 
   seam:
     name: Seam ${{ matrix.engine }} shard ${{ matrix.shard }}
@@ -194,7 +96,7 @@ jobs:
       - name: Check the units and the tests of the plan
         run: |
           node scripts/ci/seam-shards.mjs check
-          node --test scripts/ci/seam-*.test.mjs scripts/ci/ci-scope.test.mjs scripts/ci/main-red.test.mjs
+          node --test scripts/ci/seam-*.test.mjs scripts/ci/main-red.test.mjs
 
       - name: Build the workspace packages (the kit among them)
         run: |
@@ -380,9 +282,7 @@ jobs:
       - name: Require every phase and every control to have run and passed, in both engines
         env:
           PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
-          SCOPE: ${{ needs.plan.outputs.scope }}
-          REASON: ${{ needs.plan.outputs.reason }}
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download "$GITHUB_RUN_ID" --pattern 'seam-ran-*' --dir "$RUNNER_TEMP/reports"
-          node scripts/ci/seam-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS" --scope "$SCOPE" --reason "$REASON"
+          node scripts/ci/seam-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"

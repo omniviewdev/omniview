@@ -1,0 +1,51 @@
+# Status: HM3c (the pin: the Overview on a real cluster)
+
+- Agent: HomeAndConnections (sub-agents PodsCheck wrote the check, MetaRefresh the runtime fix; the parent edited the pin and the probe seconds, ran the gates and wrote this file). Row: HM3 (the lead's tracker, not edited here). HM3a (#723) and HM3b (#724) are the host's part and are merged; the plugin's Overview is merged (omniview-plugin-kubernetes #287, `feature/ui-next` c6d4665196d4ae983b09a01d160d5b5891be542c). HM3c is what holds all of it in CI.
+- Worktree: `~/Repos/omniviewdev/worktrees/ui-next-hm3-pin`, branch `ui-next/hm3-pin` from `origin/main` 773be338.
+- PR: the pull request of that branch (this file is in its one commit, so it names no number).
+
+## Log
+
+- 2026-11-25: worktree; the pin and the probe seconds; the check's overview assertions written tests first (seen red against the previous pin's plugin, which lands on Pods); the runtime fix promised in the review thread of #723; gates; the check's every mode against a kind cluster with the plugin at the new pin.
+
+## Established first (file:line)
+
+| Thing | Where | What it says |
+|---|---|---|
+| The pin | `.github/workflows/ui-next-pods.yml:86` (`KUBERNETES_PLUGIN_REF`) and the THE PIN block `:15` | Was `2b5e6847` (#285). The step "Check the pin" (`scripts/ui-next-pods/pin.mjs`) holds the plugin's shared-names list to this host's and `ui/vendor/HOST_COMMIT` to this host's history: the plugin at c6d46651 vendored from host main 773be338, which is this host's base. |
+| What the plugin lands on | plugin #287 `ui/src/entry.ts` (`home: 'overview'`), `ui/src/overview/{model,view,cells,assess,facts}.ts*` | A connection no longer lands on Pods: every check that opened "the Pods list from the plugin's row" had to go through the sidebar. |
+| The probe seconds | `scripts/ci/probe-units/home.mjs`, `scripts/ci/probe-seconds.mjs --few-samples max --write` over the logs of the last 30 runs | `home-perf` 17 samples (min 18, median 29, p95 34.2, max 35 s): 85 -> 35; `home-controls-perf` 12 samples (min 10, median 11.5, p95 21, max 21 s): 75 -> 25. The command rewrote 82 units; only `home.mjs` is kept, as ordered (the others belong to other rows and stay as they were; `probe-shards.mjs check` is ok). |
+| The refresh in the curated wrapper | `packages/omniviewdev-runtime/src/ui/useConnectionMetadata.ts` (merged in #723), the root hook `src/hooks/connection/useConnectionMetadata.ts:160-175` | The root hook's `refresh` is memoized on `enabled`; a callback kept across a disable still asks the SHARED cache for a refresh when another consumer of the connection listens. The review thread on #723 (4692433102) asked for the current `enabled` to be read through a ref. |
+
+## What changed
+
+- `.github/workflows/ui-next-pods.yml`: the pin (`KUBERNETES_PLUGIN_REF`, its comment block), and the step(s) for the check's new unit tests.
+- `scripts/ci/probe-units/home.mjs`: `seconds` 85 -> 35 and 75 -> 25, and its comment (the seconds are the runner's).
+- `scripts/ui-next-pods/overview.mjs` and `overview.test.mjs` (new): the Overview's contract in pure functions and their tests. The page is read from its DOM (the sections by `data-detail-section`, the heading, the tab, the sidebar entry, the summary line); the EXPECTED page is computed from kubectl alone (`kubectl get <kind> -A -o json` for Deployments, StatefulSets, DaemonSets, Jobs, Pods and Nodes, the server version, the namespaces, the kubeconfig's server for the context), by rules independent of the plugin's (Jobs with `Failed=True`; workloads with ready < desired; Nodes not Ready; Pods by kubectl's own STATUS word in an explicit list of failing words, and Running with READY a<b; a Pod that only stays Pending is not failing: the plugin follows the mock). The compare returns named problems; `ParityError` codes `OVERVIEW_MISMATCH` and `OVERVIEW_LOADING`.
+- `scripts/ui-next-pods/parity.mjs`: `openOverview` (the window as the native app opens it, the plugin's row pressed: the landing); `openPods` is now the landing plus the sidebar's Workloads and Pods, as a person goes there, so every existing mode still opens the Pods list; `checkOverview` holds the landing to the oracle (one tab titled Overview, the heading is the context's NAME and never the derived ID, the sidebar's Overview is current, Needs attention names the failing objects and its counts equal the oracle's, Workloads totals and failing counts, Cluster rows) and samples the page every 10 ms from the press until it settles to hold the NO-FAKE-ZEROS rules at every frame (a row that says `Loading` shows neither `None failing` nor `Healthy`; a Cluster row that says `Loading` shows no number; the summary never says `Everything is running` while a row is `Loading`); it reports how many loading frames it saw. The unavailable-group mode presses Pods itself.
+- `scripts/ui-next-pods/pods-cluster.check.mjs`: the Overview test first in mode `parity`; the three controls (`control-fixture-absent`, `control-plugin-absent`, `control-bundle-absent`) also run `checkOverview` and must fail with the code they expect (a blind overview check would pass on an empty cluster, a missing plugin or a plugin with no bundle). The workflow has one step, "Overview contracts (no cluster)", for the new unit tests.
+- `packages/omniviewdev-runtime/src/ui/useConnectionMetadata.ts` and its test, `.changeset/ui-v1-metadata-refresh-disabled.md` (patch): the wrapper's `refresh` reads the current `enabled` through a ref and, while the hook is disabled, resolves with no request and no change to the shared cache. The refs are assigned in a layout effect (the `react-hooks/refs` rule refuses an assignment during render). The root hook, its signature and its tests are untouched (`api:check`: no existing signature changed).
+
+## What ran
+
+- The check, on a real kind cluster (single node as CI, the 1a fixture, Chromium, the browser the check launches (`launchBrowser`); load average 2.6 to 4.2). **Red first**: the unit tests against a stub, 43 of 48 failed (`+ [] - ['total: Pods: the page says "24", kubectl lists 25']`); green 48 of 48. **Against the previous pin's plugin (`2b5e6847`)**: mode `parity` 12 of 13 pass and the Overview test fails with `OVERVIEW_MISMATCH: tab: the window's tabs are ["Pods" on screen], wanted one tab, titled "Overview", on screen; heading: ... is "Pods"; sidebar: ... ["Pods"]; sections: the page draws no section; summary: the page draws no summary line`; `control-bundle-absent` and `unavailable-group` still pass. **Against the plugin at c6d46651**: `parity` 13 of 13 (the Overview sampled 34 times, 13 distinct pages, 9 with a `Loading` row, settled 221 ms after the press); `control-fixture-absent` 2 of 2 (`FIXTURE_MISSING`); `control-plugin-absent` 2 of 2 (the Overview check fails `OVERVIEW_MISMATCH`, no plugin, no tab); `control-bundle-absent` 2 of 2 (`OVERVIEW_MISMATCH`, `Couldn't load Kubernetes`); `control-group-absent` 1 of 1 (`GROUP_MISSING`); `unavailable-group` 1 of 1.
+- Controls and the rule of AGENTS 28: removing the fixture guard turns the fixture-absent Overview control red (`the negative control is blind`); removing the comparison turns the plugin-absent and bundle-absent Overview controls red; a scratch mutation run removed 52 guards of `overview.mjs` one at a time and each was killed by its own named test (the script is `/tmp/hm3pin/mutate.mjs`, not in the repository). About 28 solo runs of `checkOverview` and 7 runs with the host's answers held back 1.2 to 2.5 s all passed. The pictures the DOM reading was matched to (`overview-empty`, `overview-fixture`, `overview-loading`, WebKit) were looked at.
+- The unit tests and tables: `node --test scripts/ui-next-pods/*.test.mjs` 153 of 153; `node --test scripts/ci/*.test.mjs` 384 of 384; `node scripts/ui-next-pods/pin.mjs <the plugin at c6d46651>` ok; `seam-shards.mjs check` and `probe-shards.mjs check` ok.
+- The runtime fix, red first: `AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times` (the kept callback, with a second hook listening); green: `env -u CI pnpm exec vitest run` 879 passed (5 skipped), `pnpm run api:check`, `pnpm run build`, eslint on the source file, `tsc -p tsconfig.app.json`, `tsc -p tsconfig.test.json` and the kit's `typecheck`. The SHIPPED Kubernetes plugin's `main` UI (`origin/main` 524d123) type-checks against the runtime built from this branch (the packed runtime swapped into its `ui/node_modules`, `pnpm run typecheck` exit 0): the lesson of #723.
+
+## What did not run
+
+- The check on Linux and on the runner's cluster: the first CI run is the one. The pictures were taken in WebKit to match what the DOM reading sees; the check itself runs Chromium.
+
+## Backend catalog
+
+| Class | Where | What | Interim in the UI |
+|---|---|---|---|
+| TANGENTIAL | plugin backend `pkg/plugin/resource/native_catalog.go:123`, `native_catalog_heal.go:124-170` | `kubernetes.unavailable_api_groups` is an INTERIM string-keyed fact (`{ count, groups: [{ groupVersion, reason }] }`, the first 32); the intended end state is an SDK coverage that can say "complete except these groups" and the fact goes | The Overview reads the fact (`1 API group is unavailable` in Needs attention) until the SDK says it |
+
+The rest of what HM3 found is in the UI's own catalogues, not the backend's: the host's (a list's quick filter is addressable by no link: `status/HM3b.md`) and the plugin's (`docs/status/HM3-k8s.md` in omniview-plugin-kubernetes: no Events kind, no metrics hook for the UI, a Node row without capacity and runtime, no connection commands hook).
+
+## Dev tools
+
+- `overview.mjs` (`readOverview`, `expectedOverview`, `compareOverview`, `loadingProblems`) is the one place the Overview's words and rules are written for the check; when the plugin's words change (`ui/src/overview/model.ts`), this is the file and its tests that say so first. A fixture cluster always has failing objects, so "Everything is running while a row says Loading" cannot fire on it: it is held by the unit tests, not by the run.
+- `node scripts/ci/probe-seconds.mjs --few-samples max --cache <dir> --write` and then `git checkout --` of every unit file but the one you own: the command writes every unit that has a proposal.

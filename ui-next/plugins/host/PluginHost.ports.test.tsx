@@ -3,10 +3,12 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPanelStore, PORTS_TOOL, PORTS_TOOL_ID, type PanelStore } from '../../shell';
 import type { ContextV1, PanelHostV1, PortForwardErrorV1, SidebarContextV1 } from '../contract/v1';
+import { unloadedFailure } from '../loader/failure';
 import { acme, answering, startedOn, widgetPage, WIDGETS } from '../testing';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import type { PortForwardNetwork, PortForwardStart, PortForwardStop } from './portForward';
+import { ledgerWorld, type LedgerWorld } from './portTesting';
 import { NO_ROUTE, type HostRoute } from './route';
 
 // What a page forwards a port with (PF1), through the real window and against an invented plugin (Acme): the host hands the page's hook and the sidebar's hook a `ctx.panel` whose `ports.forward` starts the forward in the
@@ -25,14 +27,59 @@ const link = (connection?: string): HostRoute => ({ plugin: 'acme', page: 'widge
 
 const request = { resourceId: 'alpha', resourceKey: 'widgets', remotePort: 8080, localPort: 9090 };
 
-type Networker = { readonly start: Mock<PortForwardStart>; readonly stop: Mock<PortForwardStop> };
+type Networker = {
+  readonly start: Mock<PortForwardStart>;
+  readonly stop: Mock<PortForwardStop>;
+  readonly onClosed: PortForwardNetwork['onClosed'];
+  /** The host's closed events, as the test says them. */
+  readonly world: LedgerWorld;
+};
 
-/** The host's networker as the window is given it: it starts a forward on port 9090 and closes what it is asked to, unless a test says otherwise. */
+/** The host's networker as the window is given it: it starts a forward on port 9090 and closes what it is asked to, unless a test says otherwise, and the host's word that a forward is closed is the test's. */
 function networking(start: PortForwardStart = async () => Promise.resolve({ id: 'forward-1', local_port: 9090 })): Networker {
-  return { start: vi.fn<PortForwardStart>(start), stop: vi.fn<PortForwardStop>(async () => Promise.resolve(undefined)) };
+  const world = ledgerWorld();
+  return { start: vi.fn<PortForwardStart>(start), stop: vi.fn<PortForwardStop>(async () => Promise.resolve(undefined)), onClosed: world.deps.onClosed, world };
 }
 
-function mount(options: { readonly link?: HostRoute; readonly networker?: PortForwardNetwork | undefined } = {}) {
+/** A networker that starts a forward of its own each time it is asked. */
+function numbering(): Networker {
+  let issued = 0;
+  return networking(async () => {
+    issued += 1;
+    return Promise.resolve({ id: `forward-${String(issued)}`, local_port: 40_000 + issued });
+  });
+}
+
+/** The plugins of the window as a test changes them: what the store holds, and how many listeners are on it. */
+function changing(initial: readonly PluginEntry[]) {
+  let entries = initial;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => entries,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set: (next: readonly PluginEntry[]) => {
+      entries = next;
+      for (const listener of [...listeners]) {
+        listener();
+      }
+    },
+    listeners: () => listeners.size,
+  };
+}
+
+type MountOptions = {
+  readonly link?: HostRoute;
+  readonly networker?: PortForwardNetwork | undefined;
+  /** Whether a user action is under way, as the window is told: inside one unless the test says otherwise. `'window'` gives the host no reading, so that it asks the window's own engine. */
+  readonly userActivation?: (() => boolean | undefined) | 'window';
+};
+
+function mount(options: MountOptions = {}) {
   const seen: Seen = { page: [], sidebar: [], render: undefined };
   const panel: PanelStore = createPanelStore();
   // The Ports tool is the window's own, registered with the others: it is what a forward that started shows.
@@ -58,7 +105,7 @@ function mount(options: { readonly link?: HostRoute; readonly networker?: PortFo
     },
   });
   const entries: readonly PluginEntry[] = [{ id: 'acme', name: 'Acme plugin', phase: 'ready', contribution }];
-  const plugins = { getSnapshot: () => entries, subscribe: () => () => undefined };
+  const plugins = changing(entries);
   // A window opened on a link has no session of its own: the link opens its first tab. Any other starts from a session with one tab, in no connection.
   const props: PluginHostProps = {
     plugins,
@@ -69,12 +116,15 @@ function mount(options: { readonly link?: HostRoute; readonly networker?: PortFo
     panel,
     session: options.link === undefined ? startedOn(entries) : undefined,
     networker: options.networker,
+    userActivation: options.userActivation === 'window' ? undefined : (options.userActivation ?? (() => true)),
   };
   const view = render(<PluginHost {...props} />);
   return {
     ...view,
     panel,
     seen,
+    plugins,
+    entries,
     /** The window is drawn again with the props it had: what a render of the host is, with nothing changed. */
     again: () => {
       view.rerender(<PluginHost {...props} />);
@@ -112,6 +162,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  Reflect.deleteProperty(navigator, 'userActivation');
   vi.restoreAllMocks();
 });
 
@@ -124,7 +175,7 @@ describe('a page that is read in a connection', () => {
     await act(async () => {
       answer = await ports.forward(request);
     });
-    expect(answer).toStrictEqual({ sessionId: 'forward-1', localPort: 9090, localHost: '127.0.0.1', stop: expect.any(Function) });
+    expect(answer).toStrictEqual({ sessionId: 'forward-1', localPort: 9090, stop: expect.any(Function) });
     expect(networker.start).toHaveBeenCalledTimes(1);
     expect(networker.start.mock.calls[0]).toStrictEqual([
       'acme',
@@ -252,5 +303,129 @@ describe('a window with no port-forward service', () => {
     const panel = await handle(seen);
     expect(panel.ports).toBeUndefined();
     expect(panel.logs.open).toBeTypeOf('function');
+  });
+});
+
+// PF2: through the window. A forward is started from a user action only, and the window is told whether one is under way by the reading it is given, or, when it is given none, by its own engine (`navigator.userActivation`).
+describe('a forward asked in the window (PF2)', () => {
+  const OUTSIDE = 'A forward can only be started from a user action: a click or a key press.';
+  const UNKNOWN = 'This window cannot tell a user action from a script, so it cannot start a forward.';
+
+  /** What a call rejects with, inside the act that lets the window settle. */
+  async function refusedWith(ports: NonNullable<PanelHostV1['ports']>): Promise<unknown> {
+    let caught: unknown;
+    await act(async () => {
+      caught = await ports.forward(request).catch((error: unknown) => error);
+    });
+    return caught;
+  }
+
+  it('is refused outside a user action: FORBIDDEN, the networker is not asked and the Ports tool is not shown', async () => {
+    const networker = networking();
+    const { seen, panel } = mount({ link: link('north'), networker, userActivation: () => false });
+    const ports = portsOf(await handle(seen));
+    expect(await refusedWith(ports)).toMatchObject({ name: 'PortForwardError', code: 'FORBIDDEN', message: OUTSIDE });
+    expect(networker.start).not.toHaveBeenCalled();
+    expect(panel.getSnapshot().open).toBe(false);
+  });
+
+  it('asks the window\'s own engine when it is given no reading, and an engine that cannot tell refuses: the test environment has no `navigator.userActivation`', async () => {
+    const networker = networking();
+    const { seen } = mount({ link: link('north'), networker, userActivation: 'window' });
+    const ports = portsOf(await handle(seen));
+    expect(Reflect.get(navigator, 'userActivation')).toBeUndefined();
+    expect(await refusedWith(ports)).toMatchObject({ name: 'PortForwardError', code: 'FORBIDDEN', message: UNKNOWN });
+    expect(networker.start).not.toHaveBeenCalled();
+  });
+
+  it('forwards when the window\'s own engine says a user action is under way, and is refused when it says none is: the engine is asked at each call', async () => {
+    const engine = { isActive: true, hasBeenActive: true };
+    Object.defineProperty(navigator, 'userActivation', { value: engine, configurable: true });
+    const networker = networking();
+    const { seen } = mount({ link: link('north'), networker, userActivation: 'window' });
+    const ports = portsOf(await handle(seen));
+    await act(async () => {
+      await ports.forward(request);
+    });
+    expect(networker.start).toHaveBeenCalledTimes(1);
+    engine.isActive = false;
+    expect(await refusedWith(ports)).toMatchObject({ code: 'FORBIDDEN', message: OUTSIDE });
+    expect(networker.start).toHaveBeenCalledTimes(1);
+  });
+});
+
+// PF2: the count of the forwards the window has started is the window's, and what it listens to is wired here: the networker's closed events, and the window's own store for a plugin that stops.
+describe('the forwards the window counts (PF2)', () => {
+  /** Forwards `count` times in the window, and answers what the page was given. */
+  async function forwardTimes(ports: NonNullable<PanelHostV1['ports']>, count: number) {
+    const answers: Array<Awaited<ReturnType<NonNullable<PanelHostV1['ports']>['forward']>>> = [];
+    await act(async () => {
+      for (let one = 0; one < count; one += 1) {
+        answers.push(await ports.forward(request));
+      }
+    });
+    return answers;
+  }
+
+  /** The window refuses the next forward because the connection holds as many as it may. */
+  async function isFull(ports: NonNullable<PanelHostV1['ports']>): Promise<void> {
+    await act(async () => {
+      await expect(ports.forward(request)).rejects.toMatchObject({ name: 'PortForwardError', code: 'RESOURCE_LIMIT', limit: 64 });
+    });
+  }
+
+  it('listens to the host\'s closed events, and to the window\'s plugins, only while it holds a forward', async () => {
+    const networker = numbering();
+    const { seen, plugins } = mount({ link: link('north'), networker });
+    const ports = portsOf(await handle(seen));
+    const idle = plugins.listeners();
+    expect(networker.world.listening().closed).toBe(0);
+    const [answer] = await forwardTimes(ports, 1);
+    expect(networker.world.listening().closed).toBe(1);
+    expect(plugins.listeners()).toBe(idle + 1);
+    await act(async () => {
+      await answer?.stop();
+    });
+    expect(networker.world.listening().closed).toBe(0);
+    expect(plugins.listeners()).toBe(idle);
+  });
+
+  it('gives a place back when the host says a forward is closed: the networker\'s closed events reach the count', async () => {
+    const networker = numbering();
+    const { seen } = mount({ link: link('north'), networker });
+    const ports = portsOf(await handle(seen));
+    const answers = await forwardTimes(ports, 64);
+    await isFull(ports);
+    networker.world.closed(answers[3]?.sessionId ?? '');
+    await forwardTimes(ports, 1);
+    await isFull(ports);
+    expect(networker.start).toHaveBeenCalledTimes(65);
+  });
+
+  it('gives back the places of a plugin that stops, as the window\'s own store says it: the host says nothing of the forwards of a plugin that stopped', async () => {
+    const networker = numbering();
+    const { seen, plugins, entries } = mount({ link: link('north'), networker });
+    const ports = portsOf(await handle(seen));
+    await forwardTimes(ports, 64);
+    await isFull(ports);
+    act(() => {
+      plugins.set([{ id: 'acme', name: 'Acme plugin', phase: 'failed', failure: unloadedFailure('failed') }]);
+    });
+    act(() => {
+      plugins.set(entries);
+    });
+    await forwardTimes(ports, 64);
+    await isFull(ports);
+  });
+
+  it('keeps the places of a plugin that still runs when the window\'s plugins change', async () => {
+    const networker = numbering();
+    const { seen, plugins, entries } = mount({ link: link('north'), networker });
+    const ports = portsOf(await handle(seen));
+    await forwardTimes(ports, 64);
+    act(() => {
+      plugins.set([...entries, { id: 'beta', name: 'Beta plugin', phase: 'loading' }]);
+    });
+    await isFull(ports);
   });
 });

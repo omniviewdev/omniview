@@ -72,7 +72,7 @@ const LIMIT_MIB = number('limit-mib', 0);
 const CASES = { a: 'reads, never acknowledges', b: 'reads and acknowledges', c: 'two terminals, the second never reads', d: `reads ${String(STALL_AT)} s, stalls ${String(STALL)} s, resumes` };
 const CASE_IDS = flags.cases.split(',').map((id) => id.trim());
 for (const id of CASE_IDS) if (CASES[id] === undefined) throw new Error(`--cases names a, b, c and d, it has ${JSON.stringify(id)}`);
-// The loop pauses at floor(stall-at) and resumes when `second - 1` reaches floor(stall-at) + ceil(stall): that tick has to be at most SECONDS - 1, so that a sample follows the resume.
+// The reader pauses right after the sample of second floor(stall-at) and resumes at its own deadline, --stall seconds later, which the loop wakes for in the middle of a wait: that is at about floor(stall-at) + stall, and it has to be at most SECONDS - 1, so that a whole second and a sample follow the resume.
 if (CASE_IDS.includes('d') && Math.floor(STALL_AT) + Math.ceil(STALL) > SECONDS - 1) throw new Error(`--stall-at (${String(STALL_AT)}) and --stall (${String(STALL)}) leave no sample after the resume inside --seconds (${String(SECONDS)})`);
 
 const EXEC_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper';
@@ -503,7 +503,14 @@ async function runCase(id) {
           pausedMs = performance.now();
           reader.pause();
           stalledAt = second - 1;
-        } else if (stalledAt !== null && resumedAt === null && performance.now() - pausedMs >= STALL * 1000) {
+        }
+      }
+
+      // The wait for the sample's tick is cut at the resume deadline, so that the reader resumes when its stall is over and not at the next tick, which can be the last one.
+      if (id === 'd' && stalledAt !== null && resumedAt === null) {
+        const resumeAt = pausedMs + STALL * 1000;
+        if (resumeAt < due) {
+          await sleep(resumeAt - performance.now());
           result.marks.stalledSeconds = round((performance.now() - pausedMs) / 1000, 2);
           reader.resume();
           resumedAt = second - 1;

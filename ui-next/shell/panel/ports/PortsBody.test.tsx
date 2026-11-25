@@ -158,8 +158,8 @@ describe('the table of forwards', () => {
     fake.names.set('acme', 'conn-1', 'Staging');
     await fake.answer([session('a', { local_port: 8081, remote_port: 8080 }), session('b', { created_at: '2026-11-24T11:00:00Z', state: 'PAUSED', local_port: 9000, remote_port: 5432 })]);
     expect(rows().map((row) => row.dataset.portsId)).toEqual(['a', 'b']);
-    expect(cells('a')).toEqual(['res-a', '127.0.0.1:8081 → :8080/TCP', 'Staging', 'Running']);
-    expect(cells('b')).toEqual(['res-b', '127.0.0.1:9000 → :5432/TCP', 'Staging', 'Paused']);
+    expect(cells('a')).toEqual(['res-a', 'port 8081 → :8080/TCP', 'Staging', 'Running']);
+    expect(cells('b')).toEqual(['res-b', 'port 9000 → :5432/TCP', 'Staging', 'Paused']);
     expect(rowOf('a').dataset.portsState).toBe('running');
     expect(rowOf('b').dataset.portsState).toBe('paused');
   });
@@ -180,7 +180,7 @@ describe('the table of forwards', () => {
 
   it('says the mapping in the code face, and the protocol in it', async () => {
     await mount([session('a', { protocol: 'UDP' })]);
-    expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('127.0.0.1:8081 → :8080/UDP');
+    expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('port 8081 → :8080/UDP');
   });
 
   it('says a resource it has no name for as a dash too: nothing is made up', async () => {
@@ -194,7 +194,7 @@ describe('the table of forwards', () => {
     act(() => {
       fake.emit(UNLOADED_EVENT, { pluginID: 'acme', cause: 'crashed' });
     });
-    expect(cells('a')).toEqual(['res-aIts plugin stopped.', '127.0.0.1:8081 → :8080/TCP', '—', 'Stopped']);
+    expect(cells('a')).toEqual(['res-aIts plugin stopped.', 'port 8081 → :8080/TCP', '—', 'Stopped']);
     expect(rowOf('a').querySelector('[data-ports-part="reason"]')?.textContent).toBe('Its plugin stopped.');
     expect(rowOf('a').dataset.portsState).toBe('stopped');
   });
@@ -232,10 +232,10 @@ describe('the table of forwards', () => {
 });
 
 describe('the actions of a row', () => {
-  it('are a group named for the forward, with Stop, Open in browser and Copy address in that order, as buttons with names', async () => {
+  it('are a group named for the forward, with Stop, Open in browser and Copy port in that order, as buttons with names', async () => {
     await mount([session('a')]);
-    const group = within(rowOf('a')).getByRole('group', { name: 'Port actions for res-a, 127.0.0.1:8081 → :8080/TCP' });
-    expect(within(group).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Stop', 'Open in browser', 'Copy address']);
+    const group = within(rowOf('a')).getByRole('group', { name: 'Port actions for res-a, port 8081 → :8080/TCP' });
+    expect(within(group).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Stop', 'Open in browser', 'Copy port']);
     expect(['stop', 'open', 'copy'].map((name) => group.querySelector(`[data-ports-action="${name}"]`) !== null)).toEqual([true, true, true]);
   });
 
@@ -248,14 +248,14 @@ describe('the actions of a row', () => {
     await mount([session('a'), session('b', { protocol: 'UDP' })]);
     expect(within(rowOf('b')).queryByRole('button', { name: 'Open in browser' })).toBeNull();
     const group = within(rowOf('b')).getByRole('group');
-    expect(within(group).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Stop', 'Copy address']);
+    expect(within(group).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Stop', 'Copy port']);
     // Stop stands first and Copy last in a row of three boxes: a placeholder holds the place of the one that is not offered.
     expect(group.children).toHaveLength(3);
     expect(group.children[1]?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('says why Open in browser and Copy address cannot be used for a forward that does not run: they stay focusable, say so as their description, and do nothing', async () => {
-    const { fake, user } = await mount([session('a', { state: 'FAILED' })]);
+    const { fake, user } = await mount([session('a', { state: 'FAILED', local_host: '127.0.0.1' })]);
     for (const name of ['Open in browser', 'Copy address']) {
       const button = buttonOf('a', name);
       expect(button).toHaveAttribute('aria-disabled', 'true');
@@ -268,10 +268,35 @@ describe('the actions of a row', () => {
   });
 
   it('says the reason in the tip of a button that cannot be used, under its name, and only its name for one that can', async () => {
-    await mount([session('a'), session('b', { state: 'FAILED' })]);
+    await mount([session('a', { local_host: '127.0.0.1' }), session('b', { state: 'FAILED', local_host: '127.0.0.1' })]);
     expect(buttonOf('a', 'Open in browser').getAttribute('data-ov-tip')).toBe('Open in browser');
     expect(buttonOf('b', 'Open in browser').getAttribute('data-ov-tip')).toBe('Open in browser\nThe forward must be running.');
     expect(buttonOf('b', 'Stop').getAttribute('data-ov-tip')).toBe('Stop');
+  });
+
+  it('says that where a forward listens is not stated, for a forward whose producer states no host: Open in browser stays focusable, says so as its description and in its tip, and does nothing, and Copy is Copy port', async () => {
+    const { fake, user } = await mount([session('a')]);
+    const open = buttonOf('a', 'Open in browser');
+    expect(open).toHaveAttribute('aria-disabled', 'true');
+    expect(open).toHaveAccessibleDescription('Where this forward listens is not stated, so it cannot be opened from here.');
+    expect(open.getAttribute('data-ov-tip')).toBe('Open in browser\nWhere this forward listens is not stated, so it cannot be opened from here.');
+    await user.click(open);
+    await settle();
+    expect(fake.opened).toEqual([]);
+    expect(fake.listed()).toBe(1);
+    expect(buttonOf('a', 'Copy port').getAttribute('data-ov-tip')).toBe('Copy port');
+    expect(within(rowOf('a')).queryByRole('button', { name: 'Copy address' })).toBeNull();
+  });
+
+  it('says that a forward that listens beyond this computer is not opened from here, and shows where it listens in its mapping', async () => {
+    const { fake, user } = await mount([session('a', { local_host: '0.0.0.0' })]);
+    expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('0.0.0.0:8081 → :8080/TCP');
+    const open = buttonOf('a', 'Open in browser');
+    expect(open).toHaveAccessibleDescription('This forward listens beyond this computer, so it is not opened from here.');
+    await user.click(open);
+    await settle();
+    expect(fake.opened).toEqual([]);
+    expect(buttonOf('a', 'Copy address')).toBeInTheDocument();
   });
 
   it('Stop shows Stopping at once, says that it waits as the description of Stop, and asks the host to close the forward', async () => {
@@ -292,7 +317,7 @@ describe('the actions of a row', () => {
       fake.emit(CLOSED_EVENT, session('a'));
     });
     expect(rows().map((row) => row.dataset.portsId)).toEqual(['b']);
-    expect(live().textContent).toBe('Stopped 127.0.0.1:8081 → :8080/TCP');
+    expect(live().textContent).toBe('Stopped port 8081 → :8080/TCP');
   });
 
   it('cannot Stop a forward whose plugin stopped, and says it as the description', async () => {
@@ -304,27 +329,27 @@ describe('the actions of a row', () => {
     expect(buttonOf('a', 'Stop')).toHaveAccessibleDescription('Its plugin stopped.');
   });
 
-  it('Open in browser opens the address in the system\'s browser', async () => {
-    const { fake, user } = await mount([session('a', { local_port: 3000 })]);
-    fake.serve([session('a', { local_port: 3000 })]);
+  it('Open in browser opens the address in the system\'s browser, for a forward whose producer states where it listens', async () => {
+    const { fake, user } = await mount([session('a', { local_port: 3000, local_host: '127.0.0.1' })]);
+    fake.serve([session('a', { local_port: 3000, local_host: '127.0.0.1' })]);
     await user.click(buttonOf('a', 'Open in browser'));
     await settle();
     expect(fake.opened).toEqual(['http://127.0.0.1:3000']);
   });
 
-  it('Copy address puts the address on the clipboard, draws a check mark on that button alone for a moment, says "Address copied" politely, and goes back when the moment is over', async () => {
+  it('Copy port puts the port on the clipboard, draws a check mark on that button alone for a moment, says "Port copied" politely, and goes back when the moment is over', async () => {
     const { fake, user } = await mount([session('a'), session('b', { local_port: 9000 })]);
     fake.serve([session('a'), session('b', { local_port: 9000 })]);
-    const glyph = (id: string): string | null => buttonOf(id, 'Copy address').querySelector('svg')?.getAttribute('data-ov-glyph') ?? null;
+    const glyph = (id: string): string | null => buttonOf(id, 'Copy port').querySelector('svg')?.getAttribute('data-ov-glyph') ?? null;
     expect(live()).toHaveAttribute('aria-live', 'polite');
     expect(live().textContent).toBe('');
     expect(glyph('a')).toBe('copy');
-    await user.click(buttonOf('a', 'Copy address'));
+    await user.click(buttonOf('a', 'Copy port'));
     await settle();
-    expect(fake.copied).toEqual(['127.0.0.1:8081']);
+    expect(fake.copied).toEqual(['8081']);
     expect(glyph('a')).toBe('check');
     expect(glyph('b')).toBe('copy');
-    expect(live().textContent).toBe('Address copied');
+    expect(live().textContent).toBe('Port copied');
     expect(fake.timers()).toBe(1);
     act(() => {
       fake.fire();
@@ -336,28 +361,38 @@ describe('the actions of a row', () => {
   it('says again what it said, for a person who copied twice: a node is added to the live region for each thing said, so that the words are read again', async () => {
     const { fake, user } = await mount([session('a')]);
     fake.serve([session('a')]);
-    await user.click(buttonOf('a', 'Copy address'));
+    await user.click(buttonOf('a', 'Copy port'));
     await settle();
     const first = live().firstElementChild;
-    await user.click(buttonOf('a', 'Copy address'));
+    await user.click(buttonOf('a', 'Copy port'));
     await settle();
     expect(live().firstElementChild).not.toBe(first);
-    expect(live().textContent).toBe('Address copied');
+    expect(live().textContent).toBe('Port copied');
   });
 
   it('says that the clipboard refused, and draws no check mark', async () => {
     const { fake, user } = await mount([session('a')]);
     fake.serve([session('a')]);
     fake.clipboard.works = false;
+    await user.click(buttonOf('a', 'Copy port'));
+    await settle();
+    expect(live().textContent).toBe('Couldn\'t copy the port');
+    expect(buttonOf('a', 'Copy port').querySelector('svg')?.getAttribute('data-ov-glyph')).toBe('copy');
+  });
+
+  it('Copy address, for a forward whose producer states where it listens, puts the host and the port on the clipboard and says "Address copied"', async () => {
+    const { fake, user } = await mount([session('a', { local_host: '127.0.0.1' })]);
+    fake.serve([session('a', { local_host: '127.0.0.1' })]);
+    expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('127.0.0.1:8081 → :8080/TCP');
     await user.click(buttonOf('a', 'Copy address'));
     await settle();
-    expect(live().textContent).toBe('Couldn\'t copy the address');
-    expect(buttonOf('a', 'Copy address').querySelector('svg')?.getAttribute('data-ov-glyph')).toBe('copy');
+    expect(fake.copied).toEqual(['127.0.0.1:8081']);
+    expect(live().textContent).toBe('Address copied');
   });
 
   it('says that the system would not open the address, and warns on the console', async () => {
-    const { fake, user } = await mount([session('a')]);
-    fake.serve([session('a')]);
+    const { fake, user } = await mount([session('a', { local_host: '127.0.0.1' })]);
+    fake.serve([session('a', { local_host: '127.0.0.1' })]);
     fake.browser.reject = true;
     await user.click(buttonOf('a', 'Open in browser'));
     await settle();
@@ -374,7 +409,7 @@ describe('the keyboard', () => {
     await user.keyboard('{ArrowRight}');
     expect(buttonOf('a', 'Open in browser')).toHaveFocus();
     await user.keyboard('{End}');
-    expect(buttonOf('a', 'Copy address')).toHaveFocus();
+    expect(buttonOf('a', 'Copy port')).toHaveFocus();
     await user.keyboard('{Home}');
     expect(buttonOf('a', 'Stop')).toHaveFocus();
     await user.tab();
@@ -384,8 +419,8 @@ describe('the keyboard', () => {
   });
 
   it('presses a button with Enter and with Space', async () => {
-    const { fake, user } = await mount([session('a')]);
-    fake.serve([session('a')]);
+    const { fake, user } = await mount([session('a', { local_host: '127.0.0.1' })]);
+    fake.serve([session('a', { local_host: '127.0.0.1' })]);
     await user.tab();
     await user.keyboard('{ArrowRight}{Enter}');
     await settle();
@@ -419,13 +454,13 @@ describe('the keyboard', () => {
 
   it('leaves the focus where the person put it when it was not on the row that went', async () => {
     const { fake, user } = await mount([session('a'), session('b')]);
-    buttonOf('a', 'Copy address').focus();
+    buttonOf('a', 'Copy port').focus();
     await user.click(buttonOf('b', 'Stop'));
-    buttonOf('a', 'Copy address').focus();
+    buttonOf('a', 'Copy port').focus();
     act(() => {
       fake.emit(CLOSED_EVENT, session('b'));
     });
-    expect(buttonOf('a', 'Copy address')).toHaveFocus();
+    expect(buttonOf('a', 'Copy port')).toHaveFocus();
   });
 
   it('does not pull the focus back when the person has gone elsewhere since: only a focus that was lost is found', async () => {
@@ -444,15 +479,15 @@ describe('the keyboard', () => {
 });
 
 describe('the menu of a row', () => {
-  it('opens on a secondary click on the row, for that row, as Stop, Open in browser and Copy address, named for the forward', async () => {
+  it('opens on a secondary click on the row, for that row, as Stop, Open in browser and Copy port, named for the forward', async () => {
     const { fake } = await mount([session('a'), session('b', { local_port: 9000 })]);
     fake.serve([session('a'), session('b', { local_port: 9000 })]);
     expect(fireEvent.contextMenu(rowOf('b'), { button: 2, clientX: 30, clientY: 40 })).toBe(false);
-    const menu = screen.getByRole('menu', { name: 'Actions for res-b, 127.0.0.1:9000 → :8080/TCP' });
-    expect(within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))).toEqual(['Stop', 'Open in browser', 'Copy address']);
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Copy address' }));
+    const menu = screen.getByRole('menu', { name: 'Actions for res-b, port 9000 → :8080/TCP' });
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))).toEqual(['Stop', 'Open in browser', 'Copy port']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Copy port' }));
     await settle();
-    expect(fake.copied).toEqual(['127.0.0.1:9000']);
+    expect(fake.copied).toEqual(['9000']);
   });
 
   it('opens on a secondary click on a cell as well as on the row\'s edge: the whole row is the trigger', async () => {
@@ -466,7 +501,7 @@ describe('the menu of a row', () => {
     ['the Menu key', { key: 'ContextMenu' }],
   ])('opens on %s with the focus on one of the row\'s buttons, with the first item focused, and gives the focus back to the button on Escape', async (_name, init) => {
     await mount([session('a'), session('b')]);
-    const copy = buttonOf('b', 'Copy address');
+    const copy = buttonOf('b', 'Copy port');
     copy.focus();
     expect(fireEvent.keyDown(copy, init)).toBe(false);
     const menu = screen.getByRole('menu', { name: /^Actions for res-b/ });
@@ -479,7 +514,7 @@ describe('the menu of a row', () => {
   it('has no Open in browser for a UDP forward', async () => {
     await mount([session('a', { protocol: 'UDP' })]);
     fireEvent.contextMenu(rowOf('a'), { button: 2 });
-    expect(screen.getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))).toEqual(['Stop', 'Copy address']);
+    expect(screen.getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))).toEqual(['Stop', 'Copy port']);
   });
 
   it('says why an item cannot be used and does nothing for it, as the button does', async () => {
@@ -513,7 +548,7 @@ describe('the menu of a row', () => {
 
   it('keeps the keyboard in the table when the row that holds an open menu goes: the host puts the menu away and gives the focus to the table, and it goes on to the row that took the place of the one that went', async () => {
     const { fake } = await mount([session('a'), session('b'), session('c')]);
-    const copy = buttonOf('b', 'Copy address');
+    const copy = buttonOf('b', 'Copy port');
     copy.focus();
     fireEvent.keyDown(copy, { key: 'F10', shiftKey: true });
     expect(screen.getByRole('menuitem', { name: 'Stop' })).toHaveFocus();
@@ -602,7 +637,7 @@ describe('what it costs', () => {
     // The row that changed rendered once, which proves that the count counts; the one that did not, not at all.
     expect(rendered('b')).toBe(1);
     expect(rendered('a')).toBe(0);
-    expect(cells('b')[1]).toBe('127.0.0.1:9999 → :8080/TCP');
+    expect(cells('b')[1]).toBe('port 9999 → :8080/TCP');
     act(() => {
       fake.emit(CONNECTION_EVENT);
     });
@@ -765,7 +800,7 @@ describe('a button that was drawn for a session', () => {
     const listed = fake.listed();
     await user.click(buttonOf('a', 'Stop'));
     await user.click(buttonOf('a', 'Open in browser'));
-    await user.click(buttonOf('a', 'Copy address'));
+    await user.click(buttonOf('a', 'Copy port'));
     expect(fake.closed()).toEqual([]);
     expect(fake.opened).toEqual([]);
     expect(fake.copied).toEqual([]);
@@ -829,7 +864,7 @@ describe('Try again', () => {
 describe('the keyboard in the table when rows move', () => {
   it('goes to the row that took the place of the one that went, when a row was put before it first: the place is read from the table as it was drawn last, and not from where it was when it got the keyboard', async () => {
     const { fake } = await mount([session('a'), session('b'), session('c'), session('d')]);
-    buttonOf('c', 'Copy address').focus();
+    buttonOf('c', 'Copy port').focus();
     act(() => {
       fake.emit(CREATED_EVENT, session('x', { created_at: '2026-11-24T09:00:00Z' }));
     });

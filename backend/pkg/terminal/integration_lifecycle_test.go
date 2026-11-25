@@ -56,7 +56,12 @@ func starts(t *testing.T, log string) []string {
 		return nil
 	}
 	require.NoError(t, err)
-	return strings.Split(strings.TrimSpace(string(data)), "\n")
+	// The shell makes the file before it writes its line: a file with no line has no start.
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return nil
+	}
+	return strings.Split(text, "\n")
 }
 
 // waitStarts waits until the fake shell has logged n starts: it logs from its own process, after Start has answered.
@@ -148,9 +153,13 @@ func TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser(t *testing.T) {
 			f, _, log := fakeFixture(t, name, "silent")
 			info := f.start()
 			assert.Equal(t, Integration{State: IntegrationUnconfirmed, Reason: NoReady}, info.Integration, "the fake never says it is ready: the host does not say it is on")
-			require.Eventually(t, func() bool { _, err := os.Stat(log + ".dir"); return err == nil }, 10*time.Second, 5*time.Millisecond)
-			data, err := os.ReadFile(log + ".dir")
-			require.NoError(t, err)
+			// The fake's redirection creates the file before ls writes to it: wait for the whole line, not the file.
+			var data []byte
+			require.Eventually(t, func() bool {
+				read, err := os.ReadFile(log + ".dir")
+				data = read
+				return err == nil && strings.HasSuffix(string(read), "\n")
+			}, 10*time.Second, 5*time.Millisecond)
 			fields := strings.Fields(string(data))
 			require.GreaterOrEqual(t, len(fields), 3, "%q", data)
 			assert.Equal(t, "drwx------", fields[0], "mode of the directory")
@@ -314,4 +323,14 @@ func TestASettingThatCannotBeReadFailsClosed(t *testing.T) {
 	line := waitStarts(t, log, 1)[0]
 	assert.Contains(t, line, "zdotdir=unset xdg=unset")
 	assert.Empty(t, f.integrationDirs())
+}
+
+// The fake shell logs with `echo >> file`: the shell makes the file before it writes the line, and a test that reads in
+// between sees a file with no line. That is not a start (a CI run counted it as one, and read "" as the line of the shell).
+func TestAFakeShellLogThatHasNoLineYetHasNoStart(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "log")
+	require.NoError(t, os.WriteFile(log, nil, 0o600))
+	assert.Empty(t, starts(t, log), "an empty log has no start")
+	require.NoError(t, os.WriteFile(log, []byte("start a\n"), 0o600))
+	assert.Equal(t, []string{"start a"}, starts(t, log))
 }

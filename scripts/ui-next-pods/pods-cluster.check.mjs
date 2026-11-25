@@ -1,21 +1,21 @@
 // The Pods cluster check (plan docs/ui-next/slices/1a-pods-list.md, PR 1a.1; N19d): the new shell, served by the real Go host from `OMNIVIEW_UI=next` and opened the
 // way the native window opens it for a first run (no URL parameter, no hash, nothing saved: the window is empty, S3a), the Kubernetes plugin opened from the window's list of plugins as a person
-// opens it, against a real kind cluster holding the plan's fixture, with the Kubernetes plugin installed from the
-// archive of its `feature/ui-next` branch (the plugin's own bundle is the only place the Pods list is written: the host holds no Pods code).
+// opens it (it lands on the connection's Overview, HM3, and the Pods list is one choice away in the sidebar), against a real kind cluster holding the plan's fixture, with the Kubernetes plugin installed from the
+// archive of its `feature/ui-next` branch (the plugin's own bundle is the only place the Overview and the Pods list are written: the host holds no Pods code).
 //
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
-//   OMNIVIEW_CHECK_MODE       parity (default): the page and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says, and one deleted while its page is open is titled "was deleted"; the Logs command of a Pod
+//   OMNIVIEW_CHECK_MODE       parity (default): the Overview the plugin lands on says what kubectl says (HM3c, plugin #287: the connection's name, Needs attention, the Workloads table, the Cluster rows, and no zero in any frame while it loads: overview.mjs); the Pods list, opened from the Overview through the sidebar, and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says, and one deleted while its page is open is titled "was deleted"; the Logs command of a Pod
 //                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session; pressed twice on a running Pod it shows its one session (A22)
 //                             a press on a column header sorts a list (K3a): the Pods list by Restarts and the Deployments list by Age, twice each, against `kubectl get <kind> -A -o json` (sort.mjs)
-//                             control-fixture-absent: the check must report FIXTURE_MISSING (cluster without the fixture)
-//                             control-plugin-absent:  the check must report PAGE_MISMATCH with no rows (host without the plugin: the kit's empty state of the plugin list)
-//                             control-bundle-absent:  the check must report PAGE_MISMATCH with no rows (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
+//                             control-fixture-absent: both checks, the Pods list's and the Overview's, must report FIXTURE_MISSING (cluster without the fixture)
+//                             control-plugin-absent:  the Pods check must report PAGE_MISMATCH with no rows and the Overview check OVERVIEW_MISMATCH with no tab (host without the plugin: the kit's empty state of the plugin list)
+//                             control-bundle-absent:  the Pods check must report PAGE_MISMATCH with no rows and the Overview check OVERVIEW_MISMATCH with no section (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
 //                                                     window's rail: an entry "Kubernetes, did not load" whose tip says why and whose choice opens the page that names it
 //                             unavailable-group:      INV4 (plugin #281): the host started AFTER an API group that cannot answer was registered (an APIService whose Service has no endpoints: unavailable-group.yaml, applied by the workflow before the host starts): the plugin's page opens from the list of plugins and lists the Pods with no press on Retry, no request the host refused, and the connection's facts name the group (unavailable.mjs)
 //                             control-group-absent:   the check must report GROUP_MISSING (the cluster the main check ran on, which holds no such group)
 //
-// The controls run the same `checkParity` and pass only when it fails with the expected code, so a check that has gone blind
+// The controls run the same `checkParity` and `checkOverview` and pass only when each fails with the expected code, so a check that has gone blind
 // (passing on an empty cluster, a missing plugin or a plugin with no bundle) turns the job red. Run: `node --test scripts/ui-next-pods/pods-cluster.check.mjs`.
 //
 // H6 (plugin PR #272): a connection's ID is derived (`<slug>-<10 hex>`) and differs on every run, because the kubeconfig of the check lives in a temporary directory. The check never writes one down: the first test
@@ -23,7 +23,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsRate, checkLogsTwice, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsRate, checkLogsTwice, checkOverview, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareDrawn, compareLane, readDrawn } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 import { compareFacts } from './unavailable.mjs';
@@ -59,6 +59,11 @@ if (mode === 'control-fixture-absent') {
     const error = await failure();
     assert.equal(error.code, 'FIXTURE_MISSING', error.message);
   });
+  // An Overview of an empty cluster agrees with kubectl too (every count is kind's own), so a check that does not stop at the fixture is blind here.
+  test('negative control: a cluster without the fixture fails the Overview check too', async () => {
+    const error = await failure({}, checkOverview);
+    assert.equal(error.code, 'FIXTURE_MISSING', error.message);
+  });
 } else if (mode === 'control-plugin-absent') {
   test('negative control: a host without the Kubernetes plugin fails the check at the list of plugins', async () => {
     const error = await failure({ timeoutMs: 15_000 });
@@ -67,6 +72,15 @@ if (mode === 'control-fixture-absent') {
     // The window has no plugin to open: the host's own screen says so, in the kit's empty state, under the name of the list of plugins.
     assert.equal(error.detail.read.state, 'empty', error.message);
     assert.match(error.detail.status ?? '', /No Plugins/, 'the page must be stopped at the list of plugins');
+  });
+  test('negative control: a host without the Kubernetes plugin has no Overview to read: the Overview check fails at the list of plugins', async () => {
+    const error = await failure({ timeoutMs: 15_000 }, checkOverview);
+    assert.equal(error.code, 'OVERVIEW_MISMATCH', error.message);
+    assert.equal(error.detail.pressed, false, 'the window has no row for the plugin to press');
+    assert.deepEqual(error.detail.overview.tabs, [], 'no page opened');
+    assert.deepEqual(error.detail.overview.sections, [], 'with the plugin absent the page draws no section');
+    assert.equal(error.detail.page.state, 'empty', error.message);
+    assert.match(error.detail.page.status ?? '', /No Plugins/, 'the page must be stopped at the list of plugins');
   });
 } else if (mode === 'control-bundle-absent') {
   test('negative control: the Kubernetes plugin installed without its bundle fails the check at the plugin', async () => {
@@ -93,6 +107,14 @@ if (mode === 'control-fixture-absent') {
       await page.close();
     }
   });
+  test('negative control: the Kubernetes plugin installed without its bundle has no Overview to read: the Overview check fails at the plugin', async () => {
+    const error = await failure({ timeoutMs: 15_000 }, checkOverview);
+    assert.equal(error.code, 'OVERVIEW_MISMATCH', error.message);
+    assert.equal(error.detail.pressed, true, 'the plugin\'s row is there, and opens the page that names the failure');
+    assert.deepEqual(error.detail.overview.sections, [], 'with no bundle the host has no Overview to draw: it holds none of its own');
+    assert.equal(error.detail.page.state, 'error', error.message);
+    assert.match(error.detail.page.status ?? '', /Couldn't load Kubernetes/, 'the page must be stopped at the plugin');
+  });
 } else if (mode === 'control-group-absent') {
   // The same check, on the cluster the main check ran on: no API group that cannot answer is registered, so the check must stop at the group before it opens a page, as FIXTURE_MISSING does for the fixture.
   test('negative control: a cluster without the API group that cannot answer fails the check at the group', async () => {
@@ -111,6 +133,20 @@ if (mode === 'control-fixture-absent') {
     assert.deepEqual(compareFacts(facts), [], 'the connection\'s facts name the group that cannot answer');
   });
 } else {
+  // The Overview (HM3c, plugin #287): the page a connection lands on. The window opens as the native app opens it and the plugin's row is pressed: one tab titled Overview, the connection's NAME as the one heading, the sidebar's Overview entry
+  // current, Needs attention naming what fails (the fixture's failing Job and Pods), the Workloads table's Totals and Failing counts and the Cluster rows, each equal to what kubectl and the kubeconfig say (overview.mjs, with its controls in
+  // overview.test.mjs). The page is sampled from the press, and no frame of it says a zero for a row that has not finished loading. It comes first: it is the one test that sees the page load on a connection the host has not started yet.
+  test('the Overview the plugin lands on says what kubectl says, and says no zero while it loads', async (t) => {
+    const { read, expected, identity, frames } = await checkOverview({ browser, baseURL, kubeconfig });
+    t.diagnostic(`the page was sampled every 10 ms from the press: ${String(frames.samples)} samples read ${String(frames.distinct)} distinct pages, ${String(frames.loading.distinct)} of them with a row that was Loading (${String(frames.loading.samples)} samples), and it settled ${String(frames.settledAt)} ms after the press`);
+    assert.deepEqual(read.tabs.map((tab) => tab.title), ['Overview'], 'one tab, titled Overview');
+    assert.deepEqual(read.headings, [identity.context], 'the one heading is the connection\'s NAME, and not the ID the host lists for it');
+    assert.deepEqual(read.current, ['Overview'], 'the sidebar\'s Overview entry is the current one');
+    assert.equal(read.attention.count, expected.failingCount, 'Needs attention counts the objects kubectl lists as failing');
+    assert.ok(read.attention.rows.some((row) => row.kind === 'Jobs' && row.names.includes('broken-migration')), 'Needs attention names the fixture\'s failing Job');
+    assert.equal(read.summary.text, expected.summary);
+  });
+
   test('the page and kubectl agree on the Pods of every namespace, on their count and on the quick filters', async () => {
     const { oracle, read, expected } = await checkParity({ browser, baseURL, kubeconfig });
     assert.equal(read.state, 'ready', 'the connection is up and the page lists the Pods');

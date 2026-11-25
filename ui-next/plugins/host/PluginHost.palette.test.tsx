@@ -364,7 +364,7 @@ describe('the providers of the plugins, through the window', () => {
         },
       }),
     };
-    const networker: PortForwardNetwork = { start: vi.fn(async () => Promise.resolve({ id: 'forward-1', local_port: 9090 })), stop: vi.fn(async () => Promise.resolve(undefined)) };
+    const networker: PortForwardNetwork = { start: vi.fn(async () => Promise.resolve({ id: 'forward-1', local_port: 9090 })), stop: vi.fn(async () => Promise.resolve(undefined)), onClosed: () => () => undefined };
     const { user } = open(source([entry]), { networker, link: { plugin: 'acme', page: 'widgets', connection: 'north', params: {} }, session: undefined });
     await waitFor(() => {
       expect(seen.at(-1)?.panel).toBeDefined();

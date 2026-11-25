@@ -6,9 +6,9 @@
 // ui-next/shell/probes and ui-next/page/probes) does not read that directory, and the engine's tests build their scratch tree from what the scan finds: a unit that names a script outside it turns two of them red. So the units run
 // ui-next/shell/probes/home-perf-probe.mjs, which only names the probe, as plugins-page-perf-probe.mjs does (scripts/ci/probe-units/plugins-page.mjs). When PROBE_DIRS holds ui-next/plugins/host/probes the wrapper can go.
 //
-// THE SECONDS ARE ESTIMATES, FOUR TIMES THE LAPTOP'S on a quiet machine (21 s for the probe in both engines and 18 s for the five controls, one shared build of 4 s included, at a load of 3 to 9). Nothing here has run on the runner yet: the summary of the first shard that runs a unit prints the
-// real seconds and says what to put in `seconds`; after its first CI runs `node scripts/ci/probe-seconds.mjs --write` sets them from the runner's own (a unit that is faster than its seconds by more than the margin only warns; one that is
-// slower fails its shard, so they are rounded up).
+// THE SECONDS ARE THE RUNNER'S (HM3c). They began as estimates, four times the laptop's (85 and 75); `node the shard summary --few-samples max --write` set them from the runner's logs: 17 samples of `home-perf` (min 18 s, median 29 s, p95 34.2 s, max 35 s) and 12 of `home-controls-perf`
+// (min 10 s, median 11.5 s, p95 21 s, max 21 s), each rounded up to 5 s (35 and 25). A unit that is faster than its seconds by more than the margin only warns; one that is slower fails its shard, so they are rounded up. Set them again with the
+// same command when the probe changes.
 
 export const units = [
   // What the page costs, in counts: 200 connections mount in one commit and one batch of DOM changes; one character typed in the field is at most two commits and changes only the rows that left or entered; one event for one connection is one
@@ -19,7 +19,7 @@ export const units = [
     name: 'Probe what the Home page costs',
     script: 'ui-next/shell/probes/home-perf-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/home-perf-probe.json' },
-    seconds: 85,
+    seconds: 35,
   },
 
   // The negative controls of the page's cost (all counts), each a fault planted in the loaded page or in what the probe does to it, seen by the assertion it is named for and by no other, and passing undetected with ASSERTION_OFF set to that
@@ -32,6 +32,6 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['late-change', 'second-row', 'key-commits', 'idle-timer', 'push-out'],
     plants: 'page',
-    seconds: 75,
+    seconds: 25,
   },
 ];

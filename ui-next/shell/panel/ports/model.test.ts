@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { availabilityOf, browserUrlOf, PLUGIN_STOPPED, readForward, rowOf, sameRow, STATE_WORDS, type Facts, type Forward, type PortRow } from './model';
+import { availabilityOf, browserUrlOf, copyWordOf, PLUGIN_STOPPED, readForward, rowOf, sameRow, STATE_WORDS, type Facts, type Forward, type PortRow } from './model';
 
 // A forward as the host states it, and the row the window draws of it: pure, so that every rule is read whole. What the host says is the session of the SDK (`id`, `connection`, `connection_type`, `protocol`, `local_port`,
 // `remote_port`, `state`, `created_at`); what the window adds is its own and said as such: that Stop was pressed, that the plugin stopped, why a Stop could not end a forward, and the name the window knows for a connection.
@@ -31,6 +31,7 @@ const forward = (patch: Partial<Forward> = {}): Forward => ({
   protocol: 'TCP',
   state: 'running',
   created: Date.parse('2026-11-24T10:00:00Z'),
+  host: '',
   ...patch,
 });
 
@@ -130,7 +131,7 @@ describe('reading a forward the host states', () => {
 });
 
 describe('the row the window draws of a forward', () => {
-  it('has the producer\'s facts and the words of them: the mapping reads local to remote with the protocol, and the address is the loopback and the local port', () => {
+  it('has the producer\'s facts and the words of them: the mapping reads the port to the remote port with the protocol, and no host is stated', () => {
     expect(rowOf(forward(), facts({ connectionName: 'Staging' }))).toEqual({
       id: 'forward-1',
       session: 0,
@@ -145,13 +146,14 @@ describe('the row the window draws of a forward', () => {
       stateWord: 'Running',
       pluginStopped: false,
       reason: undefined,
-      address: '127.0.0.1:8081',
-      mapping: '127.0.0.1:8081 → :8080/TCP',
+      host: '',
+      endpoint: '8081',
+      mapping: 'port 8081 → :8080/TCP',
     });
   });
 
   it('says the protocol in the mapping', () => {
-    expect(rowOf(forward({ protocol: 'UDP' }), NOTHING).mapping).toBe('127.0.0.1:8081 → :8080/UDP');
+    expect(rowOf(forward({ protocol: 'UDP' }), NOTHING).mapping).toBe('port 8081 → :8080/UDP');
   });
 
   it.each([
@@ -229,10 +231,10 @@ describe('the row the window draws of a forward', () => {
     });
   });
 
-  it('says an unassigned local port as Auto, and has no address to give: there is nothing to copy or to open', () => {
+  it('says an unassigned local port as Auto, and has no endpoint to give: there is nothing to copy or to open', () => {
     const row = rowOf(forward({ local: 0 }), NOTHING);
     expect(row.mapping).toBe('Auto → :8080/TCP');
-    expect(row.address).toBe('');
+    expect(row.endpoint).toBe('');
   });
 });
 
@@ -256,7 +258,8 @@ describe('whether two rows say the same', () => {
     ['stateWord', { stateWord: 'x' }],
     ['pluginStopped', { pluginStopped: true }],
     ['reason', { reason: 'x' }],
-    ['address', { address: 'x' }],
+    ['host', { host: 'x' }],
+    ['endpoint', { endpoint: 'x' }],
     ['mapping', { mapping: 'x' }],
   ])('is false when only the %s differs', (_name, patch) => {
     expect(sameRow(base, { ...base, ...patch })).toBe(false);
@@ -264,9 +267,10 @@ describe('whether two rows say the same', () => {
 });
 
 describe('what a person can do with a row, and why not', () => {
-  const row = (patch: Partial<Forward> = {}, over: Partial<Facts> = {}) => rowOf(forward(patch), facts(over));
+  // A forward that states a loopback host: Open in browser is for it only (the producer's session states none today; `where a forward listens` below is what the row says without one).
+  const row = (patch: Partial<Forward> = {}, over: Partial<Facts> = {}) => rowOf(forward({ host: '127.0.0.1', ...patch }), facts(over));
 
-  it('can stop, open and copy a forward that runs over TCP: nothing is in the way, and each says so by having no reason', () => {
+  it('can stop, open and copy a forward that runs over TCP and states a loopback host: nothing is in the way, and each says so by having no reason', () => {
     expect(availabilityOf(row())).toEqual({ stop: undefined, open: undefined, copy: undefined });
   });
 
@@ -303,5 +307,70 @@ describe('which session of an id a row shows', () => {
     expect(first.session).toBe(1);
     expect(sameRow(first, rowOf(forward(), facts({ session: 1 })))).toBe(true);
     expect(sameRow(first, rowOf(forward(), facts({ session: 2 })))).toBe(false);
+  });
+});
+
+describe('where a forward listens', () => {
+  it('is what the producer states, and the SDK\'s session states a port and no host: the row says the port, and never invents a host', () => {
+    expect(readForward(session())?.host).toBe('');
+    const row = rowOf(forward(), facts());
+    expect(row.host).toBe('');
+    expect(row.mapping).toBe('port 8081 → :8080/TCP');
+    expect(row.endpoint).toBe('8081');
+    expect(JSON.stringify(row)).not.toContain('127.0.0.1');
+  });
+
+  it('says Auto while the port is not assigned, with no endpoint', () => {
+    const row = rowOf(forward({ local: 0 }), facts());
+    expect(row.mapping).toBe('Auto → :8080/TCP');
+    expect(row.endpoint).toBe('');
+  });
+
+  it('reads a host the producer states (`local_host`) as text, and nothing else as one', () => {
+    expect(readForward(session({ local_host: ' 127.0.0.1 ' }))?.host).toBe('127.0.0.1');
+    expect(readForward(session({ local_host: 7 }))?.host).toBe('');
+    expect(readForward(session({ local_host: null }))?.host).toBe('');
+  });
+
+  it.each([
+    ['127.0.0.1', '127.0.0.1:8081 → :8080/TCP', '127.0.0.1:8081', 'http://127.0.0.1:8081'],
+    ['::1', '[::1]:8081 → :8080/TCP', '[::1]:8081', 'http://[::1]:8081'],
+    ['localhost', 'localhost:8081 → :8080/TCP', 'localhost:8081', 'http://localhost:8081'],
+    ['LOCALHOST', 'LOCALHOST:8081 → :8080/TCP', 'LOCALHOST:8081', 'http://LOCALHOST:8081'],
+  ])('shows a loopback host the producer states, %s, in the mapping and as the endpoint, and opens at it', (host, mapping, endpoint, url) => {
+    const row = rowOf(forward({ host }), facts());
+    expect(row.mapping).toBe(mapping);
+    expect(row.endpoint).toBe(endpoint);
+    expect(availabilityOf(row).open).toBeUndefined();
+    expect(browserUrlOf(row)).toBe(url);
+  });
+
+  it.each(['0.0.0.0', '192.168.1.5', 'forward.example.test', '::'])('shows a host beyond this computer, %s, as the endpoint and does not open it', (host) => {
+    const row = rowOf(forward({ host }), facts());
+    expect(row.endpoint).toBe(`${host.includes(':') ? `[${host}]` : host}:8081`);
+    expect(row.mapping).toBe(`${row.endpoint} → :8080/TCP`);
+    expect(availabilityOf(row).open).toBe('This forward listens beyond this computer, so it is not opened from here.');
+  });
+
+  it('does not offer to open a forward whose host is not stated, whatever its state: Open in browser is unavailable for it, with the reason', () => {
+    for (const state of ['running', 'paused', 'stopped', 'failed'] as const) {
+      expect(availabilityOf(rowOf(forward({ state }), facts())).open).toBe('Where this forward listens is not stated, so it cannot be opened from here.');
+    }
+
+    expect(availabilityOf(rowOf(forward({ protocol: 'UDP' }), facts())).open).toBeNull();
+  });
+
+  it('offers to open a forward that states a loopback host only while it runs and has a port', () => {
+    expect(availabilityOf(rowOf(forward({ host: '127.0.0.1', state: 'failed' }), facts())).open).toBe('The forward must be running.');
+    expect(availabilityOf(rowOf(forward({ host: '127.0.0.1', local: 0 }), facts())).open).toBe('The local port is not assigned yet.');
+  });
+
+  it('says what Copy copies: the port when no host is stated, and host and port when one is', () => {
+    expect(copyWordOf(rowOf(forward(), facts()))).toBe('Copy port');
+    expect(copyWordOf(rowOf(forward({ host: '127.0.0.1' }), facts()))).toBe('Copy address');
+  });
+
+  it('tells rows that differ in the host apart', () => {
+    expect(sameRow(rowOf(forward(), facts()), rowOf(forward({ host: '127.0.0.1' }), facts()))).toBe(false);
   });
 });
