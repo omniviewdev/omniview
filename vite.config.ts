@@ -83,9 +83,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./ui/test-setup.ts', './ui-next/test-setup.ts'],
     css: false,
-    // All the processors, not all but one. The default leaves a core for the main thread, which the vm pool needs only while Vite transforms (measured on 4 vCPU, cold cache: 71 s with three
-    // workers, 58 s with four; five and six do not go faster and use more memory).
-    maxWorkers: '100%',
     // The root configuration runs no file itself once it names projects: both projects below take everything else from it (`extends` is true), so one Vite server transforms for both.
     projects: [
       {
