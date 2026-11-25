@@ -7,7 +7,7 @@
 //
 // Every phase and every run of the check is in exactly one unit (`node scripts/ci/seam-shards.mjs check` fails, naming it, for one that is in none, and the job `Seam check` fails for one that did not run), so a scenario or a
 // control added to the check is added here: a phase to a unit with `phases`, a control to the unit of its scenario, a table of controls of its own as a `runs` entry. After a unit's first CI run set its `seconds` to the ones the
-// shard's summary prints (the shard fails, with the number, when a unit takes more than its seconds plus the larger of a quarter of them and 60 s).
+// shard's summary prints (a unit that takes more or less than its seconds by the larger of a quarter of them and 60 s is a warning with the number, never a failure).
 //
 // The first values are read from the runner's logs of N29's measurements (the last 20 runs, both engines): the phases from the order and time of their output, the controls from the table of seconds each control printed, less the 8 s
 // every run waited for at its end (N29: a timer that nothing cleared), the new ones (the controls of the load that fails and of the Plugins page, which no CI step ran before) by the scenario's own seconds.
