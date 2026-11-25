@@ -50,6 +50,7 @@ const (
 	hGap      byte = 0x83
 	hEnded    byte = 0x84
 	hNotFound byte = 0x86
+	hApplied  byte = 0x87
 )
 
 // bound is how long an event that must come may take.
@@ -154,7 +155,9 @@ type streamState struct {
 	gaps     [][2]uint64
 	ended    int
 	notFound int
-	faults   []string
+	// applied is the number of every applied frame, in order: the bytes of input the host has written from the capability.
+	applied []uint64
+	faults  []string
 }
 
 func (s *streamState) take(frame []byte) {
@@ -200,6 +203,12 @@ func (s *streamState) take(frame []byte) {
 		s.ended++
 	case hNotFound:
 		s.notFound++
+	case hApplied:
+		if len(body) != 8 {
+			s.faults = append(s.faults, fmt.Sprintf("an applied frame of %d bytes", len(body)))
+			return
+		}
+		s.applied = append(s.applied, binary.BigEndian.Uint64(body))
 	default:
 		s.faults = append(s.faults, fmt.Sprintf("a frame of type %#x", frame[0]))
 	}
@@ -442,4 +451,8 @@ func TestAStreamThatSendsNothingIsClosedByTheHostOnTheRealRouteAndAStreamThatAtt
 	page.write(append([]byte{pInput}, "hello\n"...))
 	state := page.until("the echo", func(s *streamState) bool { return bytes.Count(s.output, []byte("hello\r\n")) >= 2 })
 	assert.Equal(t, "hello\r\nhello\r\n", string(state.output), "the stream that showed its capability in time was not closed by the first-frame wait")
+	state = page.until("the applied frame", func(s *streamState) bool {
+		return len(s.applied) > 0 && s.applied[len(s.applied)-1] == uint64(len("hello\n"))
+	})
+	assert.Equal(t, uint64(len("hello\n")), state.applied[len(state.applied)-1], "the host says it wrote the six bytes of the line, on the real route")
 }

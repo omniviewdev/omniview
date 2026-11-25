@@ -501,22 +501,7 @@ func TestAStormOfStreamsKeepsTheProtocolCountsEveryByteOnceAndLeavesNothing(t *t
 		}
 	})
 	for i, p := range pages {
-		st := p.state()
-		assert.Empty(t, st.faults, "page %d", i)
-		guarded(t, "released-once", func() {
-			assert.LessOrEqual(t, st.released, 1, "page %d: released at most once", i)
-		})
-		assert.False(t, st.released > 0 && len(st.ended) > 0, "page %d: released and ended are not both said", i)
-		guarded(t, "storm-applied", func() {
-			assert.LessOrEqual(t, len(st.applied), sent[p], "page %d: no more applied frames than inputs", i)
-		})
-		if st.released > 0 {
-			assert.Equal(t, wReleased, st.order[len(st.order)-1], "page %d: released is the last thing it is told", i)
-		}
-		if at := slices.Index(st.order, wTakenOver); at >= 0 {
-			assert.NotContains(t, st.order[at:], wOutput, "page %d: a watcher is sent no output", i)
-			assert.NotContains(t, st.order[at:], wApplied, "page %d: nor an applied", i)
-		}
+		requireTheStormPageKeptTheProtocol(t, i, p.state(), sent[p])
 	}
 	assert.Empty(t, m.running(), "no session")
 	m.Shutdown()
@@ -534,3 +519,24 @@ func (d *countingDevice) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 func (*countingDevice) Resize(uint16, uint16) error { return nil }
+
+// requireTheStormPageKeptTheProtocol is what a page of the storm saw, as the protocol says it: no fault, released at most once and last
+// and never with ended, no output or applied after taken-over, no more applied frames than the inputs it sent.
+func requireTheStormPageKeptTheProtocol(t *testing.T, i int, st pageState, inputs int) {
+	t.Helper()
+	assert.Empty(t, st.faults, "page %d", i)
+	guarded(t, "released-once", func() {
+		assert.LessOrEqual(t, st.released, 1, "page %d: released at most once", i)
+	})
+	assert.False(t, st.released > 0 && len(st.ended) > 0, "page %d: released and ended are not both said", i)
+	guarded(t, "storm-applied", func() {
+		assert.LessOrEqual(t, len(st.applied), inputs, "page %d: no more applied frames than inputs", i)
+	})
+	if st.released > 0 {
+		assert.Equal(t, wReleased, st.order[len(st.order)-1], "page %d: released is the last thing it is told", i)
+	}
+	if at := slices.Index(st.order, wTakenOver); at >= 0 {
+		assert.NotContains(t, st.order[at:], wOutput, "page %d: a watcher is sent no output", i)
+		assert.NotContains(t, st.order[at:], wApplied, "page %d: nor an applied", i)
+	}
+}
