@@ -75,7 +75,7 @@ describe('admit', () => {
     ['a sidebar hook that is not a function', contribution({ sidebar: sidebar({ useNodes: 'yes' }) }), 'sidebar.useNodes is not a function'],
     ['a home that is not a page', contribution({ home: 'gadgets' }), 'home "gadgets" is not one of the pages'],
     ['no pages', contribution({ pages: {} }), 'pages is not an object with a page in it'],
-    ['a page of a kind this version does not draw', contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }), 'pages.widgets.kind is "dashboard", and this version draws "list", "detail" and "overview" pages'],
+    ['a page of a kind this version does not draw', contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }), 'pages.widgets.kind is "dashboard", and this version draws "list", "detail", "overview" and "custom" pages'],
     ['a page without a data hook', contribution({ pages: { widgets: page({ usePage: undefined }) } }), 'pages.widgets.usePage is not a function'],
     ['a page without a title', contribution({ pages: { widgets: page({ definition: definition({ title: '' }) }) } }), 'pages.widgets.definition.title is not a non-empty string'],
     ['a page without nouns', contribution({ pages: { widgets: page({ definition: definition({ nouns: { one: 'Widget' } }) }) } }), 'pages.widgets.definition.nouns needs "one" and "other"'],
@@ -228,7 +228,7 @@ describe('admit: the detail page (a minor addition to version 1)', () => {
   });
 
   it('words a kind this version does not draw with the three kinds it does', () => {
-    expect(problemsOf(contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }))).toContain('pages.widgets.kind is "dashboard", and this version draws "list", "detail" and "overview" pages');
+    expect(problemsOf(contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }))).toContain('pages.widgets.kind is "dashboard", and this version draws "list", "detail", "overview" and "custom" pages');
   });
 
   it.each([
@@ -313,8 +313,8 @@ describe('admit: the overview page (a minor addition to version 1)', () => {
     expect(problemsOf(value)).toEqual([]);
   });
 
-  it('words a page of another kind with the three kinds this version draws', () => {
-    expect(problemsOf(contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }))).toEqual(['pages.widgets.kind is "dashboard", and this version draws "list", "detail" and "overview" pages']);
+  it('words a page of another kind with the four kinds this version draws', () => {
+    expect(problemsOf(contribution({ pages: { widgets: page({ kind: 'dashboard' }) } }))).toEqual(['pages.widgets.kind is "dashboard", and this version draws "list", "detail", "overview" and "custom" pages']);
   });
 
   it.each([
@@ -380,6 +380,92 @@ describe('admit: the overview page (a minor addition to version 1)', () => {
     const pages: ContributionV1['pages'] = { overview };
 
     expect(pages.overview?.kind).toBe('overview');
+  });
+});
+
+// The custom page and the landing were added to contract version 1 as a minor addition (KL2; the rule is at the head of `v1.ts`): a page the plugin draws itself, read in a connection or in none, and the page a plugin opens at when no connection is named. What a bundle written
+// before them said is read as before (the tests above are unchanged but for the two words that list the kinds), and what a host that lacks them meets is a refusal by name, which the words of the test below that names the kind are.
+const Body = (): null => null;
+const customPage = (patch: Loose = {}): Loose => ({ kind: 'custom', scope: 'plugin', title: 'Landing', icon: 'house', Body, ...patch });
+
+describe('admit: the custom page and the landing (a minor addition to version 1)', () => {
+  it('admits a contribution with a custom page of each scope and a landing, and hands back the plugin\'s own object: the problems first, since a host that lacks the kind says them', () => {
+    const value = contribution({ pages: { widgets: page(), landing: customPage(), settings: customPage({ scope: 'connection', title: 'Settings', layout: 'pane' }) }, landing: 'landing' });
+    expect(problemsOf(value)).toEqual([]);
+
+    const admission = admit(exportsOf(value));
+    expect(admission.ok && admission.contribution).toBe(value);
+  });
+
+  it('admits a Body that is a component of React\'s own making, not a plain function: a memoised one is an object that draws', () => {
+    const memoised = { $$typeof: Symbol.for('react.memo'), type: Body };
+
+    expect(problemsOf(contribution({ pages: { widgets: page(), landing: customPage({ Body: memoised }) } }))).toEqual([]);
+  });
+
+  it('still admits, unchanged, a bundle written before the custom page and the landing existed: no custom page, no landing, no member this host added', () => {
+    const before: Loose = {
+      plugin: { name: 'Acme', accent: 'blue' },
+      rail: true,
+      sidebar: { label: 'Acme navigation', title: 'Acme', nodes: [{ id: 'widgets', label: 'Widgets', icon: 'box' }] },
+      pages: { widgets: { kind: 'list', definition: definition(), usePage: () => ({}) } },
+      home: 'widgets',
+    };
+    const admission = admit(exportsOf(before));
+
+    expect(admission.ok && admission.contribution).toBe(before);
+  });
+
+  it.each([
+    ['a custom page of a scope this version does not have', customPage({ scope: 'window' }), 'pages.landing.scope is "window", and a custom page is read in the "plugin" or in a "connection"'],
+    ['a custom page with no scope', customPage({ scope: undefined }), 'pages.landing.scope is "undefined", and a custom page is read in the "plugin" or in a "connection"'],
+    ['a custom page without a title', customPage({ title: ' ' }), 'pages.landing.title is not a non-empty string'],
+    ['a custom page without a glyph', customPage({ icon: undefined }), 'pages.landing.icon is not a glyph name'],
+    ['a custom page without a body', customPage({ Body: undefined }), 'pages.landing.Body is not a component'],
+    ['a custom page whose body is text', customPage({ Body: 'Landing' }), 'pages.landing.Body is not a component'],
+    ['a custom page whose layout is not one the shell has', customPage({ layout: 'grid' }), 'pages.landing.layout is neither "document" nor "pane"'],
+  ])('refuses %s, in the words of its own member', (_name, landing, expected) => {
+    expect(problemsOf(contribution({ pages: { widgets: page(), landing } }))).toEqual([expected]);
+  });
+
+  it.each([
+    ['a page the plugin does not have', 'gadgets', 'landing "gadgets" is not one of the pages'],
+    ['something that is not a page id', 7, 'landing "7" is not one of the pages'],
+    ['a list page', 'widgets', 'landing "widgets" is a list page: a landing is a custom page of scope "plugin"'],
+    ['a custom page that is read in a connection', 'connected', 'landing "connected" is a custom page of scope "connection": a landing is read in no connection, so its scope is "plugin"'],
+  ])('refuses a landing that is %s, with one sentence that says what a landing is', (_name, landing, expected) => {
+    const value = contribution({ pages: { widgets: page(), landing: customPage(), connected: customPage({ scope: 'connection' }) }, landing });
+
+    expect(problemsOf(value)).toEqual([expected]);
+  });
+
+  it('says a landing that is an overview page or a detail page by its kind: neither is read in no connection', () => {
+    const overview = problemsOf(contribution({ pages: { widgets: page(), overview: overviewPage() }, landing: 'overview' }));
+    const detail = problemsOf(contribution({ pages: { widgets: page(), widget: detailPage({ definition: detailDefinition({ list: undefined }) }) }, landing: 'widget' }));
+
+    expect(overview).toEqual(['landing "overview" is an overview page: a landing is a custom page of scope "plugin"']);
+    expect(detail).toEqual(['landing "widget" is a detail page: a landing is a custom page of scope "plugin"']);
+  });
+
+  it('lets a custom page be an entry of the sidebar and the page a connection opens: the window can open it with no object', () => {
+    const value = contribution({
+      pages: { widgets: page(), landing: customPage(), settings: customPage({ scope: 'connection', title: 'Settings' }) },
+      home: 'settings',
+      landing: 'landing',
+      sidebar: sidebar({ nodes: [{ id: 'landing', label: 'Landing', icon: 'house' }, { id: 'settings', label: 'Settings', icon: 'settings-2' }] }),
+    });
+
+    expect(problemsOf(value)).toEqual([]);
+    expect(openable([{ id: 'landing', label: 'Landing', icon: 'house' }, { id: 'gone', label: 'Gone', icon: 'box' }], { landing: customPage() })).toEqual([{ id: 'landing', label: 'Landing', icon: 'house' }]);
+  });
+
+  it('is the same in types: a custom page is a page of the contribution, with the Body and the scope the contract names, and a landing is a key of its pages', () => {
+    const landing: PageV1 = { kind: 'custom', scope: 'plugin', title: 'Landing', icon: 'house', Body: () => null };
+    const pages: ContributionV1['pages'] = { landing };
+    const named: Pick<ContributionV1, 'landing'> = { landing: 'landing' };
+
+    expect(pages.landing?.kind).toBe('custom');
+    expect(named.landing).toBe('landing');
   });
 });
 
