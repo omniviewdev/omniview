@@ -29,7 +29,7 @@ describe('normalizePluginRoutes', () => {
     const router = createMemoryRouter(normalizePluginRoutes([{
       path: '/plugin',
       Component: PluginLayout,
-      // As the host's wrapper does: the router opens on a route with a loader.
+      // As the host's pathless root does (pageRoutes.tsx, hydrateFallbackElement): this router opens on a route with a loader.
       HydrateFallback: () => null,
       children: [broken, { path: '/healthy', element: <div>Healthy page</div> }],
     }], 'test-plugin'), { initialEntries: ['/plugin/broken'] });
