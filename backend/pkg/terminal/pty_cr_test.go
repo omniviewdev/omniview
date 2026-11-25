@@ -61,8 +61,26 @@ func (p *ptyTee) readEnds(id string) []int {
 // withoutTheCRsOfMacOS says what the program printed, from what the kernel gave the host and where its reads ended: the stream less
 // every CR that ends a read and is followed by CR LF (and the CRs of a run of them), and the offsets of the CRs it took out. A CR
 // anywhere else, a line end that lost its CR, any other byte: left as it is, for the comparison to fail on.
-func withoutTheCRsOfMacOS(stream []byte, _ []int) (text []byte, removed []int) {
-	return stream, nil
+func withoutTheCRsOfMacOS(stream []byte, readEnds []int) (text []byte, removed []int) {
+	for _, end := range readEnds {
+		if end <= 0 || end >= len(stream) || stream[end-1] != '\r' {
+			continue
+		}
+		next := end
+		for next < len(stream) && stream[next] == '\r' {
+			next++
+		}
+		if next > end && next < len(stream) && stream[next] == '\n' {
+			removed = append(removed, end-1)
+		}
+	}
+	text = make([]byte, 0, len(stream))
+	from := 0
+	for _, at := range removed {
+		text = append(text, stream[from:at]...)
+		from = at + 1
+	}
+	return append(text, stream[from:]...), removed
 }
 
 // The tee is given every read of the pty master, in order, and its reads are the bytes the host went on to deliver.

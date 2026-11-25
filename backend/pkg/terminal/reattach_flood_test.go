@@ -175,6 +175,7 @@ func TestAHeldFlowStaysPausedWhateverCreditComesAndARestartOrAReleaseLetsItGo(t 
 func TestAReloadUnderAFloodReattachesByteExactByOffset(t *testing.T) {
 	const lines = 2_000_000
 	m, sink := newPageManager(t)
+	tee := teePty(m) // what the kernel gives the host, read before any code of the host sees it: the oracle of the end of this test
 	page := newTestPage(m, "flood-1")
 	var threshold atomic.Uint64
 	threshold.Store(1 << 20)
@@ -236,11 +237,20 @@ func TestAReloadUnderAFloodReattachesByteExactByOffset(t *testing.T) {
 	require.Eventually(t, func() bool { return uint64(len(page.bytes())) == end.LastOffset }, 30*time.Second, 10*time.Millisecond,
 		"the page has taken in as many bytes as the shell wrote")
 
-	want := numbered(lines)
+	// The host's delivery is held to what the kernel gave it, byte for byte, so a byte lost or repeated at a join is still a failure;
+	// what the program printed is checked against those bytes less the CRs that the terminal of macOS adds when its output queue is full
+	// between the CR and the LF of a line end (pty_cr_test.go: the kernel's own, and the reason this test no longer holds the stream to
+	// the text itself).
+	raw := tee.stream(info.ID)
 	assert.GreaterOrEqual(t, reloads, 5, "the flood was long enough to be reloaded under")
-	assert.Equal(t, uint64(len(want)), end.LastOffset, "the end says how long the output was")
-	requireSame(t, want, page.bytes(), "what the page rendered across its reloads")
-	requireSame(t, want, sink.stream(t, info.ID), "what the host emitted")
+	assert.Equal(t, uint64(len(raw)), end.LastOffset, "the end says how long the output was: every byte the host read")
+	requireSame(t, raw, page.bytes(), "what the page rendered across its reloads, against the bytes the pty gave the host")
+	requireSame(t, raw, sink.stream(t, info.ID), "what the host emitted, against the bytes the pty gave the host")
+	printed, added := withoutTheCRsOfMacOS(raw, tee.readEnds(info.ID))
+	requireSame(t, numbered(lines), printed, "what the program printed, from the bytes the pty gave the host")
+	if len(added) > 0 {
+		t.Logf("the terminal of macOS added %d CR before a CR LF in this run, the first at byte %d", len(added), added[0])
+	}
 	gaps, _, partial := page.faults()
 	assert.Zero(t, gaps, "no gap")
 	assert.Zero(t, partial, "no event that straddles what the page had")

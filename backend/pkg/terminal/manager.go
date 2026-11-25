@@ -619,6 +619,9 @@ func (m *Manager) read(s *session) error {
 		}
 		n, err := s.master.Read(buf)
 		if n > 0 {
+			if m.tee != nil {
+				m.tee(s.id, buf[:n])
+			}
 			// The event owns its bytes: the read buffer is reused.
 			data := slices.Clone(buf[:n])
 			m.deliver(s, data)
