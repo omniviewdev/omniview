@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareDeployment, compareDetail, compareGone, goneDeployment, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail } from './detail.mjs';
+import { JSDOM } from 'jsdom';
+import { compareDeployment, compareDetail, compareGone, goneDeployment, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail, linkTo } from './detail.mjs';
 
 const pod = (name, nodeName, ip, qosClass) => ({
   metadata: { name },
@@ -24,6 +25,24 @@ const reading = (value) => ({
 
 test('the route is the one the Pods list links to', () => {
   assert.equal(detailHref(DETAIL_POD), '#/kubernetes/pod?namespace=checkout&name=cart-cache-0');
+});
+
+// The links of a page read in the connection opened from the plugin's landing carry its derived ID first (`ui-next/plugins/host/links.ts`); one read in no named connection carries none. A selector, so it is tried on a DOM.
+test('linkTo selects the link of an object whatever connection the link carries, and the link of no other object, namespace or page', () => {
+  const id = 'kind-ui-next-pods-54c660ecd1';
+  const links = [
+    '#/kubernetes/pod?namespace=checkout&name=cart-cache-0',
+    `#/kubernetes/pod?connection=${id}&namespace=checkout&name=cart-cache-0`,
+    `#/kubernetes/pod?connection=${id}&namespace=checkout&name=cart-cache-1`,
+    `#/kubernetes/pod?connection=${id}&namespace=monitoring&name=cart-cache-0`,
+    `#/kubernetes/pod?connection=${id}&namespace=checkout&name=cart-cache-01`,
+    `#/kubernetes/pod?connection=${id}&namespace=checkout&name=xcart-cache-0`,
+    `#/kubernetes/deployment?connection=${id}&namespace=checkout&name=cart-cache-0`,
+  ];
+  const { document } = new JSDOM(links.map((href, index) => `<a id="link${String(index)}" href="${href}">a</a>`).join('')).window;
+  const found = (selector) => [...document.querySelectorAll(selector)].map((link) => link.id);
+  assert.deepEqual(found(linkTo(detailHref(DETAIL_POD))), ['link0', 'link1']);
+  assert.deepEqual(found(linkTo(deploymentHref(DETAIL_POD))), ['link6']);
 });
 
 test('expectedDetail reads the plain values of a Pod, with several IPs joined as the page joins them', () => {
