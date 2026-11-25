@@ -97,8 +97,8 @@ export const SHARD_CEILING_SECONDS = Math.ceil(LIMIT_SECONDS * SHARD_SLOWDOWN_WO
 // THE SCOPE (N30, scripts/ci/ci-scope.mjs says which a run is). `full` is every probe and every control in both engines, as above. `pr` is a pull request's: the probes and not the negative controls, in WebKit only (the engine of the
 // desktop application; a probe reads `ENGINES`), packed into fewer, longer shards because a job costs a setup of 90 s and a slot, and what the owner counts is the runner's seconds and the jobs. The units' `seconds` are those of both
 // engines, so a shard planned at PR_LIMIT_SECONDS of them takes less than that in WebKit: the shard's ceiling is the limit and the slowest machine (1.3), a unit that is faster than its seconds is not warned about, and the job's
-// timeout (36 minutes) is the same ceiling and the slowest setup. The first runs of this scope give the numbers to set the limit by.
-export const PR_LIMIT_SECONDS = 1500;
+// timeout (38 minutes) is the same ceiling and the slowest setup. The first runs of this scope give the numbers to set the limit by.
+export const PR_LIMIT_SECONDS = 1600;
 export const PR_SHARD_CEILING_SECONDS = Math.ceil(PR_LIMIT_SECONDS * 1.3);
 export const PR_ENGINES = 'webkit';
 export const SCOPES = ['pr', 'full'];

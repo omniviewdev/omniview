@@ -126,7 +126,7 @@ jobs:
     # A shard is planned at 432 s of units (scripts/ci/probe-shards.mjs, LIMIT_SECONDS) plus a setup of 88 s (median), and fails past 614 s of units (SHARD_CEILING_SECONDS, derived from the runner's own 70 shard jobs). The job must be
     # able to take that ceiling and the slowest setup seen (137 s) to the end, so that a slow shard says what it is: 751 s, 13 minutes. 15 is the wall for a shard that hangs, and a test pins both. The 30 it had was for the bounded
     # browser install of #557 (a first attempt killed after 15 minutes, then a second), which the image made unnecessary.
-    timeout-minutes: ${{ needs.plan.outputs.scope == 'pr' && 36 || 15 }}
+    timeout-minutes: ${{ needs.plan.outputs.scope == 'pr' && 38 || 15 }}
     # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
     # them. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private: the job token
     # reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do. `--init` is theirs too.

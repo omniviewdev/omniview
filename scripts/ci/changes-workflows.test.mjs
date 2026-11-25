@@ -48,7 +48,6 @@ test('each gated job waits for the classifier and runs unless its flag is "true"
     assert.ok(needsOf(job).includes('changes'), `${entry.job} must need the classifier`);
     assert.equal(job.if, SKIP[entry.flag], `${entry.workflow}: ${entry.job}`);
   }
-  assert.deepEqual(needsOf(jobOf('pr-checks.yml', 'ui-runtime-contract')).sort(), ['c02-corpus', 'changes']);
 });
 
 test('NEGATIVE: no job runs only when a flag says "run": the classifier writes skip flags, and `== \'true\'` on one would skip a job whose flag is missing', () => {
@@ -117,8 +116,8 @@ test('the tracked-outputs guard runs in the repository guard and nowhere else, a
   assert.equal(checkout.with?.['fetch-depth'], undefined);
 });
 
-test('the workflow tests run where the dependencies are installed, before the build: in the job that lints', () => {
-  const commands = stepsOf('pr-checks.yml', 'ui-lint').map((step) => step.run ?? '');
+test('the workflow tests run where the dependencies are installed, before the packages are built: in the job that builds and lints', () => {
+  const commands = stepsOf('pr-checks.yml', 'ui-build').map((step) => step.run ?? '');
   const at = commands.findIndex((command) => /node --test scripts\/ci\/changes-workflows\.test\.mjs/.test(command));
   assert.ok(at > 0, 'a step runs them');
   assert.ok(at < commands.findIndex((command) => /task packages/.test(command)), 'before the packages are built');
@@ -133,16 +132,10 @@ test('the jobs that were there keep their names, so that no check is renamed by 
   assert.deepEqual(names('pr-checks.yml'), {
     changes: 'Changed paths',
     'repo-guard': 'Repo guard',
-    'release-packaging-checks': 'Release packaging contracts',
     'windows-connection-profiles': 'Windows connection profiles',
     'go-checks': 'Go checks',
-    'go-lint': 'Go lint',
-    'bindings-check': 'Bindings freshness',
-    'c02-corpus': 'C02 error transport corpus',
-    'ui-build': 'UI build',
-    'ui-lint': 'UI lint and kit contracts',
-    'ui-component-tests': 'UI component tests',
-    'ui-runtime-contract': 'UI runtime contract',
+    'c02-corpus': 'C02 error transport corpus and runtime contract',
+    'ui-build': 'UI build, lint and component tests',
     'ui-checks': 'UI checks',
   });
   assert.deepEqual(names('pr.yml'), {
@@ -150,25 +143,30 @@ test('the jobs that were there keep their names, so that no check is renamed by 
     'e2e-application': undefined,
     'e2e-tests': 'e2e-tests',
     'build-artifacts': 'build-artifacts (${{ matrix.platform }})',
-    'build-artifacts-windows': 'build-artifacts (windows/amd64)',
   });
   assert.equal(jobOf('pr.yml', 'e2e-application').uses, './.github/workflows/e2e-runner.yml');
   assert.equal(jobOf('pr.yml', 'e2e-application').with.base, '${{ github.event.pull_request.base.sha }}');
-  assert.deepEqual(jobOf('pr.yml', 'build-artifacts').strategy.matrix.include.map((entry) => entry.platform), ['linux/amd64'], 'Windows is a job of its own: the new UI keeps it while the Linux build is skipped; there is no macOS build on a pull request (N30: main-macos-universal.yml builds it on every push to main)');
+  assert.deepEqual(jobOf('pr.yml', 'build-artifacts').strategy.matrix.include.map((entry) => entry.platform), ['linux/amd64'], 'there is no macOS or Windows build on a pull request (N30, N31: main-macos-universal.yml and main-windows.yml build them on every push to main)');
 });
 
-// The Windows build is not an entry of the matrix any more, so that the new UI can keep it while the macOS and Linux builds are skipped. Its steps are the matrix job's, and a step changed in one and not the other fails here.
+// The Windows build is not a job of a pull request (N31): main-windows.yml builds it on every push to main and at night. Its steps are the Linux build job's of pr.yml, and a step changed in one and not the other fails here. Only the version
+// label differs: a pull request's number against the run's.
+const MAIN_WINDOWS = parse(readFileSync(path.join(repo, '.github/workflows/main-windows.yml'), 'utf8'));
 const MACOS_ONLY = /\n\s*if \[\[ "\$RUNNER_OS" == macOS \]\]; then\n[^\n]*\n\s*fi/;
-const asWindows = (text) => text.replace(MACOS_ONLY, '').replaceAll('${{ matrix.build-tags }}', 'production').replaceAll('${{ matrix.extra-ldflags }}', '-H windowsgui');
+const asWindows = (text) => text.replace(MACOS_ONLY, '').replaceAll('${{ matrix.build-tags }}', 'production').replaceAll('${{ matrix.extra-ldflags }}', '-H windowsgui').replaceAll('0.0.0-pr.${{ github.event.pull_request.number }}', '0.0.0-main.${{ github.run_number }}');
 
-test('the Windows build is the matrix job\'s steps for Windows, step by step: the same actions, versions and commands, the Windows flags, no step of its own', () => {
+test('the Windows build (main and nightly) is the Linux build job\'s steps for Windows, step by step: the same actions, versions and commands, the Windows flags, no step of its own but one, and it is not in a pull request', () => {
+  assert.equal(workflow['pr.yml'].jobs['build-artifacts-windows'], undefined, 'no Windows build on a pull request');
+  assert.deepEqual(Object.keys(MAIN_WINDOWS.on).sort(), ['push', 'schedule', 'workflow_dispatch']);
+  assert.deepEqual(MAIN_WINDOWS.on.push.branches, ['main']);
+  assert.equal(MAIN_WINDOWS.concurrency['cancel-in-progress'], false);
   const matrix = stepsOf('pr.yml', 'build-artifacts').filter((step) => step.name !== 'Match checkout directory ownership to container user' && step.name !== 'Create macOS .app bundle');
-  const all = stepsOf('pr.yml', 'build-artifacts-windows');
+  const all = MAIN_WINDOWS.jobs['build-windows'].steps;
   const reactCompiler = all.findIndex((step) => step.name === 'Check native Windows React compiler admission');
   assert.equal(all[reactCompiler - 1]?.name, 'Build workspace packages');
   assert.equal(all[reactCompiler].run, 'node --test scripts/react-compiler.test.mjs');
   assert.equal(all[reactCompiler].if, undefined, 'the job is Windows only: the step has no condition');
-  assert.ok(!matrix.some((step) => step.name === 'Check native Windows React compiler admission'), 'and the matrix job, which has no Windows entry, has no such step');
+  assert.ok(!matrix.some((step) => step.name === 'Check native Windows React compiler admission'));
   const windows = all.filter((step, index) => index !== reactCompiler);
   assert.deepEqual(windows.map((step) => step.name), matrix.map((step) => step.name), 'the same steps, in the same order, with the macOS and container ones left out');
   for (const [index, step] of windows.entries()) {
@@ -178,12 +176,13 @@ test('the Windows build is the matrix job\'s steps for Windows, step by step: th
     assert.equal(step.shell, twin.shell, step.name);
     if (step.run !== undefined) assert.equal(step.run.trim(), asWindows(twin.run).trim(), step.name);
   }
-  const job = jobOf('pr.yml', 'build-artifacts-windows');
+  const job = MAIN_WINDOWS.jobs['build-windows'];
+  assert.equal(job.name, 'build-artifacts (windows/amd64)');
   assert.equal(job['runs-on'], 'windows-latest');
   assert.equal(job['timeout-minutes'], 30);
   assert.equal(job.container, undefined);
   assert.deepEqual(job.env, { GOWORK: 'off' });
-  assert.match(stepsOf('pr.yml', 'build-artifacts-windows').find((step) => step.name === 'Build Omniview').run, /-ldflags "-w -s -H windowsgui /);
+  assert.match(all.find((step) => step.name === 'Build Omniview').run, /-ldflags "-w -s -H windowsgui /);
 });
 
 test('the checks that start for the new UI\'s own tooling are the ones that read it: the kit probes for the probe table and its test, the Pods check for its scripts', () => {
@@ -299,14 +298,14 @@ test('UI checks passes, saying why, when the classifier skipped the UI jobs and 
 
 test('NEGATIVE: a skip by path hides nothing else: a part that ran and failed, or was cancelled, fails the gate even when the classifier said skip', () => {
   for (const result of ['failure', 'cancelled']) {
-    const outcome = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-lint': result } });
+    const outcome = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-build': result } });
     assert.equal(outcome.status, 1, outcome.output);
-    assert.match(outcome.output, new RegExp(`^::error::ui-lint finished as ${result}$`, 'm'));
-    assert.doesNotMatch(outcome.output, /::error::ui-build/);
+    assert.match(outcome.output, new RegExp(`^::error::ui-build finished as ${result}$`, 'm'));
+    assert.doesNotMatch(outcome.output, /::error::c02-corpus/);
   }
-  const ran = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-lint': 'success' } });
+  const ran = uiGate({ skip: 'true', klass: 'docs', parts: { ...allSkipped, 'ui-build': 'success' } });
   assert.equal(ran.status, 0, 'a part that ran and succeeded is a success whatever the classifier said');
-  assert.match(ran.summary, /\| ui-lint \| success \|/);
+  assert.match(ran.summary, /\| ui-build \| success \|/);
 });
 
 test('NEGATIVE: UI checks fails when the classifier did not succeed, whatever the parts say: nothing says whether they had to run', () => {
@@ -474,4 +473,58 @@ test('every scenario function of the seam check is named by the marker of its ow
   assert.ok(found.length >= 10, `the scenario functions with a marker: ${found.join(', ')}`);
   assert.ok(found.some((id) => id > 'n' && id.length === 1), `a scenario past n is in the check: ${found.join(', ')}`);
   assert.ok(found.some((id) => /\d/.test(id)), `a scenario with a digit is in the check: ${found.join(', ')}`);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The merged jobs (N31): seven jobs where there were thirteen, and every check of the six that were merged still runs
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+const commandsOf = (id) => stepsOf('pr-checks.yml', id).map((step) => `${step.run ?? ''}\n${step.uses ?? ''}`).join('\n');
+
+test('N31: PR Checks is seven jobs, and each of the six that were folded into another is still run by it: no check of the old jobs is gone', () => {
+  assert.deepEqual(Object.keys(workflow['pr-checks.yml'].jobs), ['changes', 'repo-guard', 'windows-connection-profiles', 'go-checks', 'c02-corpus', 'ui-build', 'ui-checks']);
+  const mustRun = {
+    // Go checks, Go lint, Bindings freshness, Release packaging contracts
+    'go-checks': ['scripts/go-test-failures.test.mjs', 'task check:fmt-check', 'task check:go-build', 'task check:go-vet', 'task check:go-test GO_BUILD', 'task check:go-test-devcontrol', 'build/homebrew/update-cask.test.mjs', 'bash -n build/darwin/build-universal.sh', 'bash -n build/darwin/verify-release-package.sh', 'scripts/install-wails-cli.sh', 'task check:bindings-check', 'scripts/wails-tool.test.mjs', 'git worktree add --detach', 'golangci/golangci-lint-action@v9'],
+    // the C02 corpus and the UI runtime contract
+    'c02-corpus': ['task check:c02-corpus', 'task check:c02-runtime', 'scripts/wails-call.test.mjs', 'scripts/vitest-failures.test.mjs', 'vitest/vitest.mjs run --configLoader runner', 'scripts/vitest-failures.mjs "Runtime contract='],
+    // UI build, UI lint and kit contracts, UI component tests
+    'ui-build': ['scripts/react-compiler.test.mjs', 'task check:ui-build', 'scripts/ui-flavour.test.mjs', 'scripts/ci/changes-workflows.test.mjs', 'task packages', 'task check:ui-typecheck', 'task check:ui-lint', '@omniviewdev/kit run generate:check', '@omniviewdev/kit run test', '@omniviewdev/kit run api:check', '@omniviewdev/runtime run api:check', 'ui/utils/ageClock.test.tsx', 'pnpm test --reporter', 'scripts/vitest-failures.mjs "Component tests='],
+  };
+  for (const [id, commands] of Object.entries(mustRun)) for (const command of commands) assert.ok(commandsOf(id).includes(command), `${id} lost: ${command}`);
+});
+
+test('N31: a group that comes after another in a merged job runs whatever happened before it (`!cancelled()`), so that one push shows every failing group as separate jobs did, and a cancelled job runs nothing more', () => {
+  for (const [id, first] of [['go-checks', 'Check Homebrew cask publication'], ['ui-build', 'Check the path gating of the workflows']]) {
+    const steps = stepsOf('pr-checks.yml', id);
+    const at = steps.findIndex((step) => step.name === first);
+    assert.ok(at > 0, `${id}: ${first}`);
+    for (const step of steps.slice(at)) {
+      if (step.if === undefined) assert.fail(`${id}: the step "${step.name}" after the first group has no condition: a failure before it would skip it`);
+      assert.match(step.if, /!cancelled\(\)|always\(\)|failure\(\)/, `${id}: ${step.name}`);
+    }
+  }
+
+  const lint = stepsOf('pr-checks.yml', 'go-checks').find((step) => step.name === 'Lint');
+  assert.match(lint.if, /steps\.lint-source\.outcome == 'success'/, 'the lint reads its source: it does not run on a checkout that was not made');
+  for (const id of ['go-checks', 'c02-corpus', 'ui-build']) assert.equal(jobOf('pr-checks.yml', id)['continue-on-error'], undefined, id);
+  assert.ok(jobOf('pr-checks.yml', 'go-checks')['timeout-minutes'] >= 20 && jobOf('pr-checks.yml', 'ui-build')['timeout-minutes'] >= 20, 'a merged job is the sum of the jobs it replaced');
+});
+
+test('N31: the job that reads the corpus sets up the pinned pnpm (the image of its tag has none), and the corpus is made and read in one job, not carried by an artifact: no upload, no download, and the consumer reads the producer\'s step output', () => {
+  const uses = stepsOf('pr-checks.yml', 'c02-corpus').map((step) => step.uses ?? '');
+  assert.ok(uses.some((use) => use.startsWith('pnpm/setup@')), 'pnpm is set up before the dependencies are installed');
+  const names = stepsOf('pr-checks.yml', 'c02-corpus').map((step) => step.name ?? '');
+  assert.ok(names.indexOf('Setup pnpm') >= 0 && names.indexOf('Setup pnpm') < names.indexOf('Install dependencies'));
+  assert.equal(uses.some((use) => /upload-artifact|download-artifact/.test(use)), false);
+  const check = stepsOf('pr-checks.yml', 'c02-corpus').find((step) => step.name === 'Check actual C02 runtime error transport');
+  assert.match(check.env.C02_ERROR_CORPUS, /steps\.c02-corpus\.outputs\.corpus_name/);
+  assert.equal(jobOf('pr-checks.yml', 'c02-corpus').outputs, undefined);
+});
+
+test('N31: there is no Windows build, no macOS build and no Go lint job of its own on a pull request, and every workflow of a pull request that was kept still has its aggregate', () => {
+  assert.equal(Object.hasOwn(workflow['pr.yml'].jobs, 'build-artifacts-windows'), false);
+  assert.deepEqual(Object.keys(workflow['pr.yml'].jobs), ['changes', 'e2e-application', 'e2e-tests', 'build-artifacts']);
+  const total = Object.keys(workflow['pr-checks.yml'].jobs).length + Object.keys(workflow['pr.yml'].jobs).length;
+  assert.equal(total, 11, 'PR Checks and PR Validation: 7 and 4 jobs (13 and 6 before N30, N31)');
 });

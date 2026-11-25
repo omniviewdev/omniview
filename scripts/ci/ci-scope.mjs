@@ -17,6 +17,8 @@ import { pathToFileURL } from 'node:url';
 export const INFRASTRUCTURE = [
   [/^scripts\/ci\//, 'the CI scripts (the probe and seam tables, plans and tests)'],
   [/^\.github\//, 'a workflow, the CI image or an action'],
+  // The dependencies and the toolchains the checks run on: a browser (Playwright), Node, pnpm and Go change what every probe and the seam are measured by (N31).
+  [/^(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|go\.mod|go\.sum|go\.work|go\.work\.sum|\.tool-versions)$/, 'the lockfile, the module files or the toolchain versions'],
   [/^ui-next\/plugins\/e2e\//, 'the seam check'],
   [/^ui-next\/plugins\/fixture\//, 'the seam\'s fixture plugins'],
   [/^ui-next\/(?:.*\/)?e2e\//, 'an end-to-end check of the new UI'],
