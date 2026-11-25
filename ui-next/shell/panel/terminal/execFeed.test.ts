@@ -1447,6 +1447,39 @@ describe('a terminal another page took (`taken-over`)', () => {
     expect(held.channels.streams()).toHaveLength(1);
   });
 
+  it('asks again, on the schedule of a reconnect, while the host cannot be reached for the question, and stops when it answers', async () => {
+    let reachable = false;
+    const r = await running({}, { channels: { listed: () => (reachable ? { id: 'term-1', attached: false } : Promise.reject(new Error('offline'))) } });
+    r.stream().takenOver();
+    r.stream().drop();
+    await turns();
+    expect(r.channels.of('listed')).toHaveLength(1);
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    reachable = true;
+    await vi.advanceTimersByTimeAsync(250);
+    expect(r.channels.of('listed')).toHaveLength(2);
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', free: true });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(r.channels.of('listed')).toHaveLength(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('gives up asking after the last delay of the schedule when the host is never reached, and a feed that is closed asks no more', async () => {
+    const r = await running({}, { channels: { listed: () => Promise.reject(new Error('offline')) } });
+    r.stream().takenOver();
+    r.stream().drop();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(r.channels.of('listed')).toHaveLength(1 + RECONNECT_DELAYS_MS.length);
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over' });
+    const closed = await running({}, { channels: { listed: () => Promise.reject(new Error('offline')) } });
+    closed.stream().takenOver();
+    closed.stream().drop();
+    await turns();
+    await closed.feed.close();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(closed.channels.of('listed')).toHaveLength(1);
+  });
+
   describe('`refresh`: who holds it now', () => {
     const lost = async (listed: FakeChannelsOptions['listed']): Promise<Rig> => {
       const r = await running({}, { channels: { listed } });
