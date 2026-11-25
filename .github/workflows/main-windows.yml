@@ -1,10 +1,8 @@
 name: Main Windows build
 
-# The Windows compile gate, on main and at night (N30/N31): it was a job of every pull request (322 s on a Windows runner and a slot), and a break that only Windows sees (a path or shell difference, a native
-# Windows build of the frontend) is found here, in the run that opens the `ci-main-red` issue (`.github/workflows/ci-main-red.yml`), with the commit range since the last green run. The Windows TESTS of a pull
-# request stay (`Windows connection profiles` in pr-checks.yml). The steps are the Linux build job's of pr.yml for Windows, step by step (scripts/ci/changes-workflows.test.mjs holds the two together).
-
-# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run it locally before a push when their change touches it (docs/ui-next/AGENTS.md, rule 25).
+# The Windows compile gate, at night and on request (N30/N31/N34): it was a job of every pull request (322 s on a Windows runner); a break that only shows on Windows is found here, in the run that opens the
+# `ci-main-red` issue. The Windows tests of the connection profiles are in pr.yml (Nightly validation). The steps are the Linux build job's of pr.yml for Windows. NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN
+# (N34, the owner's order of 2026-11-25).
 on:
   schedule:
     - cron: "57 3 * * *"
@@ -92,21 +90,3 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr"
-
-  # The verdict (N32): a job that reaches its timeout ends `cancelled`, like the run, and `ci-main-red` reads a cancelled run from its jobs. This job fails when build-windows did not succeed (it runs whatever
-  # happened: `always()`), so that a hang is a failed job and not only a cancelled one. It is on the smallest runner and checks out nothing.
-  verdict:
-    name: Windows build verdict
-    needs: build-windows
-    if: ${{ always() }}
-    runs-on: ubuntu-slim
-    timeout-minutes: 5
-    steps:
-      - name: Require the build to have succeeded
-        env:
-          RESULT: ${{ needs.build-windows.result }}
-        run: |
-          if [ "$RESULT" != success ]; then
-            echo "::error title=Windows build verdict::the build finished as '${RESULT:-unknown}', not as success (a timeout is 'cancelled')"
-            exit 1
-          fi

@@ -1,49 +1,20 @@
 name: UI next kit probes
 
-# Slice 1a, PRs 1a.4d and 1a.3c (docs/ui-next/slices/1a-pods-list.md, 3.2 and 4.1): the kit's parts on the real `ui-next` page, in WebKit and Chromium at 1440 x 900 and 1030 x 720 (the shell's probes at 1440 x 900 and
-# 1280 x 800; tracker row N23 moves the first to the second), against a PINNED copy of the design mock's own values (packages/kit/probes/mock-reference.json for the parts and mock-table.json for the table, measured
-# from the mock at tag spec-baseline-2026-11-16 by packages/kit/probes/generate-reference.mjs, which writes where each came from into the file; the design lab is private and is never needed here).
-# Each probe fails its job on a difference. They are listed in scripts/ci/probe-units (one file for each probe), each with what it checks, its negative controls and the seconds they take.
+# The kit's parts and the shell's pages on the real `ui-next` page, in WebKit and Chromium, against a PINNED copy of the design mock's values (packages/kit/probes/mock-*.json). Each probe fails its job on a
+# difference. They are listed in scripts/ci/probe-units (one file for each probe: its units, each with the seconds it takes on the runner and its negative controls) and in scripts/ci/probe-units.manifest.json.
 #
-# THE SHARDS (N24 K1 to K3, N25). The probes took 26 to 33 minutes one after the other in one job. They run in as many jobs at the same time as the plan below says (`Kit probes shard 1` to the last), each one the units the plan gives
-# it, and the job named `Kit probes` waits for them and is green only when the plan and every shard are, and when what the shards say they ran is every unit of the table. A probe is a Node process on its own VM, as it was on the one VM:
-# nothing is shared between probes but the builds of their pages, which the processes of one shard share (N27): the ui-next build in $PROBE_DIST, which each shard makes for itself when one of its units reads it, and the fixtures the
-# shell, Settings, Plugins page, list page and Logs probes build, which the first process that needs them builds into one BUILD_CACHE per shard (the runner sets it, named by the hash of what a build reads: scripts/ci/probe-builds.mjs)
-# and every later process, a negative control included, reads. A control that plants its fault in the SOURCE or at build time (`plants: 'build'` in its unit; none does) is given no shared build. The units are the files of
-# scripts/ci/probe-units (one for each probe: the probe, and its negative controls in units of their own); no unit names a shard. To add a probe, add its file (the check below fails, naming the file, when a probe script is in no
-# unit); to slow a probe down, change its `seconds` (the shard that ran it fails, with the number, when they differ).
+# THE PLAN packs every unit into the fewest shards of at most 432 s (scripts/ci/probe-pack.mjs) and fails when it would plan no shard; each `Kit probes shard <n>` runs its units in the CI image (pinned by digest,
+# .github/ci/image.lock) one after the other, sharing the builds of the fixtures (scripts/ci/probe-builds.mjs), and fails a unit that took more than its seconds plus a quarter and 60 s. THE VERDICT, the job named
+# `Kit probes`, runs whatever happened: it requires the plan and every shard to have succeeded and every unit and every control of the table to have run once and passed, in as many shards as the plan made.
 #
-# EVERY PROBE AND EVERY CONTROL RUNS ON EVERY RUN: every pull request, every push to main and every dispatch. N25 tried to run the controls by the paths a pull request changed and dropped it after an independent review
-# (docs/ui-next/status/N25.md): a control can go inert through a path no unit lists while the probe stays green, and the one run that would notice had no reader.
-#
-# THE PLAN (N25). `Kit probes plan` runs first, on a plain runner, checks the table (every probe script is in a unit, the manifest's probes and controls are still there, every unit has whole seconds under the limit) and packs every unit
-# into the fewest shards under the limit (scripts/ci/probe-pack.mjs). It writes the matrix the shard jobs read and the number of shards; a plan of no shard is an error, so an empty matrix is never emitted.
-#
-# THE VERDICT. `Kit probes` runs whatever happened (`always()`), with the repository checked out: it requires the plan and every shard to have succeeded, then downloads what each shard wrote about itself and compares it with the units
-# of its own checkout: every unit and every control of it ran once and passed, in as many shards as the plan made.
-#
-# THE IMAGE (N24, step B1). Each shard runs in the CI image, pinned by digest (.github/ci/image.lock), and installs neither Node, pnpm, Task, the Playwright browsers nor the system libraries of WebKit: the install step
-# (and its bounded retry, #557) is gone because there is nothing left to hang. The browsers of the probes are the image's, in /ms-playwright, of the Playwright version pnpm-lock.yaml resolves. Moving to a newer image
-# is a change of the digest here and in .github/ci/image.lock (ci-image.yml writes both: `image-lock.patch`); `scripts/ci/check-image.mjs` fails on two digests and on a lock behind the repository. Numbers:
-# docs/ui-next/status/N24-B1.md. The plan job does not pull the image (it is on the critical path of every shard): it needs Node, and takes it from .tool-versions, the one home of the pin.
-#
-# NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull
-# request blocks the merge. The lead makes `Kit probes` (the aggregating job, whose name does not change) required in the branch protection settings once it has been green for a while.
-
-# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25: "remove the probes from running in CI. 42 minutes is insane."). The probes run LOCALLY, by the author before the push
-# (docs/ui-next/AGENTS.md, rule 25) and by the merger on the merged tree (`pnpm probes`); CI runs them only here: every night and on request, everything (both engines, every negative control), and `ci-main-red` opens
-# its issue when the nightly run is red. No other workflow needs a probe result.
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25: "remove the probes from running in CI. 42 minutes is insane."). Authors run the probes they touch locally before a push
+# (`task local:probes`, docs/ui-next/AGENTS.md rule 39) and the merger reruns them on the merged tree; CI runs everything (both engines, every negative control) every night and on request, and `ci-main-red`
+# opens its issue when the night is red. No other workflow needs a probe result.
 on:
   # The nightly run: everything (N30).
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
-    inputs:
-      scope:
-        description: "full (everything: the default) or pr (WebKit, no negative controls: what a pull request used to run)"
-        type: choice
-        options: [full, pr]
-        default: full
 
 # A run is never cancelled by a newer one (a group keeps one running and one pending run).
 concurrency:
@@ -66,34 +37,20 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
-      scope: ${{ steps.plan.outputs.scope }}
-      reason: ${{ steps.scope.outputs.reason }}
     steps:
-      # Two commits: the base of the merge commit a pull request is checked out as, and the pull request (scripts/ci/ci-scope.mjs reads the diff between them).
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
           persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: .tool-versions
 
-      # The ONE place that says what this run does (scripts/ci/ci-scope.mjs): everything on main, every night, on request and for a change to the test infrastructure; a pull request's scope (WebKit, no negative control) otherwise.
-      - name: Decide the scope of this run
-        id: scope
-        env:
-          SCOPE_INPUT: ${{ inputs.scope }}
-        run: node scripts/ci/ci-scope.mjs
-
       - name: Check the table and pack the shards
         id: plan
-        env:
-          SCOPE: ${{ steps.scope.outputs.scope }}
-          REASON: ${{ steps.scope.outputs.reason }}
         run: |
           node scripts/ci/probe-shards.mjs check
-          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" plan
+          node scripts/ci/probe-shards.mjs plan
 
   shard:
     name: Kit probes shard ${{ matrix.shard }}
@@ -104,7 +61,7 @@ jobs:
     # A shard is planned at 432 s of units (scripts/ci/probe-shards.mjs, LIMIT_SECONDS) plus a setup of 88 s (median), and fails past 614 s of units (SHARD_CEILING_SECONDS, derived from the runner's own 70 shard jobs). The job must be
     # able to take that ceiling and the slowest setup seen (137 s) to the end, so that a slow shard says what it is: 751 s, 13 minutes. 15 is the wall for a shard that hangs, and a test pins both. The 30 it had was for the bounded
     # browser install of #557 (a first attempt killed after 15 minutes, then a second), which the image made unnecessary.
-    timeout-minutes: ${{ needs.plan.outputs.scope == 'pr' && 38 || 15 }}
+    timeout-minutes: 15
     # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
     # them. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private: the job token
     # reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do. `--init` is theirs too.
@@ -181,8 +138,7 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           UNITS: ${{ matrix.units }}
-          SCOPE: ${{ needs.plan.outputs.scope }}
-        run: node scripts/ci/probe-shards.mjs --scope "$SCOPE" run "$SHARD" "$UNITS"
+        run: node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"
 
       # The probes' reports and what the shard says it ran (`ran-<shard>-probe.json`): `Kit probes` downloads them all.
       - name: Keep the reports
@@ -247,9 +203,7 @@ jobs:
       - name: Require every unit of the table to have run and passed
         env:
           PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
-          SCOPE: ${{ needs.plan.outputs.scope }}
-          REASON: ${{ needs.plan.outputs.reason }}
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download "$GITHUB_RUN_ID" --pattern 'kit-probe-reports-*' --dir "$RUNNER_TEMP/reports"
-          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"
+          node scripts/ci/probe-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"

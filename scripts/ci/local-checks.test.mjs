@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { main, probeUnitsOf, seamPlanOf, withSiblings } from './local-checks.mjs';
+import { INHERITED, cleanEnv, main, probeUnitsOf, seamPlanOf, withSiblings } from './local-checks.mjs';
 
 const UNITS = [
   { id: 'a', file: 'scripts/ci/probe-units/a.mjs', script: 'ui-next/shell/probes/a-probe.mjs' },
@@ -57,5 +57,21 @@ test('a dry run prints the commands and starts nothing; a missing or unknown uni
     assert.equal(await main([]), 2);
   } finally {
     process.stderr.write = writeError;
+  }
+});
+
+test('the selectors a shell left behind (SEAM_PHASES, SEAM_CONTROL, SEAM_ONLY, SEAM_REMOVE, ENGINES) never reach a child: only the invocation sets them', () => {
+  const base = { PATH: '/bin', HOME: '/h', SEAM_PHASES: 'x', SEAM_CONTROL: 'y', SEAM_ONLY: 'z', SEAM_REMOVE: 'w', ENGINES: 'webkit' };
+  assert.deepEqual(cleanEnv(base), { PATH: '/bin', HOME: '/h' });
+  assert.deepEqual(INHERITED.sort(), ['ENGINES', 'SEAM_CONTROL', 'SEAM_ONLY', 'SEAM_PHASES', 'SEAM_REMOVE']);
+  const saved = Object.fromEntries(INHERITED.map((name) => [name, process.env[name]]));
+  for (const name of INHERITED) process.env[name] = 'left-over';
+  try {
+    assert.deepEqual(INHERITED.filter((name) => name in cleanEnv()), []);
+  } finally {
+    for (const name of INHERITED) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
   }
 });

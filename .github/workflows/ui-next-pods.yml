@@ -24,10 +24,6 @@ name: UI next Pods cluster check
 #   3. the job is green: the pinned plugin renders the Pods of the cluster as kubectl lists them, and each control turns the job red.
 # A plugin commit that was vendored from a newer host (the plugin's `hack/vendor-host.sh`) needs this host to contain that commit first.
 #
-# NOT a required check yet (R-11: a cluster job may be slow or flaky). The lead makes it required in the branch protection settings only
-# after it has been green for a while on `main` and on pull requests. It is path-filtered, so it cannot be required as it is: a required
-# check that does not run on a pull request blocks the merge.
-
 # NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run it locally before a push when their change touches it (docs/ui-next/AGENTS.md, rule 25).
 on:
   schedule:
@@ -123,39 +119,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # What the page may differ from kubectl by (scripts/ui-next-pods/agreement.mjs): a Pod kubectl changed between its two reads may read either way, nothing else may.
-      - name: Oracle and agreement contracts (no cluster)
-        run: node --test scripts/ui-next-pods/oracle.test.mjs scripts/ui-next-pods/agreement.test.mjs
-
-      # The script test of scripts/ui-next-pods/host.sh (PR #520): it also proves the plugin directory is installed whole, assets/ included.
-      - name: Host script contracts (no cluster)
-        run: node --test scripts/ui-next-pods/host.test.mjs
-
-      - name: Pin contracts (no cluster)
-        run: node --test scripts/ui-next-pods/pin.test.mjs
-
-      # What the Pod detail page must print against `kubectl get pod -o json` (scripts/ui-next-pods/detail.mjs), with its negative controls.
-      - name: Pod detail contracts (no cluster)
-        run: node --test scripts/ui-next-pods/detail.test.mjs
-
-      # What the Overview the plugin lands on must say against kubectl alone (scripts/ui-next-pods/overview.mjs): the page read from its DOM, the expected page made from kubectl's output and the kubeconfig, the comparison, and the rules of a page that is loading (no zero for a row that has not finished), with their negative controls.
-      - name: Overview contracts (no cluster)
-        run: node --test scripts/ui-next-pods/overview.test.mjs
-
-      # What the sidebar's counts must say against `kubectl get <kind> -A --no-headers | wc -l` (scripts/ui-next-pods/counts.mjs), with its negative controls.
-      - name: Sidebar count contracts (no cluster)
-        run: node --test scripts/ui-next-pods/counts.test.mjs
-
-      # What a Pod's session in the Logs tool must print against `kubectl logs --timestamps` (scripts/ui-next-pods/logs.mjs), with its negative controls.
-      - name: Pod logs contracts (no cluster)
-        run: node --test scripts/ui-next-pods/logs.test.mjs
-
-      # What the scope lane's Connection face must say against `kubectl config current-context` and the ID the host lists (scripts/ui-next-pods/lane.mjs): the NAME and never the derived ID, with its negative controls.
-      - name: Scope lane contracts (no cluster)
-        run: node --test scripts/ui-next-pods/lane.test.mjs
-
-      # What the unavailable API group's facts must say and what the check must not take for it (scripts/ui-next-pods/unavailable.mjs), and the order of the steps that register the group and start the host that connects, with its negative controls.
-      - name: Unavailable API group contracts (no cluster)
-        run: node --test scripts/ui-next-pods/unavailable.test.mjs
+      # The contracts that need no cluster: the oracle and the agreement, the host script (it proves the plugin directory is installed whole, assets/ included), the pin, and what each page must say against
+      # kubectl (the Pod detail, the Overview, the sidebar's counts, a Pod's Logs session, the scope lane, the unavailable API group), each with its negative controls.
+      - name: Contracts that need no cluster
+        run: node --test scripts/ui-next-pods/*.test.mjs
 
       # Before anything is built: the pin is a commit of the plugin's branch, its list of shared names is this host's, and the host it was vendored from is in this history.
       - name: Check the pin

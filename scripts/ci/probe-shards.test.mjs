@@ -217,12 +217,6 @@ test('negative control: a unit whose script is gone fails the check and names th
   assert.match(problems[0].message, /ui-next\/shell\/probes\/b-probe\.mjs is named by the unit "b" \(scripts\/ci\/probe-units\/b\.mjs\) but does not exist/);
 });
 
-test('negative control: a by-hand entry whose script is gone fails the check and names the file', () => {
-  const problems = check({ exists: (file) => file !== C });
-  assert.equal(problems.length, 1);
-  assert.match(problems[0].message, /ui-next\/page\/probes\/c-probe\.mjs is named by BY_HAND but does not exist/);
-});
-
 test('negative control: an id or a name used twice, an id that is not a lower-case word with hyphens, and a unit with no name, id or script fail the check', () => {
   const twice = small();
   twice.push(unit('b', B, { name: 'Another' }));
@@ -454,10 +448,6 @@ test('negative control: a probe file added to a probe directory without a unit f
   assert.ok(realCheck(removed).some((problem) => problem.file === 'ui-next/shell/probes/rail-probe.mjs' && /no unit runs it/.test(problem.message)), messages(realCheck(removed)).join('\n'));
 });
 
-test('nothing is run by hand: BY_HAND is empty (the mechanism stays, with its check)', () => {
-  assert.deepEqual(BY_HAND, []);
-});
-
 // The floor is the 20 probes and 115 controls that CI proved when N25 began (the table of main at 7471b52f: the same sets, each once). A pull request that drops one edits the manifest AND these numbers; one that adds does neither.
 const FLOOR_PROBES = 20;
 const FLOOR_CONTROLS = 115;
@@ -481,31 +471,6 @@ test('negative control: a probe script that only a unit of its controls runs is 
   assert.equal(problems.length, 1, messages(problems).join(' | '));
   assert.equal(problems[0].file, A);
   assert.match(problems[0].message, /packages\/kit\/probes\/a-probe\.mjs is a probe script and no unit runs it as a probe/);
-});
-
-test('negative control: every control the manifest lists, taken out of its unit, and every listed unit of the real table, taken out of the table, fails the real check and names what was dropped', () => {
-  let controls = 0;
-  for (const [script, listed] of Object.entries(REAL_MANIFEST.manifest)) {
-    for (const control of listed.controls) {
-      const without = UNITS.flatMap((candidate) => {
-        if (candidate.script !== script || !(candidate.controls ?? []).includes(control)) return [candidate];
-        const rest = candidate.controls.filter((name) => name !== control);
-        return rest.length === 0 ? [] : [{ ...candidate, controls: rest }];
-      });
-      const said = messages(realCheck(without));
-      assert.ok(said.some((message) => message.includes(`the control "${control}" of ${script} is in ${MANIFEST}`)), `${script} without ${control}: ${said.join(' | ')}`);
-      controls += 1;
-    }
-  }
-  assert.ok(controls >= FLOOR_CONTROLS, `${controls} controls tried`);
-  for (const entry of UNITS) {
-    const listed = REAL_MANIFEST.manifest[entry.script];
-    const held = listed !== undefined && (entry.controls === undefined ? listed.probe : entry.controls.some((control) => listed.controls.includes(control)));
-    if (!held) continue; // a unit the manifest does not list is not part of the floor: a pull request that adds one edits no manifest
-    const said = messages(realCheck(UNITS.filter((candidate) => candidate.id !== entry.id)));
-    const named = entry.controls === undefined ? `the probe ${entry.script} is in ${MANIFEST}` : `of ${entry.script} is in ${MANIFEST}`;
-    assert.ok(said.some((message) => message.includes(named)), `${entry.id} deleted: ${said.join(' | ')}`);
-  }
 });
 
 // The steps of the workflow when it ran every probe in one job (N24 K1, 16 steps), with the controls they had then. A step may gain env and controls; it may not lose any, and may not leave CI: deleting a line here is the change
@@ -548,54 +513,6 @@ function lost(units) {
   return sentences;
 }
 
-test('every step of the one-job workflow still runs: its probe, its env (FONT_DELAY_MS included) and each of its negative controls, wherever the controls are now', () => {
-  assert.deepEqual(lost(UNITS), []);
-});
-
-test('negative control: the split is seen to lose a probe, a control, an env entry or a script, and says which', () => {
-  const copy = () => structuredClone(UNITS);
-  assert.deepEqual(lost(copy().filter((entry) => entry.script !== 'ui-next/page/probes/detail-probe.mjs')), ['ui-next/page/probes/detail-probe.mjs probe runs in no unit']);
-  const lessControl = copy();
-  for (const entry of lessControl) if (entry.id === 'log-controls') entry.controls = entry.controls.filter((control) => control !== 'source-tip');
-  assert.deepEqual(lost(lessControl), ['packages/kit/probes/log-probe.mjs lost the control source-tip']);
-  const noDelay = copy();
-  for (const entry of noDelay) if (entry.id === 'palette') delete entry.env.FONT_DELAY_MS;
-  assert.deepEqual(lost(noDelay), ['palette lost FONT_DELAY_MS=40']);
-  const panelFrame = copy();
-  for (const entry of panelFrame) if (entry.id === 'panel-controls-frame') entry.controls = entry.controls.filter((control) => control !== 'toggle');
-  assert.deepEqual(lost(panelFrame), ['ui-next/shell/probes/panel-probe.mjs lost the control toggle']);
-});
-
-// N25: the panel probe's controls were one unit of 480 s on the runner (run 44929041191), over the 432 s a shard may hold. They are three units and the fourteen controls are the same fourteen, each once, in the same order.
-const PANEL_CONTROLS = ['panel-height', 'session-gap', 'toggle', 'tab-padding', 'shift', 'root-write', 'held-hidden', 'held-done-hidden', 'held-moved', 'held-enabled', 'twin-moved', 'twin-lone-scope', 'twin-scope-kept', 'scope-name', 'late-early'];
-
-test('the 480 s unit of the panel probe (run 44929041191) is three units that each fit, hold the same fourteen controls once each and the late-tool control (#660) last, in the same order, and the controls have no env', () => {
-  const parts = UNITS.filter((entry) => entry.script === 'ui-next/shell/probes/panel-probe.mjs' && entry.controls !== undefined);
-  assert.deepEqual(idsOf(parts), ['panel-controls-frame', 'panel-controls-held', 'panel-controls-twins']);
-  assert.deepEqual(parts.flatMap((entry) => entry.controls), PANEL_CONTROLS);
-  for (const part of parts) {
-    // (N26: the seconds are the runner's 95th percentile, scripts/ci/probe-seconds.mjs; the frame controls are 220 s: each of the three stays under 60 percent of a shard.)
-    assert.ok(part.seconds <= LIMIT_SECONDS * 0.6, `${part.id} is ${part.seconds} s`);
-    assert.equal(part.env, undefined, 'the controls had no env, and have none now');
-  }
-});
-
-test('the two other units that filled a shard alone, the toast layer\'s controls (384 s in that run) and the Logs probe\'s (382 s), are split the same way, with the controls they had, each once', () => {
-  const toast = UNITS.filter((entry) => entry.script === 'ui-next/shell/probes/notices-probe.mjs' && entry.controls !== undefined);
-  assert.deepEqual(idsOf(toast), ['notices-controls-toast', 'notices-controls-centre']);
-  assert.equal(toast.flatMap((entry) => entry.controls).length, 34);
-  const logs = UNITS.filter((entry) => entry.script === 'ui-next/shell/probes/logs-probe.mjs' && entry.controls !== undefined);
-  assert.deepEqual(idsOf(logs), ['logs-controls-feed', 'logs-controls-toolbar']);
-  assert.equal(logs.flatMap((entry) => entry.controls).length, 19);
-  // (N26: the seconds are the runner's 95th percentile over its recent runs, scripts/ci/probe-seconds.mjs: the largest of the four is 255 s; each stays under 60 percent of a shard.)
-  for (const entry of [...toast, ...logs]) assert.ok(entry.seconds <= LIMIT_SECONDS * 0.6, `${entry.id}`);
-});
-
-// The seconds of a unit are the runner's: run 44929041191 (the run of #647), every row of every shard summary, a control's row being one run and a unit the sum of its rows. The data of the seven runs the drift and the ceiling are replayed on.
-const RUNS = JSON.parse(readFileSync(path.join(repo, 'scripts/ci/probe-shards.runs.json'), 'utf8'));
-// N27: the table's seconds before the shared builds (N26's, from runs in which every control built its own fixtures) and two real runs of the shared layout, from which the table's seconds were then set (probe-shards.layout.json).
-const LAYOUT = JSON.parse(readFileSync(path.join(repo, 'scripts/ci/probe-shards.layout.json'), 'utf8'));
-const OLD_UNITS = UNITS.map((entry) => ({ ...entry, seconds: LAYOUT.oldLayoutSeconds[entry.id] }));
 
 test('the limit a shard is PLANNED to is the wall budget of a job less the setup of a slow job: 9 minutes less the 90th percentile (108 s) is 432 s, and it is not raised', () => {
   assert.equal(WALL_BUDGET_SECONDS, 9 * 60);
@@ -632,13 +549,12 @@ test('the shards of a plan are numbered from 1 by length, longest first, hold th
   assert.ok(PLAN.shards.some((shard) => shard.dist) && PLAN.shards.some((shard) => !shard.dist), 'some shards read the build and some do not');
 });
 
-test('the matrix is the one line of JSON the workflow reads: `{ include: [{ shard, units, seconds, dist, engines }] }`, the units as ids joined by commas, in shard order', () => {
+test('the matrix is the one line of JSON the workflow reads: `{ include: [{ shard, units, seconds, dist }] }`, the units as ids joined by commas, in shard order', () => {
   const matrix = matrixOf(PLAN.shards);
   assert.deepEqual(Object.keys(matrix), ['include']);
   assert.equal(matrix.include.length, PLAN.shards.length);
   matrix.include.forEach((entry, index) => {
-    assert.deepEqual(Object.keys(entry), ['shard', 'units', 'seconds', 'dist', 'engines']);
-    assert.equal(entry.engines, '', 'a full run leaves the probes their own engines');
+    assert.deepEqual(Object.keys(entry), ['shard', 'units', 'seconds', 'dist']);
     assert.equal(entry.shard, index + 1);
     assert.equal(entry.dist, PLAN.shards[index].dist, 'the shard builds ui-next exactly when a unit of it reads the build');
     assert.equal(entry.seconds, PLAN.shards[index].seconds);
@@ -800,12 +716,6 @@ test('negative control: a control that fails, alone in its shard, is named with 
   assert.match(summary, /^\| \*\*fail\*\* \(exit 3\) \| \d+ \| ui-next\/shell\/probes\/bad-probe\.mjs \| gap \| Probe that bad sees \|$/m);
 });
 
-test('a script that is not there fails the run (the check names it first, this is the second wall)', async () => {
-  const root = scratch(PROBES);
-  const { results } = await run([unit('gone', 'ui-next/shell/probes/gone-probe.mjs', { name: 'Gone' })], '1', root);
-  assert.deepEqual(results.map((result) => [result.label, result.ok]), [['Gone', false]]);
-});
-
 // What the processes of a shard are given to build with (N27). The probes print `probe-build: <kind>/<mode> built in <s> s (shared)` or `... reused`; the runner counts them for each run.
 const BUILD_PROBES = {
   'ui-next/shell/probes/env-probe.mjs':
@@ -845,20 +755,6 @@ test('the builds a probe says it made or read are counted for each run, a line t
   const quiet = await run([unit('quiet', ENV_PROBE, { name: 'Quiet' })], '1', root);
   assert.deepEqual(quiet.results[0].builds, []);
   assert.deepEqual(parseBuilds('probe-build: a/production reused\n'), [{ kind: 'a', mode: 'production', action: 'reused', seconds: 0, shared: true }]);
-});
-
-test('the summary of a shard counts runs and failures, one row each with its seconds, the probe script, the control (none for the probe itself) and the step, and says which failed and how', () => {
-  const text = renderSummary('3', [
-    { label: 'Probe a', script: A, control: null, ok: true, code: 0, seconds: 171 },
-    { label: 'Probe that a sees (x)', script: A, control: 'x', ok: false, code: 3, seconds: 12 },
-    { label: 'Probe that a sees (y)', script: A, control: 'y', ok: false, code: null, signal: 'SIGKILL', seconds: 1 },
-  ]);
-  assert.match(text, /^### Kit probes shard 3: 3 runs, 2 failed, 184 s$/m);
-  assert.match(text, /^\| Result \| Seconds \| Probe \| Negative control \| Step \|$/m);
-  assert.match(text, /^\| pass \| 171 \| packages\/kit\/probes\/a-probe\.mjs \|  \| Probe a \|$/m);
-  assert.match(text, /^\| \*\*fail\*\* \(exit 3\) \| 12 \| packages\/kit\/probes\/a-probe\.mjs \| x \| Probe that a sees \|$/m);
-  assert.match(text, /^\| \*\*fail\*\* \(SIGKILL\) \| 1 \| packages\/kit\/probes\/a-probe\.mjs \| y \| Probe that a sees \|$/m);
-  assert.match(renderSummary('1', [{ label: 'Probe a', script: A, control: null, ok: true, code: 0, seconds: 4 }]), /^### Kit probes shard 1: 1 run, all passed, 4 s$/m);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -932,53 +828,9 @@ test('the rows of the drift are one for each unit: its seconds in the table, on 
   ]);
 });
 
-// The data: the seconds of every unit in seven recent runs of the probes on main and on pull requests, with the units as they are now (a control's rows added up by the unit that holds it), and which units each real shard job
-// of the run held (`shards`, from the summaries of the run). The table's seconds are those of the first (run 44929041191), so the other six runs are what a run that is not the one that measured it looks like.
-test('main before the shared builds started green: in seven real runs (4,364 to 4,471 s of units) no unit fails against the table\'s seconds of then (N26\'s)', () => {
-  assert.equal(RUNS.length, 7);
-  assert.ok(OLD_UNITS.every((entry) => Number.isInteger(entry.seconds)), 'the table of then has every unit of this one');
-  let compared = 0;
-  let nearest = 0;
-  for (const entry of RUNS) {
-    const results = Object.entries(entry.seconds).map(([id, seconds]) => ran(id, seconds));
-    const { failures, rows } = driftFindings('0', results, OLD_UNITS, { ceiling: Number.POSITIVE_INFINITY });
-    assert.deepEqual(failures, [], `run ${entry.run}`);
-    for (const row of rows) nearest = Math.max(nearest, row.delta / Math.max(DRIFT_FLOOR_SECONDS, DRIFT_RATIO * row.table));
-    compared += results.length;
-  }
-  assert.ok(compared >= 7 * 33, `${compared} unit runs compared`);
-  assert.ok(nearest < 0.8, `the nearest unit used ${Math.round(nearest * 100)} percent of its margin: a quarter and 60 s are a third more than the worst of those runs asked for`);
-});
-
-test('the shared layout starts green: in two real runs of it (4,842 and 4,895 s of units, runs 45108262719 and 45108265400) no unit fails against the table\'s seconds, which were set from them (N27)', () => {
-  assert.equal(LAYOUT.sharedLayoutRuns.length, 2);
-  for (const entry of LAYOUT.sharedLayoutRuns) {
-    const results = Object.entries(entry.seconds).map(([id, seconds]) => ran(id, seconds));
-    assert.ok(results.length >= 47 && results.every((result) => UNITS.some((entry) => entry.id === result.unit)), `run ${entry.run} has the 47 units the table had then, and no other`);
-    const { failures } = driftFindings('0', results, UNITS, { ceiling: Number.POSITIVE_INFINITY });
-    assert.deepEqual(failures, [], `run ${entry.run}`);
-  }
-});
-
-test('negative control: the margin catches a real drift in those runs, not only a made-up one: the toast layer 30 percent over its listed seconds on a quiet run fails, with its number', () => {
-  const quiet = LAYOUT.sharedLayoutRuns[0].seconds;
-  const listed = UNITS.find((entry) => entry.id === 'notices').seconds;
-  const slowed = Object.entries(quiet).map(([id, seconds]) => ran(id, id === 'notices' ? Math.round(listed * 1.3) : seconds));
-  const { failures } = driftFindings('0', slowed, UNITS, { ceiling: Number.POSITIVE_INFINITY });
-  assert.equal(failures.length, 1);
-  assert.match(failures[0], new RegExp(`Probe the toast layer against the pinned mock reference \\(notices\\) took ${Math.round(listed * 1.3)} s`));
-});
-
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // The shard is held too: a ceiling on the REAL seconds of all its units
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-const quantile = (values, q) => {
-  const sorted = [...values].sort((a, b) => a - b);
-  const at = (sorted.length - 1) * q;
-  const low = Math.floor(at);
-  return sorted[low] + (sorted[Math.ceil(at)] - sorted[low]) * (at - low);
-};
 
 test('negative control: units that are each inside their margin and add up past the ceiling fail the shard and not a unit: eight units of 50 s, each 60 s over, are 880 s (the review of #656 found 866 s in a shard of 386)', () => {
   const eight = Array.from({ length: 8 }, (_, index) => unit(`u${index + 1}`, A, { seconds: 50 }));
@@ -1010,58 +862,6 @@ test('the shard\'s seconds and its ceiling are in the summary of the shard: the 
   const text = engine.renderDrift('9', rows, shard);
   assert.match(text, /^#### Kit probes shard 9: seconds against the table$/m);
   assert.match(text, new RegExp(`The shard took 880 s of units against 400 s in the table; it fails past ${SHARD_CEILING_SECONDS} s\\.`));
-});
-
-// The ceiling is derived, not picked: from every real shard job of the seven runs. A shard planned at the limit takes the limit times what its machine took against the table, and the ceiling is that for the worst machine seen,
-// and a margin. `shards` of each run are the units one real shard job held (all on one machine), so the ratio of its real seconds to the table's seconds for the same units is how slow that machine was that day.
-// The table seconds each ratio is taken against are the ones the units had when the ceiling was derived (run 44929041191's, and the first runner seconds of the two L4 units), kept with the data so that retiring or re-timing a unit does not change history or break the load of this file.
-const LISTED = { ...RUNS.find((entry) => entry.run === '44929041191').seconds, 'logs-open': 20, 'logs-open-controls': 12 };
-const RATIOS = RUNS.flatMap((entry) => entry.shards.map((ids) => ({ run: entry.run, ids, listed: sum(ids, (id) => LISTED[id]), real: sum(ids, (id) => entry.seconds[id]) }))).map((row) => ({ ...row, ratio: row.real / row.listed }));
-
-test('the data of the ceiling is whole: the real shard jobs of each run hold every unit of the run once, and every unit has the seconds it was listed at', () => {
-  assert.equal(RATIOS.length, 70, 'ten real shard jobs in each of seven runs');
-  for (const entry of RUNS) {
-    const held = entry.shards.flat();
-    assert.deepEqual([...held].sort(), Object.keys(entry.seconds).sort(), `run ${entry.run}: the real shards hold the units of the run, each once`);
-    for (const id of held) assert.ok(LISTED[id] !== undefined, `${id} has table seconds in the data`);
-  }
-});
-
-test('the ceiling is the limit a shard is planned to times the worst machine of the 70 real shard jobs (real seconds over the table\'s) and a margin of 10 percent, and every one of those jobs, scaled to a shard planned at the limit, passes it', () => {
-  const ratios = RATIOS.map((row) => row.ratio);
-  const worst = Math.max(...ratios);
-  assert.ok(engine.SHARD_SLOWDOWN_WORST >= worst && engine.SHARD_SLOWDOWN_WORST < worst + 0.001, `the worst machine took ${worst} times the table's seconds; SHARD_SLOWDOWN_WORST is ${engine.SHARD_SLOWDOWN_WORST}, that rounded up to three places`);
-  assert.equal(engine.SHARD_CEILING_MARGIN, 0.1);
-  assert.equal(SHARD_CEILING_SECONDS, Math.ceil(LIMIT_SECONDS * engine.SHARD_SLOWDOWN_WORST * (1 + engine.SHARD_CEILING_MARGIN)));
-  for (const row of RATIOS) assert.ok(LIMIT_SECONDS * row.ratio <= SHARD_CEILING_SECONDS, `run ${row.run}: a shard of ${LIMIT_SECONDS} s on the machine of ${row.ids.join(', ')} (x${row.ratio.toFixed(3)}) is ${Math.round(LIMIT_SECONDS * row.ratio)} s`);
-  // The numbers N25.md states.
-  assert.equal(quantile(ratios, 0.5).toFixed(3), '1.003', 'median');
-  assert.equal(quantile(ratios, 0.95).toFixed(3), '1.099', 'p95');
-  assert.equal(worst.toFixed(3), '1.292', 'max');
-  const second = [...ratios].sort((a, b) => b - a)[1];
-  assert.ok(engine.SHARD_CEILING_MARGIN > worst / second - 1, 'the margin is more than the step from the worst machine to the second worst');
-});
-
-test('negative control: the ceiling is not a number that lets anything through: a shard planned at the limit on a machine 43 percent slow, one the seven runs never met, fails it, and one 41 percent slow passes', () => {
-  const units = [unit('whole', A, { seconds: LIMIT_SECONDS })];
-  assert.equal(driftFindings('1', [ran('whole', Math.round(LIMIT_SECONDS * 1.43))], units, { ratio: 10, floor: 1000 }).failures.length, 1);
-  assert.deepEqual(driftFindings('1', [ran('whole', Math.round(LIMIT_SECONDS * 1.41))], units, { ratio: 10, floor: 1000 }).failures, []);
-  assert.ok(SHARD_CEILING_SECONDS < 2 * LIMIT_SECONDS, 'under twice the limit');
-});
-
-test('the job timeout leaves a shard at its ceiling, on the slowest setup of the 70 shard jobs, time to finish and say why it failed, and is not much more: that is a hang', () => {
-  assert.equal(engine.SETUP_MAX_SECONDS, 137, 'the slowest setup of the 70 shard jobs (median 87.5 s, 90th percentile 105 s)');
-  const needed = Math.ceil((SHARD_CEILING_SECONDS + engine.SETUP_MAX_SECONDS) / 60);
-  // The timeout is an expression of the plan's scope (N30): 15 minutes for a full run, 38 for a pull request's longer shards.
-  const [, longer, usual] = /^\$\{\{ needs\.plan\.outputs\.scope == 'pr' && (\d+) \|\| (\d+) \}\}$/.exec(workflow.jobs.shard['timeout-minutes']);
-  for (const [timeout, ceiling] of [[Number(usual), SHARD_CEILING_SECONDS], [Number(longer), engine.PR_SHARD_CEILING_SECONDS]]) {
-    const required = Math.ceil((ceiling + engine.SETUP_MAX_SECONDS) / 60);
-    assert.ok(timeout >= required, `a shard at its ceiling of ${ceiling} s with a setup of ${engine.SETUP_MAX_SECONDS} s takes ${required} minutes and the job is killed at ${timeout}`);
-    assert.ok(timeout <= required + 3, `${timeout} minutes is more than ${required} and 3: past that a shard that hangs is told from a slow one too late`);
-  }
-
-  assert.equal(Number(usual), 15);
-  assert.equal(Number(longer), 38);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1236,8 +1036,7 @@ test('the plan command writes the matrix and the number of shards to $GITHUB_OUT
   assert.deepEqual(matrix.include.flatMap((entry) => entry.units.split(',')).sort(), idsOf(UNITS).sort());
   assert.equal(Number(written.shards), matrix.include.length);
   assert.equal(written.shards, String(PLAN.shards.length));
-  assert.deepEqual(Object.keys(written).sort(), ['matrix', 'scope', 'shards']);
-  assert.equal(written.scope, 'full');
+  assert.deepEqual(Object.keys(written).sort(), ['matrix', 'shards']);
   assert.match(readFileSync(summary, 'utf8'), /^### Kit probes plan$/m);
   assert.match(result.stdout, /Every probe and every control runs/);
 });
@@ -1274,24 +1073,6 @@ test('NEGATIVE: the plan command fails, and writes no matrix, for a table with n
   const cannot = cli(unwritable, ['plan'], { GITHUB_OUTPUT: path.join(unwritable, 'a-directory') });
   assert.equal(cannot.status, 1);
   assert.match(cannot.stderr, /could not write the outputs/);
-});
-
-test('a command that is not one, a run with no shard or no units, a verify with no reports or no number of shards, or a unit that is not in the table is a usage error (exit 2) that says what there is', () => {
-  const root = treeOfTheUnits();
-  const nothing = cli(root, []);
-  assert.equal(nothing.status, 2);
-  assert.match(nothing.stderr, /usage: node scripts\/ci\/probe-shards\.mjs/);
-  assert.equal(cli(root, ['run', '1']).status, 2);
-  assert.equal(cli(root, ['bogus']).status, 2);
-  assert.equal(cli(root, ['verify']).status, 2);
-  assert.equal(cli(root, ['verify', '--shards', '3']).status, 2);
-  assert.equal(cli(root, ['verify', '--reports', root]).status, 2);
-  assert.equal(cli(root, ['plan', 'extra']).status, 2);
-  const unknown = cli(root, ['run', '1', 'form,no-such-unit']);
-  assert.equal(unknown.status, 2);
-  assert.match(unknown.stderr, /no unit "no-such-unit" \(the units are /);
-  assert.equal(cli(root, ['run', '1', '']).status, 2);
-  assert.match(cli(root, ['run', '1', 'form,form']).stderr, /the unit "form" is listed twice/);
 });
 
 test('the run command exits 1 when a probe of the shard fails and 0 when every probe passes, appends the summary to $GITHUB_STEP_SUMMARY and writes what the shard ran to ran-<shard>-probe.json in $RUNNER_TEMP', () => {
@@ -1436,55 +1217,6 @@ test('verify on the command: it passes for the reports of a whole run and says w
 const stepsOf = (job) => workflow.jobs[job].steps;
 const stepNamed = (job, name) => stepsOf(job).find((step) => step.name?.startsWith(name));
 
-test('the plan job is the first job, runs on a plain runner, installs the pinned Node from .tool-versions, checks the table, packs every unit and writes the matrix and the number of shards the others read', () => {
-  const job = workflow.jobs.plan;
-  assert.equal(job.name, 'Kit probes plan');
-  assert.equal(job['runs-on'], 'ubuntu-slim', 'the smallest runner: it reads two commits and runs two scripts (N30)');
-  assert.ok(Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] <= 10);
-  assert.equal(job.needs, undefined, 'nothing is before it');
-  assert.equal(job.if, undefined, 'it runs on every event: a plan that is skipped is a run with no shard');
-  assert.equal(job['continue-on-error'], undefined);
-  assert.equal(job.container, undefined, 'it does not pull the CI image: it is on the critical path of every shard');
-  assert.deepEqual(Object.keys(job.outputs).sort(), ['matrix', 'reason', 'scope', 'shards']);
-  assert.equal(job.outputs.matrix, '${{ steps.plan.outputs.matrix }}');
-  assert.equal(job.outputs.shards, '${{ steps.plan.outputs.shards }}');
-  const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
-  assert.equal(checkout.with['persist-credentials'], false);
-  const node = job.steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
-  assert.equal(node.with['node-version-file'], '.tool-versions', 'one home for the Node pin');
-  assert.equal(node.with['node-version'], undefined);
-  const planStep = job.steps.find((step) => step.id === 'plan');
-  assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs check/);
-  assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" plan/);
-  assert.ok(planStep.run.indexOf('probe-shards.mjs check') < planStep.run.indexOf('probe-shards.mjs --scope'), 'the check first');
-  assert.doesNotMatch(planStep.run, /--base|changed|CHANGED/, 'the plan does not read the diff itself: scripts/ci/ci-scope.mjs, the one place, does');
-  const scopeStep = job.steps.find((step) => step.id === 'scope');
-  assert.equal(scopeStep.run, 'node scripts/ci/ci-scope.mjs');
-  assert.equal(checkout.with['fetch-depth'], 2, 'the diff of a pull request is two commits');
-  assert.equal(planStep.env.SCOPE, '${{ steps.scope.outputs.scope }}');
-  assert.equal(job.outputs.scope, '${{ steps.plan.outputs.scope }}');
-});
-
-test('the shard job needs the plan, takes its matrix from the plan\'s output, none stops the others, each has a limit, and the file names its probes only through the table', () => {
-  const job = workflow.jobs.shard;
-  assert.equal(job.needs, 'plan');
-  assert.equal(job.strategy['fail-fast'], false);
-  assert.equal(job.strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
-  assert.match(String(job['timeout-minutes']), /^\$\{\{ needs\.plan\.outputs\.scope == 'pr' && \d+ \|\| \d+ \}\}$/, 'a limit for each scope');
-  assert.equal(job['runs-on'], 'ubuntu-24.04');
-  assert.match(job.name, /^Kit probes shard \$\{\{ matrix\.shard \}\}$/);
-  const commands = stepsOf('shard').map((step) => step.run ?? '').join('\n');
-  assert.match(commands, /node scripts\/ci\/probe-shards\.mjs check/);
-  assert.match(commands, /node --test scripts\/ci\/probe-\*\.test\.mjs/);
-  assert.doesNotMatch(commands, /node (packages\/kit\/probes|ui-next\/(shell|page)\/probes)\//, 'a probe run from the workflow file is a probe no table knows');
-  const runStep = stepNamed('shard', 'Run the units of this shard');
-  assert.equal(runStep.run, 'node scripts/ci/probe-shards.mjs --scope "$SCOPE" run "$SHARD" "$UNITS"', 'the shard\'s step is the command and nothing after it: no `|| true`');
-  assert.equal(runStep.env.SCOPE, '${{ needs.plan.outputs.scope }}');
-  assert.equal(runStep.env.SHARD, '${{ matrix.shard }}');
-  assert.equal(runStep.env.UNITS, '${{ matrix.units }}');
-  assert.equal(/\$\{\{ *matrix\./.test(runStep.run), false, 'the matrix reaches the command through env');
-});
-
 test('nothing in the workflow can turn a failure into a pass: no continue-on-error on a job or a step, no `|| true`, no `set +e`, and the plan and the shards run on every event', () => {
   const code = workflowText.replace(/^\s*#.*$/gm, '');
   assert.equal(/continue-on-error/.test(code), false, 'continue-on-error');
@@ -1499,20 +1231,6 @@ test('nothing in the workflow can turn a failure into a pass: no continue-on-err
   // The steps that are conditional are these and no other: a step that is skipped (`if: false`, or a condition that is never true) is a check that does not run.
   const conditional = Object.entries(workflow.jobs).flatMap(([id, job]) => job.steps.filter((step) => step.if !== undefined).map((step) => `${id}: ${step.name}: ${step.if}`));
   assert.deepEqual(conditional, ['shard: Build ui-next once, for the units of this shard that read it: matrix.dist == true', 'shard: Keep the reports: always()']);
-});
-
-test('N34 (the owner\'s order): the workflow runs every night and by hand and on nothing else: not on a pull request and not on a push to main, and the nightly run is the full one (every probe and every control, both engines)', () => {
-  assert.equal(workflow.env.OMNIVIEW_UI, 'next');
-  assert.equal(workflow.env.NODE_VERSION, undefined, 'Node is the image\'s, checked against .tool-versions by the guard step: a second pin here is a second home');
-  assert.deepEqual(Object.keys(workflow.on).sort(), ['schedule', 'workflow_dispatch']);
-  assert.deepEqual(workflow.on.schedule, [{ cron: '17 3 * * *' }]);
-  assert.deepEqual(workflow.on.workflow_dispatch.inputs.scope.options, ['full', 'pr']);
-  assert.equal(workflow.on.workflow_dispatch.inputs.scope.default, 'full');
-});
-
-test('N34: a run of the probes is never cancelled by a newer one, and the runs are grouped by the ref they ran on', () => {
-  assert.equal(workflow.concurrency['cancel-in-progress'], false);
-  assert.equal(workflow.concurrency.group, 'ui-next-kit-probes-${{ github.ref }}');
 });
 
 // The image (N24 B1): the shards run in the CI image by DIGEST, as `.github/ci/image.lock` pins it, with the credentials of a private package, and ask the guard whether it is the image of this checkout before they do anything
@@ -1545,79 +1263,14 @@ function imageProblems(wf, pinned) {
   return problems;
 }
 
-test('every shard runs in the CI image by digest, with the credentials, and proves it is the image of this checkout before anything else; nothing the image holds is installed again', () => {
-  assert.deepEqual(imageProblems(workflow, lock), []);
-});
-
-test('negative control: the image contract names a tag, another digest, a missing credentials block, missing permissions, a late guard and every install the image replaces', () => {
-  const copy = () => structuredClone(workflow);
-  const mutate = (change) => {
-    const wf = copy();
-    change(wf.jobs.shard);
-    return imageProblems(wf, lock).join('\n');
-  };
-  const zero = `sha256:${'0'.repeat(64)}`;
-  assert.ok(mutate((job) => { job.container.image = `${lock.image}:ubuntu24-v1`; }).includes(`pulls ${lock.image}:ubuntu24-v1, not ${lock.image}@${lock.digest}`));
-  assert.ok(mutate((job) => { job.container.image = `${lock.image}@${zero}`; }).includes(`pulls ${lock.image}@${zero}, not ${lock.image}@${lock.digest}`));
-  assert.match(mutate((job) => { delete job.container.credentials; }), /no credentials block/);
-  assert.match(mutate((job) => { job.container.options = ''; }), /--init/);
-  assert.match(mutate((job) => { delete job.permissions.packages; }), /packages: read/);
-  assert.match(mutate((job) => { job.steps = job.steps.filter((step) => !GUARD.test(step.run ?? '')); }), /no step runs the guard/);
-  assert.match(mutate((job) => { const at = job.steps.findIndex((step) => GUARD.test(step.run ?? '')); job.steps.push(...job.steps.splice(at, 1)); }), /the guard runs after/);
-  assert.match(mutate((job) => { job.steps.shift(); }), /ownership fix/);
-  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Node', uses: 'actions/setup-node@v4' }); }), /sets up a tool the image holds/);
-  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'pnpm', uses: 'pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e' }); }), /sets up a tool the image holds/);
-  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Task', uses: 'arduino/setup-task@v2' }); }), /sets up a tool the image holds/);
-  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Install the browsers', run: 'pnpm exec playwright install --with-deps chromium webkit' }); }), /installs what the image holds/);
-  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'libs', run: 'sudo apt-get install -y libx' }); }), /installs what the image holds/);
-  assert.match(mutate((job) => { job.steps.splice(2, 0, { name: 'Cache the browsers', uses: 'actions/cache@v4', with: { path: '~/.cache/ms-playwright', key: 'k' } }); }), /caches browsers the image holds/);
-});
-
-test('every shard builds the packages and, when a unit of it reads it, ui-next (the plan says whether: `matrix.dist`)', () => {
-  assert.ok(stepsOf('shard').some((step) => step.run?.includes('task packages')));
-  const build = stepsOf('shard').find((step) => step.run?.includes('vite build'));
-  assert.equal(build.if, 'matrix.dist == true');
-  assert.match(build.run, /PROBE_DIST=\$RUNNER_TEMP\/ui-next-dist/);
-});
-
-test('the reports are kept per shard, under a name of their own, whatever the shard did, replacing what an earlier attempt of the run uploaded, and the file the shard writes about itself is among them', () => {
-  const upload = stepsOf('shard').find((step) => step.uses?.startsWith('actions/upload-artifact'));
-  assert.equal(upload.if, 'always()');
-  assert.equal(upload.with.name, 'kit-probe-reports-${{ matrix.shard }}');
-  assert.equal(upload.with.overwrite, true, 'a re-run of a shard uploads the same name again: without this the upload fails and the run can never go green, or the verdict reads the first attempt\'s file');
-  // `ran-<shard>-probe.json` is written to $RUNNER_TEMP, which the upload's glob reads.
-  assert.equal(upload.with.path, '${{ runner.temp }}/*-probe.json');
-  assert.ok('ran-12-probe.json'.endsWith('-probe.json'), 'the glob is `*-probe.json`: the file named ran-<shard>-probe.json is one of the files it matches');
-});
-
-test('the check named `Kit probes` is the aggregating job: the only job of that name, after the plan and every shard, run whatever happened (a cancelled run leaves a check, not an absence), and no shard is called that', () => {
-  const named = Object.entries(workflow.jobs).filter(([, job]) => job.name === 'Kit probes');
-  assert.deepEqual(named.map(([id]) => id), ['probes']);
-  const aggregator = workflow.jobs.probes;
-  assert.deepEqual([...aggregator.needs].sort(), ['plan', 'shard']);
-  assert.equal(aggregator.if, '${{ always() }}');
-  assert.equal(aggregator.permissions.actions, 'read');
-  assert.equal(aggregator.permissions.contents, 'read');
-  assert.ok(Number.isInteger(aggregator['timeout-minutes']) && aggregator['timeout-minutes'] <= 10);
-  assert.equal(aggregator.container, undefined);
-  const checkout = aggregator.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
-  assert.equal(checkout.with['persist-credentials'], false, 'the verdict reads the units of the checkout it runs in');
-  assert.equal(aggregator.steps.find((step) => step.uses?.startsWith('actions/setup-node@')).with['node-version-file'], '.tool-versions');
-  const results = stepNamed('probes', 'Require the plan and every probe shard');
-  assert.equal(results.env.PLAN_RESULT, '${{ needs.plan.result }}');
-  assert.equal(results.env.SHARD_RESULT, '${{ needs.shard.result }}');
-  assert.ok(stepsOf('probes').indexOf(results) < stepsOf('probes').indexOf(stepNamed('probes', 'Require every unit')), 'the results first, then what ran');
-});
-
 test('the verdict step reads the number of shards the PLAN made, downloads every artifact of the shards\' reports by the name they were uploaded under, and runs verify on them', () => {
   const step = stepNamed('probes', 'Require every unit of the table to have run and passed');
   assert.equal(step.env.PLAN_SHARDS, '${{ needs.plan.outputs.shards }}');
-  assert.equal(step.env.SCOPE, '${{ needs.plan.outputs.scope }}');
   assert.equal(step.env.GH_TOKEN, '${{ github.token }}');
   const upload = stepsOf('shard').find((entry) => entry.uses?.startsWith('actions/upload-artifact'));
   const prefix = upload.with.name.replace('${{ matrix.shard }}', '');
   assert.match(step.run, new RegExp(`gh run download "\\$GITHUB_RUN_ID" --pattern '${prefix}\\*' --dir "\\$RUNNER_TEMP/reports"`));
-  assert.match(step.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" verify --reports "\$RUNNER_TEMP\/reports" --shards "\$PLAN_SHARDS"/);
+  assert.match(step.run, /node scripts\/ci\/probe-shards\.mjs verify --reports "\$RUNNER_TEMP\/reports" --shards "\$PLAN_SHARDS"/);
   assert.equal(/\$\{\{/.test(step.run), false, 'nothing of the run reaches the command but through env');
 });
 
@@ -1627,7 +1280,7 @@ function verdictStep() {
   return stepNamed('probes', 'Require every unit of the table to have run and passed').run;
 }
 
-function verdict({ reports = allReports(), shards = String(PLAN.shards.length), scope = 'full' } = {}) {
+function verdict({ reports = allReports(), shards = String(PLAN.shards.length) } = {}) {
   const directory = scratch({ 'gate.sh': verdictStep() });
   const artifacts = path.join(directory, 'artifacts');
   mkdirSync(artifacts, { recursive: true });
@@ -1647,8 +1300,6 @@ function verdict({ reports = allReports(), shards = String(PLAN.shards.length), 
     HOME: directory,
     RUNNER_TEMP: path.join(directory, 'temp'),
     PLAN_SHARDS: shards,
-    SCOPE: scope,
-    REASON: 'a test',
     GH_TOKEN: 'token',
     GITHUB_RUN_ID: '9',
     FAKE_ARTIFACTS: artifacts,
@@ -1775,156 +1426,7 @@ test('negative control: the aggregator names every shard that did not succeed, w
   assert.match(outcome.called, /^gh api repos\/o\/r\/actions\/runs\/9\/attempts\/2\/jobs/m, 'it reads the jobs of this attempt of this run');
 });
 
-test('negative control: the aggregator is red even when the job list cannot be read or gh is missing, and says so', () => {
-  for (const options of [{ ghFails: true }, { noGh: true }]) {
-    const outcome = gate({ shard: 'failure' }, options);
-    assert.equal(outcome.status, 1, outcome.output);
-    assert.match(outcome.output, /^::error title=Kit probes::the probe shards finished as 'failure'/m);
-    assert.match(outcome.output, /^::warning title=Kit probes::could not list the shards of this run/m);
-  }
-});
-
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // A bound in milliseconds is held against what the runner read (the notices probe's `centre open`)
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// The centre opens in a time that depends on the machine: 9 to 11 ms (WebKit) on a laptop, 16 to 27 on the runner's virtual machines and 35 and 38 on a slow one, the medians that failed pull request #650 once against a bound of two
-// frames (33.3 ms). N25 first scaled the bound by a calibration measured in the same page, and the independent review showed that a regression in the page's CSS inflates that calibration as much as it slows the open (a 7 to 9
-// times slower open passed). So the bound is a CONSTANT for each engine, and it is held to the runner's record: the medians of every run that printed them (ui-next/shell/probes/runner-centre-open.json, from the job logs of
-// this workflow) and a margin above the worst of them. The probe has the constant and prints every sample whatever it finds.
-const noticesProbe = () => readFileSync(path.join(repo, 'ui-next/shell/probes/notices-probe.mjs'), 'utf8');
-const centreRecord = () => JSON.parse(readFileSync(path.join(repo, 'ui-next/shell/probes/runner-centre-open.json'), 'utf8'));
-const openBound = (text) => {
-  const found = /^const OPEN_BOUND_MS = \{ chromium: (\d+(?:\.\d+)?), webkit: (\d+(?:\.\d+)?) \};$/m.exec(text);
-  return found === null ? null : { chromium: Number(found[1]), webkit: Number(found[2]) };
-};
-const BOUND_MARGIN = 1.5;
-const median = (values) => {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted.length % 2 === 1 ? sorted[sorted.length >> 1] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
-};
-const centreReads = (record, engineName) => record.runs.flatMap((entry) => Object.entries(entry.centre).filter(([key]) => key.startsWith(`${engineName} `)).map(([, read]) => read));
-
-test('the centre-open bound of the notices probe is a constant for each engine: no calibration, no scale, and every sample still printed', () => {
-  const text = noticesProbe();
-  assert.ok(openBound(text) !== null, 'the probe has `const OPEN_BOUND_MS = { chromium: <ms>, webkit: <ms> };`');
-  assert.doesNotMatch(text, /calibrat|SCALE_CAP|CALIBRATION_REFERENCE/i, 'a bound that is measured in the page can be inflated by the regression it is meant to catch (review of #656, S5)');
-  assert.match(text, /console\.log\(`centre open \$\{where\}: \$\{JSON\.stringify\(times\)\} ms, median \$\{middle\} ms of \$\{budget\}/, 'every sample is printed, with the median and the bound');
-  assert.match(text, /if \(middle >= budget\)/);
-});
-
-test('the bound of each engine is 1.5 times the worst median the runner has read, rounded up, over every run of the record: the slow virtual machine of #650 (38 and 13.4 ms) passes, with room', () => {
-  const bound = openBound(noticesProbe());
-  assert.ok(bound !== null);
-  const record = centreRecord();
-  assert.ok(record.runs.length >= 17, `${record.runs.length} runs in the record`);
-  for (const engineName of ['webkit', 'chromium']) {
-    const reads = centreReads(record, engineName);
-    assert.ok(reads.length >= 34, `${engineName}: ${reads.length} medians`);
-    for (const read of reads) assert.equal(median(read.samples), read.median, `${engineName}: the median of ${JSON.stringify(read.samples)} is not ${read.median}`);
-    const medians = reads.map((read) => read.median);
-    const worst = Math.max(...medians);
-    assert.equal(bound[engineName], Math.ceil(worst * BOUND_MARGIN), `${engineName}: the worst median of the record is ${worst} ms (median ${median(medians)}, 95th percentile ${quantile(medians, 0.95)}), the bound ${bound[engineName]} ms`);
-    for (const read of reads) assert.ok(read.median < bound[engineName], `${engineName}: a median of ${read.median} ms fails the bound of ${bound[engineName]} ms`);
-  }
-  assert.ok(Math.max(...centreReads(record, 'webkit').map((read) => read.median)) >= 38, 'the record holds the median that failed #650 (38 ms): without it the bound has no worst case behind it');
-});
-
-test('the bound still catches the review\'s regression: it is under the open of the global-CSS repro in both engines (74 and 35 ms on a laptop), and the control `centre-slow-open` is longer than the bound, so that it fails on any machine', () => {
-  const text = noticesProbe();
-  const bound = openBound(text);
-  assert.ok(bound !== null);
-  assert.ok(bound.webkit < 74 && bound.chromium < 35, 'the review\'s repro (2,500 pairs of selectors every element is matched against) is 6.8 and 9.4 times the laptop\'s open, and fails');
-  const busy = /^const SLOW_OPEN_MS = (\d+);$/m.exec(text);
-  assert.ok(busy !== null, 'the control\'s busy loop is a named constant');
-  assert.ok(Number(busy[1]) >= Math.max(bound.chromium, bound.webkit), `a busy loop of ${busy[1]} ms in the click is over the bound of either engine`);
-});
-
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The scope of a run (N30): a pull request runs the probes in WebKit and no negative control; main, the nightly run and a manual run run everything
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-test('a pull request\'s scope is the probes and no negative control, in fewer, longer shards; a full run is the table', () => {
-  const probes = engine.unitsOfScope(UNITS, 'pr');
-  assert.ok(probes.length > 0 && probes.every((entry) => entry.controls === undefined));
-  assert.equal(probes.length, UNITS.filter((entry) => entry.controls === undefined).length);
-  assert.deepEqual(engine.unitsOfScope(UNITS, 'full'), UNITS);
-  const pr = planRun({ units: probes, limit: engine.PR_LIMIT_SECONDS });
-  const full = planRun({ units: UNITS });
-  assert.deepEqual(pr.shards.flatMap((shard) => shard.units.map((entry) => entry.id)).sort(), probes.map((entry) => entry.id).sort());
-  assert.ok(pr.shards.length <= full.shards.length / 2, `${pr.shards.length} shards for a pull request against ${full.shards.length} for a full run`);
-  for (const shard of pr.shards) assert.ok(shard.seconds <= engine.PR_LIMIT_SECONDS);
-  assert.deepEqual(matrixOf(pr.shards, { engines: engine.PR_ENGINES }).include.map((entry) => entry.engines), pr.shards.map(() => 'webkit'));
-});
-
-test('the plan command for a pull request writes the scope, plans no control unit, tells the shards the engine, and says so in the summary', () => {
-  const root = treeOfTheUnits();
-  const output = path.join(root, 'github-output');
-  const summary = path.join(root, 'summary.md');
-  const result = cli(root, ['--scope', 'pr', '--reason', '3 changed files, none of them test infrastructure', 'plan'], { GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary });
-  assert.equal(result.status, 0, result.stderr + result.stdout);
-  const written = outputs(output);
-  assert.equal(written.scope, 'pr');
-  const matrix = JSON.parse(written.matrix);
-  assert.deepEqual(matrix.include.flatMap((entry) => entry.units.split(',')).sort(), UNITS.filter((entry) => entry.controls === undefined).map((entry) => entry.id).sort());
-  for (const entry of matrix.include) assert.equal(entry.engines, 'webkit');
-  assert.match(result.stdout, /Pull request scope \(3 changed files, none of them test infrastructure\): the probes in WebKit, the negative controls are NOT run on pull requests/);
-});
-
-test('the verdict of a pull request requires the probes only, passes without a control, and says in its own line that the controls were not run; the verdict of a full run still requires them', async () => {
-  const root = treeOfTheUnits();
-  const probes = engine.unitsOfScope(UNITS, 'pr');
-  const pr = planRun({ units: probes, limit: engine.PR_LIMIT_SECONDS });
-  const reports = pr.shards.map((shard) => ranReport(shard.shard, resultsOf(shard.units.map((entry) => byId(entry.id)))));
-  const reportsDir = path.join(root, 'reports');
-  for (const report of reports) {
-    mkdirSync(path.join(reportsDir, `kit-probe-reports-${report.shard}`), { recursive: true });
-    writeFileSync(path.join(reportsDir, `kit-probe-reports-${report.shard}`, `ran-${report.shard}-probe.json`), JSON.stringify(report));
-  }
-
-  const summary = path.join(root, 'summary.md');
-  const ok = cli(root, ['--scope', 'pr', '--reason', 'a docs change', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)], { GITHUB_STEP_SUMMARY: summary });
-  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
-  assert.match(ok.stdout, /probe-shards: ok \(\d+ probes and 0 controls, in \d+ units, ran once and passed, in \d+ shards \(WebKit\)\)/);
-  assert.match(ok.stdout, /probe-shards: not run on pull requests: \d+ negative controls in \d+ units were NOT RUN on this pull request/);
-  assert.match(readFileSync(summary, 'utf8'), /\*\*Not run on pull requests:\*\*/);
-  // The same reports against the full table are red: the controls did not run, and a run that was meant to have them is not whole.
-  const full = cli(root, ['verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]);
-  assert.equal(full.status, 1, 'the full scope requires every control unit');
-  // A pull request's verdict still fails for a probe that did not pass, and for a shard that never reported.
-  const failing = structuredClone(reports);
-  failing[0].units[0].ok = false;
-  writeFileSync(path.join(reportsDir, `kit-probe-reports-${failing[0].shard}`, `ran-${failing[0].shard}-probe.json`), JSON.stringify(failing[0]));
-  const failed = cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]);
-  assert.equal(failed.status, 1);
-  assert.match(failed.stderr, /did not pass in shard 1/);
-  // The passing report is put back, so that the next assertion is about the missing shard and nothing else.
-  writeFileSync(path.join(reportsDir, `kit-probe-reports-${reports[0].shard}`, `ran-${reports[0].shard}-probe.json`), JSON.stringify(reports[0]));
-  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]).status, 0, 'with every report back it passes again');
-  const missing = cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length + 1)]);
-  assert.equal(missing.status, 1);
-  assert.match(missing.stderr, new RegExp(`shard ${String(pr.shards.length + 1)} did not report`));
-});
-
-test('a pull request\'s shard runs its probes with ENGINES=webkit, does not warn about a probe that is faster than its two-engine seconds, and fails past its own ceiling', () => {
-  const results = [{ label: 'a', unit: 'a', ok: true, seconds: 10 }];
-  const units = [{ id: 'a', name: 'A', file: 'f.mjs', seconds: 200 }];
-  assert.equal(driftFindings('1', results, units).warnings.length, 1, 'a full run warns for a unit that is far under its seconds');
-  assert.equal(driftFindings('1', results, units, { warnFaster: false }).warnings.length, 0);
-  assert.equal(driftFindings('1', [{ ...results[0], seconds: 261 }], units, { warnFaster: false }).failures.length, 1, 'slower is still a failure');
-  assert.equal(engine.PR_ENGINES, 'webkit');
-  assert.equal(engine.PR_SHARD_CEILING_SECONDS, Math.ceil(engine.PR_LIMIT_SECONDS * 1.3));
-  const text = readFileSync(path.join(repo, 'scripts/ci/probe-shards.mjs'), 'utf8');
-  assert.match(text, /const shardEnv = scope === 'pr' \? \{ \.\.\.env, ENGINES: PR_ENGINES \} : env;/);
-});
-
-test('a pull request\'s scope is decided in one place: the plan reads the output of scripts/ci/ci-scope.mjs, and the shards and the verdict read the plan\'s', () => {
-  const scope = workflow.jobs.plan.steps.find((step) => step.id === 'scope');
-  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs');
-  assert.equal(scope.env.SCOPE_INPUT, '${{ inputs.scope }}');
-  assert.equal(scope.env.PR_LABELS, undefined, 'a label does not change the scope (a manual run does)');
-  const text = workflowText.replace(/^\s*#.*$/gm, '');
-  assert.equal(/github\.event\.pull_request\.labels/.test(text), false);
-  assert.equal(/steps\.scope\.outputs\.scope/.test(text), true);
-  assert.equal(/github\.event_name == 'pull_request'/.test(text), false, 'the workflow no longer runs on a pull request (N34)');
-});

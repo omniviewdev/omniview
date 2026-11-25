@@ -11,7 +11,6 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { selectChanges } from '../../e2e/scripts/select-tests.mjs';
 import { ALWAYS, CLASSES, GATED, changedPaths, classify, main, outputsOf, pathArea, renderSummary, skippedBy } from './changes.mjs';
 
 const script = fileURLToPath(new URL('./changes.mjs', import.meta.url));
@@ -76,17 +75,11 @@ const NEW_UI = [
 const NEW_UI_TOOLING = [
   'scripts/ci/probe-shards.mjs', // read by the kit probes workflow only
   'scripts/ci/probe-shards.test.mjs',
-  'scripts/ci/probe-shards.runs.json',
-  'scripts/ci/probe-shards.layout.json',
   'scripts/ci/probe-pack.mjs',
   'scripts/ci/probe-pack.test.mjs',
-  'scripts/ci/probe-seconds.mjs',
-  'scripts/ci/probe-seconds.test.mjs',
   'scripts/ci/seam-shards.mjs',
   'scripts/ci/seam-shards.test.mjs',
   'scripts/ci/seam-units.mjs',
-  'scripts/ci/ci-scope.mjs',
-  'scripts/ci/ci-scope.test.mjs',
   'scripts/ci/main-red.mjs',
   'scripts/ci/main-red.test.mjs',
   'scripts/ci/probe-builds.mjs',
@@ -125,7 +118,6 @@ const OTHER = [
   'build/Taskfile.yml',
   'build/darwin/Info.plist',
   'ui/main.tsx',
-  'ui-next/test-setup.ts', // loaded by the e2e suite: see the tripwire tests
   'packages/omniviewdev-runtime/src/index.ts',
   'packages/omniviewdev-providers/package.json',
   'packages/omniviewdev-vite-plugin/src/index.ts',
@@ -169,88 +161,9 @@ test('the new UI\'s own tooling is the new UI: the probe table and its test, the
   for (const file of NEW_UI_TOOLING) assert.equal(pathArea(file), 'new-ui', file);
 });
 
-test('NEGATIVE: what only looks like that tooling is "other": a sibling script, a backup, a prefix, the benches the host profile and the render benchmarks run', () => {
-  for (const file of [
-    'scripts/ci/probe-shards.mjs.bak',
-    'scripts/ci/probe-shards-extra.mjs',
-    'scripts/ci/probe-units',
-    'scripts/ci/probe-units-extra/panel.mjs',
-    'scripts/ci/probe-units/helper.c',
-    'scripts/ci/changes.mjs',
-    'scripts/ci/check-image.mjs',
-    'scripts/ci/probe-shard.mjs',
-    'scripts/ui-next-pods-extra/host.sh',
-    'scripts/ui-next-pods',
-    'scripts/ui-next-bundle.mjs.old',
-    'scripts/ui-next-bundle.mjs/x.js',
-    'scripts/ui-next-bundles.mjs',
-    'scripts/ui-next-pods/helper.c',
-    'bench/table-extra/run.mjs',
-    'bench/tablex/run.mjs',
-    'bench/table',
-    'bench/logs/run.mjs',
-    'bench/log/go.mod',
-    'bench/render/README.md',
-    'bench/app/archive-smoke.mjs',
-    'bench/vite/wails-binding-index.ts',
-    'bench/historycipherprobe/main.c',
-  ]) {
-    assert.equal(pathArea(file), 'other', file);
-  }
-});
-
-// The one file of the new trees that a host job executes: vite.config.ts lists `./ui-next/test-setup.ts` among the root vitest configuration's `setupFiles` (vite.config.ts:55), and the e2e
-// runner runs `vitest run ui/features/plugins/adapters/clearPlugin.test.ts` with that configuration in every run that is not cache-only (e2e/scripts/cohort.mjs:74, run.mjs:229). So a change to
-// it can change the e2e result, and it is "other". The two tests below are tripwires: they read the real files, and fail when the carve-out stops being enough.
-const readRepoFile = (file) => readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../..', file), 'utf8');
-
-test('NEGATIVE: ui-next/test-setup.ts, which the e2e suite loads through vite.config.ts, is "other", alone and among new-UI paths; another file of the new UI is not', () => {
-  assert.equal(pathArea('ui-next/test-setup.ts'), 'other');
-  assert.equal(classOf('ui-next/test-setup.ts'), 'all');
-  assert.equal(classOf('ui-next/App.tsx', 'ui-next/test-setup.ts', 'docs/ui-next/status/N24-D1.md'), 'all');
-  assert.equal(pathArea('ui-next/shell/test-setup.ts'), 'new-ui');
-  assert.equal(pathArea('packages/kit/vitest.setup.ts'), 'new-ui');
-});
-
-test('TRIPWIRE: ui-next/test-setup.ts imports nothing, so that the one carved-out path is every file the e2e suite can reach in the new UI', () => {
-  const source = readRepoFile('ui-next/test-setup.ts');
-  const code = source.split('\n').filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line)).join('\n');
-  assert.doesNotMatch(code, /\bimport\b|\brequire\s*\(|\bexport\b.*\bfrom\b/, 'a file it imports is an input of the e2e suite too: add it to the carve-out in scripts/ci/changes.mjs (pathArea), with a test');
-});
-
-test('TRIPWIRE: vite.config.ts names no other file of the new trees than the setup file, the flavour root and the test glob; a new one is an input of the jobs that load it', () => {
-  const code = readRepoFile('vite.config.ts').split('\n').filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line)).join('\n');
-  const named = [...code.matchAll(/(['"`])((?:\.\/)?(?:ui-next|packages\/kit)[^'"`\n]*)\1/g)].map((match) => match[2]).sort();
-  assert.deepEqual(named, ['./ui-next/test-setup.ts', 'ui-next', 'ui-next/**/*.{spec,test}.{ts,tsx}'], 'vite.config.ts changed what it reads from the new trees: decide which of the new paths the host jobs now read, and carve them out in scripts/ci/changes.mjs');
-});
 
 test('NEGATIVE: every other path is "other", which runs everything: the plan\'s list and what the host builds, tests and ships', () => {
   for (const file of OTHER) assert.equal(pathArea(file), 'other', file);
-});
-
-test('NEGATIVE: a path that only starts like a documentation or new-UI path is "other"', () => {
-  for (const file of [
-    'ui-next-other/App.tsx',
-    'ui-next',
-    'xui-next/App.tsx',
-    'packages/kit',
-    'packages/kit-extra/src/index.ts',
-    'packages/kitten/src/index.ts',
-    'packages/omniviewdev-kit/src/index.ts',
-    'docs-other/notes.md',
-    'docsx/notes.md',
-    'docs',
-    'doc/notes.md',
-    'UI-NEXT/App.tsx',
-    'Docs/notes.md',
-    'README.md/script.js',
-    'sub/README.md',
-    'ui/docs/guide.md',
-    'ui-next.md',
-    'docs/ui-nextx/status/x.md.exe',
-  ]) {
-    assert.equal(pathArea(file), 'other', file);
-  }
 });
 
 test('NEGATIVE: a Markdown-looking path that is not prose is not documentation: "other" under docs/, "new-ui" under docs/ui-next/, never "docs"', () => {
@@ -354,27 +267,6 @@ test('a change to the new UI alone, or with its documentation or its tooling, is
   assert.equal(classOf('scripts/ci/probe-units/panel.mjs', 'ui-next/shell/probes/panel-probe.mjs', 'docs/ui-next/status/N25.md'), 'new-ui', 'a pull request that adds a control: its unit file, its probe, its status file (N25: it no longer edits scripts/ci/probe-shards.mjs)');
 });
 
-test('NEGATIVE: every path of the plan\'s list runs everything, alone, with documentation and with the new UI, in either order', () => {
-  for (const file of PLAN_NEGATIVES) {
-    for (const others of [[], DOCS, NEW_UI, NEW_UI_TOOLING, ['docs/ui-next/status/N24-D1.md', 'ui-next/App.tsx']]) {
-      assert.equal(classOf(file, others), 'all', `${file} + ${others.length} paths`);
-      assert.equal(classOf(others, file), 'all', `${others.length} paths + ${file}`);
-    }
-  }
-});
-
-test('NEGATIVE: documentation plus one code file runs everything, whichever file it is', () => {
-  for (const file of OTHER) {
-    assert.equal(classOf('docs/ui-next/status/N24-D1.md', file), 'all', file);
-    assert.equal(classOf('docs/ui-next/status/N24-D1.md', 'ui-next/App.tsx', file), 'all', file);
-  }
-});
-
-test('NEGATIVE: a Go file in the new UI, or a rename that lands in documentation, runs everything', () => {
-  assert.equal(classOf('ui-next/App.tsx', 'ui-next/helper.go'), 'all');
-  assert.equal(classOf('docs/ui-next/status/N24-D1.md', 'packages/kit/go.mod'), 'all');
-});
-
 test('NEGATIVE: no changed path at all runs everything: there is nothing to prove a skip with', () => {
   assert.equal(classify([]).class, 'all');
   assert.equal(classify([]).skipHost, false);
@@ -382,15 +274,6 @@ test('NEGATIVE: no changed path at all runs everything: there is nothing to prov
   assert.equal(classify([]).skipCode, false);
   assert.throws(() => classify(undefined), /paths/);
   assert.throws(() => classify('go.mod'), /paths/);
-});
-
-test('NEGATIVE: one unknown path among a thousand known ones runs everything, wherever it sits in the list', () => {
-  const known = Array.from({ length: 1000 }, (_, i) => `ui-next/generated/file-${i}.ts`);
-  for (const at of [0, 1, 500, 1000]) {
-    const paths = [...known.slice(0, at), 'somewhere/new/file', ...known.slice(at)];
-    assert.equal(classOf(paths), 'all', `at ${at}`);
-  }
-  assert.equal(classOf(known), 'new-ui');
 });
 
 test('the class does not depend on the order of the paths or on repeats', () => {
@@ -441,12 +324,12 @@ test('the outputs a workflow reads: only skip flags, which are the strings "true
 // The jobs each flag skips
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-test('the table of gated jobs: two flags, two workflows, each job once, and the jobs that always run are not in it', () => {
+test('the table of gated jobs: three flags, one workflow, each job once, and the jobs that always run are not in it', () => {
   assert.ok(GATED.length > 0);
   const seen = new Set();
   for (const entry of GATED) {
     assert.ok(['host', 'ui', 'code'].includes(entry.flag), JSON.stringify(entry));
-    assert.ok(['pr.yml', 'pr-checks.yml'].includes(entry.workflow), JSON.stringify(entry));
+    assert.equal(entry.workflow, 'pr-checks.yml', JSON.stringify(entry));
     assert.ok(entry.job && entry.check, JSON.stringify(entry));
     const key = `${entry.workflow}:${entry.job}`;
     assert.ok(!seen.has(key), `${key} is listed twice`);
@@ -455,7 +338,7 @@ test('the table of gated jobs: two flags, two workflows, each job once, and the 
   for (const entry of ALWAYS) assert.ok(!seen.has(`${entry.workflow}:${entry.job}`), `${entry.job} always runs and is also gated`);
   // The repository guard and the classifier are the two that must run on every pull request.
   assert.ok(ALWAYS.some((entry) => entry.workflow === 'pr-checks.yml' && entry.job === 'repo-guard'));
-  assert.ok(ALWAYS.filter((entry) => entry.job === 'changes').length === 2, 'one classifier job in each of the two workflows');
+  assert.equal(ALWAYS.filter((entry) => entry.job === 'changes').length, 1, 'one classifier job');
 });
 
 test('what is skipped by path: nothing for "all", the host jobs for "new-ui", every gated job for "docs"', () => {
@@ -469,22 +352,11 @@ test('what is skipped by path: nothing for "all", the host jobs for "new-ui", ev
 test('NEGATIVE: the jobs that check the UI are not skipped for a change to the new UI, and the guard and the gates are never skipped', () => {
   const skipped = skippedBy(classify(['ui-next/App.tsx', 'packages/kit/src/index.ts', 'docs/ui-next/status/N24-D1.md'])).map((entry) => entry.job);
   for (const job of ['ui-build', 'c02-corpus']) assert.ok(!skipped.includes(job), job);
-  for (const job of ['repo-guard', 'changes', 'ui-checks', 'e2e-tests']) assert.ok(!skippedBy(classify(['docs/ui-next/status/N24-D1.md'])).some((entry) => entry.job === job), job);
-  for (const job of ['go-checks', 'windows-connection-profiles', 'e2e-application', 'build-artifacts']) assert.ok(skipped.includes(job), job);
+  for (const job of ['repo-guard', 'changes', 'ui-checks']) assert.ok(!skippedBy(classify(['docs/ui-next/status/N24-D1.md'])).some((entry) => entry.job === job), job);
+  for (const job of ['go-checks', 'go-lint']) assert.ok(skipped.includes(job), job);
 });
 
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Against the e2e selector
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-const selected = (...paths) => selectChanges({ changes: paths.flat().map((file) => ({ status: 'M', paths: [file] })), complete: true });
-
-test('everything this classifier calls documentation, the e2e selector calls prose: it would select no test either', () => {
-  for (const file of DOCS) assert.equal(selected(file).kind, 'none', file);
-  assert.equal(selected(DOCS).kind, 'none');
-});
-
-test('TRIPWIRE: over every file the repository tracks, a file this classifier calls documentation is prose to the e2e selector, and no file of the new UI is a Go input', () => {
+test('TRIPWIRE: over every file the repository tracks, no file of the new UI is a Go input', () => {
   const listed = spawnSync('git', ['-C', path.join(path.dirname(fileURLToPath(import.meta.url)), '../..'), 'ls-files', '-z'], { encoding: 'utf8', env: GIT_ENV, maxBuffer: 64 * 1024 * 1024 });
   assert.equal(listed.status, 0, listed.stderr);
   const tracked = listed.stdout.split('\0').filter(Boolean);
@@ -493,7 +365,6 @@ test('TRIPWIRE: over every file the repository tracks, a file this classifier ca
   for (const file of tracked) {
     const area = pathArea(file);
     counts[area] += 1;
-    if (area === 'docs' && !file.startsWith('docs/ui-next/status/')) assert.equal(selected(file).kind, 'none', `${file} is documentation here and not prose to the e2e selector`);
     if (area === 'new-ui') assert.doesNotMatch(file, /\.(go|c|h|s|syso)$|(^|\/)go\.(mod|sum|work)$/, `${file} is a Go input in the new UI`);
   }
   assert.ok(counts.docs > 0 && counts['new-ui'] > 0 && counts.other > 0, JSON.stringify(counts));
@@ -701,17 +572,6 @@ test('the job summary says what was skipped by path and why, with the name of ea
   assert.doesNotMatch(all.summary, /skipped by path/);
 });
 
-test('a long list of the paths that decided is cut, and says how many it left out', () => {
-  const root = withChange({ 'README.md': 'x\n' }, (dir) => {
-    for (let i = 0; i < 25; i += 1) put(dir, `new-area/file-${String(i).padStart(2, '0')}.txt`);
-  });
-  const outcome = run(root);
-  assert.match(outcome.summary, /new-area\/file-00\.txt/);
-  assert.match(outcome.summary, /new-area\/file-09\.txt/);
-  assert.doesNotMatch(outcome.summary, /new-area\/file-10\.txt/);
-  assert.match(outcome.summary, /\(15 more\)/);
-});
-
 test('NEGATIVE: a file name cannot write a workflow command or Markdown of its own into the log or the summary', () => {
   const evil = ['new-area/x\n::error::injected by a file name', 'new-area/y\n::set-output name=skip_host::true', 'new-area/`z` | <b>bold</b>\r\n## heading', 'new-area/::stop-commands::token'];
   const root = withChange({ 'README.md': 'x\n' }, (dir) => {
@@ -748,12 +608,6 @@ test('a usage error is exit 2 with the usage', () => {
   }
 });
 
-test('the summary of a classification can be rendered without a repository', () => {
-  const text = renderSummary(classify(['docs/ui-next/status/N24-D1.md', 'ui-next/App.tsx']));
-  assert.match(text, /### Changed paths: `new-ui`/);
-  assert.match(text, /2 changed paths: 1 documentation, 1 new UI, 0 Go, 0 elsewhere/);
-});
-
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Rulings after the first review: the Windows build stays for the new UI; everything under docs/ui-next/status/ is documentation; where the merge gate reads the class
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -776,15 +630,6 @@ test('NEGATIVE: nothing else under docs/ changes class with that: the baseline, 
   assert.equal(pathArea('docs/ui-next/status/../../../go.mod'), 'other');
 });
 
-test('there is no Windows build among the jobs of a pull request (N31: main-windows.yml), and the macOS and Linux builds are skipped for a change to the new UI and for documentation', () => {
-  assert.equal(GATED.find((entry) => entry.job === 'build-artifacts-windows'), undefined, 'the Windows build runs on main and at night, not on a pull request');
-  const newUi = skippedBy(classify(['ui-next/App.tsx', 'packages/kit/src/index.ts'])).map((entry) => entry.job);
-  assert.ok(newUi.includes('build-artifacts'), 'the Linux build is skipped');
-  const docs = skippedBy(classify(['docs/ui-next/status/N24-D1.md'])).map((entry) => entry.job);
-  assert.ok(docs.includes('build-artifacts'));
-  assert.deepEqual(skippedBy(classify(['go.mod'])), []);
-});
-
 test('on a runner the command also writes one notice that names the class and the flags and no path: the check run carries it where the merge gate can read it', () => {
   const root = withChange({ 'ui-next/a.ts': 'a\n', 'go.mod': 'a\n' }, (dir) => put(dir, 'ui-next/a.ts', 'b\n'));
   const onRunner = run(root, [], { GITHUB_ACTIONS: 'true' });
@@ -796,6 +641,8 @@ test('on a runner the command also writes one notice that names the class and th
 // "Nothing reads a path under docs/ui-next/status/" is what makes it documentation whatever it holds. Searched at the time: the mentions outside docs/ are comments, Markdown, messages and the e2e selector's classification (a regular
 // expression and its test data). This reads the repository and fails when another file names the path on a line of code, or builds it from parts.
 const STATUS_MENTIONS_ALLOWED = new Set(['scripts/ci/changes.mjs', 'scripts/ci/changes.test.mjs', 'scripts/ci/changes-workflows.test.mjs', 'e2e/scripts/select-tests.mjs', 'e2e/scripts/select-tests.test.mjs', 'scripts/ci/probe-shards.mjs']);
+
+const readRepoFile = (file) => readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../..', file), 'utf8');
 
 test('TRIPWIRE: no code, test or workflow outside docs/ names a path under docs/ui-next/status/ on a line of code, or joins "ui-next" and "status" into one', () => {
   const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..');

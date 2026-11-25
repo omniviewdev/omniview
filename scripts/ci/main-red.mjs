@@ -1,5 +1,5 @@
 // ONE GitHub issue for what is red on main (N30): `.github/workflows/ci-main-red.yml` runs this when a workflow that checks main (the probes, the seam, the Pods check, the benchmarks, the profile, the macOS build) ends on main or in
-// the nightly run. A pull request runs less than main does (WebKit, no negative control: scripts/ci/ci-scope.mjs), so what only main runs can go red after a merge, and nothing would say so: a mail to whoever pushed is all GitHub does.
+// the nightly run. A pull request runs only PR Checks, so what only main runs can go red after a merge, and nothing would say so: a mail to whoever pushed is all GitHub does.
 //
 //   node scripts/ci/main-red.mjs        reads the finished run from the environment (below); creates, updates or closes the issue labelled `ci-main-red`
 //
