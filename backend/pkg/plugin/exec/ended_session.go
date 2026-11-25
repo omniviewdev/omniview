@@ -31,13 +31,18 @@ import (
 // sessionClosed is the host's answer to the CLOSE signal of a session of a plugin, the last thing it sends. It decides
 // whose session the id is and acts on the record in one critical section: a plugin that records a session with this id
 // after the frame was let through (dispatchProviderOutput) keeps it, and the answer is false: nothing was ended, and
-// the windows are not told.
+// the windows are not told. A CLOSE that finds no record is remembered (endedFirst): the plugin's answer to the create of
+// a short command can be read after the command has ended and said so, and that create then records the session ended.
 func (c *controller) sessionClosed(sessionID, pluginID string) bool {
 	now := c.clock()
 	c.mu.Lock()
-	if record, recorded := c.sessionIndex[sessionID]; heldByAnother(record, recorded, pluginID, c.channelHoldsLocked(sessionID)) {
+	record, recorded := c.sessionIndex[sessionID]
+	if heldByAnother(record, recorded, pluginID, c.channelHoldsLocked(sessionID)) {
 		c.mu.Unlock()
 		return false
+	}
+	if !recorded {
+		c.rememberEndedFirstLocked(sessionID, pluginID, now)
 	}
 	kept := c.recordCloseLocked(sessionID, now)
 	c.mu.Unlock()
@@ -46,6 +51,33 @@ func (c *controller) sessionClosed(sessionID, pluginID string) bool {
 			"sessionID", sessionID)
 	}
 	return true
+}
+
+// endedFirst is a CLOSE that came before the record of its session: the plugin that sent it, and when.
+type endedFirst struct {
+	pluginID string
+	at       time.Time
+}
+
+// rememberEndedFirstLocked keeps the CLOSE of a session that has no record, for the create that records it, as the ended
+// records are kept: for endedSessionTTL, and endedSessionLimit of them at most (a CLOSE no create follows, of a session the
+// host has already forgotten, goes so). The caller holds c.mu.
+func (c *controller) rememberEndedFirstLocked(sessionID, pluginID string, now time.Time) {
+	for id, first := range c.endedFirst {
+		if now.Sub(first.at) > endedSessionTTL {
+			delete(c.endedFirst, id)
+		}
+	}
+	for len(c.endedFirst) >= endedSessionLimit {
+		oldest := ""
+		for id, first := range c.endedFirst {
+			if oldest == "" || first.at.Before(c.endedFirst[oldest].at) {
+				oldest = id
+			}
+		}
+		delete(c.endedFirst, oldest)
+	}
+	c.endedFirst[sessionID] = endedFirst{pluginID: pluginID, at: now}
 }
 
 // recordCloseLocked decides the record of a session that has sent its CLOSE, and says whether it stays, marked

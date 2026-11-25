@@ -451,6 +451,44 @@ func TestAnAttachRacingTheCloseOfASessionGetsItsOutputAndLeavesNoRecord(t *testi
 	}
 }
 
+// aPluginThatEndsBeforeItAnswers is a short command (echo hi) on a busy machine: the session prints, ends and its CLOSE
+// reaches the host's dispatch before the host has read the plugin's answer to the create, as the plugin's stream and the
+// answer to the call travel apart (TestTheOutputOfAShortCommandReachesALateAttach: 13 of 500 runs under -race in a 2-CPU container under load).
+type aPluginThatEndsBeforeItAnswers struct {
+	*aKeepingPlugin
+
+	ctrl     *controller
+	pluginID string
+}
+
+func (p aPluginThatEndsBeforeItAnswers) CreateSession(pctx *sdktypes.PluginContext, opts sdkexec.SessionOptions) (*sdkexec.Session, error) {
+	session, err := p.aKeepingPlugin.CreateSession(pctx, opts)
+	p.write(opts.ID, "hi\n")
+	p.ctrl.dispatchOutput(p.end(opts.ID), p.pluginID)
+
+	return session, err
+}
+
+// (f) A session whose CLOSE comes before the answer to its create is recorded ended: the first attach gets its output and
+// uses the record up, as when the CLOSE comes after, and the second finds nothing.
+func TestASessionThatEndedBeforeItsCreateWasAnsweredIsRecordedEnded(t *testing.T) {
+	fx := newEndedSessionFixture(t)
+	const early = "early-plugin"
+	fx.install(early, aPluginThatEndsBeforeItAnswers{aKeepingPlugin: fx.plugin, ctrl: fx.ctrl, pluginID: early})
+	fx.startOn(early, "short")
+	require.True(t, fx.window.told("core/exec/signal/CLOSE/short"), "the windows were told the session closed before the create was answered")
+	require.Equal(t, []string{"short"}, fx.indexed(), "the controller keeps what the plugin keeps: the session's record")
+
+	session, output, err := fx.ctrl.AttachSession("short")
+	require.NoError(t, err)
+	require.Equal(t, "short", session.ID)
+	require.Equal(t, "hi\n", string(output))
+	require.Empty(t, fx.indexed(), "the first attach used the record up")
+
+	_, _, err = fx.ctrl.AttachSession("short")
+	requireSessionNotFound(t, err, "short")
+}
+
 // An ended session is over: a window cannot write to it, resize it or read it, as it could not after its CLOSE
 // before; only the attach that asks for its output, a close and a detach find its record.
 func TestAnEndedSessionTakesNoInput(t *testing.T) {

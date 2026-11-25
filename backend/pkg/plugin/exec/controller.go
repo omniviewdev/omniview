@@ -135,6 +135,7 @@ func NewController(
 		clients:          nil,
 		sessionIndex:     make(map[string]sessionIndex),
 		channelMaking:    make(map[string]bool),
+		endedFirst:       make(map[string]endedFirst),
 		inChans:          make(map[string]chan exec.StreamInput),
 		inputMux:         make(chan exec.StreamInput),
 		outputMux:        make(chan execProviderOutput),
@@ -182,6 +183,10 @@ type controller struct {
 	now func() time.Time
 	// endedCount numbers the sessions that ended with nobody attached, in the order they did; c.mu guards it.
 	endedCount uint64
+	// endedFirst is the CLOSE of each session that had no record when it came (sessionClosed): CreateSession records the
+	// session after its plugin has answered, and a short command can end, and its CLOSE be dispatched, before that. c.mu
+	// guards it.
+	endedFirst map[string]endedFirst
 }
 
 type execProviderStream struct {
@@ -722,6 +727,14 @@ func (c *controller) CreateSession(
 		ended:        false,
 		endedAt:      time.Time{},
 		endedSeq:     0,
+	}
+	if first, closed := c.endedFirst[session.ID]; closed {
+		// The session ended, and its CLOSE was dispatched, before the plugin's answer to this create was read: it is recorded
+		// ended, as that CLOSE would have left it had it come after.
+		delete(c.endedFirst, session.ID)
+		if first.pluginID == plugin {
+			c.recordCloseLocked(session.ID, first.at)
+		}
 	}
 	c.mu.Unlock()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("session_id", session.ID))
