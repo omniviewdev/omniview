@@ -478,10 +478,16 @@ const FAILED_GROUP = 'failed-load';
 const PAGE_GROUP = 'plugins-page';
 const CONNECTIONS_GROUP = 'connections';
 const RECONNECT_GROUP = 'terminal-reconnect';
+const PROFILE_GROUP = 'terminal-profile';
+// The negative control of the profile assertion of scenario r2 (the shell runs the user's profile files): a shell whose profile did not run (the variable the check's profile sets is unset in it) must go red. One run makes it (SEAM_CONTROL=terminal-profile or its name); SEAM_REMOVE=<name> leaves the assertion out.
+const PROFILE_CONTROLS = {
+  'profile-not-run': /the shell runs the user's profile files/,
+};
 const ISOLATION_GROUP = 'terminal-isolation';
 // The negative controls of scenario r6, a terminal across the cuts of the page's two sockets (the review of #677, B1). As in n, p, t and u each is a perturbation made just before the assertion that must see it and undone right after, on the first cut only, and the assertion must fail with ITS
 // words and no other. One run serves them all (SEAM_CONTROL=terminal-reconnect); SEAM_CONTROL=<name> makes that one only; SEAM_REMOVE=<name> leaves that assertion out, and the perturbation must then pass undetected.
 const RECONNECT_CONTROLS = {
+  'reconnect-order': /the check of the order of the two lines/,
   'reconnect-typing': /what was typed after the cut reached the shell/,
   'reconnect-pid': /the terminal is the same shell after the cut/,
   'reconnect-calls': /no call of the page answered not-found or FORBIDDEN/,
@@ -510,11 +516,11 @@ const ONLY = process.env.SEAM_ONLY ?? '';
 if (ONLY !== '' && ONLY !== PAGE_GROUP && ONLY !== CONNECTIONS_GROUP && ONLY !== PT_GROUP && ONLY !== PORTS_GROUP && ONLY !== SETTINGS_SLOTS) {
   throw new Error(`SEAM_ONLY must be ${PAGE_GROUP}, ${CONNECTIONS_GROUP}, ${PT_GROUP}, ${PORTS_GROUP} or ${SETTINGS_SLOTS}`);
 }
-if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== RECONNECT_GROUP && CONTROL !== ISOLATION_GROUP && CONTROL !== PT_GROUP && CONTROL !== PORTS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && RECONNECT_CONTROLS[CONTROL] === undefined && ISOLATION_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined && PORTS_CONTROLS[CONTROL] === undefined) {
-  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), RECONNECT_GROUP, ...Object.keys(RECONNECT_CONTROLS), ISOLATION_GROUP, ...Object.keys(ISOLATION_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
+if (CONTROL !== '' && CONTROL !== 'process' && CONTROL !== FAILED_GROUP && CONTROL !== SETTINGS_GROUP && CONTROL !== PAGE_GROUP && CONTROL !== CONNECTIONS_GROUP && CONTROL !== RECONNECT_GROUP && CONTROL !== ISOLATION_GROUP && CONTROL !== PROFILE_GROUP && PROFILE_CONTROLS[CONTROL] === undefined && CONTROL !== PT_GROUP && CONTROL !== PORTS_GROUP && CONTROLS[CONTROL] === undefined && PROCESS_CONTROLS[CONTROL] === undefined && FAILED_CONTROLS[CONTROL] === undefined && PAGE_CONTROLS[CONTROL] === undefined && CONNECTIONS_CONTROLS[CONTROL] === undefined && RECONNECT_CONTROLS[CONTROL] === undefined && ISOLATION_CONTROLS[CONTROL] === undefined && PT_CONTROLS[CONTROL] === undefined && PORTS_CONTROLS[CONTROL] === undefined) {
+  throw new Error(`SEAM_CONTROL must be one of ${[...Object.keys(CONTROLS), 'process', ...Object.keys(PROCESS_CONTROLS), FAILED_GROUP, ...Object.keys(FAILED_CONTROLS), PAGE_GROUP, ...Object.keys(PAGE_CONTROLS), CONNECTIONS_GROUP, ...Object.keys(CONNECTIONS_CONTROLS), PROFILE_GROUP, ...Object.keys(PROFILE_CONTROLS), RECONNECT_GROUP, ...Object.keys(RECONNECT_CONTROLS), ISOLATION_GROUP, ...Object.keys(ISOLATION_CONTROLS), PT_GROUP, ...Object.keys(PT_CONTROLS), PORTS_GROUP, ...Object.keys(PORTS_CONTROLS), SETTINGS_GROUP].join(', ')}`);
 }
-if (REMOVE !== '' && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && RECONNECT_CONTROLS[REMOVE] === undefined && ISOLATION_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
-  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
+if (REMOVE !== '' && PROFILE_CONTROLS[REMOVE] === undefined && FAILED_CONTROLS[REMOVE] === undefined && PROCESS_CONTROLS[REMOVE] === undefined && PAGE_CONTROLS[REMOVE] === undefined && CONNECTIONS_CONTROLS[REMOVE] === undefined && RECONNECT_CONTROLS[REMOVE] === undefined && ISOLATION_CONTROLS[REMOVE] === undefined && PT_CONTROLS[REMOVE] === undefined && PORTS_CONTROLS[REMOVE] === undefined && SETTINGS_PARTS[REMOVE] === undefined && REMOVE !== RUNTIME_CONTROL) {
+  throw new Error(`SEAM_REMOVE must be one of ${[...Object.keys(PROFILE_CONTROLS), ...Object.keys(PROCESS_CONTROLS), ...Object.keys(FAILED_CONTROLS), ...Object.keys(PAGE_CONTROLS), ...Object.keys(CONNECTIONS_CONTROLS), ...Object.keys(RECONNECT_CONTROLS), ...Object.keys(ISOLATION_CONTROLS), ...Object.keys(PT_CONTROLS), ...Object.keys(PORTS_CONTROLS), ...Object.keys(SETTINGS_PARTS), RUNTIME_CONTROL].join(', ')}`);
 }
 
 // A control's name belongs to one table. The dispatch at the end of this file runs the scenario of the first group that holds the name, so a name that two tables held would run one scenario and never the other: `page-error` was the control of the Logs scenari
@@ -526,13 +532,14 @@ for (const [table, names] of [
   ['FAILED_CONTROLS', Object.keys(FAILED_CONTROLS)],
   ['PAGE_CONTROLS', Object.keys(PAGE_CONTROLS)],
   ['CONNECTIONS_CONTROLS', Object.keys(CONNECTIONS_CONTROLS)],
+  ['PROFILE_CONTROLS', Object.keys(PROFILE_CONTROLS)],
   ['RECONNECT_CONTROLS', Object.keys(RECONNECT_CONTROLS)],
   ['ISOLATION_CONTROLS', Object.keys(ISOLATION_CONTROLS)],
   ['PT_CONTROLS', Object.keys(PT_CONTROLS)],
   ['PORTS_CONTROLS', Object.keys(PORTS_CONTROLS)],
   ['SETTINGS_PARTS', Object.keys(SETTINGS_PARTS)],
   ['the watch over failed requests', [RUNTIME_CONTROL]],
-  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, RECONNECT_GROUP, ISOLATION_GROUP, PT_GROUP, PORTS_GROUP]],
+  ['the groups', ['process', FAILED_GROUP, SETTINGS_GROUP, PAGE_GROUP, CONNECTIONS_GROUP, PROFILE_GROUP, RECONNECT_GROUP, ISOLATION_GROUP, PT_GROUP, PORTS_GROUP]],
 ]) {
   for (const name of names) NAMED_ONCE.set(name, [...(NAMED_ONCE.get(name) ?? []), table]);
 }
@@ -599,6 +606,7 @@ if (process.env.SEAM_LIST !== undefined) {
     { run: PORTS_GROUP, proves: Object.keys(PORTS_CONTROLS) },
     { run: RECONNECT_GROUP, proves: Object.keys(RECONNECT_CONTROLS) },
     { run: ISOLATION_GROUP, proves: Object.keys(ISOLATION_CONTROLS) },
+    { run: PROFILE_GROUP, proves: Object.keys(PROFILE_CONTROLS) },
   ];
   console.log(JSON.stringify({ phases: PHASE_IDS, controls }));
   process.exit(0);
@@ -647,6 +655,8 @@ async function startHostOnce(work, port, built, write) {
   const home = path.join(work, 'home');
   const plugins = path.join(stateRoot(work), 'plugins');
   await mkdir(plugins, { recursive: true });
+  // The user's profile files of the check's own home: a shell that runs them says so (`SEAM_PROFILE_RAN`), whether the host started it as a login shell or, with its integration, as a bash that emulates the login (`-l` and `--rcfile` do not go together).
+  for (const profile of ['.bash_profile', '.zprofile']) await writeFile(path.join(home, profile), 'export SEAM_PROFILE_RAN=yes\n');
   built ??= await write(plugins);
   const logFile = path.join(work, 'host.log');
   // A minimal environment, so nothing ambient (a credential, a config path of the developer's machine) reaches the host or a plugin: only the profile the check built.
@@ -7534,7 +7544,7 @@ const attachedSince = (streams, id, ms) => streams.of(id).filter((socket) => soc
 /** The planted text of the control `isolation-frames`: a needle of its own (the label of its hits). */
 const PLANTED = 'the text the control planted in the second terminal';
 /** The faults of the controls of the payload search: the old scan (a match is held against the carry AFTER it was replaced) and the old cleanup (every hit from an index on is dropped). */
-const LEGACY = { scan: false, cleanup: false };
+const LEGACY = { scan: false, cleanup: false, order: false };
 
 /**
  * One frame's bytes against the needles, for a socket and direction (`state.carry` is the tail of the frames before): the labels of the needles that end in THIS frame (a match inside what was carried was found when it was new). The carry is the longest needle less one byte,
@@ -7576,6 +7586,30 @@ function assertPayloadScan(engine) {
   assert.deepEqual(scanPayload(fresh(), Buffer.from('CANARYXYZ'), needles), ['canary'], `${engine}: the payload search finds a needle in the short first frame of a socket (an output frame that carries a foreign text before the host's ready)`);
   const split = fresh();
   assert.deepEqual([scanPayload(split, Buffer.from('xxCANA'), needles), scanPayload(split, Buffer.from('RYXYZyy'), needles), scanPayload(split, Buffer.from('zz'), needles)], [[], ['canary'], []], `${engine}: the payload search finds a needle split across two frames, once, and not again with the next frame`);
+}
+
+/**
+ * Whether the line typed during a cut (`AWAY_<tag>_42`) and the line typed after it (`KEEP_<tag>_<n>_42`) both came back from the shell, in that order. The output of the first is searched without a line start before it: a character typed ahead is echoed by the tty
+ * into the line of the output that is running (`KAWAY_ST1_42`), and the echo of a line carries `$((6*7))`, never `42`, so only the output can match. The control `reconnect-order` makes the fault of a check that finds both and asks no order.
+ */
+function deliveredInOrder(text, tag, n) {
+  if (LEGACY.order) return text.includes(`AWAY_${tag}_42\n`) && text.includes(`\nKEEP_${tag}_${n}_42\n`);
+  return new RegExp(`AWAY_${tag}_42\\n[\\s\\S]*\\nKEEP_${tag}_${n}_42\\n`).test(text);
+}
+
+/** The check of the order of the two lines, held to what it must do before it is trusted with a shell's output: the order they came in passes, a type-ahead echo in the output's line passes, the other order and a missing line do not. */
+function assertDeliveryOrder(engine) {
+  const lines = (...parts) => parts.join('');
+  assert.deepEqual(
+    [
+      deliveredInOrder(lines('$ echo AWAY_ST1_$((6*7))\nAWAY_ST1_42\n$ echo KEEP_ST1_5_$((6*7))\nKEEP_ST1_5_42\n'), 'ST1', '5'),
+      deliveredInOrder(lines('$ echo AWAY_ST1_$((6*7))\nKAWAY_ST1_42\n$ \nKEEP_ST1_5_42\n'), 'ST1', '5'),
+      deliveredInOrder(lines('$ \nKEEP_ST1_5_42\nAWAY_ST1_42\n'), 'ST1', '5'),
+      deliveredInOrder(lines('AWAY_ST1_42\n'), 'ST1', '5'),
+    ],
+    [true, true, false, false],
+    `${engine}: the check of the order of the two lines passes the order they came in and a type-ahead echo in the output's line, and fails the other order and a missing line`,
+  );
 }
 
 /** The cleanup of the control `isolation-frames` takes out its planted hits and only those: a real foreign hit that came meanwhile is still there. */
@@ -7647,7 +7681,9 @@ function assertActivityAllowance(engine, phaseName) {
  * bracketed paste with `ESC [ ? 2004 l CR` right before the output of a command and zsh with a line feed, so a pattern that wants the output at the start of a line sees it in zsh and not in bash: the first CI run of scenario r
  * timed out on the runner's bash for that reason, where it had passed on a Mac's zsh (the bytes were captured in the CI image: `echo SEAM_$((6*7))` CR LF ESC[?2004l CR SEAM_42 CR LF).
  */
-const plain = (text) => text.replace(/\u001b\[[0-9;?<>=]*[ -/]*[@-~]/g, '').replaceAll('\r', '');
+// The operating system commands (ESC ] ... BEL, or ... ESC \) go too: the host's shell integration (#694: OSC 133 marks of the prompt and the command, OSC 7, OSC 633 with the session's nonce) writes them around every prompt and every
+// output, in bash, zsh and fish, and a line of output starts right after `ESC ] 133 ; C BEL` (the first run of a bash with the integration read `9 193` after one and matched no line).
+const plain = (text) => text.replace(/\u001b\][^\u0007\u001b\n]*(?:\u0007|\u001b\\)/g, '').replace(/\u001b\[[0-9;?<>=]*[ -/]*[@-~]/g, '').replaceAll('\r', '');
 async function plainTranscriptOf(base, id) {
   return plain(await transcriptOf(base, id));
 }
@@ -8288,7 +8324,17 @@ async function terminalCloseKeys({ page, base, engine, questions, note }) {
  * `ack` frames adding up to the bytes of each. Closing: a terminal at its prompt closes with no question, by the pointer and by Delete, the focus staying in the panel, with one CloseChannelTerminal; with `sleep 60` running the question names it, Cancel and Escape keep both and the focus goes to
  * the tab, and Terminate session ends them. A shell that runs `exit 3` is an ended session that says `Exited with code 3`, which the host keeps until the page dismisses it (one DismissChannelTerminal, closing it asks nothing). `r2` below is the emulator against the programs of the machine.
  */
+/** What `plain` takes out of a transcript and what it leaves: the operating system commands of the shell integration (BEL or ST terminated) go, and an OSC that never ends does not eat the text after it, up to a BEL of a later line. */
+function assertPlainStrips(engine) {
+  assert.deepEqual(
+    [plain('\u001b]133;C\u00079 193\r\n'), plain('\u001b]7;file://host/dir\u001b\\hi'), plain('\u001b]133;Aunended\nkept text\u0007after'), plain('\u001b[1mbold\u001b[0m')],
+    ['9 193\n', 'hi', '\u001b]133;Aunended\nkept text\u0007after', 'bold'],
+    `${engine}: plain takes out an OSC ended by BEL or by ST, leaves the text after one that never ends (it stops at the line end), and still takes out CSI`,
+  );
+}
+
 async function checkTerminal(page, base, engine) {
+  assertPlainStrips(engine);
   const errors = [];
   const chunks = [];
   const observed = [];
@@ -8345,6 +8391,11 @@ async function checkTerminal(page, base, engine) {
   // own tab in the strip of tools stays Terminal. The shell is asked what it is called, so that the name is proved against the shell and not only against the host's own word for it; what the host answered is read from the wire.
   const said = await askShellName(page, base, id);
   const named = created[0].answer?.shell?.name;
+  // The host's shell integration is on in the seam: a bash, zsh or fish started by the host writes its marks (OSC 133, the prompt's start) into the stream the page receives, so that what `plain` takes out is really there.
+  if (['bash', 'zsh', 'fish'].includes(String(named))) {
+    assert.ok((await transcriptOf(base, id)).includes('\u001b]133;A'), `${engine}: the shell integration is on: the stream the page receives carries the prompt mark of the shell (OSC 133 ; A) of ${String(named)}`);
+  }
+
   const tabNames = async () => page.locator('[data-shell-part="sessionTabs"] [role="tab"]').evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute('aria-label')));
   await waitUntil('the session tab to be called by the shell', async () => !/^Terminal\b/.test((await tabNames())[0] ?? 'Terminal'), 10_000).catch(() => undefined);
   const shell = (await tabNames())[0];
@@ -8406,10 +8457,11 @@ async function checkTerminal(page, base, engine) {
   const after = await screenSizeOf(page);
   // A resize reaches the pty in steps (one call in flight, then the newest size), so `stty size` is asked again until the pty has the rows the page draws, and the assertion below is about that size and no intermediate one.
   const ptyRows = async () => {
-    const from = (await plainTranscriptOf(base, id)).length;
+    // The offset is a RAW one: the normalized text can shrink when an OSC that was split across two reads ends, and a length of it would then skip the start of the answer.
+    const from = outputEnd(id);
     await typeLine(page, 'stty size');
-    await waitUntil('stty size to answer', async () => sttyOf((await plainTranscriptOf(base, id)).slice(from)) !== null, 15_000);
-    return sttyOf((await plainTranscriptOf(base, id)).slice(from));
+    await waitUntil('stty size to answer', async () => sttyOf(plain(outputSince(id, from))) !== null, 15_000);
+    return sttyOf(plain(outputSince(id, from)));
   };
   let second = await ptyRows();
   for (let tries = 0; tries < 10 && second.rows !== after.rows; tries += 1) {
@@ -8537,6 +8589,7 @@ async function checkTerminal(page, base, engine) {
  * own gaps that belong to the host's backend are printed as GAP and are not asserted here (they are listed for the Go side, docs/ui-next/status/T1.md).
  */
 async function checkTerminalPrograms(page, base, engine) {
+  const { asserting, verdict } = withControls(PROFILE_GROUP, PROFILE_CONTROLS);
   const errors = [];
   const observed = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
@@ -8610,9 +8663,21 @@ async function checkTerminalPrograms(page, base, engine) {
   assert.equal(cwd, home, `${engine}: with no project open a terminal starts in the home directory, not in the host's working directory`);
   note('env', `TERM=${term} COLORTERM=${colorterm} shell=${shell} cwd=${cwd} (home)`);
   if (colorterm !== 'truecolor') note('GAP env', `COLORTERM is ${colorterm}: the host does not set COLORTERM=truecolor, so a program that decides on it falls back to 256 colours (backend/pkg/terminal/manager.go:142)`);
-  const login = await ask('if [ -n "$ZSH_VERSION" ]; then [[ -o login ]] && echo LOGIN=yes || echo LOGIN=no; else shopt -q login_shell && echo LOGIN=yes || echo LOGIN=no; fi', /\nLOGIN=(yes|no)\r?\n/, 'the login answer');
-  assert.match(login, /\nLOGIN=yes\r?\n/, `${engine}: the shell is a login shell, so the user's profile files run`);
-  note('login shell', 'yes: the profile files run (the Dock-launched PATH defect needs the packaged app and is not covered here)');
+  // The user's profile files run: asked by what the home's profile (`.bash_profile`, `.zprofile`) sets, and not by `shopt -q login_shell`, which a bash that the host's integration starts without -l (it emulates the login) answers no.
+  const askProfile = () => ask('echo PROFILE=${SEAM_PROFILE_RAN-no}', /\nPROFILE=(yes|no)\r?\n/, 'the profile answer');
+  await asserting(
+    'profile-not-run',
+    async () => {
+      // A shell whose profile did not run: what the profile sets is unset in it.
+      // The value it had is kept, and put back by the undo: a profile that never ran leaves nothing to put back, and the clean assertion then fails.
+      await ask('__seam_was=${SEAM_PROFILE_RAN-}; unset SEAM_PROFILE_RAN; echo UNSET_DONE', /\nUNSET_DONE\r?\n/, 'the variable to be unset');
+    },
+    async () => {
+      await ask('if [ -n "$__seam_was" ]; then export SEAM_PROFILE_RAN="$__seam_was"; fi; unset __seam_was; echo RESET_DONE', /\nRESET_DONE\r?\n/, 'the variable to be put back as it was');
+    },
+    async () => assert.match(await askProfile(), /\nPROFILE=yes\r?\n/, `${engine}: the shell runs the user's profile files (as a login shell, or as the integration's bash that emulates one)`),
+  );
+  note('login shell', 'yes: the user\'s profile files run (as a login shell, or as the integration\'s emulation of one; the Dock-launched PATH defect needs the packaged app and is not covered here)');
   if (hostMac) {
     const paths = await ask('if [ -r /etc/paths ]; then { cat /etc/paths; find /etc/paths.d -type f -exec cat {} + 2>/dev/null; } | while read -r p; do case ":$PATH:" in *":$p:"*) ;; *) echo "PATH_MISSING=$p";; esac; done; echo PATH_CHECKED; else echo PATH_UNREADABLE; fi', /\nPATH_(CHECKED|UNREADABLE)\r?\n/, 'the PATH check');
     assert.match(paths, /\nPATH_CHECKED\r?\n/, `${engine}: /etc/paths could be read, so the check is about something`);
@@ -8906,6 +8971,7 @@ async function checkTerminalPrograms(page, base, engine) {
   note('Control D', 'ended the shell: the session says so and the host lists none');
 
   assert.deepEqual(errors, [], `${engine}: the page raised no error`);
+  verdict(engine);
   console.log(`terminal-programs ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
 }
 
@@ -10225,6 +10291,8 @@ async function checkTerminalFollowups(browser, getHost, engine) {
  */
 async function checkTerminalReconnect(browser, getHost, engine) {
   const { asserting, verdict } = withControls(RECONNECT_GROUP, RECONNECT_CONTROLS);
+  // The check of the order of the two lines is held to what it must do before it reads a shell's output.
+  await asserting('reconnect-order', () => { LEGACY.order = true; }, () => { LEGACY.order = false; }, () => assertDeliveryOrder(engine));
   const errors = [];
   const observed = [];
   const note = (name, text) => observed.push(`${name}: ${text}`);
@@ -10308,9 +10376,9 @@ async function checkTerminalReconnect(browser, getHost, engine) {
             await typeLine(page, `echo KEEP_${tag}_${n}_$((6*7))`);
           }
 
-          const reached = await holdsWithin(async () => new RegExp(`\\nAWAY_${tag}_42\\n[\\s\\S]*\\nKEEP_${tag}_${n}_42\\n`).test(await plainTranscriptOf(base(), id)), 20_000);
+          const reached = await holdsWithin(async () => deliveredInOrder(await plainTranscriptOf(base(), id), tag, n), 20_000);
           const frames = seen.streams.of(id).filter((socket) => socket.openedMs >= sinceCut - 2_000).map((socket) => `[open+${String(socket.openedMs - sinceCut)} close${socket.closedMs > 0 ? `+${String(socket.closedMs - sinceCut)}` : ' never'}: ${socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir === 'page' ? '>' : '<'}${frame.type}${frame.length === undefined ? '' : `(${String(frame.length)})`}@${String(frame.ms - sinceCut)}`).join(' ')}]`).join(' ');
-          const away = (await plainTranscriptOf(base(), id)).split(`\nAWAY_${tag}_42\n`).length - 1;
+          const away = (await plainTranscriptOf(base(), id)).split(`AWAY_${tag}_42\n`).length - 1;
           assert.ok(reached && away === 1, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, once (${String(away)} times), in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote); the streams since the cut: ${frames}; the shell wrote ${JSON.stringify(plain(outputSince(id, outputEnd(id) - 600)))}`);
         },
       );
@@ -10983,11 +11051,11 @@ async function checkTerminalFindMenu(page, base, engine) {
     return holdsWithin(async () => new RegExp(`\\n${marker}_42\\n`).test(await plainTranscriptOf(base, id)), 15_000);
   };
   const sizeNow = async () => {
-    const from = (await plainTranscriptOf(base, id)).length;
+    const from = outputEnd(id);
     await typeLine(page, 'stty size');
     let size = null;
     await waitUntil('stty size to answer', async () => {
-      size = sttyOf((await plainTranscriptOf(base, id)).slice(from));
+      size = sttyOf(plain(outputSince(id, from)));
       return size !== null;
     }, 15_000);
     return size;
@@ -13225,6 +13293,18 @@ try {
         // Scenario u alone: clean under SEAM_ONLY, and under SEAM_CONTROL with the perturbations of the controls asked for, saying for each whether its own assertion saw it (`checkConnectionsAndHome`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
         try {
           await phase(CONNECTIONS_GROUP, name, async () => checkConnectionsAndHome(browser, name, await connectionsFixture(), work));
+        } catch (error) {
+          console.error(String(error?.message ?? error));
+          process.exitCode = 1;
+        }
+
+        continue;
+      }
+
+      if (CONTROL === PROFILE_GROUP || PROFILE_CONTROLS[CONTROL] !== undefined) {
+        // Scenario r2 alone with the perturbation of the profile control, saying whether its own assertion saw it (`checkTerminalPrograms`). It runs as a phase, so the requests that fail are held to the allow-list as in a full run.
+        try {
+          await phase('terminal-programs', name, async () => onTerminalPage(browser, host.base, (page) => checkTerminalPrograms(page, host.base, name)));
         } catch (error) {
           console.error(String(error?.message ?? error));
           process.exitCode = 1;
