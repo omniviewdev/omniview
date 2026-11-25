@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"sync"
 )
 
 type ResourceComponentArea string
@@ -29,23 +30,57 @@ func (rc ResourceComponent) String() string {
 
 // ResourceComponentStore keeps a nested map of plugin->resourceID->Components
 // so the UI knows what is available to render.
-type ResourceComponentStore map[string]map[string][]ResourceComponent
+//
+// The host initialises, starts and stops its plugins from a pool of workers
+// (pluginManager.loadPluginsConcurrently) while the frontend asks the service what is
+// registered, so one store is used by many goroutines at once. It owns its lock, as the
+// controllers of the other plugin managers do, and what it hands out is a copy: a caller (the
+// service encodes it for the frontend while another plugin loads) never shares memory with it.
+// Use the pointer NewResourceComponentStore answers.
+type ResourceComponentStore struct {
+	mu      sync.RWMutex
+	plugins map[string]map[string][]ResourceComponent
+}
 
 // NewResourceComponentStore creates a new ResourceComponentStore.
-func NewResourceComponentStore() ResourceComponentStore {
-	return make(ResourceComponentStore)
+func NewResourceComponentStore() *ResourceComponentStore {
+	return &ResourceComponentStore{
+		mu:      sync.RWMutex{},
+		plugins: make(map[string]map[string][]ResourceComponent),
+	}
 }
 
 // AddPlugin adds a plugin to the store.
-func (pcs ResourceComponentStore) AddPlugin(plugin string) {
-	if _, ok := pcs[plugin]; !ok {
-		pcs[plugin] = make(map[string][]ResourceComponent)
+func (pcs *ResourceComponentStore) AddPlugin(plugin string) {
+	pcs.mu.Lock()
+	defer pcs.mu.Unlock()
+
+	if _, ok := pcs.plugins[plugin]; !ok {
+		pcs.plugins[plugin] = make(map[string][]ResourceComponent)
 	}
 }
 
 // RemovePlugin removes a plugin from the store.
-func (pcs ResourceComponentStore) RemovePlugin(plugin string) {
-	delete(pcs, plugin)
+func (pcs *ResourceComponentStore) RemovePlugin(plugin string) {
+	pcs.mu.Lock()
+	defer pcs.mu.Unlock()
+
+	delete(pcs.plugins, plugin)
+}
+
+// cloneComponents copies a list of components, and the extensions of each, so that the copy shares
+// no memory with the list it was made from. A list that is nil stays nil.
+func cloneComponents(components []ResourceComponent) []ResourceComponent {
+	if components == nil {
+		return nil
+	}
+
+	cloned := make([]ResourceComponent, len(components))
+	for i, component := range components {
+		component.Extensions = cloneComponents(component.Extensions)
+		cloned[i] = component
+	}
+	return cloned
 }
 
 func validateResourceComponent(rc ResourceComponent) error {
@@ -68,12 +103,17 @@ func validateResourceComponent(rc ResourceComponent) error {
 }
 
 // AddComponent adds a component to the store.
-func (pcs ResourceComponentStore) AddComponent(resource ResourceComponent) error {
+func (pcs *ResourceComponentStore) AddComponent(resource ResourceComponent) error {
 	if err := validateResourceComponent(resource); err != nil {
 		return err
 	}
 
-	found, ok := pcs[resource.Plugin]
+	// The check for a double and the adding are one step: two callers that add the same component
+	// at once must not both pass the check.
+	pcs.mu.Lock()
+	defer pcs.mu.Unlock()
+
+	found, ok := pcs.plugins[resource.Plugin]
 	if !ok {
 		found = make(map[string][]ResourceComponent)
 	} else {
@@ -90,33 +130,47 @@ func (pcs ResourceComponentStore) AddComponent(resource ResourceComponent) error
 		}
 	}
 
-	// all good, add the resource component
+	// all good, add the resource component (its own copy: the caller keeps what it passed)
+	resource.Extensions = cloneComponents(resource.Extensions)
 	found[resource.Resource] = append(found[resource.Resource], resource)
-	pcs[resource.Plugin] = found
+	pcs.plugins[resource.Plugin] = found
 	return nil
 }
 
-// GetComponents returns the components for a given plugin and resource.
-func (pcs ResourceComponentStore) GetComponentsForResource(
+// GetComponentsForResource returns the components for a given plugin and resource: a copy.
+func (pcs *ResourceComponentStore) GetComponentsForResource(
 	plugin, resource string,
 ) []ResourceComponent {
 	if plugin == "" || resource == "" {
 		return nil
 	}
 
-	if _, ok := pcs[plugin]; !ok {
-		return nil
-	}
-	return pcs[plugin][resource]
+	pcs.mu.RLock()
+	defer pcs.mu.RUnlock()
+
+	return cloneComponents(pcs.plugins[plugin][resource])
 }
 
-// GetComponentsByPlugin returns the components for a given plugin.
-func (pcs ResourceComponentStore) GetComponentsByResource(
+// GetComponentsByResource returns the components for a given plugin, by resource: a copy. A plugin
+// that is not in the store has none (nil); one that is has a map, empty when it has no components.
+func (pcs *ResourceComponentStore) GetComponentsByResource(
 	plugin string,
 ) map[string][]ResourceComponent {
 	if plugin == "" {
 		return nil
 	}
 
-	return pcs[plugin]
+	pcs.mu.RLock()
+	defer pcs.mu.RUnlock()
+
+	found, ok := pcs.plugins[plugin]
+	if !ok {
+		return nil
+	}
+
+	byResource := make(map[string][]ResourceComponent, len(found))
+	for resource, components := range found {
+		byResource[resource] = cloneComponents(components)
+	}
+	return byResource
 }

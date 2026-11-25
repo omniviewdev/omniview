@@ -1,0 +1,63 @@
+# red run: the final tests against the unchanged store (origin/main c1e2cf40 through go test -overlay), GOWORK=off go test -race -count=1
+# command: go test -overlay /tmp/overlay.json -race -count=1 -run '^<test>$' ./backend/pkg/plugin/ui/
+
+## the tests of one caller at a time: green on the old store
+--- PASS: TestAPluginAddedWithNothingIsThereWithNoResources (0.00s)
+--- PASS: TestAddComponentRefusesTheSameComponentTwice (0.00s)
+--- PASS: TestRemovePluginForgetsItsComponents (0.00s)
+--- PASS: TestAddPluginKeepsWhatThePluginAlreadyHas (0.00s)
+--- PASS: TestWhatIsNotThereIsNothing (0.00s)
+--- PASS: TestAComponentCanBeAddedToAPluginThatWasNotAddedFirst (0.00s)
+--- PASS: TestAddComponentRefusesWhatIsMissing (0.00s)
+PASS
+ok  	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	1.050s
+
+## TestEveryPluginAddedAtOnceIsInTheStore (old store)
+      1 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.048s
+      1 fatal error: concurrent map read and map write
+
+## TestPluginsAddedRemovedAndReadAtOnceLeaveTheStoreWhole (old store)
+      1 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	313.748s
+      1 fatal error: concurrent map read and map write
+
+## TestEveryComponentRegisteredIntoOnePluginAtOnceIsKept (old store)
+      1 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.037s
+      1 fatal error: concurrent map writes
+
+## TestTheSameComponentRegisteredAtOnceIsKeptOnce (old store)
+      1         	Error:      	Not equal: 
+      1 --- FAIL: TestTheSameComponentRegisteredAtOnceIsKeptOnce (0.00s)
+      2 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.037s
+
+## TestWhatTheStoreHandsOutIsACopy (old store)
+      1         	Error:      	"[]" should have 1 item(s), but has 0
+      1 --- FAIL: TestWhatTheStoreHandsOutIsACopy (0.00s)
+      2 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.034s
+
+## TestCallersThatChangeWhatTheyWereGivenDoNotRaceWithTheStore (old store)
+      1 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.037s
+      1 fatal error: concurrent map writes
+
+## TestManagerKeepsEveryPluginThatLoadsAtOnce (old store)
+      1 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.045s
+      1 fatal error: concurrent map read and map write
+
+## TestManagerKeepsEveryComponentThatPluginsRegisterIntoOneTarget (old store)
+      1 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.045s
+      1 fatal error: concurrent map read and map write
+
+## TestManagerForgetsEveryPluginThatStopsAtOnce (old store)
+      1 FAIL
+      1 FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	0.046s
+      1 fatal error: concurrent map writes
+
+## all tests, the fixed store
+ok  	github.com/omniviewdev/omniview/backend/pkg/plugin/ui	1.083s
