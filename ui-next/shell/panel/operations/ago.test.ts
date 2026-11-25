@@ -299,17 +299,59 @@ describe('ago: the age clock of the page reads it', () => {
   });
 });
 
-describe('stampOf: the absolute start, in UTC', () => {
-  it('is the instant in UTC to the minute, as the kit writes the stamp of an age: the tip of the words', () => {
-    expect(stampOf(T)).toBe('2026-11-24 10:00 UTC');
-    expect(stampOf(T + 59_999)).toBe('2026-11-24 10:00 UTC');
-    expect(stampOf(T + MINUTE)).toBe('2026-11-24 10:01 UTC');
+/** Runs `run` with the machine in `zone`. A process's time zone is its environment's: a test that names two zones must not depend on the one the suite runs under (CI and the lead run it under UTC and under Pacific/Kiritimati). */
+function inZone(zone: string, run: () => void): void {
+  const before = process.env.TZ;
+  process.env.TZ = zone;
+  try {
+    run();
+  } finally {
+    if (before === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = before;
+    }
+  }
+}
+
+/** The ICU of a runtime writes the space before AM and PM as a plain space or as a narrow no-break one: both are a space here. */
+const spaced = (text: string): string => text.replace(/\s/g, ' ');
+
+describe('stampOf: the absolute start, in the machine\'s own time with the seconds (the mock\'s tip)', () => {
+  const AT = T + 5 * SECOND;
+
+  it('is the mock\'s stamp (shell-panel.js:133): the medium date and the medium time of the machine\'s zone', () => {
+    inZone('UTC', () => {
+      expect(new Date(AT).getTimezoneOffset()).toBe(0);
+      expect(spaced(stampOf(AT, 'en-US'))).toBe('Nov 24, 2026, 10:00:05 AM');
+    });
+    inZone('Pacific/Kiritimati', () => {
+      expect(new Date(AT).getTimezoneOffset()).toBe(-840);
+      expect(spaced(stampOf(AT, 'en-US'))).toBe('Nov 25, 2026, 12:00:05 AM');
+    });
   });
 
-  it('is UTC whatever the time zone of the machine is: the day turns at the midnight of UTC', () => {
-    expect(stampOf(Date.UTC(2026, 10, 24, 23, 59, 59))).toBe('2026-11-24 23:59 UTC');
-    expect(stampOf(Date.UTC(2026, 10, 25, 0, 0, 0))).toBe('2026-11-25 00:00 UTC');
-    expect(stampOf(Date.UTC(2027, 0, 1, 0, 0, 0))).toBe('2027-01-01 00:00 UTC');
+  it('has the seconds: two instants a second apart are two stamps', () => {
+    inZone('UTC', () => {
+      expect(spaced(stampOf(AT, 'en-US'))).toBe('Nov 24, 2026, 10:00:05 AM');
+      expect(spaced(stampOf(AT + SECOND, 'en-US'))).toBe('Nov 24, 2026, 10:00:06 AM');
+      expect(spaced(stampOf(AT + 999, 'en-US'))).toBe('Nov 24, 2026, 10:00:05 AM');
+    });
+  });
+
+  it('turns the day at the local midnight of each zone: the stamp is the machine\'s, not UTC\'s', () => {
+    inZone('UTC', () => {
+      expect(spaced(stampOf(Date.UTC(2026, 10, 24, 23, 59, 59), 'en-US'))).toBe('Nov 24, 2026, 11:59:59 PM');
+      expect(spaced(stampOf(Date.UTC(2026, 10, 25, 0, 0, 0), 'en-US'))).toBe('Nov 25, 2026, 12:00:00 AM');
+    });
+    inZone('Pacific/Kiritimati', () => {
+      expect(spaced(stampOf(Date.UTC(2026, 10, 24, 9, 59, 59), 'en-US'))).toBe('Nov 24, 2026, 11:59:59 PM');
+      expect(spaced(stampOf(Date.UTC(2026, 10, 24, 10, 0, 0), 'en-US'))).toBe('Nov 25, 2026, 12:00:00 AM');
+    });
+  });
+
+  it('is the call the mock makes when no locale is given: the locale of the machine', () => {
+    expect(stampOf(AT)).toBe(new Date(AT).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' }));
   });
 
   it('is nothing for a time that is not a time', () => {

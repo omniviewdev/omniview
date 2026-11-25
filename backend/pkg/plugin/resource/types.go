@@ -14,8 +14,18 @@ type ConnectionState struct {
 	Connection types.Connection `json:"connection"`
 
 	// Registered native-client state, not network health. UNKNOWN is not stopped.
-	Readiness      types.ConnectionStatusCode `json:"readiness"`
-	ReadinessError *apperror.AppError         `json:"readinessError,omitempty"`
+	// A connection whose last start failed reads FAILED here, whatever else the provider reports
+	// for it, unless the provider reports it CONNECTED.
+	Readiness types.ConnectionStatusCode `json:"readiness"`
+
+	// Why the connection is not ready. For a connection whose last start failed it is the error of
+	// that start, in the public form every provider error is given to a user (the class's own words,
+	// and the provider's sentence only after it was cleaned); for a start that ended without an error
+	// and answered a failure status (UNAUTHORIZED, FORBIDDEN, FAILED and the like) it is the error of
+	// that status's class alone, none of the status's own text. It is kept until a later start
+	// answers without failing, the connection is stopped, or it leaves the plugin's list. Otherwise
+	// it is why the provider could not report the registered state.
+	ReadinessError *apperror.AppError `json:"readinessError,omitempty"`
 
 	// Per-resource source states (resource key → source state).
 	Resources map[string]string `json:"resources"`

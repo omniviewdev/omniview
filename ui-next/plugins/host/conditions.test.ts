@@ -1,9 +1,10 @@
+import type { AppError } from '@omniviewdev/runtime/ui/v1';
 import { describe, expect, it } from 'vitest';
 import type { ActivityRecordLike, ActivitySeverity, SourceResolver } from '../../shell/panel/activity';
 import type { ContributionV1 } from '../contract/v1';
 import { incompatibleFailure, unloadedFailure, type LoadFailure } from '../loader/failure';
 import { activityConditions, alertConditions, connectionConditions, pluginConditions } from './conditions';
-import type { ConnectionsState, ConnectionState, HostConnection } from './connections';
+import { createConnectionsStore, type ConnectionsApi, type ConnectionsState, type ConnectionState, type HostConnection } from './connections';
 import type { PluginEntry } from './pluginStore';
 
 // The three producers of the Problems tool that exist today, as the conditions they state (ch16 S74, S94, S121; docs/ui-next/status/PT1.md, section 3): the plugins the window could not keep running, the connections
@@ -142,6 +143,102 @@ describe('connectionConditions: the connections that failed', () => {
     expect(connectionConditions({ loaded: true, failed: true, connections: [] }, nameOf)).toEqual([]);
     const [condition] = connectionConditions({ loaded: true, failed: true, connections: [connection('c-1', 'failed')] }, nameOf);
     expect(condition?.source).toEqual({ id: 'alpha', name: 'Alpha Cloud' });
+  });
+});
+
+// The row a connection that failed to start becomes when the host says so: the list the connection store reads (`readiness: FAILED` and the host's own `readinessError`, the producer's statement of the class and of its public
+// line; the store keeps no memory of a failed start). The class is the row's word and severity, the host's sentence is in its title, and the row goes to the connection; a start this window made that failed is no different from
+// a start another window made, because the list is what says it.
+describe('connectionConditions over the connection store: what the host says of a connection that failed', () => {
+  const envelope = (patch: Partial<AppError>): AppError => ({ type: 'omniview:internal', title: 'Operation failed', status: 500, detail: 'The operation could not be completed.', ...patch });
+  const wails = (body: AppError): Error => Object.assign(new Error(JSON.stringify(body)), { cause: body });
+  const UNAUTHORIZED = envelope({ type: 'omniview:resource/unauthorized', title: 'Authentication required', status: 401, detail: 'The provider requires authentication.', code: 'UNAUTHORIZED', recovery: 'none' });
+  const FORBIDDEN = envelope({ type: 'omniview:resource/forbidden', title: 'Access denied', status: 403, detail: 'The role may not connect.', code: 'FORBIDDEN', recovery: 'none' });
+  const UNAVAILABLE = envelope({ type: 'omniview:connection/failed', title: 'Source unavailable', status: 503, detail: 'The source is unavailable.', code: 'UNAVAILABLE', recovery: 'reconnect' });
+  const BROKEN = envelope({ detail: 'The plugin could not open it.' });
+  const nameOf = (id: string): string => (id === 'alpha' ? 'Alpha Cloud' : id);
+
+  /** What the host says (its error and the row it makes of it): a failure of each class, and one the host gave no error for. */
+  const HOST_SAYS: ReadonlyArray<readonly [what: string, error: AppError | undefined, label: string, severity: 'error' | 'warning', sentence: string]> = [
+    ['a sign-in is needed', UNAUTHORIZED, 'Needs sign-in', 'warning', 'The provider requires authentication.'],
+    ['access is denied', FORBIDDEN, 'Access denied', 'error', 'The role may not connect.'],
+    ['the server does not answer', UNAVAILABLE, 'Not responding', 'error', 'The source is unavailable.'],
+    ['the start failed and the host did not classify it', BROKEN, 'Connection failed', 'error', 'The plugin could not open it.'],
+    ['the start failed and the host gave no error', undefined, 'Connection failed', 'error', 'Connection failed'],
+  ];
+
+  const rowOf = (label: string, severity: 'error' | 'warning', sentence: string) => ({
+    key: `connection:${JSON.stringify(['alpha', 'c-1'])}`,
+    severity,
+    label,
+    title: `north: ${sentence}`,
+    source: { id: 'alpha', name: 'Alpha Cloud' },
+    target: 'north',
+    subject: { kind: 'connection', plugin: 'alpha', connection: 'c-1' },
+  });
+
+  /** A host that says `north` is DISCONNECTED until a start was made, and FAILED with `error` after it, and answers every start with `rejection`. No event reaches the store: it reads when asked. */
+  const hostThatFails = (error: AppError | undefined, rejection: Error): ConnectionsApi => {
+    let isStarted = false;
+    return {
+      states: async () => ({ alpha: [{ connection: { id: 'c-1', name: 'north' }, readiness: isStarted ? 'FAILED' : 'DISCONNECTED', ...(isStarted && error !== undefined ? { readinessError: error } : {}) }] }),
+      start: async () => {
+        isStarted = true;
+        throw rejection;
+      },
+      onStatus: () => () => undefined,
+      onSync: () => () => undefined,
+    };
+  };
+
+  it.each(HOST_SAYS)('is a row, with the class\'s words, the host\'s sentence and the connection, when the host says it failed because %s: no start of this window needed', async (_what, error, label, severity, sentence) => {
+    const store = createConnectionsStore({
+      states: async () => ({ alpha: [{ connection: { id: 'c-1', name: 'north' }, readiness: 'FAILED', ...(error === undefined ? {} : { readinessError: error }) }] }),
+      start: async () => {
+        throw new Error('this window starts nothing');
+      },
+      onStatus: () => () => undefined,
+      onSync: () => () => undefined,
+    });
+
+    await store.refresh();
+
+    expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual([rowOf(label, severity, sentence)]);
+  });
+
+  it.each(HOST_SAYS)('is the same row after a start of this window that failed (a sign-in, it said): the host\'s words for %s, not the start\'s', async (_what, error, label, severity, sentence) => {
+    const store = createConnectionsStore(hostThatFails(error, wails(UNAUTHORIZED)));
+    await store.refresh();
+    expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual([]);
+
+    await store.connect('alpha', 'c-1');
+
+    expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual([rowOf(label, severity, sentence)]);
+  });
+
+  it('is no row while the connection starts again, and none when the host lists it as disconnected after a start that failed: the row is true for as long as the host says so', async () => {
+    let readiness = 'FAILED';
+    const ended = Promise.withResolvers<void>();
+    const store = createConnectionsStore({
+      states: async () => ({ alpha: [{ connection: { id: 'c-1', name: 'north' }, readiness, ...(readiness === 'FAILED' ? { readinessError: UNAVAILABLE } : {}) }] }),
+      start: async () => {
+        await ended.promise;
+        throw wails(UNAVAILABLE);
+      },
+      onStatus: () => () => undefined,
+      onSync: () => () => undefined,
+    });
+    await store.refresh();
+    expect(connectionConditions(store.getSnapshot(), nameOf)).toHaveLength(1);
+
+    const outcome = store.connect('alpha', 'c-1');
+    expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual([]);
+
+    readiness = 'DISCONNECTED';
+    ended.resolve();
+    await outcome;
+
+    expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual([]);
   });
 });
 

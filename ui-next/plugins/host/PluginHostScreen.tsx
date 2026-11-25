@@ -13,16 +13,17 @@ import { useHashLink } from './route';
 import { useInstalledPlugins } from './useInstalledPlugins';
 
 /**
- * Hands what the runtime's activity provider holds to the feed the Problems and Operations tools read (`shell/panel/activity.ts`): its records, and its error, the sentence of a failed observation of the host's activity service. A failed
- * observation holds no record, as an observation of no activity does not, so a tool that was handed the records alone could not tell the two apart (and this window draws no other surface for the provider's error). The window has ONE
- * subscription to the host's activity service, the provider's (each is a producer lease), and this leaf is how the two tools share it. It renders nothing, and it is what renders when a record changes (a task's progress ticks many
- * times a second): the host above it is not told, and each tool reads the feed itself.
+ * Hands what the runtime's activity provider holds to the feed the Problems and Operations tools read (`shell/panel/activity.ts`): its records, and its `unavailable`, the sentence for why it cannot observe the host's activity service
+ * right now (a subscription or a heartbeat that failed, and nothing since has made it good). A failed observation holds no record, as an observation of no activity does not, so a tool that was handed the records alone could not tell the
+ * two apart (and this window draws no other surface for it). The provider's `error` is not handed over: it is the wider sentence its toast and notification center say, and it also holds a notice that could not be published and a record
+ * that could not be opened, which say nothing of whether the service can be observed. The window has ONE subscription to the host's activity service, the provider's (each is a producer lease), and this leaf is how the two tools share it.
+ * It renders nothing, and it is what renders when a record changes (a task's progress ticks many times a second): the host above it is not told, and each tool reads the feed itself.
  */
 function ActivityTap({ control }: { readonly control: ActivityFeedControl }) {
-  const { records, error } = useActivities();
+  const { records, unavailable } = useActivities();
   useEffect(() => {
-    control.push(records, error);
-  }, [control, records, error]);
+    control.push(records, unavailable);
+  }, [control, records, unavailable]);
   return null;
 }
 

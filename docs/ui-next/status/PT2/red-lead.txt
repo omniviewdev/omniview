@@ -1,0 +1,139 @@
+# PT2 red run (the lead's items 3 and 4): the glyph tests and the Started tooltip tests, written first, on the code of origin/main 366a32f2
+# command: pnpm exec vitest run ui-next/shell/panel/problems/tool.test.ts ui-next/shell/panel/operations/tool.test.ts ui-next/shell/panel/operations/OperationsBody.test.tsx ui-next/shell/panel/operations/ago.test.ts
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups
+ ❯ ui-next/shell/panel/problems/tool.test.ts (4 tests | 1 failed) 10ms
+   ❯ the Problems tool (4)
+     ❯ names its glyphs and decides nothing at import (1)
+       × keeps the mock's names when the registry says it does not know them: a fallback would be a second glyph for the same thing 8ms
+ ❯ ui-next/shell/panel/operations/tool.test.ts (7 tests | 1 failed) 8ms
+   ❯ the Operations tool (7)
+     ❯ names its glyph and decides nothing at import (1)
+       × keeps external-link when the registry says it does not know the name: a fallback would be a second glyph for the same thing 6ms
+ ❯ ui-next/shell/panel/operations/ago.test.ts (71 tests | 4 failed) 147ms
+   ❯ stampOf: the absolute start, in the machine's own time with the seconds (the mock's tip) (5)
+     × is the mock's stamp (shell-panel.js:133): the medium date and the medium time of the machine's zone 3ms
+     × has the seconds: two instants a second apart are two stamps 1ms
+     × turns the day at the local midnight of each zone: the stamp is the machine's, not UTC's 1ms
+     × is the call the mock makes when no locale is given: the locale of the machine 2ms
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx (81 tests | 2 failed) 466ms
+   ❯ the Started column (4)
+     × says how long ago the host first had the record, in the mock's words and with its rounding, and the instant in the machine's own time with the seconds as its tip 10ms
+     ❯ on the page's one age clock (1)
+       × turns "just now" into "1 min ago" at the half of the 45th second, the mock's rounding, and the tip keeps the stamp it had 4ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Started column > says how long ago the host first had the record, in the mock's words and with its rounding, and the instant in the machine's own time with the seconds as its tip
+Error: expect(element).toHaveAttribute("data-ov-tip", "2026 M11 24 04:00:00 AM") // element.getAttribute("data-ov-tip") === "2026 M11 24 04:00:00 AM"
+Expected the element to have attribute:
+  data-ov-tip="2026 M11 24 04:00:00 AM"
+Received:
+  data-ov-tip="2026-11-24 10:00 UTC"
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:419:76
+    417|     expect(cell('Much older', 'started')).toHaveTextContent(/^5 h ago$…
+    418|     expect(cell('Days old', 'started')).toHaveTextContent(/^3 d ago$/);
+    419|     expect(cell('Just started', 'started').querySelector('[data-ov-tip…
+       |                                                                            ^
+    420|     expect(cell('Older', 'started').querySelector('[data-ov-tip]')).to…
+    421|   });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Started column > on the page's one age clock > turns "just now" into "1 min ago" at the half of the 45th second, the mock's rounding, and the tip keeps the stamp it had
+AssertionError: expected '2026-11-24 10:00 UTC' to be '2026 M11 24 04:00:00 AM' // Object.is equality
+Expected: "2026 M11 24 04:00:00 AM"
+Received: "2026-11-24 10:00 UTC"
+ ❯ ui-next/shell/panel/operations/OperationsBody.test.tsx:444:23
+    442|       const tipOf = () => cell('Just started', 'started').querySelecto…
+    443|       expect(cell('Just started', 'started')).toHaveTextContent('just …
+    444|       expect(tipOf()).toBe(mockStamp(T0));
+       |                       ^
+    445|       // The record is 30 s old when the page reads the clock: its 44.…
+    446|       act(() => {
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > stampOf: the absolute start, in the machine's own time with the seconds (the mock's tip) > is the mock's stamp (shell-panel.js:133): the medium date and the medium time of the machine's zone
+AssertionError: expected '2026-11-24 10:00 UTC' to be 'Nov 24, 2026, 10:00:05 AM' // Object.is equality
+Expected: "Nov 24, 2026, 10:00:05 AM"
+Received: "2026-11-24 10:00 UTC"
+ ❯ run ui-next/shell/panel/operations/ago.test.ts:326:44
+    324|     inZone('UTC', () => {
+    325|       expect(new Date(AT).getTimezoneOffset()).toBe(0);
+    326|       expect(spaced(stampOf(AT, 'en-US'))).toBe('Nov 24, 2026, 10:00:0…
+       |                                            ^
+    327|     });
+    328|     inZone('Pacific/Kiritimati', () => {
+ ❯ inZone ui-next/shell/panel/operations/ago.test.ts:307:5
+ ❯ ui-next/shell/panel/operations/ago.test.ts:324:5
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > stampOf: the absolute start, in the machine's own time with the seconds (the mock's tip) > has the seconds: two instants a second apart are two stamps
+AssertionError: expected '2026-11-24 10:00 UTC' to be 'Nov 24, 2026, 10:00:05 AM' // Object.is equality
+Expected: "Nov 24, 2026, 10:00:05 AM"
+Received: "2026-11-24 10:00 UTC"
+ ❯ run ui-next/shell/panel/operations/ago.test.ts:336:44
+    334|   it('has the seconds: two instants a second apart are two stamps', ()…
+    335|     inZone('UTC', () => {
+    336|       expect(spaced(stampOf(AT, 'en-US'))).toBe('Nov 24, 2026, 10:00:0…
+       |                                            ^
+    337|       expect(spaced(stampOf(AT + SECOND, 'en-US'))).toBe('Nov 24, 2026…
+    338|       expect(spaced(stampOf(AT + 999, 'en-US'))).toBe('Nov 24, 2026, 1…
+ ❯ inZone ui-next/shell/panel/operations/ago.test.ts:307:5
+ ❯ ui-next/shell/panel/operations/ago.test.ts:335:5
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > stampOf: the absolute start, in the machine's own time with the seconds (the mock's tip) > turns the day at the local midnight of each zone: the stamp is the machine's, not UTC's
+AssertionError: expected '2026-11-24 23:59 UTC' to be 'Nov 24, 2026, 11:59:59 PM' // Object.is equality
+Expected: "Nov 24, 2026, 11:59:59 PM"
+Received: "2026-11-24 23:59 UTC"
+ ❯ run ui-next/shell/panel/operations/ago.test.ts:344:76
+    342|   it('turns the day at the local midnight of each zone: the stamp is t…
+    343|     inZone('UTC', () => {
+    344|       expect(spaced(stampOf(Date.UTC(2026, 10, 24, 23, 59, 59), 'en-US…
+       |                                                                            ^
+    345|       expect(spaced(stampOf(Date.UTC(2026, 10, 25, 0, 0, 0), 'en-US'))…
+    346|     });
+ ❯ inZone ui-next/shell/panel/operations/ago.test.ts:307:5
+ ❯ ui-next/shell/panel/operations/ago.test.ts:343:5
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > stampOf: the absolute start, in the machine's own time with the seconds (the mock's tip) > is the call the mock makes when no locale is given: the locale of the machine
+AssertionError: expected '2026-11-24 10:00 UTC' to be '2026 M11 24 04:00:05 AM' // Object.is equality
+Expected: "2026 M11 24 04:00:05 AM"
+Received: "2026-11-24 10:00 UTC"
+ ❯ ui-next/shell/panel/operations/ago.test.ts:354:25
+    352|
+    353|   it('is the call the mock makes when no locale is given: the locale o…
+    354|     expect(stampOf(AT)).toBe(new Date(AT).toLocaleString(undefined, { …
+       |                         ^
+    355|   });
+    356|
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+ FAIL  ui-next/shell/panel/operations/tool.test.ts > the Operations tool > names its glyph and decides nothing at import > keeps external-link when the registry says it does not know the name: a fallback would be a second glyph for the same thing
+AssertionError: expected 'arrow-right' to be 'external-link' // Object.is equality
+Expected: "external-link"
+Received: "arrow-right"
+ ❯ ui-next/shell/panel/operations/tool.test.ts:43:31
+     41|       // Loaded again, under the mock, on purpose: what a module decid…
+     42|       const words = await import('./words');
+     43|       expect(words.OPEN_ICON).toBe('external-link');
+       |                               ^
+     44|     });
+     45|   });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+ FAIL  ui-next/shell/panel/problems/tool.test.ts > the Problems tool > names its glyphs and decides nothing at import > keeps the mock's names when the registry says it does not know them: a fallback would be a second glyph for the same thing
+AssertionError: expected [ 'status-warning', …(2) ] to deeply equal [ 'triangle-alert', …(2) ]
+- Expected
++ Received
+  [
+-   "triangle-alert",
+-   "circle-check",
+-   "external-link",
++   "status-warning",
++   "status-success",
++   "arrow-right",
+  ]
+ ❯ ui-next/shell/panel/problems/tool.test.ts:32:78
+     30|       // Loaded again, under the mock, on purpose: what a module decid…
+     31|       const tool = await import('./tool');
+     32|       expect([tool.PROBLEMS_ICON, tool.PROBLEMS_EMPTY_ICON, tool.OPEN_…
+       |                                                                              ^
+     33|     });
+     34|   });
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+ Test Files  4 failed (4)
+      Tests  8 failed | 155 passed (163)
+   Start at  18:08:08
+   Duration  1.45s (environment 43%, transform 26%, tests 16%, setup 11%, import 4%)

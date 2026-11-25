@@ -112,8 +112,8 @@
 //   v  the Problems and Operations tools of the host's panel (PT1), over the real host, on a host of its own whose two plugins (`fixture-a-ok`, which is the one that is killed, and `fixture-f-conn`) have a PROCESS that reports activity when the check appends
 //      a line to the file `activity-script` next to its binary (`fixture/activityscript`: `task begin|step|finish`, `alert fire|resolve`). OPERATIONS: a task is reported at 1 of 4 and at 3 of 4 items and finishes (Running with the plugin's own count, then
 //      Succeeded and no dot); a task that fails while Problems is on screen puts the dot `Operations, 1 unread failure` on its tab, which stays until the Operations tool has shown the row, when the window marks the record read (one call) and the host holds the
-//      mark. PROBLEMS: an alert is a row and a dot while it fires and goes when the plugin resolves it; a connection that does not answer (started from Home, refused by the host) is a row, and choosing it asks the host to start it again, which is refused again,
-//      opens nothing, leaves the row and says so in a sticky error toast (`Couldn't open south`, with the refusal's sentence) that the check closes, and with the file gone it starts the connection, opens its page and the row goes; a plugin killed by the pid the host names is a row, the tab counts two errors, its alert stays listed as Not confirmed and its running task
+//      mark. PROBLEMS: an alert is a row and a dot while it fires and goes when the plugin resolves it; a connection that does not answer (started by the check's own call of the host, as an operator would: the host refuses it and tells every window, with the error in its public
+//      words and none of the plugin's own) is a row and the tab counts an error, and choosing it asks the host to start it again, which is refused again, opens nothing, leaves the row and says so in a sticky error toast (`Couldn't open south`, with the refusal's sentence) that the check closes, and with the file gone it starts the connection, opens its page and the row goes; a plugin killed by the pid the host names is a row, the tab counts two errors, its alert stays listed as Not confirmed and its running task
 //      says Outcome unknown (the host no longer knows); choosing the row opens the plugin's page in one tab, which says why and offers Retry; Retry (RetryFailedPlugin, once the host has given up its own recovery) runs the plugin again, the row goes, the alert
 //      stays Not confirmed until the plugin resolves it, and it does. Both tools are reached with the keyboard (the arrows and Enter on the tool tabs, the control key to the table and to the open button of a row, Enter on it). SEAM_ONLY=problems-operations
 //      runs v alone; SEAM_CONTROL=problems-operations runs it alone with every control of PT_CONTROLS made in turn: each plants a fault that the assertion it is named for must see, with its own words (the report, the choice or the key is not made yet; or, where one act makes
@@ -329,6 +329,9 @@ const PT_CONTROLS = {
   'keys-reach': /the keys choose the Problems tool and reach its table and the open button of a row/,
   'keys-open': /Enter on the open button of a Problems row opens the page of its plugin in a tab/,
   'conn-listed': /a connection that could not be reached is a row of Problems, with its words, its plugin and itself/,
+  'conn-told': /the host told the window that a start it did not make failed, in its public words/,
+  'conn-count': /the tab of Problems counts the connection that could not be reached as one error/,
+  'conn-public': /none of the plugin's own words about the failure is anywhere in the window/,
   'conn-refused': /choosing the row of a connection that is still down asks the host again and opens no tab/,
   'conn-toast': /choosing the row of a connection that is still down tells the person in a sticky error toast/,
   'stopped-listed': /a plugin whose process was killed is a row of Problems and counts as an error on its tab/,
@@ -460,6 +463,13 @@ const ACTIVITY_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/activity.F
 /** The keys the connections fixture's plugin gives its two connections (`fixture/connections-process/main.go`): a route carries them, and no window draws them. */
 const NORTH_KEY = 'north-57a082bd74';
 const SOUTH_KEY = 'south-0c3d9e1f42';
+/**
+ * What the host says, in its public form, of a start of south that failed with the file `connection-mode` saying `unreachable-path` (`fixture/connections-process/main.go`): the plugin's sentence names a path under a home directory, which the host's public-text rules refuse,
+ * so the host says the class's own words and none of the plugin's. The request id is the host's and differs for each start, so it is not part of what is compared (`publicOf`).
+ */
+const SOUTH_PUBLIC_ERROR = { type: 'omniview:connection/failed', title: 'Source unavailable', status: 503, detail: 'The source is unavailable.', code: 'UNAVAILABLE', recovery: 'reconnect' };
+/** The plugin's own words about that failure, which no window and no event of the host may carry: the path, and the words of the sentence that names it. */
+const SOUTH_RAW_WORDS = ['/Users/seam/.config/fixture/address', 'Its address is in'];
 
 /** A call of a bound method of the host, by service and name, as the page's own runtime makes one, whatever the host answers: the status and the text of the answer. */
 async function tryBound(base, service, method, ...args) {
@@ -545,7 +555,7 @@ const RUNTIME_ALLOW = [
   },
   {
     phases: [PT_GROUP],
-    reason: "scenario v makes south of the connections fixture unreachable (its file `connection-mode` says `unreachable`) and the window starts it twice while it is, from Home and from the row of the Problems tool: the host answers each StartConnection with a 422 (`omniview:connection/failed`: the class of the failure is in the body), and the window says it as a row of the Problems tool, which is what the scenario asserts",
+    reason: "scenario v makes south of the connections fixture unreachable (its file `connection-mode` says `unreachable-path`) and the window starts it ONCE while it is, from the row of the Problems tool (the failure that makes the row is the check's own call of the host, which is a request of no page and which this allow-list never sees): the host answers that StartConnection with a 422 (`omniview:connection/failed`: the class of the failure is in the body), and the window says it in a sticky error toast, which is what the scenario asserts",
     test: (failure) => failure.status === 422 && failure.asked.includes(`"methodID":${String(methodIdOf(RESOURCE_SERVICE, 'StartConnection'))},`) && failure.asked.includes(SOUTH_KEY) && failure.answered.includes('omniview:connection/failed'),
   },
   {
@@ -4266,10 +4276,10 @@ function withPremises(group, table) {
 /**
  * v. The Problems and Operations tools of the host's panel (PT1, ch16 S121 and S122) over the real host, on a host of its own whose two plugins have a PROCESS that reports real activity when the check says so (`fixture/activityscript`: a line
  * appended to the file `activity-script` next to the plugin's binary is one report of a task or of an alert, and the process answers each in a log): `fixture-a-ok`, which is the one that is killed, and `fixture-f-conn`, whose south connection does
- * not answer when the file `connection-mode` says `unreachable`. Nothing is polled by the window and nothing is reloaded: the tools are read from what the host says, and each wait here is for a fact of the host to be on screen.
+ * not answer when the file `connection-mode` says `unreachable-path` (it does not, and the sentence its error carries names a path under a home directory, which the host never shows). Nothing is polled by the window and nothing is reloaded: the tools are read from what the host says, and each wait here is for a fact of the host to be on screen.
  * OPERATIONS: a task begins, is reported at 1 of 4 and at 3 of 4 items and finishes (the row says Running with the plugin's own count, then Succeeded with none, and the tab has no dot); a task that fails while Problems is on screen puts a dot on the
  * Operations tab (`Operations, 1 unread failure`) that stays until the Operations tool has shown the row, when the window marks the record read once and the host holds the mark. PROBLEMS: an alert that fires is a row and a dot on the tab, and goes when
- * the plugin resolves it; a connection that does not answer (the window starts it from Home and the host refuses) is a row, which the person chooses: the window asks the host to start it again, is refused again, opens nothing and says so in a sticky error toast that the check closes, then, with the file
+ * the plugin resolves it; a connection that does not answer (the check starts it with a call of its own, as an operator of the host would: the host refuses it and tells every window, in its public words and none of the plugin's) is a row and an error on the tab, which the person chooses: the window asks the host to start it again, is refused again, opens nothing and says so in a sticky error toast that the check closes, then, with the file
  * gone, starts it, opens its page and the row goes; a plugin whose process is killed (by the pid the host names) is a row and an error on the tab (two with the connection's), its alert stays as Not confirmed and its running task says Outcome unknown, because
  * the host no longer knows what became of them; choosing its row opens the plugin's page in a tab, which says why and offers Retry, and Retry (RetryFailedPlugin, once the host has given up its own recovery) runs the plugin again: the row goes, the alert
  * stays Not confirmed (the host keeps it until the plugin resolves it, and the plugin does) and the tool is empty at the end. Both tools are reached with the keyboard: the arrows and Enter choose them, the control key reaches the table and the open button
@@ -4292,16 +4302,18 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
   PAGE_LABELS.set(page, 'the window of the Problems and Operations tools');
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
-    // The browser's own line for a request that answered 4xx is not a script error: the two starts of south that the host refuses are in the allow-list of failed requests, which the phase is held to.
+    // The browser's own line for a request that answered 4xx is not a script error: the start of south that the host refuses when the row of the Problems tool is chosen is in the allow-list of failed requests, which the phase is held to.
     if (message.type() === 'error' && !message.text().startsWith('Failed to load resource')) errors.push(`console: ${message.text()}`);
   });
-  // What the host tells the window of a plugin: every `plugin/*` event that reaches its event socket, as the host sent it.
+  // What the host tells the window: every `plugin/*` event that reaches its event socket, as the host sent it, and, apart, every `connection/status` (a start or a stop of a connection ended; the window reads the list again for each).
   const frames = [];
+  const statusFrames = [];
   page.on('websocket', (socket) => {
     socket.on('framereceived', ({ payload }) => {
       try {
         const message = JSON.parse(String(payload));
         if (typeof message?.name === 'string' && message.name.startsWith('plugin/')) frames.push({ name: message.name, data: message.data });
+        else if (message?.name === 'connection/status') statusFrames.push({ name: message.name, data: message.data });
       } catch {
         // not an event
       }
@@ -4491,7 +4503,7 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
   };
   const reached = (trail, table) => trail.filter((stop) => stop === `tool: ${table.toLowerCase()}` || stop === `region: ${table}` || stop.startsWith('button: Open'));
   // What each row says. The words are the producers' own (the plugin's title for an alert, the host's for a connection and for a plugin that stopped) and the host's for what it no longer knows.
-  const notResponding = { label: 'Not responding', role: 'error', sentence: 'south: The server did not answer.', source: 'Seam Connections', target: 'south', open: 'Open south' };
+  const notResponding = { label: 'Not responding', role: 'error', sentence: 'south: The source is unavailable.', source: 'Seam Connections', target: 'south', open: 'Open south' };
   const quota = { label: 'Quota almost used', role: 'attention', sentence: '', source: 'Seam Fixture', target: '—', open: 'Open Seam Fixture' };
   const stopped = { label: 'Stopped', role: 'error', sentence: `Seam Fixture: ${CRASHED}`, source: 'Seam Fixture', target: 'Seam Fixture', open: 'Open Seam Fixture' };
   const unconfirmed = { label: 'Not confirmed', role: 'attention', sentence: 'Quota almost used. Seam Fixture is not reporting, so it is not known whether this is still true.', source: 'Seam Fixture', target: '—', open: 'Open Seam Fixture' };
@@ -4505,6 +4517,15 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
   const readiness = async () => {
     const answer = await callBound(host.base, RESOURCE_SERVICE, 'GetAllConnectionStates');
     return Object.fromEntries((answer[CONNECTIONS_ID] ?? []).map((state) => [state.connection.name, state.readiness]));
+  };
+  /** What the host holds of south (`GetAllConnectionStates`): the readiness of its client and, after a start that failed, the error the host remembers of it (its public form of why). */
+  const southState = async () => ((await callBound(host.base, RESOURCE_SERVICE, 'GetAllConnectionStates'))[CONNECTIONS_ID] ?? []).find((state) => state.connection.name === 'south');
+  /** An error of the host as a window is told it, without its request id: the id is the host's own and differs for each start. */
+  const publicOf = (error) => (error === undefined || error === null ? error : Object.fromEntries(Object.entries(error).filter(([key]) => key !== 'requestId')));
+  /** The plugin's own words about the failure of south (`SOUTH_RAW_WORDS`) that the window carries all the same: in its text, its markup or its attributes (a tip, a label). */
+  const rawInPage = async () => {
+    const drawn = await page.evaluate(() => `${document.body.innerText}\n${document.body.textContent}\n${document.documentElement.outerHTML}`);
+    return SOUTH_RAW_WORDS.filter((word) => drawn.includes(word));
   };
 
   try {
@@ -4677,22 +4698,70 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
     await closeTabs();
     assert.deepEqual(await problemRows(), [quota], `${engine}: choosing a row of Problems does not take the row away: it is true until the plugin says it is not`);
 
-    // 6. A CONNECTION THAT DOES NOT ANSWER. The window starts south from Home (the empty window) and the host refuses (a 422, the class of the failure in the body: the allow-list of failed requests names it): Home says Not responding, and so does the Problems tool, with the
-    // host's one line for the class, the plugin and the connection by name, and the tab counts an error. Nothing but a window that made the start learns of it: the host tells no window that a start failed. The row is chosen, which asks the host to start the connection
-    // (`connections.actions.go`, as Home and the picker choose one), and with the server still silent it is refused again, no tab opens and the row stays, and the window says so in a sticky error toast (`Couldn't open south`, with the refusal's sentence) that the person closes before the next choice.
-    await writeFile(modeFile, 'unreachable\n');
+    // 6. A CONNECTION THAT DOES NOT ANSWER, STARTED BY NO WINDOW. The check starts south as an operator of the host would, with a call of its own while the file says `unreachable-path` (not the window's call, and the request of no page: the allow-list of failed requests does not see it).
+    // The host refuses it (a 422) and tells every window that the start failed (`connection/status`: FAILED, with the error in its public form, which carries the class's own words and none of the plugin's: its sentence names a path under a home directory, which the host refuses).
+    // The window made no start and asks for none: the event makes it read the list again, and the list says it too (FAILED, with the same error). So Home says Not responding, and so does the Problems tool, with the host's one line for the class, the plugin and the connection by
+    // name, and the tab counts an error. The row is then chosen, which asks the host to start the connection (`connections.actions.go`, as Home and the picker choose one), and with the server still silent it is refused again (the one refused request of the window), no tab opens and the row
+    // stays, and the window says so in a sticky error toast (`Couldn't open south`, with the refusal's sentence) that the person closes before the next choice.
+    await writeFile(modeFile, 'unreachable-path\n');
+    const toldFrom = statusFrames.length;
+    let refused;
+    const TOLD = 'the host told the window that a start it did not make failed, in its public words';
     await afterwards(
       async () => {
-        await homeRow('south').click();
-        await waitUntil('the Problems tool to list the connection that did not answer', async () => (await problemRows()).some((row) => row.label === 'Not responding'), 15_000);
+        refused = await tryBound(host.base, RESOURCE_SERVICE, 'StartConnection', CONNECTIONS_ID, SOUTH_KEY);
+        await waitUntil('the window to be told that the start failed', () => statusFrames.length > toldFrom, 15_000);
+      },
+      [
+        'conn-told',
+        async () => {
+          const heard = statusFrames.slice(toldFrom).filter((frame) => frame.data?.connectionID === SOUTH_KEY);
+          const held = await southState();
+          assert.equal(refused?.status, 422, `${engine}: ${TOLD} (the host refused the start the check made)`);
+          assert.deepEqual(heard.map((frame) => ({ ...frame.data, error: publicOf(frame.data.error) })), [{ pluginID: CONNECTIONS_ID, connectionID: SOUTH_KEY, status: 'FAILED', name: 'south', error: SOUTH_PUBLIC_ERROR }], `${engine}: ${TOLD} (one event, for south, FAILED, with the error in the host's public form)`);
+          assert.equal(held?.readiness, 'FAILED', `${engine}: ${TOLD} (the host's list says south is FAILED)`);
+          assert.deepEqual(publicOf(held?.readinessError), SOUTH_PUBLIC_ERROR, `${engine}: ${TOLD} (and the list carries the same error)`);
+          assert.deepEqual(called('StartConnection'), [], `${engine}: ${TOLD} (the window made no start)`);
+        },
+      ],
+    );
+    // The window reads the list again by the event and draws what it says. That one act makes three assertions true (the row and Home, the count on the tab, and no word of the plugin's own anywhere), so each has a fault of its own once it is done (a row drawn as healthy, a count that
+    // says another thing, a word of the plugin's in the window), and the other two are tried with it in place.
+    await afterwards(
+      async () => {
+        await waitUntil('the Problems tool to list the connection that did not start', async () => (await problemRows()).some((row) => row.label === 'Not responding'), 15_000);
       },
       [
         'conn-listed',
         async () => {
           assert.deepEqual(await problemRows(), [notResponding, quota], `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)`);
-          assert.deepEqual(await tabSays('problems'), { name: 'Problems 1 error', text: 'Problems 1', badge: 'count' }, `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the tab counts one error: the alert is a warning)`);
-          assert.deepEqual(called('StartConnection').map((call) => call.args), [[CONNECTIONS_ID, SOUTH_KEY]], `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the window asked the host once)`);
           assert.equal(await homeRow('south').evaluate((row) => row.querySelector('[data-ov-role]')?.textContent?.trim() ?? ''), 'Not responding', `${engine}: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (Home says the same)`);
+        },
+        ...falsify(() => faceOf('Not responding'), 'data-ov-role', 'healthy', notResponding.role),
+      ],
+      [
+        'conn-count',
+        async () => {
+          assert.deepEqual(await tabSays('problems'), { name: 'Problems 1 error', text: 'Problems 1', badge: 'count' }, `${engine}: the tab of Problems counts the connection that could not be reached as one error: the alert is a warning`);
+        },
+        ...falsify(() => toolTab('problems'), 'aria-label', 'Problems, 1 warning', 'Problems 1 error'),
+      ],
+      [
+        'conn-public',
+        async () => {
+          assert.deepEqual(await rawInPage(), [], `${engine}: none of the plugin's own words about the failure is anywhere in the window (its text, its markup and its attributes)`);
+        },
+        async () => {
+          await page.locator('[data-shell-part="panelDeck"]').evaluate((deck, word) => {
+            deck.insertAdjacentHTML('beforeend', `<p data-decoy>${word}</p>`);
+          }, SOUTH_RAW_WORDS[0]);
+        },
+        async () => {
+          await page.evaluate(() => {
+            document.querySelectorAll('[data-decoy]').forEach((element) => {
+              element.remove();
+            });
+          });
         },
       ],
     );
@@ -4701,7 +4770,7 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
       async () => {
         await rowCell('Not responding').click();
         await page.mouse.move(2, 2);
-        await waitUntil('the host to be asked once more, and to refuse', async () => called('StartConnection').length === 2 && called('StartConnection')[1].status === 422, 15_000);
+        await waitUntil('the host to be asked once more, and to refuse', async () => called('StartConnection').length === 1 && called('StartConnection')[0].status === 422, 15_000);
         await waitUntil('the row to be listed again', async () => (await problemRows()).some((row) => row.label === 'Not responding'), 15_000);
         await waitUntil('the toast that says the connection could not be opened', async () => (await toasts.count()) > 0, 15_000);
         await afterFrames(page);
@@ -4709,7 +4778,7 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
       [
         'conn-refused',
         async () => {
-          assert.deepEqual(called('StartConnection').map((call) => [call.args, call.status]), [[[CONNECTIONS_ID, SOUTH_KEY], 422], [[CONNECTIONS_ID, SOUTH_KEY], 422]], `${engine}: choosing the row of a connection that is still down asks the host again and opens no tab (two starts, both refused)`);
+          assert.deepEqual(called('StartConnection').map((call) => [call.args, call.status]), [[[CONNECTIONS_ID, SOUTH_KEY], 422]], `${engine}: choosing the row of a connection that is still down asks the host again and opens no tab (the window's one start, refused again: the check's own was the first)`);
           assert.deepEqual(await openTabs(), [], `${engine}: choosing the row of a connection that is still down asks the host again and opens no tab (no tab)`);
           assert.deepEqual(await problemRows(), [notResponding, quota], `${engine}: choosing the row of a connection that is still down asks the host again and opens no tab (the row stays)`);
         },
@@ -4725,7 +4794,7 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
           assert.equal(await toast.getAttribute('data-severity'), 'error', `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (an error)`);
           assert.notEqual(await toast.getAttribute('data-sticky'), null, `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (sticky)`);
           assert.equal(await said('title'), "Couldn't open south", `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (the headline names the connection)`);
-          assert.notEqual(await said('message'), '', `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (and its detail is the refusal's sentence)`);
+          assert.equal(await said('message'), SOUTH_PUBLIC_ERROR.detail, `${engine}: choosing the row of a connection that is still down tells the person in a sticky error toast (and its detail is the refusal's sentence, the host's own for the class and none of the plugin's)`);
         },
         ...falsify(() => toasts.first(), 'role', 'status', 'alert'),
       ],
@@ -4888,7 +4957,7 @@ async function checkProblemsOperations(browser, engine, binaries, work) {
         async () => {
           assert.deepEqual((await openTabs()).filter((tab) => tab.selected).map((tab) => tab.name), ['Items, south'], `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)`);
           assert.equal(await page.getByRole('button', { name: 'Connection: south', exact: true }).count(), 1, `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the chip says south)`);
-          assert.deepEqual(called('StartConnection').map((call) => call.status), [422, 422, 200], `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the third start was answered)`);
+          assert.deepEqual(called('StartConnection').map((call) => call.status), [422, 200], `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the window's second start was answered)`);
           assert.deepEqual(await readiness(), { north: 'DISCONNECTED', south: 'CONNECTED' }, `${engine}: choosing the row of a connection that answers again starts it and opens its page in a tab (the host says south is connected)`);
         },
         ...falsify(() => tabStrip.getByRole('tab', { name: 'Items, south', exact: true }), 'aria-selected', 'false', 'true'),

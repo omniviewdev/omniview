@@ -1,5 +1,6 @@
+import type * as Kit from '@omniviewdev/kit';
 import { isIconName } from '@omniviewdev/kit';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OPEN_ICON, PROBLEMS_EMPTY, PROBLEMS_EMPTY_ICON, PROBLEMS_ICON, PROBLEMS_TOOL, PROBLEMS_TOOL_ID } from './tool';
 
 // The words, the glyphs and the place of the host's Problems tool (ch16 S114, S121; the mock's `def('problems', { title: 'Problems', icon: 'LuTriangleAlert', order: 30 })` and its empty state).
@@ -11,17 +12,25 @@ describe('the Problems tool', () => {
     expect(PROBLEMS_TOOL_ID).not.toContain(':');
   });
 
-  it('draws a glyph of the kit\'s registry: the mock\'s triangle-alert when the registry has it, else the warning triangle it has', () => {
+  it('draws the mock\'s glyphs by name, each of them in the kit\'s registry (the kit has them since G3): triangle-alert on the tab, circle-check when nothing is wrong, external-link on the open button', () => {
     expect(PROBLEMS_TOOL.icon).toBe(PROBLEMS_ICON);
-    expect(isIconName(PROBLEMS_ICON)).toBe(true);
-    expect(PROBLEMS_ICON).toBe(isIconName('triangle-alert') ? 'triangle-alert' : 'status-warning');
+    expect([PROBLEMS_ICON, PROBLEMS_EMPTY_ICON, OPEN_ICON]).toEqual(['triangle-alert', 'circle-check', 'external-link']);
+    expect([PROBLEMS_ICON, PROBLEMS_EMPTY_ICON, OPEN_ICON].every((name) => isIconName(name))).toBe(true);
   });
 
-  it('draws the empty state and the open button with glyphs of the registry too, each the mock\'s name when the registry has it', () => {
-    expect(isIconName(PROBLEMS_EMPTY_ICON)).toBe(true);
-    expect(PROBLEMS_EMPTY_ICON).toBe(isIconName('circle-check') ? 'circle-check' : 'status-success');
-    expect(isIconName(OPEN_ICON)).toBe(true);
-    expect(OPEN_ICON).toBe(isIconName('external-link') ? 'external-link' : 'arrow-right');
+  describe('names its glyphs and decides nothing at import', () => {
+    afterEach(() => {
+      vi.doUnmock('@omniviewdev/kit');
+      vi.resetModules();
+    });
+
+    it('keeps the mock\'s names when the registry says it does not know them: a fallback would be a second glyph for the same thing', async () => {
+      vi.resetModules();
+      vi.doMock('@omniviewdev/kit', async (importOriginal) => ({ ...(await importOriginal<typeof Kit>()), isIconName: () => false }));
+      // Loaded again, under the mock, on purpose: what a module decides when it is evaluated cannot be the subject of a static import.
+      const tool = await import('./tool');
+      expect([tool.PROBLEMS_ICON, tool.PROBLEMS_EMPTY_ICON, tool.OPEN_ICON]).toEqual(['triangle-alert', 'circle-check', 'external-link']);
+    });
   });
 
   it('says in the mock\'s words that nothing is wrong', () => {

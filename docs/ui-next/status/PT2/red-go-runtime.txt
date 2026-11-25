@@ -1,0 +1,275 @@
+RED evidence, the runtime half of the host event of PT2 item (1) (agent ProblemsOperations.GoStartFailure; assigned by Main after the first report)
+date: 2026-11-25T00:38:30Z   base: 366a32f2   file: packages/omniviewdev-runtime/src/hooks/connection/useConnectionReadiness.test.ts (describe 'a start that fails with an error')
+Command: cd packages/omniviewdev-runtime && pnpm exec vitest run src/hooks/connection/useConnectionReadiness.test.ts
+Premise held: the three 'only the rejection is heard' tests PASS on the unchanged listener (today's end state: the class and its sentence). 13 of the 16 new tests FAIL:
+the event before the rejection, the event after it, a window that was only checking, and an event error that is not the host's envelope; each by its own assertion
+(phase 'error' and 'The connection is not ready.' where the class and its sentence are expected). Both orders are affected, not one: the listener answers every
+FAILED event with the generic snapshot, so an event heard after the rejection also replaces the class the rejection had given.
+------------------------------------------------------------------------------------------------------------------------
+
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/packages/omniviewdev-runtime
+
+stderr | src/hooks/connection/useConnectionReadiness.test.ts
+
+
+
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts (53 tests | 13 failed) 4022ms
+   ❯ a start that fails with an error (16)
+     ❯ of the class UNAUTHORIZED (4)
+       × is its class and its sentence when the event is heard before the rejection 106ms
+       × is its class and its sentence when the event is heard after the rejection 106ms
+       × is its class and its sentence for a window that was only checking when the host started it 54ms
+     ❯ of the class FORBIDDEN (4)
+       × is its class and its sentence when the event is heard before the rejection 106ms
+       × is its class and its sentence when the event is heard after the rejection 105ms
+       × is its class and its sentence for a window that was only checking when the host started it 54ms
+     ❯ of the class NOT_FOUND (4)
+       × is its class and its sentence when the event is heard before the rejection 106ms
+       × is its class and its sentence when the event is heard after the rejection 104ms
+       × is its class and its sentence for a window that was only checking when the host started it 53ms
+     × shows nothing of an event error that is a stack trace 105ms
+     × shows nothing of an event error that is a payload 106ms
+     × shows nothing of an event error that is a number 105ms
+     × shows nothing of an event error that is an object that is not the host's error 104ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class UNAUTHORIZED > is its class and its sentence when the event is heard before the rejection
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'unauthorized', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The provider requires authentication.",
+-   "phase": "unauthorized",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:480:29
+    478|       emit('connection/status', failedEvent(envelope(failure)));
+    479|       await reject(rejection(failure));
+    480|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    481|     });
+    482|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class UNAUTHORIZED > is its class and its sentence when the event is heard after the rejection
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'unauthorized', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The provider requires authentication.",
+-   "phase": "unauthorized",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:487:29
+    485|       await reject(rejection(failure));
+    486|       emit('connection/status', failedEvent(envelope(failure)));
+    487|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    488|     });
+    489|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class UNAUTHORIZED > is its class and its sentence for a window that was only checking when the host started it
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'unauthorized', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The provider requires authentication.",
+-   "phase": "unauthorized",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:497:29
+    495|       emit('connection/status', failedEvent(envelope(failure)));
+    496|       await act(async () => check.resolve(status('DISCONNECTED')));
+    497|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    498|     });
+    499|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class FORBIDDEN > is its class and its sentence when the event is heard before the rejection
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'forbidden', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The operation is not permitted.",
+-   "phase": "forbidden",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:480:29
+    478|       emit('connection/status', failedEvent(envelope(failure)));
+    479|       await reject(rejection(failure));
+    480|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    481|     });
+    482|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class FORBIDDEN > is its class and its sentence when the event is heard after the rejection
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'forbidden', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The operation is not permitted.",
+-   "phase": "forbidden",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:487:29
+    485|       await reject(rejection(failure));
+    486|       emit('connection/status', failedEvent(envelope(failure)));
+    487|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    488|     });
+    489|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class FORBIDDEN > is its class and its sentence for a window that was only checking when the host started it
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'forbidden', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The operation is not permitted.",
+-   "phase": "forbidden",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:497:29
+    495|       emit('connection/status', failedEvent(envelope(failure)));
+    496|       await act(async () => check.resolve(status('DISCONNECTED')));
+    497|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    498|     });
+    499|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class NOT_FOUND > is its class and its sentence when the event is heard before the rejection
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'not-found', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The requested resource was not found.",
+-   "phase": "not-found",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:480:29
+    478|       emit('connection/status', failedEvent(envelope(failure)));
+    479|       await reject(rejection(failure));
+    480|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    481|     });
+    482|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class NOT_FOUND > is its class and its sentence when the event is heard after the rejection
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'not-found', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The requested resource was not found.",
+-   "phase": "not-found",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:487:29
+    485|       await reject(rejection(failure));
+    486|       emit('connection/status', failedEvent(envelope(failure)));
+    487|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    488|     });
+    489|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > of the class NOT_FOUND > is its class and its sentence for a window that was only checking when the host started it
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'not-found', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The requested resource was not found.",
+-   "phase": "not-found",
++   "message": "The connection is not ready.",
++   "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:497:29
+    495|       emit('connection/status', failedEvent(envelope(failure)));
+    496|       await act(async () => check.resolve(status('DISCONNECTED')));
+    497|       expect(shown(result)).toEqual(expected);
+       |                             ^
+    498|     });
+    499|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/13]⎯
+
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > shows nothing of an event error that is a stack trace
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > shows nothing of an event error that is a payload
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > shows nothing of an event error that is a number
+ FAIL  src/hooks/connection/useConnectionReadiness.test.ts > a start that fails with an error > shows nothing of an event error that is an object that is not the host's error
+AssertionError: expected { phase: 'error', …(1) } to deeply equal { phase: 'error', …(1) }
+
+- Expected
++ Received
+
+  {
+-   "message": "The operation could not be completed.",
++   "message": "The connection is not ready.",
+    "phase": "error",
+  }
+
+ ❯ src/hooks/connection/useConnectionReadiness.test.ts:510:27
+    508|     emit('connection/status', failedEvent(error));
+    509|     await reject(rejection(failures[0]));
+    510|     expect(shown(result)).toEqual({ phase: 'error', message: 'The oper…
+       |                           ^
+    511|   });
+    512| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/13]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  13 failed | 40 passed (53)
+   Start at  18:38:17
+   Duration  4.78s (tests 86%, environment 8%, transform 4%, import 2%)
+

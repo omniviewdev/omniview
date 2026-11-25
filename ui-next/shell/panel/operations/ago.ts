@@ -43,10 +43,11 @@ export const ago: AgeFormatter = (date, now) => {
 };
 
 /**
- * The tip of a start: the absolute instant, as the mock's tip says it (`H.tip(stamp(...))`, shell-panel.js:2324), in UTC to the minute as the kit writes the stamp of every age ("2026-11-24 10:00 UTC"), whatever the time zone of the
- * machine. It carries no words of its own: the cell's words are the mock's rule, and a second rule in the tip (the kit's `ageTip` floors) would disagree with them for a start 90 s old. A time that is not a time has no stamp.
+ * The tip of a start: the absolute instant, as the mock says it (`H.tip(stamp(...))`, shell-panel.js:2324; `stamp` is shell-panel.js:133): the medium date and the medium time, seconds included, in the time zone and the language of the
+ * machine, which is what `toLocaleString(undefined, ...)` gives and what a person reads on their own clock. `locale` is for a test that must not depend on the machine's language; the page never gives one. It carries no words of its own: the
+ * cell's words are the mock's rule, and a second rule in the tip would disagree with them for a start 90 s old. A time that is not a time has no stamp.
  */
-export function stampOf(at: number): string {
+export function stampOf(at: number, locale?: string): string {
   const instant = new Date(at);
-  return Number.isNaN(instant.getTime()) ? '' : `${instant.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  return Number.isNaN(instant.getTime()) ? '' : instant.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'medium' });
 }

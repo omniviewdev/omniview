@@ -1,0 +1,330 @@
+PT2, item 5: what the runner measured for the hidden section of the terminal probe (the bounds of `hidden.work`)
+======================================================================================================================
+
+WHAT THIS IS
+  Every process of the terminal probe that runs the section `hidden` prints one line for each burst the shell writes while the panel is hidden (2 MB, then 20 MB):
+      hidden chromium, 20 MB written while the panel was hidden: ... N callbacks ran in X ms (the longest Y ms, Z long tasks), ... the burst took B ms of the page's task
+  In CI those are the unit `terminal-data` (the probe itself: WebKit and Chromium) and the nine controls of the unit `terminal-controls-hidden` (Chromium): ten Chromium lines for each run of the workflow
+  `UI next kit probes`. A failure of `hidden.work` prints `... the longest long task N ms (120 at most)`. All of them were read from the logs of the jobs `Kit probes shard N`.
+
+SOURCE
+  The 30 newest runs of the workflow (`gh run list --repo omniviewdev/omniview --workflow "UI next kit probes" --limit 30`, read on 2026-11-25 between 00:10 and 00:25 UTC): 21 are used, every attempt of each (a job that was rerun counts once for each
+  of its runs), heads from 6fbf62b8 to 4b2b09d6, any branch. Left out: the queued run 45514707517, the 7 cancelled runs, and run 45475192972 (ui-next/pt1-problems-operations 2f9ea424: all 19 shards failed after about a minute, before any probe
+  ran). 373 of the 374 job logs of the 21 runs were read (19 more, of the run left out, were read and hold no sample): the log of job 138680658725 (shard 6 of run 45458713745) is gone (404 BlobNotFound); the run still has its ten samples,
+  from the shards that ran the hidden controls and `terminal-data`.
+  Mac for comparison: this branch, `draw-hidden`, Chromium, no slowdown, load 5 to 7: the 20 MB burst took 34.4 ms and the browser reported no long task.
+
+THE RUNS
+  run          attempts  branch @ head                                            started (UTC)        samples
+  45438893162  1         ui-next/t3a-terminal-find-menu @ 6fbf62b8                2026-11-24T16:35:24Z 10
+  45444310040  1         ui-next/t3a-terminal-find-menu @ 3311f02a                2026-11-24T17:03:47Z 10
+  45455131391  1         docs/kit-source-reference @ 9ab091f6                     2026-11-24T18:02:25Z 10
+  45455133525  1         docs/kit-pilot @ 369c2d10                                2026-11-24T18:02:25Z 10
+  45458713745  1         feat/terminal-channel-backend @ 7ea8ef0a                 2026-11-24T18:21:51Z 10
+  45461054022  1         ui-next/t3a-terminal-find-menu @ d485048f                2026-11-24T18:34:49Z 10
+  45466782792  1         ui-next/g2-glyphs @ 145459e1                             2026-11-24T19:07:03Z 10
+  45469174238  1         main @ 6623d98c                                          2026-11-24T19:20:28Z 10
+  45476530200  1         main @ e70aa2ce                                          2026-11-24T20:02:22Z 10
+  45479982503  1         feat/terminal-channel-backend @ f0099872                 2026-11-24T20:21:37Z 10
+  45482061379  1         ui-next/g3-glyphs-and-seam-slots @ 25b69419              2026-11-24T20:33:35Z 10
+  45486313217  1         main @ adf21b89                                          2026-11-24T20:58:33Z 10
+  45491134210  1         docs/kit-source-reference @ 28de6a38                     2026-11-24T21:26:34Z 10
+  45494937546  1,2       docs/kit-pilot @ 265498d7                                2026-11-24T21:49:28Z 19
+  45497840091  1         ui-next/pt1-problems-operations @ ac2743a3               2026-11-24T22:07:15Z 10
+  45501137704  1         main @ 8a2160a1                                          2026-11-24T22:27:39Z 10
+  45501155454  1         docs/kit-source-reference @ f9c6867f                     2026-11-24T22:27:46Z 10
+  45503108915  1,2       ui-next/pt1-problems-operations @ 2e932c40               2026-11-24T22:40:23Z 19
+  45503343235  1         feat/terminal-channel-backend @ 89194a9e                 2026-11-24T22:41:55Z 10
+  45505473523  1         ui-next/pf1-ports @ 17d601c5                             2026-11-24T22:56:04Z 10
+  45509017105  1         fix/terminal-paste-and-binary @ 4b2b09d6                 2026-11-24T23:19:44Z 10
+
+THE FIVE FAILURES OF THE OLD BOUND (`hidden.work`, "the longest long task N ms (120 at most)": the planted control `draw-hidden`, which must fail `hidden.draws` and nothing else)
+  run          att  shard  head                                                 long task  its burst 
+  45438893162  1    8      ui-next/t3a-terminal-find-menu @ 6fbf62b8            124        124.2     
+  45476530200  1    7      main @ e70aa2ce                                      128        127.3     
+  45494937546  1    7      docs/kit-pilot @ 265498d7                            130        129.3     
+  45497840091  1    15     ui-next/pt1-problems-operations @ ac2743a3           126        125.2     
+  45503108915  1    15     ui-next/pt1-problems-operations @ 2e932c40           127        126.3     
+  The long task and the burst of the same run differ by -0.2 to +0.8 ms in the five: the long task the browser reports IS the burst task. Each of the five said:
+      NEGATIVE CONTROL "draw-hidden": failed another assertion: hidden.work: chromium, 20 MB written while the panel was hidden: ... the longest long task 127 ms (120 at most)
+
+EVERY CHROMIUM 20 MB SAMPLE (228): the burst the shell wrote in one task, in ms; whether the browser reported a long task (count) and how long when the message printed it; the callbacks of the page and xterm
+  run          att shard unit / control   burst ms  long tasks  long task ms  callbacks ms  longest callback ms
+  45438893162  1   4     terminal-data       104.7           0             -         410.3                  6.3
+  45438893162  1   8     flow-late           126.5           0             -         557.2                  9.2
+  45438893162  1   8     ack-on-receipt      156.0           0             -         571.2                  7.6
+  45438893162  1   8     ack-lost            132.2           0             -           0.0                  0.0
+  45438893162  1   8     drop-held           124.4           0             -         556.7                  9.4
+  45438893162  1   8     swap-held           126.1           0             -         557.9                  6.1
+  45438893162  1   8     hidden-frames       123.5           0             -         545.9                  7.6
+  45438893162  1   8     hidden-burn         129.3           0             -         553.5                  6.6
+  45438893162  1   8     hidden-rest         124.8           0             -         564.6                  8.0
+  45438893162  1   8     draw-hidden         124.2           1           124         549.9                  9.3
+  45444310040  1   8     terminal-data        82.3           0             -         354.4                  5.6
+  45444310040  1   9     flow-late           116.6           0             -         485.0                  7.1
+  45444310040  1   9     ack-on-receipt      150.9           0             -         492.3                  9.4
+  45444310040  1   9     ack-lost            121.8           0             -           0.0                  0.0
+  45444310040  1   9     drop-held           124.4           0             -         499.2                  8.8
+  45444310040  1   9     swap-held           122.3           0             -         502.7                  5.3
+  45444310040  1   9     hidden-frames       123.4           0             -         504.3                 11.0
+  45444310040  1   9     hidden-burn         122.8           0             -         496.5                  5.6
+  45444310040  1   9     hidden-rest         115.2           0             -         493.0                  5.3
+  45444310040  1   9     draw-hidden         117.1           1             -         493.8                  5.4
+  45455131391  1   2     terminal-data        80.8           0             -         342.8                  3.6
+  45455131391  1   8     flow-late           100.5           0             -         487.4                  8.7
+  45455131391  1   8     ack-on-receipt      118.6           0             -         475.1                  6.6
+  45455131391  1   8     ack-lost             99.0           0             -           0.0                  0.0
+  45455131391  1   8     drop-held            98.5           0             -         487.9                  8.1
+  45455131391  1   8     swap-held           100.6           0             -         492.6                  8.7
+  45455131391  1   8     hidden-frames        98.9           0             -         485.5                  6.4
+  45455131391  1   8     hidden-burn         100.3           0             -         490.2                  8.1
+  45455131391  1   8     hidden-rest          99.8           0             -         481.1                  8.6
+  45455131391  1   8     draw-hidden          99.4           1             -         477.7                  5.2
+  45455133525  1   2     terminal-data       100.2           0             -         509.1                  7.5
+  45455133525  1   8     flow-late            77.4           0             -         327.9                  3.6
+  45455133525  1   8     ack-on-receipt       86.6           0             -         335.1                  5.5
+  45455133525  1   8     ack-lost             74.7           0             -           0.0                  0.0
+  45455133525  1   8     drop-held            74.9           0             -         343.8                  5.7
+  45455133525  1   8     swap-held            75.2           0             -         344.8                  5.1
+  45455133525  1   8     hidden-frames        75.7           0             -         341.7                  5.4
+  45455133525  1   8     hidden-burn          77.0           0             -         335.4                  4.9
+  45455133525  1   8     hidden-rest          75.7           0             -         322.3                  3.5
+  45455133525  1   8     draw-hidden          76.3           1             -         330.1                  5.0
+  45458713745  1   2     terminal-data        98.4           0             -         466.0                  4.8
+  45458713745  1   8     flow-late            90.5           0             -         427.7                  6.0
+  45458713745  1   8     ack-on-receipt      106.6           0             -         425.4                  4.7
+  45458713745  1   8     ack-lost             87.4           0             -           0.0                  0.0
+  45458713745  1   8     drop-held            85.8           0             -         437.8                  6.7
+  45458713745  1   8     swap-held            90.3           0             -         427.3                  5.8
+  45458713745  1   8     hidden-frames        87.5           0             -         434.5                  7.3
+  45458713745  1   8     hidden-burn          90.5           0             -         430.1                  4.5
+  45458713745  1   8     hidden-rest          89.6           0             -         438.2                  7.6
+  45458713745  1   8     draw-hidden          88.6           1             -         424.1                  4.6
+  45461054022  1   6     terminal-data        79.6           0             -         326.8                  5.0
+  45461054022  1   7     flow-late            79.6           0             -         293.5                  3.4
+  45461054022  1   7     ack-on-receipt       96.4           0             -         291.7                  4.3
+  45461054022  1   7     ack-lost             83.6           0             -           0.0                  0.0
+  45461054022  1   7     drop-held            78.3           0             -         289.6                  4.1
+  45461054022  1   7     swap-held            80.8           0             -         303.7                  4.4
+  45461054022  1   7     hidden-frames        78.2           0             -         297.5                  6.1
+  45461054022  1   7     hidden-burn          77.9           0             -         296.8                  4.1
+  45461054022  1   7     hidden-rest          82.0           0             -         302.5                  3.2
+  45461054022  1   7     draw-hidden          82.7           1             -         283.6                  3.0
+  45466782792  1   2     terminal-data        85.4           0             -         412.3                  4.5
+  45466782792  1   8     flow-late            77.3           0             -         324.1                  3.6
+  45466782792  1   8     ack-on-receipt       91.1           0             -         332.9                  7.5
+  45466782792  1   8     ack-lost             77.6           0             -           0.0                  0.0
+  45466782792  1   8     drop-held            74.5           0             -         328.6                  3.6
+  45466782792  1   8     swap-held            76.2           0             -         327.5                  5.0
+  45466782792  1   8     hidden-frames        77.8           0             -         328.5                  4.6
+  45466782792  1   8     hidden-burn          74.5           0             -         325.1                  3.4
+  45466782792  1   8     hidden-rest          74.5           0             -         331.0                  3.5
+  45466782792  1   8     draw-hidden          78.3           1             -         325.9                  5.1
+  45469174238  1   6     terminal-data        86.5           0             -         337.2                  4.9
+  45469174238  1   7     flow-late            83.0           0             -         336.9                  3.7
+  45469174238  1   7     ack-on-receipt      100.3           0             -         333.7                  5.5
+  45469174238  1   7     ack-lost             85.7           0             -           0.0                  0.0
+  45469174238  1   7     drop-held            83.5           0             -         335.0                  7.6
+  45469174238  1   7     swap-held            82.1           0             -         341.0                  3.8
+  45469174238  1   7     hidden-frames        82.4           0             -         339.7                  4.7
+  45469174238  1   7     hidden-burn          85.6           0             -         345.8                  7.4
+  45469174238  1   7     hidden-rest          86.2           0             -         357.6                  5.2
+  45469174238  1   7     draw-hidden          85.6           1             -         354.0                  3.7
+  45476530200  1   6     terminal-data        82.5           0             -         348.5                  5.6
+  45476530200  1   7     flow-late           124.1           0             -         526.8                  8.9
+  45476530200  1   7     ack-on-receipt      147.2           0             -         501.6                  8.0
+  45476530200  1   7     ack-lost            123.0           0             -           0.0                  0.0
+  45476530200  1   7     drop-held           116.1           0             -         515.1                  8.8
+  45476530200  1   7     swap-held           117.7           0             -         512.2                  9.0
+  45476530200  1   7     hidden-frames       118.9           0             -         496.7                  6.3
+  45476530200  1   7     hidden-burn         128.5           0             -         497.5                  5.3
+  45476530200  1   7     hidden-rest         116.0           0             -         496.8                  5.2
+  45476530200  1   7     draw-hidden         127.3           1           128         499.1                  5.3
+  45479982503  1   6     terminal-data        83.6           0             -         372.7                  5.9
+  45479982503  1   7     flow-late           120.0           0             -         517.4                  8.0
+  45479982503  1   7     ack-on-receipt      157.7           0             -         503.8                  5.3
+  45479982503  1   7     ack-lost            118.0           0             -           0.0                  0.0
+  45479982503  1   7     drop-held           117.0           0             -         537.2                  9.1
+  45479982503  1   7     swap-held           127.7           0             -         524.9                  6.2
+  45479982503  1   7     hidden-frames       118.6           0             -         512.6                  5.3
+  45479982503  1   7     hidden-burn         126.8           0             -         519.8                  5.6
+  45479982503  1   7     hidden-rest         119.3           0             -         515.3                  6.2
+  45479982503  1   7     draw-hidden         119.6           1             -         516.1                  8.9
+  45482061379  1   6     terminal-data        81.2           0             -         348.5                  5.6
+  45482061379  1   7     flow-late            81.2           0             -         330.8                  5.1
+  45482061379  1   7     ack-on-receipt      100.4           0             -         319.5                  3.9
+  45482061379  1   7     ack-lost             85.7           0             -           0.0                  0.0
+  45482061379  1   7     drop-held            85.4           0             -         330.7                  5.4
+  45482061379  1   7     swap-held            83.8           0             -         331.2                  5.3
+  45482061379  1   7     hidden-frames        84.1           0             -         334.3                  6.7
+  45482061379  1   7     hidden-burn          84.5           0             -         328.0                  3.6
+  45482061379  1   7     hidden-rest          81.2           0             -         328.1                  5.4
+  45482061379  1   7     draw-hidden          85.2           1             -         327.8                  3.8
+  45486313217  1   6     terminal-data        86.1           0             -         349.8                  3.8
+  45486313217  1   7     flow-late            80.8           0             -         334.0                  5.5
+  45486313217  1   7     ack-on-receipt       97.0           0             -         325.4                  5.3
+  45486313217  1   7     ack-lost             90.0           0             -           0.0                  0.0
+  45486313217  1   7     drop-held            81.6           0             -         343.7                  5.0
+  45486313217  1   7     swap-held            81.3           0             -         348.5                  5.8
+  45486313217  1   7     hidden-frames        82.2           0             -         341.8                  3.7
+  45486313217  1   7     hidden-burn          82.2           0             -         347.5                  3.7
+  45486313217  1   7     hidden-rest          81.0           0             -         360.1                  5.8
+  45486313217  1   7     draw-hidden          84.9           1             -         341.0                  3.9
+  45491134210  1   6     terminal-data       124.4           0             -         508.1                  9.1
+  45491134210  1   7     flow-late            96.5           0             -         423.0                  5.5
+  45491134210  1   7     ack-on-receipt      123.4           0             -         422.8                  9.5
+  45491134210  1   7     ack-lost            101.3           0             -           0.0                  0.0
+  45491134210  1   7     drop-held           104.1           0             -         420.1                  6.4
+  45491134210  1   7     swap-held            99.2           0             -         417.7                  4.5
+  45491134210  1   7     hidden-frames        99.4           0             -         416.6                  4.4
+  45491134210  1   7     hidden-burn         104.7           0             -         427.0                  6.4
+  45491134210  1   7     hidden-rest          98.0           0             -         422.5                  4.8
+  45491134210  1   7     draw-hidden         103.5           1             -         422.9                  4.5
+  45494937546  1   6     terminal-data        82.4           0             -         324.5                  4.8
+  45494937546  1   7     flow-late           120.6           0             -         531.6                  9.1
+  45494937546  1   7     ack-on-receipt      152.7           0             -         509.5                  7.9
+  45494937546  1   7     ack-lost            117.1           0             -           0.0                  0.0
+  45494937546  1   7     drop-held           127.6           0             -         516.7                  6.2
+  45494937546  1   7     swap-held           122.1           0             -         518.5                  9.2
+  45494937546  1   7     hidden-frames       118.6           0             -         522.0                  5.3
+  45494937546  1   7     hidden-burn         119.2           0             -         513.4                  5.3
+  45494937546  1   7     hidden-rest         115.8           0             -         517.8                  7.8
+  45494937546  1   7     draw-hidden         129.3           1           130         529.3                  7.5
+  45494937546  2   7     flow-late            80.3           0             -         325.8                  4.1
+  45494937546  2   7     ack-on-receipt      101.9           0             -         317.4                  4.9
+  45494937546  2   7     ack-lost             85.2           0             -           0.0                  0.0
+  45494937546  2   7     drop-held            81.3           0             -         334.5                  6.5
+  45494937546  2   7     swap-held            80.7           0             -         328.8                  5.5
+  45494937546  2   7     hidden-frames        80.7           0             -         328.9                  3.5
+  45494937546  2   7     hidden-burn          82.1           0             -         328.0                  5.4
+  45494937546  2   7     hidden-rest          84.9           0             -         325.6                  3.8
+  45494937546  2   7     draw-hidden          82.8           1             -         326.7                  5.0
+  45497840091  1   14    terminal-data        85.3           0             -         326.8                  4.6
+  45497840091  1   15    flow-late           124.6           0             -         517.3                  5.6
+  45497840091  1   15    ack-on-receipt      157.8           0             -         520.4                 10.5
+  45497840091  1   15    ack-lost            124.8           0             -           0.0                  0.0
+  45497840091  1   15    drop-held           127.8           0             -         540.0                  8.7
+  45497840091  1   15    swap-held           132.0           0             -         546.6                  9.2
+  45497840091  1   15    hidden-frames       132.6           0             -         543.7                  6.5
+  45497840091  1   15    hidden-burn         124.6           0             -         530.9                  5.8
+  45497840091  1   15    hidden-rest         132.5           0             -         539.4                  8.2
+  45497840091  1   15    draw-hidden         125.2           1           126         531.9                  5.6
+  45501137704  1   6     terminal-data        85.4           0             -         330.0                  4.0
+  45501137704  1   7     flow-late            86.9           0             -         343.3                  5.7
+  45501137704  1   7     ack-on-receipt      102.2           0             -         323.7                  5.0
+  45501137704  1   7     ack-lost             86.3           0             -           0.0                  0.0
+  45501137704  1   7     drop-held            84.8           0             -         333.9                  5.6
+  45501137704  1   7     swap-held            85.4           0             -         340.4                  5.6
+  45501137704  1   7     hidden-frames        84.6           0             -         351.8                  5.8
+  45501137704  1   7     hidden-burn          84.5           0             -         358.6                  6.0
+  45501137704  1   7     hidden-rest          82.4           0             -         355.3                  5.1
+  45501137704  1   7     draw-hidden          84.0           1             -         365.9                  5.8
+  45501155454  1   6     terminal-data        80.0           0             -         326.7                  5.4
+  45501155454  1   7     flow-late           121.5           0             -         477.3                  5.4
+  45501155454  1   7     ack-on-receipt      140.9           0             -         486.5                  9.7
+  45501155454  1   7     ack-lost            120.1           0             -           0.0                  0.0
+  45501155454  1   7     drop-held           117.0           0             -         494.0                 11.8
+  45501155454  1   7     swap-held           114.4           0             -         472.3                  5.1
+  45501155454  1   7     hidden-frames       114.4           0             -         473.5                  7.7
+  45501155454  1   7     hidden-burn         134.0           0             -         499.7                  8.0
+  45501155454  1   7     hidden-rest         112.9           0             -         474.0                  5.4
+  45501155454  1   7     draw-hidden         117.3           1             -         481.4                  7.8
+  45503108915  1   14    terminal-data        85.8           0             -         370.6                  5.4
+  45503108915  1   15    flow-late           125.2           0             -         514.5                  9.0
+  45503108915  1   15    ack-on-receipt      153.3           0             -         499.6                  8.0
+  45503108915  1   15    ack-lost            120.7           0             -           0.0                  0.0
+  45503108915  1   15    drop-held           140.1           0             -         525.6                  8.9
+  45503108915  1   15    swap-held           119.2           0             -         514.1                  9.1
+  45503108915  1   15    hidden-frames       118.3           0             -         517.1                  6.5
+  45503108915  1   15    hidden-burn         116.9           0             -         506.5                  6.4
+  45503108915  1   15    hidden-rest         119.2           0             -         512.5                  8.9
+  45503108915  1   15    draw-hidden         126.3           1           127         502.1                  5.5
+  45503108915  2   15    flow-late            81.3           0             -         302.1                  3.0
+  45503108915  2   15    ack-on-receipt       99.7           0             -         297.8                  3.7
+  45503108915  2   15    ack-lost             86.4           0             -           0.0                  0.0
+  45503108915  2   15    drop-held            85.5           0             -         322.4                  8.2
+  45503108915  2   15    swap-held            86.7           0             -         344.7                  9.4
+  45503108915  2   15    hidden-frames        84.1           0             -         294.6                  4.0
+  45503108915  2   15    hidden-burn          83.2           0             -         298.7                  3.3
+  45503108915  2   15    hidden-rest          78.8           0             -         332.6                 10.7
+  45503108915  2   15    draw-hidden          81.7           1             -         300.0                  4.6
+  45503343235  1   6     terminal-data        81.3           0             -         270.2                  4.4
+  45503343235  1   7     flow-late            99.7           0             -         411.1                  4.5
+  45503343235  1   7     ack-on-receipt      123.1           0             -         415.6                  9.2
+  45503343235  1   7     ack-lost             99.2           0             -           0.0                  0.0
+  45503343235  1   7     drop-held           102.5           0             -         426.9                  7.9
+  45503343235  1   7     swap-held           100.3           0             -         430.7                  7.2
+  45503343235  1   7     hidden-frames        98.9           0             -         415.2                  4.7
+  45503343235  1   7     hidden-burn         106.8           0             -         424.3                  6.3
+  45503343235  1   7     hidden-rest          97.4           0             -         421.6                  6.2
+  45503343235  1   7     draw-hidden         102.5           1             -         420.5                  6.2
+  45505473523  1   13    terminal-data        84.7           0             -         330.4                  4.2
+  45505473523  1   15    flow-late            83.0           0             -         355.5                  3.8
+  45505473523  1   15    ack-on-receipt      103.2           0             -         345.8                  5.8
+  45505473523  1   15    ack-lost             89.7           0             -           0.0                  0.0
+  45505473523  1   15    drop-held            83.2           0             -         347.1                  5.0
+  45505473523  1   15    swap-held            84.1           0             -         359.0                  5.9
+  45505473523  1   15    hidden-frames        81.4           0             -         350.9                  5.3
+  45505473523  1   15    hidden-burn          85.0           0             -         355.4                  8.0
+  45505473523  1   15    hidden-rest          84.0           0             -         347.1                  3.8
+  45505473523  1   15    draw-hidden          84.0           1             -         333.6                  3.8
+  45509017105  1   6     terminal-data        83.0           0             -         365.6                  5.4
+  45509017105  1   7     flow-late           118.9           0             -         513.7                  5.3
+  45509017105  1   7     ack-on-receipt      152.2           0             -         516.2                 10.0
+  45509017105  1   7     ack-lost            117.8           0             -           0.0                  0.0
+  45509017105  1   7     drop-held           124.9           0             -         507.4                  5.3
+  45509017105  1   7     swap-held           117.5           0             -         506.0                  5.3
+  45509017105  1   7     hidden-frames       125.3           0             -         502.4                  9.1
+  45509017105  1   7     hidden-burn         117.9           0             -         500.7                  5.4
+  45509017105  1   7     hidden-rest         122.5           0             -         497.6                  5.2
+  45509017105  1   7     draw-hidden         119.5           1             -         503.3                  5.2
+
+SUMMARY OF THE 20 MB BURST, CHROMIUM (ms; the burst of `draw-hidden` is its long task to within 1 ms)
+  unit / control   runs     min  median     max   long tasks reported
+  terminal-data      21    79.6    84.7   124.4   0 of 21
+  flow-late          23    77.3    96.5   126.5   0 of 23
+  ack-on-receipt     23    86.6   118.6   157.8   0 of 23
+  ack-lost           23    74.7    99.0   132.2   0 of 23
+  drop-held          23    74.5    98.5   140.1   0 of 23
+  swap-held          23    75.2    99.2   132.0   0 of 23
+  hidden-frames      23    75.7    98.9   132.6   0 of 23
+  hidden-burn        23    74.5   100.3   134.0   0 of 23
+  hidden-rest        23    74.5    97.4   132.5   0 of 23
+  draw-hidden        23    76.3    99.4   129.3   23 of 23
+  all               228    74.5    98.7   157.8   23 of 228 (all of them `draw-hidden`)
+
+  The 205 runs without `draw-hidden` report no long task although their bursts took 74.5 to 157.8 ms: the burst is one task of the fixture (the shell writing 20 MB) with no callback of the page in it.
+  `draw-hidden` changes an attribute of the page's document for each of the 20,000 events, so the probe's own MutationObserver runs in that same task: the browser reports it, 23 times in 23.
+  The same job twice on one head: run 45494937546 shard 7 read 129.3 ms and, rerun, 82.8 ms (1.56 times); run 45503108915 shard 15 read 126.3 ms and, rerun, 81.7 ms (1.55 times).
+  Over 120 ms: 5 of 23 (124, 126, 127, 128, 130); within 3 percent under it: 4 more (117.1, 117.3, 119.5, 119.6 ms of burst).
+
+THE TIME BOUNDS OF `hidden.work` AGAINST THE RUNNER'S WORST (factor = bound / worst sample; the rule is 1.5 or more; ms)
+  sample                                                         runs      min   median      max
+  longest callback, 2 MB burst, Chromium (all but hidden-burn)    205     13.2     18.3     45.7   old    60 = 1.31x   new    90 = 1.97x   (new / median = 4.9x)
+  longest callback, 2 MB burst, WebKit (terminal-data)             21       17     20.0       33   old    60 = 1.82x   new    90 = 2.73x   (new / median = 4.5x)
+  callbacks added up, 2 MB burst, Chromium (all but hidden-burn)  205     53.6     92.1    155.9   old   310 = 1.99x   new   410 = 2.63x   (new / median = 4.5x)
+  callbacks added up, 2 MB burst, WebKit (terminal-data)           21      126    163.0      249   old   310 = 1.24x   new   410 = 1.65x   (new / median = 2.5x)
+  callbacks added up, 20 MB burst, Chromium (all but ack-lost)    205    270.2    417.7    571.2   old  1750 = 3.06x   new  1850 = 3.24x   (new / median = 4.4x)
+  callbacks added up, 20 MB burst, WebKit (terminal-data)          21      587    790.0     1065   old  1750 = 1.64x   new  1850 = 1.74x   (new / median = 2.3x)
+  long task, 20 MB burst, draw-hidden (its burst + 0.7 ms; worst = printed 130)   23       77    100.1      130   old   120 = 0.92x   new   250 = 1.92x   (new / median = 2.5x)
+  against the longest 20 MB burst of ANY control, 157.8 ms (ack-on-receipt, no long task reported): old 120 = 0.76x, new 250 = 1.58x
+  Callbacks added up, per MB of the 20 MB burst (Chromium, all but ack-lost): 13.5 to 28.6 ms, median 20.9; 250 ms of one task at the worst 28.6 ms a MB is 8.7 MB, 8.3 times the 1 MiB the host lets stay unacknowledged.
+  `terminal-data` alone (the probe itself, no planted fault), Chromium 20 MB burst: 79.6 to 124.4 ms, median 84.7, 21 runs; the Chromium 2 MB burst: 9.5 to 15.6 ms.
+
+
+WHAT WAS CHOSEN (terminal-probe.mjs, `hidden.work`)
+  long task        120 -> 250 ms : 1.92x the worst runner sample (130), 2.5x its median (100.1), 1.58x the longest burst of any control (157.8), 7.3x the laptop (34.4)
+  longest callback  60 ->  90 ms : 1.97x the worst Chromium sample (45.7), 2.73x the worst WebKit one (33); it had 1.31x
+  callbacks added up: fixed part 150 -> 250 ms (80 ms a MB stays): 2 MB 310 -> 410 = 1.65x the WebKit worst (249; it had 1.24x); 20 MB 1,750 -> 1,850 = 1.74x the WebKit worst (1,065)
+  The counts are not time bounds and were not touched; the worst runner samples against them (Chromium and WebKit, the same lines; timer callbacks = callbacks that ran minus frames asked for): 2 MB burst, 11 of 79 timer callbacks (7.2x),
+  26 of 62 frames (2.4x), 6,310 of 14,000 changes inside xterm (2.2x); 20 MB burst, 78 of 422 (5.4x), 231 of 440 (1.9x), 46,119 of 122,000 (2.6x); the changes of the page's own document, 1 of 2 at most (0 in the 20 MB burst).
+
+HOW THESE WERE READ (to read them again)
+  runs      gh run list --repo omniviewdev/omniview --workflow "UI next kit probes" --limit 30 --json databaseId,headBranch,headSha,conclusion,createdAt
+  jobs      gh api "repos/omniviewdev/omniview/actions/runs/<run>/jobs?filter=all&per_page=100" --paginate --jq '.jobs[] | select(.name|test("^Kit probes shard")) | [.id,.name,.run_attempt,.started_at,.conclusion] | @tsv'
+            (a rerun lists the jobs it did not run again with their old start time: such a job is counted once, by run, name and start time)
+  log       gh api --allow-escape-sequences repos/omniviewdev/omniview/actions/jobs/<job>/logs
+  in a log  the unit or control a line belongs to is the last `##[group]<unit name> (<control>)` line before it (the unit `terminal-data` has no `(control)`). A sample is a line that starts, after the timestamp, with
+            `hidden chromium, 20 MB written while the panel was hidden:` (the two-space echo of "Last lines of its output" is not one): burst = `the burst took N ms of the page's task`, long tasks = `(the longest Y ms, Z long tasks)`,
+            callbacks = `N callbacks ran in X ms`. A failure is a line that starts with `NEGATIVE CONTROL` and holds `the longest long task N ms`. The 2 MB lines and the WebKit lines are read the same way.
+  script    a Python parser of these rules was run once and thrown away; the rules above are all it did.

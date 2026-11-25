@@ -220,8 +220,20 @@ export class ConnectionState {
 
     /**
      * Registered native-client state, not network health. UNKNOWN is not stopped.
+     * A connection whose last start failed reads FAILED here, whatever else the provider reports
+     * for it, unless the provider reports it CONNECTED.
      */
     "readiness": types$0.ConnectionStatusCode;
+
+    /**
+     * Why the connection is not ready. For a connection whose last start failed it is the error of
+     * that start, in the public form every provider error is given to a user (the class's own words,
+     * and the provider's sentence only after it was cleaned); for a start that ended without an error
+     * and answered a failure status (UNAUTHORIZED, FORBIDDEN, FAILED and the like) it is the error of
+     * that status's class alone, none of the status's own text. It is kept until a later start
+     * answers without failing, the connection is stopped, or it leaves the plugin's list. Otherwise
+     * it is why the provider could not report the registered state.
+     */
     "readinessError"?: apperror$0.AppError | null;
 
     /**
@@ -308,6 +320,17 @@ export class ConnectionStatusPayload {
     "status": string;
     "name": string;
 
+    /**
+     * Error is why the start of the connection failed, in the form every provider error is handed
+     * to a user: the class's own words, with the provider's sentence only after apperror.PublicText
+     * has cleaned it. It is set on the event of a start that failed, and on no other: on the FAILED
+     * event of a start whose provider call returned an error, and on the event of a start that ended
+     * without an error and answered a status that is a failure (UNAUTHORIZED, FORBIDDEN, FAILED and
+     * the like), which keeps the status the provider answered. For such a status it is the error of
+     * the status's class alone: the status's own text is never in it.
+     */
+    "error"?: apperror$0.AppError | null;
+
     /** Creates a new ConnectionStatusPayload instance. */
     constructor($$source: Partial<ConnectionStatusPayload> = {}) {
         if (!("pluginID" in $$source)) {
@@ -330,7 +353,11 @@ export class ConnectionStatusPayload {
      * Creates a new ConnectionStatusPayload instance from a string or object.
      */
     static createFrom($$source: any = {}): ConnectionStatusPayload {
+        const $$createField4_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("error" in $$parsedSource) {
+            $$parsedSource["error"] = $$createField4_0($$parsedSource["error"]);
+        }
         return new ConnectionStatusPayload($$parsedSource as Partial<ConnectionStatusPayload>);
     }
 }

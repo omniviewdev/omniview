@@ -1,0 +1,37 @@
+# PT2 item 2: negative controls of the runtime's ActivityProvider (24 faults) and of the host screen's ActivityTap (4 faults), in memory, on the final tree: 28 of 28 caught by the test each is named for; 18 pass undetected with their assertion off, 10 are caught by a later assertion of the same test too
+# command (from the worktree root, after 'pnpm --filter @omniviewdev/runtime run build'):  node docs/ui-next/status/PT2/mutations-runtime.mjs
+# Each fault is written into one source file by a Vite transform (no file of the tree is touched) and must turn red the test it is named for, by an assertion of that test (the line is printed).
+# OFF is the ASSERTION_OFF pair: the same fault with that one assertion blanked in the test file. undetected = the named test is green without it; STILL RED at N = a LATER assertion of the same test catches the fault too (caught twice over, as a scenario with several steps does).
+# 'also red' counts the OTHER tests of the file that the fault turns red (the recovery rules are read by several scenarios).
+baseline packages/omniviewdev-runtime/src/activity/ActivityProvider.test.tsx: 32 passed, 0 failing (must be 0)
+baseline ui-next/plugins/host/PluginHostScreen.activity.test.tsx: 5 passed, 0 failing (must be 0)
+CAUGHT subscription-success-keeps-unavailable | trips: "is unavailable from a heartbeat that failed while the subscription is made again" at ActivityProvider.test.tsx:748 | also red: 5 | OFF: undetected
+CAUGHT heartbeat-failure-not-unavailable | trips: "is unavailable from a heartbeat that failed while the subscription is made again" at ActivityProvider.test.tsx:745 | also red: 1 | OFF: undetected
+CAUGHT subscription-failure-not-unavailable | trips: "is unavailable from a subscription that failed, and its sentence is the error" at ActivityProvider.test.tsx:756 | also red: 5 | OFF: undetected
+CAUGHT failed-heartbeat-no-resubscribe | trips: "is unavailable from a heartbeat that failed while the subscription is made again" at ActivityProvider.test.tsx:748 | also red: 6 | OFF: undetected
+CAUGHT heartbeat-through-no-resubscribe | trips: "is available again when a heartbeat gets through and the subscription is made again" at ActivityProvider.test.tsx:767 | also red: 2 | OFF: STILL RED at 768
+CAUGHT heartbeat-always-resubscribes | trips: "does not subscribe again for a heartbeat that gets through while the subscription holds" at ActivityProvider.test.tsx:793 | also red: 1 | OFF: undetected
+CAUGHT event-never-cleared-by-heartbeat | trips: "shows the host's observation-error event in `error` and not in `unavailable`" at ActivityProvider.test.tsx:802 | also red: 4 | OFF: undetected
+CAUGHT heartbeat-clears-an-event-it-did-not-see | trips: "keeps an event that came while a heartbeat was in flight" at ActivityProvider.test.tsx:813 | also red: 0 | OFF: undetected
+CAUGHT subscription-clears-an-event-it-did-not-see | trips: "keeps an event that came while the subscription was being made again" at ActivityProvider.test.tsx:828 | also red: 0 | OFF: undetected
+CAUGHT subscription-never-clears-the-event | trips: "takes an event away with a subscription that is made after it" at ActivityProvider.test.tsx:838 | also red: 0 | OFF: undetected
+CAUGHT notify-failure-is-unavailable | trips: "shows a failed `notify` in `error` and not in `unavailable`" at ActivityProvider.test.tsx:846 | also red: 2 | OFF: STILL RED at 849
+CAUGHT notify-success-keeps-the-failure | trips: "shows a failed `notify` in `error` and not in `unavailable`" at ActivityProvider.test.tsx:849 | also red: 2 | OFF: undetected
+CAUGHT details-success-keeps-the-failure | trips: "shows a failed `openDetails` in `error` and not in `unavailable`" at ActivityProvider.test.tsx:861 | also red: 2 | OFF: undetected
+CAUGHT details-failure-held-as-notify | trips: "does not take a failed `notify` or a failed `openDetails` away with a heartbeat or a subscription that succeeds" at ActivityProvider.test.tsx:884 | also red: 2 | OFF: undetected
+CAUGHT heartbeat-clears-the-calls | trips: "does not take a failed `notify` or a failed `openDetails` away with a heartbeat or a subscription that succeeds" at ActivityProvider.test.tsx:876 | also red: 1 | OFF: STILL RED at 880
+CAUGHT subscription-clears-the-calls | trips: "does not take a failed `notify` or a failed `openDetails` away with a heartbeat or a subscription that succeeds" at ActivityProvider.test.tsx:880 | also red: 1 | OFF: STILL RED at 884
+CAUGHT notify-success-clears-details | trips: "does not take a failed `notify` or a failed `openDetails` away with a heartbeat or a subscription that succeeds" at ActivityProvider.test.tsx:884 | also red: 1 | OFF: undetected
+CAUGHT order-unavailable-before-event | trips: "says the first of the failures it holds" at ActivityProvider.test.tsx:906 | also red: 1 | OFF: undetected
+CAUGHT order-notify-before-unavailable | trips: "says the first of the failures it holds" at ActivityProvider.test.tsx:904 | also red: 0 | OFF: STILL RED at 910
+CAUGHT order-details-before-notify | trips: "says the first of the failures it holds" at ActivityProvider.test.tsx:900 | also red: 1 | OFF: STILL RED at 913
+CAUGHT unmount-keeps-the-interval | trips: "leaves nothing behind when it unmounts" at ActivityProvider.test.tsx:950 | also red: 2 | OFF: undetected
+CAUGHT unmount-keeps-the-event-listener | trips: "leaves nothing behind when it unmounts" at ActivityProvider.test.tsx:951 | also red: 0 | OFF: undetected
+CAUGHT unmount-keeps-the-subscription | trips: "leaves nothing behind when it unmounts" at ActivityProvider.test.tsx:952 | also red: 0 | OFF: STILL RED at 953
+CAUGHT heartbeat-recovered-after-unmount | trips: "does not recover a heartbeat that gets through after it unmounted" at ActivityProvider.test.tsx:982 | also red: 1 | OFF: undetected
+CAUGHT tap-hands-over-the-error | trips: "raises no row in Problems and wakes no tool" at PluginHostScreen.activity.test.tsx:159 | also red: 1 | OFF: STILL RED at 160
+CAUGHT tap-hands-over-either | trips: "raises no row in Problems and wakes no tool" at PluginHostScreen.activity.test.tsx:159 | also red: 1 | OFF: STILL RED at 160
+CAUGHT tap-hands-over-nothing | trips: "is the provider's `unavailable` when the observation failed" at PluginHostScreen.activity.test.tsx:126 | also red: 2 | OFF: undetected
+CAUGHT tap-ignores-unavailable-changes | trips: "follows `unavailable` when it comes and when it clears" at PluginHostScreen.activity.test.tsx:138 | also red: 1 | OFF: STILL RED at 140
+every control was caught by the test it is named for
+exit 0

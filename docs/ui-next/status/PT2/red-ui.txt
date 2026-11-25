@@ -1,0 +1,803 @@
+# PT2 item 1, UI half (ProblemsOperations.UiStartFailure): the red runs
+#
+# The tests below were written FIRST, against the store of origin/main 366a32f2 (the window-local memory of failed starts still in `store.ts`), and this is the first run of each file.
+# Store: 61 tests, 13 red, 48 green. The 13 are each red by their own assertion, which says what the store does now and the host's list no longer allows:
+#   - 8  "when <failure>: is connecting until the list was read again" : expected state connecting, reason undefined; received the failure shown AT ONCE (the stand-in's overlay).
+#   - 1  "is connecting until the read that follows it has ended, also when that read fails": the same, with the read after the start failing.
+#   - 2  "is <failed, no class / no error from the host>: after a start of this window that failed the state is what the list says": expected the host's line (or none),
+#        received the start's own ("The connection did not start.") laid over the host's FAILED.
+#   - 1  "remembers nothing between reads: a list that says DISCONNECTED after a start that failed is disconnected": received `unauthorized` (the remembered start).
+#   - 1  "is connecting at once ... when a connection the list says FAILED is started again": received the failure, not connecting, after the second start ended.
+# The 48 green include the pins that were green on the old code and stay as the contract: an event makes the window read a list that says FAILED with the host's error, with no start of this window (5 classes),
+#   the later CONNECTED, and "follows the host both ways" (a connection no start of this window touched was already what the list said); they went green first because the list was already the source for those.
+# Problems adapter (`connectionConditions` over the real store): 57 tests, 3 red, 54 green. The red: the row after a start of this window that failed is the START's class and words (Needs sign-in, warning)
+#   where the host's list says Connection failed (2 cases: the host's class `failed`, with and without its error), and a connection the host lists DISCONNECTED after a failed start is still a row.
+#
+# command (each): pnpm exec vitest run <file>      (vitest 5.0.5, from the worktree root)
+# ======================================================================================================================================================
+# ui-next/plugins/host/connections/store.test.ts
+# ======================================================================================================================================================
+
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups
+
+stderr | ui-next/plugins/host/connections/store.test.ts
+
+⚠️ Browser Environment Detected 
+
+Only UI previews are available in the browser. For full functionality, please run the application in desktop mode.
+More information at: https://v3.wails.io/learn/build/#using-a-browser-for-development
+
+
+ ❯ ui-next/plugins/host/connections/store.test.ts (61 tests | 13 failed) 92ms
+   ❯ connect (20)
+     ❯ that fails (11)
+       × when a sign-in is needed: is connecting until the list was read again, and answers its caller then with what the start came to 5ms
+       × when access is denied: is connecting until the list was read again, and answers its caller then with what the start came to 1ms
+       × when the server does not answer: is connecting until the list was read again, and answers its caller then with what the start came to 2ms
+       × when the host says it did not start: is connecting until the list was read again, and answers its caller then with what the start came to 2ms
+       × when the host answers UNAUTHORIZED: is connecting until the list was read again, and answers its caller then with what the start came to 2ms
+       × when the host answers FORBIDDEN: is connecting until the list was read again, and answers its caller then with what the start came to 2ms
+       × when the host answers FAILED: is connecting until the list was read again, and answers its caller then with what the start came to 1ms
+       × when the host answers PENDING, which is no connection: is connecting until the list was read again, and answers its caller then with what the start came to 1ms
+       × is connecting until the read that follows it has ended, also when that read fails: then it is what the last read that worked said, and the caller is answered all the same 2ms
+   ❯ what the host says of a start that failed (14)
+     × is the start failed and the host did not classify it: after a start of this window that failed the state is what the list says, whatever the start said, and the caller is answered with the start's own 3ms
+     × is the start failed and the host gave no error: after a start of this window that failed the state is what the list says, whatever the start said, and the caller is answered with the start's own 3ms
+     × remembers nothing between reads: a list that says DISCONNECTED after a start that failed is disconnected, and the same list read again changes nothing 3ms
+     × is connecting at once, with no reason, when a connection the list says FAILED is started again, and is what the list says when that start ended 1ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when a sign-in is needed: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The provider requires authentication.",
++   "state": "unauthorized",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when access is denied: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The role may not connect.",
++   "state": "forbidden",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when the server does not answer: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The server refused the connection.",
++   "state": "unreachable",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when the host says it did not start: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The plugin could not open it.",
++   "state": "failed",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when the host answers UNAUTHORIZED: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The token has expired.",
++   "state": "unauthorized",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when the host answers FORBIDDEN: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "You do not have access to this connection.",
++   "state": "forbidden",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when the host answers FAILED: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The server is starting.",
++   "state": "failed",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > when the host answers PENDING, which is no connection: is connecting until the list was read again, and answers its caller then with what the start came to
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The connection did not start.",
++   "state": "failed",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:559:49
+    557|
+    558|       // The start ended and the list is being read again. The window …
+    559|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    560|       expect(outcome.isDone()).toBe(false);
+    561|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > connect > that fails > is connecting until the read that follows it has ended, also when that read fails: then it is what the last read that worked said, and the caller is answered all the same
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The provider requires authentication.",
++   "state": "unauthorized",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:606:49
+    604|         start.reject(wails(UNAUTHORIZED));
+    605|       });
+    606|       expect(connection(world, 'acme', 'main')).toMatchObject({ state:…
+       |                                                 ^
+    607|
+    608|       world.reads[1].reject(new Error('the host is gone'));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > what the host says of a start that failed > is the start failed and the host did not classify it: after a start of this window that failed the state is what the list says, whatever the start said, and the caller is answered with the start's own
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'failed', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": "The plugin could not open it.",
++   "reason": "The connection did not start.",
+    "state": "failed",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:653:47
+    651|     await flush();
+    652|
+    653|     expect(connection(world, 'acme', 'main')).toMatchObject({ state, r…
+       |                                               ^
+    654|     expect(outcome.value()).toEqual({ status: 'failed', state: 'failed…
+    655|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > what the host says of a start that failed > is the start failed and the host gave no error: after a start of this window that failed the state is what the list says, whatever the start said, and the caller is answered with the start's own
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'failed', reason: undefined }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
++   "reason": "The connection did not start.",
+    "state": "failed",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:653:47
+    651|     await flush();
+    652|
+    653|     expect(connection(world, 'acme', 'main')).toMatchObject({ state, r…
+       |                                               ^
+    654|     expect(outcome.value()).toEqual({ status: 'failed', state: 'failed…
+    655|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > what the host says of a start that failed > remembers nothing between reads: a list that says DISCONNECTED after a start that failed is disconnected, and the same list read again changes nothing
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'disconnected', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "disconnected",
++   "reason": "The provider requires authentication.",
++   "state": "unauthorized",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:681:47
+    679|     world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECT…
+    680|     await flush();
+    681|     expect(connection(world, 'acme', 'main')).toMatchObject({ state: '…
+       |                                               ^
+    682|
+    683|     const before = world.store.getSnapshot();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/13]⎯
+
+ FAIL  ui-next/plugins/host/connections/store.test.ts > what the host says of a start that failed > is connecting at once, with no reason, when a connection the list says FAILED is started again, and is what the list says when that start ended
+AssertionError: expected { plugin: 'acme', key: 'main', …(3) } to match object { state: 'connecting', …(1) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "reason": undefined,
+-   "state": "connecting",
++   "reason": "The provider requires authentication.",
++   "state": "unauthorized",
+  }
+
+ ❯ ui-next/plugins/host/connections/store.test.ts:717:47
+    715|     world.starts[0].reject(wails(FORBIDDEN));
+    716|     await flush();
+    717|     expect(connection(world, 'acme', 'main')).toMatchObject({ state: '…
+       |                                               ^
+    718|     world.reads[1].resolve({ acme: [record('main', 'Main', 'FAILED', F…
+    719|     await flush();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/13]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  13 failed | 48 passed (61)
+   Start at  18:15:56
+   Duration  942ms (environment 48%, transform 23%, setup 13%, tests 11%, import 5%)
+
+exit 1
+
+# ======================================================================================================================================================
+# ui-next/plugins/host/conditions.test.ts
+# ======================================================================================================================================================
+
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups
+
+stderr | ui-next/plugins/host/conditions.test.ts
+
+⚠️ Browser Environment Detected 
+
+Only UI previews are available in the browser. For full functionality, please run the application in desktop mode.
+More information at: https://v3.wails.io/learn/build/#using-a-browser-for-development
+
+
+ ❯ ui-next/plugins/host/conditions.test.ts (57 tests | 3 failed) 8ms
+   ❯ connectionConditions over the connection store: what the host says of a connection that failed (11)
+     × is the same row after a start of this window that failed (a sign-in, it said): the host's words for the start failed and the host did not classify it, not the start's 3ms
+     × is the same row after a start of this window that failed (a sign-in, it said): the host's words for the start failed and the host gave no error, not the start's 0ms
+     × is no row while the connection starts again, and none when the host lists it as disconnected after a start that failed: the row is true for as long as the host says so 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions over the connection store: what the host says of a connection that failed > is the same row after a start of this window that failed (a sign-in, it said): the host's words for the start failed and the host did not classify it, not the start's
+AssertionError: expected [ { …(7) } ] to deeply equal [ { …(7) } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "key": "connection:[\"alpha\",\"c-1\"]",
+-     "label": "Connection failed",
+-     "severity": "error",
++     "label": "Needs sign-in",
++     "severity": "warning",
+      "source": {
+        "id": "alpha",
+        "name": "Alpha Cloud",
+      },
+      "subject": {
+        "connection": "c-1",
+        "kind": "connection",
+        "plugin": "alpha",
+      },
+      "target": "north",
+-     "title": "north: The plugin could not open it.",
++     "title": "north: The provider requires authentication.",
+    },
+  ]
+
+ ❯ ui-next/plugins/host/conditions.test.ts:214:63
+    212|     await store.connect('alpha', 'c-1');
+    213|
+    214|     expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual(…
+       |                                                               ^
+    215|   });
+    216|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions over the connection store: what the host says of a connection that failed > is the same row after a start of this window that failed (a sign-in, it said): the host's words for the start failed and the host gave no error, not the start's
+AssertionError: expected [ { …(7) } ] to deeply equal [ { …(7) } ]
+
+- Expected
++ Received
+
+  [
+    {
+      "key": "connection:[\"alpha\",\"c-1\"]",
+-     "label": "Connection failed",
+-     "severity": "error",
++     "label": "Needs sign-in",
++     "severity": "warning",
+      "source": {
+        "id": "alpha",
+        "name": "Alpha Cloud",
+      },
+      "subject": {
+        "connection": "c-1",
+        "kind": "connection",
+        "plugin": "alpha",
+      },
+      "target": "north",
+-     "title": "north: Connection failed",
++     "title": "north: The provider requires authentication.",
+    },
+  ]
+
+ ❯ ui-next/plugins/host/conditions.test.ts:214:63
+    212|     await store.connect('alpha', 'c-1');
+    213|
+    214|     expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual(…
+       |                                                               ^
+    215|   });
+    216|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  ui-next/plugins/host/conditions.test.ts > connectionConditions over the connection store: what the host says of a connection that failed > is no row while the connection starts again, and none when the host lists it as disconnected after a start that failed: the row is true for as long as the host says so
+AssertionError: expected [ { …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "key": "connection:[\"alpha\",\"c-1\"]",
++     "label": "Not responding",
++     "severity": "error",
++     "source": {
++       "id": "alpha",
++       "name": "Alpha Cloud",
++     },
++     "subject": {
++       "connection": "c-1",
++       "kind": "connection",
++       "plugin": "alpha",
++     },
++     "target": "north",
++     "title": "north: The source is unavailable.",
++   },
++ ]
+
+ ❯ ui-next/plugins/host/conditions.test.ts:239:63
+    237|     await outcome;
+    238|
+    239|     expect(connectionConditions(store.getSnapshot(), nameOf)).toEqual(…
+       |                                                               ^
+    240|   });
+    241| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 54 passed (57)
+   Start at  18:16:47
+   Duration  819ms (transform 45%, environment 28%, import 18%, setup 7%, tests 1%)
+
+exit 1
+
+# ======================================================================================================================================================
+# 3. The plugin-vocabulary guard (packages/kit/eslint/vocabulary.test.mjs): red on the seam's first version of the raw words, then fixed
+# ======================================================================================================================================================
+# The first version of the seam's constant for the plugin's raw words named a path with `kube` in it. The guard (AGENTS 26; the e2e files are in its trees, only ui-next/plugins/fixture is exempt) failed on it.
+# The path was renamed (the fixture's sentence and the seam's constant: `/Users/seam/.config/fixture/address`) and the guard passed: 28 of 28.
+# command: cd packages/kit && pnpm exec vitest run eslint/vocabulary.test.mjs      (18:23, first run)
+ FAIL  eslint/vocabulary.test.mjs > the real trees > hold no plugin vocabulary, beyond the ratchet: not in the shell, the page, the plugin host, the e2e files, the shell probes or the kit
+AssertionError: Plugin vocabulary in the host or the kit (decision A13: both are plugin-agnostic; a plugin's code and its words live in the plugin's own repository).
+Name the thing neutrally. The only places these words may stand are the guard itself (packages/kit/eslint), the mock recordings (packages/kit/probes) and the neutral fixture plugin (ui-next/plugins/fixture).
+  ui-next/plugins/e2e/seam.check.mjs:472:kube
+ui-next/plugins/e2e/seam.check.mjs: 1 plugin words, none allowed: expected [ Array(1) ] to deeply equal []
+ Test Files  1 failed (1)
+      Tests  1 failed | 27 passed (28)
+
+# ======================================================================================================================================================
+# 4. Seam scenario v, the plain scenario against a host WITHOUT the host change: the first failing run of the new assertions (WebKit and Chromium)
+# ======================================================================================================================================================
+# The host here is origin/main's `backend/pkg/plugin/resource/controller.go` (a `go build -overlay` over the worktree: the Go owner's other files cannot be reached from it) with this tree's `dist/` (the new store) embedded:
+#   GOWORK=off GOFLAGS= GOTOOLCHAIN=local go build -overlay /tmp/ui-pt2/overlay-old.json -tags production,server -trimpath -buildvcs=false -ldflags="-w -s" -modfile=<host.mod> -o /tmp/ui-pt2/old-bin/Omniview-server .
+#   (overlay-old.json maps backend/pkg/plugin/resource/controller.go to `git show origin/main:backend/pkg/plugin/resource/controller.go`), copied to bin/Omniview-server for the run.
+# The check starts south with its own call (file `connection-mode` = `unreachable-path`), the host refuses it (422) and emits nothing: the window is never told, so the act waits for the event and times out (15 s).
+# The steps before it (1 to 5: nothing wrong, the operation, the failure and its dot, the alert, the keys) all passed; the scenario stops at the first fact of the new step.
+# command: env -i HOME="$HOME" PATH="$PATH" ENGINES=<engine> SEAM_ONLY=problems-operations node ui-next/plugins/e2e/seam.check.mjs        (load average 7.75 and 4.81)
+## webkit (18:24, 30 s)
+timed out after 15000 ms waiting for the window to be told that the start failed
+bundle fixture-a-ok/assets/entry.js 25134 B, imports [react/compiler-runtime, @omniviewdev/kit, @omniviewdev/runtime/ui/v1, react, react/jsx-runtime]
+exit 1
+
+## chromium (18:25, 30 s)
+timed out after 15000 ms waiting for the window to be told that the start failed
+bundle fixture-a-ok/assets/entry.js 25134 B, imports [react/compiler-runtime, @omniviewdev/kit, @omniviewdev/runtime/ui/v1, react, react/jsx-runtime]
+exit 1
+
+# ======================================================================================================================================================
+# 5. After the host change landed (go-landed.txt): the host built ONCE the official way, and the seam on it, in both engines
+# ======================================================================================================================================================
+# build (18:36, 34 s, exit 0): OMNIVIEW_UI=next GOWORK=off GOFLAGS= GOTOOLCHAIN=local task build:server, then git checkout -- dist/.gitkeep packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
+#   (the build also regenerated one tracked file, the Go owner's: packages/omniviewdev-runtime/src/bindings/.../resource/models.ts, +21 lines: ConnectionStatusPayload.error and the comments of ConnectionState; it is left as the build wrote it)
+# every run from a clean environment: env -i HOME="$HOME" PATH="$PATH" ENGINES=<engine> [SEAM_ONLY=problems-operations | SEAM_CONTROL=<name> [SEAM_REMOVE=<name>]] node ui-next/plugins/e2e/seam.check.mjs
+# load average at the start of the runs: 7.9 (plain), 18.6 (control group), 7.3 (pairs), 6.2 (scenario u); other agents shared the machine.
+
+## 5.1 plain scenario v (SEAM_ONLY=problems-operations): exit 0 in both engines, 56 s and 58 s
+webkit: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid 92773 were rows (the alert and the task became Not confirmed and Outcome unknown), Retry 
+exit 0
+chromium: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid 93424 were rows (the alert and the task became Not confirmed and Outcome unknown), Retr
+exit 0
+
+## 5.2 every control of PT_CONTROLS from one run (SEAM_CONTROL=problems-operations): 26 of 26 detected by the assertion each is named for, exit 0, in both engines (57 s each)
+### webkit
+NEGATIVE CONTROL "ops-running": detected in webkit: webkit: the Operations tool lists a task that began as running, with the producer's own count (the rows)
+NEGATIVE CONTROL "ops-progress": detected in webkit: webkit: the Operations row follows the producer's count, 3 of 4 items after 1 of 4
+NEGATIVE CONTROL "ops-succeeded": detected in webkit: webkit: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the rows)
+NEGATIVE CONTROL "ops-dot": detected in webkit: webkit: a task that failed while Problems was on screen puts a dot on the Operations tab (the tab)
+NEGATIVE CONTROL "ops-read": detected in webkit: webkit: the Operations tool clears the dot once it has shown the failure (the tab)
+NEGATIVE CONTROL "alert-fires": detected in webkit: webkit: a firing alert is a row of the Problems tool and a warning dot on its tab (the row)
+NEGATIVE CONTROL "alert-resolves": detected in webkit: webkit: a resolved alert leaves the Problems tool and its tab (the tool is empty)
+NEGATIVE CONTROL "keys-reach": detected in webkit: webkit: the keys choose the Problems tool and reach its table and the open button of a row (the arrow and Enter choose the tool)
+NEGATIVE CONTROL "keys-open": detected in webkit: webkit: Enter on the open button of a Problems row opens the page of its plugin in a tab
+NEGATIVE CONTROL "conn-told": detected in webkit: webkit: the host told the window that a start it did not make failed, in its public words (the host refused the start the check made)
+NEGATIVE CONTROL "conn-listed": detected in webkit: webkit: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)
+NEGATIVE CONTROL "conn-count": detected in webkit: webkit: the tab of Problems counts the connection that could not be reached as one error: the alert is a warning
+NEGATIVE CONTROL "conn-public": detected in webkit: webkit: none of the plugin's own words about the failure is anywhere in the window (its text, its markup and its attributes)
+NEGATIVE CONTROL "conn-refused": detected in webkit: webkit: choosing the row of a connection that is still down asks the host again and opens no tab (the row stays)
+NEGATIVE CONTROL "conn-toast": detected in webkit: webkit: choosing the row of a connection that is still down tells the person in a sticky error toast (an alert: work the person started)
+NEGATIVE CONTROL "stopped-listed": detected in webkit: webkit: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+NEGATIVE CONTROL "alert-unknown": detected in webkit: webkit: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+NEGATIVE CONTROL "ops-unknown-dot": detected in webkit: webkit: a task that was running when its plugin stopped puts a warning dot on the Operations tab
+NEGATIVE CONTROL "ops-unknown": detected in webkit: webkit: a task that was running when its plugin stopped says Outcome unknown, with no progress (the row)
+NEGATIVE CONTROL "row-opens-plugin": detected in webkit: webkit: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (one tab, the plugin's)
+NEGATIVE CONTROL "recovered": detected in webkit: webkit: after Retry the plugin runs again and leaves Problems (the rows: the connection's, and the alert, still not confirmed)
+NEGATIVE CONTROL "alert-kept": detected in webkit: webkit: the alert of a plugin that came back is still Not confirmed: the host keeps it unknown until the plugin resolves it or reports it again
+NEGATIVE CONTROL "alert-cleared": detected in webkit: webkit: an alert that the plugin which came back resolves leaves Problems (the connection's row is the one left)
+NEGATIVE CONTROL "conn-opens": detected in webkit: webkit: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)
+NEGATIVE CONTROL "conn-cleared": detected in webkit: webkit: a connection that answers again leaves the Problems tool and its count (the tool is empty)
+NEGATIVE CONTROL "pt-page-error": detected in webkit: webkit: the whole scenario wrote no page error and no console error
+exit 0
+### chromium
+NEGATIVE CONTROL "ops-running": detected in chromium: chromium: the Operations tool lists a task that began as running, with the producer's own count (the rows)
+NEGATIVE CONTROL "ops-progress": detected in chromium: chromium: the Operations row follows the producer's count, 3 of 4 items after 1 of 4
+NEGATIVE CONTROL "ops-succeeded": detected in chromium: chromium: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the rows)
+NEGATIVE CONTROL "ops-dot": detected in chromium: chromium: a task that failed while Problems was on screen puts a dot on the Operations tab (the tab)
+NEGATIVE CONTROL "ops-read": detected in chromium: chromium: the Operations tool clears the dot once it has shown the failure (the tab)
+NEGATIVE CONTROL "alert-fires": detected in chromium: chromium: a firing alert is a row of the Problems tool and a warning dot on its tab (the row)
+NEGATIVE CONTROL "alert-resolves": detected in chromium: chromium: a resolved alert leaves the Problems tool and its tab (the tool is empty)
+NEGATIVE CONTROL "keys-reach": detected in chromium: chromium: the keys choose the Problems tool and reach its table and the open button of a row (the arrow and Enter choose the tool)
+NEGATIVE CONTROL "keys-open": detected in chromium: chromium: Enter on the open button of a Problems row opens the page of its plugin in a tab
+NEGATIVE CONTROL "conn-told": detected in chromium: chromium: the host told the window that a start it did not make failed, in its public words (the host refused the start the check made)
+NEGATIVE CONTROL "conn-listed": detected in chromium: chromium: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)
+NEGATIVE CONTROL "conn-count": detected in chromium: chromium: the tab of Problems counts the connection that could not be reached as one error: the alert is a warning
+NEGATIVE CONTROL "conn-public": detected in chromium: chromium: none of the plugin's own words about the failure is anywhere in the window (its text, its markup and its attributes)
+NEGATIVE CONTROL "conn-refused": detected in chromium: chromium: choosing the row of a connection that is still down asks the host again and opens no tab (the row stays)
+NEGATIVE CONTROL "conn-toast": detected in chromium: chromium: choosing the row of a connection that is still down tells the person in a sticky error toast (an alert: work the person started)
+NEGATIVE CONTROL "stopped-listed": detected in chromium: chromium: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+NEGATIVE CONTROL "alert-unknown": detected in chromium: chromium: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+NEGATIVE CONTROL "ops-unknown-dot": detected in chromium: chromium: a task that was running when its plugin stopped puts a warning dot on the Operations tab
+NEGATIVE CONTROL "ops-unknown": detected in chromium: chromium: a task that was running when its plugin stopped says Outcome unknown, with no progress (the row)
+NEGATIVE CONTROL "row-opens-plugin": detected in chromium: chromium: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (one tab, the plugin's)
+NEGATIVE CONTROL "recovered": detected in chromium: chromium: after Retry the plugin runs again and leaves Problems (the rows: the connection's, and the alert, still not confirmed)
+NEGATIVE CONTROL "alert-kept": detected in chromium: chromium: the alert of a plugin that came back is still Not confirmed: the host keeps it unknown until the plugin resolves it or reports it again
+NEGATIVE CONTROL "alert-cleared": detected in chromium: chromium: an alert that the plugin which came back resolves leaves Problems (the connection's row is the one left)
+NEGATIVE CONTROL "conn-opens": detected in chromium: chromium: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)
+NEGATIVE CONTROL "conn-cleared": detected in chromium: chromium: a connection that answers again leaves the Problems tool and its count (the tool is empty)
+NEGATIVE CONTROL "pt-page-error": detected in chromium: chromium: the whole scenario wrote no page error and no console error
+exit 0
+
+## 5.3 the ASSERTION_OFF pair of every control (SEAM_CONTROL=<name> SEAM_REMOVE=<name>), one run each, three at a time: 26 of 26 NOT DETECTED as required in WebKit and 26 of 26 in Chromium, every run exit 0
+# (one WebKit run of an earlier batch of the same pairs, conn-told, was lost to a host that died while starting, `fatal error: concurrent map writes` in backend/pkg/plugin/ui/resource.go:42 `AddPlugin`, called by
+#  OnPluginInit from loadPluginsConcurrently: an unguarded map and two plugins loading at once, an old defect of the host that this change did not touch; the pair was run again alone and was as required. The output is in
+#  /tmp/ui-pt2/host-crash-conn-told-pair.txt and is quoted in the report. The batch below had no such crash.)
+### webkit
+NEGATIVE CONTROL "alert-cleared": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-fires": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-kept": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-resolves": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-unknown": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-cleared": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-count": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-listed": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-opens": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-public": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-refused": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-toast": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-told": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "keys-open": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "keys-reach": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-dot": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-progress": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-read": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-running": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-succeeded": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-unknown-dot": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-unknown": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "pt-page-error": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "recovered": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "row-opens-plugin": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "stopped-listed": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0
+### chromium
+NEGATIVE CONTROL "alert-cleared": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-fires": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-kept": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-resolves": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "alert-unknown": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-cleared": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-count": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-listed": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-opens": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-public": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-refused": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-toast": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "conn-told": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "keys-open": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "keys-reach": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-dot": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-progress": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-read": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-running": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-succeeded": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-unknown-dot": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "ops-unknown": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "pt-page-error": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "recovered": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "row-opens-plugin": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+NEGATIVE CONTROL "stopped-listed": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0
+
+## 5.4 scenario u (the connections, which the store change reaches: a failed start is now the host's FAILED and its error, read again): SEAM_ONLY=connections, exit 0 in both engines (27 s each)
+
+## 5.5 mutant host: the public-text gate admits a path under a home directory (backend/pkg/apperror/public_text.go, carriesSecretOrHomePath returns false), built with go build -overlay over the final tree, bin/ not touched by the build
+# The plain scenario must go red on `conn-told`, in both engines, with the plugin's own sentence in the event's detail: it does (the raw words really travel plugin -> host, and the assertion sees a leak).
+### webkit
+webkit: the host told the window that a start it did not make failed, in its public words (one event, for south, FAILED, with the error in the host's public form)
++ actual - expected
+
+  [
+    {
+      connectionID: 'south-0c3d9e1f42',
+      error: {
+        code: 'UNAVAILABLE',
++       detail: 'The server did not answer. Its address is in /Users/seam/.config/fixture/address.',
+-       detail: 'The source is unavailable.',
+        recovery: 'reconnect',
+        status: 503,
+        title: 'Source unavailable',
+        type: 'omniview:connection/failed'
+      },
+
+exit 1
+exit 1
+### chromium
+chromium: the host told the window that a start it did not make failed, in its public words (one event, for south, FAILED, with the error in the host's public form)
++ actual - expected
+
+  [
+    {
+      connectionID: 'south-0c3d9e1f42',
+      error: {
+        code: 'UNAVAILABLE',
++       detail: 'The server did not answer. Its address is in /Users/seam/.config/fixture/address.',
+-       detail: 'The source is unavailable.',
+        recovery: 'reconnect',
+        status: 503,
+        title: 'Source unavailable',
+        type: 'omniview:connection/failed'
+      },
+
+exit 1
+exit 1
+
+# ======================================================================================================================================================
+# 6. The other checks of the owned files (final tree, 18:55)
+# ======================================================================================================================================================
+#   pnpm exec vitest run ui-next/plugins/host/connections ui-next/plugins/host/conditions.test.ts          5 files, 306 tests passed
+#   pnpm exec vitest run ui-next/plugins/host                                                               44 files, 1148 tests passed (before the Go half landed; the store change has no other reader that broke)
+#   pnpm exec eslint ui-next/plugins/host/connections ui-next/plugins/host/conditions.test.ts ui-next/plugins/host/conditions.ts ui-next/plugins/e2e/seam.check.mjs --report-unused-disable-directives     exit 0
+#   pnpm exec tsc -p tsconfig.app.json --noEmit     exit 0;      pnpm exec tsc -p tsconfig.test.json --noEmit     exit 0
+#   node --test scripts/ci/changes-workflows.test.mjs     36 tests, 36 pass
+#   cd packages/kit && pnpm exec vitest run eslint/vocabulary.test.mjs     28 of 28 pass
+#   gofmt -l and go vet on ui-next/plugins/fixture/connections-process     clean
+
+# ======================================================================================================================================================
+# 7. Not mine, found on the way (Backend catalog, TANGENTIAL host): the host can die while it starts
+# ======================================================================================================================================================
+# One of ~25 host starts of these runs (3 seam hosts at once, load average 5 to 9) ended with the host dead before it listened. The pair run below was lost, and run again alone (as required). Excerpt of its output:
+the host exited while starting:
+=2026-11-24T18:32:40.281-0600
+2026-11-24T18:32:40.286-0600	DEBUG	initializing plugin	{"pluginID": "fixture-f-conn", "action": "OnPluginInit"}
+2026-11-24T18:32:40.287-0600	DEBUG	initializing plugin	{"pluginID": "fixture-a-ok", "action": "OnPluginInit"}
+fatal error: concurrent map writes
+
+goroutine 272 [running]:
+internal/runtime/maps.fatal({0x101818bc6?, 0x788060fa4020?})
+	runtime/panic.go:1197 +0x20
+github.com/omniviewdev/omniview/backend/pkg/plugin/ui.ResourceComponentStore.AddPlugin(...)
+	github.com/omniviewdev/omniview/backend/pkg/plugin/ui/resource.go:42
+github.com/omniviewdev/omniview/backend/pkg/plugin/ui.(*componentManager).OnPluginInit(_, {_, _}, {_, _}, {{0x78805f61d192, 0xe}, {0x78805f61d1f0, 0x5}, {0x78805f61d230, ...}, ...})
+	github.com/omniviewdev/omniview/backend/pkg/plugin/ui/manager.go:72 +0x140
+github.com/omniviewdev/omniview/backend/pkg/plugin.(*pluginManager).initPlugin(0x788060bd4580, 0x788060d81408)
+	github.com/omniviewdev/omniview/backend/pkg/plugin/loader.go:784 +0x1ac
+github.com/omniviewdev/omniview/backend/pkg/plugin.(*pluginManager).startBackend(_, {_, _}, _, {{0x78805f61d192, 0xe}, {0x78805f61d1f0, 0x5}, {0x78805f61d230, 0x10}, ...}, ...)
+# backend/pkg/plugin/ui/resource.go:42 `ResourceComponentStore.AddPlugin` writes `pcs[plugin]` of a plain map with no lock; `componentManager.OnPluginInit` (manager.go:72) calls it from `loadPluginsConcurrently`
+# (backend/pkg/plugin/manager.go:813-816), one goroutine for each plugin, so two plugins that load together (every seam host of u and v has two) can both write. `git log` of the file: the monorepo refactor, untouched since.
+# A seam run whose host dies at start is a CI flake that no allow-list can or should absorb: the fix is a mutex (or a sync.Map) in the store, in the host's Go.

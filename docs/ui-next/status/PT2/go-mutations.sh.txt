@@ -1,0 +1,203 @@
+#!/bin/bash
+# Negative controls for the host half of PT2 item (1) (the connection start failure): each fault is put into a SCRATCH copy of one source file
+# and built with `go test -overlay`; the worktree is never edited. Every control runs the whole test file (every test function of
+# backend/pkg/plugin/resource/connection_start_failure_test.go), so that "trips the test named for it and no other" can be read from the result.
+#
+# A control passes when (1) a test it names turns red (WANT matches at least one failing test or subtest) and (2) nothing else does
+# (ALLOW matches every failing test and subtest, parents included). The verdict is printed after each run.
+# ROOT is the worktree (default: the current directory); ONLY=<regexp> runs the controls whose name matches.
+# A fault is a list of sed expressions (applied first, in order) and `@after:<anchor>|<line>|<replacement>` steps (an awk pass: the line that follows
+# the first line matching <anchor> is rewritten if it matches <line>). Patterns use no backslash escape except `\[` `\*` `\.` in sed, and none in awk
+# (`[[]`, `[(]`), and no \t or \n: the sed that ships with macOS, GNU sed and the in-process sed of the agent shell read them the same way, except
+# for `{n;...}` blocks, which the last one does not run, hence the awk steps.
+export GOWORK=off GOTOOLCHAIN=local
+WT=${ROOT:-$PWD}
+M=${MDIR:-/tmp/pt2-go-mut}
+ONLY=${ONLY:-.}
+R=backend/pkg/plugin/resource
+rm -rf "$M" && mkdir -p "$M"
+cd "$WT" || exit 2
+TESTS=$(grep -o '^func Test[A-Za-z0-9_]*' "$R/connection_start_failure_test.go" | sed 's/^func //' | paste -sd'|' -)
+
+F=$R/connection_start_failures.go
+C=$R/controller.go
+CC=$R/connection_change.go
+PI=$R/profile_invalidation.go
+
+START='/^func (c \*controller) StartConnection(/,/^}/'
+STOP='/^func (c \*controller) StopConnection(/,/^}/'
+KEEP='/^func (c \*controller) keepStartFailure(/,/^}/'
+FORGET='/^func (c \*controller) forgetStartFailure(/,/^}/'
+PRUNE='/^func (c \*controller) pruneStartFailuresLocked(/,/^}/'
+
+pass=0; total=0
+# run <name> <file> <go test flags> <WANT regexp> <ALLOW regexp> <fault>...
+run() {
+  name="$1"; file="$2"; flags="$3"; want="$4"; allow="$5"; shift 5
+  echo "$name" | grep -Eq "$ONLY" || return
+  total=$((total+1))
+  exprs=(); afters=()
+  for e in "$@"; do
+    case "$e" in
+      @after:*) afters+=("${e#@after:}") ;;
+      *) exprs+=(-e "$e") ;;
+    esac
+  done
+  if [ ${#exprs[@]} -gt 0 ]; then sed "${exprs[@]}" "$WT/$file" > "$M/$name.go"; else cp "$WT/$file" "$M/$name.go"; fi
+  for spec in ${afters[@]+"${afters[@]}"}; do
+    IFS='|' read -r anchor line repl <<<"$spec"
+    awk -v anchor="$anchor" -v line="$line" -v repl="$repl" '{ if (prev ~ anchor && $0 ~ line) sub(line, repl); print; prev = $0 }' "$M/$name.go" > "$M/$name.go.next" && mv "$M/$name.go.next" "$M/$name.go"
+  done
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+  out=$(go test $flags -overlay="$M/$name.json" -count=1 -timeout 300s -run "^($TESTS)\$" "./$R/" 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E "^\s*--- FAIL" | sed -e 's/^ *--- FAIL: //' -e 's/ (.*//')
+  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed)"; return; fi
+  if [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (no test failed: the build or the setup did)"; echo "$out" | grep -v '^ld: warning' | head -5; return; fi
+  named=$(echo "$failed" | grep -Ec "$want")
+  stray=$(echo "$failed" | grep -Evc "$allow")
+  top=$(echo "$failed" | grep -v '/' | sed 's/^Test//; s/^A//' | cut -c1-48 | tr '\n' ',')
+  nsub=$(echo "$failed" | grep -c '/')
+  if [ "$named" -gt 0 ] && [ "$stray" -eq 0 ]; then verdict="OK"; pass=$((pass+1)); else verdict="CHECK (named=$named stray=$stray)"; fi
+  echo "CONTROL $name: RED [$verdict] ${top%,} (+$nsub subtests)"
+  if [ "$stray" -ne 0 ]; then echo "$failed" | grep -Ev "$allow" | sed 's/^/    stray: /'; fi
+}
+
+# --- the event -------------------------------------------------------------------------------------------------------------
+run no-event $F "" 'TestAFailedStartEmitsOneFailedEvent|TestTheFailedEventNames|TestAFailedStartCarriesNoRaw' \
+  '^(TestAFailedStart|TestTheFailedEvent|TestAConnectionWhoseLastStartFailed|TestAFailureBelongs|TestAStartOrStopOfAnother|TestWhatEnds|TestASyncThatKeeps|TestAConnectionThatLeft|TestAStartThatTheHostRefuses|TestOnlyTheFailedEvent|TestAStartThatAnswers|TestTheFailuresKept|TestUnloadingAPlugin|TestAFailureThatArrives|TestTheFailureIsKept|TestFailuresKeptStay)' \
+  's/c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{/c.emitter.Emit("off", ConnectionStatusPayload{/'
+
+run two-events $F "" 'TestAFailedStartEmitsOneFailedEvent' \
+  '^(TestAFailedStart|TestTheFailedEventNames|TestAConnectionWhoseLastStartFailed|TestAFailureBelongs|TestAStartThatTheHostRefuses|TestOnlyTheFailedEvent|TestAStartThatAnswers|TestTheFailuresKept|TestAFailureThatArrives)' \
+  's/c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{/for range 2 { c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{/' \
+  '@after:Error:        failure,|[}][)]$|}) }'
+
+run event-status-wrong $F "" 'TestAFailedStartEmitsOneFailedEvent' '^(TestAFailedStartEmitsOneFailedEvent|TestTheFailedEventNames)' \
+  's/Status:       string(types.ConnectionStatusFailed),/Status:       "ERROR",/'
+
+run event-name-always-the-id $F "" 'TestAFailedStartEmitsOneFailedEvent' '^TestAFailedStartEmitsOneFailedEvent' \
+  "$KEEP"' s/if listed\[i\].Name != "" {/if false {/'
+
+run no-event-for-an-unnamed-or-unlisted-connection $F "" 'TestTheFailedEventNames|TestAFailedStartOfAConnectionThatIsNotListed' \
+  '^(TestTheFailedEventNames|TestAFailedStartOfAConnectionThatIsNotListed)' \
+  's/c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{/if name == connectionID { return }; c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{/'
+
+run no-request-id $F "" 'TestAFailedStartEmitsOneFailedEvent' '^TestAFailedStartEmitsOneFailedEvent' \
+  's/apperror.ForResource(startErr, request.ID())/apperror.ForResource(startErr, request.ID()[:0])/'
+
+run error-key-always-present $C "" 'TestOnlyTheFailedEvent|TestAStartThatAnswers' '^(TestOnlyTheFailedEvent|TestAStartThatAnswers)' \
+  's/json:"error,omitempty"/json:"error"/'
+
+# --- no raw plugin text ----------------------------------------------------------------------------------------------------
+run raw-error-kept $F "" 'TestAFailedStartCarriesNoRaw|TestAFailedStartEmits' '^(TestAFailedStartCarriesNoRaw|TestAFailedStartEmits)' \
+  's/failure.Err = nil/failure.Err = startErr/'
+
+run raw-text-in-the-detail $F "" 'TestAFailedStartCarriesNoRaw' '^(TestAFailedStartCarriesNoRaw|TestAFailedStartEmits|TestAFailedStartAcrossTheTransport)' \
+  's/failure.Err = nil/failure.Err = nil; failure.Detail = startErr.Error()/'
+
+# --- what the state reads back ---------------------------------------------------------------------------------------------
+run state-not-folded $C "" 'TestAConnectionWhoseLastStartFailed|TestAFailedStartCarriesNoRaw' \
+  '^(TestAFailedStartCarriesNoRaw|TestAFailedStartAcrossTheTransport|TestAConnectionWhoseLastStartFailed|TestAFailureBelongs|TestAStartOrStopOfAnother|TestWhatEnds|TestASyncThatKeeps|TestAConnectionThatLeft|TestAFailureThatArrives|TestTheFailureIsKept)' \
+  's/c.withStartFailure(pluginID, &state)/_ = state/'
+
+run state-keeps-the-readiness $F "" 'TestAConnectionWhoseLastStartFailed' \
+  '^(TestAFailedStartCarriesNoRaw|TestAFailedStartAcrossTheTransport|TestAConnectionWhoseLastStartFailed|TestAFailureBelongs|TestAStartOrStopOfAnother|TestWhatEnds|TestASyncThatKeeps|TestAConnectionThatLeft|TestAFailureThatArrives|TestTheFailureIsKept)' \
+  's/state.Readiness = types.ConnectionStatusFailed/_ = state/'
+
+run state-gives-no-reason $F "" 'TestAConnectionWhoseLastStartFailed' \
+  '^(TestAFailedStartCarriesNoRaw|TestAFailedStartAcrossTheTransport|TestAConnectionWhoseLastStartFailed|TestASyncThatKeeps|TestAStartOrStopOfAnother|TestTheFailureIsKept)' \
+  's/state.ReadinessError = failure/_ = failure/'
+
+run failed-over-a-connected-plugin $F "" '/the_plugin_reports_connected$' '^TestAConnectionWhoseLastStartFailed' \
+  's/if state.Readiness == types.ConnectionStatusConnected {/if false {/'
+
+run failed-only-over-disconnected $F "" 'TestAConnectionWhoseLastStartFailed' '^TestAConnectionWhoseLastStartFailed' \
+  's/if state.Readiness == types.ConnectionStatusConnected {/if state.Readiness != types.ConnectionStatusDisconnected {/'
+
+# Needs the race detector: the one test that reads while the others write.
+run state-read-without-the-lock $F "-race" 'TestFailuresKeptStayWithin' '.' \
+  '/^func (c \*controller) withStartFailure(/,/^}/ { /c.connsMu.RLock()/d; /c.connsMu.RUnlock()/d; }'
+
+# --- what clears the reason ------------------------------------------------------------------------------------------------
+run start-that-answered-keeps-the-failure $C "" 'TestWhatEnds.*/a_later_start' \
+  '^(TestWhatEnds.*(/a_later_start_that_(succeeds|answers_a_status_without_an_error))?|TestAFailureBelongs)' \
+  "$START"' s/c.forgetStartFailure(pluginID, connectionID)$/_ = connectionID/'
+
+run stop-keeps-the-failure $C "" 'TestWhatEnds.*/a_stop' '^TestWhatEnds.*(/a_stop)?$' \
+  "$STOP"' s/c.forgetStartFailure(pluginID, connectionID)$/_ = connectionID/'
+
+run publish-does-not-prune $CC "" 'TestWhatEnds.*/a_watch_refresh_that_no_longer_lists' \
+  '^(TestWhatEnds.*(/a_watch_refresh_that_no_longer_lists_the_connection)?|TestAConnectionThatLeft|TestTheFailuresKeptNeverOutnumber)' \
+  '@after:c.connections[[]pluginID[]] = effective|c.pruneStartFailuresLocked[(]pluginID[)]|_ = pluginID'
+
+run retiring-a-route-does-not-prune $PI "" 'TestWhatEnds.*/a_discovery_that_changes_what_the_connection_connects_with' \
+  '^TestWhatEnds.*(/a_discovery_that_changes_what_the_connection_connects_with)?$' \
+  '@after:c.connections[[]pluginID[]] = cached|c.pruneStartFailuresLocked[(]pluginID[)]|_ = pluginID'
+
+run failed-discovery-does-not-prune $CC "" 'TestWhatEnds.*/a_discovery_that_fails' '^TestWhatEnds.*(/a_discovery_that_fails_and_empties_the_list)?$' \
+  '@after:c.connections[[]pluginID[]] = nil|c.pruneStartFailuresLocked[(]pluginID[)]|_ = pluginID'
+
+run init-does-not-prune $C "" 'TestWhatEnds.*/the_plugin_initialising_again' '^TestWhatEnds.*(/the_plugin_initialising_again)?$' \
+  '@after:c.connections[[]pluginID[]] = make[(][[][]]types.Connection, 0[)]|c.pruneStartFailuresLocked[(]pluginID[)]|_ = pluginID'
+
+run unload-does-not-prune $C "" 'TestWhatEnds.*/the_unload_of_the_plugin|TestUnloadingAPlugin' \
+  '^(TestWhatEnds.*(/the_unload_of_the_plugin)?|TestUnloadingAPlugin|TestAFailureBelongs)' \
+  '@after:delete[(]c.connections, pluginID[)]|c.pruneStartFailuresLocked[(]pluginID[)]|_ = pluginID'
+
+run unload-drops-every-plugins-failures $C "" 'TestAFailureBelongs' '^TestAFailureBelongs' \
+  '/^func (c \*controller) OnPluginStop(/,/^}/ s/c.pruneStartFailuresLocked(pluginID)/c.startFailures = nil/'
+
+run prune-drops-everything $F "" 'TestASyncThatKeeps' \
+  '^(TestASyncThatKeeps|TestAConnectionThatLeft|TestTheFailuresKept|TestAFailureThatArrives)' \
+  's/if _, listedStill := stays\[id\]; !listedStill {/if true {/'
+
+run prune-drops-nothing $F "" 'TestWhatEnds.*/a_(discovery|watch)' \
+  '^(TestWhatEnds.*|TestAConnectionThatLeft|TestTheFailuresKept|TestUnloadingAPlugin|TestAFailureBelongs)' \
+  's/if _, listedStill := stays\[id\]; !listedStill {/if false {/'
+
+# The fast path of forgetStartFailure is taken off, so that the over-wide delete can be reached by another connection's answer.
+run answer-clears-every-failure-of-the-plugin $F "" 'TestAStartOrStopOfAnother' '^(TestAStartOrStopOfAnother|TestASyncThatKeeps|TestAFailureBelongs)' \
+  "$FORGET"' s/if !kept {/if !kept \&\& false {/' \
+  "$FORGET"' s/delete(failures, connectionID)/delete(c.startFailures, pluginID)/'
+
+run answer-clears-every-plugins-failures $F "" 'TestAFailureBelongs' '^TestAFailureBelongs' \
+  "$FORGET"' s/delete(failures, connectionID)/c.startFailures = nil/'
+
+run forget-leaves-an-empty-plugin-entry $F "" 'TestWhatEnds.*/a_(later_start|stop)' '^TestWhatEnds.*(/a_(later_start_that_(succeeds|answers_a_status_without_an_error)|stop))?$' \
+  "$FORGET"' s/delete(c.startFailures, pluginID)/_ = pluginID/'
+
+run prune-leaves-an-empty-plugin-entry $F "" 'TestWhatEnds' \
+  '^(TestWhatEnds|TestAConnectionThatLeft|TestTheFailuresKept|TestUnloadingAPlugin)' \
+  "$PRUNE"' s/delete(c.startFailures, pluginID)/_ = pluginID/'
+
+# --- what is kept ----------------------------------------------------------------------------------------------------------
+run nothing-kept $F "" 'TestAConnectionWhoseLastStartFailed|TestWhatEnds' \
+  '^(TestAFailedStartCarriesNoRaw|TestAFailedStartAcrossTheTransport|TestAConnectionWhoseLastStartFailed|TestAFailureBelongs|TestAStartOrStopOfAnother|TestWhatEnds|TestASyncThatKeeps|TestAConnectionThatLeft|TestAStartThatTheHostRefuses|TestAStartThatAnswers|TestTheFailuresKept|TestUnloadingAPlugin|TestAFailureThatArrives|TestTheFailureIsKept|TestFailuresKeptStay)' \
+  's/c.startFailures\[pluginID\]\[connectionID\] = failure/_ = failure/'
+
+run unlisted-connection-kept $F "" 'TestAFailedStartOfAConnectionThatIsNotListed' '^TestAFailedStartOfAConnectionThatIsNotListed' \
+  "$KEEP"' s/listed := c.connections\[pluginID\]$/listed := append(append([]types.Connection(nil), c.connections[pluginID]...), types.Connection{ID: connectionID})/'
+
+run kept-after-it-is-announced-not-before $F "" 'TestTheFailureIsKeptBeforeTheEventIsEmitted' '^TestTheFailureIsKeptBeforeTheEventIsEmitted$' \
+  's/name := c.keepStartFailure(pluginID, connectionID, failure)/name := c.keepStartFailure(pluginID, connectionID, failure); c.forgetStartFailure(pluginID, connectionID); defer c.keepStartFailure(pluginID, connectionID, failure)/'
+
+# --- what publishes nothing ------------------------------------------------------------------------------------------------
+run no-admission-before-publishing $F "" 'TestAStartThatTheHostRefuses.*/(the_connection.s_route_is_retired_while_the_provider_fails|the_caller_gives_up)|TestAFailureThatArrives' \
+  '^(TestAStartThatTheHostRefuses.*(/the_connection.s_route_is_retired_while_the_provider_fails_to_start_it|/the_caller_gives_up_while_the_provider_starts_the_connection)?|TestAFailureThatArrives)' \
+  's/if refusal := c.checkBorrowableStartLocked(ctx, pluginID, connectionID, generation, epoch); refusal != nil {/if false {/'
+
+run every-error-of-a-start-is-published $C "" 'TestAStartThatTheHostRefuses.*/(the_plugin_is_not_loaded|the_boundary|the_connection_is_being|the_plugin_cannot)' \
+  '^(TestAStartThatTheHostRefuses|TestAStartThatAnswers|TestAFailedStartEmitsOneFailedEvent|TestTheFailedEventNames|TestAFailedStartCarriesNoRaw|TestAFailedStartAcrossTheTransport|TestAConnectionWhoseLastStartFailed|TestAFailureBelongs|TestAStartOrStopOfAnother|TestWhatEnds|TestASyncThatKeeps|TestAConnectionThatLeft|TestOnlyTheFailedEvent|TestAFailedStartOfAConnection|TestUnloadingAPlugin|TestAFailureThatArrives|TestTheFailureIsKept|TestTheFailuresKept|TestFailuresKeptStay)' \
+  "$START"' s/defer c.notifyInventory()/defer c.notifyInventory(); defer func() { if retErr != nil { c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{PluginID: pluginID, ConnectionID: connectionID, Status: "FAILED", Name: connectionID, Error: nil}) } }()/' \
+  "$START"' s/c.publishStartFailure(ctx, pluginID, connectionID, startGeneration, startEpoch, err)/_ = err/'
+
+run a-returned-status-is-published-twice $C "" 'TestAStartThatAnswersAFailedStatus' '^TestAStartThatAnswersAFailedStatus' \
+  "$START"' s/^[[:space:]]*return conn, nil$/if conn.Status == types.ConnectionStatusFailed { c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{PluginID: pluginID, ConnectionID: connectionID, Status: "FAILED", Name: connectionID, Error: nil}) }; return conn, nil/'
+
+run a-returned-status-is-kept-as-a-failure $C "" 'TestAStartThatAnswersAFailedStatus|TestWhatEnds.*/a_later_start_that_answers' '^(TestAStartThatAnswersAFailedStatus|TestWhatEnds.*(/a_later_start_that_answers_a_status_without_an_error)?)' \
+  "$START"' s/c.forgetStartFailure(pluginID, connectionID)$/c.forgetStartFailure(pluginID, connectionID); if conn.Status == types.ConnectionStatusFailed { c.keepStartFailure(pluginID, connectionID, \&apperror.AppError{Code: "FAILED"}) }/'
+
+echo
+echo "controls run: $total; detected as required: $pass"

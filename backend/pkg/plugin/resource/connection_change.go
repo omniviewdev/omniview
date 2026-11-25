@@ -169,6 +169,7 @@ func (c *controller) loadConfiguredConnections(ctx context.Context, pluginID str
 			if c.plugins[pluginID] == generation {
 				c.connsMu.Lock()
 				c.connections[pluginID] = nil
+				c.pruneStartFailuresLocked(pluginID)
 				c.connsMu.Unlock()
 			}
 			c.pluginsMu.RUnlock()
@@ -266,6 +267,7 @@ func (c *controller) publishProfileConnections(ctx context.Context, pluginID str
 	c.profileNative[pluginID] = native
 	c.connsMu.Lock()
 	c.connections[pluginID] = effective
+	c.pruneStartFailuresLocked(pluginID)
 	c.connsMu.Unlock()
 	return nil
 }

@@ -1,0 +1,1185 @@
+RED evidence, host half of the PT2 follow-up: a start that ANSWERS a failure status without an error (agent ProblemsOperations.GoAnsweredStatus)
+date: 2026-11-25   base: the PT2 tree with the error path already in it (publishStartFailure, startFailures, withStartFailure) and NO handling of an answered status
+host: Darwin arm64, go1.27.4; the red runs are without -race, the green runs are with -race
+
+What was red: the tests of backend/pkg/plugin/resource/connection_start_failure_test.go. RUN 1 below is the first red run, made BEFORE any production change (nothing overlaid): the new tests
+for the answered statuses, and the tests of the error path made table-driven over "how the start failed" (an error / an answered UNAUTHORIZED / an answered FAILED), so that an answered
+failure obeys every rule of clearing, keeping and ordering that the error path has. RUN 2 (end of the file) is the same file as it is now (five cases were added after RUN 1: no status and a
+word the host does not know), run again through a scratch overlay in which the branch of StartConnection for an answered failure never runs: docs/ui-next/status/PT2/go-answered-red.sh.txt.
+
+Command of RUN 1 (repo root):
+  GOWORK=off GOTOOLCHAIN=local go test -count=1 -timeout 600s -run '^(<the 27 test functions of the file>)$' ./backend/pkg/plugin/resource/
+Command of RUN 2:  bash docs/ui-next/status/PT2/go-answered-red.sh.txt
+
+Result of RUN 1: 13 of the 27 test functions FAIL (80 failing subtests), 14 pass. RUN 2: the same 13 functions FAIL (86 failing subtests), the same 14 pass. No panic and no compile error in either:
+each failure is the test's own assertion (the first is "the event says why the start failed: Expected value not to be nil").
+The 14 that pass are the error path's own tests (behaviour that was already there) and the overlap guard TestFailuresKeptStayWithinTheList...: it asserts that nothing kept is outside the list,
+which holds on a host that keeps nothing for an answered status. Their proof is not this run: the 18 negative controls of docs/ui-next/status/PT2/go-answered-mutations.sh.txt, run
+in docs/ui-next/status/PT2/go-answered-mutations-run.txt (18 of 18 red as named, nothing else red).
+Two refusal cases and the first half of the retired-generation test also pass on the base, because they assert that something is NOT done and the base does nothing at all for an answer
+(the route retired / the caller gone while the provider ANSWERS a failure status; the retired generation's answered failure is neither emitted nor kept). Each has a positive control that needs the
+new behaviour and is red above: "the premise: a failure status the provider answers is published once and kept on this fixture", and the second half of that test ("the new generation's own
+answered failure is published and kept"). The guards themselves are proven by the control `no-readmission-before-keeping`.
+
+Facts the choice of the class of the rest rests on (run, not read): stateOfReadiness('FAILED', <the error the Go gate makes>) of ui-next/plugins/host/connections/words.ts, run with bun on the
+AppError JSON of each class (the type, status and recovery of backend/pkg/apperror/resource.go):
+  UNAUTHORIZED     {"state":"unauthorized"}
+  FORBIDDEN        {"state":"forbidden"}
+  PROVIDER_ERROR   {"state":"unreachable"}    <- a 502: classOf reads 502, 503 and 504 as a server that did not answer ("Not responding"), NOT as `failed`
+  INTERNAL         {"state":"failed"}         <- 500, the class the gate gives anything unclassified
+  NOT_FOUND / INVALID_REQUEST {"state":"failed"}
+So the rest (FAILED, ERROR, BAD_REQUEST, NOT_FOUND, TIMEOUT, UNAVAILABLE, REQUEST_ENTITY_TOO_LARGE) are INTERNAL, not PROVIDER_ERROR: the window's own memory made `failed` of them, and the
+control `the-rest-given-the-provider-class` turns TestTheListGivesTheWindowTheClassOfAnAnsweredFailure red for the other choice.
+------------------------------------------------------------------------------------------------------------------------
+RUN 1 (before any production change)
+------------------------------------------------------------------------------------------------------------------------
+# github.com/omniviewdev/omniview/backend/pkg/plugin/resource.test
+--- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin (0.01s)
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/UNAUTHORIZED (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/UNAUTHORIZED
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/UNAUTHORIZED
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/FORBIDDEN (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/FORBIDDEN
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/FORBIDDEN
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/FAILED (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/FAILED
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/FAILED
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/ERROR (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/ERROR
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/ERROR
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/BAD_REQUEST (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/BAD_REQUEST
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/BAD_REQUEST
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/NOT_FOUND (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/NOT_FOUND
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/NOT_FOUND
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/TIMEOUT (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/TIMEOUT
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/TIMEOUT
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/UNAVAILABLE (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/UNAVAILABLE
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/UNAVAILABLE
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/REQUEST_ENTITY_TOO_LARGE (0.00s)
+        connection_start_failure_test.go:564: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:564
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/REQUEST_ENTITY_TOO_LARGE
+        connection_start_failure_test.go:565: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:565
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin/REQUEST_ENTITY_TOO_LARGE
+            	Messages:   	the event says why the start failed
+--- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt (0.18s)
+    --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED (0.06s)
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_succeeds (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_succeeds
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_stop (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_stop
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_discovery_that_no_longer_lists_the_connection (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_discovery_that_no_longer_lists_the_connection
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_no_longer_lists_the_connection (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_no_longer_lists_the_connection
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/the_removal_of_the_connection (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/the_removal_of_the_connection
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_discovery_that_changes_what_the_connection_connects_with (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_discovery_that_changes_what_the_connection_connects_with
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_discovery_that_fails_and_empties_the_list (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_discovery_that_fails_and_empties_the_list
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/the_plugin_initialising_again (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/the_plugin_initialising_again
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/the_unload_of_the_plugin (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/the_unload_of_the_plugin
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_answers_PENDING (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_answers_PENDING
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_answers_DISCONNECTED (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_answers_DISCONNECTED
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_answers_UNKNOWN (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_UNAUTHORIZED/a_later_start_that_answers_UNKNOWN
+                	Messages:   	the premise: the failure is shown before
+    --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED (0.06s)
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_succeeds (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_succeeds
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_stop (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_stop
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_discovery_that_no_longer_lists_the_connection (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_discovery_that_no_longer_lists_the_connection
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_watch_refresh_that_no_longer_lists_the_connection (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_watch_refresh_that_no_longer_lists_the_connection
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/the_removal_of_the_connection (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/the_removal_of_the_connection
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_discovery_that_changes_what_the_connection_connects_with (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_discovery_that_changes_what_the_connection_connects_with
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_discovery_that_fails_and_empties_the_list (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_discovery_that_fails_and_empties_the_list
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/the_plugin_initialising_again (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/the_plugin_initialising_again
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/the_unload_of_the_plugin (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/the_unload_of_the_plugin
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_answers_PENDING (0.00s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_answers_PENDING
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_answers_DISCONNECTED (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_answers_DISCONNECTED
+                	Messages:   	the premise: the failure is shown before
+        --- FAIL: TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_answers_UNKNOWN (0.01s)
+            connection_start_failure_test.go:759: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:759
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt/the_start_answers_FAILED/a_later_start_that_answers_UNKNOWN
+                	Messages:   	the premise: the failure is shown before
+--- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure (0.07s)
+    --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED (0.02s)
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_discovery_that_lists_the_same_connections (0.00s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_discovery_that_lists_the_same_connections
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_discovery_that_lists_the_same_connections
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_lists_the_same_connections (0.00s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_lists_the_same_connections
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_lists_the_same_connections
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_discovery_that_only_renames_the_connection (0.01s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_discovery_that_only_renames_the_connection
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_discovery_that_only_renames_the_connection
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_drops_another_connection (0.00s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_drops_another_connection
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_watch_refresh_that_drops_another_connection
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_failed_start_of_another_connection (0.00s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_failed_start_of_another_connection
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_UNAUTHORIZED/a_failed_start_of_another_connection
+    --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED (0.02s)
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_discovery_that_lists_the_same_connections (0.00s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_discovery_that_lists_the_same_connections
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_discovery_that_lists_the_same_connections
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_watch_refresh_that_lists_the_same_connections (0.01s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_watch_refresh_that_lists_the_same_connections
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_watch_refresh_that_lists_the_same_connections
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_discovery_that_only_renames_the_connection (0.01s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_discovery_that_only_renames_the_connection
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_discovery_that_only_renames_the_connection
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_watch_refresh_that_drops_another_connection (0.00s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_watch_refresh_that_drops_another_connection
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_watch_refresh_that_drops_another_connection
+        --- FAIL: TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_failed_start_of_another_connection (0.00s)
+            connection_start_failure_test.go:807: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:807
+                	Error:      	Not equal: 
+                	            	expected: "FAILED"
+                	            	actual  : "DISCONNECTED"
+                	            	
+                	            	Diff:
+                	            	--- Expected
+                	            	+++ Actual
+                	            	@@ -1,2 +1,2 @@
+                	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+                	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+                	            	 
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_failed_start_of_another_connection
+            connection_start_failure_test.go:808: 
+                	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:808
+                	Error:      	Expected value not to be nil.
+                	Test:       	TestASyncThatKeepsTheConnectionKeepsItsFailure/the_start_answers_FAILED/a_failed_start_of_another_connection
+--- FAIL: TestAStartThatTheHostRefusesRatherThanTheProviderEmitsNothingAndRecordsNothing (0.06s)
+    --- FAIL: TestAStartThatTheHostRefusesRatherThanTheProviderEmitsNothingAndRecordsNothing/the_premise:_a_failure_status_the_provider_answers_is_published_once_and_kept_on_this_fixture (0.00s)
+        connection_start_failure_test.go:857: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:857
+            	Error:      	Not equal: 
+            	            	expected: 1
+            	            	actual  : 0
+            	Test:       	TestAStartThatTheHostRefusesRatherThanTheProviderEmitsNothingAndRecordsNothing/the_premise:_a_failure_status_the_provider_answers_is_published_once_and_kept_on_this_fixture
+--- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList (0.04s)
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/UNAUTHORIZED (0.00s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/UNAUTHORIZED
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/FORBIDDEN (0.00s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/FORBIDDEN
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/FAILED (0.01s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/FAILED
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/ERROR (0.01s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/ERROR
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/BAD_REQUEST (0.00s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/BAD_REQUEST
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/NOT_FOUND (0.00s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/NOT_FOUND
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/TIMEOUT (0.01s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/TIMEOUT
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/UNAVAILABLE (0.01s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/UNAVAILABLE
+            	Messages:   	the event says why the start failed
+    --- FAIL: TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/REQUEST_ENTITY_TOO_LARGE (0.00s)
+        connection_start_failure_test.go:998: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:351
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:998
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList/REQUEST_ENTITY_TOO_LARGE
+            	Messages:   	the event says why the start failed
+--- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure (0.04s)
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/UNAUTHORIZED (0.00s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/UNAUTHORIZED
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/FORBIDDEN (0.00s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/FORBIDDEN
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/FAILED (0.01s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/FAILED
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/ERROR (0.00s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/ERROR
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/BAD_REQUEST (0.00s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/BAD_REQUEST
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/NOT_FOUND (0.01s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/NOT_FOUND
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/TIMEOUT (0.01s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/TIMEOUT
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/UNAVAILABLE (0.00s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/UNAVAILABLE
+            	Messages:   	the window is given no error to classify
+    --- FAIL: TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/REQUEST_ENTITY_TOO_LARGE (0.00s)
+        connection_start_failure_test.go:1028: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:363
+            	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1028
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheListGivesTheWindowTheClassOfAnAnsweredFailure/REQUEST_ENTITY_TOO_LARGE
+            	Messages:   	the window is given no error to classify
+--- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList (0.04s)
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/UNAUTHORIZED (0.01s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/UNAUTHORIZED
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/FORBIDDEN (0.00s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/FORBIDDEN
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/FAILED (0.00s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/FAILED
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/ERROR (0.00s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/ERROR
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/BAD_REQUEST (0.00s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/BAD_REQUEST
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/NOT_FOUND (0.01s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/NOT_FOUND
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/TIMEOUT (0.00s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/TIMEOUT
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/UNAVAILABLE (0.01s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/UNAVAILABLE
+    --- FAIL: TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/REQUEST_ENTITY_TOO_LARGE (0.01s)
+        connection_start_failure_test.go:1046: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1046
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList/REQUEST_ENTITY_TOO_LARGE
+--- FAIL: TestTheEventOfAnAnsweredFailureIsNamedAsTodaysEventIs (0.00s)
+    connection_start_failure_test.go:1083: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1083
+        	Error:      	Expected value not to be nil.
+        	Test:       	TestTheEventOfAnAnsweredFailureIsNamedAsTodaysEventIs
+    connection_start_failure_test.go:1083: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1083
+        	Error:      	Expected value not to be nil.
+        	Test:       	TestTheEventOfAnAnsweredFailureIsNamedAsTodaysEventIs
+--- FAIL: TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore (0.01s)
+    --- FAIL: TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore/PENDING (0.00s)
+        connection_start_failure_test.go:1098: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1098
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore/PENDING
+            	Messages:   	the premise: a failure status is told with its error
+    --- FAIL: TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore/DISCONNECTED (0.01s)
+        connection_start_failure_test.go:1098: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1098
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore/DISCONNECTED
+            	Messages:   	the premise: a failure status is told with its error
+    --- FAIL: TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore/UNKNOWN (0.00s)
+        connection_start_failure_test.go:1098: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1098
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore/UNKNOWN
+            	Messages:   	the premise: a failure status is told with its error
+--- FAIL: TestAStartThatAnswersAnotherFailureReplacesTheFailureOfAnEarlierStart (0.01s)
+    connection_start_failure_test.go:1141: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1129
+        	            				/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1141
+        	Error:      	Expected value not to be nil.
+        	Test:       	TestAStartThatAnswersAnotherFailureReplacesTheFailureOfAnEarlierStart
+--- FAIL: TestEachStartEmitsOneEventWhateverItAnswers (0.00s)
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of UNAUTHORIZED has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of FORBIDDEN has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of FAILED has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of ERROR has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of BAD_REQUEST has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of NOT_FOUND has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of TIMEOUT has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of UNAVAILABLE has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of REQUEST_ENTITY_TOO_LARGE has its error exactly when the status is a failure
+    connection_start_failure_test.go:1176: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1176
+        	Error:      	Not equal: 
+        	            	expected: true
+        	            	actual  : false
+        	Test:       	TestEachStartEmitsOneEventWhateverItAnswers
+        	Messages:   	the event of FORBIDDEN has its error exactly when the status is a failure
+--- FAIL: TestAnAnsweredFailureThatArrivesAfterTheGenerationWasRetiredIsNeitherEmittedNorKept (0.01s)
+    connection_start_failure_test.go:1331: 
+        	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1331
+        	Error:      	Not equal: 
+        	            	expected: "FAILED"
+        	            	actual  : "DISCONNECTED"
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1,2 +1,2 @@
+        	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+        	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+        	            	 
+        	Test:       	TestAnAnsweredFailureThatArrivesAfterTheGenerationWasRetiredIsNeitherEmittedNorKept
+--- FAIL: TestTheFailureIsKeptBeforeTheEventIsEmitted (0.02s)
+    --- FAIL: TestTheFailureIsKeptBeforeTheEventIsEmitted/the_start_answers_UNAUTHORIZED (0.01s)
+        connection_start_failure_test.go:1355: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1355
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestTheFailureIsKeptBeforeTheEventIsEmitted/the_start_answers_UNAUTHORIZED
+            	Messages:   	the list read from inside the event already says FAILED
+        connection_start_failure_test.go:1356: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1356
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheFailureIsKeptBeforeTheEventIsEmitted/the_start_answers_UNAUTHORIZED
+    --- FAIL: TestTheFailureIsKeptBeforeTheEventIsEmitted/the_start_answers_FAILED (0.01s)
+        connection_start_failure_test.go:1355: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1355
+            	Error:      	Not equal: 
+            	            	expected: "FAILED"
+            	            	actual  : "DISCONNECTED"
+            	            	
+            	            	Diff:
+            	            	--- Expected
+            	            	+++ Actual
+            	            	@@ -1,2 +1,2 @@
+            	            	-(types.ConnectionStatusCode) (len=6) "FAILED"
+            	            	+(types.ConnectionStatusCode) (len=12) "DISCONNECTED"
+            	            	 
+            	Test:       	TestTheFailureIsKeptBeforeTheEventIsEmitted/the_start_answers_FAILED
+            	Messages:   	the list read from inside the event already says FAILED
+        connection_start_failure_test.go:1356: 
+            	Error Trace:	/Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/backend/pkg/plugin/resource/connection_start_failure_test.go:1356
+            	Error:      	Expected value not to be nil.
+            	Test:       	TestTheFailureIsKeptBeforeTheEventIsEmitted/the_start_answers_FAILED
+FAIL
+FAIL	github.com/omniviewdev/omniview/backend/pkg/plugin/resource	0.671s
+FAIL
+------------------------------------------------------------------------------------------------------------------------
+RUN 2 (the final test file, through the overlay of go-answered-red.sh.txt): the tests that fail, then the ones that pass
+------------------------------------------------------------------------------------------------------------------------
+FAILING (13 functions, 86 subtests):
+TestAnAnsweredFailureAcrossTheTransportCarriesNoTextOfThePlugin
+TestWhatEndsAFailureClearsItAndTheConnectionReadsAsThePluginReportsIt
+TestASyncThatKeepsTheConnectionKeepsItsFailure
+TestAStartThatTheHostRefusesRatherThanTheProviderEmitsNothingAndRecordsNothing   (the premise subtest only)
+TestAStartThatAnswersAFailureStatusIsAFailedStartInTheEventTheRecordAndTheList
+TestTheListGivesTheWindowTheClassOfAnAnsweredFailure
+TestAnAnsweredFailureCarriesNoTextOfThePluginInTheEventTheRecordOrTheList
+TestTheEventOfAnAnsweredFailureIsNamedAsTodaysEventIs
+TestAStartThatAnswersAStatusThatIsNotAFailureRecordsNothingAndEmitsAsBefore   (through its premise)
+TestAStartThatAnswersAnotherFailureReplacesTheFailureOfAnEarlierStart
+TestEachStartEmitsOneEventWhateverItAnswers
+TestAnAnsweredFailureThatArrivesAfterTheGenerationWasRetiredIsNeitherEmittedNorKept   (the second half: the new generation's own failure)
+TestTheFailureIsKeptBeforeTheEventIsEmitted
+PASSING on the base (14): TestAConnectionThatLeftTheListAndCameBackDoesNotBringItsOldFailureBack, TestAConnectionWhoseLastStartFailedReadsFailedWhateverThePluginReportsExceptConnected,
+TestAFailedStartAcrossTheTransportCarriesNoSentenceTheGateRefuses, TestAFailedStartCarriesNoRawProviderTextInTheEventOrTheReadinessError, TestAFailedStartEmitsOneFailedEventNamingTheConnectionAndCarryingThePublicError,
+TestAFailedStartOfAConnectionThatIsNotListedLeavesNothingKept, TestAFailureBelongsToItsPluginAndConnectionOnly, TestAFailureThatArrivesAfterTheGenerationWasRetiredIsNeitherEmittedNorKept,
+TestAStartOrStopOfAnotherConnectionKeepsAFailure, TestFailuresKeptStayWithinTheListUnderOverlappingStartsStopsSyncsAndReads, TestOnlyTheFailedEventOfAStartThatErroredHasAnErrorKey,
+TestTheFailedEventNamesAConnectionByItsIDWhenTheListHasNoNameForIt, TestTheFailuresKeptNeverOutnumberTheConnectionsThatAreStillListed, TestUnloadingAPluginDropsEveryFailureItHeld
+
+------------------------------------------------------------------------------------------------------------------------
+GREEN, with the change (2026-11-25)
+------------------------------------------------------------------------------------------------------------------------
+GOWORK=off go build ./backend/...                       exit 0
+GOWORK=off go vet ./backend/pkg/plugin/resource/        exit 0, no output
+GOWORK=off go test -race -count=5 -run '^(<the 27>)$' ./backend/pkg/plugin/resource/    ok  (4.9 s)
+GOWORK=off go test -race -count=1 -v -run '^(<the 27>)$' ./backend/pkg/plugin/resource/ 27 functions PASS, 134 subtests PASS, 0 FAIL, 0 SKIP
+GOWORK=off go test -race -count=1 ./backend/pkg/plugin/resource/                         the whole package: see go-answered-landed.txt
+GOWORK=off /tmp/lintbin215/golangci-lint run --new=false --new-from-patch=<the change of backend/pkg/plugin/resource> --path-prefix= ./backend/pkg/plugin/resource/...   0 issues
+bash docs/ui-next/status/PT2/go-answered-mutations.sh.txt  18 of 18 controls red as named, nothing else red (go-answered-mutations-run.txt)

@@ -1,0 +1,418 @@
+# PT2 red run (item 2, ProblemsOperations.RuntimeError): the provider's failure/recovery tests and the screen tap tests, written first, on the unchanged code of origin/main 366a32f2
+# 1) the runtime package's own vitest (the root vitest config does not include packages/omniviewdev-runtime/src/activity; CI runs it as 'Runtime contract regressions' from the package directory)
+# command: cd packages/omniviewdev-runtime && node ../../node_modules/vitest/vitest.mjs run --configLoader runner src/activity/ActivityProvider.test.tsx
+# result: 13 failed | 19 passed (32). The 13 are the new tests that name a behaviour the provider does not have yet; each fails by its own assertion (a missing `unavailable`, an error that is never cleared, a subscription that is not made again).
+# The 4 new tests that pass here are the guards of the new code (a heartbeat does not resubscribe a subscription that holds; nothing is left after unmount; a heartbeat that ends after unmount is not recovered, both outcomes): the old code has none of what they guard against, so they
+# cannot be red on it; they are proven by mutation instead (docs/ui-next/status/PT2/mutations-runtime.txt). The first red run of the two unmount-in-flight tests failed at a PRECONDITION that read `unavailable` (not at their own assertion); the precondition now reads `error`, which the old code has, and this is the run after that fix.
+
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups/packages/omniviewdev-runtime
+
+stderr | src/activity/ActivityProvider.test.tsx
+
+⚠️ Browser Environment Detected 
+
+Only UI previews are available in the browser. For full functionality, please run the application in desktop mode.
+More information at: https://v3.wails.io/learn/build/#using-a-browser-for-development
+
+
+stderr | src/activity/ActivityProvider.test.tsx > shared activity presentation > lets a reviewed-action dialog consume Escape without closing the underlying center
+An update to ActivityProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ ❯ src/activity/ActivityProvider.test.tsx (32 tests | 13 failed) 265ms
+   ✓ shared activity presentation (15)
+     ✓ keeps a collapsed task outcome visible and stops indeterminate progress after observation loss 49ms
+     ✓ wakes a reader of only the actions on no activity update, and a reader of the unread count only when it changes 54ms
+     ✓ retains plain diagnostics, copy feedback and trusted remediation 31ms
+     ✓ opens toast Details and restores external focus after the toast opener disappears 11ms
+     ✓ shows an inspectable observation failure without changing or replaying remote work 12ms
+     ✓ lets a reviewed-action dialog consume Escape without closing the underlying center 9ms
+     ✓ persists collapse and user hide across updates, completion and a new observer 13ms
+     ✓ admits one rich toast and keeps overflowing and terminal rows discoverable 14ms
+     ✓ keeps terminal DOM identity and expiry despite later progress updates 8ms
+     ✓ does not reopen a rich toast displaced by the shared viewport budget 7ms
+     ✓ disables busy actions and exposes safe failure feedback 7ms
+     ✓ omits unavailable actions and retains explicit cancellation until real completion 6ms
+     ✓ continues adopted work after its resource view unmounts 6ms
+     ✓ tracks measured progress updates across collapse without inventing completion 11ms
+     ✓ calculates exact unit and step ratios 0ms
+   ❯ what the provider says of a failure, and when it stops (17)
+     × is unavailable from a heartbeat that failed while the subscription is made again, and is not once that succeeds 4ms
+     × is unavailable from a subscription that failed, and its sentence is the error 1ms
+     × is available again when a heartbeat gets through and the subscription is made again 1ms
+     × is still unavailable while the subscription keeps failing, though every heartbeat gets through, and tries it again once with each 1ms
+     ✓ does not subscribe again for a heartbeat that gets through while the subscription holds 1ms
+     × shows the host's observation-error event in `error` and not in `unavailable`, and the next heartbeat that gets through takes it away 1ms
+     × keeps an event that came while a heartbeat was in flight: that heartbeat was sent before it 1ms
+     × keeps an event that came while the subscription was being made again: that subscription began before it 1ms
+     × takes an event away with a subscription that is made after it 1ms
+     × shows a failed `notify` in `error` and not in `unavailable`, and the next `notify` that succeeds takes it away 1ms
+     × shows a failed `openDetails` in `error` and not in `unavailable`, and the next `openDetails` that succeeds takes it away 1ms
+     × does not take a failed `notify` or a failed `openDetails` away with a heartbeat or a subscription that succeeds, nor one of them with the other's success 1ms
+     × says the first of the failures it holds: the event, then unavailable, then a failed `notify`, then a failed `openDetails` 1ms
+     × takes the notification center's alert away when the observation recovers, as it does the provider's error 5ms
+     ✓ leaves nothing behind when it unmounts: the interval, both listeners and the subscription are released 1ms
+     ✓ does not recover a heartbeat that gets through after it unmounted: the subscription is not made again 1ms
+     ✓ does not recover a heartbeat that fails after it unmounted: the subscription is not made again 1ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > is unavailable from a heartbeat that failed while the subscription is made again, and is not once that succeeds
+AssertionError: expected { error: 'The heartbeat was refused.' } to deeply equal { …(2) }
+
+- Expected
++ Received
+
+  {
+    "error": "The heartbeat was refused.",
+-   "unavailable": "The heartbeat was refused.",
+  }
+
+ ❯ src/activity/ActivityProvider.test.tsx:745:20
+    743|     native.subscribe.mockImplementationOnce(async () => again.promise);
+    744|     await beat();
+    745|     expect(said()).toEqual({ unavailable: HEARTBEAT, error: HEARTBEAT …
+       |                    ^
+    746|     again.resolve({ id: 'view-2', snapshot: { revision, records: [] } …
+    747|     await settle();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > is unavailable from a subscription that failed, and its sentence is the error
+AssertionError: expected { Object (error) } to deeply equal { …(2) }
+
+- Expected
++ Received
+
+  {
+    "error": "The subscription was refused.",
+-   "unavailable": "The subscription was refused.",
+  }
+
+ ❯ src/activity/ActivityProvider.test.tsx:756:20
+    754|     native.heartbeat.mockImplementationOnce(async () => held.promise);
+    755|     await mountReader();
+    756|     expect(said()).toEqual({ unavailable: SUBSCRIPTION, error: SUBSCRI…
+       |                    ^
+    757|   });
+    758|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > is available again when a heartbeat gets through and the subscription is made again
+AssertionError: expected { Object (error) } to deeply equal {}
+
+- Expected
++ Received
+
+- {}
++ {
++   "error": "The subscription was refused.",
++ }
+
+ ❯ src/activity/ActivityProvider.test.tsx:767:20
+    765|     held.resolve();
+    766|     await settle();
+    767|     expect(said()).toEqual({});
+       |                    ^
+    768|     expect(native.subscribe).toHaveBeenCalledTimes(2);
+    769|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > is still unavailable while the subscription keeps failing, though every heartbeat gets through, and tries it again once with each
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ src/activity/ActivityProvider.test.tsx:779:30
+    777|     held.resolve();
+    778|     await settle();
+    779|     expect(native.subscribe).toHaveBeenCalledTimes(2);
+       |                              ^
+    780|     for (const attempts of [3, 4, 5]) {
+    781|       await beat();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > shows the host's observation-error event in `error` and not in `unavailable`, and the next heartbeat that gets through takes it away
+AssertionError: expected { Object (error) } to deeply equal {}
+
+- Expected
++ Received
+
+- {}
++ {
++   "error": "Activity observation failed. Verify the remote outcome before retrying.",
++ }
+
+ ❯ src/activity/ActivityProvider.test.tsx:802:20
+    800|     expect(said()).toEqual({ error: EVENT });
+    801|     await beat();
+    802|     expect(said()).toEqual({});
+       |                    ^
+    803|   });
+    804|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > keeps an event that came while a heartbeat was in flight: that heartbeat was sent before it
+AssertionError: expected { Object (error) } to deeply equal {}
+
+- Expected
++ Received
+
+- {}
++ {
++   "error": "Activity observation failed. Verify the remote outcome before retrying.",
++ }
+
+ ❯ src/activity/ActivityProvider.test.tsx:815:20
+    813|     expect(said()).toEqual({ error: EVENT });
+    814|     await beat();
+    815|     expect(said()).toEqual({});
+       |                    ^
+    816|   });
+    817|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > keeps an event that came while the subscription was being made again: that subscription began before it
+AssertionError: expected { Object (error) } to deeply equal { …(2) }
+
+- Expected
++ Received
+
+  {
+    "error": "Activity observation failed. Verify the remote outcome before retrying.",
+-   "unavailable": "The heartbeat was refused.",
+  }
+
+ ❯ src/activity/ActivityProvider.test.tsx:825:20
+    823|     await beat();
+    824|     event(EVENT);
+    825|     expect(said()).toEqual({ unavailable: HEARTBEAT, error: EVENT });
+       |                    ^
+    826|     again.resolve({ id: 'view-2', snapshot: { revision, records: [] } …
+    827|     await settle();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > takes an event away with a subscription that is made after it
+AssertionError: expected { Object (error) } to deeply equal {}
+
+- Expected
++ Received
+
+- {}
++ {
++   "error": "Activity observation failed. Verify the remote outcome before retrying.",
++ }
+
+ ❯ src/activity/ActivityProvider.test.tsx:838:20
+    836|     native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    837|     await beat();
+    838|     expect(said()).toEqual({});
+       |                    ^
+    839|   });
+    840|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > shows a failed `notify` in `error` and not in `unavailable`, and the next `notify` that succeeds takes it away
+AssertionError: expected { Object (error) } to deeply equal {}
+
+- Expected
++ Received
+
+- {}
++ {
++   "error": "The notice could not be stored.",
++ }
+
+ ❯ src/activity/ActivityProvider.test.tsx:849:20
+    847|     fireEvent.click(screen.getByText('Notify'));
+    848|     await settle();
+    849|     expect(said()).toEqual({});
+       |                    ^
+    850|   });
+    851|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > shows a failed `openDetails` in `error` and not in `unavailable`, and the next `openDetails` that succeeds takes it away
+AssertionError: expected { Object (error) } to deeply equal {}
+
+- Expected
++ Received
+
+- {}
++ {
++   "error": "The record could not be opened.",
++ }
+
+ ❯ src/activity/ActivityProvider.test.tsx:861:20
+    859|     fireEvent.click(screen.getByText('Open details'));
+    860|     await settle();
+    861|     expect(said()).toEqual({});
+       |                    ^
+    862|   });
+    863|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > does not take a failed `notify` or a failed `openDetails` away with a heartbeat or a subscription that succeeds, nor one of them with the other's success
+AssertionError: expected {} to deeply equal { Object (error) }
+
+- Expected
++ Received
+
+- {
+-   "error": "The notice could not be stored.",
+- }
++ {}
+
+ ❯ src/activity/ActivityProvider.test.tsx:880:20
+    878|     native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    879|     await beat();
+    880|     expect(said()).toEqual({ error: NOTICE });
+       |                    ^
+    881|     // The `notify` that succeeds takes its own failure away: the othe…
+    882|     fireEvent.click(screen.getByText('Notify'));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > says the first of the failures it holds: the event, then unavailable, then a failed `notify`, then a failed `openDetails`
+AssertionError: expected { Object (error) } to deeply equal { …(2) }
+
+- Expected
++ Received
+
+  {
+    "error": "The subscription was refused.",
+-   "unavailable": "The subscription was refused.",
+  }
+
+ ❯ src/activity/ActivityProvider.test.tsx:904:20
+    902|     native.subscribe.mockRejectedValueOnce(refused(SUBSCRIPTION));
+    903|     await beat();
+    904|     expect(said()).toEqual({ unavailable: SUBSCRIPTION, error: SUBSCRI…
+       |                    ^
+    905|     event(EVENT);
+    906|     expect(said()).toEqual({ unavailable: SUBSCRIPTION, error: EVENT }…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/13]⎯
+
+ FAIL  src/activity/ActivityProvider.test.tsx > what the provider says of a failure, and when it stops > takes the notification center's alert away when the observation recovers, as it does the provider's error
+AssertionError: expected <span class="_Text_1mk6x_1" …(7)></span> to be null
+
+- Expected:
+null
+
++ Received:
+<span
+  class="_Text_1mk6x_1"
+  data-ov-mono="false"
+  data-ov-size="sm"
+  data-ov-tone="default"
+  data-ov-truncate="none"
+  data-ov-weight="regular"
+  role="alert"
+  style="color: var(--ov-color-danger); margin: 0px; overflow-wrap: anywhere;"
+>
+  Activity observation failed. Verify the remote outcome before retrying.
+</span>
+
+ ❯ src/activity/ActivityProvider.test.tsx:930:49
+    928|     expect(within(center).getByRole('alert').textContent).toBe(EVENT);
+    929|     await beat();
+    930|     expect(within(center).queryByRole('alert')).toBeNull();
+       |                                                 ^
+    931|   });
+    932|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/13]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  13 failed | 19 passed (32)
+   Start at  18:18:59
+   Duration  1.15s (import 34%, tests 26%, transform 21%, environment 19%)
+
+
+# 2) the host screen's tap (ui-next/plugins/host/PluginHostScreen.activity.test.tsx), on the unchanged ActivityTap (it hands the feed the provider's `error`)
+# command: pnpm exec vitest run ui-next/plugins/host/PluginHostScreen.activity.test.tsx
+# result: 2 failed | 3 passed (5). The 3 that pass are the existing cases carried over to the `unavailable` field (in that world `error` and `unavailable` are the same sentence, so the old tap answers them alike).
+
+ RUN  v5.0.5 /Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt2-problems-followups
+
+stderr | ui-next/plugins/host/PluginHostScreen.activity.test.tsx
+
+⚠️ Browser Environment Detected 
+
+Only UI previews are available in the browser. For full functionality, please run the application in desktop mode.
+More information at: https://v3.wails.io/learn/build/#using-a-browser-for-development
+
+
+ ❯ ui-next/plugins/host/PluginHostScreen.activity.test.tsx (5 tests | 2 failed) 277ms
+   ❯ what the screen's tap hands the feed of the tools (5)
+     × is no sentence for a failure of the provider that is not the observation: a notice that could not be published raises no row in Problems and wakes no tool 55ms
+     × goes when the observation recovers, though another failure of the provider is still held: the row of Problems is the observation's and nothing else's 53ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  ui-next/plugins/host/PluginHostScreen.activity.test.tsx > what the screen's tap hands the feed of the tools > is no sentence for a failure of the provider that is not the observation: a notice that could not be published raises no row in Problems and wakes no tool
+AssertionError: expected 'The notice could not be published.' to be undefined
+
+- Expected:
+undefined
+
++ Received:
+"The notice could not be published."
+
+ ❯ ui-next/plugins/host/PluginHostScreen.activity.test.tsx:159:29
+    157|       world.set({ records, error: NOTICE, unavailable: undefined });
+    158|     });
+    159|     expect(feed.getError()).toBeUndefined();
+       |                             ^
+    160|     expect(activityConditions(feed.getError(), resolver)).toEqual([]);
+    161|     expect(heard).not.toHaveBeenCalled();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  ui-next/plugins/host/PluginHostScreen.activity.test.tsx > what the screen's tap hands the feed of the tools > goes when the observation recovers, though another failure of the provider is still held: the row of Problems is the observation's and nothing else's
+AssertionError: expected 'The notice could not be published.' to be undefined
+
+- Expected:
+undefined
+
++ Received:
+"The notice could not be published."
+
+ ❯ ui-next/plugins/host/PluginHostScreen.activity.test.tsx:173:29
+    171|       world.set({ records, error: NOTICE, unavailable: undefined });
+    172|     });
+    173|     expect(feed.getError()).toBeUndefined();
+       |                             ^
+    174|     expect(activityConditions(feed.getError(), resolver)).toEqual([]);
+    175|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  18:18:54
+   Duration  1.47s (import 41%, transform 22%, tests 20%, environment 14%, setup 3%)
+
+
+# 3) the FIRST red run of the runtime file, before the precondition of the two unmount-in-flight tests was changed from `said().unavailable` to `said().error` (the full output is not kept; its summary line and the two differing failures):
+#    Tests  15 failed | 17 passed (32)   = the 13 of section 1, plus
+#    × does not recover a heartbeat that gets through after it unmounted: the subscription is not made again    (AssertionError: expected undefined to be 'The subscription was refused.', at the precondition, ActivityProvider.test.tsx:968)
+#    × does not recover a heartbeat that fails after it unmounted: the subscription is not made again           (the same precondition)
+#    Those two are green on the old code once the precondition reads what the old code has; they are the guards of section 1's note.
