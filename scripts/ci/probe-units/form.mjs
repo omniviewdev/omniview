@@ -18,6 +18,7 @@ export const units = [
 // shrinks with its content, a description that is not clamped, a message that moves the row, a cut description with no tooltip, a title of the wrong weight, an unavailable row whose title is not muted, a Reset without
 // its ring. A control passes (exit 0) when its assertion sees the fault; with that assertion removed
   // (ASSERTION_OFF=says) nothing at all is left (exit 1, NOT DETECTED), and a fault that trips another assertion is INVALID (exit 2). Chromium at 1440 x 900, the section of the fault only.
+  // (scratch of N33's proof: a pull request that changes one unit file only.)
   {
     id: 'form-controls',
     name: 'Probe that the form probe sees a form that is wrong',
