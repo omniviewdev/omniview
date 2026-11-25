@@ -495,15 +495,25 @@ test('N31: PR Checks is seven jobs, and each of the six that were folded into an
 });
 
 test('N31: a group that comes after another in a merged job runs whatever happened before it (`!cancelled()`), so that one push shows every failing group as separate jobs did, and a cancelled job runs nothing more', () => {
+  // The exact condition of each step after the first group; the exceptions are named: the steps that name failures (`failure()` and `always()`: diagnostics), the lint (it needs its source), the package build (it has nothing to do after the build step made them).
+  const EXCEPTIONS = {
+    'go-checks: Name the failed Go tests in the job summary': 'failure()',
+    'ui-build: Name the failed vitest tests in the job summary': 'always()',
+    'go-checks: Lint': "${{ !cancelled() && steps.lint-source.outcome == 'success' }}",
+    'ui-build: Build the workspace packages': "${{ !cancelled() && steps.frontend-build.outcome != 'success' }}",
+  };
   for (const [id, first] of [['go-checks', 'Check Homebrew cask publication'], ['ui-build', 'Check the path gating of the workflows']]) {
     const steps = stepsOf('pr-checks.yml', id);
     const at = steps.findIndex((step) => step.name === first);
     assert.ok(at > 0, `${id}: ${first}`);
     for (const step of steps.slice(at)) {
-      if (step.if === undefined) assert.fail(`${id}: the step "${step.name}" after the first group has no condition: a failure before it would skip it`);
-      assert.match(step.if, /!cancelled\(\)|always\(\)|failure\(\)/, `${id}: ${step.name}`);
+      const want = EXCEPTIONS[`${id}: ${step.name}`] ?? '${{ !cancelled() }}';
+      assert.equal(step.if, want, `${id}: the condition of "${step.name}"`);
     }
   }
+
+  const build = stepsOf('pr-checks.yml', 'ui-build').find((step) => step.name === 'Build');
+  assert.equal(build.id, 'frontend-build', 'the package build after it reads the outcome of this step');
 
   const lint = stepsOf('pr-checks.yml', 'go-checks').find((step) => step.name === 'Lint');
   assert.match(lint.if, /steps\.lint-source\.outcome == 'success'/, 'the lint reads its source: it does not run on a checkout that was not made');

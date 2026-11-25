@@ -93,3 +93,21 @@ jobs:
               -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
               -X github.com/omniviewdev/omniview/internal/version.Development=true \
               -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr"
+
+  # The verdict (N32): a job that reaches its timeout ends `cancelled`, like the run, and `ci-main-red` reads a cancelled run from its jobs. This job fails when build-windows did not succeed (it runs whatever
+  # happened: `always()`), so that a hang is a failed job and not only a cancelled one. It is on the smallest runner and checks out nothing.
+  verdict:
+    name: Windows build verdict
+    needs: build-windows
+    if: ${{ always() }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Require the build to have succeeded
+        env:
+          RESULT: ${{ needs.build-windows.result }}
+        run: |
+          if [ "$RESULT" != success ]; then
+            echo "::error title=Windows build verdict::the build finished as '${RESULT:-unknown}', not as success (a timeout is 'cancelled')"
+            exit 1
+          fi
