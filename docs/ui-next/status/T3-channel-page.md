@@ -1,8 +1,8 @@
 # Status: T3-channel-page (the new UI's terminal on the terminal channel, #693 step 4)
 
 - Goal: the Terminal tool of `ui-next/` reaches its terminals only by capability and one Wails stream per terminal (`docs/ui-next/terminal-channel-protocol.md`), and the events lane is no longer used by the new UI for terminals. Issue #693, steps 4 and 5; epic #692.
-- Worktree: `~/omniview/wt/t3-channel-page`. Branch: `ui-next/t3-channel-page`, made from `origin/feat/terminal-channel-backend` at `f009987239743ea1b407bd5d4c86a4d3713ee340` (PR #704, not merged; the lead allows building on it, #693 comment of 2026-11-24). After #704 squash-merges: `git rebase --onto origin/main f009987239743ea1b407bd5d4c86a4d3713ee340 ui-next/t3-channel-page`.
-- PR: none yet. Opened as a draft against `main` only after #704 merges (the lead's rule on #693).
+- Worktree: `~/omniview/wt/t3-channel-page`. Branch: `ui-next/t3-channel-page`, made from `origin/feat/terminal-channel-backend` at `f009987239743ea1b407bd5d4c86a4d3713ee340` (PR #704 before it merged; the lead allowed building on it, #693 comment of 2026-11-24). #704 merged on 2026-11-25 (`169da34c`); `origin/main` has since been merged into this branch (no rebase: the branch keeps its red-first history).
+- PR: #716 (https://github.com/omniviewdev/omniview/pull/716), ready for review. Next: CI and CodeRabbit on its head, the merge gate of `HOW-WE-WORK.md` section 15.
 
 ## Open decision (owner)
 
@@ -37,7 +37,7 @@
 ## Backend catalog
 
 - **WIRE: a displaced holder is not told when the taker lets the terminal go.** `docs/ui-next/terminal-channel-protocol.md` section 8: `taken-over` closes the displaced stream, so the events lane's `DETACHED` (`requested`, `window-retired`) has no channel equivalent. Evidence: the seam's r5 (take it back) cannot pass without it (ChannelSeam, 2026-11-24). Interim in the page: a tab that lost a terminal asks `ListChannelTerminals` for it when the page becomes visible or focused and every 5 s while it is visible (`attached === false` offers "Take it back"). Proper fix at the producer: a frame or a watcher connection that tells the displaced page when the terminal is free.
-- **WIRE: input sent on a stream that drops is lost without a word.** What the page types between a cut of its stream and the moment it sees the close goes into the dead socket, and the page cannot tell which input frames the host applied (the channel has no input numbers and no input acknowledgement; the events lane had `seq` and `next_input_seq`). Evidence: the seam's reconnect scenario (ChannelSeam, 2026-11-24) has to wait for the page to see the close before it types. Interim: none in the page. Proper fix at the producer: `ready.input_applied` (input bytes applied from this capability, across streams), so the page resends what came after it. Asked on #693.
+- **WIRE: input the page cannot confirm is lost without a word.** The channel has no input numbers and no input acknowledgement (the events lane had `seq` and `next_input_seq`), so the page cannot tell which input frames the host applied. In the page: input refused by a socket that is no longer open (its `readyState` changed before its `close` event ran) is kept and sent after the next `ready`, in order (`532d7a89`). Still open: input handed to a socket that reports `OPEN` but whose connection is already cut is lost, and the page cannot know it. Evidence: the seam's reconnect scenario (ChannelSeam, 2026-11-24). Proper fix at the producer: `ready.input_applied` (input bytes applied from this capability, across streams), so the page resends what came after it. Asked on #693.
 
 ## Memory on the real host
 
@@ -48,7 +48,7 @@ Run 2026-11-24 21:37 to 21:40, Linux x64 (Node v26.13.0, Go 1.27.4), branch `wip
 ```
 $ uptime
  21:37:57  up 26 days  5:12,  0 users,  load average: 6.90, 9.28, 6.96
-$ PATH=<go1.27.4>/bin:$PATH OMNIVIEW_UI=next GOWORK=off GOFLAGS= GOTOOLCHAIN=local task build:server
+$ GO_TOOLCHAIN="$HOME/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64"; PATH="$GO_TOOLCHAIN/bin:$PATH" OMNIVIEW_UI=next GOWORK=off GOFLAGS= GOTOOLCHAIN=local task build:server
 $ node ui-next/shell/probes/terminal-host-memory.mjs --json=/tmp/hostmem-t3cp-e.json
 ```
 
