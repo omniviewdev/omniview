@@ -53,7 +53,7 @@ The method behind every terminal pull request on `main`, written so that a fresh
 
 ## 7. The seam: the real host, both engines
 
-`ui-next/plugins/e2e/seam.check.mjs` drives the REAL Go host (server mode, built with `OMNIVIEW_UI=next`) with a browser. It is the only check that does, and CI runs it (`.github/workflows/ui-next-seam.yml`, one job per engine and every control). The terminal scenarios are `r` (the tool), `r2` (the emulator against the programs of the machine: less, vim, top, resize, paste, mouse, wide characters), `r3` (a reload), `r4` (a second tab, a host restart, a lease) and `r5` (take it back, events-socket blips and outages, a shell killed while the page is away).
+`ui-next/plugins/e2e/seam.check.mjs` drives the REAL Go host (server mode, built with `OMNIVIEW_UI=next`) with a browser. It is the only check that does, and CI runs it (`.github/workflows/ui-next-seam.yml`, every phase and every control in both engines, in the jobs `scripts/ci/seam-units.mjs` packs to). The terminal scenarios are `r` (the tool), `r2` (the emulator against the programs of the machine: less, vim, top, resize, paste, mouse, wide characters), `r3` (a reload), `r4` (a second tab, a host restart, a lease) and `r5` (take it back, events-socket blips and outages, a shell killed while the page is away).
 
 ```sh
 task packages
