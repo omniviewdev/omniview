@@ -179,6 +179,14 @@ func TestAdvertisedConnectionInterestOutlivesViewWithoutGraphBootstrap(t *testin
 	_, err = ctrl.StartConnection(testInvocationContext(), "p1", "conn-1")
 	require.NoError(t, err)
 	open := sourceNextOpen(t, provider.scriptedSourceProvider)
+	// sourceNextOpen only proves the provider was asked to open: the policy interest is recorded in
+	// connectionInterests a moment later, on the connection-start goroutine. Releasing before that
+	// finds nothing to release.
+	require.Eventually(t, func() bool {
+		ctrl.sources.mu.Lock()
+		defer ctrl.sources.mu.Unlock()
+		return len(ctrl.sources.connectionInterests) == 1
+	}, 5*time.Second, time.Millisecond)
 	require.Len(t, events.EventsWithKey(EventConnectionStatus), 1)
 	require.Equal(t, "native::Pod", open.request.Target.Type)
 	require.Equal(t, resourcev2.SourceModeSnapshotAndUpdates, open.request.Mode)
