@@ -29,25 +29,18 @@ function PluginContextSession(props: React.PropsWithChildren<PluginContextProvid
   const [metaError, setMetaError] = React.useState<string | null>(null);
   const metadataRequest = React.useRef(0);
 
-  console.debug(`[PluginContextProvider] render`, { pluginId, metaLoaded, metaError: !!metaError });
-
-
   /**
    * Fetch the metadata for the plugin from the backend stores
    */
   const fetchMeta = React.useCallback(() => {
     if (pluginId === undefined || pluginId === '') {
-      console.debug(`[PluginContextProvider] skipping meta fetch — empty pluginId`);
       return
     }
     const request = ++metadataRequest.current;
 
-    console.debug(`[PluginContextProvider] fetching meta for "${pluginId}"`);
-
     GetPluginMeta(pluginId)
       .then((values) => {
         if (request !== metadataRequest.current) return;
-        console.debug(`[PluginContextProvider] meta loaded for "${pluginId}"`, { name: values?.name, version: values?.version });
         setMeta(values)
         setMetaLoaded(true)
       })
@@ -81,7 +74,6 @@ function PluginContextSession(props: React.PropsWithChildren<PluginContextProvid
   }, [pluginId, metaLoaded, fetchMeta]);
 
   React.useEffect(() => {
-    console.debug(`[PluginContextProvider] useEffect — pluginId changed to "${pluginId}"`);
     fetchMeta();
     return () => {
       ++metadataRequest.current;
