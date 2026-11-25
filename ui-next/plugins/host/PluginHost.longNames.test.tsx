@@ -20,7 +20,6 @@ Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: tru
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 1117 : 0;
 } });
-HTMLCanvasElement.prototype.getContext = () => null;
 
 const LONG = 'long-0123456789';
 const SOUTH = 'south-9876543210';

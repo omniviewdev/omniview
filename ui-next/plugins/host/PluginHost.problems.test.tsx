@@ -20,8 +20,6 @@ Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: tru
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 1117 : 0;
 } });
-// jsdom has no canvas: the table measures text with an estimate and says nothing (the kit's own tests stub it the same way).
-HTMLCanvasElement.prototype.getContext = () => null;
 
 afterEach(cleanup);
 
