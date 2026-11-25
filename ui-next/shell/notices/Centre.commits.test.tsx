@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mountWindow, teardown, type MountedWindow } from './testing';
 
@@ -14,7 +14,9 @@ const rows = (): HTMLElement[] => [...dialog().querySelectorAll<HTMLElement>('[d
 
 async function opened(): Promise<MountedWindow> {
   const m = mountWindow();
-  m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+  act(() => {
+    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+  });
   await m.flush();
   await m.user.click(bell());
   await m.flush();
@@ -25,7 +27,9 @@ describe('what a notice costs the window', () => {
   it('is one commit with the centre open: the list, the bell and the live region change together', async () => {
     const m = await opened();
     m.commits.count = 0;
-    m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', initiator: 'user', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', initiator: 'user', source: 'cloud' });
+    });
     await m.flush();
     expect(rows().map((row) => row.querySelector('[data-notices-part="rowTitle"]')?.textContent)).toEqual(['Error: Timed out', 'Success: Snapshot created']);
     expect(bell()).toHaveAccessibleName('Notifications, 2 unread, 1 error');
@@ -35,9 +39,11 @@ describe('what a notice costs the window', () => {
   it('is one commit for fifty notices that arrive in one frame', async () => {
     const m = await opened();
     m.commits.count = 0;
-    for (let index = 0; index < 50; index += 1) {
-      m.f.store.notify({ title: `Notice ${index}`, severity: 'info', source: `source-${index}` });
-    }
+    act(() => {
+      for (let index = 0; index < 50; index += 1) {
+        m.f.store.notify({ title: `Notice ${index}`, severity: 'info', source: `source-${index}` });
+      }
+    });
 
     await m.flush();
     // The first 50 rows are drawn, and the rest are one button away ("Show 1 older").
@@ -48,10 +54,14 @@ describe('what a notice costs the window', () => {
 
   it('is one commit when the same failure comes again: the row counts it in place', async () => {
     const m = await opened();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', initiator: 'user', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', initiator: 'user', source: 'cloud' });
+    });
     await m.flush();
     m.commits.count = 0;
-    m.f.store.notify({ title: 'Timed out', severity: 'error', initiator: 'user', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', initiator: 'user', source: 'cloud' });
+    });
     await m.flush();
     expect(rows()).toHaveLength(2);
     expect(rows()[0]?.textContent).toContain('2');

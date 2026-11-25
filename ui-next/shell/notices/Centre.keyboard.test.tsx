@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mountWindow, teardown, type MountedWindow } from './testing';
 
@@ -14,9 +14,11 @@ const toggleOf = (row: HTMLElement | undefined): HTMLElement => row!.querySelect
 const titleOf = (row: HTMLElement | undefined): string => row?.querySelector('[data-notices-part="rowTitle"]')?.textContent.replace(/^[A-Za-z]+: /, '') ?? '';
 
 async function three(m: MountedWindow): Promise<void> {
-  m.f.store.notify({ title: 'Oldest', source: 'a' });
-  m.f.store.notify({ title: 'Middle', source: 'b' });
-  m.f.store.notify({ title: 'Newest', source: 'c' });
+  act(() => {
+    m.f.store.notify({ title: 'Oldest', source: 'a' });
+    m.f.store.notify({ title: 'Middle', source: 'b' });
+    m.f.store.notify({ title: 'Newest', source: 'c' });
+  });
   await m.flush();
 }
 
@@ -26,7 +28,9 @@ describe('opening', () => {
     await three(m);
     await m.user.click(bell());
     expect(toggleOf(rows()[0])).toHaveFocus();
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     bell().focus();
     await m.user.keyboard('{Enter}');
@@ -123,7 +127,9 @@ describe('the list is one stop', () => {
     await three(m);
     await m.user.click(bell());
     await m.user.keyboard('{ArrowDown}');
-    m.f.store.notify({ title: 'Brand new', source: 'd' });
+    act(() => {
+      m.f.store.notify({ title: 'Brand new', source: 'd' });
+    });
     await m.flush();
     expect(titleOf(rows()[0])).toBe('Brand new');
     const stopped = rows().filter((row) => row.querySelector('button')?.getAttribute('tabindex') === '0');
@@ -144,8 +150,10 @@ describe('removing a row from the keyboard', () => {
 
   it('puts the focus on the last row when the last one is removed, and on the popover when none is left', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Only', source: 'a' });
-    m.f.store.notify({ title: 'Second', source: 'b' });
+    act(() => {
+      m.f.store.notify({ title: 'Only', source: 'a' });
+      m.f.store.notify({ title: 'Second', source: 'b' });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.user.keyboard('{End}');

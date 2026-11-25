@@ -91,11 +91,17 @@ describe('the list', () => {
   it.each(ZONES)('lists the history newest first, under Recent and a heading for each day, in %s', async (zone) => {
     vi.stubEnv('TZ', zone);
     const m = mountWindow({ at: local(14, 12) });
-    m.f.store.notify({ title: 'Oldest', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Oldest', source: 'cloud' });
+    });
     await m.pass(26 * 3_600_000);
-    m.f.store.notify({ title: 'Older today', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Older today', source: 'cloud' });
+    });
     await m.pass(60_000);
-    m.f.store.notify({ title: 'Newest', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Newest', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     expect(titles()).toEqual(['Newest', 'Older today', 'Oldest']);
@@ -107,9 +113,13 @@ describe('the list', () => {
   // axe's `list` rule: an `ul` holds `li` and nothing else, and an `li` with a role of its own (`presentation`) is not a list item. The mock's headings are list items (`li.sectionlabel`), and so are these, each holding its heading.
   it('holds only plain list items, each a row or a heading: no item takes a role away', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Oldest', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Oldest', source: 'cloud' });
+    });
     await m.pass(26 * 3_600_000);
-    m.f.store.notify({ title: 'Newest', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Newest', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     const items = [...list().children];
@@ -121,8 +131,10 @@ describe('the list', () => {
 
   it('says the severity as a word before the title, and draws its glyph for the eye only', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     const [success, error] = rows();
@@ -137,8 +149,10 @@ describe('the list', () => {
 
   it('shows the detail sentence under the title, and nothing under a title that has none', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Update available', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Update available', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     const [bare, detailed] = rows();
@@ -148,7 +162,9 @@ describe('the list', () => {
 
   it('shows the time as the kit formats it: one unit, floored, with the instant in its tip', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', source: 'cloud' });
+    });
     await m.flush();
     await m.pass(5 * 60_000);
     await open(m);
@@ -160,8 +176,10 @@ describe('the list', () => {
 
   it('marks an unread row with the word Unread and a dot, and a read one with neither', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     m.f.store.read(m.f.store.getSnapshot().recent.find((record) => record.title === 'Snapshot created')?.id ?? '');
     await m.flush();
@@ -176,8 +194,10 @@ describe('the list', () => {
 
   it('says how many times a repeat happened: in the title of a repeated message, in the second line of a keyed one', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     m.f.store.notify({ title: 'Disk almost full', detail: 'Free up space.', severity: 'warning', source: 'stack', key: 'disk' });
     m.f.store.notify({ title: 'Disk almost full', detail: 'Free up space.', severity: 'warning', source: 'stack', key: 'disk' });
@@ -190,9 +210,11 @@ describe('the list', () => {
 
   it('draws the first fifty and a button that says how many are older, and draws all of them when it is pressed', async () => {
     const m = mountWindow();
-    for (let index = 0; index < 60; index += 1) {
-      m.f.store.notify({ title: `Notice ${String(index)}`, source: `p${String(index)}` });
-    }
+    act(() => {
+      for (let index = 0; index < 60; index += 1) {
+        m.f.store.notify({ title: `Notice ${String(index)}`, source: `p${String(index)}` });
+      }
+    });
 
     await m.flush();
     await open(m);
@@ -205,11 +227,15 @@ describe('the list', () => {
 
   it('puts a new record at the top of an open list, once, without moving the rows that were there', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'First', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'First', source: 'cloud' });
+    });
     await m.flush();
     await open(m);
     const first = rows()[0];
-    m.f.store.notify({ title: 'Second', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Second', source: 'stack' });
+    });
     await m.flush();
     expect(titles()).toEqual(['Second', 'First']);
     expect(rows()[1]).toBe(first);
@@ -223,16 +249,22 @@ describe('a day that ends while the centre is open', () => {
   it.each(ZONES)('turns Today into Yesterday at midnight, and puts what arrives after it under Today, in %s', async (zone) => {
     vi.stubEnv('TZ', zone);
     const m = mountWindow({ at: local(13, 10) });
-    m.f.store.notify({ title: 'Day before', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Day before', source: 'cloud' });
+    });
     await m.pass(local(14, 23, 40) - m.clock.now());
-    m.f.store.notify({ title: 'Late', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Late', source: 'cloud' });
+    });
     await m.pass(local(14, 23, 50) - m.clock.now());
     await open(m);
     expect(outline()).toEqual(['# Recent', '# Today', 'Late', '# Yesterday', 'Day before']);
     await m.pass(local(15, 0, 10) - m.clock.now());
     await wake();
     expect(outline()).toEqual(['# Recent', '# Yesterday', 'Late', `# ${dated(local(13, 10))}`, 'Day before']);
-    m.f.store.notify({ title: 'After midnight', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'After midnight', source: 'stack' });
+    });
     await m.flush();
     expect(outline()).toEqual(['# Recent', '# Today', 'After midnight', '# Yesterday', 'Late', `# ${dated(local(13, 10))}`, 'Day before']);
   });
@@ -240,12 +272,16 @@ describe('a day that ends while the centre is open', () => {
   it.each(ZONES)('puts the first notice of a new day under Today in %s, whatever day the centre was opened on', async (zone) => {
     vi.stubEnv('TZ', zone);
     const m = mountWindow({ at: local(14, 23, 30) });
-    m.f.store.notify({ title: 'Last of the day', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Last of the day', source: 'cloud' });
+    });
     await m.flush();
     await open(m);
     await m.pass(local(15, 0, 5) - m.clock.now());
     await wake();
-    m.f.store.notify({ title: 'First of the next', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'First of the next', source: 'stack' });
+    });
     await m.flush();
     expect(outline()).toEqual(['# Recent', '# Today', 'First of the next', '# Yesterday', 'Last of the day']);
   });
@@ -254,7 +290,9 @@ describe('a day that ends while the centre is open', () => {
 describe('a row', () => {
   it('opens and closes on its title, and says so', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     await open(m);
     const button = toggleOf(rows()[0]);
@@ -269,21 +307,27 @@ describe('a row', () => {
   it('has an action only while the action can be used: a button for a Retry that works, none for one that cannot, and the reason in words', async () => {
     const run = vi.fn();
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run }] });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run }] });
+    });
     await m.flush();
     await open(m);
     await m.user.click(toggleOf(rows()[0]));
     const retry = within(rows()[0]).getByRole('button', { name: 'Retry' });
     await m.user.click(retry);
     expect(run).toHaveBeenCalledTimes(1);
-    m.f.store.removePlugin('cloud');
-    m.f.store.notify({ title: 'Timed out again', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run }] });
+    act(() => {
+      m.f.store.removePlugin('cloud');
+      m.f.store.notify({ title: 'Timed out again', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run }] });
+    });
     await m.flush();
   });
 
   it('shows no button for an action that cannot be used and says why under the text, never a dead button', async () => {
     const source = mountWindow();
-    source.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run: () => undefined }] });
+    act(() => {
+      source.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run: () => undefined }] });
+    });
     const saved = source.f.store.serialise();
     source.unmount();
     teardown();
@@ -298,8 +342,10 @@ describe('a row', () => {
 
   it('removes itself with its Dismiss, and offers to bring it back', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     await m.user.click(within(rows()[1]).getByRole('button', { name: 'Dismiss: Timed out' }));
@@ -314,8 +360,10 @@ describe('a row', () => {
 describe('Mark all as read, Clear finished and Undo', () => {
   it('marks every record read, tells a screen reader how many, and is unavailable once everything is read', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     expect(tool('Mark all as read').getAttribute('aria-disabled')).toBeNull();
@@ -328,8 +376,10 @@ describe('Mark all as read, Clear finished and Undo', () => {
 
   it('clears the finished records, says so, and shows what was cleared where the list was', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     await m.user.click(tool('Clear finished'));
@@ -343,8 +393,10 @@ describe('Mark all as read, Clear finished and Undo', () => {
 
   it('puts Undo where Clear finished was, brings the records back, and takes Undo away when they are back', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     await m.user.click(tool('Clear finished'));
@@ -357,7 +409,9 @@ describe('Mark all as read, Clear finished and Undo', () => {
 
   it('takes Undo away after ten seconds', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     await open(m);
     await m.user.click(tool('Clear finished'));
@@ -370,9 +424,11 @@ describe('Mark all as read, Clear finished and Undo', () => {
 
 describe('the Filter menu and the mute of a source', () => {
   async function two(m: MountedWindow): Promise<void> {
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
-    m.f.store.notify({ title: 'Disk almost full', severity: 'warning', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+      m.f.store.notify({ title: 'Disk almost full', severity: 'warning', source: 'cloud' });
+    });
     await m.flush();
     await open(m);
   }
@@ -491,15 +547,19 @@ describe('the Filter menu and the mute of a source', () => {
   it('keeps Filter open for an unrelated mute but dismisses the Unmute action when the selected mute expires', async () => {
     const m = mountWindow();
     await two(m);
-    m.centre.filter('cloud');
-    m.f.store.mute('cloud', m.clock.now() + 1_000);
+    act(() => {
+      m.centre.filter('cloud');
+      m.f.store.mute('cloud', m.clock.now() + 1_000);
+    });
     await m.flush();
     const filter = tool('Filter');
     await m.user.click(filter);
     const opened = menu();
     expect(within(opened).getByRole('menuitem', { name: 'Unmute Cloud' })).toBeInTheDocument();
 
-    m.f.store.mute('stack');
+    act(() => {
+      m.f.store.mute('stack');
+    });
     await m.flush();
     expect(menu()).toBe(opened);
 
@@ -514,8 +574,10 @@ describe('the Filter menu and the mute of a source', () => {
   it('does not announce an Unmute that the store has already applied before publishing its new snapshot', async () => {
     const m = mountWindow();
     await two(m);
-    m.centre.filter('cloud');
-    m.f.store.mute('cloud');
+    act(() => {
+      m.centre.filter('cloud');
+      m.f.store.mute('cloud');
+    });
     await m.flush();
     await m.user.click(tool('Filter'));
     const unmute = within(menu()).getByRole('menuitem', { name: 'Unmute Cloud' });
@@ -553,7 +615,9 @@ describe('the Filter menu and the mute of a source', () => {
   it('says that nothing matches, with the one button that leads out, when the source it narrowed to has no record left', async () => {
     const m = mountWindow();
     await two(m);
-    m.centre.filter('cloud');
+    act(() => {
+      m.centre.filter('cloud');
+    });
     await m.flush();
     await m.user.click(within(rows()[0]).getByRole('button', { name: 'Dismiss: Disk almost full' }));
     await m.user.click(within(rows()[0]).getByRole('button', { name: 'Dismiss: Timed out' }));
@@ -569,9 +633,13 @@ describe('the Filter menu and the mute of a source', () => {
   it('keeps the source it was narrowed to when it is closed and opened again, as the mock does', async () => {
     const m = mountWindow();
     await two(m);
-    m.centre.filter('stack');
+    act(() => {
+      m.centre.filter('stack');
+    });
     await m.flush();
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     await open(m);
     expect(titles()).toEqual(['Snapshot created']);
@@ -581,7 +649,9 @@ describe('the Filter menu and the mute of a source', () => {
 describe('what a closing does not do', () => {
   it('leaves the history as it was: nothing is removed by closing and opening again', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', source: 'cloud' });
+    });
     await m.flush();
     await open(m);
     await act(async () => {
@@ -600,8 +670,10 @@ describe('what the centre does not draw', () => {
   const LATER = /^unread\b|^active\b|needs attention|^any severity|^(errors|warnings|success|info)$|details|copy|operations|settings|cancel|show all/i;
 
   async function everything(m: MountedWindow): Promise<string[]> {
-    m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run: () => undefined }], details: 'stack trace' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run: () => undefined }], details: 'stack trace' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await open(m);
     await m.user.click(toggleOf(rows()[1]));
