@@ -47,7 +47,10 @@
         $succeeded = $?
         $lastExit = $global:LASTEXITCODE
         $esc = [char]27; $bel = [char]7
-        $text = ''
+        # The end mark, the directory and the directory with the nonce are written to the console here, not returned in the prompt
+        # string: PowerShell's transcript (Start-Transcript, or a policy that turns it on) records what prompt returns, and the
+        # nonce and the path must not be in a file. The prompt marks A and B stay in the string (they hold neither).
+        $marks = ''
         if ($global:__omniview_ran) {
             $global:__omniview_ran = $false
             # PowerShell tells a native command's code and a cmdlet's failure apart by what the command left behind: an error
@@ -57,15 +60,16 @@
                 $status = 1
                 if ([object]::ReferenceEquals($global:Error[0], $global:__omniview_error) -and $lastExit -is [int] -and $lastExit -ne 0) { $status = $lastExit }
             }
-            $text += "$esc]133;D;$status$bel"
+            $marks += "$esc]133;D;$status$bel"
         }
         $location = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation
         if ($location) {
             $cwd = $location.ProviderPath
-            $text += "$esc]7;file://$([System.Environment]::MachineName)$(__omniview_pathEncoded $cwd)$bel"
-            $text += "$esc]633;P;Cwd=$(__omniview_escape $cwd);$($global:__omniview_nonce)$bel"
+            $marks += "$esc]7;file://$([System.Environment]::MachineName)$(__omniview_pathEncoded $cwd)$bel"
+            $marks += "$esc]633;P;Cwd=$(__omniview_escape $cwd);$($global:__omniview_nonce)$bel"
         }
-        $text += "$esc]133;A$bel"
+        if ($marks.Length -gt 0) { [Console]::Write($marks) }
+        $text = "$esc]133;A$bel"
         # The user's prompt sees the $? of the last command, as without this wrapper: the statements above replaced it, and $? cannot
         # be written, so the statement just before the call leaves the value it should have (an error that is ignored is no error
         # record, and no $Error entry).
