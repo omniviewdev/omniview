@@ -50,7 +50,11 @@ export type ExecFeedOptions = {
   readonly reconnectDelaysMs?: readonly number[] | undefined;
 };
 
-export type ExecFeed = TerminalFeedHandle & { readonly id: string };
+export type ExecFeed = TerminalFeedHandle & {
+  readonly id: string;
+  /** How many pieces of typed input the feed holds (sent or not) that the host has not said it applied: a test holds it to a bound. */
+  readonly keptPieces: () => number;
+};
 
 /** How long a size stands still before it is sent: a drag of the splitter is one message. */
 export const SETTLE_MS = 100;
@@ -560,11 +564,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** Makes a terminal this page lost free, or held again: the snapshot changes, and the listeners are told, only when that changes something. */
   const setFree = (free: boolean) => {
     const current = status.detached;
-    if (current === undefined || (current.free === true) === free) {
+    if (current === undefined || current.free === free || (!free && current.free === undefined && current.unwatched !== true)) {
       return;
     }
 
-    status = { ...status, detached: free ? { by: current.by, free } : { by: current.by } };
+    const base = current.unwatched === true ? { by: current.by, unwatched: true } : { by: current.by };
+    status = { ...status, detached: free ? { ...base, free } : current.unwatched === true ? { ...base, free } : base };
     tell();
   };
 
@@ -947,6 +952,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     if (watching) {
       // The host closed the watcher with no word (it watched longest of five) or the connection dropped: nothing says when the terminal is free, so the host is asked, once.
       unlink(false);
+      if (status.detached !== undefined && status.exit === undefined) {
+        status = { ...status, detached: { ...status.detached, unwatched: true } };
+        tell();
+      }
+
       learn(0);
       return;
     }
@@ -1132,6 +1142,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
   return {
     id,
+    keptPieces: () => kept.length,
 
     subscribe: (listener) => {
       listeners.add(listener);

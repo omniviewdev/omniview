@@ -413,7 +413,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     }
 
     const status = entry.feed.getSnapshot();
-    return status.state === 'ended' && status.detached?.free === true && status.exit === undefined ? entry : undefined;
+    return status.state === 'ended' && offersTakeBack(status.detached) && status.exit === undefined ? entry : undefined;
   };
 
   /**

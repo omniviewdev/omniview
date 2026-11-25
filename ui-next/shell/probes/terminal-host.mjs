@@ -1455,8 +1455,8 @@ export function createHost(options = {}) {
     labels: {},
     params: {},
     size: { cols: pty.cols, rows: pty.rows },
-    // `faults.attachedHidden`: the list always says that no stream holds a terminal. `faults.attachedStuck`: it always says that one does, whoever holds it.
-    attached: faults.attachedStuck ? true : !faults.attachedHidden && pty.holder !== null,
+    // `faults.attachedHidden`: the list always says that no stream holds a terminal.
+    attached: !faults.attachedHidden && pty.holder !== null,
     next_offset: pty.ring.end,
     replay_start: pty.ring.start,
     lease_expires_unix_ms: pty.holder === null ? pty.leaseExpires : 0,

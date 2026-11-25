@@ -10013,6 +10013,7 @@ async function checkTerminalReconnect(browser, getHost, engine) {
       // A cut stream stays refused until the outage line is typed, so that the line is typed with no stream to take it; the refusal is then let go of when the cut has lasted `ms`.
       target.refuse(Number.POSITIVE_INFINITY);
       assert.ok(cut > 0, `${engine}: ${label}: the cut was real: the proxy cut ${kind === 'events' ? "the page's events socket" : "the terminal's stream"} (it cut ${String(cut)})`);
+      // The scenario cannot force that the line is typed before the page sees the close (the close is the page's own event, a task after the proxy's cut), and the old wait for it is gone; the proof that input typed in that gap is kept and resent once is the feed's unit tests (execFeed.test.ts: the socket that died before its close was told; a paste cut part of the way; the exact tail after `input_applied`). Here the line is typed at once, and what is asserted is the outcome: once, in order.
       // A line typed while the cut is in force, with no wait for the page to see its stream closed: what is typed in the instant between the cut and the page's seeing it goes down a stream that is gone, and the page keeps it until the host says it applied it
       // (`ready.input_applied`, `applied`) and sends what the host did not take after the next `ready`, so that none is lost and none is typed twice. On a cut stream the rest waits and goes after `ready`, on a cut events socket nothing waits.
       await typeLine(page, `echo AWAY_${tag}_$((6*7))`);

@@ -83,7 +83,15 @@ export type TerminalDetached = {
    * and once the terminal has ended.
    */
   readonly free?: boolean | undefined;
+  /**
+   * The host closed this page's watcher with no word (it watched longest of five, or the connection dropped), so the page can no longer be told when the terminal is free. It offers the way back anyway: the press asks the host first and
+   * attaching takes the terminal. The lane does not say the taker has gone; only `free` says that.
+   */
+  readonly unwatched?: boolean | undefined;
 };
+
+/** Whether the way back is offered: the taker has gone (`free`), or the page can no longer be told and the host has not said another tab holds the terminal. */
+export const offersTakeBack = (detached: TerminalDetached | undefined): boolean => detached?.free === true || (detached?.unwatched === true && detached.free !== false);
 
 /** The status of a feed: the same object until something in it changes. */
 export type TerminalFeedSnapshot = {

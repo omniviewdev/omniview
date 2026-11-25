@@ -61,6 +61,12 @@ Verified: `pnpm vitest run ui-next/shell/panel/terminal` (1,657 tests), both tsc
 
 Not verified: the seam against the real host with a page that types while a stream is cut AND the host is slow to apply (the cut window is a timing race; r6 passed, a race that never hit is not shown); WebKit probes and control units; macOS and Windows; `scripts/ci/changes-workflows.test.mjs` (needs `jq`, not on this machine); the unit seconds on the runner.
 
+### Review fixes (ReviewChannelPage on `6ad46b05`)
+
+- S1: a watcher the host closes with no word sets `detached.unwatched`; the lane keeps "Taken over by another tab" (it does not claim the taker has gone) and the button is offered (`offersTakeBack`) until the host answers that a stream holds the terminal (`free: false`). The press still asks the host first.
+- S2: tests for the clamp and the compaction in `confirm` (10,000 applied keystrokes keep at most ~130 pieces: `ExecFeed.keptPieces`), a `ready` without a usable `input_applied`, `released` to a stream that holds the terminal, `ended` to a watcher keeping `detached.by`. The dead fault `attachedStuck` is deleted.
+- Seam r6: the scenario cannot force that the line is typed before the page sees the close (the close is the page's event, a task after the proxy's cut), so the unit tests are the proof of that gap and the scenario asserts the outcome (once, in order).
+
 ## Memory on the real host
 
 The acceptance of #693: the host's resident set stays at most 100 MiB over its start while a reader floods, stalls and resumes. Measured with `ui-next/shell/probes/terminal-host-memory.mjs`, a manual dev tool (not CI; it asserts nothing about memory, it measures and prints, and it holds every received byte to the pattern of `yes`). It starts the real server build over a fresh HOME, makes a channel terminal through the bound call `CreateTerminal` (`launch.channel`), opens `/wails/stream/ws?name=terminal` from Node over a raw socket (so that a stalled reader really stops reading the kernel's buffer), attaches with the capability, types `exec yes` once the shell shows its prompt, and samples `ps -o rss= -p <pid>` of the host process it started once a second for 30 s. No browser, no page code.

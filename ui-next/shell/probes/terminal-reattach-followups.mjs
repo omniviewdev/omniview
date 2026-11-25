@@ -776,8 +776,8 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
 
   /**
    * A tab that could not reach the host when the tab that took its terminal let it go: its connection was cut while it watched, so the host could not tell it (`released`) and the watcher is closed. The page asks the host when the
-   * watcher closes and, while the host cannot be reached for the question, again on the schedule of a reconnect (250 ms, one second, four seconds). It was told nothing and shows what it showed (its questions fail, and the transport
-   * of its streams is down); once the host can be asked the page asks, the host says that nobody holds the terminal, and the tab shows the button. It attaches nothing: only a press takes the terminal back.
+   * watcher closes and, while the host cannot be reached for the question, again on the schedule of a reconnect (250 ms, one second, four seconds). It cannot be told when the terminal is free, so it offers the button at once and shows the words of a terminal another tab holds (its questions fail,
+   * and the transport of its streams is down); once the host can be asked the page asks, the host says that nobody holds the terminal, and the lane says the taker has closed. It attaches nothing: only a press takes the terminal back.
    */
   sections['reattach-takeback-offline'] = async (ctx) => {
     const { engine, vp } = ctx;
@@ -817,14 +817,15 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
         if (!keep) window.__link.failLists(false);
       }, blocked);
       await perturbed(ctx, a, 'offline');
-      const freed = await until(buttons, (count) => count >= 1, 20_000);
+      await until(async () => laneOf(a), (text) => text.includes(FREE.closed), 20_000);
+      const freed = await buttons();
       const laneFreed = await laneOf(a);
       const asks = (await listedBy(a)) - listed1;
       const attaches = host.log.attaches.length - attachesBefore;
       check(
         'reattach.takeback-offline',
         triedDown >= 1 &&
-          buttonsDown === 0 &&
+          buttonsDown === 1 &&
           laneDown.includes(FREE.taken) &&
           FREE.old.test(laneDown) &&
           freed === 1 &&
@@ -832,9 +833,9 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           laneFreed.includes(FREE.lease) &&
           asks >= 1 &&
           attaches === 0,
-        `${engine} ${vp}: with the host out of reach while the tab that took the terminal went the page tried to ask ${String(triedDown)} time(s) and the lane says ${JSON.stringify(laneDown)} with ${String(buttonsDown)} buttons (the old words and none is right: it was told nothing); once the host could be reached it asked ${String(asks)} time(s) (once or more) and has ${String(freed)} button (one is right) and the lane says ${JSON.stringify(laneFreed)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right); it made ${String(attaches)} attach(es) (none: only a press takes the terminal back)`,
+        `${engine} ${vp}: with the host out of reach while the tab that took the terminal went the page tried to ask ${String(triedDown)} time(s) and the lane says ${JSON.stringify(laneDown)} with ${String(buttonsDown)} buttons (the old words, which do not claim the taker has gone, and one button is right: the page lost its watcher and cannot be told); once the host could be reached it asked ${String(asks)} time(s) (once or more) and has ${String(freed)} button (one is right) and the lane says ${JSON.stringify(laneFreed)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right); it made ${String(attaches)} attach(es) (none: only a press takes the terminal back)`,
       );
-      note(`reattach takeback-offline ${engine} ${vp}: no button while the host could not be reached when the taker went, one once it could and the page had asked (${String(asks)} call(s)), no attach`);
+      note(`reattach takeback-offline ${engine} ${vp}: the button offered at once while the host could not be reached (the lane not claiming the taker had gone), the words of a taker that has gone once it could and the page had asked (${String(asks)} call(s)), no attach`);
     } finally {
       await w.close();
     }

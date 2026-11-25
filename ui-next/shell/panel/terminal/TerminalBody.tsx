@@ -103,7 +103,7 @@ function keyOfFeed(feed: TerminalFeedHandle): number {
  * when the taker closes or detaches. The registry answers by the feed's status, so the status is an argument: the compiler keeps a call by what it is given, and a status that changed is a new object.
  */
 function canTakeBack(sessions: TerminalSessions, id: SessionId, status: TerminalFeedSnapshot): boolean {
-  return status.state === 'ended' && status.detached?.free === true && sessions.canTakeBack(id);
+  return status.state === 'ended' && offersTakeBack(status.detached) && sessions.canTakeBack(id);
 }
 
 /** The keyboard goes into a terminal the user started when it is not somewhere else: nowhere in particular (the page after a click), or in the panel (its `+`, its empty state's button, its tabs). */
