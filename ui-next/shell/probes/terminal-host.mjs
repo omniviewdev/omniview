@@ -381,7 +381,7 @@ const defaultDefer = (task) => {
  *   typed 422, `start` its plain start failure); `busy` is what `ChannelTerminalBusy` answers while the shell runs (`unknown`, or no answer at all); `defer` is how a flood yields between two batches.
  */
 export function createHost(options = {}) {
-  const { leaseMs: defaultLease = LIMITS.lease_default_ms, ringBytes = LIMITS.channel_ring_bytes, shell = 'zsh', fail, busy: busyMode, defer = defaultDefer } = options;
+  const { stallMs = LIMITS.channel_stall_ms, leaseMs: defaultLease = LIMITS.lease_default_ms, ringBytes = LIMITS.channel_ring_bytes, shell = 'zsh', fail, busy: busyMode, defer = defaultDefer } = options;
   const faults = { ...options.faults };
   const limits = { ...LIMITS, channel_ring_bytes: ringBytes };
   const ptys = new Map();
@@ -472,7 +472,9 @@ export function createHost(options = {}) {
     }
 
     pty.waiting -= have;
-    return parts.length === 0 ? new Uint8Array(0) : concat(parts);
+    if (parts.length === 0) return new Uint8Array(0);
+    // A read that is a view of a larger write is copied: the ring keeps what it was given, and must not pin the whole allocation of a write it has mostly dropped.
+    return parts.length === 1 ? parts[0].slice() : concat(parts);
   };
 
   const queued = (pty) => pty.queue.length - pty.head;
@@ -492,8 +494,15 @@ export function createHost(options = {}) {
         if (pty.gone) break;
         const behind = unsent(pty);
         if (pty.paused ? behind > limits.channel_low_bytes : behind > limits.channel_high_bytes) {
-          pty.paused = true;
-          break;
+          // The pump waits only for a page that is alive: one that made no progress (a frame the transport took, or an acknowledgement) within `channel_stall_ms` is let be, and the pump reads on (the ring overwrites, and the stream says so with a gap when it wakes).
+          const idle = pty.holder === null ? Infinity : now() - pty.holder.progressAt;
+          if (idle < stallMs) {
+            pty.paused = true;
+            clearTimeout(pty.stallTimer);
+            pty.stallTimer = setTimeout(() => pump(pty), stallMs - idle + 1);
+            pty.stallTimer.unref?.();
+            break;
+          }
         }
 
         pty.paused = false;
@@ -549,6 +558,7 @@ export function createHost(options = {}) {
     pty.gone = true;
     // A shell that ended by itself leaves its end; one the host closed (a request, a shutdown, the lease) leaves nothing.
     if (pty.ended.reason !== 'closed') keep(pty);
+    for (const go of pty.deferred.splice(0)) go();
     if (holder !== null) {
       holder.pty = null;
       deliver(holder, jsonFrame(FRAME.ended, pty.ended));
@@ -815,6 +825,7 @@ export function createHost(options = {}) {
     byCap.delete(pty.cap);
     pty.holder = null;
     for (const wake of [...pty.room.splice(0), ...pty.empty.splice(0)]) wake();
+    for (const go of pty.deferred.splice(0)) go();
     if (holder !== null) {
       holder.pty = null;
       deliver(holder, jsonFrame(FRAME.ended, pty.ended));
@@ -853,6 +864,8 @@ export function createHost(options = {}) {
         const bytes = ring.read(conn.cursor, conn.cursor + n);
         // Counted before the frame is handed over: the page can acknowledge it before the hand-over returns.
         conn.begun += n;
+        conn.progressAt = now();
+        conn.progressAt = now();
         pty.unacked = conn.begun - conn.acked;
         if (conn.explicit) log.maxUnacked = Math.max(log.maxUnacked, conn.begun - conn.acked);
         conn.cursor += n;
@@ -908,6 +921,11 @@ export function createHost(options = {}) {
       return;
     }
 
+    dispatchAttach(conn, request);
+  }
+
+  /** What a request that names a capability opens: a terminal that runs, the kept end of one, or nothing. */
+  function dispatchAttach(conn, request) {
     const pty = find(request.cap);
     const end = kept.get(request.cap);
     if (pty !== undefined && !pty.finishing) {
@@ -915,8 +933,8 @@ export function createHost(options = {}) {
     } else if (end !== undefined) {
       serveEnded(conn, end, request.from);
     } else if (pty !== undefined) {
-      // The shell is ending by itself while this stream attaches: the end is told to the one that holds it, and this stream is owed it once it is kept.
-      refuse(conn, 'ending');
+      // The shell is ending by itself while this stream attaches: the attach waits for the end to be decided, and then is served the kept end, or told nothing is there when a close won.
+      pty.deferred.push(() => dispatchAttach(conn, request));
     } else if (faults.goneTransient) {
       log.attaches.push({ stream: conn.id, id: null, from_offset: request.from ?? null, outcome: 'closed-silent', at: now() });
       shut(conn);
@@ -974,6 +992,7 @@ export function createHost(options = {}) {
     clearTimeout(pty.lease);
     pty.lease = undefined;
     pty.holder = conn;
+    conn.progressAt = now();
     pty.paused = false;
     conn.pty = pty;
     conn.terminal = pty.id;
@@ -1064,7 +1083,7 @@ export function createHost(options = {}) {
           typed(pty, text);
         };
 
-        applyFrame(entry, apply, () => pty.holder === conn && !conn.displaced);
+        applyFrame(entry, apply, () => pty.holder === conn && !conn.displaced, conn);
         return undefined;
       }
 
@@ -1091,7 +1110,7 @@ export function createHost(options = {}) {
           pty.ptyCols = faults.sizeOff ? cols + 1 : cols;
           pty.ring.resize(cols, rows);
           if (changed && pty.program !== undefined) frame(pty);
-        }, () => pty.holder === conn && !conn.displaced);
+        }, () => pty.holder === conn && !conn.displaced, conn);
         return undefined;
       }
 
@@ -1108,14 +1127,29 @@ export function createHost(options = {}) {
           return undefined;
         }
 
-        entry.outcome = 'applied';
-        // `faults.ackLost`: the credit that comes while the host's pump waits is lost, so a page that waited never gets the rest.
-        if (faults.ackLost && target.pty.paused) return undefined;
-        target.explicit = true;
-        target.acked = Math.min(target.acked + n, target.begun);
-        log.acked += n;
-        target.pty.unacked = target.begun - target.acked;
-        sendOutput(target);
+        const credit = () => {
+          entry.outcome = 'applied';
+          // `faults.ackLost`: the credit that comes while the host's pump waits is lost, so a page that waited never gets the rest.
+          if (faults.ackLost && target.pty !== null && target.pty.paused) return;
+          if (target.pty === null) return;
+          target.explicit = true;
+          target.acked = Math.min(target.acked + n, target.begun);
+          target.progressAt = now();
+          log.acked += n;
+          target.pty.unacked = target.begun - target.acked;
+          const held = target.pty;
+          sendOutput(target);
+          pump(held);
+        };
+
+        // The frames of one stream are applied in order, one at a time: an acknowledgement behind an input that is held waits for it, as the real host reads it only once the input operation is done. Other streams go on.
+        if (lag.queue !== undefined && lag.conns.has(conn)) {
+          entry.outcome = 'held';
+          lag.queue.push(credit);
+        } else {
+          credit();
+        }
+
         return undefined;
       }
 
@@ -1135,7 +1169,7 @@ export function createHost(options = {}) {
    * Applies what a frame does to the shell at once, in the order the frames came, and records it. `lag` (a probe's `slow`) makes the host slow to apply the frames: the ones behind it wait, in order. `holds` says whether the stream
    * that sent the frame still holds the terminal when the frame is applied: a frame that waited and lost its right meanwhile (another stream took the terminal) is refused, as the real host refuses it.
    */
-  function applyFrame(entry, apply, holds) {
+  function applyFrame(entry, apply, holds, conn) {
     const done = () => {
       if (!holds()) {
         entry.outcome = 'refused';
@@ -1150,6 +1184,7 @@ export function createHost(options = {}) {
 
     if (lag.queue !== undefined) {
       lag.queue.push(done);
+      lag.conns.add(conn);
       return;
     }
 
@@ -1163,10 +1198,12 @@ export function createHost(options = {}) {
         if (lag.queue !== queue) return;
         lag.queue = undefined;
         lag.release = undefined;
+        lag.conns = new Set();
         for (const task of queue) task();
       };
 
       lag.queue = queue;
+      lag.conns = new Set([conn]);
       lag.release = release_;
       timer = lag.ms === Infinity ? undefined : setTimeout(release_, lag.ms);
       lag.timer = timer;
@@ -1177,7 +1214,7 @@ export function createHost(options = {}) {
   }
 
   /** The host is slow to apply the next `next` frames of any stream, for `ms` milliseconds: the frames behind them wait, in the order they came. */
-  const lag = { next: 0, ms: 0, queue: undefined, release: undefined, timer: undefined };
+  const lag = { conns: new Set(), next: 0, ms: 0, queue: undefined, release: undefined, timer: undefined };
 
   /**
    * Opens a stream. `deliver` takes each frame the host sends, in order; `onClosed` is called once, when the stream is over however it ended. Answers `{ id, send(frame), close() }`: `send` is a frame of the page, in order, and `close` is the page
@@ -1185,7 +1222,7 @@ export function createHost(options = {}) {
    */
   function openStream(deliver_, onClosed = () => undefined) {
     streamSerial += 1;
-    const conn = { id: streamSerial, deliver: deliver_, onClosed, over: false, pty: null, terminal: undefined, cursor: 0, replayEnd: 0, begun: 0, acked: 0, explicit: false, displaced: false, held: false, sending: false, attached: false };
+    const conn = { progressAt: 0, id: streamSerial, deliver: deliver_, onClosed, over: false, pty: null, terminal: undefined, cursor: 0, replayEnd: 0, begun: 0, acked: 0, explicit: false, displaced: false, held: false, sending: false, attached: false };
     conns.add(conn);
     log.streams.push({ id: conn.id, at: now() });
     return {
@@ -1285,6 +1322,7 @@ export function createHost(options = {}) {
       finishing: undefined,
       ended: null,
       gone: false,
+      deferred: [],
       info: () => infoOf(pty),
     };
     ptys.set(pty.id, pty);

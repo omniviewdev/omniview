@@ -228,6 +228,11 @@ class FixtureSocket implements ChannelSocket {
 
   /** What the host sent, in order, each frame in a task of its own. */
   push(item: { readonly frame: Uint8Array } | { readonly close: true }): void {
+    // A socket that is closed takes nothing more: what the host sent after it was closed is not delivered.
+    if (this.readyState === 3) {
+      return;
+    }
+
     this.inbox.push(item);
     if (!this.draining) {
       this.draining = true;
@@ -372,6 +377,7 @@ class FixtureSocket implements ChannelSocket {
     this.backend?.close();
     this.backend = undefined;
     this.readyState = 3;
+    this.inbox.length = 0;
     sockets.delete(this.id);
   }
 
@@ -434,8 +440,8 @@ class FixtureSocket implements ChannelSocket {
         document.body.dataset.delivered = String(credit.received);
       }
 
-      // `?control=ack-on-receipt`: the page's acknowledgement is made as the frame is delivered, and not when it is parsed.
-      if (control === 'ack-on-receipt' && offset >= this.readyEnd) {
+      // `?control=ack-on-receipt`: the page's acknowledgement is made as the frame is delivered, and not when it is parsed: for every frame of output, the replay included (the host counts the replay against its window).
+      if (control === 'ack-on-receipt') {
         this.sendAck(size);
       }
 
@@ -457,6 +463,7 @@ class FixtureSocket implements ChannelSocket {
     }
 
     this.readyState = 3;
+    this.inbox.length = 0;
     sockets.delete(this.id);
     this.emit('close', new Event('close'));
   }
