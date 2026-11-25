@@ -61,7 +61,8 @@ func (p *ptyTee) readEnds(id string) []int {
 // withoutTheCRsOfMacOS says what the program printed, from what the kernel gave the host and where its reads ended: the stream less
 // every CR that ends a read and is followed by CR LF (and the CRs of a run of them), and the offsets of the CRs it took out. A CR
 // anywhere else, a line end that lost its CR, any other byte: left as it is, for the comparison to fail on.
-func withoutTheCRsOfMacOS(stream []byte, readEnds []int) (text []byte, removed []int) {
+func withoutTheCRsOfMacOS(stream []byte, readEnds []int) ([]byte, []int) {
+	var removed []int
 	for _, end := range readEnds {
 		if end <= 0 || end >= len(stream) || stream[end-1] != '\r' {
 			continue
@@ -74,7 +75,7 @@ func withoutTheCRsOfMacOS(stream []byte, readEnds []int) (text []byte, removed [
 			removed = append(removed, end-1)
 		}
 	}
-	text = make([]byte, 0, len(stream))
+	text := make([]byte, 0, len(stream))
 	from := 0
 	for _, at := range removed {
 		text = append(text, stream[from:at]...)
