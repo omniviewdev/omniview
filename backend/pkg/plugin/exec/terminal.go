@@ -137,7 +137,7 @@ func (c *controller) startTerminals(ctx context.Context) {
 
 // shellIntegrationOn is the user's opt-out of the shell integration, asked for every terminal that starts so that a change
 // in Settings applies to the next one. The integration is on by default: with no settings to ask, or a value that cannot be
-// read, it stays on and the shell's own failure to carry it is the fact the create answer states.
+// read, the manager is told so and leaves the shell alone.
 func (c *controller) shellIntegrationOn() (bool, error) {
 	if c.settingsProvider == nil {
 		return true, nil

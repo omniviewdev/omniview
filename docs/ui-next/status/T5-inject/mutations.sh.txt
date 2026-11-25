@@ -13,7 +13,7 @@
 export GOWORK=off GOTOOLCHAIN=local
 WT=$(git rev-parse --show-toplevel) || exit 2
 PKG=./backend/pkg/terminal/
-RUN='^(TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand|TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks|TestTheUsersStartupFilesAreByteIdenticalAfterASession|TestAZDOTDIRTheUserSetIsHonouredAndRestored|TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt|TestTheNonceIsInNoLogNoErrorAndNoAnswerThatTheHostGives|TestANestedLoginShellDoesNotInheritTheIntegration|TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment|TestNoDescriptorOfTheChannelReachesAProgramOfTheUser|TestTheFactSaysWhyTheIntegrationIsOffOrSkipped|TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration|TestTheSettingIsAskedForEveryTerminal|TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser|TestTheIntegrationDirectoryIsRemovedOnEveryEnd|TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt|TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore|TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain|TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor)$'
+RUN='^(TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand|TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks|TestTheUsersStartupFilesAreByteIdenticalAfterASession|TestAZDOTDIRTheUserSetIsHonouredAndRestored|TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt|TestTheNonceIsInNoLogNoErrorAndNoAnswerThatTheHostGives|TestANestedLoginShellDoesNotInheritTheIntegration|TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment|TestNoDescriptorOfTheChannelReachesAProgramOfTheUser|TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem|TestAFishUserWhoBoundEnterKeepsTheirBindingAndTheCommandHasNoTrustedLine|TestAFishAbbreviationIsRecordedExpandedAsWhatRan|TestTheFishEscapeOfA4KBLineWithControlBytesIsCorrectAndCheap|TestZshXtraceNeverPrintsTheNonce|TestTheFactSaysWhyTheIntegrationIsOffOrSkipped|TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration|TestTheSettingIsAskedForEveryTerminal|TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser|TestTheIntegrationDirectoryIsRemovedOnEveryEnd|TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt|TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore|TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain|TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor|TestTheFactIsOnOnlyAfterTheShellSaidItIsReady|TestARealShellWhoseScriptNeverRunsIsUnconfirmedAndNotOn|TestASettingThatCannotBeReadFailsClosed)$'
 M=$(mktemp -d "${TMPDIR:-/tmp}/t5inject-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
@@ -67,7 +67,7 @@ run relaunch-loop "$M2" \
 
 run temp-dir-left-behind "$I" \
   's|_ = os.RemoveAll(i.dir)|_ = i.dir|' \
-  'TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt TestTheIntegrationDirectoryIsRemovedOnEveryEnd TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
+  'TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt TestTheFactIsOnOnlyAfterTheShellSaidItIsReady TestTheIntegrationDirectoryIsRemovedOnEveryEnd TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
 
 run integration-with-the-setting-off "$I" \
   's|	if !enabled {|	if false {|' \
@@ -77,9 +77,11 @@ run dir-world-readable "$I" \
   's|os.Chmod(inj.dir, 0o700)|os.Chmod(inj.dir, 0o755)|' \
   'TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser'
 
+# (TestTheUsersStartupFilesAreByteIdenticalAfterASession is red for this fault in some runs only: zsh writes a file into the
+# leftover ZDOTDIR at exit, a race; it is not named.)
 run zdotdir-not-given-back "$Z/zlogin" \
   's|^  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi|  :|' \
-  'TestANestedLoginShellDoesNotInheritTheIntegration TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt'
+  'TestANestedLoginShellDoesNotInheritTheIntegration TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor TestZshXtraceNeverPrintsTheNonce'
 
 run channel-left-open "$Z/zshenv" \
   's|^  exec 3>\&-$|  :|' \
@@ -92,5 +94,23 @@ run command-flag-not-skipped "$I" \
 run powerlevel10k-not-skipped "$I" \
   's|	if envValue(env, "P9K_VERSION") != "" {|	if false {|' \
   'TestTheFactSaysWhyTheIntegrationIsOffOrSkipped'
+
+F=backend/pkg/terminal/integration_scripts/fish/omniview-integration.fish
+
+run fish-escape-drops-newlines "$F" \
+  '/x3b/s/| string collect)/| string join "")/' \
+  'TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem'
+
+run unconfirmed-said-on "$M2" \
+  's|fact = Integration{State: IntegrationUnconfirmed, Reason: NoReady}|_ = fact|' \
+  'TestARealShellWhoseScriptNeverRunsIsUnconfirmedAndNotOn TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser TestTheIntegrationDirectoryIsRemovedOnEveryEnd'
+
+run zsh-xtrace-prints-the-nonce "$Z/zlogin" \
+  '/noxtrace/d' \
+  'TestZshXtraceNeverPrintsTheNonce'
+
+run unreadable-setting-turns-it-on "$M2" \
+  's|kind, fact = kindNone, skipped(SkipSettingUnreadable)|_ = kind|' \
+  'TestASettingThatCannotBeReadFailsClosed'
 
 exit $bad
