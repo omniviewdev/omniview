@@ -417,6 +417,7 @@
       "swap-held",
       "early-size",
       "size-off",
+      "webgl-every-show",
       "arrival-order",
       "resize-refused",
       "input-serial",

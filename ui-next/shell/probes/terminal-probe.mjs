@@ -146,6 +146,20 @@ const CONTROLS = {
   // the pty one column wider than it was asked to, so that the shell's size is not the emulator's.
   'early-size': { assertion: 'resize.none', section: 'size', engines: ['chromium'], query: 'control=early-size' },
   'size-off': { assertion: 'resize.cells', section: 'size', engines: ['chromium'], query: 'control=size-off' },
+  // The GPU addon is made once for a terminal (#698 item 15): every WebGL context the page makes is lost 100 ms after it was made, so that the addon goes with it and the next showing makes another, as an engine that made one at every showing would.
+  'webgl-every-show': {
+    assertion: 'gpu.once',
+    section: 'size',
+    engines: ['chromium'],
+    init: () => {
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (kind, ...rest) {
+        const context = getContext.call(this, kind, ...rest);
+        if (context !== null && (kind === 'webgl' || kind === 'webgl2')) setTimeout(() => context.getExtension('WEBGL_lose_context')?.loseContext(), 100);
+        return context;
+      };
+    },
+  },
   // The input as numbered calls (docs/ui-next/status/T1-go.md 2.4): a host that applies the calls in the order they arrive, a host that refuses the size call (a call that was refused is not an applied one), a page that sends what is typed one call at a time, calls numbered with a number missing, and an old call made as well.
   'arrival-order': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=arrival-order' },
   'resize-refused': { assertion: 'order.echo', section: 'order', engines: ['chromium'], query: 'control=resize-refused' },

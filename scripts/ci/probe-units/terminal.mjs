@@ -95,7 +95,7 @@ export const units = [
     name: 'Probe that the terminal probe sees input that is sent wrong',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['arrival-order', 'resize-refused', 'input-serial', 'seq-gap', 'legacy-write', 'early-size', 'size-off', 'focus-close-button', 'focus-delete-swallowed'],
+    controls: ['arrival-order', 'resize-refused', 'input-serial', 'seq-gap', 'legacy-write', 'early-size', 'size-off', 'webgl-every-show', 'focus-close-button', 'focus-delete-swallowed'],
     plants: 'page',
     seconds: 60,
   },
