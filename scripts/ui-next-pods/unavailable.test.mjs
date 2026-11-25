@@ -123,7 +123,7 @@ test('the workflow registers the manifest and waits for the APIService to be una
   assert.ok(steps[register].run.includes(`kubectl wait --for=condition=Available=false apiservice/${APISERVICE} `), 'the step waits for the APIService it registered to be Available=False');
   assert.equal(steps[control].env.OMNIVIEW_CHECK_MODE, 'control-group-absent');
   assert.equal(steps[check].env.OMNIVIEW_CHECK_MODE, 'unavailable-group');
-  assert.match(steps[start].run, /host\.sh start unavailable-group 34204 /);
-  assert.equal(steps[check].env.OMNIVIEW_CHECK_BASE_URL, 'http://127.0.0.1:34204', 'the check reads the host that started after the group was registered');
-  assert.equal(steps[control].env.OMNIVIEW_CHECK_BASE_URL, 'http://127.0.0.1:34201', 'the control reads the host of the main check, on the cluster that has no such group');
+  assert.match(steps[start].run, /host\.sh start unavailable-group 24204 /);
+  assert.equal(steps[check].env.OMNIVIEW_CHECK_BASE_URL, 'http://127.0.0.1:24204', 'the check reads the host that started after the group was registered');
+  assert.equal(steps[control].env.OMNIVIEW_CHECK_BASE_URL, 'http://127.0.0.1:24201', 'the control reads the host of the main check, on the cluster that has no such group');
 });

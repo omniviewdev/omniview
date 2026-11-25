@@ -215,13 +215,14 @@ jobs:
           echo "::error::Playwright browser install failed twice"
           exit 1
 
+      # The host ports 24201-24204 sit below the Linux ephemeral range (32768-60999), so an outgoing connection of an earlier step cannot hold one as its source port.
       - name: Start the host with the plugin
-        run: scripts/ui-next-pods/host.sh start with-plugin 34201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+        run: scripts/ui-next-pods/host.sh start with-plugin 24201 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
 
       # The cluster holds only kind's own Pods here: the check must report that the fixture is missing, not pass on kube-system.
       - name: Negative control, cluster without the fixture
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-fixture-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
@@ -238,37 +239,37 @@ jobs:
           kubectl get pods -A
 
       - name: Start the host without the plugin
-        run: scripts/ui-next-pods/host.sh start without-plugin 34202 "$KUBECONFIG_PATH" none
+        run: scripts/ui-next-pods/host.sh start without-plugin 24202 "$KUBECONFIG_PATH" none
 
       # Same check, same cluster, same fixture; the plugin is the only difference. The window has no plugin to open: it must stop at the host's own empty list of plugins.
       - name: Negative control, host without the Kubernetes plugin
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34202
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24202
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-plugin-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       - name: Start the host with the plugin installed without its bundle
-        run: scripts/ui-next-pods/host.sh start without-bundle 34203 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
+        run: scripts/ui-next-pods/host.sh start without-bundle 24203 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
 
       # Same check, same cluster, same fixture, the plugin's binary installed: only assets/entry.js is missing. The Pods list is the plugin's bundle, so the page must stop at the plugin.
       - name: Negative control, the plugin without its bundle
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34203
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24203
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-bundle-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       - name: Check that the page and kubectl agree
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
 
       # INV4. The same check, on the cluster the main check ran on, which holds no API group that cannot answer: it must stop at the group (GROUP_MISSING) before it opens a page.
       - name: Negative control, a cluster without the unavailable API group
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34201
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24201
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: control-group-absent
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs
@@ -285,11 +286,11 @@ jobs:
 
       # A host with a home of its own and nothing saved, started after the group was registered: its plugin connects to a cluster that has the group, as the demo's host did.
       - name: Start a host for the cluster with the unavailable API group
-        run: scripts/ui-next-pods/host.sh start unavailable-group 34204 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
+        run: scripts/ui-next-pods/host.sh start unavailable-group 24204 "$KUBECONFIG_PATH" "$OMNIVIEW_E2E_WORK/plugin"
 
       - name: Check that the connection starts with an unavailable API group
         env:
-          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:34204
+          OMNIVIEW_CHECK_BASE_URL: http://127.0.0.1:24204
           OMNIVIEW_CHECK_KUBECONFIG: ${{ env.KUBECONFIG_PATH }}
           OMNIVIEW_CHECK_MODE: unavailable-group
         run: node --test scripts/ui-next-pods/pods-cluster.check.mjs

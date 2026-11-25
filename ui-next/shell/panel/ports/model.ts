@@ -2,7 +2,14 @@
 // four facts of its own and says them as its own: that Stop was pressed and has not ended it (`Stopping`), that the plugin that holds the forward stopped (`Stopped`, with the second line "Its plugin stopped."), why the last Stop could not end it,
 // and the name the window knows for the forward's connection. Nothing else is said: the mock's bytes, errors and latency are not stated by the producer (docs/ui-next/status/PF1.md, section 1.1), so no row has them.
 
-export const LOOPBACK = '127.0.0.1';
+/** The hosts a producer may state for where a forward listens that are this computer: a browser opened here reaches them. */
+const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', '::1', 'localhost'];
+
+/** A host as it is written before a port: an IPv6 host is in brackets. */
+const bracketed = (host: string): string => (host.includes(':') && !host.startsWith('[') ? `[${host}]` : host);
+
+/** Whether a host the producer states is this computer. */
+const isLoopback = (host: string): boolean => LOOPBACK_HOSTS.includes(host.replace(/^\[|\]$/g, '').toLowerCase());
 
 export type PortProtocol = 'TCP' | 'UDP';
 
@@ -29,6 +36,8 @@ export type Forward = {
   readonly state: ForwardState;
   /** When the host created it, epoch milliseconds; 0 when it does not say. Only orders the rows. */
   readonly created: number;
+  /** Where the producer says the forward listens (the session's `local_host`); empty when it says nothing, which the SDK's session does today: it states a port and no host, and the tool shows what the producer states. */
+  readonly host: string;
 };
 
 /** The facts the window adds to what the host states. */
@@ -63,9 +72,11 @@ export type PortRow = {
   readonly pluginStopped: boolean;
   /** The second line of the Resource cell: a fact the window states about this forward (its plugin stopped, a Stop could not end it). Absent when there is none. */
   readonly reason?: string | undefined;
-  /** `127.0.0.1:<local>`; empty while the local port is not assigned. */
-  readonly address: string;
-  /** `127.0.0.1:<local> → :<remote>/<protocol>`. */
+  /** Where the producer says the forward listens; empty when it says nothing. Never a default. */
+  readonly host: string;
+  /** What names the forward's local end and what Copy puts on the clipboard: `<host>:<port>` when the producer states a host (an IPv6 host in brackets), else the port alone; empty while the port is not assigned. */
+  readonly endpoint: string;
+  /** `port <local> → :<remote>/<protocol>`, or `<host>:<local> → ...` when the producer states a host; `Auto` for a port not assigned yet. */
   readonly mapping: string;
 };
 
@@ -76,9 +87,16 @@ export const PLUGIN_STOPPED = 'Its plugin stopped.';
 export const NOT_RUNNING = 'The forward must be running.';
 export const NO_LOCAL_PORT = 'The local port is not assigned yet.';
 export const STOP_WAITING = 'Waiting for the stop to finish.';
+/** Why Open in browser is unavailable for a forward whose host the producer does not state (every forward, today): a browser is sent to an address, and the tool does not make one up. */
+export const OPEN_HOST_UNSTATED = 'Where this forward listens is not stated, so it cannot be opened from here.';
+/** Why it is unavailable for a forward that listens beyond this computer: a browser opened here is not sent to another machine. */
+export const OPEN_BEYOND = 'This forward listens beyond this computer, so it is not opened from here.';
 
-/** What a row's three actions are called: the buttons, their tips and the menu's items say the same words. */
-export const ACTION_WORDS = Object.freeze({ stop: 'Stop', open: 'Open in browser', copy: 'Copy address' });
+/** What a row's actions are called: the buttons, their tips and the menu's items say the same words. Copy is Copy port while the producer states no host, and Copy address when it does (an address would assert a host). */
+export const ACTION_WORDS = Object.freeze({ stop: 'Stop', open: 'Open in browser', copyPort: 'Copy port', copyAddress: 'Copy address' });
+
+/** What Copy is called for a row: it copies the port when the producer states no host, and host and port when it does. */
+export const copyWordOf = (row: PortRow): string => (row.host === '' ? ACTION_WORDS.copyPort : ACTION_WORDS.copyAddress);
 
 const member = (value: unknown, key: string): unknown => (typeof value === 'object' && value !== null ? Reflect.get(value, key) : undefined);
 const textOf = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
@@ -123,6 +141,7 @@ export function readForward(raw: unknown): Forward | undefined {
     protocol: member(raw, 'protocol') === 'UDP' ? 'UDP' : 'TCP',
     state: stateOf(member(raw, 'state')),
     created: createdOf(member(raw, 'created_at')),
+    host: textOf(member(raw, 'local_host')),
   };
 }
 
@@ -130,7 +149,8 @@ export function readForward(raw: unknown): Forward | undefined {
 export function rowOf(forward: Forward, facts: Facts): PortRow {
   const failed = forward.state === 'failed';
   const state: PortState = facts.pluginStopped ? (failed ? 'failed' : 'stopped') : facts.stopping ? 'stopping' : forward.state;
-  const address = forward.local > 0 ? `${LOOPBACK}:${String(forward.local)}` : '';
+  const host = forward.host === '' ? '' : bracketed(forward.host);
+  const endpoint = forward.local === 0 ? '' : host === '' ? String(forward.local) : `${host}:${String(forward.local)}`;
   const remote = forward.remote > 0 ? String(forward.remote) : '—';
   return {
     id: forward.id,
@@ -146,8 +166,9 @@ export function rowOf(forward: Forward, facts: Facts): PortRow {
     stateWord: STATE_WORDS[state],
     pluginStopped: facts.pluginStopped,
     reason: facts.pluginStopped ? (failed ? undefined : PLUGIN_STOPPED) : facts.stopping ? undefined : facts.failure,
-    address,
-    mapping: `${address === '' ? 'Auto' : address} → :${remote}/${forward.protocol}`,
+    host: forward.host,
+    endpoint,
+    mapping: `${forward.local === 0 ? 'Auto' : host === '' ? `port ${String(forward.local)}` : endpoint} → :${remote}/${forward.protocol}`,
   };
 }
 
@@ -166,13 +187,15 @@ export const sameRow = (a: PortRow, b: PortRow): boolean =>
   a.stateWord === b.stateWord &&
   a.pluginStopped === b.pluginStopped &&
   a.reason === b.reason &&
-  a.address === b.address &&
+  a.host === b.host &&
+  a.endpoint === b.endpoint &&
   a.mapping === b.mapping;
 
 /**
  * What a person can do with a row: for each action, why it cannot be done now (a sentence, which the control says in its description and its tip), nothing when it can, and for Open in browser `null` when it is never
  * offered for the row (a browser speaks TCP only). Stop is open to every forward whose plugin runs, whatever state it is in: the host's close removes a session that has ended as it ends one that runs, and a forward that
- * ended on its own has no other way off the list. Open and Copy need a forward that runs and has a local port to name.
+ * ended on its own has no other way off the list. Copy needs a forward that runs and has a local port to name. Open needs that too, and a host the producer states that is this computer: where a forward listens is the producer's to
+ * say, and the tool does not guess it (the SDK's session states none today, so Open is unavailable for every forward until it does).
  */
 export type Availability = {
   readonly stop: string | undefined;
@@ -184,13 +207,13 @@ export function availabilityOf(row: PortRow): Availability {
   const reach = row.state !== 'running' ? NOT_RUNNING : row.local === 0 ? NO_LOCAL_PORT : undefined;
   return {
     stop: row.pluginStopped ? PLUGIN_STOPPED : row.state === 'stopping' ? STOP_WAITING : undefined,
-    open: row.protocol === 'UDP' ? null : reach,
+    open: row.protocol === 'UDP' ? null : row.host === '' ? OPEN_HOST_UNSTATED : isLoopback(row.host) ? reach : OPEN_BEYOND,
     copy: reach,
   };
 }
 
-/** Where Open in browser goes: the forward's own end on this computer, over http. */
-export const browserUrlOf = (row: PortRow): string => `http://${LOOPBACK}:${String(row.local)}`;
+/** Where Open in browser goes: the host the producer states and the port, over http. Asked only of a row that can be opened, which has a loopback host stated. */
+export const browserUrlOf = (row: PortRow): string => `http://${bracketed(row.host)}:${String(row.local)}`;
 
 /**
  * Whether two forwards are the same session of the host and not a later one that took its id: a plugin that restarts may hand an id out again, and what was said of the first (that its Stop is on its way, that it was closed) is not said of the

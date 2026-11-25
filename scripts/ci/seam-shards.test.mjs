@@ -527,7 +527,7 @@ test('report: reads the logs of a shard, writes what it ran where the verdict re
   assert.match(verified.lines.out, new RegExp(`seam-shards: ok \\(${String(PHASES_IN_CHECK)} phases and ${String(CONTROLS_IN_CHECK)} controls, in ${String(UNITS.length)} units, ran once and passed in webkit and chromium, in 4 shards each\\)`));
   assert.match(readFileSync(path.join(root, 'verdict'), 'utf8'), /\| webkit \| 1 \|/);
 
-  // The same run with one shard of one engine gone is red, and with a plan that says four shards is red.
+  // The same run with one shard of one engine gone is red, and with a plan that says five shards is red.
   const gone = capture();
   const { rmSync } = await import('node:fs');
   rmSync(path.join(reports, 'seam-ran-chromium-2'), { recursive: true });

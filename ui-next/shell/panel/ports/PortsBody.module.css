@@ -147,7 +147,7 @@
     padding-block: 0;
   }
 
-  /* Where Open in browser would stand for a forward that is not offered it: the box is kept, so Stop and Copy address stand where they do in every other row. */
+  /* Where Open in browser would stand for a forward that is not offered it: the box is kept, so Stop and Copy stand where they do in every other row. */
   .slot {
     display: block;
     flex: none;

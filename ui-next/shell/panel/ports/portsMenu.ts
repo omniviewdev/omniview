@@ -1,5 +1,5 @@
 import type { MenuAction, MenuItem } from '@omniviewdev/kit';
-import { ACTION_WORDS, availabilityOf, type PortRow } from './model';
+import { ACTION_WORDS, availabilityOf, copyWordOf, type PortRow } from './model';
 import { OPEN_ICON, STOP_ICON } from './tool';
 
 // The row's context menu as data (docs/ui-next/status/kit-menus.md): the same three actions as the row's buttons, in the same order, with the same words and glyphs, each unavailable for the reason its button gives. Pure, so that its test can
@@ -13,7 +13,7 @@ export type PortsActions = {
 };
 
 /**
- * Stop, Open in browser and Copy address. Open in browser is not an item for a forward that is UDP, which a browser does not speak. No item draws a shortcut: none of the three has a chord, and the kit names an item by its label alone, so an item
+ * Stop, Open in browser and Copy (Copy port, or Copy address when the producer states where the forward listens). Open in browser is not an item for a forward that is UDP, which a browser does not speak. No item draws a shortcut: none of the three has a chord, and the kit names an item by its label alone, so an item
  * that drew one would not be named by all that it draws (`terminal/menu/terminalMenu.ts` found this by probe).
  */
 export function portsMenu(row: PortRow, actions: PortsActions): readonly MenuItem[] {
@@ -41,7 +41,7 @@ export function portsMenu(row: PortRow, actions: PortsActions): readonly MenuIte
   const copy: MenuAction = {
     kind: 'action',
     id: 'copy',
-    label: ACTION_WORDS.copy,
+    label: copyWordOf(row),
     icon: 'copy',
     disabled: reach.copy,
     onSelect: () => {

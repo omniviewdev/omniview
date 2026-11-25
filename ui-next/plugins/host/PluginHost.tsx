@@ -71,7 +71,7 @@ import { panelHostsOf } from './panelHost';
 import { attachPanelTools, badgesOf, cancelFailed, resolverOf, subjectOpener } from './panelTools';
 import { openExternal } from './openExternal';
 import { portNamesOf } from './portNames';
-import type { PortForwardNetwork, PortForwarding } from './portForward';
+import { windowActivation, type PortForwardNetwork, type PortForwarding } from './portForward';
 import { useGuardedDefinition, useGuardedSource } from './pageFailures';
 import { pageMemoryOf } from './pageMemory';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -138,6 +138,11 @@ export type PluginHostProps = {
    * binds. Absent: the window has no port-forward service, and the handle a page is given has no `ports` member, as a host that predates it (a test of another part).
    */
   readonly networker?: PortForwardNetwork | undefined;
+  /**
+   * Whether a user action (a click, a key press) is under way now, as a page's `ctx.panel.ports.forward` asks it at the call: a forward is started from a user action only (`portForward.ts`). `true` inside one, `false` outside, and `undefined` when
+   * the engine cannot tell, which refuses too. Absent: the window's own engine is asked (`navigator.userActivation`); a test or a probe that has no real input gives its own.
+   */
+  readonly userActivation?: (() => boolean | undefined) | undefined;
   /**
    * What the Ports tool is given beyond what the runtime gives it itself (`shell/panel/ports`): the host's calls and events, the clipboard, the names of connections, the way to open an address. Absent: the runtime's own, the names the window
    * knows for its connections, and the host's own way of opening an address (`openExternal.ts`). A test or a probe gives a fake host.
@@ -241,7 +246,7 @@ function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, portsOptions: Partial<PortsDeps> | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -256,7 +261,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again.
   const terminals = createTerminals(store, terminalOptions, { screenReader: restored?.terminalScreenReader });
   const tabs = createTabsStore({ contributions, initial: restored?.tabs });
-  // A page forwards a port where the window has a networker to ask: the Ports tool is shown once a forward has started.
+  // A page forwards a port where the window has a networker to ask, from a user action: the Ports tool is shown once a forward has started, and a plugin that stops has no forwards left (the host says nothing of it, the window's own store does).
   const forwarding: PortForwarding | undefined =
     networker === undefined
       ? undefined
@@ -264,6 +269,11 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
         ...networker,
         revealPortsTool: () => {
           revealPortsTool(store);
+        },
+        userActivation: userActivation ?? windowActivation,
+        plugins: {
+          running: (id) => plugins.getSnapshot().some((entry) => entry.id === id && entry.phase === 'ready'),
+          subscribe: plugins.subscribe,
         },
       };
   const panelHosts = panelHostsOf(logs, forwarding);
@@ -779,9 +789,9 @@ function portsBodyOf(ports: Ports): ReactElement {
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, ports: portsOptions }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, userActivation, ports: portsOptions }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, portsOptions));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;

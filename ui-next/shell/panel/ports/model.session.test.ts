@@ -15,6 +15,7 @@ const forward = (patch: Partial<Forward> = {}): Forward => ({
   protocol: 'TCP',
   state: 'running',
   created: Date.parse('2026-11-24T10:00:00Z'),
+  host: '',
   ...patch,
 });
 
