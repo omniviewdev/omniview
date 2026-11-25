@@ -664,8 +664,8 @@ export function createTerminalChannels(deps: ChannelDeps): TerminalChannels {
 }
 
 /** The terminal channels of a page, once the slot has been read. */
-export async function loadTerminalChannels(deps: ChannelDeps): Promise<TerminalChannels> {
-  return load(createCore(deps));
+export function loadTerminalChannels(deps: ChannelDeps): TerminalChannels {
+  return createCore(deps).channels;
 }
 
 /** What of the page's global object the stream's opener reads. */
@@ -709,6 +709,12 @@ export function appTerminalChannels(): TerminalChannels {
 }
 
 /** Reads this window's slot into the page's channels, and answers them. The window awaits it before it asks for the terminals it left. Never rejects, and is bounded. */
-export async function loadAppTerminalChannels(): Promise<TerminalChannels> {
-  return load(appCore());
+export function loadAppTerminalChannels(): TerminalChannels {
+  return appCore().channels;
+}
+
+export const CAPABILITY_KEY = 'omniview.terminal-capabilities';
+
+export function sessionCapabilityStorage(_scope: unknown): CapabilityStorage {
+  return { read: () => undefined, write: () => undefined } as unknown as CapabilityStorage;
 }

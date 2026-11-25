@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CAPABILITY_DEADLINE_MS, CAPABILITY_SLOT, capabilityStorage, createTerminalChannels, loadTerminalChannels, streamOpener, type CapabilityStorage, type ChannelClient, type ChannelSocket } from './terminalChannel';
+import { CAPABILITY_KEY, createTerminalChannels, loadTerminalChannels, sessionCapabilityStorage, streamOpener, type CapabilityStorage, type ChannelClient, type ChannelSocket } from './terminalChannel';
 import type { ChannelEvents, TerminalChannels } from './channel';
 
 // The terminal channel (docs/ui-next/terminal-channel-protocol.md): the one place that holds the capabilities of the terminals of this page and their streams. What is tested here is the binary framing both ways,
@@ -156,10 +156,12 @@ function rig(options: RigOptions = {}): Rig {
     ListChannelTerminals: async (caps) => call('ListChannelTerminals', caps),
   };
   const storage: CapabilityStorage = {
-    read: async () => Promise.resolve(undefined),
-    write: async (text) => {
+    read: () => undefined,
+    write: (text) => {
       writes.push(text);
-      return options.writeFails === undefined ? Promise.resolve() : Promise.reject(options.writeFails);
+      if (options.writeFails !== undefined) {
+        throw options.writeFails;
+      }
     },
   };
   const deps = {
@@ -792,137 +794,98 @@ describe('the errors of the host', () => {
 });
 
 describe('where the capabilities are kept', () => {
-  it('writes the slot as a JSON object of id to capability on every change: a creation, a close, a dismissal, a not-found', async () => {
+  /** The storage of a tab, as far as the channel uses it. */
+  const tabStorage = (initial?: Record<string, string>) => {
+    const items = new Map<string, string>(Object.entries(initial ?? {}));
+    return {
+      items,
+      getItem: (key: string): string | null => items.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        items.set(key, value);
+      },
+    };
+  };
+
+  it('writes the storage as a JSON object of id to capability on every change: a creation, a close, a dismissal, a not-found', async () => {
     const r = rig();
     await r.channels.create('t1', { cols: 80, rows: 24 });
-    await turns();
     expect(r.writes.map((text) => JSON.parse(text) as unknown)).toEqual([{ t1: CAP }]);
     r.answers.create = () => ({ id: 't2', cap: CAP_2 });
     await r.channels.create('t2', { cols: 80, rows: 24 });
-    await turns();
     expect(JSON.parse(r.writes.at(-1) ?? 'null')).toEqual({ t1: CAP, t2: CAP_2 });
     await r.channels.close('t1');
-    await turns();
     expect(JSON.parse(r.writes.at(-1) ?? 'null')).toEqual({ t2: CAP_2 });
     await r.channels.dismiss('t2');
-    await turns();
     expect(JSON.parse(r.writes.at(-1) ?? 'null')).toEqual({});
     expect(r.writes).toHaveLength(4);
   });
 
-  it('writes in the order of the changes, one at a time, and the last write is what is now', async () => {
-    const r = rig();
-    const writes: string[] = [];
-    let release: () => void = () => undefined;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const slow = createTerminalChannels({
-      ...r.deps,
-      storage: {
-        read: r.storage.read,
-        write: async (text) => {
-          writes.push(text);
-          if (writes.length === 1) {
-            await held;
-          }
-        },
-      },
-    });
-    await slow.create('t1', { cols: 80, rows: 24 });
-    await turns();
-    expect(writes).toHaveLength(1);
-    await slow.close('t1');
-    await turns();
-    expect(writes).toHaveLength(1);
-    release();
-    await turns();
-    expect(writes.map((text) => JSON.parse(text) as unknown)).toEqual([{ t1: CAP }, {}]);
-  });
-
-  it('is read by the loader: a terminal a page left is reached by the capability its slot kept', async () => {
+  it('is read by the loader: a terminal a page left is reached by the capability its storage kept', () => {
     const r = rig();
     const stored = JSON.stringify({ t1: CAP, t2: CAP_2 });
-    const channels = await loadTerminalChannels({ ...r.deps, storage: { read: async () => Promise.resolve(stored), write: r.storage.write } });
+    const channels = loadTerminalChannels({ ...r.deps, storage: { read: () => stored, write: r.storage.write } });
     channels.connect('t2', 3, recorder().events);
     const socket = socketOf(r);
     socket.open();
     expect(attachJson(socket)).toEqual({ v: 1, cap: CAP_2, from_offset: 3 });
   });
 
-  it('is what the window service keeps in its slot called terminal-capabilities, as JSON', async () => {
-    const slots = new Map<string, string>();
-    const calls: string[] = [];
-    const client = {
-      GetState: async (name: string) => {
-        calls.push(`get ${name}`);
-        return Promise.resolve(Object.fromEntries(slots));
-      },
-      SaveState: async (name: string, slot: string, json: string) => {
-        calls.push(`save ${name} ${slot}`);
-        slots.set(slot, json);
-        return Promise.resolve();
-      },
-    };
-    const storage = capabilityStorage({ client, name: async () => Promise.resolve('main') });
-    expect(CAPABILITY_SLOT).toBe('terminal-capabilities');
-    await expect(storage.read()).resolves.toBeUndefined();
-    await storage.write('{"t1":"x"}');
-    expect(slots.get('terminal-capabilities')).toBe('{"t1":"x"}');
-    await expect(storage.read()).resolves.toBe('{"t1":"x"}');
-    expect(calls).toEqual(['get main', 'save main terminal-capabilities', 'get main']);
+  it('is the tab\'s sessionStorage under one key, as JSON, and no other place', () => {
+    const tab = tabStorage();
+    const storage = sessionCapabilityStorage({ sessionStorage: tab });
+    expect(CAPABILITY_KEY).toBe('omniview.terminal-capabilities');
+    expect(storage.read()).toBeUndefined();
+    storage.write('{"t1":"x"}');
+    expect([...tab.items.keys()]).toEqual(['omniview.terminal-capabilities']);
+    expect(tab.items.get('omniview.terminal-capabilities')).toBe('{"t1":"x"}');
+    expect(storage.read()).toBe('{"t1":"x"}');
   });
 
-  it('is round-tripped: what one page wrote, the next page reads', async () => {
-    const slots = new Map<string, string>();
-    const client = {
-      GetState: async () => Promise.resolve(Object.fromEntries(slots)),
-      SaveState: async (_name: string, slot: string, json: string) => {
-        slots.set(slot, json);
-        return Promise.resolve();
-      },
-    };
-    const storage = capabilityStorage({ client, name: async () => Promise.resolve('main') });
+  it('is round-tripped: what one page wrote to its tab, the reloaded page reads', async () => {
+    const tab = tabStorage();
+    const storage = sessionCapabilityStorage({ sessionStorage: tab });
     const first = rig();
-    const before = createTerminalChannels({ ...first.deps, storage });
-    await before.create('t1', { cols: 80, rows: 24 });
-    await turns();
+    await createTerminalChannels({ ...first.deps, storage }).create('t1', { cols: 80, rows: 24 });
     const second = rig();
-    const after = await loadTerminalChannels({ ...second.deps, storage });
-    after.connect('t1', undefined, recorder().events);
+    loadTerminalChannels({ ...second.deps, storage }).connect('t1', undefined, recorder().events);
     const socket = socketOf(second);
     socket.open();
     expect(attachJson(socket)).toEqual({ v: 1, cap: CAP });
   });
 
-  it('never blocks the window: a slot that cannot be read starts with no terminals, and says so without the capability', async () => {
+  it('never blocks the window: a storage that cannot be read starts with no terminals, and says so without the capability', async () => {
     const r = rig();
-    const channels = await loadTerminalChannels({ ...r.deps, storage: { read: async () => Promise.reject(new Error(`the host did not answer for ${CAP}`)), write: r.storage.write } });
+    const channels = loadTerminalChannels({
+      ...r.deps,
+      storage: {
+        read: () => {
+          throw new Error(`the storage failed for ${CAP}`);
+        },
+        write: r.storage.write,
+      },
+    });
     expect(r.warnings.length).toBeGreaterThan(0);
+    expect(JSON.stringify(r.warnings)).not.toContain(CAP);
     channels.connect('t1', undefined, recorder().events);
     await turns();
     expect(r.opened).toEqual([]);
     await expect(channels.create('t1', { cols: 80, rows: 24 })).resolves.toBeDefined();
   });
 
-  it('never blocks the window: a slot that never answers is given up after the deadline', async () => {
-    vi.useFakeTimers();
-    try {
-      const r = rig();
-      let done = false;
-      const loading = loadTerminalChannels({ ...r.deps, storage: { read: async () => new Promise<string | undefined>(() => undefined), write: r.storage.write } }).then((channels) => {
-        done = true;
-        return channels;
-      });
-      await vi.advanceTimersByTimeAsync(CAPABILITY_DEADLINE_MS - 1);
-      expect(done).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      await loading;
-      expect(done).toBe(true);
-      expect(r.warnings.length).toBeGreaterThan(0);
-    } finally {
-      vi.useRealTimers();
-    }
+  it('never blocks the window: a tab with no sessionStorage (its access refused) reads and writes as a failure, which the channel takes as memory only', async () => {
+    const refusing = {
+      get sessionStorage(): never {
+        throw new Error('SecurityError');
+      },
+    };
+    const storage = sessionCapabilityStorage(refusing);
+    expect(() => storage.read()).toThrow();
+    const r = rig();
+    const channels = loadTerminalChannels({ ...r.deps, storage });
+    expect(r.warnings.length).toBeGreaterThan(0);
+    await expect(channels.create('t1', { cols: 80, rows: 24 })).resolves.toBeDefined();
+    connected(r);
+    expect(r.opened).toEqual(['terminal']);
   });
 
   it.each<readonly [string, string]>([
@@ -931,9 +894,9 @@ describe('where the capabilities are kept', () => {
     ['a number', '5'],
     ['entries that are not text', JSON.stringify({ t1: 5, t2: null, t3: { cap: CAP } })],
     ['capabilities that cannot be one', JSON.stringify({ t1: '', t2: 'has a space', t3: 'x'.repeat(2000) })],
-  ])('starts with no terminals, and says so, for a slot of %s', async (_name, text) => {
+  ])('starts with no terminals, and says so, for a storage of %s', async (_name, text) => {
     const r = rig();
-    const channels = await loadTerminalChannels({ ...r.deps, storage: { read: async () => Promise.resolve(text), write: r.storage.write } });
+    const channels = loadTerminalChannels({ ...r.deps, storage: { read: () => text, write: r.storage.write } });
     expect(r.warnings.length).toBeGreaterThan(0);
     for (const id of ['t1', 't2', 't3']) {
       channels.connect(id, undefined, recorder().events);
@@ -943,31 +906,29 @@ describe('where the capabilities are kept', () => {
     expect(r.opened).toEqual([]);
   });
 
-  it('keeps the entries of a slot that can be used, and drops those that cannot', async () => {
+  it('keeps the entries of a storage that can be used, and drops those that cannot', async () => {
     const r = rig();
-    const channels = await loadTerminalChannels({ ...r.deps, storage: { read: async () => Promise.resolve(JSON.stringify({ t1: CAP, t2: 7 })), write: r.storage.write } });
+    const channels = loadTerminalChannels({ ...r.deps, storage: { read: () => JSON.stringify({ t1: CAP, t2: 7 }), write: r.storage.write } });
     channels.connect('t1', undefined, recorder().events);
     channels.connect('t2', undefined, recorder().events);
     await turns();
     expect(r.opened).toEqual(['terminal']);
   });
 
-  it('is not written for a slot that was read and said nothing: a window with no terminals writes nothing', async () => {
+  it('writes nothing for a storage that was read and said nothing: a tab with no terminals writes nothing', () => {
     const r = rig();
-    await loadTerminalChannels({ ...r.deps, storage: { read: async () => Promise.resolve(undefined), write: r.storage.write } });
-    await turns();
+    loadTerminalChannels({ ...r.deps, storage: { read: () => undefined, write: r.storage.write } });
     expect(r.writes).toEqual([]);
   });
 
-  it('goes on when the slot cannot be written: the terminal is made and reached, and a note says so without the capability', async () => {
-    const r = rig({ writeFails: new Error('could not save') });
+  it('goes on when the storage cannot be written: the terminal is made and reached, and a note says so without the capability', async () => {
+    const r = rig({ writeFails: new Error(`could not save ${CAP}`) });
     await expect(r.channels.create('t1', { cols: 80, rows: 24 })).resolves.toBeDefined();
-    await turns();
     expect(r.warnings.length).toBeGreaterThan(0);
+    expect(JSON.stringify(r.warnings)).not.toContain(CAP);
     connected(r);
     expect(r.opened).toEqual(['terminal']);
     await r.channels.close('t1');
-    await turns();
     expect(r.warnings.length).toBeGreaterThan(1);
   });
 });
@@ -994,7 +955,7 @@ describe('the capability, which nothing says', () => {
 
   it('is in no note, no error and no console text, whatever fails and whatever the place echoes of it', async () => {
     const r = rig({ writeFails: new Error(`cannot save ${JSON.stringify({ t1: CAP })}`) });
-    const broken = await loadTerminalChannels({ ...r.deps, storage: { read: async () => Promise.resolve(`{"t1": "${CAP}", "t2": 5, ${CAP}`), write: r.storage.write } });
+    const broken = loadTerminalChannels({ ...r.deps, storage: { read: () => `{"t1": "${CAP}", "t2": 5, ${CAP}`, write: r.storage.write } });
     const failing = rig({ writeFails: new Error(`cannot save ${CAP}`) });
     const said: string[] = [];
     failing.answers.fails.ChannelTerminalBusy = echoing(CAP);
@@ -1210,7 +1171,7 @@ describe('what a mutation of the channel would change', () => {
 
   it('does not overwrite a capability it holds with one a slot read later holds, and takes in the others', async () => {
     const r = rig();
-    const channels = await loadTerminalChannels({ ...r.deps, saved: { t1: CAP_2 }, storage: { read: async () => Promise.resolve(JSON.stringify({ t1: CAP, t2: CAP_3 })), write: r.storage.write } });
+    const channels = loadTerminalChannels({ ...r.deps, saved: { t1: CAP_2 }, storage: { read: () => JSON.stringify({ t1: CAP, t2: CAP_3 }), write: r.storage.write } });
     channels.connect('t1', undefined, recorder().events);
     channels.connect('t2', undefined, recorder().events);
     r.sockets[0]?.open();
