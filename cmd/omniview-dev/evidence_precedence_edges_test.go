@@ -13,6 +13,9 @@ import (
 )
 
 func TestWorkspaceExplicitMalformedEvidenceDoesNotReuseSavedAuthorityEdges(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev CLI over real workspaces and child processes")
+	}
 	for _, verb := range []string{"up", "preflight", "refresh", "update", "follow", "recover", "link"} {
 		t.Run(verb, func(t *testing.T) {
 			f := newCLIEdgeFixture(t)

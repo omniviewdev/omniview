@@ -27,6 +27,9 @@ func selectedRepository(t *testing.T, w Workspace, id string) devcontract.Reposi
 }
 
 func TestRepositoryAddRemovePreservesMappingsAndReferencedResources(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
@@ -68,6 +71,9 @@ func TestRepositoryAddRemovePreservesMappingsAndReferencedResources(t *testing.T
 }
 
 func TestEditResolvesPluginIdentityFromSelectedAndRetainedCommits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
@@ -102,6 +108,9 @@ func TestEditResolvesPluginIdentityFromSelectedAndRetainedCommits(t *testing.T) 
 }
 
 func TestRemoteTrackingSelectionFetchesBeforeResolvingAndPinsDoNotFetch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
@@ -132,6 +141,9 @@ func TestRemoteTrackingSelectionFetchesBeforeResolvingAndPinsDoNotFetch(t *testi
 }
 
 func TestRepositoryRemovalRefusesDirtyWorkspaceWithoutChangingRegistry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "ui")
 	ctx := context.Background()
@@ -164,6 +176,9 @@ func TestPinnedRefClassification(t *testing.T) {
 }
 
 func TestPluginDiscoveryDoesNotFetchUnselectedRemote(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()
@@ -252,6 +267,9 @@ func TestPluginDiscoveryReportsMissingSourcePath(t *testing.T) {
 }
 
 func TestMissingPinnedSelectionRequiresExplicitFetch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "omniview")
 	ctx := context.Background()

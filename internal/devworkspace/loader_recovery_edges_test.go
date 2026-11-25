@@ -13,6 +13,9 @@ import (
 // No subprocess is launched. The stopped guard authorizes explicit dependency
 // reset, including the managed Vite loader cache, without adopting root files.
 func TestLoaderRecoveryEdgesStoppedWriterHasSupportedRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)

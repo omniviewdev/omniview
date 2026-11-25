@@ -14,6 +14,9 @@ import (
 // A refusal at the host boundary proves selection without inventing a successful
 // native build or readiness observation.
 func TestNativeContentChangesReachOwnedHostRebuild(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	// Every case removes its input. The owned watch transaction needs only
 	// the host and SDK sources, not unrelated UI and plugin compositions.
@@ -58,6 +61,9 @@ func TestNativeContentChangesReachOwnedHostRebuild(t *testing.T) {
 }
 
 func TestLiveFrontendContentChangesDoNotReplaceHost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	g, _, hooks, _ := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 	for _, extension := range []string{".js", ".tsx", ".css"} {
@@ -82,6 +88,9 @@ func TestLiveFrontendContentChangesDoNotReplaceHost(t *testing.T) {
 }
 
 func TestNativeContentInvalidatesBootstrapReuseButTimestampDoesNot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	// Reuse validates bytes and ownership; this test never executes the artifact.
 	binary := []byte("native host fixture\n")

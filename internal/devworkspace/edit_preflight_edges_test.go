@@ -54,6 +54,9 @@ func editOutputFixture(t *testing.T) (*Manager, Workspace, string) {
 }
 
 func TestPreflightRenameProjectsCompletedTrackedOutputWithoutMutationEdges(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, name := range []string{"owned", "tampered", "staged-original"} {
 		t.Run(name, func(t *testing.T) {

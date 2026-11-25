@@ -31,6 +31,9 @@ func finiteBuildFixture(t *testing.T) (devcontract.ResolvedWorkspace, devcompose
 }
 
 func TestFiniteViteBuildReservesEveryConsumerUntilCompletion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev outputs over real files and handles")
+	}
 	ctx := context.Background()
 	w, plan, consumers, store := finiteBuildFixture(t)
 	build, err := BeginViteBuild(ctx, w, plan, consumers)
@@ -85,6 +88,9 @@ func TestFiniteViteBuildReservesEveryConsumerUntilCompletion(t *testing.T) {
 }
 
 func TestFiniteViteBuildRejectsInvalidConsumersBeforeReservation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev outputs over real files and handles")
+	}
 	for _, kind := range []string{"empty", "duplicate", "relative", "escaping", "unselected", "redirected"} {
 		t.Run(kind, func(t *testing.T) {
 			ctx := context.Background()
@@ -136,6 +142,9 @@ func TestFiniteViteBuildRejectsInvalidConsumersBeforeReservation(t *testing.T) {
 }
 
 func TestFiniteViteBuildNeverAdoptsTamperedImmutableBytes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev outputs over real files and handles")
+	}
 	for _, when := range []string{"admission", "completion"} {
 		t.Run(when, func(t *testing.T) {
 			ctx := context.Background()
@@ -174,6 +183,9 @@ func TestFiniteViteBuildNeverAdoptsTamperedImmutableBytes(t *testing.T) {
 }
 
 func TestFiniteViteBuildChecksConsumerModulesAndInputsBeforeEachProducer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev outputs over real files and handles")
+	}
 	for _, kind := range []string{"modules", "input", "input-set"} {
 		t.Run(kind, func(t *testing.T) {
 			ctx := context.Background()
@@ -209,6 +221,9 @@ func TestFiniteViteBuildChecksConsumerModulesAndInputsBeforeEachProducer(t *test
 }
 
 func TestFiniteViteBuildRefusesEachReplacedConsumerCacheBeforeProducer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev outputs over real files and handles")
+	}
 	for _, kind := range []Producer{loaderCache, typeCache, viteCache} {
 		t.Run(string(kind), func(t *testing.T) {
 			ctx := context.Background()

@@ -74,6 +74,9 @@ func (f *resetModulesFixture) outputJournal(t *testing.T) map[string]json.RawMes
 }
 
 func TestResetModulesReinstallsExternallyChangedTreeThroughRecordedWriter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -100,6 +103,9 @@ func TestResetModulesReinstallsExternallyChangedTreeThroughRecordedWriter(t *tes
 }
 
 func TestResetModulesRemovesUnrecordedSelectedPackageModules(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -117,6 +123,9 @@ func TestResetModulesRemovesUnrecordedSelectedPackageModules(t *testing.T) {
 }
 
 func TestResetModulesDiscardsInterruptedWriterIntent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -133,6 +142,9 @@ func TestResetModulesDiscardsInterruptedWriterIntent(t *testing.T) {
 }
 
 func TestResetModulesRefusesRedirectedModulesTree(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -150,6 +162,9 @@ func TestResetModulesRefusesRedirectedModulesTree(t *testing.T) {
 }
 
 func TestResetModulesLeavesPublishedDistributionUntouched(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -236,6 +251,9 @@ func TestResetModulesUnblocksInterruptedUnlinkWithoutReinstall(t *testing.T) {
 }
 
 func TestResetModulesRetiresCompilerCachesAndPreservesSiblingState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)

@@ -25,6 +25,9 @@ func outputGraphNode(t *testing.T, g *BuildGraph, id string) BuildNode {
 }
 
 func TestGraphPublishesOwnedJavaScriptThenRestoresCurrentSource(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	g := graphFixture(t)
 	ctx := context.Background()
@@ -62,6 +65,9 @@ func TestGraphPublishesOwnedJavaScriptThenRestoresCurrentSource(t *testing.T) {
 }
 
 func TestGraphRefusesPreexistingIgnoredDistribution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	g := graphFixture(t)
 	base := outputGraphNode(t, g, "base-ui")
@@ -77,6 +83,9 @@ func TestGraphRefusesPreexistingIgnoredDistribution(t *testing.T) {
 }
 
 func TestGraphUnknownProducerLifetimeRetainsStageAndCacheIntent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	g := graphFixture(t)
 	base := outputGraphNode(t, g, "base-ui")

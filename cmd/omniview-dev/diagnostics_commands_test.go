@@ -64,6 +64,9 @@ func TestCaptureTerminalStatesFailHonestly(t *testing.T) {
 }
 
 func TestCapturePollingFailurePreservesPrimaryExit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev CLI over real workspaces and child processes")
+	}
 	for _, test := range []struct {
 		status int
 		exit   int

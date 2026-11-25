@@ -301,6 +301,7 @@ tasks:
         GOWORK=off GOFLAGS= go vet -modfile="$HOST_MODFILE" ./...
 
   check:go-test:
+    summary: "Run the Go tests. A pull request passes -short, which skips the slow tests: task check:go-test -- -short (docs/ui-next/AGENTS.md, rule 40)"
     cmds:
       - |
         set -e
@@ -309,7 +310,7 @@ tasks:
         if [ "${CI:-}" = "true" ]; then
           set -- -json
         fi
-        GOWORK=off GOFLAGS= go test "$@" -modfile="$HOST_MODFILE" ./...
+        GOWORK=off GOFLAGS= go test "$@" {{.CLI_ARGS}} -modfile="$HOST_MODFILE" ./...
 
   check:go-test-devcontrol:
     summary: Run the development-control host tests that only build with the devcontrol tag

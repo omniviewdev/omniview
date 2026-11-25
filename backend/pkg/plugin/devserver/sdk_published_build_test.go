@@ -141,6 +141,9 @@ func requireTyped(t *testing.T, err error, code string) *devcontract.Error {
 }
 
 func TestPublishedManagedBuildCompilesAgainstTheDeclaredRelease(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: plugin dev server with a real compile and file watcher")
+	}
 	build := newPublishedBuild(t, nil)
 	before := digestOf(t, build.plugin, "go.mod", "go.sum", "pkg/main.go")
 	entries, err := os.ReadDir(build.plugin)
@@ -176,6 +179,9 @@ func TestPublishedManagedBuildCompilesAgainstTheDeclaredRelease(t *testing.T) {
 }
 
 func TestPublishedManagedBuildRefusesUntrustedSDKSelectionsTypedAndUnattested(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: plugin dev server with a real compile and file watcher")
+	}
 	appendTo := func(name, content string) func(*publishedBuild, *testing.T) {
 		return func(b *publishedBuild, t *testing.T) {
 			path := filepath.Join(b.plugin, name)

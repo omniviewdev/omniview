@@ -244,6 +244,9 @@ func TestViteFeedbackHoldsBeforePublicationUntilAllReplacementReadiness(t *testi
 }
 
 func TestViteFeedbackFailureCannotBeReleasedByUnrelatedFrontendSuccess(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, failure := range []string{"producer", "host", "plugin", "refresh"} {
 		t.Run(failure, func(t *testing.T) {
@@ -286,6 +289,9 @@ func TestViteFeedbackFailureCannotBeReleasedByUnrelatedFrontendSuccess(t *testin
 }
 
 func TestViteFeedbackRefusesUnknownExistingFileBeforePublishing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	g, _, hooks, path := feedbackWatchFixture(t, graphFixtureOptions{NoUI: true})
 	foreign := []byte(`{"schemaVersion":1,"workspaceID":"11111111-1111-4111-8111-111111111111","generation":"22222222-2222-4222-8222-222222222222","workspaceRoot":"` + g.workspace.Root + `","held":false}`)
@@ -311,6 +317,9 @@ func TestViteFeedbackRefusesUnknownExistingFileBeforePublishing(t *testing.T) {
 }
 
 func TestViteFeedbackRejectsTamperedOwnershipBeforeRelease(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	g, s, hooks, path := feedbackWatchFixture(t, graphFixtureOptions{NativeOnly: true})
 	bindings := g.options.Bindings
@@ -386,6 +395,9 @@ func TestViteFeedbackRejectsTamperedOwnershipBeforeRelease(t *testing.T) {
 }
 
 func TestSourceUpdateEarlyQuiescenceFailureCannotRemainReady(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, failure := range []string{"feedback-integrity", "backend-quiescence"} {
 		t.Run(failure, func(t *testing.T) {

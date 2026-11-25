@@ -136,6 +136,9 @@ func liveCacheFixture(t *testing.T) (scope, string, *Writer, string) {
 }
 
 func TestSharedCacheAdmissionAndFinishDoNotReadOtherLiveWriterPayload(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev outputs over real files and handles")
+	}
 	for _, kind := range []Producer{loaderCache, typeCache, viteCache} {
 		t.Run(string(kind), func(t *testing.T) {
 			s, consumer, first, _ := liveCacheFixture(t)

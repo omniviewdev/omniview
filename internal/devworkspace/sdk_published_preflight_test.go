@@ -84,6 +84,9 @@ func TestPublishedPreflightNamesAnImportTheReleaseLacks(t *testing.T) {
 // Replacements, vendoring and unreviewed or damaged releases are refused with
 // their own typed codes.
 func TestPublishedPreflightRefusals(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Run("replace in the plugin", func(t *testing.T) {
 		env := newPubEnv(t)
 		w := env.workspace()

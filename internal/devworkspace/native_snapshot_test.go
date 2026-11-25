@@ -7,6 +7,9 @@ import (
 )
 
 func TestNativeSnapshotRetainsExactBundleNamespaceAfterSourceCleanup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	w := generatedFixture(t)
 	w.StateRoot = filepath.Join(filepath.Dir(filepath.Dir(w.Root)), "profiles", "state")

@@ -17,6 +17,7 @@ This ensures bindings are generated with the correct flags, output directory (`p
 ```bash
 GOWORK=off go build .           # Build the Go backend
 GOWORK=off go test ./... -count=1  # Run all Go tests
+GOWORK=off go test -short ./...    # What a pull request runs: the slow tests skip themselves (docs/ui-next/AGENTS.md, rule 40)
 task dev                        # Run the full app in dev mode
 ```
 
