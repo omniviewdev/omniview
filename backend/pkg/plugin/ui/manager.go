@@ -13,7 +13,7 @@ import (
 // ComponentManager is responsible for managing UI components.
 type componentManager struct {
 	logger                 logging.Logger
-	resourceComponentStore ResourceComponentStore
+	resourceComponentStore *ResourceComponentStore
 }
 
 // ServiceWrapper exposes only frontend-safe methods of componentManager.
@@ -114,7 +114,7 @@ func (cm *componentManager) OnPluginDestroy(_ context.Context, pluginID string, 
 	return nil
 }
 
-func (cm *componentManager) GetResourceComponentStore() ResourceComponentStore {
+func (cm *componentManager) GetResourceComponentStore() *ResourceComponentStore {
 	return cm.resourceComponentStore
 }
 

@@ -55,6 +55,7 @@ func TestTheEndOfATerminalSaysHowManyBytesItWrote(t *testing.T) {
 // A window that goes away detaches the terminals that have a page key and ends the others, as it always did.
 func TestAWindowGoingAwayDetachesATerminalWithAPageKeyAndEndsAnyOther(t *testing.T) {
 	m, sink := newPageManager(t)
+	clock := withFakeClock(m)
 	keyed := m.startKeyed(t, `printf 'k\n'; sleep 30`, "w1", Options{})
 	plain, err := m.Start(Options{Command: []string{sh(t), "-c", `sleep 30`}}, "w1")
 	require.NoError(t, err)
@@ -79,8 +80,7 @@ func TestAWindowGoingAwayDetachesATerminalWithAPageKeyAndEndsAnyOther(t *testing
 	assert.Equal(t, uint64(len("k\r\n")), listed[0].NextOffset)
 	assert.Zero(t, listed[0].ReplayStart)
 	assert.Nil(t, listed[0].Ended)
-	expires := time.UnixMilli(listed[0].LeaseExpiresUnixMs)
-	assert.WithinDuration(t, time.Now().Add(LeaseDefault), expires, 5*time.Second, "kept for the default lease, five minutes")
+	assert.Equal(t, clock.Now().Add(LeaseDefault).UnixMilli(), listed[0].LeaseExpiresUnixMs, "kept for the default lease, five minutes")
 
 	assert.False(t, gone(foreign.PID), "another window's terminal is untouched")
 	assert.Equal(t, Released{Detached: 0, Ended: 0}, m.ReleaseOwned("w1", ClosedByWindow), "nothing is left to release")
@@ -311,12 +311,13 @@ func TestAPageKeyAndALeaseAreCheckedBeforeAnythingStarts(t *testing.T) {
 // answer says which applies; detaching a detached terminal changes nothing.
 func TestDetachKeepsTheTerminalForALeaseThatIsCutToTheMostAndIsIdempotent(t *testing.T) {
 	m, _ := newPageManager(t)
+	clock := withFakeClock(m)
 	opened := m.startKeyed(t, `sleep 30`, "w1", Options{LeaseMs: 120000})
 	assert.Equal(t, 120000, opened.LeaseMs)
 	first, err := m.Detach(opened.ID, "w1", DetachRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, 120000, first.LeaseMs, "the terminal's own lease")
-	assert.WithinDuration(t, time.Now().Add(120*time.Second), time.UnixMilli(first.LeaseExpiresUnixMs), 5*time.Second)
+	assert.Equal(t, clock.Now().Add(120*time.Second).UnixMilli(), first.LeaseExpiresUnixMs)
 	again, err := m.Detach(opened.ID, nil, DetachRequest{PageKey: testKey, LeaseMs: 5000})
 	require.NoError(t, err, "the key detaches as the owner does")
 	assert.Equal(t, first, again, "a detached terminal stays as it is")
@@ -330,19 +331,23 @@ func TestDetachKeepsTheTerminalForALeaseThatIsCutToTheMostAndIsIdempotent(t *tes
 	got, err := m.Detach(short.ID, "w1", DetachRequest{LeaseMs: 2500})
 	require.NoError(t, err)
 	assert.Equal(t, 2500, got.LeaseMs)
-	assert.WithinDuration(t, time.Now().Add(2500*time.Millisecond), time.UnixMilli(got.LeaseExpiresUnixMs), 2*time.Second)
+	assert.Equal(t, clock.Now().Add(2500*time.Millisecond).UnixMilli(), got.LeaseExpiresUnixMs)
 }
 
 // A lease that runs out ends the terminal the way a close does: the shell is hung up, what ignored the hangup
 // is killed after the grace, one CLOSE says why, and no process is left.
 func TestALeaseThatRunsOutEndsTheTerminalTheWayACloseDoes(t *testing.T) {
 	m, sink := newPageManager(t)
+	clock := withFakeClock(m)
 	polite := m.startKeyed(t, `printf 'hello\n'; sleep 60`, "w1", Options{LeaseMs: 300})
 	stubborn := m.startKeyed(t, `trap '' HUP; printf 'ready\n'; while :; do sleep 1; done`, "w1", Options{LeaseMs: 300})
 	sink.waitFor(t, polite.ID, "hello\r\n")
 	sink.waitFor(t, stubborn.ID, "ready\r\n")
-	started := time.Now()
 	assert.Equal(t, Released{Detached: 2, Ended: 0}, m.ReleaseOwned("w1", ClosedByWindow))
+	clock.Advance(300*time.Millisecond - time.Millisecond)
+	assert.False(t, m.session(t, polite.ID).ending.Load(), "not before the lease")
+	assert.False(t, m.session(t, stubborn.ID).ending.Load(), "not before the lease")
+	clock.Advance(time.Millisecond)
 
 	for _, info := range []Session{polite, stubborn} {
 		end := sink.waitEnd(t, info.ID)
@@ -351,7 +356,6 @@ func TestALeaseThatRunsOutEndsTheTerminalTheWayACloseDoes(t *testing.T) {
 		assert.Positive(t, end.LastOffset)
 		requireGone(t, info.PID, "the terminal whose lease ran out")
 	}
-	assert.GreaterOrEqual(t, time.Since(started), 300*time.Millisecond, "not before the lease")
 	assert.Empty(t, m.List(nil, testKey), "nothing is left to list")
 	require.Eventually(t, func() bool { return len(m.running()) == 0 }, 20*time.Second, 5*time.Millisecond)
 	_, err := m.Attach(polite.ID, "w2", AttachRequest{PageKey: testKey})

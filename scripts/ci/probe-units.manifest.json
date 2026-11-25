@@ -419,6 +419,7 @@
       "early-size",
       "size-off",
       "resize-dropped",
+      "webgl-every-show",
       "input-serial",
       "focus-close-button",
       "focus-delete-swallowed",

@@ -1,0 +1,98 @@
+#!/bin/bash
+# Negative controls for T698-time (#698 item 23). Each fault is put into a SCRATCH copy of one source file and built with
+# `go test -overlay`; the worktree is never edited. A control has two halves (AGENTS 28):
+#   1. with the touched tests, the ones that go red are exactly the ones named for it;
+#   2. with the whole package and the named tests skipped (the assertion removed), the same fault is reported: PASS
+#      (only the named tests see it) or ALSO CAUGHT by the other tests of the package that see it (not a failure of the
+#      control: those tests were there before and were not touched).
+# TestAShellThatIsNotInstalledFallsBack... fails on a clean origin/main of this machine (no shell fallback here): it is
+# skipped in half 2 so that it does not read as a detection.
+# Run from anywhere in the worktree (it changes to the git root itself), with the path of this file:
+#   bash <path>/mutations.sh.txt [control-name]
+# An unknown control name exits 2 and lists the names; a half that fails without a failed test name is a harness failure.
+# Needs the Go toolchain on PATH and GNU sed (the faults use \t and a range with a block): on macOS `brew install
+# gnu-sed`, which is found as gsed. The scratch copy is written by redirection, never with `sed -i`.
+export GOWORK=off GOTOOLCHAIN=local
+WT=$(git rev-parse --show-toplevel) || exit 2
+PKG=./backend/pkg/terminal/
+M=$(mktemp -d "${TMPDIR:-/tmp}/t698time-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M"' EXIT
+SED=$(command -v gsed || command -v sed)
+[ "$(echo a | "$SED" -E 's/a/\t/' | od -An -c | tr -d ' ')" = '\t\n' ] || { echo "needs GNU sed (gsed on macOS)" >&2; exit 2; }
+cd "$WT" || exit 2
+only="${1:-}"
+bad=0
+matched=0
+names=''
+TOUCHED='^(TestClosingASessionThatIsPausedForCreditEndsItAndDeliversItsClose|TestShutdownEndsEverySessionAndRefusesNewOnes|TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace|TestAWindowGoingAwayDetachesATerminalWithAPageKeyAndEndsAnyOther|TestDetachKeepsTheTerminalForALeaseThatIsCutToTheMostAndIsIdempotent|TestALeaseThatRunsOutEndsTheTerminalTheWayACloseDoes)$'
+BASELINE=TestAShellThatIsNotInstalledFallsBackAndTheAnswerSaysWhichStarted
+
+# unfinished says whether a go test run did not finish: a panic, a timeout, a build or setup failure, or no final
+# package line (ok or FAIL), whatever tests had failed before it.
+unfinished() {
+  echo "$1" | grep -Eq '^panic:|test timed out|\[build failed\]|\[setup failed\]' && return 0
+  echo "$1" | grep -Eq '^(ok|FAIL)[[:space:]]+[^[:space:]]+terminal[[:space:]]' || return 0
+  return 1
+}
+
+# name | file | sed expression | the tests named for it (sorted, separated by spaces)
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"
+  names="$names $name"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  matched=1
+  "$SED" -E -e "$expr" "$WT/$file" > "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+
+  out=$(go test -overlay="$M/$name.json" "$PKG" -run "$TOUCHED" -count=1 -timeout 300s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E '^--- FAIL' | "$SED" -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | "$SED" 's/ $//')
+  if unfinished "$out"; then half1="HARNESS FAILURE (the run panicked, timed out, did not build or did not finish)"; bad=1
+  elif [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
+  elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
+  elif [ "$failed" != "$named" ]; then half1="RED in [$failed], named [$named]"; bad=1
+  else half1="RED in exactly [$failed]"; fi
+
+  skip="^($(echo "$named $BASELINE" | "$SED" 's/ /|/g'))\$"
+  out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -count=1 -timeout 600s 2>&1)
+  code2=$?
+  caught=$(echo "$out2" | grep -E '^--- FAIL' | "$SED" -E 's/ \(.*//' | tr '\n' ' ')
+  if unfinished "$out2"; then half2="without them: HARNESS FAILURE (the run panicked, timed out, did not build or did not finish)"; bad=1
+  elif [ $code2 -eq 0 ]; then half2="without them: PASS (undetected)"
+  elif [ -z "$caught" ]; then half2="without them: HARNESS FAILURE (the run failed with no failed test named)"; bad=1
+  else half2="without them: ALSO CAUGHT by other tests [$caught]"; fi
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+R=backend/pkg/terminal/reattach.go
+G=backend/pkg/terminal/manager.go
+LEASE='TestAWindowGoingAwayDetachesATerminalWithAPageKeyAndEndsAnyOther TestDetachKeepsTheTerminalForALeaseThatIsCutToTheMostAndIsIdempotent'
+RUNOUT=TestALeaseThatRunsOutEndsTheTerminalTheWayACloseDoes
+HANG=TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace
+PAUSED=TestClosingASessionThatIsPausedForCreditEndsItAndDeliversItsClose
+SHUT=TestShutdownEndsEverySessionAndRefusesNewOnes
+
+run lease-end-read-from-the-wall-clock $R \
+  's/^\ts.leaseEnd = s.clock.Now\(\).Add\(lease\)$/\ts.leaseEnd = time.Now().Add(lease)/' "$LEASE"
+run lease-end-one-second-late $R \
+  's/^\ts.leaseEnd = s.clock.Now\(\).Add\(lease\)$/\ts.leaseEnd = s.clock.Now().Add(lease + time.Second)/' "$LEASE"
+run lease-timer-fires-early $R \
+  's/s.clock.AfterFunc\(lease, func\(\) \{ s.expire\(gen\) \}\)/s.clock.AfterFunc(lease\/2, func() { s.expire(gen) })/' "$RUNOUT"
+run lease-timer-fires-late $R \
+  's/s.clock.AfterFunc\(lease, func\(\) \{ s.expire\(gen\) \}\)/s.clock.AfterFunc(lease*2, func() { s.expire(gen) })/' "$RUNOUT"
+run close-does-not-wait-for-the-session $G \
+  's/^\tm.awaitGone\(\[\]\*session\{s\}\)$/\t_ = s/' "$PAUSED $HANG"
+run shutdown-does-not-wait-for-the-sessions $G \
+  's/^\tm.awaitGone\(sessions\)$/\t_ = sessions/' "$SHUT"
+run close-does-not-release-the-pacing $G \
+  's/^\ts.flow.release\(\)$/\t_ = 0/' "$PAUSED"
+run hangup-does-not-reach-the-shell $G \
+  's/^\t_ = s.cmd.Process.Signal\(syscall.SIGHUP\)$/\t_ = 0/' "$HANG"
+run grace-never-kills $G \
+  '/^func \(s \*session\) hangup/,/^}/{s/^\ts.signalForeground\(syscall.SIGKILL\)$/\t_ = 0/;s/^\ts.cancel\(\)$/\t_ = 0/}' "$RUNOUT $HANG"
+run grace-is-no-grace $G \
+  's/^\ttimer := time.NewTimer\(grace\)$/\ttimer := time.NewTimer(0)/' "$HANG"
+
+if [ -n "$only" ] && [ $matched -eq 0 ]; then echo "unknown control '$only'; the controls are:$names" >&2; exit 2; fi
+exit $bad
