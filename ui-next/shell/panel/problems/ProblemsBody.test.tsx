@@ -28,7 +28,10 @@ vi.mock('@omniviewdev/kit', async (importOriginal) => {
   return {
     ...kit,
     DataView: (props: Parameters<typeof kit.DataView>[0]) => {
-      held.columns = props.table.columns;
+      if (props.table !== undefined) {
+        held.columns = props.table.columns;
+      }
+
       return kit.DataView(props);
     },
   };

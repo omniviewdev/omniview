@@ -42,8 +42,9 @@ func NewForwarder(target string) *Forwarder {
 	return &Forwarder{target: target}
 }
 
-// ForwardResource listens on the loopback on the local port of the start (any free port, for 0) and relays every connection it accepts to the target. It is ready when it listens. It runs until ctx is cancelled, and
-// then closes the listener and every connection it relays; a listener that fails before that is said on the error channel, which is closed when the forward has ended and nothing of it is running.
+// ForwardResource listens on the loopback on the local port of the start (any free port, for 0) and relays every connection it accepts to the target. It is ready when it listens, and it states where it listens: the host of the
+// address its listener really bound, which the SDK puts in the session. It runs until ctx is cancelled, and then closes the listener and every connection it relays; a listener that fails before that is said on the error channel, which
+// is closed when the forward has ended and nothing of it is running.
 func (f *Forwarder) ForwardResource(ctx context.Context, _ *types.PluginContext, opts networker.ResourcePortForwardHandlerOpts) (*networker.ForwarderResult, error) {
 	if err := admit(opts); err != nil {
 		return nil, err
@@ -54,8 +55,10 @@ func (f *Forwarder) ForwardResource(ctx context.Context, _ *types.PluginContext,
 	}
 	ready := make(chan struct{})
 	close(ready)
+	// Read before the tunnel takes the listener: it closes it when the forward ends.
+	host := networker.LocalHostOf(listener.Addr())
 
-	return &networker.ForwarderResult{SessionID: uuid.NewString(), Ready: ready, ErrCh: startTunnel(ctx, listener, f.target)}, nil
+	return &networker.ForwarderResult{SessionID: uuid.NewString(), LocalHost: host, Ready: ready, ErrCh: startTunnel(ctx, listener, f.target)}, nil
 }
 
 // admit refuses, in plain words, a start for anything the target is not.

@@ -30,8 +30,8 @@
     background-color: transparent;
   }
 
-  /* The frame is one size so far, the old Settings window's, 1060 x 640 px: the Settings screen is the one that needs it. The window wins where it is smaller, less the 24 px step on each side. The next
-     screen that needs another size adds a `size` prop to the part; there is none now, so no option is dead. */
+  /* The frame is the surface of a sheet, and the rules here are its `settings` size, the old Settings window's 1060 x 640 px: the window wins where it is smaller, less the 24 px step on each side. The three dialog sizes
+     further down override the size and the anatomy. */
   .frame {
     display: flex;
     flex-direction: column;
@@ -53,7 +53,25 @@
     line-height: var(--ov-lh-16);
   }
 
-  /* The header: the title, and Close at the end of the lane, 8 px apart. 41 px at the least with 6 px above and below, as the mock's `.sheet > .hd`; a long title wraps and the header grows. */
+  /* The dialog sizes, the mock's `.dlg` (core.css 1496 to 1522): 440, 640 (the default) and 900 px wide, as high as the content needs up to the window, with the 12 px step the mock's scrim pads it with left on each side. */
+  .frame:not([data-ov-size='settings']) {
+    block-size: auto;
+    max-block-size: calc(100dvh - 2 * var(--ov-spacing-12));
+  }
+
+  .frame[data-ov-size='narrow'] {
+    inline-size: min(440px, 100% - 2 * var(--ov-spacing-12));
+  }
+
+  .frame[data-ov-size='standard'] {
+    inline-size: min(640px, 100% - 2 * var(--ov-spacing-12));
+  }
+
+  .frame[data-ov-size='wide'] {
+    inline-size: min(900px, 100% - 2 * var(--ov-spacing-12));
+  }
+
+  /* The header: the icon when there is one, the title, and Close at the end of the lane, 8 px apart. 41 px at the least with 6 px above and below, as the mock's `.sheet > .hd`; a long title wraps and the header grows. */
   .header {
     display: flex;
     flex: 0 0 auto;
@@ -62,6 +80,11 @@
     box-sizing: border-box;
     min-height: 41px;
     padding: var(--ov-spacing-6) var(--ov-spacing-12);
+  }
+
+  /* A dialog's header is roomier than the settings frame's: 12 px above and at the sides, 8 px under (the mock's `.dlg > .hd`). */
+  .frame:not([data-ov-size='settings']) .header {
+    padding: var(--ov-spacing-12) var(--ov-spacing-12) var(--ov-spacing-8);
   }
 
   .title {
@@ -75,6 +98,38 @@
     overflow-wrap: anywhere;
   }
 
+  /* A meta line puts the title and the line in one column (the mock's `.identity-header`): the icon and Close stay on the title's row, which is as high as Close, and the line is 4 px under it. */
+  .header[data-ov-meta='true'] {
+    align-items: flex-start;
+  }
+
+  .header[data-ov-meta='true'] > [data-ov-part='icon'] {
+    margin-block-start: var(--ov-spacing-2);
+  }
+
+  .identity {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  .identity > .title {
+    display: flex;
+    align-items: center;
+    min-height: var(--ov-row-target);
+  }
+
+  .meta {
+    margin: 0;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    font-weight: 400;
+    line-height: var(--ov-lh-16);
+    overflow-wrap: anywhere;
+  }
+
   /* The body fills what the header leaves and clips; it has no padding, so the caller lays out its own columns and scrollers. One track, so the caller's layout fills it and a scroller inside it has a height
      to scroll in. */
   .body {
@@ -84,5 +139,20 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /* In a dialog the body is the one scroller: its content flows, 12 px in from the edge, and scrolls under a header and a footer that stay where they are (the mock's `.dlg > .bd`). The settings frame keeps the clipping
+     grid above, whose caller lays out its own scrollers. */
+  .frame:not([data-ov-size='settings']) .body {
+    display: block;
+    padding: var(--ov-spacing-12);
+    overflow: auto;
+  }
+
+  /* The footer, the lane of the actions (a FormActions): outside the body, so it never scrolls away, and 12 px in from the edge on every side (the mock's `.dlg > .ft`). */
+  .footer {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    padding: var(--ov-spacing-12);
   }
 }

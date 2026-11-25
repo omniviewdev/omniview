@@ -85,6 +85,23 @@ export const DisabledReason = () => (
   />
 );
 
+/** Overflow entries as a menu draws them: a 16 px glyph, a separator that sets a group apart, an entry disabled with its reason (the tip, still focusable), and the destructive entry last. */
+export const OverflowEntries = () => (
+  <PageHeader
+    title="Items"
+    commands={{
+      utility: { id: 'refresh', label: 'Refresh items', onSelect: noop },
+      menu: [
+        { id: 'add-group', label: 'Create group\u2026', icon: 'plus', onSelect: noop },
+        { id: 'copy', label: 'Copy list link', icon: 'copy', onSelect: noop },
+        { id: 'order', label: 'Change group order\u2026', icon: 'layers', separatorBefore: true, disabled: 'Create a group to change the order.', onSelect: noop },
+        { id: 'open', label: 'Open in a window', icon: 'external-link', onSelect: noop },
+        { id: 'clear', label: 'Clear list\u2026', icon: 'trash', destructive: true, onSelect: noop },
+      ],
+    }}
+  />
+);
+
 /** A flow's header has no state and no facts: one plain muted note under the title, 16 px. */
 export const Note = () => <PageHeader title="Create item" level={2} note="Name and group · step 1 of 3" />;
 

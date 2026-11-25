@@ -104,12 +104,31 @@
     border-bottom: 1px solid var(--ov-border-subtle);
   }
 
-  .skeletonRow > span {
+  .skeletonRow > span,
+  .skeletonCard > span {
     display: block;
     width: var(--_w, 60%);
     height: 8px;
     border-radius: var(--ov-radius-mark);
     background-color: var(--ov-progress-track);
+  }
+
+  /* The skeleton of cards (the mock's `skeleton__cards`): blocks in the columns the card grid has, 280 px at the least, 12 px apart, each a 12 px inset
+     inside a subtle edge with its bars 12 px apart. */
+  .skeletonCards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+  }
+
+  .skeletonCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ov-spacing-12);
+    padding: var(--ov-spacing-12);
+    border: 1px solid var(--ov-border-subtle);
+    border-radius: var(--ov-radius-control);
   }
 
   /* The empty line (the mock's empty block): a centred column, at least 96 px high, muted, with the title in the plain colour. */

@@ -1,0 +1,102 @@
+@layer ov.components {
+  /* A row of swatches that wraps (the mock's `.swatches`): 24 px targets around 16 px dots, 4 px apart. */
+  .root {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ov-spacing-4);
+    min-width: 0;
+  }
+
+  /* The target of one swatch. The data colour sets two private properties, the hue and its tint, that the dot reads. The chosen one has a 2 px
+     accent ring inside its box and a check mark in the dot, so the choice is not the colour alone. A button does not inherit the page's feature
+     settings, and the reason an unavailable swatch holds (hidden text) is text like any other: contextual alternates stay off. */
+  .option {
+    --_hue: var(--ov-link);
+    --_tint: var(--ov-tint-blue);
+
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    font-feature-settings: var(--ov-font-features);
+    cursor: pointer;
+  }
+
+  .option:not([aria-disabled='true']):hover {
+    background-color: var(--ov-hover-toolbar);
+  }
+
+  .option[aria-checked='true'] {
+    box-shadow: inset 0 0 0 2px var(--ov-accent);
+  }
+
+  .option:focus-visible {
+    outline: 2px solid var(--ov-accent);
+    outline-offset: 1px;
+  }
+
+  .option[aria-disabled='true'] {
+    cursor: default;
+  }
+
+  .dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--ov-radius-control);
+    background-color: var(--_hue);
+    color: var(--ov-fg-on-data);
+  }
+
+  /* Unavailable: the tint of the hue, and the check in the hue, so that it still reads on the tint. Never opacity. */
+  .option[aria-disabled='true'] .dot {
+    background-color: var(--_tint);
+    color: var(--_hue);
+  }
+
+  .option[data-ov-color='blue'] {
+    --_hue: var(--ov-link);
+    --_tint: var(--ov-tint-blue);
+  }
+
+  .option[data-ov-color='green'] {
+    --_hue: var(--ov-success-fg);
+    --_tint: var(--ov-tint-green);
+  }
+
+  .option[data-ov-color='amber'] {
+    --_hue: var(--ov-warning-fg);
+    --_tint: var(--ov-tint-amber);
+  }
+
+  .option[data-ov-color='red'] {
+    --_hue: var(--ov-error-fg);
+    --_tint: var(--ov-tint-red);
+  }
+
+  .option[data-ov-color='purple'] {
+    --_hue: var(--ov-chart-purple);
+    --_tint: var(--ov-tint-purple);
+  }
+
+  .option[data-ov-color='cyan'] {
+    --_hue: var(--ov-chart-teal);
+    --_tint: var(--ov-tint-cyan);
+  }
+
+  .option[data-ov-color='gray'] {
+    --_hue: var(--ov-fg-muted);
+    --_tint: var(--ov-tint-gray);
+  }
+}

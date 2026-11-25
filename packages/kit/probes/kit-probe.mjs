@@ -198,8 +198,10 @@ async function icons(page, where) {
 // centred; the 16 artboard is Int UI's. The tolerance is the off-centre ink of the registry's glyphs before the per-kind glyphs (G1),
 // measured here in both engines: at most 1.0 on the 24 artboard (case-sensitive, a short wide glyph) and 0.5 on the 16 one; the thirty
 // new glyphs measure 0.85 at most (the document of the cog, whose cog reaches past the left edge of the page); the six of the notification
-// centre (O1b-2) measure 0.30 at most (the bell, on the 16 artboard).
+// centre (O1b-2) measure 0.30 at most (the bell, on the 16 artboard). `folder-plus` (the landing kit, KL1) is Int UI's newFolder, whose folder keeps
+// the top left and whose plus takes the bottom right: its ink is centred at 8.50, 9.00, 1.0 off on the 16 artboard, and it alone has that room.
 const INK_OFF_CENTRE = { 24: 1.0, 16: 0.5 };
+const INK_OFF_CENTRE_GLYPH = { 'folder-plus': 1.0 };
 async function glyphGeometry(page, where) {
   const rows = await page.locator('[data-example="Icon/AllGlyphs"] svg').evaluateAll((svgs) => svgs.map((svg) => {
     const rect = svg.getBoundingClientRect();
@@ -218,7 +220,8 @@ async function glyphGeometry(page, where) {
     const diffs = [];
     if (Math.abs(row.w - row.size) > 0.01 || Math.abs(row.h - row.size) > 0.01) diffs.push(`drawn ${row.w}x${row.h}, not ${row.size}x${row.size}`);
     if (row.minX < -0.01 || row.minY < -0.01 || row.maxX > row.box + 0.01 || row.maxY > row.box + 0.01) diffs.push(`ink ${row.minX.toFixed(2)},${row.minY.toFixed(2)} to ${row.maxX.toFixed(2)},${row.maxY.toFixed(2)} leaves the ${row.box} artboard`);
-    if (Math.abs(row.cx - row.box / 2) > INK_OFF_CENTRE[row.box] + 0.01 || Math.abs(row.cy - row.box / 2) > INK_OFF_CENTRE[row.box] + 0.01) diffs.push(`ink centred at ${row.cx.toFixed(2)},${row.cy.toFixed(2)}, more than ${INK_OFF_CENTRE[row.box]} from the centre of the ${row.box} artboard`);
+    const room = INK_OFF_CENTRE_GLYPH[row.glyph] ?? INK_OFF_CENTRE[row.box];
+    if (Math.abs(row.cx - row.box / 2) > room + 0.01 || Math.abs(row.cy - row.box / 2) > room + 0.01) diffs.push(`ink centred at ${row.cx.toFixed(2)},${row.cy.toFixed(2)}, more than ${room} from the centre of the ${row.box} artboard`);
     for (const diff of diffs) fail(where, `glyph ${row.glyph} at ${row.size}: ${diff}`);
     if (diffs.length) bad.push(row.glyph);
   }

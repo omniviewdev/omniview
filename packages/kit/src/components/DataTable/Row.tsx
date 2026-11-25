@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { menuTrigger } from '../Menu';
 import styles from './DataTable.module.css';
 import type { DataTableColumn } from './types';
 
@@ -20,16 +21,20 @@ type RowProps<TRow> = {
   readonly selectLabel: string;
   readonly columns: ReadonlyArray<DataTableColumn<TRow>>;
   readonly pins: Pins;
+  /** The id of the view's menu, when rows open one: the row is its context trigger, keyed by the row's identity. */
+  readonly menu: string | undefined;
+  /** The row's identity (`getRowKey`), the context key of the menu. */
+  readonly rowKey: string;
 };
 
 // A controlled checkbox needs a change handler to be valid, and the table has one handler for every row: the body's. One shared function
 // is a function that is not made again for each row.
 const noop = () => undefined;
 
-function RowImpl<TRow>({ row, index, selected, selectLabel, columns, pins }: RowProps<TRow>) {
+function RowImpl<TRow>({ row, index, selected, selectLabel, columns, pins, menu, rowKey }: RowProps<TRow>) {
   const shift = selected === undefined ? 0 : 1;
-  return (
-    <tr className={styles.row} aria-rowindex={index + 2} data-ov-index={index} data-ov-selected={selected === true ? 'true' : undefined}>
+  const cells = (
+    <>
       {selected === undefined ? null : (
         <td className={styles.cell} data-ov-kind="select" data-ov-pin={pins.pinned[0] ? 0 : undefined} data-ov-edge={pins.edge === 0 ? '' : undefined}>
           <input type="checkbox" className={styles.check} checked={selected} onChange={noop} aria-label={selectLabel} data-ov-select="" />
@@ -52,6 +57,21 @@ function RowImpl<TRow>({ row, index, selected, selectLabel, columns, pins }: Row
           </td>
         );
       })}
+    </>
+  );
+  return menu === undefined ? (
+    <tr className={styles.row} aria-rowindex={index + 2} data-ov-index={index} data-ov-selected={selected === true ? 'true' : undefined}>
+      {cells}
+    </tr>
+  ) : (
+    <tr
+      className={styles.row}
+      aria-rowindex={index + 2}
+      data-ov-index={index}
+      data-ov-selected={selected === true ? 'true' : undefined}
+      {...menuTrigger(menu, rowKey, 'context')}
+    >
+      {cells}
     </tr>
   );
 }

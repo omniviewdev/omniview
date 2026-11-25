@@ -272,8 +272,14 @@ describe('the forward a page is answered', () => {
     expect((await ports.forward(request({ localPort: 9_090 }))).localPort).toBe(9_191);
   });
 
-  it('says no address: the session states a port and none, so the host does not say where else the forward listens, and the member is absent rather than a guess', async () => {
-    const { ports } = setup();
+  it.each(['127.0.0.1', '::1', 'localhost', '0.0.0.0', 'fe80::1%en0'])('says where the forward listens when the session states it, as it states it (%s): the host reads nothing into it and adds nothing to it', async (host) => {
+    const { ports } = setup({ start: async () => ({ id: 'forward-1', local_port: 9_191, local_host: host }) });
+    const answer = await ports.forward(request());
+    expect(answer).toStrictEqual({ sessionId: 'forward-1', localPort: 9_191, localHost: host, stop: expect.any(Function) });
+  });
+
+  it.each([undefined, ''])('says no address when the session states none (%j): the member is absent rather than a guess', async (stated) => {
+    const { ports } = setup({ start: async () => ({ id: 'forward-1', local_port: 41_234, local_host: stated }) });
     const answer = await ports.forward(request());
     expect(answer.localHost).toBeUndefined();
     expect('localHost' in answer).toBe(false);

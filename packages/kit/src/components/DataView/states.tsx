@@ -29,9 +29,33 @@ export function LoadingBody({ label, columns }: { readonly label: string; readon
   );
 }
 
+/** The blocks of a first-load skeleton of cards: eight, as the table's eight rows, with the three bars of the mock's `skeleton__card` in each. */
+const SKELETON_CARDS = 8;
+const SKELETON_CARD_BARS = 3;
+
 /**
- * The one line under the table's header when there is nothing to list ("No Items", "No Items match"), with an optional hint. It is a polite
- * status: it appears in answer to a search. The command that clears a search is the toolbar's (plan E9), not this line's.
+ * The first load of a collection shown as cards: blocks in the card grid's columns, each holding the bars of a title, a line and a fact. Like the table's
+ * skeleton it is a static placeholder in a busy status named for what loads, and it appears 250 ms after it mounts.
+ */
+export function CardsLoadingBody({ label }: { readonly label: string }) {
+  return (
+    <div className={styles.skeleton} role="status" aria-busy="true" aria-label={`Loading ${label}`}>
+      <div className={styles.skeletonCards}>
+        {Array.from({ length: SKELETON_CARDS }, (_, card) => (
+          <div key={card} className={styles.skeletonCard} data-ov-skeleton-card="">
+            {Array.from({ length: SKELETON_CARD_BARS }, (__, bar) => (
+              <span key={bar} style={{ '--_w': `${String(barWidth(card, bar))}%` }} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The one line when there is nothing to list ("No Items", "No Items match"), with an optional hint: under the table's header, or alone for cards. It is a
+ * polite status: it appears in answer to a search. The command that clears a search is the toolbar's (plan E9), not this line's.
  */
 export function EmptyBody({ title, hint }: { readonly title: string; readonly hint?: string | undefined }) {
   return (

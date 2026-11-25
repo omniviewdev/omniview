@@ -65,6 +65,18 @@ func TestTheManagerRunsTheForwarderAsASessionThatStopsWhenItIsClosed(t *testing.
 	require.Error(t, err)
 }
 
+// What the forwarder stated is what the session says (the SDK's manager copies it and states nothing of its own), at the start and on every later read: the Ports tool reads it from the host's list.
+func TestTheSessionStatesTheHostTheForwarderListensOn(t *testing.T) {
+	harness := mountManager(t, startTarget(t))
+
+	started := startSession(t, harness)
+	read, err := harness.GetSession(started.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", started.LocalHost)
+	require.Equal(t, "127.0.0.1", read.LocalHost)
+}
+
 func TestTheManagerRefusesAStartTheTargetCannotServeWithTheForwardersWords(t *testing.T) {
 	harness := mountManager(t, startTarget(t))
 	options := sessionOptions(0)

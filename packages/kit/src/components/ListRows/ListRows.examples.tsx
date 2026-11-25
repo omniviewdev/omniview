@@ -1,4 +1,4 @@
-import { Icon, Link, LinkProvider, ListRows, Status, type LinkTarget } from '@omniviewdev/kit';
+import { Icon, IconButton, Link, LinkProvider, ListRows, Status, type LinkTarget } from '@omniviewdev/kit';
 import styles from './ListRows.examples.module.css';
 
 // A link that goes nowhere: the example is about how a row holds it.
@@ -118,4 +118,88 @@ export const RecentWarnings = () => (
       ]}
     />
   </div>
+);
+
+const noop = () => undefined;
+
+/** A row that is a button: its cells are one control and one Tab stop. */
+export const Actionable = () => (
+  <ListRows
+    label="Saved views"
+    rows={[
+      { id: 'one', title: 'Production', detail: '12 connections', icon: <Icon name="server" />, onActivate: noop },
+      { id: 'two', title: 'Staging', detail: '4 connections', icon: <Icon name="server" />, onActivate: noop },
+    ]}
+  />
+);
+
+/** A row that is a link: a native anchor to a destination in the host. */
+export const AsLink = () => (
+  <LinkProvider handler={handler}>
+    <ListRows
+      label="Groups"
+      rows={[
+        { id: 'one', title: 'north-yard', detail: 'Platform', to: { page: 'groups', params: { name: 'north-yard' } } },
+        { id: 'two', title: 'checkout', detail: 'Storefront', to: { page: 'groups', params: { name: 'checkout' } } },
+      ]}
+    />
+  </LinkProvider>
+);
+
+/** One row of the list is selected: a toggle, `aria-pressed`, with the selected fill. */
+export const Selected = () => (
+  <ListRows
+    label="Saved views"
+    rows={[
+      { id: 'one', title: 'Production', onActivate: noop, selected: true },
+      { id: 'two', title: 'Staging', onActivate: noop, selected: false },
+    ]}
+  />
+);
+
+/** A row that cannot be activated says why: it stays focusable and the reason is its description. */
+export const DisabledWithReason = () => (
+  <ListRows
+    label="Saved views"
+    rows={[
+      { id: 'one', title: 'Production', onActivate: noop },
+      { id: 'two', title: 'Archive', detail: 'Read only', onActivate: noop, disabledReason: 'Archived views cannot be opened' },
+    ]}
+  />
+);
+
+/** One control after the row: a sibling of the row's button, its own Tab stop. */
+export const AsideOneControl = () => (
+  <ListRows
+    label="Members"
+    rows={[
+      { id: 'one', title: 'Connection A', detail: 'Production', icon: <Icon name="server" />, aside: <IconButton icon="close" label="Remove Connection A" size="row" variant="ghost" onClick={noop} /> },
+      { id: 'two', title: 'Connection B', detail: 'Staging', icon: <Icon name="server" />, aside: <IconButton icon="close" label="Remove Connection B" size="row" variant="ghost" onClick={noop} /> },
+    ]}
+  />
+);
+
+/** Two controls after an actionable row, with a meta and a tip: every row's columns line up. */
+export const AsideTwoControls = () => (
+  <ListRows
+    label="Members"
+    rows={[
+      {
+        id: 'one',
+        title: 'Connection A',
+        detail: 'Production',
+        meta: '3d',
+        icon: <Icon name="server" />,
+        onActivate: noop,
+        tip: 'Open Connection A',
+        aside: (
+          <>
+            <IconButton icon="refresh" label="Refresh Connection A" size="row" variant="ghost" onClick={noop} />
+            <IconButton icon="close" label="Remove Connection A" size="row" variant="ghost" onClick={noop} />
+          </>
+        ),
+      },
+      { id: 'two', title: 'Connection B', detail: 'Staging', meta: '12d', icon: <Icon name="server" />, onActivate: noop },
+    ]}
+  />
 );

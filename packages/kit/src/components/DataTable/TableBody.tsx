@@ -14,6 +14,8 @@ type BodyProps<TRow> = {
   readonly columns: ReadonlyArray<DataTableColumn<TRow>>;
   readonly selection: DataTableSelection<TRow> | undefined;
   readonly pins: Pins;
+  /** The id of the view's row menu, when rows open one. */
+  readonly menu: string | undefined;
   /** The count of cell slots: the columns, and the selection column when there is one. */
   readonly span: number;
   /** The table's one click handler. */
@@ -24,7 +26,7 @@ type BodyProps<TRow> = {
  * The rows in the window, in normal flow between two spacer rows that stand for the rows above and below it (plan 3.3 item 2; the
  * layout the measurement chose, `docs/ui-next/baseline/`). The body has one click handler for all rows.
  */
-export function TableBody<TRow>({ rows, items, totalSize, rowHeight, columns, selection, pins, span, onClick }: BodyProps<TRow>) {
+export function TableBody<TRow>({ rows, items, totalSize, rowHeight, columns, selection, pins, menu, span, onClick }: BodyProps<TRow>) {
   const first = items[0];
   const last = items.at(-1);
   const above = first === undefined ? 0 : first.start;
@@ -47,6 +49,8 @@ export function TableBody<TRow>({ rows, items, totalSize, rowHeight, columns, se
             selectLabel={selection === undefined ? '' : selection.label(row.original)}
             columns={columns}
             pins={pins}
+            menu={menu}
+            rowKey={row.id}
           />
         );
       })}

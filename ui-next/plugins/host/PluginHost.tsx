@@ -59,7 +59,7 @@ import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
 import { ConnectionNames, connectionNameOf, laneFor } from './connectionName';
 import { createConnectionActions, createConnectionsStore, createRecents, pickerOf, usesOf, type ConnectionsApi, type HostConnections } from './connections';
-import { connectionOf, createContributions, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
+import { connectionOf, createContributions, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, panelConnectionOf, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
 import { homePage } from './homePage';
 import { HOME_PAGE_ID, HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
@@ -226,6 +226,15 @@ function choiceOf(connections: HostConnections | undefined, plugin: string): Plu
     keys: listed.flatMap((connection) => (connection.plugin === plugin ? [connection.key] : [])),
     last: connections.recents.getSnapshot().find((use) => use.plugin === plugin)?.key,
   };
+}
+
+/**
+ * The connection a page, or the sidebar of the plugin on the rail, is read in for what it asks of the bottom panel (`panelConnectionOf`, `contributions.ts`): the route's, else the plugin's only connection. It follows the window's list of
+ * connections, so a page whose only connection is replaced, removed or joined by another is given the handle of the connection it is read in now, or none. It is the one place the panel's connection is decided: every member of `ctx.panel`
+ * that needs one (`ports`) takes it from the handle this makes. The answer is a string or nothing, so a change of the list that leaves it as it was draws nothing again.
+ */
+function usePanelConnection(connections: HostConnections | undefined, route: Route | undefined): string | undefined {
+  return useSyncExternalStore(connections?.store.subscribe ?? ABSENT.subscribe, () => (route === undefined ? undefined : panelConnectionOf(route, choiceOf(connections, route.plugin))));
 }
 
 /**
@@ -622,6 +631,8 @@ type HostPageProps = {
  * list was read and the plugin is not in it. The tab stays in every case: the plugin may come back, and the tab is the user's.
  */
 function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, platform, inventory, onRetry, onRetryInventory, panelHosts, source, connections, openPlugin }: HostPageProps) {
+  // What the page asks of the bottom panel is bound to the connection it is read in, which is the route's or, when the route names none, the plugin's only one (`usePanelConnection`).
+  const panelConnection = usePanelConnection(connections, route);
   // The links of the page open where the page is: its plugin, and the connection it is read in. The handler changes only when the page moves.
   const connection = connectionOf(route);
   const handler = useMemo(() => createLinkHandler({ tabs, platform, plugin: route.plugin, connection }), [tabs, platform, route.plugin, connection]);
@@ -690,11 +701,11 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
         fallback={(retry) => <PlaceholderPage title={title} state={{ kind: 'failed', message: 'This page failed to display.', retry }} />}
       >
         {found?.kind === 'detail' ? (
-          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id, connection)} />
+          <DetailContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} panelHost={panelHosts(entry.id, panelConnection)} />
         ) : found?.kind === 'overview' ? (
-          <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, connection)} />
+          <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} />
         ) : (
-          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, connection)} memory={memory} />
+          <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, panelConnection)} memory={memory} />
         )}
       </ContributionBoundary>
     </LinkProvider>
@@ -922,6 +933,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     const home = host.contributions.home?.(railPlugin);
     return remembered ?? (home === undefined ? undefined : { plugin: home.plugin, contribution: home.contribution, params: NO_PARAMS });
   })();
+  const railConnection = usePanelConnection(hostConnections, railRoute);
   // What a page of the plugin on the rail opens at when the tab on screen is another plugin's: the connection that plugin was last used in.
   const carried = route?.plugin === railPlugin || remembered === undefined ? undefined : connectionOf(remembered);
 
@@ -1134,7 +1146,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     <>
       {shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
         <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={nodes} />}>
-          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, connectionOf(railRoute))} />
+          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, railConnection)} />
         </ContributionBoundary>
       ) : null}
       <Shell
