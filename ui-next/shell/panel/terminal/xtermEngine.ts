@@ -353,6 +353,12 @@ export function createXtermEngine(options: EngineOptions): Engine {
     let last: FindOptions | undefined;
     let active: { readonly query: string; readonly options: FindOptions; readonly colours: string } | undefined;
     const step = (direction: 'next' | 'previous', query: string, given: FindOptions): void => {
+      // An emulator that is gone has nothing to find, and the addon would read it: xterm registers what it reads on a store it has disposed of, and leaks it.
+      if (disposed) {
+        tell(NOTHING);
+        return;
+      }
+
       const changed = last !== undefined && (last.caseSensitive !== given.caseSensitive || last.regex !== given.regex || last.wholeWord !== given.wholeWord);
       last = given;
       const decorations = findDecorations(theme);
