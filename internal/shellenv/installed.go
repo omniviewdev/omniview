@@ -1,5 +1,7 @@
 package shellenv
 
+import "path/filepath"
+
 // Shell is one installed shell as the host lists it for a person to choose from.
 type Shell struct {
 	// Name is the shell's own name (Name): `zsh`, `bash`.
@@ -19,4 +21,39 @@ var listedNames = []string{"bash", "zsh", "fish", "pwsh"}
 // List says which of the shells the host offers are installed in the standard directories, and marks the one that is the default.
 func List(defaultPath string) []Shell { return listIn(standardDirs, defaultPath) }
 
-func listIn(dirs []string, defaultPath string) []Shell { return nil }
+func listIn(dirs []string, defaultPath string) []Shell {
+	var shells []Shell
+	seen := map[string]bool{}
+	for _, name := range listedNames {
+		for _, dir := range dirs {
+			path, err := Check(filepath.Join(dir, name))
+			if err != nil || seen[realPath(path)] {
+				continue
+			}
+			seen[realPath(path)] = true
+			shells = append(shells, Shell{Name: Name(path), Path: path, Default: false})
+		}
+	}
+	if defaultPath == "" {
+		return shells
+	}
+	path, err := Check(defaultPath)
+	if err != nil {
+		return shells
+	}
+	for i := range shells {
+		if realPath(shells[i].Path) == realPath(path) {
+			shells[i].Default = true
+			return shells
+		}
+	}
+	return append([]Shell{{Name: Name(path), Path: path, Default: true}}, shells...)
+}
+
+// realPath is the file a path reaches, so that two paths of one shell are told as one.
+func realPath(path string) string {
+	if target, err := filepath.EvalSymlinks(path); err == nil {
+		return target
+	}
+	return path
+}

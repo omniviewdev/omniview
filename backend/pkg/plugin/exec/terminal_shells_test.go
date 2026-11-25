@@ -139,5 +139,13 @@ func TestTheListOfShellsMarksTheShellThatStartsWhenTheSettingCannotStart(t *test
 		}
 	}
 	require.Len(t, marked, 1, "one default in %v", listed)
-	assert.Equal(t, session.Shell.Path, marked[0], "the list marks a shell that is not the one an empty command starts")
+	assert.Equal(t, realPathOf(t, session.Shell.Path), realPathOf(t, marked[0]), "the list marks a shell that is not the one an empty command starts")
+}
+
+// realPathOf is the file a path reaches: /bin and /usr/bin are one directory on many systems, and the shell is the same file by either.
+func realPathOf(t *testing.T, path string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(path)
+	require.NoError(t, err)
+	return real
 }
