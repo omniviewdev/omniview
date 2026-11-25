@@ -168,8 +168,8 @@ const acks = { holding: false, accepting: false, held: [] as Array<{ socket: Fix
 /** The numbered lines the emulator is given while no byte is yet (`flow-late`): the first acknowledgement waits for the first write. */
 let firstAck: (() => void) | undefined;
 
-/** What `?control=leaky-heap` holds on to: the text of every output frame, which lives on the JS heap (a typed array's bytes do not, and the probe reads the JS heap). */
-const leak: string[] = [];
+/** What `?control=leaky-heap` holds on to: numbers copied out of every output frame, which live on the JS heap (a typed array's bytes and a decoded string's do not, and the probe reads the JS heap). */
+const leak: number[][] = [];
 const latin1 = new TextDecoder('latin1');
 
 class FixtureSocket implements ChannelSocket {
@@ -426,7 +426,8 @@ class FixtureSocket implements ChannelSocket {
       }
 
       if (control === 'leaky-heap') {
-        leak.push(latin1.decode(frame));
+        // A plain array of numbers lives on the JS heap (8 bytes an element): 32,768 elements for each frame (about 130 KB), so that a flood of 82 MB (about 1,300 frames) adds well over 100 MB.
+        leak.push(Array.from(frame.subarray(0, 32_768)));
       }
 
       if (control === 'draw-hidden') {

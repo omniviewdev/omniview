@@ -451,7 +451,8 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
     host.append(id, TAIL);
     await typeLine(page, 'hello');
     await until(async () => rowsOf(page), (rows) => rows.some((row) => HELLO.test(row)), 8000);
-    await caughtUp(w, page, id);
+    // What the page asked for is read first (it is in `attach`); a page that was given a replay it could not join never catches up, and that is a fact the assertions read (`caught`), not an error that ends the section before they run.
+    const caught = await caughtUp(w, page, id).then(() => true, () => false);
     const end = host.state(id).end;
     // The page acknowledges every byte of output the new stream sent, the replay included (the host counts it against its window), and never a gap: here the ring has what the page asked for, so no gap came.
     const expected = end - attach.start;
@@ -469,6 +470,7 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       lines,
       screen,
       typed: wroteBy(host, attach.writesAt),
+      caught,
     };
   }
 
@@ -493,6 +495,7 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           lines.dups.length === 0 &&
           lines.resets === 0 &&
           r.acked === r.expected &&
+          r.caught &&
           r.typed === 'hello\r',
         `${engine} ${vp}: the page had applied the output up to ${String(r.applied)} when its stream was lost and asked for it from ${String(attach.from_offset)} (the same), in ${String(r.attaches)} attach (one is right), and the host's answer started at ${String(attach.start)} (exactly there: it still had the bytes) with ${String(attach.lost)} lost (none) and ${String(attach.bytes)} B to catch up; the emulator was given ${String(lines.count)} numbered lines ending at ${String(lines.last)} (${String(LINES - 1)} is the last) with ${JSON.stringify(lines.gaps.slice(0, 3))} gaps, ${JSON.stringify(lines.dups.slice(0, 3))} duplicates and ${String(lines.resets)} resets (none of the three is right: the output goes on); the page acknowledged ${String(r.acked)} B on the new stream where it was sent ${String(r.expected)} B (equal is right: all of them, the replay included), and what was typed afterwards reached the shell as ${JSON.stringify(r.typed)} (${JSON.stringify('hello\r')})`,
       );
