@@ -68,6 +68,10 @@ Linux amd64, Go 1.27.4, bash 5.3, zsh 5.9, fish 4.0.2 (the Debian package under 
 - The shell contract: `TestTheShellStartsFromTheLaunchEnvironmentSoTheUsersPathOrderSurvives` is green for zsh and bash; `TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment` is the same with the integration on for zsh, fish, bash and pwsh; `TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne` and `TestTheBashrcThatTheLoginFileSourcesRunsOnce` pin that no login file runs twice.
 - The bash `history 1` form, `HISTCONTROL=ignoreboth`: a line the history has is trusted; one it does not (a space first, a repeat) has none (the test accepts "no line" or "the line typed" and never another).
 
+## Review round (ReviewBashPwsh on `a7f1eed5`)
+
+Tests first (`bc7661d5`, red by assertion), then the fixes. `TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell/bash` failed 4 of 20 on `a7f1eed5` and passes 20 of 20 on the fix. The full controls script was run in three batches on this head (32 controls, both halves; 8 were run again after the 200-cycle test was changed, and the named set of 3 controls was corrected for the new tests: `bash-login-flag-kept`, `pwsh-ready-wait-too-short`, and `zdotdir-not-given-back`, whose 200-cycle test is optional). The 200-cycle test runs pwsh 40 times, two at a time: eight at once took over the 4 s `ready` wait (`unconfirmed`, by design) in 2 of 3 runs.
+
 ## Not verified
 
 - macOS: no run at all, so bash 3.2's skip is tested only by a stated version (`Manager.bashVersion`), and Homebrew's bash, `/etc/profile`'s `path_helper` and pwsh on macOS are unseen.

@@ -251,9 +251,13 @@ func TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain(t *testing.T
 }
 
 func TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor(t *testing.T) {
-	const cycles = 200
-	const workers = 8
 	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		// pwsh takes a second or more to start, and eight of them at once take longer than the 4 s the host waits for its `ready`
+		// (the fact is then `unconfirmed`, by design): it is run 40 times, two at a time.
+		cycles, workers := 200, 8
+		if name == "pwsh" {
+			cycles, workers = 40, 2
+		}
 		f := newIntegrationFixture(t, name, shell)
 		type result struct {
 			pid int

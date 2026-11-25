@@ -85,8 +85,8 @@ run dir-world-readable "$I" \
 # leftover ZDOTDIR at exit, a race; it is the control's optional test.)
 run zdotdir-not-given-back "$Z/zlogin" \
   's|^  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi|  :|' \
-  'TestANestedLoginShellDoesNotInheritTheIntegration TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor TestZshXtraceNeverPrintsTheNonce' \
-  'TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheUsersStartupFilesAreByteIdenticalAfterASession'
+  'TestANestedLoginShellDoesNotInheritTheIntegration TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestZshXtraceNeverPrintsTheNonce' \
+  'TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
 
 run channel-left-open "$Z/zshenv" \
   's|^  exec 3>\&-$|  :|' \
@@ -125,7 +125,7 @@ IB=backend/pkg/terminal/integration_bash.go
 
 run bash-login-flag-kept "$I" \
   's|"--rcfile", script, "-i"}|"--rcfile", script, "-i", "-l"}|' \
-  'TestABashLineWithControlBytesAndSeparatorsIsEscapedAndRecordedAsTyped TestAHangupDuringThePromptCommandsStillHangsUpTheJobs TestAHistoryThatDoesNotHaveTheLineGivesNoLineAndNeverAWrongOne TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem TestANestedLoginShellDoesNotInheritTheIntegration TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand TestAUserPromptCommandStillSeesTheStatusOfTheCommand TestAUsersDebugTrapAndPromptCommandKeepWorkingNextToTheScript TestAnArrayPromptCommandIsKeptAndSeesTheStatus TestBashClosesTheChannelBeforeAProgramOfTheUserRuns TestBashIsStartedWithItsOwnRcfileAndWithoutTheLoginFlag TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight TestTheBashrcThatTheLoginFileSourcesRunsOnce TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTheScriptNeverClobbersBASHREMATCHOrTheStatus TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
+  'TestABashLineWithControlBytesAndSeparatorsIsEscapedAndRecordedAsTyped TestAHangupDuringThePromptCommandsStillHangsUpTheJobs TestAHistoryThatDoesNotHaveTheLineGivesNoLineAndNeverAWrongOne TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem TestANestedLoginShellDoesNotInheritTheIntegration TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand TestAUserPromptCommandStillSeesTheStatusOfTheCommand TestAUserWithErrexitKeepsTheirShellWhenAStatusIsNotZero TestAUserWithNounsetKeepsTheMarksAndTheShell TestAUsersDebugTrapAndPromptCommandKeepWorkingNextToTheScript TestAnArrayPromptCommandIsKeptAndSeesTheStatus TestAnEmptyLineAndACtrlCAtThePromptMakeNoCommand TestBashClosesTheChannelBeforeAProgramOfTheUserRuns TestBashIsStartedWithItsOwnRcfileAndWithoutTheLoginFlag TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight TestTheBashrcThatTheLoginFileSourcesRunsOnce TestTheHooksLeaveNoHUPHandlerAtThePromptAndNeverReplaceTheUsers TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTheScriptNeverClobbersBASHREMATCHOrTheStatus TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
 
 run bash-every-login-file-runs "$B" \
   's|^    break$|    :|' \
@@ -152,7 +152,7 @@ run bash-xtrace-stays-on "$B" \
   'TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight'
 
 run bash-hup-handler-never-set "$B" \
-  "s|      trap -- '__omniview_hup' HUP|      :|" \
+  "s|      builtin trap -- '__omniview_hup' HUP|      :|" \
   'TestAHangupDuringThePromptCommandsStillHangsUpTheJobs'
 
 run bash-3-2-not-skipped "$IB" \
@@ -161,7 +161,7 @@ run bash-3-2-not-skipped "$IB" \
 
 run pwsh-ready-wait-too-short "$I" \
   's|pwshReadyWait = 4 \* time.Second|pwshReadyWait = 500 * time.Millisecond|' \
-  'TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem TestANestedLoginShellDoesNotInheritTheIntegration TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
+  'TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem TestANestedLoginShellDoesNotInheritTheIntegration TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand TestPwshAnEmptyLineRunsNoCommand TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet TestPwshTheUsersPromptThatRunsANativeCommandDoesNotChangeLASTEXITCODE TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
 
 run pwsh-native-code-lost "$P" \
   's|-and $lastExit -ne 0) { $status = $lastExit }|-and $false) { $status = $lastExit }|' \
