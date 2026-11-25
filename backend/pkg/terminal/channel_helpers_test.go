@@ -309,6 +309,8 @@ type readyWire struct {
 	Ended      *End          `json:"ended"`
 	// InputApplied is the bytes of input the host has applied from this capability, across streams.
 	InputApplied uint64 `json:"input_applied"`
+	// WriterKnown says the host had a count for the attach's writer before this attach.
+	WriterKnown bool `json:"writer_known"`
 }
 
 // hostFrame is a frame the host sent, read.

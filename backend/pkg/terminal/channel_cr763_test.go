@@ -128,3 +128,59 @@ func TestAShortWriteThatFailsIsNotCountedByTheNextReady(t *testing.T) {
 	guarded(t, "ready-short-write", func() { assert.EqualValues(t, 2, b.waitReady().InputApplied, "the host wrote two of the four") })
 	b.waitReady()
 }
+
+// An acknowledgement is acted on as it is read, like a close: a write that blocks in the kernel and input that waits for room behind it
+// do not freeze the output's flow control. The window is turned on, a paste fills the terminal's queue, and the page's acknowledgements
+// still free the window: it is given far more than a window of output.
+func TestAcknowledgementsStillFreeTheWindowWhileAnInputWriteIsBlocked(t *testing.T) {
+	m, _ := newChannelManager(t, smallChannel)
+	hold := newGate(t)
+	info := m.startChannel(t, headGateFlood("up\\n", hold), Options{})
+	s := m.chanOf(t, info)
+	dev := newGatedDevice()
+	s.useDevice(dev)
+	a := m.attachAcking(t, info.Cap, nil, 1)
+	a.waitReady()
+	a.ack(0) // turns the window on: the page holds at most inflight bytes unacknowledged
+	chunk := strings.Repeat("z", 1<<20)
+	a.input(chunk)
+	require.Equal(t, "w:"+chunk, dev.waitEntered(t), "the write is blocked in the device")
+	a.input(chunk)
+	waitHost(t, s, a, "the second input never waited for room", func(cs channelStats) bool { return cs.roomWaits >= 1 })
+	hold.release(t)
+	guarded(t, "ack-inline", func() {
+		a.waitBytes(4 * 64 << 10)
+	})
+	dev.openAll()
+}
+
+// The host says whether it remembers the writer: a writer it has a count for is known, and one it has never seen, or forgot (the ninth
+// of a terminal, a host that restarted), or an attach that names none, is not: the page that had input unconfirmed for a writer that
+// is not known drops it, for it cannot know what the host applied.
+func TestReadySaysWhetherTheHostKnowsTheWriter(t *testing.T) {
+	m, info, _, dev := wireTerminal(t, `sleep 600`)
+	dev.openAll()
+	first := m.attachAs(t, info.Cap, writerID(1))
+	guarded(t, "writer-known", func() {
+		assert.False(t, first.waitReady().WriterKnown, "a feed's first attach: the host has never seen the writer")
+	})
+	first.waitReady()
+	first.input("1")
+	first.waitFor("applied 1", appliedIs(1))
+	again := m.attachAs(t, info.Cap, writerID(1))
+	guarded(t, "writer-known", func() { assert.True(t, again.waitReady().WriterKnown, "the same writer again is known") })
+	again.waitReady()
+	for n := 2; n <= 9; n++ {
+		m.attachAs(t, info.Cap, writerID(n)).waitReady()
+	}
+	forgotten := m.attachAs(t, info.Cap, writerID(1))
+	guarded(t, "writer-known", func() {
+		ready := forgotten.waitReady()
+		assert.False(t, ready.WriterKnown, "the oldest writer was forgotten")
+		assert.Zero(t, ready.InputApplied)
+	})
+	forgotten.waitReady()
+	guarded(t, "writer-known", func() {
+		assert.False(t, m.attachAs(t, info.Cap, "").waitReady().WriterKnown, "an attach that names no writer has none to know")
+	})
+}
