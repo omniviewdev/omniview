@@ -73,7 +73,7 @@
         # The user's prompt sees the $? of the last command, as without this wrapper: the statements above replaced it, and $? cannot
         # be written, so the statement just before the call leaves the value it should have (an error that is ignored is no error
         # record, and no $Error entry).
-        if ($succeeded) { $null = $true } else { Write-Error 'omniview' -ErrorAction Ignore }
+        if ($succeeded) { $null = $true } else { Microsoft.PowerShell.Utility\Write-Error 'omniview' -ErrorAction Ignore }
         $userText = & $global:__omniview_userPrompt
         $global:LASTEXITCODE = $lastExit
         "$text$userText$esc]133;B$bel"
