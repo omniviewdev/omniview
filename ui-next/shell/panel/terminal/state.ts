@@ -100,6 +100,10 @@ function lossOf(snapshot: TerminalFeedSnapshot): { readonly words: string; reado
     return { words: 'The tab that took this terminal has closed.', note: 'The shell keeps running until its lease ends.' };
   }
 
+  if (snapshot.detached.askFailed === true) {
+    return { words: 'Taken over by another tab', note: 'Input is off. The host could not be asked who holds the shell, so nothing was attached; Take it back tries again.' };
+  }
+
   if (snapshot.detached.unwatched === true && snapshot.detached.free === false) {
     // The page cannot be told when the holder leaves, so it says what the press does: it asks again, and attaches only when nobody holds the terminal.
     return { words: 'Taken over by another tab', note: 'Input is off. Another tab holds the shell now; Take it back asks again, and attaches only when nobody holds it.' };

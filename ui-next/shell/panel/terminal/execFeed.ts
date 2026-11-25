@@ -54,6 +54,8 @@ export type ExecFeed = TerminalFeedHandle & {
   readonly id: string;
   /** How many pieces of typed input the feed holds (sent or not) that the host has not said it applied: a test holds it to a bound. */
   readonly keptPieces: () => number;
+  /** How many bytes the pieces kept still reference, confirmed or not (a test holds a confirmed piece to be let go of at once). */
+  readonly keptHeld: () => number;
 };
 
 /** How long a size stands still before it is sent: a drag of the splitter is one message. */
@@ -67,7 +69,18 @@ const NO_BYTES = new Uint8Array(0);
 /** A new writer id: 16 random bytes as 32 lowercase hex digits. It is not a secret and opens nothing. */
 function writerId(): string {
   const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
+  if (typeof platform.crypto?.getRandomValues === 'function') {
+    platform.crypto.getRandomValues(bytes);
+  } else {
+    // Where the platform has no crypto (a test environment) the id is made from the clock and a counter and Math.random: unique within a run, and as unguessable as it needs to be (it opens nothing).
+    counter += 1;
+    let seed = Date.now() * 4096 + counter;
+    for (let at = 0; at < bytes.length; at += 1) {
+      bytes[at] = Math.floor(Math.random() * 256) ^ (seed & 0xff);
+      seed = Math.floor(seed / 7);
+    }
+  }
+
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -1133,8 +1146,25 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     return refreshing;
   };
 
+  /** Whether the last fresh question of a take-back could not be asked: the lane says so, and the next press tries again. */
+  const setAskFailed = (failed: boolean) => {
+    const current = status.detached;
+    if (current === undefined || (current.askFailed === true) === failed) {
+      return;
+    }
+
+    const { askFailed: _was, ...rest } = current;
+    status = { ...status, detached: failed ? { ...rest, askFailed: true } : rest };
+    tell();
+  };
+
   const refresh = async (asking?: { readonly fresh?: boolean }): Promise<void> => {
-    await ask(asking);
+    const answered = await ask(asking);
+    if (answered) {
+      setAskFailed(false);
+    } else if (asking?.fresh === true) {
+      setAskFailed(true);
+    }
   };
 
   /**
@@ -1191,6 +1221,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   return {
     id,
     keptPieces: () => kept.length,
+    keptHeld: () => kept.reduce((sum, piece) => sum + piece.length, 0),
 
     subscribe: (listener) => {
       listeners.add(listener);
@@ -1304,11 +1335,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       if (fate === 'ours' && !left && streaming && link !== undefined && status.state === 'running') {
         const stream = link;
         // What the stream delivered and was not credited yet (what the reader has not parsed, and what it owes) is credited now: the discarded bytes would otherwise hold the end back.
-        const uncredited = owed + Math.max(0, outstanding - forgiven);
+        // (`owed` is always nothing here: a stream that is running credits what the reader parsed as it comes.)
+        const uncredited = Math.max(0, outstanding - forgiven);
         closing = new Promise<void>((resolve) => {
           ending = resolve;
         });
-        owed = 0;
         if (uncredited > 0) {
           stream.ack(uncredited);
         }

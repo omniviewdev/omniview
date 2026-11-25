@@ -2220,3 +2220,67 @@ describe('the writer of a feed', () => {
     expect(attached.stream().writer).toMatch(/^[0-9a-f]{32}$/);
   });
 });
+
+describe('review of #763, round 2', () => {
+  it('credits at a close only what the stream delivered and nobody credited: not what the reader acknowledged, and not what an earlier stream delivered', async () => {
+    const acked = await running();
+    acked.stream().output(0, 'abcde');
+    acked.feed.ack(5);
+    acked.stream().output(5, 'fgh');
+    const closing = acked.feed.close();
+    expect(acked.stream().acks().reduce((sum, bytes) => sum + bytes, 0)).toBe(5 + 3);
+    acked.stream().ended({ reason: 'closed', closed_by: 'request', last_offset: 8 });
+    await closing;
+
+    const old = await running();
+    old.stream().output(0, 'abc');
+    old.stream().drop();
+    const again = reconnect(old);
+    again.ready({ start: 3, end: 3 });
+    again.output(3, 'de');
+    const ending = old.feed.close();
+    // The 3 bytes of the stream that is over are nobody's to credit to this one: only its own 2 are.
+    expect(again.acks().reduce((sum, bytes) => sum + bytes, 0)).toBe(2);
+    again.ended({ reason: 'closed', closed_by: 'request', last_offset: 5 });
+    await ending;
+  });
+
+  it('holds no reference to a piece the host confirmed, before any compaction', async () => {
+    const r = await running();
+    const piece = 'p'.repeat(MAX_INPUT_BYTES);
+    r.feed.write(piece);
+    r.feed.write(piece);
+    r.feed.write(piece);
+    expect(r.feed.keptHeld()).toBe(3 * MAX_INPUT_BYTES);
+    r.stream().applied(2 * MAX_INPUT_BYTES);
+    expect(r.feed.keptHeld()).toBe(MAX_INPUT_BYTES);
+    r.stream().applied(2 * MAX_INPUT_BYTES + 1000);
+    expect(r.feed.keptHeld()).toBe(MAX_INPUT_BYTES - 1000);
+  });
+
+  it('makes a writer id where the platform has no crypto, in the same 32 lowercase hex digits', async () => {
+    const real = globalThis.crypto;
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
+    try {
+      const r = await running();
+      expect(r.stream().writer).toMatch(/^[0-9a-f]{32}$/);
+      const other = await running();
+      expect(other.stream().writer).not.toBe(r.stream().writer);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', { configurable: true, value: real });
+    }
+  });
+
+  it('says in its status when the fresh question of a take-back could not be asked, and not when it was answered', async () => {
+    let reachable = false;
+    const r = await running({}, { channels: { listed: async () => (reachable ? { id: 'term-1', attached: true } : Promise.reject(new Error('offline'))) } });
+    r.stream().takenOver();
+    r.stream().drop();
+    await turns();
+    await r.feed.refresh?.({ fresh: true });
+    expect(r.feed.getSnapshot().detached).toMatchObject({ unwatched: true, askFailed: true });
+    reachable = true;
+    await r.feed.refresh?.({ fresh: true });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true, free: false });
+  });
+});

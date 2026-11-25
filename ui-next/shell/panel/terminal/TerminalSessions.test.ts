@@ -2031,6 +2031,19 @@ describe('who holds the terminals this page lost', () => {
     expect(reattach).toHaveBeenCalledTimes(1);
   });
 
+  it('skips a feed the registry has let go of (an entry kept ended by its plugin\'s unload) even when it is marked unwatched', () => {
+    const r = harness({ plugins: ['acme'] });
+    const feed = { ...keyedFeed(), refresh: vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined) };
+    r.sessions.open({ plugin: 'acme', id: 'item', title: 'web', sessionId: 'item-1', open: () => feed });
+    feed.set({ state: 'ended', detached: { by: 'taken-over', unwatched: true } });
+    expect(r.sessions.refreshUnwatched()).toBe(true);
+    expect(feed.refresh).toHaveBeenCalledTimes(1);
+    r.store.syncPlugins([]);
+    expect(r.sessions.feedOf('item-1')).toBe(feed);
+    expect(r.sessions.refreshUnwatched()).toBe(false);
+    expect(feed.refresh).toHaveBeenCalledTimes(1);
+  });
+
   it('asks every unwatched feed for a fresh answer (`refreshUnwatched`) and no other: not a watched one, not one that ended, not a running one', () => {
     const r = harness();
     const asking = (): FakeTerminalFeed & { readonly refresh: Mock<(options?: { readonly fresh?: boolean }) => Promise<void>> } => ({ ...keyedFeed(), refresh: vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined) });

@@ -88,6 +88,8 @@ export type TerminalDetached = {
    * attaching takes the terminal. The lane does not say the taker has gone; only `free` says that.
    */
   readonly unwatched?: boolean | undefined;
+  /** The last fresh question of a take-back could not be asked (the host was not reached): nothing was attached, and the lane says so. Cleared by the next answer. */
+  readonly askFailed?: boolean | undefined;
 };
 
 /** Whether the way back is offered: the taker has gone (`free`), or the page can no longer be told (`unwatched`): then the button stays whatever the host last said, because nothing will tell the page when the holder leaves; the press asks the host anew and attaches only when it says nobody holds the terminal. */
