@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTreeMemory } from './core/tree';
@@ -151,7 +151,9 @@ describe('the open groups the tree tells its host', () => {
     renderTree(nodes, { open: [], current: undefined, onOpenChange });
     onOpenChange.mockClear();
 
-    screen.getByRole('treeitem', { name: 'Things' }).focus();
+    act(() => {
+      screen.getByRole('treeitem', { name: 'Things' }).focus();
+    });
     await user.keyboard('{ArrowRight}');
 
     expect(onOpenChange).toHaveBeenCalledTimes(1);

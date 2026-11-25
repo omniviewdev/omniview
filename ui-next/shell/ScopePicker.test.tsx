@@ -472,7 +472,9 @@ describe('closing', () => {
     await user.click(face());
     const other = screen.getByRole('button', { name: 'elsewhere' });
 
-    other.focus();
+    act(() => {
+      other.focus();
+    });
     await waitFor(() => {
       expect(popup()).toBeNull();
     });
