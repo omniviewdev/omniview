@@ -1,21 +1,17 @@
-import { ExecClient, WindowClient } from '@omniviewdev/runtime/api';
-import { Window } from '@omniviewdev/runtime/runtime';
+import { ExecClient } from '@omniviewdev/runtime/api';
 import { parseAppError } from '@omniviewdev/runtime/ui/v1';
 import { Stream } from '@wailsio/runtime';
 import { isNativeWindow } from '../../core/native';
-import { resolveWindowName, type WindowState } from '../../session';
 import type { ChannelEvents, ChannelLaunch, ChannelLink, TerminalChannels } from './channel';
 
 // The one place that holds the capabilities of the terminals of this page and their streams (docs/ui-next/terminal-channel-protocol.md; the contract with the feed is `channel.ts`). A capability is what reaches a
-// terminal, so it never leaves this file: it is not exported, not handed to the feed, and not in any note, error or address. It is kept in memory and in a slot of the host's window state (the place the session and the
-// notifications are kept: `shell/session`, `shell/notices`), so that a page that reloads reaches the terminals it left. The window always starts: a slot that cannot be read or written leaves a page that works from memory,
-// with a note that does not carry a capability. The binary framing of the stream is here too: the feed is handed bytes and parsed JSON, and sends bytes.
+// terminal, so it never leaves this file: it is not exported, not handed to the feed, and not in any note, error or address. It is kept in memory and in the sessionStorage of this tab (id to capability), which a reload keeps and no other window
+// and no other caller can read, so that a page that reloads reaches the terminals it left. It is never given to the host's window service: `WindowClient.SaveState` keeps its slots on disk, and `GetState` and `ListStates`
+// answer any window and any caller (protocol, section 2). The slot `terminal-capabilities` that an earlier build kept there is ignored: it is not read, and nothing is migrated from it. The window always starts: a storage that cannot
+// be read or written leaves a page that works from memory, with a note that does not carry a capability. The binary framing of the stream is here too: the feed is handed bytes and parsed JSON, and sends bytes.
 
-/** The slot of a window that holds its terminals' capabilities, as a JSON object of the terminal's id to its capability (a slot of the host is JSON). */
-export const CAPABILITY_SLOT = 'terminal-capabilities';
-
-/** How long the slot may take to answer a read before the window goes on with no terminals. The slot is the host's own process, so an answer is milliseconds; this is the bound on a host that has hung. */
-export const CAPABILITY_DEADLINE_MS = 2_000;
+/** The key of the tab's sessionStorage that holds the terminals' capabilities, as a JSON object of the terminal's id to its capability. */
+export const CAPABILITY_KEY = 'omniview.terminal-capabilities';
 
 /** What a capability looks like: the host's are 43 characters of base64url. Anything else is not one the page keeps, and a capability that is not one cannot be put in the attach frame whole. */
 const USABLE = /^[A-Za-z0-9_-]{16,256}$/;
@@ -73,10 +69,10 @@ export type ChannelClient = {
   ListChannelTerminals(capabilities: string[]): PromiseLike<unknown>;
 };
 
-/** A place to keep the capabilities as the text of their slot. `read` answers `undefined` when nothing was saved. */
+/** A place to keep the capabilities as text. `read` answers nothing when nothing was saved; either call throws when the place cannot be used. */
 export type CapabilityStorage = {
-  readonly read: () => Promise<string | undefined>;
-  readonly write: (text: string) => Promise<void>;
+  readonly read: () => string | null | undefined;
+  readonly write: (text: string) => void;
 };
 
 export type ChannelDeps = {
@@ -86,31 +82,18 @@ export type ChannelDeps = {
   readonly storage: CapabilityStorage;
   /** Where a note goes (the console by default). A note never carries a capability. */
   readonly warn?: ((message: string) => void) | undefined;
-  /** The capabilities already known, by terminal id: what a page that reloaded read from its slot. */
+  /** The capabilities already known, by terminal id: what a page that reloaded read from its tab's storage. */
   readonly saved?: Readonly<Record<string, string>> | undefined;
 };
 
-export type CapabilityStorageOptions = {
-  /** The two calls of the host's window service, as the generated binding has them. */
-  readonly client: WindowState;
-  /** The name of the window this page is in (the runtime knows it). Asked for once, and again after a failure. */
-  readonly name: () => Promise<string>;
-};
+/** What of the page's global object the storage reads: the tab's `sessionStorage`, looked up at each call because merely reading it may be refused. */
+export type StorageScope = { readonly sessionStorage: Pick<Storage, 'getItem' | 'setItem'> };
 
-export function capabilityStorage({ client, name }: CapabilityStorageOptions): CapabilityStorage {
-  let named: Promise<string> | undefined;
-  const windowName = async (): Promise<string> => {
-    named ??= name().catch((error: unknown) => {
-      named = undefined;
-      throw error;
-    });
-    return named;
-  };
-
+export function sessionCapabilityStorage(scope: StorageScope): CapabilityStorage {
   return {
-    read: async () => (await client.GetState(await windowName()))[CAPABILITY_SLOT],
-    write: async (text) => {
-      await client.SaveState(await windowName(), CAPABILITY_SLOT, text);
+    read: () => scope.sessionStorage.getItem(CAPABILITY_KEY) ?? undefined,
+    write: (text) => {
+      scope.sessionStorage.setItem(CAPABILITY_KEY, text);
     },
   };
 }
@@ -155,7 +138,7 @@ function frameOf(type: number, payload?: Uint8Array): Uint8Array<ArrayBuffer> {
 /** Whole numbers in the range of a frame field. A value outside it is the nearest one inside, so that a frame is always one the host takes. */
 const clamped = (value: number, least: number, most: number): number => Math.min(most, Math.max(least, Number.isFinite(value) ? Math.trunc(value) : least));
 
-/** What a slot's text holds: the capabilities that can be used, and whether anything in it could not be. */
+/** What the storage's text holds: the capabilities that can be used, and whether anything in it could not be. */
 function slotOf(text: string): { readonly saved: Record<string, string>; readonly whole: boolean } {
   let value: unknown;
   try {
@@ -181,33 +164,9 @@ function slotOf(text: string): { readonly saved: Record<string, string>; readonl
   return { saved, whole };
 }
 
-type Outcome<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly why: string };
-
-/** What a call of the slot answers, or why there is none within the deadline. The words of a failure are the slot's own and may echo what it was given, so only a sentence of ours is kept. */
-async function within<T>(call: () => Promise<T>): Promise<Outcome<T>> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  // The app's TypeScript library (ES2023) has no `Promise.withResolvers`, so the deadline is made with the executor.
-  const late = new Promise<Outcome<T>>((resolve) => {
-    timer = setTimeout(() => {
-      resolve({ ok: false, why: `it did not answer in ${String(CAPABILITY_DEADLINE_MS)} ms` });
-    }, CAPABILITY_DEADLINE_MS);
-  });
-  try {
-    return await Promise.race([
-      Promise.resolve()
-        .then(call)
-        .then((value): Outcome<T> => ({ ok: true, value }))
-        .catch((): Outcome<T> => ({ ok: false, why: 'it failed' })),
-      late,
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 type Core = {
   readonly channels: TerminalChannels;
-  /** Takes in the capabilities a slot held, those it does not know already. */
+  /** Takes in the capabilities a storage held, those it does not know already. */
   readonly adopt: (saved: Readonly<Record<string, string>>) => void;
   readonly storage: CapabilityStorage;
   readonly warn: (message: string) => void;
@@ -221,17 +180,13 @@ function createCore(deps: ChannelDeps): Core {
   const seen = new Set<string>(caps.values());
   const scrub = (text: string): string => [...seen].reduce((clean, cap) => clean.split(cap).join('the capability'), text);
 
-  // The slot is written after every change, one write at a time and in the order of the changes, each with the state at its change. A write that fails is a note: the terminals work from memory.
-  let chain: Promise<void> = Promise.resolve();
+  // The storage is written after every change, with the state at the change. A write that fails is a note: the terminals work from memory.
   const persist = (): void => {
-    const text = JSON.stringify(Object.fromEntries(caps));
-    chain = chain.then(async () => {
-      try {
-        await storage.write(text);
-      } catch (error) {
-        warn(`The terminal capabilities could not be saved (${scrub(messageOf(error))}), so the terminals of this window cannot be found again after a reload.`);
-      }
-    });
+    try {
+      storage.write(JSON.stringify(Object.fromEntries(caps)));
+    } catch (error) {
+      warn(`The terminal capabilities could not be saved (${scrub(messageOf(error))}), so the terminals of this tab cannot be found again after a reload.`);
+    }
   };
 
   /** Forgets a capability, if it is still the one held for the id. Says whether it was. */
@@ -633,7 +588,7 @@ function createCore(deps: ChannelDeps): Core {
         }
       }
 
-      // A terminal made before the slot was read has already written a slot without these.
+      // A terminal made before the storage was read has already written a state without these.
       if (added > 0 && before > 0) {
         persist();
       }
@@ -641,15 +596,21 @@ function createCore(deps: ChannelDeps): Core {
   };
 }
 
-/** Reads the slot, within the deadline and without ever rejecting, and takes in what it holds. */
-async function load(core: Core): Promise<TerminalChannels> {
-  const read = await within(core.storage.read);
-  if (!read.ok) {
-    core.warn(`The saved terminal capabilities could not be read (${read.why}), so this window starts with no terminals of an earlier page.`);
-  } else if (read.value !== undefined) {
-    const { saved, whole } = slotOf(read.value);
+/** Reads the storage and takes in what it holds. Never throws: a storage that cannot be read or used is a page with no terminals of an earlier page, and a note. */
+function load(core: Core): TerminalChannels {
+  let text: string | null | undefined;
+  try {
+    text = core.storage.read();
+  } catch {
+    // The words of the failure are the storage's own, and could carry what it was asked for: only a sentence of ours is said.
+    core.warn('The saved terminal capabilities could not be read, so this tab starts with no terminals of an earlier page.');
+    return core.channels;
+  }
+
+  if (text !== null && text !== undefined) {
+    const { saved, whole } = slotOf(text);
     if (!whole) {
-      core.warn('The saved terminal capabilities could not all be used, so this window starts without the ones it could not read.');
+      core.warn('The saved terminal capabilities could not all be used, so this tab starts without the ones it could not read.');
     }
 
     core.adopt(saved);
@@ -658,14 +619,14 @@ async function load(core: Core): Promise<TerminalChannels> {
   return core.channels;
 }
 
-/** The terminal channels of a page, with the capabilities its slot kept. Never rejects: a slot that cannot be read or used is a page with no terminals of an earlier page, and a note. */
+/** The terminal channels of a page, with no capability read from its storage (a test of the channels alone; the page's own are `loadAppTerminalChannels`). */
 export function createTerminalChannels(deps: ChannelDeps): TerminalChannels {
   return createCore(deps).channels;
 }
 
-/** The terminal channels of a page, once the slot has been read. */
+/** The terminal channels of a page, with the capabilities its storage kept. */
 export function loadTerminalChannels(deps: ChannelDeps): TerminalChannels {
-  return createCore(deps).channels;
+  return load(createCore(deps));
 }
 
 /** What of the page's global object the stream's opener reads. */
@@ -693,14 +654,11 @@ export function streamOpener(scope: unknown, native: (name: string) => ChannelSo
   };
 }
 
-/** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
-const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
-
 let app: Core | undefined;
 
-/** The page's own channels: the host's `ExecClient`, the Wails stream, and the slot of this window. Made when first asked for; its capabilities are those of this page until `loadAppTerminalChannels` has read the slot. */
+/** The page's own channels: the host's `ExecClient`, the Wails stream, and the sessionStorage of this tab. Made when first asked for; its capabilities are those of this page until `loadAppTerminalChannels` has read the storage. */
 const appCore = (): Core => {
-  app ??= createCore({ client: ExecClient, openStream: streamOpener(window, (name) => Stream(name)), storage: capabilityStorage({ client: WindowClient, name: windowName }) });
+  app ??= createCore({ client: ExecClient, openStream: streamOpener(window, (name) => Stream(name)), storage: sessionCapabilityStorage(window) });
   return app;
 };
 
@@ -708,13 +666,7 @@ export function appTerminalChannels(): TerminalChannels {
   return appCore().channels;
 }
 
-/** Reads this window's slot into the page's channels, and answers them. The window awaits it before it asks for the terminals it left. Never rejects, and is bounded. */
+/** Reads this tab's storage into the page's channels, and answers them. The window calls it before it asks for the terminals it left. Never throws. */
 export function loadAppTerminalChannels(): TerminalChannels {
-  return appCore().channels;
-}
-
-export const CAPABILITY_KEY = 'omniview.terminal-capabilities';
-
-export function sessionCapabilityStorage(_scope: unknown): CapabilityStorage {
-  return { read: () => undefined, write: () => undefined } as unknown as CapabilityStorage;
+  return load(appCore());
 }

@@ -10,7 +10,7 @@ const CAP = 'CANARYcapability0123456789-_abcdefghijklmnop';
 const world = vi.hoisted(() => ({
   saves: [] as unknown[][],
   reads: [] as unknown[][],
-  slots: {} as Record<string, string>,
+  slots: {},
   calls: [] as unknown[][],
   sockets: [] as Array<{ readonly url: string; readonly sent: Uint8Array[] }>,
 }));
@@ -63,19 +63,25 @@ class FakeWebSocket {
   readyState = 1;
   bufferedAmount = 0;
   readonly sent: Uint8Array[] = [];
-  readonly url: string;
-  constructor(url: string) {
-    this.url = url;
+  constructor(readonly url: string) {
     world.sockets.push(this);
   }
 
-  addEventListener(): void {}
-  removeEventListener(): void {}
+  addEventListener(): void {
+    // The tests of this file never read from the stream.
+  }
+
+  removeEventListener(): void {
+    // See addEventListener.
+  }
+
   send(data: Uint8Array): void {
     this.sent.push(data);
   }
 
-  close(): void {}
+  close(): void {
+    // Nothing is held open.
+  }
 }
 
 /** The module is made anew, as a reload makes it: the channels of the first page are gone, the tab's storage is not. */

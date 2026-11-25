@@ -62,7 +62,7 @@ beforeEach(() => {
   vi.mocked(restoreLocalTerminals).mockReset();
   vi.mocked(attachLocalTerminal).mockReset();
   vi.mocked(loadAppTerminalChannels).mockReset();
-  vi.mocked(loadAppTerminalChannels).mockResolvedValue(channels);
+  vi.mocked(loadAppTerminalChannels).mockReturnValue(channels);
 });
 
 afterEach(() => {
@@ -84,17 +84,12 @@ async function turns(): Promise<void> {
 }
 
 describe('the terminal channels the screen gives the Terminal tool', () => {
-  it('are loaded before the host is drawn, with the session and the notifications: the host waits for the capabilities the window kept, and is drawn once they are read', async () => {
-    const gate = Promise.withResolvers<TerminalChannels>();
-    vi.mocked(loadAppTerminalChannels).mockReturnValue(gate.promise);
+  it('are loaded from the tab\'s storage once, before the host is drawn, and the host is drawn with them', async () => {
     render(<PluginHostScreen />);
-    await turns();
-    expect(loadAppTerminalChannels).toHaveBeenCalledTimes(1);
-    expect(world.given).toHaveLength(0);
-    gate.resolve(channels);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
+    expect(loadAppTerminalChannels).toHaveBeenCalledTimes(1);
   });
 
   it('come as a way to find the terminals the window left and a way to attach one again, and nothing else: no page key, no reconnection signal', async () => {

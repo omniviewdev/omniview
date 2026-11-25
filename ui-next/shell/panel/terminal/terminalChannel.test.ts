@@ -884,7 +884,7 @@ describe('where the capabilities are kept', () => {
     const channels = loadTerminalChannels({ ...r.deps, storage });
     expect(r.warnings.length).toBeGreaterThan(0);
     await expect(channels.create('t1', { cols: 80, rows: 24 })).resolves.toBeDefined();
-    connected(r);
+    channels.connect('t1', undefined, recorder().events);
     expect(r.opened).toEqual(['terminal']);
   });
 
