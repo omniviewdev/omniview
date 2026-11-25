@@ -663,3 +663,22 @@ func TestTheMarksOfZshAndFishAndPwshNeverLandInAFileThatTheUserRedirectsTo(t *te
 		})
 	}
 }
+
+// PowerShell's transcript (Start-Transcript, or a policy that turns it on) records what the prompt function returns: the nonce
+// must not be in it.
+func TestPwshTheTranscriptHasNoNonceAndNoMarkWithADirectory(t *testing.T) {
+	f := newIntegrationFixture(t, "pwsh", integrationShell(t, "pwsh"))
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "Start-Transcript -Path $HOME/transcript.txt | Out-Null")
+	f.run(info.ID, "echo hi")
+	f.run(info.ID, "sh -c 'exit 3'")
+	f.run(info.ID, "Stop-Transcript | Out-Null")
+	transcript := f.fileOf("transcript.txt")
+	assert.Contains(t, transcript, "echo hi", "the transcript recorded the session")
+	assert.NotContains(t, transcript, f.m.session(t, info.ID).nonce.Reveal(), "no nonce in the transcript")
+	assert.NotContains(t, transcript, "\x1b]633;", "no 633 mark in the transcript")
+	assert.NotContains(t, transcript, "\x1b]7;", "no directory mark in the transcript")
+	assert.NotContains(t, transcript, "\x1b]133;D", "no end mark in the transcript")
+	t.Logf("what of the marks the transcript holds: A=%v B=%v", strings.Contains(transcript, "\x1b]133;A"), strings.Contains(transcript, "\x1b]133;B"))
+}
