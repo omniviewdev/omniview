@@ -7487,7 +7487,7 @@ function watchStreams(page) {
           while (socket.replayBytes > OUTPUT_WINDOW && socket.replay.length > 1) socket.replayBytes -= socket.replay.shift().length;
         }
       } else if (type === 'applied' && payload.length === 9) {
-        note({ dir: 'host', type, n: Number(payload.readBigUInt64BE(1)) });
+        note({ dir: 'host', type, inputApplied: Number(payload.readBigUInt64BE(1)) });
       } else if (type === 'unsupported') {
         note({ dir: 'host', type, v: json()?.v });
       } else if (type === 'gap' && payload.length === 17) {
@@ -8030,6 +8030,7 @@ function assertStreamFrames(streams, engine) {
   for (const socket of sockets) {
     const sent = socket.frames.filter((frame) => frame.dir === 'page');
     assert.ok(sent[0]?.type === 'attach' && sent.filter((frame) => frame.type === 'attach').length === 1, `${engine}: the first frame the page sent on a stream of ${String(socket.id)} is its one attach`);
+    assert.ok(socket.frames.every((frame, at) => at === 0 || frame.n > socket.frames[at - 1].n), `${engine}: the frames of a stream are numbered in the order they were seen (a frame's own payload never replaces its number)`);
     assert.deepEqual(sent.filter((frame) => frame.type.startsWith('unknown')).map((frame) => frame.type), [], `${engine}: the page sent no frame that is not a frame of the protocol (a text frame, an empty one, a short size or ack, a type it does not have)`);
     assert.deepEqual(socket.frames.filter((frame) => frame.dir === 'host' && frame.type.startsWith('unknown')).map((frame) => frame.type), [], `${engine}: the host sent no frame that is not a frame of the protocol`);
     assert.equal(sent.filter((frame) => frame.type === 'input' && frame.length > 65_536).length, 0, `${engine}: no input frame is larger than 65,536 bytes`);
@@ -10119,9 +10120,10 @@ async function checkTerminalFollowups(browser, getHost, engine) {
     // The release does not travel on the events socket: the host tells the first tab's terminal stream (`released`) the moment the second tab's stream ends, so the first tab is told, and offers the button, while its events socket is still away.
     const awayHeld = awaySeen.streams.of(awayTerminal.id).at(-1);
     await staged('the second tab closes');
+    // The interval in which the first tab must ask the host nothing begins here, with its setup settled and before the taker closes: a question in it would be the way the page learned of the release.
+    const missedAt = Date.now();
     await missTaker.close();
     await waitUntil('the host to hold the terminal for nobody once the second tab was gone', async () => (await listedAs(awayTerminal.id))?.attached === false, 30_000);
-    const missedAt = Date.now();
     const heardLate = await watchPanelUntil(away, (state) => state.lane.some((words) => /The tab that took this terminal has closed\. The shell keeps running until its lease ends\./.test(words)), 60_000, missedAt);
     assert.ok(heardLate.ok, `${engine}: with its events socket still away the first tab says that the tab that took the terminal has closed, and that the shell keeps running until its lease ends, within 60 s (the host told its terminal stream): ${timelineOf(heardLate.seen)}`);
     assert.equal(gotOf(awayHeld, 'released').length, 1, `${engine}: the host sent the first tab's stream released, once (it sent ${String(gotOf(awayHeld, 'released').length)})`);
@@ -10647,6 +10649,8 @@ async function checkTerminalIsolation(browser, getHost, engine) {
     const context = await browser.newContext({ viewport });
     const p1 = await context.newPage();
     const p2 = await context.newPage();
+    watchRequests(p1);
+    watchRequests(p2);
     PAGE_LABELS.set(p1, 'the tab that is displaced and closes');
     PAGE_LABELS.set(p2, 'the tab that holds the terminal');
     const seen1 = evidenceOf(p1);
