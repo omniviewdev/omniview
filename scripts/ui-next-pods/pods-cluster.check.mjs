@@ -8,6 +8,7 @@
 //   OMNIVIEW_CHECK_MODE       parity (default): the Overview the plugin lands on says what kubectl says (HM3c, plugin #287: the connection's name, Needs attention, the Workloads table, the Cluster rows, and no zero in any frame while it loads: overview.mjs); the Pods list, opened from the Overview through the sidebar, and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says, and one deleted while its page is open is titled "was deleted"; the Logs command of a Pod
 //                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session; pressed twice on a running Pod it shows its one session (A22)
 //                             a press on a column header sorts a list (K3a): the Pods list by Restarts and the Deployments list by Age, twice each, against `kubectl get <kind> -A -o json` (sort.mjs)
+//                             a Pod that declares a port offers Forward port in its page's menu (PF3-k8s, plugin #288), and the forward started from it is listed in the Ports tool as `localhost:<port> → :8080/TCP`, the host the plugin states (parity.mjs, `checkForward`)
 //                             control-fixture-absent: both checks, the Pods list's and the Overview's, must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the Pods check must report PAGE_MISMATCH with no rows and the Overview check OVERVIEW_MISMATCH with no tab (host without the plugin: the kit's empty state of the plugin list)
 //                             control-bundle-absent:  the Pods check must report PAGE_MISMATCH with no rows and the Overview check OVERVIEW_MISMATCH with no section (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
@@ -23,7 +24,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsRate, checkLogsTwice, checkOverview, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkForward, checkLogs, checkLogsRate, checkLogsTwice, checkOverview, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareDrawn, compareLane, readDrawn } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 import { compareFacts } from './unavailable.mjs';
@@ -261,5 +262,12 @@ if (mode === 'control-fixture-absent') {
     const { samples, pod } = await checkLogsRate({ browser, baseURL, kubeconfig });
     assert.ok(samples.length >= 24, `the strip was read ${String(samples.length)} times`);
     assert.equal(pod.containers.length, 2);
+  });
+
+  // PF3-k8s (plugin #288): the Pod page's Forward port entry. A Pod that declares TCP 8080 (made for the check, the fixture declares no port) offers `Forward port 8080` in the page's menu, and the forward its press starts is listed in
+  // the Ports tool with the host the plugin states: `localhost:<port> → :8080/TCP` (parity.mjs, `checkForward`). A plugin before #288 has no such entry and fails here. Parity mode only; it makes a Pod of its own, as the ones above.
+  test('the Forward port entry of a Pod that declares a port starts a forward the Ports tool lists as localhost:<port>', async () => {
+    const { read } = await checkForward({ browser, baseURL, kubeconfig });
+    assert.match(read, /^localhost:\d+ → :8080\/TCP$/);
   });
 }
