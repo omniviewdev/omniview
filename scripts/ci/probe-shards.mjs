@@ -474,7 +474,9 @@ export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor =
     if (verdict === 'ok') continue;
     const percent = whole((Math.abs(delta) / unit.seconds) * 100);
     const lead = `${unit.name} (${unit.id}) took ${took} s on this runner, ${unit.seconds} s in ${unit.file} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s, ${percent} percent`;
-    const advice = verdict === 'slower' ? `over): put \`seconds: ${took}\` there, and the next run packs the shards with it` : `under): put \`seconds: ${took}\` there so that the planner can use the room`;
+    // A unit may be listed at LIMIT_SECONDS at most (checkUnits): past it the number to put there is the limit, which gives the unit a shard of its own, or the unit is split.
+    const over = took > LIMIT_SECONDS ? `over): it took more than the ${LIMIT_SECONDS} s a unit may be listed at: split it, or put \`seconds: ${LIMIT_SECONDS}\` there and it has a shard of its own` : `over): put \`seconds: ${took}\` there, and the next run packs the shards with it`;
+    const advice = verdict === 'slower' ? over : `under): put \`seconds: ${took}\` there so that the planner can use the room`;
     warnings.push(`::warning title=${title}::${escapeData(`${lead}; a unit warns past ${quarter} and ${floor} s ${advice}`)}`);
   }
 

@@ -768,10 +768,13 @@ const drift = (results) => driftFindings('4', results, TABLE);
 test('the margin is a quarter of a unit\'s seconds or 60 s, whichever is more: a unit over its seconds by more warns, and the message names the unit, its file, the seconds it took, the seconds in the table and the number to put there', () => {
   assert.equal(DRIFT_RATIO, 0.25);
   assert.equal(DRIFT_FLOOR_SECONDS, 60);
-  const { warnings } = drift([ran('big', 520)]);
+  const { warnings } = drift([ran('mid', 161)]);
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /^::warning title=Kit probe unit seconds \(shard 4\)::Unit big \(big\) took 520 s on this runner, 400 s in scripts\/ci\/probe-units\/big\.mjs \(\+120 s, 30 percent; a unit warns past a quarter and 60 s over\): put `seconds: 520` there, and the next run packs the shards with it$/);
+  assert.match(warnings[0], /^::warning title=Kit probe unit seconds \(shard 4\)::Unit mid \(mid\) took 161 s on this runner, 100 s in scripts\/ci\/probe-units\/mid\.mjs \(\+61 s, 61 percent; a unit warns past a quarter and 60 s over\): put `seconds: 161` there, and the next run packs the shards with it$/);
   assert.equal(warnings[0].includes('\n'), false, 'a workflow command is one line');
+  // Past the most a unit may be listed at, the number it took would fail the check: the advice is the limit, or a split.
+  const [past] = drift([ran('big', 520)]).warnings;
+  assert.match(past, /\(\+120 s, 30 percent; a unit warns past a quarter and 60 s over\): it took more than the 432 s a unit may be listed at: split it, or put `seconds: 432` there and it has a shard of its own$/);
 });
 
 test('negative control: at the margin, or inside it, a unit does not warn: 500 of 400 s, 160 of 100 s, 88 of 28 s', () => {

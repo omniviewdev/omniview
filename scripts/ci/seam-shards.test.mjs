@@ -343,6 +343,7 @@ test('driftFindings: a unit warns past its seconds and the larger of a quarter a
   assert.equal(run(500, false).warnings.length, 0);
   const quarter = driftFindings({ engine: 'webkit', shard: 1, ran: [{ id: 'u', ok: true, seconds: 501 }], units: unitOf(400) });
   assert.equal(quarter.warnings.length, 1, '400 s warns past 500 s: a quarter is more than 60 s');
+  assert.match(quarter.warnings[0], /\(\+101 s; a unit warns past a quarter and 60 s over\): it took more than the 405 s a unit may be listed at: split it, or put `seconds: 405` there and it has a shard of its own$/, 'the number it took would fail the check');
 });
 
 test('driftFindings: units that add up far past the limit fail nothing; each says its own number', () => {

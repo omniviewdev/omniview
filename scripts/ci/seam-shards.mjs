@@ -284,7 +284,10 @@ export function driftFindings({ engine, shard, ran, units, ratio = DRIFT_RATIO, 
     const verdict = delta > margin ? 'slower' : -delta > margin ? 'faster' : 'ok';
     rows.push({ id: unit.id, table: unit.seconds, took, delta, verdict });
     if (verdict === 'ok') continue;
-    warnings.push(`::warning title=${title}::${escapeData(`${unit.id} took ${took} s on this runner, ${unit.seconds} s in ${UNITS_FILE} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s; a unit warns past a quarter and ${floor} s ${verdict === 'slower' ? 'over' : 'under'}): put \`seconds: ${took}\` there`)}`);
+    // A unit may be listed at LIMIT_SECONDS less PHASE_START_SECONDS at most (checkUnits): past it the number to put there is that, which gives the unit a shard of its own, or the unit is split.
+    const most = LIMIT_SECONDS - PHASE_START_SECONDS;
+    const advice = took > most ? `it took more than the ${most} s a unit may be listed at: split it, or put \`seconds: ${most}\` there and it has a shard of its own` : `put \`seconds: ${took}\` there`;
+    warnings.push(`::warning title=${title}::${escapeData(`${unit.id} took ${took} s on this runner, ${unit.seconds} s in ${UNITS_FILE} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s; a unit warns past a quarter and ${floor} s ${verdict === 'slower' ? 'over' : 'under'}): ${advice}`)}`);
   }
 
   const took = whole(ran.reduce((sum, entry) => sum + entry.seconds, 0));
