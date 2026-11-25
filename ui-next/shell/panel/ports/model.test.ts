@@ -147,6 +147,7 @@ describe('the row the window draws of a forward', () => {
       pluginStopped: false,
       reason: undefined,
       host: '',
+      listens: 'unstated',
       endpoint: '8081',
       mapping: 'port 8081 → :8080/TCP',
     });
@@ -267,7 +268,7 @@ describe('whether two rows say the same', () => {
 });
 
 describe('what a person can do with a row, and why not', () => {
-  // A forward that states a loopback host: Open in browser is for it only (the producer's session states none today; `where a forward listens` below is what the row says without one).
+  // A forward that states a loopback host: Open in browser is for it only (`where a forward listens` below is what the row says with no host, or with another).
   const row = (patch: Partial<Forward> = {}, over: Partial<Facts> = {}) => rowOf(forward({ host: '127.0.0.1', ...patch }), facts(over));
 
   it('can stop, open and copy a forward that runs over TCP and states a loopback host: nothing is in the way, and each says so by having no reason', () => {
@@ -311,12 +312,67 @@ describe('which session of an id a row shows', () => {
 });
 
 describe('where a forward listens', () => {
-  it('is what the producer states, and the SDK\'s session states a port and no host: the row says the port, and never invents a host', () => {
+  // What the SDK lets a forwarder state as `local_host`: `localhost` in any case, or an IP address (an IPv6 one may carry a zone), as written and with nothing around it. The tool reads it by the same rule, strictly: a text that is not
+  // one reads as no host, and a false negative is safe (Open stays unavailable) where a false positive is the bug. The second member is the host a browser on this computer is sent to.
+  const LOOPBACK: Array<[string, string]> = [
+    ['localhost', 'localhost'],
+    ['LOCALHOST', 'localhost'],
+    ['LocalHost', 'localhost'],
+    ['127.0.0.1', '127.0.0.1'],
+    ['127.1.2.3', '127.1.2.3'],
+    ['127.255.255.255', '127.255.255.255'],
+    ['::1', '[::1]'],
+    ['0:0:0:0:0:0:0:1', '[::1]'],
+    ['0000:0000:0000:0000:0000:0000:0000:0001', '[::1]'],
+    ['::1%lo', '[::1]'],
+    [`::1%${'a'.repeat(64)}`, '[::1]'],
+    ['::ffff:127.0.0.1', '127.0.0.1'],
+    ['::FFFF:127.9.9.9', '127.9.9.9'],
+    ['::ffff:7f00:1', '127.0.0.1'],
+    ['0:0:0:0:0:ffff:127.0.0.1', '127.0.0.1'],
+  ];
+  const EVERYWHERE = ['0.0.0.0', '::', '::ffff:0.0.0.0', '::ffff:0:0', '0:0:0:0:0:0:0:0', '0:0:0:0:0:ffff:0.0.0.0', '::0.0.0.0'];
+  const ELSEWHERE = ['10.0.0.7', '192.168.1.5', '169.254.1.1', '128.0.0.1', '126.255.255.255', '0.0.0.1', '::2', '1::1', 'fe80::1', 'fe80::1%en0', '::ffff:10.0.0.7', '::ffff:128.0.0.1', '::ffff:0:1', '::127.0.0.1'];
+  const NOT_AN_ADDRESS = [
+    ' localhost',
+    'localhost ',
+    'localhost.',
+    'localho\u017Ft',
+    '127.1',
+    '127.0.0.1.1',
+    '256.0.0.1',
+    '01.2.3.4',
+    '127.000.000.001',
+    '0x7f.0.0.1',
+    '1.2.3',
+    '+1.2.3.4',
+    ' 127.0.0.1',
+    '127.0.0.1 ',
+    '127.0.0.1\n',
+    '[::1]',
+    '127.0.0.1:8080',
+    '::1::',
+    ':::1',
+    '::g',
+    '12345::1',
+    '1:2:3:4:5:6:7',
+    '1:2:3:4:5:6:7:8:9',
+    '1:2:3:4:5:6:7:8::',
+    '1:2:3:4:5:6:7:1.2.3.4',
+    '::ffff:127.0.0.1.5',
+    '::1%',
+    '::1%a b',
+    `::1%${'a'.repeat(65)}`,
+    '1.2.3.4%en0',
+    'forward.example.com',
+  ];
+  const shown = (host: string): string => (host.includes(':') ? `[${host}]` : host);
+
+  it('is what the producer states, and nothing is made up for one that states none: the row says the port', () => {
     expect(readForward(session())?.host).toBe('');
     const row = rowOf(forward(), facts());
-    expect(row.host).toBe('');
-    expect(row.mapping).toBe('port 8081 → :8080/TCP');
-    expect(row.endpoint).toBe('8081');
+    expect(row).toMatchObject({ host: '', listens: 'unstated', mapping: 'port 8081 → :8080/TCP', endpoint: '8081' });
+    expect(row.reason).toBeUndefined();
     expect(JSON.stringify(row)).not.toContain('127.0.0.1');
   });
 
@@ -326,30 +382,89 @@ describe('where a forward listens', () => {
     expect(row.endpoint).toBe('');
   });
 
-  it('reads a host the producer states (`local_host`) as text, and nothing else as one', () => {
-    expect(readForward(session({ local_host: ' 127.0.0.1 ' }))?.host).toBe('127.0.0.1');
+  it.each([...LOOPBACK.map(([host]) => host), ...EVERYWHERE, ...ELSEWHERE])('keeps %s as the producer wrote it', (host) => {
+    expect(readForward(session({ local_host: host }))?.host).toBe(host);
+  });
+
+  it.each(NOT_AN_ADDRESS)('reads %j as no host: it is not one that the SDK states', (host) => {
+    expect(readForward(session({ local_host: host }))?.host).toBe('');
+    expect(rowOf(forward({ host }), facts())).toMatchObject({ host: '', listens: 'unstated', mapping: 'port 8081 → :8080/TCP', endpoint: '8081' });
+  });
+
+  it('reads what is not text, and what is longer than the SDK states, as no host', () => {
     expect(readForward(session({ local_host: 7 }))?.host).toBe('');
     expect(readForward(session({ local_host: null }))?.host).toBe('');
+    expect(readForward(session({ local_host: 'a'.repeat(300) }))?.host).toBe('');
+    expect(readForward(session({ local_host: `::1%${'a'.repeat(300)}` }))?.host).toBe('');
   });
 
-  it.each([
-    ['127.0.0.1', '127.0.0.1:8081 → :8080/TCP', '127.0.0.1:8081', 'http://127.0.0.1:8081'],
-    ['::1', '[::1]:8081 → :8080/TCP', '[::1]:8081', 'http://[::1]:8081'],
-    ['localhost', 'localhost:8081 → :8080/TCP', 'localhost:8081', 'http://localhost:8081'],
-    ['LOCALHOST', 'LOCALHOST:8081 → :8080/TCP', 'LOCALHOST:8081', 'http://LOCALHOST:8081'],
-  ])('shows a loopback host the producer states, %s, in the mapping and as the endpoint, and opens at it', (host, mapping, endpoint, url) => {
+  it.each(LOOPBACK)('takes %s as this computer: shown as written, opened at %s, and copied as an address', (host, connect) => {
     const row = rowOf(forward({ host }), facts());
-    expect(row.mapping).toBe(mapping);
-    expect(row.endpoint).toBe(endpoint);
-    expect(availabilityOf(row).open).toBeUndefined();
-    expect(browserUrlOf(row)).toBe(url);
+    expect(row).toMatchObject({ host, listens: 'loopback', endpoint: `${shown(host)}:8081`, mapping: `${shown(host)}:8081 → :8080/TCP` });
+    expect(row.reason).toBeUndefined();
+    expect(availabilityOf(row)).toEqual({ stop: undefined, open: undefined, copy: undefined });
+    expect(copyWordOf(row)).toBe('Copy address');
+    expect(browserUrlOf(row)).toBe(`http://${connect}:8081`);
   });
 
-  it.each(['0.0.0.0', '192.168.1.5', 'forward.example.test', '::'])('shows a host beyond this computer, %s, as the endpoint and does not open it', (host) => {
+  it.each(EVERYWHERE)('takes %s as every network interface: shown as written, never opened, copied as a port, and said to be reachable from other computers', (host) => {
     const row = rowOf(forward({ host }), facts());
-    expect(row.endpoint).toBe(`${host.includes(':') ? `[${host}]` : host}:8081`);
-    expect(row.mapping).toBe(`${row.endpoint} → :8080/TCP`);
-    expect(availabilityOf(row).open).toBe('This forward listens beyond this computer, so it is not opened from here.');
+    expect(row).toMatchObject({
+      host,
+      listens: 'everywhere',
+      endpoint: `${shown(host)}:8081`,
+      mapping: `${shown(host)}:8081 → :8080/TCP`,
+      reason: 'Reachable from other computers: it listens on every network interface.',
+    });
+    expect(availabilityOf(row)).toEqual({ stop: undefined, open: 'This forward listens beyond this computer, so it is not opened from here.', copy: undefined });
+    expect(copyWordOf(row)).toBe('Copy port');
+    expect(browserUrlOf(row)).toBeUndefined();
+  });
+
+  it.each(ELSEWHERE)('takes %s as another address: shown as written, never opened, copied as a port, and said to be reachable from other computers there', (host) => {
+    const row = rowOf(forward({ host }), facts());
+    expect(row).toMatchObject({
+      host,
+      listens: 'elsewhere',
+      endpoint: `${shown(host)}:8081`,
+      mapping: `${shown(host)}:8081 → :8080/TCP`,
+      reason: `Reachable from other computers: it listens on ${host}.`,
+    });
+    expect(availabilityOf(row)).toEqual({ stop: undefined, open: 'This forward listens beyond this computer, so it is not opened from here.', copy: undefined });
+    expect(copyWordOf(row)).toBe('Copy port');
+    expect(browserUrlOf(row)).toBeUndefined();
+  });
+
+  describe('the second line of a forward that is reachable from other computers', () => {
+    const EVERY = 'Reachable from other computers: it listens on every network interface.';
+    const exposed = (patch: Partial<Forward> = {}, over: Partial<Facts> = {}) => rowOf(forward({ host: '0.0.0.0', ...patch }), facts(over));
+
+    it('is said while the forward runs, even with no port yet', () => {
+      expect(exposed().reason).toBe(EVERY);
+      expect(exposed({ local: 0 }).reason).toBe(EVERY);
+    });
+
+    it.each(['paused', 'stopped', 'failed'] as const)('is not said of a forward that is %s: nothing is reachable at it', (state) => {
+      expect(exposed({ state }).reason).toBeUndefined();
+    });
+
+    it('is not said while a Stop is on its way', () => {
+      const row = exposed({}, { stopping: true });
+      expect(row.state).toBe('stopping');
+      expect(row.reason).toBeUndefined();
+    });
+
+    it('gives way to the plugin that stopped, and to a Stop that could not end the forward', () => {
+      expect(exposed({}, { pluginStopped: true }).reason).toBe(PLUGIN_STOPPED);
+      expect(exposed({ state: 'failed' }, { pluginStopped: true }).reason).toBeUndefined();
+      expect(exposed({}, { failure: 'Couldn\'t stop it. The plugin is busy.' }).reason).toBe('Couldn\'t stop it. The plugin is busy.');
+    });
+
+    it('is not said of a forward on this computer, nor of one whose host is not stated', () => {
+      expect(rowOf(forward({ host: '127.0.0.1' }), facts()).reason).toBeUndefined();
+      expect(rowOf(forward({ host: '::ffff:127.0.0.1' }), facts()).reason).toBeUndefined();
+      expect(rowOf(forward(), facts()).reason).toBeUndefined();
+    });
   });
 
   it('does not offer to open a forward whose host is not stated, whatever its state: Open in browser is unavailable for it, with the reason', () => {
@@ -358,19 +473,31 @@ describe('where a forward listens', () => {
     }
 
     expect(availabilityOf(rowOf(forward({ protocol: 'UDP' }), facts())).open).toBeNull();
+    expect(browserUrlOf(rowOf(forward(), facts()))).toBeUndefined();
   });
 
-  it('offers to open a forward that states a loopback host only while it runs and has a port', () => {
+  it('offers to open a forward on this computer only while it runs and has a port', () => {
     expect(availabilityOf(rowOf(forward({ host: '127.0.0.1', state: 'failed' }), facts())).open).toBe('The forward must be running.');
     expect(availabilityOf(rowOf(forward({ host: '127.0.0.1', local: 0 }), facts())).open).toBe('The local port is not assigned yet.');
   });
 
-  it('says what Copy copies: the port when no host is stated, and host and port when one is', () => {
+  it('says that a forward beyond this computer is not opened from here whatever its state, and keeps Copy as the state allows', () => {
+    expect(availabilityOf(rowOf(forward({ host: '0.0.0.0', state: 'failed' }), facts()))).toEqual({
+      stop: undefined,
+      open: 'This forward listens beyond this computer, so it is not opened from here.',
+      copy: 'The forward must be running.',
+    });
+    expect(availabilityOf(rowOf(forward({ host: '10.0.0.7', local: 0 }), facts())).copy).toBe('The local port is not assigned yet.');
+  });
+
+  it('says what Copy copies: the address of a forward on this computer, and the port of every other', () => {
     expect(copyWordOf(rowOf(forward(), facts()))).toBe('Copy port');
     expect(copyWordOf(rowOf(forward({ host: '127.0.0.1' }), facts()))).toBe('Copy address');
+    expect(copyWordOf(rowOf(forward({ host: '0.0.0.0' }), facts()))).toBe('Copy port');
   });
 
   it('tells rows that differ in the host apart', () => {
     expect(sameRow(rowOf(forward(), facts()), rowOf(forward({ host: '127.0.0.1' }), facts()))).toBe(false);
+    expect(sameRow(rowOf(forward({ host: '0.0.0.0' }), facts()), rowOf(forward({ host: '10.0.0.7' }), facts()))).toBe(false);
   });
 });

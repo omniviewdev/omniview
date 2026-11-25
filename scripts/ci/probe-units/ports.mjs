@@ -27,14 +27,14 @@ export const units = [
     name: 'Probe that the buttons of a row are real, named and tipped, say why they cannot be used, call the host once for a press, and that the row menu opens by the pointer and the keyboard and gives the keyboard back',
     script: 'ui-next/shell/probes/ports-b-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/ports-b-probe.json' },
-    seconds: 49,
+    seconds: 50,
   },
   {
     id: 'ports-c',
     name: 'Probe that a row\'s buttons are one Tab stop with the arrows inside, that the keyboard is not lost when its row goes, what the empty, loading and failed states say and offer, and the footer\'s words',
     script: 'ui-next/shell/probes/ports-c-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/ports-c-probe.json' },
-    seconds: 23,
+    seconds: 19,
   },
   {
     id: 'ports-d',
@@ -45,14 +45,14 @@ export const units = [
   },
   {
     id: 'ports-e',
-    name: 'Probe that axe finds nothing in the Ports tool: its table, its loading, failed and empty states and its row menu',
+    name: 'Probe that axe finds nothing in the Ports tool (its table, its loading, failed and empty states and its row menu), and what Open in browser and Copy do for each way a producer states where a forward listens',
     script: 'ui-next/shell/probes/ports-e-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/ports-e-probe.json' },
-    seconds: 10,
+    seconds: 37,
   },
 
   // The faults of the Ports probe, each in Chromium at both viewports, in six units by the sections they belong to (each is a process for each control, which runs its section alone): the table's geometry and what a row says (the first); the buttons of a row
-  // (the second); the row menu (the third); the keyboard and the empty, loading and failed states (the fourth); what the tool costs (the fifth); axe (the sixth).
+  // (the second); the row menu (the third); the keyboard and the empty, loading and failed states (the fourth); what the tool costs (the fifth); axe, and what Open in browser and Copy do for each way a producer states where a forward listens (the sixth).
   {
     id: 'ports-controls-a',
     name: 'Probe that the Ports probe sees a table that is not the mock\'s: columns that change places or stand where the mock\'s do not (with names and without), a header, a row, a padding and a gap that are not its numbers, a mapping that is not in the code face, a count that is wrong, and a row that says the wrong thing',
@@ -60,7 +60,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['columns-swapped', 'header-tall', 'row-tall', 'padding-mapping', 'mapping-face', 'actions-gap', 'footer-count', 'word-edited', 'icon-swapped', 'reason-text', 'reason-muted', 'names-ids', 'long-wraps', 'layout-mapping-wide', 'layout-status-wide', 'names-fitted', 'names-greedy', 'long-uncapped'],
     plants: 'page',
-    seconds: 59,
+    seconds: 62,
   },
   {
     id: 'ports-controls-b',
@@ -69,7 +69,7 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['button-nameless', 'glyph-wrong', 'disabled-native', 'udp-open', 'open-twice', 'open-wrong', 'copy-twice', 'announce-twice', 'close-twice', 'close-other', 'confirm-stale'],
     plants: 'page',
-    seconds: 188,
+    seconds: 189,
   },
   {
     id: 'ports-controls-menu',
@@ -85,9 +85,9 @@ export const units = [
     name: 'Probe that the Ports probe sees a row with two Tab stops, arrows that do nothing, a keyboard dropped on the page when its row goes, a button that starts a forward, a count while loading, a retry that reads twice, a hint that is not the mock\'s size and a footer that says the wrong words',
     script: 'ui-next/shell/probes/ports-c-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['tabstop-extra', 'arrows-swallowed', 'focus-dropped', 'forward-button', 'loading-count', 'retry-twice', 'hint-size', 'footer-singular', 'footer-suffix-stuck', 'section-timeout', 'hosts-guessed', 'reach-unstated', 'endpoint-guessed'],
+    controls: ['tabstop-extra', 'arrows-swallowed', 'focus-dropped', 'forward-button', 'loading-count', 'retry-twice', 'hint-size', 'footer-singular', 'footer-suffix-stuck', 'section-timeout', 'hosts-guessed', 'exposed-copy-label', 'exposed-line-dropped'],
     plants: 'page',
-    seconds: 67,
+    seconds: 56,
   },
   {
     id: 'ports-controls-d',
@@ -96,15 +96,15 @@ export const units = [
     env: { FONT_DELAY_MS: '40' },
     controls: ['idle-timer', 'idle-commits', 'hidden-leak', 'names-leak', 'list-eager', 'flood-sync', 'idle-uncounted', 'flood-uncounted', 'hidden-stale', 'reconnect-ignored', 'wake-leak'],
     plants: 'page',
-    seconds: 91,
+    seconds: 93,
   },
   {
     id: 'ports-controls-e',
-    name: 'Probe that the Ports probe sees a violation in the table, in its loading, failed and empty states and in its row menu',
+    name: 'Probe that the Ports probe sees a violation in the table, in its loading, failed and empty states and in its row menu, and an Open in browser or a Copy that is wrong for where a forward listens',
     script: 'ui-next/shell/probes/ports-e-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['axe-table', 'axe-states', 'axe-menu', 'axe-unstaged'],
+    controls: ['axe-table', 'axe-states', 'axe-menu', 'axe-unstaged', 'reach-unstated', 'endpoint-guessed', 'exposed-copy-address'],
     plants: 'page',
-    seconds: 21,
+    seconds: 63,
   },
 ];

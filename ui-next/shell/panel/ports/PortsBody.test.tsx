@@ -302,17 +302,45 @@ describe('the actions of a row', () => {
     expect(within(rowOf('a')).queryByRole('button', { name: 'Copy address' })).toBeNull();
   });
 
-  it('says that a forward that listens beyond this computer is not opened from here, and shows where it listens in its mapping', async () => {
+  it('says that a forward that listens on every network interface is reachable from other computers, in the second line of its resource: Open in browser is not available for it, and Copy is Copy port', async () => {
     const { fake, user } = await mount([session('a', { local_host: '0.0.0.0' })]);
-    expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('0.0.0.0:8081 → :8080/TCP');
+    fake.serve([session('a', { local_host: '0.0.0.0' })]);
+    expect(cells('a')).toEqual(['res-aReachable from other computers: it listens on every network interface.', '0.0.0.0:8081 → :8080/TCP', '—', 'Running']);
+    expect(rowOf('a').querySelector('[data-ports-part="reason"]')?.textContent).toBe('Reachable from other computers: it listens on every network interface.');
     const open = buttonOf('a', 'Open in browser');
+    expect(open).toHaveAttribute('aria-disabled', 'true');
     expect(open).toHaveAccessibleDescription('This forward listens beyond this computer, so it is not opened from here.');
+    expect(open.getAttribute('data-ov-tip')).toBe('Open in browser\nThis forward listens beyond this computer, so it is not opened from here.');
     await user.click(open);
+    expect(within(rowOf('a')).queryByRole('button', { name: 'Copy address' })).toBeNull();
+    await user.click(buttonOf('a', 'Copy port'));
     await act(async () => {
       await settle();
     });
     expect(fake.opened).toEqual([]);
+    expect(fake.copied).toEqual(['8081']);
+    expect(live().textContent).toBe('Port copied');
+  });
+
+  it('says which other address a forward listens on as the producer states it, in the same words: it is not opened from here either', async () => {
+    await mount([session('a', { local_host: 'fe80::1%en0' }), session('b', { local_host: '192.168.1.5' })]);
+    expect(rowOf('a').querySelector('[data-ports-part="reason"]')?.textContent).toBe('Reachable from other computers: it listens on fe80::1%en0.');
+    expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('[fe80::1%en0]:8081 → :8080/TCP');
+    expect(rowOf('b').querySelector('[data-ports-part="reason"]')?.textContent).toBe('Reachable from other computers: it listens on 192.168.1.5.');
+    expect(buttonOf('b', 'Open in browser')).toHaveAccessibleDescription('This forward listens beyond this computer, so it is not opened from here.');
+    expect(buttonOf('b', 'Copy port')).toBeInTheDocument();
+  });
+
+  it('says nothing more of a forward on this computer, of one that is not running, or of a host that is not one: the second line is for a running forward that others can reach', async () => {
+    await mount([session('a', { local_host: '::ffff:127.0.0.1' }), session('b', { local_host: '0.0.0.0', state: 'PAUSED' }), session('c', { local_host: '127.0.0.1:8080' })]);
+    expect(rowOf('a').querySelector('[data-ports-part="reason"]')).toBeNull();
+    expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('[::ffff:127.0.0.1]:8081 → :8080/TCP');
+    expect(buttonOf('a', 'Open in browser')).not.toHaveAttribute('aria-disabled', 'true');
     expect(buttonOf('a', 'Copy address')).toBeInTheDocument();
+    expect(rowOf('b').querySelector('[data-ports-part="reason"]')).toBeNull();
+    expect(rowOf('c').querySelector('[data-ports-part="reason"]')).toBeNull();
+    expect(rowOf('c').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('port 8081 → :8080/TCP');
+    expect(buttonOf('c', 'Open in browser')).toHaveAccessibleDescription('Where this forward listens is not stated, so it cannot be opened from here.');
   });
 
   it('Stop shows Stopping at once, says that it waits as the description of Stop, and asks the host to close the forward', async () => {

@@ -20,7 +20,7 @@ function mount(subscribe = true): Rig {
 const ids = (store: PortsStore): string[] => store.getSnapshot().rows.map((row) => row.id);
 const words = (store: PortsStore): string[] => store.getSnapshot().rows.map((row) => `${row.id} ${row.stateWord}`);
 
-/** A session of a producer that states where the forward listens (`local_host`), which the SDK's session does not today: the only kind that Open in browser is offered for, and that Copy says an address for. */
+/** A session of a producer that states where the forward listens (`local_host`) on this computer: the only kind that Open in browser is offered for, and that Copy says an address for. */
 const listening = (id: string, patch: Record<string, unknown> = {}) => session(id, { local_host: '127.0.0.1', ...patch });
 
 /** The store listened to, and its first read answered with these sessions. */
@@ -1483,7 +1483,7 @@ describe('a plugin that runs again while the events connection is down', () => {
 });
 
 describe('where a forward listens, as the producer states it', () => {
-  const hosted = (patch: Record<string, unknown> = {}): Record<string, unknown> => session('a', { local_port: 3000, local_host: '127.0.0.1', ...patch });
+  const hosted = (host: string, patch: Record<string, unknown> = {}): Record<string, unknown> => session('a', { local_port: 3000, local_host: host, ...patch });
   const plain = (): Record<string, unknown> => session('a', { local_port: 3000 });
 
   it('never opens a forward whose host is not stated: Open in browser is unavailable, the host is not asked and nothing is opened', async () => {
@@ -1494,28 +1494,49 @@ describe('where a forward listens, as the producer states it', () => {
     expect(fake.opened).toEqual([]);
   });
 
-  it('opens a forward that states a loopback host at that host and port, once the host has said that it still runs', async () => {
-    const { fake, store } = await ready([hosted()]);
-    fake.serve([hosted()]);
+  it.each([
+    ['127.0.0.1', 'http://127.0.0.1:3000'],
+    ['127.0.0.2', 'http://127.0.0.2:3000'],
+    ['::ffff:127.0.0.1', 'http://127.0.0.1:3000'],
+    ['::ffff:7f00:1', 'http://127.0.0.1:3000'],
+    ['::1', 'http://[::1]:3000'],
+    ['0:0:0:0:0:0:0:1', 'http://[::1]:3000'],
+    ['::1%lo', 'http://[::1]:3000'],
+    ['localhost', 'http://localhost:3000'],
+    ['LOCALHOST', 'http://localhost:3000'],
+  ])('opens a forward that listens on this computer, %s, with one call at the address a browser here reaches it at, %s, once the host has said that it still runs', async (host, url) => {
+    const { fake, store } = await ready([hosted(host)]);
+    fake.serve([hosted(host)]);
     store.open('a');
     await settle();
-    expect(fake.opened).toEqual(['http://127.0.0.1:3000']);
+    expect(fake.opened).toEqual([url]);
   });
 
-  it('brackets an IPv6 host when it opens', async () => {
-    const { fake, store } = await ready([hosted({ local_host: '::1' })]);
-    fake.serve([hosted({ local_host: '::1' })]);
-    store.open('a');
-    await settle();
-    expect(fake.opened).toEqual(['http://[::1]:3000']);
-  });
-
-  it('does not open a forward that listens beyond this computer', async () => {
-    const { fake, store } = await ready([hosted({ local_host: '0.0.0.0' })]);
+  it.each(['0.0.0.0', '::', '::ffff:0.0.0.0', '10.0.0.7', 'fe80::1%en0'])('does not open a forward that listens beyond this computer, %s: the host is not asked and nothing is opened', async (host) => {
+    const { fake, store } = await ready([hosted(host)]);
     store.open('a');
     await settle();
     expect(fake.listed()).toBe(1);
     expect(fake.opened).toEqual([]);
+  });
+
+  it.each(['127.0.0.1:8080', ' localhost', 'forward.example.com', '[::1]'])('reads %j as no host: the forward is not opened, and Copy writes the port', async (host) => {
+    const { fake, store } = await ready([hosted(host)]);
+    fake.serve([hosted(host)]);
+    store.open('a');
+    store.copy('a');
+    await settle();
+    expect(fake.opened).toEqual([]);
+    expect(fake.copied).toEqual(['3000']);
+  });
+
+  it.each(['0.0.0.0', '::', '::ffff:0.0.0.0', '10.0.0.7'])('copies the port alone for a forward that listens beyond this computer, %s, and says Port copied', async (host) => {
+    const { fake, store } = await ready([hosted(host)]);
+    fake.serve([hosted(host)]);
+    store.copy('a');
+    expect(fake.copied).toEqual(['3000']);
+    await settle();
+    expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { text: 'Port copied' } });
   });
 
   it('copies the port alone for a forward whose host is not stated, and says Port copied', async () => {
@@ -1527,11 +1548,16 @@ describe('where a forward listens, as the producer states it', () => {
     expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { text: 'Port copied' } });
   });
 
-  it('copies host and port for a forward that states a host, and says Address copied', async () => {
-    const { fake, store } = await ready([hosted()]);
-    fake.serve([hosted()]);
+  it.each([
+    ['127.0.0.1', '127.0.0.1:3000'],
+    ['::1', '[::1]:3000'],
+    ['localhost', 'localhost:3000'],
+    ['::ffff:127.0.0.1', '[::ffff:127.0.0.1]:3000'],
+  ])('copies host and port, as stated, for a forward that listens on this computer, %s, and says Address copied', async (host, text) => {
+    const { fake, store } = await ready([hosted(host)]);
+    fake.serve([hosted(host)]);
     store.copy('a');
-    expect(fake.copied).toEqual(['127.0.0.1:3000']);
+    expect(fake.copied).toEqual([text]);
     await settle();
     expect(store.getSnapshot()).toMatchObject({ copied: 'a', announcement: { text: 'Address copied' } });
   });
@@ -1543,18 +1569,28 @@ describe('where a forward listens, as the producer states it', () => {
     bare.store.copy('a');
     await settle();
     expect(bare.store.getSnapshot().announcement?.text).toBe('Couldn\'t copy the port');
-    const stated = await ready([hosted()]);
-    stated.fake.serve([hosted()]);
+    const beyond = await ready([hosted('0.0.0.0')]);
+    beyond.fake.serve([hosted('0.0.0.0')]);
+    beyond.fake.clipboard.works = false;
+    beyond.store.copy('a');
+    await settle();
+    expect(beyond.store.getSnapshot().announcement?.text).toBe('Couldn\'t copy the port');
+    const stated = await ready([hosted('127.0.0.1')]);
+    stated.fake.serve([hosted('127.0.0.1')]);
     stated.fake.clipboard.works = false;
     stated.store.copy('a');
     await settle();
     expect(stated.store.getSnapshot().announcement?.text).toBe('Couldn\'t copy the address');
   });
 
-  it('names a forward by its port when it says that one was stopped: no host is invented', async () => {
-    const { fake, store } = await ready([plain()]);
+  it.each([
+    [undefined, 'Stopped port 3000 → :8080/TCP'],
+    ['127.0.0.1', 'Stopped 127.0.0.1:3000 → :8080/TCP'],
+    ['0.0.0.0', 'Stopped 0.0.0.0:3000 → :8080/TCP'],
+  ])('names a forward by what the producer states when it says that one was stopped (host %s)', async (host, said) => {
+    const { fake, store } = await ready([host === undefined ? plain() : hosted(host)]);
     store.stop('a');
     await fake.closeAnswer(0);
-    expect(store.getSnapshot().announcement?.text).toBe('Stopped port 3000 → :8080/TCP');
+    expect(store.getSnapshot().announcement?.text).toBe(said);
   });
 });

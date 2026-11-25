@@ -7,7 +7,8 @@
 // THE DATA is one set of forwards in every state the tool says (SET): running over TCP and over UDP, paused, stopped, failed, one the window's Stop was pressed for (Stopping), one whose plugin stopped (Stopped, and a second line that says why), a
 // name that is long, a static target, a connection that has a NAME and one that has none. Five of them are forwards of the mock's own measurement (MOCK_ROWS), so that what is compared is the same ports, and they state the host `127.0.0.1` that the
 // mock's words for them say, so that the Mapping (its width, and the columns it makes) is the mock's too. The SDK's session states no host, and for a forward that states none the tool says `port <port>`, offers no Open in browser and calls Copy 'Copy port':
-// those words are the tool's own, and the section `hosts` holds them and records how they differ from the mock's (PF2). `cache` states a host that is not this computer; the others state none.
+// those words are the tool's own, and the sections `hosts` and `reaches` hold them (and the first records how they differ from the mock's). `cache` states 0.0.0.0, a host that is not this computer: it listens on every network interface, so it runs with a second line
+// that says that other computers may reach it (PF3), a two-line row like the mock's; the others state none.
 //
 // Each assertion is ONE `check` of the name the section says; `PORTS_CONTROLS` is each control's fault, in the shape of the runner's own table: `query` is a control of the fixture page (`?control=`, ports-fixture.tsx: the fake host), `init` is run
 // in the page before its own scripts, `after` at the `stage` the section names. A control trips the assertion it is named for and none of the others of its section (a control is run for its section alone), and it passes undetected when its
@@ -23,8 +24,9 @@
 //   empty      the empty, loading and failed states: their words, a busy status and no count while loading, Try again asks once, and no button that starts a forward anywhere (ports.empty, ports.loading, ports.failed), and the
 //              hint under the title is the mock's 12 px (ports.hint)
 //   footer     the footer's words: `1 forward`, `10 forwards`, and ` · <k> stopping` only while some row is Stopping (ports.footerwords)
-//   hosts      what the producer states of where a forward listens: the Mapping, and Copy port or Copy address (ports.hosts); where Open in browser is offered, why it is not, and what it opens (ports.reach); what Copy writes and says (ports.endpoint).
-//              The words of a forward that states no host are the tool's own, and how they differ from the mock's is recorded (notes, and `report.numbers`)
+//   hosts      what the producer states of where a forward listens (`localhost` or an IP address, as written; anything else is none): the Mapping, and Copy port or Copy address (ports.hosts), and the second line of a running forward that other computers may reach
+//              (ports.exposed). The words of a forward that states no host are the tool's own, and how they differ from the mock's is recorded (notes, and `report.numbers`)
+//   reaches    where Open in browser is offered, why it is not, and what it opens (ports.reach); what Copy writes and says (ports.endpoint): for every way of stating a host
 //   events     the list is read again when the events connection comes back and when the window comes back to a person, and not while the tool is hidden (ports.reconnect, ports.wake)
 //   confirm    Open in browser and Copy ask the host once more when they are pressed: what they do for a forward that the host says does not run, and at what address (ports.confirm)
 //   idle       a table at rest asks for no timer and no frame and commits nothing (ports.idle)
@@ -95,8 +97,8 @@ const bracketed = (host) => (host.includes(':') && !host.startsWith('[') ? `[${h
 const endpointOf = (entry) => (entry.local_port === 0 ? '' : (entry.local_host ?? '') === '' ? String(entry.local_port) : `${bracketed(entry.local_host)}:${String(entry.local_port)}`);
 /** The Mapping of a forward: `port <port> → :<remote>/<protocol>`, `<host>:<port> → …` when the producer states a host, `Auto → …` while the port is not assigned. */
 const mappingOf = (entry) => `${entry.local_port === 0 ? 'Auto' : (entry.local_host ?? '') === '' ? `port ${String(entry.local_port)}` : endpointOf(entry)} → :${String(entry.remote_port)}/${entry.protocol}`;
-/** What the tool calls Copy for a forward of SET: Copy port while the producer states no host for it, Copy address when it does. */
-const copyLabelOf = (id) => ((byId(id).local_host ?? '') === '' ? 'Copy port' : 'Copy address');
+/** What the tool calls Copy for a forward of SET: Copy address for one that listens on this computer (SET's `HOST`), Copy port for every other (none stated, or every interface). */
+const copyLabelOf = (id) => (byId(id).local_host === HOST ? 'Copy address' : 'Copy port');
 /** The items of a row's menu, and the names of its buttons: Stop, Open in browser (not for UDP) and Copy. */
 const labelsOf = (id) => (byId(id).protocol === 'UDP' ? ['Stop', copyLabelOf(id)] : ['Stop', 'Open in browser', copyLabelOf(id)]);
 export const NAMED_FIVE = [byId('api'), byId('gateway'), byId('proxy'), byId('worker'), { ...byId('payments'), connection: { ...byId('payments').connection, resource_id: 'payments-service-deployment-7d8c6f49b-f8q4m' } }];
@@ -118,8 +120,8 @@ const NAMES = [
 const CONNECTION_IDS = ['conn-1', 'conn-2', 'conn-x'];
 /** The forwards the mock's own measurement has, by the row of its table: the same names, ports and states (MOCK_ROWS: api-server running, old-gateway stopped, broken-proxy failed, batch-worker stopping, the long name). */
 const MOCK_ROWS = { api: 0, gateway: 1, proxy: 2, worker: 3, payments: 4 };
-/** The rows that are one line of the mock's size: no second line, and not a row the window made taller. */
-const LINES = ['api', 'dns', 'jobs', 'gateway', 'proxy', 'worker', 'payments', 'db', 'cache'];
+/** The rows that are one line of the mock's size: no second line, and not a row the window made taller (`cache` says that other computers may reach it, on a second line, as `queue` says why it stopped). */
+const LINES = ['api', 'dns', 'jobs', 'gateway', 'proxy', 'worker', 'payments', 'db'];
 const COLUMNS = ['Resource', 'Mapping', 'Connection', 'Status', 'Actions'];
 const KEYS = ['resource', 'mapping', 'connection', 'status', 'actions'];
 /** What the mock's glyphs are called in the kit's registry: the mock's own roles name the glyph of a state (`H.statusRoles`), and the registry names its own. */
@@ -130,6 +132,9 @@ const NO_PORT = 'The local port is not assigned yet.';
 /** Why Open in browser is unavailable for a forward whose producer states no host (every forward the SDK reports today), and for one that listens beyond this computer: the tool shows what the producer states and makes no address up. */
 const OPEN_UNSTATED = 'Where this forward listens is not stated, so it cannot be opened from here.';
 const OPEN_BEYOND = 'This forward listens beyond this computer, so it is not opened from here.';
+/** What a running forward says of itself when other computers may reach it: the producer states that it listens on every network interface, or on an address (as stated, with no brackets). */
+const EVERYWHERE = 'Reachable from other computers: it listens on every network interface.';
+const ELSEWHERE = (host) => `Reachable from other computers: it listens on ${host}.`;
 
 // ---------------------------------------------------------------------------------------------------- what the page is given before its own scripts
 
@@ -137,14 +142,17 @@ const OPEN_BEYOND = 'This forward listens beyond this computer, so it is not ope
  * The clipboard of the page, deterministic: what the page writes is kept (`window.__clip.writes`). `twice` is given to the script (`addInitScript` passes it) and is true only for the negative control that records every write twice: the clipboard and its
  * fault are made in this one script, so that the fault never waits on another script that Playwright does not order against it.
  */
-const CLIPBOARD = ({ twice, guess }) => {
+const CLIPBOARD = ({ twice, guess, exposed }) => {
   const clip = (window.__clip = { writes: [] });
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: {
       writeText: async (text) => {
         // The control that guesses puts a host before a port that is given alone.
-        const given = guess && /^\d+$/.test(String(text)) ? `127.0.0.1:${String(text)}` : String(text);
+        const digits = /^\d+$/.test(String(text));
+        // The control that exposes puts the host of a forward that others may reach (the `h-all` of the section `reaches`) before its port.
+        const hosts = { 8101: '0.0.0.0', 8102: '[::]', 8103: '[::ffff:0.0.0.0]', 8104: '192.168.1.5', 8105: '[fe80::1%en0]', 5355: '0.0.0.0' };
+        const given = guess && digits ? `127.0.0.1:${String(text)}` : exposed && digits && hosts[String(text)] !== undefined ? `${hosts[String(text)]}:${String(text)}` : String(text);
         clip.writes.push(given);
         if (twice) clip.writes.push(given);
       },
@@ -385,7 +393,7 @@ export const PORTS_PARTS = {
   b: ['actions', 'menu', 'confirm'],
   c: ['keyboard', 'empty', 'footer', 'hosts'],
   d: ['idle', 'hidden', 'flood', 'events'],
-  e: ['axe-table', 'axe-states', 'axe-menu'],
+  e: ['axe-table', 'axe-states', 'axe-menu', 'reaches'],
 };
 
 /** The sections that need the development build, where React's Profiler counts commits. */
@@ -763,10 +771,30 @@ export const PORTS_CONTROLS = {
         for (const span of document.querySelectorAll('[data-ports-id="h-none"] [data-ports-part="mapping"]')) span.textContent = '127.0.0.1:8081 → :8080/TCP';
       }),
   },
+  // The Copy of a forward that other computers may reach is called Copy address, as the Copy of a forward on this computer is: it is a port that is copied.
+  'exposed-copy-label': {
+    assertion: 'ports.hosts',
+    section: 'hosts',
+    stage: 'ready',
+    after: (page) =>
+      page.evaluate(() => {
+        document.querySelector('[data-ports-id="h-all"] button[data-ports-action="copy"]')?.setAttribute('aria-label', 'Copy address');
+      }),
+  },
+  // A running forward that other computers may reach says nothing of it: its row has no second line.
+  'exposed-line-dropped': {
+    assertion: 'ports.exposed',
+    section: 'hosts',
+    stage: 'ready',
+    after: (page) =>
+      page.evaluate(() => {
+        document.querySelector('[data-ports-id="h-all"] [data-ports-part="reason"]')?.remove();
+      }),
+  },
   // Open in browser is offered for a forward whose producer states no host.
   'reach-unstated': {
     assertion: 'ports.reach',
-    section: 'hosts',
+    section: 'reaches',
     stage: 'ready',
     after: (page) =>
       page.evaluate(() => {
@@ -775,7 +803,9 @@ export const PORTS_CONTROLS = {
       }),
   },
   // Copy puts a host that nobody said before the port it copies.
-  'endpoint-guessed': { assertion: 'ports.endpoint', section: 'hosts', clipboard: { guess: true } },
+  'endpoint-guessed': { assertion: 'ports.endpoint', section: 'reaches', clipboard: { guess: true } },
+  // Copy writes the host and the port of a forward that other computers may reach, where it is to write the port alone.
+  'exposed-copy-address': { assertion: 'ports.endpoint', section: 'reaches', clipboard: { exposed: true } },
   // ---- axe
   'axe-table': { assertion: 'axe.table', section: 'axe-table', stage: 'axe', after: plantImage('[data-probe-axe="table"]') },
   'axe-states': { assertion: 'axe.states', section: 'axe-states', stage: 'axe', after: plantImage('[data-probe-axe="states"]') },
@@ -854,7 +884,7 @@ export function createPortsSections({ check, note, report, runAxe, axe }) {
       const page = await context.newPage();
       page.errors = [];
       page.on('pageerror', (error) => page.errors.push(String(error.message).slice(0, 300)));
-      await page.addInitScript(CLIPBOARD, { twice: control?.clipboard?.twice === true, guess: control?.clipboard?.guess === true });
+      await page.addInitScript(CLIPBOARD, { twice: control?.clipboard?.twice === true, guess: control?.clipboard?.guess === true, exposed: control?.clipboard?.exposed === true });
       await page.addInitScript(COUNTERS);
       await page.addInitScript(HELPERS);
       if (control?.init !== undefined) await page.addInitScript(control.init);
@@ -927,6 +957,15 @@ export function createPortsSections({ check, note, report, runAxe, axe }) {
   }
 
   const rowOf = (read, id) => read.rows.find((row) => row.id === id);
+  /** How a row with a second line stands against the mock's two-line row (`second`): the second line's size, weight and colour, the height of the row and where the line starts in it. Answers the problems. */
+  const secondLineProblems = (row, line, second) => {
+    const problems = [];
+    const wanted = second.resource.sub;
+    if (`${line.style['font-size']}/${line.style['line-height']} ${line.style['font-weight']} ${line.style.color}` !== `${wanted.style['font-size']}/${wanted.style['line-height']} ${wanted.style['font-weight']} ${wanted.style.color}`) problems.push(`its second line is set in ${line.style['font-size']}/${line.style['line-height']} ${line.style.color}, the mock's is ${wanted.style['font-size']}/${wanted.style['line-height']} ${wanted.style.color}`);
+    if (!near(row?.rect?.[3], second.rect[3])) problems.push(`its row is ${String(row?.rect?.[3])} px, the mock's two-line row is ${String(second.rect[3])}`);
+    if (!near(line.rect[0] - (row?.cells[0].rect?.[0] ?? 0), wanted.rect[0] - second.cells[0].rect[0]) || !near(line.rect[1] - (row?.rect?.[1] ?? 0), wanted.rect[1] - second.rect[1])) problems.push(`its second line starts ${String(line.rect[0] - (row?.cells[0].rect?.[0] ?? 0))} px in and ${String(line.rect[1] - (row?.rect?.[1] ?? 0))} px down, the mock's ${String(wanted.rect[0] - second.cells[0].rect[0])} and ${String(wanted.rect[1] - second.rect[1])}`);
+    return problems;
+  };
 
   // ------------------------------------------------------------------------------------------------ geometry
   sections.geometry = async (ctx) => {
@@ -1010,6 +1049,8 @@ export function createPortsSections({ check, note, report, runAxe, axe }) {
           for (const cell of row.cells) expect(`row ${row.id} cell ${cell.column} height`, cell.rect?.[3], 24, near);
         }
 
+        // A row with a second line is the mock's two-line row: `cache` says that other computers may reach it (what the line says is ports.exposed's).
+        expect('row cache (with a second line) height', rowOf(read, 'cache')?.rect?.[3], mock.rows[MOCK_ROWS.proxy]?.rect?.[3], near);
         read.rows.slice(1).forEach((row, index) => {
           const above = read.rows[index];
           expect(`row ${row.id} stands on the row above, at`, row.rect?.[1], (above.rect?.[1] ?? 0) + (above.rect?.[3] ?? 0), near);
@@ -1338,13 +1379,12 @@ export function createPortsSections({ check, note, report, runAxe, axe }) {
         const line = row?.resource.reason;
         if (line?.text !== REASON_PLUGIN) problems.push(`the forward whose plugin stopped says ${JSON.stringify(line?.text)}, not ${JSON.stringify(REASON_PLUGIN)}`);
         const second = mock?.rows[MOCK_ROWS.proxy];
-        if (second !== undefined && second.resource.sub !== null && line !== null && line !== undefined) {
-          const wanted = second.resource.sub;
-          if (`${line.style['font-size']}/${line.style['line-height']} ${line.style['font-weight']} ${line.style.color}` !== `${wanted.style['font-size']}/${wanted.style['line-height']} ${wanted.style['font-weight']} ${wanted.style.color}`) problems.push(`its second line is set in ${line.style['font-size']}/${line.style['line-height']} ${line.style.color}, the mock's is ${wanted.style['font-size']}/${wanted.style['line-height']} ${wanted.style.color}`);
-          if (!near(row?.rect?.[3], second.rect[3])) problems.push(`its row is ${String(row?.rect?.[3])} px, the mock's two-line row is ${String(second.rect[3])}`);
-          if (!near(line.rect[0] - (row?.cells[0].rect?.[0] ?? 0), wanted.rect[0] - second.cells[0].rect[0]) || !near(line.rect[1] - (row?.rect?.[1] ?? 0), wanted.rect[1] - second.rect[1])) problems.push(`its second line starts ${String(line.rect[0] - (row?.cells[0].rect?.[0] ?? 0))} px in and ${String(line.rect[1] - (row?.rect?.[1] ?? 0))} px down, the mock's ${String(wanted.rect[0] - second.cells[0].rect[0])} and ${String(wanted.rect[1] - second.rect[1])}`);
-        } else if (mock === undefined) problems.push('the mock is not measured (run mock-ports-measure.mjs)');
-        const others = read.rows.filter((entry) => entry.id !== 'queue' && entry.resource.reason !== null).map((entry) => entry.id);
+        if (second !== undefined && second.resource.sub !== null && line !== null && line !== undefined) problems.push(...secondLineProblems(row, line, second));
+        else if (mock === undefined) problems.push('the mock is not measured (run mock-ports-measure.mjs)');
+        // `cache` listens on every network interface and runs: its second line says that other computers may reach it (ports.exposed holds the words for every way of stating a host).
+        const everywhere = rowOf(read, 'cache')?.resource.reason;
+        if (everywhere?.text !== EVERYWHERE) problems.push(`the forward that listens on every interface says ${JSON.stringify(everywhere?.text)}, not ${JSON.stringify(EVERYWHERE)}`);
+        const others = read.rows.filter((entry) => entry.id !== 'queue' && entry.id !== 'cache' && entry.resource.reason !== null).map((entry) => entry.id);
         if (others.length > 0) problems.push(`rows with nothing to say have a second line: ${others.join(', ')}`);
         // The host would not close it.
         await page.evaluate(() => {
@@ -2628,173 +2668,244 @@ export function createPortsSections({ check, note, report, runAxe, axe }) {
 
   // ------------------------------------------------------------------------------------------------ hosts
   /**
-   * One forward for each way a producer may state where a forward listens, or not state it (the SDK's session states a port and no host, so the first is the case of every real forward), and what the tool says and does for it. These words are the
-   * tool's own: the mock's forwards all say `127.0.0.1`, and the tool shows what the producer states and makes none up. `open` is the address Open in browser is made to open, `openOff` why it is unavailable and `udp` that it is not offered; `copyOff` is
-   * why Copy is unavailable, `endpoint` what Copy writes and `says` what it says.
+   * One forward for each way a producer may state where a forward listens, or not state it. The SDK's reader keeps `localhost` in any case or a strict IP address as written (an IPv6 one may carry a zone) and reads anything else as none, and the tool says
+   * what it is told and makes none up. The classes: LOOPBACK (`localhost`, 127.0.0.0/8, `::1`, `::ffff:127.x.y.z` in any form: Mapping with the host as stated, Open in browser at the host a browser here reaches it by, Copy address), EVERYWHERE (0.0.0.0, `::`,
+   * `::ffff:0.0.0.0`) and ELSEWHERE (any other address): Mapping with the host as stated, Open in browser unavailable, Copy port, and for a RUNNING forward a second line that says that other computers may reach it; UNSTATED (none, or text that is not an address):
+   * `port <port> → …`, Open in browser unavailable, Copy port. `open` is the address Open in browser is made to open, `openOff` why it is unavailable, `udp` that it is not offered, `copyOff` why Copy is unavailable, `endpoint` what Copy writes (and `copy` what it is
+   * called, `says` what it says), `line` the second line of the row and `menu` that the row's menu is looked at. The words are the tool's own: the mock's forwards all say `127.0.0.1`. The forwards are drawn in four pages (a row with a second line is taller, and
+   * a table that scrolls puts a menu away).
    */
-  const HOST_CASES = [
-    { id: 'h-none', patch: { local_port: 8081 }, mapping: 'port 8081 → :8080/TCP', copy: 'Copy port', openOff: OPEN_UNSTATED, endpoint: '8081', says: 'Port copied' },
-    { id: 'h-v4', patch: { local_host: '127.0.0.1', local_port: 8082 }, mapping: '127.0.0.1:8082 → :8080/TCP', copy: 'Copy address', open: 'http://127.0.0.1:8082', endpoint: '127.0.0.1:8082', says: 'Address copied' },
-    { id: 'h-v6', patch: { local_host: '::1', local_port: 8083 }, mapping: '[::1]:8083 → :8080/TCP', copy: 'Copy address', open: 'http://[::1]:8083', endpoint: '[::1]:8083', says: 'Address copied' },
-    { id: 'h-name', patch: { local_host: 'localhost', local_port: 8084 }, mapping: 'localhost:8084 → :8080/TCP', copy: 'Copy address', open: 'http://localhost:8084', endpoint: 'localhost:8084', says: 'Address copied' },
-    { id: 'h-all', patch: { local_host: '0.0.0.0', local_port: 8085 }, mapping: '0.0.0.0:8085 → :8080/TCP', copy: 'Copy address', openOff: OPEN_BEYOND, endpoint: '0.0.0.0:8085', says: 'Address copied' },
-    { id: 'h-all6', patch: { local_host: '::', local_port: 8086 }, mapping: '[::]:8086 → :8080/TCP', copy: 'Copy address', openOff: OPEN_BEYOND, endpoint: '[::]:8086', says: 'Address copied' },
-    { id: 'h-udp', patch: { protocol: 'UDP', local_port: 5353, remote_port: 53 }, mapping: 'port 5353 → :53/UDP', copy: 'Copy port', udp: true, endpoint: '5353', says: 'Port copied' },
-    { id: 'h-udp4', patch: { protocol: 'UDP', local_host: '127.0.0.1', local_port: 5354, remote_port: 53 }, mapping: '127.0.0.1:5354 → :53/UDP', copy: 'Copy address', udp: true, endpoint: '127.0.0.1:5354', says: 'Address copied' },
-    { id: 'h-auto', patch: { local_port: 0 }, mapping: 'Auto → :8080/TCP', copy: 'Copy port', openOff: OPEN_UNSTATED, copyOff: NO_PORT },
-    { id: 'h-auto4', patch: { local_host: '127.0.0.1', local_port: 0 }, mapping: 'Auto → :8080/TCP', copy: 'Copy address', openOff: NO_PORT, copyOff: NO_PORT },
-    { id: 'h-fail4', patch: { state: 'FAILED', local_host: '127.0.0.1', local_port: 8087 }, mapping: '127.0.0.1:8087 → :8080/TCP', copy: 'Copy address', openOff: NOT_RUNNING, copyOff: NOT_RUNNING },
-    { id: 'h-failn', patch: { state: 'FAILED', local_port: 8088 }, mapping: 'port 8088 → :8080/TCP', copy: 'Copy port', openOff: OPEN_UNSTATED, copyOff: NOT_RUNNING },
-    { id: 'h-failb', patch: { state: 'FAILED', local_host: '0.0.0.0', local_port: 8089 }, mapping: '0.0.0.0:8089 → :8080/TCP', copy: 'Copy address', openOff: OPEN_BEYOND, copyOff: NOT_RUNNING },
+  const LOOP = { copy: 'Copy address', says: 'Address copied' };
+  const PORT = { copy: 'Copy port', says: 'Port copied' };
+  const HOST_GROUPS = [
+    // On this computer in every form, and not stated.
+    [
+      { id: 'h-none', patch: { local_port: 8081 }, mapping: 'port 8081 → :8080/TCP', ...PORT, openOff: OPEN_UNSTATED, endpoint: '8081', menu: true },
+      { id: 'h-v4', patch: { local_host: '127.0.0.1', local_port: 8082 }, mapping: '127.0.0.1:8082 → :8080/TCP', ...LOOP, open: 'http://127.0.0.1:8082', endpoint: '127.0.0.1:8082', menu: true },
+      { id: 'h-v4b', patch: { local_host: '127.0.0.2', local_port: 8083 }, mapping: '127.0.0.2:8083 → :8080/TCP', ...LOOP, open: 'http://127.0.0.2:8083', endpoint: '127.0.0.2:8083' },
+      { id: 'h-name', patch: { local_host: 'localhost', local_port: 8084 }, mapping: 'localhost:8084 → :8080/TCP', ...LOOP, open: 'http://localhost:8084', endpoint: 'localhost:8084' },
+      { id: 'h-nameup', patch: { local_host: 'LOCALHOST', local_port: 8085 }, mapping: 'LOCALHOST:8085 → :8080/TCP', ...LOOP, open: 'http://localhost:8085', endpoint: 'LOCALHOST:8085' },
+      { id: 'h-v6', patch: { local_host: '::1', local_port: 8086 }, mapping: '[::1]:8086 → :8080/TCP', ...LOOP, open: 'http://[::1]:8086', endpoint: '[::1]:8086' },
+      { id: 'h-v6zone', patch: { local_host: '::1%lo', local_port: 8087 }, mapping: '[::1%lo]:8087 → :8080/TCP', ...LOOP, open: 'http://[::1]:8087', endpoint: '[::1%lo]:8087' },
+      { id: 'h-map', patch: { local_host: '::ffff:127.0.0.1', local_port: 8088 }, mapping: '[::ffff:127.0.0.1]:8088 → :8080/TCP', ...LOOP, open: 'http://127.0.0.1:8088', endpoint: '[::ffff:127.0.0.1]:8088' },
+      { id: 'h-maphex', patch: { local_host: '::ffff:7f00:1', local_port: 8089 }, mapping: '[::ffff:7f00:1]:8089 → :8080/TCP', ...LOOP, open: 'http://127.0.0.1:8089', endpoint: '[::ffff:7f00:1]:8089' },
+    ],
+    // Text that is not an address is not a host; and UDP, where Open in browser is never offered.
+    [
+      { id: 'h-bad1', patch: { local_host: '127.0.0.1:8080', local_port: 8091 }, mapping: 'port 8091 → :8080/TCP', ...PORT, openOff: OPEN_UNSTATED, endpoint: '8091' },
+      { id: 'h-bad2', patch: { local_host: '[::1]', local_port: 8092 }, mapping: 'port 8092 → :8080/TCP', ...PORT, openOff: OPEN_UNSTATED, endpoint: '8092' },
+      { id: 'h-bad3', patch: { local_host: 'localhost.', local_port: 8093 }, mapping: 'port 8093 → :8080/TCP', ...PORT, openOff: OPEN_UNSTATED, endpoint: '8093' },
+      { id: 'h-bad4', patch: { local_host: ' 127.0.0.1', local_port: 8094 }, mapping: 'port 8094 → :8080/TCP', ...PORT, openOff: OPEN_UNSTATED, endpoint: '8094' },
+      { id: 'h-udp', patch: { protocol: 'UDP', local_port: 5353, remote_port: 53 }, mapping: 'port 5353 → :53/UDP', ...PORT, udp: true, endpoint: '5353' },
+      { id: 'h-udp4', patch: { protocol: 'UDP', local_host: '127.0.0.1', local_port: 5354, remote_port: 53 }, mapping: '127.0.0.1:5354 → :53/UDP', ...LOOP, udp: true, endpoint: '127.0.0.1:5354', menu: true },
+    ],
+    // Other computers may reach them: every interface, and any other address. A running one says so.
+    [
+      { id: 'h-all', patch: { local_host: '0.0.0.0', local_port: 8101 }, mapping: '0.0.0.0:8101 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, endpoint: '8101', line: EVERYWHERE, menu: true },
+      { id: 'h-all6', patch: { local_host: '::', local_port: 8102 }, mapping: '[::]:8102 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, endpoint: '8102', line: EVERYWHERE },
+      { id: 'h-allmap', patch: { local_host: '::ffff:0.0.0.0', local_port: 8103 }, mapping: '[::ffff:0.0.0.0]:8103 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, endpoint: '8103', line: EVERYWHERE },
+      { id: 'h-lan', patch: { local_host: '192.168.1.5', local_port: 8104 }, mapping: '192.168.1.5:8104 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, endpoint: '8104', line: ELSEWHERE('192.168.1.5'), menu: true },
+      { id: 'h-ll', patch: { local_host: 'fe80::1%en0', local_port: 8105 }, mapping: '[fe80::1%en0]:8105 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, endpoint: '8105', line: ELSEWHERE('fe80::1%en0') },
+      { id: 'h-udpall', patch: { protocol: 'UDP', local_host: '0.0.0.0', local_port: 5355, remote_port: 53 }, mapping: '0.0.0.0:5355 → :53/UDP', ...PORT, udp: true, endpoint: '5355', line: EVERYWHERE, menu: true },
+      { id: 'h-autoall', patch: { local_host: '0.0.0.0', local_port: 0 }, mapping: 'Auto → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, copyOff: NO_PORT, line: EVERYWHERE },
+    ],
+    // No port yet, or not running: nothing is said of who may reach them.
+    [
+      { id: 'h-auto', patch: { local_port: 0 }, mapping: 'Auto → :8080/TCP', ...PORT, openOff: OPEN_UNSTATED, copyOff: NO_PORT },
+      { id: 'h-auto4', patch: { local_host: '127.0.0.1', local_port: 0 }, mapping: 'Auto → :8080/TCP', ...LOOP, openOff: NO_PORT, copyOff: NO_PORT },
+      { id: 'h-fail4', patch: { state: 'FAILED', local_host: '127.0.0.1', local_port: 8111 }, mapping: '127.0.0.1:8111 → :8080/TCP', ...LOOP, openOff: NOT_RUNNING, copyOff: NOT_RUNNING },
+      { id: 'h-failn', patch: { state: 'FAILED', local_port: 8112 }, mapping: 'port 8112 → :8080/TCP', ...PORT, openOff: OPEN_UNSTATED, copyOff: NOT_RUNNING, menu: true },
+      { id: 'h-failb', patch: { state: 'FAILED', local_host: '0.0.0.0', local_port: 8113 }, mapping: '0.0.0.0:8113 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, copyOff: NOT_RUNNING },
+      { id: 'h-stopb', patch: { state: 'STOPPED', local_host: '0.0.0.0', local_port: 8114 }, mapping: '0.0.0.0:8114 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, copyOff: NOT_RUNNING },
+      { id: 'h-pausel', patch: { state: 'PAUSED', local_host: '192.168.1.5', local_port: 8115 }, mapping: '192.168.1.5:8115 → :8080/TCP', ...PORT, openOff: OPEN_BEYOND, copyOff: NOT_RUNNING },
+    ],
   ];
+  const hostList = (cases) => cases.map((entry, index) => forward(entry.id, entry.id, index + 1, entry.patch));
 
-  // ports.hosts: what the producer states of where a forward listens is what the row says, and nothing else: the Mapping (`port <port> → …` while no host is stated, `<host>:<port> → …` when one is, an IPv6 host in brackets, `Auto → …` while the port is not
-  // assigned), the name of the row's group, and the name and the tip of Copy (Copy port, or Copy address when a host is stated). ports.reach: Open in browser is offered only for a forward that states a host that is this computer: unavailable, for the reason, where none is
-  // stated or the host is beyond this computer (as is its menu item), not offered over UDP; pressed where it is unavailable it asks the host nothing and opens nothing; where it is available it reads the list once and opens `http://<host>:<port>`. ports.endpoint:
-  // Copy writes what names the forward's local end (the port alone, or the host and the port) inside the press, once, and says "Port copied" or "Address copied" once; where it is unavailable it writes nothing. The mock's five forwards with no host stated are read as well,
-  // and how they differ from the mock is recorded: the Mapping, Open in browser and Copy are the tool's own words, and the Connection column and the rest are the mock's.
+  // ports.hosts: what the producer states of where a forward listens is what the row says, and nothing else: the Mapping (`port <port> → …` while no host is stated or the text is not an address, `<host>:<port> → …` with the host as stated when one is, an IPv6 host in
+  // brackets, `Auto → …` while the port is not assigned), the name of the row's group, and the name and the tip of Copy (Copy address for a forward on this computer, Copy port for every other). ports.exposed: a RUNNING forward that other computers may reach says so on a
+  // second line (that it listens on every network interface, or on the address as stated), in the mock's second-line size and colour and in the mock's two-line row, and every other row has none and is the mock's 24 px. The mock's five forwards with no host stated are read as
+  // well, and how they differ from the mock is recorded: the Mapping, Open in browser and Copy are the tool's own words, and the Connection column is the mock's.
   sections.hosts = async (ctx) => {
     const { engine, vp } = ctx;
     const tag = `${engine} ${vp}`;
     const mock = reference()?.data?.[engine]?.[vp]?.table;
-    const page = await openPage(ctx);
-    try {
-      await page.evaluate(() => {
-        window.__t.watch();
-      });
-      const list = HOST_CASES.map((entry, index) => forward(entry.id, entry.id, index + 1, entry.patch));
-      await reach(page, { sessions: list, tall: true });
-      await perturb(ctx, page, 'ready');
-      const read = await page.evaluate(() => window.__t.read());
-      const words = [];
-      const reaches = [];
-      const endpoints = [];
-      const plain = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
-      const toolOf = (row, action) => row?.buttons.find((button) => button.action === action);
-      const asked = async () => page.evaluate(() => window.__ports.reads.listed());
-      for (const entry of HOST_CASES) {
-        const row = rowOf(read, entry.id);
-        if (row === undefined) {
-          words.push(`${entry.id} is not in the table`);
-          continue;
-        }
-
-        if (row.mapping.text !== entry.mapping) words.push(`${entry.id} says ${JSON.stringify(row.mapping.text)}, not ${JSON.stringify(entry.mapping)}`);
-        if (row.group?.label !== `Port actions for ${entry.id}, ${entry.mapping}`) words.push(`the group of ${entry.id} is named ${JSON.stringify(row.group?.label)}`);
-        const copy = toolOf(row, 'copy');
-        if (copy?.label !== entry.copy) words.push(`Copy of ${entry.id} is named ${JSON.stringify(copy?.label)}, not ${entry.copy}`);
-        const tip = entry.copyOff === undefined ? entry.copy : `${entry.copy} ${entry.copyOff}`;
-        if (plain(copy?.tip) !== tip) words.push(`the tip of Copy of ${entry.id} says ${JSON.stringify(plain(copy?.tip))}, not ${JSON.stringify(tip)}`);
-        if (entry.copyOff === undefined && copy?.disabled !== false) words.push(`Copy of ${entry.id} is unavailable, and it can be used`);
-        if (entry.copyOff !== undefined && (copy?.disabled !== true || copy.native || copy.description !== entry.copyOff)) words.push(`Copy of ${entry.id} is ${JSON.stringify({ disabled: copy?.disabled, native: copy?.native, description: copy?.description })}, not unavailable for ${JSON.stringify(entry.copyOff)}`);
-      }
-
-      // ports.reach: Open in browser, by the buttons.
-      for (const entry of HOST_CASES) {
-        const open = toolOf(rowOf(read, entry.id), 'open');
-        if (entry.udp === true) {
-          if (open !== undefined) reaches.push(`${entry.id}, over UDP, is offered Open in browser`);
-        } else if (open === undefined) reaches.push(`${entry.id} has no Open in browser`);
-        else if (entry.open !== undefined) {
-          if (open.disabled) reaches.push(`Open in browser of ${entry.id} is unavailable (${JSON.stringify(open.description)}), and it can be used`);
-        } else {
-          if (open.disabled !== true || open.native) reaches.push(`Open in browser of ${entry.id} is ${JSON.stringify({ disabled: open.disabled, native: open.native })}, not unavailable`);
-          if (open.description !== entry.openOff) reaches.push(`Open in browser of ${entry.id} is described by ${JSON.stringify(open.description)}, not ${JSON.stringify(entry.openOff)}`);
-          if (plain(open.tip) !== `Open in browser ${entry.openOff}`) reaches.push(`the tip of Open in browser of ${entry.id} says ${JSON.stringify(plain(open.tip))}, not ${JSON.stringify(`Open in browser ${entry.openOff}`)}`);
-        }
-      }
-
-      // Pressed where it is unavailable, Open in browser asks the host for nothing and opens nothing.
-      const beforeOff = { reads: await asked(), calls: await callsOf(page) };
-      for (const entry of HOST_CASES.filter((candidate) => candidate.openOff !== undefined)) await press(reaches, buttonOf(page, entry.id, 'Open in browser'), `Open in browser of ${entry.id}`);
-      await frames(page, 3);
-      const afterOff = { reads: await asked(), calls: await callsOf(page) };
-      if (afterOff.reads !== beforeOff.reads) reaches.push(`pressing Open in browser where it is unavailable asked the host for the list ${String(afterOff.reads - beforeOff.reads)} times`);
-      if (JSON.stringify(afterOff.calls.opened) !== JSON.stringify(beforeOff.calls.opened)) reaches.push(`pressing Open in browser where it is unavailable opened ${JSON.stringify(afterOff.calls.opened.slice(beforeOff.calls.opened.length))}`);
-      // Where it is available it reads the list once and opens the host and the port.
-      for (const entry of HOST_CASES.filter((candidate) => candidate.open !== undefined)) {
-        const reads = await asked();
-        const calls = await callsOf(page);
-        await buttonOf(page, entry.id, 'Open in browser').click();
-        await waitFor(page, (length) => window.__ports.opened.length > length, calls.opened.length, 6000);
-        await frames(page, 3);
-        const now = await callsOf(page);
-        if (JSON.stringify(now.opened.slice(calls.opened.length)) !== JSON.stringify([entry.open])) reaches.push(`Open in browser of ${entry.id} opened ${JSON.stringify(now.opened.slice(calls.opened.length))}, not ${JSON.stringify([entry.open])}`);
-        if ((await asked()) - reads !== 1) reaches.push(`Open in browser of ${entry.id} asked the host for the list ${String((await asked()) - reads)} times, not once`);
-      }
-
-      // Its menu item says the same.
-      for (const [id, items, off] of [['h-none', ['Stop', 'Open in browser', 'Copy port'], OPEN_UNSTATED], ['h-v4', ['Stop', 'Open in browser', 'Copy address'], undefined], ['h-all', ['Stop', 'Open in browser', 'Copy address'], OPEN_BEYOND], ['h-udp', ['Stop', 'Copy port'], undefined]]) {
-        const menu = await openByPointer(page, id);
-        if (menu === null) reaches.push(`no menu opened on ${id}`);
-        else {
-          if (JSON.stringify(menu.items.map((item) => item.label)) !== JSON.stringify(items)) reaches.push(`the menu of ${id} has the items ${JSON.stringify(menu.items.map((item) => item.label))}, not ${JSON.stringify(items)}`);
-          const open = menu.items.find((item) => item.label === 'Open in browser');
-          if (off === undefined && open?.disabled === true) reaches.push(`the item Open in browser of ${id} is unavailable, and it can be used`);
-          if (off !== undefined && (open?.disabled !== true || open.description !== off)) reaches.push(`the item Open in browser of ${id} is ${JSON.stringify({ disabled: open?.disabled, description: open?.description })}, not unavailable for ${JSON.stringify(off)}`);
-        }
-
-        await page.keyboard.press('Escape');
-        await menuShown(page, false);
-        await frames(page, 3);
-      }
-
-      // ports.endpoint: Copy writes what names the local end inside the press, once, and says so once.
-      let toldBefore = 0;
-      for (const entry of HOST_CASES.filter((candidate) => candidate.endpoint !== undefined)) {
-        const calls = await callsOf(page);
-        const reads = await asked();
-        await buttonOf(page, entry.id, 'Copy address').click();
-        const written = (await callsOf(page)).copied.slice(calls.copied.length);
-        if (JSON.stringify(written) !== JSON.stringify([entry.endpoint])) endpoints.push(`Copy of ${entry.id} wrote ${JSON.stringify(written)} inside the press, not ${JSON.stringify([entry.endpoint])}`);
-        await waitFor(page, (length) => window.__t.told.length > length, toldBefore, 6000);
-        await frames(page, 3);
-        const said = await page.evaluate(() => window.__t.told.slice());
-        if (JSON.stringify(said.slice(toldBefore)) !== JSON.stringify([entry.says])) endpoints.push(`Copy of ${entry.id} said ${JSON.stringify(said.slice(toldBefore))}, not ${entry.says} once`);
-        toldBefore = said.length;
-        if ((await callsOf(page)).copied.length - calls.copied.length !== 1) endpoints.push(`Copy of ${entry.id} wrote ${String((await callsOf(page)).copied.length - calls.copied.length)} times, not once`);
-        if ((await asked()) - reads !== 1) endpoints.push(`Copy of ${entry.id} asked the host for the list ${String((await asked()) - reads)} times, not once`);
-      }
-
-      // Where Copy is unavailable it writes nothing and asks nothing.
-      const beforeCopy = { reads: await asked(), calls: await callsOf(page) };
-      for (const entry of HOST_CASES.filter((candidate) => candidate.copyOff !== undefined)) await press(endpoints, buttonOf(page, entry.id, 'Copy address'), `Copy of ${entry.id}`);
-      await frames(page, 3);
-      const afterCopy = { reads: await asked(), calls: await callsOf(page) };
-      if (afterCopy.reads !== beforeCopy.reads) endpoints.push(`pressing Copy where it is unavailable asked the host for the list ${String(afterCopy.reads - beforeCopy.reads)} times`);
-      if (JSON.stringify(afterCopy.calls.copied) !== JSON.stringify(beforeCopy.calls.copied)) endpoints.push(`pressing Copy where it is unavailable wrote ${JSON.stringify(afterCopy.calls.copied.slice(beforeCopy.calls.copied.length))}`);
-
-      // The mock's five forwards with no host stated: the Mapping, Open in browser and Copy are the tool's own words (recorded), the Connection column is the mock's.
-      const plainFive = NAMED_FIVE.map((entry) => ({ ...entry, local_host: undefined }));
-      const second = await openPage(ctx);
+    const words = [];
+    const exposures = [];
+    const plain = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
+    const toolOf = (row, action) => row?.buttons.find((button) => button.action === action);
+    const second = mock?.rows[MOCK_ROWS.proxy];
+    const measured = new Map();
+    const round2 = (value) => Math.round(value * 100) / 100;
+    for (const cases of HOST_GROUPS) {
+      const page = await openPage(ctx);
       try {
-        await reach(second, { sessions: plainFive, tall: true });
-        const five = await second.evaluate(() => window.__t.read());
-        const recorded = [];
-        for (const [id, index] of Object.entries(MOCK_ROWS)) {
-          const row = rowOf(five, id);
-          const them = mock?.rows[index];
-          if (them === undefined) {
-            words.push('the mock is not measured (run mock-ports-measure.mjs)');
-            break;
+        await reach(page, { sessions: hostList(cases), tall: true });
+        await perturb(ctx, page, 'ready');
+        const read = await page.evaluate(() => window.__t.read());
+        for (const entry of cases) {
+          const row = rowOf(read, entry.id);
+          if (row === undefined) {
+            words.push(`${entry.id} is not in the table`);
+            continue;
           }
 
-          if (row?.connection.text !== them.connection.text) words.push(`the Connection of ${id} reads ${JSON.stringify(row?.connection.text)} with no host stated, the mock's is ${JSON.stringify(them.connection.text)}`);
-          recorded.push({ id, mapping: { tool: row?.mapping.text, mock: them.mapping.text }, open: { tool: toolOf(row, 'open')?.disabled === true ? `unavailable: ${String(toolOf(row, 'open')?.description)}` : 'available', mock: 'available' }, copy: { tool: toolOf(row, 'copy')?.label, mock: 'Copy address' } });
+          if (row.resource.reason !== null && row.resource.reason !== undefined) measured.set(entry.id, { row, line: row.resource.reason });
+
+          if (row.mapping.text !== entry.mapping) words.push(`${entry.id} says ${JSON.stringify(row.mapping.text)}, not ${JSON.stringify(entry.mapping)}`);
+          if (row.group?.label !== `Port actions for ${entry.id}, ${entry.mapping}`) words.push(`the group of ${entry.id} is named ${JSON.stringify(row.group?.label)}`);
+          const copy = toolOf(row, 'copy');
+          if (copy?.label !== entry.copy) words.push(`Copy of ${entry.id} is named ${JSON.stringify(copy?.label)}, not ${entry.copy}`);
+          const tip = entry.copyOff === undefined ? entry.copy : `${entry.copy} ${entry.copyOff}`;
+          if (plain(copy?.tip) !== tip) words.push(`the tip of Copy of ${entry.id} says ${JSON.stringify(plain(copy?.tip))}, not ${JSON.stringify(tip)}`);
+          if (entry.copyOff === undefined && copy?.disabled !== false) words.push(`Copy of ${entry.id} is unavailable, and it can be used`);
+          if (entry.copyOff !== undefined && (copy?.disabled !== true || copy.native || copy.description !== entry.copyOff)) words.push(`Copy of ${entry.id} is ${JSON.stringify({ disabled: copy?.disabled, native: copy?.native, description: copy?.description })}, not unavailable for ${JSON.stringify(entry.copyOff)}`);
+          const line = row.resource.reason;
+          if ((line?.text ?? null) !== (entry.line ?? null)) exposures.push(`${entry.id} says ${JSON.stringify(line?.text ?? null)} on a second line, not ${JSON.stringify(entry.line ?? null)}`);
+          if (entry.line === undefined) {
+            if (!near(row.rect?.[3], 24)) exposures.push(`${entry.id}, with no second line, is ${String(row.rect?.[3])} px high, not the mock's 24`);
+          } else if (second === undefined || second.resource.sub === null) exposures.push('the mock is not measured (run mock-ports-measure.mjs)');
+          else if (line !== null && line !== undefined) exposures.push(...secondLineProblems(row, line, second).map((problem) => `${entry.id}: ${problem}`));
+        }
+      } finally {
+        await page.context().close();
+      }
+    }
+
+    // The two-line row of a forward that others may reach, measured against the mock's two-line row (a note: ports.exposed holds that they are the same).
+    const sample = measured.get('h-all');
+    if (sample !== undefined && second !== undefined && second.resource.sub !== null) note(`exposed second line ${tag}: the row is ${String(sample.row.rect?.[3])} px (the mock's two-line row ${String(second.rect[3])}), its line starts ${String(round2(sample.line.rect[0] - (sample.row.cells[0].rect?.[0] ?? 0)))} px in and ${String(round2(sample.line.rect[1] - (sample.row.rect?.[1] ?? 0)))} px down (the mock's ${String(round2(second.resource.sub.rect[0] - second.cells[0].rect[0]))} and ${String(round2(second.resource.sub.rect[1] - second.rect[1]))}), set in ${sample.line.style['font-size']}/${sample.line.style['line-height']} ${sample.line.style.color} (the mock's ${second.resource.sub.style['font-size']}/${second.resource.sub.style['line-height']} ${second.resource.sub.style.color})`);
+    // The mock's five forwards with no host stated: the Mapping, Open in browser and Copy are the tool's own words (recorded), the Connection column is the mock's.
+    const plainFive = NAMED_FIVE.map((entry) => ({ ...entry, local_host: undefined }));
+    const last = await openPage(ctx);
+    try {
+      await reach(last, { sessions: plainFive, tall: true });
+      const five = await last.evaluate(() => window.__t.read());
+      const recorded = [];
+      for (const [id, index] of Object.entries(MOCK_ROWS)) {
+        const row = rowOf(five, id);
+        const them = mock?.rows[index];
+        if (them === undefined) {
+          words.push('the mock is not measured (run mock-ports-measure.mjs)');
+          break;
         }
 
-        for (const line of recorded) note(`recorded difference from the mock ${tag}: ${line.id}: Mapping ${JSON.stringify(line.mapping.tool)} (the mock's ${JSON.stringify(line.mapping.mock)}), Open in browser ${line.open.tool} (the mock's: ${line.open.mock}), ${String(line.copy.tool)} (the mock's: ${line.copy.mock})`);
-        report.numbers[`hosts differences ${tag}`] = recorded;
-      } finally {
-        await second.context().close();
+        if (row?.connection.text !== them.connection.text) words.push(`the Connection of ${id} reads ${JSON.stringify(row?.connection.text)} with no host stated, the mock's is ${JSON.stringify(them.connection.text)}`);
+        recorded.push({ id, mapping: { tool: row?.mapping.text, mock: them.mapping.text }, open: { tool: toolOf(row, 'open')?.disabled === true ? `unavailable: ${String(toolOf(row, 'open')?.description)}` : 'available', mock: 'available' }, copy: { tool: toolOf(row, 'copy')?.label, mock: 'Copy address' } });
       }
 
-      check('ports.hosts', words.length === 0, `${tag}: ${words.slice(0, 5).join('; ')}`);
-      check('ports.reach', reaches.length === 0, `${tag}: ${reaches.slice(0, 5).join('; ')}`);
-      check('ports.endpoint', endpoints.length === 0, `${tag}: ${endpoints.slice(0, 5).join('; ')}`);
+      for (const line of recorded) note(`recorded difference from the mock ${tag}: ${line.id}: Mapping ${JSON.stringify(line.mapping.tool)} (the mock's ${JSON.stringify(line.mapping.mock)}), Open in browser ${line.open.tool} (the mock's: ${line.open.mock}), ${String(line.copy.tool)} (the mock's: ${line.copy.mock})`);
+      report.numbers[`hosts differences ${tag}`] = recorded;
     } finally {
-      await page.context().close();
+      await last.context().close();
     }
+
+    check('ports.hosts', words.length === 0, `${tag}: ${words.slice(0, 5).join('; ')}`);
+    check('ports.exposed', exposures.length === 0, `${tag}: ${exposures.slice(0, 5).join('; ')}`);
+  };
+
+  // ports.reach: Open in browser is offered only for a forward that listens on this computer: unavailable, for the reason, where no host is stated (or the text is not an address) and where the forward listens beyond this computer (as is its menu item), not offered over UDP; pressed
+  // where it is unavailable it asks the host nothing and opens nothing; where it is available it reads the list once and opens `http://<host>:<port>` at the host a browser here reaches it by (the IPv4 address as stated, a mapped one unmapped, `[::1]`, `localhost`, no zone).
+  // ports.endpoint: Copy writes inside the press, once, and says so once: the host and the port as stated for a forward on this computer ("Address copied"), the port alone for every other ("Port copied"); where it is unavailable it writes nothing and asks nothing.
+  sections.reaches = async (ctx) => {
+    const { engine, vp } = ctx;
+    const tag = `${engine} ${vp}`;
+    const reaches = [];
+    const endpoints = [];
+    const plain = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
+    const toolOf = (row, action) => row?.buttons.find((button) => button.action === action);
+    for (const cases of HOST_GROUPS) {
+      const page = await openPage(ctx);
+      try {
+        await page.evaluate(() => {
+          window.__t.watch();
+        });
+        await reach(page, { sessions: hostList(cases), tall: true });
+        await perturb(ctx, page, 'ready');
+        const read = await page.evaluate(() => window.__t.read());
+        const asked = async () => page.evaluate(() => window.__ports.reads.listed());
+        // Open in browser, by the buttons.
+        for (const entry of cases) {
+          const open = toolOf(rowOf(read, entry.id), 'open');
+          if (entry.udp === true) {
+            if (open !== undefined) reaches.push(`${entry.id}, over UDP, is offered Open in browser`);
+          } else if (open === undefined) reaches.push(`${entry.id} has no Open in browser`);
+          else if (entry.open !== undefined) {
+            if (open.disabled) reaches.push(`Open in browser of ${entry.id} is unavailable (${JSON.stringify(open.description)}), and it can be used`);
+          } else {
+            if (open.disabled !== true || open.native) reaches.push(`Open in browser of ${entry.id} is ${JSON.stringify({ disabled: open.disabled, native: open.native })}, not unavailable`);
+            if (open.description !== entry.openOff) reaches.push(`Open in browser of ${entry.id} is described by ${JSON.stringify(open.description)}, not ${JSON.stringify(entry.openOff)}`);
+            if (plain(open.tip) !== `Open in browser ${entry.openOff}`) reaches.push(`the tip of Open in browser of ${entry.id} says ${JSON.stringify(plain(open.tip))}, not ${JSON.stringify(`Open in browser ${entry.openOff}`)}`);
+          }
+        }
+
+        // Pressed where it is unavailable, Open in browser asks the host for nothing and opens nothing.
+        const beforeOff = { reads: await asked(), calls: await callsOf(page) };
+        for (const entry of cases.filter((candidate) => candidate.openOff !== undefined)) await press(reaches, buttonOf(page, entry.id, 'Open in browser'), `Open in browser of ${entry.id}`);
+        await frames(page, 3);
+        const afterOff = { reads: await asked(), calls: await callsOf(page) };
+        if (afterOff.reads !== beforeOff.reads) reaches.push(`pressing Open in browser where it is unavailable asked the host for the list ${String(afterOff.reads - beforeOff.reads)} times`);
+        if (JSON.stringify(afterOff.calls.opened) !== JSON.stringify(beforeOff.calls.opened)) reaches.push(`pressing Open in browser where it is unavailable opened ${JSON.stringify(afterOff.calls.opened.slice(beforeOff.calls.opened.length))}`);
+        // Where it is available it reads the list once and opens the host a browser here reaches it by, and the port.
+        for (const entry of cases.filter((candidate) => candidate.open !== undefined)) {
+          const reads = await asked();
+          const calls = await callsOf(page);
+          await buttonOf(page, entry.id, 'Open in browser').click();
+          await waitFor(page, (length) => window.__ports.opened.length > length, calls.opened.length, 6000);
+          await frames(page, 3);
+          const now = await callsOf(page);
+          if (JSON.stringify(now.opened.slice(calls.opened.length)) !== JSON.stringify([entry.open])) reaches.push(`Open in browser of ${entry.id} opened ${JSON.stringify(now.opened.slice(calls.opened.length))}, not ${JSON.stringify([entry.open])}`);
+          if ((await asked()) - reads !== 1) reaches.push(`Open in browser of ${entry.id} asked the host for the list ${String((await asked()) - reads)} times, not once`);
+        }
+
+        // Its menu item says the same.
+        for (const entry of cases.filter((candidate) => candidate.menu === true)) {
+          const items = entry.udp === true ? ['Stop', entry.copy] : ['Stop', 'Open in browser', entry.copy];
+          const menu = await openByPointer(page, entry.id);
+          if (menu === null) reaches.push(`no menu opened on ${entry.id}`);
+          else {
+            if (JSON.stringify(menu.items.map((item) => item.label)) !== JSON.stringify(items)) reaches.push(`the menu of ${entry.id} has the items ${JSON.stringify(menu.items.map((item) => item.label))}, not ${JSON.stringify(items)}`);
+            const open = menu.items.find((item) => item.label === 'Open in browser');
+            if (entry.udp !== true && entry.openOff === undefined && open?.disabled === true) reaches.push(`the item Open in browser of ${entry.id} is unavailable, and it can be used`);
+            if (entry.udp !== true && entry.openOff !== undefined && (open?.disabled !== true || open.description !== entry.openOff)) reaches.push(`the item Open in browser of ${entry.id} is ${JSON.stringify({ disabled: open?.disabled, description: open?.description })}, not unavailable for ${JSON.stringify(entry.openOff)}`);
+          }
+
+          await page.keyboard.press('Escape');
+          await menuShown(page, false);
+          await frames(page, 3);
+        }
+
+        // Copy writes inside the press, once, and says so once.
+        let toldBefore = 0;
+        for (const entry of cases.filter((candidate) => candidate.endpoint !== undefined)) {
+          const calls = await callsOf(page);
+          const reads = await asked();
+          await buttonOf(page, entry.id, 'Copy address').click();
+          const written = (await callsOf(page)).copied.slice(calls.copied.length);
+          if (JSON.stringify(written) !== JSON.stringify([entry.endpoint])) endpoints.push(`Copy of ${entry.id} wrote ${JSON.stringify(written)} inside the press, not ${JSON.stringify([entry.endpoint])}`);
+          await waitFor(page, (length) => window.__t.told.length > length, toldBefore, 6000);
+          await frames(page, 3);
+          const said = await page.evaluate(() => window.__t.told.slice());
+          if (JSON.stringify(said.slice(toldBefore)) !== JSON.stringify([entry.says])) endpoints.push(`Copy of ${entry.id} said ${JSON.stringify(said.slice(toldBefore))}, not ${entry.says} once`);
+          toldBefore = said.length;
+          if ((await callsOf(page)).copied.length - calls.copied.length !== 1) endpoints.push(`Copy of ${entry.id} wrote ${String((await callsOf(page)).copied.length - calls.copied.length)} times, not once`);
+          if ((await asked()) - reads !== 1) endpoints.push(`Copy of ${entry.id} asked the host for the list ${String((await asked()) - reads)} times, not once`);
+        }
+
+        // Where Copy is unavailable it writes nothing and asks nothing.
+        const beforeCopy = { reads: await asked(), calls: await callsOf(page) };
+        for (const entry of cases.filter((candidate) => candidate.copyOff !== undefined)) await press(endpoints, buttonOf(page, entry.id, 'Copy address'), `Copy of ${entry.id}`);
+        await frames(page, 3);
+        const afterCopy = { reads: await asked(), calls: await callsOf(page) };
+        if (afterCopy.reads !== beforeCopy.reads) endpoints.push(`pressing Copy where it is unavailable asked the host for the list ${String(afterCopy.reads - beforeCopy.reads)} times`);
+        if (JSON.stringify(afterCopy.calls.copied) !== JSON.stringify(beforeCopy.calls.copied)) endpoints.push(`pressing Copy where it is unavailable wrote ${JSON.stringify(afterCopy.calls.copied.slice(beforeCopy.calls.copied.length))}`);
+      } finally {
+        await page.context().close();
+      }
+    }
+
+    check('ports.reach', reaches.length === 0, `${tag}: ${reaches.slice(0, 5).join('; ')}`);
+    check('ports.endpoint', endpoints.length === 0, `${tag}: ${endpoints.slice(0, 5).join('; ')}`);
   };
 
   // ------------------------------------------------------------------------------------------------ axe
