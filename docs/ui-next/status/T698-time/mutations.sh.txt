@@ -7,7 +7,9 @@
 #      control: those tests were there before and were not touched).
 # TestAShellThatIsNotInstalledFallsBack... fails on a clean origin/main of this machine (no shell fallback here): it is
 # skipped in half 2 so that it does not read as a detection.
-# Run from anywhere in the worktree:  bash docs/ui-next/status/T698-time/mutations.sh.txt [control-name]
+# Run from anywhere in the worktree (it changes to the git root itself), with the path of this file:
+#   bash <path>/mutations.sh.txt [control-name]
+# An unknown control name exits 2 and lists the names; a half that fails without a failed test name is a harness failure.
 # Needs the Go toolchain on PATH and GNU sed (the faults use \t and a range with a block): on macOS `brew install
 # gnu-sed`, which is found as gsed. The scratch copy is written by redirection, never with `sed -i`.
 export GOWORK=off GOTOOLCHAIN=local
@@ -20,13 +22,17 @@ SED=$(command -v gsed || command -v sed)
 cd "$WT" || exit 2
 only="${1:-}"
 bad=0
+matched=0
+names=''
 TOUCHED='^(TestClosingASessionThatIsPausedForCreditEndsItAndDeliversItsClose|TestShutdownEndsEverySessionAndRefusesNewOnes|TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace|TestAWindowGoingAwayDetachesATerminalWithAPageKeyAndEndsAnyOther|TestDetachKeepsTheTerminalForALeaseThatIsCutToTheMostAndIsIdempotent|TestALeaseThatRunsOutEndsTheTerminalTheWayACloseDoes)$'
 BASELINE=TestAShellThatIsNotInstalledFallsBackAndTheAnswerSaysWhichStarted
 
 # name | file | sed expression | the tests named for it (sorted, separated by spaces)
 run() {
   name="$1"; file="$2"; expr="$3"; named="$4"
+  names="$names $name"
   [ -n "$only" ] && [ "$only" != "$name" ] && return
+  matched=1
   "$SED" -E -e "$expr" "$WT/$file" > "$M/$name.go"
   if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
   printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
@@ -41,8 +47,11 @@ run() {
 
   skip="^($(echo "$named $BASELINE" | "$SED" 's/ /|/g'))\$"
   out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -count=1 -timeout 600s 2>&1)
-  if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
-  else half2="without them: ALSO CAUGHT by other tests [$(echo "$out2" | grep -E '^--- FAIL' | "$SED" -E 's/ \(.*//' | tr '\n' ' ')]"; fi
+  code2=$?
+  caught=$(echo "$out2" | grep -E '^--- FAIL' | "$SED" -E 's/ \(.*//' | tr '\n' ' ')
+  if [ $code2 -eq 0 ]; then half2="without them: PASS (undetected)"
+  elif [ -z "$caught" ]; then half2="without them: HARNESS FAILURE (the run failed, timed out or panicked with no failed test named)"; bad=1
+  else half2="without them: ALSO CAUGHT by other tests [$caught]"; fi
   echo "CONTROL $name: $half1 | $half2"
 }
 
@@ -75,4 +84,5 @@ run grace-never-kills $G \
 run grace-is-no-grace $G \
   's/^\ttimer := time.NewTimer\(grace\)$/\ttimer := time.NewTimer(0)/' "$HANG"
 
+if [ -n "$only" ] && [ $matched -eq 0 ]; then echo "unknown control '$only'; the controls are:$names" >&2; exit 2; fi
 exit $bad

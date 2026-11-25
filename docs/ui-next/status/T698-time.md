@@ -29,12 +29,12 @@ Half 1: with the six touched tests, the ones that go red are exactly the ones na
 | lease-timer-fires-late | yes: `TestALeaseThatRunsOut...` | also caught by `TestTwoHundredDetachedTerminals...`, `TestAttachAgainstLeaseExpiryHasExactlyOneWinner`, `TestAnAttachBeforeTheLeaseEndsKeeps...` |
 | close-does-not-wait-for-the-session | yes: `TestClosingASessionThatIsPausedForCredit...` and `TestClosingHangsUpAtOnce...` (the paused test asserts `running()` empty right after `CloseSession` returns) | also caught by `TestClosedByCloseSessionIsTyped...`, `TestASessionIdInUseIsRefused...`, `TestTheKillAtTheGraceTargets...` |
 | shutdown-does-not-wait-for-the-sessions | yes: `TestShutdownEndsEverySession...` | also caught by `TestShutdownWaitsForAShellThatIsStarting...` |
-| close-does-not-release-the-pacing | yes: `TestClosingASessionThatIsPausedForCredit...` | also caught by `TestTheKillAtTheGraceTargets...` in the second run (the first run: PASS, only the paused-for-credit test sees it; that other test is timing-sensitive) |
+| close-does-not-release-the-pacing | yes: `TestClosingASessionThatIsPausedForCredit...` | PASS in the last run (only the paused-for-credit test sees it); `TestTheKillAtTheGraceTargets...` caught it in one run of three and is timing-sensitive |
 | hangup-does-not-reach-the-shell | yes: `TestClosingHangsUpAtOnce...` | also caught by `TestClosingHangsUpTheBackgroundJobsOfABashShell`, `TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell` |
 | grace-never-kills | `TestALeaseThatRunsOut...` and `TestClosingHangsUpAtOnce...` (both end a shell by the grace's kill; the script names both now) | also caught by `TestTheKillAtTheGraceTargets...` |
 | grace-is-no-grace | yes: `TestClosingHangsUpAtOnce...` | also caught by `TestClosingHangsUpTheBackgroundJobsOfABashShell`, `TestAGracefulShutdown...`, `TestTheKillAtTheGraceTargets...` |
 
-Half 1 holds for 10 of 10 controls (there are ten controls: the "11" counted earlier in this file and in the commit message was a miscount) in the last run, after the names of `grace-never-kills` and `close-does-not-wait` were fixed. Half 2 is never a clean pass in the last run; an older test of the package also catches the fault, so the rewritten test is not the only guard there. That is more cover, not less; the rewritten tests still go red on their own, which is half 1.
+Half 1 holds for 10 of 10 controls (there are ten controls: the "11" counted earlier in this file and in the commit message was a miscount) in the last run, after the names of `grace-never-kills` and `close-does-not-wait` were fixed. Half 2 is a clean pass for the pacing control only in the last run; for the other nine an older test of the package also catches the fault, so the rewritten test is not the only guard there. That is more cover, not less; the rewritten tests still go red on their own, which is half 1.
 
 ## Item 10 (the launch environment before anything reads it): NOT PINNED, stopped
 
