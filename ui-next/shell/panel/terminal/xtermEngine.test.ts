@@ -58,6 +58,39 @@ vi.mock('@xterm/addon-search', async (importOriginal) => {
   return { ...actual, SearchAddon: Recording };
 });
 
+// The GPU addon as the module made it (#698 item 15): each one the engine made, whether it was disposed, and a way to lose its context or to make the next one fail to be made. In 0.19.0 an addon's `dispose()` does not release
+// its GL context and WebKit allows 16 live ones in a page, so what counts is how many were made.
+const gpus = vi.hoisted(() => ({ made: [] as Array<{ disposed: boolean; lose: () => void }>, failNext: 0 }));
+vi.mock('@xterm/addon-webgl', () => {
+  class Fake {
+    private readonly seen: { disposed: boolean; lose: () => void };
+    private readonly listeners: Array<() => void> = [];
+
+    constructor() {
+      if (gpus.failNext > 0) {
+        gpus.failNext -= 1;
+        throw new Error('no WebGL');
+      }
+
+      this.seen = { disposed: false, lose: () => this.listeners.forEach((listener) => listener()) };
+      gpus.made.push(this.seen);
+    }
+
+    onContextLoss(listener: () => void): { dispose: () => void } {
+      this.listeners.push(listener);
+      return { dispose: () => undefined };
+    }
+
+    activate(): void {}
+
+    dispose(): void {
+      this.seen.disposed = true;
+    }
+  }
+
+  return { WebglAddon: Fake };
+});
+
 // The real emulator (xterm.js, headless: its parser, its modes, its answers and its buffers need no layout), brought to where a terminal is by a replay (T2-go 2.4 rule 4). The fake emulator of the other tests knows no mode,
 // no query and no cursor, so it cannot prove these four things: that the prologue of `engine.ts` puts a REAL emulator in the modes a terminal's bytes were written under, that the emulator DOES say things of its own while it
 // is replayed (the premise of muting what it says), that the screen keeps all of it from the shell and lets through what the emulator answers to the live output after it, and that the emulator DRAWS ITS CURSOR when a
@@ -2136,5 +2169,101 @@ describe('the links of a real emulator', () => {
     const { disposals, close } = linked();
     close();
     expect(disposals()).toBe(1);
+  });
+});
+
+describe('the GPU renderer of a real emulator (#698 item 15)', () => {
+  const make = () => createXtermEngine({ cols: 80, rows: 24, scrollback: 100, appearance: APPEARANCE, screenReaderMode: false });
+  const live = () => gpus.made.filter((addon) => !addon.disposed).length;
+
+  beforeEach(() => {
+    gpus.made.length = 0;
+    gpus.failNext = 0;
+  });
+
+  it('makes the addon once for a terminal: 40 showings and hidings make one, and none is disposed by a hiding', async () => {
+    const engine = make();
+    for (let cycle = 0; cycle < 40; cycle += 1) {
+      await engine.setRenderer('gpu');
+      await engine.setRenderer('dom');
+    }
+
+    expect(gpus.made).toHaveLength(1);
+    expect(live()).toBe(1);
+    engine.dispose();
+    expect(live()).toBe(0);
+  });
+
+  it('makes one addon for each terminal, so that the contexts in a page are at most the terminals', async () => {
+    const engines = [make(), make(), make()];
+    for (let cycle = 0; cycle < 40; cycle += 1) {
+      for (const engine of engines) {
+        await engine.setRenderer('gpu');
+        await engine.setRenderer('dom');
+      }
+    }
+
+    expect(gpus.made).toHaveLength(3);
+    for (const engine of engines) {
+      engine.dispose();
+    }
+  });
+
+  it('disposes the addon on a lost context and makes a new one at the next showing', async () => {
+    const engine = make();
+    await engine.setRenderer('gpu');
+    gpus.made[0]?.lose();
+    expect(gpus.made[0]?.disposed).toBe(true);
+    await engine.setRenderer('dom');
+    await engine.setRenderer('gpu');
+    expect(gpus.made).toHaveLength(2);
+    expect(live()).toBe(1);
+    engine.dispose();
+  });
+
+  it('stays on the DOM renderer for its life after two lost contexts', async () => {
+    const engine = make();
+    for (let loss = 0; loss < 2; loss += 1) {
+      await engine.setRenderer('gpu');
+      gpus.made[loss]?.lose();
+      await engine.setRenderer('dom');
+    }
+
+    for (let cycle = 0; cycle < 5; cycle += 1) {
+      await engine.setRenderer('gpu');
+      await engine.setRenderer('dom');
+    }
+
+    expect(gpus.made).toHaveLength(2);
+    expect(live()).toBe(0);
+    engine.dispose();
+  });
+
+  it('counts a failure to make the addon as one, and stays on the DOM renderer after two', async () => {
+    const engine = make();
+    gpus.failNext = 2;
+    for (let cycle = 0; cycle < 5; cycle += 1) {
+      await engine.setRenderer('gpu');
+      await engine.setRenderer('dom');
+    }
+
+    expect(gpus.made).toHaveLength(0);
+    expect(gpus.failNext).toBe(0);
+    engine.dispose();
+  });
+
+  it('lets a terminal that lost one context have the GPU renderer again, and does not count a context lost by one terminal against another', async () => {
+    const first = make();
+    const second = make();
+    await first.setRenderer('gpu');
+    await second.setRenderer('gpu');
+    gpus.made[0]?.lose();
+    await first.setRenderer('dom');
+    await first.setRenderer('gpu');
+    await second.setRenderer('dom');
+    await second.setRenderer('gpu');
+    expect(gpus.made).toHaveLength(3);
+    first.dispose();
+    second.dispose();
   });
 });
