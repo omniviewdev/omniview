@@ -812,7 +812,7 @@ function watchRequests(page) {
     pendingBodies.push(
       response.text().then(
         (body) => {
-          failure.answered = body.slice(0, 400);
+          failure.answered = scrubbed(body).slice(0, 400);
         },
         () => undefined,
       ),
@@ -7174,10 +7174,15 @@ function recordOutput(id, offset, bytes) {
   store.chunks.push(Buffer.from(piece));
   store.size += piece.length;
   store.end = last;
-  while (store.size > OUTPUT_WINDOW && store.chunks.length > 1) {
-    const dropped = store.chunks.shift();
-    store.size -= dropped.length;
-    store.start += dropped.length;
+  // Only the bytes over the window go (a read joins the chunks into one, and the window is cut from its head, not dropped whole).
+  while (store.size > OUTPUT_WINDOW) {
+    const over = store.size - OUTPUT_WINDOW;
+    const [oldest] = store.chunks;
+    if (oldest.length <= over) store.chunks.shift();
+    else store.chunks[0] = oldest.subarray(over);
+    const gone = Math.min(over, oldest.length);
+    store.size -= gone;
+    store.start += gone;
   }
 }
 
@@ -7265,6 +7270,8 @@ function watchStreams(page) {
       if (typeof payload === 'string') return void note({ dir: 'host', type: 'unknown-text' });
       if (payload.length === 0) return void note({ dir: 'host', type: 'unknown-empty' });
       const type = HOST_FRAMES.get(payload[0]) ?? `unknown-${String(payload[0])}`;
+      // A frame of a type the protocol has, of a length it cannot have, is recorded as malformed: the wire assertion rejects it.
+      if ((type === 'output' && payload.length < 9) || (type === 'gap' && payload.length !== 17) || ((type === 'takenOver' || type === 'notFound') && payload.length !== 1)) return void note({ dir: 'host', type: `unknown-malformed-${type}` });
       const json = () => {
         try {
           return JSON.parse(payload.subarray(1).toString('utf8'));
@@ -7334,9 +7341,20 @@ function watchPayloads(page) {
   page.on('websocket', (ws) => {
     const kind = new URL(ws.url()).pathname === STREAM_PATH ? 'stream' : 'events';
     for (const direction of ['framereceived', 'framesent']) {
+      // The bytes of the last frame of this socket and direction that a needle split across two frames would begin with.
+      let carry = Buffer.alloc(0);
       ws.on(direction, ({ payload }) => {
-        const bytes = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
-        for (const needle of needles) if (needle.variants.some((variant) => bytes.includes(variant))) hits.push({ label: needle.label, direction: direction === 'framereceived' ? 'received' : 'sent', kind, at: Date.now() });
+        const whole = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
+        // The protocol's header is no text of a terminal: the frame's type byte, and an output frame's offset.
+        const bytes = kind === 'stream' ? whole.subarray(whole[0] === 0x82 ? 9 : 1) : whole;
+        const joined = Buffer.concat([carry, bytes]);
+        const longest = Math.max(1, ...needles.flatMap((needle) => needle.variants.map((variant) => variant.length)));
+        const seenAt = (variant) => {
+          for (let at = joined.indexOf(variant); at >= 0; at = joined.indexOf(variant, at + 1)) if (at + variant.length > carry.length) return true;
+          return false;
+        };
+        carry = joined.subarray(Math.max(0, joined.length - (longest - 1)));
+        for (const needle of needles) if (needle.variants.some(seenAt)) hits.push({ label: needle.label, direction: direction === 'framereceived' ? 'received' : 'sent', kind, at: Date.now() });
       });
     }
   });
@@ -7761,8 +7779,9 @@ function assertNoEventsLane(wire, engine) {
  * 1 to 1,000, and the page typed: some stream carried input frames.
  */
 function assertStreamFrames(streams, engine) {
-  const sockets = streams.sockets.filter((socket) => socket.attach !== undefined && socket.ignored !== true);
-  assert.ok(sockets.length >= 1, `${engine}: the page attached on streams of the terminal channel (${String(streams.sockets.length)} streams opened)`);
+  // Every stream of the page that exchanged a frame is held to the protocol: a probe the check marked is no stream of the page, and a stream that sent input and never attached is one that does not.
+  const sockets = streams.sockets.filter((socket) => socket.ignored !== true && socket.frames.length > 0);
+  assert.ok(sockets.some((socket) => socket.attach !== undefined), `${engine}: the page attached on streams of the terminal channel (${String(streams.sockets.length)} streams opened)`);
   assert.deepEqual(streams.polled, [], `${engine}: the terminal's frames travel on a WebSocket of the host's stream route (/wails/stream/ws), and the page made no request of the runtime's HTTP fallback (/wails/stream/poll, /wails/stream/send)`);
   for (const socket of sockets) {
     const sent = socket.frames.filter((frame) => frame.dir === 'page');
@@ -9192,32 +9211,38 @@ async function checkTerminalReattach(page, base, engine) {
   const midReady = mid.attach.ready;
   const live = liveBytesOf(mid.attach);
   assert.ok(live >= 262_144, `${engine}: the flood was still running when the page took the terminal back: ${String(live)} bytes of it came after the replay (the host's low mark is 262,144)`);
-  const received = outputBytesOf([mid.attach]);
-  await waitUntil('the last acknowledgement of the output', async () => ackedOn(mid.attach) >= received - 65_536, 30_000).catch(() => undefined);
-  const acked = ackedOn(mid.attach);
+  // The two totals are read together at each poll (the shell may still write its prompt after the flood): what is compared is the output the host had sent and the bytes acknowledged at one and the same moment.
+  let totals = { acked: 0, received: 0 };
+  await waitUntil('the last acknowledgement of the output', async () => {
+    totals = { acked: ackedOn(mid.attach), received: outputBytesOf([mid.attach]) };
+    return totals.acked >= totals.received - 65_536;
+  }, 30_000).catch(() => undefined);
+  const { acked, received } = totals;
   assert.ok(acked <= received, `${engine}: the page acknowledged bytes of output frames only (never more than the host sent, a gap's bytes never): ${String(acked)} bytes acknowledged on the new stream, ${String(received)} bytes of output frames received (the replay of ${String(midReady.end - midReady.start)} bytes and ${String(live)} live bytes)`);
   assert.ok(acked >= received - 65_536, `${engine}: the page acknowledged what it applied of the output, the replay included: ${String(acked)} of ${String(received)} bytes`);
   note('reload in the middle of a flood', `the end of ${String(flood)} lines arrived; the replay was ${String(midReady.end - midReady.start)} bytes ([${String(midReady.start)}, ${String(midReady.end)})), ${String(live)} live bytes followed and ${String(acked)} were acknowledged; the last ${String(tail.length)} lines count up by one`);
 
   // (2b) A stream slow enough for its join to be read in the emulator (the flood above is over in less time than a reading takes): the page reads it again and again after the reload, and every reading counts up by one, the join (the last line of the replay)
   // among them.
-  const paced = 18_000;
-  const hold = 8_000;
+  const paced = 3_500;
+  const hold = 3_200;
   // The stream waits at a line (`read`, released by the check's Enter) once it has written enough: a page that takes the terminal back parses a replay of the host's whole ring first (8 MiB), and a stream that ran on meanwhile would have scrolled the join out of the emulator's 5,000 lines before the first reading.
   await typeLine(page, `i=1; while [ $i -le ${String(paced)} ]; do echo $i; [ $((i % 50)) -eq 0 ] && sleep 0.05; [ $i -eq ${String(hold)} ] && { echo PACED_HOLD_$((6*7)); read -r go; }; i=$((i+1)); done; echo PACED_END_$((6*7))`);
-  await waitUntil('the stream to have written 3,100 lines', async () => (numbersOf(await bufferOf(page, mac)).filter((number) => number <= paced).at(-1) ?? 0) >= 3_100, 60_000);
+  await waitUntil('the stream to have written 1,500 lines', async () => (numbersOf(await bufferOf(page, mac)).filter((number) => number <= paced).at(-1) ?? 0) >= 1_500, 60_000);
   const slow = await reloadToTerminals([first], 'a reload in the middle of a stream');
-  const readings = await readingsUntil(page, mac, 'PACED_HOLD_42', 'the stream to reach its hold in the emulator of the page that came back', 120_000, paced);
+  const readingsAtHold = await readingsUntil(page, mac, 'PACED_HOLD_42', 'the stream to reach its hold in the emulator of the page that came back', 120_000, paced);
   const replayNumbers = numbersOf(plain(Buffer.concat(slow.attach.replay).toString('utf8'))).filter((number) => number <= paced);
   // The last line of a replay may be cut where it ends; the one before it is whole.
   const join = replayNumbers.at(-2);
-  assert.ok(Number.isInteger(join) && join >= 3_000, `${engine}: the replay holds the stream as far as the reload (its last whole line is ${String(join)})`);
+  assert.ok(Number.isInteger(join) && join >= 1_000, `${engine}: the replay holds the stream as far as the reload (its last whole line is ${String(join)})`);
+  // The replay is on screen and the stream is still held: it is released now, so that live lines follow the join, and the readings go on until the end (the whole stream is in the emulator's 5,000 lines, so the join stays in it).
+  await takeKeyboard(page);
+  await page.keyboard.press('Enter');
+  const readingsAfter = await readingsUntil(page, mac, 'PACED_END_42', 'the end of the stream after its hold was released', 120_000, paced);
+  const readings = [...readingsAtHold, ...readingsAfter];
   assert.deepEqual(readings.filter((reading) => reading.broken !== undefined).map((reading) => reading.broken), [], `${engine}: every reading of the emulator counts up by one, from the replay into the live lines (${String(readings.length)} readings)`);
   assert.ok(readings.some((reading) => reading.first <= join - 50 && reading.last >= join + 50), `${engine}: a reading held the join at line ${String(join)} with 50 lines on each side (the ${String(readings.length)} readings held ${readings.map((reading) => `${String(reading.first)}-${String(reading.last)}`).join(', ')})`);
   note('a slow stream across a reload', `${String(readings.length)} readings of the emulator counted up by one, the join at line ${String(join)} (the replay held ${String(replayNumbers.length)} numbered lines) among them`);
-  await takeKeyboard(page);
-  await page.keyboard.press('Enter');
-  await untilLine(page, mac, 'PACED_END_42', 'the end of the stream after its hold was released', 120_000);
 
   // (2c) A runaway producer across a reload (`yes`, which never ends). The host holds the shell at its mark while nobody acknowledges; the page that takes the terminal back must go on reading, parsing and acknowledging its live bytes (a page that stalls
   // leaves the host holding the shell for good), and the keyboard of the terminal it took back is the shell's: Control C typed in the middle of the flood stops the producer and the shell answers. What the page acknowledged after the attach is live bytes
@@ -9251,8 +9276,8 @@ async function checkTerminalReattach(page, base, engine) {
   // Whatever the shell wrote last has been delivered by now, to the page and to what watches the page.
   await waitMs(1_500);
   const yesLive = liveBytesOf(runaway.attach);
-  const yesAcked = ackedOn(runaway.attach);
-  const yesReceived = outputBytesOf([runaway.attach]);
+  // Read together, at one moment.
+  const { yesAcked, yesReceived } = { yesAcked: ackedOn(runaway.attach), yesReceived: outputBytesOf([runaway.attach]) };
   assert.ok(yesAcked <= yesReceived, `${engine}: after the runaway producer the page acknowledged bytes of output frames only: ${String(yesAcked)} bytes acknowledged on the new stream, ${String(yesReceived)} bytes of output received (the replay ended at ${String(runawayReady.end)})`);
   assert.ok(yesAcked >= yesReceived - 65_536, `${engine}: the page acknowledged what it applied of the output of the runaway producer, the replay included: ${String(yesAcked)} of ${String(yesReceived)} bytes`);
   note('a runaway producer across a reload', `the page had acknowledged ${String(yesAckedBefore)} bytes of it when it was reloaded; the replay was ${String(runawayReady.end - runawayReady.start)} bytes ([${String(runawayReady.start)}, ${String(runawayReady.end)})) and the host said ${JSON.stringify(runawayReady.busy)}; the page then acknowledged 2 MiB more in ${String(yesGrewIn)} ms; Control C stopped it in ${String(yesStoppedIn)} ms (the host said idle) and the shell answered; ${String(yesLive)} live bytes in all, ${String(yesAcked)} acknowledged`);
@@ -9877,10 +9902,12 @@ async function checkTerminalFollowups(browser, getHost, engine) {
     const lastingSeen = await watched(lasting);
     const stays = await withTerminal(lasting, proxy.base);
     const lastingCutAt = Date.now();
+    const lastingRefusedAt = proxy.stream.counts.refused;
     assert.ok(proxy.stream.cut() > 0, `${engine}: the outage that outlasts the page's tries was staged: the proxy cut the terminal's stream`);
     proxy.stream.refuse(Number.POSITIVE_INFINITY);
     const gaveUp = await watchPanelUntil(lasting, (state) => state.lane.some((words) => /The connection to the terminal was lost\./.test(words)), 60_000, lastingCutAt);
     assert.ok(gaveUp.ok, `${engine}: a page whose stream stays away for longer than its three tries says that the connection to the terminal was lost, within 60 s: ${timelineOf(gaveUp.seen)}`);
+    assert.equal(proxy.stream.counts.refused - lastingRefusedAt, 3, `${engine}: before it said that the connection was lost the page used its three tries (250 ms, 1 s, 4 s): the proxy refused ${String(proxy.stream.counts.refused - lastingRefusedAt)} streams after the cut`);
     assert.equal(attachedSince(lastingSeen.streams, stays.id, lastingCutAt).length, 0, `${engine}: no stream of the terminal was opened while the proxy refused them`);
     assert.equal((await listedAs(stays.id))?.attached, false, `${engine}: the host holds the terminal detached on its lease while the page has given up`);
     proxy.stream.allow();
@@ -9964,6 +9991,7 @@ async function checkTerminalReconnect(browser, getHost, engine) {
     await typeLine(page, 'echo PID_$$');
     const pid = Number((await shellSays(base(), id, /\nPID_(\d+)\n/, 'the pid of the shell'))[1]);
     let control = 0;
+    let planted;
     const variants = [
       { label: 'a cut of the events socket for 1 s', tag: 'EV1', kind: 'events', ms: 1_000 },
       { label: 'a cut of the events socket for 5 s', tag: 'EV5', kind: 'events', ms: 5_000 },
@@ -9982,7 +10010,7 @@ async function checkTerminalReconnect(browser, getHost, engine) {
       const cut = target.cut();
       if (kind === 'events') noteEventsCut(page);
       // A cut stream stays refused until the outage line is typed, so that the line is typed with no stream to take it; the refusal is then let go of when the cut has lasted `ms`.
-      target.refuse(kind === 'stream' ? Number.POSITIVE_INFINITY : ms);
+      target.refuse(Number.POSITIVE_INFINITY);
       assert.ok(cut > 0, `${engine}: ${label}: the cut was real: the proxy cut ${kind === 'events' ? "the page's events socket" : "the terminal's stream"} (it cut ${String(cut)})`);
       // What is typed in the instant between the cut and the page's seeing it goes down a stream that is gone (the protocol acknowledges no input), so the page is waited for to see its stream closed: from then on what it is typed waits for the stream that comes back.
       if (old !== undefined) await waitUntil(`the page to see its stream closed after ${label}`, async () => old.closedMs > 0, 30_000);
@@ -9990,8 +10018,12 @@ async function checkTerminalReconnect(browser, getHost, engine) {
       await typeLine(page, `echo AWAY_${tag}_$((6*7))`);
       if (kind === 'stream') {
         assert.equal(attachedSince(seen.streams, id, sinceCut).filter((socket) => socket.ready !== undefined).length, 0, `${engine}: ${label}: the line was typed while the terminal had no stream: no replacement stream was ready when it was typed`);
-        target.refuse(Math.max(0, ms - (Date.now() - sinceCut)));
+      } else {
+        assert.equal(target.counts.passed, passedBefore, `${engine}: ${label}: the line was typed while the events socket was away: it had not come back when the line was typed`);
       }
+
+      // The refusal is let go of when the cut has lasted the intended time, measured apart from the typing.
+      target.refuse(Math.max(0, ms - (Date.now() - sinceCut)));
 
       if (kind === 'events') {
         await waitUntil(`the events socket to come back after ${label}`, async () => target.counts.passed > passedBefore, 60_000);
@@ -10004,13 +10036,21 @@ async function checkTerminalReconnect(browser, getHost, engine) {
         async () => {
           await typeLine(page, 'kill -STOP $$');
           await waitUntil('the shell to be stopped', async () => stopped(pid), 15_000);
+          // The line is typed here, in the fault, so that it is typed whether or not the assertion is: a shell that is stopped reads nothing of it.
+          planted = String((control += 1));
+          await typeLine(page, `echo KEEP_${tag}_${planted}_$((6*7))`);
         },
         async () => {
           process.kill(pid, 'SIGCONT');
+          planted = undefined;
         },
         async () => {
-          const n = String((control += 1));
-          await typeLine(page, `echo KEEP_${tag}_${n}_$((6*7))`);
+          let n = planted;
+          if (n === undefined) {
+            n = String((control += 1));
+            await typeLine(page, `echo KEEP_${tag}_${n}_$((6*7))`);
+          }
+
           const reached = await holdsWithin(async () => new RegExp(`\\nAWAY_${tag}_42\\n[\\s\\S]*\\nKEEP_${tag}_${n}_42\\n`).test(await plainTranscriptOf(base(), id)), 20_000);
           const frames = seen.streams.of(id).filter((socket) => socket.openedMs >= sinceCut - 2_000).map((socket) => `[open+${String(socket.openedMs - sinceCut)} close${socket.closedMs > 0 ? `+${String(socket.closedMs - sinceCut)}` : ' never'}: ${socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir === 'page' ? '>' : '<'}${frame.type}${frame.length === undefined ? '' : `(${String(frame.length)})`}@${String(frame.ms - sinceCut)}`).join(' ')}]`).join(' ');
           assert.ok(reached, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote); the streams since the cut: ${frames}; the shell wrote ${JSON.stringify(plain(outputSince(id, outputEnd(id) - 600)))}`);
@@ -10222,14 +10262,18 @@ async function checkTerminalIsolation(browser, getHost, engine) {
 
   // (1) The second page receives none of the first's frames.
   let typed = 0;
+  const PLANTED = 'the text the control planted in the second terminal';
+  const planted = `PLANTED${canary.slice(-6)}`;
   await asserting(
     'isolation-frames',
     async () => {
       // A canary printed in the second page's OWN terminal is a frame of the second page that carries it: what a leak looks like on the wire.
+      // The planted text is a needle of its own, so that the final recheck of the scenario (which the replay of this terminal's output to a later stream would trip) does not depend on it.
       typed = payloads.hits.length;
+      payloads.look(PLANTED, planted);
       await takeKeyboard(second);
-      await typeLine(second, `echo ${canary}_$((6*7))`);
-      await waitUntil('the canary to reach the second page', async () => outputSince(idB, 0).includes(`${canary}_42`), 30_000);
+      await typeLine(second, `echo ${planted}_$((6*7))`);
+      await waitUntil('the planted text to reach the second page', async () => outputSince(idB, 0).includes(`${planted}_42`), 30_000);
     },
     async () => {
       payloads.hits.splice(typed);
@@ -10280,7 +10324,7 @@ async function checkTerminalIsolation(browser, getHost, engine) {
       for (const { method, who, subject: named, never, answer, ref } of gathered ?? (await gatherBare(subject))) {
         {
           const words = (text, name) => String(text).split(name).join('<id>');
-          assert.ok(answer.status === 422 && answer.text.includes('omniview:session/not-found') && words(answer.text, named) === words(ref.text, never), `${engine}: ${method}, called by ${who}, named with the first terminal's id answers omniview:session/not-found, in the same words as for an id that never existed (it answered ${String(answer.status)} ${answer.text.slice(0, 160)}; for the id that never existed ${String(ref.status)} ${ref.text.slice(0, 160)})`);
+          assert.ok(answer.status === 422 && ref.status === answer.status && answer.text.includes('omniview:session/not-found') && words(answer.text, named) === words(ref.text, never), `${engine}: ${method}, called by ${who}, named with the first terminal's id answers omniview:session/not-found, in the same words as for an id that never existed (it answered ${String(answer.status)} ${answer.text.slice(0, 160)}; for the id that never existed ${String(ref.status)} ${ref.text.slice(0, 160)})`);
         }
       }
     },
@@ -10325,10 +10369,13 @@ async function checkTerminalIsolation(browser, getHost, engine) {
     },
     async () => {
       const calls = evidenceOf(first).windowCalls;
-      for (let at = calls.length - 1; at >= 0; at -= 1) if (calls[at].includes(capA)) calls.splice(at, 1);
+      for (let at = calls.length - 1; at >= 0; at -= 1) if (calls[at].includes('"call-id":"control-cap"') && calls[at].includes(capA)) calls.splice(at, 1);
       await callHost(base(), 'SaveState', 'main', 'seam-canary', 'null');
     },
-    async () => assertNoCapabilityInWindowState(evidenceOf(first), engine),
+    async () => {
+      assertNoCapabilityInWindowState(evidenceOf(first), engine);
+      assertNoCapabilityInWindowState(evidenceOf(second), engine);
+    },
   );
   verdict(engine);
   const stillA = (await listedTerminals(base(), { ended: true })).find((entry) => entry.id === idA);
@@ -10336,6 +10383,7 @@ async function checkTerminalIsolation(browser, getHost, engine) {
   await takeKeyboard(first);
   await typeLine(first, 'echo FIRST_STILL_$((6*7))');
   await shellSays(base(), idA, /\nFIRST_STILL_42\n/, 'the first terminal to answer after everything that was tried against it');
+  assert.deepEqual(payloads.hits.filter((hit) => hit.label !== PLANTED).map((hit) => `${hit.label} in a ${hit.direction} ${hit.kind} frame`), [], `${engine}: by the end of the scenario, after the first terminal's last reply, the second page had received 0 frames of the first: neither the canary, nor the first terminal's id, nor its capability is in any frame or event of the second page`);
   note('isolation', `the second page's ${String(seenB.streams.sockets.length)} streams spoke for its own terminal only, ${String(payloads.hits.length)} frames or events of it held the canary, the first terminal's id or its capability; ${String(BARE_BINDINGS.length)} bindings times 3 callers answered not-found as for an id that never existed; 3 wrong capabilities got one 0x86 each; the first terminal went on answering`);
   assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the pages raised no error`);
   console.log(`terminal-isolation ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
