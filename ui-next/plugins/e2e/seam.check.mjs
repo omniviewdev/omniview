@@ -467,6 +467,7 @@ const ISOLATION_CONTROLS = {
   'isolation-frames': /the second page received 0 frames of the first/,
   'isolation-bare-id': /named with the first terminal's id answers omniview:session\/not-found/,
   'isolation-wrong-cap': /gets exactly one 0x86 frame/,
+  'displaced-close': /the terminal survived the close of a tab that was displaced from it/,
   'cap-in-window-state': /no call of the window's state \(SaveState, GetState\) carries a terminal's capability/,
 };
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
@@ -7199,7 +7200,7 @@ async function transcriptOf(base, id) {
   return outputSince(id, outputEnd(id) - 1_048_576);
 }
 
-const HOST_FRAMES = new Map([[0x81, 'ready'], [0x82, 'output'], [0x83, 'gap'], [0x84, 'ended'], [0x85, 'takenOver'], [0x86, 'notFound'], [0x87, 'applied'], [0x88, 'released'], [0x89, 'unsupported']]);
+const HOST_FRAMES = new Map([[0x81, 'ready'], [0x82, 'output'], [0x83, 'gap'], [0x84, 'ended'], [0x85, 'takenOver'], [0x86, 'notFound'], [0x87, 'applied'], [0x88, 'released'], [0x89, 'unsupported'], [0x8a, 'closeRefused']]);
 
 /**
  * Every terminal stream a page opens (a WebSocket at `/wails/stream/ws`), and the frames each carries in both directions, in the order they came: `frames` are `{ n, ms, dir, type, ... }` (`n` is the counter of `nextOrder`; `dir` is `page` or `host`). A frame's bytes are not kept but for the
@@ -7262,6 +7263,9 @@ function watchStreams(page) {
         case 0x05:
           note({ dir: 'page', type: 'detach' });
           break;
+        case 0x06:
+          note({ dir: 'page', type: 'close' });
+          break;
         default:
           note({ dir: 'page', type: `unknown-${String(payload[0])}` });
       }
@@ -7322,6 +7326,8 @@ function watchStreams(page) {
 const sentOf = (socket, type) => socket.frames.filter((frame) => frame.dir === 'page' && frame.type === type);
 const gotOf = (socket, type) => socket.frames.filter((frame) => frame.dir === 'host' && frame.type === type);
 /** What the page sent on a stream after a frame (of the same stream) came. */
+/** The `close` frames (0x06: the page asks that the terminal end, on its own stream) a page sent for a terminal, on all its streams. */
+const closesOf = (streams, id) => streams.of(id).reduce((sum, socket) => sum + sentOf(socket, 'close').length, 0);
 const sentAfter = (socket, frame) => socket.frames.filter((one) => one.dir === 'page' && one.n > frame.n);
 /** The bytes of output a stream carried; where it ended (one past its last byte); the bytes at or beyond `ready.end` (live: nothing of the replay); the bytes its page acknowledged. */
 const outputBytesOf = (sockets) => sockets.reduce((sum, socket) => sum + gotOf(socket, 'output').reduce((total, frame) => total + frame.length, 0), 0);
@@ -7909,7 +7915,7 @@ async function terminalFlowHidden({ page, base, engine, mac, streams, note }, id
  * to the tab of that terminal: not to the close button, which only the pointer reaches. Terminate session ends both: the host lists no session, the process is gone (by its process group, which the host names) and the focus is on the tool's own tab, the last
  * terminal being closed.
  */
-async function terminalCloseBusy({ page, base, engine, wire, note }, id, shell) {
+async function terminalCloseBusy({ page, base, engine, wire, streams, note }, id, shell) {
   const dialog = page.getByRole('alertdialog', { name: 'Terminate session?' });
   const tab = page.locator('[data-shell-part="sessionTabs"] [role="tab"][aria-selected="true"]');
   const tabId = await tab.getAttribute('data-tab-id');
@@ -7961,7 +7967,9 @@ async function terminalCloseBusy({ page, base, engine, wire, note }, id, shell) 
   await waitUntil('the host to list no shell', async () => (await terminalIds(base)).length === 0, 10_000);
   await waitUntil('sleep to be gone', async () => !alive(busy.pgid), 15_000).catch(() => undefined);
   assert.equal(alive(busy.pgid), false, `${engine}: Terminate session ended the program as well as the session: process group ${String(busy.pgid)} is gone`);
-  assert.deepEqual([wire.of('CloseChannelTerminal').filter((call) => call.args[0] === id).length, wire.of('DismissChannelTerminal').length], [1, 0], `${engine}: Terminate session ended the terminal once with CloseChannelTerminal, and dismissed none`);
+  // The close frame is a frame the check hears of from the browser, and the host may have ended the terminal before that report reaches it: the frame is waited for, and then counted.
+  await waitUntil('the close frame to be reported', async () => closesOf(streams, id) >= 1, 10_000).catch(() => undefined);
+  assert.deepEqual([closesOf(streams, id), wire.of('CloseChannelTerminal').length, wire.of('DismissChannelTerminal').length], [1, 0, 0], `${engine}: Terminate session ended the terminal once with a close frame on its live stream, made no call of CloseChannelTerminal, and dismissed none`);
   await page.getByText('No terminals', { exact: true }).waitFor();
   const onToolTab = async () => page.evaluate(() => document.activeElement?.getAttribute('role') === 'tab' && document.activeElement.closest('[data-shell-part="panelTools"]') !== null && (document.activeElement.textContent ?? '').includes('Terminal'));
   await waitUntil('the focus to reach the tool\'s tab', onToolTab, 5_000).catch(() => undefined);
@@ -7973,7 +7981,7 @@ async function terminalCloseBusy({ page, base, engine, wire, note }, id, shell) 
  * Closing a terminal that is at its prompt (T2a): the host says that nothing but the shell holds it (`IsBusy`: idle), and the page asks nothing of the person. The close is made by the pointer, on the tab's close button, as the question's
  * own is. The window is watched for a question for a second after the press, longer than the host needs to answer, and a question that is asked and taken back within a frame is counted all the same. The page asks the host once.
  */
-async function terminalCloseIdle({ page, base, engine, wire, questions, note }) {
+async function terminalCloseIdle({ page, base, engine, wire, streams, questions, note }) {
   const id = await startTerminal(page, base, page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }));
   let idle;
   await waitUntil('the host to say that nothing but the shell holds the terminal', async () => {
@@ -7993,7 +8001,9 @@ async function terminalCloseIdle({ page, base, engine, wire, questions, note }) 
   await waitUntil('the answer of the host to the page', async () => asked[0]?.answered === true, 5_000).catch(() => undefined);
   assert.equal(asked.length, 1, `${engine}: closing asks the host what runs in the terminal once (ChannelTerminalBusy), and does not poll`);
   assert.equal(asked[0].answer?.state, 'idle', `${engine}: what the host answered the page for the terminal at its prompt is idle (${JSON.stringify(asked[0].answer)})`);
-  assert.equal(wire.of('CloseChannelTerminal').filter((call) => call.args[0] === id).length, 1, `${engine}: closing a terminal at its prompt ended it with one CloseChannelTerminal`);
+  // The close frame is a frame the check hears of from the browser, and the host may have ended the terminal before that report reaches it: the frame is waited for, and then counted.
+  await waitUntil('the close frame to be reported', async () => closesOf(streams, id) >= 1, 10_000).catch(() => undefined);
+  assert.deepEqual([closesOf(streams, id), wire.of('CloseChannelTerminal').length], [1, 0], `${engine}: closing a terminal at its prompt ended it with one close frame on its live stream and no call of CloseChannelTerminal`);
   note('close at the prompt', `ChannelTerminalBusy said ${JSON.stringify(idle)}; the page asked the host once and the host answered ${JSON.stringify(asked[0].answer)}; no dialog, the tab went, the host was asked to end the terminal once and listed no shell`);
 }
 
@@ -8272,7 +8282,7 @@ async function checkTerminal(page, base, engine) {
   await page.getByText('No terminals', { exact: true }).waitFor();
   assert.equal(wire.of('ChannelTerminalBusy').length, asked, `${engine}: closing an ended terminal does not ask the host what runs in it`);
   await waitUntil('the host to forget the end of the terminal that was dismissed', async () => (await listedTerminals(base, { ended: true })).find((entry) => entry.id === second_id) === undefined, 10_000);
-  assert.deepEqual([wire.of('DismissChannelTerminal').filter((call) => call.args[0] === second_id).length, wire.of('CloseChannelTerminal').filter((call) => call.args[0] === second_id).length], [1, 0], `${engine}: closing the tab of a terminal that ended by itself dismissed it once, and did not close it`);
+  assert.deepEqual([wire.of('DismissChannelTerminal').filter((call) => call.args[0] === second_id).length, wire.of('CloseChannelTerminal').length + closesOf(streams, second_id)], [1, 0], `${engine}: closing the tab of a terminal that ended by itself dismissed it once, and did not close it`);
   note('exit 3', `the lane said ${JSON.stringify(lane)}; the last line of the emulator was ${JSON.stringify(lastLineOf(ended))}; the tab was announced as ${JSON.stringify(`${String(shell)}, ended`)}; the host kept the end {exited, 3} until the page dismissed it`);
 
   // The page's input, size and acknowledgements were frames of its streams the whole time, and no call of the events lane was made for a terminal (T3): and the capability of no terminal is in an address or on the console.
@@ -9195,7 +9205,9 @@ async function checkTerminalReattach(page, base, engine) {
   await page.locator('[data-shell-part="sessionTab"]').nth(1).locator('[data-shell-part="sessionClose"]').click();
   await waitUntil('the host to end the terminal whose tab was closed', async () => (await terminalIds(base)).length === 1, 15_000);
   assert.deepEqual(await terminalIds(base), [first], `${engine}: closing the tab of a terminal that came back ended that shell and no other`);
-  assert.equal(sinceOf(wire, 'CloseChannelTerminal', second, two.startedAt).length, 1, `${engine}: the page asked the host to end it with CloseChannelTerminal, once`);
+  // The close frame is a frame the check hears of from the browser, and the host may have ended the terminal before that report reaches it: the frame is waited for, and then counted.
+  await waitUntil('the close frame to be reported', async () => closesOf(streams, second) >= 1, 10_000).catch(() => undefined);
+  assert.deepEqual([closesOf(streams, second), sinceOf(wire, 'CloseChannelTerminal', second, two.startedAt).length], [1, 0], `${engine}: the page asked the host to end it with one close frame on the terminal's live stream (no call of CloseChannelTerminal); the streams of it: ${JSON.stringify(streams.of(second).map((socket) => ({ open: socket.openedMs, closed: socket.closedMs, frames: socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir}:${frame.type}`) })))}; its calls: ${JSON.stringify(wire.calls.filter((call) => call.askedMs >= two.startedAt).map((call) => `${call.method}:${JSON.stringify(call.args).slice(0, 60)}`).slice(-6))}`);
   names = await tabLabelsOf(page);
   assert.equal(names.length, 1, `${engine}: one tab is left`);
   note('two terminals', `both came back ${(two.took / 1000).toFixed(2)} s after the reload began, in their order, each with its own shell (pids ${String(pid)} and ${String(pidB)}); closing the second ended it`);
@@ -9525,6 +9537,15 @@ async function checkTerminalTakeover(browser, getHost, restart, engine, work) {
   const taken = await watchPanelUntil(g, runningAs(lone.names), Math.max(5_000, leaseMs - (Date.now() - madeAt) - 2_000), madeAt);
   assert.ok(taken.ok, `${engine}: the page took the terminal of a lease of 20 s before the lease ran out: ${timelineOf(taken.seen)}`);
   assert.equal((await listedTerminals(base(), { ended: true })).find((one) => one.id === made.id)?.attached, true, `${engine}: the host lists the terminal of the short lease as held by the page's stream, so that its lease is not running`);
+  // The window's state is written a quiet 400 ms after the page's last change (the tab took the shell's name when the terminal said which it was): the page leaves only once the host's saved session has stopped changing, or the tab would be saved under the name it had before.
+  let lastSaved = '';
+  let stillFor = 0;
+  await waitUntil('the host to hold the saved session as the page left it', async () => {
+    const now = String((await callHost(base(), 'GetState', 'main')).session ?? '');
+    stillFor = now === lastSaved ? stillFor + 1 : 0;
+    lastSaved = now;
+    return stillFor >= 5 && now.includes(made.id);
+  }, 30_000);
   const goneAt = Date.now();
   await g.goto('about:blank');
   await waitUntil('the host to hold the terminal for nobody', async () => (await listedTerminals(base(), { ended: true })).find((one) => one.id === made.id)?.attached === false, 30_000);
@@ -10118,7 +10139,8 @@ async function checkTerminalReconnect(browser, getHost, engine) {
       async () => {
         assert.deepEqual(await terminalIds(base()), [], `${engine}: the shell can still be ended after the cuts: closing its tab left the host with no terminal`);
         assert.equal(alive(pid), false, `${engine}: the shell can still be ended after the cuts: its process ${String(pid)} is gone`);
-        assert.equal(seen.wire.of('CloseChannelTerminal').filter((call) => call.args[0] === id).length, 1, `${engine}: the shell can still be ended after the cuts: the page asked the host once to end it`);
+        await waitUntil('the close frame to be reported', async () => closesOf(seen.streams, id) >= 1, 10_000).catch(() => undefined);
+        assert.equal(closesOf(seen.streams, id), 1, `${engine}: the shell can still be ended after the cuts: the page asked the host once to end it, with a close frame on its live stream`);
       },
     );
     verdict(engine);
@@ -10377,6 +10399,80 @@ async function checkTerminalIsolation(browser, getHost, engine) {
     async () => {
       assertNoCapabilityInWindowState(evidenceOf(first), engine);
       assertNoCapabilityInWindowState(evidenceOf(second), engine);
+    },
+  );
+  // A tab that another tab displaced cannot end the other tab's terminal by closing: its feed knows it lost the terminal, so it sends no `close` (and no call that ends a terminal) and lets its watching stream go; a `close` from a watcher that did not know (the host answers `close-refused`) is the host's own guard and is not reachable from the page. The scenario makes its own terminal and its own pair of tabs
+  // each time it runs. The fault of the control is a displaced tab that ends the terminal by a call of its own (what a page did before a close was a frame on a stream): the terminal is gone, and the assertion says so.
+  let endByCall = false;
+  let displaced;
+  /** Everything the displaced tab's close did, read after it was made (and the pair of tabs let go of): the facts the assertion reads. */
+  const stageDisplacedClose = async () => {
+    await forgetSession(base());
+    const context = await browser.newContext({ viewport });
+    const p1 = await context.newPage();
+    const p2 = await context.newPage();
+    PAGE_LABELS.set(p1, 'the tab that is displaced and closes');
+    PAGE_LABELS.set(p2, 'the tab that holds the terminal');
+    const seen1 = evidenceOf(p1);
+    const seen2 = evidenceOf(p2);
+    let ownTerminal;
+    try {
+      await spoofPlatform(p1);
+      await open(p1, base());
+      await p1.getByRole('region', { name: 'Plugins you can open' }).waitFor({ timeout: 30_000 });
+      await p1.locator('[data-shell-part="panelToggle"]').click();
+      const tid = await startTerminal(p1, base(), emptyButton(p1));
+      ownTerminal = tid;
+      await takeKeyboard(p1);
+      await typeLine(p1, 'echo MARK_D_$((6*7)); echo PID_D_$$');
+      const pidD = Number((await shellSays(base(), tid, /\nMARK_D_42\nPID_D_(\d+)\n/, 'the marker and the pid of the shell of the displaced tab'))[1]);
+      const tabs = await tabLabelsOf(p1);
+      await savedTabs(base(), tid);
+      await spoofPlatform(p2);
+      await duplicateStorage(p1, p2);
+      await open(p2, base());
+      await waitUntil('the second tab to show the terminal running', async () => runningAs(tabs)(await seePanel(p2)), 60_000);
+      const held = seen1.streams.of(tid).at(-1);
+      await waitUntil('the host to tell the stream of the first tab that another stream took the terminal', async () => gotOf(held, 'takenOver').length === 1, 30_000);
+      await waitUntil('the first tab to say that another tab took the terminal', async () => /Taken over by another tab/.test((await seePanel(p1)).lane.join(' ')), 60_000);
+      // The displaced tab is closed, as a person closes it.
+      await p1.bringToFront();
+      await p1.locator('[data-shell-part="sessionClose"]').first().click();
+      await p1.getByText('No terminals', { exact: true }).waitFor({ timeout: 30_000 });
+      await waitUntil('the displaced tab to let its watching stream go', async () => held.closedMs > 0, 30_000);
+      if (endByCall) await tryBound(base(), EXEC_SERVICE, 'CloseChannelTerminal', capOf(tid));
+      await takeKeyboard(p2);
+      await typeLine(p2, 'echo STILL_D_$$');
+      const answered = await holdsWithin(async () => new RegExp(`\\nSTILL_D_${String(pidD)}\\n`).test(await plainTranscriptOf(base(), tid)), 20_000);
+      const listedD = (await listedTerminals(base(), { ended: true })).find((entry) => entry.id === tid);
+      return {
+        answered,
+        pid: pidD,
+        listed: listedD === undefined ? 'nothing' : { attached: listedD.attached, ended: listedD.ended ?? null },
+        endedFrames: gotOf(held, 'ended').length,
+        counts: [closesOf(seen1.streams, tid), seen1.wire.of('CloseChannelTerminal').length, closesOf(seen2.streams, tid)],
+      };
+    } finally {
+      // Only this scenario's own terminal is ended: the two terminals of the scenario that is running are not its to end.
+      if (ownTerminal !== undefined) await tryBound(base(), EXEC_SERVICE, 'CloseChannelTerminal', capOf(ownTerminal));
+      await context.close();
+    }
+  };
+  await asserting(
+    'displaced-close',
+    async () => {
+      endByCall = true;
+      displaced = await stageDisplacedClose();
+    },
+    async () => {
+      endByCall = false;
+      displaced = undefined;
+    },
+    async () => {
+      const facts = displaced ?? (await stageDisplacedClose());
+      assert.ok(facts.answered && facts.listed !== 'nothing' && facts.listed.attached === true && facts.listed.ended === null, `${engine}: the terminal survived the close of a tab that was displaced from it: the host lists it as held by the other tab's stream and the shell (pid ${String(facts.pid)}) answered the other tab (the host lists ${JSON.stringify(facts.listed)}, the shell answered: ${String(facts.answered)})`);
+      assert.equal(facts.endedFrames, 0, `${engine}: the host did not tell the displaced tab's stream that the terminal ended`);
+      assert.deepEqual(facts.counts, [0, 0, 0], `${engine}: the displaced tab sent no close frame and made no call to end the terminal, and the tab that holds it sent none`);
     },
   );
   verdict(engine);
