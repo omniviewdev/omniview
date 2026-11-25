@@ -270,7 +270,7 @@ func TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor(t *tes
 		count := 0
 		for r := range results {
 			count++
-			assert.NoError(t, r.err)
+			require.NoError(t, r.err)
 			if r.pid != 0 {
 				requireGone(t, r.pid, "a shell of a cycle")
 			}
