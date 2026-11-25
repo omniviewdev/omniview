@@ -59,14 +59,30 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
   # The DEBUG trap: before each simple command, and only the first one after a prompt is the user's command. It returns the status
   # that the user's own DEBUG trap left in __omniview_rc (zero when there is none).
   __omniview_debug() {
-    [ "${__omniview_armed:-0}" = 1 ] || return "${__omniview_rc:-0}"
-    __omniview_armed=0
-    # The prompt commands run again for an empty line and for Ctrl-C, and the first of them is then not the user's command. It
-    # is the first command this trap sees for one that bash runs without it, a subshell `(exit 7)` for one: so it is taken for the
-    # user's only when the history has grown since the prompt (the line was taken). An empty line and Ctrl-C add none.
-    if [ "$BASH_COMMAND" = __omniview_precmd_first ] && ! [ "${HISTCMD:-0}" -gt "${__omniview_histcmd:-0}" ] 2>/dev/null; then
-      return "${__omniview_rc:-0}"
+    # With extdebug the status of the trap decides whether the next command runs. It is the user's (a DEBUG trap of theirs said
+    # no, or yes), except for our own hooks, which it must not take away.
+    local __omniview_ret=${__omniview_rc:-0}
+    case $BASH_COMMAND in __omniview_precmd_first|__omniview_precmd_last) __omniview_ret=0 ;; esac
+    # extdebug makes the trap follow into functions: a command of one of ours is none of the user's, and is never refused.
+    case ${FUNCNAME[1]-} in __omniview_*) return 0 ;; esac
+    [ "${__omniview_armed:-0}" = 1 ] || return "$__omniview_ret"
+    if [ "$BASH_COMMAND" = __omniview_precmd_first ]; then
+      # The prompt commands run again for an empty line and for Ctrl-C, and the first of them is then not the user's command. It
+      # is the first command this trap sees for one that bash runs without it, a subshell `(exit 7)` for one: so it is taken for
+      # the user's only when the history has grown since the prompt (the line was taken). An empty line and Ctrl-C add none, and
+      # a line whose command the user's trap skipped is none either.
+      if [ "${__omniview_skipped:-0}" = 1 ] || ! [ "${HISTCMD:-0}" -gt "${__omniview_histcmd:-0}" ] 2>/dev/null; then
+        __omniview_armed=0
+        return "$__omniview_ret"
+      fi
+    elif [ "$__omniview_ret" != 0 ] && shopt -q extdebug; then
+      # extdebug and a user's trap that says no: the command does not run, and is no record. The next command of the line, if
+      # there is one, is the one that counts.
+      __omniview_skipped=1
+      return "$__omniview_ret"
     fi
+    __omniview_armed=0
+    __omniview_skipped=0
     __omniview_hup_on
     local __omniview_xtrace=0 __omniview_errexit=0
     case $- in *x*) __omniview_xtrace=1; { set +x; } 2>/dev/null ;; esac
@@ -88,7 +104,7 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
       __omniview_hup_off
       if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
       if [ "$__omniview_errexit" = 1 ]; then set -e; fi
-      return "${__omniview_rc:-0}"
+      return "$__omniview_ret"
     fi
     __omniview_ran=1
     if [ -n "$__omniview_line" ]; then
@@ -100,7 +116,7 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
     if [ "$__omniview_errexit" = 1 ]; then set -e; fi
-    return "${__omniview_rc:-0}"
+    return "$__omniview_ret"
   }
 
   # The first of the prompt commands: the end of the command, with its status, which it hands on in $?.
@@ -140,6 +156,7 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
       *) PS1='\[\e]133;A\a\]'"$PS1"'\[\e]133;B\a\]' ;;
     esac
     __omniview_histcmd=${HISTCMD:-0}
+    __omniview_skipped=0
     __omniview_armed=1
     __omniview_hup_off
     if [ "$__omniview_xtrace" = 1 ]; then set -x; fi

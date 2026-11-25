@@ -489,7 +489,7 @@ func TestPwshTheUsersPromptSeesTheStatusOfTheLastCommand(t *testing.T) {
 
 // With extdebug a user's DEBUG trap that says no to our own hooks must not take them away: the marks and the prompt stay.
 func TestAUsersDebugTrapThatRefusesOurHooksDoesNotTakeThemAway(t *testing.T) {
-	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != *omniview* ]]' DEBUG\n")
+	f := bashFixture(t, "shopt -s extdebug\ntrap '[[ $BASH_COMMAND != __omniview_precmd_* ]]' DEBUG\n")
 	info := f.started()
 	require.Equal(t, IntegrationOn, info.Integration.State)
 	f.run(info.ID, "echo hi")
