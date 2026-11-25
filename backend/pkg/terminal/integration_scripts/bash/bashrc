@@ -70,8 +70,7 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     local __omniview_xtrace=0 __omniview_errexit=0
     case $- in *x*) __omniview_xtrace=1; { set +x; } 2>/dev/null ;; esac
     case $- in *e*) __omniview_errexit=1; set +e ;; esac
-    __omniview_ran=1
-    local LC_ALL=C REPLY __omniview_history __omniview_line=
+    local LC_ALL=C REPLY __omniview_history __omniview_line= __omniview_trim
     # The line as typed is in the history, when the history took it (HISTCONTROL=ignorespace or ignoredups, or no history,
     # leave HISTCMD one behind): then there is no line, and the script never says another one.
     # (HISTCMD in a command is the number the command has: the number the prompt showed when the history took the line, one less when it did not.)
@@ -82,6 +81,15 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
       __omniview_line=${__omniview_line#\*}
       __omniview_line=${__omniview_line#  }
     fi
+    # A line of only a comment runs nothing, and the prompt commands are then the first this trap sees: no command.
+    __omniview_trim=${__omniview_line#"${__omniview_line%%[![:space:]]*}"}
+    if [ "$BASH_COMMAND" = __omniview_precmd_first ] && [ "${__omniview_trim:0:1}" = "#" ]; then
+      __omniview_hup_off
+      if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
+      if [ "$__omniview_errexit" = 1 ]; then set -e; fi
+      return 0
+    fi
+    __omniview_ran=1
     if [ -n "$__omniview_line" ]; then
       __omniview_escape "$__omniview_line"
       builtin printf '\e]633;E;%s;%s\a\e]133;C\a' "$REPLY" "$__omniview_nonce"
@@ -165,13 +173,19 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
   # handler that stays would keep bash from handling a hangup in readline) a handler hangs the jobs up as bash does, each
   # job's process group getting SIGHUP and SIGCONT, and lets the hangup take its course.
   #
-  # A HUP handler of the user's is never replaced and never taken away, and the hooks must not ask bash whether there is one
-  # (a command substitution is a fork, and the time before the handler is in place is the time a hangup can be lost in). So
-  # the script keeps the answer in __omniview_hup_user: it is read once, here, after the user's own files ran, and a function
-  # named trap (a shell function of this shell only: it is not exported, and `builtin trap` bypasses it) reads it again
-  # whenever a command of the user's names HUP (SIGHUP or 1), in the shell or in a file it sources.
+  # A HUP handler of the user's is never replaced and never taken away, whoever set it and however (`trap`, `builtin trap`,
+  # a sourced file, their prompt command): the hooks look at what bash has, and put theirs only where there is none, and
+  # take it away only if it is still theirs. Looking must not cost the time before the handler is in place (that is the time
+  # a hangup can be lost in). bash 5.3 reads it in the shell with ${ ...; }, which is no fork; an older bash has no such
+  # form (it is a syntax error there, so it is defined through eval) and asks with $(...), a fork of some 80 microseconds.
+  if [ "${BASH_VERSINFO[0]}" -gt 5 ] || { [ "${BASH_VERSINFO[0]}" = 5 ] && [ "${BASH_VERSINFO[1]}" -ge 3 ]; }; then
+    eval '__omniview_hup_look() { __omniview_current=${ builtin trap -p HUP; }; }'
+  else
+    __omniview_hup_look() { __omniview_current=$(builtin trap -p HUP); }
+  fi
   __omniview_hup_on() {
-    if [ "${__omniview_hup_user:-1}" = 0 ]; then
+    __omniview_hup_look
+    if [ -z "$__omniview_current" ]; then
       builtin trap -- '__omniview_hup' HUP
       __omniview_hup_set=1
     fi
@@ -179,7 +193,8 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
   __omniview_hup_off() {
     if [ "${__omniview_hup_set:-0}" = 1 ]; then
       __omniview_hup_set=0
-      builtin trap - HUP
+      __omniview_hup_look
+      case $__omniview_current in *"'__omniview_hup'"*) builtin trap - HUP ;; esac
     fi
   }
   __omniview_hup() {
@@ -190,24 +205,6 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     done
     builtin trap - HUP
     builtin kill -HUP $$
-  }
-  __omniview_hup_read() {
-    local __omniview_current
-    __omniview_current=$(builtin trap -p HUP)
-    case $__omniview_current in
-      '') __omniview_hup_user=0 ;;
-      *"'__omniview_hup'"*) ;;
-      *) __omniview_hup_user=1 ;;
-    esac
-  }
-  __omniview_hup_read
-  trap() {
-    builtin trap "$@"
-    local __omniview_status=$?
-    case " ${*^^} " in
-      *' HUP '*|*' SIGHUP '*|*' 1 '*|*' -HUP '*|*' -1 '*) __omniview_hup_read ;;
-    esac
-    return "$__omniview_status"
   }
 
   # Tell the host the shell is up, and give the channel back.

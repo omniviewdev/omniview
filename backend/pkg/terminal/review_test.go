@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -131,6 +132,13 @@ func TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell(t *testing.T) {
 			// not signalled to a shell that is still building its job table (zsh then has no job to hang up).
 			send(t, m, info.ID, "echo ready-$((40+2))")
 			sink.waitFor(t, info.ID, "ready-42")
+			// With the integration, the shell is at its prompt once the prompt after that line has been drawn (its input-start mark;
+			// the first two are the first prompt and the one after the job's line): the host's quit is not signalled into the
+			// moment the hooks of bash run, which are a non-interactive shell for a hangup (T5-inject-bash.md, the known gap).
+			if bytes.Contains(sink.output(info.ID), []byte("\x1b]133;A")) {
+				require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 3 },
+					20*time.Second, 5*time.Millisecond, "the prompt after the line was never drawn")
+			}
 			require.False(t, ended(job))
 
 			cancel()
