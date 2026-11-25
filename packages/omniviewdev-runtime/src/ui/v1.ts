@@ -16,7 +16,7 @@
 //      older host's entry lacks the name and a plugin that imports it gets `undefined`, so a plugin that needs a newer name says which host
 //      version has it. Anything else is `./v2`.
 //
-// The VALUES are the data layer the first plugin (the Pods list) reads through, ten functions and constants, and the log viewer's data contract, one
+// The VALUES are the data layer the new shell's plugins read through (the Pods list first), eleven functions and constants, and the log viewer's data contract, one
 // function: `openLogStream`. No component, no router, no raw RPC.
 // The TYPES are the closure of their signatures: every type a hook's parameters or results mention is exported here, so the API report holds the
 // whole shape a plugin compiles against and a change to any of them shows in its diff (the build fails on a type that is mentioned and not exported).
@@ -33,6 +33,15 @@ export type {
   ConnectionAutoConnectTrigger,
   ConnectionLifecycle,
 } from '../bindings/github.com/omniviewdev/plugin-sdk/pkg/types/models';
+
+// What the plugin's backend publishes about a connection (the server's version and address, the API groups that did not answer; HM3): a read that subscribes and fetches, and never connects.
+// A fact is current, stale (its last value and why it is not fresh) or unavailable (and why): a page says which, never a value it does not have.
+// The call is an options object, like its neighbours' (`useConnectionReadiness`, `useResources`). The main entry's `useConnectionMetadata(pluginID, connectionID)` is a shipped API that
+// plugins of the previous UI call positionally, so it is not changed: this entry's function is a thin wrapper over it (`./useConnectionMetadata`), one cache and one subscription for both.
+export { useConnectionMetadata } from './useConnectionMetadata';
+export type { UseConnectionMetadataOptions } from './useConnectionMetadata';
+export type { ConnectionMetadataState } from '../hooks/connection/useConnectionMetadata';
+export type { ConnectionMetadataEntry, ConnectionMetadataError, ConnectionMetadataSnapshot, ConnectionMetadataValue } from '../connection/metadata';
 
 // The catalog, the resolved target and the records of a collection.
 export { useResourceTypes } from '../hooks/resource/useResourceTypes';
