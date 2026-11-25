@@ -483,7 +483,7 @@ describe('the keywords of a plugin\'s sidebar, through the window', () => {
     await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
     await user.keyboard('{Backspace}g');
     await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
-    const said = warn.mock.calls.map((call) => String(call[0]));
+    const said = warn.mock.calls.map((call) => String(call[0])).filter((message) => message.startsWith('[palette]'));
     expect(said).toEqual(['[palette] acme:sidebar: sidebar entry "gadgets": keyword 1 is not a word of 1 to 32 characters, with no white space in it: it is left out']);
   });
 });

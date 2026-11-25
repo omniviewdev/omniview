@@ -7,7 +7,7 @@
 WT=$(git rev-parse --show-toplevel) || exit 2
 cd "$WT" || exit 2
 P=ui-next/shell/panel
-FILES="$P/NewSession.test.tsx $P/terminal/profiles.test.ts $P/terminal/localShell.test.ts $P/terminal/execFeed.test.ts $P/terminal/terminalChannel.test.ts $P/terminal/terminals.test.ts"
+FILES="$P/SessionTabs.test.tsx $P/NewSession.test.tsx $P/terminal/profiles.test.ts $P/terminal/localShell.test.ts $P/terminal/execFeed.test.ts $P/terminal/terminalChannel.test.ts $P/terminal/terminals.test.ts"
 B=$(mktemp -d "${TMPDIR:-/tmp}/t4prof-page.XXXXXX") || exit 2
 current=""
 restore() { if [ -n "$current" ] && [ -f "$B/backup" ]; then cp "$B/backup" "$current"; fi; }
@@ -61,7 +61,7 @@ run stale-answer-wins "$P/terminal/profiles.ts" \
 
 run listens-to-settings-with-nobody-listening "$P/terminal/profiles.ts" \
   's/^          stopChanged?.();$//' \
-  'stops listening to the settings'
+  'stops listening to the settings|listens to the settings while someone listens'
 
 run asks-the-host-for-each-listener "$P/terminal/profiles.ts" \
   's/if (listeners.size === 1) {/if (listeners.size > 0) {/' \
@@ -98,5 +98,13 @@ run default-not-marked-in-the-menu "$P/terminal/profiles.ts" \
 run arrow-for-an-empty-choice "$P/SessionTabs.tsx" \
   's/if (items.length === 0) {/if (false) {/' \
   'draws only the `+`|shows the items the tool has when the menu is opened'
+
+run settings-chunk-loaded-after-the-leave-still-listened-to "$P/terminal/profiles.ts" \
+  's/if (!left) {/if (true) {/' \
+  'before the settings client had loaded'
+
+run header-drops-the-menu "$P/PanelHeader.tsx" \
+  's/ {...(add.menu === undefined ? {} : { menu: add.menu })}//' \
+  'draws the arrow of the choice'
 
 exit $bad

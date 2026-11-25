@@ -52,9 +52,13 @@ function savedWindow(open = false): LoadedSession {
   return openSession({ read: async () => Promise.resolve(text), write: async () => Promise.resolve(), keep: async () => Promise.resolve() }, text);
 }
 
+/** The host's list of shells, which is not what these tests are about: none, and no question to a host that is not there. */
+const NONE: readonly never[] = [];
+const NO_SHELLS = { subscribe: () => () => undefined, getSnapshot: () => NONE };
+
 function mount(options: TerminalsOptions, open = false) {
   const loader: FakeEngineLoader = fakeEngineLoader();
-  const view = render(<PluginHost plugins={plugins} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={savedWindow(open)} terminals={{ load: loader.load, ...options }} />);
+  const view = render(<PluginHost plugins={plugins} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={savedWindow(open)} terminals={{ load: loader.load, shells: NO_SHELLS, ...options }} />);
   return { ...view, loader, user: userEvent.setup() };
 }
 

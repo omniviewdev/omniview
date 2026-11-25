@@ -17,6 +17,14 @@
 - Go red `0f4f2f6a` (assertions: no shells listed, the default setting not used, a list that is nil), green `78476918`, bindings `101d4b7b`, lint fixes and the runtime export `7685694f`.
 - Page red `481cd3fe` (20 tests red by assertion), green `5fc6ce06`.
 
+## Review fixes (ReviewShellProfiles, FIX FIRST)
+
+- The header dropped `add.menu`: `PanelHeader` passes it on; test through the real header (`SessionTabs.test.tsx`, `staticPanel` takes a `menu`).
+- `ListTerminalShells` had no audit row: added DENIED (`internal/auditgate/policy.json`); auditgate and exec packages pass.
+- The list's default is now what `shellenv.Resolve` picks for the command `CreateTerminal` would make, so a `$SHELL` that is not a shell no longer leaves the list with no default (test with `$SHELL` set to a non-shell).
+- Tests added: leave before the settings chunk loads; a default reached by a link is named by the file it reaches. Controls added for each (and for the header).
+- The real host now draws the arrow, so two `PluginHost` tests that count console warnings saw the list's warning: one gives a fake list, one counts only its own topic.
+
 ## Checks run
 
 - Go: `go build ./...`; `go vet` on `internal/shellenv`, `internal/settings`, `backend/pkg/plugin/exec`; `GOOS=windows go vet` on the three; `GOOS=darwin go vet` on `internal/shellenv` and, with `-tags purego` (the wails build guard wants cgo), on `internal/settings` and exec; `go test -race` on `internal/shellenv`, `internal/settings`; golangci-lint v2.15.0 `--new-from-rev=origin/main` on the three packages: 0 issues. `TestTheOutputOfAShortCommandReachesALateAttach` (not mine) failed once in a full run of the exec package under load and passed in 9 reruns.

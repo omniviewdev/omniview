@@ -149,3 +149,22 @@ func realPathOf(t *testing.T, path string) string {
 	require.NoError(t, err)
 	return reached
 }
+
+// $SHELL names a program that exists and is not a shell: the order skips it, and the list marks the shell that really starts.
+func TestTheListMarksTheShellThatStartsWhenTheEnvironmentShellIsNotAShell(t *testing.T) {
+	fx := newTerminalFixture(t)
+	notAShell := filepath.Join(t.TempDir(), "editor")
+	require.NoError(t, os.WriteFile(notAShell, []byte("#!/bin/sh\n"), 0o755))
+	t.Setenv("SHELL", notAShell)
+	fx.ctrl.settingsProvider = &defaultShellSetting{value: ""}
+	session, err := fx.wrapper.CreateTerminal(context.Background(), execsdk.SessionOptions{}, terminal.Launch{Channel: true})
+	require.NoError(t, err)
+	var marked []string
+	for _, entry := range fx.wrapper.ListTerminalShells() {
+		if entry.Default {
+			marked = append(marked, entry.Path)
+		}
+	}
+	require.Len(t, marked, 1, "the list marks no default while %s starts", session.Shell.Path)
+	assert.Equal(t, realPathOf(t, session.Shell.Path), realPathOf(t, marked[0]))
+}

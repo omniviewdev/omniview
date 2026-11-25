@@ -18,7 +18,7 @@ bad=0
 SHELLENV=./internal/shellenv/
 EXEC=./backend/pkg/plugin/exec/
 SETTINGS=./internal/settings/
-EXEC_RUN='DefaultShell|ShellOfAn|ShellTheCaller|ShellThatCannot|WithDefaultShell|ExplicitProgram|ListOfShells'
+EXEC_RUN='DefaultShell|ShellOfAn|ShellTheCaller|ShellThatCannot|WithDefaultShell|ExplicitProgram|ListOfShells|ListMarks'
 
 # name | package | run pattern | file | sed expression | the tests named for it (sorted, separated by spaces)
 run() {
@@ -54,14 +54,14 @@ run default-replaces-the-shell-asked-for "$EXEC" "$EXEC_RUN" backend/pkg/plugin/
 
 run default-not-checked-before-use "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
   's/if _, checkErr := shellenv.Check(value); checkErr != nil {/if false {/' \
-  "TestADefaultShellThatCannotStartLeavesTheTerminalToTheStatedOrder TestTheListOfShellsMarksTheShellThatStartsWhenTheSettingCannotStart"
+  "TestADefaultShellThatCannotStartLeavesTheTerminalToTheStatedOrder"
 
 run arguments-of-no-shell-go-to-the-default "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
   's/return \[\]string{value}$/return append([]string{value}, command[min(1, len(command)):]...)/' \
   "TestWithDefaultShellFillsOnlyAnEmptyCommandAndNeverKeepsTheArgumentsOfNoShell"
 
 run list-marks-the-login-shell-not-the-setting "$EXEC" "$EXEC_RUN" backend/pkg/plugin/exec/terminal_shells.go \
-  's/shellenv.List(chosen\[0\])/shellenv.List(shellenv.Default())/' \
+  's/shellenv.Resolve(withDefaultShell(nil, c.defaultShellSetting))/shellenv.Resolve(nil)/' \
   "TestTheListOfShellsMarksTheDefaultShellOfTheSetting"
 
 run list-offers-a-shell-twice "$SHELLENV" 'TestList' internal/shellenv/installed.go \
@@ -83,6 +83,14 @@ run list-invents-a-default-that-is-not-there "$SHELLENV" 'TestList' internal/she
 run list-leaves-out-a-default-outside-the-standard-directories "$SHELLENV" 'TestList' internal/shellenv/installed.go \
   's/return append(\[\]Shell{{Name: Name(path), Path: path, Default: true}}, shells...)/return shells/' \
   "TestListOffersTheDefaultEvenWhereNoStandardDirectoryHoldsIt"
+
+run default-named-by-the-links-own-name "$SHELLENV" 'TestList' internal/shellenv/installed.go \
+  's/\[\]Shell{{Name: Name(path)/[]Shell{{Name: filepath.Base(path)/' \
+  "TestListNamesADefaultReachedByALinkByTheShellItIs"
+
+run list-marks-the-shell-the-environment-names "$EXEC" "$EXEC_RUN|EnvironmentShell" backend/pkg/plugin/exec/terminal_shells.go \
+  's/path, _, err := shellenv.Resolve(withDefaultShell(nil, c.defaultShellSetting))/path, err := shellenv.Default(), error(nil)/' \
+  "TestTheListMarksTheShellThatStartsWhenTheEnvironmentShellIsNotAShell TestTheListOfShellsMarksTheDefaultShellOfTheSetting"
 
 run settings-accept-a-typo-as-the-default-shell "$SETTINGS" 'DefaultShellSetting' internal/settings/terminal.go \
   's/path, err := shellenv.Check(val)/path, err := val, error(nil)/' \

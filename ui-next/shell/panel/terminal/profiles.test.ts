@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createShellList, launchOf, shellMenu, shellsOf, type ShellChoice } from './profiles';
+
+const changedClient = vi.hoisted(() => ({ onChanged: vi.fn(), off: vi.fn() }));
+vi.mock('../../settings/runtime', () => ({ runtimeClient: () => ({ onChanged: (listener: () => void) => {
+  changedClient.onChanged(listener); return changedClient.off; 
+} }) }));
+vi.mock('@omniviewdev/runtime/api', () => ({ ExecClient: { ListTerminalShells: vi.fn(async () => Promise.resolve([])) } }));
+import { appShellList, createShellList, launchOf, shellMenu, shellsOf, type ShellChoice } from './profiles';
 
 // The shells of this machine as the page offers them: what the host lists (`ListTerminalShells`), kept for as long as something listens, asked again when the settings change (the host decides which shell is the default, so
 // a change of `terminal.defaultShell` is asked of the host and not worked out here), and drawn as the items of the `+`'s menu.
@@ -176,5 +182,27 @@ describe('what a profile asks of the host', () => {
     expect(launch).toEqual({ command: ['/usr/bin/zsh'] });
     expect(launch).not.toHaveProperty('cwd');
     expect(launch).not.toHaveProperty('env');
+  });
+});
+
+describe('the list of the app', () => {
+  it('does not listen to the settings when the last listener left before the settings client had loaded', async () => {
+    changedClient.onChanged.mockClear();
+    const stop = appShellList().subscribe(() => undefined);
+    stop();
+    await vi.dynamicImportSettled();
+    await turns();
+    expect(changedClient.onChanged).not.toHaveBeenCalled();
+  });
+
+  it('listens to the settings while someone listens, and lets go of them with the last listener', async () => {
+    changedClient.onChanged.mockClear();
+    changedClient.off.mockClear();
+    const stop = appShellList().subscribe(() => undefined);
+    await vi.dynamicImportSettled();
+    await turns();
+    expect(changedClient.onChanged).toHaveBeenCalledTimes(1);
+    stop();
+    expect(changedClient.off).toHaveBeenCalledTimes(1);
   });
 });

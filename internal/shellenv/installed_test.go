@@ -125,3 +125,19 @@ func TestListOffersTheDefaultEvenWhereNoStandardDirectoryHoldsIt(t *testing.T) {
 		t.Fatalf("listed %v for a default that does not exist, want only %v", got, bash)
 	}
 }
+
+func TestListNamesADefaultReachedByALinkByTheShellItIs(t *testing.T) {
+	skipOnWindows(t)
+	dir, custom := t.TempDir(), t.TempDir()
+	shellFile(t, dir, "bash", 0o755)
+	nu := shellFile(t, custom, "nu", 0o755)
+	login := filepath.Join(custom, "login")
+	if err := os.Symlink(nu, login); err != nil {
+		t.Fatal(err)
+	}
+	for _, shell := range listIn([]string{dir}, login) {
+		if shell.Default && (shell.Name != "nu" || shell.Path != login) {
+			t.Fatalf("the default is %+v, want %s named nu (the file the link reaches, never the link's own name)", shell, login)
+		}
+	}
+}

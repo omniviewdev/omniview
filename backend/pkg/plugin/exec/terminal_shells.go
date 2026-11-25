@@ -34,12 +34,13 @@ func (c *controller) defaultShellSetting() (string, error) {
 	return c.settingsProvider.GetString(settingDefaultShell)
 }
 
-// ListTerminalShells says which shells of this machine a terminal can be started with, and which one an empty command starts: the same choice
-// CreateTerminal makes, so that what the list marks is what starts.
+// ListTerminalShells says which shells of this machine a terminal can be started with, and which one an empty command starts: the shell
+// shellenv.Resolve picks for the command CreateTerminal would make (the setting, else $SHELL, the account's shell, bash, sh), so that what
+// the list marks is what starts, whatever of that order cannot start. No shell that starts is no default.
 func (c *controller) ListTerminalShells() []shellenv.Shell {
-	chosen := withDefaultShell(nil, c.defaultShellSetting)
-	if len(chosen) == 0 {
-		return shellenv.List(shellenv.Default())
+	path, _, err := shellenv.Resolve(withDefaultShell(nil, c.defaultShellSetting))
+	if err != nil {
+		return shellenv.List("")
 	}
-	return shellenv.List(chosen[0])
+	return shellenv.List(path)
 }
