@@ -101,7 +101,30 @@ describe('the fake terminal channel', () => {
     stream.takenOver();
     expect(events.takenOver).toHaveBeenCalledTimes(1);
     expect(stream.open()).toBe(true);
-    for (const speak of [() => stream.output(0, 'x'), () => stream.gap(0, 1), () => stream.applied(1), () => stream.ready(), () => stream.notFound(), () => stream.unsupported(), () => stream.takenOver()]) {
+    const speaking: Array<() => void> = [
+      () => {
+        stream.output(0, 'x');
+      },
+      () => {
+        stream.gap(0, 1);
+      },
+      () => {
+        stream.applied(1);
+      },
+      () => {
+        stream.ready();
+      },
+      () => {
+        stream.notFound();
+      },
+      () => {
+        stream.unsupported();
+      },
+      () => {
+        stream.takenOver();
+      },
+    ];
+    for (const speak of speaking) {
       expect(speak).toThrow('watcher');
     }
 

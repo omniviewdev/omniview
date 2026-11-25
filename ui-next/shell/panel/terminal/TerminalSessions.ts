@@ -24,8 +24,8 @@ import { TERMINAL_TOOL_ID } from './tool';
 //     window makes for the session's id (`TerminalSessionsOptions.reattach`) gives the session a NEW feed, the feed it had is let go of after the new one is published (a feed that lost its terminal sends nothing to the host for it),
 //     and the status flows through the write every status takes (ended, starting, running...) with the tab where it was, under the title it had. The swap is announced by that write: the entry is replaced first, so whoever hears of it
 //     finds the new feed in `feedOf`. Nothing is shown or focused for it. What the supplier runs while that is done may close the tab: nothing is published for a session that is gone;
-//   - it does not tell the feeds that the page's connection to the host came back: each feed connects its own stream again, from the offset it has, and the lane offers the way back to a terminal another tab took through the
-//     feed's `refresh`, asked at the take-back.
+//   - it does not tell the feeds that the page's connection to the host came back: each feed connects its own stream again, from the offset it has, and a terminal another tab took is offered back when its feed says it is free (the host's `released`),
+//     and `refresh` is asked once more at the take-back, which is the only time the registry asks.
 //   - it can be followed (`subscribeFeeds`, T2d): which feed a session has is read in a render (`feedOf`), so whoever draws a body is told when that changes: a saved tab is given its terminal after its body was drawn with
 //     none, a terminal is taken back (one feed for another), a feed is let go of. The listener runs once, synchronously, when the change is complete, and `feedOf` answers the same value between two changes.
 //   - it opens the address of a link in a terminal's output outside the app (`openExternal`, T3a), through the way the window gave it (`TerminalSessionsOptions.openExternal`): only an http or https address is let through, because a
@@ -88,13 +88,6 @@ export type TerminalSessions = {
    * that comes back finds it. A feed that cannot be left is not touched, because the page may come back to it. The end of the registry leaves the same feeds, closes the others, and does not tell a feed twice.
    */
   readonly leave: () => void;
-  /**
-   * Asks every feed this page lost (ended with a `detached`, its end not known) who holds its terminal (`TerminalFeedHandle.refresh`): the host sends no word when the tab that took a terminal goes, so the page asks. A
-   * `refresh` that throws or rejects is one warning. Answers whether any feed was asked; with none it does nothing.
-   */
-  readonly refreshLost: () => boolean;
-  /** Whether any feed is lost to this page (ended with a `detached`, its end not known): what `refreshLost` would ask. */
-  readonly hasLost: () => boolean;
   /**
    * Opens a session in the Terminal tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). Every call is a new process, except for a target that names the id of its session
    * (`TerminalTarget.sessionId`): a terminal has one session. When the panel has a session of that id (a saved tab: the restore makes every terminal session `ended`, with no feed) the session is GIVEN the feed, stays
@@ -240,17 +233,6 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
           warn('[panel] a listener of the terminal feeds failed', error);
         }
       }
-    }
-  };
-
-  /** Whether the feed of an entry was lost to another tab, its end is not known, and it can be asked who holds the terminal. A status that cannot be read is one warning and no loss. */
-  const isLost = (entry: Entry): boolean => {
-    try {
-      const status = entry.feed.getSnapshot();
-      return status.state === 'ended' && status.detached !== undefined && status.exit === undefined && typeof entry.feed.refresh === 'function';
-    } catch (error) {
-      warn(`[panel] ${entry.plugin} could not ask who holds the terminal`, error);
-      return false;
     }
   };
 
@@ -517,30 +499,6 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
           leaveFeed(entry);
         }
       }
-    },
-
-    hasLost: () => {
-      for (const entry of [...entries.values()]) {
-        if (!entry.ended && isLost(entry)) {
-          return true;
-        }
-      }
-
-      return false;
-    },
-
-    refreshLost: () => {
-      let asked = false;
-      for (const entry of [...entries.values()]) {
-        if (entry.ended || !isLost(entry)) {
-          continue;
-        }
-
-        asked = true;
-        tellFeed(entry.plugin, (): Promise<void> | undefined => entry.feed.refresh?.(), 'could not ask who holds the terminal');
-      }
-
-      return asked;
     },
 
     open: (target, opening = {}) => {

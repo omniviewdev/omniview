@@ -76,6 +76,9 @@ export type TerminalChannels = {
   readonly triedOf: (error: unknown) => readonly TerminalShellAttempt[] | undefined;
 };
 
+/** The version of the stream this page speaks (`attach.v`, protocol section 4). */
+export const CHANNEL_VERSION = 2;
+
 /** The most input the page keeps that the host has not said it applied (`channel_max_input_bytes`, the host's own queue): the bytes after the last `applied` are kept to be sent again after a reconnect, and a page that has typed more than this fails in words. */
 export const MAX_KEPT_INPUT_BYTES = 1_048_576;
 

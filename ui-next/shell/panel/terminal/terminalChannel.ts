@@ -2,7 +2,7 @@ import { ExecClient } from '@omniviewdev/runtime/api';
 import { parseAppError } from '@omniviewdev/runtime/ui/v1';
 import { Stream } from '@wailsio/runtime';
 import { isNativeWindow } from '../../core/native';
-import type { ChannelEvents, ChannelLaunch, ChannelLink, TerminalChannels } from './channel';
+import { CHANNEL_VERSION, type ChannelEvents, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
 
 // The one place that holds the capabilities of the terminals of this page and their streams (docs/ui-next/terminal-channel-protocol.md; the contract with the feed is `channel.ts`). A capability is what reaches a
 // terminal, so it never leaves this file: it is not exported, not handed to the feed, and not in any note, error or address. It is kept in memory and in the sessionStorage of this tab (id to capability), which a reload keeps and no other window
@@ -37,6 +37,9 @@ const GAP = 0x83;
 const ENDED = 0x84;
 const TAKEN_OVER = 0x85;
 const NOT_FOUND = 0x86;
+const APPLIED = 0x87;
+const RELEASED = 0x88;
+const UNSUPPORTED = 0x89;
 
 /** What of a stream the channel uses: a WebSocket's, which is also the shape of the Wails stream. */
 export type ChannelSocket = {
@@ -418,8 +421,8 @@ function createCore(deps: ChannelDeps): Core {
       }
     };
 
-    /** Ends the stream in exactly one of four ways, once, and lets it go before the feed is told. */
-    function finish(how: 'ended' | 'takenOver' | 'notFound' | 'closed', payload?: unknown): void {
+    /** Ends the stream in exactly one of five ways, once, and lets it go before the feed is told. A terminal that was taken is not an end: the stream stays, as a watcher, until one of these comes. */
+    function finish(how: 'ended' | 'released' | 'notFound' | 'unsupported' | 'closed', payload?: unknown): void {
       if (over) {
         return;
       }
@@ -431,6 +434,8 @@ function createCore(deps: ChannelDeps): Core {
 
       if (how === 'ended') {
         events.ended(payload);
+      } else if (how === 'unsupported') {
+        events.unsupported(payload);
       } else {
         events[how]();
       }
@@ -531,9 +536,34 @@ function createCore(deps: ChannelDeps): Core {
           return;
         }
 
-        case TAKEN_OVER:
-          finish('takenOver');
+        case APPLIED: {
+          const total = view.length === 9 ? Number(numbers.getBigUint64(1)) : undefined;
+          if (total === undefined || !Number.isSafeInteger(total)) {
+            finish('closed');
+          } else {
+            events.applied(total);
+          }
+
           return;
+        }
+
+        case TAKEN_OVER:
+          events.takenOver();
+          return;
+        case RELEASED:
+          finish('released');
+          return;
+        case UNSUPPORTED: {
+          const parsed = json();
+          if (parsed === undefined) {
+            finish('closed');
+          } else {
+            finish('unsupported', typeof parsed.value === 'object' && parsed.value !== null ? Reflect.get(parsed.value, 'v') : undefined);
+          }
+
+          return;
+        }
+
         case NOT_FOUND:
           finish('notFound');
           return;
@@ -548,7 +578,7 @@ function createCore(deps: ChannelDeps): Core {
     stream.addEventListener('error', listeners.error);
 
     // The attach is the first frame and nothing goes before it. An offset of 0 is an offset: it is said when it is given, and not when the page has nothing.
-    const request = { v: 1, cap, ...(fromOffset !== undefined && Number.isSafeInteger(fromOffset) && fromOffset >= 0 ? { from_offset: fromOffset } : {}) };
+    const request = { v: CHANNEL_VERSION, cap, ...(fromOffset !== undefined && Number.isSafeInteger(fromOffset) && fromOffset >= 0 ? { from_offset: fromOffset } : {}) };
     send(frameOf(ATTACH, encoder.encode(JSON.stringify(request))));
 
     return {
