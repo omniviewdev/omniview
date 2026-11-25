@@ -337,7 +337,7 @@ function createCore(deps: ChannelDeps): Core {
 
   /** What a stream that has no terminal to reach does: nothing, and says so to nobody. */
   const NO_LINK: Omit<ChannelLink, 'close'> = {
-    input: () => undefined,
+    input: () => false,
     resize: () => undefined,
     ack: () => undefined,
     detach: () => undefined,
@@ -436,21 +436,29 @@ function createCore(deps: ChannelDeps): Core {
       }
     }
 
-    function send(frame: Uint8Array<ArrayBuffer>): void {
+    /** Whether the frame was handed to the stream. One that waits for the stream to open is not sent yet, and is not refused. A stream that is closing or closed before its close event came is over: nothing is sent, and it ends as `closed`, once. */
+    function send(frame: Uint8Array<ArrayBuffer>): boolean {
       if (over) {
-        return;
+        return false;
       }
 
       if (!open) {
         waiting.push(frame);
         waitingBytes += frame.length;
-        return;
+        return true;
+      }
+
+      if (stream.readyState !== 1) {
+        finish('closed');
+        return false;
       }
 
       try {
         stream.send(frame);
+        return true;
       } catch {
         finish('closed');
+        return false;
       }
     }
 
@@ -545,9 +553,7 @@ function createCore(deps: ChannelDeps): Core {
 
     return {
       input: (bytes) => {
-        if (bytes.length > 0) {
-          send(frameOf(INPUT, bytes));
-        }
+        return bytes.length === 0 || send(frameOf(INPUT, bytes));
       },
       resize: (cols, rows) => {
         const payload = new Uint8Array(4);

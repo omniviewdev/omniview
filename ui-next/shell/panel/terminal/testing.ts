@@ -624,6 +624,8 @@ export type FakeStream = {
   readonly open: () => boolean;
   /** Whether the feed closed it (`ChannelLink.close`). */
   readonly closedByFeed: () => boolean;
+  /** The socket is dead before its close event: the next frame the feed sends finds it so, the stream ends as `closed` (once) and input is refused. */
+  readonly die: () => void;
   /** What `ChannelLink.pending` says: the test sets it. */
   readonly setPending: (bytes: number) => void;
 };
@@ -670,18 +672,27 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     let byFeed = false;
     let dropped = 0;
     let pending = 0;
+    let dead = false;
     const alive = (what: string): void => {
       if (!open) {
         throw new Error(`the test spoke on a stream that is over (${what})`);
       }
     };
 
-    const send = (frame: SentFrame): void => {
+    const send = (frame: SentFrame): boolean => {
+      if (open && dead) {
+        finish();
+        events.closed();
+        return false;
+      }
+
       if (open) {
         sent.push(frame);
-      } else {
-        dropped += 1;
+        return true;
       }
+
+      dropped += 1;
+      return false;
     };
 
     const finish = (): void => {
@@ -752,6 +763,9 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       acks: () => sent.flatMap((frame) => (frame.kind === 'ack' ? [frame.bytes] : [])),
       open: () => open,
       closedByFeed: () => byFeed,
+      die: () => {
+        dead = true;
+      },
       setPending: (bytes) => {
         pending = bytes;
       },
@@ -759,7 +773,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
 
     return {
       input: (bytes) => {
-        send({ kind: 'input', bytes: bytes.slice(), text: text.decode(bytes) });
+        return send({ kind: 'input', bytes: bytes.slice(), text: text.decode(bytes) });
       },
       resize: (cols, rows) => {
         send({ kind: 'resize', cols, rows });

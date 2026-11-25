@@ -439,6 +439,35 @@ describe('what the user types', () => {
     expect(r.channels.streams()[0]?.typed()).toBe('one');
   });
 
+  it('keeps what was typed after the socket died but before its close was told, and sends it on the next stream after ready, in order, once', async () => {
+    const r = await running();
+    r.feed.write('one');
+    const first = r.stream();
+    first.die();
+    r.feed.write('two');
+    r.feed.write('three');
+    expect(first.typed()).toBe('one');
+    expect(r.channels.streams()).toHaveLength(1);
+    const again = reconnect(r);
+    expect(again.sent()).toEqual([]);
+    again.ready();
+    expect(again.typed()).toBe('twothree');
+    expect(again.sent().filter((frame) => frame.kind === 'input')).toHaveLength(1);
+    vi.advanceTimersByTime(60_000);
+    expect(r.channels.streams()).toHaveLength(2);
+    expect(r.feed.inputs?.()).toBe(3);
+  });
+
+  it('drops a size and an acknowledgement sent on a dead link: the next stream sends the size the screen wants', async () => {
+    const r = await running();
+    r.stream().die();
+    r.feed.resize(120, 40);
+    vi.advanceTimersByTime(100);
+    const again = reconnect(r);
+    again.ready({ size: { cols: 80, rows: 24 } });
+    expect(again.sent()).toEqual([{ kind: 'ack', bytes: 0 }, { kind: 'resize', cols: 120, rows: 40 }]);
+  });
+
   it('is ignored once the session is over, closed, or left: not counted, not sent', async () => {
     for (const end of ['ended', 'closed', 'left', 'taken-over', 'not-found'] as const) {
       const r = await running();
