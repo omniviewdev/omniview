@@ -188,10 +188,7 @@ func killAtGrace(t *testing.T, path, profile string) {
 	require.NoError(t, err)
 	send(t, m, info.ID, "trap '' HUP")
 	send(t, m, info.ID, "cat "+gate+"; sh -c 'echo $$ > "+pidFile+"; exec sleep 60012'")
-	require.Eventually(t, func() bool {
-		busy, busyErr := m.Busy(info.ID)
-		return busyErr == nil && busy.State == StateBusy
-	}, 20*time.Second, 10*time.Millisecond, "cat never became the foreground")
+	require.True(t, busyAs(m, info.ID, "cat", 20*time.Second), "cat never became the foreground")
 
 	closed := make(chan error, 1)
 	begin := time.Now()
@@ -211,6 +208,19 @@ func killAtGrace(t *testing.T, path, profile string) {
 	require.Eventually(t, func() bool { return ended(pid) }, 10*time.Second, 20*time.Millisecond,
 		"the program the shell started after the hangup began was not killed")
 	assert.True(t, ended(info.PID))
+}
+
+// busyAs says whether the foreground of the session becomes the program of that name within the wait: "busy" alone is also a
+// program of the shell's own at its start.
+func busyAs(m *Manager, id, name string, within time.Duration) bool {
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		if busy, err := m.Busy(id); err == nil && busy.State == StateBusy && busy.Name == name {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
 }
 
 // openGate writes a line into a FIFO a program is reading, and fails the test, instead of hanging it, when
