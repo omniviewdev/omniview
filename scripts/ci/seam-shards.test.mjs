@@ -78,7 +78,7 @@ test('the check selects its phases from one list: PHASE_IDS is the key order of 
   assert.equal(text.split('console.log(`SEAM-PHASE ${engine} ${name} ').length - 1, 1, 'a phase that passed prints one line, the one `parsePhases` reads');
   // No wait for a host to exit leaves an 8 s timer behind (N29: the 8 s every run of a control waited for at its end).
   assert.equal(/setTimeout\(resolve, 8000\)/.test(text), false);
-  assert.equal(text.split('untilExited(').length - 1, 12, 'the eleven waits and the helper\'s own definition');
+  assert.equal(text.split('untilExited(').length - 1, 13, 'the twelve waits (the twelfth is the one of scenario w that waits for its host to be gone before it asks whether a forward still listens) and the helper\'s own definition');
 });
 
 test('listFromText reads the phase list and the control tables, and says what is missing', () => {

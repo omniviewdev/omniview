@@ -202,6 +202,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from 'playwright';
 import { SHARED_SPECIFIERS_V1 } from '../loader/specifiers.ts';
 import { AGAIN_LABEL, buildConnectionsProcess, buildPortsProcess, buildProcess, CONNECTIONS_ID, FORWARD_LABEL, PORTS_CONNECTION_KEY, PORTS_CONNECTION_NAME, PORTS_ID, STOP_LABEL, TARGET_GREETING, TARGET_ID, TARGET_PORT, writeAll, writeConnectionsPlugin, writePlugin, writePortsPlugin } from '../fixture/build.mjs';
+import { startWithPortRetry } from './hostStart.mjs';
 import { uninstallWords } from '../../shell/plugins-page/core/words.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -451,6 +452,7 @@ const PORTS_CONTROLS = {
   'killed-port': /the local port of a forward whose plugin stopped refuses a connection/,
   'route-quiet': /no route of the check failed/,
   'page-clean': /the whole scenario wrote no page error/,
+  'listener-left': /no forward of the scenario listens after the host has gone/,
 };
 const FAILED_GROUP = 'failed-load';
 const PAGE_GROUP = 'plugins-page';
@@ -586,8 +588,14 @@ const stateRoot = (work) => path.join(work, 'home', '.omniview-feature-ui-next')
 /**
  * Starts the host. `built` is what the plugins' build wrote: a host that is started again (the restart of scenario i) is given it and builds nothing, over the same state root. `write` is what builds them when
  * nothing was (`writeAll`: the four plugins of the fixture, none of them with a process; scenario n writes its own).
+ * The port was probed and released before the host binds it, so another process can take it in between: a host that lost it is started again on another port (`startWithPortRetry`), or, for the restart of a host that has
+ * a page origin, on the same one. The host this returns says the port it really got (`port`).
  */
 async function startHost(work, port, built = undefined, write = writeAll) {
+  return startWithPortRetry({ port, freePort, keepPort: built !== undefined, start: (at, made) => startHostOnce(work, at, made ?? built, write) });
+}
+
+async function startHostOnce(work, port, built, write) {
   const home = path.join(work, 'home');
   const plugins = path.join(stateRoot(work), 'plugins');
   await mkdir(plugins, { recursive: true });
@@ -612,12 +620,12 @@ async function startHost(work, port, built = undefined, write = writeAll) {
   });
   for (let attempt = 0; attempt < 120; attempt += 1) {
     if (exited) {
-      throw new Error(`the host exited while starting:\n${lines.join('').slice(-2000)}`);
+      throw Object.assign(new Error(`the host exited while starting:\n${lines.join('').slice(-2000)}`), { built });
     }
 
     try {
       if ((await fetch(`http://127.0.0.1:${String(port)}/`)).ok) {
-        return { child, built, base: `http://127.0.0.1:${String(port)}`, tail: () => lines.join('').slice(-3000), output: () => lines.join(''), logFile };
+        return { child, built, port, base: `http://127.0.0.1:${String(port)}`, tail: () => lines.join('').slice(-3000), output: () => lines.join(''), logFile };
       }
     } catch {
       // not listening yet
@@ -11737,6 +11745,31 @@ async function checkPorts(browser, engine, binary, work) {
         assert.deepEqual(own, [], `${engine}: the whole scenario wrote no page error, but the calls that a reload cut in the page it replaced (an error at any other time is the scenario's, whatever it says; ${String(errors.length - own.length)} were cut)`);
       },
     );
+    // The forwards live in the plugin's process and end with the host: after the host has gone, every local port the scenario saw a forward on refuses a connection (a forward that outlives its host holds an ephemeral port for whatever runs after the scenario: another host the seam starts, in the same run or in the controls that follow). The control plants a listener on a port of its own and counts it among the forwards'
+    // ports: it must be seen.
+    const decoyPorts = [];
+    let decoy;
+    await asserting(
+      'listener-left',
+      async () => {
+        decoy = await listenLikeTarget('decoy', 'line');
+        decoyPorts.push(decoy.port);
+      },
+      async () => {
+        decoyPorts.length = 0;
+        await decoy?.close();
+      },
+      async () => {
+        host.child.kill();
+        await untilExited(exited);
+        const listening = [];
+        for (const port of [local, local2, pageStopLocal, local3, ...decoyPorts]) {
+          if (!(await holdsWithin(async () => (await connectOutcome(port)) === 'ECONNREFUSED', 10_000))) listening.push(port);
+        }
+
+        assert.deepEqual(listening, [], `${engine}: no forward of the scenario listens after the host has gone: every local port a forward had (${String(local)}, ${String(local2)}, ${String(pageStopLocal)}, ${String(local3)}) refuses a connection once the host has exited (still listening: ${JSON.stringify(listening)})`);
+      },
+    );
     console.log(`${engine}: the Ports tool showed four forwards of the plugin (127.0.0.1:${String(local)}, :${String(local2)}, :${String(pageStopLocal)} and :${String(local3)}) from the host's list and ${String(frames.length)} of its events, a client reached the target through the first, the page said ${JSON.stringify(refusal)} when it asked for the port the second one held, the page stopped a forward it started (its port refused a connection), and the row of the last said Stopped when the plugin's process ${String(pid)} was killed (the host then lists ${String(hostLast.length)} forwards); the page raised ${String(errors.length)} errors, ${String(errors.filter((error) => error.cut).length)} of them a call that the reload cut`);
     verdict(engine);
   } finally {
@@ -11749,8 +11782,7 @@ async function checkPorts(browser, engine, binary, work) {
 
 let host;
 try {
-  const port = await freePort();
-  host = await startHost(work, port);
+  host = await startHost(work, await freePort());
   // Both builds link only to the shared list; the control bundles the kit and its ReactDOM dependency instead of sharing them.
   const dependencies = Object.fromEntries(host.built.map(({ id, dependencies: names }) => [id, names]));
   for (const id of [OK, DUP]) {
@@ -11768,7 +11800,7 @@ try {
       if (stopped.child.exitCode !== null) resolve();
       else stopped.child.once('exit', resolve);
     }));
-    host = await startHost(work, port, stopped.built);
+    host = await startHost(work, stopped.port, stopped.built);
   };
 
   /** The fixture's process, built once for every host scenario n starts (the Go build is the one thing in this check that is not about a page). */
