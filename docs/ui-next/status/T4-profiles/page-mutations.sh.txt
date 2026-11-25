@@ -1,0 +1,117 @@
+#!/bin/bash
+# Negative controls for T4-profiles, the page half (ui-next/shell/panel: terminal/profiles.ts, localShell.ts, execFeed.ts, terminalChannel.ts, terminals.ts, SessionTabs.tsx).
+# Each fault is put into the real file (a backup is kept and restored on exit, even on Ctrl-C), and the test files of the folder are run with vitest. A control has two halves:
+#   1. with every test, the tests that go red are exactly the ones named for it;
+#   2. with the named tests filtered out (the assertion removed), the same fault passes.
+# Run from the worktree:  bash docs/ui-next/status/T4-profiles/page-mutations.sh.txt [control-name]
+WT=$(git rev-parse --show-toplevel) || exit 2
+cd "$WT" || exit 2
+P=ui-next/shell/panel
+FILES="$P/SessionTabs.test.tsx $P/NewSession.test.tsx $P/terminal/profiles.test.ts $P/terminal/localShell.test.ts $P/terminal/execFeed.test.ts $P/terminal/terminalChannel.test.ts $P/terminal/terminals.test.ts"
+B=$(mktemp -d "${TMPDIR:-/tmp}/t4prof-page.XXXXXX") || exit 2
+current=""
+restore() { if [ -n "$current" ] && [ -f "$B/backup" ]; then cp "$B/backup" "$current"; fi; }
+trap 'restore; rm -rf -- "$B"' EXIT
+only="${1:-}"
+bad=0
+
+# name | file | sed expression | the tests named for it, each as a unique substring of its title, separated by '|'
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  cp "$file" "$B/backup"; current="$file"
+  sed -i -e "$expr" "$file"
+  if cmp -s "$file" "$B/backup"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; restore; current=""; return; fi
+
+  out=$(pnpm exec vitest run $FILES 2>&1)
+  failed=$(echo "$out" | grep -E '^ FAIL ' | sed -E 's/^ FAIL +[^>]+> //' | sort -u)
+  ok=1
+  if [ -z "$failed" ]; then half1="UNDETECTED (every test passed)"; ok=0
+  else
+    half1="RED in exactly the tests named"
+    # every part names a test that went red, and every test that went red is named by a part
+    while IFS= read -r part; do
+      echo "$failed" | grep -qF -- "$part" || { ok=0; half1="named test did not go red: $part"; }
+    done < <(echo "$named" | tr '|' '\n')
+    while IFS= read -r line; do
+      hit=0
+      while IFS= read -r part; do
+        case "$line" in *"$part"*) hit=1 ;; esac
+      done < <(echo "$named" | tr '|' '\n')
+      [ "$hit" -eq 0 ] && { ok=0; half1="RED outside the named: $line"; }
+    done < <(echo "$failed")
+  fi
+  [ "$ok" -eq 0 ] && bad=1
+
+  # `-t` takes a pattern: every test whose title holds none of the named parts.
+  alternatives=$(echo "$named" | tr '|' '\n' | sed -E 's/[][.*^$()+?{|\\]/\\&/g' | paste -sd'|')
+  out2=$(pnpm exec vitest run $FILES -t "^(?!.*($alternatives))" 2>&1)
+  code2=$?
+  if echo "$out2" | grep -qE '^ FAIL '; then half2="without them: STILL RED"; bad=1
+  elif [ "$code2" -ne 0 ]; then half2="without them: the run ended with status $code2 and no FAIL line (not a pass)"; bad=1
+  else half2="without them: PASS (undetected)"; fi
+  restore; current=""
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+run page-guesses-the-default "$P/terminal/profiles.ts" \
+  's/isDefault: marked === true/isDefault: true/' \
+  'is a profile for each shell|never marks a default|is an item for each shell|asks the host again when the settings change|lists the shells the host found|follows the list'
+
+run stale-answer-wins "$P/terminal/profiles.ts" \
+  's/if (mine !== asked || listeners.size === 0) {/if (listeners.size === 0) {/' \
+  'keeps the answer to the last question'
+
+run listens-to-settings-with-nobody-listening "$P/terminal/profiles.ts" \
+  's/^          stopChanged?.();$//' \
+  'stops listening to the settings|listens to the settings while someone listens|before the settings client had loaded'
+
+run asks-the-host-for-each-listener "$P/terminal/profiles.ts" \
+  's/if (listeners.size === 1) {/if (listeners.size > 0) {/' \
+  'asks the host once for any number of listeners|stops listening to the settings'
+
+run list-not-asked-again-on-settings-change "$P/terminal/profiles.ts" \
+  's/stopChanged = source.onChanged(ask);/stopChanged = source.onChanged(() => undefined);/' \
+  'asks the host again when the settings change|keeps the answer to the last question|says so and keeps what it had'
+
+run profile-launch-not-sent-to-the-feed "$P/terminal/localShell.ts" \
+  's/, ...(launch === undefined ? {} : { launch })//' \
+  'asks the host for the profile'
+
+run feed-drops-the-launch "$P/terminal/execFeed.ts" \
+  's/, ...options.launch })/ })/' \
+  'asks for the shell, directory and environment of its launch'
+
+run channel-drops-the-shell "$P/terminal/terminalChannel.ts" \
+  's/command: launch.command === undefined ? \[\] : \[...launch.command\]/command: []/' \
+  'asks for the shell, directory and environment it was given'
+
+run plus-names-a-shell "$P/terminal/terminals.ts" \
+  's/options.target?.() ?? localShellTarget()/options.target?.() ?? localProfileTarget({ name: "x", path: "\/bin\/x" })/' \
+  'keeps the `+` for the host|is the host'
+
+run menu-remade-on-every-read "$P/terminal/terminals.ts" \
+  's/if (choices !== itemsOf) {/if (true) {/' \
+  'follows the list'
+
+run default-not-marked-in-the-menu "$P/terminal/profiles.ts" \
+  's/metadata: isDefault ? { text: `Default  ${profile.path}`, icon: .check. } : profile.path,/metadata: profile.path,/' \
+  'is an item for each shell|lists the shells the host found|follows the list'
+
+run arrow-for-an-empty-choice "$P/SessionTabs.tsx" \
+  's/if (items.length === 0) {/if (false) {/' \
+  'draws only the `+`|shows the items the tool has when the menu is opened'
+
+run settings-chunk-loaded-after-the-leave-still-listened-to "$P/terminal/profiles.ts" \
+  's/if (!left) {/if (true) {/' \
+  'before the settings client had loaded'
+
+run header-drops-the-menu "$P/PanelHeader.tsx" \
+  's/ {...(add.menu === undefined ? {} : { menu: add.menu })}//' \
+  'draws the arrow of the choice'
+
+run no-ask-after-the-settings-listener-registers "$P/terminal/profiles.ts" \
+  '/ask again now that it is/,+1{/listener();/d}' \
+  'asks the host once more when it starts listening'
+
+exit $bad

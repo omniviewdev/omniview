@@ -6,7 +6,8 @@ import { createPanelStore, HOST, PANEL_VERSION, restorePanel, type PanelState, t
 import { focusTab } from '../focus';
 import type { EngineAppearance } from './engine';
 import type { TerminalBusy, TerminalFeedHandle, TerminalTarget } from './feed';
-import { localShellTarget } from './localShell';
+import { localProfileTarget, localShellTarget } from './localShell';
+import { shellsOf, type ShellChoice, type ShellList } from './profiles';
 import { createScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
 import { stateWords } from './state';
@@ -18,7 +19,7 @@ vi.mock('../focus', () => ({ focusTab: vi.fn(), focusPage: vi.fn(), focusPanel: 
 // What `New terminal` starts when nothing else is given is the host's own shell: a test says what it is asked for, and what it answers.
 vi.mock('./localShell', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
-  return { ...original, localShellTarget: vi.fn() };
+  return { ...original, localShellTarget: vi.fn(), localProfileTarget: vi.fn() };
 });
 
 // The terminal's one listener on the window: Command K clears a terminal that has the focus, ahead of the palette that also has it for a chord (docs/ui-next/status/T1.md, decision 13). It is added before the
@@ -661,6 +662,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.mocked(localShellTarget).mockReset();
+    vi.mocked(localProfileTarget).mockReset();
   });
 
   afterEach(() => {
@@ -989,6 +991,93 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       expect(localShellTarget).not.toHaveBeenCalled();
       expect(Object.values(given.store.getSnapshot().sessions).map((session) => session.title)).toEqual(['Synthetic']);
       stopGiven();
+    });
+  });
+
+  describe('the shells `New terminal` offers', () => {
+    /** A list of shells the test changes, as the page's store of what the host lists does when the settings change. */
+    function shellList(initial: unknown) {
+      let choices: readonly ShellChoice[] = shellsOf(initial);
+      const listeners = new Set<() => void>();
+      const shells: ShellList = {
+        subscribe: (listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        getSnapshot: () => choices,
+      };
+      return {
+        shells,
+        set: (next: unknown) => {
+          choices = shellsOf(next);
+          listeners.forEach((listener) => {
+            listener(); 
+          });
+        },
+      };
+    }
+
+    const BASH = { name: 'bash', path: '/bin/bash', default: false };
+    const ZSH = { name: 'zsh', path: '/usr/bin/zsh', default: true };
+    const menuOf = (r: ReturnType<typeof reloaded>) => {
+      const { menu } = r.terminals.newSession;
+      expect(menu, 'the tool offers a choice').toBeDefined();
+      return menu!;
+    };
+
+    it('lists the shells the host found, each with its path, and marks the default the host marked', () => {
+      const r = reloaded({ shells: shellList([BASH, ZSH]).shells });
+      const items = menuOf(r).getSnapshot();
+      expect(items.map((item) => (item.kind === 'action' ? item.label : item.kind))).toEqual(['bash', 'zsh']);
+      expect(items[0]).toMatchObject({ metadata: '/bin/bash' });
+      expect(items[1]).toMatchObject({ metadata: { icon: 'check' } });
+    });
+
+    it('starts a terminal from the profile of the item chosen, not the default one, under the target the profile makes', () => {
+      const feed = keyedFeed();
+      vi.mocked(localProfileTarget).mockReturnValue({ plugin: HOST, id: 'local', title: 'bash', sessionId: 'term-5', open: () => feed });
+      const r = reloaded({ shells: shellList([BASH, ZSH]).shells });
+      const stop = r.terminals.attach();
+      const [bash] = menuOf(r).getSnapshot();
+      expect(bash?.kind).toBe('action');
+      if (bash?.kind === 'action') {
+        bash.onSelect();
+      }
+
+      expect(vi.mocked(localProfileTarget).mock.calls.map(([profile]) => profile)).toEqual([{ name: 'bash', path: '/bin/bash' }]);
+      expect(localShellTarget).not.toHaveBeenCalled();
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-5']);
+      expect(r.terminals.sessions.takeFocus('term-5')).toBe(true);
+      stop();
+    });
+
+    it('keeps the `+` for the host\'s default: it names no shell', () => {
+      vi.mocked(localShellTarget).mockReturnValue({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed() });
+      const r = reloaded({ shells: shellList([BASH, ZSH]).shells });
+      const stop = r.terminals.attach();
+      r.terminals.newSession.start();
+      expect(vi.mocked(localShellTarget).mock.calls).toEqual([[]]);
+      expect(localProfileTarget).not.toHaveBeenCalled();
+      stop();
+    });
+
+    it('follows the list: a change of the settings moves the default, and the same list is the same items', () => {
+      const list = shellList([BASH, ZSH]);
+      const r = reloaded({ shells: list.shells });
+      const menu = menuOf(r);
+      const before = menu.getSnapshot();
+      expect(menu.getSnapshot()).toBe(before);
+      const heard = vi.fn();
+      const stop = menu.subscribe(heard);
+      list.set([{ ...BASH, default: true }, { ...ZSH, default: false }]);
+      expect(heard).toHaveBeenCalledTimes(1);
+      const after = menu.getSnapshot();
+      expect(after).not.toBe(before);
+      expect(after[0]).toMatchObject({ metadata: { icon: 'check' } });
+      expect(after[1]).toMatchObject({ metadata: '/usr/bin/zsh' });
+      stop();
     });
   });
 

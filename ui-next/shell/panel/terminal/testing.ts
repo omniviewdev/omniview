@@ -639,7 +639,16 @@ export type FakeStream = {
 
 /** A call that is not a stream, in the order the feed made them. */
 export type ChannelCall =
-  | { readonly kind: 'create'; readonly id: string; readonly cols: number; readonly rows: number; readonly leaseMs: number | undefined }
+  | {
+    readonly kind: 'create';
+    readonly id: string;
+    readonly cols: number;
+    readonly rows: number;
+    readonly leaseMs: number | undefined;
+    readonly command?: readonly string[];
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string>>;
+  }
   | { readonly kind: 'close'; readonly id: string }
   | { readonly kind: 'dismiss'; readonly id: string }
   | { readonly kind: 'busy'; readonly id: string }
@@ -815,7 +824,16 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
 
   return {
     create: async (id, launch) => {
-      calls.push({ kind: 'create', id, cols: launch.cols, rows: launch.rows, leaseMs: launch.leaseMs });
+      calls.push({
+        kind: 'create',
+        id,
+        cols: launch.cols,
+        rows: launch.rows,
+        leaseMs: launch.leaseMs,
+        ...(launch.command === undefined ? {} : { command: launch.command }),
+        ...(launch.cwd === undefined ? {} : { cwd: launch.cwd }),
+        ...(launch.env === undefined ? {} : { env: launch.env }),
+      });
       return options.create === undefined ? { id, shell: { path: '/bin/zsh', name: 'zsh' } } : options.create(id);
     },
     connect,
