@@ -581,17 +581,17 @@ type launched struct {
 	pending *injection
 }
 
-// integrationEnabled asks the setting.
-func (m *Manager) integrationEnabled() bool {
-	on, _ := m.integrationOn()
-	return on
-}
-
 // spawnIntegrated starts the shell with the integration the user's setting and the shell allow, and says what became of it.
 // A shell that has the integration and ends before it says it is ready is started once more, without it: once, whatever
 // happens to that one.
 func (m *Manager) spawnIntegrated(id, path string, args []string, dir string, env []string, size *pty.Winsize) (launched, error) {
-	kind, fact := integrationPlan(m.integrationEnabled(), path, args, env)
+	on, settingErr := m.integrationOn()
+	kind, fact := integrationPlan(on, path, args, env)
+	if settingErr != nil {
+		// Not a yes: the user's shell is left alone.
+		m.log.Warnw(m.ctx, "the shell integration setting could not be read: the shell starts without it", "session", id)
+		kind, fact = kindNone, skipped(SkipSettingUnreadable)
+	}
 	var inj *injection
 	if kind != kindNone {
 		var err error
@@ -615,6 +615,8 @@ func (m *Manager) spawnIntegrated(id, path string, args []string, dir string, en
 		inj.close()
 		return launched{process: first, fact: fact, nonce: inj.nonce, pending: nil}, nil
 	case outcomeSlow:
+		// Not ready and not gone: the host does not know whether the script ran, so it does not say `on`.
+		fact = Integration{State: IntegrationUnconfirmed, Reason: NoReady}
 		return launched{process: first, fact: fact, nonce: inj.nonce, pending: inj}, nil
 	case outcomeGone:
 	}

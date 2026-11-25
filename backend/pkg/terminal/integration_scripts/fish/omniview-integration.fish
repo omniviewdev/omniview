@@ -24,18 +24,18 @@ if status is-interactive
 
         # The marks. Everything below prints only inside an OSC sequence, and nothing else.
         function __omniview_escape
-            set -l text (string sub -l 4096 -- $argv[1])
-            set text (string replace -a -- '\\' '\\\\' $text | string replace -a -- ';' '\\x3b' | string join \n)
-            if string match -qr '[\x00-\x1f\x7f]' -- $text
-                set -l out
-                for char in (string split '' -- $text)
-                    if string match -qr '^[\x00-\x1f\x7f]$' -- $char
-                        set out $out (printf '\\\\x%02x' "'$char")
-                    else
-                        set out $out $char
-                    end
+            # The text stays ONE string, newlines kept: fish splits what a command substitution prints at newlines, so
+            # each step is collected again (a trailing newline is dropped by that). A backslash, ';' and every control
+            # byte, a newline too, becomes \xHH, as zsh's script does, so that the mark is one line free of controls. A
+            # control byte is replaced for each of the 32 values, not once per character: that is bounded.
+            set -l text (string sub -l 4096 -- $argv[1] | string collect)
+            set text (string replace -a -- '\\' '\\\\' $text | string collect)
+            set text (string replace -a -- ';' '\\x3b' $text | string collect)
+            if string match -qr '[\x01-\x1f\x7f]' -- $text
+                for code in (seq 1 31) 127
+                    set -l hex (printf '%02x' $code)
+                    set text (string replace -a -r -- "\\x$hex" "\\\\x$hex" $text | string collect)
                 end
-                set text (string join '' -- $out)
             end
             printf '%s' $text
         end
@@ -78,8 +78,8 @@ if status is-interactive
                 if test $__omniview_native = 1
                     for key in \r \n
                         if test -z "$(bind --user $key 2>/dev/null)"
-                            bind -M default $key __omniview_enter
-                            bind -M insert $key __omniview_enter
+                            bind -M default $key expand-abbr __omniview_enter
+                            bind -M insert $key expand-abbr __omniview_enter
                         end
                     end
                 end

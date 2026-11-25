@@ -10,8 +10,11 @@ if [[ -n ${__omniview_shim-} ]]; then
   #   OSC 633;E       the command line (escaped) with the nonce, then 133;C: the output starts
   #   OSC 133;D;<n>   the command ended with status n
   #   OSC 7, 633;P    the directory, without and with the nonce
+  # Every hook turns xtrace off first, so that a user's `setopt xtrace` never prints the nonce.
   __omniview_escape() {
+    setopt localoptions noxtrace
     emulate -L zsh
+    setopt noxtrace
     setopt extendedglob
     local LC_ALL=C
     local s=${1[1,4096]}
@@ -21,7 +24,9 @@ if [[ -n ${__omniview_shim-} ]]; then
     REPLY=$s
   }
   __omniview_preexec() {
+    setopt localoptions noxtrace
     emulate -L zsh
+    setopt noxtrace
     __omniview_ran=1
     local REPLY
     __omniview_escape $1
@@ -29,6 +34,7 @@ if [[ -n ${__omniview_shim-} ]]; then
   }
   __omniview_precmd_first() {
     local __omniview_last=$?
+    setopt localoptions noxtrace
     if (( ${__omniview_ran:-0} )); then
       __omniview_ran=0
       builtin print -rn -- $'\e]133;D;'$__omniview_last$'\a'
@@ -37,7 +43,9 @@ if [[ -n ${__omniview_shim-} ]]; then
   }
   __omniview_precmd_last() {
     local __omniview_last=$?
+    setopt localoptions noxtrace
     emulate -L zsh
+    setopt noxtrace
     setopt extendedglob
     local REPLY path_=$PWD
     {

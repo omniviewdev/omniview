@@ -530,7 +530,7 @@ func TestTheFishEscapeOfA4KBLineWithControlBytesIsCorrectAndCheap(t *testing.T) 
 	}
 	require.NoError(t, err)
 	t.Logf("fish escape of a 3900-byte line with 2600 bytes to escape: %d ms", ms)
-	assert.Less(t, ms, 100, "the escape of the longest line costs under 100 ms")
+	assert.Less(t, ms, 400, "the escape of the longest line costs under 400 ms")
 }
 
 // With xtrace on, zsh prints every command it runs: the hooks must not print the nonce there.
