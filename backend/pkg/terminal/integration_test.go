@@ -47,7 +47,7 @@ func integrationShell(t *testing.T, name string) string {
 
 func eachIntegrationShell(t *testing.T, body func(t *testing.T, name, shell string)) {
 	t.Helper()
-	for _, name := range []string{"zsh", "fish"} {
+	for _, name := range []string{"zsh", "fish", "bash", "pwsh"} {
 		t.Run(name, func(t *testing.T) { body(t, name, integrationShell(t, name)) })
 	}
 }
@@ -63,6 +63,16 @@ func userFiles(t *testing.T, name, home string) []string {
 	if name == "fish" {
 		return []string{write(filepath.Join(home, ".config", "fish", "config.fish"),
 			"set -g fish_greeting\nfunction fish_prompt\n  echo -n '"+integrationPrompt+"'\nend\nfunction fish_right_prompt\nend\n")}
+	}
+	switch name {
+	case "bash":
+		return []string{
+			write(filepath.Join(home, ".bash_profile"), "PS1='"+integrationPrompt+"'\nHISTFILE=/dev/null\n"),
+			write(filepath.Join(home, ".bashrc"), "# the user's bashrc\n"),
+		}
+	case "pwsh":
+		return []string{write(filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1"),
+			"function prompt { '"+integrationPrompt+"' }\n")}
 	}
 	return []string{
 		write(filepath.Join(home, ".zshenv"), "# the user's zshenv\n"),
@@ -90,6 +100,7 @@ func userEnvironment(home string, extra ...string) []string {
 		"HOME=" + home, "USER=omniview-test", "LOGNAME=omniview-test", "PATH=" + os.Getenv("PATH"),
 		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"), "XDG_DATA_HOME=" + filepath.Join(home, ".local", "share"),
 		"XDG_CACHE_HOME=" + filepath.Join(home, ".cache"), "XDG_STATE_HOME=" + filepath.Join(home, ".local", "state"),
+		"POWERSHELL_TELEMETRY_OPTOUT=1", "POWERSHELL_UPDATECHECK=Off", "DOTNET_CLI_TELEMETRY_OPTOUT=1", "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1",
 	}, extra...)
 }
 
@@ -103,6 +114,10 @@ func (a *answeringSink) Output(id string, data []byte) {
 	a.chunkSink.Output(id, data)
 	if bytes.Contains(data, []byte("\x1b[c")) || bytes.Contains(data, []byte("\x1b[0c")) {
 		go func() { _ = a.m.Write(id, 0, []byte("\x1b[?62;c")) }()
+	}
+	// PSReadLine asks where the cursor is (CSI 6 n) before it draws, and waits for the answer.
+	if bytes.Contains(data, []byte("\x1b[6n")) {
+		go func() { _ = a.m.Write(id, 0, []byte("\x1b[1;1R")) }()
 	}
 }
 
@@ -250,7 +265,7 @@ func TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks(t *testing.T) {
 				assert.Contains(t, string(raw), "\x1b]633;E;echo hello;", "the integrated run did print its marks")
 			}
 			text := string(oscs.ReplaceAll(raw, nil))
-			if name == "fish" {
+			if name == "fish" || name == "pwsh" {
 				text = typedText(raw)
 			}
 			// What the shell draws after the last command is repainted at its own pace (a trailing space, the cursor moves
@@ -294,7 +309,7 @@ func TestTheUsersStartupFilesAreByteIdenticalAfterASession(t *testing.T) {
 		f.run(info.ID, "echo hello")
 		require.NoError(t, f.m.CloseSession(info.ID))
 		assert.Equal(t, before, digests(t, f.files), "no file of the user's changed (sha256)")
-		if name == "zsh" {
+		if name == "zsh" || name == "bash" {
 			assert.Equal(t, homeBefore, entries(t, f.home), "no file appeared in the user's home")
 		}
 	})
@@ -359,8 +374,13 @@ func TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt(t *testing.T) {
 		require.NotEmpty(t, nonce)
 		// A shell variable that is not exported is where the script keeps the nonce: only what is exported reaches a child.
 		command := "env > exported; command printenv > printed; set -x > exportedvars"
-		if name == "zsh" {
+		switch name {
+		case "zsh":
 			command = "env > exported; /usr/bin/env > printed; typeset -x > exportedvars"
+		case "bash":
+			command = "env > exported; /usr/bin/env > printed; declare -x > exportedvars"
+		case "pwsh":
+			command = "env > exported; /usr/bin/env > printed; [Environment]::GetEnvironmentVariables().GetEnumerator() | ForEach-Object { \"$($_.Key)=$($_.Value)\" } > exportedvars"
 		}
 		f.run(info.ID, command)
 		for _, file := range []string{"exported", "printed", "exportedvars"} {
@@ -371,7 +391,11 @@ func TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt(t *testing.T) {
 			if name == "fish" {
 				pid = "$fish_pid"
 			}
-			f.run(info.ID, "tr '\\0' '\\n' < /proc/"+pid+"/environ > initial")
+			initial := "tr '\\0' '\\n' < /proc/" + pid + "/environ > initial"
+			if name == "pwsh" {
+				initial = "[IO.File]::ReadAllText(\"/proc/$PID/environ\").Replace([string][char]0, \"`n\") | Set-Content initial"
+			}
+			f.run(info.ID, initial)
 			assert.NotContains(t, f.fileOf("initial"), nonce, "the nonce is not in the environment the shell was started with")
 		}
 		exported := f.fileOf("exported")
@@ -420,7 +444,16 @@ func TestANestedLoginShellDoesNotInheritTheIntegration(t *testing.T) {
 		if name == "fish" {
 			probe = `set x clean; string match -q "*omniview-integration*" "$XDG_DATA_DIRS"; and set x shim; set f (functions -n | string match "__omniview*" | string join ,); echo "nested xdg=$x functions=$f"`
 		}
-		f.run(info.ID, shell+" -i -l -c '"+strings.ReplaceAll(probe, "'", `'\''`)+"' > nested")
+		switch name {
+		case "bash":
+			require.NoError(t, os.WriteFile(filepath.Join(f.home, "probe.sh"), []byte("echo \"nested functions=$(declare -F | awk '/__omniview/ {printf \"%s,\", $3}')\"\n"), 0o600))
+			f.run(info.ID, shell+" -i -l probe.sh > nested")
+		case "pwsh":
+			require.NoError(t, os.WriteFile(filepath.Join(f.home, "probe.ps1"), []byte("'nested functions=' + ((Get-ChildItem Function: | Where-Object Name -like '__omniview*' | ForEach-Object Name) -join ',')\n"), 0o600))
+			f.run(info.ID, shell+" -NoLogo -File probe.ps1 > nested")
+		default:
+			f.run(info.ID, shell+" -i -l -c '"+strings.ReplaceAll(probe, "'", `'\''`)+"' > nested")
+		}
 		seen := f.fileOf("nested")
 		assert.NotContains(t, seen, "shim", "the nested shell does not find the shim")
 		assert.NotContains(t, seen, integrationDirPrefix, "the nested shell does not find the integration's directory")
@@ -435,15 +468,22 @@ func TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment(t *testing.T
 	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
 		f := newIntegrationFixture(t, name, shell)
 		prepend := "case \":$PATH:\" in *\":/omniview-user/shims:\"*) ;; *) PATH=\"/omniview-user/shims:$PATH\" ;; esac\nexport PATH\n"
-		if name == "zsh" {
+		pathCommand := "echo $PATH > path"
+		switch name {
+		case "zsh":
 			require.NoError(t, os.WriteFile(filepath.Join(f.home, ".zprofile"), []byte(prepend), 0o600))
-		} else {
+		case "bash":
+			require.NoError(t, os.WriteFile(filepath.Join(f.home, ".bash_profile"), []byte(prepend+"PS1='"+integrationPrompt+"'\nHISTFILE=/dev/null\n"), 0o600))
+		case "pwsh":
+			require.NoError(t, os.WriteFile(f.files[0], []byte("function prompt { '"+integrationPrompt+"' }\nif (-not (\":$env:PATH:\".Contains(':/omniview-user/shims:'))) { $env:PATH = '/omniview-user/shims:' + $env:PATH }\n"), 0o600))
+			pathCommand = "$env:PATH > path"
+		default:
 			cfg := filepath.Join(f.home, ".config", "fish", "config.fish")
 			require.NoError(t, os.WriteFile(cfg, []byte("set -gx PATH /omniview-user/shims $PATH\nfunction fish_prompt\n  echo -n '"+integrationPrompt+"'\nend\n"), 0o600))
 		}
 		info := f.started()
 		assert.Equal(t, IntegrationOn, info.Integration.State)
-		f.run(info.ID, "echo $PATH > path")
+		f.run(info.ID, pathCommand)
 		assert.True(t, strings.HasPrefix(f.fileOf("path"), "/omniview-user/shims"), "the user's directory is first, with the integration on: %q", f.fileOf("path"))
 	})
 }
@@ -483,8 +523,15 @@ func TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem(t *testing.
 		info := f.started()
 		require.Equal(t, IntegrationOn, info.Integration.State)
 		typed, want := "for i in 1 2\recho $i\rend\r", "for i in 1 2\necho $i\nend"
-		if name == "zsh" {
+		switch name {
+		case "zsh", "bash":
 			typed, want = "for i in 1 2; do\recho $i\rdone\r", "for i in 1 2; do\necho $i\ndone"
+			if name == "bash" {
+				// bash keeps a multi-line command as one history entry, its lines joined (cmdhist), and the script reads it there.
+				want = "for i in 1 2; do echo $i; done"
+			}
+		case "pwsh":
+			typed, want = "foreach ($i in 1,2) {\recho $i\r}\r", "foreach ($i in 1,2) {\necho $i\n}"
 		}
 		require.NoError(t, f.m.Write(info.ID, 0, []byte(typed)))
 		ran := f.endedCommands(info.ID, 1)

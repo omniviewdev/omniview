@@ -68,6 +68,8 @@ type Manager struct {
 	// integrationOn says whether the user has the shell integration on (the setting `terminal.shellIntegration`):
 	// SetIntegration sets it before sessions start, and it is on until then.
 	integrationOn func() (bool, error)
+	// bashVersion asks a bash which version it is (the integration needs 4.1 or later): a field, so that a test can state a machine.
+	bashVersion func(path string) (major, minor int, err error)
 
 	ctx  context.Context
 	log  logging.Logger
@@ -138,7 +140,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	offsets, _ := sink.(OffsetSink)
 	detachments, _ := sink.(DetachmentSink)
 	m := &Manager{
-		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil },
+		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil }, bashVersion: probeBashVersion,
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},

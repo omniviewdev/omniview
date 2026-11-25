@@ -24,7 +24,7 @@ import (
 const fakeShellScript = `#!/bin/sh
 echo "start zdotdir=${ZDOTDIR-unset} xdg=${XDG_DATA_DIRS-unset} args=$*" >> "$FAKE_LOG"
 integrated=no
-case "$ZDOTDIR$XDG_DATA_DIRS" in *omniview-integration-*) integrated=yes ;; esac
+case "$ZDOTDIR$XDG_DATA_DIRS $*" in *omniview-integration-*) integrated=yes ;; esac
 if [ "$integrated" = yes ]; then
   dir=${ZDOTDIR:-$XDG_DATA_DIRS}
   dir=${dir%%:*}
@@ -90,11 +90,19 @@ func TestTheFactSaysWhyTheIntegrationIsOffOrSkipped(t *testing.T) {
 		{name: "powerlevel10k", shell: "zsh", env: []string{"P9K_VERSION=1.20"}, want: Integration{State: IntegrationSkipped, Reason: SkipPowerlevel10k}},
 		{name: "tmux", shell: "zsh", env: []string{"TMUX=/tmp/tmux-1/default,1,0"}, want: Integration{State: IntegrationSkipped, Reason: SkipMultiplexer}},
 		{name: "screen", shell: "fish", env: []string{"STY=1.pts-0.host"}, want: Integration{State: IntegrationSkipped, Reason: SkipMultiplexer}},
-		{name: "a shell with no script yet", shell: "bash", want: Integration{State: IntegrationSkipped, Reason: SkipUnsupportedShell}},
+		{name: "a shell with no script yet", shell: "nu", want: Integration{State: IntegrationSkipped, Reason: SkipUnsupportedShell}},
+		{name: "-c of bash", shell: "bash", args: []string{"-c", "true"}, want: Integration{State: IntegrationSkipped, Reason: SkipCommand}},
+		{name: "--posix of bash", shell: "bash", args: []string{"--posix"}, want: Integration{State: IntegrationSkipped, Reason: SkipPosix}},
+		{name: "a user argument of bash", shell: "bash", args: []string{"--noprofile"}, want: Integration{State: IntegrationSkipped, Reason: SkipArguments}},
+		{name: "-Command of pwsh", shell: "pwsh", args: []string{"-Command", "1"}, want: Integration{State: IntegrationSkipped, Reason: SkipCommand}},
+		{name: "-File of pwsh", shell: "pwsh", args: []string{"-File", "x.ps1"}, want: Integration{State: IntegrationSkipped, Reason: SkipCommand}},
+		{name: "a user argument of pwsh", shell: "pwsh", args: []string{"-NoProfile"}, want: Integration{State: IntegrationSkipped, Reason: SkipArguments}},
+		{name: "tmux with bash", shell: "bash", env: []string{"TMUX=/tmp/tmux-1/default,1,0"}, want: Integration{State: IntegrationSkipped, Reason: SkipMultiplexer}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			f, _, log := fakeFixture(t, c.shell, "plain", c.env...)
+			f.m.bashVersion = func(string) (int, int, error) { return 5, 2, nil }
 			if c.off {
 				f.m.SetIntegration(func() (bool, error) { return false, nil })
 			}
@@ -103,6 +111,8 @@ func TestTheFactSaysWhyTheIntegrationIsOffOrSkipped(t *testing.T) {
 			require.Eventually(t, func() bool { return len(starts(t, log)) == 1 }, 10*time.Second, 5*time.Millisecond)
 			line := starts(t, log)[0]
 			assert.Contains(t, line, "zdotdir=unset xdg=unset", "nothing of the integration reached the shell: %q", line)
+			assert.NotContains(t, line, "--rcfile", "no rcfile")
+			assert.NotContains(t, line, "-NoExit", "no -NoExit")
 			assert.Empty(t, f.integrationDirs(), "no directory was made")
 			assert.True(t, f.m.session(t, info.ID).nonce.IsZero(), "no nonce was made")
 		})
