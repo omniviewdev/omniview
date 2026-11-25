@@ -15,8 +15,7 @@ permissions:
 
 concurrency:
   group: history-security-${{ github.event.pull_request.number || github.ref }}
-  # A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled (N30).
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 env:
   GOWORK: 'off'
