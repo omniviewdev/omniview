@@ -346,6 +346,8 @@ describe('acknowledging what the reader parsed', () => {
 
     expect(sent).toBe(TOTAL);
     expect(replayOf(r.feed).data).toHaveLength(TOTAL);
+    // The whole replay is credited, so the host has its window back for the first live frame.
+    expect(acked(stream)).toBe(TOTAL);
   });
 
   it('sends nothing for a feed that was closed, that left, or whose session is over', async () => {
@@ -473,6 +475,19 @@ describe('what the user types', () => {
     expect(again.typed()).toBe(piece('b') + piece('c'));
     expect(first.typed() + again.typed()).toBe(paste);
     expect(again.sent().filter((frame) => frame.kind === 'input').map((frame) => (frame.kind === 'input' ? frame.bytes.length : 0))).toEqual([MAX_INPUT_BYTES, MAX_INPUT_BYTES]);
+  });
+
+  it('keeps the refused frame and the suffix of ONE paste whose first frame went: the next stream gets exactly those, once and in order', async () => {
+    const r = await running();
+    const piece = (letter: string): string => letter.repeat(MAX_INPUT_BYTES);
+    const first = r.stream();
+    first.dieAfterInputs(1);
+    r.feed.write(piece('a') + piece('b') + piece('c') + 'd');
+    expect(first.typed()).toBe(piece('a'));
+    const again = reconnect(r);
+    again.ready();
+    expect(again.typed()).toBe(piece('b') + piece('c') + 'd');
+    expect(r.feed.inputsSettled?.()).toBe(true);
   });
 
   it('drops a size and an acknowledgement sent on a dead link: the next stream sends the size the screen wants', async () => {
@@ -730,6 +745,60 @@ describe('a terminal the feed attaches to (a page after a reload, a take-back)',
     r.stream().output(4, 'ef');
     expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { stage: 'session' } });
     expect(r.stream().closedByFeed()).toBe(true);
+  });
+});
+
+describe('a stream that is ready and drops before the replay is complete, again and again', () => {
+  it('spends the retries and fails in words: a ready does not make the connection good', async () => {
+    const r = attaching();
+    for (let round = 0; round < 3; round += 1) {
+      r.stream().ready({ start: 0, end: 6 });
+      r.stream().output(0, 'abc');
+      r.stream().drop();
+      reconnect(r, RECONNECT_DELAYS_MS[round]);
+    }
+
+    r.stream().ready({ start: 0, end: 6 });
+    r.stream().drop();
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'failed', cause: { message: 'The connection to the terminal was lost.' } });
+  });
+});
+
+describe('a stream whose acknowledgement finds the socket dead in the middle of a replay', () => {
+  it('does not throw: the stream ends as closed, and the feed connects again from nothing', async () => {
+    const r = attaching();
+    r.stream().ready({ start: 0, end: 6 });
+    r.stream().die();
+    expect(() => {
+      r.stream().output(0, 'abc');
+    }).not.toThrow();
+    expect(r.feed.getSnapshot().state).toBe('running');
+    const again = reconnect(r);
+    expect(again.fromOffset).toBeUndefined();
+    again.ready({ start: 0, end: 6 });
+    again.output(0, 'abcdef');
+    expect(replayOf(r.feed).data).toEqual(new Uint8Array(bytes('abcdef')));
+  });
+});
+
+describe('a terminal the listing said had ended, and a stream that drops before its replay', () => {
+  it('is connected again when it drops before `ready`: nothing was received, so the end is not known', async () => {
+    const r = attaching({ ended: true });
+    r.stream().drop();
+    expect(r.feed.getSnapshot().state).toBe('starting');
+    const again = reconnect(r);
+    again.ready({ start: 0, end: 3, ended: { reason: 'exited', exit_code: 2 } });
+    again.output(0, 'bye');
+    again.ended({ reason: 'exited', exit_code: 2 });
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'ended', exit: { code: 2 } });
+    expect(replayOf(r.feed).data).toEqual(new Uint8Array(bytes('bye')));
+  });
+
+  it('is dismissed, and not closed, when the feed is closed before `ready`', async () => {
+    const r = attaching({ ended: true });
+    await r.feed.close();
+    expect(r.channels.of('dismiss')).toHaveLength(1);
+    expect(r.channels.of('close')).toEqual([]);
   });
 });
 

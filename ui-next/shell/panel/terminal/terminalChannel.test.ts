@@ -1146,7 +1146,7 @@ describe('the errors that leave the channel', () => {
     expect(r.channels.describe(error).length).toBeGreaterThan(0);
   });
 
-  it('create keeps the code and the shells tried of a refusal, and not the capability', async () => {
+  it('create keeps the code and the shells tried of a refusal', async () => {
     const r = rig();
     r.answers.fails.CreateTerminal = echoing({ type: 'omniview:terminal/shell-unavailable', code: 'SHELL_UNAVAILABLE', tried: [{ source: 'account', path: '/bin/zsh', reason: 'not-found' }] });
     const error = await rejection(r.channels.create('t1', { cols: 80, rows: 24 }));

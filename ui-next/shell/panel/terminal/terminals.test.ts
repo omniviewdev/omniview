@@ -1077,6 +1077,17 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       stop();
     });
 
+    it('arms the poll at attach when a terminal is already lost', () => {
+      const r = reloaded({});
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+      expect(vi.getTimerCount()).toBe(0);
+      const stop = r.terminals.attach();
+      expect(vi.getTimerCount()).toBe(1);
+      stop();
+    });
+
     it('asks every 5 seconds and no sooner', async () => {
       const { stop, refresh } = taken();
       await vi.advanceTimersByTimeAsync(4_999);
