@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { bindStripDrag, dropSlot } from './stripDrag';
+import type { DragOut } from './core/tabs';
+import { bindStripDrag, dropSlot, stripReceiver } from './stripDrag';
 
 // The pointer's drag of a tab (ch16 S45, S56 to S59), without React and with a frame queue of its own, as the splitter's test has: the drop rule on plain numbers, then what the drag writes to the document, once per
 // frame and never to the root, and what it leaves behind when it ends (docs/ui-next/optimisations.md MNR-K3, LIB-32). That the order changes, and what is said of it, is the strip's test (tabs/TabStrip.test.tsx).
@@ -79,8 +80,8 @@ const rect = (left: number, right: number) => () => ({ left, right, width: right
 const pointer = (x: number, y = 20, extra: PointerEventInit = {}): PointerEventInit => ({ bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, clientX: x, clientY: y, ...extra });
 const fire = (target: EventTarget, type: string, x: number, y?: number, extra?: PointerEventInit) => target.dispatchEvent(new PointerEvent(type, pointer(x, y, extra)));
 
-/** A window with a strip of four tabs, a, b, c and d, each in a face with its close control. jsdom lays nothing out: the faces are 100 px wide and 4 px apart from x = 0, the scroller 500 px wide and 28 px high from y = 6. */
-function setup(pinned = 0) {
+/** A window with a strip of four tabs, a, b, c and d, each in a face with its close control, and the page they control. jsdom lays nothing out: the faces are 100 px wide and 4 px apart from x = 0, the scroller 500 px wide and 28 px high from y = 6, the page 400 by 300 from (10, 50). */
+function setup(pinned = 0, onDragOut?: (id: string) => DragOut | undefined) {
   const onMove = vi.fn();
   const shell = document.createElement('div');
   shell.dataset.shellPart = 'window';
@@ -90,23 +91,27 @@ function setup(pinned = 0) {
     const face = document.createElement('div');
     face.dataset.tabId = id;
     face.toggleAttribute('data-pinned', at < pinned);
-    face.innerHTML = `<button type="button" role="tab" id="tab-${id}" data-tab-id="${id}">${id}</button><button type="button" aria-hidden="true">close</button>`;
+    face.innerHTML = `<button type="button" role="tab" id="tab-${id}" aria-controls="page" data-tab-id="${id}">${id}</button><button type="button" aria-hidden="true">close</button>`;
     face.getBoundingClientRect = rect(at * 104, at * 104 + 100);
     scroller.append(face);
   });
 
   scroller.getBoundingClientRect = rect(0, 500);
+  const page = document.createElement('div');
+  page.id = 'page';
+  page.getBoundingClientRect = () => ({ left: 10, right: 410, width: 400, top: 50, bottom: 350, height: 300, x: 10, y: 50, toJSON: () => ({}) });
+  shell.append(page);
   document.body.append(shell);
-  const unbind = bindStripDrag(scroller, onMove);
+  const unbind = bindStripDrag(scroller, onMove, onDragOut);
   unbinds.push(unbind);
   const part = (name: string) => shell.querySelector<HTMLElement>(`[data-shell-part="${name}"]`);
   const tab = (id: string) => shell.querySelector<HTMLElement>(`#tab-${id}`)!;
-  return { onMove, shell, scroller, unbind, tab, face: (id: string) => tab(id).parentElement!, layer: () => part('tabDrag'), marker: () => part('tabDrag')?.firstElementChild as HTMLElement | undefined, ghost: () => part('tabGhost') };
+  return { onMove, shell, scroller, unbind, tab, face: (id: string) => tab(id).parentElement!, layer: () => part('tabDrag'), marker: () => part('tabDrag')?.firstElementChild as HTMLElement | undefined, zone: () => part('tabDrag')?.firstElementChild as HTMLElement | undefined, ghost: () => part('tabGhost') };
 }
 
 /** Presses on the tab `a` at x = 50 and travels to `to`: the drag is begun, and drawn once the frame runs. */
-function drag(to: number, y?: number) {
-  const s = setup();
+function drag(to: number, y?: number, onDragOut?: (id: string) => DragOut | undefined) {
+  const s = setup(0, onDragOut);
   fire(s.tab('a'), 'pointerdown', 50);
   fire(s.scroller, 'pointermove', to, y);
   frame();
@@ -311,5 +316,150 @@ describe('a drag', () => {
     frame();
     expect(shell).not.toHaveAttribute('data-tab-dragging');
     expect(onMove).not.toHaveBeenCalled();
+  });
+});
+
+/** What a strip is given to take a tab out of it: asked for when the pointer first leaves, and told the way the drag goes on. */
+const way = () => {
+  const session = { move: vi.fn<(x: number, y: number) => void>(), drop: vi.fn<(x: number, y: number) => void>(), cancel: vi.fn<() => void>() };
+  return { session, onDragOut: vi.fn<(id: string) => typeof session>(() => session) };
+};
+
+describe('a drag out of the strip (ch16 S58)', () => {
+  it('asks for the way out once, when the pointer first leaves the strip, tells it where the pointer is while it is out, and drops through it on the release, with the point of the release', () => {
+    const { session, onDragOut } = way();
+    const { scroller, onMove, shell } = drag(300, 20, onDragOut);
+    expect(onDragOut).not.toHaveBeenCalled();
+
+    fire(scroller, 'pointermove', 300, 60);
+    frame();
+    fire(scroller, 'pointermove', 320, 70);
+    frame();
+    expect(onDragOut.mock.calls).toEqual([['a']]);
+    expect(session.move.mock.calls).toEqual([[300, 60], [320, 70]]);
+    fire(scroller, 'pointerup', 330, 72);
+
+    expect(session.drop.mock.calls).toEqual([[330, 72]]);
+    expect(session.cancel).not.toHaveBeenCalled();
+    expect(onMove).not.toHaveBeenCalled();
+    expect(shell.querySelector('[data-tab-dragging], [data-dragging], [data-shell-part="tabDrag"]')).toBeNull();
+  });
+
+  it('is out beyond the window\'s edge as well, and a release in the strip is a drop that has no way out to tell', () => {
+    const out = way();
+    const edge = drag(-5, 20, out.onDragOut);
+    fire(edge.scroller, 'pointerup', -5, 20);
+    expect(out.session.drop.mock.calls).toEqual([[-5, 20]]);
+
+    const inside = way();
+    const strip = drag(300, 20, inside.onDragOut);
+    fire(strip.scroller, 'pointerup', 300);
+    expect(inside.onDragOut).not.toHaveBeenCalled();
+    expect(strip.onMove.mock.calls).toEqual([['a', 2, undefined]]);
+  });
+
+  it.each([
+    ['Escape', () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))],
+    ['the window\'s blur', () => window.dispatchEvent(new Event('blur'))],
+    ['a cancelled pointer', () => fire(window, 'pointercancel', 300, 60)],
+  ])('cancels the way out when %s ends the drag, and drops nothing', (_cause, end) => {
+    const { session, onDragOut } = way();
+    const { scroller, onMove } = drag(300, 60, onDragOut);
+
+    end();
+    fire(scroller, 'pointerup', 300, 60);
+
+    expect(session.cancel).toHaveBeenCalledTimes(1);
+    expect([session.drop, onMove].map((fn) => fn.mock.calls.length)).toEqual([0, 0]);
+  });
+
+  it('cancels the way out when the pointer comes back into the strip, and asks for another when it goes out again', () => {
+    const { session, onDragOut } = way();
+    const { scroller, onMove } = drag(300, 60, onDragOut);
+    const at = (x: number, y: number) => {
+      fire(scroller, 'pointermove', x, y);
+      frame();
+    };
+
+    at(300, 48);
+    expect(session.cancel).toHaveBeenCalledTimes(1);
+    at(310, 40);
+    expect(session.move).toHaveBeenCalledTimes(1);
+    at(300, 70);
+    expect(onDragOut).toHaveBeenCalledTimes(2);
+    fire(scroller, 'pointerup', 300, 70);
+
+    expect(session.drop).toHaveBeenCalledTimes(1);
+    expect(session.cancel).toHaveBeenCalledTimes(1);
+    expect(onMove).not.toHaveBeenCalled();
+  });
+
+  it('outlines the page the tab goes to while the pointer is out of the strip, as the zone of S58 does: placed over it, hidden in the strip, and gone with the drag', () => {
+    const { scroller, zone, layer } = drag(300, 20, way().onDragOut);
+    expect(zone()).toHaveProperty('hidden', true);
+    expect(zone()?.style.translate).toBe('10px 50px');
+    expect([zone()?.style.inlineSize, zone()?.style.blockSize]).toEqual(['400px', '300px']);
+
+    fire(scroller, 'pointermove', 300, 60);
+    frame();
+    expect(zone()).toHaveProperty('hidden', false);
+    fire(scroller, 'pointermove', 300, 48);
+    frame();
+    expect(zone()).toHaveProperty('hidden', true);
+
+    fire(scroller, 'pointermove', 300, 70);
+    frame();
+    const gone = layer();
+    fire(scroller, 'pointerup', 300, 70);
+    expect(gone?.isConnected).toBe(false);
+  });
+
+  it('draws no outline where the strip has nowhere to take the tab: it only cancels there', () => {
+    const { layer, scroller, marker } = drag(300, 60);
+
+    expect(layer()?.children).toHaveLength(2);
+    expect(marker()?.hidden).toBe(true);
+    fire(scroller, 'pointerup', 300, 60);
+  });
+});
+
+describe('a strip as the place a tab dragged in from another window lands (ch16 S58)', () => {
+  const strip = (pinned = 0) => {
+    const s = setup(pinned);
+    return { ...s, receive: stripReceiver(s.scroller) };
+  };
+
+  it('marks the gap the point is over with the marker of the drag, one marker however often it is asked, and answers the index the tab takes there', () => {
+    const { shell, receive } = strip();
+
+    expect(receive({ x: 300, y: 20 })).toMatchObject({ to: 3, pinned: undefined });
+    const marker = shell.querySelector<HTMLElement>('[data-shell-part="tabDrag"] > :first-child');
+    expect(marker?.style.translate).toBe('310px 6px');
+    expect(marker?.parentElement?.parentElement).toBe(shell);
+    expect(receive({ x: 10, y: 20 })).toMatchObject({ to: 0 });
+    expect(shell.querySelectorAll('[data-shell-part="tabDrag"]')).toHaveLength(1);
+    expect(marker?.style.translate).toBe('0px 6px');
+    expect(receive({ x: 450, y: 20 })).toMatchObject({ to: 4 });
+  });
+
+  it('says which side of the separator of the pinned tabs the point is on', () => {
+    const { receive } = strip(2);
+
+    expect([205, 207].map((x) => receive({ x, y: 20 })?.pinned)).toEqual([true, false]);
+  });
+
+  it('takes the marker away and answers nothing for a point that is not in the strip\'s row (6 px above or below it) and for none', () => {
+    const { shell, receive } = strip();
+    const layer = () => shell.querySelector('[data-shell-part="tabDrag"]');
+
+    for (const point of [{ x: 300, y: 41 }, { x: 300, y: -1 }, undefined]) {
+      receive({ x: 300, y: 20 });
+      expect(layer()).not.toBeNull();
+      expect(receive(point)).toBeUndefined();
+      expect(layer()).toBeNull();
+    }
+
+    expect(receive({ x: 300, y: 40 })).toBeDefined();
+    expect(receive({ x: 300, y: 0 })).toBeDefined();
   });
 });

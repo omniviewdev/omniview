@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPanelStore } from '../../shell/core/panel';
 import { boot, cloudPage, hostPage } from '../../shell/core/tabs/testing';
-import { checkInvariants, type TabsStore } from '../../shell/core/tabs';
+import { checkInvariants, type TabReceiver, type TabsStore } from '../../shell/core/tabs';
 import type { PluginEntry } from './pluginStore';
 import { createConnectionActions } from './connections/actions';
 import type { ConnectionsStore } from './connections/store';
@@ -11,6 +11,7 @@ import { withWindows, type WindowService } from './windows';
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 // What the host's events do: every window hears an event, a moment after it was sent.
@@ -31,27 +32,96 @@ function bus() {
   };
 }
 
+// The service's drag session over the bus, as `backend/window/drag.go` runs it: the window under the pointer is the one the test names (none, at first); it is told hover, leave and drop, and answers the drop with what that window
+// says; every window hears the begin and the end. `log` says what the source asked of the service, in order.
+function coordinator(events: ReturnType<typeof bus>) {
+  const sessions = new Map<string, { payload: string; over: string | undefined }>();
+  const answers = new Map<string, PromiseWithResolvers<boolean>>();
+  const pointer: { over: string | undefined } = { over: undefined };
+  const log: string[] = [];
+  const say = async (event: string, data: Record<string, unknown>) => events.emit(`windows/drag/${event}`, data);
+  const point = async (sessionId: string, event: 'hover' | 'drop', x: number, y: number) => {
+    const session = sessions.get(sessionId);
+    if (session?.over !== undefined && session.over !== pointer.over) {
+      await say('leave', { sessionId, targetWindow: session.over });
+    }
+
+    if (session !== undefined) {
+      session.over = event === 'hover' ? pointer.over : undefined;
+    }
+
+    if (pointer.over !== undefined) {
+      await say(event, { sessionId, targetWindow: pointer.over, payload: session?.payload, clientX: x, clientY: y });
+    }
+  };
+
+  return {
+    pointer,
+    log,
+    beginDrag: vi.fn<WindowService['beginDrag']>(async ({ sessionId, sourceWindow, dragType, payload }) => {
+      log.push('begin');
+      sessions.set(sessionId, { payload, over: undefined });
+      await say('begin', { sessionId, sourceWindow, dragType });
+    }),
+    moveDrag: vi.fn<WindowService['moveDrag']>(async (sessionId, x, y) => {
+      log.push('move');
+      await point(sessionId, 'hover', x, y);
+    }),
+    endDrag: vi.fn<WindowService['endDrag']>(async (sessionId, x, y) => {
+      log.push('end');
+      const answer = Promise.withResolvers<boolean>();
+      answers.set(sessionId, answer);
+      const target = pointer.over;
+      await point(sessionId, 'drop', x, y);
+      const accepted = target !== undefined && (await answer.promise);
+      sessions.delete(sessionId);
+      await say('end', { sessionId });
+      return { accepted, targetWindow: accepted ? target : '' };
+    }),
+    cancelDrag: vi.fn<WindowService['cancelDrag']>(async (sessionId) => {
+      log.push('cancel');
+      const over = sessions.get(sessionId)?.over;
+      if (over !== undefined) {
+        await say('leave', { sessionId, targetWindow: over });
+      }
+
+      sessions.delete(sessionId);
+      await say('end', { sessionId });
+    }),
+    respondDrop: vi.fn<WindowService['respondDrop']>(async (sessionId, accepted) => {
+      answers.get(sessionId)?.resolve(accepted);
+    }),
+  };
+}
+
 type Listed = ReadonlyArray<{ readonly name: string; readonly kind: string }>;
 
-function world(name = 'main', panel = createPanelStore(), events = bus(), listed: Listed = [{ name, kind: 'workspace' }]) {
+function world(name = 'main', panel = createPanelStore(), events = bus(), listed: Listed = [{ name, kind: 'workspace' }], drag = coordinator(events)) {
   const h = boot();
   const service = {
     name: vi.fn(async () => name),
     open: vi.fn<WindowService['open']>(async () => 'window-2'),
     close: vi.fn<WindowService['close']>(async () => undefined),
     focus: vi.fn<WindowService['focus']>(async () => undefined),
+    place: vi.fn<WindowService['place']>(async () => undefined),
+    viewport: vi.fn<WindowService['viewport']>(async () => undefined),
     list: vi.fn<WindowService['list']>(async () => listed),
     ...events,
+    beginDrag: drag.beginDrag,
+    moveDrag: drag.moveDrag,
+    endDrag: drag.endDrag,
+    cancelDrag: drag.cancelDrag,
+    respondDrop: drag.respondDrop,
   };
   const tabs: TabsStore = withWindows(h.store, panel, service);
-  return { h, panel, service, tabs, events };
+  return { h, panel, service, tabs, events, drag };
 }
 
 const sessionOf = (text: string | undefined) => JSON.parse(text ?? 'null') as { version: number; tabs: { version: number; active: string; tabs: Array<{ id: string; route: unknown }> } };
 
-// The stand-in service answers at once, so what the host does after an answer has happened within a few microtask turns.
+// The stand-in service answers at once, so what the host does after an answer has happened within a few microtask turns (a drag that ends in a window of its own takes some tens).
 const settled = async () => {
-  for (let turn = 0; turn < 30; turn += 1) {
+  for (let turn = 0; turn < 80; turn += 1) {
     await Promise.resolve();
   }
 };
@@ -350,5 +420,276 @@ describe('moving a tab to another window', () => {
     await settled();
 
     expect(here.h.ids()).toContain(id);
+  });
+});
+
+describe('a tab released outside the strip, over no window (S58)', () => {
+  const at = { x: 640, y: 320 };
+  /** A window with a second tab, that tab being the one released. */
+  const crowded = (name: string) => {
+    const w = world(name);
+    return { ...w, id: w.h.open(cloudPage('buckets'), { how: 'new' }) };
+  };
+
+  /** The pointer takes the tab out of the strip and releases it at `at`: the way out the strip is given by the windows. */
+  const release = (tabs: TabsStore, id: string) => {
+    const way = tabs.windows?.dragOut(id);
+    way?.move(at.x, at.y);
+    way?.drop(at.x, at.y);
+  };
+
+  it('opens a window under the point of the release, anchored in this window, that starts with the tab as it is saved, and takes the tab out of this strip once that window exists, without a place under Recently closed', async () => {
+    const { h, id, service, tabs } = crowded('window-2');
+    const closed = h.state().closed;
+    const exists = Promise.withResolvers<string>();
+    service.open.mockReturnValue(exists.promise);
+
+    release(tabs, id);
+    await settled();
+
+    expect(service.open).toHaveBeenCalledTimes(1);
+    expect(sessionOf(service.open.mock.calls[0]?.[0]).tabs.tabs[0]).toMatchObject({ id, route: { contribution: 'buckets' } });
+    expect(service.open.mock.calls[0]?.[1]).toEqual({ window: 'window-2', ...at });
+    expect(h.ids()).toContain(id);
+
+    exists.resolve('window-3');
+    await settled();
+    expect(h.ids()).not.toContain(id);
+    expect(h.state().closed).toBe(closed);
+    expect(service.place).not.toHaveBeenCalled();
+    expect(service.close).not.toHaveBeenCalled();
+  });
+
+  it('keeps the tab where it is when the window cannot be opened', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { h, id, service, tabs } = crowded('main');
+    service.open.mockRejectedValue(new Error('no window'));
+
+    release(tabs, id);
+    await settled();
+
+    expect(h.ids()).toContain(id);
+  });
+
+  it('moves the window under the pointer instead for the only tab of a window other than the main one: nothing opens, and the tab and the window stay', async () => {
+    const { h, service, tabs } = world('window-2');
+    const only = h.current();
+
+    release(tabs, only);
+    await settled();
+
+    expect(service.place.mock.calls).toEqual([['window-2', at.x, at.y]]);
+    expect(service.open).not.toHaveBeenCalled();
+    expect(h.ids()).toEqual([only]);
+    expect(service.close).not.toHaveBeenCalled();
+  });
+
+  it('opens a window for the only tab of the main window, which is left with none (A17)', async () => {
+    const { h, service, tabs } = world('main');
+
+    release(tabs, h.current());
+    await settled();
+
+    expect(service.open).toHaveBeenCalledTimes(1);
+    expect(service.place).not.toHaveBeenCalled();
+    expect(h.ids()).toEqual([]);
+  });
+});
+
+describe('a tab dragged out of the strip over another window (the service\'s drag session)', () => {
+  /** Three windows that share the service: the tab is in `here`, the pointer is over `there`, whose strip is the receiver, which says the tab goes first; `start` is the pointer taking the tab out of its strip. */
+  const crossing = () => {
+    const events = bus();
+    const drag = coordinator(events);
+    const listed: Listed = [{ name: 'main', kind: 'workspace' }, { name: 'window-2', kind: 'workspace' }, { name: 'window-3', kind: 'workspace' }];
+    const here = world('main', createPanelStore(), events, listed, drag);
+    const there = world('window-2', createPanelStore(), events, listed, drag);
+    const strip = vi.fn<TabReceiver>(() => ({ to: 0, pinned: undefined }));
+    there.tabs.windows?.receive(strip);
+    const id = here.h.open(cloudPage('buckets'), { how: 'new' });
+    drag.pointer.over = 'window-2';
+    return { here, there, drag, strip, id, events, listed, start: () => here.tabs.windows?.dragOut(id) };
+  };
+
+  it('is taken by the window it is dropped on, which shows it where it was dropped with its id, route, history and pin, and then it leaves this window, which focuses the other', async () => {
+    const { here, there, drag, strip, id, start } = crossing();
+    const saved = here.h.store.serialise().tabs.find((tab) => tab.id === id);
+    const closed = here.h.state().closed;
+    const way = start();
+
+    way?.move(500, 20);
+    await settled();
+    expect(strip).toHaveBeenLastCalledWith({ x: 500, y: 20 });
+    expect(there.h.ids()).toEqual(['t1']);
+
+    way?.drop(510, 22);
+    await settled();
+
+    expect(strip).toHaveBeenCalledWith({ x: 510, y: 22 });
+    expect(there.h.ids()).toEqual([id, 't1']);
+    expect(there.h.store.serialise().tabs.find((tab) => tab.id === id)).toEqual(saved);
+    expect(there.h.active()).toBe(id);
+    expect(here.h.ids()).not.toContain(id);
+    expect(here.h.state().closed).toBe(closed);
+    expect(here.service.focus).toHaveBeenCalledExactlyOnceWith('window-2');
+    expect(drag.respondDrop).toHaveBeenCalledExactlyOnceWith(expect.any(String), true, id);
+    expect(strip).toHaveBeenLastCalledWith(undefined);
+    expect(drag.log).toEqual(['begin', 'move', 'end']);
+    expect(here.service.open).not.toHaveBeenCalled();
+    expect(checkInvariants(there.h.state())).toEqual([]);
+    expect(checkInvariants(here.h.state())).toEqual([]);
+  });
+
+  it('puts the tab on the side of the pinned tabs the strip says it was dropped on: a pinned tab dropped after them is not pinned', async () => {
+    const { here, there, strip, id, start } = crossing();
+    here.h.store.pin(id);
+    strip.mockReturnValue({ to: 1, pinned: false });
+    const way = start();
+
+    way?.move(500, 20);
+    way?.drop(500, 20);
+    await settled();
+
+    expect(there.h.ids()).toEqual(['t1', id]);
+    expect(there.h.state().tabs[id]?.flags.pinned).toBe(false);
+  });
+
+  it.each([
+    ['the strip says the point is not over it', (strip: Mock<TabReceiver>) => strip.mockReturnValue(undefined)],
+    ['the window cannot take the tab', (_strip: Mock<TabReceiver>, store: TabsStore) => vi.spyOn(store, 'adopt').mockReturnValue({ status: 'refused', reason: 'invalid', message: 'no' })],
+  ])('keeps the tab and opens no window when %s, and the marker is gone', async (_why, refuse) => {
+    const { here, there, drag, strip, id, start } = crossing();
+    refuse(strip, there.h.store);
+    const way = start();
+
+    way?.move(500, 20);
+    way?.drop(500, 20);
+    await settled();
+
+    expect(here.h.ids()).toContain(id);
+    expect(there.h.ids()).toEqual(['t1']);
+    expect(drag.respondDrop).toHaveBeenCalledExactlyOnceWith(expect.any(String), false, '');
+    expect(here.service.open).not.toHaveBeenCalled();
+    expect(here.service.focus).not.toHaveBeenCalled();
+    expect(strip).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('keeps the tab when the service cannot end the drag', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { here, drag, id, start } = crossing();
+    drag.endDrag.mockRejectedValue(new Error('no service'));
+    const way = start();
+
+    way?.move(500, 20);
+    way?.drop(500, 20);
+    await settled();
+
+    expect(here.h.ids()).toContain(id);
+    expect(here.service.open).not.toHaveBeenCalled();
+  });
+
+  it('cancels the session when the drag is cancelled, after what was asked before it, and the other window has no marker left', async () => {
+    const { here, drag, strip, id, start } = crossing();
+    const way = start();
+
+    way?.move(500, 20);
+    await settled();
+    expect(strip).toHaveBeenLastCalledWith({ x: 500, y: 20 });
+    way?.cancel();
+    await settled();
+
+    expect(drag.log).toEqual(['begin', 'move', 'cancel']);
+    expect(strip).toHaveBeenLastCalledWith(undefined);
+    expect(here.h.ids()).toContain(id);
+    expect(here.service.open).not.toHaveBeenCalled();
+    expect(drag.endDrag).not.toHaveBeenCalled();
+  });
+
+  it('drops nothing for a tab with unsaved changes, and the other window is asked nothing: the session is cancelled', async () => {
+    const { here, there, drag, id, start } = crossing();
+    here.h.store.setUnsaved(id, true);
+    const way = start();
+
+    way?.move(500, 20);
+    way?.drop(500, 20);
+    await settled();
+
+    expect(drag.log).toEqual(['begin', 'move', 'cancel']);
+    expect(here.h.ids()).toContain(id);
+    expect(there.h.ids()).toEqual(['t1']);
+  });
+
+  it('sends one move at a time, and a newer point replaces the one that waits: 1000 moves while one is in flight make at most two calls, and begin and drop reach the service in order (HSH-27)', async () => {
+    const { drag, start } = crossing();
+    const inFlight = Promise.withResolvers<undefined>();
+    drag.moveDrag.mockImplementationOnce(async () => {
+      drag.log.push('move');
+      await inFlight.promise;
+    });
+    const way = start();
+
+    way?.move(0, 20);
+    await settled();
+    expect(drag.moveDrag).toHaveBeenCalledTimes(1);
+    for (let x = 1; x <= 1000; x += 1) {
+      way?.move(x, 20);
+    }
+
+    await settled();
+    expect(drag.moveDrag).toHaveBeenCalledTimes(1);
+    inFlight.resolve(undefined);
+    await settled();
+    expect(drag.moveDrag.mock.calls.map(([, x]) => x)).toEqual([0, 1000]);
+
+    way?.drop(1000, 20);
+    await settled();
+    expect(drag.log).toEqual(['begin', 'move', 'move', 'end']);
+  });
+
+  it('changes nothing in a window the events are not addressed to, and asks the service nothing there (HSH-32)', async () => {
+    const { events, listed, drag, strip, id, start } = crossing();
+    const bystander = world('window-3', createPanelStore(), events, listed, drag);
+    const watching = vi.fn<TabReceiver>();
+    bystander.tabs.windows?.receive(watching);
+    const before = bystander.h.state();
+    const way = start();
+
+    way?.move(500, 20);
+    way?.drop(500, 20);
+    await settled();
+
+    expect(strip).toHaveBeenCalledWith({ x: 500, y: 20 });
+    expect(watching.mock.calls.every(([at]) => at === undefined)).toBe(true);
+    expect(bystander.h.state()).toBe(before);
+    expect(drag.respondDrop).toHaveBeenCalledTimes(1);
+    expect(bystander.h.ids()).not.toContain(id);
+  });
+});
+
+describe('the window\'s viewport, by which the service places a window and finds the one under a drag', () => {
+  it('is told when the window starts, and again only when its size changes', async () => {
+    const { service } = world('window-2');
+    await settled();
+    expect(service.viewport.mock.calls).toEqual([['window-2', window.innerWidth, window.innerHeight]]);
+
+    window.dispatchEvent(new Event('resize'));
+    await settled();
+    expect(service.viewport).toHaveBeenCalledTimes(1);
+
+    vi.stubGlobal('innerWidth', 800);
+    window.dispatchEvent(new Event('resize'));
+    await settled();
+    expect(service.viewport.mock.calls).toEqual([['window-2', 1024, 768], ['window-2', 800, 768]]);
+  });
+
+  it('is told again when a drag begins, whatever the size: every window reports then, so the service can find the window under the pointer', async () => {
+    const { h, service, tabs } = world('window-2');
+    await settled();
+    expect(service.viewport).toHaveBeenCalledTimes(1);
+
+    tabs.windows?.dragOut(h.current());
+    await settled();
+
+    expect(service.viewport).toHaveBeenCalledTimes(2);
   });
 });

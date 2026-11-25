@@ -1,12 +1,14 @@
 import { platformOf } from './core/chords';
+import type { DragOut, TabPlace, TabReceiver } from './core/tabs';
 import styles from './stripDrag.module.css';
 
 // The pointer's way to move a tab in a strip (ch16 S45, S56 to S59), bound by `useTablist` for every strip of the shell that can move one. A strip is a scroller whose direct children are the tabs' faces; a tab is the `role="tab"`
 // element in a face, and the faces with `data-pinned` are the pinned tabs, at the start. A press on a tab that travels 6 px is a drag, and a drag costs next to nothing (docs/ui-next/optimisations.md MNR-K3, LIB-32): the DOM keeps its
 // order (S59) and the order is committed once, on the release, through `onMove`, the callback the keyboard asks. A pointer move writes nothing: ONE animation-frame callback places the marker and the ghost, each with ONE `style.translate`,
 // and scrolls the strip while the pointer is at its edge. The window, never <html>, carries `data-tab-dragging`, and the face dragged `data-dragging`. The marker and the ghost (a copy of the face, `data-shell-part="tabGhost"`, which
-// the strip's stylesheet draws on the popup's plane, S57) are one popover, so the top layer holds them without a z-index. Escape (before anything below it), the window's blur and a cancelled pointer put everything back as it was. So
-// does a release more than 18 px below the strip or outside the window: the zones that a release there would choose (S58) are not built, and without them it chooses nothing.
+// the strip's stylesheet draws on the popup's plane, S57) are one popover, so the top layer holds them without a z-index. Escape (before anything below it), the window's blur and a cancelled pointer put everything back as it was.
+// More than 18 px below the strip, or outside the window, the pointer is out of the strip (S58). Where the strip has somewhere to take a tab (`onDragOut`) the page the tab controls is outlined, the way out is asked for and told where the pointer is,
+// and a release there is a drop through it; where it has none that release puts the tab back too. A tab dragged in from another window is marked in the strip, by the same marker, and given its place by `stripReceiver`.
 
 const THRESHOLD = 6;
 const OFFSET = 12;
@@ -18,8 +20,8 @@ const RETURN = 9;
 const EDGE = 32;
 const STEP = 20;
 
-/** Where a drop lands: the index the tab takes (what `onMove` is asked for), where the marker stands on the screen, and beside the separator of the pinned tabs which side of it the drop is on (anywhere else the index says). */
-export type DropSlot = { readonly to: number; readonly x: number; readonly pinned: boolean | undefined };
+/** Where a drop lands: the place the tab takes (what `onMove` is asked for) and where the marker stands on the screen. */
+export type DropSlot = TabPlace & { readonly x: number };
 
 /**
  * Where a drop at `pointer` lands among `faces`, left to right on the screen: the gap before the first face whose middle the pointer has not passed (S56). `from` is the index of the tab dragged, and the first `zone`
@@ -60,15 +62,74 @@ type Press = {
   y: number;
 };
 
-/** The pointer has travelled: what is drawn, and where a release would drop. */
-type Drag = { readonly layer: HTMLElement; readonly marker: HTMLElement; readonly ghost: HTMLElement; readonly rtl: boolean; out: boolean; slot: DropSlot | undefined; frame: number };
+/** The pointer has travelled: what is drawn, and where a release would drop. `away` is the way out the strip was asked for when the pointer went out of it, for as long as it is out. */
+type Drag = { readonly layer: HTMLElement; readonly marker: HTMLElement; readonly ghost: HTMLElement; readonly zone: HTMLElement | undefined; readonly rtl: boolean; out: boolean; away: DragOut | undefined; slot: DropSlot | undefined; frame: number };
 
-/** Makes the tabs of the strip draggable, and returns the way to stop. A drop asks `onMove` for the tab, the index it takes and, beside the separator of the pinned tabs, the side it is dropped on. */
-export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: number, pinned?: boolean) => void): () => void {
+/** The layer of a drag: one popover in the window, which the top layer holds over the window without a z-index, with the marker of the place a drop lands and the `parts` that go with it. */
+type Stage = { readonly layer: HTMLElement; readonly marker: HTMLElement };
+
+function stage(home: HTMLElement, ...parts: HTMLElement[]): Stage {
+  const layer = document.createElement('div');
+  const marker = document.createElement('div');
+  layer.className = styles.layer;
+  marker.className = styles.marker;
+  layer.dataset.shellPart = 'tabDrag';
+  layer.setAttribute('popover', 'manual');
+  layer.setAttribute('inert', '');
+  layer.append(marker, ...parts);
+  home.append(layer);
+  layer.showPopover();
+  return { layer, marker };
+}
+
+/** Where a drop at `x` lands among the faces of the strip, and the marker put there (`translate`, in the window's pixels). `face` is the face dragged: a tab from another window has none, and takes a gap among them all. */
+function slotAt(scroller: HTMLElement, box: DOMRect, marker: HTMLElement, x: number, face: Element | undefined, rtl: boolean): DropSlot {
+  const within = (at: number) => Math.min(Math.max(at, box.left), box.right);
+  const faces = [...scroller.children];
+  const slot = dropSlot(within(x), faces.map((one) => one.getBoundingClientRect()), face === undefined ? faces.length : faces.indexOf(face), faces.filter((one) => one.hasAttribute('data-pinned')).length, rtl);
+  marker.style.translate = `${String(within(slot.x))}px ${String(box.top)}px`;
+  return slot;
+}
+
+/** The page a tab released outside the strip goes to, outlined where it is and named, and hidden until the pointer is out of the strip (S58). */
+function outline(page: HTMLElement): HTMLElement {
+  const { left, top, width, height } = page.getBoundingClientRect();
+  const zone = document.createElement('div');
+  zone.className = styles.zone;
+  zone.hidden = true;
+  Object.assign(zone.style, { translate: `${String(left)}px ${String(top)}px`, inlineSize: `${String(width)}px`, blockSize: `${String(height)}px` });
+  return zone;
+}
+
+/**
+ * The strip as the place a tab dragged in from another window lands (S58): given the point of this window the tab is over, it marks the gap a drop there would give it, with the marker a drag in the strip has, and says the place it takes. A point that is
+ * not in the strip's row (6 px above or below the faces), or none, takes the marker away and says nothing.
+ */
+export function stripReceiver(scroller: HTMLElement): TabReceiver {
+  let staged: Stage | undefined;
+  return (at) => {
+    const box = scroller.getBoundingClientRect();
+    const home = scroller.closest<HTMLElement>('[data-shell-part="window"]');
+    if (at === undefined || home === null || at.y < box.top - ROW || at.y > box.bottom + ROW) {
+      staged?.layer.remove();
+      staged = undefined;
+      return undefined;
+    }
+
+    staged ??= stage(home);
+    return slotAt(scroller, box, staged.marker, at.x, undefined, getComputedStyle(scroller).direction === 'rtl');
+  };
+}
+
+/**
+ * Makes the tabs of the strip draggable, and returns the way to stop. A drop asks `onMove` for the tab, the index it takes and, beside the separator of the pinned tabs, the side it is dropped on. When the pointer first goes out of the strip `onDragOut` is asked
+ * for the tab's way out, which is told where the pointer is while it is out and how the drag ends there: a release (a drop), or anything else, including the pointer coming back.
+ */
+export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: number, pinned?: boolean) => void, onDragOut?: (id: string) => DragOut | undefined): () => void {
   let press: Press | undefined;
   let drag: Drag | undefined;
 
-  // The one place a drag ends. With the release of the pointer it drops the tab where the marker is; without, the tab stays where it was.
+  // The one place a drag ends. With the release of the pointer it drops the tab where the marker is, or through its way out when the pointer is out of the strip; without, the tab stays where it was.
   function end(release?: PointerEvent): void {
     const pressed = press;
     const dragged = drag;
@@ -83,7 +144,11 @@ export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: nu
     dragged.layer.remove();
     pressed.face.removeAttribute('data-dragging');
     pressed.home.removeAttribute('data-tab-dragging');
-    if (release !== undefined && dragged.slot !== undefined && !dragged.out) {
+    if (release === undefined) {
+      dragged.away?.cancel();
+    } else if (dragged.out) {
+      dragged.away?.drop(release.clientX, release.clientY);
+    } else if (dragged.slot !== undefined) {
       onMove(pressed.id, dragged.slot.to, dragged.slot.pinned);
     }
   }
@@ -95,10 +160,16 @@ export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: nu
     const below = y - (box.bottom + ROW);
     dragged.out = x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight || (dragged.out ? below >= RETURN : below > LEAVE);
     dragged.marker.hidden = dragged.out;
+    dragged.zone?.toggleAttribute('hidden', !dragged.out);
     dragged.ghost.style.translate = `${String(x + OFFSET)}px ${String(y + OFFSET)}px`;
     if (dragged.out) {
+      dragged.away ??= onDragOut?.(pressed.id);
+      dragged.away?.move(x, y);
       return;
     }
+
+    dragged.away?.cancel();
+    dragged.away = undefined;
 
     // The strip scrolls before the faces are measured, so that the marker is drawn where they are; it goes on in the next frame for as long as it moves.
     const was = scroller.scrollLeft;
@@ -107,10 +178,7 @@ export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: nu
       scroller.scrollLeft += push;
     }
 
-    const within = (at: number) => Math.min(Math.max(at, box.left), box.right);
-    const faces = [...scroller.children];
-    dragged.slot = dropSlot(within(x), faces.map((face) => face.getBoundingClientRect()), faces.indexOf(pressed.face), faces.filter((face) => face.hasAttribute('data-pinned')).length, dragged.rtl);
-    dragged.marker.style.translate = `${String(within(dragged.slot.x))}px ${String(box.top)}px`;
+    dragged.slot = slotAt(scroller, box, dragged.marker, x, pressed.face, dragged.rtl);
     if (scroller.scrollLeft !== was) {
       schedule(pressed, dragged);
     }
@@ -122,25 +190,22 @@ export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: nu
     });
   }
 
-  // The pointer has travelled far enough. The ghost is a copy of the face, made before the face is marked, without the id its tab holds once.
+  // The pointer has travelled far enough. The ghost is a copy of the face, made before the face is marked, without the id its tab holds once. The page is the one the tab controls, where the strip can take a tab out.
   function begin(pressed: Press): Drag {
-    const layer = document.createElement('div');
-    const marker = document.createElement('div');
+    const page = onDragOut === undefined ? null : document.getElementById(pressed.face.querySelector('[role="tab"]')?.getAttribute('aria-controls') ?? '');
+    const zone = page === null ? undefined : outline(page);
     const ghost = pressed.face.cloneNode(true) as HTMLElement;
     for (const element of ghost.querySelectorAll('[id]')) {
       element.removeAttribute('id');
     }
 
-    layer.className = styles.layer;
-    marker.className = styles.marker;
-    layer.dataset.shellPart = 'tabDrag';
     ghost.dataset.shellPart = 'tabGhost';
     ghost.style.inlineSize = `${String(pressed.face.getBoundingClientRect().width)}px`;
-    layer.setAttribute('popover', 'manual');
-    layer.setAttribute('inert', '');
-    layer.append(marker, ghost);
-    pressed.home.append(layer);
-    layer.showPopover();
+    const { layer, marker } = stage(pressed.home, ghost);
+    if (zone !== undefined) {
+      layer.prepend(zone);
+    }
+
     pressed.home.setAttribute('data-tab-dragging', '');
     pressed.face.setAttribute('data-dragging', '');
     try {
@@ -149,7 +214,7 @@ export function bindStripDrag(scroller: HTMLElement, onMove: (id: string, to: nu
       // There is no such pointer to capture where the events are made up: the drag still follows the events it gets.
     }
 
-    return { layer, marker, ghost, rtl: getComputedStyle(scroller).direction === 'rtl', out: false, slot: undefined, frame: 0 };
+    return { layer, marker, ghost, zone, rtl: getComputedStyle(scroller).direction === 'rtl', out: false, away: undefined, slot: undefined, frame: 0 };
   }
 
   const onPointer = (event: PointerEvent): void => {

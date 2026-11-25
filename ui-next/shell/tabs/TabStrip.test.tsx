@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { makeNotices } from '../core/notices/testing';
-import { createTabsStore } from '../core/tabs';
+import { createTabsStore, type TabWindows } from '../core/tabs';
 import { boot, cloudPage, dest, stackPage } from '../core/tabs/testing';
 import { createNoticesAnnouncer } from '../notices/host';
 import { Shell } from '../Shell';
@@ -483,32 +483,32 @@ describe('dragging a tab with the pointer (ch16 S45, S56 to S59)', () => {
     });
   };
 
-  /** Alpha and Beta pinned, then Gamma and Delta, with notices so a move can be heard. */
-  function mountDraggable() {
+  /** Alpha and Beta pinned, then Gamma and Delta, with notices so a move can be heard; `windows` is what the app gives the model (a browser tab gives none). */
+  function mountDraggable(windows?: TabWindows) {
     const h = boot({ home: false });
     const ids = h.openAll(['alpha', 'beta', 'gamma', 'delta']);
     h.store.pin(ids[0], true);
     h.store.pin(ids[1], true);
     const announcer = createNoticesAnnouncer();
-    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={() => null} empty={null} notices={{ store: makeNotices().store, announcer }} />);
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={windows === undefined ? h.store : { ...h.store, windows }} renderPage={() => null} empty={null} notices={{ store: makeNotices().store, announcer }} />);
     const scroller = screen.getByRole('tablist');
     scroller.getBoundingClientRect = rect(0, 500);
     [0, 104, 213, 317].forEach((left, at) => {
       (scroller.children[at] as HTMLElement).getBoundingClientRect = rect(left, left + 100);
     });
 
-    return { h, told: () => announcer.polite.getSnapshot().text };
+    return { h, ids, told: () => announcer.polite.getSnapshot().text };
   }
 
-  /** Presses on a tab at `from` and travels to `to`, then waits for the frame that draws the marker. The release is the test's. */
-  async function drag(title: RegExp, from: number, to: number) {
+  /** Presses on a tab at `from` and travels to `to` (and `y`, 20 px: in the strip), then waits for the frame that draws the marker. The release is the test's. */
+  async function drag(title: RegExp, from: number, to: number, y?: number) {
     fireEvent.pointerDown(tab(title), pointer(from));
-    fireEvent.pointerMove(screen.getByRole('tablist'), pointer(to));
+    fireEvent.pointerMove(screen.getByRole('tablist'), pointer(to, y));
     await nextFrame();
   }
 
-  const release = (x: number) => {
-    fireEvent.pointerUp(screen.getByRole('tablist'), pointer(x));
+  const release = (x: number, y?: number) => {
+    fireEvent.pointerUp(screen.getByRole('tablist'), pointer(x, y));
   };
 
   it('moves a tab where it is dropped and only then: the order is the model\'s own until the release, the tab keeps the focus and the move is said', async () => {
@@ -575,6 +575,66 @@ describe('dragging a tab with the pointer (ch16 S45, S56 to S59)', () => {
 
     expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
     expect(document.querySelector('[data-tab-dragging], [data-dragging], [data-shell-part="tabDrag"], [style*="translate"]')).toBeNull();
+  });
+
+  describe('with other windows to take a tab (S58)', () => {
+    const windows = () => {
+      const way = { move: vi.fn<(x: number, y: number) => void>(), drop: vi.fn<(x: number, y: number) => void>(), cancel: vi.fn<() => void>() };
+      const stop = vi.fn();
+      return { way, stop, others: () => [], moveToNew: vi.fn<TabWindows['moveToNew']>(() => ({ status: 'done' })), moveTo: vi.fn<TabWindows['moveTo']>(() => ({ status: 'noop' })), dragOut: vi.fn<TabWindows['dragOut']>(() => way), receive: vi.fn<TabWindows['receive']>(() => stop) };
+    };
+
+    it('takes a tab out through them: asked for the way out when the pointer leaves the strip, told where it goes and where it is released, and the tab stays where it is until a window has it', async () => {
+      const given = windows();
+      const { h, ids } = mountDraggable(given);
+
+      await drag(/^Alpha/, 50, 300, 70);
+      expect(given.dragOut.mock.calls).toEqual([[ids[0]]]);
+      expect(given.way.move.mock.calls).toEqual([[300, 70]]);
+      expect(document.querySelector('[data-shell-part="tabDrag"]')?.children).toHaveLength(3);
+      release(300, 70);
+
+      expect(given.way.drop.mock.calls).toEqual([[300, 70]]);
+      expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+      expect(document.querySelector('[data-tab-dragging], [data-dragging], [data-shell-part="tabDrag"]')).toBeNull();
+    });
+
+    it('cancels the way out when Escape ends the drag', async () => {
+      const given = windows();
+      mountDraggable(given);
+
+      await drag(/^Alpha/, 50, 300, 70);
+      fireEvent.keyDown(screen.getByRole('tablist'), { key: 'Escape' });
+
+      expect(given.way.cancel).toHaveBeenCalledTimes(1);
+      expect(given.way.drop).not.toHaveBeenCalled();
+    });
+
+    it('is the place a tab dragged in from another window lands, for as long as the strip is there: it marks the gap the point is over, answers the index the tab takes, and takes the marker away', () => {
+      const given = windows();
+      mountDraggable(given);
+      const receive = given.receive.mock.calls[0]?.[0];
+
+      expect(given.receive).toHaveBeenCalledTimes(1);
+      expect(receive?.({ x: 300, y: 20 })).toMatchObject({ to: 3, pinned: undefined });
+      expect(document.querySelector('[data-shell-part="tabDrag"]')).not.toBeNull();
+      expect(receive?.(undefined)).toBeUndefined();
+      expect(document.querySelector('[data-shell-part="tabDrag"]')).toBeNull();
+
+      expect(given.stop).not.toHaveBeenCalled();
+      cleanup();
+      expect(given.stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('has none of this in a browser tab, which has no other window: nothing is outlined, and a release outside the strip puts the tab back', async () => {
+      const { h } = mountDraggable();
+
+      await drag(/^Alpha/, 50, 300, 70);
+      expect(document.querySelector('[data-shell-part="tabDrag"]')?.children).toHaveLength(2);
+      release(300, 70);
+
+      expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+    });
   });
 });
 

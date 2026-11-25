@@ -92,7 +92,7 @@ describe('the rows that move a tab to a window', () => {
   const windowed = (others: ReadonlyArray<{ name: string; label: string }>) => {
     const h = boot({ home: false });
     const ids = h.openAll(['page1', 'page2']);
-    const windows = { others: () => others, moveToNew: vi.fn(() => ({ status: 'done' as const })), moveTo: vi.fn(() => ({ status: 'done' as const })) };
+    const windows = { others: () => others, moveToNew: vi.fn(() => ({ status: 'done' as const })), moveTo: vi.fn(() => ({ status: 'done' as const })), dragOut: vi.fn(), receive: vi.fn() };
     render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={{ ...h.store, windows }} renderPage={() => <p>page</p>} empty={null} />, { wrapper: MenuHost });
     return { h, ids, windows };
   };

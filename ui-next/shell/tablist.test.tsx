@@ -1,12 +1,13 @@
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DragOut } from './core/tabs';
 import { useTablist } from './tablist';
 
 // The DOM side of the strips' one tab stop (the rule of what a key does is core/tablist.test.ts): here, the wheel. It scrolls a strip sideways as it does a browser's tab bar, and a strip
 // whose tabs come after it mounted (the panel's tools, which a plugin brings when it loads) must get that too.
 
-function Strip({ ids, onMove }: { readonly ids: readonly string[]; readonly onMove?: (id: string, to: number, pinned?: boolean) => boolean }) {
-  const { ref, stop, handlers } = useTablist({ ids, selected: ids[0] ?? null, onMove });
+function Strip({ ids, onMove, onDragOut }: { readonly ids: readonly string[]; readonly onMove?: (id: string, to: number, pinned?: boolean) => boolean; readonly onDragOut?: (id: string) => DragOut }) {
+  const { ref, stop, handlers } = useTablist({ ids, selected: ids[0] ?? null, onMove, onDragOut });
   if (ids.length === 0) {
     return null;
   }
@@ -92,12 +93,12 @@ describe('the wheel over a strip of tabs', () => {
 
 describe('the pointer dragging a tab', () => {
   // jsdom lays nothing out, so every face is at x = 0 and the place a drop asks for is the start of the strip.
-  const pointer = (x: number) => ({ pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, clientX: x, clientY: 10 });
-  /** Presses on the tab `c`, travels past the threshold and waits for the frame that draws the drag; the release is the test's. */
-  async function drag(container: HTMLElement) {
+  const pointer = (x: number, y = 10) => ({ pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, clientX: x, clientY: y });
+  /** Presses on the tab `c`, travels past the threshold (to `y`: 10 is in the strip) and waits for the frame that draws the drag; the release is the test's. */
+  async function drag(container: HTMLElement, y?: number) {
     const strip = stripOf(container);
     fireEvent.pointerDown(within(strip).getByRole('tab', { name: 'c' }), pointer(300));
-    fireEvent.pointerMove(strip, pointer(320));
+    fireEvent.pointerMove(strip, pointer(320, y));
     await act(async () => {
       const { promise, resolve } = Promise.withResolvers<void>();
       requestAnimationFrame(() => {
@@ -131,6 +132,22 @@ describe('the pointer dragging a tab', () => {
 
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the onDragOut of the render the pointer first goes out of the strip in for the way out, and drops through it at the point of the release', async () => {
+    const drop = vi.fn();
+    const way = () => ({ move: vi.fn(), drop, cancel: vi.fn() });
+    const first = vi.fn(way);
+    const second = vi.fn(way);
+    const { container, rerender } = render(<Strip ids={['a', 'b', 'c']} onMove={() => true} onDragOut={first} />);
+    rerender(<Strip ids={['a', 'b', 'c']} onMove={() => true} onDragOut={second} />);
+
+    const strip = await drag(container, 40);
+    fireEvent.pointerUp(strip, pointer(320, 40));
+
+    expect(first).not.toHaveBeenCalled();
+    expect(second.mock.calls).toEqual([['c']]);
+    expect(drop.mock.calls).toEqual([[320, 40]]);
   });
 
   it('does not drag a strip that cannot move a tab, such as the panel\'s session strip: nothing is drawn and nothing is asked', async () => {

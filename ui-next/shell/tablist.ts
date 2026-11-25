@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type RefObject } from 'react';
 import { tablistKey } from './core/tablist';
+import type { DragOut } from './core/tabs';
 import { bindStripDrag } from './stripDrag';
 
 // The one tab stop and the keys of a strip of tabs, for every strip of the shell: the tab strip of the top row and the panel's tool and session strips. `core/tablist.ts` holds the rule (what a
@@ -16,6 +17,8 @@ export type TablistOptions = {
   readonly onClose?: ((id: string) => boolean) | undefined;
   /** The tab moves to an index of `ids`: Alt+Shift with an arrow, Home or End on a tab asks for it, and so does the pointer dropping one (`stripDrag.ts`), which says too, beside the separator of the pinned tabs, which side of it the drop is on (`pinned`). It answers whether the tab moved: the focus then stays on it. Absent: the strip can move a tab neither way. */
   readonly onMove?: ((id: string, to: number, pinned?: boolean) => boolean) | undefined;
+  /** The pointer takes a tab out of the strip (`stripDrag.ts`: 18 px below it, or outside the window): asked for the tab's way out, which is told where the pointer goes and how the drag ends there, and the strip outlines the page as the place it goes to. Absent: the drag puts the tab back. */
+  readonly onDragOut?: ((id: string) => DragOut) | undefined;
 };
 
 export type Tablist = {
@@ -62,7 +65,7 @@ function reveal(scroller: HTMLElement, face: HTMLElement): void {
   }
 }
 
-export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): Tablist {
+export function useTablist({ ids, selected, onClose, onMove, onDragOut }: TablistOptions): Tablist {
   // Where the focus is in the strip: the roving stop. Out of the strip, the stop is the tab on screen, so Tab and Shift+Tab always land on it.
   const [roving, setRoving] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -78,10 +81,10 @@ export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): 
     }
   };
 
-  // The pointer's drag is bound to the scroller once and drops through this render's `move`, whichever render that is.
-  const dropping = useRef(move);
+  // The pointer's drag is bound to the scroller once and drops through this render's `move` and `onDragOut`, whichever render that is.
+  const dropping = useRef({ move, onDragOut });
   useLayoutEffect(() => {
-    dropping.current = move;
+    dropping.current = { move, onDragOut };
   });
 
   // The tab on screen is revealed when it changes or the tabs do (a new tab opens after it, a close moves it).
@@ -130,8 +133,9 @@ export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): 
     };
   }, [hasScroller]);
 
-  // The pointer drags a tab, in a strip that can move one: bound to the scroller that is there, as the wheel is.
+  // The pointer drags a tab, in a strip that can move one (and take one out of the strip, where it has somewhere to): bound to the scroller that is there, as the wheel is.
   const draggable = onMove !== undefined;
+  const leaving = onDragOut !== undefined;
   useEffect(() => {
     const element = ref.current;
     if (element === null || !draggable) {
@@ -139,9 +143,9 @@ export function useTablist({ ids, selected, onClose, onMove }: TablistOptions): 
     }
 
     return bindStripDrag(element, (id, to, pinned) => {
-      dropping.current(id, to, pinned);
-    });
-  }, [hasScroller, draggable]);
+      dropping.current.move(id, to, pinned);
+    }, leaving ? (id) => dropping.current.onDragOut?.(id) : undefined);
+  }, [hasScroller, draggable, leaving]);
 
   return {
     ref,

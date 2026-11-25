@@ -82,7 +82,7 @@ describe('the window commands', () => {
   const windowed = (others: ReadonlyArray<{ name: string; label: string }>) => {
     const h = boot({ home: false });
     const [id = ''] = h.openAll(['page1']);
-    const windows = { others: () => others, moveToNew: vi.fn(() => ({ status: 'done' as const })), moveTo: vi.fn(() => ({ status: 'done' as const })) };
+    const windows = { others: () => others, moveToNew: vi.fn(() => ({ status: 'done' as const })), moveTo: vi.fn(() => ({ status: 'done' as const })), dragOut: vi.fn(), receive: vi.fn() };
     return { id, windows, commands: tabCommands({ tabs: { ...h.store, windows }, platform: 'mac', native: true }, id) };
   };
 

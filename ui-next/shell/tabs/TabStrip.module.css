@@ -114,7 +114,7 @@
     background-color: var(--ov-border-control);
   }
 
-  /* The pin or the eye of S23 and S24 (the pin wins): a 16 px column after the page's glyph, 2 px from it. A preview tab's title is muted. */
+  /* The pin or the eye of S23 and S24 (the pin wins): a 16 px column after the page's glyph, 2 px from it. A preview tab's title is muted: on the text each `Text` draws (as the title of the tab being dragged is), since a `Text` sets its own colour. */
   .mark {
     display: grid;
     flex: 0 0 16px;
@@ -127,7 +127,7 @@
   }
 
   .item[data-preview] .mark,
-  .item[data-preview] .title {
+  .item[data-preview] .title * {
     color: var(--ov-fg-muted);
   }
 

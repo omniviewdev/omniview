@@ -86,12 +86,19 @@ const networker: PortForwardNetwork = {
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
 const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
 
-/** The host's window service over the runtime's calls: the name of this window, a new workspace window with the session it starts from, a window's close and focus, the windows that are open, and the runtime's events. */
+/** The host's window service over the runtime's calls: the name of this window, a new workspace window with the session it starts from (under a point of a window, for a tab torn off), a window's placing, close and focus, its viewport, the drag session of a tab over the windows, the windows that are open, and the runtime's events. */
 const windowService: WindowService = {
   name: windowName,
-  open: async (session) => WindowClient.Open({ kind: windowModels.Kind.KindWorkspace, initialState: { session }, anchorWindow: '', clientX: 0, clientY: 0, hasPosition: false, width: 0, height: 0 }),
+  open: async (session, at) => WindowClient.Open({ kind: windowModels.Kind.KindWorkspace, initialState: { session }, anchorWindow: at?.window ?? '', clientX: at?.x ?? 0, clientY: at?.y ?? 0, hasPosition: at !== undefined, width: 0, height: 0 }),
   close: async (name) => WindowClient.Close(name),
   focus: async (name) => WindowClient.Focus(name),
+  place: async (name, x, y) => WindowClient.MoveToPointer(name, x, y),
+  viewport: async (name, width, height) => WindowClient.ReportViewport(name, width, height),
+  beginDrag: async (drag) => WindowClient.BeginDrag(drag),
+  moveDrag: async (session, x, y) => WindowClient.MoveDrag(session, x, y),
+  endDrag: async (session, x, y) => WindowClient.EndDrag(session, x, y),
+  cancelDrag: async (session) => WindowClient.CancelDrag(session),
+  respondDrop: async (session, accepted, tab) => WindowClient.RespondDrop(session, accepted, tab),
   list: async () => WindowClient.List(),
   emit: async (event, data) => Events.Emit(event, data),
   on: (event, listener) => Events.On(event, ({ data }) => {

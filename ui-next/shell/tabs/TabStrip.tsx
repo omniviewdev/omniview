@@ -1,8 +1,10 @@
 import { Icon, tip, useMenu, type MenuItem } from '@omniviewdev/kit';
+import { useEffect } from 'react';
 import { platformOf } from '../core/chords';
 import { isNativeWindow } from '../core/native';
 import type { TabId } from '../core/tabs';
 import { useMaybeNotices } from '../notices/context';
+import { stripReceiver } from '../stripDrag';
 import { useTablist } from '../tablist';
 import { tabCommands, TAB_MENU_GROUPS, WINDOW_GROUP } from './commands';
 import { useTabs } from './context';
@@ -41,7 +43,15 @@ export function TabStrip({ prefix, panelId, onNewTab }: TabStripProps) {
     return true;
   };
 
-  const { ref, stop, focus, handlers } = useTablist({ ids, selected: active, onClose: (id) => store.close(id).status === 'done', onMove });
+  // Where the app has windows, a tab the pointer takes out of the strip goes over them: it joins the strip it is released on, or opens a window of its own under the pointer (S58); and this strip is where a tab from another window lands. A browser tab has one
+  // window, and there the drag puts the tab back.
+  const { windows } = store;
+  const { ref, stop, focus, handlers } = useTablist({ ids, selected: active, onClose: (id) => store.close(id).status === 'done', onMove, onDragOut: windows?.dragOut });
+  useEffect(() => {
+    const strip = ref.current;
+    return strip === null ? undefined : windows?.receive(stripReceiver(strip));
+  }, [windows, ref]);
+
   // The menu gives the focus back to the tab it opened on before a row runs, and a close takes that tab away: the focus goes to the tab the model shows next, never to the page's body.
   const menu = useMenu((key) => {
     if (key === undefined || store.getSnapshot().tabs[key] === undefined) {
