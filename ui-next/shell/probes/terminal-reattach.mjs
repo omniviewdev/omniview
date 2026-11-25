@@ -9,7 +9,7 @@
 // flight, a terminal that is not there any more) are in terminal-reattach-followups.mjs and are added to these here, with their parts and controls.
 //
 // Each section has ONE assertion, so that a control trips only that one:
-//   reattach-slot       the capability is made once, kept in the window's state slot `terminal-capabilities`, never in the address, a request or the console; after a reload the page lists by it and makes no new terminal (reattach.slot)
+//   reattach-slot       the capability is made once, kept in the tab's sessionStorage (`omniview.terminal-capabilities`), never in the window state, the address, a request or the console; after a reload the page lists by it and makes no new terminal (reattach.slot)
 //   reattach-restore    a reload brings back the same tabs, titles, order and tab on screen, running again, and the input works (reattach.restore)
 //   reattach-exact      a reload during a numbered flood whose ring has moved joins with no gap and no duplicate in the emulator's lines, and the page acknowledges every byte of the stream it reattached with, the replay included (reattach.exact)
 //   reattach-muted      a replay that holds a query (the cursor position, the device attributes) is answered by nobody, and a live query after it is (reattach.muted)
@@ -51,8 +51,10 @@ export const REATTACH_PARTS = {
  * terminal-host.mjs) and its `options`. Each runs in Chromium: what it proves does not depend on the engine.
  */
 export const REATTACH_CONTROLS = {
-  // The page puts its capability in the address, and (the other) the window's state never keeps the slot of capabilities, so that a reload finds no terminal.
+  // The page puts its capability in the address, and (the other) never keeps the capabilities in its tab's sessionStorage, so that a reload finds no terminal.
   'cap-in-url': { assertion: 'reattach.slot', section: 'reattach-slot', engines: ['chromium'], query: 'control=cap-in-url' },
+  // The capabilities are also saved in the window's state (`SaveState`), where the host's other windows and its disk would keep them.
+  'cap-in-state': { assertion: 'reattach.slot', section: 'reattach-slot', engines: ['chromium'], query: 'control=cap-in-state' },
   'cap-forgotten': { assertion: 'reattach.slot', section: 'reattach-slot', engines: ['chromium'], query: 'control=cap-forgotten' },
   // The window's state never keeps the session: the tabs are not there after a reload.
   'no-session': { assertion: 'reattach.restore', section: 'reattach-restore', engines: ['chromium'], query: 'control=no-session' },
@@ -131,8 +133,15 @@ async function world(ctx, options = {}) {
   const served = await serveContext(context, host);
   const query = ['host=shared', 'renderer=dom', options.query, control?.query].filter((part) => part !== undefined && part !== '').join('&');
   const url = `${origin}/shell/probes/terminal-fixture.html?${query}`;
+  /**
+   * The capabilities are kept in the sessionStorage of a tab, which a duplicated tab copies and a new tab does not have. A page opened while another page of the context is on the fixture is a duplicate of it: it is given a copy
+   * of what that page keeps (before its own scripts run). One opened with no such page is a new tab, with nothing.
+   */
   const open = async () => {
+    const before = context.pages().find((other) => other.url().startsWith(origin));
+    const carried = before === undefined ? null : await before.evaluate((key) => window.sessionStorage.getItem(key), CAPABILITY_KEY).catch(() => null);
     const page = await context.newPage();
+    if (carried !== null) await page.addInitScript(([key, text]) => window.sessionStorage.getItem(key) ?? window.sessionStorage.setItem(key, text), [CAPABILITY_KEY, carried]);
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForSelector('[data-shell-part="window"]');
     return page;
@@ -199,6 +208,9 @@ const wroteBy = (host, from = 0) =>
     .map((entry) => entry.data)
     .join('');
 
+/** The capabilities the tab keeps, as the text of its sessionStorage (`undefined`: nothing kept). */
+const CAPABILITY_KEY = 'omniview.terminal-capabilities';
+const capsOf = async (page) => page.evaluate((key) => window.sessionStorage.getItem(key) ?? undefined, CAPABILITY_KEY);
 const slotOf = async (host, slot) => (await host.call('GetState', ['main']))[slot];
 
 export function createReattachSections({ check, note, report, runAxe }) {
@@ -238,7 +250,7 @@ export function createReattachSections({ check, note, report, runAxe }) {
     }
   };
 
-  /** The capability: made once, kept in the window's state slot, in no address, request or console line; a reload lists by it and makes no new terminal. */
+  /** The capability: made once, kept in the tab's sessionStorage, in no address, request or console line; a reload lists by it and makes no new terminal. */
   sections['reattach-slot'] = async (ctx) => {
     const { engine, vp } = ctx;
     const w = await world(ctx);
@@ -257,7 +269,7 @@ export function createReattachSections({ check, note, report, runAxe }) {
       const id = created?.id ?? '';
       const cap = created?.cap ?? '';
       const usable = /^[A-Za-z0-9_-]{43}$/.test(cap);
-      const kept = await until(async () => slotOf(host, 'terminal-capabilities'), (text) => text !== undefined, 5000);
+      const kept = await until(async () => capsOf(page), (text) => text !== undefined, 5000);
       const slot = parsedSlot(kept);
       const resources = await page.evaluate(() => performance.getEntriesByType('resource').map((entry) => entry.name));
       const leakedBefore = cap !== '' && [page.url(), ...resources, ...seen].some((text) => text.includes(cap));
@@ -266,20 +278,22 @@ export function createReattachSections({ check, note, report, runAxe }) {
       const attachesBefore = host.log.attaches.length;
       await reload(page, w);
       const createdAfter = host.log.created.length;
-      const keptAfter = await slotOf(host, 'terminal-capabilities');
+      const keptAfter = await capsOf(page);
       const listed = host.log.lists.slice(listsBefore).filter((entry) => entry.asked >= 1 && entry.listed.some((item) => item.id === id)).length;
       const again = host.log.attaches.slice(attachesBefore).find((entry) => entry.id === id);
       await page.click('[data-shell-part="sessionAdd"] button', { timeout: 5000 }).catch(() => undefined);
       await until(() => host.log.created.length, (count) => count >= 2, 5000);
       const second = host.log.created[1];
-      const both = parsedSlot(await until(async () => slotOf(host, 'terminal-capabilities'), (text) => Object.keys(parsedSlot(text) ?? {}).length >= 2, 5000));
+      const both = parsedSlot(await until(async () => capsOf(page), (text) => Object.keys(parsedSlot(text) ?? {}).length >= 2, 5000));
       const leaked = [cap, second?.cap ?? ''].some((one) => one !== '' && [page.url(), ...seen].some((text) => text.includes(one)));
+      // No capability reaches the host's window state: every `SaveState` call of the page is looked at.
+      const saved = [cap, second?.cap ?? ''].some((one) => one !== '' && host.log.saved.some((entry) => entry.text.includes(one)));
       check(
         'reattach.slot',
-        usable && slot !== null && Object.keys(slot).length === 1 && slot[id] === cap && !leakedBefore && keptAfter === kept && createdBefore === 1 && createdAfter === 1 && listed >= 1 && again?.outcome === 'ready' && second !== undefined && /^[A-Za-z0-9_-]{43}$/.test(second.cap) && second.cap !== cap && both?.[id] === cap && both?.[second.id] === second.cap && !leaked,
-        `${engine} ${vp}: the first create answered ${usable ? 'a capability of 43 characters of base64url' : 'NO usable capability'}; the window's slot held ${slot === null ? 'nothing' : `${String(Object.keys(slot).length)} entr${Object.keys(slot).length === 1 ? 'y' : 'ies'}`} and ${slot?.[id] === cap ? 'the' : 'NOT the'} capability for the terminal (one entry is right); it is ${leakedBefore ? '' : 'not '}in the address, a request or the console (not is right); after a reload the slot is ${keptAfter === kept ? 'the same' : 'DIFFERENT'}, ${String(createdAfter - createdBefore)} terminal(s) were made (none is right), the page listed by the capability ${String(listed)} time(s) (1 or more) and the attach after it ${again === undefined ? 'was never made' : `was ${again.outcome}`}; the next create made ${second === undefined ? 'nothing' : second.cap === cap ? 'the SAME capability' : 'another capability'} and the slot then holds both (${String(both?.[id] === cap && both?.[second?.id ?? ''] === second?.cap)}); either of them is ${leaked ? '' : 'not '}in the address or a request after the reload (not is right)`,
+        usable && slot !== null && Object.keys(slot).length === 1 && slot[id] === cap && !leakedBefore && keptAfter === kept && createdBefore === 1 && createdAfter === 1 && listed >= 1 && again?.outcome === 'ready' && second !== undefined && /^[A-Za-z0-9_-]{43}$/.test(second.cap) && second.cap !== cap && both?.[id] === cap && both?.[second.id] === second.cap && !leaked && !saved,
+        `${engine} ${vp}: the first create answered ${usable ? 'a capability of 43 characters of base64url' : 'NO usable capability'}; the tab's sessionStorage held ${slot === null ? 'nothing' : `${String(Object.keys(slot).length)} entr${Object.keys(slot).length === 1 ? 'y' : 'ies'}`} and ${slot?.[id] === cap ? 'the' : 'NOT the'} capability for the terminal (one entry is right); it is ${leakedBefore ? '' : 'not '}in the address, a request or the console (not is right); a capability reached the window state (SaveState): ${String(saved)} (false is right); after a reload the storage is ${keptAfter === kept ? 'the same' : 'DIFFERENT'}, ${String(createdAfter - createdBefore)} terminal(s) were made (none is right), the page listed by the capability ${String(listed)} time(s) (1 or more) and the attach after it ${again === undefined ? 'was never made' : `was ${again.outcome}`}; the next create made ${second === undefined ? 'nothing' : second.cap === cap ? 'the SAME capability' : 'another capability'} and the slot then holds both (${String(both?.[id] === cap && both?.[second?.id ?? ''] === second?.cap)}); either of them is ${leaked ? '' : 'not '}in the address or a request after the reload (not is right)`,
       );
-      note(`reattach slot ${engine} ${vp}: one capability made once, kept in the window's slot, in no address or request, listed by after a reload; a second terminal made a second capability`);
+      note(`reattach slot ${engine} ${vp}: one capability made once, kept in the tab's sessionStorage and in no address, request or window state, listed by after a reload; a second terminal made a second capability`);
     } finally {
       await w.close();
     }
@@ -594,7 +608,7 @@ export function createReattachSections({ check, note, report, runAxe }) {
       const attaches = host.log.attaches.length;
       await comeBack(page, late, { attaches: 0 });
       const card = await until(async () => bodyOf(page), (text) => text.includes(WORDS.gone), 5000);
-      const slot = await until(async () => parsedSlot(await slotOf(host, 'terminal-capabilities')), (value) => value !== null && value[id] === undefined, 5000);
+      const slot = await until(async () => parsedSlot(await capsOf(page)), (value) => value !== null && value[id] === undefined, 5000);
       const tabs = await tabsOf(page);
       over = { gone, silent, card, forgot: slot !== null && slot[id] === undefined, tabs, tab, streams: host.log.streams.length - streams, attaches: host.log.attaches.length - attaches };
     } finally {
@@ -692,14 +706,16 @@ export function createReattachSections({ check, note, report, runAxe }) {
       const tab = (await tabsOf(page))[0];
       await sessionHolds(host, [id]);
       // The page goes away and the shell ends while no page holds it: the host keeps its end and its output.
+      const caps = parsedSlot(await capsOf(page));
       await page.goto('about:blank');
       await until(() => host.state(id)?.holder, (holder) => holder === null);
       host.append(id, 'last words\r\n');
       host.end(id, { reason: 'exited', exit_code: 7 });
       await until(() => host.keptEnds().length, (count) => count === 1);
-      // A terminal made by the page whose tab was never saved (the window state holds its capability and the session does not): its shell ended too.
+      // A terminal made by the page whose tab was never saved (the tab's storage holds its capability and the session does not): its shell ended too.
       const orphan = await host.call('CreateTerminal', [{ id: 'orphan-terminal', tty: true, command: [], labels: {}, params: {}, resource_plugin: '', resource_key: '' }, { channel: true, cols: 80, rows: 24 }]);
-      await host.call('SaveState', ['main', 'terminal-capabilities', JSON.stringify({ ...parsedSlot(await slotOf(host, 'terminal-capabilities')), [orphan.id]: orphan.cap })]);
+      // The tab's own storage keeps it: the page that comes back finds it there (the init script adds it before the page's scripts run).
+      await page.addInitScript(([key, text]) => window.sessionStorage.setItem(key, text), [CAPABILITY_KEY, JSON.stringify({ ...caps, [orphan.id]: orphan.cap })]);
       host.end(orphan.id, { reason: 'exited', exit_code: 3 });
       await until(() => host.keptEnds().length, (count) => count === 2);
       const attachMark = host.log.attaches.length;

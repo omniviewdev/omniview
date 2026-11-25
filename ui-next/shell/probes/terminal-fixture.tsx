@@ -50,7 +50,7 @@ import type { PluginSource } from '../../plugins/host/contributions';
 import type { EngineLoader } from '../panel/terminal/engine';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
 import { attachLocalTerminal, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
-import { capabilityStorage, CAPABILITY_SLOT, loadTerminalChannels, type ChannelClient, type ChannelSocket } from '../panel/terminal/terminalChannel';
+import { loadTerminalChannels, sessionCapabilityStorage, type ChannelClient, type ChannelSocket } from '../panel/terminal/terminalChannel';
 import { loadSession, windowStorage, type WindowState } from '../session';
 import { createHost, FRAME, fromBase64, toBase64 } from './terminal-host.mjs';
 
@@ -586,7 +586,7 @@ const sharedState: WindowState = {
     return control === 'restore-forgets-open' ? withOpenFlag(state, false) : control === 'restore-forgets-closed' ? withOpenFlag(state, true) : state;
   },
   SaveState: async (name, slot, json) => {
-    if ((control === 'no-session' && slot === 'session') || (control === 'cap-forgotten' && slot === CAPABILITY_SLOT)) {
+    if ((control === 'no-session' && slot === 'session')) {
       return;
     }
 
@@ -1094,7 +1094,22 @@ async function mount(): Promise<void> {
     await callHost('hello', []);
   }
 
-  const channels = await loadTerminalChannels({ client, openStream, storage: capabilityStorage({ client: windowState, name: async () => Promise.resolve('main') }) });
+  // The capabilities are kept in this tab's sessionStorage and nowhere else. `?control=cap-forgotten`: what is written to it is dropped, as a page that never kept them would.
+  const kept = sessionCapabilityStorage(window);
+  // `?control=cap-in-state`: the capabilities are also saved in the window's state, as the first version kept them.
+  const storage =
+    control === 'cap-forgotten'
+      ? { read: kept.read, write: () => undefined }
+      : control === 'cap-in-state'
+        ? {
+          read: kept.read,
+          write: (text: string) => {
+            kept.write(text);
+            void windowState.SaveState('main', 'terminal-capabilities', text);
+          },
+        }
+        : kept;
+  const channels = loadTerminalChannels({ client, openStream, storage });
   const session = shared ? await loadSession(windowStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
   createRoot(root).render(
     <ThemeProvider>
