@@ -5498,8 +5498,8 @@ async function checkSettings(browser, engine, work) {
 const work = await mkdtemp(path.join(os.tmpdir(), 'omniview-seam-'));
 /** The exec service of the host: the calls of the Terminal tool (CreateTerminal, the channel's calls) and the bare-id bindings of the events lane are its. */
 const EXEC_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/exec.ServiceWrapper';
-/** The slot of the window's state that holds the page's terminals' capabilities (`shell/panel/terminal/terminalChannel.ts`). */
-const CAPABILITY_SLOT = 'terminal-capabilities';
+/** The tab's sessionStorage key that holds the page's terminals' capabilities (`shell/panel/terminal/terminalChannel.ts`): never the host's window state. */
+const CAPABILITY_KEY = 'omniview.terminal-capabilities';
 /** The address the Wails runtime opens a stream at in server mode (`/wails/stream/ws?name=terminal`). */
 const STREAM_PATH = '/wails/stream/ws';
 
@@ -5752,7 +5752,11 @@ const EVIDENCE = new WeakMap();
 function evidenceOf(page) {
   let made = EVIDENCE.get(page);
   if (made === undefined) {
-    made = { wire: watchExecCalls(page), streams: watchStreams(page), leaks: watchLeaks(page) };
+    const windowCalls = [];
+    page.on('request', (request) => {
+      if (/\/wails\/runtime$/.test(request.url()) && (calledMethod(request) === methodIdOf(WINDOW_SERVICE, 'SaveState') || calledMethod(request) === methodIdOf(WINDOW_SERVICE, 'GetState'))) windowCalls.push(String(request.postData() ?? ''));
+    });
+    made = { wire: watchExecCalls(page), streams: watchStreams(page), leaks: watchLeaks(page), windowCalls };
     EVIDENCE.set(page, made);
   }
 
@@ -6113,6 +6117,12 @@ async function assertFocusOnSessionTab(page, tab, engine, after) {
  * What the page says to the host about a terminal's input, size and acknowledgements goes on its STREAM and nowhere else: it makes no call of the events lane for a terminal (not the ordered WriteTerminal and ResizeTerminal, not the legacy WriteSession and ResizeSession, not
  * AckTerminal, not the attach, detach, list and close of a page key, not the bare-id reads), whatever it asks of the host it asks with the channel's calls.
  */
+function assertNoCapabilityInWindowState(seen, engine) {
+  assert.ok(seen.windowCalls.length > 0, `${engine}: the page made calls of the window's state (the search has something to look through)`);
+  const carried = seen.windowCalls.filter((body) => [...IDS.keys()].some((cap) => body.includes(cap))).length;
+  assert.equal(carried, 0, `${engine}: no call of the window's state (SaveState, GetState) carries a terminal's capability: they live in the tab's sessionStorage (${String(carried)} of ${String(seen.windowCalls.length)} calls did)`);
+}
+
 function assertNoEventsLane(wire, engine) {
   assert.deepEqual(wire.calls.filter((call) => EVENTS_LANE_CALLS.includes(call.method)).map((call) => call.method), [], `${engine}: the page makes no call of the events lane for a terminal: its input, size and acknowledgements are frames of its stream, and what else it asks of the host it asks with the channel's calls`);
 }
@@ -6614,6 +6624,7 @@ async function checkTerminal(page, base, engine) {
 
   // The page's input, size and acknowledgements were frames of its streams the whole time, and no call of the events lane was made for a terminal (T3): and the capability of no terminal is in an address or on the console.
   assertNoEventsLane(wire, engine);
+  assertNoCapabilityInWindowState(evidenceOf(page), engine);
   assertStreamFrames(streams, engine);
   for (const [terminal, cap] of KNOWN) assertSecretIsNowhere(cap, page, leaks, engine, `at the end (terminal ${terminal})`);
   note('the wire', `${String(streams.sockets.length)} streams, each attached once as its first frame; input, size and ack frames only; no call of the events lane`);
@@ -7080,7 +7091,11 @@ async function callAsPage(page, method, ...args) {
 async function duplicateStorage(from, to) {
   const entries = await from.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)));
   await to.addInitScript((copy) => {
-    for (const [name, value] of Object.entries(copy)) if (sessionStorage.getItem(name) === null) sessionStorage.setItem(name, value);
+    try {
+      for (const [name, value] of Object.entries(copy)) if (sessionStorage.getItem(name) === null) sessionStorage.setItem(name, value);
+    } catch {
+      // a blank page has no storage
+    }
   }, entries);
 }
 
@@ -7664,6 +7679,7 @@ async function checkTerminalReattach(page, base, engine) {
   }
 
   assertNoEventsLane(wire, engine);
+  assertNoCapabilityInWindowState(evidenceOf(page), engine);
   assert.deepEqual(errors.filter((message) => !CUT_BY_A_RELOAD.test(message)), [], `${engine}: the page raised no error but the calls a reload cut`);
   assertSecretIsNowhere(cap, page, leaks, engine, 'at the end');
   console.log(`terminal-reattach ${engine}:\n${observed.map((line) => `  ${line}`).join('\n')}`);
@@ -7797,9 +7813,10 @@ async function checkTerminalTakeover(browser, getHost, restart, engine, work) {
   const capBefore = capOf(kept.id);
   const onDisk = async () => JSON.parse(await readFile(path.join(stateRoot(work), 'windows.json'), 'utf8')).states?.main?.session;
   await waitUntil('the saved window with the terminal tab to be on disk', async () => String(await onDisk().catch(() => '')).includes(kept.id), 30_000);
+  const d = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await duplicateStorage(c, d);
   await c.close();
   await restart();
-  const d = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const fourth = await watched(d);
   const restartedAt = Date.now();
   await open(d, base());
@@ -7834,8 +7851,8 @@ async function checkTerminalTakeover(browser, getHost, restart, engine, work) {
   const madeAt = Date.now();
   assert.ok(saved.includes(lone.id), `${engine}: the window's saved session holds the tab of the terminal the page made (to hand a terminal of a short lease to a page, the check puts that terminal's id in its place)`);
   await callHost(base(), 'SaveState', 'main', 'session', saved.split(lone.id).join(made.id));
-  await callHost(base(), 'SaveState', 'main', CAPABILITY_SLOT, JSON.stringify({ [made.id]: made.cap }));
   const g = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await g.addInitScript(({ key, value }) => { try { if (sessionStorage.getItem(key) === null) sessionStorage.setItem(key, value); } catch { /* a blank page has no storage */ } }, { key: CAPABILITY_KEY, value: JSON.stringify({ [made.id]: made.cap }) });
   const sixth = await watched(g);
   await open(g, base());
   assertPanelBack(await panelBack(g, true, madeAt), true, engine, 'with the terminal of a short lease');
@@ -8522,7 +8539,6 @@ async function checkTerminalIsolation(browser, getHost, engine) {
     const response = await route.fetch();
     const state = await response.json();
     delete state.session;
-    delete state[CAPABILITY_SLOT];
     return route.fulfill({ response, json: state });
   });
   await open(second, base());
