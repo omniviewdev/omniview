@@ -393,3 +393,57 @@ func TestPwshTheUsersPromptThatRunsANativeCommandDoesNotChangeLASTEXITCODE(t *te
 	f.run(info.ID, "$LASTEXITCODE > lec")
 	assert.Equal(t, "7", strings.TrimSpace(f.fileOf("lec")), "the code of the user's command, not of their prompt's")
 }
+
+// RETURN traps (and any other trap) are the user's: the script defines no function that stands in for `trap`.
+func TestTheScriptDefinesNoTrapFunctionAndARETURNTrapFiresOnce(t *testing.T) {
+	f := bashFixture(t, "")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, `f() { trap 'echo RET >> $HOME/ret' RETURN; echo body >> $HOME/ret; }`)
+	f.run(info.ID, "f")
+	assert.Equal(t, "body\nRET\n", f.fileOf("ret"), "the RETURN trap fired once, when the function returned")
+	f.run(info.ID, "type -t trap > kind")
+	assert.Equal(t, "builtin\n", f.fileOf("kind"), "trap is the builtin")
+}
+
+// A HUP handler set by `builtin trap`, `command trap` or by the user's own prompt command is the user's too.
+func TestAHUPHandlerSetByBuiltinTrapOrByAPromptCommandIsKept(t *testing.T) {
+	f := bashFixture(t, "")
+	info := f.started()
+	f.run(info.ID, "builtin trap 'echo a >> $HOME/hup' HUP")
+	f.run(info.ID, "echo x")
+	f.run(info.ID, "builtin trap -p HUP > builtin")
+	assert.Contains(t, f.fileOf("builtin"), "echo a", "a handler set with builtin trap is kept")
+	assert.NotContains(t, f.fileOf("builtin"), "omniview")
+
+	g := bashFixture(t, "")
+	infoG := g.started()
+	g.run(infoG.ID, "command trap 'echo c >> $HOME/hup' HUP")
+	g.run(infoG.ID, "echo x")
+	g.run(infoG.ID, "trap -p HUP > command")
+	assert.Contains(t, g.fileOf("command"), "echo c", "a handler set with command trap is kept")
+
+	h := bashFixture(t, "PROMPT_COMMAND='builtin trap \"echo p >> $HOME/hup\" HUP'\n")
+	infoH := h.started()
+	h.run(infoH.ID, "echo x")
+	h.run(infoH.ID, "trap -p HUP > prompt")
+	assert.Contains(t, h.fileOf("prompt"), "echo p", "a handler set by the user's prompt command is kept")
+	assert.NotContains(t, h.fileOf("prompt"), "omniview")
+}
+
+// A line of only a comment runs nothing: no command, no mark.
+func TestACommentLineIsNotACommand(t *testing.T) {
+	f := bashFixture(t, "")
+	info := f.started()
+	f.run(info.ID, "echo before")
+	f.run(info.ID, "# just a comment")
+	f.run(info.ID, "   # indented")
+	f.run(info.ID, "echo after")
+	var lines []string
+	for _, r := range f.scanned(info.ID).Records() {
+		if r.Ran {
+			lines = append(lines, r.CommandLine)
+		}
+	}
+	assert.Equal(t, []string{"echo before", "echo after"}, lines)
+}
