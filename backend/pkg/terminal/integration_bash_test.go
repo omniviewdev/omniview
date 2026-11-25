@@ -274,3 +274,122 @@ func TestAHangupDuringThePromptCommandsStillHangsUpTheJobs(t *testing.T) {
 	require.NoError(t, f.m.CloseSession(info.ID))
 	require.Eventually(t, func() bool { return ended(job) }, 8*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
 }
+
+// An empty line and Ctrl-C at the prompt run no command: the hooks run again, and the DEBUG trap, still armed, must not take
+// the first of them for the user's command (it once recorded the previous line again, with a C and a D).
+func TestAnEmptyLineAndACtrlCAtThePromptMakeNoCommand(t *testing.T) {
+	for _, form := range []string{"string", "array"} {
+		t.Run(form, func(t *testing.T) {
+			profile := ""
+			if form == "array" {
+				major, minor := bashMajorMinor(t)
+				if major < 5 || (major == 5 && minor < 1) {
+					t.Skip("NOT RUN: PROMPT_COMMAND is an array from bash 5.1")
+				}
+				profile = "PROMPT_COMMAND=(true)\n"
+			}
+			f := bashFixture(t, profile)
+			info := f.started()
+			require.Equal(t, IntegrationOn, info.Integration.State)
+			f.run(info.ID, "echo hi")
+			f.run(info.ID, "")
+			before := f.prompts(info.ID)
+			require.NoError(t, f.m.Write(info.ID, 0, []byte("\x03")))
+			require.Eventually(t, func() bool { return f.prompts(info.ID) > before }, 20*time.Second, 5*time.Millisecond, "no prompt after Ctrl-C")
+			f.run(info.ID, "echo done")
+			var lines []string
+			for _, r := range f.scanned(info.ID).Records() {
+				if r.Ran {
+					lines = append(lines, r.CommandLine)
+				}
+			}
+			assert.Equal(t, []string{"echo hi", "echo done"}, lines, "only the commands that were typed ran")
+			assert.Equal(t, 2, strings.Count(string(f.sink.output(info.ID)), "\x1b]633;E;"), "two lines were sent")
+		})
+	}
+}
+
+func TestAUserWithErrexitKeepsTheirShellWhenAStatusIsNotZero(t *testing.T) {
+	f := bashFixture(t, "set -e\n")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "! true")
+	f.run(info.ID, "[ -e /no/such/file ] && echo x")
+	f.run(info.ID, "echo alive > alive")
+	assert.Equal(t, "alive\n", f.fileOf("alive"), "the shell is still there after a status that is not zero")
+	var codes []int32
+	for _, r := range f.endedCommands(info.ID, 3) {
+		codes = append(codes, r.ExitCode)
+	}
+	assert.Equal(t, []int32{1, 1, 0}, codes)
+	f.run(info.ID, "case $- in *e*) echo on > errexit;; *) echo off > errexit;; esac")
+	assert.Equal(t, "on\n", f.fileOf("errexit"), "the user's errexit is back on at the prompt")
+}
+
+func TestAUserWithNounsetKeepsTheMarksAndTheShell(t *testing.T) {
+	f := bashFixture(t, "set -u\n")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "echo hello")
+	f.run(info.ID, "(exit 3)")
+	var codes []int32
+	for _, r := range f.endedCommands(info.ID, 2) {
+		codes = append(codes, r.ExitCode)
+	}
+	assert.Equal(t, []int32{0, 3}, codes)
+	assert.Equal(t, 2, strings.Count(string(f.sink.output(info.ID)), "\x1b]633;E;"))
+}
+
+// The hooks put a HUP handler only while they run and never take the place of a user's: whoever set one, in the shell or in a
+// file it sourced, keeps it, and a user who has none has none at the prompt.
+func TestTheHooksLeaveNoHUPHandlerAtThePromptAndNeverReplaceTheUsers(t *testing.T) {
+	f := bashFixture(t, "")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "trap -p HUP > none")
+	assert.Empty(t, strings.TrimSpace(f.fileOf("none")), "no handler of ours stays at the prompt")
+	f.run(info.ID, "trap '' HUP")
+	f.run(info.ID, "echo a; echo b")
+	f.run(info.ID, "trap -p HUP > typed")
+	assert.Contains(t, f.fileOf("typed"), "SIGHUP", "the user's ignore is still in place after the hooks ran")
+	assert.NotContains(t, f.fileOf("typed"), "omniview")
+
+	g := bashFixture(t, "")
+	infoG := g.started()
+	require.NoError(t, os.WriteFile(filepath.Join(g.home, "settrap.sh"), []byte("trap 'echo bye > $HOME/bye' HUP\n"), 0o600))
+	g.run(infoG.ID, ". ./settrap.sh")
+	g.run(infoG.ID, "echo a")
+	g.run(infoG.ID, "trap -p HUP > sourced")
+	assert.Contains(t, g.fileOf("sourced"), "bye", "a handler set by a sourced file is the user's and stays")
+	assert.NotContains(t, g.fileOf("sourced"), "omniview")
+}
+
+// ---- pwsh ----
+
+func TestPwshAnEmptyLineRunsNoCommand(t *testing.T) {
+	f := newIntegrationFixture(t, "pwsh", integrationShell(t, "pwsh"))
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "echo hi")
+	f.run(info.ID, "")
+	f.run(info.ID, "   ")
+	f.run(info.ID, "echo done")
+	var lines []string
+	for _, r := range f.scanned(info.ID).Records() {
+		if r.Ran {
+			lines = append(lines, r.CommandLine)
+		}
+	}
+	assert.Equal(t, []string{"echo hi", "echo done"}, lines, "an empty line is no command, as in zsh")
+}
+
+// The user's prompt may run a native command: it must not change the $LASTEXITCODE the user sees for their own command.
+func TestPwshTheUsersPromptThatRunsANativeCommandDoesNotChangeLASTEXITCODE(t *testing.T) {
+	f := newIntegrationFixture(t, "pwsh", integrationShell(t, "pwsh"))
+	require.NoError(t, os.WriteFile(f.files[0], []byte("function prompt { & /bin/sh -c 'exit 5' | Out-Null; '"+integrationPrompt+"' }\n"), 0o600))
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "sh -c 'exit 7'")
+	f.run(info.ID, "$LASTEXITCODE > lec")
+	assert.Equal(t, "7", strings.TrimSpace(f.fileOf("lec")), "the code of the user's command, not of their prompt's")
+}
