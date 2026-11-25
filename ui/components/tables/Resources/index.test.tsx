@@ -31,8 +31,11 @@ describe('optional presentation', () => {
     expect(screen.getByText('18446744073709551615')).toBeTruthy();
   });
   it.each(['FORBIDDEN', 'UNAUTHORIZED', 'PROVIDER_ERROR'])('does not treat %s as absent presentation', (code) => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     show(code);
     expect(screen.queryByText('canonical-id')).toBeNull();
     expect(screen.getByText('Failed to load resources')).toBeTruthy();
+    expect(report).toHaveBeenCalledExactlyOnceWith('Failed loading resources', 'The operation could not be completed.');
+    report.mockRestore();
   });
 });

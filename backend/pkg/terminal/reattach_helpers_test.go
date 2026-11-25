@@ -398,7 +398,9 @@ func cpuTime(t *testing.T, pid int) time.Duration {
 	return total
 }
 
-// heapInUse is the live heap after a collection.
+// heapInUse is the live heap after two collections, when nothing allocates while it is read. A goroutine that allocates meanwhile (a
+// pump that reads a flood) is counted for what it allocated during the collections and since: the reading then grows with the time the
+// machine takes to run them, and not with what anything keeps.
 func heapInUse() uint64 {
 	runtime.GC()
 	runtime.GC()

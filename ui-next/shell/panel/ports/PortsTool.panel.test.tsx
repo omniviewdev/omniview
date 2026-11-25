@@ -121,7 +121,9 @@ describe('what it costs while it is not shown', () => {
     act(() => {
       revealPortsTool(store);
     });
-    await fake.answer([session('a')]);
+    await act(async () => {
+      await fake.answer([session('a')]);
+    });
     expect(screen.getByRole('table', { name: 'Forwarded ports' })).toBeInTheDocument();
     act(() => {
       store.hide();
@@ -188,7 +190,9 @@ describe('the body in the panel', () => {
     act(() => {
       revealPortsTool(store);
     });
-    await fake.answer([session('a'), session('b')]);
+    await act(async () => {
+      await fake.answer([session('a'), session('b')]);
+    });
     act(() => {
       fake.emit(CREATED_EVENT, session('c'));
     });
@@ -206,14 +210,18 @@ describe('the body in the panel', () => {
     act(() => {
       revealPortsTool(store);
     });
-    await fake.answer([session('a')]);
+    await act(async () => {
+      await fake.answer([session('a')]);
+    });
     const stop = stopOf('a');
     stop.focus();
     await user.keyboard('{Enter}');
     act(() => {
       fake.emit(CLOSED_EVENT, session('a'));
     });
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     await waitFor(() => {
       expect(tab('Ports')).toHaveFocus();
     });

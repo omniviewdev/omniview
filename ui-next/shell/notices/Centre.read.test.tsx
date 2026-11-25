@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mountWindow, teardown, type MountedWindow } from './testing';
 
@@ -16,7 +16,9 @@ const toasts = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('
 describe('what the centre reads', () => {
   it('keeps every row as it was while it is open, however long: opening reads nothing', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.pass(30_000);
@@ -27,12 +29,16 @@ describe('what the centre reads', () => {
 
   it('reads what it listed when it closes after being open for a second', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.pass(1000);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(unread(m)).toBe(0);
     expect(bell()).toHaveAccessibleName('Notifications');
@@ -40,25 +46,35 @@ describe('what the centre reads', () => {
 
   it('reads nothing when it closes before a second has passed', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.pass(900);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(unread(m)).toBe(1);
   });
 
   it('counts a record from the moment it arrived while the centre was open: one that came a moment ago is not read, the one that was there is', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Was there', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Was there', source: 'cloud' });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.pass(2000);
-    m.f.store.notify({ title: 'Came just now', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Came just now', source: 'stack' });
+    });
     await m.pass(300);
     expect(rows().map((row) => row.querySelector('[data-notices-part="rowTitle"]')?.textContent)).toEqual(['Info: Came just now', 'Info: Was there']);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     const left = m.f.store.getSnapshot().recent.filter((record) => record.unread).map((record) => record.title);
     expect(left).toEqual(['Came just now']);
@@ -66,8 +82,10 @@ describe('what the centre reads', () => {
 
   it('reads a row at once when it is opened, and again when it is closed', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
     await m.user.click(bell());
     expect(unread(m)).toBe(2);
@@ -79,7 +97,9 @@ describe('what the centre reads', () => {
   it('reads a row at once when one of its actions is pressed', async () => {
     const run = vi.fn();
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run }] });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', actions: [{ id: 'again', label: 'Retry', kind: 'retry', run }] });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.user.click(within(rows()[0]).getByRole('button', { expanded: false }));
@@ -90,27 +110,37 @@ describe('what the centre reads', () => {
 
   it('reads only the rows it drew: the records behind "Show older" stay unread', async () => {
     const m = mountWindow();
-    for (let index = 0; index < 60; index += 1) {
-      m.f.store.notify({ title: `Notice ${String(index)}`, source: `p${String(index)}` });
-    }
+    act(() => {
+      for (let index = 0; index < 60; index += 1) {
+        m.f.store.notify({ title: `Notice ${String(index)}`, source: `p${String(index)}` });
+      }
+    });
 
     await m.flush();
     await m.user.click(bell());
     await m.pass(1500);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(unread(m)).toBe(10);
   });
 
   it('does not read a record of a source it is narrowed away from: it was not listed', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+    });
     await m.flush();
-    m.centre.filter('stack');
+    act(() => {
+      m.centre.filter('stack');
+    });
     await m.user.click(bell());
     await m.pass(1500);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(m.f.store.getSnapshot().recent.filter((record) => record.unread).map((record) => record.title)).toEqual(['Timed out']);
   });
@@ -119,33 +149,43 @@ describe('what the centre reads', () => {
 describe('the toast stack while the centre is open', () => {
   it('waits while it is open, and is back when it closes before the records were read', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', initiator: 'user' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', initiator: 'user' });
+    });
     await m.flush();
     expect(toasts()).toHaveLength(1);
     await m.user.click(bell());
     expect(toasts()).toHaveLength(0);
     await m.pass(500);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(toasts()).toHaveLength(1);
   });
 
   it('does not bring back a toast whose record the centre read', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', initiator: 'user' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud', initiator: 'user' });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.pass(1500);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(toasts()).toHaveLength(0);
   });
 
   it('is opened by the summary toast\'s Show, which the window has now that it has a centre', async () => {
     const m = mountWindow();
-    for (let index = 1; index <= 5; index += 1) {
-      m.f.store.notify({ title: `Notice ${String(index)}`, severity: 'error', source: `p${String(index)}` });
-    }
+    act(() => {
+      for (let index = 1; index <= 5; index += 1) {
+        m.f.store.notify({ title: `Notice ${String(index)}`, severity: 'error', source: `p${String(index)}` });
+      }
+    });
 
     await m.flush();
     const show = within(toasts()[0]).getByRole('button', { name: 'Show' });
@@ -157,9 +197,11 @@ describe('the toast stack while the centre is open', () => {
 
   it('has no Show on the summary toast in a window that has no centre: a button that opens nothing is a stub', async () => {
     const m = mountWindow({ noCentre: true });
-    for (let index = 1; index <= 5; index += 1) {
-      m.f.store.notify({ title: `Notice ${String(index)}`, severity: 'error', source: `p${String(index)}` });
-    }
+    act(() => {
+      for (let index = 1; index <= 5; index += 1) {
+        m.f.store.notify({ title: `Notice ${String(index)}`, severity: 'error', source: `p${String(index)}` });
+      }
+    });
 
     await m.flush();
     expect(within(toasts()[0]).queryByRole('button', { name: 'Show' })).toBeNull();
@@ -170,18 +212,24 @@ describe('the toast stack while the centre is open', () => {
 describe('one presenter: the list and the toasts', () => {
   it('puts a notice that arrives while it is open in the list, raises no toast for it, and tells it once', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'First', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'First', source: 'cloud' });
+    });
     await m.flush();
     await m.user.click(bell());
     const told = (): number => m.announcer.assertive.getSnapshot().serial + m.announcer.polite.getSnapshot().serial;
     const before = told();
-    m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'stack', initiator: 'user' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', detail: 'The cluster did not answer.', severity: 'error', source: 'stack', initiator: 'user' });
+    });
     await m.flush();
     expect(rows().map((row) => row.querySelector('[data-notices-part="rowTitle"]')?.textContent)).toEqual(['Error: Timed out', 'Info: First']);
     expect(toasts()).toHaveLength(0);
     expect(m.announcer.assertive.getSnapshot().text).toContain('Timed out');
     expect(told()).toBe(before + 1);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.pass(500);
     expect(toasts().map((toast) => toast.getAttribute('aria-label'))).toEqual(['Info: First']);
     expect(told()).toBe(before + 1);
@@ -189,14 +237,18 @@ describe('one presenter: the list and the toasts', () => {
 
   it('brings back a toast that was waiting with what it had left, when the centre closes before it read the record', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'cloud' });
+    });
     await m.flush();
     await m.pass(7000);
     expect(toasts()).toHaveLength(1);
     await m.user.click(bell());
     expect(toasts()).toHaveLength(0);
     await m.pass(500);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(toasts()).toHaveLength(1);
     await m.pass(1500);
@@ -207,12 +259,16 @@ describe('one presenter: the list and the toasts', () => {
 
   it('does not bring back a timed toast whose record the centre read while it was open for a second', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'cloud' });
+    });
     await m.flush();
     await m.pass(3000);
     await m.user.click(bell());
     await m.pass(1500);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(toasts()).toHaveLength(0);
     await m.pass(10_000);
@@ -222,11 +278,15 @@ describe('one presenter: the list and the toasts', () => {
 
   it('does not bring back a toast whose record was opened in the list: acting on a record reads it', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'cloud' });
+    });
     await m.flush();
     await m.user.click(bell());
     await m.user.click(within(rows()[0]).getByRole('button', { expanded: false }));
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(toasts()).toHaveLength(0);
   });

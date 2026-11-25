@@ -21,7 +21,9 @@ async function mount(sessions?: readonly unknown[], wrap: (body: ReactElement) =
   const store = createPortsStore(fake.deps);
   const view = render(wrap(<MenuHost><PortsBody store={store} /></MenuHost>));
   if (sessions !== undefined) {
-    await fake.answer(sessions);
+    await act(async () => {
+      await fake.answer(sessions);
+    });
   }
 
   return { fake, store, view, user: userEvent.setup() };
@@ -107,21 +109,27 @@ describe('while the host has not answered', () => {
 describe('when the host could not be read', () => {
   it('says so in plain words and offers Try again, which asks the host again: loading, then what it says', async () => {
     const { fake, store, user } = await mount();
-    await fake.fail(new Error('down'));
+    await act(async () => {
+      await fake.fail(new Error('down'));
+    });
     expect(screen.getByText('Couldn\'t read the port forwards.')).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(fake.listed()).toBe(2);
     expect(store.getSnapshot().status).toBe('loading');
     expect(screen.getByRole('status', { name: 'Loading forwarded ports' })).toBeInTheDocument();
-    await fake.answer([session('a')]);
+    await act(async () => {
+      await fake.answer([session('a')]);
+    });
     expect(screen.getByRole('table', { name: 'Forwarded ports' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
   });
 
   it('is reached by the keyboard: Try again is a button with the focus order of one', async () => {
     const { fake, user } = await mount();
-    await fake.fail(new Error('down'));
+    await act(async () => {
+      await fake.fail(new Error('down'));
+    });
     await user.tab();
     expect(screen.getByRole('button', { name: 'Try again' })).toHaveFocus();
   });
@@ -156,7 +164,9 @@ describe('the table of forwards', () => {
   it('has a row for each forward, in the order the store gives, each saying its resource, its mapping, its connection and its state', async () => {
     const { fake } = await mount();
     fake.names.set('acme', 'conn-1', 'Staging');
-    await fake.answer([session('a', { local_port: 8081, remote_port: 8080 }), session('b', { created_at: '2026-11-24T11:00:00Z', state: 'PAUSED', local_port: 9000, remote_port: 5432 })]);
+    await act(async () => {
+      await fake.answer([session('a', { local_port: 8081, remote_port: 8080 }), session('b', { created_at: '2026-11-24T11:00:00Z', state: 'PAUSED', local_port: 9000, remote_port: 5432 })]);
+    });
     expect(rows().map((row) => row.dataset.portsId)).toEqual(['a', 'b']);
     expect(cells('a')).toEqual(['res-a', 'port 8081 → :8080/TCP', 'Staging', 'Running']);
     expect(cells('b')).toEqual(['res-b', 'port 9000 → :5432/TCP', 'Staging', 'Paused']);
@@ -202,7 +212,9 @@ describe('the table of forwards', () => {
   it('says that a forward could not be stopped, on its row, with the host\'s words', async () => {
     const { fake, user } = await mount([session('a')]);
     await user.click(buttonOf('a', 'Stop'));
-    await fake.closeFail(new Error('The plugin is busy.'));
+    await act(async () => {
+      await fake.closeFail(new Error('The plugin is busy.'));
+    });
     expect(rowOf('a').querySelector('[data-ports-part="reason"]')?.textContent).toBe('Couldn\'t stop it. The plugin is busy.');
     expect(cells('a')[3]).toBe('Running');
   });
@@ -281,7 +293,9 @@ describe('the actions of a row', () => {
     expect(open).toHaveAccessibleDescription('Where this forward listens is not stated, so it cannot be opened from here.');
     expect(open.getAttribute('data-ov-tip')).toBe('Open in browser\nWhere this forward listens is not stated, so it cannot be opened from here.');
     await user.click(open);
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.opened).toEqual([]);
     expect(fake.listed()).toBe(1);
     expect(buttonOf('a', 'Copy port').getAttribute('data-ov-tip')).toBe('Copy port');
@@ -294,7 +308,9 @@ describe('the actions of a row', () => {
     const open = buttonOf('a', 'Open in browser');
     expect(open).toHaveAccessibleDescription('This forward listens beyond this computer, so it is not opened from here.');
     await user.click(open);
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.opened).toEqual([]);
     expect(buttonOf('a', 'Copy address')).toBeInTheDocument();
   });
@@ -333,7 +349,9 @@ describe('the actions of a row', () => {
     const { fake, user } = await mount([session('a', { local_port: 3000, local_host: '127.0.0.1' })]);
     fake.serve([session('a', { local_port: 3000, local_host: '127.0.0.1' })]);
     await user.click(buttonOf('a', 'Open in browser'));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.opened).toEqual(['http://127.0.0.1:3000']);
   });
 
@@ -345,7 +363,9 @@ describe('the actions of a row', () => {
     expect(live().textContent).toBe('');
     expect(glyph('a')).toBe('copy');
     await user.click(buttonOf('a', 'Copy port'));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.copied).toEqual(['8081']);
     expect(glyph('a')).toBe('check');
     expect(glyph('b')).toBe('copy');
@@ -362,10 +382,14 @@ describe('the actions of a row', () => {
     const { fake, user } = await mount([session('a')]);
     fake.serve([session('a')]);
     await user.click(buttonOf('a', 'Copy port'));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     const first = live().firstElementChild;
     await user.click(buttonOf('a', 'Copy port'));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(live().firstElementChild).not.toBe(first);
     expect(live().textContent).toBe('Port copied');
   });
@@ -375,7 +399,9 @@ describe('the actions of a row', () => {
     fake.serve([session('a')]);
     fake.clipboard.works = false;
     await user.click(buttonOf('a', 'Copy port'));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(live().textContent).toBe('Couldn\'t copy the port');
     expect(buttonOf('a', 'Copy port').querySelector('svg')?.getAttribute('data-ov-glyph')).toBe('copy');
   });
@@ -385,7 +411,9 @@ describe('the actions of a row', () => {
     fake.serve([session('a', { local_host: '127.0.0.1' })]);
     expect(rowOf('a').querySelector('[data-ports-part="mapping"]')?.textContent).toBe('127.0.0.1:8081 → :8080/TCP');
     await user.click(buttonOf('a', 'Copy address'));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.copied).toEqual(['127.0.0.1:8081']);
     expect(live().textContent).toBe('Address copied');
   });
@@ -395,7 +423,9 @@ describe('the actions of a row', () => {
     fake.serve([session('a', { local_host: '127.0.0.1' })]);
     fake.browser.reject = true;
     await user.click(buttonOf('a', 'Open in browser'));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(live().textContent).toBe('Couldn\'t open 127.0.0.1:8081 in the browser');
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -423,10 +453,14 @@ describe('the keyboard', () => {
     fake.serve([session('a', { local_host: '127.0.0.1' })]);
     await user.tab();
     await user.keyboard('{ArrowRight}{Enter}');
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.opened).toHaveLength(1);
     await user.keyboard('{ArrowRight} ');
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.copied).toHaveLength(1);
   });
 
@@ -486,7 +520,9 @@ describe('the menu of a row', () => {
     const menu = screen.getByRole('menu', { name: 'Actions for res-b, port 9000 → :8080/TCP' });
     expect(within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'))).toEqual(['Stop', 'Open in browser', 'Copy port']);
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Copy port' }));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.copied).toEqual(['9000']);
   });
 
@@ -523,7 +559,9 @@ describe('the menu of a row', () => {
     const open = screen.getByRole('menuitem', { name: 'Open in browser' });
     expect(open).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(open);
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.opened).toEqual([]);
   });
 
@@ -531,7 +569,9 @@ describe('the menu of a row', () => {
     const { fake } = await mount([session('a')]);
     fireEvent.contextMenu(rowOf('a'), { button: 2 });
     fireEvent.click(screen.getByRole('menuitem', { name: 'Stop' }));
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(fake.closed()).toEqual(['a']);
     expect(cells('a')[3]).toBe('Stopping');
   });
@@ -555,7 +595,9 @@ describe('the menu of a row', () => {
     act(() => {
       fake.emit(CLOSED_EVENT, session('b'));
     });
-    await settle();
+    await act(async () => {
+      await settle();
+    });
     expect(screen.queryByRole('menu')).toBeNull();
     expect(rows().map((row) => row.dataset.portsId)).toEqual(['a', 'c']);
     expect(rowOf('c').contains(document.activeElement)).toBe(true);
@@ -582,7 +624,9 @@ describe('what it costs', () => {
 
   it('is the same under strict mode, where an effect runs twice: one set of handlers while it is on screen, none after', async () => {
     const { fake, view } = await mount([session('a')], (body) => <StrictMode>{body}</StrictMode>);
-    await fake.answer([session('a')]);
+    await act(async () => {
+      await fake.answer([session('a')]);
+    });
     expect(fake.handlers()).toBe(5);
     expect(rows()).toHaveLength(1);
     view.unmount();
@@ -602,7 +646,9 @@ describe('what it costs', () => {
           </MenuHost>
         </Profiler>,
       );
-      await fake.answer([session('a'), session('b')]);
+      await act(async () => {
+        await fake.answer([session('a'), session('b')]);
+      });
       commits.mockClear();
       await vi.advanceTimersByTimeAsync(10_000);
       expect(commits).not.toHaveBeenCalled();
@@ -627,7 +673,9 @@ describe('what it costs', () => {
         </MenuHost>
       </Profiler>,
     );
-    await fake.answer([session('a'), session('b')]);
+    await act(async () => {
+      await fake.answer([session('a'), session('b')]);
+    });
     commits.mockClear();
     asked.mockClear();
     act(() => {
@@ -643,7 +691,9 @@ describe('what it costs', () => {
     });
     commits.mockClear();
     asked.mockClear();
-    await fake.answer([session('a'), session('b', { local_port: 9999 })]);
+    await act(async () => {
+      await fake.answer([session('a'), session('b', { local_port: 9999 })]);
+    });
     expect(commits).not.toHaveBeenCalled();
     expect(asked).not.toHaveBeenCalled();
   });
@@ -659,7 +709,9 @@ describe('what it costs', () => {
         </MenuHost>
       </Profiler>,
     );
-    await fake.answer([]);
+    await act(async () => {
+      await fake.answer([]);
+    });
     commits.mockClear();
     for (let index = 0; index < 60; index += 1) {
       act(() => {

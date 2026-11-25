@@ -63,9 +63,9 @@ afterEach(() => {
 });
 
 describe('which pages are drawn', () => {
-  it('draws the tab on screen, in a slot of the one page region, and nothing for a tab that was never shown', () => {
+  it('draws the tab on screen, in a slot of the one page region, and nothing for a tab that was never shown', async () => {
     const { h } = mount(['alpha']);
-    const background = h.open(cloudPage('beta'), { how: 'background' });
+    const background = await act(() => h.open(cloudPage('beta'), { how: 'background' }));
 
     expect(slots()).toHaveLength(1);
     expect(slotOf(background)).toBeUndefined();

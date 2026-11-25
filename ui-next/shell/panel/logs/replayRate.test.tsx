@@ -246,7 +246,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     expect(tells.slice(-20).every((tell) => tell !== undefined && tell >= 3.5 && tell <= 6.5)).toBe(true);
     // The lines are all there: the replay is not hidden, only left out of the rate.
     expect(h.strip()).toMatch(/^[\d,]+ lines? · /);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('says no rate before the backend says anything, then a rate from its word on, and never a rate made of the lines that came before it', async () => {
@@ -263,7 +265,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     const after = run(h, 8, [['orders/app', 5]]);
     expect(Math.max(...figures(after))).toBeLessThanOrEqual(10);
     expect(after.at(-1)).toBeGreaterThanOrEqual(3.5);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('does not count the replay of a second container that arrives after the first one\'s first live line: no tell reads above twice the rate the two make', async () => {
@@ -287,7 +291,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     expect(Math.max(...tells.slice(0, 14).filter((tell): tell is number => tell !== undefined))).toBeLessThanOrEqual(10);
     expect(Math.max(...figures(tells))).toBeLessThanOrEqual(20);
     expect(tells.at(-1)).toBeGreaterThanOrEqual(3.5);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('says no rate for as long as a source is never marked: the interim of a plugin that could not count its replay, which flags every line of the opening and says nothing', async () => {
@@ -299,7 +305,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     // Its live lines arrive unflagged here: still no word, so still no rate. (The plugin that cannot count flags them; either way nothing is counted.)
     expect(tells.every((tell) => tell === undefined)).toBe(true);
     expect(h.strip()).toMatch(/^[\d,]+ lines · No rate · Following$/);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('says no rate, and draws and follows as ever, for a plugin that sends no markers at all: only the rate is unknown', async () => {
@@ -311,7 +319,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     expect(h.strip()).toMatch(/^1,0\d\d lines · No rate · Following$/);
     expect(h.stream.getSnapshot().markers).toBe('no');
     expect(h.stream.getSnapshot().sources.map((source) => source.replay)).toEqual(['unknown']);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('goes from a rate to no rate to a rate again when the source reconnects, and its replay, delivered again, is no spike', async () => {
@@ -331,7 +341,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     const after = run(h, 10, [['orders/app', 5]]);
     expect(Math.max(...figures([...before, ...during, ...after]))).toBeLessThanOrEqual(10);
     expect(after.at(-1)).toBeGreaterThanOrEqual(3.5);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('is not moved by a marker said twice, or by a marker for a source nobody listed: the rate stays the source\'s own', async () => {
@@ -349,7 +361,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     });
     expect(tells.slice(8).every((tell) => tell !== undefined && tell >= 3.5 && tell <= 6.5)).toBe(true);
     expect(Math.max(...figures(tells))).toBeLessThanOrEqual(10);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('reads no burst when the view is hidden while the replay and the marker come, and shown again with the whole backlog to read', async () => {
@@ -370,7 +384,9 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
     expect(Math.max(...figures(tells))).toBeLessThanOrEqual(10);
     expect(tells.at(-1)).toBeGreaterThanOrEqual(3.5);
     expect(tells.at(-1)).toBeLessThanOrEqual(6.5);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 
   it('reads the late tail of a replay after the marker, as a hidden view that returns to it does, and the strip reads 0.0, not a rate', async () => {
@@ -390,6 +406,8 @@ describe('the strip of a Logs session, from the wire to the words on it (S1)', (
 
     expect(figures(tells).length).toBe(12);
     expect(figures(tells).every((tell) => tell === 0)).toBe(true);
-    h.stream.close().catch(() => undefined);
+    act(() => {
+      h.stream.close().catch(() => undefined);
+    });
   });
 });

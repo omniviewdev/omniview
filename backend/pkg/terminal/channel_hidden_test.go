@@ -58,8 +58,8 @@ func requireTheRingHoldsTheNewest(t *testing.T, s *session, limit int) {
 
 // A page that does not read: the first frame it was given parks in its transport for good. The child writes more than twenty
 // rings, which the trigger counts in bytes of output, and is never blocked: the stall (a clock the test moves) lets the shell go,
-// the child is alive, the host's heap grew by no more than the ring and a constant, and the ring holds exactly the newest bytes
-// of the sequence with every byte it overwrote counted.
+// the child is alive, and once the terminal has ended the host keeps no more than the ring and the frame the parked Send holds,
+// and the ring holds exactly the newest bytes of the sequence with every byte it overwrote counted.
 func TestAChildNeverBlocksWhenNoReaderTakesAFrame(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	clock := withFakeClock(m)
@@ -82,7 +82,6 @@ func TestAChildNeverBlocksWhenNoReaderTakesAFrame(t *testing.T) {
 			func(st channelStats) bool { return st.end >= 20*ring })
 	})
 	stats := s.channelStats()
-	after := heapInUse()
 	guarded(t, "child-not-blocked", func() {
 		assert.Greater(t, stats.end, ring+uint64(m.channel.inflight), "the child's offset went on past the ring and what a page may hold in flight")
 		assert.False(t, s.hasExited())
@@ -90,13 +89,25 @@ func TestAChildNeverBlocksWhenNoReaderTakesAFrame(t *testing.T) {
 		assert.Zero(t, stats.sent, "no frame of output was ever taken")
 		assert.GreaterOrEqual(t, stats.stallReleases, uint64(1))
 	})
-	bound := ring + 4*chunkBytes + 1<<20
-	grew := int64(after) - int64(before)
-	t.Logf("no reader: output %d (%.1f rings), heap %d -> %d (grew %d, bound %d), pump waited %d, released by the stall %d",
-		stats.end, float64(stats.end)/float64(ring), before, after, grew, bound, stats.waits, stats.stallReleases)
-	assert.Less(t, grew, int64(bound), "the host's heap grew by less than the ring and a constant")
 
+	// What the host keeps of the output of a terminal whose page takes nothing is the ring and one frame: the ring holds its limit in
+	// whole chunks and the chunk it is filling (ring/chunk + 1 of them), and the parked Send holds its frame (at most a chunk's worth)
+	// and the chunk that frame was cut from, which its slices keep alive. That is ring/chunk + 3 = 7 allocations of a chunk and its
+	// slack, 66,560 bytes, which the allocator rounds up to 73,728: 504 KiB at the most (about 360 KB measured, 436 KB at the most).
+	// The bound is one allocation more: ring + 5 chunks.
+	//
+	// It is read once the terminal has ended, because while the child floods the pump allocates a copy of every read and the ring a
+	// chunk for every 64 KiB, and the heap counts what was allocated during a collection and since: a reading taken then measures how
+	// long the machine took to run the collections and the reading, and not what the host keeps (a loaded CI runner measured 1.8 MB
+	// for the 0.4 MB that is kept). CloseChannel returns when the pump has finished and the child is gone.
 	require.NoError(t, m.CloseChannel(info.Cap))
+	after := heapInUse()
+	bound := ring + 5*chunkBytes
+	grew := int64(after) - int64(before)
+	t.Logf("no reader: output %d (%.1f rings) when the stall had let the shell go, heap %d -> %d once it had ended (grew %d, bound %d), pump waited %d, released by the stall %d",
+		stats.end, float64(stats.end)/float64(ring), before, after, grew, bound, stats.waits, stats.stallReleases)
+	assert.Less(t, grew, int64(bound), "the host kept no more than the ring and the frame that the parked Send holds")
+
 	requireTheRingHoldsTheNewest(t, s, m.channel.ring)
 }
 

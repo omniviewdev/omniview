@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createNoticesStore, loadNotices, type NoticesStorage } from '../../shell';
@@ -115,6 +115,7 @@ describe('the window\'s notification centre', () => {
   });
 
   it('saves what a failed page command leaves in the history, after the quiet time, and nothing before it', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     scale.mockRejectedValue(wails(TIMEOUT));
     const storage = place();
     const { user } = await mount(storage);
@@ -130,9 +131,12 @@ describe('the window\'s notification centre', () => {
     const text = storage.writes.at(-1) ?? '';
     expect(text).toContain('"title":"Timed out"');
     expect(text).toContain('"version":1');
+    expect(report).toHaveBeenCalledExactlyOnceWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 
   it('opens from the summary toast\'s Show when more toasts are due than the stack draws: the same centre as the bell\'s, with the stack waiting and every record listed', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { user } = await mount(place());
     const bodies = [TIMEOUT, FORBIDDEN, UNAUTHORIZED, INTERNAL];
     for (const [index, body] of bodies.entries()) {
@@ -145,12 +149,15 @@ describe('the window\'s notification centre', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Notifications' });
     expect(dialog.querySelectorAll('[data-notices-part="row"]')).toHaveLength(bodies.length);
     // The model tells the view at most once a frame, so the stack is gone a frame after the centre opens.
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(toasts()).toHaveLength(0);
     });
+    expect(report.mock.calls).toEqual(bodies.map(() => ['[notices] a command of acme failed', expect.any(Error)]));
+    report.mockRestore();
   });
 
   it('puts a failure that arrives while the centre is open in its list and raises no toast for it, now or when the centre closes: one presenter', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     // A press outside closes the centre, so the command is started first, and fails while the centre is open.
     const later = Promise.withResolvers<void>();
     scale.mockReturnValue(later.promise);
@@ -160,17 +167,21 @@ describe('the window\'s notification centre', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Notifications' });
     expect(dialog.querySelectorAll('[data-notices-part="row"]')).toHaveLength(0);
     later.reject(wails(TIMEOUT));
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(dialog.querySelectorAll('[data-notices-part="row"]')).toHaveLength(1);
     });
     expect(toasts()).toHaveLength(0);
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull();
     // Several frames of the model: a toast that was raised while the centre was open would be drawn by now.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 80);
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 80);
+      });
     });
     expect(toasts()).toHaveLength(0);
     expect(await bell()).toHaveAccessibleName('Notifications, 1 unread, 1 error');
+    expect(report).toHaveBeenCalledExactlyOnceWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 });

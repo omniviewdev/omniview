@@ -64,7 +64,9 @@ describe('the stack at home', () => {
   it('stays there while no control is near: no data-place, no box', async () => {
     controls.set('Far', { left: 10, top: 10, right: 110, bottom: 38 });
     const m = mount({ around: <button type="button">Far</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(hostOf()).not.toHaveAttribute('data-place');
     expect(hostOf()?.getAttribute('style')).toBeNull();
@@ -92,7 +94,9 @@ describe('the stack at home', () => {
         </>
       ),
     });
-    m.f.store.notify({ title: 'Quota is close', severity: 'warning', actions: [{ id: 'go', label: 'Open', route: { plugin: 'cloud', contribution: 'quota', params: {} } }] });
+    act(() => {
+      m.f.store.notify({ title: 'Quota is close', severity: 'warning', actions: [{ id: 'go', label: 'Open', route: { plugin: 'cloud', contribution: 'quota', params: {} } }] });
+    });
     await m.flush();
     expect(toastsOf()).toHaveLength(1);
     expect(hostOf()).not.toHaveAttribute('data-place');
@@ -103,7 +107,9 @@ describe('the stack in the way of a control', () => {
   it('moves to where the rule puts it, in a box of its own: above the control, in the same column, 8 px clear', async () => {
     controls.set('Run', { left: 1100, top: 780, right: 1300, bottom: 808 });
     const m = mount({ around: <button type="button">Run</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     const host = hostOf();
     expect(host).toHaveAttribute('data-place', 'moved');
@@ -123,7 +129,9 @@ describe('the stack in the way of a control', () => {
         </button>
       ),
     });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(hostOf()).toHaveAttribute('data-place', 'moved');
   });
@@ -132,7 +140,9 @@ describe('the stack in the way of a control', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
     controls.set('Run', { left: 1100, top: 780, right: 1300, bottom: 808 });
     const m = mount({ around: <button type="button">Run</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(hostOf()).toHaveAttribute('data-place', 'moved');
     controls.delete('Run');
@@ -146,7 +156,9 @@ describe('the stack in the way of a control', () => {
   it('decides again when the page is scrolled and when something under it changes: a control that appears is moved away from', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(hostOf()).not.toHaveAttribute('data-place');
     controls.set('Late', { left: 1100, top: 780, right: 1300, bottom: 808 });
@@ -168,7 +180,9 @@ describe('the stack in the way of a control', () => {
   it('is not woken by what the stack does to itself: a change inside the layer is not news', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     settle();
     const before = vi.getTimerCount();
@@ -186,7 +200,9 @@ describe('the stack with no room', () => {
   it('is hidden and inert, is no stop for F6, and tells what nobody can see once, politely (S86)', async () => {
     controls.set('Everything', wall);
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     const host = hostOf();
     expect(host).toHaveAttribute('data-place', 'yield');
@@ -204,7 +220,9 @@ describe('the stack with no room', () => {
   it('tells an error the user caused assertively, in the words of its toast: no toast and no live region would have said it', async () => {
     controls.set('Everything', wall);
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     expect(hostOf()).toHaveAttribute('data-place', 'yield');
     expect(m.announcer.assertive.getSnapshot().text).toBe('Error: Timed out. The cluster did not complete the request in time.');
@@ -214,7 +232,9 @@ describe('the stack with no room', () => {
   it('tells a toast that comes while it waits, and says how many when more than one has no room', async () => {
     controls.set('Everything', wall);
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify({ title: 'One', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'One', severity: 'success' });
+    });
     await m.flush();
     m.f.store.notify({ title: 'Two', severity: 'success' });
     await m.flush();
@@ -230,7 +250,9 @@ describe('the stack with no room', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
     controls.set('Everything', wall);
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(hostOf()).toHaveAttribute('data-place', 'yield');
     const told = m.announcer.polite.getSnapshot().serial;
@@ -256,12 +278,14 @@ describe('the stack when it is not there', () => {
     const m = mount();
     expect(add.mock.calls.filter(([type]) => type === 'resize')).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
-    const made = m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    const made = await act(() => m.f.store.notify({ title: 'Snapshot created', severity: 'success' }));
     await m.flush();
     expect(add.mock.calls.filter(([type]) => type === 'resize')).toHaveLength(1);
     fireEvent(window, new Event('resize'));
     expect(vi.getTimerCount()).toBeGreaterThan(0);
-    m.f.store.dismiss(made.record?.id ?? '');
+    act(() => {
+      m.f.store.dismiss(made.record?.id ?? '');
+    });
     await m.flush();
     expect(toastsOf()).toEqual([]);
     expect(layerOf()).toBeInTheDocument();
@@ -283,7 +307,9 @@ describe('the stack that yields', () => {
     fakeTimers();
     controls.set('Everything', wall);
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(hostOf()).toHaveAttribute('data-place', 'yield');
     expect(m.f.store.getSnapshot().toasts.paused).toBe(true);
@@ -309,7 +335,9 @@ describe('the stack that yields', () => {
   it('lets go of the hold when the window goes while it yields', async () => {
     controls.set('Everything', wall);
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(m.f.store.getSnapshot().toasts.paused).toBe(true);
     m.unmount();
@@ -319,7 +347,9 @@ describe('the stack that yields', () => {
   it('gives a focus that is in the stack back to where it came from before the stack is inert: never the body', async () => {
     fakeTimers();
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     m.opener.focus();
     const toast = toastsOf()[0];
@@ -339,7 +369,9 @@ describe('the stack that yields', () => {
     // jsdom lays nothing out: every element has a box here, so that a control can be a place to land.
     vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(() => [rectOf({ left: 0, top: 0, right: 10, bottom: 10 })] as unknown as DOMRectList);
     const m = mount({ around: <button type="button">Everything</button> });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     m.opener.focus();
     const toast = toastsOf()[0];
