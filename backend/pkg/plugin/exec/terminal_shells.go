@@ -20,7 +20,7 @@ func withDefaultShell(command []string, setting func() (string, error)) []string
 	if err != nil || value == "" {
 		return command
 	}
-	if _, err := shellenv.Check(value); err != nil {
+	if _, checkErr := shellenv.Check(value); checkErr != nil {
 		return command
 	}
 	return []string{value}

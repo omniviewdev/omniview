@@ -145,7 +145,7 @@ func TestTheListOfShellsMarksTheShellThatStartsWhenTheSettingCannotStart(t *test
 // realPathOf is the file a path reaches: /bin and /usr/bin are one directory on many systems, and the shell is the same file by either.
 func realPathOf(t *testing.T, path string) string {
 	t.Helper()
-	real, err := filepath.EvalSymlinks(path)
+	reached, err := filepath.EvalSymlinks(path)
 	require.NoError(t, err)
-	return real
+	return reached
 }

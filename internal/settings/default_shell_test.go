@@ -21,19 +21,19 @@ func TestDefaultShellSettingRefusesWhatTheHostCannotStart(t *testing.T) {
 	if err != nil {
 		t.Skip("sh unavailable")
 	}
-	if err := provider.SetSetting("terminal.defaultShell", sh); err != nil {
-		t.Fatalf("an installed shell was refused: %v", err)
+	if setErr := provider.SetSetting("terminal.defaultShell", sh); setErr != nil {
+		t.Fatalf("an installed shell was refused: %v", setErr)
 	}
 	notAShell := filepath.Join(t.TempDir(), "editor")
-	if err := os.WriteFile(notAShell, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatal(err)
+	if writeErr := os.WriteFile(notAShell, []byte("#!/bin/sh\n"), 0o755); writeErr != nil {
+		t.Fatal(writeErr)
 	}
 	for _, value := range []any{"zhs", "/nowhere/zsh", notAShell, "", 7, nil} {
-		if err := provider.SetSetting("terminal.defaultShell", value); err == nil {
+		if setErr := provider.SetSetting("terminal.defaultShell", value); setErr == nil {
 			t.Fatalf("%#v was accepted as the default shell", value)
 		}
 	}
-	if got, err := provider.GetString("terminal.defaultShell"); err != nil || got != sh {
-		t.Fatalf("a refused value changed the default shell: %q, %v", got, err)
+	if got, getErr := provider.GetString("terminal.defaultShell"); getErr != nil || got != sh {
+		t.Fatalf("a refused value changed the default shell: %q, %v", got, getErr)
 	}
 }

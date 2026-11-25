@@ -60,22 +60,22 @@ func TestListDoesNotOfferAShellThatCannotRun(t *testing.T) {
 	skipOnWindows(t)
 	dir := t.TempDir()
 	shellFile(t, dir, "zsh", 0o644) // present, not executable
-	real := shellFile(t, dir, "fish", 0o755)
-	if got := paths(listIn([]string{dir}, "")); !slices.Equal(got, []string{real}) {
-		t.Fatalf("listed %v, want only %v: a file that is not executable is not an installed shell", got, real)
+	fish := shellFile(t, dir, "fish", 0o755)
+	if got := paths(listIn([]string{dir}, "")); !slices.Equal(got, []string{fish}) {
+		t.Fatalf("listed %v, want only %v: a file that is not executable is not an installed shell", got, fish)
 	}
 }
 
 func TestListOffersAShellOnceWhateverNumberOfDirectoriesReachIt(t *testing.T) {
 	skipOnWindows(t)
-	real, link := t.TempDir(), t.TempDir()
-	bash := shellFile(t, real, "bash", 0o755)
+	home, link := t.TempDir(), t.TempDir()
+	bash := shellFile(t, home, "bash", 0o755)
 	if err := os.Symlink(bash, filepath.Join(link, "bash")); err != nil {
 		t.Fatal(err)
 	}
 	other := t.TempDir()
 	elsewhere := shellFile(t, other, "bash", 0o755) // a different file of the same name: a different shell
-	got := paths(listIn([]string{real, link, other}, ""))
+	got := paths(listIn([]string{home, link, other}, ""))
 	if want := []string{bash, elsewhere}; !slices.Equal(got, want) {
 		t.Fatalf("listed %v, want %v (a link to a shell already listed is not a second shell; another bash is)", got, want)
 	}
