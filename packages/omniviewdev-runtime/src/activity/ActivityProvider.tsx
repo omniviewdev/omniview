@@ -25,8 +25,17 @@ export type ActivityProviderProps = {
 export function ActivityProvider({ children }: ActivityProviderProps) {
   const [store] = React.useState(() => new ActivityStore());
   const view = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const [error, setError] = React.useState<string>();
+  // Four failures, each held by its own source and gone when that source recovers; `error` is the
+  // first of them that is set, in this order. The host's word that a host action's updates could
+  // not be recorded: about that action, not about the service.
   const [observationError, setObservationError] = React.useState<string>();
+  // The provider cannot observe the service: a subscription or a heartbeat failed, and none has
+  // made it good. The only one of the four that says so.
+  const [unavailable, setUnavailable] = React.useState<string>();
+  // A `notify` or an `openDetails` that failed, until the same call succeeds.
+  const [notifyError, setNotifyError] = React.useState<string>();
+  const [detailsError, setDetailsError] = React.useState<string>();
+  const error = observationError ?? unavailable ?? notifyError ?? detailsError;
   const [busyActions, setBusyActions] = React.useState<ReadonlySet<string>>(new Set());
   const busy = React.useRef(new Set<string>());
   const [actionErrors, setActionErrors] = React.useState<ReadonlyMap<string, string>>(new Map());
@@ -36,31 +45,61 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
     let stopped = false;
     let heartbeating = false;
     let observer = new AbortController();
-    const stopErrors = activityClient.listenObservationErrors((event) =>
-      setObservationError(event.message),
-    );
+    // Whether the store is being fed. A heartbeat renews the producer lease, not the subscription,
+    // so only the subscription says whether the provider can observe.
+    let feed: 'attaching' | 'attached' | 'failed' = 'attaching';
+    // The observation-error events heard so far: a heartbeat or a subscription that began before
+    // one says nothing of it.
+    let told = 0;
+    const stopErrors = activityClient.listenObservationErrors((event) => {
+      told++;
+      setObservationError(event.message);
+    });
     const connect = async () => {
       observer.abort();
       observer = new AbortController();
       const { signal } = observer;
+      const heard = told;
+      feed = 'attaching';
       try {
         await connectActivityStore(store, activityClient, signal);
-        if (!stopped && !signal.aborted) setError(undefined);
+        if (!stopped && !signal.aborted) {
+          feed = 'attached';
+          setUnavailable(undefined);
+          if (told === heard) setObservationError(undefined);
+        }
       } catch (cause) {
-        if (!stopped && !signal.aborted) setError(parseAppError(cause).detail);
+        if (!stopped && !signal.aborted) {
+          feed = 'failed';
+          setUnavailable(parseAppError(cause).detail);
+        }
+      }
+    };
+    // The sentence of a lease the host did not renew, or nothing when it did.
+    const renew = async () => {
+      try {
+        await activityClient.heartbeat();
+        return undefined;
+      } catch (cause) {
+        return parseAppError(cause).detail;
       }
     };
     const heartbeat = async () => {
       if (stopped || heartbeating) return;
       heartbeating = true;
+      const heard = told;
       try {
-        await activityClient.heartbeat();
-      } catch (cause) {
-        if (!stopped) {
-          setError(parseAppError(cause).detail);
-          // Recover observation/capability only. Never replay a producer mutation.
-          await connect();
+        const failure = await renew();
+        if (stopped) return;
+        if (failure !== undefined) {
+          setUnavailable(failure);
+        } else if (told === heard) {
+          setObservationError(undefined);
         }
+        // Recover observation/capability only. Never replay a producer mutation. A heartbeat that
+        // got through while the subscription is down makes it again, and the provider can observe
+        // when that succeeds.
+        if (failure !== undefined || feed === 'failed') await connect();
       } finally {
         heartbeating = false;
       }
@@ -112,10 +151,10 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
         });
         if (diagnostics?.length) store.setDiagnosticActions(record.id, diagnostics);
         store.applyRecord(record);
+        setNotifyError(undefined);
         return record;
       } catch (cause) {
-        const detail = parseAppError(cause).detail;
-        setError(detail);
+        setNotifyError(parseAppError(cause).detail);
         return undefined;
       }
     },
@@ -177,8 +216,11 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
       store.openNotifications();
       void activityClient
         .setPresentation({ id, collapsed: false, read: true })
-        .then(store.applyRecord)
-        .catch((cause) => setError(parseAppError(cause).detail));
+        .then((record) => {
+          store.applyRecord(record);
+          setDetailsError(undefined);
+        })
+        .catch((cause) => setDetailsError(parseAppError(cause).detail));
     },
     [store],
   );
@@ -216,7 +258,8 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
       performAction,
       busyActions,
       actionErrors,
-      error: observationError ?? error,
+      unavailable,
+      error,
       selectedDetailsID,
       openDetails,
       canHandleAction: (action) => action.kind === 'cancel-task',
@@ -234,8 +277,8 @@ export function ActivityProvider({ children }: ActivityProviderProps) {
       performAction,
       busyActions,
       actionErrors,
+      unavailable,
       error,
-      observationError,
       selectedDetailsID,
       openDetails,
     ],

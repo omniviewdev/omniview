@@ -5,12 +5,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActivityProvider } from './ActivityProvider';
 import { ActivitySurfaces } from './ActivitySurfaces';
-import { useActivities, useActivityActions, useNotifications } from './context';
+import { useActivities, useActivityActions, useActivityContext, useNotifications } from './context';
 import { progressPercent } from './ActivityCard';
 import type {
   ActivityChange,
   ActivityObservationError,
   ActivityRecord,
+  ActivitySubscription,
   NotificationOptions,
 } from './types';
 
@@ -661,5 +662,332 @@ describe('shared activity presentation', () => {
         label: 'steps',
       }),
     ).toBe(25);
+  });
+});
+
+// What the provider says when something failed, and when it stops saying it. `unavailable` is the observation's own failure: a subscription or a heartbeat that failed, and nothing since has made it good. `error` is what the toast and the
+// notification center say, the first failure the provider holds: the host's observation-error event, then `unavailable`, then a failed `notify`, then a failed `openDetails`. Each goes when its own source recovers, and no other
+// recovery takes it away. The clock is the test's (the provider's 10 s heartbeat is a fake interval), and every promise the provider waits on is the test's too, so the order of what happens is decided here, never by time.
+describe('what the provider says of a failure, and when it stops', () => {
+  const HEARTBEAT = 'The heartbeat was refused.';
+  const SUBSCRIPTION = 'The subscription was refused.';
+  const EVENT = 'Activity observation failed. Verify the remote outcome before retrying.';
+  const NOTICE = 'The notice could not be stored.';
+  const DETAILS = 'The record could not be opened.';
+  /** The provider's wait between two heartbeats. */
+  const INTERVAL = 10_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  /** A failure as a call of the host rejects with it: the envelope the provider reads its sentence from. */
+  function refused(detail: string) {
+    return new Error(
+      JSON.stringify({ type: 'urn:omniview:test:refused', title: 'Refused', status: 503, detail }),
+    );
+  }
+  function Reader() {
+    const { error, unavailable } = useActivities();
+    const { notify } = useNotifications();
+    const { openDetails } = useActivityContext();
+    return (
+      <>
+        <output aria-label="said">{JSON.stringify({ error, unavailable })}</output>
+        <button
+          onClick={() => {
+            void notify({ title: 'Installation failed', severity: 'error' });
+          }}
+        >
+          Notify
+        </button>
+        <button onClick={() => openDetails('m-1')}>Open details</button>
+      </>
+    );
+  }
+  /** What the provider says of a failure now: a member that is not there is a sentence it does not have. */
+  const said = (): { error?: string; unavailable?: string } =>
+    JSON.parse(screen.getByLabelText('said').textContent ?? '');
+  /** Lets every promise the provider waits on settle and React commit what they set. No timer moves. */
+  async function settle() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+  }
+  /** One interval of the provider's clock, and what comes of the heartbeat it sends. */
+  async function beat() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(INTERVAL);
+    });
+    await settle();
+  }
+  async function mountReader() {
+    const view = render(
+      <ActivityProvider>
+        <Reader />
+      </ActivityProvider>,
+    );
+    await settle();
+    return view;
+  }
+  /** The host tells the provider of an action whose updates it could not record. */
+  const event = (message: string) => {
+    act(() => observationError({ id: 'Work', pluginID: 'p', message }));
+  };
+
+  it('is unavailable from a heartbeat that failed while the subscription is made again, and is not once that succeeds', async () => {
+    await mountReader();
+    expect(said()).toEqual({});
+    const again = Promise.withResolvers<ActivitySubscription>();
+    native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    native.subscribe.mockImplementationOnce(async () => again.promise);
+    await beat();
+    expect(said()).toEqual({ unavailable: HEARTBEAT, error: HEARTBEAT });
+    again.resolve({ id: 'view-2', snapshot: { revision, records: [] } });
+    await settle();
+    expect(said()).toEqual({});
+  });
+
+  it('is unavailable from a subscription that failed, and its sentence is the error', async () => {
+    const held = Promise.withResolvers<void>();
+    native.subscribe.mockRejectedValueOnce(refused(SUBSCRIPTION));
+    native.heartbeat.mockImplementationOnce(async () => held.promise);
+    await mountReader();
+    expect(said()).toEqual({ unavailable: SUBSCRIPTION, error: SUBSCRIPTION });
+  });
+
+  it('is available again when a heartbeat gets through and the subscription is made again', async () => {
+    const held = Promise.withResolvers<void>();
+    native.subscribe.mockRejectedValueOnce(refused(SUBSCRIPTION));
+    native.heartbeat.mockImplementationOnce(async () => held.promise);
+    await mountReader();
+    expect(said().error).toBe(SUBSCRIPTION);
+    held.resolve();
+    await settle();
+    expect(said()).toEqual({});
+    expect(native.subscribe).toHaveBeenCalledTimes(2);
+  });
+
+  it('is still unavailable while the subscription keeps failing, though every heartbeat gets through, and tries it again once with each', async () => {
+    const held = Promise.withResolvers<void>();
+    native.subscribe.mockRejectedValue(refused(SUBSCRIPTION));
+    native.heartbeat.mockImplementationOnce(async () => held.promise);
+    await mountReader();
+    expect(native.subscribe).toHaveBeenCalledTimes(1);
+    held.resolve();
+    await settle();
+    expect(native.subscribe).toHaveBeenCalledTimes(2);
+    for (const attempts of [3, 4, 5]) {
+      await beat();
+      expect(native.subscribe).toHaveBeenCalledTimes(attempts);
+      expect(said()).toEqual({ unavailable: SUBSCRIPTION, error: SUBSCRIPTION });
+    }
+  });
+
+  it('does not subscribe again for a heartbeat that gets through while the subscription holds', async () => {
+    await mountReader();
+    await beat();
+    await beat();
+    await beat();
+    expect(native.heartbeat).toHaveBeenCalledTimes(4);
+    expect(native.subscribe).toHaveBeenCalledTimes(1);
+    expect(said()).toEqual({});
+  });
+
+  it('shows the host\'s observation-error event in `error` and not in `unavailable`, and the next heartbeat that gets through takes it away', async () => {
+    await mountReader();
+    event(EVENT);
+    expect(said()).toEqual({ error: EVENT });
+    await beat();
+    expect(said()).toEqual({});
+  });
+
+  it('keeps an event that came while a heartbeat was in flight: that heartbeat was sent before it', async () => {
+    await mountReader();
+    const held = Promise.withResolvers<void>();
+    native.heartbeat.mockImplementationOnce(async () => held.promise);
+    await beat();
+    event(EVENT);
+    held.resolve();
+    await settle();
+    expect(said()).toEqual({ error: EVENT });
+    await beat();
+    expect(said()).toEqual({});
+  });
+
+  it('keeps an event that came while the subscription was being made again: that subscription began before it', async () => {
+    await mountReader();
+    const again = Promise.withResolvers<ActivitySubscription>();
+    native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    native.subscribe.mockImplementationOnce(async () => again.promise);
+    await beat();
+    event(EVENT);
+    expect(said()).toEqual({ unavailable: HEARTBEAT, error: EVENT });
+    again.resolve({ id: 'view-2', snapshot: { revision, records: [] } });
+    await settle();
+    expect(said()).toEqual({ error: EVENT });
+    await beat();
+    expect(said()).toEqual({});
+  });
+
+  it('takes an event away with a subscription that is made after it', async () => {
+    await mountReader();
+    event(EVENT);
+    native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    await beat();
+    expect(said()).toEqual({});
+  });
+
+  it('shows a failed `notify` in `error` and not in `unavailable`, and the next `notify` that succeeds takes it away', async () => {
+    await mountReader();
+    native.publishMessage.mockRejectedValueOnce(refused(NOTICE));
+    fireEvent.click(screen.getByText('Notify'));
+    await settle();
+    expect(said()).toEqual({ error: NOTICE });
+    fireEvent.click(screen.getByText('Notify'));
+    await settle();
+    expect(said()).toEqual({});
+  });
+
+  it('shows a failed `openDetails` in `error` and not in `unavailable`, and the next `openDetails` that succeeds takes it away', async () => {
+    records = [record('m-1')];
+    await mountReader();
+    native.setPresentation.mockRejectedValueOnce(refused(DETAILS));
+    fireEvent.click(screen.getByText('Open details'));
+    await settle();
+    expect(said()).toEqual({ error: DETAILS });
+    fireEvent.click(screen.getByText('Open details'));
+    await settle();
+    expect(said()).toEqual({});
+  });
+
+  it('does not take a failed `notify` or a failed `openDetails` away with a heartbeat or a subscription that succeeds, nor one of them with the other\'s success', async () => {
+    records = [record('m-1')];
+    await mountReader();
+    native.setPresentation.mockRejectedValueOnce(refused(DETAILS));
+    fireEvent.click(screen.getByText('Open details'));
+    await settle();
+    native.publishMessage.mockRejectedValueOnce(refused(NOTICE));
+    fireEvent.click(screen.getByText('Notify'));
+    await settle();
+    expect(said()).toEqual({ error: NOTICE });
+    // A heartbeat that gets through.
+    await beat();
+    expect(said()).toEqual({ error: NOTICE });
+    // A heartbeat that fails, and the subscription that is made again and succeeds.
+    native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    await beat();
+    expect(said()).toEqual({ error: NOTICE });
+    // The `notify` that succeeds takes its own failure away: the other one is still held.
+    fireEvent.click(screen.getByText('Notify'));
+    await settle();
+    expect(said()).toEqual({ error: DETAILS });
+    fireEvent.click(screen.getByText('Open details'));
+    await settle();
+    expect(said()).toEqual({});
+  });
+
+  it('says the first of the failures it holds: the event, then unavailable, then a failed `notify`, then a failed `openDetails`', async () => {
+    records = [record('m-1')];
+    await mountReader();
+    native.setPresentation.mockRejectedValueOnce(refused(DETAILS));
+    fireEvent.click(screen.getByText('Open details'));
+    await settle();
+    expect(said()).toEqual({ error: DETAILS });
+    native.publishMessage.mockRejectedValueOnce(refused(NOTICE));
+    fireEvent.click(screen.getByText('Notify'));
+    await settle();
+    expect(said()).toEqual({ error: NOTICE });
+    native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    native.subscribe.mockRejectedValueOnce(refused(SUBSCRIPTION));
+    await beat();
+    expect(said()).toEqual({ unavailable: SUBSCRIPTION, error: SUBSCRIPTION });
+    event(EVENT);
+    expect(said()).toEqual({ unavailable: SUBSCRIPTION, error: EVENT });
+    // The next heartbeat gets through and takes the event away; the subscription fails again, so it is still unavailable.
+    native.subscribe.mockRejectedValueOnce(refused(HEARTBEAT));
+    await beat();
+    expect(said()).toEqual({ unavailable: HEARTBEAT, error: HEARTBEAT });
+    // The subscription is made: the failures of the two calls are what is left, the first of them says.
+    await beat();
+    expect(said()).toEqual({ error: NOTICE });
+    fireEvent.click(screen.getByText('Notify'));
+    await settle();
+    expect(said()).toEqual({ error: DETAILS });
+    fireEvent.click(screen.getByText('Open details'));
+    await settle();
+    expect(said()).toEqual({});
+  });
+
+  it('takes the notification center\'s alert away when the observation recovers, as it does the provider\'s error', async () => {
+    mount();
+    await settle();
+    fireEvent.click(screen.getByText('Notifications'));
+    const center = screen.getByRole('region', { name: 'Notifications' });
+    event(EVENT);
+    expect(within(center).getByRole('alert').textContent).toBe(EVENT);
+    await beat();
+    expect(within(center).queryByRole('alert')).toBeNull();
+  });
+
+  it('leaves nothing behind when it unmounts: the interval, both listeners and the subscription are released', async () => {
+    const stopErrors = vi.fn();
+    const stopListening = vi.fn();
+    native.listenObservationErrors.mockImplementation((callback) => {
+      observationError = callback;
+      return stopErrors;
+    });
+    native.listen.mockImplementation((_id, callback) => {
+      listener = callback;
+      return stopListening;
+    });
+    const timers = vi.getTimerCount();
+    const view = await mountReader();
+    expect(vi.getTimerCount()).toBe(timers + 1);
+    expect(stopErrors).not.toHaveBeenCalled();
+    expect(stopListening).not.toHaveBeenCalled();
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(timers);
+    expect(stopErrors).toHaveBeenCalledTimes(1);
+    expect(stopListening).toHaveBeenCalledTimes(1);
+    expect(native.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(native.unsubscribe).toHaveBeenCalledWith('view');
+    const heartbeats = native.heartbeat.mock.calls.length;
+    await beat();
+    await beat();
+    expect(native.heartbeat).toHaveBeenCalledTimes(heartbeats);
+    expect(native.subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  /** The subscription is down and a heartbeat is in flight when the provider unmounts: the heartbeat, and the end it comes to, are the test's. */
+  async function unmountedMidHeartbeat() {
+    const view = await mountReader();
+    native.heartbeat.mockRejectedValueOnce(refused(HEARTBEAT));
+    native.subscribe.mockRejectedValueOnce(refused(SUBSCRIPTION));
+    await beat();
+    expect(said().error).toBe(SUBSCRIPTION);
+    const held = Promise.withResolvers<void>();
+    native.heartbeat.mockImplementationOnce(async () => held.promise);
+    await beat();
+    expect(native.heartbeat).toHaveBeenCalledTimes(3);
+    expect(native.subscribe).toHaveBeenCalledTimes(2);
+    view.unmount();
+    return held;
+  }
+
+  it('does not recover a heartbeat that gets through after it unmounted: the subscription is not made again', async () => {
+    const held = await unmountedMidHeartbeat();
+    held.resolve();
+    await settle();
+    expect(native.subscribe).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not recover a heartbeat that fails after it unmounted: the subscription is not made again', async () => {
+    const held = await unmountedMidHeartbeat();
+    held.reject(refused(HEARTBEAT));
+    await settle();
+    expect(native.subscribe).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

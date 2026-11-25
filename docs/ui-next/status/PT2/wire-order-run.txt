@@ -1,0 +1,106 @@
+Wire order of a failed connection start at a real page of the real host (server mode): the FAILED connection/status event, or the answer of the start call?
+date: 2026-11-25T00:42:51Z; host: a server-mode build of this tree (go build -tags production,server) with the host change; plugin: the seam's connections fixture (south fails with UNAUTHORIZED); engines: Playwright WebKit and Chromium
+load before the run:  18:42:51  up 14 days 11:09,  1 user,  load average: 5.11, 8.31, 7.98
+script: docs/ui-next/status/PT2/wire-order.mjs.txt (env -i HOME PATH HOST=<host binary> ENGINES=webkit,chromium TRIALS=40 node wire-order.mjs, from the worktree root)
+times are performance.now() in the page, stamped by wrappers of fetch and WebSocket installed before any script of the page runs: 'answer-event' is the time the answer (the response of POST /wails/runtime) was seen minus the time the event frame was seen (positive: the event first); 'bodyRead-event' the same for the moment the body of the answer was read, the earliest the runtime can reject the call's promise.
+------------------------------------------------------------------------------------------------------------------------
+
+=== webkit: 40 failed starts (status 422; body "{\"message\":\"{\\\"type\\\":\\\"omniview:resource/unauthorized\\\",\\\"title\\\":\\\"Authenticat") ===
+┌─────────┬───────┬────────┬─────────┬───────┬────────────┬─────────────────────┬───────────────────┬─────────────────────┬───────────────────────────────────┐
+│ (index) │ trial │ status │ event   │ error │ eventFirst │ eventBeforeBodyRead │ answer-event (ms) │ bodyRead-event (ms) │ network: frame-minus-headers (ms) │
+├─────────┼───────┼────────┼─────────┼───────┼────────────┼─────────────────────┼───────────────────┼─────────────────────┼───────────────────────────────────┤
+│ 0       │ 0     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 1                   │ null                              │
+│ 1       │ 1     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 1                   │ null                              │
+│ 2       │ 2     │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 3       │ 3     │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 4       │ 4     │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 5       │ 5     │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 6       │ 6     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 1                   │ null                              │
+│ 7       │ 7     │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 8       │ 8     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 1                   │ null                              │
+│ 9       │ 9     │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 10      │ 10    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 11      │ 11    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 12      │ 12    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 13      │ 13    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 14      │ 14    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 15      │ 15    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 16      │ 16    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 17      │ 17    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 18      │ 18    │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 1                   │ null                              │
+│ 19      │ 19    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 20      │ 20    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 21      │ 21    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 22      │ 22    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 23      │ 23    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 24      │ 24    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 25      │ 25    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 26      │ 26    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 27      │ 27    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 28      │ 28    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 29      │ 29    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 30      │ 30    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 31      │ 31    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 32      │ 32    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 33      │ 33    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 34      │ 34    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 35      │ 35    │ 422    │ 'heard' │ true  │ true       │ true                │ 1                 │ 1                   │ null                              │
+│ 36      │ 36    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 37      │ 37    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 38      │ 38    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+│ 39      │ 39    │ 422    │ 'heard' │ true  │ false      │ false               │ 0                 │ 0                   │ null                              │
+└─────────┴───────┴────────┴─────────┴───────┴────────────┴─────────────────────┴───────────────────┴─────────────────────┴───────────────────────────────────┘
+webkit: the event was heard before the answer in 15 of 40 trials; before the answer's body was read in 20; not heard in 0; with an error in 40
+webkit: one event frame as the page heard it: {"name":"connection/status","data":{"pluginID":"fixture-f-conn","connectionID":"south-0c3d9e1f42","status":"FAILED","name":"south","error":{"type":"omniview:resource/unauthorized","title":"Authentication required","status":401,"detail":"The provider requires authentication.","code":"UNAUTHORIZED","requestId":"58decac3-9b7b-4de2-a837-fb0d04c49f5f","recovery":"none"}}}
+
+webkit: the answer of the same start (HTTP 422): {"message":"{\"type\":\"omniview:resource/unauthorized\",\"title\":\"Authentication required\",\"status\":401,\"detail\":\"The provider requires authentication.\",\"code\":\"UNAUTHORIZED\",\"requestId\":\"58decac3-9b7b-4de2-a837-fb0d04c49f5f\",\"recovery\":\"none\"}","cause":{"type":"omniview:resource/unauthorized","title":"Authentication required","status":401,"detail":"The provider requires authentication.","code":"UNAUTHORIZED","requestId":"58decac3-9b7b-4de2-a837-fb0d04c49f5f","recovery":"none"},"kind":"RuntimeError"}
+
+=== chromium: 40 failed starts (status 422; body "{\"message\":\"{\\\"type\\\":\\\"omniview:resource/unauthorized\\\",\\\"title\\\":\\\"Authenticat") ===
+┌─────────┬───────┬────────┬─────────┬───────┬────────────┬─────────────────────┬───────────────────┬─────────────────────┬───────────────────────────────────┐
+│ (index) │ trial │ status │ event   │ error │ eventFirst │ eventBeforeBodyRead │ answer-event (ms) │ bodyRead-event (ms) │ network: frame-minus-headers (ms) │
+├─────────┼───────┼────────┼─────────┼───────┼────────────┼─────────────────────┼───────────────────┼─────────────────────┼───────────────────────────────────┤
+│ 0       │ 0     │ 422    │ 'heard' │ true  │ true       │ true                │ 0.3               │ 0.4                 │ -0.29                             │
+│ 1       │ 1     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.2                 │ 0.08                              │
+│ 2       │ 2     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.1                 │ 0.11                              │
+│ 3       │ 3     │ 422    │ 'heard' │ true  │ true       │ true                │ 0.1               │ 0.1                 │ -0.12                             │
+│ 4       │ 4     │ 422    │ 'heard' │ true  │ true       │ true                │ 0.3               │ 0.3                 │ -0.14                             │
+│ 5       │ 5     │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.2                 │ -0.13                             │
+│ 6       │ 6     │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.14                             │
+│ 7       │ 7     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.1                 │ 0.09                              │
+│ 8       │ 8     │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.1                 │ 0.09                              │
+│ 9       │ 9     │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.12                             │
+│ 10      │ 10    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.1               │ 0.3                 │ -0.13                             │
+│ 11      │ 11    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.1                 │ 0.11                              │
+│ 12      │ 12    │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.1                 │ 0.11                              │
+│ 13      │ 13    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.14                             │
+│ 14      │ 14    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.2                 │ -0.14                             │
+│ 15      │ 15    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.16                             │
+│ 16      │ 16    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.2                 │ 0.09                              │
+│ 17      │ 17    │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.2                 │ 0.15                              │
+│ 18      │ 18    │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.1                 │ 0.13                              │
+│ 19      │ 19    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.1               │ 0.3                 │ -0.14                             │
+│ 20      │ 20    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.2                 │ -0.12                             │
+│ 21      │ 21    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.1                 │ 0.21                              │
+│ 22      │ 22    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.11                             │
+│ 23      │ 23    │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.1                 │ 0.09                              │
+│ 24      │ 24    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.16                             │
+│ 25      │ 25    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.1                 │ 0.1                               │
+│ 26      │ 26    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.1               │ 0.2                 │ -0.12                             │
+│ 27      │ 27    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.1                 │ 0.1                               │
+│ 28      │ 28    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.12                             │
+│ 29      │ 29    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.1               │ 0.3                 │ -0.13                             │
+│ 30      │ 30    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.3                 │ -0.13                             │
+│ 31      │ 31    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.4                 │ -0.16                             │
+│ 32      │ 32    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.2                 │ 0.11                              │
+│ 33      │ 33    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.1                 │ 0.09                              │
+│ 34      │ 34    │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.1                 │ 0.1                               │
+│ 35      │ 35    │ 422    │ 'heard' │ true  │ false      │ true                │ 0                 │ 0.2                 │ 0.09                              │
+│ 36      │ 36    │ 422    │ 'heard' │ true  │ false      │ true                │ -0.1              │ 0.1                 │ 0.1                               │
+│ 37      │ 37    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.1               │ 0.2                 │ -0.14                             │
+│ 38      │ 38    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.1               │ 0.2                 │ -0.12                             │
+│ 39      │ 39    │ 422    │ 'heard' │ true  │ true       │ true                │ 0.2               │ 0.2                 │ -0.13                             │
+└─────────┴───────┴────────┴─────────┴───────┴────────────┴─────────────────────┴───────────────────┴─────────────────────┴───────────────────────────────────┘
+chromium: the event was heard before the answer in 22 of 40 trials; before the answer's body was read in 40; not heard in 0; with an error in 40
+chromium: one event frame as the page heard it: {"name":"connection/status","data":{"pluginID":"fixture-f-conn","connectionID":"south-0c3d9e1f42","status":"FAILED","name":"south","error":{"type":"omniview:resource/unauthorized","title":"Authentication required","status":401,"detail":"The provider requires authentication.","code":"UNAUTHORIZED","requestId":"3f610472-6816-4706-b4fb-104dcfeac4ed","recovery":"none"}}}
+
+chromium: the answer of the same start (HTTP 422): {"message":"{\"type\":\"omniview:resource/unauthorized\",\"title\":\"Authentication required\",\"status\":401,\"detail\":\"The provider requires authentication.\",\"code\":\"UNAUTHORIZED\",\"requestId\":\"3f610472-6816-4706-b4fb-104dcfeac4ed\",\"recovery\":\"none\"}","cause":{"type":"omniview:resource/unauthorized","title":"Authentication required","status":401,"detail":"The provider requires authentication.","code":"UNAUTHORIZED","requestId":"3f610472-6816-4706-b4fb-104dcfeac4ed","recovery":"none"},"kind":"RuntimeError"}

@@ -1,0 +1,187 @@
+// Which arrives first at a real page of the real host (server mode) when a connection start fails with an error: the `connection/status` FAILED event (a frame
+// of the page's event socket) or the answer of the start call (the response of `POST /wails/runtime`)?
+//
+//   cd <worktree> && node /tmp/pt2-wire/wire-order.mjs            (ENGINES=chromium,webkit; TRIALS=<n>; HOST=<path of a server-mode host binary>)
+//
+// The host is the binary at HOST (built with the host change), run as the seam runs it (a minimal environment, its own HOME, the feature-ui-next channel) with the
+// connections fixture plugin (`fixture-f-conn`: south fails its start as the file `connection-mode` says). The page is the host's own page. Its fetch and its
+// WebSocket are wrapped before any script of the page runs, so each event frame and each answer is stamped (performance.now) at the moment the page first sees it.
+// The call is made from the page, as the page's runtime makes one (`POST /wails/runtime`, the method name, the client id of the page).
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import net from 'node:net';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
+const repo = process.cwd();
+const require = createRequire(path.join(repo, 'package.json'));
+const { chromium, webkit } = require('playwright');
+const { buildConnectionsProcess, writeConnectionsPlugin, CONNECTIONS_ID } = await import(pathToFileURL(path.join(repo, 'ui-next/plugins/fixture/build.mjs')).href);
+
+const HOST = process.env.HOST ?? path.join(repo, 'bin/Omniview-server');
+const ENGINES = (process.env.ENGINES ?? 'chromium,webkit').split(',');
+const TRIALS = Number(process.env.TRIALS ?? 12);
+const RESOURCE_SERVICE = 'github.com/omniviewdev/omniview/backend/pkg/plugin/resource.ServiceWrapper';
+const SOUTH_KEY = 'south-0c3d9e1f42';
+
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+    probe.on('error', reject);
+  });
+}
+
+async function tryBound(base, method, ...args) {
+  const response = await fetch(`${base}/wails/runtime`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-wails-client-id': 'wire-order-check' },
+    body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `wire-${method}-${Date.now()}`, methodName: `${RESOURCE_SERVICE}.${method}`, args } }),
+  });
+  return { status: response.status, text: await response.text() };
+}
+
+const INIT = `(() => {
+  const log = (window.__wire = []);
+  let n = 0;
+  const NativeWebSocket = window.WebSocket;
+  window.WebSocket = function (...args) {
+    const socket = new NativeWebSocket(...args);
+    log.push({ kind: 'socket', seq: ++n, t: performance.now(), url: String(args[0]) });
+    socket.addEventListener('message', (event) => {
+      const t = performance.now();
+      try {
+        const message = JSON.parse(String(event.data));
+        if (message && message.name === 'connection/status') log.push({ kind: 'event', seq: ++n, t, status: message.data && message.data.status, connection: message.data && message.data.connectionID, hasError: !!(message.data && message.data.error), raw: String(event.data).slice(0, 700) });
+      } catch (error) { /* not an event */ }
+    });
+    return socket;
+  };
+  window.WebSocket.prototype = NativeWebSocket.prototype;
+  for (const key of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) window.WebSocket[key] = NativeWebSocket[key];
+})()`;
+
+async function trial(page, tag) {
+  return page.evaluate(async ({ service, key, tag }) => {
+    const log = window.__wire;
+    const from = log.length;
+    const sent = performance.now();
+    const response = await window.fetch('/wails/runtime', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-wails-client-id': window._wails.clientId },
+      body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `wire-${tag}`, methodName: `${service}.StartConnection`, args: ['fixture-f-conn', key] } }),
+    });
+    const answered = performance.now();
+    const text = await response.text();
+    const read = performance.now();
+    // the event is told on its own socket: give it a few seconds to be seen at all
+    for (let waited = 0; waited < 5000 && !log.slice(from).some((entry) => entry.kind === 'event' && entry.status === 'FAILED'); waited += 20) await new Promise((resolve) => setTimeout(resolve, 20));
+    const event = log.slice(from).find((entry) => entry.kind === 'event' && entry.status === 'FAILED');
+    return { status: response.status, sent, answered, read, event: event === undefined ? null : { t: event.t, hasError: event.hasError, raw: event.raw }, bodyHead: text.slice(0, 80), body: text.slice(0, 700) };
+  }, { service: RESOURCE_SERVICE, key: SOUTH_KEY, tag });
+}
+
+async function run(engine) {
+  const work = await mkdtemp('/tmp/pt2-wire-work-');
+  const home = path.join(work, 'home');
+  const pluginsDir = path.join(home, '.omniview-feature-ui-next', 'plugins');
+  await mkdir(pluginsDir, { recursive: true });
+  const binary = await buildConnectionsProcess(path.join(work, 'process'));
+  await writeConnectionsPlugin(pluginsDir, binary);
+  const modeFile = path.join(pluginsDir, CONNECTIONS_ID, 'connection-mode');
+  const port = await freePort();
+  const { PATH, TMPDIR, LANG, USER } = process.env;
+  const child = spawn(HOST, [], { env: { PATH, TMPDIR, LANG, USER, HOME: home, OMNIVIEW_CHANNEL: 'feature-ui-next', WAILS_SERVER_HOST: '127.0.0.1', WAILS_SERVER_PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const lines = [];
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => lines.push(String(chunk)));
+  const base = `http://127.0.0.1:${String(port)}`;
+  let browser;
+  try {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      try {
+        if ((await fetch(`${base}/`)).ok) break;
+      } catch {
+        /* not listening yet */
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    // the plugin's process must serve its two connections before a start can be made
+    let listed = [];
+    for (let attempt = 0; attempt < 120 && listed.length < 2; attempt += 1) {
+      const answer = await tryBound(base, 'GetAllConnectionStates');
+      listed = answer.status === 200 ? (JSON.parse(answer.text)[CONNECTIONS_ID] ?? []) : [];
+      if (listed.length < 2) await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(listed.length, 2, `the connections plugin lists its two connections (${lines.join('').slice(-600)})`);
+
+    browser = await (engine === 'webkit' ? webkit : chromium).launch();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.addInitScript(INIT);
+    let cdp;
+    const net = [];
+    if (engine === 'chromium') {
+      cdp = await page.context().newCDPSession(page);
+      await cdp.send('Network.enable');
+      const urls = new Map();
+      cdp.on('Network.requestWillBeSent', (event) => urls.set(event.requestId, event.request.url));
+      cdp.on('Network.webSocketFrameReceived', (event) => {
+        try {
+          const message = JSON.parse(event.response.payloadData);
+          if (message?.name === 'connection/status') net.push({ kind: 'ws-frame', t: event.timestamp * 1000, status: message.data?.status });
+        } catch {
+          /* not an event */
+        }
+      });
+      cdp.on('Network.responseReceived', (event) => {
+        if (String(event.response.url).endsWith('/wails/runtime')) net.push({ kind: 'response-headers', t: event.timestamp * 1000, status: event.response.status });
+      });
+      cdp.on('Network.loadingFinished', (event) => {
+        if (String(urls.get(event.requestId)).endsWith('/wails/runtime')) net.push({ kind: 'response-finished', t: event.timestamp * 1000 });
+      });
+    }
+    await page.goto(`${base}/`, { waitUntil: 'load' });
+    // the page's event socket is open
+    for (let attempt = 0; attempt < 100 && !(await page.evaluate(() => window.__wire.some((entry) => entry.kind === 'socket'))); attempt += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(await page.evaluate(() => window.__wire.some((entry) => entry.kind === 'socket')), `${engine}: the page opened an event socket`);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    const results = [];
+    for (let index = 0; index < TRIALS; index += 1) {
+      await writeFile(modeFile, 'unauthorized\n');
+      const netFrom = net.length;
+      const result = await trial(page, `${engine}-${String(index)}`);
+      // reset: the connection is stopped, which says DISCONNECTED and clears the host's record of the failure
+      await tryBound(base, 'StopConnection', CONNECTIONS_ID, SOUTH_KEY);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const wire = net.slice(netFrom);
+      const frame = wire.find((entry) => entry.kind === 'ws-frame' && entry.status === 'FAILED');
+      const headers = wire.find((entry) => entry.kind === 'response-headers');
+      results.push({ ...result, networkEventMinusHeaders: frame !== undefined && headers !== undefined ? frame.t - headers.t : null });
+    }
+    return { engine, results };
+  } finally {
+    await browser?.close();
+    child.kill();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await rm(work, { recursive: true, force: true });
+  }
+}
+
+for (const engine of ENGINES) {
+  const { results } = await run(engine);
+  const rows = results.map((r, i) => {
+    const eventFirst = r.event !== null && r.event.t < r.answered;
+    const eventBeforeBody = r.event !== null && r.event.t < r.read;
+    return { trial: i, status: r.status, event: r.event === null ? 'NOT HEARD' : 'heard', error: r.event?.hasError, eventFirst, eventBeforeBodyRead: eventBeforeBody, 'answer-event (ms)': r.event === null ? null : +(r.answered - r.event.t).toFixed(2), 'bodyRead-event (ms)': r.event === null ? null : +(r.read - r.event.t).toFixed(2), 'network: frame-minus-headers (ms)': r.networkEventMinusHeaders === null ? null : +r.networkEventMinusHeaders.toFixed(2) };
+  });
+  console.log(`\n=== ${engine}: ${String(results.length)} failed starts (status ${[...new Set(results.map((r) => r.status))].join(',')}; body ${JSON.stringify(results[0].bodyHead)}) ===`);
+  console.table(rows);
+  console.log(`${engine}: the event was heard before the answer in ${String(rows.filter((r) => r.eventFirst).length)} of ${String(rows.length)} trials; before the answer's body was read in ${String(rows.filter((r) => r.eventBeforeBodyRead).length)}; not heard in ${String(rows.filter((r) => r.event === 'NOT HEARD').length)}; with an error in ${String(rows.filter((r) => r.error === true).length)}`);
+  console.log(`${engine}: one event frame as the page heard it: ${String(results[0].event?.raw)}`);
+  console.log(`${engine}: the answer of the same start (HTTP ${String(results[0].status)}): ${results[0].body}`);
+}

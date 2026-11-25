@@ -31,6 +31,21 @@ export type ActivityContextValue = {
   canHandleAction: (action: ActivityAction, record: ActivityRecord) => boolean;
   busyActions: ReadonlySet<string>;
   actionErrors: ReadonlyMap<string, string>;
+  /**
+   * Why the provider cannot observe the host's activity service right now: a subscription or a
+   * heartbeat that failed, and none has made it good. Absent while it can. The records held may be
+   * stale while it is set. It clears when a later subscription succeeds, or a later heartbeat does
+   * (the subscription is then made again). A failed call or the host's observation-error event
+   * never sets it.
+   */
+  unavailable?: string;
+  /**
+   * What the toast and the notification center say: the first failure the provider holds, in this
+   * order: the host's `activity/observation-error` event (a host action whose updates could not be
+   * recorded), `unavailable`, a failed `notify`, a failed `openDetails`. Each goes when its own
+   * source recovers, and no other recovery takes it away: the event with the next heartbeat or
+   * subscription that succeeds, a failed call with the next success of the same call.
+   */
   error?: string;
   selectedDetailsID?: string;
   openDetails: (id: string) => void;
@@ -62,6 +77,11 @@ function useActivityActionsContext() {
   if (!value) throw new Error('Activity hooks must be used within ActivityProvider');
   return value;
 }
+/**
+ * Return the activity records, the notification center controls and the provider's failures:
+ * `unavailable` (the service cannot be observed right now) and `error` (the first failure it holds).
+ * @throws {Error} If no ActivityProvider is mounted above the caller.
+ */
 export function useActivities() {
   const {
     records,
@@ -74,6 +94,7 @@ export function useActivities() {
     setCollapsed,
     dismissToast,
     clearHistory,
+    unavailable,
     error,
   } = useActivityContext();
   return {
@@ -87,6 +108,7 @@ export function useActivities() {
     setCollapsed,
     dismissToast,
     clearHistory,
+    unavailable,
     error,
   };
 }

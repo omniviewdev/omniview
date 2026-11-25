@@ -401,8 +401,11 @@ describe('the Progress column', () => {
   });
 });
 
+/** The tip the mock draws for a start (`H.tip(stamp(ms))`, shell-panel.js:133 and 2324): the medium date and the medium time of the machine, in the machine's locale. */
+const mockStamp = (ms: number): string => new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' });
+
 describe('the Started column', () => {
-  it('says how long ago the host first had the record, in the mock\'s words and with its rounding, and the absolute stamp in UTC as its tip', () => {
+  it('says how long ago the host first had the record, in the mock\'s words and with its rounding, and the instant in the machine\'s own time with the seconds as its tip', () => {
     mount([
       task('a', { title: 'Just started', at: 0 }),
       task('b', { title: 'Older', createdAt: new Date(NOW - 17 * 60_000 - 40_000).toISOString() }),
@@ -413,8 +416,8 @@ describe('the Started column', () => {
     expect(cell('Older', 'started')).toHaveTextContent(/^18 min ago$/);
     expect(cell('Much older', 'started')).toHaveTextContent(/^5 h ago$/);
     expect(cell('Days old', 'started')).toHaveTextContent(/^3 d ago$/);
-    expect(cell('Just started', 'started').querySelector('[data-ov-tip]')).toHaveAttribute('data-ov-tip', '2026-11-24 10:00 UTC');
-    expect(cell('Older', 'started').querySelector('[data-ov-tip]')).toHaveAttribute('data-ov-tip', '2026-11-24 09:42 UTC');
+    expect(cell('Just started', 'started').querySelector('[data-ov-tip]')).toHaveAttribute('data-ov-tip', mockStamp(T0));
+    expect(cell('Older', 'started').querySelector('[data-ov-tip]')).toHaveAttribute('data-ov-tip', mockStamp(NOW - 17 * 60_000 - 40_000));
   });
 
   it('names the instant for assistive technology too: a time element with its machine-readable stamp', () => {
@@ -438,7 +441,7 @@ describe('the Started column', () => {
       mount([task('a', { title: 'Just started', at: 0 })]);
       const tipOf = () => cell('Just started', 'started').querySelector('[data-ov-tip]')?.getAttribute('data-ov-tip');
       expect(cell('Just started', 'started')).toHaveTextContent('just now');
-      expect(tipOf()).toBe('2026-11-24 10:00 UTC');
+      expect(tipOf()).toBe(mockStamp(T0));
       // The record is 30 s old when the page reads the clock: its 44.5th second is 14.5 s on.
       act(() => {
         vi.advanceTimersByTime(14_499);
@@ -448,7 +451,7 @@ describe('the Started column', () => {
         vi.advanceTimersByTime(1);
       });
       expect(cell('Just started', 'started')).toHaveTextContent('1 min ago');
-      expect(tipOf()).toBe('2026-11-24 10:00 UTC');
+      expect(tipOf()).toBe(mockStamp(T0));
     });
   });
 });
@@ -529,11 +532,11 @@ describe('the actions of a row', () => {
     expect(open).toHaveBeenCalledWith({ kind: 'connection', plugin: 'alpha', connection: 'c-1' }, expect.objectContaining({ metaKey: true }));
   });
 
-  it('draw Cancel and Open with the glyphs of the mock: a cross, and the nearest the kit has to an arrow out of a box', () => {
+  it('draw Cancel and Open with the glyphs of the mock: a cross, and the arrow out of a box (external-link)', () => {
     mount([cancellable()]);
     const glyphs = within(rowOf('Reindexing the catalogue')).getAllByRole('button').map((button) => button.querySelector('svg')?.getAttribute('data-ov-glyph'));
     expect(glyphs[0]).toBe('close');
-    expect(['external-link', 'arrow-right']).toContain(glyphs[1]);
+    expect(glyphs[1]).toBe('external-link');
   });
 });
 

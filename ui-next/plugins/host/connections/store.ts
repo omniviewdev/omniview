@@ -1,8 +1,8 @@
 import type { ConnectionsApi, StateRecord } from './api';
 import type { ConnectOutcome, HostConnection } from './types';
-import { failureOf, nameOf, outcomeOfStatus, stateOfReadiness, type Failure } from './words';
+import { failureOf, nameOf, outcomeOfStatus, stateOfReadiness } from './words';
 
-// What the window knows of the connections of every plugin (HM1), and what it does to learn more: one list, read from the host, with this window's own starts laid over it. Framework-free, like `pluginStore.ts`:
+// What the window knows of the connections of every plugin (HM1), and what it does to learn more: one list, read from the host, with a start of this window that is running shown as connecting. Framework-free, like `pluginStore.ts`:
 // React reads it through `useSyncExternalStore` (`getSnapshot` is the same object until something in it changes), and the host is injected (`ConnectionsApi`), so the rules here are tests with no runtime and no host.
 //
 // THE LIST is what the last read that worked said (`GetAllConnectionStates`: a readiness word and the host's error for each connection of each plugin), sorted by plugin, then by name, then by key. A window that
@@ -11,9 +11,10 @@ import { failureOf, nameOf, outcomeOfStatus, stateOfReadiness, type Failure } fr
 // READS. A read that is asked for while another is in flight shares it, unless the host has changed since that one began (an event was heard, or a start of this window ended): a read that began before the change may
 // not have seen it, so the next is a new one. Two reads can then be in flight, and the one that began first never overwrites what the one that began last has already said (the generation counter).
 //
-// STARTS. `connect` marks the connection `connecting` at once and keeps the mark until the read that follows the start has landed, so a list never goes back to the state it had before the start in between. A start that
-// fails is remembered (its class and its line) and shown, over the host's `disconnected` or `failed`, until a read says the connection is connected or the window starts it again: the host's own error of a failed start
-// is not always readable, and a person who just asked for a connection and saw it fail must not be told, a moment later, that it is merely disconnected.
+// STARTS. `connect` marks the connection `connecting` at once and keeps the mark until the read that follows the start has landed, whether the start worked or failed, so a list never goes back to the state it had before the
+// start in between. The store keeps no memory of a failed start: the host does (its list says FAILED, with its own `readinessError`, the public form of why, and `connection/status` tells every window that something changed),
+// so a connection is what the last list said, whichever window made the start, and a list that says something else the next time is believed. The one thing that comes from the start itself is the answer of `connect`: its
+// rejection (or the status it answered) is worded for the caller, given to it and not stored.
 //
 // EVENTS. `attach` keeps the window in step with the host while it lives: the host says that something changed (`connection/status`, and `<plugin>/connection/sync` for each plugin), not what, so every event
 // asks for a read, and a burst of them asks for one, 100 ms after the first.
@@ -24,7 +25,7 @@ export type ConnectionsState = {
   readonly loaded: boolean;
   /** The last read failed. The list is what the last read that worked said (empty before one). */
   readonly failed: boolean;
-  /** Every plugin's connections, sorted by plugin id, then name, then key, with this window's own starts laid over what the host said. The same array until something in it changes. */
+  /** Every plugin's connections as the host said them, sorted by plugin id, then name, then key, with a start of this window that is running shown as connecting. The same array until something in it changes. */
   readonly connections: readonly HostConnection[];
 };
 
@@ -37,8 +38,8 @@ export type ConnectionsStore = {
   readonly refresh: () => Promise<void>;
   /**
    * Starts a connection of a plugin by its key. A connection that is listed and connected is not started: the answer is `connected`. Otherwise it is `connecting` at once, and the answer comes after the host ended the
-   * start AND the list was read again, so whoever routes on it finds the state current. A failure stays in the list (its class and its line) until a read says the connection is connected or it is started again.
-   * Calls for the same connection that overlap share one start. Never rejects.
+   * start AND the list was read again, so whoever routes on it finds the state current. The answer is what the start came to (a failure carries its class and one line that is safe to show); what the connection is afterwards is what
+   * the list says, and the store keeps nothing of a failed start of its own. Calls for the same connection that overlap share one start. Never rejects.
    */
   readonly connect: (plugin: string, key: string) => Promise<ConnectOutcome>;
   /**
@@ -133,9 +134,8 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
   let host: readonly HostConnection[] = [];
   let hasLoaded = false;
   let didFail = false;
-  // What this window did to the connections the host lists: the starts that are running, the starts that failed, and the promise each running start answers by.
+  // What this window does to the connections the host lists: the starts that are running (shown as connecting), and the promise each running start answers by.
   const marks = new Set<string>();
-  const failures = new Map<string, Failure>();
   const attempts = new Map<string, Promise<ConnectOutcome>>();
 
   // The reads. `started` counts the reads begun and `newest` is the last one whose answer was taken: an answer is taken only if no later read's has been, so what is said last about the host is what began last.
@@ -163,21 +163,9 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     }
   };
 
-  /** The host's list with this window's starts laid over it: a start in flight is connecting; a start that failed stands in for the host's disconnected or failed, which say nothing of why. */
+  /** The host's list with the starts of this window that are running shown as connecting. Nothing else is laid over what the host said. */
   const overlay = (): readonly HostConnection[] =>
-    host.map((entry): HostConnection => {
-      const id = idOf(entry.plugin, entry.key);
-      if (marks.has(id)) {
-        return { ...entry, state: 'connecting', reason: undefined };
-      }
-
-      const failure = failures.get(id);
-      if (failure !== undefined && (entry.state === 'disconnected' || entry.state === 'failed')) {
-        return { ...entry, state: failure.state, reason: failure.reason };
-      }
-
-      return entry;
-    });
+    host.map((entry): HostConnection => (marks.has(idOf(entry.plugin, entry.key)) ? { ...entry, state: 'connecting', reason: undefined } : entry));
 
   const publish = (): void => {
     const connections = reuse(snapshot.connections, overlay());
@@ -189,7 +177,7 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     notify();
   };
 
-  /** Takes the answer of a read: the list it said, or that it failed (which keeps the list). A connection the host says is connected has no failure to remember. */
+  /** Takes the answer of a read: the list it said, or that it failed (which keeps the list). */
   const apply = (answer: readonly HostConnection[] | undefined): void => {
     hasLoaded = true;
     if (answer === undefined) {
@@ -197,11 +185,6 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     } else {
       didFail = false;
       host = answer;
-      for (const entry of answer) {
-        if (entry.state === 'connected') {
-          failures.delete(idOf(entry.plugin, entry.key));
-        }
-      }
     }
 
     publish();
@@ -342,19 +325,13 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     }
   };
 
-  /** Runs the start that `connect` marked, and settles what the window knows once it ended: the failure is remembered, the list is read again, and only then does the mark go. */
+  /** Runs the start that `connect` marked, and settles what the window knows once it ended: the list is read again, and only then does the mark go. The outcome is the start's own, whichever way it ended. */
   const finish = async (plugin: string, key: string, id: string): Promise<ConnectOutcome> => {
     const outcome = await ended(plugin, key);
     // The host is not what a read in flight has seen: the start has changed it, so the read below is a new one.
     version += 1;
-    if (outcome.status === 'failed') {
-      failures.set(id, { state: outcome.state, reason: outcome.reason });
-      marks.delete(id);
-      publish();
-    }
-
     await refresh();
-    // A start that worked keeps its mark until the read has landed: the list says connecting, then connected, and never what it said before the start in between.
+    // A start keeps its mark until the read has landed, whether it worked or failed: the list says connecting, then what the host says (connected, or FAILED with its error), and never what it said before the start in between.
     if (marks.delete(id)) {
       publish();
     }
@@ -374,7 +351,6 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     }
 
     // Marked, started and registered before anything is told to anyone, so that nobody who hears the mark can start it twice.
-    failures.delete(id);
     marks.add(id);
     const attempt = finish(plugin, key, id);
     attempts.set(id, attempt);

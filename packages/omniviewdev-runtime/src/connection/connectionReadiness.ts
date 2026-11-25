@@ -152,8 +152,13 @@ function listen() {
       if (entry.stop && data.status !== 'DISCONNECTED') return;
       // An invalidated start can still emit its final event before its RPC settles.
       if (data.status !== 'DISCONNECTED' && entry.starts.size && entry.operation?.kind !== 'start') return;
+      // A start that failed with an error says why, in the host's public error: the one its own rejection carries. Both make the same snapshot, so the class of the
+      // failure (sign in, access denied, not found) and its sentence stay whichever is heard first, and an event heard after the rejection does not replace them.
+      const snapshot = data.status === 'FAILED' && data.error != null
+        ? failureSnapshot(data.error, entry.snapshot.connection)
+        : statusSnapshot({ status: data.status as ConnectionStatus['status'], error: '', details: '' }, entry.snapshot.connection);
       // Events outrank responses from checks/starts that began before this event.
-      invalidate(entry, statusSnapshot({ status: data.status as ConnectionStatus['status'], error: '', details: '' }, entry.snapshot.connection), data.status === 'CONNECTED');
+      invalidate(entry, snapshot, data.status === 'CONNECTED');
     }),
     Events.On('plugin/crash', ({ data }) => invalidatePlugin(data.pluginID, data.error || 'The plugin stopped unexpectedly.')),
     Events.On('plugin/crash_recovery_failed', ({ data }) => invalidatePlugin(data.pluginID, data.error || 'Plugin recovery failed.')),

@@ -50,6 +50,14 @@ type ConnectionStatusPayload struct {
 	ConnectionID string `json:"connectionID"`
 	Status       string `json:"status"`
 	Name         string `json:"name"`
+	// Error is why the start of the connection failed, in the form every provider error is handed
+	// to a user: the class's own words, with the provider's sentence only after apperror.PublicText
+	// has cleaned it. It is set on the event of a start that failed, and on no other: on the FAILED
+	// event of a start whose provider call returned an error, and on the event of a start that ended
+	// without an error and answered a status that is a failure (UNAUTHORIZED, FORBIDDEN, FAILED and
+	// the like), which keeps the status the provider answered. For such a status it is the error of
+	// the status's class alone: the status's own text is never in it.
+	Error *apperror.AppError `json:"error,omitempty"`
 }
 
 func init() {
@@ -136,6 +144,12 @@ type controller struct {
 	profileNative        map[string][]types.Connection
 	connectionChangeHook func(pluginID, connectionID string) func()
 	connectionRetireHook func(pluginID, connectionID string)
+
+	// startFailures holds, for each connection in a plugin's list, why its last start failed, in
+	// public form and without the raw error, until a later start answers, the connection is stopped
+	// or it leaves the list. It is guarded by connsMu and bounded by the lists. See
+	// connection_start_failures.go.
+	startFailures map[string]map[string]*apperror.AppError
 
 	// calls registers connection starts and stops. They run their plugin calls
 	// without profilesMu; see beginConnectionCall.
@@ -257,6 +271,7 @@ func (c *controller) OnPluginInit(pluginID string, _ config.PluginMeta) {
 	// Leave its bytes untouched so failed discovery and restarts cannot erase it.
 	c.connsMu.Lock()
 	c.connections[pluginID] = make([]types.Connection, 0)
+	c.pruneStartFailuresLocked(pluginID)
 	c.connsMu.Unlock()
 }
 
@@ -431,6 +446,7 @@ func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
 
 	c.connsMu.Lock()
 	delete(c.connections, pluginID)
+	c.pruneStartFailuresLocked(pluginID)
 	c.connsMu.Unlock()
 	c.clearAutoConnectAttempts(pluginID)
 
@@ -571,7 +587,18 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	conn, err := provider.StartConnection(ctx, connectionID)
 	if err != nil {
 		telemetryutil.RecordError(span, err)
+		c.publishStartFailure(ctx, pluginID, connectionID, startGeneration, startEpoch, err)
 		return types.ConnectionStatus{}, err
+	}
+	// A start can end without an error and answer a status that is a failure (UNAUTHORIZED, FORBIDDEN,
+	// FAILED and the like). It is a failed start like the one above: admitted, kept and announced in the
+	// same place, with the public error of the status's class and nothing of the status's own text. The
+	// host's refusal is its answer when the start is no longer admitted, as for any other result of a start.
+	if code := answeredFailureCode(conn.Status); code != "" {
+		if refusal := c.publishAnsweredFailure(ctx, pluginID, connectionID, startGeneration, startEpoch, conn, code); refusal != nil {
+			return types.ConnectionStatus{}, refusal
+		}
+		return conn, nil
 	}
 	if err := c.checkBorrowableStart(ctx, pluginID, connectionID, startGeneration, startEpoch); err != nil {
 		return types.ConnectionStatus{}, err
@@ -604,11 +631,17 @@ func (c *controller) StartConnection(ctx context.Context, pluginID, connectionID
 	if conn.Connection != nil && conn.Connection.Name != "" {
 		connName = conn.Connection.Name
 	}
+	// A start that answered without a failure ends the failure of an earlier one, before the event that
+	// says so: CONNECTED, and also PENDING (a start in progress), DISCONNECTED and UNKNOWN (no client is
+	// registered), which are not failures, record nothing and are published as they always were. The
+	// connection then reads as its provider reports it, as it does after every start that answers.
+	c.forgetStartFailure(pluginID, connectionID)
 	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
 		PluginID:     pluginID,
 		ConnectionID: connectionID,
 		Status:       string(conn.Status),
 		Name:         connName,
+		Error:        nil,
 	})
 	if conn.Status == types.ConnectionStatusConnected {
 		c.startConnectionUpdatesAfterReady(pluginID, resource.AccessRoute{Connection: connectionID})
@@ -665,11 +698,13 @@ func (c *controller) StopConnection(ctx context.Context, pluginID, connectionID 
 	c.connections[pluginID] = upsertEffectiveConnectionStatus(c.connections[pluginID], conn)
 	c.connsMu.Unlock()
 
+	c.forgetStartFailure(pluginID, connectionID)
 	c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{
 		PluginID:     pluginID,
 		ConnectionID: connectionID,
 		Status:       "DISCONNECTED",
 		Name:         conn.Name,
+		Error:        nil,
 	})
 
 	return conn, nil
@@ -829,6 +864,9 @@ func (c *controller) connectionState(ctx context.Context, pluginID string, conn 
 	defer func() {
 		if retErr == nil {
 			retErr = c.currentGeneration(ctx, pluginID, generation)
+		}
+		if retErr == nil {
+			c.withStartFailure(pluginID, &state)
 		}
 	}()
 	state = ConnectionState{

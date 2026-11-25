@@ -1,0 +1,130 @@
+#!/bin/bash
+# Negative controls for the follow-up of PT2 item (1): a start that ANSWERS a failure status without an error (red evidence: red-go-answered.txt).
+# Each fault is put into a SCRATCH copy of one source file and built with `go test -overlay`; the worktree is never edited. Every control runs the whole
+# test file (every test function of backend/pkg/plugin/resource/connection_start_failure_test.go), so that "trips the test named for it and no other" can be
+# read from the result. It is the method of go-mutations.sh.txt (same `run`), for the code of the answered path only (answeredFailureCode,
+# publishAnsweredFailure, announceStartFailure and the branch in StartConnection).
+#
+# A control passes when (1) a test it names turns red (WANT matches at least one failing test or subtest) and (2) nothing else does
+# (ALLOW matches every failing test and subtest, parents included). The verdict is printed after each run.
+# ROOT is the worktree (default: the current directory); ONLY=<regexp> runs the controls whose name matches.
+# A fault is a list of sed expressions (applied first, in order) and `@after:<anchor>|<line>|<replacement>` steps (an awk pass: the line that follows
+# a line matching <anchor> is rewritten if it matches <line>).
+export GOWORK=off GOTOOLCHAIN=local
+WT=${ROOT:-$PWD}
+M=${MDIR:-/tmp/pt2-go-answered-mut}
+ONLY=${ONLY:-.}
+R=backend/pkg/plugin/resource
+rm -rf "$M" && mkdir -p "$M"
+cd "$WT" || exit 2
+TESTS=$(grep -o '^func Test[A-Za-z0-9_]*' "$R/connection_start_failure_test.go" | sed 's/^func //' | paste -sd'|' -)
+
+F=$R/connection_start_failures.go
+C=$R/controller.go
+
+START='/^func (c \*controller) StartConnection(/,/^}/'
+ANSWERED='/^func (c \*controller) publishAnsweredFailure(/,/^}/'
+
+# The tests that hold the answered path: the tests written for it and the tables that run for each way a start fails.
+OWN='^(TestAStartThatAnswers|TestTheListGivesTheWindow|TestAnAnsweredFailure|TestTheEventOfAnAnswered|TestEachStartEmits|TestWhatEnds|TestASyncThatKeeps|TestTheFailureIsKept|TestAStartThatTheHostRefuses)'
+
+pass=0; total=0
+# run <name> <file> <go test flags> <WANT regexp> <ALLOW regexp> <fault>...
+run() {
+  name="$1"; file="$2"; flags="$3"; want="$4"; allow="$5"; shift 5
+  echo "$name" | grep -Eq "$ONLY" || return
+  total=$((total+1))
+  exprs=(); afters=()
+  for e in "$@"; do
+    case "$e" in
+      @after:*) afters+=("${e#@after:}") ;;
+      *) exprs+=(-e "$e") ;;
+    esac
+  done
+  if [ ${#exprs[@]} -gt 0 ]; then sed "${exprs[@]}" "$WT/$file" > "$M/$name.go"; else cp "$WT/$file" "$M/$name.go"; fi
+  for spec in ${afters[@]+"${afters[@]}"}; do
+    IFS='|' read -r anchor line repl <<<"$spec"
+    awk -v anchor="$anchor" -v line="$line" -v repl="$repl" '{ if (prev ~ anchor && $0 ~ line) sub(line, repl); print; prev = $0 }' "$M/$name.go" > "$M/$name.go.next" && mv "$M/$name.go.next" "$M/$name.go"
+  done
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+  out=$(go test $flags -overlay="$M/$name.json" -count=1 -timeout 300s -run "^($TESTS)\$" "./$R/" 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E "^\s*--- FAIL" | sed -e 's/^ *--- FAIL: //' -e 's/ (.*//')
+  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed)"; return; fi
+  if [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (no test failed: the build or the setup did)"; echo "$out" | grep -v '^ld: warning' | head -5; return; fi
+  named=$(echo "$failed" | grep -Ec "$want")
+  stray=$(echo "$failed" | grep -Evc "$allow")
+  top=$(echo "$failed" | grep -v '/' | sed 's/^Test//; s/^A//' | cut -c1-48 | tr '\n' ',')
+  nsub=$(echo "$failed" | grep -c '/')
+  if [ "$named" -gt 0 ] && [ "$stray" -eq 0 ]; then verdict="OK"; pass=$((pass+1)); else verdict="CHECK (named=$named stray=$stray)"; fi
+  echo "CONTROL $name: RED [$verdict] ${top%,} (+$nsub subtests)"
+  if [ "$stray" -ne 0 ]; then echo "$failed" | grep -Ev "$allow" | sed 's/^/    stray: /'; fi
+}
+
+# --- which statuses are failures ---------------------------------------------------------------------------------------------
+run answered-failures-ignored $C "" 'TestAStartThatAnswersAFailureStatus|TestAnAnsweredFailureAcross' "$OWN" \
+  's/if code := answeredFailureCode(conn.Status); code != "" {/if code := ""; code != "" {/'
+
+run unauthorized-is-no-failure $F "" 'TestAStartThatAnswersAFailureStatus.*/UNAUTHORIZED|TestTheListGivesTheWindow.*/UNAUTHORIZED' "$OWN" \
+  's/return "UNAUTHORIZED"/return ""/'
+
+run forbidden-given-the-sign-in-class $F "" 'TestTheListGivesTheWindow.*/FORBIDDEN|TestAStartThatAnswersAFailureStatus.*/FORBIDDEN' "$OWN" \
+  's/return "FORBIDDEN"/return "UNAUTHORIZED"/'
+
+run the-rest-given-the-provider-class $F "" 'TestTheListGivesTheWindow' "$OWN" \
+  's/return "INTERNAL"/return "PROVIDER_ERROR"/'
+
+run pending-is-a-failure $F "" 'TestAStartThatAnswersAStatusThatIsNotAFailure.*/PENDING|TestEachStartEmits' "$OWN" \
+  's/types.ConnectionStatusFailed, types.ConnectionStatusError,/types.ConnectionStatusFailed, types.ConnectionStatusPending, types.ConnectionStatusError,/' \
+  's/case types.ConnectionStatusConnected, types.ConnectionStatusPending, types.ConnectionStatusDisconnected, types.ConnectionStatusUnknown:/case types.ConnectionStatusConnected, types.ConnectionStatusDisconnected, types.ConnectionStatusUnknown:/'
+
+run disconnected-is-a-failure $F "" 'TestAStartThatAnswersAStatusThatIsNotAFailure.*/DISCONNECTED|TestEachStartEmits' "$OWN" \
+  's/types.ConnectionStatusFailed, types.ConnectionStatusError,/types.ConnectionStatusFailed, types.ConnectionStatusDisconnected, types.ConnectionStatusError,/' \
+  's/case types.ConnectionStatusConnected, types.ConnectionStatusPending, types.ConnectionStatusDisconnected, types.ConnectionStatusUnknown:/case types.ConnectionStatusConnected, types.ConnectionStatusPending, types.ConnectionStatusUnknown:/'
+
+run unknown-is-a-failure $F "" 'TestAStartThatAnswersAStatusThatIsNotAFailure.*/UNKNOWN|TestEachStartEmits' "$OWN" \
+  's/types.ConnectionStatusFailed, types.ConnectionStatusError,/types.ConnectionStatusFailed, types.ConnectionStatusUnknown, types.ConnectionStatusError,/' \
+  's/case types.ConnectionStatusConnected, types.ConnectionStatusPending, types.ConnectionStatusDisconnected, types.ConnectionStatusUnknown:/case types.ConnectionStatusConnected, types.ConnectionStatusPending, types.ConnectionStatusDisconnected:/'
+
+run no-status-and-unknown-words-are-failures $F "" 'TestAStartThatAnswersAStatusThatIsNotAFailure.*/(no_status|a_word)' "$OWN" \
+  '@after:default:|return ""|return "INTERNAL"'
+
+# --- no plugin text ----------------------------------------------------------------------------------------------------------
+run plugin-text-in-the-detail $F "" 'TestAnAnsweredFailureCarriesNoText|TestAnAnsweredFailureAcross' "$OWN" \
+  "$ANSWERED"' s/failure.Err = nil/failure.Err = nil; failure.Detail = answer.Error/'
+
+run raw-error-kept $F "" 'TestAStartThatAnswersAFailureStatus|TestAnAnsweredFailureAcross' "$OWN" \
+  "$ANSWERED"' s/failure.Err = nil/_ = code/'
+
+# --- the event ---------------------------------------------------------------------------------------------------------------
+run event-says-failed-whatever-was-answered $F "" 'TestAStartThatAnswersAFailureStatus|TestEachStartEmits' '.' \
+  's/Status:       string(status),/Status:       string(types.ConnectionStatusFailed),/'
+
+run event-named-by-the-listed-name $F "" 'TestTheEventOfAnAnsweredFailureIsNamed' "$OWN" \
+  "$ANSWERED"' s/answer.Status, failure, name)/answer.Status, failure, name[:0])/'
+
+run two-events $F "" 'TestAStartThatAnswersAFailureStatus|TestEachStartEmits' '.' \
+  's/c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{/for range 2 { c.emitter.Emit(EventConnectionStatus, ConnectionStatusPayload{/' \
+  '@after:Error:        failure,|[}][)]$|}) }'
+
+# --- the record --------------------------------------------------------------------------------------------------------------
+run no-record-kept $F "" 'TestAStartThatAnswersAFailureStatus' '.' \
+  's/listedName := c.keepStartFailure(pluginID, connectionID, failure)/listedName := connectionID/'
+
+run record-kept-after-the-event $F "" 'TestTheFailureIsKeptBeforeTheEventIsEmitted' '.' \
+  's/listedName := c.keepStartFailure(pluginID, connectionID, failure)/listedName := connectionID/' \
+  '@after:[}][)]$|return nil|c.keepStartFailure(pluginID, connectionID, failure); return nil'
+
+run record-not-replaced-by-a-later-failure $F "" 'TestAStartThatAnswersAnotherFailureReplaces' '.' \
+  's/c.startFailures\[pluginID\]\[connectionID\] = failure/if c.startFailures[pluginID][connectionID] == nil { c.startFailures[pluginID][connectionID] = failure }/'
+
+# --- the order against the plugin's generation -------------------------------------------------------------------------------
+run no-readmission-before-keeping $F "" 'TestAnAnsweredFailureThatArrives|TestAFailureThatArrives|TestAStartThatTheHostRefuses' '.' \
+  's/if refusal := c.checkBorrowableStartLocked(ctx, pluginID, connectionID, generation, epoch); refusal != nil {/if refusal := error(nil); refusal != nil {/'
+
+# --- what clears it ----------------------------------------------------------------------------------------------------------
+run answering-start-keeps-the-failure $C "" 'TestWhatEnds.*/a_later_start' "${OWN%)}|TestAFailureBelongs)" \
+  "$START"' s/c.forgetStartFailure(pluginID, connectionID)$/_ = pluginID/'
+
+echo "controls: $pass of $total red as named, and nothing else red"

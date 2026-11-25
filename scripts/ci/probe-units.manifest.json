@@ -412,6 +412,7 @@
       "start-typed",
       "axe-failed",
       "hidden-burn",
+      "hidden-long-task",
       "hidden-rest",
       "draw-hidden",
       "swap-held",

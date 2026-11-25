@@ -2,7 +2,7 @@ import type { AppError } from '@omniviewdev/runtime/ui/v1';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionsApi, StartStatus, StateRecord } from './api';
 import { createConnectionsStore, type ConnectionsStore, type ConnectionsStoreOptions } from './store';
-import type { ConnectionState } from './types';
+import type { ConnectOutcome, ConnectionState } from './types';
 
 // The connection store (store.ts) over a fake host: every call it makes is a promise the test settles, so the order in which the host answers is the test's. No runtime, no host, no timers except where a test says so.
 
@@ -99,6 +99,18 @@ const UNAUTHORIZED = envelope({ type: 'omniview:resource/unauthorized', title: '
 const FORBIDDEN = envelope({ type: 'omniview:resource/forbidden', title: 'Access denied', status: 403, detail: 'The role may not connect.', code: 'FORBIDDEN', recovery: 'none' });
 const NOT_RESPONDING = envelope({ type: 'omniview:connection/failed', title: 'Source unavailable', status: 503, detail: 'The server refused the connection.', code: 'UNAVAILABLE', recovery: 'reconnect' });
 const BROKEN = envelope({ detail: 'The plugin could not open it.' });
+
+/**
+ * What the host's list can say of a connection whose start failed: the readiness FAILED with its error (the host's public form, `readinessError`), the state that error is and the host's own line (none when the host gave no
+ * error). The store keeps nothing of its own about a failed start: the connection is what the last list said, whoever made the start.
+ */
+const HOST_SAYS: Array<[name: string, error: AppError | undefined, state: ConnectionState, reason: string | undefined]> = [
+  ['a sign-in is needed', UNAUTHORIZED, 'unauthorized', 'The provider requires authentication.'],
+  ['access is denied', FORBIDDEN, 'forbidden', 'The role may not connect.'],
+  ['the server does not answer', NOT_RESPONDING, 'unreachable', 'The server refused the connection.'],
+  ['the start failed and the host did not classify it', BROKEN, 'failed', 'The plugin could not open it.'],
+  ['the start failed and the host gave no error', undefined, 'failed', undefined],
+];
 
 /** Lets every promise the store is waiting on run; a promise that is still pending after it is waiting for the test. */
 const flush = async (): Promise<void> => {
@@ -506,7 +518,7 @@ describe('connect', () => {
   });
 
   describe('that fails', () => {
-    type Watched = { readonly isDone: () => boolean; readonly value: () => unknown };
+    type Watched = { readonly isDone: () => boolean; readonly value: () => ConnectOutcome | undefined };
 
     function rejecting(error: Error): (start: Start) => void {
       return (start) => {
@@ -540,26 +552,30 @@ describe('connect', () => {
       return { world, outcome };
     }
 
-    it.each(FAILURES)('when %s: is remembered and shown at once, and stays over what the host says when the list is read again', async (_name, fail, state, reason) => {
+    it.each(FAILURES)('when %s: is connecting until the list was read again, and answers its caller then with what the start came to', async (_name, fail, state, reason) => {
       const { world, outcome } = await failed(fail);
 
-      expect(connection(world, 'acme', 'main')).toMatchObject({ state, reason });
+      // The start ended and the list is being read again. The window says nothing of its own about why it failed: the connection is connecting still, and the answer waits for the read.
+      expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'connecting', reason: undefined });
       expect(outcome.isDone()).toBe(false);
 
       world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
       await flush();
 
+      // The caller is answered from the start itself (its rejection, or the status it answered), whatever the list says: nothing of it is stored.
       expect(outcome.value()).toEqual({ status: 'failed', state, reason });
-      expect(connection(world, 'acme', 'main')).toMatchObject({ state, reason });
     });
 
-    it('shows no text the plugin wrote when what the host threw is not its envelope', async () => {
-      const { world } = await failed((start) => {
+    it('shows no text the plugin wrote when what the host threw is not its envelope: the answer is failed, with the runtime\'s own sentence, and the store holds none of it', async () => {
+      const { world, outcome } = await failed((start) => {
         start.reject(new Error('boom: token=abc123'));
       });
+      world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
+      await flush();
 
-      expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'failed' });
-      expect(connection(world, 'acme', 'main')?.reason).not.toMatch(/boom|token|abc123/);
+      expect(outcome.value()).toMatchObject({ status: 'failed', state: 'failed' });
+      expect(JSON.stringify(outcome.value())).not.toMatch(/boom|token|abc123/);
+      expect(JSON.stringify(world.store.getSnapshot())).not.toMatch(/boom|token|abc123/);
     });
 
     it('is a failure, not a rejection, when the host throws instead of rejecting, and when it answers what is not a status', async () => {
@@ -583,57 +599,127 @@ describe('connect', () => {
       expect(outcome.value()).toMatchObject({ status: 'failed', state: 'failed' });
     });
 
-    it('is forgotten when a read says the connection is connected: a later read that says it is disconnected is believed', async () => {
-      const { world } = await failed((start) => {
+    it('is connecting until the read that follows it has ended, also when that read fails: then it is what the last read that worked said, and the caller is answered all the same', async () => {
+      const { world, outcome } = await failed((start) => {
         start.reject(wails(UNAUTHORIZED));
       });
-      world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
-      await flush();
-      expect(stateOf(world, 'acme', 'main')).toBe('unauthorized');
-
-      await loadedWith(world, { acme: [record('main', 'Main', 'CONNECTED')] });
-      expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'connected', reason: undefined });
-
-      await loadedWith(world, { acme: [record('main', 'Main', 'DISCONNECTED')] });
-      expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'disconnected', reason: undefined });
-    });
-
-    it('is forgotten when the connection is started again: it is connecting at once, with no reason, and what the new start comes to is shown', async () => {
-      const { world } = await failed((start) => {
-        start.reject(wails(UNAUTHORIZED));
-      });
-      world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
-      await flush();
-
-      const outcome = watch(world.store.connect('acme', 'main'));
-
       expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'connecting', reason: undefined });
-      world.starts[1].reject(wails(FORBIDDEN));
+
+      world.reads[1].reject(new Error('the host is gone'));
       await flush();
-      world.reads[2].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
-      await flush();
-      expect(outcome.value()).toEqual({ status: 'failed', state: 'forbidden', reason: 'The role may not connect.' });
-      expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'forbidden', reason: 'The role may not connect.' });
+
+      expect(outcome.value()).toEqual({ status: 'failed', state: 'unauthorized', reason: 'The provider requires authentication.' });
+      expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'disconnected', reason: undefined });
+      expect(world.store.getSnapshot().failed).toBe(true);
     });
+  });
+});
 
-    it.each([
-      ['DISCONNECTED', undefined, 'unauthorized'],
-      ['UNKNOWN', undefined, 'unauthorized'],
-      ['FAILED', undefined, 'unauthorized'],
-      ['FAILED', NOT_RESPONDING, 'unreachable'],
-      ['PENDING', undefined, 'connecting'],
-      ['CONNECTED', undefined, 'connected'],
-    ] as const)('stands in for what the host says only when that says nothing of why: the host\'s %s (error %#) is shown as %s', async (readiness, error, shown) => {
-      const { world } = await failed((start) => {
-        start.reject(wails(UNAUTHORIZED));
-      });
-      world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
-      await flush();
+// The host remembers why a start failed (its list says FAILED with the error, and a `connection/status` event tells every window that something changed): the store keeps nothing of its own, so a connection is what the last list said,
+// whichever window made the start, and a list that says something else the next time is believed.
+describe('what the host says of a start that failed', () => {
+  it.each(HOST_SAYS)('is %s: an event from the host makes the window read a list that says FAILED, with no start made by this window', async (_name, error, state, reason) => {
+    const world = build({ plugins: () => ['acme'] });
+    const stop = world.store.attach();
+    world.reads[0].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
+    await flush();
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'disconnected', reason: undefined });
+    const listener = vi.fn();
+    world.store.subscribe(listener);
 
+    // A start of another window fails. The event says that something changed, not what: the window reads the list, and the list says it.
+    world.emitStatus();
+    expect(world.timers).toHaveLength(1);
+    world.timers[0].run();
+    world.reads[1].resolve({ acme: [record('main', 'Main', 'FAILED', error)] });
+    await flush();
+
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state, reason });
+    expect(world.starts).toHaveLength(0);
+    expect(listener).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it.each(HOST_SAYS)('is %s: after a start of this window that failed the state is what the list says, whatever the start said, and the caller is answered with the start\'s own', async (_name, error, state, reason) => {
+    const world = build();
+    await loadedWith(world, { acme: [record('main', 'Main', 'DISCONNECTED')] });
+    const outcome = watch(world.store.connect('acme', 'main'));
+    world.starts[0].resolve({ status: 'PENDING' });
+    await flush();
+
+    world.reads[1].resolve({ acme: [record('main', 'Main', 'FAILED', error)] });
+    await flush();
+
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state, reason });
+    expect(outcome.value()).toEqual({ status: 'failed', state: 'failed', reason: 'The connection did not start.' });
+  });
+
+  it('is connected, with no reason, when a later list says CONNECTED', async () => {
+    const world = build();
+    await loadedWith(world, { acme: [record('main', 'Main', 'DISCONNECTED')] });
+    void world.store.connect('acme', 'main');
+    world.starts[0].reject(wails(NOT_RESPONDING));
+    await flush();
+    world.reads[1].resolve({ acme: [record('main', 'Main', 'FAILED', NOT_RESPONDING)] });
+    await flush();
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'unreachable', reason: 'The server refused the connection.' });
+
+    await loadedWith(world, { acme: [record('main', 'Main', 'CONNECTED')] });
+
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'connected', reason: undefined });
+  });
+
+  it('remembers nothing between reads: a list that says DISCONNECTED after a start that failed is disconnected, and the same list read again changes nothing', async () => {
+    const world = build();
+    await loadedWith(world, { acme: [record('main', 'Main', 'DISCONNECTED')] });
+    void world.store.connect('acme', 'main');
+    world.starts[0].reject(wails(UNAUTHORIZED));
+    await flush();
+
+    world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECTED')] });
+    await flush();
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'disconnected', reason: undefined });
+
+    const before = world.store.getSnapshot();
+    const listener = vi.fn();
+    world.store.subscribe(listener);
+    await loadedWith(world, { acme: [record('main', 'Main', 'DISCONNECTED')] });
+
+    expect(world.store.getSnapshot()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('follows the host both ways, read after read: FAILED, DISCONNECTED, FAILED again, each as that list says it, and the same list twice says the same twice', async () => {
+    const world = build();
+    const says = async (readiness: string, error?: AppError) => {
       await loadedWith(world, { acme: [record('main', 'Main', readiness, error)] });
+      return connection(world, 'acme', 'main');
+    };
 
-      expect(stateOf(world, 'acme', 'main')).toBe(shown);
-    });
+    expect(await says('FAILED', FORBIDDEN)).toMatchObject({ state: 'forbidden', reason: 'The role may not connect.' });
+    const first = world.store.getSnapshot();
+    expect(await says('FAILED', FORBIDDEN)).toMatchObject({ state: 'forbidden', reason: 'The role may not connect.' });
+    expect(world.store.getSnapshot()).toBe(first);
+    expect(await says('DISCONNECTED')).toMatchObject({ state: 'disconnected', reason: undefined });
+    expect(await says('FAILED', NOT_RESPONDING)).toMatchObject({ state: 'unreachable', reason: 'The server refused the connection.' });
+  });
+
+  it('is connecting at once, with no reason, when a connection the list says FAILED is started again, and is what the list says when that start ended', async () => {
+    const world = build();
+    await loadedWith(world, { acme: [record('main', 'Main', 'FAILED', UNAUTHORIZED)] });
+    expect(stateOf(world, 'acme', 'main')).toBe('unauthorized');
+
+    const outcome = watch(world.store.connect('acme', 'main'));
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'connecting', reason: undefined });
+
+    world.starts[0].reject(wails(FORBIDDEN));
+    await flush();
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'connecting', reason: undefined });
+    world.reads[1].resolve({ acme: [record('main', 'Main', 'FAILED', FORBIDDEN)] });
+    await flush();
+
+    expect(outcome.value()).toEqual({ status: 'failed', state: 'forbidden', reason: 'The role may not connect.' });
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'forbidden', reason: 'The role may not connect.' });
   });
 });
 

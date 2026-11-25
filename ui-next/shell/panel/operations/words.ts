@@ -1,4 +1,4 @@
-import { isIconName, type IconName, type StatusRole } from '@omniviewdev/kit';
+import type { IconName, StatusRole } from '@omniviewdev/kit';
 import type { OperationState } from './types';
 
 // The words and glyphs of the Operations table (ch16 S122; the mock's `stateWords` and `STATE_FACE`, shell-panel.js:2258-2266). One glyph carries one meaning (X2): work under way is the loader, work that waits is the clock, a
@@ -28,9 +28,5 @@ export const NO_TARGET = 'No target';
 export const NO_PROGRESS = 'No progress reported';
 export const NO_START = 'No start time';
 
-/**
- * The glyph of Open: the mock's `LuExternalLink`. The kit's registry does not have it yet, so until it does the button draws the nearest glyph it has, an arrow; the day the registry knows the name this is the name, with
- * nothing else to change.
- */
-const WANTED_OPEN_ICON = 'external-link';
-export const OPEN_ICON: IconName = isIconName(WANTED_OPEN_ICON) ? WANTED_OPEN_ICON : 'arrow-right';
+/** The glyph of Open: the mock's `LuExternalLink`, by name: the kit's registry has it since G3. */
+export const OPEN_ICON: IconName = 'external-link';
