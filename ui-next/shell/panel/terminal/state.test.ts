@@ -198,22 +198,17 @@ describe('the question a close asks (S115, L12: a close with a process running a
   });
 });
 
-// A terminal that outlives the page (T2-go): the page may lose a terminal that still runs (another tab took it, its owner let it go, its window went away), the host may close one that no page took back before its lease
-// ran out, and a page that comes back is taking a terminal over. Each is said in words, in the lane, in the transcript, on the card and as the tab's cause; one place decides them, and a snapshot may carry both what the
-// page lost and how the process ended: the words follow the later fact.
+// A terminal that outlives the page: the page may lose a terminal that still runs (another stream took it), the host may close one that no page took back before its lease ran out, and a page that comes back is
+// taking a terminal over. Each is said in words, in the lane, in the transcript, on the card and as the tab's cause; one place decides them, and a snapshot may carry both what the page lost and how the process ended:
+// the words follow the later fact.
 const TAKEN = 'Taken over by another tab';
 const TAKEN_NOTE = 'Input is off. The shell keeps running in the tab that took it.';
-const LEASE_NOTE = 'Input is off. The shell keeps running until its lease ends.';
 const LEASE_RAN_OUT = 'Closed: no tab took it back in time';
-const lost = (by: 'taken-over' | 'requested' | 'window-retired', extra: Partial<TerminalFeedSnapshot> = {}): TerminalFeedSnapshot => snap('ended', { detached: { by }, ...extra });
+const lost = (by: 'taken-over', extra: Partial<TerminalFeedSnapshot> = {}): TerminalFeedSnapshot => snap('ended', { detached: { by }, ...extra });
 
 describe('a terminal this page lost, and one the host closed when no tab took it back', () => {
-  it('says who has it, or that it was detached, and not that it ended: the shell is still running', () => {
+  it('says who has it, and not that it ended: the shell is still running', () => {
     expect(stateWords(lost('taken-over'))).toBe(TAKEN);
-    expect(stateWords(lost('requested'))).toBe('Detached');
-    expect(stateWords(lost('window-retired'))).toBe('Detached with its window');
-    // A word this page does not know is a plain detachment.
-    expect(stateWords(lost('something-new' as never))).toBe('Detached');
   });
 
   it('says that the lease ran out when the host closed a terminal that no tab took back in time', () => {
@@ -221,10 +216,9 @@ describe('a terminal this page lost, and one the host closed when no tab took it
   });
 
   it('follows the later fact when the snapshot has both: the end the host says is what the terminal came to after this page lost it, and a loss that says nothing of how it ended is the words of the loss', () => {
-    expect(stateWords(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toBe(LEASE_RAN_OUT);
     expect(stateWords(lost('taken-over', { exit: { closedBy: 'detach-timeout' } }))).toBe(LEASE_RAN_OUT);
     expect(stateWords(lost('taken-over', { exit: { code: 0 } }))).toBe('Exited with code 0');
-    expect(stateWords(lost('window-retired', { exit: { signal: 'SIGHUP' } }))).toBe('Ended by SIGHUP');
+    expect(stateWords(lost('taken-over', { exit: { signal: 'SIGHUP' } }))).toBe('Ended by SIGHUP');
     expect(stateWords(lost('taken-over', { exit: {} }))).toBe(TAKEN);
   });
 
@@ -245,18 +239,13 @@ describe('a terminal this page lost, and one the host closed when no tab took it
       expect(laneOf(lost('taken-over'))).toEqual({ words: TAKEN, note: TAKEN_NOTE });
     });
 
-    it('says that it was detached, or detached with its window, and that the shell keeps running until its lease ends', () => {
-      expect(laneOf(lost('requested'))).toEqual({ words: 'Detached', note: LEASE_NOTE });
-      expect(laneOf(lost('window-retired'))).toEqual({ words: 'Detached with its window', note: LEASE_NOTE });
-    });
-
     it('says that the lease ran out with the words of any other end: the process is over, and its output stays readable', () => {
       expect(laneOf(snap('ended', { exit: { closedBy: 'detach-timeout' } }))).toEqual({ words: LEASE_RAN_OUT, note: 'Input is off. Its output stays readable here.' });
     });
 
     it('follows the later fact: a terminal this page lost and that then ended is over, so the shell no longer keeps running anywhere', () => {
       const ended = { words: LEASE_RAN_OUT, note: 'Input is off. Its output stays readable here.' };
-      expect(laneOf(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toEqual(ended);
+      expect(laneOf(lost('taken-over', { exit: { closedBy: 'detach-timeout' } }))).toEqual(ended);
       expect(laneOf(lost('taken-over', { exit: { code: 2 } }))).toEqual({ words: 'Exited with code 2', note: 'Input is off. Its output stays readable here.' });
       expect(laneOf(lost('taken-over', { exit: {} }))).toEqual({ words: TAKEN, note: TAKEN_NOTE });
     });
@@ -270,8 +259,6 @@ describe('a terminal this page lost, and one the host closed when no tab took it
   describe('as the last line of the transcript', () => {
     it('is the words of the lane in brackets, with no process that ended: the process did not', () => {
       expect(exitLine(lost('taken-over'))).toBe(`[${TAKEN}]`);
-      expect(exitLine(lost('requested'))).toBe('[Detached]');
-      expect(exitLine(lost('window-retired'))).toBe('[Detached with its window]');
     });
 
     it('says that the process was closed when no tab took it back in time', () => {
@@ -279,7 +266,6 @@ describe('a terminal this page lost, and one the host closed when no tab took it
     });
 
     it('follows the later fact', () => {
-      expect(exitLine(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toBe('[Process closed: no tab took it back in time]');
       expect(exitLine(lost('taken-over', { exit: { code: 1 } }))).toBe('[Process exited with code 1]');
       expect(exitLine(lost('taken-over', { exit: {} }))).toBe(`[${TAKEN}]`);
     });
@@ -292,13 +278,10 @@ describe('a terminal this page lost, and one the host closed when no tab took it
   describe('as the tab\'s cause, which the card prints as its reason', () => {
     it('is the sentence of the lane while the shell runs on: an end that is no failure, and one a person is told the reason of', () => {
       expect(sessionStateOf(lost('taken-over'))).toEqual({ state: 'ended', cause: TAKEN_NOTE });
-      expect(sessionStateOf(lost('requested'))).toEqual({ state: 'ended', cause: LEASE_NOTE });
-      expect(sessionStateOf(lost('window-retired'))).toEqual({ state: 'ended', cause: LEASE_NOTE });
     });
 
     it('is nothing once the process is over, whatever this page lost before: there is no shell left to keep running', () => {
       expect(sessionStateOf(snap('ended', { exit: { closedBy: 'detach-timeout' } }))).toEqual({ state: 'ended', cause: '' });
-      expect(sessionStateOf(lost('requested', { exit: { closedBy: 'detach-timeout' } }))).toEqual({ state: 'ended', cause: '' });
       expect(sessionStateOf(lost('taken-over', { exit: { code: 0 } }))).toEqual({ state: 'ended', cause: '' });
     });
 
@@ -310,8 +293,6 @@ describe('a terminal this page lost, and one the host closed when no tab took it
   describe('a session that ends this way closes with no question, as every session that has ended does', () => {
     it.each([
       ['taken over', lost('taken-over')],
-      ['detached', lost('requested')],
-      ['detached with its window', lost('window-retired')],
       ['closed when no tab took it back in time', snap('ended', { exit: { closedBy: 'detach-timeout' } })],
     ])('when it was %s', (_name, snapshot) => {
       expect(closeQuestionOf(snapshot)).toBeUndefined();
@@ -320,7 +301,7 @@ describe('a terminal this page lost, and one the host closed when no tab took it
   });
 });
 
-// A terminal whose taker has gone (T2d, `detached.free`): the tab that took the terminal from this page has closed (the host said `requested` or `window-retired` of that later attachment), so nobody holds it and its lease
+// A terminal whose taker has gone (T2d, `detached.free`): the tab that took the terminal from this page has let it go (the host's listing says no stream holds it: `refresh`), so nobody holds it and its lease
 // runs, and this page may take it back (a button in the lane: `TerminalBody`). The words say so in place of "taken over", in the lane, the transcript, the card and the tab's cause; how the process ended, when the host
 // says so, is still the later fact.
 const FREE = 'The tab that took this terminal has closed.';

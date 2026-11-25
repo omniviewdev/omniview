@@ -60,7 +60,6 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
   Events: { On: () => () => undefined },
   // eslint-disable-next-line @typescript-eslint/naming-convention -- the runtime names its browser call `OpenURL`
   Browser: { OpenURL: vi.fn() },
-  onEventsReconnect: vi.fn(),
 }));
 
 vi.mock('./useInstalledPlugins', () => ({ useInstalledPlugins: () => world.inventory }));

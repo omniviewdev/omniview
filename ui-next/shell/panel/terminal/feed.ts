@@ -75,12 +75,12 @@ export type TerminalReplay = {
   readonly end: number;
 };
 
-/** Why a session is no longer held by this page though its process lives on: another page took it (`taken-over`), the owner let it go (`requested`) or the owner's window went away (`window-retired`). */
+/** Why a session is no longer held by this page though its process lives on: another page took it (`taken-over`). */
 export type TerminalDetached = {
-  readonly by: 'taken-over' | 'requested' | 'window-retired';
+  readonly by: 'taken-over';
   /**
-   * The tab that took the terminal has gone too (the host said `requested` or `window-retired` of a later attachment than this page's): nobody holds the terminal now and its lease runs, so this page may take it back
-   * (T2d). Absent while another tab still holds it, and once the terminal has ended.
+   * The tab that took the terminal has let it go (the host's listing says no stream holds it): nobody holds the terminal now and its lease runs, so this page may take it back (T2d). Absent while another tab still holds it,
+   * and once the terminal has ended.
    */
   readonly free?: boolean | undefined;
 };
@@ -142,31 +142,26 @@ export type TerminalFeedHandle = {
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
   readonly close: () => Promise<void> | void;
   /**
-   * A replay waiting for the reader (a reattach): taken once, before any live output is read; `read` returns nothing until it is taken. A producer that has no reattach leaves it out.
+   * A replay waiting for the reader (a terminal taken over, one whose stream dropped and lost bytes the page asked for, or a gap: a replay of nothing, which resets the screen): taken once, before any live output is read; `read`
+   * returns nothing until it is taken. A producer that has no such replay leaves it out.
    */
   readonly takeReplay?: (() => TerminalReplay | undefined) | undefined;
   /**
-   * The page is going away (`pagehide`, the window is retired): a terminal that has a key is DETACHED, not closed, so that its shell lives on for its lease and the page that comes back finds it. A feed with no
-   * key, and a feed this page no longer holds, does nothing here (and is closed by the caller as before). Fire and forget.
+   * The page is going away (`pagehide`, the window is retired): the terminal is DETACHED, not closed, so that its shell lives on for its lease and the page that comes back finds it (the stream's detach frame). A feed this
+   * page no longer holds, or whose terminal is over, does nothing here (and is closed by the caller as before). Fire and forget.
    */
   readonly leave?: (() => void) | undefined;
   /**
-   * Makes a full-screen program draw itself again: the size is sent one cell off and then as it is, as two numbered calls, so that the pty signals a change twice (a replay brings an emulator to the bytes the program wrote
-   * and the program must paint over them). A reader calls it after a replay when the size the host has is the size the screen already is, which a plain resize would not send. A producer that cannot leaves it out.
+   * Makes a full-screen program draw itself again: the size is sent one cell off and then as it is, so that the pty signals a change twice (a replay brings an emulator to the bytes the program wrote and the program must paint
+   * over them). A reader calls it after a replay when the size the host has is the size the screen already is, which a plain resize would not send. A producer that cannot leaves it out.
    */
   readonly redraw?: (() => void) | undefined;
   /**
-   * The page's events came back after a gap (the connection dropped and opened again: whatever was told meanwhile is lost to the page for good): ask the host for the output this page has not got, by offset, and go on. The
-   * output continues where it was when the host still has it; when the host's ring no longer reaches back to it the screen is brought to the host's ring by a replay (`takeReplay`) as a terminal that is taken over. A terminal
-   * the host no longer has ends the session in words. Does nothing for a feed that is not running, that is not held by this page or that has no key. A producer that cannot leaves it out.
+   * Asks the host who holds a terminal this page LOST (the host's listing of its capability, no attach): a terminal that no stream holds now makes `detached.free` true (the tab that took it has let it go), one that a stream
+   * holds makes it false, and one the host has no entry for is left as it is. It never attaches, never takes the terminal over and never throws. It is how a take-back checks that the terminal is still free before it attaches.
+   * A feed that is not lost does nothing. A poll shares the listing that is out; `fresh` (a take-back) waits for it and asks again, so that its answer begins after the press. A producer that cannot leaves it out.
    */
-  readonly rejoin?: (() => void) | undefined;
-  /**
-   * Asks the host who holds a terminal this page LOST (`ListTerminals` by the page's key, no attach): a terminal that is not attached now makes `detached.free` true (the tab that took it released it while this page was not
-   * listening, or just now), one that is attached makes it false, and one the host does not list is left as it is. It never attaches, never takes the terminal over and never throws. It is how a page that missed the host's
-   * `DETACHED` event (its events connection was down) learns, and how a take-back checks that the terminal is still free before it attaches. A feed that is not lost, or that has no key, does nothing. A producer that cannot leaves it out.
-   */
-  readonly refresh?: (() => Promise<void>) | undefined;
+  readonly refresh?: ((options?: { readonly fresh?: boolean }) => Promise<void>) | undefined;
 };
 
 /** What opens a terminal session: plain data and one function. Who supplies it (the host's own shell today) is not the registry's business. */

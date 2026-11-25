@@ -24,8 +24,8 @@ import { TERMINAL_TOOL_ID } from './tool';
 //     window makes for the session's id (`TerminalSessionsOptions.reattach`) gives the session a NEW feed, the feed it had is let go of after the new one is published (a feed that lost its terminal sends nothing to the host for it),
 //     and the status flows through the write every status takes (ended, starting, running...) with the tab where it was, under the title it had. The swap is announced by that write: the entry is replaced first, so whoever hears of it
 //     finds the new feed in `feedOf`. Nothing is shown or focused for it. What the supplier runs while that is done may close the tab: nothing is published for a session that is gone;
-//   - it passes the page's events coming back after a gap to every feed that can rejoin (`rejoin`): whatever the host told meanwhile is lost to the page, and the feed asks the host for what it missed. A feed this page lost is asked who
-//     holds its terminal instead (`refresh`): the release it missed is learned, and the lane offers the way back.
+//   - it does not tell the feeds that the page's connection to the host came back: each feed connects its own stream again, from the offset it has, and the lane offers the way back to a terminal another tab took through the
+//     feed's `refresh`, asked at the take-back.
 //   - it can be followed (`subscribeFeeds`, T2d): which feed a session has is read in a render (`feedOf`), so whoever draws a body is told when that changes: a saved tab is given its terminal after its body was drawn with
 //     none, a terminal is taken back (one feed for another), a feed is let go of. The listener runs once, synchronously, when the change is complete, and `feedOf` answers the same value between two changes.
 //   - it opens the address of a link in a terminal's output outside the app (`openExternal`, T3a), through the way the window gave it (`TerminalSessionsOptions.openExternal`): only an http or https address is let through, because a
@@ -89,6 +89,13 @@ export type TerminalSessions = {
    */
   readonly leave: () => void;
   /**
+   * Asks every feed this page lost (ended with a `detached`, its end not known) who holds its terminal (`TerminalFeedHandle.refresh`): the host sends no word when the tab that took a terminal goes, so the page asks. A
+   * `refresh` that throws or rejects is one warning. Answers whether any feed was asked; with none it does nothing.
+   */
+  readonly refreshLost: () => boolean;
+  /** Whether any feed is lost to this page (ended with a `detached`, its end not known): what `refreshLost` would ask. */
+  readonly hasLost: () => boolean;
+  /**
    * Opens a session in the Terminal tool for a target: calls its `open` once, and makes the session in the panel (which opens on it). Every call is a new process, except for a target that names the id of its session
    * (`TerminalTarget.sessionId`): a terminal has one session. When the panel has a session of that id (a saved tab: the restore makes every terminal session `ended`, with no feed) the session is GIVEN the feed, stays
    * where it is under the title it has, and follows the feed from then on; when it has none, a session of that id is made. `undefined` when it could not, and why is in the log: the target is not well formed, its id names
@@ -102,13 +109,6 @@ export type TerminalSessions = {
   readonly recordOf: (session: SessionId) => TerminalSessionRecord | undefined;
   /** Whether the user asked for the keyboard in this session when it opened and nobody took the request yet: true once. */
   readonly takeFocus: (session: SessionId) => boolean;
-  /**
-   * The page's events came back after a gap (T2d: the connection dropped and opened again, and whatever the host told meanwhile is lost to the page for good): every feed that can rejoin is asked to
-   * (`TerminalFeedHandle.rejoin`), once for each call, and then every feed this page lost (ended with a `detached`) is asked who holds its terminal (`TerminalFeedHandle.refresh`: the tab that took it may have gone while the
-   * events were down) instead of being asked to rejoin. A feed the registry let go of is not asked and a feed without the member is no error; a member that cannot be read, throws or rejects is one warning, and the others are
-   * asked all the same. Never throws: it runs inside the event of a socket.
-   */
-  readonly rejoin: () => void;
   /**
    * Whether the terminal of this session was lost by this page and may be taken back now: the host's own terminal, whose feed is over for this page with a `detached` that says the tab that took it has gone (`free`: nobody
    * holds it), with no end known for the terminal itself (an ended terminal has nothing to take back), in a window that can attach a terminal again (`TerminalSessionsOptions.reattach`). The status of the feed decides it, so it
@@ -243,7 +243,18 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     }
   };
 
-  /** Tells a supplier's feed something it may fail at (close it, leave it, rejoin it, ask it who holds its terminal) and does not wait. An action that throws or rejects is the supplier's: it goes to the log, and the registry has done what it could either way. */
+  /** Whether the feed of an entry was lost to another tab, its end is not known, and it can be asked who holds the terminal. A status that cannot be read is one warning and no loss. */
+  const isLost = (entry: Entry): boolean => {
+    try {
+      const status = entry.feed.getSnapshot();
+      return status.state === 'ended' && status.detached !== undefined && status.exit === undefined && typeof entry.feed.refresh === 'function';
+    } catch (error) {
+      warn(`[panel] ${entry.plugin} could not ask who holds the terminal`, error);
+      return false;
+    }
+  };
+
+  /** Tells a supplier's feed something it may fail at (close it, leave it) and does not wait. An action that throws or rejects is the supplier's: it goes to the log, and the registry has done what it could either way. */
   const tellFeed = (plugin: string, action: () => unknown, failure: string): void => {
     try {
       void Promise.resolve(action()).catch((error: unknown) => {
@@ -508,31 +519,28 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       }
     },
 
-    rejoin: () => {
-      // A feed this page lost is not asked to rejoin (this page does not hold it): after the others it is asked who holds its terminal, because the release it missed while its events were down is what the person needs to know.
-      // What is read from a feed, its status and its optional members, is read inside what is protected: a feed that is broken is one warning, and the others are asked all the same.
-      const lost: Entry[] = [];
+    hasLost: () => {
       for (const entry of [...entries.values()]) {
-        if (!entry.ended) {
-          tellFeed(
-            entry.plugin,
-            () => {
-              const status = entry.feed.getSnapshot();
-              if (status.state === 'ended' && status.detached !== undefined) {
-                lost.push(entry);
-                return undefined;
-              }
-
-              return entry.feed.rejoin?.();
-            },
-            'could not rejoin the terminal',
-          );
+        if (!entry.ended && isLost(entry)) {
+          return true;
         }
       }
 
-      for (const entry of lost) {
+      return false;
+    },
+
+    refreshLost: () => {
+      let asked = false;
+      for (const entry of [...entries.values()]) {
+        if (entry.ended || !isLost(entry)) {
+          continue;
+        }
+
+        asked = true;
         tellFeed(entry.plugin, (): Promise<void> | undefined => entry.feed.refresh?.(), 'could not ask who holds the terminal');
       }
+
+      return asked;
     },
 
     open: (target, opening = {}) => {
@@ -687,7 +695,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       old.taking = true;
       try {
         // The page's word that nobody holds the terminal may be old (a tab may have attached it since), and attaching takes a terminal from whoever holds it: the feed that lost it asks the host and puts the answer in its status.
-        await askFeed(old.plugin, (): Promise<void> | undefined => old.feed.refresh?.(), 'could not ask who holds the terminal');
+        await askFeed(old.plugin, (): Promise<void> | undefined => old.feed.refresh?.({ fresh: true }), 'could not ask who holds the terminal');
         // The answer came, and the session may not be what it was: its tab closed, the window stopped, the terminal ended, or somebody holds it now. Then nothing is attached.
         return lostEntry(session) === old && replaceFeed(session, old, reattach);
       } finally {

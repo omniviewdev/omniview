@@ -87,15 +87,15 @@ export const units = [
     seconds: 95,
   },
 
-  // The input and the size (docs/ui-next/status/T1-go.md 2.4, T2a), each in Chromium: a host that applies the calls in the order they arrive, a host that refuses the size call, a page that sends what is typed one call at a time, calls numbered with a
-  // number missing, an old call made as well, a size told before the GPU renderer is in place, a host that opens the pty one column wider than it was asked to, a close question that leaves the keyboard on the pointer-only close button, and a Delete on
-  // the tab that never asks the question.
+  // The input and the size (docs/ui-next/terminal-channel-protocol.md section 4, T2a), each in Chromium: a host that takes a size frame and keeps its size, a page that sends what is typed one frame at a time, each after the one before was applied, a size told before
+  // the GPU renderer is in place, a host that opens the pty one column wider than it was asked to, a close question that leaves the keyboard on the pointer-only close button, and a Delete on the tab that never asks the question. The controls
+  // that were about numbered calls (a host that applies them in the order they arrive, calls numbered with a number missing, an old call made as well) are gone with the numbers: the order is the stream's.
   {
     id: 'terminal-controls-input',
     name: 'Probe that the terminal probe sees input that is sent wrong',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['arrival-order', 'resize-refused', 'input-serial', 'seq-gap', 'legacy-write', 'early-size', 'size-off', 'webgl-every-show', 'focus-close-button', 'focus-delete-swallowed'],
+    controls: ['resize-dropped', 'input-serial', 'early-size', 'size-off', 'webgl-every-show', 'focus-close-button', 'focus-delete-swallowed'],
     plants: 'page',
     seconds: 60,
   },
@@ -136,9 +136,9 @@ export const units = [
     seconds: 40,
   },
 
-  // A terminal survives a reload of the page (T2-go, T2b), the probe's own far end holding the host for the whole browser context (terminal-host.mjs, terminal-reattach.mjs). Three units of the probe, which no unit passes half a shard
-  // for (216 s): the key, the saved session and a reload under a flood; a query in a replay, the modes of a program and the size after a reload; and a terminal another tab took, a lease, a saved tab whose terminal is gone, the
-  // page that is going away, a shell that ended while no page held it, and the numbers of the input; and, with the key, the session and the exact join, axe on a terminal that another tab took and on one that is reattaching. WebKit and Chromium at both viewports (axe at the first). The seconds are the laptop's at load under 10 (33 s, 38 s and 101 s, builds shared) times about 2.5, until a runner has measured them.
+  // A terminal survives a reload of the page (the terminal channel: a capability and one stream for each terminal), the probe's own far end holding the host for the whole browser context (terminal-host.mjs, terminal-serve.mjs, terminal-reattach.mjs). Three units of the probe, which no unit passes half a shard
+  // for (216 s): the capability slot, the saved session and a reload under a flood; a query in a replay, the modes of a program and the size after a reload; and a terminal another tab took, a lease, a saved tab whose terminal is gone, the
+  // page that is going away, a shell that ended while no page held it, and axe on a terminal that another tab took and on one that is reattaching. WebKit and Chromium at both viewports (axe at the first). The seconds are the laptop's at load under 10 (33 s, 38 s and 101 s, builds shared) times about 2.5, until a runner has measured them.
   {
     id: 'terminal-reattach',
     name: 'Probe that a terminal survives a reload of the page: the key, the session and an exact join',
@@ -161,16 +161,15 @@ export const units = [
     seconds: 105,
   },
 
-  // The reattach assertions' faults (T2b), each in Chromium at one viewport, in four units by what they cost: the page puts its key in the address, the window's state never keeps the key, nor the session, and a replay with a gap
-  // (the first); an event the replay holds delivered again at the offset the page expects, a page that credits the replay, a reply to a query of the replay that reaches the shell, modes the host lost and a resize the pty ignores
-  // (the second); a takeover nobody is told of, a new holder's own takeover named with its own number and a lease that runs out in silence (the third); and a host that lists a terminal it no longer has, a tombstone it lists
-  // as a terminal that runs, a page that never says it is leaving and a number of the input that is lost on the way (the fourth).
+  // The reattach assertions' faults, each in Chromium at one viewport, in four units by what they cost: the page puts its capability in the address, the window's state never keeps the capability slot, nor the session, and a replay with a gap
+  // (the first); a page that never credits the replay, a reply to a query of the replay that reaches the shell, modes the host lost and a resize the pty ignores (the second); a takeover nobody is told of and a lease that never runs out (the third); and a host that lists a terminal it no longer has, a kept end it lists
+  // as a terminal that runs and a page that never says it is leaving (the fourth). The controls of the events lane's numbers (a late duplicate at the offset the page expects, a number of the input lost on the way, a takeover named with its own number) are gone with the numbers.
   {
     id: 'terminal-controls-reattach',
     name: 'Probe that the reattach probe sees a key and a session that are lost',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['key-in-url', 'key-regen', 'no-session', 'replay-gap'],
+    controls: ['cap-in-url', 'cap-in-state', 'cap-forgotten', 'no-session', 'replay-gap'],
     plants: 'page',
     seconds: 55,
   },
@@ -179,7 +178,7 @@ export const units = [
     name: 'Probe that the reattach probe sees a join, a replay and a size that are wrong',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['dup-offset', 'ack-replay', 'unmuted-reply', 'modes-lost', 'resize-ignored'],
+    controls: ['replay-unacked', 'unmuted-reply', 'modes-lost', 'resize-ignored'],
     plants: 'page',
     seconds: 45,
   },
@@ -188,7 +187,7 @@ export const units = [
     name: 'Probe that the reattach probe sees a takeover and a lease that are wrong',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['no-detached', 'own-number', 'lease-silent'],
+    controls: ['no-taken-over', 'lease-never'],
     plants: 'page',
     seconds: 50,
   },
@@ -197,12 +196,12 @@ export const units = [
     name: 'Probe that the reattach probe sees a list, a tombstone, a leave and an input that are wrong',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['list-ghost', 'tombstone-adopted', 'detached-axe', 'leave-lost', 'seq-restart'],
+    controls: ['list-ghost', 'tombstone-adopted', 'detached-axe', 'leave-lost'],
     plants: 'page',
     seconds: 20,
   },
 
-  // T2d: the panel's saved open flag, taking a terminal back (and the guard of its button, and what a tab that was offline learns when its events come back) and the page's events coming back after a gap (the rejoin by offset, the rejoin
+  // T2d: the panel's saved open flag, taking a terminal back (and the guard of its button, and what a tab that was offline learns when it asks again) and the stream coming back after a drop (the reconnect by offset, the reconnect
   // past the ring, the keys typed while a late replay is written, the acknowledgement in flight, a terminal that is gone), each a probe of its own (the sections are in terminal-reattach-followups.mjs, the far end is terminal-host.mjs).
   // WebKit and Chromium at both viewports. The seconds are the laptop's measure times 1.3 (the runner measured about the laptop for the reattach units); the laptop's measure of the probes is 10, 33 and 45 s: the sections wait on what the
   // page shows and on counters, with no clock, so they take 1 to 5 s each at each of the four sizes.
@@ -218,7 +217,7 @@ export const units = [
     name: 'Probe that a terminal whose taker has gone can be taken back, with a button and one attach, that a stale button asks the host first, and what a tab whose events were down learns when they are back',
     script: 'ui-next/shell/probes/terminal-reattach-e-probe.mjs',
     env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-reattach-e-probe.json' },
-    seconds: 40,
+    seconds: 128,
   },
   {
     id: 'terminal-reattach-f',
@@ -229,8 +228,8 @@ export const units = [
   },
 
   // The faults of the follow-ups, each in Chromium at one viewport, in three units by what they cost: a saved panel that comes back the other way (the first, 13 s on the laptop); a take-back that is not offered when the taker has gone, one
-  // that attaches twice, a violation in the lane with its button, a take-back that is not asked of the host, and a tab that never asks it when its events come back (the second, 32 s); and a rejoin that starts from the first byte, one given
-  // nothing of what was missed, one that acknowledges the replay, a gap that the host hides, a terminal that is gone and answered with a plain error, a screen that drops the keys typed while a replay is written, an engine that gives the
+  // that attaches twice, a violation in the lane with its button, a take-back that is not asked of the host, and a tab that never asks it again (the second, 32 s); and a reconnect that starts from the first byte, one given
+  // nothing of what was missed, one that never credits the replay, a gap that the host hides, a terminal that is gone and answered with a plain close, a screen that drops the keys typed while a replay is written, an engine that gives the
   // emulator's answers as keys and a stale acknowledgement that the host takes after the attach (the third, 69 s).
   {
     id: 'terminal-controls-reattach-e',
@@ -255,9 +254,9 @@ export const units = [
     name: 'Probe that the reattach probe sees a rejoin that is wrong',
     script: 'ui-next/shell/probes/terminal-probe.mjs',
     env: { FONT_DELAY_MS: '40' },
-    controls: ['rejoin-from-zero', 'rejoin-drops-missed', 'rejoin-acks-replay', 'gap-hidden', 'gone-keeps-attaching', 'keys-dropped', 'replies-as-keys', 'ack-stale-restore'],
+    controls: ['rejoin-from-zero', 'reconnect-drops-missed', 'reconnect-replay-unacked', 'gap-hidden', 'gone-keeps-attaching', 'keys-dropped', 'replies-as-keys', 'ack-stale-restore'],
     plants: 'page',
-    seconds: 95,
+    seconds: 158,
   },
 
   // T3a: find in the scrollback, the context menu of the terminal and the links in its output (the sections are in terminal-find.mjs, the fixture is terminal-fixture.tsx, the mock's bar is measured by

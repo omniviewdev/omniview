@@ -296,18 +296,15 @@ describe('the lane', () => {
     expect(page.getByRole('status')).not.toHaveTextContent('Connecting');
   });
 
-  it.each([
-    ['taken over by another tab', { by: 'taken-over' }, 'Taken over by another tab', 'Input is off. The shell keeps running in the tab that took it.'],
-    ['detached', { by: 'requested' }, 'Detached', 'Input is off. The shell keeps running until its lease ends.'],
-    ['detached with its window', { by: 'window-retired' }, 'Detached with its window', 'Input is off. The shell keeps running until its lease ends.'],
-  ] as const)('says in words that the terminal was %s and that input is off, keeps the emulator\'s input off, and writes the same words as the last line of the transcript', async (_name, detached, words, note) => {
+  it('says in words that the terminal was taken over by another tab and that input is off, keeps the emulator\'s input off, and writes the same words as the last line of the transcript', async () => {
+    const words = 'Taken over by another tab';
     const { feed, loader, frame } = mount();
     await flush();
     act(() => {
-      feed.set({ state: 'ended', detached });
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
     });
     expect(page.getByRole('status')).toHaveTextContent(words);
-    expect(page.getByRole('status')).toHaveTextContent(note);
+    expect(page.getByRole('status')).toHaveTextContent('Input is off. The shell keeps running in the tab that took it.');
     expect(loader.engines[0]?.inputs.at(-1)).toBe(false);
     await frame();
     expect(loader.engines[0]?.text()).toContain(`[${words}]`);
@@ -317,7 +314,7 @@ describe('the lane', () => {
     const { feed, loader, frame } = mount();
     await flush();
     act(() => {
-      feed.set({ state: 'ended', detached: { by: 'requested' } });
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
     });
     await frame();
     act(() => {
@@ -327,7 +324,7 @@ describe('the lane', () => {
     expect(page.getByRole('status')).toHaveTextContent('Input is off. Its output stays readable here.');
     await frame();
     const text = loader.engines[0]?.text() ?? '';
-    expect(text).toContain('[Detached]');
+    expect(text).toContain('[Taken over by another tab]');
     expect(text).toContain('[Process closed: no tab took it back in time]');
   });
 

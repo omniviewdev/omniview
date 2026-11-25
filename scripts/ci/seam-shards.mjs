@@ -62,7 +62,7 @@ const keysOf = (block) => [...block.matchAll(/^ {2}(?:'([a-z0-9-]+)'|([a-z][a-zA
 /** `{ phases: [id], controls: [{ run, proves: [name] }] }` from the text of the check, in the shape `SEAM_LIST=1` prints. */
 export function listFromText(text) {
   // A table of controls the plan does not know is a table of controls no job would run: name it here and in SEAM_LIST (the check prints which run makes it) before it can be added.
-  const KNOWN_TABLES = ['CONTROLS', 'SETTINGS_PARTS', 'PROCESS_CONTROLS', 'FAILED_CONTROLS', 'PAGE_CONTROLS', 'CONNECTIONS_CONTROLS', 'PT_CONTROLS', 'PORTS_CONTROLS'];
+  const KNOWN_TABLES = ['CONTROLS', 'SETTINGS_PARTS', 'PROCESS_CONTROLS', 'FAILED_CONTROLS', 'PAGE_CONTROLS', 'CONNECTIONS_CONTROLS', 'PT_CONTROLS', 'PORTS_CONTROLS', 'RECONNECT_CONTROLS', 'ISOLATION_CONTROLS'];
   const unknown = [...text.matchAll(/^const ([A-Z][A-Z_]*_CONTROLS) = \{$/gm)].map((match) => match[1]).filter((name) => !KNOWN_TABLES.includes(name));
   if (unknown.length > 0) throw new Error(`${CHECK} has a table of negative controls that the plan does not know: ${unknown.join(', ')} (add it to listFromText in scripts/ci/seam-shards.mjs and to SEAM_LIST in the check, and its run to a unit of ${UNITS_FILE})`);
   const phases = /^const PHASE_IDS = \[\n([\s\S]*?)^\];$/m.exec(text);
@@ -76,6 +76,8 @@ export function listFromText(text) {
     ['connections', keysOf(blockOf(text, 'CONNECTIONS_CONTROLS'))],
     ['problems-operations', keysOf(blockOf(text, 'PT_CONTROLS'))],
     ['ports', keysOf(blockOf(text, 'PORTS_CONTROLS'))],
+    ['terminal-reconnect', keysOf(blockOf(text, 'RECONNECT_CONTROLS'))],
+    ['terminal-isolation', keysOf(blockOf(text, 'ISOLATION_CONTROLS'))],
   ];
   return { phases: ids, controls: [...alone.map((name) => ({ run: name, proves: [name] })), ...groups.map(([run, proves]) => ({ run, proves }))] };
 }
