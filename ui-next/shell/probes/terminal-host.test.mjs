@@ -746,3 +746,40 @@ test('a frame behind a held input of the same stream waits for it; an attach dur
   );
   closing.stop();
 });
+
+test('an attach that waits for a natural exit is closed when the terminal vanishes or the host restarts, and a detach waits behind the held input of its own stream', timeout, async () => {
+  for (const how of ['vanish', 'restart']) {
+    const host = createHost({ leaseMs: 60_000 });
+    const { cap } = await make(host);
+    const holder = pageOf(host, cap, { ack: false });
+    await holder.until('ready', () => holder.ready !== undefined);
+    holder.stream.send(pageFrames.ack(0));
+    host.append('t', 'z'.repeat(3_000_000));
+    host.type('t', '\u0003exit 0\r');
+    const waiting = pageOf(host, cap);
+    assert.equal(waiting.closed, false, 'the attach waits for the end to be decided');
+    if (how === 'vanish') host.vanish('t');
+    else host.restart();
+    await until(() => waiting.closed, `the waiting attach to be closed by ${how}`, 5_000);
+    host.stop();
+  }
+
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const page = pageOf(host, cap);
+  await page.until('ready', () => page.ready !== undefined);
+  host.slow(1, Infinity);
+  page.stream.send(pageFrames.input('typed'));
+  page.stream.send(pageFrames.detach());
+  assert.equal(host.state('t').holder, page.stream.id, 'the detach is behind the held input: the stream still holds the terminal');
+  assert.equal(host.log.detaches.length, 0);
+  host.release();
+  assert.deepEqual(
+    host.log.writes.map((entry) => entry.data),
+    ['typed'],
+    'the input before the detach was applied',
+  );
+  assert.equal(host.log.detaches.length, 1);
+  assert.equal(host.state('t').holder, null);
+  host.stop();
+});
