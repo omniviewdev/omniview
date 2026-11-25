@@ -478,6 +478,8 @@ const ISOLATION_CONTROLS = {
   'isolation-frames': /the second page received 0 frames of the first/,
   'isolation-bare-id': /named with the first terminal's id answers omniview:session\/not-found/,
   'isolation-wrong-cap': /gets exactly one 0x86 frame/,
+  'payload-first-frame': /the payload search finds a needle in the short first frame/,
+  'payload-cleanup': /the cleanup of the planted hits keeps the real foreign hit/,
   'cap-in-window-state': /no call of the window's state \(SaveState, GetState\) carries a terminal's capability/,
 };
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
@@ -7505,26 +7507,73 @@ const attachedSince = (streams, id, ms) => streams.of(id).filter((socket) => soc
  * Looks, in every frame a page sends or receives on any socket (the events socket's text frames and the stream's binary ones), for texts: `look(label, text)` adds one, and each match is a hit `{ label, direction, kind, at }`. A text is looked for as it is and as base64 (in
  * the three alignments it can have inside a base64 text), which is how the events lane carried a terminal's bytes. Made before `watchStreams`, so that a frame is a hit when the transcript of the stream has it.
  */
+/** The planted text of the control `isolation-frames`: a needle of its own (the label of its hits). */
+const PLANTED = 'the text the control planted in the second terminal';
+/** The faults of the controls of the payload search: the old scan (a match is held against the carry AFTER it was replaced) and the old cleanup (every hit from an index on is dropped). */
+const LEGACY = { scan: false, cleanup: false };
+
+/**
+ * One frame's bytes against the needles, for a socket and direction (`state.carry` is the tail of the frames before): the labels of the needles that end in THIS frame (a match inside what was carried was found when it was new). The carry is the longest needle less one byte,
+ * and the length that a match is held against is the length it had BEFORE this frame, so that a short first frame is searched whole.
+ */
+function scanPayload(state, bytes, needles) {
+  const joined = Buffer.concat([state.carry, bytes]);
+  const longest = Math.max(1, ...needles.flatMap((needle) => needle.variants.map((variant) => variant.length)));
+  const before = state.carry.length;
+  state.carry = joined.subarray(Math.max(0, joined.length - (longest - 1)));
+  const held = LEGACY.scan ? state.carry.length : before;
+  const seenAt = (variant) => {
+    for (let at = joined.indexOf(variant); at >= 0; at = joined.indexOf(variant, at + 1)) if (at + variant.length > held) return true;
+    return false;
+  };
+  return needles.filter((needle) => needle.variants.some(seenAt)).map((needle) => needle.label);
+}
+
+/** Takes the control's planted hits out of the hits, and only those: a real foreign payload that came while the control waited stays (`typed` is where the hits stood when the control began, which only the old cleanup used). */
+function dropPlanted(hits, typed) {
+  if (LEGACY.cleanup) {
+    hits.splice(typed);
+    return;
+  }
+
+  for (let at = hits.length - 1; at >= 0; at -= 1) if (hits[at].label === PLANTED) hits.splice(at, 1);
+}
+
+/**
+ * What the search of the payloads does with the frames it is given, asked of the search itself before a page is opened: a needle in a short FIRST frame of a socket (before the host's `ready`, with a long needle that makes the carry longer than the frame) is found; one split across two frames is
+ * found once; one that was found is not found again with the next frame. The controls `payload-first-frame` and `payload-cleanup` make the old code's faults.
+ */
+function assertPayloadScan(engine) {
+  const needles = [
+    { label: 'canary', variants: [Buffer.from('CANARYXYZ')] },
+    { label: 'capability', variants: [Buffer.from('c'.repeat(43))] },
+  ];
+  const fresh = () => ({ carry: Buffer.alloc(0) });
+  assert.deepEqual(scanPayload(fresh(), Buffer.from('CANARYXYZ'), needles), ['canary'], `${engine}: the payload search finds a needle in the short first frame of a socket (an output frame that carries a foreign text before the host's ready)`);
+  const split = fresh();
+  assert.deepEqual([scanPayload(split, Buffer.from('xxCANA'), needles), scanPayload(split, Buffer.from('RYXYZyy'), needles), scanPayload(split, Buffer.from('zz'), needles)], [[], ['canary'], []], `${engine}: the payload search finds a needle split across two frames, once, and not again with the next frame`);
+}
+
+/** The cleanup of the control `isolation-frames` takes out its planted hits and only those: a real foreign hit that came meanwhile is still there. */
+function assertPlantedCleanup(engine) {
+  const hits = [{ label: 'the first terminal\'s canary' }, { label: PLANTED }];
+  dropPlanted(hits, 0);
+  assert.deepEqual(hits.map((hit) => hit.label), ['the first terminal\'s canary'], `${engine}: the cleanup of the planted hits keeps the real foreign hit that came while the control waited`);
+}
+
 function watchPayloads(page) {
   const needles = [];
   const hits = [];
   page.on('websocket', (ws) => {
     const kind = new URL(ws.url()).pathname === STREAM_PATH ? 'stream' : 'events';
     for (const direction of ['framereceived', 'framesent']) {
-      // The bytes of the last frame of this socket and direction that a needle split across two frames would begin with.
-      let carry = Buffer.alloc(0);
+      // What a needle split across two frames of this socket and direction would begin with.
+      const scanning = { carry: Buffer.alloc(0) };
       ws.on(direction, ({ payload }) => {
         const whole = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
         // The protocol's header is no text of a terminal: the frame's type byte, and an output frame's offset.
         const bytes = kind === 'stream' ? whole.subarray(whole[0] === 0x82 ? 9 : 1) : whole;
-        const joined = Buffer.concat([carry, bytes]);
-        const longest = Math.max(1, ...needles.flatMap((needle) => needle.variants.map((variant) => variant.length)));
-        const seenAt = (variant) => {
-          for (let at = joined.indexOf(variant); at >= 0; at = joined.indexOf(variant, at + 1)) if (at + variant.length > carry.length) return true;
-          return false;
-        };
-        carry = joined.subarray(Math.max(0, joined.length - (longest - 1)));
-        for (const needle of needles) if (needle.variants.some(seenAt)) hits.push({ label: needle.label, direction: direction === 'framereceived' ? 'received' : 'sent', kind, at: Date.now() });
+        for (const label of scanPayload(scanning, bytes, needles)) hits.push({ label, direction: direction === 'framereceived' ? 'received' : 'sent', kind, at: Date.now() });
       });
     }
   });
@@ -10374,6 +10423,9 @@ async function checkTerminalIsolation(browser, getHost, engine) {
   const errors = [];
   const observed = [];
   const note = (name, text) => observed.push(`${name}: ${text}`);
+  // The search of the payloads and the cleanup of the control are held to what they must do before they are trusted with a page's frames.
+  await asserting('payload-first-frame', () => { LEGACY.scan = true; }, () => { LEGACY.scan = false; }, () => assertPayloadScan(engine));
+  await asserting('payload-cleanup', () => { LEGACY.cleanup = true; }, () => { LEGACY.cleanup = false; }, () => assertPlantedCleanup(engine));
   await forgetSession(base());
   const first = await browser.newPage({ viewport });
   PAGE_LABELS.set(first, 'the first page of the isolation scenario');
@@ -10432,7 +10484,6 @@ async function checkTerminalIsolation(browser, getHost, engine) {
 
   // (1) The second page receives none of the first's frames.
   let typed = 0;
-  const PLANTED = 'the text the control planted in the second terminal';
   const planted = `PLANTED${canary.slice(-6)}`;
   await asserting(
     'isolation-frames',
@@ -10446,7 +10497,7 @@ async function checkTerminalIsolation(browser, getHost, engine) {
       await waitUntil('the planted text to reach the second page', async () => outputSince(idB, 0).includes(`${planted}_42`), 30_000);
     },
     async () => {
-      payloads.hits.splice(typed);
+      dropPlanted(payloads.hits, typed);
     },
     async () => {
       const foreign = seenB.streams.sockets.filter((socket) => socket.id !== undefined && socket.id !== idB).map((socket) => socket.id);
