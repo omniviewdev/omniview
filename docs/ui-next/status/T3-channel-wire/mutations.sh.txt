@@ -108,7 +108,7 @@ control no-unwatch $T/channel_serve.go 'TestAWatcherThatLeftTakesNoPlaceOfTheFou
   $'\ts.channel.unwatchLocked(c)\n\tif s.channel.holder == c {' $'\tif s.channel.holder == c {'
 
 control ended-ready-says-the-count $T/channel_serve.go 'TestTheReadyOfTheKeptEndOfATerminalSaysNoInputAppliedAndHowItEnded' 'ended-ready-zero' \
-  $'&kept.end, 0)' $'&kept.end, 7)'
+  $'&kept.end, 0, false)' $'&kept.end, 7, false)'
 
 control version-before-capability-shape $T/channel_serve.go 'TestTheAttachIsParsedCapabilityShapeFirstThenVersionAndNeitherAnswerLooksAtATerminal' 'cap-shape-before-version' \
   $'err != nil || req.Cap == "" || req.V == 0 ||' $'err != nil || req.V == 0 ||'
@@ -129,7 +129,7 @@ control the-lane-is-not-bounded $T/channel_lane.go 'TestAStreamThatSendsMoreInpu
   $'const laneBytes = 8 << 20' $'const laneBytes = 1 << 40'
 
 control the-count-is-shared-by-every-writer $T/channel_serve.go 'TestTheInputCountIsTheWritersOwnAcrossStreamsOfOtherWriters' 'writer-count' \
-  $'c.writer = s.channel.writerLocked(c.writerID)' $'c.writer = s.channel.writerLocked("00000000000000000000000000000000")'
+  $'c.writer, c.writerKnown = s.channel.writerLocked(c.writerID)' $'c.writer, c.writerKnown = s.channel.writerLocked("00000000000000000000000000000000")'
 
 control the-writer-is-not-validated $T/channel_serve.go 'TestAWriterIsValidatedAndTheHostKeepsTheLastEight' 'writer-validated' \
   $' || !validWriter(req.Writer) {' $' {'
@@ -139,6 +139,16 @@ control the-writers-are-not-bounded $T/channel.go 'TestAWriterIsValidatedAndTheH
 
 control a-short-write-counts-whole $T/channel.go 'TestAShortWriteThatFailsIsNotCountedByTheNextReady' 'ready-short-write' \
   $'\tif given > took {' $'\tif false {'
+
+control ack-waits-behind-the-input $T/channel_serve.go 'TestAcknowledgementsStillFreeTheWindowWhileAnInputWriteIsBlocked' 'ack-inline' \
+  $'\t\ts.ackFrom(c, binary.BigEndian.Uint32(body)) // acted on as read, like close: no order against input matters to it\n\t\treturn true' \
+  $'\t\tfor {\n\t\t\tc.lane.mu.Lock()\n\t\t\tidle := len(c.lane.items) == 0 && !c.lane.admitting && !c.lane.waitingRoom\n\t\t\tc.lane.mu.Unlock()\n\t\t\tif idle {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tselect {\n\t\t\tcase <-c.ch.Done():\n\t\t\t\treturn false\n\t\t\tcase <-time.After(time.Millisecond):\n\t\t\t}\n\t\t}\n\t\ts.ackFrom(c, binary.BigEndian.Uint32(body))\n\t\treturn true'
+
+control the-host-always-knows-the-writer $T/channel.go 'TestReadySaysWhetherTheHostKnowsTheWriter' 'writer-known' \
+  $'\treturn w, false\n}' $'\treturn w, true\n}'
+
+control the-host-never-knows-the-writer $T/channel.go 'TestReadySaysWhetherTheHostKnowsTheWriter' 'writer-known' \
+  $'\t\t\treturn w, true\n' $'\t\t\treturn w, false\n'
 
 # The run fails when a selected control was not red with its fault and green with its guards off.
 exit $failed

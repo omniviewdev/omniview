@@ -182,17 +182,17 @@ func (w *writerCount) done(took, given int) {
 	}
 }
 
-// writerLocked is the count of the writer an attach names: a remembered one, moved to the newest place, or a new one at 0 that makes
-// the oldest forgotten when there are too many. An attach that names no writer gets a count of its own that nothing remembers. The
-// caller holds the session's mu.
-func (c *channelState) writerLocked(id string) *writerCount {
+// writerLocked is the count of the writer an attach names, and whether the host remembered the writer: a remembered one, moved to the
+// newest place, or a new one at 0 that makes the oldest forgotten when there are too many. An attach that names no writer gets a count
+// of its own that nothing remembers (and is not known). The caller holds the session's mu.
+func (c *channelState) writerLocked(id string) (*writerCount, bool) {
 	if id == "" {
-		return &writerCount{id: "", admitted: atomic.Uint64{}, applied: atomic.Uint64{}}
+		return &writerCount{id: "", admitted: atomic.Uint64{}, applied: atomic.Uint64{}}, false
 	}
 	for i, w := range c.writers {
 		if w.id == id {
 			c.writers = append(slices.Delete(c.writers, i, i+1), w)
-			return w
+			return w, true
 		}
 	}
 	w := &writerCount{id: id, admitted: atomic.Uint64{}, applied: atomic.Uint64{}}
@@ -200,7 +200,7 @@ func (c *channelState) writerLocked(id string) *writerCount {
 	if len(c.writers) > channelWriters {
 		c.writers = slices.Delete(c.writers, 0, 1)
 	}
-	return w
+	return w, false
 }
 
 // signalHolder wakes the sender of the stream that holds the terminal: a write returned, and it may owe the page an applied frame.
