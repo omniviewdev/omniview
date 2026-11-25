@@ -41,6 +41,7 @@ on:
       - "scripts/ci/probe-shards.test.mjs"
       - "scripts/ci/probe-*"
       - "scripts/ci/probe-units/**"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-kit-probes.yml"
   push:
     branches: [main]
@@ -53,6 +54,7 @@ on:
       - "scripts/ci/probe-shards.test.mjs"
       - "scripts/ci/probe-*"
       - "scripts/ci/probe-units/**"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-kit-probes.yml"
   # The nightly run: everything (N30). A pull request runs the probes in WebKit and no negative control; this and every push to main run every probe and every control in both engines.
   schedule:

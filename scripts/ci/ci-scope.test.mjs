@@ -19,7 +19,7 @@ test('main, the nightly run and a manual run are full; a manual run can ask for 
 });
 
 test('a pull request that changes none of the test infrastructure gets the pull request scope', () => {
-  const result = pr(['ui-next/shell/Rail.tsx', 'packages/kit/src/Chip/Chip.tsx', 'backend/pkg/plugin/x.go', 'docs/ui-next/status/N30.md']);
+  const result = pr(['ui-next/shell/Rail.tsx', 'packages/kit/src/Chip/Chip.tsx', 'backend/pkg/plugin/x.go', 'docs/ui-next/AGENTS.md']);
   assert.equal(result.scope, 'pr');
   assert.match(result.reason, /4 changed files, none of them test infrastructure/);
   assert.match(pr(['a.go']).reason, /1 changed file, none/);
@@ -50,7 +50,7 @@ test('a change to the test infrastructure is a full run, naming the file: the CI
 });
 
 test('NEGATIVE: a path that only looks like test infrastructure is not: a name that contains the words, a docs file about them', () => {
-  for (const file of ['scripts/ci-notes.md', 'scripts/cinema/x.mjs', 'docs/ui-next/status/probes.md', 'ui-next/shell/Probes.tsx', 'ui-next/plugins/e2e-notes.md', 'github/workflows/x.yml', 'packages/kit/src/probes-list.ts']) {
+  for (const file of ['scripts/ci-notes.md', 'scripts/cinema/x.mjs', 'docs/ui-next/probes.md', 'ui-next/shell/Probes.tsx', 'ui-next/plugins/e2e-notes.md', 'github/workflows/x.yml', 'packages/kit/src/probes-list.ts']) {
     assert.equal(infrastructureIn([file]), null, file);
   }
 });

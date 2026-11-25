@@ -56,6 +56,7 @@ on:
       - "build/Taskfile.yml"
       - ".github/ci/image.lock"
       - "scripts/ci/seam-*"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-seam.yml"
       - "!**/*.md"
   push:
@@ -82,6 +83,7 @@ on:
       - "build/Taskfile.yml"
       - ".github/ci/image.lock"
       - "scripts/ci/seam-*"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-seam.yml"
       - "!**/*.md"
   # The nightly run: everything (N30). A pull request runs the phases in WebKit and no negative control; this and every push to main run every phase and every control in both engines.
