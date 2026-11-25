@@ -23,7 +23,7 @@ export const units = [
   { id: 'terminal-core', phases: ['terminal', 'terminal-programs', 'terminal-reattach'], seconds: 100 },
   { id: 'terminal-restart', phases: ['terminal-takeover', 'terminal-followups'], seconds: 100 },
   // The Terminal tool's cuts of the page's two sockets (r6) and the isolation of two pages (r7): the phases' own seconds as the check prints them (`SEAM-PHASE`: 19.9 and 9.7 on the laptop, chromium; the first CI run of #716 printed the older, shorter versions of the two at 17 s and 5 s), rounded up together.
-  { id: 'terminal-channel', phases: ['terminal-reconnect', 'terminal-isolation'], seconds: 55 },
+  { id: 'terminal-channel', phases: ['terminal-reconnect', 'terminal-isolation'], seconds: 30 },
   { id: 'terminal-find', phases: ['terminal-find'], seconds: 35 },
   { id: 'session', phases: ['session'], seconds: 15 },
   // The scenarios that start a plugin's process (the Go fixture is built once for the run).
@@ -61,5 +61,5 @@ export const units = [
   { id: 'controls-connections-problems', runs: ['connections', 'problems-operations'], seconds: 80 },
   { id: 'controls-ports', runs: ['ports'], seconds: 55 },
   // The controls of r6 and r7, one run of each table: the first is the runner's (`control terminal-reconnect: detected (50 s)`, which the laptop measured the same), the second has no runner figure yet (the CI step that was to run it failed to start it) and is the laptop's (26 s, its four controls with the host's start).
-  { id: 'controls-terminal-channel', runs: ['terminal-reconnect', 'terminal-isolation'], seconds: 110 },
+  { id: 'controls-terminal-channel', runs: ['terminal-reconnect', 'terminal-isolation'], seconds: 76 },
 ];
