@@ -119,7 +119,7 @@ func TestACloseAndATakeoverAtOnceHaveOneOutcomeInEitherOrder(t *testing.T) {
 			st := b.waitClosed()
 			assert.Equal(t, 1, st.notFound, "a terminal whose end is decided cannot be claimed")
 			assert.Zero(t, st.takenOver)
-			assert.Equal(t, 1, len(a.waitClosed().ended), "the holder is told the end")
+			assert.Len(t, a.waitClosed().ended, 1, "the holder is told the end")
 		})
 	})
 }
