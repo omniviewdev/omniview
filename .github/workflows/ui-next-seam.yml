@@ -5,16 +5,25 @@ name: UI next seam check
 # the session (reload and a restart of the host), a plugin's unload, the identity of a Logs session, and a plugin's process that is killed and comes back. It is the only check that drives the real host with a
 # browser; until this workflow nothing ran it but agents, by hand (docs/ui-next/AGENTS.md, rule 17: "the seam check").
 #
-# THE JOBS. One job per engine (WebKit and Chromium run at the same time), each in the CI image pinned by digest (the guard step below, as in the kit probes workflow): install, `task packages`, the host the way agents
-# build it for the seam (`OMNIVIEW_UI=next task build:server`, with `GOWORK=off GOTOOLCHAIN=local`), then the whole seam in that engine, then the seam's NEGATIVE CONTROLS in that engine. A control runs the scenario it
-# belongs to alone with one perturbation and exits 0 when the assertion it is named for saw it (`SEAM_CONTROL=<name>`). The step takes the list of controls from the check itself, so a control added there is run here
-# with no change to this file, and it runs every one even when one fails. The seam and the controls run in a clean environment: only the engine and the control are set, nothing of the build's (the check starts the host
-# with a minimal environment of its own, and the Go toolchain settings it needs for the fixture plugin's process are its own). The job named `Seam check` waits for both engines and is green only when both are;
-# when one is not, it names the scenario that failed and the assertion, from the annotation the failed step wrote.
+# THE JOBS (N29). The seam took 17 to 25 minutes in one job for each engine (setup 3 minutes, the whole seam 10, then every negative control 10) and hit the job's 25-minute limit. It is the same work in as many jobs of each
+# engine as it takes to keep each under about 10 minutes: `Seam plan` packs the units of scripts/ci/seam-units.mjs (the phases of the check, and its negative controls, each with the seconds it takes on the runner) into the fewest
+# shards of at most 420 s of work (scripts/ci/seam-shards.mjs), and `Seam <engine> shard <n>` runs one shard in one engine, in the CI image pinned by digest (the guard step below, as in the kit probes workflow): install,
+# `task packages`, the host the way agents build it for the seam (`OMNIVIEW_UI=next task build:server`, with `GOWORK=off GOTOOLCHAIN=local`), then the shard's phases in that engine (`SEAM_PHASES=<ids>`: one run of the check that does
+# only those scenarios, on a host of its own) and the shard's negative controls in that engine. A control runs the scenario it belongs to alone with one perturbation and exits 0 when the assertion it is named for saw it
+# (`SEAM_CONTROL=<run>`); the step runs every control of the shard even when one fails. The seam and the controls run in a clean environment: only the engine, the phases or the control are set, nothing of the build's (the check
+# starts the host with a minimal environment of its own, and the Go toolchain settings it needs for the fixture plugin's process are its own). NOTHING is selected: every phase and every control runs on every run, in both engines.
 #
-# Why two jobs that each build the host, and the controls in them (measured, docs/ui-next/status/CI4.md): one job for both engines is as many runner-minutes less as it is minutes longer (about 10 minutes, more than the
-# kit probes' 8 to 11 and growing with every scenario); a job for each of seam and controls in each engine is 4 slots of the 20 that the plan runs at once for a gain of 1.5 minutes. No Go cache: restoring the module
-# and build caches (512 MB) saved 10 s of 95 and the repository's caches are over their limit.
+# THE VERDICT. The job named `Seam check` runs whatever happened (`always()`), with the repository checked out: it requires the plan and every shard to have succeeded, then downloads what each shard wrote about itself
+# (`seam-ran-<engine>-<shard>.json`, from the logs of its steps: the phases that printed `SEAM-PHASE`, the controls that said `detected`) and compares it with the table and with the check itself: every phase and every control
+# of the check, once, passed, in both engines, in as many shards as the plan made. A shard that failed, timed out (cancelled) or never reported, a shard that ran no scenario, and a phase or control that is in no unit are red. When a
+# job is not green it names the scenario that failed and the assertion, from the annotation its failed step wrote.
+#
+# THE SECONDS ARE HELD (rule 25 of docs/ui-next/AGENTS.md, as the kit probes'): after a shard ran, a unit that took more than its seconds plus the larger of a quarter of them and 60 s fails the shard with the number to put in
+# scripts/ci/seam-units.mjs, and so does a shard whose units took more than 546 s. To add a scenario or a control, add it to the check and to a unit (`node scripts/ci/seam-shards.mjs check` fails, naming it, until it is).
+#
+# Why the shards each build the host (measured, docs/ui-next/status/N29.md): the host build is 105 s of a job of 9 to 10 minutes; one build job and an artifact would save runner time and cost a job in the critical path and an
+# upload and a download of the binary and of the packages the fixture plugins are built from. No Go cache: restoring the module and build caches (512 MB) saved 10 s of 95 and the repository's caches are over their limit.
+# The seam's own time was 8 s a run too long: every wait for a host to exit left an 8 s timer that held the process open, in each of the 27 runs of the negative controls of each engine (`untilExited` in the check).
 #
 # NOT a required check yet, for the reason ui-next-pods.yml gives: it is path-filtered, and a required check that does not run on a pull request blocks the merge. The lead makes `Seam check` (the aggregating job,
 # whose name does not change) required once it has been green for a while.
@@ -46,6 +55,9 @@ on:
       - "Taskfile.yml"
       - "build/Taskfile.yml"
       - ".github/ci/image.lock"
+      - "scripts/ci/seam-*"
+      - "scripts/ci/main-red*"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-seam.yml"
       - "!**/*.md"
   push:
@@ -71,24 +83,77 @@ on:
       - "Taskfile.yml"
       - "build/Taskfile.yml"
       - ".github/ci/image.lock"
+      - "scripts/ci/seam-*"
+      - "scripts/ci/main-red*"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-seam.yml"
       - "!**/*.md"
+  # The nightly run: everything (N30). A pull request runs the phases in WebKit and no negative control; this and every push to main run every phase and every control in both engines.
+  schedule:
+    - cron: "47 3 * * *"
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "full (everything: the default) or pr (what a pull request runs: WebKit, no negative controls)"
+        type: choice
+        options: [full, pr]
+        default: full
 
+# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled by a newer push (the latest commit of main is always verified; a group keeps one running and one pending run, so a burst of merges can skip the ones between).
 concurrency:
   group: ui-next-seam-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  # The plan: the table is checked against the check (every phase and every control in exactly one unit, nothing the check lacks) and the units are packed into shards. It writes the matrix the shard jobs read (one entry for each
+  # engine and shard) and the number of shards, which `Seam check` compares with what the shards report. It fails when it would plan no shard.
+  plan:
+    name: Seam plan
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shards: ${{ steps.plan.outputs.shards }}
+      scope: ${{ steps.plan.outputs.scope }}
+      reason: ${{ steps.scope.outputs.reason }}
+    steps:
+      # Two commits: the base of the merge commit a pull request is checked out as, and the pull request (scripts/ci/ci-scope.mjs reads the diff between them).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      # The ONE place that says what this run does (scripts/ci/ci-scope.mjs, the same step as the kit probes'): everything on main, every night, on request and for a change to the test infrastructure; a pull request's scope
+      # (WebKit, the phases, no negative control) otherwise.
+      - name: Decide the scope of this run
+        id: scope
+        env:
+          SCOPE_INPUT: ${{ inputs.scope }}
+        run: node scripts/ci/ci-scope.mjs
+
+      - name: Check the units against the check and pack the shards
+        id: plan
+        env:
+          SCOPE: ${{ steps.scope.outputs.scope }}
+          REASON: ${{ steps.scope.outputs.reason }}
+        run: |
+          node scripts/ci/seam-shards.mjs check
+          node scripts/ci/seam-shards.mjs plan --scope "$SCOPE" --reason "$REASON"
+
   seam:
-    name: Seam ${{ matrix.engine }}
+    name: Seam ${{ matrix.engine }} shard ${{ matrix.shard }}
+    needs: plan
     runs-on: ubuntu-24.04
-    # Measured: 6.5 to 8 minutes for scenarios a to m, 9.3 minutes with scenario n (a plugin's process killed: the host finds it on its health check, up to 30 s, twice: once in the seam and once in its control). With scenarios up to w (the Ports tool's, PF1) the seam step took about 11 minutes and the controls step more than 10 on the WebKit job: it reached the 25 minute limit while the last two groups (problems-operations and ports) were still to run, so the limit is 40.
-    # The terminal channel's scenarios r6 to r8 and their two control groups (#716) add to both steps (23.6 minutes in chromium and over 25 in webkit before PF1 joined); splitting the controls into a job of their own is the next step if the seam grows again.
-    timeout-minutes: 40
+    # A shard is planned at 420 s of work (scripts/ci/seam-shards.mjs, LIMIT_SECONDS) plus a setup of about 175 s (container 36, install, packages 25, the host build 105; 260 s on the slowest machine seen), and fails past 546 s
+    # of units. Measured in one job: 17 to 25 minutes, which is what this replaces (the limit was 25). 20 is the wall for a shard that hangs: the slowest setup and the ceiling are 13.5 minutes.
+    timeout-minutes: 20
     # The CI image holds Node, pnpm, Task, Go, the native libraries of the host (GTK 4 and WebKitGTK, which the Wails bindings need to be generated) and the Playwright browsers of the version pnpm-lock.yaml
     # resolves. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private:
     # the job token reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do.
@@ -105,10 +170,10 @@ jobs:
       run:
         shell: bash
     strategy:
-      # Both engines run to the end: one push shows what fails in each.
+      # Every shard of every engine runs to the end: one push shows what fails in each.
       fail-fast: false
-      matrix:
-        engine: [webkit, chromium]
+      # The plan's matrix: `{ include: [{ engine, shard, units, phases, controls, seconds }] }`. `phases` is the ids for SEAM_PHASES, `controls` the runs of SEAM_CONTROL, `units` the ids of scripts/ci/seam-units.mjs.
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       # The runner creates this mount as UID 1001; Git must see the same owner as the container user after checkout's temporary HOME goes away.
       - name: Match checkout directory ownership to container user
@@ -125,6 +190,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Before anything is built: the table against the check, and the tests of the plan, the report and the verdict (one of them holds the text the plan reads from the check to the check's own `SEAM_LIST=1`).
+      - name: Check the units and the tests of the plan
+        run: |
+          node scripts/ci/seam-shards.mjs check
+          node --test scripts/ci/seam-*.test.mjs scripts/ci/ci-scope.test.mjs scripts/ci/main-red.test.mjs
+
       - name: Build the workspace packages (the kit among them)
         run: |
           task packages
@@ -140,11 +211,13 @@ jobs:
           GOTOOLCHAIN: local
         run: task build:server
 
-      # The whole seam in this engine. A failure is written as one annotation that names the scenario (the id of the last `// <id>.` marker or doc comment above the line of the failing check function, a letter or a letter and digits
+      # The phases of this shard in this engine. A failure is written as one annotation that names the scenario (the id of the last `// <id>.` marker or doc comment above the line of the failing check function, a letter or a letter and digits
       # as in `h2`, and the function) and the assertion; `Seam check` repeats it. scripts/ci/changes-workflows.test.mjs runs this very program over the check and holds every scenario function to its own marker.
       - name: The seam (${{ matrix.engine }})
+        if: ${{ matrix.phases != '' }}
         env:
           ENGINES: ${{ matrix.engine }}
+          SEAM_PHASES: ${{ matrix.phases }}
         run: |
           set -o pipefail
           check=ui-next/plugins/e2e/seam.check.mjs
@@ -184,79 +257,109 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
-      # Every negative control the check names, in this engine, one after the other. Each runs the scenario it belongs to alone with one perturbation and passes when the assertion it is named for saw it; one that is not
-      # detected, or that fails on another assertion, fails the step. All of them run when one fails.
+      # Every negative control run of this shard, in this engine, one after the other (the plan's `controls`: the runs of scripts/ci/seam-units.mjs). Each runs the scenario it belongs to alone with one perturbation and passes when the
+      # assertion it is named for saw it; one that is not detected, or that fails on another assertion, fails the step. All of them run when one fails. The log of each and the seconds of each are kept for the report that follows.
       - name: The seam's negative controls (${{ matrix.engine }})
+        if: ${{ matrix.controls != '' }}
         env:
           ENGINES: ${{ matrix.engine }}
+          CONTROLS: ${{ matrix.controls }}
         run: |
-          controls="$(node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            const text = readFileSync("ui-next/plugins/e2e/seam.check.mjs", "utf8");
-            const block = /^const CONTROLS = \{\n([\s\S]*?)^\};$/m.exec(text);
-            if (block === null) throw new Error("seam.check.mjs has no `const CONTROLS = {` block");
-            const names = [...block[1].matchAll(/^  \x27([a-z0-9-]+)\x27: \//gm)].map((match) => match[1]);
-            // Scenario n runs every one of its controls from one kill: `process` runs them all (the names of PROCESS_CONTROLS make one only).
-            if (/PROCESS_CONTROLS/.test(text)) names.push("process");
-            // Scenario u runs every one of its controls (CONNECTIONS_CONTROLS) from one run: `connections` runs them all (a name of the table makes one only).
-            if (/CONNECTIONS_CONTROLS/.test(text)) names.push("connections");
-            // Scenarios r6 (the cuts of the sockets of the page) and r7 (two pages, nothing of one reaches the other) run every one of their controls from one run: `terminal-reconnect` and `terminal-isolation` run them all (a name of RECONNECT_CONTROLS or ISOLATION_CONTROLS makes one only).
-            if (/RECONNECT_CONTROLS/.test(text)) names.push("terminal-reconnect");
-            if (/ISOLATION_CONTROLS/.test(text)) names.push("terminal-isolation");
-            // Scenario v runs every one of its controls (PT_CONTROLS) from one run: problems-operations runs them all (a name of the table makes one only).
-            if (/PT_CONTROLS/.test(text)) names.push("problems-operations");
-            if (/PORTS_CONTROLS/.test(text)) names.push("ports");
-            console.log(names.join(" "));
-          ')"
-          [ -n "$controls" ] || { echo "::error::no negative control found in seam.check.mjs"; exit 1; }
-          echo "controls: $controls"
+          echo "controls: $CONTROLS"
           failed=""
+          runs="$RUNNER_TEMP/seam-controls-$ENGINES.tsv"
+          : > "$runs"
           {
             echo "### Seam negative controls ($ENGINES)"
             echo
             echo "| control | result | seconds |"
             echo "|---|---|--:|"
           } >> "$GITHUB_STEP_SUMMARY"
-          for control in $controls; do
+          for control in $CONTROLS; do
             echo "::group::SEAM_CONTROL=$control ENGINES=$ENGINES"
+            log="$RUNNER_TEMP/control-$ENGINES-$control.log"
             start=$SECONDS
-            if SEAM_CONTROL="$control" node ui-next/plugins/e2e/seam.check.mjs 2>&1 | tee "$RUNNER_TEMP/control.log"; then
+            if SEAM_CONTROL="$control" node ui-next/plugins/e2e/seam.check.mjs 2>&1 | tee "$log"; then
               verdict="detected"
             else
               verdict="NOT DETECTED"
               failed="$failed $control"
-              echo "::error title=Seam control $control ($ENGINES)::$(grep -m1 -E 'NEGATIVE CONTROL|Error' "$RUNNER_TEMP/control.log" | head -c 400 | sed 's/%/%25/g')"
+              echo "::error title=Seam control $control ($ENGINES)::$(grep -m1 -E 'NEGATIVE CONTROL|Error' "$log" | head -c 400 | sed 's/%/%25/g')"
             fi
             echo "::endgroup::"
-            echo "control $control: $verdict ($((SECONDS - start)) s)"
-            echo "| $control | $verdict | $((SECONDS - start)) |" >> "$GITHUB_STEP_SUMMARY"
+            seconds=$((SECONDS - start))
+            echo "control $control: $verdict ($seconds s)"
+            echo "| $control | $verdict | $seconds |" >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\t%s\t%s\n' "$control" "$verdict" "$seconds" >> "$runs"
           done
           [ -z "$failed" ] || { echo "::error::controls that failed:$failed"; exit 1; }
 
-  # The check that keeps the name `Seam check`. Green only when both engines succeeded; a failed, cancelled or skipped job fails it, and so does an empty or unknown result. A cancelled run does not run it.
-  # The jobs that did not succeed are named with the scenario and the assertion their failed step annotated (the token reads the annotations with `checks: read`).
+      # What this shard ran, from the logs of the steps above, and the seconds of each unit against the table (`scripts/ci/seam-shards.mjs`): a unit that took more than its seconds plus the larger of a quarter of them and 60 s,
+      # and a shard that took more than its ceiling, fail here with the number to change. It writes seam-ran-<engine>-<shard>.json, which `Seam check` compares with the check. It runs when an earlier step failed too, so that the
+      # verdict has a report to read; the failure is the earlier step's. It does NOT run when the job was cancelled (its timeout, a cancelled run): a shard that hung and was killed must not leave a report that says it passed.
+      - name: Hold the seconds and write what this shard ran
+        if: ${{ !cancelled() }}
+        env:
+          ENGINE: ${{ matrix.engine }}
+          SHARD: ${{ matrix.shard }}
+          UNITS: ${{ matrix.units }}
+        run: node scripts/ci/seam-shards.mjs report --engine "$ENGINE" --shard "$SHARD" --units "$UNITS" --dir "$RUNNER_TEMP"
+
+      - name: Keep what the shard ran
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: seam-ran-${{ matrix.engine }}-${{ matrix.shard }}
+          # A re-run of a shard (or of the run) uploads the same name again: replace what the earlier attempt left, or the upload fails and the verdict reads a stale file.
+          overwrite: true
+          path: ${{ runner.temp }}/seam-ran-*.json
+          if-no-files-found: ignore
+
+  # The check that keeps the name `Seam check`. It runs whatever happened (`always()`: a cancelled run leaves a check, not an absence), with the repository checked out. First it requires the plan and every shard of both engines to have
+  # succeeded: a plan that failed (no shard could run), a shard that failed, timed out (cancelled) or was skipped fails it, and so does an empty or unknown result. The jobs that did not succeed are named with the scenario and the
+  # assertion their failed step annotated (the token reads the annotations with `checks: read`). Then, whatever the shards' own results said, it requires every phase and every control of the check, and every unit of the table, to
+  # have run once and passed in each engine, from what the shards wrote: a plan that was short, a shard that never reported, a shard that ran no scenario and a scenario that dropped out of the table are red.
   seam-check:
     name: Seam check
-    needs: seam
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    needs: [plan, seam]
+    if: ${{ always() }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
     permissions:
       actions: read
       checks: read
+      contents: read
     steps:
-      - name: Require every engine to have succeeded
+      # The verdict needs the table and the check's own list, nothing else: a sparse checkout of three paths, on the smallest runner, and nothing is built.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/ci
+            ui-next/plugins/e2e/seam.check.mjs
+            .tool-versions
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .tool-versions
+
+      - name: Require the plan and every shard to have succeeded
         env:
+          PLAN_RESULT: ${{ needs.plan.result }}
           RESULT: ${{ needs.seam.result }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$RESULT" = success ]; then
-            echo "The seam passed in WebKit and Chromium."
+          if [ "$PLAN_RESULT" = success ] && [ "$RESULT" = success ]; then
+            echo "The plan and every seam shard passed, in WebKit and Chromium."
             exit 0
           fi
-          echo "::error title=Seam check::the seam jobs finished as '${RESULT:-unknown}', not as success"
+          if [ "$PLAN_RESULT" != success ]; then
+            echo "::error title=Seam check::the plan job finished as '${PLAN_RESULT:-unknown}', not as success: no shard could run (the units disagree with the check, or the plan could not be written): see the job 'Seam plan'"
+            exit 1
+          fi
+          echo "::error title=Seam check::the seam shards finished as '${RESULT:-unknown}', not as success"
           if jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
-              --jq '.jobs[] | select(.name | startswith("Seam ")) | select(.name != "Seam check") | select(.conclusion != "success") | "\(.id)\t\(.name)\t\(.conclusion // .status)\t\(.html_url)"' 2>&1); then
+              --jq '.jobs[] | select(.name | startswith("Seam ")) | select(.name != "Seam check" and .name != "Seam plan") | select(.conclusion != "success") | "\(.id)\t\(.name)\t\(.conclusion // .status)\t\(.html_url)"' 2>&1); then
             while IFS=$'\t' read -r id name conclusion url; do
               [ -n "$id" ] || continue
               echo "::error title=Seam check::$name finished as $conclusion: $url"
@@ -273,3 +376,13 @@ jobs:
             echo "::warning title=Seam check::could not list the jobs of this run: $jobs"
           fi
           exit 1
+
+      - name: Require every phase and every control to have run and passed, in both engines
+        env:
+          PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
+          SCOPE: ${{ needs.plan.outputs.scope }}
+          REASON: ${{ needs.plan.outputs.reason }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --pattern 'seam-ran-*' --dir "$RUNNER_TEMP/reports"
+          node scripts/ci/seam-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS" --scope "$SCOPE" --reason "$REASON"
