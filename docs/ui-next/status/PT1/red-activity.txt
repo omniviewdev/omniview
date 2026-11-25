@@ -1,0 +1,20 @@
+     × is the connection when the record names one the window knows 4ms
+     × is the plugin when the connection is not one the window knows: a row never goes to a key it cannot open 1ms
+     × is the plugin when the record names no connection 0ms
+     × holds the records the provider pushed, the same array until they change 2ms
+     × tells its listeners once for each push of another array, and for no push of the one it has 0ms
+     × asks the host what the tools ask of it, with the id and nothing else 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/activity.test.ts > the subject of a record (what its row goes to) > is the connection when the record names one the window knows
+AssertionError: expected undefined to deeply equal { kind: 'connection', …(2) }
+ FAIL  ui-next/shell/panel/activity.test.ts > the subject of a record (what its row goes to) > is the plugin when the connection is not one the window knows: a row never goes to a key it cannot open
+AssertionError: expected undefined to deeply equal { kind: 'plugin', plugin: 'alpha' }
+ FAIL  ui-next/shell/panel/activity.test.ts > the subject of a record (what its row goes to) > is the plugin when the record names no connection
+AssertionError: expected undefined to deeply equal { kind: 'plugin', plugin: 'alpha' }
+ FAIL  ui-next/shell/panel/activity.test.ts > the activity feed > holds the records the provider pushed, the same array until they change
+AssertionError: expected [] to be [ { id: 'a', kind: 'task', …(6) } ] // Object.is equality
+ FAIL  ui-next/shell/panel/activity.test.ts > the activity feed > tells its listeners once for each push of another array, and for no push of the one it has
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/activity.test.ts > the activity feed > asks the host what the tools ask of it, with the id and nothing else
+AssertionError: expected undefined to be 'canceled' // Object.is equality
+      Tests  6 failed | 1 passed (7)

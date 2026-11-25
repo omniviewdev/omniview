@@ -1,0 +1,305 @@
+# The FIRST runs of the probe's fixes after the review of PR #706 (CodeRabbit 4685831547, 4685831560, 4685831565, 4685831568, 4685831573 on ui-next/shell/probes/problems-operations-probe.mjs; 4685831530, 4685831538 on mock-problems-operations-measure.mjs), and of the fixture's start times (the lead's note: the mock's rounding of an age).
+# Method: each fix has a control (or a repro) that plants the fault the old check could not see; the control was written and run FIRST, against the probe as it stood (the old assertions), and its first run is the red below.
+# Every run from a clean environment: env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 BUILD_CACHE=<dir> ENGINES=chromium NEGATIVE_CONTROL=<name> node ui-next/shell/probes/problems-operations-probe.mjs
+# What a control prints when its fault is not seen: NEGATIVE CONTROL "<name>": NOT DETECTED. After the fix the same control prints "detected", and with ASSERTION_OFF set to the pattern it printed, NOT DETECTED again (the pairs of all the controls, in both engines, are section 10).
+# The scratch copies named below (probe-old.scratch.mjs, measure-old.noempty.mjs) are the files of the commit before these fixes with only their import paths and, for the measurer, the two selectors that make a scene lack its empty state and footer rewritten; they are not in the repository.
+
+################################################################################################################
+# 1. 4685831547 (MAJOR): a scene exception was recorded under the scene's own assertion, so a fault that is not the control's was a detection of it.
+#    The repro is the review's own: NEGATIVE_CONTROL=no-name with an axe that does not load (AXE=<a file that defines no axe>). The OLD probe says the control is DETECTED, though no unnamed button was ever seen:
+# env -i ... ENGINES=chromium NEGATIVE_CONTROL=no-name AXE=/tmp/pt1-probefix/scratch/not-axe.js node probe-old.scratch.mjs     (exit 0)
+seconds: {"chromium a11y":3.85,"chromium":4} (4 in all)
+assertion          result  checks
+what the probe saw with the perturbation "no-name": 6 differences
+  a11y chromium 1440x900: Problems, with rows: page.evaluate: ReferenceError: axe is not defined
+  a11y chromium 1440x900: Problems, nothing to list: page.evaluate: ReferenceError: axe is not defined
+  a11y chromium 1440x900: Operations, with rows: page.evaluate: ReferenceError: axe is not defined
+  a11y chromium 1440x900: Operations, nothing to list: page.evaluate: ReferenceError: axe is not defined
+  a11y chromium 1440x900: Problems with rows, and the dot of a failure nobody read on the Operations tab: page.evaluate: ReferenceError: axe is not defined
+  a11y chromium 1440x900: Operations with rows, and the dot of warnings on the Problems tab: page.evaluate: ReferenceError: axe is not defined
+its assertion, to remove with ASSERTION_OFF: ^a11y\b
+NEGATIVE CONTROL "no-name": detected (6 differences, only in ^a11y\b, e.g. a11y chromium 1440x900: Problems, with rows: page.evaluate: ReferenceError: axe is not defined)
+
+#    And the new control scene-throws (a setup that throws in the page, in the virtual scenes) against the OLD probe: the error is recorded as a failure of virtual.rows, the assertion of the scene, and the control named for scene is NOT DETECTED (exit 1):
+seconds: {"chromium virtual":1.27,"chromium":1} (1 in all)
+assertion          result  checks
+what the probe saw with the perturbation "scene-throws": 2 differences
+  virtual.rows chromium 1440x900: problems virtual: page.evaluate: Error: a fault planted in the page
+  virtual.rows chromium 1440x900: operations virtual: page.evaluate: Error: a fault planted in the page
+its assertion, to remove with ASSERTION_OFF: ^scene\b
+NEGATIVE CONTROL "scene-throws": NOT DETECTED (2 other failures, e.g. virtual.rows chromium 1440x900: problems virtual: page.evaluate: Error: a fault planted in the page)
+
+# AFTER the fix: the same no-name repro is a failure of 'scene' (exit 1, 'NOT DETECTED (6 other failures ...)'), and stays one with ASSERTION_OFF='^a11y\b' (the error is no longer dropped with the a11y assertion):
+what the probe saw with the perturbation "no-name": 6 differences
+  scene chromium 1440x900: Problems, with rows: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look)
+  scene chromium 1440x900: Problems, nothing to list: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look)
+  scene chromium 1440x900: Operations, with rows: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look)
+  scene chromium 1440x900: Operations, nothing to list: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look)
+  scene chromium 1440x900: Problems with rows, and the dot of a failure nobody read on the Operations tab: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look)
+  scene chromium 1440x900: Operations with rows, and the dot of warnings on the Problems tab: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look)
+its assertion, to remove with ASSERTION_OFF: ^a11y\b
+NEGATIVE CONTROL "no-name": NOT DETECTED (6 other failures, e.g. scene chromium 1440x900: Problems, with rows: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look))
+# with ASSERTION_OFF='^a11y\b':
+NEGATIVE CONTROL "no-name": NOT DETECTED (6 other failures, e.g. scene chromium 1440x900: Problems, with rows: page.evaluate: ReferenceError: axe is not defined (so a11y did not get to look))
+
+################################################################################################################
+# 2. 4685831560 (MAJOR): quiet() measured its deadline from the last change of the count, which every change resets, so a page that never stops changing never failed.
+#    The control render-loop (the Operations body inside a component that renders again every 20 ms, for ever; section commits) against the OLD quiet, under timeout 100 (the limit of the wait is 30 s): it was still waiting when the timeout killed it.
+#    The one failure below is the browser the timeout closed under it; the control is NOT DETECTED and the process had to be stopped (exit 124):
+# env -i ... ENGINES=chromium NEGATIVE_CONTROL=render-loop timeout 100 node probe.mjs     (exit 124 after 100 s)
+seconds: {"chromium commits":99.75,"chromium":100} (100 in all)
+assertion          result  checks
+commits.arrive     FAIL       1  1 failure(s)
+premise            ok         2
+tick.cells         ok         1
+tick.commits       ok         1
+tick.dom           ok         1
+what the probe saw with the perturbation "render-loop": 1 differences
+  commits.arrive chromium 1440x900: operations arrive: page.evaluate: Target page, context or browser has been closed
+its assertion, to remove with ASSERTION_OFF: ^settle\b
+NEGATIVE CONTROL "render-loop": NOT DETECTED (1 other failures, e.g. commits.arrive chromium 1440x900: operations arrive: page.evaluate: Target page, context or browser has been closed)
+
+# AFTER the fix (the deadline runs from the call, not from the last change; 'settle' is the failure): detected after 30 s, NOT DETECTED with ASSERTION_OFF='^settle\b' (section 10):
+seconds: {"chromium commits":31.91,"chromium":32} (32 in all)
+settle             FAIL       4  1 failure(s)
+what the probe saw with the perturbation "render-loop": 1 differences
+  settle chromium 1440x900: operations arrive: the page did not settle in 30 s: what it counts kept moving (1505000653)
+its assertion, to remove with ASSERTION_OFF: ^settle\b
+NEGATIVE CONTROL "render-loop": detected (1 differences, only in ^settle\b, e.g. settle chromium 1440x900: operations arrive: the page did not settle in 30 s: what it counts kept moving (1505000653))
+
+################################################################################################################
+# 3. 4685831565: tick.cells checked WHICH rows rendered, not how many cell calls the changed row got.
+#    The control cells-twice (the table calls each column's cell twice for a row) against the OLD assertion: the changed row is the only key, so it passes. (exit 1)
+seconds: {"chromium commits":3.53,"chromium":4} (4 in all)
+assertion          result  checks
+commits.arrive     ok         2
+premise            ok         4
+tick.cells         ok         2
+tick.commits       ok         2
+tick.dom           ok         2
+what the probe saw with the perturbation "cells-twice": 0 differences
+its assertion, to remove with ASSERTION_OFF: ^tick\.cells\b
+NEGATIVE CONTROL "cells-twice": NOT DETECTED (0 other failures)
+
+# AFTER the fix (one call for each wrapped column: 4 for Problems, 7 for Operations):
+  tick.cells chromium 1440x900: problems: one row changed (bulk:004) and the table rendered the cells of 1 rows (bulk:004) and called the cells of the changed row 8 times, wanted that one row alone and one call for each of its 4 columns
+  tick.cells chromium 1440x900: operations: one row changed (bulk002) and the table rendered the cells of 1 rows (bulk002) and called the cells of the changed row 14 times, wanted that one row alone and one call for each of its 7 columns
+NEGATIVE CONTROL "cells-twice": detected (2 differences, only in ^tick\.cells\b, e.g. tick.cells chromium 1440x900: problems: one row changed (bulk:004) and the table rendered the cells of 1 rows (bulk:004) and called the cells of the changed row 8 times, wanted that one row alone and )
+
+################################################################################################################
+# 4. 4685831568: layout.premise totalled the long words over all columns and headers, so they could all be in one column.
+#    The control long-one (every row's long words in the first column, 5 rows of Problems and 10 of Operations, none in Source or Target) against the OLD assertion: the total is over the threshold and the check is OK. (exit 1)
+seconds: {"chromium layout":1.89,"chromium":2} (2 in all)
+assertion          result  checks
+layout.clip        ok         2
+layout.overlap     ok         2
+layout.premise     ok         2
+what the probe saw with the perturbation "long-one": 0 differences
+its assertion, to remove with ASSERTION_OFF: ^layout\.premise\b
+NEGATIVE CONTROL "long-one": NOT DETECTED (0 other failures)
+
+# AFTER the fix (body cells only, each named column needs one; the ordinary run has 1 in each of Condition, Source and Target of Problems, 1 in each of Operation, Source and Target of Operations and 11 to 15 in Progress, in both engines at all three viewports):
+  layout.premise chromium 1440x900: problems: the cells of the body with a word longer than their cell, by column: Condition 5, Source 0, Target 0 (in 20 rows), wanted at least one in each (none in Source, Target) and 5 rows: the long words are not in each of th
+  layout.premise chromium 1440x900: operations: the cells of the body with a word longer than their cell, by column: Operation 10, Source 0, Target 0, Progress 20 (in 20 rows), wanted at least one in each (none in Source, Target) and 5 rows: the long words are n
+NEGATIVE CONTROL "long-one": detected (2 differences, only in ^layout\.premise\b, e.g. layout.premise chromium 1440x900: problems: the cells of the body with a word longer than their cell, by column: Condition 5, Source 0, Target 0 (in 20 rows), wanted at least one in each (none in Sour)
+
+################################################################################################################
+# 5. 4685831573: the shift-click check did not look at the subject.
+#    The control shift-other (a shift-click opens ANOTHER subject than its row's) against the OLD assertion: one call with the shift is all it asked for. (exit 1)
+seconds: {"chromium keyboard":2.65,"chromium":3} (3 in all)
+assertion          result  checks
+keys.cancel        ok         1
+keys.open          ok        12
+keys.scroll        ok         2
+keys.stops         ok         2
+what the probe saw with the perturbation "shift-other": 0 differences
+its assertion, to remove with ASSERTION_OFF: ^keys\.open\b
+NEGATIVE CONTROL "shift-other": NOT DETECTED (0 other failures)
+
+# AFTER the fix:
+  keys.open chromium 1440x900: problems: a shift-click on the row of "Open item" called open 1 times with [{"subject":{"kind":"plugin","plugin":"elsewhere"},"modifiers":"shift"}], wanted once with the shift and {"kind":"plugin","plugin":"alpha"}
+  keys.open chromium 1440x900: operations: a shift-click on the row of "Open Beta Works" called open 1 times with [{"subject":{"kind":"plugin","plugin":"elsewhere"},"modifiers":"shift"}], wanted once with the shift and {"kind":"plugin","plugin":"beta"}
+NEGATIVE CONTROL "shift-other": detected (2 differences, only in ^keys\.open\b, e.g. keys.open chromium 1440x900: problems: a shift-click on the row of "Open item" called open 1 times with [{"subject":{"kind":"plugin","plugin":"elsewhere"},"modifiers":"shift"}], wanted once with the s)
+
+################################################################################################################
+# 6. 4685831530: the screenshot directory of mock-problems-operations-measure.mjs was a constant in the author's notes folder; the environment's SHOTS was ignored.
+#    No red run: the old script would write its 40 pictures into that folder. The line was: const SHOTS = '<home of the author>/Notes/omniview/ui-migration/status/PT1-assets';
+#    AFTER the fix: SHOTS=<dir> is used (40 pictures in it), and with no SHOTS the run makes a directory of its own in the temp directory and says so at its end:
+wrote /private/tmp/pt1-probefix/scratch/mock-problems-operations.json 150392 bytes 34 s
+screenshots in /tmp/pt1-probefix/scratch/shots-valid
+wrote /private/tmp/pt1-probefix/scratch/mock-problems-operations.json 150393 bytes 36 s
+screenshots in /tmp/pt1-probefix/scratch/tmpdir-default/mock-po-shots-JgwpRu
+
+################################################################################################################
+# 7. 4685831538: a scene without its empty state or its footer made wordsOf dereference null, so the run died before it wrote mock-problems-operations.failed.json.
+#    The OLD measurer on a mock whose scenes have no .panel__empty and no footer (the two selectors rewritten to null in a scratch copy), from a clean environment (exit 1, and NO failed.json is written):
+# env -i ... SHOTS=<dir> node measure-old.noempty.mjs
+chromium 1280x800 operations-rows FAILED
+chromium 1280x800 tab-badges ok
+file:///private/tmp/pt1-probefix/scratch/measure-old.noempty.mjs:557
+      problemsEmpty: { title: d['problems-empty']?.empty.title.text, hint: d['problems-empty']?.empty.hint.text },
+                                                        ^
+TypeError: Cannot read properties of null (reading 'title')
+    at wordsOf (file:///private/tmp/pt1-probefix/scratch/measure-old.noempty.mjs:557:57)
+    at file:///private/tmp/pt1-probefix/scratch/measure-old.noempty.mjs:574:17
+Node.js v26.12.0
+
+# AFTER the fix: the same scratch copy of the new script runs to its end, writes the diagnostic and exits 1:
+chromium 1280x800 tab-badges ok
+wrote /tmp/mock-problems-operations.failed.json 144791 bytes 37 s
+screenshots in /tmp/pt1-probefix/scratch/shots-new
+FAILED: a scene misses its panel, rows, empty state or footer: mock-problems-operations.json is unchanged
+
+# And a run on the real mock (tree c8e44a44, 353 files, from a scratch copy so that the committed file is not touched) writes a mock-problems-operations.json of the same content as the committed one: 150,392 bytes both; the only fields
+# that differ are load (the three load averages of the run) and the load sentence of note; words, styles, data and facts are identical. The shape is unchanged, so the committed file is not regenerated.
+
+################################################################################################################
+# 8. The lead's note: the age words are now the mock's rounding (operations/ago.ts), so the fixture's starts (10 s apart, 200 rows, from 2 h 0 m) crossed a label within minutes.
+#    ago.ts run on the two spacings (node /tmp/pt1-probefix/age-spacing.mjs): how many of the 200 rows say other words than they said when the page loaded:
+old: 10 s apart: at load the labels are 2 h ago x177, 3 h ago x23
+  +30 s: 3 of 200 rows say other words than at load
+  +2 min: 12 of 200 rows say other words than at load
+  +10 min: 60 of 200 rows say other words than at load
+  +25 min: 150 of 200 rows say other words than at load
+  +26 min: 156 of 200 rows say other words than at load
+  +30 min: 177 of 200 rows say other words than at load
+new: 1 s apart: at load the labels are 2 h ago x200
+  +30 s: 0 of 200 rows say other words than at load
+  +2 min: 0 of 200 rows say other words than at load
+  +10 min: 0 of 200 rows say other words than at load
+  +25 min: 0 of 200 rows say other words than at load
+  +26 min: 0 of 200 rows say other words than at load
+  +30 min: 200 of 200 rows say other words than at load
+#    The fixture now starts the rows 1 s apart: all 200 say '2 h ago' for 26 minutes after the page loads, and a page of the probe (one for each scene) lives for under a minute.
+
+################################################################################################################
+# 9. layout.clip can see a clipping defect in each of the columns the premise names (ad hoc, from a scratch copy of the probe whose clip-off control takes its stylesheet from SCRATCH_CSS;
+#    the stylesheet takes the ellipsis from ONE column: Source (2nd), Target (3rd), Progress (5th, Operations only); WebKit and Chromium, 1440 x 900):
+=== chromium: SCRATCH_CSS='td:nth-child(2), td:nth-child(2) * { text-overflow: clip !important; }'
+  layout.clip chromium 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 1 "A plugin whose name is m" cut by span (text-overflow clip)
+  layout.clip chromium 1440x900: operations: 1 words are cut with no ellipsis: row 1 cell 1 "A plugin whose name is m" cut by span (text-overflow clip)
+NEGATIVE CONTROL "clip-off": detected (2 differences, only in ^layout\.clip\b, e.g. layout.clip chromium 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 1 "A plugin whose name is m" cut by span (text-overflow clip
+=== chromium: SCRATCH_CSS='td:nth-child(3), td:nth-child(3) * { text-overflow: clip !important; }'
+  layout.clip chromium 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 2 "A target with a name muc" cut by span (text-overflow clip)
+  layout.clip chromium 1440x900: operations: 1 words are cut with no ellipsis: row 1 cell 2 "A connection with a name" cut by span (text-overflow clip)
+NEGATIVE CONTROL "clip-off": detected (2 differences, only in ^layout\.clip\b, e.g. layout.clip chromium 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 2 "A target with a name muc" cut by span (text-overflow clip
+=== chromium: SCRATCH_CSS='td:nth-child(5), td:nth-child(5) * { text-overflow: clip !important; }'
+  layout.clip chromium 1440x900: operations: 15 words are cut with no ellipsis: row 0 cell 4 "0 of 200 files" cut by span (text-overflow clip); row 1 cell 4 "1,234,567 of 9,999,999 i" cut by span (text-overflow clip); row 2 cell 4
+NEGATIVE CONTROL "clip-off": detected (1 differences, only in ^layout\.clip\b, e.g. layout.clip chromium 1440x900: operations: 15 words are cut with no ellipsis: row 0 cell 4 "0 of 200 files" cut by span (text-overflow clip); row 
+=== webkit: SCRATCH_CSS='td:nth-child(2), td:nth-child(2) * { text-overflow: clip !important; }'
+  layout.clip webkit 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 1 "A plugin whose name is m" cut by span (text-overflow clip)
+  layout.clip webkit 1440x900: operations: 1 words are cut with no ellipsis: row 1 cell 1 "A plugin whose name is m" cut by span (text-overflow clip)
+NEGATIVE CONTROL "clip-off": detected (2 differences, only in ^layout\.clip\b, e.g. layout.clip webkit 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 1 "A plugin whose name is m" cut by span (text-overflow clip))
+=== webkit: SCRATCH_CSS='td:nth-child(3), td:nth-child(3) * { text-overflow: clip !important; }'
+  layout.clip webkit 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 2 "A target with a name muc" cut by span (text-overflow clip)
+  layout.clip webkit 1440x900: operations: 1 words are cut with no ellipsis: row 1 cell 2 "A connection with a name" cut by span (text-overflow clip)
+NEGATIVE CONTROL "clip-off": detected (2 differences, only in ^layout\.clip\b, e.g. layout.clip webkit 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 2 "A target with a name muc" cut by span (text-overflow clip))
+=== webkit: SCRATCH_CSS='td:nth-child(5), td:nth-child(5) * { text-overflow: clip !important; }'
+  layout.clip webkit 1440x900: operations: 15 words are cut with no ellipsis: row 0 cell 4 "0 of 200 files" cut by span (text-overflow clip); row 1 cell 4 "1,234,567 of 9,999,999 i" cut by span (text-overflow clip); row 2 cell 4 "
+NEGATIVE CONTROL "clip-off": detected (1 differences, only in ^layout\.clip\b, e.g. layout.clip webkit 1440x900: operations: 15 words are cut with no ellipsis: row 0 cell 4 "0 of 200 files" cut by span (text-overflow clip); row 1 
+
+################################################################################################################
+# 10. The pairs: every control of the probe (the 17 of the manifest and the 5 new ones), planted and then with ASSERTION_OFF set to the pattern the planted run printed, in WebKit and in Chromium, 1440 x 900, from a clean
+#     environment with FONT_DELAY_MS=40 and one shared BUILD_CACHE, on the tree as it stood at the start of the run (2026-11-24, after the product changes of the lead's note). Planted: exit 0 and 'detected ... only in <its assertion>'.
+#     ASSERTION_OFF: exit 1 and 'NOT DETECTED (0 other failures)'.
+control          | webkit planted      | webkit ASSERTION_OFF           | chromium planted    | chromium ASSERTION_OFF
+per-record       | ok exit 0 7 s       | ok exit 1 7 s                  | ok exit 0 6 s       | ok exit 1 6 s
+all-rows         | ok exit 0 5 s       | ok exit 1 4 s                  | ok exit 0 4 s       | ok exit 1 4 s
+hidden-mounted   | ok exit 0 11 s      | ok exit 1 12 s                 | ok exit 0 10 s      | ok exit 1 11 s
+leaky-model      | ok exit 0 5 s       | ok exit 1 6 s                  | ok exit 0 5 s       | ok exit 1 5 s
+no-detach        | ok exit 0 5 s       | ok exit 1 5 s                  | ok exit 0 5 s       | ok exit 1 5 s
+tiny-rows        | ok exit 0 5 s       | ok exit 1 6 s                  | ok exit 0 4 s       | ok exit 1 5 s
+no-scroll        | ok exit 0 20 s      | ok exit 1 20 s                 | ok exit 0 19 s      | ok exit 1 20 s
+tall-rows        | ok exit 0 4 s       | ok exit 1 4 s                  | ok exit 0 4 s       | ok exit 1 4 s
+footer-up        | ok exit 0 4 s       | ok exit 1 3 s                  | ok exit 0 4 s       | ok exit 1 3 s
+footer-words     | ok exit 0 4 s       | ok exit 1 4 s                  | ok exit 0 4 s       | ok exit 1 3 s
+dot-down         | ok exit 0 4 s       | ok exit 1 3 s                  | ok exit 0 5 s       | ok exit 1 3 s
+count-colour     | ok exit 0 4 s       | ok exit 1 4 s                  | ok exit 0 3 s       | ok exit 1 4 s
+clip-off         | ok exit 0 3 s       | ok exit 1 3 s                  | ok exit 0 2 s       | ok exit 1 2 s
+spill            | ok exit 0 2 s       | ok exit 1 3 s                  | ok exit 0 2 s       | ok exit 1 3 s
+no-name          | ok exit 0 6 s       | ok exit 1 6 s                  | ok exit 0 4 s       | ok exit 1 5 s
+no-stop          | ok exit 0 3 s       | ok exit 1 4 s                  | ok exit 0 3 s       | ok exit 1 3 s
+open-twice       | ok exit 0 4 s       | ok exit 1 3 s                  | ok exit 0 4 s       | ok exit 1 3 s
+cells-twice      | ok exit 0 5 s       | ok exit 1 4 s                  | ok exit 0 4 s       | ok exit 1 3 s
+long-one         | ok exit 0 3 s       | ok exit 1 2 s                  | ok exit 0 3 s       | ok exit 1 2 s
+shift-other      | ok exit 0 3 s       | ok exit 1 4 s                  | ok exit 0 3 s       | ok exit 1 3 s
+render-loop      | ok exit 0 32 s      | ok exit 1 33 s                 | ok exit 0 32 s      | ok exit 1 32 s
+scene-throws     | ok exit 0 2 s       | ok exit 1 2 s                  | ok exit 0 2 s       | ok exit 1 2 s
+
+22 controls; runs that behaved as required: 88 of 88
+planted seconds, the unit of the counts (7 controls): chromium 66 s, webkit 70 s; the unit of the page (15 controls): chromium 66 s, webkit 71 s
+
+################################################################################################################
+# 11. The probe itself after the fixes: no failures, WebKit and Chromium, 1440x900, 1280x800 and 800x600, FONT_DELAY_MS=40, from a clean environment, the fixtures built afresh from the same tree.
+# env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 BUILD_CACHE=<dir> ENGINES=webkit node ui-next/shell/probes/problems-operations-probe.mjs
+uptime: 15:04  up 14 days,  7:31, 1 user, load averages: 13.60 13.96 13.11
+webkit 1440x900 done
+webkit 1280x800 done
+webkit 800x600 done
+seconds: {"webkit commits":8.72,"webkit hidden":10.85,"webkit subscribers":4.78,"webkit virtual":12.92,"webkit geometry":9.29,"webkit layout":6.49,"webkit a11y":15.11,"webkit keyboard":3.01,"webkit":7
+assertion          result  checks
+a11y               ok        18
+commits.arrive     ok         2
+geometry.fill      ok        24
+geometry.foot      ok        54
+geometry.head      ok         6
+geometry.row       ok       214
+geometry.tab       ok        60
+hidden.back        ok         6
+hidden.cost        ok        12
+keys.cancel        ok         1
+keys.open          ok        12
+keys.scroll        ok         2
+keys.stops         ok         2
+layout.clip        ok         6
+layout.overlap     ok         6
+layout.premise     ok         6
+premise            ok        22
+scene              ok        51
+settle             ok       116
+subscribers.body   ok         6
+tick.cells         ok         2
+tick.commits       ok         2
+tick.dom           ok         2
+unmount.heard      ok         1
+unmount.held       ok         1
+virtual.last       ok         6
+virtual.rows       ok        12
+problems and operations probe: no failures
+
+# env -i HOME="$HOME" PATH="$PATH" FONT_DELAY_MS=40 BUILD_CACHE=<dir> ENGINES=chromium node ui-next/shell/probes/problems-operations-probe.mjs
+uptime: 15:05  up 14 days,  7:33, 1 user, load averages: 11.87 13.47 13.01
+chromium 1440x900 done
+chromium 1280x800 done
+chromium 800x600 done
+seconds: {"chromium commits":8.15,"chromium hidden":10.25,"chromium subscribers":4.68,"chromium virtual":11.34,"chromium geometry":8.48,"chromium layout":5.77,"chromium a11y":13.11,"chromium keyboard"
+assertion          result  checks
+a11y               ok        18
+commits.arrive     ok         2
+geometry.fill      ok        24
+geometry.foot      ok        54
+geometry.head      ok         6
+geometry.row       ok       214
+geometry.tab       ok        60
+hidden.back        ok         6
+hidden.cost        ok        12
+keys.cancel        ok         1
+keys.open          ok        12
+keys.scroll        ok         2
+keys.stops         ok         2
+layout.clip        ok         6
+layout.overlap     ok         6
+layout.premise     ok         6
+premise            ok        22
+scene              ok        51
+settle             ok       116
+subscribers.body   ok         6
+tick.cells         ok         2
+tick.commits       ok         2
+tick.dom           ok         2
+unmount.heard      ok         1
+unmount.held       ok         1
+virtual.last       ok         6
+virtual.rows       ok        12
+problems and operations probe: no failures
+

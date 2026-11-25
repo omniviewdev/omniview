@@ -1,0 +1,14 @@
+     × is the host's tool, with the mock's label and place: Terminal 10, Logs 20, Problems 30 4ms
+     × draws a glyph of the kit's registry: the mock's triangle-alert when the registry has it, else the warning triangle it has 1ms
+     × draws the empty state and the open button with glyphs of the registry too, each the mock's name when the registry has it 0ms
+     × says in the mock's words that nothing is wrong 0ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/problems/tool.test.ts > the Problems tool > is the host's tool, with the mock's label and place: Terminal 10, Logs 20, Problems 30
+AssertionError: expected { id: 'x', label: '', …(2) } to match object { id: 'x', label: 'Problems', …(1) }
+ FAIL  ui-next/shell/panel/problems/tool.test.ts > the Problems tool > draws a glyph of the kit's registry: the mock's triangle-alert when the registry has it, else the warning triangle it has
+AssertionError: expected 'box' to be 'status-warning' // Object.is equality
+ FAIL  ui-next/shell/panel/problems/tool.test.ts > the Problems tool > draws the empty state and the open button with glyphs of the registry too, each the mock's name when the registry has it
+AssertionError: expected 'box' to be 'status-success' // Object.is equality
+ FAIL  ui-next/shell/panel/problems/tool.test.ts > the Problems tool > says in the mock's words that nothing is wrong
+AssertionError: expected { title: '', hint: '' } to deeply equal { title: 'No problems', …(1) }
+      Tests  4 failed (4)

@@ -1,0 +1,15 @@
+# red run of the four fixes (CodeRabbit 4685831438, 4685831449, 4685831462, 4685831469) against the code before them; callTimeout field present but unused
+# GOWORK=off go test -count=1 ./ui-next/plugins/fixture/activityscript/
+--- FAIL: TestAReportThatSucceedsIsAcknowledgedBeforeTheShutdownIsHonoured (0.00s)
+    script_test.go:765: log:
+         got []
+        want ["ok 1 alert fire k1 info Acme alpha"]
+--- FAIL: TestAScriptThatCannotBeReadAtStartIsNotAnEmptyBaseline (0.00s)
+    script_test.go:678: 2 calls replayed the lines that were there before the runner started, want 0
+--- FAIL: TestAResultThatCannotBeLoggedIsKeptAndNeverReportedTwice (0.00s)
+    script_test.go:786: Tick = nil while the log cannot be written, want the error
+--- FAIL: TestACallThatNeverAnswersEndsAtItsDeadlineAndIsRetried (10.00s)
+    script_test.go:711: Tick did not return: a call of the reporter has no deadline
+FAIL
+FAIL	github.com/omniviewdev/omniview/ui-next/plugins/fixture/activityscript	10.017s
+FAIL

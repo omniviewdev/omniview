@@ -1,0 +1,27 @@
+/* The badge of a tool tab (ch16 S114; the mock's tool header, measured by probes/mock-problems-operations-measure.mjs). A count is plain muted text after the label, one 4 px gap away like every part of the tab (`Problems 2`, no
+   pill); a dot is 6 px, 5 px in from the tab's top and end edges (measured from the tab's border box, so 4 px from its padding box, where an absolute box is placed), in the state roles `--ov-error-fg` and `--ov-warning-fg` (S83: a mark that is not a glyph uses the state roles), never a number. Host composition, so every rule sits in ov.shell. */
+@layer ov.shell {
+  .count {
+    flex: 0 0 auto;
+    color: var(--ov-fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dot {
+    position: absolute;
+    inset-block-start: 4px;
+    inset-inline-end: 4px;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .dot[data-tone='error'] {
+    background-color: var(--ov-error-fg);
+  }
+
+  .dot[data-tone='warning'] {
+    background-color: var(--ov-warning-fg);
+  }
+}

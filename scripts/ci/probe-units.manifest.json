@@ -236,6 +236,33 @@
       "focus-lost"
     ]
   },
+  "ui-next/shell/probes/problems-operations-probe.mjs": {
+    "probe": true,
+    "controls": [
+      "per-record",
+      "all-rows",
+      "hidden-mounted",
+      "leaky-model",
+      "no-detach",
+      "tiny-rows",
+      "no-scroll",
+      "tall-rows",
+      "footer-up",
+      "footer-words",
+      "dot-down",
+      "count-colour",
+      "clip-off",
+      "spill",
+      "no-name",
+      "no-stop",
+      "open-twice",
+      "cells-twice",
+      "long-one",
+      "shift-other",
+      "render-loop",
+      "scene-throws"
+    ]
+  },
   "ui-next/shell/probes/rail-probe.mjs": {
     "probe": true,
     "controls": []

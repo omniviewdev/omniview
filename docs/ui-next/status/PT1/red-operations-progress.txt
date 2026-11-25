@@ -1,0 +1,265 @@
+     × says "<current> of <total> <unit>" and draws the part that is done 4ms
+     × says a percent as one number, the way the mock does: "40%" 1ms
+     × leaves no trailing space when the producer names no unit 0ms
+     × groups thousands with a comma, as the mock's num() and the collection footer do 0ms
+     × draws an empty bar, not none, for work that has not done a unit yet 0ms
+     × draws a full bar for a count that is done, and for one that went past its whole, and says what the producer said 0ms
+     × reads the digits, not the spelling: leading zeros are not part of a count 0ms
+     × says the two numbers and draws the part that is done 0ms
+     × says the same with no label 0ms
+     × draws a full bar at the last step and never more 0ms
+     × is nothing for work that cannot be measured, with or without the producer's message: a dash is drawn, never a bar made up 0ms
+     × is nothing when the producer said nothing 0ms
+     × draws no bar when the whole is 0 (a part of nothing), and still says what the producer said 0ms
+     × draws no bar when the whole is 00 (a part of nothing), and still says what the producer said 0ms
+     × draws no bar when the whole is 000 (a part of nothing), and still says what the producer said 0ms
+     × draws no bar and says the producer's own "" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "-1" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "1.5" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "1e3" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "+5" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own " 5" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "5 " when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "0x10" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "abc" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "٣" when the current count is not decimal digits 0ms
+     × draws no bar and says the producer's own "" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "-1" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "1.5" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "1e3" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "+5" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own " 5" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "5 " when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "0x10" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "abc" when the whole is not decimal digits 0ms
+     × draws no bar and says the producer's own "٣" when the whole is not decimal digits 0ms
+     × says a percent whose number is not a count as the producer wrote it 0ms
+     × groups the number that is digits and leaves the other as it came 0ms
+     × does not round a count past 2^53 up to its whole: a double reads both of these as the same number, or as one that is nearly 1 0ms
+     × does not call work that is one unit short of 10^30 complete 0ms
+     × is a full bar only when the count reaches its whole 0ms
+     × is exact beyond the range of a double (a double of 10^400 is Infinity, and Infinity over Infinity is not a number) 0ms
+     × keeps a part too small for the bar at the bar's precision: it is never rounded up to a bigger part 0ms
+     × a start 0 ms ago reads just now 2ms
+     × a start 1 ms ago reads just now 0ms
+     × a start 59999 ms ago reads just now 0ms
+     × a start 60000 ms ago reads 1 min ago 0ms
+     × a start 119999 ms ago reads 1 min ago 0ms
+     × a start 120000 ms ago reads 2 min ago 0ms
+     × a start 1060000 ms ago reads 17 min ago 0ms
+     × a start 3599999 ms ago reads 59 min ago 0ms
+     × a start 3600000 ms ago reads 1 h ago 0ms
+     × a start 7199999 ms ago reads 1 h ago 0ms
+     × a start 19800000 ms ago reads 5 h ago 0ms
+     × a start 86399999 ms ago reads 23 h ago 0ms
+     × a start 86400000 ms ago reads 1 d ago 0ms
+     × a start 172799999 ms ago reads 1 d ago 0ms
+     × a start 172800000 ms ago reads 2 d ago 0ms
+     × a start 1486800000 ms ago reads 17 d ago 0ms
+     × a start 34560000000 ms ago reads 400 d ago 0ms
+     × reads "just now" for a start that is ahead of the clock (the host and the window disagree by a moment): never a negative age 0ms
+     × says nothing for a date that is not a date, and never changes it 1ms
+     × is the first instant of the next words, at every boundary 0ms
+     × is exact for a start 0 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 1 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 999 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 30000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 59999 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 60000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 60001 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 720007 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 3599999 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 3600000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 3600001 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 18720000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 86399999 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 86400000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 86400001 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 284400000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 34603200000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is exact for a start 863913600000 ms ago: the words hold a millisecond before it, and are different at it 0ms
+     × is after now for a start that is ahead of the clock, so the clock never wakes in a loop 0ms
+     × walks the first 26 hours second by second and changes exactly where it says (grid offset 0 ms) 0ms
+     × walks the first 26 hours second by second and changes exactly where it says (grid offset 250 ms) 0ms
+     × walks the first 26 hours second by second and changes exactly where it says (grid offset 999 ms) 0ms
+     × turns "just now" into "1 min ago" at the millisecond a minute is full, and no earlier 6ms
+     × turns "59 min ago" into "1 h ago" at the full hour, and "23 h ago" into "1 d ago" at the full day 2651ms
+     × is the kit's tip: the instant in UTC and the span in words 0ms
+     × is asked again at the next whole minute after the start, which is the latest its words can change 0ms
+     × never lets its words change before the instant it names, and names an instant after now 0ms
+     × is exact for a start that is ahead of the clock too: asked again where "in 5 minutes" becomes "in 4 minutes", and at the start itself 0ms
+     × says nothing for a date that is not a date, and never changes it 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 91 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 0 ms ago reads just now
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 1 ms ago reads just now
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 59999 ms ago reads just now
+AssertionError: expected '' to be 'just now' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 60000 ms ago reads 1 min ago
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 119999 ms ago reads 1 min ago
+AssertionError: expected '' to be '1 min ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 120000 ms ago reads 2 min ago
+AssertionError: expected '' to be '2 min ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 1060000 ms ago reads 17 min ago
+AssertionError: expected '' to be '17 min ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 3599999 ms ago reads 59 min ago
+AssertionError: expected '' to be '59 min ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 3600000 ms ago reads 1 h ago
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 7199999 ms ago reads 1 h ago
+AssertionError: expected '' to be '1 h ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 19800000 ms ago reads 5 h ago
+AssertionError: expected '' to be '5 h ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 86399999 ms ago reads 23 h ago
+AssertionError: expected '' to be '23 h ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 86400000 ms ago reads 1 d ago
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 172799999 ms ago reads 1 d ago
+AssertionError: expected '' to be '1 d ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 172800000 ms ago reads 2 d ago
+AssertionError: expected '' to be '2 d ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 1486800000 ms ago reads 17 d ago
+AssertionError: expected '' to be '17 d ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > a start 34560000000 ms ago reads 400 d ago
+AssertionError: expected '' to be '400 d ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > reads "just now" for a start that is ahead of the clock (the host and the window disagree by a moment): never a negative age
+AssertionError: expected '' to be 'just now' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the words > says nothing for a date that is not a date, and never changes it
+AssertionError: expected { text: '', changesAt: +0 } to deeply equal { text: '', changesAt: Infinity }
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is the first instant of the next words, at every boundary
+AssertionError: expected +0 to be 1795514460000 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 0 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795514400000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 1 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795514400001
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 999 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795514400999
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 30000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795514430000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 59999 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795514459999
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 60000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795514460000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 60001 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795514460001
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 720007 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795515120007
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 3599999 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795517999999
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 3600000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795518000000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 3600001 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795518000001
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 18720000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795533120000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 86399999 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795600799999
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 86400000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795600800000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 86400001 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795600800001
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 284400000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1795798800000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 34603200000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 1830117600000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is exact for a start 863913600000 ms ago: the words hold a millisecond before it, and are different at it
+AssertionError: expected 0 to be greater than 2659428000000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > is after now for a start that is ahead of the clock, so the clock never wakes in a loop
+AssertionError: expected 0 to be greater than 1795255200000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > walks the first 26 hours second by second and changes exactly where it says (grid offset 0 ms)
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > walks the first 26 hours second by second and changes exactly where it says (grid offset 250 ms)
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: changesAt > walks the first 26 hours second by second and changes exactly where it says (grid offset 999 ms)
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the age clock of the page reads it > turns "just now" into "1 min ago" at the millisecond a minute is full, and no earlier
+AssertionError: expected '' to be 'just now' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > ago: the age clock of the page reads it > turns "59 min ago" into "1 h ago" at the full hour, and "23 h ago" into "1 d ago" at the full day
+AssertionError: expected '' to be '59 min ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > agoTip: the absolute stamp, as current as the words beside it > is the kit's tip: the instant in UTC and the span in words
+AssertionError: expected '' to be '2026-11-24 10:00 UTC · 5 minutes ago' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > agoTip: the absolute stamp, as current as the words beside it > is asked again at the next whole minute after the start, which is the latest its words can change
+AssertionError: expected +0 to be 1795514460000 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > agoTip: the absolute stamp, as current as the words beside it > never lets its words change before the instant it names, and names an instant after now
+AssertionError: expected 0 to be greater than 1795514400000
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > agoTip: the absolute stamp, as current as the words beside it > is exact for a start that is ahead of the clock too: asked again where "in 5 minutes" becomes "in 4 minu
+AssertionError: expected '' to be '2026-11-24 10:00 UTC · in 5 minutes' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/ago.test.ts > agoTip: the absolute stamp, as current as the words beside it > says nothing for a date that is not a date, and never changes it
+AssertionError: expected { text: '', changesAt: +0 } to deeply equal { text: '', changesAt: Infinity }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > units: the producer's count and its unit > says "<current> of <total> <unit>" and draws the part that is done
+AssertionError: expected '' to be '6 of 14 files' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > units: the producer's count and its unit > says a percent as one number, the way the mock does: "40%"
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '40%', fraction: 0.4 }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > units: the producer's count and its unit > leaves no trailing space when the producer names no unit
+AssertionError: expected '' to be '6 of 14' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > units: the producer's count and its unit > groups thousands with a comma, as the mock's num() and the collection footer do
+AssertionError: expected '' to be '1,204 of 5,000 rows' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > units: the producer's count and its unit > draws an empty bar, not none, for work that has not done a unit yet
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '0 of 14 files', fraction: +0 }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > units: the producer's count and its unit > draws a full bar for a count that is done, and for one that went past its whole, and says what the producer said
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '14 of 14 files', fraction: 1 }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > units: the producer's count and its unit > reads the digits, not the spelling: leading zeros are not part of a count
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { Object (text, fraction) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > steps: "<current> of <total>", whatever the step is called > says the two numbers and draws the part that is done
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '2 of 5', fraction: 0.4 }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > steps: "<current> of <total>", whatever the step is called > says the same with no label
+AssertionError: expected '' to be '2 of 5' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > steps: "<current> of <total>", whatever the step is called > draws a full bar at the last step and never more
+AssertionError: expected undefined to be 1 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > is nothing for work that cannot be measured, with or without the producer's message: a dash is drawn, never a bar made up
+AssertionError: expected { text: '', fraction: undefined } to be undefined
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > is nothing when the producer said nothing
+AssertionError: expected { text: '', fraction: undefined } to be undefined
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar when the whole is 0 (a part of nothing), and still says what the producer said
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar when the whole is 00 (a part of nothing), and still says what the producer said
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar when the whole is 000 (a part of nothing), and still says what the producer said
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '3 of 0 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: ' of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "-1" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '-1 of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "1.5" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '1.5 of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "1e3" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '1e3 of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "+5" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '+5 of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own " 5" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: ' 5 of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "5 " when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5  of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "0x10" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '0x10 of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "abc" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: 'abc of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "٣" when the current count is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '٣ of 10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of  files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "-1" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of -1 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "1.5" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of 1.5 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "1e3" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of 1e3 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "+5" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of +5 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own " 5" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of  5 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "5 " when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of 5  files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "0x10" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of 0x10 files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "abc" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of abc files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > draws no bar and says the producer's own "٣" when the whole is not decimal digits
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '5 of ٣ files', …(1) }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > says a percent whose number is not a count as the producer wrote it
+AssertionError: expected { text: '', fraction: undefined } to deeply equal { text: '1.5%', fraction: undefined }
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > no bar > groups the number that is digits and leaves the other as it came
+AssertionError: expected '' to be '1,234 of many files' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > exact for a count of any size > does not round a count past 2^53 up to its whole: a double reads both of these as the same number, or as one that is nearly 1
+AssertionError: expected undefined to be 0.999999 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > exact for a count of any size > does not call work that is one unit short of 10^30 complete
+AssertionError: expected undefined to be 0.999999 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > exact for a count of any size > is a full bar only when the count reaches its whole
+AssertionError: expected undefined to be 1 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > exact for a count of any size > is exact beyond the range of a double (a double of 10^400 is Infinity, and Infinity over Infinity is not a number)
+AssertionError: expected undefined to be 0.5 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/progress.test.ts > exact for a count of any size > keeps a part too small for the bar at the bar's precision: it is never rounded up to a bigger part
+AssertionError: expected undefined to be +0 // Object.is equality
+      Tests  91 failed (91)

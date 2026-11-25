@@ -80,7 +80,10 @@
   "terminal-controls-find-c": 121,
   "terminal-controls-find-d": 150,
   "terminal-controls-find-e": 116,
-  "terminal-controls-find-f": 68
+  "terminal-controls-find-f": 68,
+  "problems-operations": 240,
+  "problems-operations-controls-counts": 120,
+  "problems-operations-controls-page": 120
  },
  "sharedLayoutRuns": [
   {

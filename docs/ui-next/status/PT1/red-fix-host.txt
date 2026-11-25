@@ -1,0 +1,325 @@
+# red-fix-host: the tests of the four host fixes (CodeRabbit 4685831475, 4685831487, 4685831477, 4685831499) seen red against the code before them. Agent ProblemsOperations.HostFixes.
+# Each section: the command, the tests that failed by their own assertion, and the first assertion of each. A test that is not listed passed on the old code and is the control for the one beside it.
+
+## 1. First run, before any change to panelTools.ts, conditions.ts or PluginHostScreen.tsx (conditions.ts holds a stub activityConditions that returns [], so the adapter tests fail by assertion and not by a missing name)
+## uptime: 14:43:01  up 14 days  7:09,  1 user,  load average: 14.19, 8.03, 7.48
+## pnpm exec vitest run ui-next/plugins/host/panelTools.test.ts ui-next/plugins/host/conditions.test.ts ui-next/plugins/host/PluginHostScreen.activity.test.tsx
+   ❯ activityConditions: an activity service that could not be observed (5)
+     × is one warning when it cannot: the label says what is not available, the sentence is the title, and there is no target and no page to open
+     × is the host's own source as the resolver says it, as an alert that names no plugin is: the adapter names no host of its own
+     × words the sentence as a connection's reason is worded: without the space around it, and as the label alone when there is none
+   ❯ the names of the connections, indexed once for each snapshot of the store (4)
+     × reads each connection once for a snapshot, however many alerts look one up, and none for a rebuild over the same snapshot
+     × does not read the connections for a tick of progress: the alerts are made again from the records, and every name comes from the index of the snapshot
+   ❯ Problems: an activity service that cannot be observed (4)
+     × lists one warning of the host while the feed has an error, with the sentence, no target and no page, and takes it away when the feed has none
+     × is one row however often the feed says it, with no word of the tasks it holds beside it, and the same row for another sentence: the key does not move
+     × keeps the alerts the feed holds beside it, and an error that clears takes only its own row away
+     × is on the tool from the first frame when the feed already had the error when the window attached
+   ❯ a cancel the host did not do (2)
+     × says the work had already finished once it had, with no Retry (it would ask for nothing: the row is no longer cancellable), and not a word of the error
+   ❯ choosing a row (17)
+     ❯ a connection that cannot be opened (7)
+       × says why when the connection did not start: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+       × says why when the plugin is not available any more: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+       × says why when the open model refused the page: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+       × says why when the tab it would replace has unsaved changes: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+       × names the plugin when the window no longer knows the connection, and the plugin's id when it does not know that either: a key is never drawn
+       × tells each choice that is refused: a second try that fails is told again, never met with silence
+     ❯ over the connection actions the window has (5)
+       × when the plugin stopped while the connection was cached as connected, the notice says what `go` said, and nothing when it opened
+       × when the connection did not start, the notice says what `go` said, and nothing when it opened
+       × when the open model refused the page, the notice says what `go` said, and nothing when it opened
+       × when the tab it would replace has unsaved changes, the notice says what `go` said, and nothing when it opened
+   ❯ what the screen's tap hands the feed of the tools (3)
+     × is the provider's error when the observation failed, beside the records it holds, which are none: the tools can tell a failed read from an empty one
+     × follows the error when it comes and when it clears, though the records are the very array they were: each is told once
+⎯⎯⎯⎯⎯⎯ Failed Tests 22 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  3 failed (3)
+      Tests  22 failed | 74 passed (96)
+
+## the first assertion of each failed test
+ui-next/plugins/host/PluginHostScreen.activity.test.tsx > what the screen's tap hands the feed of the tools > is the provider's error when the observation failed, beside the records it holds, which are none: the tools can tell a failed read from an empty one
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+ui-next/plugins/host/PluginHostScreen.activity.test.tsx > what the screen's tap hands the feed of the tools > follows the error when it comes and when it clears, though the records are the very array they were: each is told once
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+ui-next/plugins/host/conditions.test.ts > activityConditions: an activity service that could not be observed > is one warning when it cannot: the label says what is not available, the sentence is the title, and there is no target and no page to open
+AssertionError: expected [] to deeply equal [ { …(7) } ]
+ui-next/plugins/host/conditions.test.ts > activityConditions: an activity service that could not be observed > is the host's own source as the resolver says it, as an alert that names no plugin is: the adapter names no host of its own
+AssertionError: expected undefined to deeply equal { id: 'the-host', name: 'The Host' }
+ui-next/plugins/host/conditions.test.ts > activityConditions: an activity service that could not be observed > words the sentence as a connection's reason is worded: without the space around it, and as the label alone when there is none
+AssertionError: expected undefined to be 'The activity service did not answer.' // Object.is equality
+ui-next/plugins/host/panelTools.test.ts > the names of the connections, indexed once for each snapshot of the store > reads each connection once for a snapshot, however many alerts look one up, and none for a rebuild over the same snapshot
+AssertionError: expected 990100 to be less than or equal to 5000
+ui-next/plugins/host/panelTools.test.ts > the names of the connections, indexed once for each snapshot of the store > does not read the connections for a tick of progress: the alerts are made again from the records, and every name comes from the index of the snapshot
+AssertionError: expected 10891100 to be 990100 // Object.is equality
+ui-next/plugins/host/panelTools.test.ts > Problems: an activity service that cannot be observed > lists one warning of the host while the feed has an error, with the sentence, no target and no page, and takes it away when the feed has none
+AssertionError: expected [] to deeply equal [ { …(7) } ]
+ui-next/plugins/host/panelTools.test.ts > Problems: an activity service that cannot be observed > is one row however often the feed says it, with no word of the tasks it holds beside it, and the same row for another sentence: the key does not move
+AssertionError: expected [] to have a length of 1 but got +0
+ui-next/plugins/host/panelTools.test.ts > Problems: an activity service that cannot be observed > keeps the alerts the feed holds beside it, and an error that clears takes only its own row away
+AssertionError: expected [ 'alert:a-1' ] to deeply equal [ 'activity:unavailable', 'alert:a-1' ]
+ui-next/plugins/host/panelTools.test.ts > Problems: an activity service that cannot be observed > is on the tool from the first frame when the feed already had the error when the window attached
+AssertionError: expected [] to deeply equal [ 'Activity isn\'t available' ]
+ui-next/plugins/host/panelTools.test.ts > a cancel the host did not do > says the work had already finished once it had, with no Retry (it would ask for nothing: the row is no longer cancellable), and not a word of the error
+AssertionError: expected { id: 'n1', kind: 'message', …(34) } to match object { severity: 'error', …(2) }
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a connection that cannot be opened > says why when the connection did not start: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a connection that cannot be opened > says why when the plugin is not available any more: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a connection that cannot be opened > says why when the open model refused the page: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a connection that cannot be opened > says why when the tab it would replace has unsaved changes: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+AssertionError: expected [] to have a length of 1 but got +0
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a connection that cannot be opened > names the plugin when the window no longer knows the connection, and the plugin's id when it does not know that either: a key is never drawn
+AssertionError: expected [] to deeply equal [ 'Couldn\'t open Alpha Cloud' ]
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a connection that cannot be opened > tells each choice that is refused: a second try that fails is told again, never met with silence
+AssertionError: expected +0 to be 2 // Object.is equality
+ui-next/plugins/host/panelTools.test.ts > choosing a row > over the connection actions the window has > when the plugin stopped while the connection was cached as connected, the notice says what `go` said, and nothing when it opened
+AssertionError: expected [] to deeply equal [ [ 'Couldn\'t open north', …(1) ] ]
+ui-next/plugins/host/panelTools.test.ts > choosing a row > over the connection actions the window has > when the connection did not start, the notice says what `go` said, and nothing when it opened
+AssertionError: expected [] to deeply equal [ [ 'Couldn\'t open north', …(1) ] ]
+ui-next/plugins/host/panelTools.test.ts > choosing a row > over the connection actions the window has > when the open model refused the page, the notice says what `go` said, and nothing when it opened
+AssertionError: expected [] to deeply equal [ [ 'Couldn\'t open north', …(1) ] ]
+ui-next/plugins/host/panelTools.test.ts > choosing a row > over the connection actions the window has > when the tab it would replace has unsaved changes, the notice says what `go` said, and nothing when it opened
+AssertionError: expected [] to deeply equal [ [ 'Couldn\'t open north', …(1) ] ]
+
+## 2. The fix in place: the same three files, 96 of 96 passed
+## pnpm exec vitest run ui-next/plugins/host/panelTools.test.ts ui-next/plugins/host/conditions.test.ts ui-next/plugins/host/PluginHostScreen.activity.test.tsx
+ Test Files  3 passed (3)
+      Tests  96 passed (96)
+
+## 3. Mutants: each is a deliberate fault in a scratch COPY of one production file (zzMutant*.ts, switched by an environment variable, deleted afterwards), run against a copy of its test file that imports the copy. The real files were never changed.
+## The faults (panelTools.ts copy):
+##   no-memo           the index is rebuilt on every lookup (`list !== listed` is always true)
+##   stale             the index is built once and never again (a snapshot that changes is not noticed)
+##   no-activity-sync  the feed subscription does not read the feed error again (only the first read at attach does)
+##   activity-as-alerts  the activity condition is published under the producer name of the alerts, which replaces what they said
+##   retry-always      cancelFailed offers its Retry even when the work had finished
+##   notify-ok         the opener posts a notice for a choice that opened
+##   skip-unsaved      the opener posts none for the refusal "This tab has unsaved changes."
+## The faults (PluginHostScreen.tsx copy):
+##   records-only      the tap hands the feed the records and never the error
+##   missing-dep       the tap pushes the error but its effect does not depend on it (a change of the error alone is not pushed)
+## The faults (conditions.ts copy):
+##   untrimmed  the sentence is not trimmed;  blank-title  a blank sentence is a blank title;  key-by-sentence  the key holds the sentence
+##   error-severity  an error, not a warning;  fixed-host  the source is written in the adapter, not the resolver's;  with-subject  the row has a page
+## Control: every copy with its fault switched off passes (47, 3 and 46 tests).
+
+### MUTANT=none  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+      Tests  47 passed (47)
+
+### MUTANT=no-memo  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+     × reads each connection once for a snapshot, however many alerts look one up, and none for a rebuild over the same snapshot
+     × does not read the connections for a tick of progress: the alerts are made again from the records, and every name comes from the index of the snapshot
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 45 passed (47)
+
+### MUTANT=stale  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+     × reads the connections again for another snapshot, and says what that one says: a rename is the next answer, and so is a connection that is gone
+     × says a name that changed: a plugin that finished loading, a connection that is now known
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 45 passed (47)
+
+### MUTANT=no-activity-sync  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+     × lists one warning of the host while the feed has an error, with the sentence, no target and no page, and takes it away when the feed has none
+     × is one row however often the feed says it, with no word of the tasks it holds beside it, and the same row for another sentence: the key does not move
+     × keeps the alerts the feed holds beside it, and an error that clears takes only its own row away
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  3 failed | 44 passed (47)
+
+### MUTANT=activity-as-alerts  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+     × does not read the connections for a tick of progress: the alerts are made again from the records, and every name comes from the index of the snapshot
+     × lists a plugin's alert while it fires and drops it when it resolves; one the host lost track of is Not confirmed
+     × says a plugin's new name in every row that names it, with no change of the producers' own data
+     × is one row however often the feed says it, with no word of the tasks it holds beside it, and the same row for another sentence: the key does not move
+     × keeps the alerts the feed holds beside it, and an error that clears takes only its own row away
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  5 failed | 42 passed (47)
+
+### MUTANT=retry-always  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+     × says the work had already finished once it had, with no Retry (it would ask for nothing: the row is no longer cancellable), and not a word of the error
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 46 passed (47)
+
+### MUTANT=notify-ok  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+       × says nothing when the connection opened: there is nothing to tell
+       × when the page opened, the notice says what `go` said, and nothing when it opened
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 45 passed (47)
+
+### MUTANT=skip-unsaved  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+       × says why when the tab it would replace has unsaved changes: an error that names the connection, with the sentence it was given, sticky as every error is, and no Retry
+       × when the tab it would replace has unsaved changes, the notice says what `go` said, and nothing when it opened
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 45 passed (47)
+
+### MUTANT=none  (ui-next/plugins/host/zzMutantPluginHostScreen.test.tsx)
+      Tests  3 passed (3)
+
+### MUTANT=records-only  (ui-next/plugins/host/zzMutantPluginHostScreen.test.tsx)
+     × is the provider's error when the observation failed, beside the records it holds, which are none: the tools can tell a failed read from an empty one
+     × follows the error when it comes and when it clears, though the records are the very array they were: each is told once
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 1 passed (3)
+
+### MUTANT=missing-dep  (ui-next/plugins/host/zzMutantPluginHostScreen.test.tsx)
+     × follows the error when it comes and when it clears, though the records are the very array they were: each is told once
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 2 passed (3)
+
+### MUTANT=none  (ui-next/plugins/host/zzMutantConditions.test.ts)
+      Tests  46 passed (46)
+
+### MUTANT=untrimmed  (ui-next/plugins/host/zzMutantConditions.test.ts)
+     × words the sentence as a connection's reason is worded: without the space around it, and as the label alone when there is none
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 45 passed (46)
+
+### MUTANT=key-by-sentence  (ui-next/plugins/host/zzMutantConditions.test.ts)
+     × is one warning when it cannot: the label says what is not available, the sentence is the title, and there is no target and no page to open
+     × keeps its key whatever the sentence is, so the row is the same row while the failure is told in other words
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 44 passed (46)
+
+### MUTANT=error-severity  (ui-next/plugins/host/zzMutantConditions.test.ts)
+     × is one warning when it cannot: the label says what is not available, the sentence is the title, and there is no target and no page to open
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 45 passed (46)
+
+### MUTANT=blank-title  (ui-next/plugins/host/zzMutantConditions.test.ts)
+     × words the sentence as a connection's reason is worded: without the space around it, and as the label alone when there is none
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 45 passed (46)
+
+### MUTANT=fixed-host  (ui-next/plugins/host/zzMutantConditions.test.ts)
+     × is the host's own source as the resolver says it, as an alert that names no plugin is: the adapter names no host of its own
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 45 passed (46)
+
+### MUTANT=with-subject  (ui-next/plugins/host/zzMutantConditions.test.ts)
+     × is one warning when it cannot: the label says what is not available, the sentence is the title, and there is no target and no page to open
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 45 passed (46)
+
+## 4. The same faults with the assertions they are named for switched off (vitest -t with a negative pattern): none is detected by any other test, which is what "trips the assertion it is named for and no other" asks. (activity-as-alerts is not in this list: it is a gross fault that five tests detect, two of them old.)
+
+### MUTANT=no-memo with the named assertions off [reads each connection once for a snapshot|does not read the connections for a tick of progress]  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+      Tests  45 passed | 2 skipped (47)
+
+### MUTANT=stale with the named assertions off [reads the connections again for another snapshot|says a name that changed]  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+      Tests  45 passed | 2 skipped (47)
+
+### MUTANT=no-activity-sync with the named assertions off [lists one warning of the host while the feed has an error|is one row however often the feed says it|keeps the alerts the feed holds beside it]  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+      Tests  44 passed | 3 skipped (47)
+
+### MUTANT=retry-always with the named assertions off [says the work had already finished once it had]  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+      Tests  46 passed | 1 skipped (47)
+
+### MUTANT=notify-ok with the named assertions off [says nothing when the connection opened|when the page opened, the notice says what]  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+      Tests  45 passed | 2 skipped (47)
+
+### MUTANT=skip-unsaved with the named assertions off [says why when the tab it would replace has unsaved changes|when the tab it would replace has unsaved changes, the notice]  (ui-next/plugins/host/zzMutantPanelTools.test.ts)
+      Tests  45 passed | 2 skipped (47)
+
+### MUTANT=records-only with the named assertions off [error when the observation failed|follows the error when it comes and when it clears]  (ui-next/plugins/host/zzMutantPluginHostScreen.test.tsx)
+      Tests  1 passed | 2 skipped (3)
+
+### MUTANT=missing-dep with the named assertions off [follows the error when it comes and when it clears]  (ui-next/plugins/host/zzMutantPluginHostScreen.test.tsx)
+      Tests  2 passed | 1 skipped (3)
+
+### MUTANT=untrimmed with the named assertions off [words the sentence as a connection]  (ui-next/plugins/host/zzMutantConditions.test.ts)
+      Tests  45 passed | 1 skipped (46)
+
+### MUTANT=blank-title with the named assertions off [words the sentence as a connection]  (ui-next/plugins/host/zzMutantConditions.test.ts)
+      Tests  45 passed | 1 skipped (46)
+
+### MUTANT=fixed-host with the named assertions off [own source as the resolver says it]  (ui-next/plugins/host/zzMutantConditions.test.ts)
+      Tests  45 passed | 1 skipped (46)
+
+### MUTANT=with-subject with the named assertions off [is one warning when it cannot]  (ui-next/plugins/host/zzMutantConditions.test.ts)
+      Tests  45 passed | 1 skipped (46)
+
+### MUTANT=error-severity with the named assertions off [is one warning when it cannot]  (ui-next/plugins/host/zzMutantConditions.test.ts)
+      Tests  45 passed | 1 skipped (46)
+
+### MUTANT=key-by-sentence with the named assertions off [is one warning when it cannot|keeps its key whatever the sentence is]  (ui-next/plugins/host/zzMutantConditions.test.ts)
+      Tests  44 passed | 2 skipped (46)
+
+
+## 5. The window as a whole (PluginHost.problems.test.tsx: the real host, shell, panel, connection store and actions, toast layer and notices): red against the opener before the fix
+## Run on scratch COPIES (zzMutantPluginHost.tsx wired to a zzMutantPanelTools.ts whose subjectOpener is the old one-line `void connections?.actions.go(...)`; deleted afterwards); the real files were never changed.
+## pnpm exec vitest run ui-next/plugins/host/zzMutantProblems.test.tsx
+     × says why when the plugin stopped while the window still lists the connection: an error toast that names the connection, with the host's sentence, and no page opens
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+TestingLibraryElementError: Unable to find role="alert" and name "Error: Couldn't open north"
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+## (the second test of the file, the control where the connection opens and no toast is made, passes on the old opener too)
+
+## 6. The window as a whole, the activity service that cannot be observed (the two tests added to PluginHost.problems.test.tsx): red against a panelTools.ts whose attachPanelTools does not read the feed error (scratch COPIES again, deleted afterwards)
+## pnpm exec vitest run ui-next/plugins/host/zzMutantProblems.test.tsx
+     × is a row of the host in the table, told apart from the empty state: its words, its sentence, and a button that says there is no page to open
+     × is gone from the table when the provider can observe the service again: nothing is cleared by hand (S74), and the empty state is the empty one
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+TestingLibraryElementError: Unable to find an element with the text: Activity isn't available. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+TestingLibraryElementError: Unable to find an element with the text: Activity isn't available. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+## (the two tests of "choosing the row of a connection" pass: the fault is only in the activity condition)
+
+## Note: after these runs one test was renamed (words only, no change of what it asserts): "is one row however often the feed says it, with no word of the tasks it holds beside it, and ..." is now "... however often the feed says it (the tasks it holds beside it change nothing here), and ...".
+
+## 7. One more fault, for the test that passes on the old code by construction (nothing published the error then): "leak" = the activity sync is a second feed subscription that the stop function does not undo (scratch COPY of panelTools.ts again, deleted afterwards)
+## pnpm exec vitest run ui-next/plugins/host/zzMutantPanelTools.test.ts
+     × does not follow the feed's error once the window stops
+      Tests  1 failed | 46 passed (47)
+## the same fault with that test switched off (-t with a negative pattern):
+      Tests  46 passed | 1 skipped (47)
+
+## 8. The plugin branch of subjectOpener (a plugin that is not in the store: the lead's follow-up). First run, before the change to panelTools.ts
+## uptime: 14:58:06  up 14 days  7:25,  1 user,  load average: 12.43, 16.22, 13.29
+## pnpm exec vitest run ui-next/plugins/host/panelTools.test.ts ui-next/plugins/host/PluginHost.problems.test.tsx
+       × says why: an error that names the plugin, with what the host says of it, sticky as every error is, and no Retry; nothing opens
+       × says the headline alone when the host has no words for it: the row is still never answered with silence
+     × says why: the row of its alert keeps its button, and the toast says what the host says of a plugin it does not have, with no Retry and no page
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  2 failed (2)
+      Tests  3 failed | 52 passed (55)
+ui-next/plugins/host/PluginHost.problems.test.tsx > choosing the row of a plugin that is not there > says why: the row of its alert keeps its button, and the toast says what the host says of a plugin it does not have, with no Retry and no page
+TestingLibraryElementError: Unable to find role="alert" and name "Error: Couldn't open gone"
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a plugin that cannot be opened > says why: an error that names the plugin, with what the host says of it, sticky as every error is, and no Retry; nothing opens
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ui-next/plugins/host/panelTools.test.ts > choosing a row > a plugin that cannot be opened > says the headline alone when the host has no words for it: the row is still never answered with silence
+AssertionError: expected [] to deeply equal [ [ 'Couldn\'t open gamma', '' ] ]
+## (the control of the new describe, "opens the page and asks the host nothing when the window has one", passes on the old code)
+
+## 9. The plugin branch: faults in a scratch COPY of panelTools.ts (zzMutantPanelTools.ts, deleted afterwards), run against a copy of panelTools.test.ts that imports it. The real files were never changed.
+##   silent       the plugin branch posts nothing when the window has no page (the code before the change)
+##   hard-coded   the branch says a sentence of its own instead of asking the host
+##   asks-always  the host is asked about every plugin, also one that has a page
+## Control: the copy with every fault switched off passes (50 tests).
+
+### MUTANT=none
+      Tests  50 passed (50)
+
+### MUTANT=silent
+       × says why: an error that names the plugin, with what the host says of it, sticky as every error is, and no Retry; nothing opens
+       × says the headline alone when the host has no words for it: the row is still never answered with silence
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  2 failed | 48 passed (50)
+
+### MUTANT=hard-coded
+       × says why: an error that names the plugin, with what the host says of it, sticky as every error is, and no Retry; nothing opens
+       × says the headline alone when the host has no words for it: the row is still never answered with silence
+      Tests  2 failed | 48 passed (50)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+### MUTANT=asks-always
+       × opens the page and asks the host nothing when the window has one: the plugin is there, and there is nothing to tell
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+      Tests  1 failed | 49 passed (50)
+
+### MUTANT=asks-always with the named assertion off [opens the page and asks the host nothing when the window has one]
+      Tests  49 passed | 1 skipped (50)
+
+### hard-coded, both tests of the describe that name the host's words switched off
+      Tests  48 passed | 2 skipped (50)
+## hard-coded is caught by exactly the two tests of the describe that name the host's words (the sentence, and the headline alone when the host has none); with both off it passes undetected, which is what "trips the assertion it is named for and no other" asks.

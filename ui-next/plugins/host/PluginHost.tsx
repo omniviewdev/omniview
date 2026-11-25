@@ -41,6 +41,11 @@ import {
   type TerminalsOptions,
   type TabsStore,
 } from '../../shell';
+import { createActivityFeed, type ActivityFeed, type SourceResolver } from '../../shell/panel/activity';
+import type { ToolBadges } from '../../shell/panel/badge';
+import { createOperations, OperationsBody, OPERATIONS_TOOL, OPERATIONS_TOOL_ID, type Operations } from '../../shell/panel/operations';
+import { createProblems, ProblemsBody, PROBLEMS_TOOL, PROBLEMS_TOOL_ID, type Problems } from '../../shell/panel/problems';
+import type { OpenSubject } from '../../shell/panel/subject';
 import { pluginsPage } from '../../shell/plugins-page';
 import { openable } from '../contract/admit';
 import type { ContextV1, ContributionV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
@@ -58,6 +63,7 @@ import { createHostNotices, type HostNotices } from './notices';
 import { createHostPalette, type HostPalette } from './palette';
 import { cardOfSession, newSessionOf, panelPluginsOf, routeAddressOf, sessionV1, toolOf } from './panel';
 import { panelHostsOf } from './panelHost';
+import { attachPanelTools, badgesOf, cancelFailed, resolverOf, subjectOpener } from './panelTools';
 import { useGuardedDefinition, useGuardedSource } from './pageFailures';
 import { pageMemoryOf } from './pageMemory';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -114,6 +120,11 @@ export type PluginHostProps = {
   readonly terminals?: TerminalsOptions | undefined;
   /** What the window reads and starts of its plugins' connections: the runtime's calls and events (`connections/`). Absent: the window has no connection data, the scope chip stays text, and Home and the palette list no connection (a test of another part). */
   readonly connections?: ConnectionsApi | undefined;
+  /**
+   * The records of the host's activity service, as the window holds them (`shell/panel/activity.ts`): what the Problems tool reads for the alerts plugins report and the Operations tool for their tasks, and how Operations
+   * asks the host to cancel a task and keeps that a record was read. The screen gives it the runtime provider's records. Absent: no plugin reports anything, and both tools list only what the window itself knows.
+   */
+  readonly activity?: ActivityFeed | undefined;
 };
 
 type Host = {
@@ -149,6 +160,14 @@ type Host = {
   readonly settings: SettingsControl;
   /** The connections of the plugins and what choosing one does (HM1; `connections/`). Absent: the window has no connection API. */
   readonly connections: HostConnections | undefined;
+  /** The Problems and Operations tools of the bottom panel: their models, fed by what the window already holds (`panelTools.ts`), the badges their tabs carry, and the answer to "what is this plugin or connection called". */
+  readonly problems: Problems;
+  readonly operations: Operations;
+  readonly toolBadges: ToolBadges;
+  readonly feed: ActivityFeed;
+  readonly resolve: SourceResolver;
+  /** What choosing a row of each tool does: it opens the thing the row is about (`subjectOpener`). */
+  readonly openers: { readonly problems: OpenSubject; readonly operations: OpenSubject };
 };
 
 /** The window's connections: the store over the runtime's calls (kept current for as long as the window is on screen: `attach`), and the actions that choose one. The store lists the plugins that are ready. */
@@ -192,7 +211,7 @@ function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -212,6 +231,13 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   known.current = connections;
   seedRoutes(tabs, routes);
   const notices = createHostNotices({ tabs, plugins, contributions, platform: platformOf(navigator), saved });
+  // The Problems and Operations tools read the window's producers: its plugins, its connections and the activity service's records. Without a feed there are none of the last (a window of a test, or of a part that reports nothing).
+  const feed = activity ?? createActivityFeed({ cancel: async () => undefined, markRead: async () => undefined }).feed;
+  const resolve = resolverOf(plugins, connections?.store);
+  const problems = createProblems();
+  const operations = createOperations({ feed, resolve, fail: (failure) => {
+    cancelFailed(notices.store, failure);
+  } });
   const settings = createSettingsControl({ load: async () => import('../../shell/settings/surface'), openWindow: openSettingsWindow });
   return {
     frames,
@@ -236,6 +262,15 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     notices,
     settings,
     connections,
+    problems,
+    operations,
+    toolBadges: badgesOf(problems, operations),
+    feed,
+    resolve,
+    openers: {
+      problems: subjectOpener({ tabs, contributions, connections, notices: notices.store, resolve, platform: platformOf(navigator) }, 'problems'),
+      operations: subjectOpener({ tabs, contributions, connections, notices: notices.store, resolve, platform: platformOf(navigator) }, 'operations'),
+    },
   };
 }
 
@@ -649,9 +684,9 @@ function terminalBodyOf(terminals: Terminals, session: PanelSession, visible: bo
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
@@ -861,6 +896,9 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   useLayoutEffect(() => {
     panel.registerTool(LOGS_TOOL);
     panel.registerTool(TERMINAL_TOOL);
+    // Problems and Operations are the host's tools too (ch16 S114): singletons, in the strip whatever the plugins are, after Terminal and Logs by their orders.
+    panel.registerTool(PROBLEMS_TOOL);
+    panel.registerTool(OPERATIONS_TOOL);
   }, [panel]);
   useLayoutEffect(() => {
     panel.syncPlugins(panelPluginsOf(entries));
@@ -869,6 +907,8 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   useEffect(() => logs.attach(), [logs]);
   // The terminals are the host's too: each process is released with its session, with its plugin, and with the window.
   useEffect(() => terminals.attach(), [terminals]);
+  // What the two tools list is read from the producers the window already holds, and kept true by their events for as long as the window is on screen (`panelTools.ts`).
+  useEffect(() => attachPanelTools({ plugins, connections: host.connections?.store, feed: host.feed, problems: host.problems, operations: host.operations, resolve: host.resolve }), [plugins, host]);
   // Command K clears a terminal that has the focus (VS Code and JetBrains agree) and is also the palette's chord: a layout effect runs before every passive one, so this listener is the window's first and sees the key first.
   useLayoutEffect(() => terminals.takeKeys(), [terminals]);
   const bindings = useMemo<PanelBindings>(
@@ -897,6 +937,23 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
 
         return toolId === LOGS_TOOL_ID ? LOGS_EMPTY : undefined;
       },
+      // Problems and Operations have no sessions (S114): the host draws their bodies, only while the tool is on screen, each in a boundary of its own so a body that throws loses that tool and no other.
+      renderTool: (toolId) => {
+        if (toolId === PROBLEMS_TOOL_ID) {
+          return (
+            <ContributionBoundary name="problems tool" fallback={(retry) => <ErrorBody title="Couldn't show Problems" onRetry={retry} />}>
+              <ProblemsBody problems={host.problems} open={host.openers.problems} />
+            </ContributionBoundary>
+          );
+        }
+
+        return toolId === OPERATIONS_TOOL_ID ? (
+          <ContributionBoundary name="operations tool" fallback={(retry) => <ErrorBody title="Couldn't show Operations" onRetry={retry} />}>
+            <OperationsBody operations={host.operations} open={host.openers.operations} />
+          </ContributionBoundary>
+        ) : undefined;
+      },
+      badges: host.toolBadges,
       newSessionOf: (toolId) => {
         if (toolId === TERMINAL_TOOL_ID) {
           return terminals.newSession;
@@ -917,7 +974,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         },
       }),
     }),
-    [panel, logs, terminals, entries, tabs, platform],
+    [panel, logs, terminals, entries, tabs, platform, host],
   );
 
   const sidebar = shown?.phase === 'ready' ? shown.contribution.sidebar : undefined;

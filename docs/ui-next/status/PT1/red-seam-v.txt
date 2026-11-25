@@ -1,0 +1,65 @@
+Scenario v (the Problems and Operations tools over the real host): the red evidence.
+
+HONEST STATEMENT. There is no red run of the plain scenario: the product (Problems, Operations, the badges, the host wiring and the fixture runner) was built before the scenario, so the first run of
+`SEAM_ONLY=problems-operations` in WebKit (13:32, 56 s) and the first in Chromium (13:34, 56 s) were green, exit 0. The red is each CONTROL below: every control breaks the PREMISE of one assertion (the act that
+makes it true is not done yet: no `task finish`, nothing killed, no key pressed, ...) and the assertion it is named for, tried at that moment on the real host, must fail with ITS words and no other. The first run of
+the whole group (WebKit) is the output below: 22 of 22 controls detected by their own assertion, exit 0. The ASSERTION_OFF pairs (SEAM_CONTROL=<name> SEAM_REMOVE=<name>) are in red-seam-v-assertion-off.txt.
+
+uptime before the runs: 13:35:41  up 14 days  6:02,  1 user,  load average: 4.88, 5.15, 5.60
+command: env -i HOME="$HOME" PATH="$PATH" ENGINES=webkit SEAM_CONTROL=problems-operations node ui-next/plugins/e2e/seam.check.mjs
+
+webkit: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid 49332 were rows (the alert and the task became Not confirmed and Outcome unknown), Retry ran the plugin again, and both tools were reached by the keys
+NEGATIVE CONTROL "ops-running": detected in webkit: webkit: the Operations tool lists a task that began as running, with the producer's own count (the rows)
+NEGATIVE CONTROL "ops-progress": detected in webkit: webkit: the Operations row follows the producer's count, 3 of 4 items after 1 of 4
+NEGATIVE CONTROL "ops-succeeded": detected in webkit: webkit: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the rows)
+NEGATIVE CONTROL "ops-dot": detected in webkit: webkit: a task that failed while Problems was on screen puts a dot on the Operations tab (the tab)
+NEGATIVE CONTROL "ops-read": detected in webkit: webkit: the Operations tool clears the dot once it has shown the failure (the tab)
+NEGATIVE CONTROL "alert-fires": detected in webkit: webkit: a firing alert is a row of the Problems tool and a warning dot on its tab (the row)
+NEGATIVE CONTROL "alert-resolves": detected in webkit: webkit: a resolved alert leaves the Problems tool and its tab (the tool is empty)
+NEGATIVE CONTROL "keys-reach": detected in webkit: webkit: the keys choose the Problems tool and reach its table and the open button of a row (the arrow and Enter choose the tool)
+NEGATIVE CONTROL "keys-open": detected in webkit: webkit: Enter on the open button of a Problems row opens the page of its plugin in a tab
+NEGATIVE CONTROL "conn-listed": detected in webkit: webkit: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)
+NEGATIVE CONTROL "conn-refused": detected in webkit: webkit: choosing the row of a connection that is still down asks the host again and opens no tab (two starts, both refused)
+NEGATIVE CONTROL "stopped-listed": detected in webkit: webkit: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+NEGATIVE CONTROL "alert-unknown": detected in webkit: webkit: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+NEGATIVE CONTROL "ops-unknown-dot": detected in webkit: webkit: a task that was running when its plugin stopped puts a warning dot on the Operations tab
+NEGATIVE CONTROL "ops-unknown": detected in webkit: webkit: a task that was running when its plugin stopped says Outcome unknown, with no progress (the row)
+NEGATIVE CONTROL "row-opens-plugin": detected in webkit: webkit: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (one tab, the plugin's)
+NEGATIVE CONTROL "recovered": detected in webkit: webkit: after Retry the plugin runs again and leaves Problems (the rows: the connection's, and the alert, still not confirmed)
+NEGATIVE CONTROL "alert-kept": detected in webkit: webkit: the alert of a plugin that came back is still Not confirmed: the host keeps it unknown until the plugin resolves it or reports it again
+NEGATIVE CONTROL "alert-cleared": detected in webkit: webkit: an alert that the plugin which came back resolves leaves Problems (the connection's row is the one left)
+NEGATIVE CONTROL "conn-opens": detected in webkit: webkit: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)
+NEGATIVE CONTROL "conn-cleared": detected in webkit: webkit: a connection that answers again leaves the Problems tool and its count (the tool is empty)
+NEGATIVE CONTROL "page-error": detected in webkit: webkit: the whole scenario wrote no page error and no console error
+bundle fixture-a-ok/assets/entry.js 25134 B, imports [react/compiler-runtime, @omniviewdev/kit, @omniviewdev/runtime/ui/v1, react, react/jsx-runtime]
+exit 0
+
+
+----- the same group in Chromium (started 13:36:21, load average 7.24 before it) -----
+command: env -i HOME="$HOME" PATH="$PATH" ENGINES=chromium SEAM_CONTROL=problems-operations node ui-next/plugins/e2e/seam.check.mjs
+
+chromium: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid 50848 were rows (the alert and the task became Not confirmed and Outcome unknown), Retry ran the plugin again, and both tools were reached by the keys
+NEGATIVE CONTROL "ops-running": detected in chromium: chromium: the Operations tool lists a task that began as running, with the producer's own count (the rows)
+NEGATIVE CONTROL "ops-progress": detected in chromium: chromium: the Operations row follows the producer's count, 3 of 4 items after 1 of 4
+NEGATIVE CONTROL "ops-succeeded": detected in chromium: chromium: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the rows)
+NEGATIVE CONTROL "ops-dot": detected in chromium: chromium: a task that failed while Problems was on screen puts a dot on the Operations tab (the tab)
+NEGATIVE CONTROL "ops-read": detected in chromium: chromium: the Operations tool clears the dot once it has shown the failure (the tab)
+NEGATIVE CONTROL "alert-fires": detected in chromium: chromium: a firing alert is a row of the Problems tool and a warning dot on its tab (the row)
+NEGATIVE CONTROL "alert-resolves": detected in chromium: chromium: a resolved alert leaves the Problems tool and its tab (the tool is empty)
+NEGATIVE CONTROL "keys-reach": detected in chromium: chromium: the keys choose the Problems tool and reach its table and the open button of a row (the arrow and Enter choose the tool)
+NEGATIVE CONTROL "keys-open": detected in chromium: chromium: Enter on the open button of a Problems row opens the page of its plugin in a tab
+NEGATIVE CONTROL "conn-listed": detected in chromium: chromium: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)
+NEGATIVE CONTROL "conn-refused": detected in chromium: chromium: choosing the row of a connection that is still down asks the host again and opens no tab (two starts, both refused)
+NEGATIVE CONTROL "stopped-listed": detected in chromium: chromium: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+NEGATIVE CONTROL "alert-unknown": detected in chromium: chromium: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+NEGATIVE CONTROL "ops-unknown-dot": detected in chromium: chromium: a task that was running when its plugin stopped puts a warning dot on the Operations tab
+NEGATIVE CONTROL "ops-unknown": detected in chromium: chromium: a task that was running when its plugin stopped says Outcome unknown, with no progress (the row)
+NEGATIVE CONTROL "row-opens-plugin": detected in chromium: chromium: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (one tab, the plugin's)
+NEGATIVE CONTROL "recovered": detected in chromium: chromium: after Retry the plugin runs again and leaves Problems (the rows: the connection's, and the alert, still not confirmed)
+NEGATIVE CONTROL "alert-kept": detected in chromium: chromium: the alert of a plugin that came back is still Not confirmed: the host keeps it unknown until the plugin resolves it or reports it again
+NEGATIVE CONTROL "alert-cleared": detected in chromium: chromium: an alert that the plugin which came back resolves leaves Problems (the connection's row is the one left)
+NEGATIVE CONTROL "conn-opens": detected in chromium: chromium: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)
+NEGATIVE CONTROL "conn-cleared": detected in chromium: chromium: a connection that answers again leaves the Problems tool and its count (the tool is empty)
+NEGATIVE CONTROL "page-error": detected in chromium: chromium: the whole scenario wrote no page error and no console error
+bundle fixture-a-ok/assets/entry.js 25134 B, imports [react/compiler-runtime, @omniviewdev/kit, @omniviewdev/runtime/ui/v1, react, react/jsx-runtime]
+exit 0

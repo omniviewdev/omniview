@@ -1,15 +1,30 @@
-import { ActivityProvider } from '@omniviewdev/runtime';
+import { activityClient, ActivityProvider, useActivities } from '@omniviewdev/runtime';
 import { WindowClient } from '@omniviewdev/runtime/api';
 import { Browser, Events, onEventsReconnect, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
 import { productionApi } from './connections';
+import { createActivityFeed, type ActivityFeedControl } from '../../shell/panel/activity';
 import { attachLocalTerminal, loadPageKey, restoreLocalTerminals, terminalKeyStorage, type TerminalsOptions } from '../../shell/panel/terminal';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
 import { PluginStore } from './pluginStore';
 import { useHashLink } from './route';
 import { useInstalledPlugins } from './useInstalledPlugins';
+
+/**
+ * Hands what the runtime's activity provider holds to the feed the Problems and Operations tools read (`shell/panel/activity.ts`): its records, and its error, the sentence of a failed observation of the host's activity service. A failed
+ * observation holds no record, as an observation of no activity does not, so a tool that was handed the records alone could not tell the two apart (and this window draws no other surface for the provider's error). The window has ONE
+ * subscription to the host's activity service, the provider's (each is a producer lease), and this leaf is how the two tools share it. It renders nothing, and it is what renders when a record changes (a task's progress ticks many
+ * times a second): the host above it is not told, and each tool reads the feed itself.
+ */
+function ActivityTap({ control }: { readonly control: ActivityFeedControl }) {
+  const { records, error } = useActivities();
+  useEffect(() => {
+    control.push(records, error);
+  }, [control, records, error]);
+  return null;
+}
 
 /**
  * Closes the app's window: the same request the window's close button makes. The main window hides instead of closing (`backend/window/wails.go`, `attachMainWindow`), so what comes of this
@@ -74,6 +89,13 @@ export function PluginHostScreen() {
   const inventory = useInstalledPlugins();
   const link = useHashLink();
   const [loaded, setLoaded] = useState<{ readonly session: LoadedSession; readonly notices: LoadedNotices; readonly terminals: TerminalsOptions } | undefined>(undefined);
+  // What the two panel tools ask of the activity service besides reading it: stop a task the producer can stop, and keep that a record was read. The window's calls, through the runtime's client.
+  const [activity] = useState(() =>
+    createActivityFeed({
+      cancel: async (id) => activityClient.requestCancellation(id),
+      markRead: async (id) => activityClient.setPresentation({ id, read: true }),
+    }),
+  );
 
   // What the host says of a plugin that stops (`plugin/unloaded`: its process crashed, it is reloading, uninstalled or turned off) and of one that runs again (`plugin/state_change`): the store drops what the
   // window drew from the plugin and loads it again from its files, with no reload of the window (decision A21, P1b3c-01). The inventory above only ever adds.
@@ -104,6 +126,7 @@ export function PluginHostScreen() {
 
   return (
     <ActivityProvider>
+      <ActivityTap control={activity} />
       {loaded === undefined ? null : (
         <PluginHost
           plugins={store}
@@ -122,6 +145,7 @@ export function PluginHostScreen() {
           savedNotices={loaded.notices}
           connections={productionApi}
           terminals={loaded.terminals}
+          activity={activity.feed}
         />
       )}
     </ActivityProvider>

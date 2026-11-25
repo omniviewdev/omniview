@@ -1,0 +1,269 @@
+Seam fixes (ProblemsOperations.SeamFixes): the first red of each change to scenario v of ui-next/plugins/e2e/seam.check.mjs, and what each is now. Review comments 4685831387, 4685831394, 4685831416, 4685831424, 4685831405.
+Every run is from a clean environment (env -i HOME PATH + ENGINES + SEAM_*), on the host binary built at 14:35 with OMNIVIEW_UI=next task build:server, the load average is on the first line of each run. The old code is HEAD (7a1be301) of the seam file; "scratch" copies of the check sit next to it for the run and are deleted.
+
+==== 1. 4685831387: the control of v named page-error is the Logs control of that name (SEAM_CONTROL=page-error ran v and went on to the next engine)
+-- RED: HEAD, ENGINES=webkit SEAM_CONTROL=page-error: scenario v runs (a whole run of it, 22 steps) and answers with ITS words; the Logs scenario (k, checkKept) is never run:
+webkit: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid 8104 were rows (the alert and the task became Not confirmed and Outcome unknown), Retry ran the plugin again, and both  [...]
+NEGATIVE CONTROL "page-error": detected in webkit: webkit: the whole scenario wrote no page error and no console error
+exit 0
+
+-- the script that reads the control tables of the file (HEAD): one name held by two tables (the settings controls and runtime-4xx are in CONTROLS and named again by SETTINGS_PARTS and RUNTIME_CONTROL on purpose: the same controls)
+$ node clash.mjs <HEAD seam.check.mjs>
+CONTROLS: 24, SETTINGS_PARTS: 14, PROCESS_CONTROLS: 10, FAILED_CONTROLS: 14, PAGE_CONTROLS: 15, CONNECTIONS_CONTROLS: 15, PT_CONTROLS: 22
+CLASH page-error: CONTROLS and PT_CONTROLS
+exit 1
+
+-- RED of the guard that is now at load time (a scratch copy of the new file with the control of v named page-error again; node seam.scratch.mjs):
+$ diff seam.check.mjs seam.scratch-sf-guard.mjs   (the only change: the control of v named page-error again)
+343c343
+<   'pt-page-error': /the whole scenario wrote no page error and no console error/,
+---
+>   'page-error': /the whole scenario wrote no page error and no console error/,
+$ env -i HOME PATH ENGINES=webkit node seam.scratch-sf-guard.mjs
+Error: a control's name belongs to one table of the check: page-error (CONTROLS (scenarios k and m) and PT_CONTROLS)
+    at file:///Users/joshuapare/Repos/omniviewdev/worktrees/ui-next-pt1-problems-operations/ui-next/plugins/e2e/seam.scratch-sf-guard.mjs:381:9
+exit 1
+
+-- GREEN: the new file, the same script
+$ node clash.mjs <working copy seam.check.mjs>
+CONTROLS: 24, SETTINGS_PARTS: 14, PROCESS_CONTROLS: 10, FAILED_CONTROLS: 14, PAGE_CONTROLS: 15, CONNECTIONS_CONTROLS: 15, PT_CONTROLS: 22
+no name is held by two tables (106 names, 6 group names)
+exit 0
+
+-- GREEN: ENGINES=webkit SEAM_CONTROL=page-error runs the Logs scenario and reports its own result:
+uptime before: 14:44  up 14 days,  7:11, 1 user, load averages: 9.75 7.99 7.50
+started 14:44:12
+NEGATIVE CONTROL "page-error": detected in webkit: webkit: the unload and the return wrote no page error
+exit 0
+finished 14:44:33
+-- the same in Chromium:
+uptime before: 14:47  up 14 days,  7:15, 1 user, load averages: 6.83 7.76 7.54
+started 14:47:44
+NEGATIVE CONTROL "page-error": detected in chromium: chromium: the unload and the return wrote no page error
+exit 0
+finished 14:48:05
+-- the control of v by its new name, with the group (below, section 6) and alone in the pairs.
+
+==== 2. 4685831394: with the named assertion removed, no OTHER assertion was tried while the fault was in place (the old NOT DETECTED of stopped-listed, alert-unknown, ops-unknown-dot, conn-opens and conn-cleared proved nothing)
+The old pairs (red-seam-v-assertion-off.txt) were "NOT DETECTED, as it must be" because nothing was tried in the faulty state. The new rule of withPremises.afterwards: with SEAM_REMOVE=<name> the fault is held while EVERY OTHER assertion of the same act is tried, and none may see it.
+-- RED: that rule applied to the old faults (the act not done yet), one pair each (ENGINES=webkit SEAM_CONTROL=<n> SEAM_REMOVE=<n>, 14:38, all five at once): the premise of a shared act is not the fault of ONE assertion; another assertion of the act sees it, the pair is not "undetected":
+[stopped-listed]
+uptime before: 14:38  up 14 days,  7:05, 1 user, load averages: 3.73 5.49 6.99
+NEGATIVE CONTROL "stopped-listed": detected in webkit with its assertion removed, by webkit: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+exit 1
+[alert-unknown]
+uptime before: 14:38  up 14 days,  7:05, 1 user, load averages: 3.73 5.49 6.99
+NEGATIVE CONTROL "alert-unknown": detected in webkit with its assertion removed, by webkit: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+exit 1
+[ops-unknown-dot]
+uptime before: 14:38  up 14 days,  7:05, 1 user, load averages: 3.73 5.49 6.99
+NEGATIVE CONTROL "ops-unknown-dot": detected in webkit with its assertion removed, by webkit: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+exit 1
+[conn-opens]
+uptime before: 14:38  up 14 days,  7:05, 1 user, load averages: 3.73 5.49 6.99
+NEGATIVE CONTROL "conn-opens": detected in webkit with its assertion removed, by webkit: a connection that answers again leaves the Problems tool and its count (the tool is empty)
+exit 1
+[conn-cleared]
+uptime before: 14:38  up 14 days,  7:05, 1 user, load averages: 3.73 5.49 6.99
+NEGATIVE CONTROL "conn-cleared": detected in webkit with its assertion removed, by webkit: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)
+exit 1
+
+-- GREEN: each of the five has a fault of its own, made once the act is done: stopped-listed (the Stopped row drawn as healthy), alert-unknown (the Not confirmed row drawn as healthy), ops-unknown-dot (the dot of the Operations tab drawn with the tone of an error), conn-opens (the tab of south is not the selected one), conn-cleared (a row is left in the empty tool). Section 6: the group and the pairs.
+
+==== 2b. the new harness can go red: a fault WIDER than its assertion is not "undetected" (scratch: the fault of stopped-listed also draws the Not confirmed row healthy)
+-- ENGINES=webkit SEAM_CONTROL=stopped-listed SEAM_REMOVE=stopped-listed (exit 1: alert-unknown, which stays in the run, sees the fault):
+uptime before: 14:50  up 14 days,  7:17, 1 user, load averages: 22.56 11.23 8.84
+NEGATIVE CONTROL "stopped-listed": detected in webkit with its assertion removed, by webkit: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+exit 1
+-- the same fault with the assertion present, ENGINES=webkit SEAM_CONTROL=stopped-listed (exit 0: this run cannot tell the two faults apart; the pair is what does):
+uptime before: 14:50  up 14 days,  7:17, 1 user, load averages: 22.56 11.23 8.84
+NEGATIVE CONTROL "stopped-listed": detected in webkit: webkit: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+exit 0
+
+==== 3. 4685831416: the page-error control cleared the whole errors array (a genuine error the page wrote before was erased)
+A genuine page error is written by the page before the control of step 12 is made (a scratch copy of each version of the check that adds, before the "// 12." comment, a setTimeout that throws "a GENUINE page error" and waits until it is in errors).
+-- RED: HEAD (the control cleared errors.length = 0): ENGINES=webkit SEAM_CONTROL=page-error, exit 0: the genuine error is gone, the check at the end passes, the scenario is green with a page error in it:
+uptime before: 14:44  up 14 days,  7:11, 1 user, load averages: 9.75 7.99 7.50
+started 14:44:12
+webkit: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert fired and resolved, a connection that does not answer and a plugin killed by pid 16131 were rows (the alert and the task became Not confirmed and Outcome unknown), Retry ran the plugin again, and both [...]
+NEGATIVE CONTROL "page-error": detected in webkit: webkit: the whole scenario wrote no page error and no console error
+exit 0
+finished 14:45:10
+-- GREEN: new (the control plants "Failed to fetch (planted by the control pt-page-error of <engine> at <ms>)", waits for THAT one, takes away only it): ENGINES=webkit SEAM_CONTROL=pt-page-error, exit 1: the check at the end fails on the genuine error:
+uptime before: 14:44  up 14 days,  7:11, 1 user, load averages: 9.75 7.99 7.50
+started 14:44:12
+webkit: the whole scenario wrote no page error and no console error
++ actual - expected
++ [
++   'pageerror: a GENUINE page error: the page wrote it, the scenario did not make it'
++ ]
+- []
+exit 1
+finished 14:45:10
+
+==== 4. 4685831424: cleanup signalled every pid recorded earlier (a pid that the OS gave to another process after the fixture was killed and its end seen)
+A pid reuse cannot be forced; it is simulated on the real code text of the seam file (node /tmp/seamfixes/pids.test.mjs <old|new>, which extracts alive, identityOf, isNamed and the cleanup line from the file by regex and runs them over real sleep processes): a live stand-in is tracked under the number and identity of a process that has ended, and a second process is tracked under its own.
+-- RED: HEAD (for (const pid of pids) if (alive(pid)) process.kill(pid, 'SIGKILL')), exit 1:
+$ node pids.test.mjs old   (HEAD)
+code under test (old): for (const pid of pids) if (alive(pid)) process.kill(pid, 'SIGKILL');
+a process that is not the one that was tracked, under the number of a tracked process: KILLED (SIGKILL)
+the process that is tracked under its own identity: ENDED (SIGKILL)
+exit 1
+
+-- GREEN: new (pids is a Map pid -> identity from ps -o lstart=,command= read when the host named it; the cleanup signals only a pid that is still that identity; the killed fixture is not tracked once its end is seen), exit 0:
+$ node pids.test.mjs new   (working copy)
+code under test (new): for (const [pid, identity] of pids) if (await isNamed(pid, identity).catch(() => false)) process.kill(pid, 'SIGKILL');
+a process that is not the one that was tracked, under the number of a tracked process: LEFT ALONE (alive)
+the process that is tracked under its own identity: ENDED (SIGKILL)
+exit 0
+
+
+==== 5. 4685831405: wait for Running AND 1 of 4 items before the first assertion
+NO RED IS POSSIBLE, and the comment's premise is not true of this code: after "task begin" the row says Starting at 0 of 4 items (the record's state is starting); the state becomes Running only with the record of "task step t1 1", which carries 1 of 4 items in the same record, so a Running row has always 1 of 4. The change is made as asked (the wait states the facts the assertion needs, as the 3 of 4 wait does) and is a robustness change, not a fix of a flake that can happen.
+-- the row after "task begin" only (HEAD with the step withheld, rows read after 3 s), ENGINES=webkit:
+ROWS AFTER task begin ONLY: [{"title":"Reindexing the catalogue","source":"Seam Fixture","target":"—","state":"Starting","role":"progress","progress":"0 of 4 items","bar":"0","open":"Open Seam Fixture"}]
+-- HEAD with "task step t1 1" withheld: the old wait for Running never passes on the begin-only page (it times out, it does not reach the assertion):
+uptime before: 14:44  up 14 days,  7:11, 1 user, load averages: 9.75 7.99 7.50
+started 14:44:12
+timed out after 15000 ms waiting for the Operations tool to list the task as running
+exit 1
+finished 14:44:41
+-- new with the same step withheld: the wait for Running at 1 of 4 items times out the same way, with its own words:
+uptime before: 14:44  up 14 days,  7:11, 1 user, load averages: 9.75 7.99 7.50
+started 14:44:12
+timed out after 15000 ms waiting for the Operations tool to list the task as running, at 1 of 4 items
+exit 1
+finished 14:44:41
+
+==== 6. THE NEW CODE: scenario v plain, every control with its own assertion, every ASSERTION_OFF pair, in WebKit and Chromium
+-- SEAM_ONLY=problems-operations (clean env), webkit and chromium:
+uptime before: 15:00  up 14 days,  7:28, 1 user, load averages: 11.61 14.26 13.01
+started 15:00:57
+webkit: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an alert 
+exit 0
+finished 15:01:54
+uptime before: 15:00  up 14 days,  7:28, 1 user, load averages: 11.61 14.26 13.01
+started 15:00:57
+chromium: problems and operations: a task followed the plugin's reports to Succeeded, a failed one was marked read by the host after the tool showed it, an aler
+exit 0
+finished 15:01:54
+
+-- SEAM_CONTROL=problems-operations, webkit (23 controls, each detected by its own assertion):
+uptime before: 15:00  up 14 days,  7:28, 1 user, load averages: 11.61 14.26 13.01
+NEGATIVE CONTROL "ops-running": detected in webkit: webkit: the Operations tool lists a task that began as running, with the producer's own count (the rows)
+NEGATIVE CONTROL "ops-progress": detected in webkit: webkit: the Operations row follows the producer's count, 3 of 4 items after 1 of 4
+NEGATIVE CONTROL "ops-succeeded": detected in webkit: webkit: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the rows)
+NEGATIVE CONTROL "ops-dot": detected in webkit: webkit: a task that failed while Problems was on screen puts a dot on the Operations tab (the tab)
+NEGATIVE CONTROL "ops-read": detected in webkit: webkit: the Operations tool clears the dot once it has shown the failure (the tab)
+NEGATIVE CONTROL "alert-fires": detected in webkit: webkit: a firing alert is a row of the Problems tool and a warning dot on its tab (the row)
+NEGATIVE CONTROL "alert-resolves": detected in webkit: webkit: a resolved alert leaves the Problems tool and its tab (the tool is empty)
+NEGATIVE CONTROL "keys-reach": detected in webkit: webkit: the keys choose the Problems tool and reach its table and the open button of a row (the arrow and Enter choose the tool)
+NEGATIVE CONTROL "keys-open": detected in webkit: webkit: Enter on the open button of a Problems row opens the page of its plugin in a tab
+NEGATIVE CONTROL "conn-listed": detected in webkit: webkit: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)
+NEGATIVE CONTROL "conn-refused": detected in webkit: webkit: choosing the row of a connection that is still down asks the host again and opens no tab (the row stays)
+NEGATIVE CONTROL "conn-toast": detected in webkit: webkit: choosing the row of a connection that is still down tells the person in a sticky error toast (an alert: work the person started)
+NEGATIVE CONTROL "stopped-listed": detected in webkit: webkit: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+NEGATIVE CONTROL "alert-unknown": detected in webkit: webkit: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+NEGATIVE CONTROL "ops-unknown-dot": detected in webkit: webkit: a task that was running when its plugin stopped puts a warning dot on the Operations tab
+NEGATIVE CONTROL "ops-unknown": detected in webkit: webkit: a task that was running when its plugin stopped says Outcome unknown, with no progress (the row)
+NEGATIVE CONTROL "row-opens-plugin": detected in webkit: webkit: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (one tab, the plugin's)
+NEGATIVE CONTROL "recovered": detected in webkit: webkit: after Retry the plugin runs again and leaves Problems (the rows: the connection's, and the alert, still not confirmed)
+NEGATIVE CONTROL "alert-kept": detected in webkit: webkit: the alert of a plugin that came back is still Not confirmed: the host keeps it unknown until the plugin resolves it or reports it again
+NEGATIVE CONTROL "alert-cleared": detected in webkit: webkit: an alert that the plugin which came back resolves leaves Problems (the connection's row is the one left)
+NEGATIVE CONTROL "conn-opens": detected in webkit: webkit: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)
+NEGATIVE CONTROL "conn-cleared": detected in webkit: webkit: a connection that answers again leaves the Problems tool and its count (the tool is empty)
+NEGATIVE CONTROL "pt-page-error": detected in webkit: webkit: the whole scenario wrote no page error and no console error
+exit 0
+
+-- SEAM_CONTROL=problems-operations, chromium:
+uptime before: 15:00  up 14 days,  7:28, 1 user, load averages: 11.61 14.26 13.01
+NEGATIVE CONTROL "ops-running": detected in chromium: chromium: the Operations tool lists a task that began as running, with the producer's own count (the rows)
+NEGATIVE CONTROL "ops-progress": detected in chromium: chromium: the Operations row follows the producer's count, 3 of 4 items after 1 of 4
+NEGATIVE CONTROL "ops-succeeded": detected in chromium: chromium: a task that finished is Succeeded in the Operations tool, with no progress and no dot (the rows)
+NEGATIVE CONTROL "ops-dot": detected in chromium: chromium: a task that failed while Problems was on screen puts a dot on the Operations tab (the tab)
+NEGATIVE CONTROL "ops-read": detected in chromium: chromium: the Operations tool clears the dot once it has shown the failure (the tab)
+NEGATIVE CONTROL "alert-fires": detected in chromium: chromium: a firing alert is a row of the Problems tool and a warning dot on its tab (the row)
+NEGATIVE CONTROL "alert-resolves": detected in chromium: chromium: a resolved alert leaves the Problems tool and its tab (the tool is empty)
+NEGATIVE CONTROL "keys-reach": detected in chromium: chromium: the keys choose the Problems tool and reach its table and the open button of a row (the arrow and Enter choose the tool)
+NEGATIVE CONTROL "keys-open": detected in chromium: chromium: Enter on the open button of a Problems row opens the page of its plugin in a tab
+NEGATIVE CONTROL "conn-listed": detected in chromium: chromium: a connection that could not be reached is a row of Problems, with its words, its plugin and itself (the rows: the error first)
+NEGATIVE CONTROL "conn-refused": detected in chromium: chromium: choosing the row of a connection that is still down asks the host again and opens no tab (the row stays)
+NEGATIVE CONTROL "conn-toast": detected in chromium: chromium: choosing the row of a connection that is still down tells the person in a sticky error toast (an alert: work the person started)
+NEGATIVE CONTROL "stopped-listed": detected in chromium: chromium: a plugin whose process was killed is a row of Problems and counts as an error on its tab (the errors: the connection's and the plugin's, by their plugins' names)
+NEGATIVE CONTROL "alert-unknown": detected in chromium: chromium: the alert of a plugin that stopped stays in Problems as Not confirmed, with the plugin named
+NEGATIVE CONTROL "ops-unknown-dot": detected in chromium: chromium: a task that was running when its plugin stopped puts a warning dot on the Operations tab
+NEGATIVE CONTROL "ops-unknown": detected in chromium: chromium: a task that was running when its plugin stopped says Outcome unknown, with no progress (the row)
+NEGATIVE CONTROL "row-opens-plugin": detected in chromium: chromium: choosing the row of a plugin that stopped opens its page in one tab, which says why and offers Retry (one tab, the plugin's)
+NEGATIVE CONTROL "recovered": detected in chromium: chromium: after Retry the plugin runs again and leaves Problems (the rows: the connection's, and the alert, still not confirmed)
+NEGATIVE CONTROL "alert-kept": detected in chromium: chromium: the alert of a plugin that came back is still Not confirmed: the host keeps it unknown until the plugin resolves it or reports it again
+NEGATIVE CONTROL "alert-cleared": detected in chromium: chromium: an alert that the plugin which came back resolves leaves Problems (the connection's row is the one left)
+NEGATIVE CONTROL "conn-opens": detected in chromium: chromium: choosing the row of a connection that answers again starts it and opens its page in a tab (the tab on screen)
+NEGATIVE CONTROL "conn-cleared": detected in chromium: chromium: a connection that answers again leaves the Problems tool and its count (the tool is empty)
+NEGATIVE CONTROL "pt-page-error": detected in chromium: chromium: the whole scenario wrote no page error and no console error
+exit 0
+
+-- ASSERTION_OFF pairs, webkit (ENGINES=webkit SEAM_CONTROL=<n> SEAM_REMOVE=<n>, one run each, six at a time):
+exit 0  NEGATIVE CONTROL "ops-running": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-progress": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-succeeded": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-dot": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-read": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-fires": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-resolves": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "keys-reach": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "keys-open": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-listed": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-refused": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-toast": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "stopped-listed": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-unknown": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-unknown-dot": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-unknown": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "row-opens-plugin": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "recovered": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-kept": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-cleared": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-opens": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-cleared": NOT DETECTED in webkit with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "pt-page-error": NOT DETECTED in webkit with its assertion removed, as it must be
+ASSERTION_OFF pairs in webkit as they must be (exit 0, "NOT DETECTED ... with its assertion removed, as it must be"): 23 of 23
+
+-- ASSERTION_OFF pairs, chromium:
+exit 0  NEGATIVE CONTROL "ops-running": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-progress": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-succeeded": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-dot": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-read": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-fires": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-resolves": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "keys-reach": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "keys-open": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-listed": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-refused": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-toast": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "stopped-listed": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-unknown": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-unknown-dot": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "ops-unknown": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "row-opens-plugin": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "recovered": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-kept": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "alert-cleared": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-opens": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "conn-cleared": NOT DETECTED in chromium with its assertion removed, as it must be
+exit 0  NEGATIVE CONTROL "pt-page-error": NOT DETECTED in chromium with its assertion removed, as it must be
+ASSERTION_OFF pairs in chromium as they must be (exit 0, "NOT DETECTED ... with its assertion removed, as it must be"): 23 of 23
+
+==== 7. the refused choice now raises a sticky error toast (the lead's host wiring, uncommitted at 14:58): scenario v asserts it, closes it, and has a control for it (conn-toast: 23 controls now)
+The step "choosing the row of a connection that is still down" now meets a toast (role alert, severity error, sticky, bottom right; headline "Couldn't open south", detail = the refusal's sentence). The act of that step makes TWO assertions true (the host asked again and refused, with no tab and the row still there: conn-refused; and the toast: conn-toast), so by the rule of section 2 each has a fault of its own once the act is done: conn-refused (the Not responding row drawn as healthy), conn-toast (the toast's role changed from alert to status). The check waits for the toast, asserts it (one toast, alert, error, sticky, headline "Couldn't open south", a non-empty detail), and closes it with its Dismiss button before the later clicks.
+-- RED: the assertion written first and run against the host binary built at 14:35 (before the wiring; ENGINES=webkit SEAM_ONLY=problems-operations): the check waits for the toast and it never comes:
+uptime before: 14:59  up 14 days,  7:27, 1 user, load averages: 12.10 14.87 13.11
+started 14:59:52
+timed out after 15000 ms waiting for the toast that says the connection could not be opened
+exit 1
+finished 15:00:26
+-- the structure is held by the guard of afterwards: with the fault of conn-refused taken away (scratch copy), the act that makes two assertions true has one of them with no fault of its own, and the check stops at once (exit 1), in any run:
+uptime before: 15:06  up 14 days,  7:33, 1 user, load averages: 13.12 13.45 13.02
+conn-refused, conn-toast are made true by one act: each needs a fault of its own (a perturb and an undo)
+exit 1
+-- GREEN: the host rebuilt at 15:00:53 (OMNIVIEW_UI=next GOWORK=off GOFLAGS= GOTOOLCHAIN=local task build:server): section 6, above (plain v, the 23 controls, the 23 pairs, in both engines).
