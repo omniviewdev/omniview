@@ -9246,7 +9246,8 @@ async function checkTerminalReconnect(browser, getHost, engine) {
           const n = String((control += 1));
           await typeLine(page, `echo KEEP_${tag}_${n}_$((6*7))`);
           const reached = await holdsWithin(async () => new RegExp(`\\nAWAY_${tag}_42\\n[\\s\\S]*\\nKEEP_${tag}_${n}_42\\n`).test(await plainTranscriptOf(base(), id)), 20_000);
-          assert.ok(reached, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote)`);
+          const frames = seen.streams.of(id).filter((socket) => socket.openedMs >= sinceCut - 2_000).map((socket) => `[open+${String(socket.openedMs - sinceCut)} close${socket.closedMs > 0 ? `+${String(socket.closedMs - sinceCut)}` : ' never'}: ${socket.frames.filter((frame) => frame.type !== 'ack' && frame.type !== 'output').map((frame) => `${frame.dir === 'page' ? '>' : '<'}${frame.type}${frame.length === undefined ? '' : `(${String(frame.length)})`}@${String(frame.ms - sinceCut)}`).join(' ')}]`).join(' ');
+          assert.ok(reached, `${engine}: ${label}: what was typed after the cut reached the shell, and what was typed during it too, in order (AWAY_${tag}_42 and then KEEP_${tag}_${n}_42 in what the shell wrote); the streams since the cut: ${frames}; the shell wrote ${JSON.stringify(plain(outputSince(id, outputEnd(id) - 600)))}`);
         },
       );
       await guarded(
