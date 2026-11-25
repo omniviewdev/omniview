@@ -149,6 +149,9 @@ async function startHost(work) {
   await mkdir(path.join(home, '.omniview-feature-ui-next', 'plugins'), { recursive: true });
   // An empty HOME makes zsh ask its new-user questions; this file stops that and gives the prompt the tool waits for.
   await writeFile(path.join(home, '.zshrc'), `PS1='${PROMPT}'\n`);
+  // The account's shell may be bash instead: it reads .bash_profile as a login shell and .bashrc otherwise.
+  await writeFile(path.join(home, '.bashrc'), `PS1='${PROMPT}'\n`);
+  await writeFile(path.join(home, '.bash_profile'), `PS1='${PROMPT}'\n`);
   const port = await freePort();
   const { PATH, TMPDIR, LANG, USER } = process.env;
   const child = spawn(flags.server, [], {
@@ -295,6 +298,7 @@ async function openStream(port, cap, { ack }) {
       if (offset !== stream.next) stream.badOffsets += 1;
       stream.next = offset + bytes.length;
       stream.received += bytes.length;
+      if (stream.gaps.length > 0) stream.gaps.at(-1).after += bytes.length;
       if (!stream.typed) {
         // The shell is asked for `exec yes` once it has shown its prompt (the `.zshrc` of this case's HOME sets it): `exec` replaces the shell with `yes`, so that from the line it echoes the output is `y`, carriage return, line feed.
         stream.seen = (stream.seen + bytes.toString('latin1')).slice(-64);
@@ -331,8 +335,14 @@ async function openStream(port, cap, { ack }) {
       const from = Number(frame.readBigUInt64BE(1));
       const to = Number(frame.readBigUInt64BE(9));
       if (from !== stream.next) stream.badOffsets += 1;
-      stream.gaps.push({ from, to, bytes: to - from });
-      stream.next = to;
+      if (to <= from) {
+        // A gap that covers no byte is not one: it is not counted and the offset does not move.
+        stream.badOffsets += 1;
+      } else {
+        // `after` is the bytes of output that followed this gap.
+        stream.gaps.push({ from, to, bytes: to - from, after: 0 });
+        stream.next = to;
+      }
     } else if (type === ENDED || type === TAKEN_OVER || type === NOT_FOUND) {
       stream.ended = { type: `0x${type.toString(16)}`, body: type === ENDED ? frame.subarray(1).toString('utf8') : '' };
       readyReject(new Error(`the host sent ${stream.ended.type} before ready was taken`));
@@ -482,13 +492,19 @@ async function runCase(id) {
     const origin = performance.now();
     let stalledAt = null;
     let resumedAt = null;
+    let pausedMs = null;
+    let gapsAtPause = 0;
     for (let second = 1; second <= SECONDS; second += 1) {
       const due = origin + second * 1000;
       if (id === 'd') {
+        // The stall is measured from the pause and resume calls themselves: a late sample moves neither, and the reader resumes only when the whole of --stall has passed since it paused.
         if (stalledAt === null && second > STALL_AT) {
+          gapsAtPause = reader.gaps.length;
+          pausedMs = performance.now();
           reader.pause();
           stalledAt = second - 1;
-        } else if (stalledAt !== null && resumedAt === null && second - 1 >= stalledAt + STALL) {
+        } else if (stalledAt !== null && resumedAt === null && performance.now() - pausedMs >= STALL * 1000) {
+          result.marks.stalledSeconds = round((performance.now() - pausedMs) / 1000, 2);
           reader.resume();
           resumedAt = second - 1;
         }
@@ -505,10 +521,13 @@ async function runCase(id) {
     for (const stream of streams) if (stream.failure !== null) throw new Error(`a stream failed: ${stream.failure}`);
     result.marks.stalledAtSecond = stalledAt;
     result.marks.resumedAtSecond = resumedAt;
+    if (id === 'd') result.marks.gapsAtPause = gapsAtPause;
     if (id === 'c') {
-      // What the stalled reader holds in the kernel is read now, when it reads: one `gap` then the exact bytes is the same law as case d.
-      streams[1].resume();
-      await sleep(2000);
+      // What the stalled reader holds in the kernel is read now, when it reads: one `gap` then the exact bytes is the same law as case d. It is given up to 30 s to show the gap and output after it.
+      const second = streams[1];
+      second.resume();
+      const until = Date.now() + 30_000;
+      while (!(second.gaps.length > 0 && second.gaps.at(-1).after > 0) && Date.now() < until && !second.closed) await sleep(100);
     }
 
     result.uptimeAfter = await uptime();
@@ -557,9 +576,22 @@ function integrity(result) {
     if (stream.floodStart === null) problems.push(`${name} saw no flood`);
     if (stream.badBytes !== 0) problems.push(`${name} has ${String(stream.badBytes)} bad bytes`);
     if (stream.badOffsets !== 0) problems.push(`${name} has ${String(stream.badOffsets)} bad offsets`);
+    // A measured stream that ends while the window is open leaves the rest of it sampling an idle host. (The tool's own teardown closes the sockets after these counters are taken.)
+    if (stream.ended !== null) problems.push(`${name} was ended by the host (${stream.ended.type}) before the window closed`);
+    if (stream.closed) problems.push(`${name} closed before the window closed`);
   }
 
-  if (result.id === 'd' && streams[0].gaps.length !== 1) problems.push(`stream 1 had ${String(streams[0].gaps.length)} gaps, the stall of case d must give exactly one`);
+  // The stall must have given one new gap, with output after it: in case d the first stream, in case c the second (it never read until the drain).
+  const recovering = result.id === 'd' ? streams[0] : result.id === 'c' ? streams[1] : undefined;
+  if (recovering !== undefined) {
+    const before = result.id === 'd' ? result.marks.gapsAtPause ?? 0 : 0;
+    const fresh = recovering.gaps.slice(before);
+    if (result.id === 'd' && result.marks.resumedAtSecond === null) problems.push('the reader of case d never resumed inside the window');
+    if (fresh.length !== 1) problems.push(`the stalled reader had ${String(fresh.length)} gaps after its stall, it must have exactly one`);
+    else if (fresh[0].after === 0) problems.push('no output followed the gap of the stalled reader');
+    if (result.id === 'd' && (result.marks.stalledSeconds ?? 0) < STALL) problems.push(`the stall lasted ${String(result.marks.stalledSeconds)} s, less than --stall`);
+  }
+
   return problems;
 }
 
@@ -575,7 +607,8 @@ function figures(result) {
     maxMiB: round(max),
     endMiB: round(end),
     maxOverStartMiB: round(max - start),
-    pass: max - start <= LIMIT_MIB,
+    complete: result.samples.length === SECONDS + 1,
+    pass: result.samples.length === SECONDS + 1 && max - start <= LIMIT_MIB,
     receivedMiB: first === undefined ? null : round(first.received / MIB),
     gaps: first?.gaps ?? null,
     badBytes: first?.badBytes ?? null,
@@ -590,7 +623,7 @@ function printReport(results) {
     const f = figures(result);
     const sound = integrity(result).length === 0 && result.error === null ? 'PASS' : 'FAIL';
     const count = (value) => (value === null ? '-' : String(value));
-    rows.push(f === undefined ? [result.id, 'no samples', '', '', '', '', '', '', '', 'ERROR', sound] : [result.id, f.startMiB.toFixed(1), f.maxMiB.toFixed(1), f.endMiB.toFixed(1), f.maxOverStartMiB.toFixed(1), count(f.receivedMiB), f.gaps === null ? '-' : String(f.gaps.length), count(f.badBytes), count(f.badOffsets), f.pass ? 'PASS' : 'FAIL', sound]);
+    rows.push(f === undefined ? [result.id, 'no samples', '', '', '', '', '', '', '', 'ERROR', sound] : [result.id, f.startMiB.toFixed(1), f.maxMiB.toFixed(1), f.endMiB.toFixed(1), f.maxOverStartMiB.toFixed(1), count(f.receivedMiB), f.gaps === null ? '-' : String(f.gaps.length), count(f.badBytes), count(f.badOffsets), f.complete ? (f.pass ? 'PASS' : 'FAIL') : 'INCOMPLETE', sound]);
   }
 
   const widths = rows[0].map((_, column) => Math.max(...rows.map((row) => String(row[column]).length)));
@@ -599,11 +632,11 @@ function printReport(results) {
     console.log(`\ncase ${result.id} (${result.title}), host pid ${String(result.hostPid)}`);
     console.log(`  ${result.uptimeBefore}`);
     for (const [index, stream] of (result.marks.streams ?? []).entries()) {
-      const gaps = stream.gaps.map((gap) => `[${String(gap.from)}, ${String(gap.to)}) ${String(gap.bytes)} bytes`).join('; ');
+      const gaps = stream.gaps.map((gap) => `[${String(gap.from)}, ${String(gap.to)}) ${String(gap.bytes)} bytes, ${String(gap.after)} bytes of output after it`).join('; ');
       console.log(`  stream ${String(index + 1)}: ready start ${String(stream.readyStart)} end ${String(stream.readyEnd)} lost ${String(stream.readyLost)}; received ${String(stream.received)} bytes in ${String(stream.outputFrames)} frames; gaps ${String(stream.gaps.length)}${gaps === '' ? '' : ` (${gaps})`}; next offset ${String(stream.nextOffset)}; received + gaps = ${String(stream.received + stream.gaps.reduce((sum, gap) => sum + gap.bytes, 0))} (+ start ${String(stream.readyStart)}); bad bytes ${String(stream.badBytes)}, bad offsets ${String(stream.badOffsets)}; ended ${stream.ended === null ? 'no' : stream.ended.type}; closed ${String(stream.closed)}`);
     }
 
-    if (result.marks.stalledAtSecond !== undefined && result.marks.stalledAtSecond !== null) console.log(`  stalled after second ${String(result.marks.stalledAtSecond)}, resumed after second ${String(result.marks.resumedAtSecond)}`);
+    if (result.marks.stalledAtSecond !== undefined && result.marks.stalledAtSecond !== null) console.log(`  paused after second ${String(result.marks.stalledAtSecond)}, resumed after second ${String(result.marks.resumedAtSecond)}, paused for ${String(result.marks.stalledSeconds)} s by the clock of the pause and resume calls`);
     for (const problem of integrity(result)) console.log(`  INTEGRITY ${problem}`);
     if (result.error !== null) console.log(`  ERROR ${result.error.split('\n')[0]}`);
     if (result.cleanup !== null) console.log(`  cleanup: host ${result.cleanup.exit}${result.cleanup.killed ? ' (killed by pid)' : ''}${result.cleanup.pidLeft ? '; PID LEFT' : '; pid gone'}`);
