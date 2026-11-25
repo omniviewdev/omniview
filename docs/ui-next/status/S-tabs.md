@@ -17,6 +17,7 @@ Worktree `~/Repos/omniviewdev/worktrees/ui-next-tab-management`, branch `ui-next
 | W3, W4 | A tab dragged out opens a window at the pointer, or joins the window it is dropped on, through the host's drag service | `windows.ts`, `stripDrag.ts`, `backend/window/drag.go` (`EndDrag` names the window that declined) |
 | P1 | The session tab's menu: Rename, Stop, Close and the close sets (S118) | `shell/panel/SessionTabs.tsx`, `SessionRename.tsx` |
 | P2 | Session tabs reorder by drag and by keyboard | `core/panel/arrange.ts` (`reorderSession`) |
+| Menus | The app menu runs the shell's commands by id (`menu/command`): Close Tab, Reopen Closed Tab, Search, Toggle Panel, New Terminal, Next and Previous Tab. An accelerator is bound only where the chord means the same wherever the focus is. `keybindings_v3.go` and `context_v3.go` were dead and are gone; Maximize Bottom Menu and Close Sidebar are dropped; the three Zoom items still serve the old shell only | `backend/menus/app_v3.go`, `plugins/host/PluginHost.tsx`, `plugins/host/palette.ts` |
 
 Nothing was copied from `ui/`. Reused as they were: the tab model's `close`, `closeMany`, `reopen`, `duplicate`, `pin`, `reorder`, `keep`, `reload`; the kit menu (`useMenu`, `menuTrigger`); `useTablist`; the Go window service and its bindings. `EndDrag` is the one Go behaviour changed (no binding change).
 
@@ -47,20 +48,22 @@ Nothing was copied from `ui/`. Reused as they were: the tab model's `close`, `cl
 - `pnpm test`: 457 files, 10,166 tests pass. `pnpm lint`: 0 errors, the 8 warnings of `main`. Both `tsc` projects and the kit's. Kit `verify`. `go test` and `go vet` of `backend/menus` and `backend/window`.
 - `FONT_DELAY_MS=40 node ui-next/shell/probes/strip-probe.mjs`: no failures, WebKit and Chromium, both viewports, with the new drag case.
 
+## Verified natively
+
+2026-11-25, macOS 27 arm64, WKWebView, a Retina display, a devtools build of this branch on a scratch state root, driven through System Events and CGEvent (`docs/ui-next/status/N12a/ev.swift.txt`) and read from window captures.
+
+- The tab menu opens on a right click with the mock's rows; Pin draws the pin and the separator.
+- Move to new window and Move to window (submenu "Window 2"): the tab arrives, the target takes the focus, the source loses it.
+- A tab dragged onto another window's strip lands there after its pinned tab; a tab dragged inside a strip into the pinned zone is pinned; a tab dragged out and released opens a window (placed by the work-area clamp).
+- Closing the last tab of a secondary window closes it.
+- Command W, Command Shift T, Command Shift [ and ], Command J each act once (no second run from the menu's accelerator); File, Reopen Closed Tab and View, New Terminal act in the focused window only.
+- The session menu opens; Stop session ends the shell and keeps the tab.
+
 ## Not verified
 
-No native window was run. All of the window work (W1 to W4) exists only natively and was tested against a fake window service and fake drag events. To check on a native build with two windows:
-
-1. Shift-click a sidebar entry: a window opens with that page.
-2. Tab menu, Move to new window and Move to window: the tab arrives with its history and pin, the target takes the focus, the source loses the tab only then.
-3. Drag a tab out and release over the desktop: a window opens under the pointer. Pointer events must keep arriving outside the window.
-4. Drag a tab onto another window's strip: its marker shows the gap, the tab lands there; a release over that window's page keeps the tab; Escape clears both windows.
-5. The last tab leaves a secondary window: it closes, unless a session is live in it. The only tab of the main window leaves it empty.
-6. macOS: Command Shift T reopens, Control Tab and Command Shift ] step, Control Shift ` opens a terminal once in the old shell. Windows: Control Tab reaches the page.
-7. Reorder session tabs with a live terminal on screen: focus and scroll stay.
-8. Geometry on a Retina and a mixed-DPI setup, and at a page zoom other than 100%.
-
-Also not run: the panel, rail, shell and kit probes, the Pods cluster check, Windows and Linux.
+- Natively: Shift-click on a sidebar entry; Escape during a cross-window drag and a release over the other window's page; a secondary window with a live session staying open; Control Shift ` by the key (the menu item was clicked); Control Tab; rename and reorder of session tabs; the preview cue; the keyboard move; mixed-DPI monitors and a page zoom other than 100%.
+- The old shell after the menu change (New Terminal Session, Toggle Panel and Zoom should still work there).
+- The panel, rail, shell and kit probes, the Pods cluster check, Windows and Linux.
 
 ## Dev tools
 
