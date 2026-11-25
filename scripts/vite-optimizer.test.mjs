@@ -42,9 +42,9 @@ test('does not optimize discovered dependencies before server initialization', {
     const transformed = await server.transformRequest('/entry.js');
     const optimizedUrl = transformed?.code.match(/["']([^"']*\/react\.js\?v=[^"']+)["']/)?.[1];
     assert.ok(optimizedUrl, 'pre-listen transform must reference the optimized dependency');
-    assert.equal(await Promise.race([buildStarted.promise.then(() => true), delay(350, false)]), false);
+    assert.equal(await Promise.race([buildStarted.promise.then(() => true), delay(350, false, { ref: false })]), false);
     await server.listen();
-    assert.equal(await Promise.race([buildFinished.promise.then(() => true), delay(10_000, false)]), true);
+    assert.equal(await Promise.race([buildFinished.promise.then(() => true), delay(10_000, false, { ref: false })]), true);
     const response = await fetch(new URL(optimizedUrl, server.resolvedUrls.local[0]));
     assert.equal(response.status, 200, await response.text());
     assert.ok(server.environments.client.depsOptimizer.metadata.optimized.react, 'react optimization must be committed');
