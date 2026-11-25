@@ -17,11 +17,10 @@ export async function serveContext(context, host) {
   /** For each page: the load that is current (`windowId`), the streams it opened (by the page's own id), and the frames waiting to be handed to it. */
   const pages = new Map();
 
-
   const stateOf = (page) => {
     let state = pages.get(page);
     if (state === undefined) {
-      state = { windowId: undefined, streams: new Map(), pending: [], chain: Promise.resolve(), scheduled: false };
+      state = { windowId: undefined, path: undefined, streams: new Map(), pending: [], chain: Promise.resolve(), scheduled: false };
       pages.set(page, state);
     }
 
@@ -59,6 +58,7 @@ export async function serveContext(context, host) {
       }
 
       state.windowId = windowId;
+      state.path = new URL(page.url()).pathname;
       return null;
     }
 
@@ -71,12 +71,12 @@ export async function serveContext(context, host) {
     if (op === 'open') {
       const stream = host.openStream(
         (frame) => {
-          state.pending.push({ id, frame: toBase64(frame) });
+          state.pending.push({ id, load: windowId, frame: toBase64(frame) });
           flush(page, state);
         },
         () => {
           // The stream stays addressable: a frame that was in flight when it was closed still reaches the host's `send` (which ignores it, unless a fault says otherwise).
-          state.pending.push({ id, close: true });
+          state.pending.push({ id, load: windowId, close: true });
           flush(page, state);
         },
       );
@@ -88,7 +88,9 @@ export async function serveContext(context, host) {
     }
   });
 
-  // The frame a page sends as it goes away must outlive the page: it goes as a keepalive request to a server of this process.
+  // The frame a page sends as it goes away must outlive the page: it goes as a keepalive request to a server of this process. Only that request is served: a POST to `/frame` with a small JSON body that names a load, a stream and a frame;
+  // anything else is refused without reaching the host, and a body that cannot be read is a 400 and not a crash of the probe.
+  const MAX_BODY = 4096;
   const server = createServer((request, response) => {
     response.setHeader('access-control-allow-origin', '*');
     if (request.method === 'OPTIONS') {
@@ -97,22 +99,69 @@ export async function serveContext(context, host) {
       return;
     }
 
+    const refuse = (status) => {
+      response.writeHead(status, { 'content-type': 'application/json' }).end('{}');
+    };
+
+    if (request.method !== 'POST' || request.url !== '/frame') {
+      refuse(404);
+      return;
+    }
+
     const chunks = [];
-    request.on('data', (chunk) => chunks.push(chunk));
+    let size = 0;
+    request.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        refuse(413);
+        request.destroy();
+        return;
+      }
+
+      chunks.push(chunk);
+    });
     request.on('end', () => {
-      const { windowId, id, payload } = JSON.parse(Buffer.concat(chunks).toString());
+      let body;
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString());
+      } catch {
+        refuse(400);
+        return;
+      }
+
+      if (typeof body?.windowId !== 'string' || typeof body.id !== 'string' || typeof body.payload !== 'string' || !/^[A-Za-z0-9+/]*={0,2}$/.test(body.payload)) {
+        refuse(400);
+        return;
+      }
+
+      const frame = fromBase64(body.payload);
       for (const state of pages.values()) {
-        if (state.windowId === windowId) state.streams.get(id)?.send(fromBase64(payload));
+        if (state.windowId === body.windowId) state.streams.get(body.id)?.send(frame);
       }
 
       response.writeHead(200, { 'content-type': 'application/json' }).end('{}');
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  await context.addInitScript(`window.__hostBeacon = 'http://127.0.0.1:${String(server.address().port)}/frame';`);
+  const shutDown = async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  };
+
+  try {
+    await context.addInitScript(`window.__hostBeacon = 'http://127.0.0.1:${String(server.address().port)}/frame';`);
+  } catch (error) {
+    // The bridge was not set up: the listener does not stay open.
+    await shutDown();
+    throw error;
+  }
+
   context.on('page', (page) => {
     page.on('framenavigated', (frame) => {
-      if (frame === page.mainFrame() && frame.url() === 'about:blank') retire(page);
+      if (frame !== page.mainFrame()) return;
+      // A document that replaces the fixture's (another path, or a blank page) ends the streams of the old one, whether or not the page said it was leaving; a navigation inside the same document (the address's query or hash) does not.
+      const state = pages.get(page);
+      if (frame.url() === 'about:blank' || (state?.path !== undefined && new URL(frame.url()).pathname !== state.path)) retire(page);
     });
     page.on('close', () => {
       retire(page);
@@ -124,8 +173,7 @@ export async function serveContext(context, host) {
     streamsOf: (page) => [...(pages.get(page)?.streams.keys() ?? [])],
     close: async () => {
       for (const page of [...pages.keys()]) retire(page);
-      server.closeAllConnections();
-      await new Promise((resolve) => server.close(resolve));
+      await shutDown();
     },
   };
 }

@@ -1,6 +1,6 @@
 // The reattach sections of the Terminal probe (docs/ui-next/terminal-channel-protocol.md): a terminal survives a reload of the page, in a real xterm, in both engines at both viewports. The far end is the probe's own channel host
 // (terminal-host.mjs), held in this process for a whole browser context: it outlives the fixture page, and a second page of the same context shares it. The fixture page (`?host=shared`) forwards the host's calls to it, opens one stream
-// for each terminal through it, keeps its capabilities and its saved session in the host's window state (the real `loadSession` over a fake window service), and counts the numbered lines of a flood that its emulator is given.
+// for each terminal through it, keeps its capabilities in the tab's own sessionStorage (never in the host's window state: the probe fails if a `SaveState` call carries one) and its saved session in the host's window state (the real `loadSession` over a fake window service), and counts the numbered lines of a flood that its emulator is given.
 // The host models what the real one does: a capability answered once by `CreateTerminal` that is the only way to a terminal, one stream for each terminal that is its holder, a second stream with the capability that takes the terminal
 // (the first is sent `taken-over` and is refused from then on), a lease that runs when no stream holds the terminal and closes it silently when it ends, the kept end of a shell that ended while nobody held it, and a ring that a stream
 // is replayed from exactly where it asks. A page that goes away sends the `detach` frame as a keepalive request (the binding is dropped with the page in Chromium).
@@ -141,7 +141,8 @@ async function world(ctx, options = {}) {
     const before = context.pages().find((other) => other.url().startsWith(origin));
     const carried = before === undefined ? null : await before.evaluate((key) => window.sessionStorage.getItem(key), CAPABILITY_KEY).catch(() => null);
     const page = await context.newPage();
-    if (carried !== null) await page.addInitScript(([key, text]) => window.sessionStorage.getItem(key) ?? window.sessionStorage.setItem(key, text), [CAPABILITY_KEY, carried]);
+    // Seeded once, on the first load of the duplicate: a later load of a tab that forgot its capabilities must find none (the marker is a key of the tab's own storage).
+    if (carried !== null) await page.addInitScript(([key, text]) => { if (window.sessionStorage.getItem('probe.seeded') === null) { window.sessionStorage.setItem('probe.seeded', '1'); if (window.sessionStorage.getItem(key) === null) window.sessionStorage.setItem(key, text); } }, [CAPABILITY_KEY, carried]);
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForSelector('[data-shell-part="window"]');
     return page;
@@ -318,7 +319,19 @@ export function createReattachSections({ check, note, report, runAxe }) {
       await page.locator('[data-shell-part="sessionTabs"] [role="tab"]').nth(1).click();
       await until(async () => (await tabsOf(page)).findIndex((tab) => tab.selected), (index) => index === 1);
       const before = await tabsOf(page);
-      const saved = await sessionHolds(host, before.map((tab) => tab.id ?? '?'));
+      // The saver must have written THIS state: every tab, and the second one on screen (an older record with the third active is not it).
+      const savedActive = (text) => {
+        try {
+          return JSON.parse(text)?.panel?.active?.terminal;
+        } catch {
+          return undefined;
+        }
+      };
+      const saved = await until(
+        async () => slotOf(host, 'session'),
+        (text) => typeof text === 'string' && before.every((tab) => text.includes(tab.id ?? '?')) && savedActive(text) === before[1]?.id,
+        10_000,
+      );
       // The saver has written the session as it is now: the order and the tab on screen are in it.
       await until(async () => slotOf(host, 'session'), (text) => typeof text === 'string' && text.length > 0);
       const attachMark = host.log.attaches.length;
@@ -507,14 +520,16 @@ export function createReattachSections({ check, note, report, runAxe }) {
       await reload(page, w);
       const gridAfter = await page.evaluate(() => window.__engine.grid());
       await until(() => ({ state: host.state(id), sent: host.log.resizes.length - mark }), (now) => now.sent >= 2 && now.state?.rows === gridAfter.rows && now.state?.cols === gridAfter.cols && (now.state?.frame ?? 0) >= frame + 1, 6000);
-      await until(async () => rowsOf(page), (rows) => rows.some((row) => /FULLSCREEN frame/.test(row)), 6000);
+      // The screen must show the frame the host drew last, and not the one the replay brought: an older frame does not satisfy it.
+      const drawn = host.state(id).frame;
+      await until(async () => rowsOf(page), (rows) => rows.some((row) => row.includes(`FULLSCREEN frame ${String(drawn)} `)), 6000);
       const after = host.state(id);
       const resizes = host.log.resizes.slice(mark);
       const redrew = after.frame >= frame + 1 && resizes.length >= 2;
       const rowsNow = await rowsOf(page);
       check(
         'reattach.size',
-        fitted && redrew && after.rows === gridAfter.rows && after.cols === gridAfter.cols && rowsNow.some((row) => /FULLSCREEN frame/.test(row)),
+        fitted && redrew && after.rows === gridAfter.rows && after.cols === gridAfter.cols && rowsNow.some((row) => row.includes(`FULLSCREEN frame ${String(drawn)} `)),
         `${engine} ${vp}: after a reload in a window of another size the shell reported ${JSON.stringify(reported)} and the screen has ${String(grid.rows)} rows and ${String(grid.cols)} columns; the full-screen program drew frame ${String(frame)} before the next reload and ${String(after.frame)} after it, with ${JSON.stringify(resizes.map((entry) => `${String(entry.rows)}x${String(entry.cols)}`))} sent in between; the pty is ${String(after.rows)}x${String(after.cols)} and the screen ${String(gridAfter.rows)}x${String(gridAfter.cols)}; the screen shows the program: ${String(rowsNow.some((row) => /FULLSCREEN frame/.test(row)))}`,
       );
       note(`reattach size ${engine} ${vp}: the shell reported ${String(reported)} for a screen of ${String(grid.rows)}x${String(grid.cols)}; the full-screen program went from frame ${String(frame)} to ${String(after.frame)} with ${String(resizes.length)} sizes sent`);
@@ -582,11 +597,13 @@ export function createReattachSections({ check, note, report, runAxe }) {
       await page.goto('about:blank');
       await until(() => host.state(id)?.holder, (holder) => holder === null);
       const away = host.state(id);
+      // The lease is judged while nobody holds the terminal, and the attach that follows proves the page came back in time (not the clock after the replay was drawn).
+      const leaseOpen = away !== undefined && away.leaseExpires > Date.now() && away.holder === null;
       host.append(id, 'kept words\r\n');
       await comeBack(page, w);
       const rows = await until(async () => rowsOf(page), (shown) => shown.some((row) => /kept words/.test(row)), 8000);
       const attach = host.log.attaches.at(-1);
-      within = { running: away !== undefined && away.leaseExpires > Date.now() && away.holder === null, lane: await laneOf(page), words: rows.some((row) => /kept words/.test(row)), attach, held: host.state(id)?.holder === attach.stream, closed: host.log.closed.length };
+      within = { running: leaseOpen && attach.outcome === 'ready', lane: await laneOf(page), words: rows.some((row) => /kept words/.test(row)), attach, held: host.state(id)?.holder === attach.stream, closed: host.log.closed.length };
     } finally {
       await w.close();
     }

@@ -1091,9 +1091,10 @@ async function order(ctx) {
   await page.keyboard.press('Control+c');
   await page.keyboard.type('xy');
   const slow = await page
-    .waitForFunction((from) => (window.__pty.log.calls.length - from >= 3 ? window.__pty.log.calls.slice(from).map((call) => ({ kind: call.kind, outcome: call.outcome })) : null), mark, { timeout: 5000 })
+    .waitForFunction((from) => (window.__pty.log.calls.length - from >= 3 ? window.__pty.log.calls.slice(from).map((call) => ({ kind: call.kind, appliedWhenSent: call.appliedWhenSent })) : null), mark, { timeout: 5000 })
     .then((handle) => handle.jsonValue(), () => []);
-  check('order.nowait', slow.length >= 3 && slow[0].outcome === 'sent', `${engine}: with the host slow to apply a frame, ${String(slow.length)} frames were sent (3 or more is right: the one it is slow with and the keys behind it) while the first was ${slow[0]?.outcome ?? 'never sent'} (sent and not applied is right)`);
+  // Read from what the page recorded at each send, and not from a look at the log: the third frame was sent while none of the three had been applied, however late the probe looks.
+  check('order.nowait', slow.length >= 3 && slow[2].appliedWhenSent === slow[0].appliedWhenSent, `${engine}: with the host slow to apply a frame, ${String(slow.length)} frames were sent (3 or more is right: the one it is slow with and the keys behind it) while ${String((slow[2]?.appliedWhenSent ?? 0) - (slow[0]?.appliedWhenSent ?? 0))} of them had been applied when the third was sent (none is right)`);
   note(`order ${engine}: ${String(made.calls.length)} frames on ${String(made.streams)} stream, applied in the order they were sent, the shell was given the line typed in the order it was typed; with the first of three frames slow, ${String(slow.length)} were sent`);
   report.numbers[`order ${engine}`] = { calls: made.calls, slow };
   await page.context().close();

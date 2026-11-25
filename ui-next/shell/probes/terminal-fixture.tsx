@@ -136,7 +136,7 @@ const sockets = new Map<string, FixtureSocket>();
 let socketSerial = 0;
 
 /** The credit as the page made it, and what the probe reads of the stream: see the header (`window.__pty.log`). */
-type Call = { readonly kind: 'write' | 'resize'; readonly size: number; readonly at: number; entry: { readonly outcome?: string; readonly appliedAt?: number | null; readonly application?: number | null } | undefined };
+type Call = { readonly kind: 'write' | 'resize'; readonly size: number; readonly at: number; /** How many frames the host had applied when this one was sent: a record made at the instant of the send, which a later look at the log cannot change. */ readonly appliedWhenSent: number; entry: { readonly outcome?: string; readonly appliedAt?: number | null; readonly application?: number | null } | undefined };
 const calls: Call[] = [];
 const credit = {
   acks: [] as number[],
@@ -160,7 +160,7 @@ const net = {
 };
 
 /** `window.__link` (shared host): the probe cuts the page's streams (`down()`: every stream is dropped and a stream opened meanwhile closes at once) and lets them be opened again (`up()`). */
-const link = { up: true, dropped: 0, twice: false, writes: 0, listed: 0, listsFail: false, reached: new Map<string, number>() };
+const link = { up: true, dropped: 0, twice: false, writes: 0, listed: 0, started: 0, listsFail: false, reached: new Map<string, number>() };
 
 /** `window.__acks`: the probe holds the acknowledgement frames of the page from the moment it asks (`hold()`): they are in flight with no word until `release()`, when they are lost with the stream they were on or, after `accept()`, handed to the host late. */
 const acks = { holding: false, accepting: false, held: [] as Array<{ socket: FixtureSocket; frame: Uint8Array }> };
@@ -189,10 +189,17 @@ class FixtureSocket implements ChannelSocket {
   private retired: Backend | undefined;
   private first = true;
   private lastArrival = Promise.resolve();
+  /** The frames delayed by the simulated latency and not yet delivered: a later frame goes behind them. */
+  private inFlight = 0;
 
   constructor(open: (socket: FixtureSocket) => Backend | undefined) {
     sockets.set(this.id, this);
     macrotask(() => {
+      // A socket that was dropped (or closed) before its turn is never opened: the backend would have no route back to it.
+      if (this.readyState !== 0) {
+        return;
+      }
+
       if (!link.up) {
         this.over();
         return;
@@ -319,7 +326,7 @@ class FixtureSocket implements ChannelSocket {
         link.writes += 1;
       }
 
-      calls.push({ kind: type === FRAME.input ? 'write' : 'resize', size: data.length - 1, at: performance.now(), entry: undefined });
+      calls.push({ kind: type === FRAME.input ? 'write' : 'resize', size: data.length - 1, at: performance.now(), appliedWhenSent: calls.filter((call) => (call.entry?.application ?? null) !== null).length, entry: undefined });
     }
 
     this.forward(new Uint8Array(data));
@@ -340,12 +347,15 @@ class FixtureSocket implements ChannelSocket {
       }
     };
 
-    if (net.latency > 0) {
-      const wait = Math.random() * net.latency;
+    // One ordered connection: a frame waits behind every frame that is still on its way, even when the latency is zero by now.
+    if (net.latency > 0 || this.inFlight > 0) {
+      const wait = net.latency > 0 ? Math.random() * net.latency : 0;
+      this.inFlight += 1;
       this.lastArrival = this.lastArrival.then(
         async () =>
           new Promise<void>((resolve) => {
             setTimeout(() => {
+              this.inFlight -= 1;
               deliver();
               resolve();
             }, wait);
@@ -517,8 +527,13 @@ function openBackend(socket: FixtureSocket): Backend | undefined {
 
 /** What the probe's host sent on the page's streams, in the order it sent it. */
 Object.assign(window, {
-  __hostFrames: (items: ReadonlyArray<{ readonly id: string; readonly frame?: string; readonly close?: true }>): void => {
+  __hostFrames: (items: ReadonlyArray<{ readonly id: string; readonly load?: string; readonly frame?: string; readonly close?: true }>): void => {
     for (const item of items) {
+      // Socket ids restart in every page load: what the host sent to a stream of an earlier load is not for this one.
+      if (item.load !== undefined && item.load !== windowId) {
+        continue;
+      }
+
       const socket = sockets.get(item.id);
       if (socket === undefined) {
         continue;
@@ -551,6 +566,7 @@ const client: ChannelClient = {
   DismissChannelTerminal: async (cap) => callHost('DismissChannelTerminal', [cap]),
   ChannelTerminalBusy: async (cap) => callHost('ChannelTerminalBusy', [cap]),
   ListChannelTerminals: async (caps) => {
+    link.started += 1;
     try {
       // From the moment the probe arms it (`window.__link.failLists(true)`, its control `refresh-skipped`) the host's list cannot be had: the page cannot learn who holds a terminal it lost.
       if (link.listsFail) {
@@ -631,7 +647,7 @@ if (shared) {
       arm: (on: boolean): void => {
         link.twice = on;
       },
-      state: (): { up: boolean; dropped: number; writes: number; listed: number; streams: number; delivered: Record<string, number> } => ({ up: link.up, dropped: link.dropped, writes: link.writes, listed: link.listed, streams: sockets.size, delivered: Object.fromEntries(link.reached) }),
+      state: (): { up: boolean; dropped: number; writes: number; listed: number; started: number; streams: number; delivered: Record<string, number> } => ({ up: link.up, dropped: link.dropped, writes: link.writes, listed: link.listed, started: link.started, streams: sockets.size, delivered: Object.fromEntries(link.reached) }),
       failLists: (on: boolean): void => {
         link.listsFail = on;
       },
@@ -723,8 +739,8 @@ const log = {
     return localHost?.log.busy ?? [];
   },
   /** Every input and resize frame, in the order the page sent them, and the host's own record of applying each. */
-  get calls(): Array<{ kind: 'write' | 'resize'; size: number; at: number; outcome: string; application: number | null; appliedAt: number | null }> {
-    return calls.map((call) => ({ kind: call.kind, size: call.size, at: call.at, outcome: call.entry?.outcome === undefined || call.entry.outcome === 'received' ? 'sent' : call.entry.outcome, application: call.entry?.application ?? null, appliedAt: call.entry?.appliedAt ?? null }));
+  get calls(): Array<{ kind: 'write' | 'resize'; size: number; at: number; appliedWhenSent: number; outcome: string; application: number | null; appliedAt: number | null }> {
+    return calls.map((call) => ({ kind: call.kind, size: call.size, at: call.at, appliedWhenSent: call.appliedWhenSent, outcome: call.entry?.outcome === undefined || call.entry.outcome === 'received' ? 'sent' : call.entry.outcome, application: call.entry?.application ?? null, appliedAt: call.entry?.appliedAt ?? null }));
   },
   /** The streams the page opened, and the detach frames it sent. */
   get streams(): number {
