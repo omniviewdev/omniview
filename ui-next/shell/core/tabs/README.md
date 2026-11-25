@@ -13,7 +13,7 @@ A tab record is split into the parts that different consumers read: `location` (
 ```ts
 open(destination, { how?, source?, after?, confirmed? }): OpenResult   // smart | here | new | background | window
 activate(id) · next() · previous() · goto(n) · last()
-close(id?) · closeMany('others' | 'right' | 'left' | 'unpinned') · reopen({ id? }) · duplicate(id?)
+close(id?) · detach(id) · closeMany('others' | 'right' | 'left' | 'unpinned') · reopen({ id? }) · duplicate(id?)
 navigate(id, destination, { history?: 'push' | 'replace', reuse? }) · replace(id, route)   // replace: an in-page change; reuse: show the tab that already shows the destination
 back(id?) · forward(id?) · canBack(id?) · canForward(id?) · historyList(id?, 'back' | 'forward')
 ```
@@ -66,4 +66,4 @@ Every operation is O(1) or O(tabs) and asks the plugins a fixed number of questi
 
 ## Not here
 
-Windows and split panes (no window kind exists; `how: 'window'` is handed back), the New tab menu and All tabs menu as view models, the command registry and keymap, plugin health and the tab state it derives (ready, loading, failed), operations and what makes a tab busy, drag, and the page host's scroll and focus. `testing.ts` is test support: a fixture world of plugins that import nothing real.
+Windows and split panes (the model has no windows: `how: 'window'` is handed back and the host opens it, `ui-next/plugins/host/windows.ts`; `detach` takes a tab that moved to another window out of the strip without offering it under Recently closed), the New tab menu and All tabs menu as view models, the command registry and keymap, plugin health and the tab state it derives (ready, loading, failed), operations and what makes a tab busy, drag, and the page host's scroll and focus. `testing.ts` is test support: a fixture world of plugins that import nothing real.

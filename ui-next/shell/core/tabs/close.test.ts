@@ -378,3 +378,42 @@ describe('duplicate (ch16 S37)', () => {
     expect(h.store.duplicate('nope')).toMatchObject({ status: 'refused', reason: 'missing' });
   });
 });
+
+describe('detach (a tab that moved to another window)', () => {
+  it('takes the tab out like close, shows its neighbour, and leaves the closed list as it was so Reopen cannot bring back a tab that lives in another window', () => {
+    const h = boot();
+    const [a, b, c] = h.openAll(['instances', 'buckets', 'volumes']);
+    h.store.close(a);
+    const closed = h.state().closed;
+    h.store.activate(b);
+
+    expect(h.store.detach(b)).toEqual({ status: 'done', closed: [b], active: c });
+
+    expect(h.ids()).not.toContain(b);
+    expect(h.active()).toBe(c);
+    expect(h.state().closed).toBe(closed);
+    sound(h);
+  });
+
+  it('leaves a sound, empty strip when the last tab goes, with nothing to reopen', () => {
+    const h = boot();
+    const home = h.current();
+    h.store.detach(home);
+    expect(h.ids()).toEqual([]);
+    expect(h.state().closed).toEqual([]);
+    expect(h.store.canReopen().ok).toBe(false);
+    sound(h);
+  });
+
+  it('asks before it drops a tab with unsaved changes, and goes on when confirmed', () => {
+    const h = boot();
+    const [a] = h.openAll(['instances']);
+    h.store.setUnsaved(a, true);
+    const before = h.state();
+
+    expect(h.store.detach(a)).toEqual({ status: 'confirm', action: 'close', tabs: [a] });
+    expect(h.state()).toBe(before);
+    expect(h.store.detach(a, { confirmed: true })).toMatchObject({ status: 'done', closed: [a] });
+    expect(h.ids()).not.toContain(a);
+  });
+});

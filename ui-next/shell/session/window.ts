@@ -42,7 +42,7 @@ export function windowStorage({ client, name }: WindowStorageOptions): SessionSt
 }
 
 /** The window the host's service keeps for a page served to a browser (and the only one a development instance has): `window.MainWindowName` in `backend/window`. */
-const MAIN_WINDOW = 'main';
+export const MAIN_WINDOW = 'main';
 
 export type WindowNameOptions = {
   /** The name the runtime gives the window this page is in. */

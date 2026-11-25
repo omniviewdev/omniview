@@ -79,6 +79,7 @@ import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
 import { currentRail, failedOf, railOf, type RailEntry } from './rail';
 import { NO_PARAMS, type HostRoute } from './route';
+import { withWindows, type WindowService } from './windows';
 
 // The Plugins page is the host's own page (ch16 S9): one registration, and a test or a probe registers another in its place.
 registerHostPage(pluginsPage);
@@ -148,6 +149,8 @@ export type PluginHostProps = {
    * knows for its connections, and the host's own way of opening an address (`openExternal.ts`). A test or a probe gives a fake host.
    */
   readonly ports?: Partial<PortsDeps> | undefined;
+  /** The host's window service, where the app has native windows: `how: 'window'` opens one, and a secondary window closes when its last tab leaves. Absent in a browser tab, which has one window and refuses the request. */
+  readonly windows?: WindowService | undefined;
 };
 
 type Host = {
@@ -246,7 +249,7 @@ function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined, windows: WindowService | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
@@ -260,7 +263,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const logs = createLogStreams(store);
   // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again.
   const terminals = createTerminals(store, terminalOptions, { screenReader: restored?.terminalScreenReader });
-  const tabs = createTabsStore({ contributions, initial: restored?.tabs });
+  const tabs = withWindows(createTabsStore({ contributions, initial: restored?.tabs }), store, windows);
   // A page forwards a port where the window has a networker to ask, from a user action: the Ports tool is shown once a forward has started, and a plugin that stops has no forwards left (the host says nothing of it, the window's own store does).
   const forwarding: PortForwarding | undefined =
     networker === undefined
@@ -789,9 +792,9 @@ function portsBodyOf(ports: Ports): ReactElement {
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, userActivation, ports: portsOptions }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, userActivation, ports: portsOptions, windows }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions, windows));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
@@ -976,11 +979,11 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const newTab =
     railPlugin === undefined
       ? undefined
-      : () => {
+      : (after?: TabId) => {
         const home = host.contributions.home?.(railPlugin);
         if (home !== undefined) {
           whenListed(() => {
-            tabs.open({ route: carried === undefined ? home : { ...home, params: { ...home.params, connection: carried } } }, { how: 'new', source: 'new-tab' });
+            tabs.open({ route: carried === undefined ? home : { ...home, params: { ...home.params, connection: carried } } }, { how: 'new', after, source: 'new-tab' });
           });
         }
       };

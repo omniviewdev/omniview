@@ -1,5 +1,6 @@
 import { activityClient, ActivityProvider, useActivities } from '@omniviewdev/runtime';
 import { NetworkerClient, WindowClient } from '@omniviewdev/runtime/api';
+import { window as windowModels } from '@omniviewdev/runtime/models';
 import { Browser, Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
@@ -14,6 +15,7 @@ import { PluginStore } from './pluginStore';
 import type { PortForwardNetwork } from './portForward';
 import { useHashLink } from './route';
 import { useInstalledPlugins } from './useInstalledPlugins';
+import type { WindowService } from './windows';
 
 /**
  * Hands what the runtime's activity provider holds to the feed the Problems and Operations tools read (`shell/panel/activity.ts`): its records, and its `unavailable`, the sentence for why it cannot observe the host's activity service
@@ -84,6 +86,13 @@ const networker: PortForwardNetwork = {
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
 const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
 
+/** The host's window service over the runtime's calls: the name of this window, a new workspace window with the session it starts from, and a window's close. */
+const windowService: WindowService = {
+  name: windowName,
+  open: async (session) => WindowClient.Open({ kind: windowModels.Kind.KindWorkspace, initialState: { session }, anchorWindow: '', clientX: 0, clientY: 0, hasPosition: false, width: 0, height: 0 }),
+  close: async (name) => WindowClient.Close(name),
+};
+
 /**
  * This window's saved session, read through the host's window service: the slots the Go side keeps for the window this page is in (`backend/window`, persisted to `windows.json` in the
  * instance's state root). It never rejects: a window that cannot name itself, or whose slots cannot be read, starts empty and saves nothing, with a note on the console (`shell/session`).
@@ -108,6 +117,7 @@ const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(notice
 export function PluginHostScreen() {
   const [store] = useState(() => new PluginStore());
   const [onCloseWindow] = useState(() => (isNativeWindow() ? closeWindow : undefined));
+  const [windows] = useState(() => (isNativeWindow() ? windowService : undefined));
   const [openSettingsWindow] = useState(() => (isNativeWindow() ? showSettingsWindow : undefined));
   const inventory = useInstalledPlugins();
   const link = useHashLink();
@@ -164,6 +174,7 @@ export function PluginHostScreen() {
           }}
           onRetryInventory={inventory.retry}
           onCloseWindow={onCloseWindow}
+          windows={windows}
           openSettingsWindow={openSettingsWindow}
           session={loaded.session}
           savedNotices={loaded.notices}

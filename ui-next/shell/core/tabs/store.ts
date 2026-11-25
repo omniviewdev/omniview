@@ -1,5 +1,5 @@
 import { activate, activateOffset, canGo, consumeReveal, goto, historyList, keep, last, markAttention, pin, refresh, reload, reorder, setKeepAlive, setPageState, setUnsaved, step } from './arrange';
-import { canReopen, close, closeMany, closePlugin, duplicate, reopen } from './close';
+import { canReopen, close, closeMany, closePlugin, detach, duplicate, reopen } from './close';
 import { normaliseKeepAlive } from './keepAlive';
 import { ensureHome, navigate, open, replace } from './open';
 import { serialise } from './persist';
@@ -73,6 +73,8 @@ export type TabsStore = {
 
   /** Defaults to the tab on screen. */
   readonly close: (id?: TabId, guard?: Guard) => CloseResult;
+  /** Takes a tab out of the strip because it now lives in another window: like `close`, but it is not offered under Recently closed. */
+  readonly detach: (id: TabId, guard?: Guard) => CloseResult;
   readonly closeMany: (scope: CloseScope, id?: TabId, guard?: Guard) => CloseResult;
   readonly closePlugin: (plugin: string, guard?: Guard) => CloseResult;
   readonly reopen: (options?: ReopenOptions) => TabResult;
@@ -111,7 +113,7 @@ const DEFAULT_PREFERENCES: Preferences = Object.freeze({ openResults: 'smart', r
 
 /** A random id from the platform; without one the clock and a counter stand in, which is unique within a run. */
 let fallbackCounter = 0;
-function newUuid(): TabId {
+export function newUuid(): TabId {
   const crypto: Crypto | undefined = (globalThis as { crypto?: Crypto }).crypto;
   if (typeof crypto?.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -202,6 +204,7 @@ export function createTabsStore(options: TabsStoreOptions): TabsStore {
     last: () => run(last(state)),
 
     close: (id, guard) => run(close(state, target(id), guard)),
+    detach: (id, guard) => run(detach(state, id, guard)),
     closeMany: (scope, id, guard) => run(closeMany(state, scope, target(id), guard)),
     closePlugin: (plugin, guard) => run(closePlugin(state, plugin, guard)),
     reopen: (reopenOptions) => run(reopen(state, ctx, reopenOptions)),
