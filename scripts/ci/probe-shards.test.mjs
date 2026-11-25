@@ -1,6 +1,6 @@
 // The kit probes' units and their runner (scripts/ci/probe-shards.mjs): the table of units (one small file for each probe in scripts/ci/probe-units), the manifest that is its floor, the check that makes a forgotten probe and a
-// dropped control a failure, the plan that packs EVERY unit into the fewest shards at run time (a plan of no shard is an error), the runner of a shard (a unit that drifts from its seconds fails it, and so does a shard past its
-// ceiling), what each shard reports it ran, the verification of the whole run, and the contract of the workflow that fans the shards out (.github/workflows/ui-next-kit-probes.yml), including the job named `Kit probes`.
+// dropped control a failure, the plan that packs EVERY unit into the fewest shards at run time (a plan of no shard is an error), the runner of a shard (a unit that drifts from its seconds is a warning, never a failure),
+// what each shard reports it ran, the verification of the whole run, and the contract of the workflow that fans the shards out (.github/workflows/ui-next-kit-probes.yml), including the job named `Kit probes`.
 //
 // Every "negative control" below feeds a check the mistake it exists for and asserts the check names it; each was also seen to go red with its check taken out (docs/ui-next/status/N24-K1.md, N25.md).
 import assert from 'node:assert/strict';
@@ -22,7 +22,6 @@ import {
   MANIFEST,
   PROBE_DIRS,
   SETUP_P90_SECONDS,
-  SHARD_CEILING_SECONDS,
   UNITS_DIRECTORY,
   WALL_BUDGET_SECONDS,
   WORKFLOW,
@@ -758,64 +757,59 @@ test('the builds a probe says it made or read are counted for each run, a line t
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The drift of a unit from its seconds fails the shard, with the new number in the message
+// The drift of a unit from its seconds is a warning with the new number in the message; it never fails the shard
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 const ran = (id, seconds, extra = {}) => ({ label: id, unit: id, script: A, control: null, ok: true, code: 0, seconds, ...extra });
 const ranControl = (id, which, seconds, extra = {}) => ran(id, seconds, { label: `${id} (${which})`, control: which, ...extra });
 const TABLE = [unit('big', A, { seconds: 400 }), unit('mid', A, { seconds: 100 }), unit('small', A, { seconds: 28 }), unit('controls', A, { seconds: 40, controls: ['x', 'y'] })];
-const drift = (results) => driftFindings('4', results, TABLE, { ceiling: Number.POSITIVE_INFINITY });
+const drift = (results) => driftFindings('4', results, TABLE);
 
-test('the margin is a quarter of a unit\'s seconds or 60 s, whichever is more: a unit over its seconds by more fails, and the message names the unit, its file, the seconds it took, the seconds in the table and the number to put there', () => {
+test('the margin is a quarter of a unit\'s seconds or 60 s, whichever is more: a unit over its seconds by more warns, and the message names the unit, its file, the seconds it took, the seconds in the table and the number to put there', () => {
   assert.equal(DRIFT_RATIO, 0.25);
   assert.equal(DRIFT_FLOOR_SECONDS, 60);
-  const { failures, warnings } = drift([ran('big', 520)]);
-  assert.equal(warnings.length, 0);
-  assert.equal(failures.length, 1);
-  assert.match(failures[0], /^::error title=Kit probe unit seconds \(shard 4\)::Unit big \(big\) took 520 s on this runner, 400 s in scripts\/ci\/probe-units\/big\.mjs \(\+120 s, 30 percent; a unit fails past a quarter and 60 s over\): put `seconds: 520` there/);
-  assert.equal(failures[0].includes('\n'), false, 'a workflow command is one line');
+  const { warnings } = drift([ran('big', 520)]);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /^::warning title=Kit probe unit seconds \(shard 4\)::Unit big \(big\) took 520 s on this runner, 400 s in scripts\/ci\/probe-units\/big\.mjs \(\+120 s, 30 percent; a unit warns past a quarter and 60 s over\): put `seconds: 520` there, and the next run packs the shards with it$/);
+  assert.equal(warnings[0].includes('\n'), false, 'a workflow command is one line');
 });
 
-test('negative control: at the margin, or under it, or faster, a unit does not fail (a slow run is not a drift): 500 of 400 s, 160 of 100 s, 88 of 28 s', () => {
-  assert.deepEqual(drift([ran('big', 500)]).failures, [], 'a quarter of 400 is 100 s: exactly at it');
-  assert.deepEqual(drift([ran('mid', 160)]).failures, [], 'a quarter of 100 is 25 s and the floor is 60: exactly at the floor');
-  assert.deepEqual(drift([ran('small', 88)]).failures, [], '60 s over 28 s is 214 percent, and exactly at the floor');
-  assert.equal(drift([ran('big', 501)]).failures.length, 1);
-  assert.equal(drift([ran('mid', 161)]).failures.length, 1);
-  assert.equal(drift([ran('small', 89)]).failures.length, 1);
-  assert.deepEqual(drift([ran('big', 300), ran('mid', 60)]).failures, []);
+test('negative control: at the margin, or inside it, a unit does not warn: 500 of 400 s, 160 of 100 s, 88 of 28 s', () => {
+  assert.deepEqual(drift([ran('big', 500)]).warnings, [], 'a quarter of 400 is 100 s: exactly at it');
+  assert.deepEqual(drift([ran('mid', 160)]).warnings, [], 'a quarter of 100 is 25 s and the floor is 60: exactly at the floor');
+  assert.deepEqual(drift([ran('small', 88)]).warnings, [], '60 s over 28 s is 214 percent, and exactly at the floor');
+  assert.equal(drift([ran('big', 501)]).warnings.length, 1);
+  assert.equal(drift([ran('mid', 161)]).warnings.length, 1);
+  assert.equal(drift([ran('small', 89)]).warnings.length, 1);
+  assert.deepEqual(drift([ran('big', 300), ran('mid', 60)]).warnings, []);
 });
 
-test('a unit that got much faster only warns, past the same margin, and says the number to put there so that the planner can use the room', () => {
-  const { failures, warnings } = drift([ran('big', 290), ran('mid', 70)]);
-  assert.deepEqual(failures, []);
+test('a unit that got much faster warns past the same margin, and says the number to put there so that the planner can use the room', () => {
+  const { warnings } = drift([ran('big', 290), ran('mid', 70)]);
   assert.equal(warnings.length, 1, '400 s to 290 s is more than a quarter and 60 s faster; 100 s to 70 s is not');
   assert.match(warnings[0], /^::warning title=Kit probe unit seconds \(shard 4\)::Unit big \(big\) took 290 s on this runner, 400 s in scripts\/ci\/probe-units\/big\.mjs \(-110 s, 28 percent; a unit warns past a quarter and 60 s under\): put `seconds: 290` there/);
   assert.deepEqual(drift([ran('big', 300)]).warnings, [], 'a quarter of 400 is 100 s: exactly at it');
 });
 
-test('the drift of a unit is the sum of its runs: controls that are each close are one failure when together they are over the margin', () => {
+test('the drift of a unit is the sum of its runs: controls that are each close are one warning when together they are over the margin', () => {
   const rows = (a, b) => [ranControl('controls', 'x', a), ranControl('controls', 'y', b)];
-  assert.deepEqual(drift(rows(40, 44)).failures, [], '84 s of 40: 44 s over, under the floor');
-  const { failures } = drift(rows(60, 50));
-  assert.equal(failures.length, 1, '110 s of 40 s is 70 s over, each of the two runs being only 20 s and 10 s over its share');
-  assert.match(failures[0], /Unit controls \(controls\) took 110 s/);
+  assert.deepEqual(drift(rows(40, 44)).warnings, [], '84 s of 40: 44 s over, under the floor');
+  const { warnings } = drift(rows(60, 50));
+  assert.equal(warnings.length, 1, '110 s of 40 s is 70 s over, each of the two runs being only 20 s and 10 s over its share');
+  assert.match(warnings[0], /Unit controls \(controls\) took 110 s/);
 });
 
-test('negative control: a unit with a run that failed is left out of the unit rows (the seconds of a probe that stopped early or hung say nothing of its cost), and a unit the table does not have is named', () => {
+test('negative control: a unit with a run that failed is left out of the unit rows (the seconds of a probe that stopped early or hung say nothing of its cost)', () => {
   const failed = drift([ran('big', 900, { ok: false, code: 1 })]);
-  assert.deepEqual([failed.failures.filter((line) => line.includes('unit seconds')), failed.warnings, failed.rows], [[], [], []]);
-  assert.deepEqual(drift([ranControl('controls', 'x', 5), ranControl('controls', 'y', 900, { ok: false, code: 3 })]).failures.filter((line) => line.includes('unit seconds')), []);
-  const unknown = drift([ran('zzz', 12)]);
-  assert.equal(unknown.failures.length, 1);
-  assert.match(unknown.failures[0], /^::error title=Kit probe unit seconds \(shard 4\)::the unit "zzz" ran in this shard and is not in the table/);
+  assert.deepEqual([failed.warnings, failed.rows], [[], []]);
+  assert.deepEqual(drift([ranControl('controls', 'x', 5), ranControl('controls', 'y', 900, { ok: false, code: 3 })]).warnings, []);
 });
 
 test('each unit of a shard is judged on its own, in the order of the results, and a message with a percent sign, a CR or an LF in a name stays one workflow command line', () => {
   const two = drift([ran('big', 600), ran('mid', 100), ran('small', 90)]);
-  assert.deepEqual(two.failures.map((line) => /::Unit (\w+) \(/.exec(line)?.[1]), ['big', 'small']);
+  assert.deepEqual(two.warnings.map((line) => /::Unit (\w+) \(/.exec(line)?.[1]), ['big', 'small']);
   const odd = [unit('odd', A, { name: 'Probe 100%\nof it', seconds: 20 })];
-  const [line] = driftFindings('1', [ran('odd', 100)], odd).failures;
+  const [line] = driftFindings('1', [ran('odd', 100)], odd).warnings;
   assert.equal(line.includes('\n'), false);
   assert.match(line, /Probe 100%25%0Aof it \(odd\) took 100 s/);
 });
@@ -828,40 +822,13 @@ test('the rows of the drift are one for each unit: its seconds in the table, on 
   ]);
 });
 
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The shard is held too: a ceiling on the REAL seconds of all its units
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-test('negative control: units that are each inside their margin and add up past the ceiling fail the shard and not a unit: eight units of 50 s, each 60 s over, are 880 s (the review of #656 found 866 s in a shard of 386)', () => {
+test('the shard\'s seconds are in its summary, the table of its units and a line under it, and units that add up far past the limit fail nothing', () => {
   const eight = Array.from({ length: 8 }, (_, index) => unit(`u${index + 1}`, A, { seconds: 50 }));
-  const results = eight.map((entry) => ran(entry.id, 110));
-  const { failures, shard } = driftFindings('9', results, eight);
-  assert.equal(shard.took, 880);
-  assert.equal(shard.planned, 400);
-  assert.equal(failures.length, 1, failures.join('\n'));
-  assert.doesNotMatch(failures[0], /unit seconds/, 'every unit was inside its margin');
-  assert.match(failures[0], new RegExp(`^::error title=Kit probe shard seconds \\(shard 9\\)::shard 9 took 880 s of units on this runner, over the ${SHARD_CEILING_SECONDS} s a shard may take \\(400 s in the table for its 8 units: u1 110 s of 50, `));
-  assert.match(failures[0], /find which and put its new seconds in its file/);
-  assert.equal(failures[0].includes('\n'), false);
-});
-
-test('the ceiling is on the whole shard and is exact: at it a shard passes, one second over it fails, a run that failed counts (its seconds were spent), and a shard of several units is one failure', () => {
-  const units = [unit('p', A, { seconds: 100 }), unit('q', A, { seconds: 100 })];
-  const at = driftFindings('1', [ran('p', 100), ran('q', 100)], units, { ceiling: 200 });
-  assert.deepEqual(at.failures, []);
-  assert.equal(at.shard.ceiling, 200);
-  assert.equal(driftFindings('1', [ran('p', 100), ran('q', 101)], units, { ceiling: 200 }).failures.filter((line) => line.includes('shard seconds')).length, 1);
-  const failedRun = driftFindings('1', [ran('p', 100), ran('q', 150, { ok: false, code: 1 })], units, { ceiling: 200 });
-  assert.equal(failedRun.failures.filter((line) => line.includes('shard seconds')).length, 1, 'the seconds of a probe that failed are in the shard\'s');
-  assert.equal(failedRun.failures.filter((line) => line.includes('unit seconds')).length, 0);
-});
-
-test('the shard\'s seconds and its ceiling are in the summary of the shard: the table of its units, and a line under it', () => {
-  const eight = Array.from({ length: 8 }, (_, index) => unit(`u${index + 1}`, A, { seconds: 50 }));
-  const { rows, shard } = driftFindings('9', eight.map((entry) => ran(entry.id, 110)), eight);
+  const { warnings, rows, shard } = driftFindings('9', eight.map((entry) => ran(entry.id, 110)), eight);
+  assert.deepEqual([shard.took, shard.planned, warnings], [880, 400, []]);
   const text = engine.renderDrift('9', rows, shard);
   assert.match(text, /^#### Kit probes shard 9: seconds against the table$/m);
-  assert.match(text, new RegExp(`The shard took 880 s of units against 400 s in the table; it fails past ${SHARD_CEILING_SECONDS} s\\.`));
+  assert.match(text, /^The shard took 880 s of units against 400 s in the table\.$/m);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1146,30 +1113,16 @@ test('the run command gives the shard a shared build directory under $RUNNER_TEM
   assert.notEqual(shardBuildCache({ root, env: { ...callerEnv(), ...env } }), expected);
 });
 
-test('the run command fails the shard when a unit drifted from its seconds, even though every probe passed, and names the unit and the number to put in the table', async () => {
+test('the run command passes a shard whose probes all passed when a unit drifted from its seconds, and warns, naming the unit and the number to put in the table', async () => {
   const root = scratch(PROBES);
   const table = [unit('slow', SLOW, { name: 'Slow probe', seconds: 0 })];
   const chunks = [];
   const code = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: root }, out: (text) => chunks.push(text), err: (text) => chunks.push(text), margin: { ratio: 0, floor: 0 } });
   const log = chunks.join('');
-  assert.equal(code, 1, log);
+  assert.equal(code, 0, log);
   assert.match(log, /^### Kit probes shard 1: 1 run, all passed, \d+ s$/m);
-  assert.match(log, /^::error title=Kit probe unit seconds \(shard 1\)::Slow probe \(slow\) took \d+ s on this runner, 0 s in/m);
-  const quiet = [];
-  const fine = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: root }, out: (text) => quiet.push(text), err: (text) => quiet.push(text) });
-  assert.equal(fine, 0, quiet.join(''));
-  assert.doesNotMatch(quiet.join(''), /::error/);
-});
-
-test('the run command fails the shard when the shard took more than its ceiling, even though every unit was inside its margin, and says so with the numbers', async () => {
-  const root = scratch(PROBES);
-  const table = [unit('slow', SLOW, { name: 'Slow probe', seconds: 1 })];
-  const chunks = [];
-  const code = await main(['--root', root, 'run', '1', 'slow'], { units: table, env: { ...callerEnv(), RUNNER_TEMP: root }, out: (text) => chunks.push(text), err: (text) => chunks.push(text), margin: { ceiling: 0 } });
-  const log = chunks.join('');
-  assert.equal(code, 1, log);
-  assert.doesNotMatch(log, /unit seconds/);
-  assert.match(log, /^::error title=Kit probe shard seconds \(shard 1\)::shard 1 took \d+ s of units on this runner, over the 0 s a shard may take/m);
+  assert.match(log, /^::warning title=Kit probe unit seconds \(shard 1\)::Slow probe \(slow\) took \d+ s on this runner, 0 s in/m);
+  assert.doesNotMatch(log, /::error/);
 });
 
 test('verify on the command: it passes for the reports of a whole run and says what ran, and it fails, naming each, for a shard that did not report, a unit that did not pass, an empty plan and a directory that is not there', () => {

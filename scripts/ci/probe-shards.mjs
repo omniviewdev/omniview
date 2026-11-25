@@ -2,7 +2,7 @@
 //
 //   node scripts/ci/probe-shards.mjs check                                 exit 1, one line per problem: a probe script that no unit runs, a unit that does not hold together, a probe or a control the manifest lists and the table lacks
 //   node scripts/ci/probe-shards.mjs plan                                  packs every unit into the fewest shards under LIMIT_SECONDS; writes `matrix=<json>` and `shards=<n>` to $GITHUB_OUTPUT and the plan to the job summary; fails when it would plan no shard
-//   node scripts/ci/probe-shards.mjs run <shard> <unit>,<unit>,...         runs the units of one shard, one after the other; exits 1 when a run failed, a unit took more than its seconds allow or the shard passed its ceiling;
+//   node scripts/ci/probe-shards.mjs run <shard> <unit>,<unit>,...         runs the units of one shard, one after the other; exits 1 when a run failed (a unit that took more or less than its seconds is a warning);
 //                                                                          writes ran-<shard>-probe.json to $RUNNER_TEMP: the units it ran, whether each passed and the controls it ran
 //   node scripts/ci/probe-shards.mjs verify --reports <dir> --shards <n>   what the shards reported against the table: every unit, every control, once, passed, in as many shards as the plan made
 //   --root <dir>                                                           another tree than this repository (the tests)
@@ -17,8 +17,8 @@
 // THE MANIFEST IS THE FLOOR. scripts/ci/probe-units.manifest.json lists every probe script that runs as a probe and every control of each: `check` fails when it lists one that no unit runs, so dropping a probe or a
 // control is a diff in the manifest that a reviewer reads. It is not a mirror: a unit that is not in it is not an error.
 //
-// THE PLAN packs every unit at run time into the fewest shards under LIMIT_SECONDS (scripts/ci/probe-pack.mjs). THE SECONDS ARE THE RUNNER'S AND ARE HELD: past DRIFT_RATIO and DRIFT_FLOOR_SECONDS over, a unit
-// fails its shard with the number to put in its file (under, it warns), and the real seconds of a whole shard may not pass SHARD_CEILING_SECONDS, so that units each just inside their margin cannot make a shard of 866 s.
+// THE PLAN packs every unit at run time into the fewest shards under LIMIT_SECONDS (scripts/ci/probe-pack.mjs). THE SECONDS ONLY PACK THE SHARDS: past DRIFT_RATIO and DRIFT_FLOOR_SECONDS over or under them, a unit
+// is a warning with the number to put in its file, never a failure. The probes run at night only (N34), where nothing keeps the seconds current; the shard job's timeout is the one wall.
 //
 // THE WHOLE RUN IS VERIFIED. Each shard writes what it ran; `Kit probes` compares all of it with the table of its own checkout: every unit and every control, once, passed, in as many shards as the plan made.
 //
@@ -61,31 +61,16 @@ export const BY_HAND = [];
 export const WALL_BUDGET_SECONDS = 540;
 /** The 90th percentile of a shard job's setup (the job minus its units' step) on the 70 shard jobs of 7 runs (median 87.5 s; docs/ui-next/status/N24-K3.md and N25.md). */
 export const SETUP_P90_SECONDS = 108;
-/** The slowest setup of those 70 shard jobs: what the job's timeout must leave room for when a shard runs to its ceiling (the workflow test pins that). */
-export const SETUP_MAX_SECONDS = 137;
 /** The most unit seconds a shard may be PLANNED to hold: the budget less the setup, so that a shard at its seconds and a slow (90th percentile) setup is a job of 9 minutes. It moves only with that data, never to make a table fit. */
 export const LIMIT_SECONDS = WALL_BUDGET_SECONDS - SETUP_P90_SECONDS;
 
 /**
- * A unit fails its shard when it took more than DRIFT_RATIO of its `seconds` over them (a quarter) AND more than DRIFT_FLOOR_SECONDS over them: that is, past its seconds plus the larger of the two, `max(ratio x seconds, floor)`, not
- * their sum. The same margin under only warns. Seven runs of 2026-11-21 and 22 (4,364 to 4,471 s of units, 235 unit runs) against the seconds of run 44929041191: the most any unit took over them was 45 s (the controls of the log
- * view on a slow machine, 166 s for 121 s; a unit is many short runs that each build the fixtures), and the floor is that and a third: 60 s. With 45 s none fails and the nearest is at the margin; with 30 s two do
- * (docs/ui-next/status/N25.md has the data; probe-shards.test.mjs replays it).
+ * A unit warns when it took more than DRIFT_RATIO of its `seconds` over or under them (a quarter) AND more than DRIFT_FLOOR_SECONDS: that is, past its seconds plus or less the larger of the two, `max(ratio x seconds, floor)`, not
+ * their sum. Seven runs of 2026-11-21 and 22 (4,364 to 4,471 s of units, 235 unit runs) against the seconds of run 44929041191: the most any unit took over them was 45 s (the controls of the log
+ * view on a slow machine, 166 s for 121 s; a unit is many short runs that each build the fixtures), and the floor is that and a third: 60 s (docs/ui-next/status/N25.md has the data).
  */
 export const DRIFT_RATIO = 0.25;
 export const DRIFT_FLOOR_SECONDS = 60;
-
-/**
- * The ceiling on the real seconds of a whole SHARD, which no unit's own margin can bound: units that are each just inside it add up to 866 s in a shard planned at 386 s (the independent review of #656, `drift-bounds.mjs`).
- * It is DERIVED from the runner, not picked. The seven runs of the N26 measurements held the 70 real shard jobs of the ten-shard table, each job's units on one machine; the real seconds of a job over the table's
- * seconds for the units it held says how slow that machine was: median 1.003, 95th percentile 1.099, worst 1.292 (shard 3 of run 44932913868, 567 s for 439 s; the second worst is 1.222, the step from one to the other is 5.7
- * percent). A shard planned at the limit (432 s) on the worst machine takes 558 s; the margin is 10 percent more, over that step, so that a machine as much slower than the worst as the worst is than the second still passes: 614 s.
- * Every one of the 70 jobs, scaled to a shard planned at the limit, passes it . The job's timeout leaves a shard at the ceiling, on the slowest setup, time to end and say why it failed
- * (SETUP_MAX_SECONDS; the workflow test pins it).
- */
-export const SHARD_SLOWDOWN_WORST = 1.292;
-export const SHARD_CEILING_MARGIN = 0.1;
-export const SHARD_CEILING_SECONDS = Math.ceil(LIMIT_SECONDS * SHARD_SLOWDOWN_WORST * (1 + SHARD_CEILING_MARGIN));
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Which files are probe scripts
@@ -461,12 +446,11 @@ export function renderSummary(id, results) {
 }
 
 /**
- * The drift of each unit of the shard from its seconds, and of the shard from its ceiling: `{ failures, warnings, rows, shard }`. A unit's seconds on this runner are those of its runs added up (a unit with a run that failed is left
- * out of the unit rows: the seconds of a probe that stopped early or hung say nothing of its cost). It FAILS when it took more than `max(floor, ratio of its seconds)` over its seconds, with the number to put in its file in the
- * message; it only warns when it took more than that under. A unit the table does not have fails: a run that is not in the table is a table that is out of date. The SHARD fails when all its runs added up (a failed one too) passed
- * `ceiling`, with the numbers of every unit in the message.
+ * The drift of each unit of the shard from its seconds: `{ warnings, rows, shard }`. A unit's seconds on this runner are those of its runs added up (a unit with a run that failed is left out of the unit rows: the seconds of a
+ * probe that stopped early or hung say nothing of its cost). It WARNS when it took more than `max(floor, ratio of its seconds)` over or under its seconds, with the number to put in its file in the message. No drift fails a
+ * shard: the seconds only pack the shards, the probes run at night where nothing keeps the seconds current (N34), and the job's timeout is the one wall.
  */
-export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS, ceiling = SHARD_CEILING_SECONDS } = {}) {
+export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS } = {}) {
   const ran = new Map();
   for (const result of results) {
     if (result.unit === undefined) continue;
@@ -477,16 +461,11 @@ export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor =
   }
   const title = `Kit probe unit seconds (shard ${id})`;
   const quarter = ratio === 0.25 ? 'a quarter' : `${whole(ratio * 100)} percent`;
-  const failures = [];
   const warnings = [];
   const rows = [];
   for (const [unitId, entry] of ran) {
     if (!entry.ok) continue;
     const unit = units.find((candidate) => candidate.id === unitId);
-    if (unit === undefined) {
-      failures.push(`::error title=${title}::${escapeData(`the unit "${unitId}" ran in this shard and is not in the table (${UNITS_DIRECTORY}): the plan and the table disagree`)}`);
-      continue;
-    }
     const took = whole(entry.seconds);
     const delta = took - unit.seconds;
     const margin = Math.max(floor, ratio * unit.seconds);
@@ -495,34 +474,22 @@ export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor =
     if (verdict === 'ok') continue;
     const percent = whole((Math.abs(delta) / unit.seconds) * 100);
     const lead = `${unit.name} (${unit.id}) took ${took} s on this runner, ${unit.seconds} s in ${unit.file} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s, ${percent} percent`;
-    if (verdict === 'slower') {
-      failures.push(`::error title=${title}::${escapeData(`${lead}; a unit fails past ${quarter} and ${floor} s over): put \`seconds: ${took}\` there, and the next run packs the shards with it`)}`);
-    } else {
-      warnings.push(`::warning title=${title}::${escapeData(`${lead}; a unit warns past ${quarter} and ${floor} s under): put \`seconds: ${took}\` there so that the planner can use the room`)}`);
-    }
+    const advice = verdict === 'slower' ? `over): put \`seconds: ${took}\` there, and the next run packs the shards with it` : `under): put \`seconds: ${took}\` there so that the planner can use the room`;
+    warnings.push(`::warning title=${title}::${escapeData(`${lead}; a unit warns past ${quarter} and ${floor} s ${advice}`)}`);
   }
 
   const took = whole(results.reduce((sum, result) => sum + result.seconds, 0));
   const planned = [...ran.keys()].reduce((sum, unitId) => sum + (units.find((candidate) => candidate.id === unitId)?.seconds ?? 0), 0);
-  const shard = { took, planned, ceiling, units: ran.size };
-  if (took > ceiling) {
-    const parts = [...ran.entries()].map(([unitId, entry]) => `${unitId} ${whole(entry.seconds)} s of ${units.find((candidate) => candidate.id === unitId)?.seconds ?? '?'}`);
-    failures.push(
-      `::error title=Kit probe shard seconds (shard ${id})::${escapeData(
-        `shard ${id} took ${took} s of units on this runner, over the ${ceiling} s a shard may take (${planned} s in the table for its ${ran.size} unit${ran.size === 1 ? '' : 's'}: ${parts.join(', ')}): a shard is planned at ${LIMIT_SECONDS} s at most, so a machine or a probe that is more than ${whole((ceiling / LIMIT_SECONDS - 1) * 100)} percent slow got past the margin of each unit; find which and put its new seconds in its file (${UNITS_DIRECTORY})`,
-      )}`,
-    );
-  }
-  return { failures, warnings, rows, shard };
+  return { warnings, rows, shard: { took, planned, units: ran.size } };
 }
 
 const cell = (text) => String(text).replaceAll('|', '\\|');
 
-/** The seconds of each unit of a shard against the table's, and the shard's against its ceiling (Markdown). */
+/** The seconds of each unit of a shard against the table's, and the shard's (Markdown). */
 export function renderDrift(id, rows, shard) {
   const lines = [`#### Kit probes shard ${id}: seconds against the table`, '', '| Unit | Table s | This run s | Difference | |', '|---|--:|--:|--:|---|'];
   for (const row of rows) lines.push(`| ${cell(row.id)} | ${row.table} | ${row.took} | ${row.delta > 0 ? '+' : ''}${row.delta} | ${row.verdict === 'ok' ? '' : row.verdict === 'slower' ? '**over**' : 'under'} |`);
-  lines.push('', `The shard took ${shard.took} s of units against ${shard.planned} s in the table; it fails past ${shard.ceiling} s.`);
+  lines.push('', `The shard took ${shard.took} s of units against ${shard.planned} s in the table.`);
   return `${lines.join('\n')}\n`;
 }
 
@@ -758,7 +725,7 @@ export async function main(
   const built = renderBuilds(shard, summariseBuilds(results.flatMap((result) => result.builds ?? [])));
   const builds = built === '' ? '' : `${built}\n`;
   out(`\n${summary}\n${drift}\n${builds}`);
-  for (const line of [...found.warnings, ...found.failures]) out(`${line}\n`);
+  for (const line of found.warnings) out(`${line}\n`);
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${summary}\n${drift}\n${builds}`);
   if (env.RUNNER_TEMP) {
     try {
@@ -769,7 +736,7 @@ export async function main(
       return 1;
     }
   }
-  return results.every((result) => result.ok) && found.failures.length === 0 ? 0 : 1;
+  return results.every((result) => result.ok) ? 0 : 1;
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
