@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Route } from '../../shell';
-import type { FrameV1, OverviewPageV1 } from '../contract/v1';
+import type { CustomPageV1, FrameV1, OverviewPageV1 } from '../contract/v1';
 import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
 import { ConnectionNames } from './connectionName';
-import { createContributions, describeDetail, HOME_PAGE, panelConnectionOf, routeKey, type PluginChoice, type PluginSource } from './contributions';
+import { createContributions, describeDetail, HOME_PAGE, panelConnectionOf, readsNoConnection, routeKey, type PluginChoice, type PluginSource } from './contributions';
 import { HOME_ROUTE } from './hostPages';
 import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
@@ -444,5 +444,113 @@ describe('panelConnectionOf', () => {
     expect(panelConnectionOf(unnamed, listed(['north'], 'unread'))).toBeUndefined();
     expect(panelConnectionOf(unnamed, listed(['north'], 'failed'))).toBeUndefined();
     expect(panelConnectionOf(unnamed, undefined)).toBeUndefined();
+  });
+});
+
+// A plugin that declares a `landing` (KL2): a custom page read in no connection, which the window opens when the plugin is opened and no connection is named, in place of Home, the connection the plugin was last used in or the one it would
+// take first (`complete`, and the plugin's `home` for every place that opens a plugin: the rail, Home's row, `+`, the palette). A plugin with no landing is completed as it was: every test above is that.
+describe('a plugin with a landing', () => {
+  const Body = (): null => null;
+  const landing: CustomPageV1 = { kind: 'custom', scope: 'plugin', title: 'Acme home', icon: 'house', Body };
+  const settings: CustomPageV1 = { kind: 'custom', scope: 'connection', title: 'Settings', icon: 'settings-2', Body };
+  const KEY = 'north-0123456789';
+  const withLanding = (): PluginEntry => ready('acme', 'Acme plugin', { pages: { ...acme().pages, landing, settings }, landing: 'landing' });
+
+  const choose = (keys: readonly string[], last?: string, state: PluginChoice['state'] = 'ready') => {
+    const plugins: PluginSource = { getSnapshot: () => [withLanding()], subscribe: () => () => undefined };
+    return createContributions({ plugins, frames: new Published<FrameV1>(), choice: (plugin) => (plugin === 'acme' ? { state, keys, last } : undefined) });
+  };
+
+  it('is read in no connection when it is a custom page of scope plugin, and in one for any other page', () => {
+    expect(readsNoConnection(landing)).toBe(true);
+    expect(readsNoConnection(settings)).toBe(false);
+    expect(readsNoConnection(acme().pages.widgets)).toBe(false);
+    expect(readsNoConnection(undefined)).toBe(false);
+  });
+
+  it('is the plugin\'s own first page for every place that opens a plugin: the landing when it is ready, and the stand-in while it is not', () => {
+    const { contributions } = world([withLanding(), loading()]);
+
+    expect(contributions.home?.('acme')).toEqual({ plugin: 'acme', contribution: 'landing' });
+    expect(contributions.home?.('slow')).toEqual({ plugin: 'slow', contribution: HOME_PAGE });
+  });
+
+  it('is named by its title and glyph and by the plugin, with no scope and no qualifier: the path is the plugin and the page, and the plugin alone when the page is called as the plugin is', () => {
+    const { contributions } = world([withLanding(), ready('same', 'Acme', { pages: { ...acme().pages, landing: { ...landing, title: 'acme' } }, landing: 'landing' })]);
+
+    expect(contributions.describe(route('acme', 'landing'))).toEqual({ title: 'Acme home', icon: 'house', pluginName: 'Acme', path: ['Acme', 'Acme home'], scope: undefined, facets: [] });
+    expect(contributions.describe(route('same', 'landing'))?.path).toEqual(['Acme']);
+  });
+
+  it('names a custom page of a connection as every page of a connection is named: by the connection\'s name in its path, its scope and its qualifier, and by no connection when none is known: never by the key', () => {
+    const { contributions, names } = world([withLanding()]);
+    const at = route('acme', 'settings', { connection: KEY });
+    expect(contributions.describe(at)).toEqual({ title: 'Settings', icon: 'settings-2', pluginName: 'Acme', path: ['Acme', 'Settings'], scope: { id: KEY, label: '' }, facets: [] });
+
+    names.learn('acme', KEY, 'north');
+    expect(contributions.describe(at)).toEqual({ title: 'Settings', icon: 'settings-2', pluginName: 'Acme', path: ['Acme', 'north', 'Settings'], scope: { id: KEY, label: 'north' }, facets: ['north'] });
+  });
+
+  describe.each([
+    ['no connection', [] as readonly string[], undefined, 'ready' as const],
+    ['one connection', ['north'], undefined, 'ready' as const],
+    ['two connections and none used', ['north', 'south'], undefined, 'ready' as const],
+    ['two connections and one used last', ['north', 'south'], 'south', 'ready' as const],
+    ['a list that is not read yet', ['north'], undefined, 'unread' as const],
+    ['a list whose read failed', ['north', 'south'], 'south', 'failed' as const],
+  ])('with %s', (_name, keys, last, state) => {
+    it('completes a route that names no connection to the landing, whichever page it names: never Home, the last connection or the first', () => {
+      const contributions = choose(keys, last, state);
+      const to = route('acme', 'landing');
+
+      expect(contributions.complete?.(route('acme', HOME_PAGE), nowhere)).toEqual(to);
+      expect(contributions.complete?.(route('acme', 'nothing'), nowhere)).toEqual(to);
+      expect(contributions.complete?.(route('acme', 'widgets'), nowhere)).toEqual(to);
+      expect(contributions.complete?.(route('acme', 'gadgets', { name: 'a' }), nowhere)).toEqual(to);
+      expect(contributions.complete?.(route('acme', 'settings'), nowhere)).toEqual(to);
+    });
+
+    it('leaves the landing as it is, and keeps a route that names a connection in it: the plugin\'s home when no page is named', () => {
+      const contributions = choose(keys, last, state);
+      const at = route('acme', 'landing');
+      const named = route('acme', 'gadgets', { connection: 'east' });
+
+      expect(contributions.complete?.(at, nowhere)).toBe(at);
+      expect(contributions.complete?.(named, nowhere)).toBe(named);
+      expect(contributions.complete?.(route('acme', HOME_PAGE, { connection: 'east' }), nowhere)).toEqual(route('acme', 'widgets', { connection: 'east' }));
+    });
+  });
+
+  it('opens a page in the connection of the tab it is opened from, as it always did: that is a connection chosen, not one the window chose', () => {
+    const contributions = choose(['north', 'south']);
+
+    expect(contributions.complete?.(route('acme', 'gadgets'), from('acme', { connection: 'north' }))).toEqual(route('acme', 'gadgets', { connection: 'north' }));
+    expect(contributions.complete?.(route('acme', HOME_PAGE), from('acme', { connection: 'north' }))).toEqual(route('acme', 'widgets', { connection: 'north' }));
+  });
+
+  it('gives a page that is read in no connection none: the one the tab it is opened from is in is not carried to it, and the one a link or an entry names is dropped, so the page is one place whoever opens it', () => {
+    const contributions = choose(['north', 'south'], 'south');
+
+    expect(contributions.complete?.(route('acme', 'landing'), from('acme', { connection: 'north' }))).toEqual(route('acme', 'landing'));
+    expect(contributions.complete?.(route('acme', 'landing', { connection: 'north' }), nowhere)).toEqual(route('acme', 'landing'));
+    expect(contributions.complete?.(route('acme', 'landing', { connection: 'north', tab: 'a' }), nowhere)).toEqual(route('acme', 'landing', { tab: 'a' }));
+  });
+
+  it('leaves a tab that is only described again where it is, but for a tab that named no page: it was opened before and keeps its route, and the stand-in of a plugin that was not ready becomes the landing', () => {
+    const contributions = choose(['north', 'south']);
+    const at = route('acme', 'gadgets');
+    const refreshed = { from: undefined, source: 'refresh' };
+
+    expect(contributions.complete?.(at, refreshed)).toBe(at);
+    expect(contributions.complete?.(route('acme', HOME_PAGE), refreshed)).toEqual(route('acme', 'landing'));
+    expect(contributions.complete?.(route('acme', HOME_PAGE, { connection: 'north' }), refreshed)).toEqual(route('acme', 'widgets', { connection: 'north' }));
+  });
+
+  it('keeps the stand-in while the plugin is not ready, and completes nothing for a plugin that has no landing: the rule is the plugin\'s own', () => {
+    const plugins: PluginSource = { getSnapshot: () => [loading(), ready()], subscribe: () => () => undefined };
+    const { complete } = createContributions({ plugins, frames: new Published<FrameV1>(), choice: () => ({ state: 'ready', keys: ['north', 'south'], last: undefined }) });
+
+    expect(complete?.(route('slow', HOME_PAGE), nowhere)).toEqual(route('slow', HOME_PAGE));
+    expect(complete?.(route('acme', HOME_PAGE), nowhere)).toEqual(HOME_ROUTE);
   });
 });

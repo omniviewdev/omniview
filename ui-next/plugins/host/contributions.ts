@@ -1,6 +1,6 @@
 import { facetsOf, nameOf, titleOf, type DetailPageDefinition } from '../../page';
 import type { Contributions, Description, Route, RouteInput } from '../../shell';
-import type { FrameV1, OverviewPageDefinition, SidebarNodeV1 } from '../contract/v1';
+import type { CustomPageV1, FrameV1, OverviewPageDefinition, PageV1, SidebarNodeV1 } from '../contract/v1';
 import { failureWords } from '../loader/failure';
 import { ConnectionNames, laneNameOf, pathSaid, restoredFace } from './connectionName';
 import { HOME_ROUTE, hostPageOf } from './hostPages';
@@ -103,8 +103,14 @@ function glyphOf(nodes: readonly SidebarNodeV1[], page: string): string | undefi
   return undefined;
 }
 
-/** The route of a plugin's own first page: its `home` when it has loaded, else the stand-in that `complete` resolves. */
-const homeOf = (entry: PluginEntry): RouteInput => ({ plugin: entry.id, contribution: entry.phase === 'ready' ? entry.contribution.home : HOME_PAGE });
+/**
+ * The route of a plugin's own first page, for every place that opens a plugin and names no connection (the rail, Home's row, `+`, the palette's row for the plugin): its `landing` when it declares one, else its `home`, when it has loaded; else the stand-in that `complete` resolves.
+ * A connection chosen opens the plugin's `home` (`connections/actions.ts`), never this.
+ */
+const homeOf = (entry: PluginEntry): RouteInput => ({ plugin: entry.id, contribution: entry.phase === 'ready' ? (entry.contribution.landing ?? entry.contribution.home) : HOME_PAGE });
+
+/** Whether a page is read in no connection (KL2): a custom page of scope `plugin`, such as a plugin's landing. No connection is carried to it, no lane says one for it, and the panel handle it is given has none. */
+export const readsNoConnection = (page: PageV1 | undefined): boolean => page?.kind === 'custom' && page.scope === 'plugin';
 
 /**
  * What a detail route says about its tab (design 16 TI1, DM1, S61): the title `{name} · {Kind}`, the kind's glyph, the plugin's qualifiers (the parameters the definition lists: a group
@@ -153,6 +159,24 @@ export function describeOverview(pluginName: string, route: Route, definition: O
     path: [pluginName, ...(connectionName === undefined ? [] : [connectionName])],
     scope: connection === undefined ? undefined : { id: connection, label: connectionName ?? '' },
     facets: connectionName === undefined ? [] : [connectionName],
+  };
+}
+
+/**
+ * What a custom page's route says about its tab (KL2): the page's title and glyph, the path `Plugin › connection › title` (the plugin and the title alone for a page read in no connection, and the plugin alone when the page is called as the plugin is), the scope for a page of a
+ * connection, and the connection's name as the qualifier that tells two of its tabs apart. The Body draws the whole page, so the face is the definition's, the plugin's and the connection's NAME alone, the same before the Body has run (a tab restored in the background) and after it. A page
+ * read in no connection has no scope, whatever its route carries: the lane never claims a connection for it.
+ */
+export function describeCustom(pluginName: string, route: Route, page: CustomPageV1, connectionName?: string): Description {
+  const connection = page.scope === 'plugin' ? undefined : connectionOf(route);
+  const named = connection === undefined ? undefined : connectionName;
+  return {
+    title: page.title,
+    icon: page.icon,
+    pluginName,
+    path: [pluginName, ...(named === undefined ? [] : [named]), ...(page.title.trim().toLowerCase() === pluginName.trim().toLowerCase() ? [] : [page.title])],
+    scope: connection === undefined ? undefined : { id: connection, label: named ?? '' },
+    facets: named === undefined ? [] : [named],
   };
 }
 
@@ -225,6 +249,11 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
         return describeOverview(contribution.plugin.name, route, found.definition, name);
       }
 
+      if (found?.kind === 'custom') {
+        // The plugin draws the whole page, so its face is the definition's, the plugin's and the connection's name alone, as a scope's is.
+        return describeCustom(contribution.plugin.name, route, found, name);
+      }
+
       const title = frame?.tab.title ?? found?.definition.title ?? entry.name;
       return {
         title,
@@ -258,10 +287,26 @@ export function createContributions({ plugins, frames, names = new ConnectionNam
     },
     complete: (route, { from, source }) => {
       const entry = entryOf(route.plugin);
-      const page = entry?.phase === 'ready' && (route.contribution === HOME_PAGE || !Object.hasOwn(entry.contribution.pages, route.contribution)) ? entry.contribution.home : route.contribution;
+      const loaded = entry?.phase === 'ready' ? entry.contribution : undefined;
+      // A route that names no page the plugin has is its first page, the plugin's `home`: what a connection opens.
+      const asksHome = loaded !== undefined && (route.contribution === HOME_PAGE || !Object.hasOwn(loaded.pages, route.contribution));
+      const page = asksHome ? loaded.home : route.contribution;
+      // A page that is read in no connection (the landing) keeps none (KL2): the connection of the tab it is opened from is not carried to it, and the one a link or an entry names is dropped, so the page is one place whoever opens it.
+      if (loaded !== undefined && readsNoConnection(Object.hasOwn(loaded.pages, page) ? loaded.pages[page] : undefined)) {
+        return page === route.contribution && route.params.connection === undefined
+          ? route
+          : { plugin: route.plugin, contribution: page, params: Object.fromEntries(Object.entries(route.params).filter(([name]) => name !== 'connection')) };
+      }
+
       // A sidebar entry names a page, not a connection: the page opens in the connection of the tab it is opened from.
       const inherited = from?.plugin === route.plugin ? from.params.connection : undefined;
       let params = route.params.connection === undefined && typeof inherited === 'string' ? { ...route.params, connection: inherited } : route.params;
+      // A plugin that declares a landing (KL2) says what a route that names no connection is: the landing, in place of every choice the window would make below (Home, the connection last used, the plugin's first). The landing says nothing of the page
+      // the route named, which needs a connection it does not have. A tab that is already open keeps the route it has (`refresh`), but for the stand-in of a first page, which is the landing as it is Home's.
+      if (loaded?.landing !== undefined && params.connection === undefined && (asksHome || source !== 'refresh')) {
+        return { plugin: route.plugin, contribution: loaded.landing, params: {} };
+      }
+
       // A route that still names no connection is read by the plugin in its first one, which with two or more is an arbitrary one: the window chooses instead (HM1). The connection the plugin was last used in; with none used there is nothing
       // to choose from, and the destination is Home, where they are listed. With one connection (or none) there is nothing to choose between and the route stays as it is. While the list is not known (HM2: not read yet, or the read failed and
       // there is no earlier list) nothing can be chosen either, and the destination is Home too: the plugin is never opened on a connection that nobody chose. A tab that is already open keeps the route it has (`refresh`): this is for what
