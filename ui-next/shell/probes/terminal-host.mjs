@@ -491,7 +491,12 @@ export function createHost(options = {}) {
     pty.pumping = true;
     try {
       for (;;) {
-        if (pty.gone) break;
+        if (pty.gone) {
+          clearTimeout(pty.stallTimer);
+          pty.stallTimer = undefined;
+          break;
+        }
+
         const behind = unsent(pty);
         if (pty.paused ? behind > limits.channel_low_bytes : behind > limits.channel_high_bytes) {
           // The pump waits only for a page that is alive: one that made no progress (a frame the transport took, or an acknowledgement) within `channel_stall_ms` is let be, and the pump reads on (the ring overwrites, and the stream says so with a gap when it wakes).
@@ -499,9 +504,13 @@ export function createHost(options = {}) {
           // `faults.ackLost`: the credit that comes while the pump waits is lost AND the host never gives up waiting: a host that paused never reads again.
           if (idle < stallMs || faults.ackLost) {
             pty.paused = true;
-            clearTimeout(pty.stallTimer);
-            pty.stallTimer = setTimeout(() => pump(pty), stallMs - idle + 1);
-            pty.stallTimer.unref?.();
+            // Under `ackLost` it waits on nothing: no timer is armed (a timer is work in a page that is at rest), the pump simply does not read again.
+            if (!faults.ackLost) {
+              clearTimeout(pty.stallTimer);
+              pty.stallTimer = setTimeout(() => pump(pty), stallMs - idle + 1);
+              pty.stallTimer.unref?.();
+            }
+
             break;
           }
         }
