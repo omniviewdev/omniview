@@ -54,19 +54,20 @@ const NAMES = [
 const MOCK_FIVE = NAMED_FIVE;
 /** The same five with no host stated, which is what the SDK's session says: the tool's own words for the Mapping, Open in browser and Copy (and the difference from the mock's). */
 const UNSTATED_FIVE = NAMED_FIVE.map((entry) => ({ ...entry, local_host: undefined }));
-/** One forward for each way a producer may state where it listens, or not (the section `hosts` of the probe holds the words). */
+/** One forward for each class of where a producer may state that a forward listens, or not state it (the section `hosts` of the probe holds the words). */
 const HOSTS = [
   ['h-none', {}],
-  ['h-v4', { local_host: '127.0.0.1' }],
+  ['h-v4', { local_host: '127.0.0.2' }],
+  ['h-upper', { local_host: 'LOCALHOST' }],
   ['h-v6', { local_host: '::1' }],
-  ['h-name', { local_host: 'localhost' }],
+  ['h-mapped', { local_host: '::ffff:127.0.0.1' }],
   ['h-all', { local_host: '0.0.0.0' }],
   ['h-all6', { local_host: '::' }],
-  ['h-udp', { protocol: 'UDP', remote_port: 53 }],
-  ['h-auto', { local_port: 0 }],
-  ['h-auto4', { local_host: '127.0.0.1', local_port: 0 }],
-  ['h-fail', { state: 'FAILED' }],
-  ['h-failb', { state: 'FAILED', local_host: '0.0.0.0' }],
+  ['h-lan', { local_host: '192.168.1.5' }],
+  ['h-link', { local_host: 'fe80::1%en0' }],
+  ['h-text', { local_host: '127.0.0.1:8080' }],
+  ['h-udp', { protocol: 'UDP', remote_port: 53, local_host: '0.0.0.0' }],
+  ['h-fail', { state: 'FAILED', local_host: '0.0.0.0' }],
 ].map(([id, patch], index) => ({
   ...SET[0],
   id,
@@ -79,6 +80,8 @@ const HOSTS = [
   state: 'ACTIVE',
   ...patch,
 }));
+/** The mock's five forwards, and one that listens on every network interface: a running forward that other computers may reach has a second line, a two-line row like the mock's failed one. */
+const EXPOSED_SIX = [...NAMED_FIVE, SET.find((entry) => entry.id === 'cache')];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const dist = build();
 const { server, url } = await serve(dist);
@@ -205,6 +208,13 @@ try {
       await settled(page, UNSTATED_FIVE.length);
       await facts(page, { plugin: false });
       await compare('table', mockShot('table'), await photograph(page, 'unstated'), 'unstated');
+      await page.context().close();
+
+      // 1c. The five and a sixth that listens on every network interface (0.0.0.0): its second line says that other computers may reach it, beside the mock's own two-line row (its failed forward's cause).
+      page = await open({ sessions: EXPOSED_SIX });
+      await settled(page, EXPOSED_SIX.length);
+      await facts(page, { plugin: false });
+      await compare('table', mockShot('table'), await photograph(page, 'exposed'), 'exposed');
       await page.context().close();
 
       // 2. Every state the tool has, with the panel at its largest: running over TCP and over UDP, paused, stopped, failed, stopping, a plugin that stopped, a long name, a static target, a connection with a name and one without.

@@ -490,9 +490,9 @@ export type PortForwardSessionV1 = {
    */
   readonly localPort: number;
   /**
-   * The address of this computer at which the forward listens, present ONLY when the producer states it. The host's session carries `local_port` and no address (the SDK's session has no `local_host` yet, and its forwarder contract does not
-   * require a forwarder to listen on the loopback), so the host answers without one and the member is absent: a plugin must not read an address into its absence, and one that needs the address has to know it of its own forwarder. A plugin that
-   * reads `answer.localHost` when it is there is right on a host whose SDK states it and on one whose SDK does not. The Ports tool says a host in its rows in the same way: only when the session carries one.
+   * The host the forward listens on, present ONLY when the producer states it (the SDK's `local_host`, from plugin-sdk v0.23.0: an IP address or `localhost`; empty is unknown and the member is absent, a plugin must not read an address into its
+   * absence). The host passes it on as stated and reads nothing into it. A plugin takes the forward as reachable only from this computer if and only if the value is `localhost` (ASCII, any case) or an IP address that is loopback once an IPv4-mapped
+   * IPv6 address is unmapped (127.0.0.0/8, ::1, ::ffff:127.x.y.z); `0.0.0.0`, `::`, a LAN or a link-local address are reachable from other computers. The Ports tool says a host in its rows in the same way: only when the session carries one.
    */
   readonly localHost?: string | undefined;
   /**

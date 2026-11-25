@@ -18,8 +18,8 @@ import { MAX_DEPTH, weigh, type Overrun } from './portSize';
 // megabyte of text or twenty of body is refused without being serialised or read to its end). (3) THAT THE WINDOW HAS ROOM: a place is taken in the count (`portLedger.ts`), synchronously, for the plugin in the connection and for the window,
 // and the call is refused with the cap's number when either is full. A refusal of the three is the host's own `FORBIDDEN`, `INVALID_REQUEST` or `RESOURCE_LIMIT`, in plain words, and the networker is not called.
 //
-// WHAT THE PAGE IS ANSWERED is the forward as the host's session states it (its id and the port it listens on) and a way to stop it. Where the forward listens is not in it: the session states a port and no address, so the contract's
-// `localHost` is there only when a producer states one. The stop closes the session the forward was answered with, through the host, by its id, once, and every call has the one outcome. The host closes by id alone and the SDK gives every
+// WHAT THE PAGE IS ANSWERED is the forward as the host's session states it (its id and the port it listens on) and a way to stop it. Where the forward listens is in it only when the producer states it (the SDK's `local_host`, v0.23.0:
+// the host passes it on as stated, never guessed or defaulted), so the contract's `localHost` is absent for a producer that says none. The stop closes the session the forward was answered with, through the host, by its id, once, and every call has the one outcome. The host closes by id alone and the SDK gives every
 // session a fresh UUID, which is what makes an id one forward's: `PortForwardSessionV1.stop` says what a forwarder that chose ids of its own would leave. The forward is the host's and not the page's (`PanelHostV1.ports` says how long it
 // lives), so nothing here ends it but that stop, and the place it holds in the count is given back when it ends.
 //
@@ -49,7 +49,7 @@ export const MAX_RESOURCE_DATA_BYTES = 64 * 1024;
 export const MAX_REQUEST_BYTES = 128 * 1024;
 
 /** What the host answers a start: the forward it started, as far as the window reads it (its id and the port it listens on), or none. */
-export type PortForwardStarted = { readonly id: string; readonly local_port: number } | null;
+export type PortForwardStarted = { readonly id: string; readonly local_port: number; readonly local_host?: string | undefined } | null;
 
 /** What of the runtime's typed start the host asks. Answers the forward the host started (or `null`), and rejects with the host's error; it may also throw before it asks, for a request it cannot encode. */
 export type PortForwardStart = (plugin: string, connection: string, request: NetworkerClient.PortForwardSessionRequest) => Promise<PortForwardStarted>;
@@ -349,7 +349,7 @@ export function portsOf(forwarding: PortForwarding, ledger: ForwardLedger, plugi
         throw new PortForwardError('UNKNOWN', REFUSED.none);
       }
 
-      const { id: sessionId, local_port: localPort } = started;
+      const { id: sessionId, local_port: localPort, local_host: stated } = started;
       place.hold(sessionId);
       const stop = stopOf(forwarding.stop, sessionId, place);
       if (!isPort(localPort)) {
@@ -367,7 +367,7 @@ export function portsOf(forwarding: PortForwarding, ledger: ForwardLedger, plugi
         console.warn('[ports] the Ports tool could not be shown', error);
       }
 
-      return Object.freeze({ sessionId, localPort, stop });
+      return Object.freeze({ sessionId, localPort, ...(typeof stated === 'string' && stated !== '' ? { localHost: stated } : {}), stop });
     },
   });
 }

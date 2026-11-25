@@ -1,5 +1,7 @@
 # PF2: the bounds of `ctx.panel.ports.forward` (S4 and S5 of the review of PR #710)
 
+> **W-PF7 is closed by PF3 (`PF3.md`, 2026-11-25).** The SDK (plugin-sdk v0.23.0) now states `local_host` and the host consumes it: a forward the producer states a loopback host for is drawn with that host and Open in browser and Copy address are offered for it; `port N`, Open disabled and Copy port remain for a producer that states none (and for anything that is not a host the SDK states), and a forward that listens beyond this computer is drawn as such. Where this file says the SDK states no host, it describes PF2 as merged.
+
 Step PF2 of the Ports work, before any real plugin uses the contract member. The independent review (`reviews/host-710-ports-contract.md`, S4 and S5) found that the member trusted its caller in three ways, and the lead ruled on each (2026-11-25). This file says what was built, the numbers and why, what was measured, the differences from the mock, and what is catalogued instead of built.
 
 ## 1. What was built
