@@ -24,7 +24,11 @@ function rig(answer: () => Promise<unknown> = async () => Promise.resolve([BASH,
       };
     },
   });
-  return { shells, list, warn, off, listeners, changed: () => listeners.forEach((listener) => { listener(); }) };
+  return { shells, list, warn, off, listeners, changed: () => {
+    listeners.forEach((listener) => {
+      listener(); 
+    }); 
+  } };
 }
 
 const turns = async () => {
@@ -94,8 +98,10 @@ describe('the list the page keeps', () => {
   });
 
   it('keeps the answer to the last question when an earlier one comes in late', async () => {
-    const held: ((answer: unknown) => void)[] = [];
-    const r = rig(async () => new Promise((resolve) => { held.push(resolve); }));
+    const held: Array<(answer: unknown) => void> = [];
+    const r = rig(async () => new Promise((resolve) => {
+      held.push(resolve); 
+    }));
     r.shells.subscribe(() => undefined);
     r.changed();
     expect(held).toHaveLength(2);

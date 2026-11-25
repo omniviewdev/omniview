@@ -640,15 +640,15 @@ export type FakeStream = {
 /** A call that is not a stream, in the order the feed made them. */
 export type ChannelCall =
   | {
-      readonly kind: 'create';
-      readonly id: string;
-      readonly cols: number;
-      readonly rows: number;
-      readonly leaseMs: number | undefined;
-      readonly command?: readonly string[];
-      readonly cwd?: string;
-      readonly env?: Readonly<Record<string, string>>;
-    }
+    readonly kind: 'create';
+    readonly id: string;
+    readonly cols: number;
+    readonly rows: number;
+    readonly leaseMs: number | undefined;
+    readonly command?: readonly string[];
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string>>;
+  }
   | { readonly kind: 'close'; readonly id: string }
   | { readonly kind: 'dismiss'; readonly id: string }
   | { readonly kind: 'busy'; readonly id: string }

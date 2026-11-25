@@ -1,13 +1,25 @@
 import { MenuHost, type MenuItem } from '@omniviewdev/kit';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PanelNewSessionMenu } from './host';
 import { NewSession } from './SessionTabs';
 
 // The `+` of a tool and, when the tool offers a choice of what to start, the arrow beside it that opens the choice on the window's one menu host. The tool's words and items are its own (the terminal's are its shells,
 // `terminal/profiles.test.ts`); what is checked here is that the panel draws the arrow only for a tool that has items, that the `+` still starts the default, and that a choice reaches the tool.
 
-afterEach(cleanup);
+let shown: HTMLStyleElement;
+
+beforeEach(() => {
+  // jsdom has no Popover API: the setup's stand-in marks an element and nothing shows it, and a popover is `display: none` until a rule says otherwise, which makes it inaccessible to the queries (the terminal's menu tests do the same).
+  shown = document.createElement('style');
+  shown.textContent = '[popover] { display: block !important; }';
+  document.head.append(shown);
+});
+
+afterEach(() => {
+  cleanup();
+  shown.remove();
+});
 
 /** A menu whose items the test can change, as a tool's store does. */
 function changing(initial: readonly MenuItem[]) {
@@ -27,7 +39,9 @@ function changing(initial: readonly MenuItem[]) {
     menu,
     set: (next: readonly MenuItem[]) => {
       items = next;
-      listeners.forEach((listener) => { listener(); });
+      listeners.forEach((listener) => {
+        listener(); 
+      });
     },
   };
 }

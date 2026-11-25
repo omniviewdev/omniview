@@ -1006,7 +1006,9 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
         shells,
         set: (next: unknown) => {
           choices = shellsOf(next);
-          listeners.forEach((listener) => { listener(); });
+          listeners.forEach((listener) => {
+            listener(); 
+          });
         },
       };
     }

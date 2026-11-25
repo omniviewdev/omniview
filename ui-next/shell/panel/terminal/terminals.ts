@@ -9,14 +9,14 @@ import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
 import type { TerminalBusy, TerminalTarget } from './feed';
 import { keyOf } from './keys';
-import { localShellTarget } from './localShell';
+import { localProfileTarget, localShellTarget } from './localShell';
+import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
 import { clearScreenIn } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
 import { closeQuestionOf, type CloseQuestion } from './state';
 import { TerminalBody } from './TerminalBody';
 import { createTerminalSessions, type TerminalSessions } from './TerminalSessions';
-import type { ShellList } from './profiles';
-import { NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_TOOL_ID } from './tool';
+import { CHOOSE_SHELL, NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_TOOL_ID } from './tool';
 
 /**
  * How long a close waits for the host to say what runs in the terminal before it asks the general question: a press of Close always leads somewhere, and a host that does not answer is a host that cannot say
@@ -70,6 +70,7 @@ function focusIsOn(session: SessionId, onScreen: SessionId | null): boolean {
 // host's wiring is a line for each thing the panel asks and the tool's own rules stay in this folder.
 
 export type TerminalsOptions = {
+  /** The shells of this machine the `+` offers beside its default (#695 step 2). Default: what the host lists. A test gives its own list. */
   readonly shells?: ShellList | undefined;
   /** What "New terminal" starts: a target the registry opens. Default: the host's own shell. A probe gives a synthetic one. */
   readonly target?: (() => TerminalTarget) | undefined;
@@ -127,6 +128,24 @@ export type Terminals = {
 /** The registry, the guard and the answers of the Terminal tool over a window's panel store. */
 export function createTerminals(store: PanelStore, options: TerminalsOptions = {}, restored: TerminalsRestored = {}): Terminals {
   const { restore, reattach, openExternal } = options;
+  // The shells the `+` offers: the list is asked of the host when the menu is first drawn (and never while it is not), and the items are made again only when the list changes.
+  const shells = options.shells ?? appShellList();
+  const startFrom = (profile: TerminalProfile) => {
+    sessions.open(localProfileTarget(profile), { focus: true });
+  };
+
+  let itemsOf: readonly ShellChoice[] | undefined;
+  let items: ReturnType<typeof shellMenu> = [];
+  const menuItems = () => {
+    const choices = shells.getSnapshot();
+    if (choices !== itemsOf) {
+      itemsOf = choices;
+      items = shellMenu(choices, startFrom);
+    }
+
+    return items;
+  };
+
   const sessions = createTerminalSessions(store, { reattach, openExternal });
   const screenReader = createScreenReaderChoice(restored.screenReader);
   // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
@@ -304,6 +323,11 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       label: NEW_TERMINAL,
       start: () => {
         sessions.open(options.target?.() ?? localShellTarget(), { focus: true });
+      },
+      menu: {
+        label: CHOOSE_SHELL,
+        subscribe: shells.subscribe,
+        getSnapshot: menuItems,
       },
     },
     empty: TERMINAL_EMPTY,

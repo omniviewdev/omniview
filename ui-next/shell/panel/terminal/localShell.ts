@@ -3,7 +3,7 @@ import type { TerminalChannels } from './channel';
 import { createExecFeed, newTerminalId } from './execFeed';
 import type { TerminalTarget } from './feed';
 import { appTerminalChannels } from './terminalChannel';
-import type { TerminalProfile } from './profiles';
+import { launchOf, type ProfileLaunch, type TerminalProfile } from './profiles';
 
 // The host's own shell as a feed, on the terminal channel (docs/ui-next/terminal-channel-protocol.md): `CreateTerminal` with `launch.channel` starts the user's login shell on a pty of this machine
 // (backend/pkg/terminal/manager.go: an empty command is the account shell, with `TERM=xterm-256color`), and the terminal is reached by one stream (`terminalChannel.ts`, which holds the capabilities and speaks the frames).
@@ -17,17 +17,29 @@ const retitle: TerminalTarget['retitle'] = (status) => status.program;
 /**
  * The target of "New terminal": the host's own, called `Terminal` until the host says which shell it started (the answer to the call that starts it names it: `zsh`, `bash`), and then called by that name. Its id names
  * the kind of thing it runs; every press is a new process all the same (the registry never looks for a session of a target). The terminal is started under the id of its `sessionId`, and kept for `leaseMs` once no
- * stream holds it (the host's default when it is not given).
+ * stream holds it (the host's default when it is not given). It names no shell: the host starts the default (`terminal.defaultShell`, else its own order).
  */
 export function localShellTarget(channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
+  return targetOf('Terminal', channels, leaseMs, undefined);
+}
+
+/**
+ * The target of a terminal started from a profile (a shell the person chose in the menu of the `+`): called by the profile until the host says which shell it started, and asking the host for the profile's shell, its
+ * arguments, directory and environment (`launch`). In every other way it is the target of the `+`.
+ */
+export function localProfileTarget(profile: TerminalProfile, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
+  return targetOf(profile.name, channels, leaseMs, launchOf(profile));
+}
+
+function targetOf(title: string, channels: TerminalChannels, leaseMs: number | undefined, launch: ProfileLaunch | undefined): TerminalTarget {
   const sessionId = newTerminalId();
   return {
     plugin: HOST,
     id: 'local',
-    title: 'Terminal',
+    title,
     retitle,
     sessionId,
-    open: () => createExecFeed({ channels, newId: () => sessionId, ...(leaseMs === undefined ? {} : { leaseMs }) }),
+    open: () => createExecFeed({ channels, newId: () => sessionId, ...(leaseMs === undefined ? {} : { leaseMs }), ...(launch === undefined ? {} : { launch }) }),
   };
 }
 
@@ -78,8 +90,4 @@ export async function restoreLocalTerminals(channels: TerminalChannels = appTerm
   }
 
   return targets;
-}
-
-export function localProfileTarget(profile: TerminalProfile, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
-  return { ...localShellTarget(channels, leaseMs), title: profile.path };
 }

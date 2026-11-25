@@ -854,7 +854,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const start = (first: Size) => {
     started = true;
     delivered = first;
-    creating = channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }) }).then(
+    creating = channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...options.launch }).then(
       (answer: unknown) => {
         created = true;
         createdProgram = programOf(answer);
