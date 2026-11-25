@@ -79,7 +79,9 @@ describe('host profiling footer', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Port unavailable');
     expect(screen.getByRole('button', { name: 'Host profiling: Error' })).toBeVisible();
     expect(screen.queryByText('http://127.0.0.1:43210/debug/pprof/')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Developer Settings' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Developer Settings' }));
+    });
     expect(navigate).toHaveBeenCalledWith('/settings?section=core&category=developer');
   });
 

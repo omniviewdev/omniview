@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as Runtime from '@omniviewdev/runtime';
@@ -73,7 +73,9 @@ describe('resource row actions', () => {
     await user.click(screen.getByRole('button', { name: 'Resource actions' }));
     expect(await screen.findByRole('menuitem', { name: 'Delete' })).toBeTruthy();
 
-    window.dispatchEvent(new Event('scroll'));
+    act(() => {
+      window.dispatchEvent(new Event('scroll'));
+    });
 
     await waitFor(() => {
       expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
