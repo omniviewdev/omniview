@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+# Negative controls of the flood tests that hold the host to the bytes the pty gave it (docs/ui-next/status/PTYCR.md). Run from the repository root,
+# on macOS or Linux, one run at a time (the flood test floods a pty for about 9 s):
+#   python3 docs/ui-next/status/PTYCR/mutate.py.txt
+# Every fault is in a SCRATCH copy of one file (go test -overlay): the worktree is not edited. For each one the test is run with the fault, and then with
+# the byte-for-byte comparisons of the page and of the host's events to the pty's bytes taken out of a scratch copy of the test, and the script says
+# whether each run failed and by which assertion. A run is "caught by" the assertion whose message it carries.
+import json, os, re, subprocess, sys, tempfile
+
+ROOT = os.getcwd()
+PKG = "backend/pkg/terminal"
+FLOOD = "TestAReloadUnderAFloodReattachesByteExactByOffset"
+TABLE = "TestTheCRsOfTheTerminalOfMacOSAreTheOnlyDifferenceTheFloodChecksLetGo"
+FLOOD_TEST = PKG + "/reattach_flood_test.go"
+REPLAY = PKG + "/replay.go"
+MANAGER = PKG + "/manager.go"
+CR_TEST = PKG + "/pty_cr_test.go"
+
+PAGE_VS_RAW = '\trequireSame(t, raw, page.bytes(), "what the page rendered across its reloads, against the bytes the pty gave the host")\n'
+HOST_VS_RAW = '\trequireSame(t, raw, sink.stream(t, info.ID), "what the host emitted, against the bytes the pty gave the host")\n'
+LENGTH = '\tassert.Equal(t, uint64(len(raw)), end.LastOffset, "the end says how long the output was: every byte the host read")\n'
+
+def read(path):
+    with open(os.path.join(ROOT, path)) as handle:
+        return handle.read()
+
+def replaced(text, old, new):
+    if text.count(old) != 1:
+        sys.exit("control cannot be built: %r is in the file %d times" % (old[:80], text.count(old)))
+    return text.replace(old, new)
+
+JOIN_END = "\t\tdata = append(data, part...)\n\t}\n\treturn Replay{"
+def at_the_join(statement):
+    return lambda text: replaced(text, JOIN_END, "\t\tdata = append(data, part...)\n\t}\n" + statement + "\n\treturn Replay{")
+
+CONTROLS = [
+    # name, {file: scratch copy maker}, extra files added, test, message the fault must carry, the comparisons taken out for the second run
+    ("M1 a byte repeated at the join of the replay and the live output (the last byte of the replay is there twice)",
+     {REPLAY: at_the_join("\tif len(data) > 0 {\n\t\tdata = append(data, data[len(data)-1])\n\t}")},
+     FLOOD, "the page has taken in as many bytes as the shell wrote", [PAGE_VS_RAW, HOST_VS_RAW]),
+    ("M2 a byte dropped at the join (the last byte of the replay is not there)",
+     {REPLAY: at_the_join("\tif len(data) > 0 {\n\t\tdata = data[:len(data)-1]\n\t}")},
+     FLOOD, "the page has taken in as many bytes as the shell wrote", [PAGE_VS_RAW, HOST_VS_RAW]),
+    ("M3 a byte repeated in place of the one that follows it at the join (the replay keeps its length)",
+     {REPLAY: at_the_join("\tif len(data) > 1 && data[len(data)-1] != data[len(data)-2] {\n\t\tdata[len(data)-1] = data[len(data)-2]\n\t}")},
+     FLOOD, "what the page rendered across its reloads, against the bytes the pty gave the host", [PAGE_VS_RAW]),
+    ("M4 the host loses the first byte of its first read before it delivers it",
+     {MANAGER: lambda text: replaced(text, "\t\t\tdata := slices.Clone(buf[:n])\n",
+                                     "\t\t\tdata := slices.Clone(buf[:n])\n\t\t\tif n > 1 && mutantDropsOnce.CompareAndSwap(false, true) {\n\t\t\t\tdata = data[1:]\n\t\t\t}\n")},
+     FLOOD, "the end says how long the output was: every byte the host read", [LENGTH]),
+    ("C5 the helper takes out every CR CR LF, whether or not the first CR ends a read",
+     {CR_TEST: lambda text: replaced(text, "func withoutTheCRsOfMacOS(stream []byte, readEnds []int) ([]byte, []int) {\n",
+                                     "func withoutTheCRsOfMacOS(stream []byte, readEnds []int) ([]byte, []int) {\n\t_ = readEnds\n\treturn bytes.ReplaceAll(stream, []byte(\"\\r\\r\\n\"), []byte(\"\\r\\n\")), nil\n}\n\nfunc unusedWithoutTheCRsOfMacOS(stream []byte, readEnds []int) ([]byte, []int) {\n")
+                 .replace('import (\n', 'import (\n\t"bytes"\n', 1)},
+     TABLE, "a_CR_before_CR_LF_that_is_not_at_the_end_of_a_read", []),
+]
+
+EXTRA = {MANAGER: ("mutant_overlay.go", "//go:build !windows\n\npackage terminal\n\nimport \"sync/atomic\"\n\nvar mutantDropsOnce atomic.Bool\n")}
+
+def run(overlay, test):
+    scratch = tempfile.mkdtemp(prefix="ptycr-control-")
+    replace = {}
+    for path, text in overlay.items():
+        copy = os.path.join(scratch, path.replace("/", "__"))
+        with open(copy, "w") as handle:
+            handle.write(text)
+        replace[os.path.join(ROOT, path)] = copy
+    overlay_file = os.path.join(scratch, "overlay.json")
+    with open(overlay_file, "w") as handle:
+        json.dump({"Replace": replace}, handle)
+    env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="local")
+    done = subprocess.run(["go", "test", "-overlay=" + overlay_file, "-run", "^" + test + "$", "-count=1", "-v", "./" + PKG + "/"],
+                          cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
+    return done.returncode, done.stdout + done.stderr
+
+def first_message(output):
+    found = re.findall(r"Messages:\s+(.*)", output)
+    return found[0].strip() if found else output[-200:].strip().replace("\n", " | ")
+
+failed = 0
+for name, files, test, message, off in CONTROLS:
+    overlay = {path: make(read(path)) for path, make in files.items()}
+    extra = {}
+    for path in files:
+        if path in EXTRA:
+            extra_name, extra_text = EXTRA[path]
+            extra[os.path.join(os.path.dirname(path), extra_name)] = extra_text
+    scratch_extra = {}
+    for path, text in extra.items():
+        scratch_extra[path] = text
+    def with_extra(overlay_files):
+        merged = dict(overlay_files)
+        merged.update(scratch_extra)
+        return merged
+    code, out = run(with_extra(overlay), test)
+    caught = code != 0 and ("--- FAIL: " + test) in out and message in out and "panic:" not in out and "timed out" not in out
+    print("%s\n   with the fault:    %s  [%s]" % (name, "RED by " + repr(message) if caught else "NOT RED AS NAMED (exit %d)" % code, first_message(out)[:90]))
+    if not caught:
+        failed += 1
+        print(out[-1500:])
+    if off:
+        switched = read(FLOOD_TEST)
+        for line in off:
+            switched = replaced(switched, line, "")
+        overlay_off = dict(overlay)
+        overlay_off[FLOOD_TEST] = switched
+        code, out = run(with_extra(overlay_off), test)
+        print("   comparison taken out: %s  [%s]" % ("still fails (caught by something else)" if code != 0 else "passes (nothing else catches it)", first_message(out)[:110] if code != 0 else ""))
+print("controls not as named:", failed)
+sys.exit(1 if failed else 0)

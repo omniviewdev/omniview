@@ -83,6 +83,10 @@ type Manager struct {
 	// channel are the numbers of a channel terminal's ring and pacing (ChannelRingBytes and the others): a field, so
 	// that a test can state them. Nothing else changes them, and a test sets them before it starts a terminal.
 	channel channelLimits
+	// tee is a seam of the tests. When it is set (before any terminal starts: nothing else sets it) it is given, in order and before
+	// anything else of the host has seen them, the bytes of every read of a pty master with the id of the session: what the kernel gave
+	// the host, which a test can hold the host's delivery to. It must not keep the slice it is given. It is nil in the host.
+	tee func(id string, data []byte)
 	// offsets is the sink as an OffsetSink when it is one: a terminal with a page key is delivered through it.
 	offsets OffsetSink
 	// detachments is the sink as a DetachmentSink when it is one: it is told when a page lost its terminal.
@@ -615,6 +619,9 @@ func (m *Manager) read(s *session) error {
 		}
 		n, err := s.master.Read(buf)
 		if n > 0 {
+			if m.tee != nil {
+				m.tee(s.id, buf[:n])
+			}
 			// The event owns its bytes: the read buffer is reused.
 			data := slices.Clone(buf[:n])
 			m.deliver(s, data)

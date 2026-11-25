@@ -157,6 +157,7 @@ func TestTenMebibytesOfOutputArriveCompleteAndInOrderWhoeverGivesTheCredit(t *te
 			default:
 				m = NewManager(ctx, logging.NewNop(), sink)
 			}
+			tee := teePty(m) // what the kernel gives the host: the oracle (pty_cr_test.go)
 			info, err := m.Start(Options{Command: []string{sh(t), "-c", script}}, nil)
 			require.NoError(t, err)
 			end := chunks.waitEnd(t, info.ID, 120*time.Second)
@@ -164,8 +165,11 @@ func TestTenMebibytesOfOutputArriveCompleteAndInOrderWhoeverGivesTheCredit(t *te
 			require.NotNil(t, end.ExitCode)
 			require.Equal(t, 0, *end.ExitCode)
 			got := chunks.output(info.ID)
-			require.Len(t, got, lines*10)
-			sum := sha256.Sum256(got)
+			raw := tee.stream(info.ID)
+			requireSame(t, raw, got, "what the sink was given, against the bytes the pty gave the host")
+			printed, _ := withoutTheCRsOfMacOS(raw, tee.readEnds(info.ID))
+			require.Len(t, printed, lines*10, "what the program printed, from the bytes the pty gave the host")
+			sum := sha256.Sum256(printed)
 			assert.Equal(t, expected.Sum(nil), sum[:], "every byte arrived, in order")
 		})
 	}
