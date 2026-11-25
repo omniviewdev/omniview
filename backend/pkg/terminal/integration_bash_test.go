@@ -559,3 +559,103 @@ func TestAUsersFunctionNamedLikeOursIsStillTheirs(t *testing.T) {
 	_, err := os.Stat(filepath.Join(f.home, "skipped"))
 	assert.True(t, os.IsNotExist(err), "the user's trap skipped the command in the user's own function")
 }
+
+// The hooks print to the terminal, not to whatever stdout is at that moment: a compound command with a redirect fires the DEBUG
+// trap inside the redirect, and a user's `exec > file` redirects the shell's own stdout for good.
+func TestTheMarksNeverLandInAFileThatTheUserRedirectsTo(t *testing.T) {
+	f := bashFixture(t, "")
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, "in"), []byte("l\n"), 0o600))
+	f.run(info.ID, "for i in 1; do echo c; done > $HOME/f1")
+	f.run(info.ID, "if true; then echo x; fi > $HOME/f2")
+	f.run(info.ID, "while read l; do echo $l; done < $HOME/in > $HOME/f3")
+	f.run(info.ID, "{ echo d; } > $HOME/f4")
+	for file, want := range map[string]string{"f1": "c\n", "f2": "x\n", "f3": "l\n", "f4": "d\n"} {
+		assert.Equal(t, want, f.fileOf(file), "%s holds only what the user wrote: no mark, no nonce", file)
+	}
+	f.run(info.ID, "exec > $HOME/e")
+	f.run(info.ID, "echo in-file")
+	f.run(info.ID, "exec >/dev/tty")
+	assert.Equal(t, "in-file\n", f.fileOf("e"), "a shell whose stdout is a file prints no mark into it: not for a command, not at the prompt")
+	var lines []string
+	for _, r := range f.scanned(info.ID).Records() {
+		if r.Ran {
+			lines = append(lines, r.CommandLine)
+		}
+	}
+	assert.Equal(t, []string{
+		"for i in 1; do echo c; done > $HOME/f1", "if true; then echo x; fi > $HOME/f2",
+		"while read l; do echo $l; done < $HOME/in > $HOME/f3", "{ echo d; } > $HOME/f4",
+		"exec > $HOME/e", "echo in-file", "exec >/dev/tty",
+	}, lines, "the marks still reach the terminal")
+}
+
+// The hooks keep no descriptor open that a child of the shell would inherit (bash does not close the ones it opens with {var}).
+func TestNoDescriptorOfTheHooksIsInheritedByAChild(t *testing.T) {
+	f := bashFixture(t, "")
+	info := f.started()
+	f.run(info.ID, "ls -l /proc/self/fd > $HOME/fds")
+	for _, line := range strings.Split(f.fileOf("fds"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 11 {
+			continue
+		}
+		n, err := strconv.Atoi(fields[8])
+		if err != nil {
+			continue
+		}
+		assert.Less(t, n, 4, "a child has descriptor %d (%s)", n, fields[10])
+		assert.NotContains(t, line, "socket:")
+	}
+}
+
+// The same class for the other shells: a hook that runs inside a user's redirect must not write into the file.
+func TestTheMarksOfZshAndFishAndPwshNeverLandInAFileThatTheUserRedirectsTo(t *testing.T) {
+	type form struct{ line, file, want string }
+	cases := map[string][]form{
+		"zsh": {
+			{"{ echo d } > $HOME/f1", "f1", "d\n"},
+			{"for i in 1; do echo c; done > $HOME/f2", "f2", "c\n"},
+			{"if true; then echo x; fi > $HOME/f3", "f3", "x\n"},
+		},
+		"fish": {
+			{"begin; echo d; end > $HOME/f1", "f1", "d\n"},
+			{"for i in 1; echo c; end > $HOME/f2", "f2", "c\n"},
+			{"if true; echo x; end > $HOME/f3", "f3", "x\n"},
+		},
+		"pwsh": {
+			{"& { 'd' } > $HOME/f1", "f1", "d\n"},
+			{"& { foreach ($i in 1) { 'c' } } > $HOME/f2", "f2", "c\n"},
+			{"& { if ($true) { 'x' } } > $HOME/f3", "f3", "x\n"},
+		},
+	}
+	for name, forms := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newIntegrationFixture(t, name, integrationShell(t, name))
+			info := f.started()
+			require.Equal(t, IntegrationOn, info.Integration.State)
+			for _, c := range forms {
+				f.run(info.ID, c.line)
+			}
+			if name == "zsh" {
+				f.run(info.ID, "exec > $HOME/e")
+				f.run(info.ID, "echo in-file")
+				f.run(info.ID, "exec >/dev/tty")
+			}
+			for _, c := range forms {
+				assert.Equal(t, c.want, strings.ReplaceAll(f.fileOf(c.file), "\r\n", "\n"), "%s holds only what the user wrote", c.file)
+			}
+			if name == "zsh" {
+				assert.Equal(t, "in-file\n", f.fileOf("e"), "a zsh whose stdout is a file prints no mark into it")
+			}
+			var n int
+			for _, r := range f.scanned(info.ID).Records() {
+				if r.Ran {
+					n++
+				}
+			}
+			assert.GreaterOrEqual(t, n, len(forms), "the marks still reach the terminal")
+		})
+	}
+}
