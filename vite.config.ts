@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import wails from '@wailsio/runtime/plugins/vite';
 
@@ -41,6 +41,35 @@ const buildOutputDirectory = process.env.OMNIVIEW_BUILD_OUTPUT_DIRECTORY || 'dis
 // directory in a build, so it cannot be relative while the root moves into ui-next/.
 const wailsBindings = path.join(__dirname, 'packages/omniviewdev-runtime/src/bindings').split(path.sep).join('/');
 
+// The component tests (`pnpm test`), as the files one glob set names. A vm pool (below) is the one setting that takes the jsdom window out of every file: Vitest makes the window once for a
+// worker and gives each file a fresh VM context, so a file still has its own module graph and its own window (https://vitest.dev/guide/improving-performance#test-environments).
+const componentTests = [
+  'ui/**/*.{spec,test}.{ts,tsx}',
+  'ui-next/**/*.{spec,test}.{ts,tsx}',
+  'packages/omniviewdev-runtime/src/telemetry/**/*.{spec,test}.{ts,tsx}',
+  'packages/omniviewdev-runtime/src/context/plugins/PluginContextProvider.test.tsx',
+  'packages/omniviewdev-runtime/src/hooks/connection/useConnectionMetadata.test.tsx',
+  'packages/omniviewdev-runtime/src/hooks/data/usePluginData.test.tsx',
+];
+
+// The files that stay in the `forks` pool, each with its reason. Vitest starts the files of a project in the order of the project names, so these start before everything in `vm`.
+// - Object.defineProperty(window, 'location', ...): in a VM context `location` is the window's own unforgeable property and cannot be redefined ("Cannot redefine property: location").
+// - jsonpath: its Node entry compiles esprima with `new Module('aesprim')._compile(...)`, which a VM context cannot do ("The argument 'filename' must be a file URL object ... Received 'aesprim'").
+//   Every file that imports ExecAction.tsx or useResourceDefinition.tsx, which import jsonpath, is here.
+// - ui/vite-optimizer.test.ts needs nothing of a VM context. It starts a node subprocess that takes ten seconds to exit after its half-second test, so the smallest file of the run, last in the queue,
+//   was alone in the last ten seconds of a cold run. Here it starts first, with the others running beside it.
+// A file that a VM context cannot run fails at once, and loudly, so a new one is found the first time it runs: add it here with the reason.
+const forksOnly = [
+  'ui/features/router/components/ErrorBoundary.spec.tsx',
+  'ui/hooks/resource/useResourceDefinition.test.tsx',
+  'ui/components/tables/Resources/ResourceTableContainer.test.tsx',
+  'ui/features/profiling/HostProfilingIndicator.test.tsx',
+  'ui/components/tables/Resources/actions/ActionMenu.test.tsx',
+  'ui/components/tables/Resources/actions/ExecAction.test.tsx',
+  'ui/features/plugins/react/startup.test.tsx',
+  'ui/vite-optimizer.test.ts',
+];
+
 // https://vitejs.dev/config/
 export default defineConfig({
   root: uiNextRoot,
@@ -54,13 +83,26 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./ui/test-setup.ts', './ui-next/test-setup.ts'],
     css: false,
-    include: [
-      'ui/**/*.{spec,test}.{ts,tsx}',
-      'ui-next/**/*.{spec,test}.{ts,tsx}',
-      'packages/omniviewdev-runtime/src/telemetry/**/*.{spec,test}.{ts,tsx}',
-      'packages/omniviewdev-runtime/src/context/plugins/PluginContextProvider.test.tsx',
-      'packages/omniviewdev-runtime/src/hooks/connection/useConnectionMetadata.test.tsx',
-      'packages/omniviewdev-runtime/src/hooks/data/usePluginData.test.tsx',
+    // All the processors, not all but one. The default leaves a core for the main thread, which the vm pool needs only while Vite transforms (measured on 4 vCPU, cold cache: 71 s with three
+    // workers, 58 s with four; five and six do not go faster and use more memory).
+    maxWorkers: '100%',
+    // The root configuration runs no file itself once it names projects: both projects below take everything else from it (`extends` is true), so one Vite server transforms for both.
+    projects: [
+      {
+        test: {
+          name: 'vm',
+          pool: 'vmForks',
+          include: componentTests,
+          exclude: [...configDefaults.exclude, ...forksOnly],
+        },
+      },
+      {
+        test: {
+          name: 'forks',
+          pool: 'forks',
+          include: forksOnly,
+        },
+      },
     ],
   },
   build: {
