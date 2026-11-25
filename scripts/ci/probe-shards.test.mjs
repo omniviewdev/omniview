@@ -1052,7 +1052,7 @@ test('negative control: the ceiling is not a number that lets anything through: 
 test('the job timeout leaves a shard at its ceiling, on the slowest setup of the 70 shard jobs, time to finish and say why it failed, and is not much more: that is a hang', () => {
   assert.equal(engine.SETUP_MAX_SECONDS, 137, 'the slowest setup of the 70 shard jobs (median 87.5 s, 90th percentile 105 s)');
   const needed = Math.ceil((SHARD_CEILING_SECONDS + engine.SETUP_MAX_SECONDS) / 60);
-  // The timeout is an expression of the plan's scope (N30): 15 minutes for a full run, 36 for a pull request's longer shards.
+  // The timeout is an expression of the plan's scope (N30): 15 minutes for a full run, 38 for a pull request's longer shards.
   const [, longer, usual] = /^\$\{\{ needs\.plan\.outputs\.scope == 'pr' && (\d+) \|\| (\d+) \}\}$/.exec(workflow.jobs.shard['timeout-minutes']);
   for (const [timeout, ceiling] of [[Number(usual), SHARD_CEILING_SECONDS], [Number(longer), engine.PR_SHARD_CEILING_SECONDS]]) {
     const required = Math.ceil((ceiling + engine.SETUP_MAX_SECONDS) / 60);
@@ -1061,7 +1061,7 @@ test('the job timeout leaves a shard at its ceiling, on the slowest setup of the
   }
 
   assert.equal(Number(usual), 15);
-  assert.equal(Number(longer), 36);
+  assert.equal(Number(longer), 38);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
