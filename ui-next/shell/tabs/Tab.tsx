@@ -39,7 +39,14 @@ export function Tab({ id, stop, active, prefix, panelId }: TabProps) {
   const glyph = isIconName(item.icon) ? item.icon : FALLBACK_GLYPH;
   const closeLabel = `Close ${identity.title}`;
   return (
-    <div className={styles.item} data-shell-part="tab" data-tab-id={id} data-active={active ? '' : undefined}>
+    <div
+      className={styles.item}
+      data-shell-part="tab"
+      data-tab-id={id}
+      data-active={active ? '' : undefined}
+      data-pinned={item.pinned ? '' : undefined}
+      data-preview={item.preview ? '' : undefined}
+    >
       <button
         type="button"
         role="tab"
@@ -62,6 +69,9 @@ export function Tab({ id, stop, active, prefix, panelId }: TabProps) {
         onClick={() => {
           store.activate(id);
         }}
+        onDoubleClick={() => {
+          store.keep(id);
+        }}
         onMouseDown={(event) => {
           // The middle button would start the browser's autoscroll before it closes the tab.
           if (event.button === 1) {
@@ -78,6 +88,11 @@ export function Tab({ id, stop, active, prefix, panelId }: TabProps) {
         <span className={styles.lead}>
           <Icon name={glyph} />
         </span>
+        {item.pinned || item.preview ? (
+          <span className={styles.mark}>
+            <Icon name={item.pinned ? 'pin' : 'eye'} />
+          </span>
+        ) : null}
         <span className={styles.content}>
           <span className={styles.title} dir="auto">
             <span className={styles.head}>

@@ -44,7 +44,7 @@ const SHELL_INT_UI_GLYPHS = ['settings', 'square-terminal'];
 // G3: the glyphs other steps asked for (status/T3a.md section 6, the Problems and Operations tools). Lucide, 24 artboard: the empty Problems check, the filter that clears, the find bar's whole-word switch and the
 // terminal menu's Select all (the mock has no select-all glyph; its text-select is the nearest). Int UI, 16 artboard, one even-odd ink fill each: the warning triangle, the external link and the paste.
 const ASKED_LUCIDE_GLYPHS = ['circle-check', 'filter-x', 'select-all', 'whole-word'];
-const ASKED_INT_UI_GLYPHS = ['external-link', 'paste', 'triangle-alert'];
+const ASKED_INT_UI_GLYPHS = ['external-link', 'paste', 'pin', 'triangle-alert'];
 
 describe('the glyph registry', () => {
   it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
@@ -119,7 +119,7 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes but the gear, which is 1,735 as the mock draws it and may be 1,800; the registry 24,740: 7,000 for slice 1a, 18,400 after G1 and the steps that followed it, 22,450 after the eleven glyphs of G2, then 2,288 bytes for the seven of G3; the real total is 24,630 with 95 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not: status/G2.md measures it)', () => {
+  it('stays within its byte budget (one glyph 800 bytes but the gear, which is 1,735 as the mock draws it and may be 1,800; the registry 25,420: 7,000 for slice 1a, 18,400 after G1 and the steps that followed it, 22,450 after the eleven glyphs of G2, then 2,288 bytes for the seven of G3, then 780 for the pin of a tab; the real total is 25,418 with 96 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not: status/G2.md measures it)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
@@ -127,7 +127,7 @@ describe('the glyph registry', () => {
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(24740);
+    expect(total).toBeLessThanOrEqual(25420);
   });
 
   it('draws the shell glyphs from Lucide as the family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke, no relative moveto', () => {

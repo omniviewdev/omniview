@@ -80,6 +80,7 @@ export type IconName =
   | 'panel-bottom'
   | 'paste'
   | 'pause'
+  | 'pin'
   | 'play'
   | 'plus'
   | 'power'
@@ -258,6 +259,8 @@ export const GLYPHS: Readonly<Record<IconName, Glyph>> = {
   paste: { box: 16, layers: [{ d: 'M5.5 6c-.276 0-.5.224-.5.5c0 .276.224.5.5.5h5c.276 0 .5-.224.5-.5c0-.276-.224-.5-.5-.5h-5zM5 8.5c0-.276.224-.5.5-.5h5c.276 0 .5.224.5.5c0 .276-.224.5-.5.5h-5c-.276 0-.5-.224-.5-.5zM5.5 10c-.276 0-.5.224-.5.5c0 .276.224.5.5.5h5c.276 0 .5-.224.5-.5c0-.276-.224-.5-.5-.5h-5zM12 2h-1.085c-.206-.583-.762-1-1.415-1h-3c-.653 0-1.209.417-1.415 1h-1.085c-1.105 0-2 .895-2 2v9c0 1.105.895 2 2 2h8c1.105 0 2-.895 2-2v-9c0-1.105-.895-2-2-2zM4 3h1.085c.206.583.762 1 1.415 1h3c.653 0 1.209-.417 1.415-1h1.085c.552 0 1 .448 1 1v9c0 .552-.448 1-1 1h-8c-.552 0-1-.448-1-1v-9c0-.552.448-1 1-1zM6.5 2c-.276 0-.5.224-.5.5c0 .276.224.5.5.5h3c.276 0 .5-.224.5-.5c0-.276-.224-.5-.5-.5h-3z', fill: 'ink', evenodd: true }] },
   /* Int UI run/pause_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPause. */
   pause: { box: 16, layers: [{ d: 'M4 2.5H6A.5 .5 0 0 1 6.5 3V13A.5 .5 0 0 1 6 13.5H4A.5 .5 0 0 1 3.5 13V3A.5 .5 0 0 1 4 2.5ZM10 2.5H12A.5 .5 0 0 1 12.5 3V13A.5 .5 0 0 1 12 13.5H10A.5 .5 0 0 1 9.5 13V3A.5 .5 0 0 1 10 2.5Z', stroke: 'ink' }] },
+  /* Int UI general/pin_dark.svg. Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPin. */
+  pin: { box: 16, layers: [{ d: 'M6.481 5.707L6.267 7.2C6.198 7.688 5.901 8.072 5.536 8.293C4.785 8.748 4.398 9.414 4.199 10H11.802C11.602 9.414 11.215 8.747 10.464 8.293C10.099 8.072 9.802 7.688 9.733 7.2L9.519 5.707C9.391 4.806 10.09 4 11 4V3L5 3V4C5.91 4 6.609 4.806 6.481 5.707ZM5.277 7.059C5.255 7.218 5.156 7.354 5.019 7.437C3.85 8.145 3.358 9.228 3.151 10.014C3.01 10.548 3.448 11 4 11H12C12.552 11 12.99 10.548 12.85 10.014C12.642 9.228 12.15 8.145 10.981 7.437C10.844 7.354 10.745 7.218 10.723 7.059L10.509 5.566C10.467 5.267 10.698 5 11 5C11.552 5 12 4.552 12 4V3C12 2.448 11.552 2 11 2H5C4.448 2 4 2.448 4 3V4C4 4.552 4.448 5 5 5C5.302 5 5.533 5.267 5.491 5.566L5.277 7.059Z M7.5 11H8.5V14.5C8.5 14.776 8.276 15 8 15V15C7.724 15 7.5 14.776 7.5 14.5V11Z', fill: 'ink', evenodd: true }] },
   /* Int UI run/run_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPlay. */
   play: { box: 16, layers: [{ d: 'M13.5 7.134C14.167 7.519 14.167 8.481 13.5 8.866L4.5 14.062C3.833 14.447 3 13.966 3 13.196L3 2.804C3 2.034 3.833 1.553 4.5 1.938L13.5 7.134Z', fill: '#253627', stroke: 'success' }] },
   /* Int UI general/add_dark.svg. Copyright 2000-2023 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license. Mock keys: LuPlus. */

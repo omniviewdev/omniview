@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTabsStore } from '../core/tabs';
-import { boot, dest } from '../core/tabs/testing';
+import { boot, cloudPage, dest, stackPage } from '../core/tabs/testing';
 import { Shell } from '../Shell';
 
 // The strip is read through the whole shell: it needs the tab model, the page region it controls and the ids they share. The model is the real one, over the fixture world's
@@ -444,5 +444,69 @@ describe('layout it cannot see', () => {
     });
 
     expect(scroller.scrollLeft).toBe(200);
+  });
+});
+
+describe('pinned and preview tabs (ch16 S23, S24)', () => {
+  /** A pinned tab, a preview tab (a search result of another plugin, so it is a tab of its own) and a plain tab, the preview on screen. */
+  function mountMarked() {
+    const h = boot({ home: false });
+    const plain = h.open(cloudPage('instances'));
+    const pinned = h.open(cloudPage('volumes'), { how: 'new' });
+    const preview = h.open(stackPage('services'), { source: 'search' });
+    h.store.pin(pinned, true);
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ id }) => <p>{`page of ${id}`}</p>} empty={null} />);
+    const face = (id: string) => document.querySelector<HTMLElement>(`[data-shell-part="tab"][data-tab-id="${id}"]`)!;
+    return { h, plain, pinned, preview, face, user: userEvent.setup() };
+  }
+
+  it('marks a pinned tab and a preview tab apart from a plain one, with a glyph each and the flag on the face for the stylesheet', () => {
+    const { plain, pinned, preview, face } = mountMarked();
+
+    expect(face(pinned)).toHaveAttribute('data-pinned');
+    expect(face(preview)).toHaveAttribute('data-preview');
+    expect(face(plain)).not.toHaveAttribute('data-pinned');
+    expect(face(plain)).not.toHaveAttribute('data-preview');
+    const glyphs = (id: string) => [...face(id).querySelectorAll('[data-ov-glyph]')].map((svg) => svg.getAttribute('data-ov-glyph'));
+    expect(glyphs(pinned)).toContain('pin');
+    expect(glyphs(preview)).toContain('eye');
+    expect(glyphs(plain)).not.toContain('pin');
+    expect(glyphs(plain)).not.toContain('eye');
+  });
+
+  const previewed = () => screen.getAllByRole('tab').some((element) => element.getAttribute('aria-label')?.includes('preview'));
+
+  it('makes a preview tab permanent on a double-click on it', async () => {
+    const { h, preview, user } = mountMarked();
+    expect(previewed()).toBe(true);
+
+    await user.dblClick(screen.getByRole('tab', { name: /preview/ }));
+
+    expect(previewed()).toBe(false);
+    expect(h.state().tabs[preview]?.flags.preview).toBe(false);
+  });
+
+  it('makes a preview tab permanent on a press in its page', () => {
+    const { preview } = mountMarked();
+
+    fireEvent.pointerDown(screen.getByText(`page of ${preview}`));
+
+    expect(previewed()).toBe(false);
+  });
+
+  it('makes a preview tab permanent on a key in its page', () => {
+    const { preview } = mountMarked();
+
+    fireEvent.keyDown(screen.getByText(`page of ${preview}`), { key: 'a' });
+
+    expect(previewed()).toBe(false);
+  });
+
+  it('keeps a preview tab a preview while only its tab is pressed once', async () => {
+    const { user } = mountMarked();
+
+    await user.click(screen.getByRole('tab', { name: /preview/ }));
+
+    expect(previewed()).toBe(true);
   });
 });
