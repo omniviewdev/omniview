@@ -24,8 +24,8 @@ export type ChannelEvents = {
 
 /** What the feed sends on a stream it opened. Frames sent before the stream is open wait, in order, behind the attach; frames sent after the stream is over are dropped. */
 export type ChannelLink = {
-  /** `0x02`: what was typed, at most `MAX_INPUT_BYTES` in one frame (the feed cuts larger pieces). */
-  readonly input: (bytes: Uint8Array) => void;
+  /** `0x02`: what was typed, at most `MAX_INPUT_BYTES` in one frame (the feed cuts larger pieces). False: the bytes were not sent because the stream is over (the link tells `closed`, once); the feed keeps them for the next stream. */
+  readonly input: (bytes: Uint8Array) => boolean;
   /** `0x03`: the size, each from 1 to 1,000. */
   readonly resize: (cols: number, rows: number) => void;
   /** `0x04`: bytes of output the page parsed since its last acknowledgement. The first one, of nothing if need be, turns on the host's window for this stream. */

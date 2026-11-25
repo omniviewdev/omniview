@@ -337,6 +337,51 @@ describe('the frames the page sends', () => {
   });
 });
 
+describe('a socket that is closing before its close event', () => {
+  const dead = () => {
+    const r = rig({ saved: { t1: CAP } });
+    const c = connected(r);
+    c.socket.open();
+    c.socket.readyState = 3;
+    return c;
+  };
+
+  it('refuses input, sends nothing, and tells `closed` once: the close event that follows tells nothing', () => {
+    const { socket, said, link } = dead();
+    const sent = socket.sent.length;
+    expect(link.input(bytesOf(1, 2))).toBe(false);
+    expect(socket.sent).toHaveLength(sent);
+    expect(said.map((one) => one[0])).toEqual(['closed']);
+    socket.drop();
+    link.input(bytesOf(3));
+    expect(said.map((one) => one[0])).toEqual(['closed']);
+  });
+
+  it.each(['resize', 'ack', 'detach'] as const)('ends the stream as closed once for a %s on it, and sends nothing', (kind) => {
+    const { socket, said, link } = dead();
+    const sent = socket.sent.length;
+    if (kind === 'resize') {
+      link.resize(80, 24);
+    } else if (kind === 'ack') {
+      link.ack(3);
+    } else {
+      link.detach();
+    }
+
+    expect(socket.sent).toHaveLength(sent);
+    socket.drop();
+    expect(said.map((one) => one[0])).toEqual(['closed']);
+  });
+
+  it('says an input on a stream that is open was sent', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, link } = connected(r);
+    socket.open();
+    expect(link.input(bytesOf(1))).toBe(true);
+    expect(link.input(new Uint8Array(0))).toBe(true);
+  });
+});
+
 describe('the frames the host sends', () => {
   const opened = () => {
     const r = rig({ saved: { t1: CAP } });
