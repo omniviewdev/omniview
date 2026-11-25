@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES } from './channel';
 import { offersTakeBack } from './feed';
+import { laneOf } from './state';
 import { RECONNECT_DELAYS_MS, createExecFeed, listedOf, type ExecAttach, type ExecFeed } from './execFeed';
 import type { TerminalFeedHandle, TerminalModes, TerminalReplay, TerminalShellAttempt } from './feed';
 import { fakeChannels, goneError, type FakeChannels, type FakeChannelsOptions, type FakeStream, type ReadyInit } from './testing';
@@ -2218,5 +2219,217 @@ describe('the writer of a feed', () => {
     expect(other.stream().writer).not.toBe(first);
     const attached = attaching();
     expect(attached.stream().writer).toMatch(/^[0-9a-f]{32}$/);
+  });
+});
+
+describe('review of #763, round 2', () => {
+  it('credits at a close only what the stream delivered and nobody credited: not what the reader acknowledged, and not what an earlier stream delivered', async () => {
+    const acked = await running();
+    acked.stream().output(0, 'abcde');
+    acked.feed.ack(5);
+    acked.stream().output(5, 'fgh');
+    const closing = acked.feed.close();
+    expect(acked.stream().acks().reduce((sum, bytes) => sum + bytes, 0)).toBe(5 + 3);
+    acked.stream().ended({ reason: 'closed', closed_by: 'request', last_offset: 8 });
+    await closing;
+
+    const old = await running();
+    old.stream().output(0, 'abc');
+    old.stream().drop();
+    const again = reconnect(old);
+    again.ready({ start: 3, end: 3 });
+    again.output(3, 'de');
+    const ending = old.feed.close();
+    // The 3 bytes of the stream that is over are nobody's to credit to this one: only its own 2 are.
+    expect(again.acks().reduce((sum, bytes) => sum + bytes, 0)).toBe(2);
+    again.ended({ reason: 'closed', closed_by: 'request', last_offset: 5 });
+    await ending;
+  });
+
+  it('holds no reference to a piece the host confirmed, before any compaction', async () => {
+    const r = await running();
+    const piece = 'p'.repeat(MAX_INPUT_BYTES);
+    r.feed.write(piece);
+    r.feed.write(piece);
+    r.feed.write(piece);
+    expect(r.feed.keptHeld()).toBe(3 * MAX_INPUT_BYTES);
+    r.stream().applied(2 * MAX_INPUT_BYTES);
+    expect(r.feed.keptHeld()).toBe(MAX_INPUT_BYTES);
+    r.stream().applied(2 * MAX_INPUT_BYTES + 1000);
+    expect(r.feed.keptHeld()).toBe(MAX_INPUT_BYTES - 1000);
+  });
+
+  it('makes a writer id where the platform has no crypto, in the same 32 lowercase hex digits', async () => {
+    const real = globalThis.crypto;
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined });
+    try {
+      const r = await running();
+      expect(r.stream().writer).toMatch(/^[0-9a-f]{32}$/);
+      const other = await running();
+      expect(other.stream().writer).not.toBe(r.stream().writer);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', { configurable: true, value: real });
+    }
+  });
+
+  it('says in its status when the fresh question of a take-back could not be asked, and not when it was answered', async () => {
+    let reachable = false;
+    const r = await running({}, { channels: { listed: async () => (reachable ? { id: 'term-1', attached: true } : Promise.reject(new Error('offline'))) } });
+    r.stream().takenOver();
+    r.stream().drop();
+    await turns();
+    await r.feed.refresh?.({ fresh: true });
+    expect(r.feed.getSnapshot().detached).toMatchObject({ unwatched: true, askFailed: true });
+    reachable = true;
+    await r.feed.refresh?.({ fresh: true });
+    expect(r.feed.getSnapshot().detached).toEqual({ by: 'taken-over', unwatched: true, free: false });
+  });
+});
+
+describe('a host that does not know the feed\'s writer (`ready.writer_known: false`)', () => {
+  it('drops what it typed and the host did not confirm when the feed had attached before, sends none of it, and tells the user that input typed while away may be lost', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    r.feed.write('def');
+    const again = reconnect(r);
+    again.ready({ inputApplied: 0, writerKnown: false });
+    expect(again.typed()).toBe('');
+    expect(r.feed.keptPieces()).toBe(0);
+    expect(r.feed.inputsSettled?.()).toBe(true);
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    expect(laneOf(r.feed.getSnapshot()).words).toBe('Input may be lost');
+    expect(laneOf(r.feed.getSnapshot()).note).toMatch(/while the connection was away/);
+    // The count starts again from the host's: what is typed now is kept and confirmed as usual, and the notice goes with the next thing typed.
+    r.feed.write('g');
+    expect(again.typed()).toBe('g');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    again.applied(1);
+    again.drop();
+    const third = reconnect(r);
+    third.ready({ inputApplied: 1 });
+    expect(third.typed()).toBe('');
+  });
+
+  it('does nothing extra on a first attach, which no host knows the writer of: what was typed before the stream was ready is sent, and nothing is said', async () => {
+    const r = await connecting();
+    r.feed.write('abc');
+    r.stream().ready({ inputApplied: 0, writerKnown: false });
+    expect(r.stream().typed()).toBe('abc');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    const attached = attaching();
+    attached.feed.write('x');
+    attached.stream().ready({ start: 0, end: 0, writerKnown: false });
+    expect(attached.stream().typed()).toBe('x');
+    expect(attached.feed.getSnapshot().inputLost).toBeUndefined();
+  });
+
+  it('resends what the host knows nothing of only a few times when it applies none of it (a program that never reads): then drops it and says so, instead of cycling', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    for (let round = 1; round <= 3; round += 1) {
+      const again = reconnect(r, round === 1 ? 250 : 1_000);
+      again.ready({ inputApplied: 0 });
+      expect(again.typed(), `resend ${String(round)}`).toBe('abc');
+      expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+      again.drop();
+    }
+
+    const last = reconnect(r, 4_000);
+    last.ready({ inputApplied: 0 });
+    expect(last.typed()).toBe('');
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    expect(r.feed.keptPieces()).toBe(0);
+  });
+
+  it('counts a resend only when the host applied none of it: progress in between starts the count again', async () => {
+    const r = await running();
+    r.feed.write('abcdef');
+    r.stream().drop();
+    let applied = 0;
+    for (let round = 1; round <= 6; round += 1) {
+      const again = reconnect(r, round === 1 ? 250 : 1_000);
+      again.ready({ inputApplied: applied });
+      expect(again.typed()).not.toBe('');
+      applied = Math.min(5, applied + 1);
+      again.applied(applied);
+      again.drop();
+    }
+
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+  });
+});
+
+describe('the writer_known rule, pinned (review of the review)', () => {
+  it('says nothing is lost when nothing was kept: a reconnect with an unknown writer after nothing was typed', async () => {
+    const r = await running();
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ writerKnown: false });
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    expect(laneOf(r.feed.getSnapshot()).words).toBe('');
+  });
+
+  it('keeps the words when nothing is typed: an empty write does not clear them, a real one does', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ writerKnown: false });
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    r.feed.write('');
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+    r.feed.write('x');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+  });
+
+  it('reads a ready that does not say `writer_known` as a known writer: what it did not confirm is sent again, and nothing is said', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 0, raw: { writer_known: undefined } });
+    expect(again.typed()).toBe('abc');
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+  });
+
+  it('starts counting from the count the host gives after it let go: a later `applied` is measured from there', async () => {
+    const r = await running();
+    r.feed.write('abc');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 5, writerKnown: false });
+    r.feed.write('x');
+    expect(again.typed()).toBe('x');
+    again.applied(6);
+    expect(r.warn).not.toHaveBeenCalled();
+    expect(r.feed.keptPieces()).toBe(0);
+  });
+
+  it('counts a resend only for bytes that were sent to a stream before: bytes no stream took (the socket died first) are not resends however many streams they wait through', async () => {
+    const r = await running({}, { delays: [10, 10, 10, 10, 10, 10, 10, 10] });
+    r.stream().drop();
+    r.feed.write('abc');
+    for (let round = 1; round <= 6; round += 1) {
+      const again = reconnect(r, 10);
+      again.die();
+      again.ready({ inputApplied: 0 });
+      expect(r.feed.getSnapshot().inputLost, `round ${String(round)}`).toBeUndefined();
+      expect(again.typed()).toBe('');
+    }
+  });
+
+  it('starts the resend count again when the `ready` itself says the host applied some: a slow reader that takes a little each time is not cut off', async () => {
+    const r = await running();
+    r.feed.write('abcdefghij');
+    r.stream().drop();
+    for (let round = 1; round <= 7; round += 1) {
+      const again = reconnect(r, round === 1 ? 250 : 1_000);
+      again.ready({ inputApplied: round });
+      expect(r.feed.getSnapshot().inputLost, `round ${String(round)}`).toBeUndefined();
+      expect(again.typed()).not.toBe('');
+      again.drop();
+    }
   });
 });

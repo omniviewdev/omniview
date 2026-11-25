@@ -1041,6 +1041,8 @@ export function createHost(options = {}) {
       lost,
       // What the host has admitted, and not only what it has written: the input the stream that held the terminal had queued is applied before anything this stream sends, so the page must not send it again.
       input_applied: conn.w.admitted,
+      // True only when the host had a count for this writer before this attach.
+      writer_known: conn.known,
       size: { cols: pty.cols, rows: pty.rows },
       start_size: ring.sizeAt(start),
       modes: modesNow(pty),
@@ -1074,6 +1076,7 @@ export function createHost(options = {}) {
       return;
     }
 
+    conn.known = writer !== undefined && pty.writers.has(writer);
     conn.w = writerOf(pty, writer);
     const previous = pty.holder;
     if (previous !== null) {
@@ -1147,7 +1150,7 @@ export function createHost(options = {}) {
 
     const asked = from !== undefined;
     const start = asked && from >= ring.start ? from : ring.start;
-    const ready = { v: VERSION, start, end: ring.end, lost: asked && from < ring.start ? ring.start - from : 0, input_applied: 0, size: entry.size, start_size: ring.sizeAt(start), modes: ring.modesAt(ring.end), start_modes: ring.modesAt(Math.max(start, ring.start)), cwd: { reason: 'ended' }, busy: { state: 'unknown', reason: 'ended' }, session: entry.info, lease_ms: 0, ended: entry.end };
+    const ready = { v: VERSION, start, end: ring.end, lost: asked && from < ring.start ? ring.start - from : 0, input_applied: 0, writer_known: false, size: entry.size, start_size: ring.sizeAt(start), modes: ring.modesAt(ring.end), start_modes: ring.modesAt(Math.max(start, ring.start)), cwd: { reason: 'ended' }, busy: { state: 'unknown', reason: 'ended' }, session: entry.info, lease_ms: 0, ended: entry.end };
     log.attaches.push({ stream: conn.id, id: entry.id, from_offset: from ?? null, outcome: 'ended', start, end: ring.end, lost: ready.lost, bytes: ring.end - start, at: now(), writesAt: log.writes.length, framesAt: log.frames.length, order: (order += 1) });
     deliver(conn, jsonFrame(FRAME.ready, ready));
     for (let at = start; at < ring.end; ) {
@@ -1377,7 +1380,7 @@ export function createHost(options = {}) {
    */
   function openStream(deliver_, onClosed = () => undefined) {
     streamSerial += 1;
-    const conn = { progressAt: 0, id: streamSerial, deliver: deliver_, onClosed, over: false, pty: null, terminal: undefined, cursor: 0, replayEnd: 0, begun: 0, acked: 0, explicit: false, displaced: false, held: false, sending: false, attached: false, watched: null, told: 0, w: { admitted: 0, applied: 0 } };
+    const conn = { progressAt: 0, id: streamSerial, deliver: deliver_, onClosed, over: false, pty: null, terminal: undefined, cursor: 0, replayEnd: 0, begun: 0, acked: 0, explicit: false, displaced: false, held: false, sending: false, attached: false, watched: null, told: 0, known: false, w: { admitted: 0, applied: 0 } };
     conns.add(conn);
     log.streams.push({ id: conn.id, at: now() });
     return {

@@ -435,3 +435,12 @@ describe('a terminal another tab holds that this page can no longer be told abou
     expect(lane.note).toMatch(/nobody holds it/);
   });
 });
+
+describe('a take-back whose question could not be asked (`detached.askFailed`)', () => {
+  it('says so: nothing was attached because the host could not be asked, and Take it back tries again', () => {
+    const lane = laneOf(snap('ended', { detached: { by: 'taken-over', unwatched: true, askFailed: true } }));
+    expect(lane.words).toBe('Taken over by another tab');
+    expect(lane.note).toMatch(/could not be asked/);
+    expect(lane.note).toMatch(/tries again/);
+  });
+});

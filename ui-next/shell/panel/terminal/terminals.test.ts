@@ -1066,8 +1066,10 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       expect(feed.refresh).toHaveBeenCalledTimes(1);
       expect(feed.refresh).toHaveBeenCalledWith({ fresh: true });
       expect(vi.getTimerCount()).toBe(0);
+      const asked = vi.spyOn(r.terminals.sessions, 'refreshUnwatched');
       stop();
       document.dispatchEvent(new Event('visibilitychange'));
+      expect(asked).not.toHaveBeenCalled();
       expect(feed.refresh).toHaveBeenCalledTimes(1);
     });
 

@@ -54,6 +54,8 @@ export type ExecFeed = TerminalFeedHandle & {
   readonly id: string;
   /** How many pieces of typed input the feed holds (sent or not) that the host has not said it applied: a test holds it to a bound. */
   readonly keptPieces: () => number;
+  /** How many bytes the pieces kept still reference, confirmed or not (a test holds a confirmed piece to be let go of at once). */
+  readonly keptHeld: () => number;
 };
 
 /** How long a size stands still before it is sent: a drag of the splitter is one message. */
@@ -64,10 +66,24 @@ export const RECONNECT_DELAYS_MS: readonly number[] = [250, 1_000, 4_000];
 
 const NO_BYTES = new Uint8Array(0);
 
+/** How many streams in a row the kept input is sent to again with none of it applied, before it is let go of. The resend is at most `MAX_KEPT_INPUT_BYTES` (1 MiB) each time, under the host's 8 MiB lane cap, so a stream is never closed for it. */
+const MAX_RESENDS = 3;
+
 /** A new writer id: 16 random bytes as 32 lowercase hex digits. It is not a secret and opens nothing. */
 function writerId(): string {
   const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
+  if (typeof platform.crypto?.getRandomValues === 'function') {
+    platform.crypto.getRandomValues(bytes);
+  } else {
+    // Where the platform has no crypto (a test environment) the id is made from the clock and a counter and Math.random: unique within a run, and as unguessable as it needs to be (it opens nothing).
+    counter += 1;
+    let seed = Date.now() * 4096 + counter;
+    for (let at = 0; at < bytes.length; at += 1) {
+      bytes[at] = Math.floor(Math.random() * 256) ^ (seed & 0xff);
+      seed = Math.floor(seed / 7);
+    }
+  }
+
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -330,6 +346,8 @@ type Ready = {
   readonly lost: number;
   /** The bytes of input the host has applied from this capability, across streams: the feed sends again what it kept after it. */
   readonly inputApplied: number;
+  /** Whether the host had a count for this feed's writer before this attach; absent: known (a host that does not say cannot lose a count). */
+  readonly writerKnown: boolean;
   readonly size: Size;
   readonly startSize: Size;
   readonly modes: TerminalModes;
@@ -368,6 +386,7 @@ function readyOf(value: unknown): Ready | undefined {
     end,
     lost,
     inputApplied,
+    writerKnown: Reflect.get(value, 'writer_known') !== false,
     size,
     startSize: sizeOfWire(Reflect.get(value, 'start_size')) ?? size,
     modes: modesOf(Reflect.get(value, 'modes')),
@@ -436,6 +455,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let sentTo = 0;
   let keptBytes = 0;
   let applied: number | undefined;
+  /** Some of the kept bytes were handed to a stream already: what the next `ready` has the feed send again is a resend. */
+  let sentOnce = false;
+  /** How many streams in a row had the kept bytes sent to them again with the host applying none of them. */
+  let resends = 0;
+  /** The feed has had a `ready` of its writer before: a host that then does not know the writer has lost its count. */
+  let attachedBefore = false;
   /** The terminal was taken by another stream and this stream stays open as a watcher, which hears `released` or `ended`. */
   let watching = false;
   /** How many calls of `write` the feed took with something typed in them: what `inputs` says. */
@@ -606,6 +631,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
 
       sentTo += 1;
+      sentOnce = true;
     }
   };
 
@@ -638,17 +664,34 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     return true;
   };
 
+  /** Lets go of every byte kept, unconfirmed: the host's count is `total` from here on, and the user is told that input typed while away may be lost. */
+  const dropKept = (total: number) => {
+    const lost = keptBytes > 0;
+    kept = [];
+    head = 0;
+    sentTo = 0;
+    keptBytes = 0;
+    sentOnce = false;
+    resends = 0;
+    applied = total;
+    // Only input that was kept and is let go of may be lost: a reconnect after nothing was typed says nothing.
+    if (lost) {
+      status = { ...status, inputLost: true };
+      tell();
+    }
+  };
+
   /** The host has applied input up to `total` (its count, across streams): the kept bytes up to it are let go. A number that does not grow changes nothing; one above what the feed typed is all of it, and said once. */
-  const confirm = (total: number) => {
+  const confirm = (total: number): number => {
     if (applied === undefined) {
       // The first `ready`: nothing this feed typed was before it.
       applied = total;
-      return;
+      return 0;
     }
 
     let drop = total - applied;
     if (drop <= 0) {
-      return;
+      return 0;
     }
 
     if (drop > keptBytes) {
@@ -680,7 +723,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       kept = [];
       head = 0;
       sentTo = 0;
-      return;
+      sentOnce = false;
+      return drop;
     }
 
     sentTo = Math.max(sentTo, head);
@@ -689,6 +733,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       sentTo -= head;
       head = 0;
     }
+
+    return drop;
   };
 
   /** One size, as its own frame. */
@@ -773,7 +819,24 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     forgiven = outstanding;
     // What the host applied is not sent again; what it did not is, from the first kept byte, before anything typed since.
-    confirm(ready.inputApplied);
+    if (!ready.writerKnown && attachedBefore) {
+      // The host has no count for this feed's writer (it restarted, or forgot the writer): what it applied of the kept bytes is not known, and sending them again could type them twice. They are let go, and the user is told.
+      dropKept(ready.inputApplied);
+    } else {
+      if (confirm(ready.inputApplied) > 0) {
+        resends = 0;
+      }
+
+      // The same unconfirmed bytes sent to stream after stream with none applied (a program that never reads): sent a few times, then let go, so that the feed does not cycle with the host's lane cap closing each stream.
+      if (keptBytes > 0 && sentOnce) {
+        resends += 1;
+        if (resends > MAX_RESENDS) {
+          dropKept(ready.inputApplied);
+        }
+      }
+    }
+
+    attachedBefore = true;
     sentTo = head;
     // The first acknowledgement goes before anything else is sent, whatever a listener writes when it is told the feed is running. If it finds the socket dead the stream is over, and nothing more of this ready is read.
     const mine = connection;
@@ -920,7 +983,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       return;
     }
 
-    confirm(total);
+    if (confirm(total) > 0) {
+      resends = 0;
+    }
   };
 
   /** Another stream took the terminal: the feed ends for this page, with input off, and is told apart from one that ended. The stream stays open as a watcher, which the host tells `released` or `ended`. */
@@ -1133,8 +1198,25 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     return refreshing;
   };
 
+  /** Whether the last fresh question of a take-back could not be asked: the lane says so, and the next press tries again. */
+  const setAskFailed = (failed: boolean) => {
+    const current = status.detached;
+    if (current === undefined || (current.askFailed === true) === failed) {
+      return;
+    }
+
+    const { askFailed: _was, ...rest } = current;
+    status = { ...status, detached: failed ? { ...rest, askFailed: true } : rest };
+    tell();
+  };
+
   const refresh = async (asking?: { readonly fresh?: boolean }): Promise<void> => {
-    await ask(asking);
+    const answered = await ask(asking);
+    if (answered) {
+      setAskFailed(false);
+    } else if (asking?.fresh === true) {
+      setAskFailed(true);
+    }
   };
 
   /**
@@ -1191,6 +1273,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   return {
     id,
     keptPieces: () => kept.length,
+    keptHeld: () => kept.reduce((sum, piece) => sum + piece.length, 0),
 
     subscribe: (listener) => {
       listeners.add(listener);
@@ -1244,6 +1327,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
       if (text !== '') {
         typed += 1;
+      }
+
+      if (status.inputLost === true && text !== '') {
+        const { inputLost: _lost, ...rest } = status;
+        status = rest;
+        tell();
       }
 
       if (keep(text)) {
@@ -1304,11 +1393,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       if (fate === 'ours' && !left && streaming && link !== undefined && status.state === 'running') {
         const stream = link;
         // What the stream delivered and was not credited yet (what the reader has not parsed, and what it owes) is credited now: the discarded bytes would otherwise hold the end back.
-        const uncredited = owed + Math.max(0, outstanding - forgiven);
+        // (`owed` is always nothing here: a stream that is running credits what the reader parsed as it comes.)
+        const uncredited = Math.max(0, outstanding - forgiven);
         closing = new Promise<void>((resolve) => {
           ending = resolve;
         });
-        owed = 0;
         if (uncredited > 0) {
           stream.ack(uncredited);
         }
