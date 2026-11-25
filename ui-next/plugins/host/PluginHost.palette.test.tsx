@@ -42,6 +42,10 @@ function watch() {
   return { made, live };
 }
 
+/** The host's list of shells, which is not what these tests are about: none, and no question to a host that is not there. */
+const NONE: readonly never[] = [];
+const NO_SHELLS = { subscribe: () => () => undefined, getSnapshot: () => NONE };
+
 function mount(over: { readonly onCloseWindow?: () => void; readonly panel?: PanelStore } = {}, options: { readonly reactStrictMode?: boolean } = {}) {
   return render(<PluginHost plugins={plugins} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} {...over} />, options);
 }
@@ -435,7 +439,7 @@ describe('the keywords of a plugin\'s sidebar, through the window', () => {
   function open(plugins: readonly PluginEntry[]) {
     const user = userEvent.setup();
     const source = { getSnapshot: () => plugins, subscribe: () => () => undefined };
-    render(<PluginHost plugins={source} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={startedOn(plugins)} />);
+    render(<PluginHost plugins={source} inventory="ready" link={NO_ROUTE} onRetry={() => undefined} onRetryInventory={() => undefined} session={startedOn(plugins)} terminals={{ shells: NO_SHELLS }} />);
     return {
       user,
       search: async (text: string) => {
@@ -483,7 +487,7 @@ describe('the keywords of a plugin\'s sidebar, through the window', () => {
     await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
     await user.keyboard('{Backspace}g');
     await screen.findByRole('option', { name: 'Page: Gadgets, Group' });
-    const said = warn.mock.calls.map((call) => String(call[0])).filter((message) => message.startsWith('[palette]'));
+    const said = warn.mock.calls.map((call) => String(call[0]));
     expect(said).toEqual(['[palette] acme:sidebar: sidebar entry "gadgets": keyword 1 is not a word of 1 to 32 characters, with no white space in it: it is left out']);
   });
 });
