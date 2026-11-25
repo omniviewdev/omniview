@@ -470,6 +470,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** How many of the bytes the reader acknowledges next are bytes of a stream that is over: the host's window of the new stream started at nothing, so they are not passed on. */
   let forgiven = 0;
   let refreshing: Promise<boolean> | undefined;
+  /** A close in flight on the live stream: the host ends the terminal when this stream holds it and tells the stream (`ended`); a watcher is told `close-refused`. */
+  let ending: (() => void) | undefined;
 
   const closed = (): boolean => closing !== undefined;
 
@@ -938,6 +940,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     over({ state: 'failed', cause: { stage: 'session', message: TERMINAL_GONE } });
   };
 
+  /** The close on the stream was answered or the stream is over: the stream is let go of, and the close resolves. */
+  const finishEnding = () => {
+    unlink(true);
+    ending?.();
+  };
+
   const connectAgain = () => {
     retry = undefined;
     if (closed() || left || finished()) {
@@ -994,18 +1002,30 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
           }
         };
 
+    /** What can end the stream also ends a close in flight on it: the close is over, however it was answered. */
+    const heardEnd =
+      <Args extends unknown[]>(listener: (...args: Args) => void) =>
+        (...args: Args): void => {
+          if (connection === mine && ending !== undefined) {
+            finishEnding();
+          } else {
+            heard(listener)(...args);
+          }
+        };
+
     try {
       link = channels.connect(id, from, {
         ready: heard(onReady),
         output: heard(onOutput),
         gap: heard(onGap),
-        ended: heard(onEnded),
         applied: heard(onApplied),
+        ended: heardEnd(onEnded),
         takenOver: heard(onTakenOver),
-        released: heard(onReleased),
-        unsupported: heard(onUnsupported),
-        notFound: heard(onNotFound),
-        closed: heard(onClosed),
+        closeRefused: heardEnd(() => undefined),
+        released: heardEnd(onReleased),
+        unsupported: heardEnd(onUnsupported),
+        notFound: heardEnd(onNotFound),
+        closed: heardEnd(onClosed),
       });
     } catch (error) {
       connection = undefined;
@@ -1251,6 +1271,23 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       // Whether this feed holds a live stream to the terminal now, or made the terminal and never opened one (nobody else can hold it): only then is it this page's to end. A stream that dropped, is being connected again or is not ready may have been
       // taken by another tab meanwhile, and a close of the capability alone would end what that tab shows: it is left to the host's lease, until the host binds a close to the holder.
       const holding = (streaming && link !== undefined) || (attachTo === undefined && !everReady);
+      // A terminal this feed holds a live stream to is ended by the stream: the host ends it only if this stream still holds it (a page that was displaced without knowing is told `close-refused`), and tells the stream. The close of the
+      // capability is for a terminal that was made and never attached: nobody else can hold it.
+      if (fate === 'ours' && !left && streaming && link !== undefined && status.state === 'running') {
+        const stream = link;
+        closing = new Promise<void>((resolve) => {
+          ending = resolve;
+        });
+        dropOutgoing();
+        held.clear();
+        awaiting = undefined;
+        if (!stream.end()) {
+          finishEnding();
+        }
+
+        return closing;
+      }
+
       unlink(true);
       dropOutgoing();
       held.clear();

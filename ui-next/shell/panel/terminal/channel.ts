@@ -18,6 +18,8 @@ export type ChannelEvents = {
   readonly applied: (total: number) => void;
   /** `0x85`: another stream took the terminal. This stream stays open as a watcher: the host sends it no output and refuses what is sent on it, and tells it `released` or `ended` and closes it. The capability is kept, so that the terminal can be taken back. */
   readonly takenOver: () => void;
+  /** `0x8a`: the stream's `close` ended nothing: it does not hold the terminal (another stream took it). The stream goes on, as a watcher. */
+  readonly closeRefused: () => void;
   /** `0x88`, to a watcher: the stream that held the terminal ended and the terminal runs and is free. The stream is over. */
   readonly released: () => void;
   /** `0x89`: the host speaks another version of the stream (its number, parsed from `{"v":n}` and unchecked). The stream is over; nothing is tried again. */
@@ -36,6 +38,8 @@ export type ChannelLink = {
   readonly resize: (cols: number, rows: number) => void;
   /** `0x04`: bytes of output the page parsed since its last acknowledgement. The first one, of nothing if need be, turns on the host's window for this stream. */
   readonly ack: (bytes: number) => void;
+  /** `0x06`: ask that the terminal end, on this stream: it ends only when this stream holds the terminal, and the stream is then sent the rest of the output and `ended`; from a watcher it is answered `closeRefused`. False: the frame was not sent because the stream is over. */
+  readonly end: () => boolean;
   /** `0x05`: the page is leaving; the host lets the terminal go at once (its lease runs) and closes the stream. */
   readonly detach: () => void;
   /** Closes the stream without a word: the host detaches the terminal as for any end of a stream. No event follows. */

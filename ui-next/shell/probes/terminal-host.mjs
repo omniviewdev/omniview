@@ -6,8 +6,8 @@
 // What it models of the host, each as the document states it:
 //   - a terminal is made with `launch.channel` and answers the capability once (43 characters of base64url) in the answer of `CreateTerminal`; every call that takes a capability answers ONE error, `omniview:session/not-found`, whatever the reason it opens
 //     nothing; a terminal is on its lease from the moment it is made and the first stream that shows the capability ends it (section 2);
-//   - the frames of section 4, one binary message each: `attach` first and only once (at most 1,024 bytes), `ready` first from the host, `output` by offset (at most 64 KiB, and at most the credit that is left), `gap`, `ended`, `taken-over`, `not-found`, and of version 2 `applied`, `released`, `unsupported`; `input`, `resize`,
-//     `ack` and `detach` from the page. A frame that is too short or too long for its type, an unknown type, one of the host's types or a second `attach` closes the stream with no answer (section 8);
+//   - the frames of section 4, one binary message each: `attach` first and only once (at most 1,024 bytes), `ready` first from the host, `output` by offset (at most 64 KiB, and at most the credit that is left), `gap`, `ended`, `taken-over`, `not-found`, and of version 2 `applied`, `released`, `unsupported`, `close-refused`; `input`, `resize`,
+//     `ack`, `close` and `detach` from the page. A frame that is too short or too long for its type, an unknown type, one of the host's types or a second `attach` closes the stream with no answer (section 8);
 //   - the ring of what the shell wrote (`channel_ring_bytes`: chunks that close at a boundary that is not inside an escape or a UTF-8 sequence, with absolute offsets), the size log and the modes a scanner reads from the output, exact at any offset: the replay of
 //     a page that gives `from_offset` begins exactly there when the ring still has it, and `ready.lost` is the distance to the first byte it still has when it does not (section 5);
 //   - the holder is the stream: a second stream with the capability takes the terminal (the first is sent `taken-over` and stays open as a watcher, and its input and acknowledgements are refused from then on; it is sent `released` when the stream that holds the terminal ends while the terminal runs, or `ended`, and is closed; at most four watch one terminal); the host counts the input it has applied across streams and tells the holder (`ready.input_applied`, `applied`); when the stream ends, however it ends, nobody holds the terminal and its lease
@@ -56,7 +56,7 @@ export const URLS = Object.freeze(['docs: https://example.com/docs/alpha for the
 const CAPABILITY = /^[A-Za-z0-9_-]{43}$/;
 
 /** The types of the frames (protocol section 4): below 0x80 the page's, from 0x80 the host's. Version 2 added `applied`, `released` and `unsupported`. */
-export const FRAME = Object.freeze({ attach: 0x01, input: 0x02, resize: 0x03, ack: 0x04, detach: 0x05, ready: 0x81, output: 0x82, gap: 0x83, ended: 0x84, takenOver: 0x85, notFound: 0x86, applied: 0x87, released: 0x88, unsupported: 0x89 });
+export const FRAME = Object.freeze({ attach: 0x01, input: 0x02, resize: 0x03, ack: 0x04, detach: 0x05, close: 0x06, ready: 0x81, output: 0x82, gap: 0x83, ended: 0x84, takenOver: 0x85, notFound: 0x86, applied: 0x87, released: 0x88, unsupported: 0x89, closeRefused: 0x8a });
 
 // ---- the frames --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -112,6 +112,7 @@ export const pageFrames = {
     return withType(FRAME.ack, payload);
   },
   detach: () => new Uint8Array([FRAME.detach]),
+  close: () => new Uint8Array([FRAME.close]),
 };
 
 /** What a frame of the host says, read: `{ kind: 'ready', ready }`, `{ kind: 'output', offset, bytes }`, `{ kind: 'gap', from, to }`, `{ kind: 'ended', end }`, `{ kind: 'taken-over' }`, `{ kind: 'not-found' }`, `{ kind: 'applied', n }`, `{ kind: 'released' }`, `{ kind: 'unsupported', v }`. */
@@ -134,6 +135,8 @@ export function readFrame(frame) {
       return { kind: 'applied', n: Number(view.getBigUint64(1)) };
     case FRAME.released:
       return { kind: 'released' };
+    case FRAME.closeRefused:
+      return { kind: 'close-refused' };
     case FRAME.unsupported:
       return { kind: 'unsupported', v: JSON.parse(decoder.decode(frame.subarray(1))).v };
     default:
@@ -1250,6 +1253,29 @@ export function createHost(options = {}) {
           credit();
         }
 
+        return undefined;
+      }
+
+      case FRAME.close: {
+        entry.kind = 'close';
+        if (bytes.length !== 1) return protocolError(conn, 'close size');
+        // Decided when it is applied, in the order of the stream's frames: from the holder the terminal ends as a close ends it and the stream is sent the end; from a watcher nothing ends and the stream is sent close-refused and stays.
+        applyFrame(
+          entry,
+          () => {
+            const target = conn.pty;
+            if (target !== null && target.holder === conn && !conn.displaced) {
+              log.closed.push(target.id);
+              closeTerminal(target, 'request');
+              return 'applied';
+            }
+
+            deliver(conn, new Uint8Array([FRAME.closeRefused]));
+            return 'refused';
+          },
+          () => true,
+          conn,
+        );
         return undefined;
       }
 

@@ -31,6 +31,7 @@ const INPUT = 0x02;
 const RESIZE = 0x03;
 const ACK = 0x04;
 const DETACH = 0x05;
+const CLOSE = 0x06;
 const READY = 0x81;
 const OUTPUT = 0x82;
 const GAP = 0x83;
@@ -40,6 +41,7 @@ const NOT_FOUND = 0x86;
 const APPLIED = 0x87;
 const RELEASED = 0x88;
 const UNSUPPORTED = 0x89;
+const CLOSE_REFUSED = 0x8a;
 
 /** What of a stream the channel uses: a WebSocket's, which is also the shape of the Wails stream. */
 export type ChannelSocket = {
@@ -344,6 +346,7 @@ function createCore(deps: ChannelDeps): Core {
     resize: () => undefined,
     ack: () => undefined,
     detach: () => undefined,
+    end: () => false,
     pending: () => 0,
   };
 
@@ -550,6 +553,14 @@ function createCore(deps: ChannelDeps): Core {
         case TAKEN_OVER:
           events.takenOver();
           return;
+        case CLOSE_REFUSED:
+          if (view.length === 1) {
+            events.closeRefused();
+          } else {
+            finish('closed');
+          }
+
+          return;
         case RELEASED:
           finish('released');
           return;
@@ -597,6 +608,7 @@ function createCore(deps: ChannelDeps): Core {
         new DataView(payload.buffer).setUint32(0, clamped(bytes, 0, 0xffff_ffff));
         send(frameOf(ACK, payload));
       },
+      end: () => send(frameOf(CLOSE)),
       detach: () => {
         send(frameOf(DETACH));
       },
