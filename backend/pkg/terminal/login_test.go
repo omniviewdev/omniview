@@ -363,6 +363,11 @@ func TestClosingHangsUpTheBackgroundJobsOfABashShell(t *testing.T) {
 	}, 20*time.Second, 10*time.Millisecond)
 	t.Cleanup(func() { _ = syscall.Kill(job, syscall.SIGKILL) })
 	require.False(t, gone(job))
+	// The shell is at its prompt when the window closes. (With the integration, bash runs its prompt commands as a
+	// non-interactive shell, which does not hang its jobs up, for the millisecond they take: a close in that millisecond
+	// is covered by TestAHangupDuringThePromptCommandsStillHangsUpTheJobs, and a test that closes the instant the job
+	// is named would fall into it by its own timing.)
+	time.Sleep(300 * time.Millisecond)
 
 	require.NoError(t, m.CloseSession(info.ID))
 	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")

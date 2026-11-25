@@ -594,6 +594,11 @@ func (m *Manager) spawnIntegrated(id, path string, args []string, dir string, en
 		m.log.Warnw(m.ctx, "the shell integration setting could not be read: the shell starts without it", "session", id)
 		kind, fact = kindNone, skipped(SkipSettingUnreadable)
 	}
+	if kind == kindBash {
+		if reason := m.bashSkip(path); reason != "" {
+			kind, fact = kindNone, skipped(reason)
+		}
+	}
 	var inj *injection
 	if kind != kindNone {
 		var err error
@@ -641,6 +646,9 @@ func (m *Manager) spawn(id, path string, args []string, dir string, env []string
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
 	cmd.Env = terminalEnvironment(env, path, dir, version.Version)
+	if inj != nil && inj.args != nil {
+		cmd.Args = append([]string{path}, inj.args...)
+	}
 	if inj != nil {
 		cmd.Env = replaceEnvironment(cmd.Env, inj.env)
 		cmd.ExtraFiles = []*os.File{inj.child}

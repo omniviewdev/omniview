@@ -1,0 +1,168 @@
+# Omniview shell integration for bash: the --rcfile of the host's bash.
+#
+# Provenance: written for Omniview from the protocol (OSC 133 semantic prompts, OSC 7 and the 633;E / 633;P marks of
+# VS Code's shell integration) and from the bash manual (the startup files of a login shell, PROMPT_COMMAND, the DEBUG
+# trap, HISTCMD). No line is copied from another project's script. VS Code (MIT) and Wave (Apache-2.0) were read as
+# references for the idea of an own login emulation only; the scripts of Ghostty, kitty, iTerm2, Zed and Warp (copyleft)
+# were not read for this file.
+#
+# The host starts bash as `bash --rcfile <this file> -i`, and without -l: bash ignores --rcfile under -l. So this file
+# does what a login shell does, in its order: /etc/profile, then the first of ~/.bash_profile, ~/.bash_login and ~/.profile
+# (each once; the user's own files, which are never edited, run at the top level of this file, as they would in a login
+# shell). It then installs the hooks. The host sends two lines on file descriptor 3: the session's nonce, and a line that
+# bash does not use. The nonce is kept in a variable that is not exported. The file writes "ready" to descriptor 3 when
+# it has run everything, and closes it.
+
+{
+  IFS= read -r -t 5 -u 3 __omniview_nonce && IFS= read -r -t 5 -u 3 __omniview_unused
+} 2>/dev/null || __omniview_nonce=
+unset __omniview_unused
+
+if [ -r /etc/profile ]; then
+  . /etc/profile
+fi
+for __omniview_file in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+  if [ -r "$__omniview_file" ]; then
+    . "$__omniview_file"
+    break
+  fi
+done
+unset __omniview_file
+
+if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
+  # The marks. Everything below prints only inside an OSC sequence, and nothing else. Each function that touches the nonce
+  # puts xtrace out first (and back at the end), so that a user's `set -x` never prints it. Nothing uses [[ =~ ]] (it
+  # would clobber the user's BASH_REMATCH).
+
+  # __omniview_escape <text>: REPLY is the text as a mark carries it: at most 4096 bytes, \ ; and every control byte as \xHH.
+  __omniview_escape() {
+    local LC_ALL=C __omniview_text=${1:0:4096} __omniview_out= __omniview_char __omniview_rest
+    __omniview_text=${__omniview_text//\\/\\\\}
+    __omniview_text=${__omniview_text//;/\\x3b}
+    case $__omniview_text in
+      *[[:cntrl:]]*)
+        __omniview_rest=$__omniview_text
+        while [ -n "$__omniview_rest" ]; do
+          __omniview_char=${__omniview_rest:0:1}
+          __omniview_rest=${__omniview_rest:1}
+          case $__omniview_char in
+            [[:cntrl:]]) printf -v __omniview_char '\\x%02x' "'$__omniview_char" ;;
+          esac
+          __omniview_out+=$__omniview_char
+        done
+        __omniview_text=$__omniview_out
+        ;;
+    esac
+    REPLY=$__omniview_text
+  }
+
+  # The DEBUG trap: before each simple command, and only the first one after a prompt is the user's command.
+  __omniview_debug() {
+    [ "${__omniview_armed:-0}" = 1 ] || return 0
+    __omniview_armed=0
+    if [ "$__omniview_hup_scoped" = 1 ]; then trap -- '__omniview_hup' HUP; fi
+    local __omniview_xtrace=0
+    case $- in *x*) __omniview_xtrace=1; { set +x; } 2>/dev/null ;; esac
+    __omniview_ran=1
+    local LC_ALL=C REPLY __omniview_history __omniview_line=
+    # The line as typed is in the history, when the history took it (HISTCONTROL=ignorespace or ignoredups, or no history,
+    # leave HISTCMD one behind): then there is no line, and the script never says another one.
+    # (HISTCMD in a command is the number the command has: the number the prompt showed when the history took the line, one less when it did not.)
+    if [ "${HISTCMD:-0}" -ge "${__omniview_histcmd:-1}" ] 2>/dev/null; then
+      __omniview_history=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
+      __omniview_line=${__omniview_history#"${__omniview_history%%[![:space:]]*}"}
+      __omniview_line=${__omniview_line#"${__omniview_line%%[![:digit:]]*}"}
+      __omniview_line=${__omniview_line#\*}
+      __omniview_line=${__omniview_line#  }
+    fi
+    if [ -n "$__omniview_line" ]; then
+      __omniview_escape "$__omniview_line"
+      builtin printf '\e]633;E;%s;%s\a\e]133;C\a' "$REPLY" "$__omniview_nonce"
+    else
+      builtin printf '\e]133;C\a'
+    fi
+    if [ "$__omniview_hup_scoped" = 1 ]; then trap - HUP; fi
+    if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
+    return 0
+  }
+
+  # The first of the prompt commands: the end of the command, with its status, which it hands on in $?.
+  __omniview_precmd_first() {
+    local __omniview_status=$?
+    if [ "$__omniview_hup_scoped" = 1 ]; then trap -- '__omniview_hup' HUP; fi
+    if [ "${__omniview_ran:-0}" = 1 ]; then
+      __omniview_ran=0
+      builtin printf '\e]133;D;%d\a' "$__omniview_status"
+    fi
+    return "$__omniview_status"
+  }
+
+  # The last of them: the directory, the prompt marks, and the arming of the DEBUG trap.
+  __omniview_precmd_last() {
+    local __omniview_status=$?
+    local __omniview_xtrace=0
+    case $- in *x*) __omniview_xtrace=1; { set +x; } 2>/dev/null ;; esac
+    local LC_ALL=C REPLY __omniview_path=$PWD __omniview_encoded= __omniview_rest __omniview_char
+    __omniview_rest=$__omniview_path
+    while [ -n "$__omniview_rest" ]; do
+      __omniview_char=${__omniview_rest:0:1}
+      __omniview_rest=${__omniview_rest:1}
+      case $__omniview_char in
+        [a-zA-Z0-9/._~-]) ;;
+        *) printf -v __omniview_char '%%%02X' "'$__omniview_char" ;;
+      esac
+      __omniview_encoded+=$__omniview_char
+    done
+    builtin printf '\e]7;file://%s%s\a' "${HOSTNAME-}" "$__omniview_encoded"
+    __omniview_escape "$__omniview_path"
+    builtin printf '\e]633;P;Cwd=%s;%s\a' "$REPLY" "$__omniview_nonce"
+    case $PS1 in
+      *'133;A'*) ;;
+      *) PS1='\[\e]133;A\a\]'"$PS1"'\[\e]133;B\a\]' ;;
+    esac
+    __omniview_histcmd=${HISTCMD:-0}
+    __omniview_armed=1
+    if [ "$__omniview_hup_scoped" = 1 ]; then trap - HUP; fi
+    if [ "$__omniview_xtrace" = 1 ]; then set -x; fi
+    return "$__omniview_status"
+  }
+
+  # PROMPT_COMMAND, the user's kept in the middle: a string (lines, so that a user's last `;` cannot make `;;`) or an array.
+  if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+    PROMPT_COMMAND=(__omniview_precmd_first "${PROMPT_COMMAND[@]}" __omniview_precmd_last)
+  else
+    PROMPT_COMMAND="__omniview_precmd_first"${PROMPT_COMMAND:+$'\n'$PROMPT_COMMAND}$'\n'"__omniview_precmd_last"
+  fi
+
+  # The DEBUG trap, after the user's own when there is one (a preexec library installs one: it is given $_, so it goes
+  # first, before anything of ours changes it).
+  __omniview_trap=$(trap -p DEBUG)
+  if [ -n "$__omniview_trap" ]; then
+    eval "__omniview_trap=(${__omniview_trap#trap -- })"
+    trap -- "${__omniview_trap[0]}"$'\n''__omniview_debug' DEBUG
+  else
+    trap -- '__omniview_debug' DEBUG
+  fi
+  unset __omniview_trap
+
+  # A hangup that comes while the prompt commands or the DEBUG trap run does not reach the jobs: bash runs those as a
+  # non-interactive shell, and a non-interactive shell does not hang up its jobs. So while the hooks run (and only then: a
+  # handler that stays would keep bash from handling a hangup in readline) a handler hangs the jobs up as bash does, each
+  # job's process group getting SIGHUP and SIGCONT, and lets the hangup take its course. A user who has a HUP handler of
+  # their own at this point keeps it: the hooks do not touch it.
+  __omniview_hup() {
+    local __omniview_job
+    for __omniview_job in $(builtin jobs -p); do
+      builtin kill -HUP -- "-$__omniview_job" 2>/dev/null
+      builtin kill -CONT -- "-$__omniview_job" 2>/dev/null
+    done
+    trap - HUP
+    builtin kill -HUP $$
+  }
+  __omniview_hup_scoped=0
+  if [ -z "$(trap -p HUP)" ]; then __omniview_hup_scoped=1; fi
+
+  # Tell the host the shell is up, and give the channel back.
+  { builtin printf 'ready\n' >&3; } 2>/dev/null
+fi
+{ exec 3>&-; } 2>/dev/null

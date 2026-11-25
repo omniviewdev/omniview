@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -208,7 +211,8 @@ func TestBashClosesTheChannelBeforeAProgramOfTheUserRuns(t *testing.T) {
 func TestABashLineWithControlBytesAndSeparatorsIsEscapedAndRecordedAsTyped(t *testing.T) {
 	f := bashFixture(t, "")
 	info := f.started()
-	f.run(info.ID, `echo 'a;b\c'`+"\t"+`# x`)
+	// Ctrl-V makes the tab a character of the line: a bare tab would complete.
+	f.run(info.ID, `echo 'a;b\c'`+"\x16\t"+`# x`)
 	ran := f.endedCommands(info.ID, 1)
 	assert.Equal(t, `echo 'a;b\c'`+"\t"+`# x`, ran[0].CommandLine)
 }
@@ -239,4 +243,25 @@ func TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet(t *testing.T
 		codes = append(codes, r.ExitCode)
 	}
 	assert.Equal(t, []int32{0, 1, 7, 1}, codes)
+}
+
+// A hangup that arrives while the prompt commands run (bash runs them as a non-interactive shell, which does not hang up
+// its jobs) still takes the background jobs with the shell, as the host's close promises (login_test.go).
+func TestAHangupDuringThePromptCommandsStillHangsUpTheJobs(t *testing.T) {
+	f := bashFixture(t, "PROMPT_COMMAND='sleep 3'\n")
+	info := f.start()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	require.NoError(t, f.m.Write(info.ID, 0, []byte("sleep 587 & echo job-$!\r")))
+	var job int
+	require.Eventually(t, func() bool {
+		found := regexp.MustCompile(`\njob-(\d+)`).FindSubmatch(f.sink.output(info.ID))
+		if found == nil {
+			return false
+		}
+		job, _ = strconv.Atoi(string(found[1]))
+		return job > 0
+	}, 20*time.Second, 10*time.Millisecond)
+	t.Cleanup(func() { _ = syscall.Kill(job, syscall.SIGKILL) })
+	require.NoError(t, f.m.CloseSession(info.ID))
+	require.Eventually(t, func() bool { return ended(job) }, 8*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
 }
