@@ -82,6 +82,16 @@ export enum PortForwardProtocol {
 
 /**
  * PortForwardSession represents a session between a forwarding target and the host.
+ * 
+ * LocalHost is the host the forwarder's listener is bound to, as the forwarder
+ * stated it (see ForwarderResult.LocalHost): an IP address or "localhost" in any
+ * case, and empty when the forwarder did not say. It is never defaulted, so
+ * LocalPort alone is not an address, and empty is unknown, never loopback. A
+ * reader takes the forward as reachable only from this computer if and only if
+ * the host is not empty and is "localhost" or an IP address that is loopback once
+ * an IPv4-mapped IPv6 address is unmapped (127.0.0.0/8, ::1, ::ffff:127.x.y.z);
+ * 0.0.0.0, ::, a LAN or a link-local address are reachable from other computers.
+ * A session from a plugin that predates the field decodes with it empty.
  */
 export class PortForwardSession {
     "created_at": string;
@@ -93,6 +103,7 @@ export class PortForwardSession {
     "state": SessionState;
     "connection_type": PortForwardConnectionType;
     "encryption": PortForwardSessionEncryption;
+    "local_host"?: string;
     "local_port": number;
     "remote_port": number;
 

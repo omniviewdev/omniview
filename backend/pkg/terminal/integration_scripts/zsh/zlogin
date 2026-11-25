@@ -30,14 +30,14 @@ if [[ -n ${__omniview_shim-} ]]; then
     __omniview_ran=1
     local REPLY
     __omniview_escape $1
-    builtin print -rn -- $'\e]633;E;'$REPLY';'$__omniview_nonce$'\a\e]133;C\a'
+    builtin print -rn -- $'\e]633;E;'$REPLY';'$__omniview_nonce$'\a\e]133;C\a' 2>/dev/null >/dev/tty
   }
   __omniview_precmd_first() {
     local __omniview_last=$?
     setopt localoptions noxtrace
     if (( ${__omniview_ran:-0} )); then
       __omniview_ran=0
-      builtin print -rn -- $'\e]133;D;'$__omniview_last$'\a'
+      builtin print -rn -- $'\e]133;D;'$__omniview_last$'\a' 2>/dev/null >/dev/tty
     fi
     return $__omniview_last
   }
@@ -50,10 +50,10 @@ if [[ -n ${__omniview_shim-} ]]; then
     local REPLY path_=$PWD
     {
       local LC_ALL=C
-      builtin print -rn -- $'\e]7;file://'${HOST-}${path_//(#m)[^a-zA-Z0-9\/._~-]/%${(l:2::0:)$(( [##16] #MATCH ))}}$'\a'
+      builtin print -rn -- $'\e]7;file://'${HOST-}${path_//(#m)[^a-zA-Z0-9\/._~-]/%${(l:2::0:)$(( [##16] #MATCH ))}}$'\a' 2>/dev/null >/dev/tty
     }
     __omniview_escape $path_
-    builtin print -rn -- $'\e]633;P;Cwd='$REPLY';'$__omniview_nonce$'\a'
+    builtin print -rn -- $'\e]633;P;Cwd='$REPLY';'$__omniview_nonce$'\a' 2>/dev/null >/dev/tty
     if [[ $PS1 != *$'\e]133;A'* ]]; then
       PS1=$'%{\e]133;A\a%}'$PS1$'%{\e]133;B\a%}'
     fi

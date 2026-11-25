@@ -302,8 +302,8 @@
       "footer-suffix-stuck",
       "section-timeout",
       "hosts-guessed",
-      "reach-unstated",
-      "endpoint-guessed"
+      "exposed-copy-label",
+      "exposed-line-dropped"
     ]
   },
   "ui-next/shell/probes/ports-d-probe.mjs": {
@@ -328,7 +328,10 @@
       "axe-table",
       "axe-states",
       "axe-menu",
-      "axe-unstaged"
+      "axe-unstaged",
+      "reach-unstated",
+      "endpoint-guessed",
+      "exposed-copy-address"
     ]
   },
   "ui-next/shell/probes/problems-operations-probe.mjs": {

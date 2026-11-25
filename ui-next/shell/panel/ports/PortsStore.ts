@@ -25,8 +25,8 @@ import { availabilityOf, browserUrlOf, readForward, rowOf, sameRow, sameSession,
 /** How long the check mark of a press of Copy stays: the mock's two seconds (and the Logs' and the Terminal's). */
 export const COPIED_MS = 2_000;
 
-/** A press of Copy that was made: the row, which session of it, and what was written (`noun`: the port alone, or an address with its host): what the mark and the words are for. */
-type Press = { readonly id: string; readonly incarnation: number; readonly endpoint: string; readonly noun: 'port' | 'address' };
+/** A press of Copy that was made: the row, which session of it and at which endpoint, what was written (`text`) and what it is called (`noun`: the port alone, or an address with its host): what the mark and the words are for. */
+type Press = { readonly id: string; readonly incarnation: number; readonly endpoint: string; readonly text: string; readonly noun: 'port' | 'address' };
 
 /** How many times a press asks the host again when what it answers may be older than an event, before the press is not confirmed. */
 const CONFIRMATIONS = 3;
@@ -576,13 +576,13 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
         return;
       }
 
-      if (now === undefined || availabilityOf(now).open !== undefined) {
+      const url = now === undefined || availabilityOf(now).open !== undefined ? undefined : browserUrlOf(now);
+      if (now === undefined || url === undefined) {
         say(mine, SAYS.notOpened);
         publish(mine);
         return;
       }
 
-      const url = browserUrlOf(now);
       void attempt(() => deps.openExternal(url)).catch((error: unknown) => {
         console.warn('[ports] the address could not be opened', error);
         if (live === mine) {
@@ -628,9 +628,10 @@ export function createPortsStore(deps: PortsDeps): PortsStore {
       return;
     }
 
-    const press: Press = { id, incarnation: held.incarnation, endpoint: row.endpoint, noun: row.host === '' ? 'port' : 'address' };
+    const address = row.listens === 'loopback';
+    const press: Press = { id, incarnation: held.incarnation, endpoint: row.endpoint, text: address ? row.endpoint : String(row.local), noun: address ? 'address' : 'port' };
     // What is copied is written now, inside the press: a window that is WebKit lets a page write to the clipboard only while the user's gesture lasts, and the host's answer comes after it. The host is asked meanwhile.
-    const written = attempt(() => deps.copy(press.endpoint)).then(
+    const written = attempt(() => deps.copy(press.text)).then(
       (done) => done,
       () => false,
     );
