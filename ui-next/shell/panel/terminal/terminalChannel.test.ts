@@ -213,6 +213,9 @@ function recorder(): { readonly said: Said; readonly events: ChannelEvents } {
     released: () => {
       said.push(['released']);
     },
+    closeRefused: () => {
+      said.push(['closeRefused']);
+    },
     unsupported: (version) => {
       said.push(['unsupported', version]);
     },
@@ -540,6 +543,42 @@ describe('the frames of protocol version 2', () => {
       socket.drop();
       expect(said.map((one) => one[0])).toEqual(['takenOver']);
     });
+  });
+});
+
+describe('close on the stream (0x06, 0x8a)', () => {
+  it('sends close as one byte on the stream, and tells close-refused without ending the stream, also to a watcher and more than once', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said, link } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x81, jsonOf({ v: 2, input_applied: 0 })));
+    const before = socket.sent.length;
+    expect(link.end()).toBe(true);
+    expect(socket.sent.slice(before)).toEqual([Uint8Array.of(0x06)]);
+    socket.deliver(frame(0x85));
+    socket.deliver(frame(0x8a));
+    socket.deliver(frame(0x8a));
+    expect(said.map((one) => one[0])).toEqual(['ready', 'takenOver', 'closeRefused', 'closeRefused']);
+    expect(socket.closed).toBe(0);
+  });
+
+  it('waits behind the attach on a stream that is not open yet, and is refused on a stream that is over', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, link } = connected(r);
+    expect(link.end()).toBe(true);
+    expect(socket.sent).toEqual([]);
+    socket.open();
+    expect(socket.sent.map((one) => one[0])).toEqual([0x01, 0x06]);
+    socket.drop();
+    expect(link.end()).toBe(false);
+  });
+
+  it('closes the stream on a close-refused that has a payload', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x8a, bytesOf(1)));
+    expect(said.map((one) => one[0])).toEqual(['closed']);
   });
 });
 

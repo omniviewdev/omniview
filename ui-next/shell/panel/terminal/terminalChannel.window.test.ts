@@ -103,6 +103,7 @@ const recorder = () => {
       applied: () => said.push('applied'),
       takenOver: () => said.push('takenOver'),
       released: () => said.push('released'),
+      closeRefused: () => said.push('closeRefused'),
       unsupported: () => said.push('unsupported'),
       notFound: () => said.push('notFound'),
       closed: () => said.push('closed'),

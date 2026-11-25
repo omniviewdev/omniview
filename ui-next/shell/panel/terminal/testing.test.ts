@@ -48,7 +48,7 @@ describe('the fake feed\'s count of what was typed (`inputs`)', () => {
 describe('the fake terminal channel', () => {
   const connected = () => {
     const channels = fakeChannels();
-    const events = { ready: vi.fn(), output: vi.fn(), gap: vi.fn(), ended: vi.fn(), applied: vi.fn(), takenOver: vi.fn(), released: vi.fn(), unsupported: vi.fn(), notFound: vi.fn(), closed: vi.fn() };
+    const events = { ready: vi.fn(), output: vi.fn(), gap: vi.fn(), ended: vi.fn(), applied: vi.fn(), takenOver: vi.fn(), closeRefused: vi.fn(), released: vi.fn(), unsupported: vi.fn(), notFound: vi.fn(), closed: vi.fn() };
     const link = channels.connect('term-1', 7, events);
     return { channels, events, link, stream: channels.stream() };
   };
@@ -59,6 +59,15 @@ describe('the fake terminal channel', () => {
     expect(stream.fromOffset).toBe(7);
     stream.ready({ start: 3, end: 9, lost: 1, size: { cols: 100, rows: 30 } });
     expect(events.ready).toHaveBeenCalledWith(expect.objectContaining({ v: 2, input_applied: 0, start: 3, end: 9, lost: 1, size: { cols: 100, rows: 30 }, start_size: { cols: 100, rows: 30 }, ended: null }));
+  });
+
+  it('records the close the feed sends on the stream, and says close-refused to it without ending it', () => {
+    const { link, events, stream } = connected();
+    expect(link.end()).toBe(true);
+    expect(stream.sent()).toEqual([{ kind: 'close' }]);
+    stream.closeRefused();
+    expect(events.closeRefused).toHaveBeenCalledTimes(1);
+    expect(stream.open()).toBe(true);
   });
 
   it('records what the feed sent, in order, and what was typed', () => {

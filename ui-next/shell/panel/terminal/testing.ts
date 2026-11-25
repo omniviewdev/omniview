@@ -586,6 +586,7 @@ export type SentFrame =
   | { readonly kind: 'input'; readonly bytes: Uint8Array; readonly text: string }
   | { readonly kind: 'resize'; readonly cols: number; readonly rows: number }
   | { readonly kind: 'ack'; readonly bytes: number }
+  | { readonly kind: 'close' }
   | { readonly kind: 'detach' };
 
 /** What the test says in a `ready`: what it leaves out is a terminal at the start of its output, 80 by 24, with nothing switched on. */
@@ -623,6 +624,8 @@ export type FakeStream = {
   readonly takenOver: () => void;
   /** Frames the host may never send, for a test of how the feed takes a host that breaks the protocol: they reach the feed with no check of the stream's state. */
   readonly raw: { readonly released: () => void };
+  /** `close-refused`: the stream's close ended nothing, it does not hold the terminal. The stream goes on (as a watcher). */
+  readonly closeRefused: () => void;
   /** To a watcher: the terminal is running and free. The stream is over. */
   readonly released: () => void;
   /** The host speaks another version than the attach said (`{"v": version}`). The stream is over. */
@@ -794,6 +797,10 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
           events.released();
         },
       },
+      closeRefused: () => {
+        alive('close-refused');
+        events.closeRefused();
+      },
       released: () => {
         alive('released');
         if (!watching) {
@@ -845,6 +852,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       ack: (bytes) => {
         send({ kind: 'ack', bytes });
       },
+      end: () => send({ kind: 'close' }),
       detach: () => {
         send({ kind: 'detach' });
       },

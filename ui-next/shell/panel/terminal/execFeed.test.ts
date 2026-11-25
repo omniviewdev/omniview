@@ -75,6 +75,16 @@ function attaching(attach: Partial<ExecAttach> = {}, options: RigOptions = {}): 
   return rig({ ...options, attach: { id: 'term-1', ...attach } });
 }
 
+/** Closes a feed that holds a live stream: the close goes on the stream, and the host answers with the end. */
+async function closeLive(r: Rig): Promise<void> {
+  const closing = r.feed.close();
+  if (r.stream().open()) {
+    r.stream().ended({ reason: 'closed', closed_by: 'request', last_offset: 0 });
+  }
+
+  await closing;
+}
+
 /** What a reader gets of the feed's output, as text. */
 const readText = (feed: TerminalFeedHandle, max?: number): string => feed.read(max).chunks.map((chunk) => new TextDecoder().decode(chunk)).join('');
 
@@ -294,7 +304,7 @@ describe('what the shell writes, in a terminal the feed made', () => {
   it('holds nothing for a feed that was closed', async () => {
     const r = await running();
     r.stream().output(0, 'abc');
-    await r.feed.close();
+    await closeLive(r);
     expect(r.feed.read()).toEqual({ chunks: [], bytes: 0 });
   });
 });
@@ -363,7 +373,7 @@ describe('acknowledging what the reader parsed', () => {
 
     const gone = await running();
     gone.stream().output(0, 'abc');
-    await gone.feed.close();
+    await closeLive(gone);
     gone.feed.ack(3);
     expect(gone.stream().acks()).toEqual([0]);
 
@@ -510,7 +520,7 @@ describe('what the user types', () => {
       if (end === 'ended') {
         r.stream().ended();
       } else if (end === 'closed') {
-        await r.feed.close();
+        await closeLive(r);
       } else if (end === 'left') {
         r.feed.leave?.();
       } else if (end === 'taken-over') {
@@ -1605,19 +1615,77 @@ describe('a terminal the host does not know (`not-found`)', () => {
 });
 
 describe('closing the feed', () => {
-  it('ends a running terminal, once, however many times it is asked and whenever, and closes the stream and lets go of every timer', async () => {
+  it('ends a running terminal with the close frame of its live stream, once, however many times it is asked, and waits for the end on that stream', async () => {
     const r = await running();
     r.feed.resize(90, 30);
     const first = r.feed.close();
     const second = r.feed.close();
-    await Promise.all([first, second]);
-    expect(r.channels.of('close')).toEqual([{ kind: 'close', id: 'term-1' }]);
+    await turns();
+    expect(r.stream().sent().filter((frame) => frame.kind === 'close')).toHaveLength(1);
+    expect(r.stream().sent().at(-1)).toEqual({ kind: 'close' });
+    expect(r.stream().closedByFeed()).toBe(false);
+    let done = false;
+    void Promise.resolve(first).then(() => {
+      done = true;
+    });
+    await turns();
+    expect(done).toBe(false);
+    r.stream().ended({ reason: 'closed', closed_by: 'request', last_offset: 0 });
+    await first;
+    expect(r.channels.of('close')).toEqual([]);
     expect(r.channels.of('dismiss')).toEqual([]);
-    expect(r.stream().closedByFeed()).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
     r.feed.resize(100, 40);
     r.feed.write('late');
-    expect(r.stream().sent()).toEqual([{ kind: 'ack', bytes: 0 }]);
+    expect(r.stream().sent().filter((frame) => frame.kind === 'input' || frame.kind === 'resize')).toEqual([]);
+  });
+
+  it('takes the rest of the output the host sends before the end, and nothing of it reaches the reader', async () => {
+    const r = await running();
+    const closing = r.feed.close();
+    r.stream().output(0, 'last words');
+    r.stream().applied(0);
+    r.stream().ended({ reason: 'closed', closed_by: 'request', last_offset: 10 });
+    await closing;
+    expect(r.feed.read().bytes).toBe(0);
+  });
+
+  it('ends nothing when the host says close-refused (another tab took the terminal and this page had not heard): it leaves the stream and resolves', async () => {
+    const r = await running();
+    const closing = r.feed.close();
+    await turns();
+    r.stream().takenOver();
+    r.stream().closeRefused();
+    await closing;
+    expect(r.channels.of('close')).toEqual([]);
+    expect(r.channels.of('dismiss')).toEqual([]);
+    expect(r.stream().closedByFeed()).toBe(true);
+  });
+
+  it('ends nothing through the capability when the stream drops before the end: another tab may hold the terminal, and the host\'s lease ends it if nobody does', async () => {
+    const r = await running();
+    const closing = r.feed.close();
+    await turns();
+    r.stream().drop();
+    await closing;
+    expect(r.channels.of('close')).toEqual([]);
+    vi.advanceTimersByTime(60_000);
+    expect(r.channels.streams()).toHaveLength(1);
+  });
+
+  it('does not send the close frame to a stream whose socket is dead, and does not end the terminal through the capability either', async () => {
+    const r = await running();
+    r.stream().die();
+    await r.feed.close();
+    expect(r.channels.of('close')).toEqual([]);
+  });
+
+  it('ends a terminal it made and never opened a stream to by the capability: nobody else can hold it', async () => {
+    const r = await connecting();
+    await r.feed.close();
+    expect(r.channels.of('close')).toEqual([{ kind: 'close', id: 'term-1' }]);
+    expect(r.stream().sent().filter((frame) => frame.kind === 'close')).toEqual([]);
+    expect(r.stream().closedByFeed()).toBe(true);
   });
 
   it('dismisses a terminal that ended by itself instead of closing it, once: the host keeps its end until a page does', async () => {
@@ -1712,7 +1780,7 @@ describe('closing the feed', () => {
   });
 
   it('is no error when the host says the terminal is not there: it ended meanwhile', async () => {
-    const r = await running({}, { channels: { close: async () => Promise.reject(goneError()) } });
+    const r = await connecting({ channels: { close: async () => Promise.reject(goneError()) } });
     await expect(r.feed.close()).resolves.toBeUndefined();
     const dismissed = await running({}, { channels: { dismiss: async () => Promise.reject(goneError()) } });
     dismissed.stream().ended();
@@ -1720,7 +1788,7 @@ describe('closing the feed', () => {
   });
 
   it('rejects with any other refusal of the host, and asks it once: the registry logs it', async () => {
-    const r = await running({}, { channels: { close: async () => Promise.reject(new Error('host on fire')) } });
+    const r = await connecting({ channels: { close: async () => Promise.reject(new Error('host on fire')) } });
     await expect(r.feed.close()).rejects.toThrow('host on fire');
     await expect(r.feed.close()).rejects.toThrow('host on fire');
     expect(r.channels.of('close')).toHaveLength(1);
@@ -1755,10 +1823,10 @@ describe('leaving (the page is going away)', () => {
     ended.stream().ended();
     ended.feed.leave?.();
     const closed = await running();
-    await closed.feed.close();
+    await closeLive(closed);
     closed.feed.leave?.();
     expect(ended.stream().dropped()).toBe(0);
-    expect(closed.stream().sent()).toEqual([{ kind: 'ack', bytes: 0 }]);
+    expect(closed.stream().sent()).toEqual([{ kind: 'ack', bytes: 0 }, { kind: 'close' }]);
   });
 
   it('lets the terminal go before the stream is ready: the detach waits behind the attach in the link', async () => {
@@ -1797,7 +1865,7 @@ describe('what runs in the terminal', () => {
     const left = await running();
     left.feed.leave?.();
     const closed = await running();
-    await closed.feed.close();
+    await closeLive(closed);
     for (const r of [early, ended, lost, left, closed]) {
       expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
       expect(r.channels.of('busy')).toEqual([]);

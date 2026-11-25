@@ -25,7 +25,7 @@ const make = async (host, id = 't', launch = { channel: true, cols: 80, rows: 24
  * of the host, and the test says so), acknowledges what it took when `ack` is on (the first acknowledgement, of nothing, turns the host's window on), and says when the stream is closed.
  */
 function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } = {}) {
-  const page = { frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, released: false, unsupported: undefined, counts: [], notFound: false, waiters: [], acked: 0, live: 0 };
+  const page = { frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, released: false, refused: 0, unsupported: undefined, counts: [], notFound: false, waiters: [], acked: 0, live: 0 };
   const wake = () => {
     for (const waiter of page.waiters.splice(0)) waiter();
   };
@@ -63,6 +63,8 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } 
         page.taken = true;
       } else if (read.kind === 'applied') {
         page.counts.push(read.n);
+      } else if (read.kind === 'close-refused') {
+        page.refused += 1;
       } else if (read.kind === 'released') {
         page.released = true;
       } else if (read.kind === 'unsupported') {
@@ -899,5 +901,44 @@ test('at most four streams watch a terminal: when a fifth is displaced the one t
   pages.at(-1).stream.close();
   for (const page of pages.slice(2, 6)) await page.until('released', () => page.released && page.closed);
   assert.equal(host.state('t').watchers, 0);
+  host.stop();
+});
+
+test('close on the stream (0x06): the holder ends the terminal as a close does and is sent the end; a watcher is sent close-refused, ends nothing and stays; a close that is the first frame, or has a payload, is no close', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const first = pageOf(host, cap);
+  await first.until('ready', () => first.ready !== undefined);
+  const second = pageOf(host, cap);
+  await second.until('ready', () => second.ready !== undefined);
+  await first.until('taken', () => first.taken);
+  first.stream.send(pageFrames.close());
+  await first.until('refused', () => first.refused === 1);
+  assert.equal(first.closed, false, 'a watcher stays a watcher');
+  assert.equal(host.state('t').holder, second.stream.id, 'nothing ended');
+  assert.equal(host.log.closed.length, 0);
+  first.stream.send(pageFrames.close());
+  await first.until('refused twice', () => first.refused === 2);
+  second.stream.send(pageFrames.close());
+  await second.until('ended', () => second.ended !== undefined && second.closed);
+  assert.equal(second.ended.reason, 'closed');
+  assert.equal(second.ended.closed_by, 'request');
+  assert.equal(host.state('t'), undefined, 'the terminal is gone');
+  await first.until('watcher ended', () => first.ended !== undefined && first.closed);
+  assert.equal(first.released, false);
+  assert.deepEqual(await host.call('ListChannelTerminals', [[cap]]), []);
+
+  const other = await make(host, 'o');
+  const lone = pageOf(host, other.cap, { sendAttach: false });
+  lone.stream.send(pageFrames.close());
+  await lone.until('closed', () => lone.closed);
+  assert.deepEqual(lone.raw.map((bytes) => [...bytes]), [[FRAME.notFound]], 'a close is not an attach');
+  assert.notEqual(host.state('o'), undefined, 'and ends nothing');
+  const loud = pageOf(host, other.cap);
+  await loud.until('ready', () => loud.ready !== undefined);
+  loud.stream.send(new Uint8Array([FRAME.close, 1]));
+  await loud.until('closed', () => loud.closed);
+  assert.deepEqual(loud.frames.map((read) => read.kind).filter((kind) => kind !== 'output'), ['ready'], 'no answer to a close with a payload');
+  assert.notEqual(host.state('o'), undefined);
   host.stop();
 });
