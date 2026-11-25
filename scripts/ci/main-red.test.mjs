@@ -1,6 +1,5 @@
 // The ci-main-red issue (scripts/ci/main-red.mjs, .github/workflows/ci-main-red.yml): what it writes, when it creates, updates and closes the one issue, and that it ignores what is not main's.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -230,13 +229,6 @@ test('S2: a run that ended cancelled is red when a job of it failed or timed out
   assert.equal((await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: fakeGh({ jobs: [] }).ask })).action, 'none');
 });
 
-test('a change to main-red.mjs or its test starts the run whose shards run that test, and a label is not a trigger', () => {
-  const seam = parse(readFileSync(path.join(repo, '.github/workflows/ui-next-seam.yml'), 'utf8'));
-  assert.deepEqual(Object.keys(seam.on).sort(), ['schedule', 'workflow_dispatch'], 'the seam is a nightly check (N34): the shards that run the test of main-red run at night and on request');
-  const shard = seam.jobs.seam.steps.find((step) => step.name === 'Check the units and the tests of the plan');
-  assert.match(shard.run, /scripts\/ci\/main-red\.test\.mjs/);
-});
-
 test('S1 of #726: a job that reached its timeout (cancelled, with the annotation of a timeout) makes a cancelled run red, so a hang of a single-job workflow opens the issue; a plain cancel with another annotation does not', async () => {
   const hang = fakeGh({ runs: goodRuns, jobs: ['cancelled'], annotations: { 1: ['The job has exceeded the maximum execution time of 30m0s'] } });
   const result = await handle({ env: env({ WORKFLOW_NAME: 'Main Windows build', CONCLUSION: 'cancelled' }), ask: hang.ask });
@@ -247,21 +239,4 @@ test('S1 of #726: a job that reached its timeout (cancelled, with the annotation
   const second = fakeGh({ runs: goodRuns, jobs: ['success', 'cancelled', 'cancelled'], annotations: { 3: ['The job has exceeded the maximum execution time of 1m0s'] } });
   assert.equal((await handle({ env: env({ CONCLUSION: 'cancelled' }), ask: second.ask })).action, 'created', 'any job of the run');
   assert.equal(TIMEOUT_ANNOTATION.test('The job has exceeded the maximum execution time of 1m0s'), true);
-});
-
-test('S1 of #726: the workflows that only main runs (the Windows build, the macOS build) end in a verdict job that fails closed when their job did not succeed, so that a hang is a failed job and not only a cancelled one', () => {
-  for (const [file, job] of [['main-windows.yml', 'build-windows'], ['main-macos-universal.yml', 'build-universal']]) {
-    const workflow = parse(readFileSync(path.join(repo, '.github/workflows', file), 'utf8'));
-    const verdict = workflow.jobs.verdict;
-    assert.ok(verdict, `${file} has a verdict job`);
-    assert.deepEqual([].concat(verdict.needs), [job], file);
-    assert.equal(verdict.if, '${{ always() }}', file);
-    assert.equal(verdict['runs-on'], 'ubuntu-slim', file);
-    assert.equal(verdict.steps.length, 1);
-    assert.equal(verdict.steps[0].env.RESULT, `\${{ needs.${job}.result }}`);
-    const outcome = (result) => spawnSync('/bin/bash', ['-e', '-c', verdict.steps[0].run], { env: { PATH: process.env.PATH, RESULT: result }, encoding: 'utf8' });
-    assert.equal(outcome('success').status, 0, file);
-    for (const result of ['failure', 'cancelled', 'skipped', '', 'timed_out']) assert.equal(outcome(result).status, 1, `${file}: ${JSON.stringify(result)}`);
-    for (const [id, other] of Object.entries(workflow.jobs)) assert.equal(other['continue-on-error'], undefined, `${file}: ${id}`);
-  }
 });

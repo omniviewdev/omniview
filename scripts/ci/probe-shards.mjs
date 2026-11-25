@@ -7,35 +7,28 @@
 //   node scripts/ci/probe-shards.mjs verify --reports <dir> --shards <n>   what the shards reported against the table: every unit, every control, once, passed, in as many shards as the plan made
 //   --root <dir>                                                           another tree than this repository (the tests)
 //
-// EVERY PROBE AND EVERY CONTROL RUNS ON EVERY RUN. N25 first ran the controls by the paths a pull request changed, and dropped that after an independent review (docs/ui-next/status/N25.md): a control can go inert through a path no unit
-// lists while the probe and the kit's tests stay green, nothing reads the one run that would notice, and a pull request that touches only the new UI saves 9 percent on average. What is kept is what does not depend on it.
+// EVERY PROBE AND EVERY CONTROL RUNS ON EVERY RUN (nightly, and by hand). N25 tried to run the controls by the paths a change touches and dropped it after an independent review (docs/ui-next/status/N25.md):
+// a control can go inert through a path no unit lists while the probe stays green.
 //
-// THE TABLE IS A DIRECTORY. One file for each probe in scripts/ci/probe-units/<probe>.mjs exports `units`: the unit that runs the probe and the units that run its negative controls (a probe's controls may be several units, each control
-// run once). A unit is `{ id, name, script, env?, controls?, seconds }`: its id (the word the plan and the matrix use), its name (the step it replaced), the probe script, the env it runs with (`$RUNNER_TEMP` and `$PROBE_DIST` are expanded
-// from the runner's environment; a variable that is not set is an error), the controls it runs (one run each, with NEGATIVE_CONTROL set to it) and the seconds it takes on the runner. It declares no shard: no pull request chooses where
-// a unit runs, so two that add units cannot conflict on that, and a pull request that adds a probe adds a file.
+// THE TABLE IS A DIRECTORY. scripts/ci/probe-units/<probe>.mjs exports `units`: the unit that runs the probe and the units that run its negative controls. A unit is `{ id, name, script, env?, controls?, seconds }`:
+// its env expands `$RUNNER_TEMP` and `$PROBE_DIST` from the runner's environment (a variable that is not set is an error), `controls` are run one each with NEGATIVE_CONTROL set, `seconds` is what it takes on the
+// runner. A unit declares no shard, so a pull request that adds a probe adds a file and two of them cannot conflict.
 //
-// THE MANIFEST IS THE FLOOR. scripts/ci/probe-units.manifest.json lists every probe script that runs as a probe and every control of each: what CI proves. `check` fails when the manifest lists a probe or a control that no unit runs, so
-// a deleted control or probe is a diff in the manifest that a reviewer reads, and not a line that left a unit file. It is not a mirror: a unit that is not in it is not an error, so two pull requests that add probes do not both edit it.
+// THE MANIFEST IS THE FLOOR. scripts/ci/probe-units.manifest.json lists every probe script that runs as a probe and every control of each: `check` fails when it lists one that no unit runs, so dropping a probe or a
+// control is a diff in the manifest that a reviewer reads. It is not a mirror: a unit that is not in it is not an error.
 //
-// WHICH SHARD (scripts/ci/probe-pack.mjs). Every unit is packed at run time into the fewest shards that each stay under LIMIT_SECONDS, as even as that allows; the matrix of the shard jobs is the plan's output.
+// THE PLAN packs every unit at run time into the fewest shards under LIMIT_SECONDS (scripts/ci/probe-pack.mjs). THE SECONDS ARE THE RUNNER'S AND ARE HELD: past DRIFT_RATIO and DRIFT_FLOOR_SECONDS over, a unit
+// fails its shard with the number to put in its file (under, it warns), and the real seconds of a whole shard may not pass SHARD_CEILING_SECONDS, so that units each just inside their margin cannot make a shard of 866 s.
 //
-// THE SECONDS ARE THE RUNNER'S AND ARE HELD. After a shard ran, each unit's real seconds are compared with the unit's `seconds`: past DRIFT_RATIO and DRIFT_FLOOR_SECONDS over, the shard FAILS and the message has the number to put in
-// the unit's file; past the same margin under, it warns. And the SHARD is held: the real seconds of all its units added up may not pass SHARD_CEILING_SECONDS, so that units that are each just inside their margin cannot make a shard
-// of 866 s (K3 found shard 5 at 562 s on the runner against 489 s in the table: a warning nobody acted on).
+// THE WHOLE RUN IS VERIFIED. Each shard writes what it ran; `Kit probes` compares all of it with the table of its own checkout: every unit and every control, once, passed, in as many shards as the plan made.
 //
-// THE WHOLE RUN IS VERIFIED. Each shard writes what it ran; the job named `Kit probes` reads them all and compares them with the table of its own checkout: every unit, every control of it, once, passed, in as many shards as the plan
-// made. A plan that was short, a shard that never reported and a unit that dropped out of the matrix are red, whatever the shards' own results said.
+// THE BUILDS ARE SHARED (N27). Every process of a shard gets one BUILD_CACHE, `<runner temp>/probe-builds/<key>`, keyed by everything that can change what a build makes (scripts/ci/probe-builds.mjs); the first process
+// that needs a build of the fixtures makes it there and the others read it (about 120 builds in a full run before). That is sound for a control that plants its fault in the loaded page (`plants: 'page'`); a unit that says
+// `plants: 'build'` gets no shared build and the variables that name one are taken out of its processes' environment. A build never sees the control.
 //
-// THE BUILDS ARE SHARED (N27). Every process of a shard (a probe is a process, and so is each negative control) is given one BUILD_CACHE, `<runner temp>/probe-builds/<key>`, where the key is the hash of everything that can change what
-// a build makes (scripts/ci/probe-builds.mjs: the tree, the lockfile, node, the build variables). The first process that needs a build of the fixtures makes it there and the others read it (packages/kit/probes/build-cache.mjs), where
-// each used to build its own: about 120 builds of the same fixtures in a full run. That is sound for a control that plants its fault in the loaded page or in what the probe reads of it, which every control does (`plants: 'page'`, a
-// unit of controls says it; docs/ui-next/status/N27.md has the 219 read one by one): the page it loads is the clean build's, as it was. A unit that says `plants: 'build'` (a control that plants its fault in the source, or at build
-// time) is given no shared build and the variables that name one are taken out of its processes' environment (`unset` of a run), so that it builds its own. A build never sees the control: it is not in the environment it is given.
-//
-// ADDING A PROBE. Write `<thing>-probe.mjs` in one of PROBE_DIRS and a file for it in scripts/ci/probe-units: a unit for the probe, and one for its negative controls (`plants`: where they plant their fault). Run `node scripts/ci/probe-shards.mjs check`: it fails, naming the file,
-// for a probe that no unit runs. Put the seconds of the first run of the unit in `seconds` (the summary of its shard prints them), and after its first CI runs set them with `node scripts/ci/probe-seconds.mjs --write` (the 95th percentile of the runner's recent runs). Add the probe and its controls to the manifest to keep them from being deleted unseen. A probe CI is not
-// to run goes in BY_HAND with the reason.
+// ADDING A PROBE. Write `<thing>-probe.mjs` in one of PROBE_DIRS and a file for it in scripts/ci/probe-units (a unit for the probe, one for its controls, `plants` saying where they plant their fault); `check` fails,
+// naming the file, for a probe that no unit runs. Put the seconds the shard's summary prints in `seconds` after its first nightly run, and add the probe and its controls to the manifest. A probe CI does not run goes in
+// BY_HAND with the reason.
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -84,27 +77,15 @@ export const DRIFT_FLOOR_SECONDS = 60;
 
 /**
  * The ceiling on the real seconds of a whole SHARD, which no unit's own margin can bound: units that are each just inside it add up to 866 s in a shard planned at 386 s (the independent review of #656, `drift-bounds.mjs`).
- * It is DERIVED from the runner, not picked. The seven runs of scripts/ci/probe-shards.runs.json hold the 70 real shard jobs of the ten-shard table, each job's units on one machine; the real seconds of a job over the table's
+ * It is DERIVED from the runner, not picked. The seven runs of the N26 measurements held the 70 real shard jobs of the ten-shard table, each job's units on one machine; the real seconds of a job over the table's
  * seconds for the units it held says how slow that machine was: median 1.003, 95th percentile 1.099, worst 1.292 (shard 3 of run 44932913868, 567 s for 439 s; the second worst is 1.222, the step from one to the other is 5.7
  * percent). A shard planned at the limit (432 s) on the worst machine takes 558 s; the margin is 10 percent more, over that step, so that a machine as much slower than the worst as the worst is than the second still passes: 614 s.
- * Every one of the 70 jobs, scaled to a shard planned at the limit, passes it (probe-shards.test.mjs replays them). The job's timeout leaves a shard at the ceiling, on the slowest setup, time to end and say why it failed
+ * Every one of the 70 jobs, scaled to a shard planned at the limit, passes it . The job's timeout leaves a shard at the ceiling, on the slowest setup, time to end and say why it failed
  * (SETUP_MAX_SECONDS; the workflow test pins it).
  */
 export const SHARD_SLOWDOWN_WORST = 1.292;
 export const SHARD_CEILING_MARGIN = 0.1;
 export const SHARD_CEILING_SECONDS = Math.ceil(LIMIT_SECONDS * SHARD_SLOWDOWN_WORST * (1 + SHARD_CEILING_MARGIN));
-
-// THE SCOPE (N30, scripts/ci/ci-scope.mjs says which a run is). `full` is every probe and every control in both engines, as above. `pr` is a pull request's: the probes and not the negative controls, in WebKit only (the engine of the
-// desktop application; a probe reads `ENGINES`), packed into fewer, longer shards because a job costs a setup of 90 s and a slot, and what the owner counts is the runner's seconds and the jobs. The units' `seconds` are those of both
-// engines, so a shard planned at PR_LIMIT_SECONDS of them takes less than that in WebKit: the shard's ceiling is the limit and the slowest machine (1.3), a unit that is faster than its seconds is not warned about, and the job's
-// timeout (38 minutes) is the same ceiling and the slowest setup. The first runs of this scope give the numbers to set the limit by.
-export const PR_LIMIT_SECONDS = 1600;
-export const PR_SHARD_CEILING_SECONDS = Math.ceil(PR_LIMIT_SECONDS * 1.3);
-export const PR_ENGINES = 'webkit';
-export const SCOPES = ['pr', 'full'];
-
-/** The units a scope runs: every one for `full`, the probes (no negative control) for `pr`. */
-export const unitsOfScope = (units, scope) => (scope === 'pr' ? units.filter((unit) => unit.controls === undefined) : units);
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Which files are probe scripts
@@ -371,20 +352,20 @@ export function planRun({ units, limit = LIMIT_SECONDS }) {
   return { shards };
 }
 
-/** The matrix the shard jobs read: `{ include: [{ shard, units, seconds, dist, engines }] }`, the units as their ids joined by commas; `engines` is what the shard's probes are told (`ENGINES`), empty for all of them. */
-export function matrixOf(shards, { engines = '' } = {}) {
-  return { include: shards.map((shard) => ({ shard: shard.shard, units: shard.units.map((entry) => entry.id).join(','), seconds: shard.seconds, dist: shard.dist, engines })) };
+/** The matrix the shard jobs read: `{ include: [{ shard, units, seconds, dist }] }`, the units as their ids joined by commas. */
+export function matrixOf(shards) {
+  return { include: shards.map((shard) => ({ shard: shard.shard, units: shard.units.map((entry) => entry.id).join(','), seconds: shard.seconds, dist: shard.dist })) };
 }
 
 /** The summary of a plan (Markdown): the counts, and every shard with its units. */
-export function renderPlan({ shards }, units, { scope = 'full', reason = '', limit = LIMIT_SECONDS } = {}) {
+export function renderPlan({ shards }, units) {
   const controlUnits = units.filter((unit) => unit.controls !== undefined);
   const controls = controlUnits.reduce((sum, unit) => sum + unit.controls.length, 0);
   const work = units.reduce((sum, unit) => sum + unit.seconds, 0);
   const lines = [
     '### Kit probes plan',
     '',
-    `${scope === 'pr' ? `Pull request scope (${reason}): the probes in WebKit, the negative controls are NOT run on pull requests (they run on main, every night, and on a change to the test infrastructure): ` : 'Every probe and every control runs: '}${units.length - controlUnits.length} probes and ${controlUnits.length} control units (${controls} controls), ${work} s of units in ${shards.length} shard${shards.length === 1 ? '' : 's'} of at most ${limit} s each.`,
+    `Every probe and every control runs: ${units.length - controlUnits.length} probes and ${controlUnits.length} control units (${controls} controls), ${work} s of units in ${shards.length} shard${shards.length === 1 ? '' : 's'} of at most ${LIMIT_SECONDS} s each.`,
     '',
     '| Shard | Seconds | Units |',
     '|---|--:|---|',
@@ -485,7 +466,7 @@ export function renderSummary(id, results) {
  * message; it only warns when it took more than that under. A unit the table does not have fails: a run that is not in the table is a table that is out of date. The SHARD fails when all its runs added up (a failed one too) passed
  * `ceiling`, with the numbers of every unit in the message.
  */
-export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS, ceiling = SHARD_CEILING_SECONDS, warnFaster = true } = {}) {
+export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS, ceiling = SHARD_CEILING_SECONDS } = {}) {
   const ran = new Map();
   for (const result of results) {
     if (result.unit === undefined) continue;
@@ -511,7 +492,7 @@ export function driftFindings(id, results, units, { ratio = DRIFT_RATIO, floor =
     const margin = Math.max(floor, ratio * unit.seconds);
     const verdict = delta > margin ? 'slower' : -delta > margin ? 'faster' : 'ok';
     rows.push({ id: unit.id, name: unit.name, file: unit.file, table: unit.seconds, took, delta, verdict });
-    if (verdict === 'ok' || (verdict === 'faster' && !warnFaster)) continue;
+    if (verdict === 'ok') continue;
     const percent = whole((Math.abs(delta) / unit.seconds) * 100);
     const lead = `${unit.name} (${unit.id}) took ${took} s on this runner, ${unit.seconds} s in ${unit.file} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s, ${percent} percent`;
     if (verdict === 'slower') {
@@ -639,7 +620,7 @@ export function verifyRan({ units, reports, shards }) {
 // The command
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-const USAGE = 'usage: node scripts/ci/probe-shards.mjs [--root <repository>] [--scope pr|full] check | plan | run <shard> <unit>,<unit>,... | verify --reports <directory> --shards <n>';
+const USAGE = 'usage: node scripts/ci/probe-shards.mjs [--root <repository>] check | plan | run <shard> <unit>,<unit>,... | verify --reports <directory> --shards <n>';
 
 export async function main(
   argv = process.argv.slice(2),
@@ -648,13 +629,9 @@ export async function main(
   let root = REPO_ROOT;
   let reportsDir;
   let planned;
-  let scope = 'full';
-  let reason = '';
   const words = [];
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--root' && argv[i + 1] !== undefined) root = path.resolve(argv[(i += 1)]);
-    else if (argv[i] === '--scope' && SCOPES.includes(argv[i + 1])) scope = argv[(i += 1)];
-    else if (argv[i] === '--reason' && argv[i + 1] !== undefined) reason = argv[(i += 1)];
     else if (argv[i] === '--reports' && argv[i + 1] !== undefined) reportsDir = argv[(i += 1)];
     else if (argv[i] === '--shards' && argv[i + 1] !== undefined) planned = argv[(i += 1)];
     else words.push(argv[i]);
@@ -668,6 +645,7 @@ export async function main(
 
   const loaded = given === undefined ? await loadUnits(root) : { units: given, problems: [] };
   const units = loaded.units;
+  const controlUnitsCount = units.filter((unit) => unit.controls !== undefined).length;
   const controlsOf = units.reduce((sum, unit) => sum + (unit.controls?.length ?? 0), 0);
 
   if (verb === 'check') {
@@ -697,19 +675,18 @@ export async function main(
 
   if (verb === 'plan') {
     let result;
-    const scoped = unitsOfScope(units, scope);
     try {
-      result = planRun({ units: scoped, limit: scope === 'pr' ? PR_LIMIT_SECONDS : LIMIT_SECONDS });
+      result = planRun({ units });
     } catch (error) {
       err(`probe-shards: ${error.message}\n`);
       return 1;
     }
-    const text = renderPlan(result, scoped, { scope, reason, limit: scope === 'pr' ? PR_LIMIT_SECONDS : LIMIT_SECONDS });
+    const text = renderPlan(result, units);
     out(text);
-    const matrix = matrixOf(result.shards, { engines: scope === 'pr' ? PR_ENGINES : '' });
+    const matrix = matrixOf(result.shards);
     try {
       if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${text}\n`);
-      if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nshards=${matrix.include.length}\nscope=${scope}\n`);
+      if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nshards=${matrix.include.length}\n`);
     } catch (error) {
       err(`probe-shards: could not write the outputs: ${firstLine(error.message)}\n`);
       return 1;
@@ -725,25 +702,19 @@ export async function main(
       err(`probe-shards: cannot read the reports in ${reportsDir}: ${firstLine(error.message)}\n`);
       return 1;
     }
-    const scoped = unitsOfScope(units, scope);
-    const problems = [...read.problems, ...verifyRan({ units: scoped, reports: read.reports, shards: planned })];
+    const problems = [...read.problems, ...verifyRan({ units, reports: read.reports, shards: planned })];
     for (const message of problems) {
       if (env.GITHUB_ACTIONS === 'true') out(`::error title=Kit probes::${escapeData(message)}\n`);
       else err(`probe-shards: ${message}\n`);
     }
     if (problems.length > 0) return 1;
-    const probes = scoped.filter((unit) => unit.controls === undefined).length;
-    const controlsRun = scoped.reduce((sum, unit) => sum + (unit.controls?.length ?? 0), 0);
-    const what = `${probes} probes and ${controlsRun} controls, in ${scoped.length} units, ran once and passed, in ${read.reports.length} shards${scope === 'pr' ? ' (WebKit)' : ''}`;
-    // A control that a pull request does not run is not a control that passed: the verdict says so in its own line and its summary.
-    const notRun = scope === 'pr' ? `${controlsOf} negative controls in ${units.length - scoped.length} units were NOT RUN on this pull request (they run on main, every night, and on a change to the test infrastructure)${reason === '' ? '' : `: ${reason}`}` : '';
-    if (notRun !== '') out(`probe-shards: not run on pull requests: ${notRun}\n`);
+    const what = `${units.length - controlUnitsCount} probes and ${controlsOf} controls, in ${units.length} units, ran once and passed, in ${read.reports.length} shards`;
     out(`probe-shards: ok (${what})\n`);
     // The verdict's own summary: what was required and what each shard ran, so that a reader of the check sees the run was whole without opening a shard.
     if (env.GITHUB_STEP_SUMMARY) {
       const rows = [...read.reports].sort((a, b) => a.shard - b.shard).map((report) => `| ${report.shard} | ${report.units.map((entry) => entry.id).join(', ')} |`);
       try {
-        appendFileSync(env.GITHUB_STEP_SUMMARY, `### Kit probes\n\n${scope === 'pr' ? 'Every probe of the table ran once and passed' : 'Every probe and every control of the table ran once and passed'}: ${what}.\n\n${notRun === '' ? '' : `**Not run on pull requests:** ${notRun}.\n\n`}| Shard | Units that ran |\n|---|---|\n${rows.join('\n')}\n\n`);
+        appendFileSync(env.GITHUB_STEP_SUMMARY, `### Kit probes\n\nEvery probe and every control of the table ran once and passed: ${what}.\n\n| Shard | Units that ran |\n|---|---|\n${rows.join('\n')}\n\n`);
       } catch (error) {
         err(`probe-shards: could not write the summary: ${firstLine(error.message)}\n`);
         return 1;
@@ -775,16 +746,14 @@ export async function main(
   }
   out(`probe-shards: the processes of shard ${shard} share their builds in ${buildCache}\n`);
   let results;
-  // A pull request's shard tells its probes the engine to use (`ENGINES`); a full run leaves them their own default, both.
-  const shardEnv = scope === 'pr' ? { ...env, ENGINES: PR_ENGINES } : env;
   try {
-    results = await runShard(chosen, shard, { root, env: shardEnv, out, buildCache });
+    results = await runShard(chosen, shard, { root, env, out, buildCache });
   } catch (error) {
     err(`probe-shards: ${error.message}\n`);
     return 1;
   }
   const summary = renderSummary(shard, results);
-  const found = driftFindings(shard, results, units, scope === 'pr' ? { ceiling: PR_SHARD_CEILING_SECONDS, warnFaster: false, ...margin } : margin);
+  const found = driftFindings(shard, results, units, margin);
   const drift = renderDrift(shard, found.rows, found.shard);
   const built = renderBuilds(shard, summariseBuilds(results.flatMap((result) => result.builds ?? [])));
   const builds = built === '' ? '' : `${built}\n`;

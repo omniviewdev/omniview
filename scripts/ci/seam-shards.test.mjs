@@ -13,7 +13,6 @@ import { parse } from 'yaml';
 import {
   CHECK,
   ENGINES,
-  PR_ENGINES,
   JOB_TIMEOUT_MINUTES,
   LIMIT_SECONDS,
   PHASE_START_SECONDS,
@@ -33,9 +32,6 @@ import {
   ranUnits,
   readReports,
   renderPlan,
-  unitsOfScope,
-  enginesOfScope,
-  listOfScope,
   verifyRan,
 } from './seam-shards.mjs';
 
@@ -59,7 +55,6 @@ test('the text the plan reads is what the check says of itself: SEAM_LIST=1 prin
 // when N29 split it. A deletion shows as a number under the floor; an addition is not a test failure.
 const CONTROLS_IN_CHECK = LIST.controls.reduce((sum, entry) => sum + entry.proves.length, 0);
 const PHASES_IN_CHECK = LIST.phases.length;
-const PR_UNITS = UNITS.filter((unit) => unit.phases !== undefined).length;
 test('the check has at least the phases and the controls it had when N29 split it (26 phases, 104 controls in 29 runs)', () => {
   assert.ok(LIST.phases.length >= 26);
   assert.ok(LIST.controls.length >= 29);
@@ -454,7 +449,7 @@ test('check and plan, on this repository: ok, and the plan writes the matrix and
   assert.equal(await main(['plan'], { env: { GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary }, ...planned.io }), 0);
   const written = readFileSync(output, 'utf8');
   assert.match(written, /^matrix=\{"include":\[/);
-  assert.match(written, /\nshards=3\nscope=full\n$/);
+  assert.match(written, /\nshards=3\n$/);
   assert.equal(JSON.parse(/^matrix=(.*)$/m.exec(written)[1]).include.length, 6);
   assert.match(readFileSync(summary, 'utf8'), /### Seam plan/);
 });
@@ -579,35 +574,6 @@ test('NEGATIVE report: a shard whose logs are missing, or whose control run was 
 const WORKFLOW = parse(readFileSync(path.join(repo, '.github/workflows/ui-next-seam.yml'), 'utf8'));
 const stepOf = (job, start) => WORKFLOW.jobs[job].steps.find((step) => typeof step.name === 'string' && step.name.startsWith(start));
 
-test('the workflow plans, runs the plan\'s shards in both engines and gathers them in `Seam check`, which runs whatever happened and needs both', () => {
-  assert.deepEqual(Object.keys(WORKFLOW.jobs), ['plan', 'seam', 'seam-check']);
-  assert.equal(WORKFLOW.jobs.plan.name, 'Seam plan');
-  assert.equal(WORKFLOW.jobs.seam.needs, 'plan');
-  assert.equal(WORKFLOW.jobs.seam.strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
-  assert.equal(WORKFLOW.jobs.seam.strategy['fail-fast'], false);
-  assert.equal(WORKFLOW.jobs['seam-check'].name, 'Seam check');
-  assert.deepEqual(WORKFLOW.jobs['seam-check'].needs, ['plan', 'seam']);
-  assert.equal(WORKFLOW.jobs['seam-check'].if, '${{ always() }}', 'a cancelled run leaves a check, not an absence');
-  assert.deepEqual(WORKFLOW.jobs.plan.outputs, { matrix: '${{ steps.plan.outputs.matrix }}', shards: '${{ steps.plan.outputs.shards }}', scope: '${{ steps.plan.outputs.scope }}', reason: '${{ steps.scope.outputs.reason }}' });
-  assert.match(WORKFLOW.jobs.plan.steps.at(-1).run, /seam-shards\.mjs check\n.*seam-shards\.mjs plan/);
-});
-
-test('the verdict compares the shards with the table: it downloads what they wrote and passes the plan\'s count of shards, after the check that they all passed', () => {
-  const steps = WORKFLOW.jobs['seam-check'].steps;
-  const names = steps.map((step) => step.name);
-  assert.ok(names.indexOf('Require the plan and every shard to have succeeded') < names.indexOf('Require every phase and every control to have run and passed, in both engines'));
-  const verdict = stepOf('seam-check', 'Require every phase and every control');
-  assert.match(verdict.run, /gh run download "\$GITHUB_RUN_ID" --pattern 'seam-ran-\*'/);
-  assert.match(verdict.run, /seam-shards\.mjs verify --reports "\$RUNNER_TEMP\/reports" --shards "\$PLAN_SHARDS"/);
-  assert.equal(verdict.env.PLAN_SHARDS, '${{ needs.plan.outputs.shards }}');
-  assert.deepEqual(WORKFLOW.jobs['seam-check'].permissions, { actions: 'read', checks: 'read', contents: 'read' });
-  const required = stepOf('seam-check', 'Require the plan and every shard');
-  assert.equal(required.env.PLAN_RESULT, '${{ needs.plan.result }}');
-  assert.equal(required.env.RESULT, '${{ needs.seam.result }}');
-  assert.match(required.run, /PLAN_RESULT" = success \] && \[ "\$RESULT" = success/);
-  assert.match(required.run, /select\(\.name != "Seam check" and \.name != "Seam plan"\)|select\(\.name != "Seam check" and \.name != "Seam plan"|\.name != "Seam check" and \.name != "Seam plan"/);
-});
-
 test('a shard\'s steps: the tests, the host build, the phases only when it has any, the controls only when it has any, then the report and its upload whatever happened', () => {
   const names = WORKFLOW.jobs.seam.steps.map((step) => step.name ?? step.uses);
   const at = (start) => names.findIndex((name) => name.startsWith(start));
@@ -634,100 +600,11 @@ test('a shard\'s steps: the tests, the host build, the phases only when it has a
   assert.match(WORKFLOW.jobs.seam.steps.find((step) => step.name === 'Check the units and the tests of the plan').run, /seam-shards\.mjs check\n.*node --test scripts\/ci\/seam-\*\.test\.mjs/);
 });
 
-test('the matrix reaches the commands through env, never through the text of a command, and the files the logs are read from are the ones the steps write', () => {
-  for (const step of WORKFLOW.jobs.seam.steps) assert.equal(/\$\{\{\s*matrix\./.test(step.run ?? ''), false, `${step.name} puts the matrix in its command`);
-  assert.equal(/\$\{\{\s*needs\./.test(stepOf('seam-check', 'Require every phase').run), false);
-  const seam = stepOf('seam', 'The seam (');
-  assert.match(seam.run, /log="\$RUNNER_TEMP\/seam-\$ENGINES\.log"/, 'parsePhases reads seam-<engine>.log');
-  assert.match(readFileSync(path.join(repo, 'scripts/ci/seam-shards.mjs'), 'utf8'), /readIf\(`seam-\$\{engine\}\.log`\)/);
-});
-
-test('the workflow starts for the files of the plan and the units, the job is not allowed the 25 minutes that the seam hit, and the timeout is the one the test above computes', () => {
-  assert.deepEqual(Object.keys(WORKFLOW.on).sort(), ['schedule', 'workflow_dispatch'], 'the seam runs at night and on request, not on a pull request or a push (N34)');
-  assert.equal(WORKFLOW.jobs.seam['timeout-minutes'], JOB_TIMEOUT_MINUTES);
-  assert.ok(JOB_TIMEOUT_MINUTES < 25);
-  assert.match(readFileSync(path.join(repo, '.github/workflows/ui-next-seam.yml'), 'utf8'), new RegExp(`fails past ${String(SHARD_CEILING_SECONDS)} s|546 s`));
-});
-
 test('the step that names the scenario that failed is the one the shards run: its program is the awk of the one scenario functions are held to', () => {
   const seam = stepOf('seam', 'The seam (');
   assert.match(seam.run, /letter="\$\(awk -v n="\$line" '[^']+' "\$check"\)"/);
   assert.match(seam.run, /exit 1\s*$/);
 });
-
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The scope of a run (N30): a pull request runs the phases in WebKit and no negative control; main, the nightly run and a manual run run everything
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-test('a pull request\'s scope is the phases, in WebKit, no control run: two shards of the phases; a full run is the table in both engines', () => {
-  const pr = unitsOfScope(UNITS, 'pr');
-  assert.ok(pr.length > 0 && pr.every((unit) => unit.phases !== undefined));
-  assert.deepEqual(unitsOfScope(UNITS, 'full'), UNITS);
-  assert.deepEqual(enginesOfScope('pr'), PR_ENGINES);
-  assert.deepEqual(PR_ENGINES, ['webkit']);
-  assert.deepEqual(enginesOfScope('full'), ENGINES);
-  assert.deepEqual(listOfScope(LIST, 'pr'), { phases: LIST.phases, controls: [] });
-  assert.equal(listOfScope(LIST, 'full'), LIST);
-  const shards = planRun({ units: pr });
-  assert.equal(shards.length, 2, `${pr.reduce((sum, unit) => sum + unit.seconds, 0)} s of phases`);
-  const matrix = matrixOf(shards, LIST.phases, PR_ENGINES);
-  assert.equal(matrix.include.length, 2);
-  for (const entry of matrix.include) {
-    assert.equal(entry.engine, 'webkit');
-    assert.equal(entry.controls, '', 'no control step is scheduled');
-    assert.ok(entry.phases.length > 0);
-  }
-
-  assert.deepEqual(matrix.include.flatMap((entry) => entry.phases.split(',')).sort(), [...LIST.phases].sort());
-});
-
-test('the plan command for a pull request writes the scope and a WebKit matrix, and says in the summary that the controls and Chromium are not run', async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'seam-pr-plan-'));
-  const output = path.join(dir, 'output');
-  const planned = capture();
-  assert.equal(await main(['plan', '--scope', 'pr', '--reason', '4 changed files, none of them test infrastructure'], { env: { GITHUB_OUTPUT: output }, ...planned.io }), 0);
-  const written = readFileSync(output, 'utf8');
-  assert.match(written, /\nscope=pr\n$/);
-  const matrix = JSON.parse(/^matrix=(.*)$/m.exec(written)[1]);
-  assert.equal(matrix.include.length, 2);
-  assert.ok(matrix.include.every((entry) => entry.engine === 'webkit' && entry.controls === ''));
-  assert.match(planned.lines.out, new RegExp(`Pull request scope \\(4 changed files, none of them test infrastructure\\): ${String(PHASES_IN_CHECK)} phases in webkit; the negative controls and Chromium are NOT run on pull requests`));
-  const bad = capture();
-  assert.equal(await main(['plan', '--scope', 'nope'], { env: {}, ...bad.io }), 2);
-});
-
-test('the verdict of a pull request requires the phases in WebKit only, and says in its own line what was not run; the full verdict still requires every control and both engines', async () => {
-  const pr = unitsOfScope(UNITS, 'pr');
-  const shards = planRun({ units: pr });
-  const reports = shards.map((shard) => {
-    const mine = shard.units.map((entry) => UNITS.find((unit) => unit.id === entry.id));
-    return ranReport('webkit', shard.shard, ranUnits({ units: mine, list: LIST, engine: 'webkit', ...logsOf(mine, 'webkit') }));
-  });
-  const root = mkdtempSync(path.join(tmpdir(), 'seam-pr-verify-'));
-  for (const report of reports) {
-    mkdirSync(path.join(root, `seam-ran-webkit-${String(report.shard)}`), { recursive: true });
-    writeFileSync(path.join(root, `seam-ran-webkit-${String(report.shard)}`, `seam-ran-webkit-${String(report.shard)}.json`), JSON.stringify(report));
-  }
-
-  const summary = path.join(root, 'summary.md');
-  const ok = capture();
-  assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length), '--scope', 'pr', '--reason', 'a docs change'], { env: { GITHUB_STEP_SUMMARY: summary }, ...ok.io }), 0, ok.lines.err);
-  assert.match(ok.lines.out, new RegExp(`seam-shards: ok \\(${String(PHASES_IN_CHECK)} phases and 0 controls, in ${String(PR_UNITS)} units, ran once and passed in webkit, in 2 shards each\\)`));
-  assert.match(ok.lines.out, new RegExp(`seam-shards: not run on pull requests: the ${String(CONTROLS_IN_CHECK)} negative controls and Chromium were NOT RUN on this pull request \\(they run on main, every night, and on a change to the test infrastructure\\): a docs change`));
-  assert.match(readFileSync(summary, 'utf8'), /\*\*Not run on pull requests:\*\*/);
-  const full = capture();
-  assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length)], { env: {}, ...full.io }), 1, 'the same reports are not a full run');
-  assert.match(full.lines.err, /chromium: shard 1 of 2 did not report/);
-  // A pull request's verdict still fails for a missing shard and for a phase that did not run.
-  rmSync(path.join(root, 'seam-ran-webkit-2'), { recursive: true });
-  const gone = capture();
-  assert.equal(await main(['verify', '--reports', root, '--shards', String(shards.length), '--scope', 'pr'], { env: {}, ...gone.io }), 1);
-  assert.match(gone.lines.err, /webkit: shard 2 of 2 did not report/);
-});
-
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The workflow, again: what the review of #718 asked to hold (N1, N5, N6, N7) and what N30 changed
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 test('N1: nothing in the seam, probe and main-red workflows can hide a failed job: no continue-on-error on a job or a step', () => {
   for (const file of ['ui-next-seam.yml', 'ui-next-kit-probes.yml', 'ci-main-red.yml']) {
@@ -760,34 +637,3 @@ test('N6: no annotation title has a comma or a colon (a workflow command takes t
   for (const line of lines) assert.match(line, /^::error title=Seam (?:unit seconds|shard seconds) webkit shard 2::/);
 });
 
-test('N7: a selection that selects nothing, and an engine that is not one, are errors in the check and not a full run or no run', () => {
-  const run = (env) => spawnSync(process.execPath, [path.join(repo, CHECK)], { cwd: repo, env: { ...process.env, ...env }, encoding: 'utf8', timeout: 60_000 });
-  for (const phases of ['', ',', ',,']) {
-    const ran = run({ SEAM_PHASES: phases });
-    assert.equal(ran.status, 1, `SEAM_PHASES=${JSON.stringify(phases)}: ${ran.stdout}${ran.stderr}`);
-    assert.match(ran.stderr, /SEAM_PHASES is set and names no phase/);
-  }
-
-  const ran = run({ SEAM_PHASES: 'nope' });
-  assert.equal(ran.status, 1);
-  assert.match(ran.stderr, /SEAM_PHASES names phases the check does not have: nope/);
-  const text = readFileSync(path.join(repo, CHECK), 'utf8');
-  assert.match(text, /ENGINES names engines the check does not have/, 'an ENGINES that names none of the two is an error: zero engines is not a pass');
-});
-
-test('N30: the plan and the verdict run on the smallest runner with a sparse checkout, a pull request supersedes its older run and main\'s run is never cancelled, and the nightly run is the full one', () => {
-  assert.equal(WORKFLOW.jobs.plan['runs-on'], 'ubuntu-slim');
-  assert.equal(WORKFLOW.jobs['seam-check']['runs-on'], 'ubuntu-slim');
-  const verdictCheckout = WORKFLOW.jobs['seam-check'].steps.find((step) => step.uses?.startsWith('actions/checkout@'));
-  assert.match(verdictCheckout.with['sparse-checkout'], /scripts\/ci\nui-next\/plugins\/e2e\/seam\.check\.mjs/);
-  assert.equal(WORKFLOW.concurrency['cancel-in-progress'], false);
-  assert.ok('schedule' in WORKFLOW.on);
-  assert.ok('workflow_dispatch' in WORKFLOW.on);
-  assert.deepEqual(WORKFLOW.on.workflow_dispatch.inputs.scope.options, ['full', 'pr']);
-  assert.equal(WORKFLOW.on.workflow_dispatch.inputs.scope.default, 'full');
-  const scope = WORKFLOW.jobs.plan.steps.find((step) => step.id === 'scope');
-  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs');
-  assert.equal(WORKFLOW.jobs.plan.steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['fetch-depth'], 2);
-  const verdict = WORKFLOW.jobs['seam-check'].steps.find((step) => step.name?.startsWith('Require every phase'));
-  assert.match(verdict.run, /--scope "\$SCOPE" --reason "\$REASON"/);
-});

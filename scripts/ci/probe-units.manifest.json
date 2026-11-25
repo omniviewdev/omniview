@@ -1,628 +1,129 @@
 {
-  "packages/kit/probes/fonts-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "packages/kit/probes/form-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "face-height",
-      "mono-font",
-      "lane-offset",
-      "track-width",
-      "stepper-pad",
-      "label-for",
-      "switch-pressable",
-      "step-tab-stop",
-      "select-unblocked",
-      "secret-attribute",
-      "row-glyph-gutter",
-      "row-slot-held",
-      "row-clamp",
-      "row-message-moves",
-      "row-tip-missing",
-      "row-title-weight",
-      "row-unavailable-title",
-      "row-reset-ring"
-    ]
-  },
-  "packages/kit/probes/kit-probe-bc.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "packages/kit/probes/kit-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "packages/kit/probes/log-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "row-height",
-      "time-column",
-      "filter-shift",
-      "strip-height",
-      "copy",
-      "keys",
-      "axe",
-      "source-tip"
-    ]
-  },
-  "packages/kit/probes/row-menu-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "trigger-not-expanded",
-      "expanded-twice"
-    ]
-  },
-  "packages/kit/probes/sheet-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "no-wrap",
-      "scrim-closes",
-      "escape-ignores-draft",
-      "no-restore-escape",
-      "no-restore-close",
-      "veil-present",
-      "frame-size"
-    ]
-  },
-  "packages/kit/probes/table-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "packages/kit/probes/tooltip-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/page/probes/detail-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/page/probes/page-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/home-perf-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "late-change",
-      "second-row",
-      "key-commits",
-      "idle-timer",
-      "push-out"
-    ]
-  },
-  "ui-next/shell/probes/logs-open-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "counted-replay",
-      "no-wait",
-      "timeout-live"
-    ]
-  },
-  "ui-next/shell/probes/logs-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "feed-stopped",
-      "source-label",
-      "column-moves",
-      "kept-leak",
-      "close-twice",
-      "kept-lines",
-      "second-stream",
-      "lone-scope",
-      "same-name",
-      "axe-name",
-      "over-lines",
-      "toolbar-moved",
-      "pause-leaks",
-      "copy-no-source",
-      "clear-miscount",
-      "state-lost",
-      "more-missing",
-      "pause-commits",
-      "toolbar-timer"
-    ]
-  },
-  "ui-next/shell/probes/notices-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "toast-width",
-      "gap",
-      "retry-paint",
-      "no-alert",
-      "no-live",
-      "told-twice",
-      "steals-focus",
-      "f6-first",
-      "no-restore",
-      "sticky-closes",
-      "no-hold",
-      "hover-stuck",
-      "modal-leaks",
-      "timer-left",
-      "layout-shift",
-      "no-avoid",
-      "covers",
-      "yield-stop",
-      "yield-expires",
-      "yield-drops-focus",
-      "centre-width",
-      "centre-row",
-      "centre-dot",
-      "centre-bell-number",
-      "centre-menu-offset",
-      "centre-no-name",
-      "centre-escape",
-      "centre-focus",
-      "centre-outside",
-      "centre-two-stops",
-      "centre-listener-left",
-      "centre-timer-left",
-      "centre-second-commit",
-      "centre-slow-open"
-    ]
-  },
-  "ui-next/shell/probes/palette-plugins-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "slow-blocks",
-      "quick-late",
-      "focus-moves",
-      "extra-commit",
-      "plugin-shift",
-      "closed-work",
-      "stale-shown",
-      "alias-ignored",
-      "alias-loose",
-      "connection-key",
-      "connection-key-face"
-    ]
-  },
-  "ui-next/shell/probes/palette-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "frame-width",
-      "row-height",
-      "foot-height",
-      "search-place",
-      "foot-gap",
-      "paint",
-      "hover-steals",
-      "no-restore"
-    ]
-  },
-  "ui-next/shell/probes/panel-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "panel-height",
-      "session-gap",
-      "toggle",
-      "tab-padding",
-      "shift",
-      "root-write",
-      "held-hidden",
-      "held-done-hidden",
-      "held-moved",
-      "held-enabled",
-      "twin-moved",
-      "twin-lone-scope",
-      "twin-scope-kept",
-      "scope-name",
-      "late-early"
-    ]
-  },
-  "ui-next/shell/probes/plugins-page-perf-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "late-change",
-      "second-row",
-      "late-list",
-      "slow-open",
-      "idle-timer"
-    ]
-  },
-  "ui-next/shell/probes/plugins-page-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "list-foot",
-      "row-tile",
-      "facts-down",
-      "more-slot",
-      "lane-down",
-      "card-title",
-      "confirm-button",
-      "empty-body",
-      "list-fill",
-      "selected-fill",
-      "title-colour",
-      "button-radius",
-      "lane-fill",
-      "card-fill",
-      "dialog-radius",
-      "pinned-lane",
-      "no-name",
-      "extra-stop",
-      "focus-lost"
-    ]
-  },
-  "ui-next/shell/probes/ports-a-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "columns-swapped",
-      "header-tall",
-      "row-tall",
-      "padding-mapping",
-      "mapping-face",
-      "actions-gap",
-      "footer-count",
-      "word-edited",
-      "icon-swapped",
-      "reason-text",
-      "reason-muted",
-      "names-ids",
-      "long-wraps",
-      "layout-mapping-wide",
-      "layout-status-wide",
-      "names-fitted",
-      "names-greedy",
-      "long-uncapped"
-    ]
-  },
-  "ui-next/shell/probes/ports-b-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "button-nameless",
-      "glyph-wrong",
-      "disabled-native",
-      "udp-open",
-      "open-twice",
-      "open-wrong",
-      "copy-twice",
-      "announce-twice",
-      "close-twice",
-      "close-other",
-      "menu-item-missing",
-      "trigger-keys-lost",
-      "escape-blurs",
-      "confirm-stale"
-    ]
-  },
-  "ui-next/shell/probes/ports-c-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "tabstop-extra",
-      "arrows-swallowed",
-      "focus-dropped",
-      "forward-button",
-      "loading-count",
-      "retry-twice",
-      "hint-size",
-      "footer-singular",
-      "footer-suffix-stuck",
-      "section-timeout"
-    ]
-  },
-  "ui-next/shell/probes/ports-d-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "idle-timer",
-      "idle-commits",
-      "hidden-leak",
-      "names-leak",
-      "list-eager",
-      "flood-sync",
-      "idle-uncounted",
-      "flood-uncounted",
-      "hidden-stale",
-      "reconnect-ignored",
-      "wake-leak"
-    ]
-  },
-  "ui-next/shell/probes/ports-e-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "axe-table",
-      "axe-states",
-      "axe-menu",
-      "axe-unstaged"
-    ]
-  },
-  "ui-next/shell/probes/problems-operations-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "per-record",
-      "all-rows",
-      "hidden-mounted",
-      "leaky-model",
-      "no-detach",
-      "tiny-rows",
-      "no-scroll",
-      "tall-rows",
-      "footer-up",
-      "footer-words",
-      "dot-down",
-      "count-colour",
-      "clip-off",
-      "spill",
-      "no-name",
-      "no-stop",
-      "open-twice",
-      "cells-twice",
-      "long-one",
-      "shift-other",
-      "render-loop",
-      "scene-throws"
-    ]
-  },
-  "ui-next/shell/probes/rail-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/settings-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "win-sidebar",
-      "win-caption",
-      "win-shell",
-      "win-drag",
-      "win-escape",
-      "win-hidden-paints",
-      "win-sync-dropped",
-      "nav-height",
-      "nav-selected-paint",
-      "group-size",
-      "group-tabbable",
-      "heading-lane",
-      "heading-type",
-      "heading-oneline",
-      "list-start",
-      "rows-height",
-      "rows-order",
-      "rows-pitch",
-      "rows-separator",
-      "rows-column",
-      "scroll-pane",
-      "scroll-wheel",
-      "scroll-end",
-      "scroll-reset",
-      "scroll-fits",
-      "states-loading",
-      "states-failed",
-      "states-empty",
-      "states-anatomy",
-      "states-type",
-      "paint-token",
-      "sheet-gear-name",
-      "sheet-open-chord",
-      "sheet-not-modal",
-      "sheet-frame-size",
-      "sheet-no-clamp",
-      "sheet-veil",
-      "sheet-no-wrap",
-      "sheet-scrim-closes",
-      "sheet-escape-draft",
-      "sheet-no-restore-escape",
-      "sheet-no-restore-close",
-      "sheet-keep-lost",
-      "sheet-tip-hidden",
-      "keys-nav-wrap",
-      "keys-nav-stops",
-      "keys-unreachable",
-      "keys-switch-space",
-      "keys-select-typeahead",
-      "keys-draft",
-      "axe-name",
-      "axe-contrast",
-      "perf-open-commits",
-      "perf-open-slow",
-      "perf-show-commits",
-      "perf-key-twice",
-      "perf-key-rows",
-      "perf-idle-timer",
-      "perf-idle-commit",
-      "perf-closed-node",
-      "perf-closed-listener",
-      "perf-closed-timer",
-      "perf-show-slow"
-    ]
-  },
-  "ui-next/shell/probes/shell-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/strip-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "slot-width",
-      "slot-undeclared"
-    ]
-  },
-  "ui-next/shell/probes/terminal-data-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-find-a-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-find-b-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-find-c-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-find-d-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "lane-border",
-      "button-size",
-      "ring-back",
-      "scrollbar-block",
-      "scrollbar-stuck",
-      "f6-trap",
-      "escape-leaves",
-      "modal-off",
-      "resize-chatty",
-      "hidden-frames",
-      "idle-timer",
-      "chunk-commit",
-      "flood-janky",
-      "flood-no-sample",
-      "echo-slow",
-      "lazy-load",
-      "big-scrollback",
-      "leaky-heap",
-      "memory-undrained",
-      "reader-claims",
-      "reader-stuck",
-      "reader-words-stale",
-      "reader-announce-twice",
-      "reader-axe",
-      "reader-hidden-frames",
-      "reader-idle-timer",
-      "flow-late",
-      "ack-on-receipt",
-      "ack-lost",
-      "drop-held",
-      "ack-double",
-      "no-shell-name",
-      "exit-code-lost",
-      "signal-lost",
-      "closed-lost",
-      "busy-always",
-      "busy-nameless",
-      "unknown-idle",
-      "ask-never",
-      "code-less",
-      "start-typed",
-      "axe-failed",
-      "hidden-burn",
-      "hidden-long-task",
-      "hidden-rest",
-      "draw-hidden",
-      "swap-held",
-      "early-size",
-      "size-off",
-      "webgl-every-show",
-      "arrival-order",
-      "resize-refused",
-      "input-serial",
-      "seq-gap",
-      "legacy-write",
-      "focus-close-button",
-      "focus-delete-swallowed",
-      "key-in-url",
-      "key-regen",
-      "no-session",
-      "replay-gap",
-      "dup-offset",
-      "ack-replay",
-      "unmuted-reply",
-      "modes-lost",
-      "resize-ignored",
-      "no-detached",
-      "lease-silent",
-      "list-ghost",
-      "leave-lost",
-      "seq-restart",
-      "own-number",
-      "tombstone-adopted",
-      "detached-axe",
-      "restore-forgets-open",
-      "restore-forgets-closed",
-      "taker-gone-ignored",
-      "take-back-twice",
-      "free-axe",
-      "rejoin-from-zero",
-      "rejoin-drops-missed",
-      "rejoin-acks-replay",
-      "gap-hidden",
-      "gone-keeps-attaching",
-      "keys-dropped",
-      "replies-as-keys",
-      "ack-stale-restore",
-      "takeback-unguarded",
-      "refresh-skipped",
-      "find-chord-lost",
-      "find-pushes-grid",
-      "find-button-unpressed",
-      "find-button-dead",
-      "known-short",
-      "count-case-ignored",
-      "count-word-ignored",
-      "count-regex-ignored",
-      "step-stuck",
-      "find-escape-stuck",
-      "find-f3-lost",
-      "find-escape-terminal-stuck",
-      "find-ctrl-f-lost",
-      "find-tab-stop-lost",
-      "reopen-forgets",
-      "search-eager",
-      "find-replay-gap",
-      "find-mounted",
-      "idle-commits",
-      "cap-unlimited",
-      "cap-short",
-      "decorations-leak",
-      "find-axe",
-      "menu-item-missing",
-      "menu-shortcut-drawn",
-      "paste-lost",
-      "trigger-lost",
-      "clipboard-dropped",
-      "mouse-never",
-      "mouse-reporting-lost",
-      "shift-menu-blocked",
-      "menu-axe",
-      "links-hover-never",
-      "links-leave-never",
-      "links-plain-follows",
-      "open-twice",
-      "open-given",
-      "tooltip-axe"
-    ]
-  },
-  "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-reattach-c-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-reattach-d-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-reattach-e-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-reattach-f-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/terminal-reattach-probe.mjs": {
-    "probe": true,
-    "controls": []
-  },
-  "ui-next/shell/probes/tour-probe.mjs": {
-    "probe": true,
-    "controls": [
-      "slot-wide",
-      "names-no-tip",
-      "title-cut",
-      "twin-lone",
-      "twin-hidden",
-      "memory-lost"
-    ]
-  }
+  "packages/kit/probes/fonts-probe.mjs": { "probe": true, "controls": [] },
+  "packages/kit/probes/form-probe.mjs": { "probe": true, "controls": [
+    "face-height", "mono-font", "lane-offset", "track-width", "stepper-pad", "label-for", "switch-pressable", "step-tab-stop", "select-unblocked",
+    "secret-attribute", "row-glyph-gutter", "row-slot-held", "row-clamp", "row-message-moves", "row-tip-missing", "row-title-weight",
+    "row-unavailable-title", "row-reset-ring"
+  ] },
+  "packages/kit/probes/kit-probe-bc.mjs": { "probe": true, "controls": [] },
+  "packages/kit/probes/kit-probe.mjs": { "probe": true, "controls": [] },
+  "packages/kit/probes/log-probe.mjs": { "probe": true, "controls": [
+    "row-height", "time-column", "filter-shift", "strip-height", "copy", "keys", "axe", "source-tip"
+  ] },
+  "packages/kit/probes/row-menu-probe.mjs": { "probe": true, "controls": [
+    "trigger-not-expanded", "expanded-twice"
+  ] },
+  "packages/kit/probes/sheet-probe.mjs": { "probe": true, "controls": [
+    "no-wrap", "scrim-closes", "escape-ignores-draft", "no-restore-escape", "no-restore-close", "veil-present", "frame-size"
+  ] },
+  "packages/kit/probes/table-probe.mjs": { "probe": true, "controls": [] },
+  "packages/kit/probes/tooltip-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/page/probes/detail-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/page/probes/page-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/home-perf-probe.mjs": { "probe": true, "controls": [
+    "late-change", "second-row", "key-commits", "idle-timer", "push-out"
+  ] },
+  "ui-next/shell/probes/logs-open-probe.mjs": { "probe": true, "controls": [
+    "counted-replay", "no-wait", "timeout-live"
+  ] },
+  "ui-next/shell/probes/logs-probe.mjs": { "probe": true, "controls": [
+    "feed-stopped", "source-label", "column-moves", "kept-leak", "close-twice", "kept-lines", "second-stream", "lone-scope", "same-name", "axe-name",
+    "over-lines", "toolbar-moved", "pause-leaks", "copy-no-source", "clear-miscount", "state-lost", "more-missing", "pause-commits", "toolbar-timer"
+  ] },
+  "ui-next/shell/probes/notices-probe.mjs": { "probe": true, "controls": [
+    "toast-width", "gap", "retry-paint", "no-alert", "no-live", "told-twice", "steals-focus", "f6-first", "no-restore", "sticky-closes", "no-hold",
+    "hover-stuck", "modal-leaks", "timer-left", "layout-shift", "no-avoid", "covers", "yield-stop", "yield-expires", "yield-drops-focus",
+    "centre-width", "centre-row", "centre-dot", "centre-bell-number", "centre-menu-offset", "centre-no-name", "centre-escape", "centre-focus",
+    "centre-outside", "centre-two-stops", "centre-listener-left", "centre-timer-left", "centre-second-commit", "centre-slow-open"
+  ] },
+  "ui-next/shell/probes/palette-plugins-probe.mjs": { "probe": true, "controls": [
+    "slow-blocks", "quick-late", "focus-moves", "extra-commit", "plugin-shift", "closed-work", "stale-shown", "alias-ignored", "alias-loose",
+    "connection-key", "connection-key-face"
+  ] },
+  "ui-next/shell/probes/palette-probe.mjs": { "probe": true, "controls": [
+    "frame-width", "row-height", "foot-height", "search-place", "foot-gap", "paint", "hover-steals", "no-restore"
+  ] },
+  "ui-next/shell/probes/panel-probe.mjs": { "probe": true, "controls": [
+    "panel-height", "session-gap", "toggle", "tab-padding", "shift", "root-write", "held-hidden", "held-done-hidden", "held-moved", "held-enabled",
+    "twin-moved", "twin-lone-scope", "twin-scope-kept", "scope-name", "late-early"
+  ] },
+  "ui-next/shell/probes/plugins-page-perf-probe.mjs": { "probe": true, "controls": [
+    "late-change", "second-row", "late-list", "slow-open", "idle-timer"
+  ] },
+  "ui-next/shell/probes/plugins-page-probe.mjs": { "probe": true, "controls": [
+    "list-foot", "row-tile", "facts-down", "more-slot", "lane-down", "card-title", "confirm-button", "empty-body", "list-fill", "selected-fill",
+    "title-colour", "button-radius", "lane-fill", "card-fill", "dialog-radius", "pinned-lane", "no-name", "extra-stop", "focus-lost"
+  ] },
+  "ui-next/shell/probes/ports-a-probe.mjs": { "probe": true, "controls": [
+    "columns-swapped", "header-tall", "row-tall", "padding-mapping", "mapping-face", "actions-gap", "footer-count", "word-edited", "icon-swapped",
+    "reason-text", "reason-muted", "names-ids", "long-wraps", "layout-mapping-wide", "layout-status-wide", "names-fitted", "names-greedy",
+    "long-uncapped"
+  ] },
+  "ui-next/shell/probes/ports-b-probe.mjs": { "probe": true, "controls": [
+    "button-nameless", "glyph-wrong", "disabled-native", "udp-open", "open-twice", "open-wrong", "copy-twice", "announce-twice", "close-twice",
+    "close-other", "menu-item-missing", "trigger-keys-lost", "escape-blurs", "confirm-stale"
+  ] },
+  "ui-next/shell/probes/ports-c-probe.mjs": { "probe": true, "controls": [
+    "tabstop-extra", "arrows-swallowed", "focus-dropped", "forward-button", "loading-count", "retry-twice", "hint-size", "footer-singular",
+    "footer-suffix-stuck", "section-timeout"
+  ] },
+  "ui-next/shell/probes/ports-d-probe.mjs": { "probe": true, "controls": [
+    "idle-timer", "idle-commits", "hidden-leak", "names-leak", "list-eager", "flood-sync", "idle-uncounted", "flood-uncounted", "hidden-stale",
+    "reconnect-ignored", "wake-leak"
+  ] },
+  "ui-next/shell/probes/ports-e-probe.mjs": { "probe": true, "controls": [
+    "axe-table", "axe-states", "axe-menu", "axe-unstaged"
+  ] },
+  "ui-next/shell/probes/problems-operations-probe.mjs": { "probe": true, "controls": [
+    "per-record", "all-rows", "hidden-mounted", "leaky-model", "no-detach", "tiny-rows", "no-scroll", "tall-rows", "footer-up", "footer-words",
+    "dot-down", "count-colour", "clip-off", "spill", "no-name", "no-stop", "open-twice", "cells-twice", "long-one", "shift-other", "render-loop",
+    "scene-throws"
+  ] },
+  "ui-next/shell/probes/rail-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/settings-probe.mjs": { "probe": true, "controls": [
+    "win-sidebar", "win-caption", "win-shell", "win-drag", "win-escape", "win-hidden-paints", "win-sync-dropped", "nav-height", "nav-selected-paint",
+    "group-size", "group-tabbable", "heading-lane", "heading-type", "heading-oneline", "list-start", "rows-height", "rows-order", "rows-pitch",
+    "rows-separator", "rows-column", "scroll-pane", "scroll-wheel", "scroll-end", "scroll-reset", "scroll-fits", "states-loading", "states-failed",
+    "states-empty", "states-anatomy", "states-type", "paint-token", "sheet-gear-name", "sheet-open-chord", "sheet-not-modal", "sheet-frame-size",
+    "sheet-no-clamp", "sheet-veil", "sheet-no-wrap", "sheet-scrim-closes", "sheet-escape-draft", "sheet-no-restore-escape", "sheet-no-restore-close",
+    "sheet-keep-lost", "sheet-tip-hidden", "keys-nav-wrap", "keys-nav-stops", "keys-unreachable", "keys-switch-space", "keys-select-typeahead",
+    "keys-draft", "axe-name", "axe-contrast", "perf-open-commits", "perf-open-slow", "perf-show-commits", "perf-key-twice", "perf-key-rows",
+    "perf-idle-timer", "perf-idle-commit", "perf-closed-node", "perf-closed-listener", "perf-closed-timer", "perf-show-slow"
+  ] },
+  "ui-next/shell/probes/shell-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/strip-probe.mjs": { "probe": true, "controls": [
+    "slot-width", "slot-undeclared"
+  ] },
+  "ui-next/shell/probes/terminal-data-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-find-a-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-find-b-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-find-c-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-find-d-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-probe.mjs": { "probe": true, "controls": [
+    "lane-border", "button-size", "ring-back", "scrollbar-block", "scrollbar-stuck", "f6-trap", "escape-leaves", "modal-off", "resize-chatty",
+    "hidden-frames", "idle-timer", "chunk-commit", "flood-janky", "flood-no-sample", "echo-slow", "lazy-load", "big-scrollback", "leaky-heap",
+    "memory-undrained", "reader-claims", "reader-stuck", "reader-words-stale", "reader-announce-twice", "reader-axe", "reader-hidden-frames",
+    "reader-idle-timer", "flow-late", "ack-on-receipt", "ack-lost", "drop-held", "ack-double", "no-shell-name", "exit-code-lost", "signal-lost",
+    "closed-lost", "busy-always", "busy-nameless", "unknown-idle", "ask-never", "code-less", "start-typed", "axe-failed", "hidden-burn",
+    "hidden-long-task", "hidden-rest", "draw-hidden", "swap-held", "early-size", "size-off", "webgl-every-show", "arrival-order", "resize-refused",
+    "input-serial", "seq-gap", "legacy-write", "focus-close-button", "focus-delete-swallowed", "key-in-url", "key-regen", "no-session", "replay-gap",
+    "dup-offset", "ack-replay", "unmuted-reply", "modes-lost", "resize-ignored", "no-detached", "lease-silent", "list-ghost", "leave-lost",
+    "seq-restart", "own-number", "tombstone-adopted", "detached-axe", "restore-forgets-open", "restore-forgets-closed", "taker-gone-ignored",
+    "take-back-twice", "free-axe", "rejoin-from-zero", "rejoin-drops-missed", "rejoin-acks-replay", "gap-hidden", "gone-keeps-attaching",
+    "keys-dropped", "replies-as-keys", "ack-stale-restore", "takeback-unguarded", "refresh-skipped", "find-chord-lost", "find-pushes-grid",
+    "find-button-unpressed", "find-button-dead", "known-short", "count-case-ignored", "count-word-ignored", "count-regex-ignored", "step-stuck",
+    "find-escape-stuck", "find-f3-lost", "find-escape-terminal-stuck", "find-ctrl-f-lost", "find-tab-stop-lost", "reopen-forgets", "search-eager",
+    "find-replay-gap", "find-mounted", "idle-commits", "cap-unlimited", "cap-short", "decorations-leak", "find-axe", "menu-item-missing",
+    "menu-shortcut-drawn", "paste-lost", "trigger-lost", "clipboard-dropped", "mouse-never", "mouse-reporting-lost", "shift-menu-blocked",
+    "menu-axe", "links-hover-never", "links-leave-never", "links-plain-follows", "open-twice", "open-given", "tooltip-axe"
+  ] },
+  "ui-next/shell/probes/terminal-reattach-b-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-reattach-c-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-reattach-d-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-reattach-e-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-reattach-f-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/terminal-reattach-probe.mjs": { "probe": true, "controls": [] },
+  "ui-next/shell/probes/tour-probe.mjs": { "probe": true, "controls": [
+    "slot-wide", "names-no-tip", "title-cut", "twin-lone", "twin-hidden", "memory-lost"
+  ] }
 }

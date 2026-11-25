@@ -91,8 +91,7 @@ jobs:
       run:
         shell: bash
     steps:
-      # The runner creates this mount as UID 1001; Git must see the same owner
-      # as the container user after checkout's temporary HOME goes away.
+      # The runner creates this mount as UID 1001; Git must see the container user as its owner.
       - name: Match checkout directory ownership to container user
         run: chown "$(id -u):$(id -g)" "$PWD"
 
@@ -190,8 +189,7 @@ jobs:
       run:
         shell: bash
     steps:
-      # The runner creates this mount as UID 1001; Git must see the same owner
-      # as the container user after checkout's temporary HOME goes away.
+      # The runner creates this mount as UID 1001; Git must see the container user as its owner.
       - name: Match checkout directory ownership to container user
         run: chown "$(id -u):$(id -g)" "$PWD"
 
@@ -271,8 +269,7 @@ jobs:
       run:
         shell: bash
     steps:
-      # The runner creates this mount as UID 1001; Git must see the same owner
-      # as the container user after checkout's temporary HOME goes away.
+      # The runner creates this mount as UID 1001; Git must see the container user as its owner.
       - name: Match checkout directory ownership to container user
         run: chown "$(id -u):$(id -g)" "$PWD"
 
