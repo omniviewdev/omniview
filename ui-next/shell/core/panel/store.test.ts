@@ -677,6 +677,7 @@ describe('reordering a session (the strip\'s order is the user\'s)', () => {
     expect(h.strip('logs')).toEqual(['s2', 's4']);
     expect(h.snapshot().order).toEqual(['s5', 's2', 's1', 's4', 's3']);
     expect(['s5', 's1', 's3'].map((id) => h.store.selectors.sessionItem(h.snapshot(), id)?.name)).toEqual(['bash', 'zsh', 'zsh (2)']);
+    expect(h.store.serialise().sessions.map((one) => one.id)).toEqual(['s5', 's2', 's1', 's4', 's3']);
     h.store.reorderSession('s3', 1);
     expect(h.strip('terminal')).toEqual(['s5', 's3', 's1']);
     expect(h.store.selectors.sessionItem(h.snapshot(), 's3')?.name).toBe('zsh');
@@ -700,12 +701,6 @@ describe('reordering a session (the strip\'s order is the user\'s)', () => {
     expect(h.store.reorderSession('nope', 0)).toMatchObject({ status: 'refused', reason: 'missing' });
     expect(h.snapshot()).toBe(before);
     expect(h.notified()).toBe(told);
-  });
-
-  it('is what the session saves: the saved panel lists the sessions in the new order', () => {
-    const h = bootStrips();
-    h.store.reorderSession('s5', 0);
-    expect(h.store.serialise().sessions.map((one) => one.id)).toEqual(['s5', 's2', 's1', 's4', 's3']);
   });
 });
 

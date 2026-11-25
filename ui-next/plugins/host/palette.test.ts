@@ -342,7 +342,7 @@ describe('the pages source', () => {
     expect(rowTitled(w, 'Gadgets').route).toEqual({ plugin: 'acme', contribution: 'gadgets', params: {} });
   });
 
-  it('says only the keys that work for a place: the four open keys of the tab model, no New window (the shell has no second window), and refuses Shift+Enter with the reason', () => {
+  it('says only the keys that work for a place: the four open keys of the tab model, no New window (the palette does not offer it yet), and refuses Shift+Enter with the reason', () => {
     const w = build();
     w.store.open({ kind: 'goto' });
     expect(w.store.getSnapshot().hints.map((hint) => hint.label)).toEqual(['Open', 'Here', 'New tab', 'Background tab']);

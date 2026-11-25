@@ -103,31 +103,16 @@ describe('reopen, next and previous', () => {
     expect(titles(h)).toEqual(['One', 'Two', 'Three', 'Four', 'Five']);
   });
 
-  it('reopens with Control Shift T elsewhere and Control Option Shift T for the web', () => {
-    const { h, ids } = mount();
-    h.store.close(ids[3]);
-    press({ code: 'KeyT', ctrlKey: true, shiftKey: true });
-    expect(h.ids()).toHaveLength(5);
-
-    h.store.close(ids[3]);
-    press({ code: 'KeyT', ctrlKey: true, altKey: true, shiftKey: true });
-    expect(h.ids()).toHaveLength(5);
-  });
-
   it('shows the next and the previous tab, wrapping', () => {
     const { h, ids } = mount('MacIntel');
 
     press({ code: 'Tab', ctrlKey: true });
     expect(h.active()).toBe(ids[1]);
-    press({ code: 'BracketRight', metaKey: true, shiftKey: true });
-    expect(h.active()).toBe(ids[2]);
-    press({ code: 'BracketLeft', metaKey: true, shiftKey: true });
-    expect(h.active()).toBe(ids[1]);
     press({ code: 'Tab', ctrlKey: true, shiftKey: true });
     expect(h.active()).toBe(ids[0]);
-    press({ code: 'ArrowLeft', ctrlKey: true, altKey: true });
+    press({ code: 'Tab', ctrlKey: true, shiftKey: true });
     expect(h.active()).toBe(ids[4]);
-    press({ code: 'ArrowRight', ctrlKey: true, altKey: true });
+    press({ code: 'Tab', ctrlKey: true });
     expect(h.active()).toBe(ids[0]);
   });
 

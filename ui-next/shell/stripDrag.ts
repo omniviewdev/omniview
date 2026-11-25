@@ -7,8 +7,6 @@ import styles from './stripDrag.module.css';
 // order (S59) and the order is committed once, on the release, through `onMove`, the callback the keyboard asks. A pointer move writes nothing: ONE animation-frame callback places the marker and the ghost, each with ONE `style.translate`,
 // and scrolls the strip while the pointer is at its edge. The window, never <html>, carries `data-tab-dragging`, and the face dragged `data-dragging`. The marker and the ghost (a copy of the face, `data-shell-part="tabGhost"`, which
 // the strip's stylesheet draws on the popup's plane, S57) are one popover, so the top layer holds them without a z-index. Escape (before anything below it), the window's blur and a cancelled pointer put everything back as it was.
-// More than 18 px below the strip, or outside the window, the pointer is out of the strip (S58). Where the strip has somewhere to take a tab (`onDragOut`) the page the tab controls is outlined, the way out is asked for and told where the pointer is,
-// and a release there is a drop through it; where it has none that release puts the tab back too. A tab dragged in from another window is marked in the strip, by the same marker, and given its place by `stripReceiver`.
 
 const THRESHOLD = 6;
 const OFFSET = 12;
@@ -21,7 +19,7 @@ const EDGE = 32;
 const STEP = 20;
 
 /** Where a drop lands: the place the tab takes (what `onMove` is asked for) and where the marker stands on the screen. */
-export type DropSlot = TabPlace & { readonly x: number };
+type DropSlot = TabPlace & { readonly x: number };
 
 /**
  * Where a drop at `pointer` lands among `faces`, left to right on the screen: the gap before the first face whose middle the pointer has not passed (S56). `from` is the index of the tab dragged, and the first `zone`

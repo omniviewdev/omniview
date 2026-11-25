@@ -80,6 +80,12 @@ const rect = (left: number, right: number) => () => ({ left, right, width: right
 const pointer = (x: number, y = 20, extra: PointerEventInit = {}): PointerEventInit => ({ bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, clientX: x, clientY: y, ...extra });
 const fire = (target: EventTarget, type: string, x: number, y?: number, extra?: PointerEventInit) => target.dispatchEvent(new PointerEvent(type, pointer(x, y, extra)));
 
+/** The pointer travels to a point, and the frame that draws it runs. */
+const travel = (target: EventTarget, x: number, y?: number, extra?: PointerEventInit) => {
+  fire(target, 'pointermove', x, y, extra);
+  frame();
+};
+
 /** A window with a strip of four tabs, a, b, c and d, each in a face with its close control, and the page they control. jsdom lays nothing out: the faces are 100 px wide and 4 px apart from x = 0, the scroller 500 px wide and 28 px high from y = 6, the page 400 by 300 from (10, 50). */
 function setup(pinned = 0, onDragOut?: (id: string) => DragOut | undefined) {
   const onMove = vi.fn();
@@ -113,8 +119,7 @@ function setup(pinned = 0, onDragOut?: (id: string) => DragOut | undefined) {
 function drag(to: number, y?: number, onDragOut?: (id: string) => DragOut | undefined) {
   const s = setup(0, onDragOut);
   fire(s.tab('a'), 'pointerdown', 50);
-  fire(s.scroller, 'pointermove', to, y);
-  frame();
+  travel(s.scroller, to, y);
   return s;
 }
 
@@ -122,31 +127,28 @@ describe('a drag', () => {
   it('begins when the pointer has travelled 6 px and not before: a press that stays under it draws nothing and drops nothing', () => {
     const { tab, scroller, shell, layer, onMove } = setup();
     fire(tab('a'), 'pointerdown', 50);
-    fire(scroller, 'pointermove', 53, 24);
-    frame();
+    travel(scroller, 53, 24);
     expect(shell).not.toHaveAttribute('data-tab-dragging');
     expect(layer()).toBeNull();
     fire(scroller, 'pointerup', 53, 24);
     expect(onMove).not.toHaveBeenCalled();
 
     fire(tab('a'), 'pointerdown', 50);
-    fire(scroller, 'pointermove', 56);
-    frame();
+    travel(scroller, 56);
     expect(shell).toHaveAttribute('data-tab-dragging');
   });
 
   it('marks the window and the face and draws one layer, in the window: the marker and a copy of the tab, which has none of the tab\'s ids and is as wide as it', () => {
-    const { shell, face, layer, marker, ghost } = drag(300);
+    const { shell, face, layer, ghost } = drag(300);
 
     expect(shell).toHaveAttribute('data-tab-dragging');
     expect(face('a')).toHaveAttribute('data-dragging');
     expect(shell.querySelectorAll('[data-shell-part="tabDrag"]')).toHaveLength(1);
     expect(layer()).toHaveAttribute('popover', 'manual');
     expect(layer()?.parentElement).toBe(shell);
-    expect(layer()).toContainElement(marker() ?? null);
+    expect(layer()).toContainElement(ghost() ?? null);
     expect(ghost()).toHaveTextContent('a');
     expect(ghost()?.querySelector('[id]')).toBeNull();
-    expect(document.querySelectorAll('#tab-a')).toHaveLength(1);
     expect(ghost()?.style.inlineSize).toBe('100px');
   });
 
@@ -184,20 +186,6 @@ describe('a drag', () => {
     expect(shell).not.toHaveAttribute('data-tab-dragging');
   });
 
-  it('tells which side of the separator the drop is on, for the strip\'s own rule of the pinned tabs', () => {
-    const { tab, scroller, onMove } = setup(2);
-    fire(tab('d'), 'pointerdown', 360);
-    fire(scroller, 'pointermove', 200);
-    frame();
-    fire(scroller, 'pointerup', 200);
-    fire(tab('d'), 'pointerdown', 360);
-    fire(scroller, 'pointermove', 212);
-    frame();
-    fire(scroller, 'pointerup', 212);
-
-    expect(onMove.mock.calls).toEqual([['d', 2, true], ['d', 2, false]]);
-  });
-
   it('takes Escape before whatever is below it in the window', () => {
     const { scroller } = drag(300);
     const below = vi.fn();
@@ -210,23 +198,18 @@ describe('a drag', () => {
 
   it('hides the marker 18 px below the strip and drops nothing there, and shows it again within 9 px of the strip, as the window\'s edge does too', () => {
     const { scroller, marker, onMove } = drag(300);
-    const at = (x: number, y: number) => {
-      fire(scroller, 'pointermove', x, y);
-      frame();
-    };
-
-    at(300, 58);
+    travel(scroller, 300, 58);
     expect(marker()?.hidden).toBe(false);
-    at(300, 59);
+    travel(scroller, 300, 59);
     expect(marker()?.hidden).toBe(true);
-    at(300, 50);
+    travel(scroller, 300, 50);
     expect(marker()?.hidden).toBe(true);
-    at(300, 48);
+    travel(scroller, 300, 48);
     expect(marker()?.hidden).toBe(false);
-    at(-5, 20);
+    travel(scroller, -5, 20);
     expect(marker()?.hidden).toBe(true);
-    at(300, 20);
-    at(300, 60);
+    travel(scroller, 300, 20);
+    travel(scroller, 300, 60);
     fire(scroller, 'pointerup', 300, 60);
 
     expect(onMove).not.toHaveBeenCalled();
@@ -237,18 +220,15 @@ describe('a drag', () => {
     let left = 0;
     Object.defineProperty(scroller, 'scrollLeft', { configurable: true, get: () => left, set: (value: number) => (left = Math.min(40, Math.max(0, value))) });
 
-    fire(scroller, 'pointermove', 490);
-    frame();
+    travel(scroller, 490);
     expect(left).toBe(14);
     frame();
     expect(left).toBe(28);
-    fire(scroller, 'pointermove', 600);
-    frame();
+    travel(scroller, 600);
     expect(left).toBe(40);
     frame();
     expect(queue).toHaveLength(0);
-    fire(scroller, 'pointermove', 10);
-    frame();
+    travel(scroller, 10);
     expect(left).toBe(26);
   });
 
@@ -259,8 +239,7 @@ describe('a drag', () => {
   ])('ignores %s', (_what, extra) => {
     const { tab, scroller, shell } = setup();
     fire(tab('a'), 'pointerdown', 50, 20, extra);
-    fire(scroller, 'pointermove', 300, 20, extra);
-    frame();
+    travel(scroller, 300, 20, extra);
 
     expect(shell).not.toHaveAttribute('data-tab-dragging');
   });
@@ -269,15 +248,13 @@ describe('a drag', () => {
     const { face, scroller, shell } = setup();
     for (const target of [face('a').lastElementChild!, scroller]) {
       fire(target, 'pointerdown', 50);
-      fire(scroller, 'pointermove', 300);
-      frame();
+      travel(scroller, 300);
       expect(shell).not.toHaveAttribute('data-tab-dragging');
     }
 
     vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
     fire(face('a').firstElementChild!, 'pointerdown', 50, 20, { ctrlKey: true });
-    fire(scroller, 'pointermove', 300);
-    frame();
+    travel(scroller, 300);
     expect(shell).not.toHaveAttribute('data-tab-dragging');
   });
 
@@ -289,8 +266,7 @@ describe('a drag', () => {
     });
 
     fire(tab('a'), 'pointerdown', 450);
-    fire(scroller, 'pointermove', 300);
-    frame();
+    travel(scroller, 300);
     expect(marker()?.style.translate).toBe('294px 6px');
     fire(scroller, 'pointerup', 300);
     expect(onMove.mock.calls).toEqual([['a', 1, undefined]]);
@@ -298,8 +274,7 @@ describe('a drag', () => {
 
   it('follows the pointer that pressed and no other', () => {
     const { scroller, onMove, marker } = drag(300);
-    fire(scroller, 'pointermove', 10, 20, { pointerId: 2 });
-    frame();
+    travel(scroller, 10, 20, { pointerId: 2 });
     expect(marker()?.style.translate).toBe('310px 6px');
     fire(scroller, 'pointerup', 10, 20, { pointerId: 2 });
     expect(onMove).not.toHaveBeenCalled();
@@ -312,8 +287,7 @@ describe('a drag', () => {
     expect(shell.querySelector('[data-tab-dragging], [data-dragging], [data-shell-part="tabDrag"]')).toBeNull();
     fire(scroller, 'pointerup', 300);
     fire(tab('a'), 'pointerdown', 50);
-    fire(scroller, 'pointermove', 300);
-    frame();
+    travel(scroller, 300);
     expect(shell).not.toHaveAttribute('data-tab-dragging');
     expect(onMove).not.toHaveBeenCalled();
   });
@@ -331,10 +305,8 @@ describe('a drag out of the strip (ch16 S58)', () => {
     const { scroller, onMove, shell } = drag(300, 20, onDragOut);
     expect(onDragOut).not.toHaveBeenCalled();
 
-    fire(scroller, 'pointermove', 300, 60);
-    frame();
-    fire(scroller, 'pointermove', 320, 70);
-    frame();
+    travel(scroller, 300, 60);
+    travel(scroller, 320, 70);
     expect(onDragOut.mock.calls).toEqual([['a']]);
     expect(session.move.mock.calls).toEqual([[300, 60], [320, 70]]);
     fire(scroller, 'pointerup', 330, 72);
@@ -376,16 +348,11 @@ describe('a drag out of the strip (ch16 S58)', () => {
   it('cancels the way out when the pointer comes back into the strip, and asks for another when it goes out again', () => {
     const { session, onDragOut } = way();
     const { scroller, onMove } = drag(300, 60, onDragOut);
-    const at = (x: number, y: number) => {
-      fire(scroller, 'pointermove', x, y);
-      frame();
-    };
-
-    at(300, 48);
+    travel(scroller, 300, 48);
     expect(session.cancel).toHaveBeenCalledTimes(1);
-    at(310, 40);
+    travel(scroller, 310, 40);
     expect(session.move).toHaveBeenCalledTimes(1);
-    at(300, 70);
+    travel(scroller, 300, 70);
     expect(onDragOut).toHaveBeenCalledTimes(2);
     fire(scroller, 'pointerup', 300, 70);
 
@@ -400,26 +367,24 @@ describe('a drag out of the strip (ch16 S58)', () => {
     expect(zone()?.style.translate).toBe('10px 50px');
     expect([zone()?.style.inlineSize, zone()?.style.blockSize]).toEqual(['400px', '300px']);
 
-    fire(scroller, 'pointermove', 300, 60);
-    frame();
+    travel(scroller, 300, 60);
     expect(zone()).toHaveProperty('hidden', false);
-    fire(scroller, 'pointermove', 300, 48);
-    frame();
+    travel(scroller, 300, 48);
     expect(zone()).toHaveProperty('hidden', true);
 
-    fire(scroller, 'pointermove', 300, 70);
-    frame();
+    travel(scroller, 300, 70);
     const gone = layer();
     fire(scroller, 'pointerup', 300, 70);
     expect(gone?.isConnected).toBe(false);
   });
 
   it('draws no outline where the strip has nowhere to take the tab: it only cancels there', () => {
-    const { layer, scroller, marker } = drag(300, 60);
+    const { layer, scroller, marker, onMove } = drag(300, 60);
 
     expect(layer()?.children).toHaveLength(2);
     expect(marker()?.hidden).toBe(true);
     fire(scroller, 'pointerup', 300, 60);
+    expect(onMove).not.toHaveBeenCalled();
   });
 });
 

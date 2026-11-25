@@ -110,28 +110,18 @@ describe('the pointer dragging a tab', () => {
     return strip;
   }
 
-  it('ends in onMove, the callback the keyboard asks, with the place the tab is dropped at', async () => {
-    const onMove = vi.fn(() => true);
-    const { container } = render(<Strip ids={['a', 'b', 'c']} onMove={onMove} />);
-
-    const strip = await drag(container);
-    expect(container.querySelector('[data-shell-part="window"]')).toHaveAttribute('data-tab-dragging');
-    fireEvent.pointerUp(strip, pointer(320));
-
-    expect(onMove.mock.calls).toEqual([['c', 0, undefined]]);
-  });
-
-  it('asks the onMove of the render it is dropped in, not the one the strip was bound with', async () => {
+  it('ends in onMove, the callback the keyboard asks, of the render it is dropped in (not the one the strip was bound with), with the place the tab is dropped at', async () => {
     const first = vi.fn(() => true);
     const second = vi.fn(() => true);
     const { container, rerender } = render(<Strip ids={['a', 'b', 'c']} onMove={first} />);
     rerender(<Strip ids={['a', 'b', 'c']} onMove={second} />);
 
     const strip = await drag(container);
+    expect(container.querySelector('[data-shell-part="window"]')).toHaveAttribute('data-tab-dragging');
     fireEvent.pointerUp(strip, pointer(320));
 
     expect(first).not.toHaveBeenCalled();
-    expect(second).toHaveBeenCalledTimes(1);
+    expect(second.mock.calls).toEqual([['c', 0, undefined]]);
   });
 
   it('asks the onDragOut of the render the pointer first goes out of the strip in for the way out, and drops through it at the point of the release', async () => {
@@ -150,7 +140,7 @@ describe('the pointer dragging a tab', () => {
     expect(drop.mock.calls).toEqual([[320, 40]]);
   });
 
-  it('does not drag a strip that cannot move a tab, such as the panel\'s session strip: nothing is drawn and nothing is asked', async () => {
+  it('does not drag a strip that cannot move a tab, such as the panel\'s tool strip: nothing is drawn and nothing is asked', async () => {
     const { container } = render(<Strip ids={['a', 'b', 'c']} />);
 
     await drag(container);

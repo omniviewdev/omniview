@@ -18,7 +18,7 @@ type TopRowProps = {
 /**
  * The window's top row (ch16 S4 to S6): the safe area for the OS window controls, Back and Forward, a drag gap, the tab strip, the drag lane, and the window actions. Of those Search and Settings are
  * built (Search is drawn when the shell has a palette and Settings when it has the control that opens it; the room of All tabs before them is kept empty, so each sits where the mock's does); with neither
- * the 138 px at the end are empty and hidden. The row has one geometry at every width and only the strip flexes. Not built: All tabs and Developer Tools, drag and the overflow menu. Kit
+ * the 138 px at the end are empty and hidden. The row has one geometry at every width and only the strip flexes. Not built: All tabs and Developer Tools, and the overflow menu. Kit
  * part it should become: the top row, around `TabStrip`.
  */
 export function TopRow({ prefix, panelId, onNewTab }: TopRowProps) {

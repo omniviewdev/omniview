@@ -149,7 +149,7 @@ export type PluginHostProps = {
    * knows for its connections, and the host's own way of opening an address (`openExternal.ts`). A test or a probe gives a fake host.
    */
   readonly ports?: Partial<PortsDeps> | undefined;
-  /** The host's window service, where the app has native windows: `how: 'window'` opens one, and a secondary window closes when its last tab leaves. Absent in a browser tab, which has one window and refuses the request. */
+  /** The host's window service, where the app has native windows: a destination can open a window (`how: 'window'`), a tab can move to another window or be dragged out into one, and a secondary window closes when its last tab leaves. Absent in a browser tab, which has one window and refuses the request. */
   readonly windows?: WindowService | undefined;
 };
 

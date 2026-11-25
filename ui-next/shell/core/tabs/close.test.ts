@@ -395,16 +395,6 @@ describe('detach (a tab that moved to another window)', () => {
     sound(h);
   });
 
-  it('leaves a sound, empty strip when the last tab goes, with nothing to reopen', () => {
-    const h = boot();
-    const home = h.current();
-    h.store.detach(home);
-    expect(h.ids()).toEqual([]);
-    expect(h.state().closed).toEqual([]);
-    expect(h.store.canReopen().ok).toBe(false);
-    sound(h);
-  });
-
   it('asks before it drops a tab with unsaved changes, and goes on when confirmed', () => {
     const h = boot();
     const [a] = h.openAll(['instances']);

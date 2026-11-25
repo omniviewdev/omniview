@@ -28,8 +28,6 @@ export function useTabChords(store: TabsStore, onCloseWindow: (() => void) | und
         }
       } else if (chord.action === 'jump') {
         store.goto(chord.n);
-      } else if (chord.action === 'last') {
-        store.last();
       } else {
         store[chord.action]();
       }

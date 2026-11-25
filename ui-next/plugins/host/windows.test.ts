@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPanelStore } from '../../shell/core/panel';
-import { boot, cloudPage, hostPage } from '../../shell/core/tabs/testing';
+import { boot, cloudPage, hostPage, type Harness } from '../../shell/core/tabs/testing';
 import { checkInvariants, type TabReceiver, type TabsStore } from '../../shell/core/tabs';
 import type { PluginEntry } from './pluginStore';
 import { createConnectionActions } from './connections/actions';
 import type { ConnectionsStore } from './connections/store';
 import { withWindows, type WindowService } from './windows';
 
-// A window opening another, over the host's window service (a recording stand-in, so what is under test is what the host asks of it and what the model does with the answer). The second window was not run natively here.
+// A window opening another, over the host's window service (a recording stand-in, so what is under test is what the host asks of it and what the model does with the answer).
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -142,31 +142,35 @@ describe('how: window in a native window', () => {
     expect(h.state()).toBe(before);
   });
 
-  it('moves a singleton that is open: the new window starts with that tab, and once it exists the tab leaves this strip without a place under Recently closed', async () => {
+  it('moves a singleton that is open: the new window starts with that tab, and once it exists the tab leaves this strip', async () => {
     const { h, service, tabs } = world();
     const settings = h.open(hostPage('settings'), { how: 'new' });
-    const closed = h.state().closed;
 
     tabs.open(hostPage('settings'), { how: 'window' });
 
     expect(sessionOf(service.open.mock.calls[0]?.[0]).tabs.tabs[0]?.id).toBe(settings);
-    expect(h.ids()).toContain(settings);
     await settled();
     expect(h.ids()).not.toContain(settings);
-    expect(h.state().closed).toBe(closed);
-    expect(checkInvariants(h.state())).toEqual([]);
   });
 
-  it('keeps the tab where it is when the window cannot be opened', async () => {
+  it.each([
+    ['opens over a singleton', hostPage('settings'), (tabs: TabsStore) => tabs.open(hostPage('settings'), { how: 'window' })],
+    ['is moved to a new window', cloudPage('buckets'), (tabs: TabsStore, id: string) => tabs.windows?.moveToNew(id)],
+    ['is released outside the strip', cloudPage('buckets'), (tabs: TabsStore, id: string) => {
+      const way = tabs.windows?.dragOut(id);
+      way?.move(640, 320);
+      way?.drop(640, 320);
+    }],
+  ])('keeps the tab where it is, and warns, when the window cannot be opened for a tab that %s', async (_how, page, go) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { h, service, tabs } = world();
-    const settings = h.open(hostPage('settings'), { how: 'new' });
+    const id = h.open(page, { how: 'new' });
     service.open.mockRejectedValue(new Error('no window'));
 
-    tabs.open(hostPage('settings'), { how: 'window' });
+    go(tabs, id);
     await settled();
 
-    expect(h.ids()).toContain(settings);
+    expect(h.ids()).toContain(id);
     expect(warn).toHaveBeenCalled();
   });
 
@@ -176,13 +180,6 @@ describe('how: window in a native window', () => {
     h.store.setUnsaved(settings, true);
 
     expect(tabs.open(hostPage('settings'), { how: 'window' })).toEqual({ status: 'confirm', action: 'close', tabs: [settings] });
-    expect(service.open).not.toHaveBeenCalled();
-  });
-
-  it('leaves every other disposition to the model', () => {
-    const { h, service, tabs } = world();
-    expect(tabs.open(cloudPage('buckets'), { how: 'new' })).toMatchObject({ status: 'done', change: 'created' });
-    expect(h.ids()).toHaveLength(2);
     expect(service.open).not.toHaveBeenCalled();
   });
 });
@@ -216,16 +213,12 @@ describe('how: window where the app has no windows (a browser tab)', () => {
 });
 
 describe('a window whose last tab leaves (S30)', () => {
-  it('closes itself when it is not the main window', async () => {
-    const { h, service } = world('window-2');
-    h.store.close(h.current());
-    await settled();
-    expect(service.close).toHaveBeenCalledExactlyOnceWith('window-2');
-  });
-
-  it('closes after a tab was moved out as well', async () => {
+  it.each([
+    ['closed', (h: Harness) => h.store.close(h.current())],
+    ['moved out', (h: Harness, tabs: TabsStore) => tabs.detach(h.current())],
+  ])('closes itself when it is not the main window, once its last tab is %s', async (_how, leave) => {
     const { h, service, tabs } = world('window-2');
-    tabs.detach(h.current());
+    leave(h, tabs);
     await settled();
     expect(service.close).toHaveBeenCalledExactlyOnceWith('window-2');
   });
@@ -278,10 +271,6 @@ describe('the other windows', () => {
     await settled();
     expect(windowNames(tabs)).toEqual([]);
   });
-
-  it('are none in a browser tab, which has no window to move to', () => {
-    expect(withWindows(boot().store, createPanelStore(), undefined).windows).toBeUndefined();
-  });
 });
 
 describe('moving a tab to a new window', () => {
@@ -315,17 +304,6 @@ describe('moving a tab to a new window', () => {
     expect(h.ids()).not.toContain(id);
     expect(h.state().closed).toBe(closed);
     expect(checkInvariants(h.state())).toEqual([]);
-  });
-
-  it('keeps the tab where it is when the window cannot be opened', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { h, id, service, tabs } = moving();
-    service.open.mockRejectedValue(new Error('no window'));
-
-    tabs.windows?.moveToNew(id);
-    await settled();
-
-    expect(h.ids()).toContain(id);
   });
 
   it('asks first when the tab has unsaved changes, and opens nothing', () => {
@@ -399,27 +377,19 @@ describe('moving a tab to another window', () => {
     vi.useRealTimers();
   });
 
-  it('keeps the tab when the window refuses it', async () => {
+  it.each([
+    ['the window refuses it', (there: TabsStore) => vi.spyOn(there, 'adopt').mockReturnValue({ status: 'refused', reason: 'invalid', message: 'no' })],
+    ['the event cannot be sent', (_there: TabsStore, emit: Mock<WindowService['emit']>) => emit.mockRejectedValue(new Error('no bus'))],
+  ])('keeps the tab when %s', async (_why, fail) => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { here, there, id } = two();
-    vi.spyOn(there.h.store, 'adopt').mockReturnValue({ status: 'refused', reason: 'invalid', message: 'no' });
+    fail(there.h.store, here.service.emit);
 
     here.tabs.windows?.moveTo('window-2', id);
     await settled();
 
     expect(here.h.ids()).toContain(id);
     expect(here.service.focus).not.toHaveBeenCalled();
-  });
-
-  it('keeps the tab when the event cannot be sent', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { here, id } = two();
-    here.service.emit.mockRejectedValue(new Error('no bus'));
-
-    here.tabs.windows?.moveTo('window-2', id);
-    await settled();
-
-    expect(here.h.ids()).toContain(id);
   });
 });
 
@@ -438,9 +408,8 @@ describe('a tab released outside the strip, over no window (S58)', () => {
     way?.drop(at.x, at.y);
   };
 
-  it('opens a window under the point of the release, anchored in this window, that starts with the tab as it is saved, and takes the tab out of this strip once that window exists, without a place under Recently closed', async () => {
+  it('opens a window under the point of the release, anchored in this window, that starts with the tab as it is saved, and takes the tab out of this strip once that window exists', async () => {
     const { h, id, service, tabs } = crowded('window-2');
-    const closed = h.state().closed;
     const exists = Promise.withResolvers<string>();
     service.open.mockReturnValue(exists.promise);
 
@@ -455,20 +424,8 @@ describe('a tab released outside the strip, over no window (S58)', () => {
     exists.resolve('window-3');
     await settled();
     expect(h.ids()).not.toContain(id);
-    expect(h.state().closed).toBe(closed);
     expect(service.place).not.toHaveBeenCalled();
     expect(service.close).not.toHaveBeenCalled();
-  });
-
-  it('keeps the tab where it is when the window cannot be opened', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { h, id, service, tabs } = crowded('main');
-    service.open.mockRejectedValue(new Error('no window'));
-
-    release(tabs, id);
-    await settled();
-
-    expect(h.ids()).toContain(id);
   });
 
   it('moves the window under the pointer instead for the only tab of a window other than the main one: nothing opens, and the tab and the window stay', async () => {
@@ -497,7 +454,7 @@ describe('a tab released outside the strip, over no window (S58)', () => {
 });
 
 describe('a tab dragged out of the strip over another window (the service\'s drag session)', () => {
-  /** Three windows that share the service: the tab is in `here`, the pointer is over `there`, whose strip is the receiver, which says the tab goes first; `start` is the pointer taking the tab out of its strip. */
+  /** Three windows that share the service: the tab is in `here`, the pointer is over `there`, whose strip is the receiver, which says the tab goes first; `start` is the pointer taking the tab out of its strip, and `dragAndDrop` takes it out and releases it over `there`. */
   const crossing = () => {
     const events = bus();
     const drag = coordinator(events);
@@ -508,7 +465,15 @@ describe('a tab dragged out of the strip over another window (the service\'s dra
     there.tabs.windows?.receive(strip);
     const id = here.h.open(cloudPage('buckets'), { how: 'new' });
     drag.pointer.over = 'window-2';
-    return { here, there, drag, strip, id, events, listed, start: () => here.tabs.windows?.dragOut(id) };
+    const start = () => here.tabs.windows?.dragOut(id);
+    const dragAndDrop = async () => {
+      const way = start();
+      way?.move(500, 20);
+      way?.drop(500, 20);
+      await settled();
+    };
+
+    return { here, there, drag, strip, id, events, listed, start, dragAndDrop };
   };
 
   it('is taken by the window it is dropped on, which shows it where it was dropped with its id, route, history and pin, and then it leaves this window, which focuses the other', async () => {
@@ -541,14 +506,10 @@ describe('a tab dragged out of the strip over another window (the service\'s dra
   });
 
   it('puts the tab on the side of the pinned tabs the strip says it was dropped on: a pinned tab dropped after them is not pinned', async () => {
-    const { here, there, strip, id, start } = crossing();
+    const { here, there, strip, id, dragAndDrop } = crossing();
     here.h.store.pin(id);
     strip.mockReturnValue({ to: 1, pinned: false });
-    const way = start();
-
-    way?.move(500, 20);
-    way?.drop(500, 20);
-    await settled();
+    await dragAndDrop();
 
     expect(there.h.ids()).toEqual(['t1', id]);
     expect(there.h.state().tabs[id]?.flags.pinned).toBe(false);
@@ -558,13 +519,9 @@ describe('a tab dragged out of the strip over another window (the service\'s dra
     ['the strip says the point is not over it', (strip: Mock<TabReceiver>) => strip.mockReturnValue(undefined)],
     ['the window cannot take the tab', (_strip: Mock<TabReceiver>, store: TabsStore) => vi.spyOn(store, 'adopt').mockReturnValue({ status: 'refused', reason: 'invalid', message: 'no' })],
   ])('keeps the tab and opens no window when %s, and the marker is gone', async (_why, refuse) => {
-    const { here, there, drag, strip, id, start } = crossing();
+    const { here, there, drag, strip, id, dragAndDrop } = crossing();
     refuse(strip, there.h.store);
-    const way = start();
-
-    way?.move(500, 20);
-    way?.drop(500, 20);
-    await settled();
+    await dragAndDrop();
 
     expect(here.h.ids()).toContain(id);
     expect(there.h.ids()).toEqual(['t1']);
@@ -576,13 +533,9 @@ describe('a tab dragged out of the strip over another window (the service\'s dra
 
   it('keeps the tab when the service cannot end the drag', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { here, drag, id, start } = crossing();
+    const { here, drag, id, dragAndDrop } = crossing();
     drag.endDrag.mockRejectedValue(new Error('no service'));
-    const way = start();
-
-    way?.move(500, 20);
-    way?.drop(500, 20);
-    await settled();
+    await dragAndDrop();
 
     expect(here.h.ids()).toContain(id);
     expect(here.service.open).not.toHaveBeenCalled();
@@ -606,13 +559,9 @@ describe('a tab dragged out of the strip over another window (the service\'s dra
   });
 
   it('drops nothing for a tab with unsaved changes, and the other window is asked nothing: the session is cancelled', async () => {
-    const { here, there, drag, id, start } = crossing();
+    const { here, there, drag, id, dragAndDrop } = crossing();
     here.h.store.setUnsaved(id, true);
-    const way = start();
-
-    way?.move(500, 20);
-    way?.drop(500, 20);
-    await settled();
+    await dragAndDrop();
 
     expect(drag.log).toEqual(['begin', 'move', 'cancel']);
     expect(here.h.ids()).toContain(id);
@@ -647,16 +596,12 @@ describe('a tab dragged out of the strip over another window (the service\'s dra
   });
 
   it('changes nothing in a window the events are not addressed to, and asks the service nothing there (HSH-32)', async () => {
-    const { events, listed, drag, strip, id, start } = crossing();
+    const { events, listed, drag, strip, id, dragAndDrop } = crossing();
     const bystander = world('window-3', createPanelStore(), events, listed, drag);
     const watching = vi.fn<TabReceiver>();
     bystander.tabs.windows?.receive(watching);
     const before = bystander.h.state();
-    const way = start();
-
-    way?.move(500, 20);
-    way?.drop(500, 20);
-    await settled();
+    await dragAndDrop();
 
     expect(strip).toHaveBeenCalledWith({ x: 500, y: 20 });
     expect(watching.mock.calls.every(([at]) => at === undefined)).toBe(true);

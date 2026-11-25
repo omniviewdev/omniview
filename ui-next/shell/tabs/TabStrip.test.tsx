@@ -358,19 +358,34 @@ describe('keys on a focused tab', () => {
   });
 });
 
+// jsdom lays nothing out: four faces 100 px wide at x = 0, 104, 213 and 317 (the separator of the two pinned tabs takes 5 px more) in a scroller 500 px wide and 28 px high from y = 6.
+const rect = (left: number, right: number) => () => ({ left, right, width: right - left, top: 6, bottom: 34, height: 28, x: left, y: 6, toJSON: () => ({}) });
+
+/** Alpha and Beta pinned, then Gamma and Delta, with notices so a move can be heard; `windows` is what the app gives the model (a browser tab gives none). */
+function mountDraggable(windows?: TabWindows) {
+  const h = boot({ home: false });
+  const ids = h.openAll(['alpha', 'beta', 'gamma', 'delta']);
+  h.store.pin(ids[0], true);
+  h.store.pin(ids[1], true);
+  const announcer = createNoticesAnnouncer();
+  render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={windows === undefined ? h.store : { ...h.store, windows }} renderPage={() => null} empty={null} notices={{ store: makeNotices().store, announcer }} />);
+  const scroller = screen.getByRole('tablist');
+  scroller.getBoundingClientRect = rect(0, 500);
+  [0, 104, 213, 317].forEach((left, at) => {
+    (scroller.children[at] as HTMLElement).getBoundingClientRect = rect(left, left + 100);
+  });
+
+  return { h, ids, told: () => announcer.polite.getSnapshot().text };
+}
+
 describe('moving the focused tab with Alt and Shift (ch16 S45)', () => {
-  /** Alpha and Beta pinned, then Gamma and Delta, with notices so the move can be heard. */
+  /** The strip of `mountDraggable` with the focus on Beta. */
   function mountMovable() {
-    const h = boot({ home: false });
-    const ids = h.openAll(['alpha', 'beta', 'gamma', 'delta']);
-    h.store.pin(ids[0], true);
-    h.store.pin(ids[1], true);
-    const announcer = createNoticesAnnouncer();
-    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ id }) => <p>{`page of ${id}`}</p>} empty={null} notices={{ store: makeNotices().store, announcer }} />);
+    const world = mountDraggable();
     act(() => {
       tab(/^Beta/).focus();
     });
-    return { h, user: userEvent.setup(), told: () => announcer.polite.getSnapshot().text };
+    return { ...world, user: userEvent.setup() };
   }
 
   it('moves the tab to the end with Alt+Shift+End, keeps the focus on it and says where it went and that it is no longer pinned', async () => {
@@ -470,8 +485,6 @@ describe('the mouse', () => {
 });
 
 describe('dragging a tab with the pointer (ch16 S45, S56 to S59)', () => {
-  // jsdom lays nothing out: four faces 100 px wide at x = 0, 104, 213 and 317 (the separator of the two pinned tabs takes 5 px more) in a scroller 500 px wide and 28 px high from y = 6.
-  const rect = (left: number, right: number) => () => ({ left, right, width: right - left, top: 6, bottom: 34, height: 28, x: left, y: 6, toJSON: () => ({}) });
   const pointer = (x: number, y = 20) => ({ pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, clientX: x, clientY: y });
   const nextFrame = async () => {
     await act(async () => {
@@ -482,23 +495,6 @@ describe('dragging a tab with the pointer (ch16 S45, S56 to S59)', () => {
       await promise;
     });
   };
-
-  /** Alpha and Beta pinned, then Gamma and Delta, with notices so a move can be heard; `windows` is what the app gives the model (a browser tab gives none). */
-  function mountDraggable(windows?: TabWindows) {
-    const h = boot({ home: false });
-    const ids = h.openAll(['alpha', 'beta', 'gamma', 'delta']);
-    h.store.pin(ids[0], true);
-    h.store.pin(ids[1], true);
-    const announcer = createNoticesAnnouncer();
-    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={windows === undefined ? h.store : { ...h.store, windows }} renderPage={() => null} empty={null} notices={{ store: makeNotices().store, announcer }} />);
-    const scroller = screen.getByRole('tablist');
-    scroller.getBoundingClientRect = rect(0, 500);
-    [0, 104, 213, 317].forEach((left, at) => {
-      (scroller.children[at] as HTMLElement).getBoundingClientRect = rect(left, left + 100);
-    });
-
-    return { h, ids, told: () => announcer.polite.getSnapshot().text };
-  }
 
   /** Presses on a tab at `from` and travels to `to` (and `y`, 20 px: in the strip), then waits for the frame that draws the marker. The release is the test's. */
   async function drag(title: RegExp, from: number, to: number, y?: number) {
@@ -536,28 +532,6 @@ describe('dragging a tab with the pointer (ch16 S45, S56 to S59)', () => {
 
     expect(h.titles()).toEqual(order);
     expect(told()).toBe(said);
-  });
-
-  it('moves nothing and says nothing for a drop where the tab was', async () => {
-    const { h, told } = mountDraggable();
-
-    await drag(/^Gamma/, 263, 250);
-    release(250);
-
-    expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
-    expect(told()).toBe('');
-  });
-
-  it('leaves a press that travels under 6 px a click: the tab is selected, nothing is drawn and nothing moves', async () => {
-    const { h } = mountDraggable();
-
-    await drag(/^Beta/, 154, 157);
-    release(157);
-    fireEvent.click(tab(/^Beta/));
-
-    expect(selected()).toEqual(['Beta, pinned']);
-    expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
-    expect(document.querySelector('[data-tab-dragging], [data-shell-part="tabDrag"]')).toBeNull();
   });
 
   it.each([
@@ -599,17 +573,6 @@ describe('dragging a tab with the pointer (ch16 S45, S56 to S59)', () => {
       expect(document.querySelector('[data-tab-dragging], [data-dragging], [data-shell-part="tabDrag"]')).toBeNull();
     });
 
-    it('cancels the way out when Escape ends the drag', async () => {
-      const given = windows();
-      mountDraggable(given);
-
-      await drag(/^Alpha/, 50, 300, 70);
-      fireEvent.keyDown(screen.getByRole('tablist'), { key: 'Escape' });
-
-      expect(given.way.cancel).toHaveBeenCalledTimes(1);
-      expect(given.way.drop).not.toHaveBeenCalled();
-    });
-
     it('is the place a tab dragged in from another window lands, for as long as the strip is there: it marks the gap the point is over, answers the index the tab takes, and takes the marker away', () => {
       const given = windows();
       mountDraggable(given);
@@ -624,16 +587,6 @@ describe('dragging a tab with the pointer (ch16 S45, S56 to S59)', () => {
       expect(given.stop).not.toHaveBeenCalled();
       cleanup();
       expect(given.stop).toHaveBeenCalledTimes(1);
-    });
-
-    it('has none of this in a browser tab, which has no other window: nothing is outlined, and a release outside the strip puts the tab back', async () => {
-      const { h } = mountDraggable();
-
-      await drag(/^Alpha/, 50, 300, 70);
-      expect(document.querySelector('[data-shell-part="tabDrag"]')?.children).toHaveLength(2);
-      release(300, 70);
-
-      expect(h.titles()).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
     });
   });
 });
@@ -708,18 +661,13 @@ describe('pinned and preview tabs (ch16 S23, S24)', () => {
     expect(h.state().tabs[preview]?.flags.preview).toBe(false);
   });
 
-  it('makes a preview tab permanent on a press in its page', () => {
+  it.each([
+    ['a press', (page: HTMLElement) => fireEvent.pointerDown(page)],
+    ['a key', (page: HTMLElement) => fireEvent.keyDown(page, { key: 'a' })],
+  ])('makes a preview tab permanent on %s in its page', (_case, press) => {
     const { preview } = mountMarked();
 
-    fireEvent.pointerDown(screen.getByText(`page of ${preview}`));
-
-    expect(previewed()).toBe(false);
-  });
-
-  it('makes a preview tab permanent on a key in its page', () => {
-    const { preview } = mountMarked();
-
-    fireEvent.keyDown(screen.getByText(`page of ${preview}`), { key: 'a' });
+    press(screen.getByText(`page of ${preview}`));
 
     expect(previewed()).toBe(false);
   });

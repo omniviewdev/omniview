@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeNotices } from '../core/notices/testing';
 import { createPanelStore, type PanelStore } from '../core/panel';
 import { createNoticesAnnouncer } from '../notices/host';
+import { installPopover, teardown } from '../notices/testing';
 import type { ShellRegistration } from '../registration';
 import { StaticShell } from '../testing';
 import { staticPanel, type StaticSession } from './testing';
@@ -92,16 +93,8 @@ describe('the close control of a session tab', () => {
 });
 
 describe('the menu of a session tab', () => {
-  // jsdom has no Popover API, so a popover stays `display: none` and its items are not in the accessibility tree (the ports table's tests do the same).
-  let shown: HTMLStyleElement;
-  beforeEach(() => {
-    shown = document.createElement('style');
-    shown.textContent = '[popover] { display: block !important; }';
-    document.head.append(shown);
-  });
-  afterEach(() => {
-    shown.remove();
-  });
+  beforeEach(installPopover);
+  afterEach(teardown);
 
   const tab = (name: string): HTMLElement => screen.getByRole('tab', { name });
   const itemsOf = (menu: HTMLElement): string[] => within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label') ?? '');

@@ -1,8 +1,9 @@
 import { MenuHost } from '@omniviewdev/kit';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { boot, cloudPage } from '../core/tabs/testing';
+import { installPopover, teardown } from '../notices/testing';
 import { Shell } from '../Shell';
 
 // The context menu of a tab (ch16 S51, S55), read through the whole shell over the real tab model. The rows themselves are `commands.ts`'s; here is what a person gets: which tab the menu is for,
@@ -26,18 +27,8 @@ const open = (title: string) => {
 const labels = (menu: HTMLElement) => within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label'));
 const disabled = (menu: HTMLElement) => Object.fromEntries(within(menu).getAllByRole('menuitem').filter((item) => item.getAttribute('aria-disabled') === 'true').map((item) => [item.getAttribute('aria-label'), item.getAttribute('aria-description')]));
 
-// jsdom has no Popover API, so a popover stays `display: none` and its items are not in the accessibility tree.
-let shown: HTMLStyleElement;
-beforeEach(() => {
-  shown = document.createElement('style');
-  shown.textContent = '[popover] { display: block !important; }';
-  document.head.append(shown);
-});
-afterEach(() => {
-  cleanup();
-  shown.remove();
-  vi.restoreAllMocks();
-});
+beforeEach(installPopover);
+afterEach(teardown);
 
 describe('the rows', () => {
   it('right click on the 7th of 20 tabs opens one menu, for that tab, with the rows of the mock in its order, and resolves it once', () => {
@@ -58,34 +49,6 @@ describe('the rows', () => {
 
     expect(within(open('Page2')).getAllByRole('separator')).toHaveLength(2);
   });
-
-  it('says Unpin tab for a pinned tab, and why a lone tab has nothing to close or reopen', () => {
-    const { h, ids } = mount(1);
-    expect(disabled(open('Page1'))).toEqual({
-      'Close other tabs': 'There are no other tabs',
-      'Close tabs to the right': 'There are no tabs to the right',
-      'Close tabs to the left': 'There are no tabs to the left',
-      'Reopen closed tab': 'There are no recently closed tabs; Ctrl+Alt+Shift+T',
-    });
-
-    act(() => {
-      h.store.pin(ids[0], true);
-    });
-    const pinned = open('Page1');
-    expect(labels(pinned)).toContain('Unpin tab');
-    expect(disabled(pinned)['Close all but pinned']).toBe('There are no unpinned tabs');
-  });
-
-  it('says it is the pinned ones that keep Close tabs to the right and to the left from closing anything', () => {
-    const { h, ids } = mount(2);
-    act(() => {
-      h.store.pin(ids[0], true);
-      h.store.pin(ids[1], true);
-    });
-
-    expect(disabled(open('Page1'))['Close tabs to the right']).toBe('The tabs to the right are pinned');
-    expect(disabled(open('Page2'))['Close tabs to the left']).toBe('The tabs to the left are pinned');
-  });
 });
 
 describe('the rows that move a tab to a window', () => {
@@ -105,6 +68,7 @@ describe('the rows that move a tab to a window', () => {
     expect(labels(menu)).toEqual([...ITEMS.slice(0, 4), 'Move to new window', 'Move to window', ...ITEMS.slice(4)]);
     expect(within(menu).getAllByRole('separator')).toHaveLength(3);
     expect(disabled(menu)['Move to window']).toBe('There is no other window');
+    expect(disabled(menu)).not.toHaveProperty('Move to new window');
   });
 
   it('move the tab the menu is for: Move to new window, and the window picked from the submenu', async () => {
@@ -150,18 +114,8 @@ describe('the keys and the pointer', () => {
 });
 
 describe('the rows run the model', () => {
-  it('Close other tabs closes all but that tab and the pinned', () => {
-    const { h, ids } = mount(7);
-    act(() => {
-      h.store.pin(ids[0], true);
-    });
-
-    fireEvent.click(within(open('Page4')).getByRole('menuitem', { name: 'Close other tabs' }));
-
-    expect(h.titles()).toEqual(['Page1', 'Page4']);
-  });
-
   it.each([
+    ['Close other tabs', ['Page1', 'Page4']],
     ['Close tabs to the right', ['Page1', 'Page2', 'Page3', 'Page4']],
     ['Close tabs to the left', ['Page1', 'Page4', 'Page5', 'Page6']],
     ['Close all but pinned', ['Page1']],

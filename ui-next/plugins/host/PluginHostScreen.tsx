@@ -86,7 +86,7 @@ const networker: PortForwardNetwork = {
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
 const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
 
-/** The host's window service over the runtime's calls: the name of this window, a new workspace window with the session it starts from (under a point of a window, for a tab torn off), a window's placing, close and focus, its viewport, the drag session of a tab over the windows, the windows that are open, and the runtime's events. */
+/** The host's window service over the runtime's calls: `WindowClient` and the runtime's events. */
 const windowService: WindowService = {
   name: windowName,
   open: async (session, at) => WindowClient.Open({ kind: windowModels.Kind.KindWorkspace, initialState: { session }, anchorWindow: at?.window ?? '', clientX: at?.x ?? 0, clientY: at?.y ?? 0, hasPosition: at !== undefined, width: 0, height: 0 }),
