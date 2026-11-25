@@ -424,6 +424,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let attempts = 0;
   /** The stream now open has brought the terminal's whole replay, or continues the output with none to bring: what it said of the end is complete, and the connection is good. */
   let complete = false;
+  /** Where the output the host advertised for the stream now open ends: a continuation is complete when the cursor is there. */
+  let resumeEnd = 0;
+  /** A stream of this feed said `ready` at least once. */
+  let everReady = false;
   let retry: Timer | undefined;
   /** The offset the feed has applied up to: what a stream that drops is connected again from. A terminal the feed made starts at 0; one it attaches to has nothing until its replay is complete. */
   let next: number | undefined = attachTo === undefined ? 0 : undefined;
@@ -626,8 +630,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     streaming = true;
-    complete = resumed;
-    readyEnded = ready.ended;
+    everReady = true;
     size = ready.size;
     modes = ready.modes;
     delivered = ready.size;
@@ -642,15 +645,25 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     forgiven = outstanding;
+    // The first acknowledgement goes before anything else is sent, whatever a listener writes when it is told the feed is running. If it finds the socket dead the stream is over, and nothing more of this ready is read.
+    const mine = connection;
+    link?.ack(0);
+    if (connection !== mine) {
+      return;
+    }
+
+    readyEnded = ready.ended;
+    resumeEnd = ready.end;
+    // A continuation is complete when the cursor reaches the end the host advertised (at once when there is nothing to bring); a replay when it is whole.
+    complete = resumed && ready.end === ready.start;
+    if (complete) {
+      attempts = 0;
+    }
+
     if (status.state === 'starting') {
       const program = ready.program ?? createdProgram ?? status.program;
       status = program === undefined ? { state: 'running' } : { state: 'running', program };
       tell();
-    }
-
-    link?.ack(0);
-    if (complete) {
-      attempts = 0;
     }
 
     if (gathering !== undefined && ready.end === ready.start) {
@@ -659,6 +672,14 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     flush();
     sendAck();
+  };
+
+  /** A continuation whose cursor has reached the end the host advertised is complete: the end it reported can be believed, and the connection is good. */
+  const reached = () => {
+    if (!complete && cursor >= resumeEnd) {
+      complete = true;
+      attempts = 0;
+    }
   };
 
   const onOutput = (offset: number, bytes: Uint8Array) => {
@@ -699,6 +720,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     next = cursor;
     outstanding += bytes.length;
     held.push(bytes);
+    reached();
     wake();
   };
 
@@ -725,6 +747,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       return;
     }
 
+    reached();
     // What the host delivered and the reader never got is credited at once, but for what a stream that is over delivered, which has nobody to credit.
     const dropped = held.bytes();
     held.clear();
@@ -850,9 +873,17 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
    * `free` (the tab that took it has let it go while this page was not told), and one that a stream holds is not; a terminal the host lists as ended is not free either, since nobody can take it back. A terminal the
    * host has no entry for, an entry that does not say, and a call that fails change nothing (a failure is said once). Only for a lost terminal whose end is not known, and one call at a time: a second call shares the one that is out.
    */
-  const refresh = async (): Promise<void> => {
+  const refresh = async (asking?: { readonly fresh?: boolean }): Promise<void> => {
     if (closed() || status.detached === undefined || status.exit !== undefined) {
       return;
+    }
+
+    // A take-back needs an answer that began after its press: it waits for the listing that is out, and asks anew. A poll shares the one that is out.
+    if (asking?.fresh === true && refreshing !== undefined) {
+      await refreshing;
+      if (closed() || status.detached === undefined || status.exit !== undefined) {
+        return;
+      }
     }
 
     refreshing ??= (async () => {
@@ -1026,7 +1057,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         return closing;
       }
 
-      // A stream the page left is not closed here: the host closes it on the detach frame, and closing it first would lose the frame.
+      // Whether this feed holds a live stream to the terminal now, or made the terminal and never opened one (nobody else can hold it): only then is it this page's to end. A stream that dropped, is being connected again or is not ready may have been
+      // taken by another tab meanwhile, and a close of the capability alone would end what that tab shows: it is left to the host's lease, until the host binds a close to the holder.
+      const holding = (streaming && link !== undefined) || (attachTo === undefined && !everReady);
       unlink(true);
       dropOutgoing();
       held.clear();
@@ -1034,7 +1067,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       closing = (creating ?? Promise.resolve()).then(async () => {
         // A terminal the host never made has nothing to end, nor has one this page lost to another, one the host does not know, or one it left for the page that comes back (ending it would end what the other page shows). One that ended by
         // itself is kept by the host, with its output, until a page forgets it: then the close dismisses it.
-        if (!created || left || fate === 'not-ours') {
+        if (!created || left || fate === 'not-ours' || (fate === 'ours' && !holding)) {
           return;
         }
 

@@ -887,7 +887,7 @@ describe('asking who holds a terminal for a take-back (`refresh({ fresh })`)', (
   it('shares the question that is out with a poll, and waits for it and asks again for a take-back: the answer begins after the press', async () => {
     const gates = [Promise.withResolvers<unknown>(), Promise.withResolvers<unknown>()];
     let asked = 0;
-    const r = await running({}, { channels: { listed: () => gates[asked++]?.promise } });
+    const r = await running({}, { channels: { listed: async () => gates[asked++]?.promise } });
     r.stream().takenOver();
     const poll = r.feed.refresh?.();
     const sharing = r.feed.refresh?.();

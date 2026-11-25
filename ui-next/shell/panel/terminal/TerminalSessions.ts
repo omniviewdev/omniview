@@ -695,7 +695,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       old.taking = true;
       try {
         // The page's word that nobody holds the terminal may be old (a tab may have attached it since), and attaching takes a terminal from whoever holds it: the feed that lost it asks the host and puts the answer in its status.
-        await askFeed(old.plugin, (): Promise<void> | undefined => old.feed.refresh?.(), 'could not ask who holds the terminal');
+        await askFeed(old.plugin, (): Promise<void> | undefined => old.feed.refresh?.({ fresh: true }), 'could not ask who holds the terminal');
         // The answer came, and the session may not be what it was: its tab closed, the window stopped, the terminal ended, or somebody holds it now. Then nothing is attached.
         return lostEntry(session) === old && replaceFeed(session, old, reattach);
       } finally {

@@ -159,9 +159,9 @@ export type TerminalFeedHandle = {
   /**
    * Asks the host who holds a terminal this page LOST (the host's listing of its capability, no attach): a terminal that no stream holds now makes `detached.free` true (the tab that took it has let it go), one that a stream
    * holds makes it false, and one the host has no entry for is left as it is. It never attaches, never takes the terminal over and never throws. It is how a take-back checks that the terminal is still free before it attaches.
-   * A feed that is not lost does nothing. A producer that cannot leaves it out.
+   * A feed that is not lost does nothing. A poll shares the listing that is out; `fresh` (a take-back) waits for it and asks again, so that its answer begins after the press. A producer that cannot leaves it out.
    */
-  readonly refresh?: (() => Promise<void>) | undefined;
+  readonly refresh?: ((options?: { readonly fresh?: boolean }) => Promise<void>) | undefined;
 };
 
 /** What opens a terminal session: plain data and one function. Who supplies it (the host's own shell today) is not the registry's business. */
