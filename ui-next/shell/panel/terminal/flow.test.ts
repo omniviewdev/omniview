@@ -200,6 +200,30 @@ describe('a terminal the page made', () => {
     expect(w.frames()).toBe(0);
   });
 
+  it('does NOT stall a host whose credit window is 1 MiB when the panel is hidden: it sends only while the window has room, the hidden screen parses and acknowledges, and the rest of 5 MiB follows', async () => {
+    const w = await wire();
+    await made(w);
+    w.screen.hide();
+    const total = 5 * MIB;
+    let sent = 0;
+    let most = 0;
+    for (let round = 0; round < 2_000 && sent < total; round += 1) {
+      while (sent < total && sent - acked(w.stream()) + READ <= MIB) {
+        const count = Math.min(READ, total - sent);
+        w.stream().output(sent, sequence(sent, count));
+        sent += count;
+        most = Math.max(most, sent - acked(w.stream()));
+      }
+
+      await w.drain();
+    }
+
+    expect(sent).toBe(total);
+    expect(most).toBeLessThanOrEqual(MIB);
+    expect(same(written(w.engine()), sequence(0, total))).toBe(true);
+    expect(acked(w.stream())).toBe(total);
+  });
+
   it('acknowledges only what the emulator has parsed: nothing while it parses slowly, and then as fast as it parses, never ahead of it', async () => {
     const w = await wire({ auto: false });
     await made(w);
