@@ -135,4 +135,4 @@ func (m *Manager) HoldsID(_ string) bool { return false }
 func (m *Manager) DismissChannel(_ string) error { return unsupportedError() }
 
 // SetIntegration is accepted and ignored: no shell starts here.
-func (m *Manager) SetIntegration(_ func() bool) {}
+func (m *Manager) SetIntegration(_ func() (bool, error)) {}

@@ -138,15 +138,11 @@ func (c *controller) startTerminals(ctx context.Context) {
 // shellIntegrationOn is the user's opt-out of the shell integration, asked for every terminal that starts so that a change
 // in Settings applies to the next one. The integration is on by default: with no settings to ask, or a value that cannot be
 // read, it stays on and the shell's own failure to carry it is the fact the create answer states.
-func (c *controller) shellIntegrationOn() bool {
+func (c *controller) shellIntegrationOn() (bool, error) {
 	if c.settingsProvider == nil {
-		return true
+		return true, nil
 	}
-	on, err := c.settingsProvider.GetBool("terminal.shellIntegration")
-	if err != nil {
-		return true
-	}
-	return on
+	return c.settingsProvider.GetBool("terminal.shellIntegration")
 }
 
 // CreateTerminal starts a shell on this machine. The session belongs to owner and ends with it; a channel terminal

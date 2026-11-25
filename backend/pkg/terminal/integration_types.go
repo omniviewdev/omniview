@@ -14,6 +14,10 @@ const (
 	// IntegrationFailed: the host tried and the shell did not come up with it (Reason says why); the shell that runs
 	// has none.
 	IntegrationFailed IntegrationState = "failed"
+	// IntegrationUnconfirmed: the shell was started with the integration and did not say it loaded it within the wait
+	// (Reason is no-ready): it may still, or it may never (a startup file stopped the shell's own startup). The host states
+	// only what it knows.
+	IntegrationUnconfirmed IntegrationState = "unconfirmed"
 )
 
 // IntegrationReason is why an integration is skipped or failed: a token, never free text, so that no path or
@@ -34,6 +38,10 @@ const (
 	SkipMultiplexer IntegrationReason = "multiplexer"
 	// SkipUnsupportedShell: the integration has no script for this shell yet.
 	SkipUnsupportedShell IntegrationReason = "unsupported-shell"
+	// SkipSettingUnreadable: the setting could not be read, so the host does not touch the user's shell (fail closed).
+	SkipSettingUnreadable IntegrationReason = "setting-unreadable"
+	// NoReady: the shell did not say it was up within the wait.
+	NoReady IntegrationReason = "no-ready"
 	// FailSetup: the host could not make what the integration needs (its directory, its channel, its nonce); the
 	// shell started without it.
 	FailSetup IntegrationReason = "setup"

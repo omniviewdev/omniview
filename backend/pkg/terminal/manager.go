@@ -67,7 +67,7 @@ type Manager struct {
 
 	// integrationOn says whether the user has the shell integration on (the setting `terminal.shellIntegration`):
 	// SetIntegration sets it before sessions start, and it is on until then.
-	integrationOn func() bool
+	integrationOn func() (bool, error)
 
 	ctx  context.Context
 	log  logging.Logger
@@ -129,7 +129,7 @@ func (m *Manager) rememberEnded(id string) {
 
 // SetIntegration sets how the manager asks whether the user has the shell integration on, once for every terminal that
 // starts. It is called before any terminal starts.
-func (m *Manager) SetIntegration(on func() bool) { m.integrationOn = on }
+func (m *Manager) SetIntegration(on func() (bool, error)) { m.integrationOn = on }
 
 // NewManager makes a manager whose events go to sink. Its sessions end when ctx ends, the way a close
 // ends them (Shutdown): the host's application context is cancelled first when it quits.
@@ -138,7 +138,7 @@ func NewManager(ctx context.Context, log logging.Logger, sink Sink) *Manager {
 	offsets, _ := sink.(OffsetSink)
 	detachments, _ := sink.(DetachmentSink)
 	m := &Manager{
-		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() bool { return true },
+		base: shellenv.LaunchEnvironment, resolve: shellenv.Resolve, probe: shellenv.Probe, integrationOn: func() (bool, error) { return true, nil },
 		ctx: ctx, log: log.Named("TerminalManager"), sink: sink, reported: reported, closing: atomic.Bool{}, launching: sync.WaitGroup{}, flowStall: FlowStall,
 		replayBytes: ReplayBytes, channel: defaultChannelLimits(), offsets: offsets, detachments: detachments,
 		mu: sync.RWMutex{}, sessions: make(map[string]*session), starting: make(map[string]struct{}), ended: nil, tombs: nil, tombTimer: nil, clock: wallClock{},
@@ -581,11 +581,17 @@ type launched struct {
 	pending *injection
 }
 
+// integrationEnabled asks the setting.
+func (m *Manager) integrationEnabled() bool {
+	on, _ := m.integrationOn()
+	return on
+}
+
 // spawnIntegrated starts the shell with the integration the user's setting and the shell allow, and says what became of it.
 // A shell that has the integration and ends before it says it is ready is started once more, without it: once, whatever
 // happens to that one.
 func (m *Manager) spawnIntegrated(id, path string, args []string, dir string, env []string, size *pty.Winsize) (launched, error) {
-	kind, fact := integrationPlan(m.integrationOn(), path, args, env)
+	kind, fact := integrationPlan(m.integrationEnabled(), path, args, env)
 	var inj *injection
 	if kind != kindNone {
 		var err error

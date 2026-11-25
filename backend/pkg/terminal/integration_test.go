@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -167,7 +168,8 @@ func (f *integrationFixture) prompts(id string) int {
 func (f *integrationFixture) run(id, line string) {
 	f.t.Helper()
 	before := f.prompts(id)
-	send(f.t, f.m, id, line)
+	// A terminal's Enter is a carriage return, not a line feed.
+	require.NoError(f.t, f.m.Write(id, 0, []byte(line+"\r")))
 	require.Eventually(f.t, func() bool { return f.prompts(id) > before }, 20*time.Second, 5*time.Millisecond, "no prompt after %q", line)
 }
 
@@ -239,7 +241,7 @@ func TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks(t *testing.T) {
 		oscs := regexp.MustCompile("\x1b\\][^\a\x1b]*(\a|\x1b\\\\)")
 		session := func(integration bool) string {
 			f := newIntegrationFixture(t, name, shell)
-			f.m.SetIntegration(func() bool { return integration })
+			f.m.SetIntegration(func() (bool, error) { return integration, nil })
 			info := f.started()
 			f.run(info.ID, "echo hello")
 			f.run(info.ID, "false")
@@ -454,4 +456,93 @@ func TestNoDescriptorOfTheChannelReachesAProgramOfTheUser(t *testing.T) {
 	require.Equal(t, IntegrationOn, info.Integration.State)
 	f.run(info.ID, "ls -l /proc/self/fd > descriptors")
 	assert.NotContains(t, f.fileOf("descriptors"), "socket:", "no socket reaches a program the user runs")
+}
+
+// endedCommands waits until the shell has ended n commands that ran and returns the records.
+func (f *integrationFixture) endedCommands(id string, n int) []marks.Record {
+	f.t.Helper()
+	var ran []marks.Record
+	require.Eventually(f.t, func() bool {
+		ran = ran[:0]
+		for _, r := range f.scanned(id).Records() {
+			if r.Ran && r.HasExitCode {
+				ran = append(ran, r)
+			}
+		}
+		return len(ran) >= n
+	}, 20*time.Second, 10*time.Millisecond, "fewer than %d commands ended", n)
+	return ran
+}
+
+func TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem(t *testing.T) {
+	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
+		f := newIntegrationFixture(t, name, shell)
+		info := f.started()
+		require.Equal(t, IntegrationOn, info.Integration.State)
+		typed, want := "for i in 1 2\recho $i\rend\r", "for i in 1 2\necho $i\nend"
+		if name == "zsh" {
+			typed, want = "for i in 1 2; do\recho $i\rdone\r", "for i in 1 2; do\necho $i\ndone"
+		}
+		require.NoError(t, f.m.Write(info.ID, 0, []byte(typed)))
+		ran := f.endedCommands(info.ID, 1)
+		assert.Equal(t, want, ran[0].CommandLine, "the line as typed, newlines kept")
+		assert.Equal(t, marks.TrustNonce, ran[0].Trust)
+	})
+}
+
+// A user who binds Enter keeps their binding: the host adds nothing to it, so the command has no trusted line, and runs.
+func TestAFishUserWhoBoundEnterKeepsTheirBindingAndTheCommandHasNoTrustedLine(t *testing.T) {
+	f := newIntegrationFixture(t, "fish", integrationShell(t, "fish"))
+	cfg := f.files[0]
+	data, err := os.ReadFile(cfg)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(cfg, append(data, []byte("bind \\r execute\nbind \\n execute\n")...), 0o600))
+	info := f.started()
+	f.run(info.ID, "echo hello > ran")
+	assert.Equal(t, "hello\n", f.fileOf("ran"), "the command ran")
+	assert.NotContains(t, string(f.sink.output(info.ID)), "\x1b]633;E;", "no trusted line: the user's binding wins")
+}
+
+// An abbreviation is recorded as what ran: the expanded text, as fish_preexec and VS Code's own script have it.
+func TestAFishAbbreviationIsRecordedExpandedAsWhatRan(t *testing.T) {
+	f := newIntegrationFixture(t, "fish", integrationShell(t, "fish"))
+	cfg := f.files[0]
+	data, err := os.ReadFile(cfg)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(cfg, append(data, []byte("abbr -a gs 'echo status-expanded'\n")...), 0o600))
+	info := f.started()
+	require.NoError(t, f.m.Write(info.ID, 0, []byte("gs\r")))
+	ran := f.endedCommands(info.ID, 1)
+	assert.Equal(t, "echo status-expanded", ran[0].CommandLine)
+}
+
+// The escape of a long line that needs the per-character path is called directly (a pty would complete a Tab).
+func TestTheFishEscapeOfA4KBLineWithControlBytesIsCorrectAndCheap(t *testing.T) {
+	f := newIntegrationFixture(t, "fish", integrationShell(t, "fish"))
+	info := f.started()
+	script := "set l (string repeat -n 1300 (printf 'a\\x01;') | string join '')\nset s (date +%s%N)\n__omniview_escape $l > escaped\nset e (date +%s%N)\necho (math -s0 \"($e-$s)/1000000\") > cost\n"
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, "cost.fish"), []byte(script), 0o600))
+	f.run(info.ID, "source cost.fish")
+	assert.Equal(t, strings.Repeat(`a\x01\x3b`, 1300), f.fileOf("escaped"), "every control byte and every ';' is escaped")
+	ms, err := strconv.Atoi(strings.TrimSpace(f.fileOf("cost")))
+	if err != nil {
+		t.Logf("%q", f.sink.output(info.ID))
+	}
+	require.NoError(t, err)
+	t.Logf("fish escape of a 3900-byte line with 2600 bytes to escape: %d ms", ms)
+	assert.Less(t, ms, 100, "the escape of the longest line costs under 100 ms")
+}
+
+// With xtrace on, zsh prints every command it runs: the hooks must not print the nonce there.
+func TestZshXtraceNeverPrintsTheNonce(t *testing.T) {
+	f := newIntegrationFixture(t, "zsh", integrationShell(t, "zsh"))
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, ".zshrc"), []byte("PS1='"+integrationPrompt+"'\nHISTFILE=/dev/null\nsetopt xtrace\n"), 0o600))
+	info := f.started()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.run(info.ID, "echo hello")
+	f.run(info.ID, "false")
+	nonce := f.m.session(t, info.ID).nonce.Reveal()
+	out := regexp.MustCompile("\x1b\\][^\a\x1b]*(\a|\x1b\\\\)").ReplaceAll(f.sink.output(info.ID), nil)
+	assert.Contains(t, string(out), "+", "xtrace is on: the shell traces")
+	assert.NotContains(t, string(out), nonce, "the nonce is in the trace outside the marks")
 }

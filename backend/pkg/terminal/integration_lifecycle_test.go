@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,6 +36,7 @@ case "$FAKE_MODE" in
   die-always) exit 3 ;;
   crash) kill -9 $$ ;;
 esac
+if [ "$integrated" = yes ] && [ "$FAKE_MODE" != silent ]; then echo ready >&3; fi
 exec cat > /dev/null
 `
 
@@ -94,7 +96,7 @@ func TestTheFactSaysWhyTheIntegrationIsOffOrSkipped(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			f, _, log := fakeFixture(t, c.shell, "plain", c.env...)
 			if c.off {
-				f.m.SetIntegration(func() bool { return false })
+				f.m.SetIntegration(func() (bool, error) { return false, nil })
 			}
 			info := f.start(c.args...)
 			assert.Equal(t, c.want, info.Integration)
@@ -112,7 +114,7 @@ func TestTheFactSaysWhyTheIntegrationIsOffOrSkipped(t *testing.T) {
 func TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration(t *testing.T) {
 	eachIntegrationShell(t, func(t *testing.T, name, shell string) {
 		f := newIntegrationFixture(t, name, shell)
-		f.m.SetIntegration(func() bool { return false })
+		f.m.SetIntegration(func() (bool, error) { return false, nil })
 		info := f.started()
 		assert.Equal(t, Integration{State: IntegrationOff, Reason: ""}, info.Integration)
 		f.run(info.ID, "echo hello; env > exported")
@@ -132,7 +134,7 @@ func TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration(t *testing
 func TestTheSettingIsAskedForEveryTerminal(t *testing.T) {
 	f, _, log := fakeFixture(t, "zsh", "plain")
 	on := true
-	f.m.SetIntegration(func() bool { return on })
+	f.m.SetIntegration(func() (bool, error) { return on, nil })
 	assert.Equal(t, IntegrationOn, f.start().Integration.State)
 	on = false
 	assert.Equal(t, IntegrationOff, f.start().Integration.State)
@@ -143,9 +145,9 @@ func TestTheSettingIsAskedForEveryTerminal(t *testing.T) {
 func TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser(t *testing.T) {
 	for _, name := range []string{"zsh", "fish"} {
 		t.Run(name, func(t *testing.T) {
-			f, _, log := fakeFixture(t, name, "plain")
+			f, _, log := fakeFixture(t, name, "silent")
 			info := f.start()
-			assert.Equal(t, IntegrationOn, info.Integration.State, "the fake never answers, which is not a failure")
+			assert.Equal(t, Integration{State: IntegrationUnconfirmed, Reason: NoReady}, info.Integration, "the fake never says it is ready: the host does not say it is on")
 			require.Eventually(t, func() bool { _, err := os.Stat(log + ".dir"); return err == nil }, 10*time.Second, 5*time.Millisecond)
 			data, err := os.ReadFile(log + ".dir")
 			require.NoError(t, err)
@@ -173,10 +175,10 @@ func TestTheIntegrationDirectoryIsRemovedOnEveryEnd(t *testing.T) {
 	}
 	for name, end := range ends {
 		t.Run(name, func(t *testing.T) {
-			f, _, _ := fakeFixture(t, "zsh", "plain")
+			f, _, _ := fakeFixture(t, "zsh", "silent")
 			info := f.start()
-			require.Equal(t, IntegrationOn, info.Integration.State)
-			require.Len(t, f.integrationDirs(), 1, "the directory exists while the shell runs")
+			require.Equal(t, IntegrationUnconfirmed, info.Integration.State)
+			require.Len(t, f.integrationDirs(), 1, "the directory exists while the shell has not said it is ready")
 			end(t, f, info)
 			require.Eventually(t, func() bool { return len(f.integrationDirs()) == 0 }, 10*time.Second, 5*time.Millisecond, "the directory is left behind after %s", name)
 		})
@@ -225,7 +227,7 @@ func TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore(t *testing.T) {
 // A shell without the integration that dies at once is nobody's fault but the user's: it is not started twice.
 func TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain(t *testing.T) {
 	f, _, log := fakeFixture(t, "zsh", "die-always")
-	f.m.SetIntegration(func() bool { return false })
+	f.m.SetIntegration(func() (bool, error) { return false, nil })
 	info := f.start()
 	assert.Equal(t, IntegrationOff, info.Integration.State)
 	f.sink.waitEnd(t, info.ID, 20*time.Second)
@@ -281,4 +283,35 @@ func TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor(t *tes
 		require.Eventually(t, func() bool { return openDescriptors(t) <= baseline+2 }, 10*time.Second, 20*time.Millisecond,
 			"descriptors: %d at the start, %d after the cycles", baseline, openDescriptors(t))
 	})
+}
+
+// The host states only what it knows: a shell that says it is ready is `on`, one that does not is `unconfirmed`.
+func TestTheFactIsOnOnlyAfterTheShellSaidItIsReady(t *testing.T) {
+	f, _, _ := fakeFixture(t, "zsh", "plain")
+	info := f.start()
+	assert.Equal(t, Integration{State: IntegrationOn, Reason: ""}, info.Integration)
+	require.Eventually(t, func() bool { return len(f.integrationDirs()) == 0 }, 10*time.Second, 5*time.Millisecond, "the directory is removed once the shell is ready")
+}
+
+// A startup file of the user's that stops zsh from reading the rest (here `setopt norcs`, as an `alias builtin=false`
+// would also do) means the script never runs: the answer must not say `on`.
+func TestARealShellWhoseScriptNeverRunsIsUnconfirmedAndNotOn(t *testing.T) {
+	f := newIntegrationFixture(t, "zsh", integrationShell(t, "zsh"))
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, ".zshenv"), []byte("setopt norcs\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(f.home, ".zshrc"), []byte("PS1='"+integrationPrompt+"'\n"), 0o600))
+	info := f.start()
+	assert.Equal(t, Integration{State: IntegrationUnconfirmed, Reason: NoReady}, info.Integration)
+	time.Sleep(300 * time.Millisecond)
+	assert.NotContains(t, string(f.sink.output(info.ID)), "\x1b]633;", "the script never ran")
+}
+
+// A setting that cannot be read is not a yes: the host leaves the user's shell alone.
+func TestASettingThatCannotBeReadFailsClosed(t *testing.T) {
+	f, _, log := fakeFixture(t, "zsh", "plain")
+	f.m.SetIntegration(func() (bool, error) { return true, errors.New("the settings store is gone") })
+	info := f.start()
+	assert.Equal(t, Integration{State: IntegrationSkipped, Reason: SkipSettingUnreadable}, info.Integration)
+	line := waitStarts(t, log, 1)[0]
+	assert.Contains(t, line, "zdotdir=unset xdg=unset")
+	assert.Empty(t, f.integrationDirs())
 }

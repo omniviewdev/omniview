@@ -43,3 +43,12 @@ func TestTheShellIntegrationIsOnWhenThereAreNoSettingsToAsk(t *testing.T) {
 	session := fx.open(page, terminal.Options{Command: shell(t)})
 	assert.Equal(t, terminal.IntegrationSkipped, session.Integration.State, "the default is on: a shell without a script is skipped, not off")
 }
+
+// A setting that cannot be read is not a yes.
+func TestAShellIntegrationSettingThatCannotBeReadSkipsTheIntegration(t *testing.T) {
+	fx := newTerminalFixture(t)
+	page := fx.page(1)
+	fx.ctrl.settingsProvider = settings.NewProvider(settings.ProviderOpts{PluginSettings: []settings.Category{{ID: "terminal", Settings: map[string]settings.Setting{}}}})
+	session := fx.open(page, terminal.Options{Command: shell(t)})
+	assert.Equal(t, terminal.Integration{State: terminal.IntegrationSkipped, Reason: terminal.SkipSettingUnreadable}, session.Integration)
+}
