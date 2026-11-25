@@ -464,9 +464,9 @@ test('what is skipped by path: nothing for "all", the host jobs for "new-ui", ev
 
 test('NEGATIVE: the jobs that check the UI are not skipped for a change to the new UI, and the guard and the gates are never skipped', () => {
   const skipped = skippedBy(classify(['ui-next/App.tsx', 'packages/kit/src/index.ts', 'docs/ui-next/status/N24-D1.md'])).map((entry) => entry.job);
-  for (const job of ['ui-build', 'ui-lint', 'ui-component-tests', 'ui-runtime-contract', 'c02-corpus']) assert.ok(!skipped.includes(job), job);
+  for (const job of ['ui-build', 'c02-corpus']) assert.ok(!skipped.includes(job), job);
   for (const job of ['repo-guard', 'changes', 'ui-checks', 'e2e-tests']) assert.ok(!skippedBy(classify(['docs/ui-next/status/N24-D1.md'])).some((entry) => entry.job === job), job);
-  for (const job of ['go-checks', 'go-lint', 'windows-connection-profiles', 'bindings-check', 'release-packaging-checks', 'e2e-application', 'build-artifacts']) assert.ok(skipped.includes(job), job);
+  for (const job of ['go-checks', 'windows-connection-profiles', 'e2e-application', 'build-artifacts']) assert.ok(skipped.includes(job), job);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -772,16 +772,12 @@ test('NEGATIVE: nothing else under docs/ changes class with that: the baseline, 
   assert.equal(pathArea('docs/ui-next/status/../../../go.mod'), 'other');
 });
 
-test('the Windows build is kept for a change to the new UI and skipped only for documentation; the macOS and Linux builds are skipped for both', () => {
-  const windows = GATED.find((entry) => entry.job === 'build-artifacts-windows');
-  assert.ok(windows, 'the Windows build is a job of its own');
-  assert.equal(windows.flag, 'windows');
-  assert.equal(windows.check, 'build-artifacts (windows/amd64)');
+test('there is no Windows build among the jobs of a pull request (N31: main-windows.yml), and the macOS and Linux builds are skipped for a change to the new UI and for documentation', () => {
+  assert.equal(GATED.find((entry) => entry.job === 'build-artifacts-windows'), undefined, 'the Windows build runs on main and at night, not on a pull request');
   const newUi = skippedBy(classify(['ui-next/App.tsx', 'packages/kit/src/index.ts'])).map((entry) => entry.job);
-  assert.ok(!newUi.includes('build-artifacts-windows'), 'a change to the kit is built on Windows');
-  assert.ok(newUi.includes('build-artifacts'), 'the macOS and Linux builds are skipped');
+  assert.ok(newUi.includes('build-artifacts'), 'the Linux build is skipped');
   const docs = skippedBy(classify(['docs/ui-next/status/N24-D1.md'])).map((entry) => entry.job);
-  assert.ok(docs.includes('build-artifacts-windows') && docs.includes('build-artifacts'));
+  assert.ok(docs.includes('build-artifacts'));
   assert.deepEqual(skippedBy(classify(['go.mod'])), []);
 });
 

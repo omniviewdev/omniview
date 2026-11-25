@@ -138,25 +138,13 @@ export const WORKFLOW_NAMES = { 'pr.yml': 'PR Validation', 'pr-checks.yml': 'PR 
  * documentation skips it). `check` is the name the job's check has (a matrix job has one check per entry; a call of a reusable workflow has its id). Each is `needs: changes` with `if: needs.changes.outputs.skip_<flag> != 'true'`.
  */
 export const GATED = [
-  { flag: 'host', workflow: 'pr-checks.yml', job: 'release-packaging-checks', check: 'Release packaging contracts' },
   { flag: 'host', workflow: 'pr-checks.yml', job: 'windows-connection-profiles', check: 'Windows connection profiles' },
   { flag: 'host', workflow: 'pr-checks.yml', job: 'go-checks', check: 'Go checks' },
-  { flag: 'host', workflow: 'pr-checks.yml', job: 'go-lint', check: 'Go lint' },
-  { flag: 'host', workflow: 'pr-checks.yml', job: 'bindings-check', check: 'Bindings freshness' },
   { flag: 'host', workflow: 'pr.yml', job: 'e2e-application', check: 'e2e-application' },
   { flag: 'host', workflow: 'pr.yml', job: 'build-artifacts', check: 'build-artifacts' },
-  { flag: 'windows', workflow: 'pr.yml', job: 'build-artifacts-windows', check: 'build-artifacts (windows/amd64)' },
-  { flag: 'ui', workflow: 'pr-checks.yml', job: 'c02-corpus', check: 'C02 error transport corpus' },
-  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-build', check: 'UI build' },
-  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-lint', check: 'UI lint and kit contracts' },
-  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-component-tests', check: 'UI component tests' },
-  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-runtime-contract', check: 'UI runtime contract' },
+  { flag: 'ui', workflow: 'pr-checks.yml', job: 'c02-corpus', check: 'C02 error transport corpus and runtime contract' },
+  { flag: 'ui', workflow: 'pr-checks.yml', job: 'ui-build', check: 'UI build, lint and component tests' },
 ];
-
-/**
- * The jobs that run on every pull request: the classifier (one in each workflow), the repository guard, and the two gates, which are green when their parts were skipped by path and red in
- * every other case.
- */
 export const ALWAYS = [
   { workflow: 'pr-checks.yml', job: 'changes' },
   { workflow: 'pr-checks.yml', job: 'repo-guard' },

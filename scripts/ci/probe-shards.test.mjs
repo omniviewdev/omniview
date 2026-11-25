@@ -1905,8 +1905,15 @@ test('the verdict of a pull request requires the probes only, passes without a c
   const failing = structuredClone(reports);
   failing[0].units[0].ok = false;
   writeFileSync(path.join(reportsDir, `kit-probe-reports-${failing[0].shard}`, `ran-${failing[0].shard}-probe.json`), JSON.stringify(failing[0]));
-  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]).status, 1);
-  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length + 1)]).status, 1);
+  const failed = cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]);
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /did not pass in shard 1/);
+  // The passing report is put back, so that the next assertion is about the missing shard and nothing else.
+  writeFileSync(path.join(reportsDir, `kit-probe-reports-${reports[0].shard}`, `ran-${reports[0].shard}-probe.json`), JSON.stringify(reports[0]));
+  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]).status, 0, 'with every report back it passes again');
+  const missing = cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length + 1)]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, new RegExp(`shard ${String(pr.shards.length + 1)} did not report`));
 });
 
 test('a pull request\'s shard runs its probes with ENGINES=webkit, does not warn about a probe that is faster than its two-engine seconds, and fails past its own ceiling', () => {

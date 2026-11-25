@@ -93,7 +93,7 @@ jobs:
   # There is no macOS build on a pull request (N30): the thin arm64 build here was 435 s on a macOS runner for a break that only a darwin-only file or a cgo setting of that
   # platform causes, and the universal (arm64+amd64) build that contains it runs on every push to main (main-macos-universal.yml) and in desktop-build.yml (nightly, release
   # tags, feature channel). A break that is darwin only is first seen on main, in the run that opens the `ci-main-red` issue, not on the pull request.
-  # Windows is a job of its own (build-artifacts-windows, below) so that a change to the new UI keeps it while the macOS and Linux builds here are skipped (N24 D1).
+  # There is no Windows build on a pull request either (N31): main-windows.yml builds it on every push to main and at night; the Windows tests of a pull request stay in pr-checks.yml.
   # ─────────────────────────────────────────────────────────────────────────────
   build-artifacts:
     name: build-artifacts (${{ matrix.platform }})
@@ -203,78 +203,3 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString 0.0.0' bin/Omniview.app/Contents/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" bin/Omniview.app/Contents/Info.plist
           codesign --force --deep --sign - bin/Omniview.app
-
-  # The Windows build: the matrix job's steps for Windows (scripts/ci/changes-workflows.test.mjs holds the two together, step by step). It is a job of its own so that a change to the new UI keeps it while the macOS and
-  # Linux builds are skipped: `task packages` builds the kit here, the kit has build and generate scripts, and Windows is a shipping platform where path and shell differences bite (docs/ui-next/status/N24-D1.md).
-  # Documentation skips it. A step changed in the matrix job is changed here too.
-  build-artifacts-windows:
-    name: build-artifacts (windows/amd64)
-    needs: changes
-    if: ${{ needs.changes.outputs.skip_windows != 'true' }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    env:
-      GOWORK: "off"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup pnpm
-        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
-        with:
-          version: 12.14.0
-          node-version-file: "false"
-          install: false
-
-      - name: Install dependencies
-        run: |
-          pnpm install --frozen-lockfile
-
-      - name: Setup Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: go.sum
-
-      - name: Install Task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install Wails v3
-        shell: bash
-        run: GOWORK=off GOFLAGS= bash ./scripts/install-wails-cli.sh
-
-      - name: Build workspace packages
-        shell: bash
-        run: task packages
-
-      - name: Check native Windows React compiler admission
-        run: node --test scripts/react-compiler.test.mjs
-
-      - name: Build frontend
-        shell: bash
-        run: task common:build:frontend
-
-      - name: Build Omniview
-        shell: bash
-        env:
-          CGO_ENABLED: "1"
-        run: |
-          HOST_MODFILE="$(task --silent host:prepare)"
-          go build -o bin/Omniview -modfile="$HOST_MODFILE" -tags "production" -trimpath -buildvcs=false \
-            -ldflags "-w -s -H windowsgui \
-              -X github.com/omniviewdev/omniview/internal/version.Version=0.0.0-pr.${{ github.event.pull_request.number }} \
-              -X github.com/omniviewdev/omniview/internal/version.GitCommit=${{ github.sha }} \
-              -X github.com/omniviewdev/omniview/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-              -X github.com/omniviewdev/omniview/internal/version.Development=true \
-              -X github.com/omniviewdev/omniview/internal/appstate.buildStateDir=~/.omniview-pr"

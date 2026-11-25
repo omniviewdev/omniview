@@ -42,6 +42,13 @@ test('a change to the test infrastructure is a full run, naming the file: the CI
     'ui-next/shell/probes/palette-probe.mjs',
     'ui-next/page/probes/lib.mjs',
     'ui-next/x/probes/y.mjs',
+    'pnpm-lock.yaml',
+    'pnpm-workspace.yaml',
+    'package.json',
+    'go.mod',
+    'go.sum',
+    'go.work',
+    '.tool-versions',
   ]) {
     const result = pr(['ui-next/shell/Rail.tsx', file]);
     assert.equal(result.scope, 'full', file);
@@ -50,7 +57,7 @@ test('a change to the test infrastructure is a full run, naming the file: the CI
 });
 
 test('NEGATIVE: a path that only looks like test infrastructure is not: a name that contains the words, a docs file about them', () => {
-  for (const file of ['scripts/ci-notes.md', 'scripts/cinema/x.mjs', 'docs/ui-next/probes.md', 'ui-next/shell/Probes.tsx', 'ui-next/plugins/e2e-notes.md', 'github/workflows/x.yml', 'packages/kit/src/probes-list.ts']) {
+  for (const file of ['scripts/ci-notes.md', 'scripts/cinema/x.mjs', 'docs/ui-next/probes.md', 'ui-next/shell/Probes.tsx', 'ui-next/plugins/e2e-notes.md', 'github/workflows/x.yml', 'packages/kit/src/probes-list.ts', 'packages/kit/package.json', 'go.mod.bak', 'docs/go.mod']) {
     assert.equal(infrastructureIn([file]), null, file);
   }
 });

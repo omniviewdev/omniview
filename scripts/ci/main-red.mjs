@@ -94,8 +94,9 @@ export function gh(args, { input } = {}) {
 
 /** The last green run of the workflow on main that was created before this one, `{ sha, url }` or null. */
 export async function lastGreen({ ask, repository, workflowId, before, runId }) {
-  const text = await ask(['api', `repos/${repository}/actions/workflows/${workflowId}/runs?branch=main&status=success&per_page=30`, '--jq', '[.workflow_runs[] | {id, sha: .head_sha, url: .html_url, at: .created_at}]']);
-  const runs = JSON.parse(text).filter((run) => String(run.id) !== String(runId) && (before === undefined || before === '' || run.at < before));
+  const text = await ask(['api', `repos/${repository}/actions/workflows/${workflowId}/runs?branch=main&status=success&per_page=30`, '--jq', '[.workflow_runs[] | {id, sha: .head_sha, url: .html_url, at: .created_at, event, repo: .head_repository.full_name}]']);
+  // Only a push to main or the nightly run of this repository is a green baseline: a manual run (it may have asked for the pull request scope) did not run what main runs.
+  const runs = JSON.parse(text).filter((run) => String(run.id) !== String(runId) && MAIN_EVENTS.includes(run.event) && (run.repo === undefined || run.repo === repository) && (before === undefined || before === '' || run.at < before));
   return runs.length === 0 ? null : { sha: runs[0].sha, url: runs[0].url };
 }
 

@@ -77,9 +77,11 @@ function fakeGh({ issues = [], runs = [], commits = [], failCompare = false, fai
 }
 const env = (extra = {}) => ({ WORKFLOW_NAME: 'UI next seam check', WORKFLOW_ID: '42', CONCLUSION: 'failure', HEAD_SHA: 'bad11111bad11111', HEAD_BRANCH: 'main', HEAD_REPOSITORY: R, EVENT: 'push', RUN_ID: '900', RUN_URL: 'https://github.com/o/r/actions/runs/900', RUN_CREATED_AT: '2026-11-25T03:00:00Z', GITHUB_REPOSITORY: R, ...extra });
 const goodRuns = [
-  { id: 900, sha: 'bad11111bad11111', url: 'u900', at: '2026-11-25T03:00:00Z' },
-  { id: 800, sha: 'f00df00df00d', url: 'u800', at: '2026-11-24T03:00:00Z' },
-  { id: 700, sha: 'older', url: 'u700', at: '2026-11-23T03:00:00Z' },
+  { id: 900, sha: 'bad11111bad11111', url: 'u900', at: '2026-11-25T03:00:00Z', event: 'push', repo: R },
+  { id: 850, sha: 'manual', url: 'u850', at: '2026-11-24T12:00:00Z', event: 'workflow_dispatch', repo: R },
+  { id: 800, sha: 'f00df00df00d', url: 'u800', at: '2026-11-24T03:00:00Z', event: 'push', repo: R },
+  { id: 750, sha: 'fork', url: 'u750', at: '2026-11-23T12:00:00Z', event: 'push', repo: 'someone/fork' },
+  { id: 700, sha: 'older', url: 'u700', at: '2026-11-23T03:00:00Z', event: 'schedule', repo: R },
 ];
 
 test('a red workflow on main with no issue creates THE issue, with the label, naming the range since the last green run before this one', async () => {
@@ -150,7 +152,7 @@ test('a run that is not on main, or that ended skipped or neutral, changes nothi
   await assert.rejects(handle({ env: { CONCLUSION: 'failure' }, ask: fakeGh().ask }), /WORKFLOW_NAME, HEAD_SHA and GITHUB_REPOSITORY are needed/);
 });
 
-test('lastGreen skips this run and the runs created after it, and says null for none; rangeSubjects is empty for no range', async () => {
+test('lastGreen takes only a push or the nightly run of this repository before this one (not a manual run, not a fork\'s), and says null for none; rangeSubjects is empty for no range', async () => {
   const gh = fakeGh({ runs: goodRuns });
   assert.deepEqual(await lastGreen({ ask: gh.ask, repository: R, workflowId: '42', before: '2026-11-24T00:00:00Z', runId: '1' }), { sha: 'older', url: 'u700' });
   assert.deepEqual(await lastGreen({ ask: gh.ask, repository: R, workflowId: '42', before: '2026-11-25T03:00:00Z', runId: '900' }), { sha: 'f00df00df00d', url: 'u800' });
@@ -162,7 +164,7 @@ test('lastGreen skips this run and the runs created after it, and says null for 
 test('the workflow runs on the completion of the workflows that check main, only for main, with the permission to write the one issue and nothing else, one at a time', () => {
   const workflow = parse(readFileSync(path.join(repo, '.github/workflows/ci-main-red.yml'), 'utf8'));
   assert.deepEqual(workflow.on.workflow_run.types, ['completed']);
-  assert.deepEqual([...workflow.on.workflow_run.workflows].sort(), ['Main macOS universal', 'Render Benchmarks', 'UI next Pods cluster check', 'UI next kit probes', 'UI next seam check', 'Whole-App Profile']);
+  assert.deepEqual([...workflow.on.workflow_run.workflows].sort(), ['Main Windows build', 'Main macOS universal', 'Render Benchmarks', 'UI next Pods cluster check', 'UI next kit probes', 'UI next seam check', 'Whole-App Profile']);
   assert.deepEqual(workflow.permissions, { actions: 'read', contents: 'read', issues: 'write' });
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
   const job = workflow.jobs.issue;
@@ -175,7 +177,7 @@ test('the workflow runs on the completion of the workflows that check main, only
   assert.equal(step.run, 'node scripts/ci/main-red.mjs');
   for (const name of ['WORKFLOW_NAME', 'WORKFLOW_ID', 'CONCLUSION', 'HEAD_SHA', 'HEAD_BRANCH', 'HEAD_REPOSITORY', 'EVENT', 'RUN_ID', 'RUN_URL', 'RUN_CREATED_AT', 'GH_TOKEN']) assert.ok(step.env[name], name);
   // Every workflow it listens to has that name, and runs on main (a push or the nightly run).
-  for (const [file, name] of [['ui-next-kit-probes.yml', 'UI next kit probes'], ['ui-next-seam.yml', 'UI next seam check'], ['ui-next-pods.yml', 'UI next Pods cluster check'], ['render-bench.yml', 'Render Benchmarks'], ['app-profile.yml', 'Whole-App Profile'], ['main-macos-universal.yml', 'Main macOS universal']]) {
+  for (const [file, name] of [['ui-next-kit-probes.yml', 'UI next kit probes'], ['ui-next-seam.yml', 'UI next seam check'], ['ui-next-pods.yml', 'UI next Pods cluster check'], ['render-bench.yml', 'Render Benchmarks'], ['app-profile.yml', 'Whole-App Profile'], ['main-macos-universal.yml', 'Main macOS universal'], ['main-windows.yml', 'Main Windows build']]) {
     const listened = parse(readFileSync(path.join(repo, '.github/workflows', file), 'utf8'));
     assert.equal(listened.name, name, file);
     assert.ok('push' in listened.on || 'schedule' in listened.on, `${file} runs on main or at night`);
