@@ -858,6 +858,36 @@ describe('a reconnect that continues the output of a terminal that had ended', (
   });
 });
 
+describe('a continuation that reaches the end the host advertised', () => {
+  it('is complete when it ends in a gap: the end the host reported is believed', async () => {
+    const r = await running();
+    r.stream().output(0, 'abcd');
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 4, end: 10, ended: { reason: 'exited', exit_code: 5 } });
+    again.gap(4, 10);
+    again.drop();
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'ended', exit: { code: 5 } });
+  });
+
+  it('gives the whole retry budget back once it is reached: three more drops are connected again and the fourth fails', async () => {
+    const r = await running();
+    r.stream().output(0, 'abcd');
+    r.stream().drop();
+    const again = reconnect(r, RECONNECT_DELAYS_MS[0]);
+    again.ready({ start: 4, end: 6 });
+    again.output(4, 'ef');
+    for (const delay of RECONNECT_DELAYS_MS) {
+      r.stream().drop();
+      reconnect(r, delay);
+    }
+
+    expect(r.feed.getSnapshot().state).toBe('running');
+    r.stream().drop();
+    expect(r.feed.getSnapshot().state).toBe('failed');
+  });
+});
+
 describe('the first acknowledgement and the first running notification', () => {
   it('goes before anything a subscriber writes when it is told the feed is running', async () => {
     const r = await connecting();
@@ -901,6 +931,21 @@ describe('asking who holds a terminal for a take-back (`refresh({ fresh })`)', (
     gates[1]?.resolve({ id: 'term-1', attached: true });
     await Promise.all([poll, sharing, fresh]);
     expect(r.feed.getSnapshot().detached?.free).toBeUndefined();
+  });
+});
+
+describe('a take-back that waits for the listing in flight', () => {
+  it('asks no more when the feed was closed while it waited', async () => {
+    const gate = Promise.withResolvers<unknown>();
+    const r = await running({}, { channels: { listed: async () => gate.promise } });
+    r.stream().takenOver();
+    const poll = r.feed.refresh?.();
+    const fresh = r.feed.refresh?.({ fresh: true });
+    await turns();
+    await r.feed.close();
+    gate.resolve({ id: 'term-1', attached: false });
+    await Promise.all([poll, fresh]);
+    expect(r.channels.of('listed')).toHaveLength(1);
   });
 });
 

@@ -73,3 +73,7 @@ Not run: the native build (Wails WKWebView on macOS, where the stream is a held 
 ## Interim: closing a tab whose feed holds no live stream
 
 A feed ends its terminal (`CloseChannelTerminal`) on a tab close only when it holds a live stream after `ready`, or made the terminal and never opened one. A feed whose stream dropped, is being connected again, or has not said `ready` leaves the terminal alone: another tab may hold it now, and a close of the capability alone would end what that tab shows. The host's lease ends the terminal if nobody holds it. The holder-bound close (the host refusing a close from a stream that is not the holder) belongs to the host, in the v2 wire PR.
+
+### The cost of that rule, plainly
+
+A tab closed while its stream is dropped, being connected again, or failed (`CONNECTION_LOST`, `OUTPUT_GAP`) leaves the shell running: the feed sends no close, so the terminal lives until the host's lease ends it (5 minutes by default, 30 at most, then `closed_by: detach-timeout`). The earlier behaviour, closing the terminal whatever state the stream was in, is gone until the host binds a close to the holder (v2 wire).
