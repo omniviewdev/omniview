@@ -155,6 +155,8 @@ export function appShellList(): ShellList {
       void import('../../settings/runtime').then(({ runtimeClient }) => {
         if (!left) {
           stop = runtimeClient().onChanged(listener);
+          // The host does not replay a change made before this listener was registered: ask again now that it is.
+          listener();
         }
       });
       return () => {

@@ -46,7 +46,10 @@ run() {
   # `-t` takes a pattern: every test whose title holds none of the named parts.
   alternatives=$(echo "$named" | tr '|' '\n' | sed -E 's/[][.*^$()+?{|\\]/\\&/g' | paste -sd'|')
   out2=$(pnpm exec vitest run $FILES -t "^(?!.*($alternatives))" 2>&1)
-  if echo "$out2" | grep -qE '^ FAIL '; then half2="without them: STILL RED"; bad=1; else half2="without them: PASS (undetected)"; fi
+  code2=$?
+  if echo "$out2" | grep -qE '^ FAIL '; then half2="without them: STILL RED"; bad=1
+  elif [ "$code2" -ne 0 ]; then half2="without them: the run ended with status $code2 and no FAIL line (not a pass)"; bad=1
+  else half2="without them: PASS (undetected)"; fi
   restore; current=""
   echo "CONTROL $name: $half1 | $half2"
 }
@@ -106,5 +109,9 @@ run settings-chunk-loaded-after-the-leave-still-listened-to "$P/terminal/profile
 run header-drops-the-menu "$P/PanelHeader.tsx" \
   's/ {...(add.menu === undefined ? {} : { menu: add.menu })}//' \
   'draws the arrow of the choice'
+
+run no-ask-after-the-settings-listener-registers "$P/terminal/profiles.ts" \
+  '/ask again now that it is/,+1{/listener();/d}' \
+  'asks the host once more when it starts listening'
 
 exit $bad

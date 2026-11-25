@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const changedClient = vi.hoisted(() => ({ onChanged: vi.fn(), off: vi.fn() }));
+const changedClient = vi.hoisted(() => ({ onChanged: vi.fn(), off: vi.fn(), list: vi.fn(async () => Promise.resolve([])) }));
 vi.mock('../../settings/runtime', () => ({ runtimeClient: () => ({ onChanged: (listener: () => void) => {
   changedClient.onChanged(listener); return changedClient.off; 
 } }) }));
-vi.mock('@omniviewdev/runtime/api', () => ({ ExecClient: { ListTerminalShells: vi.fn(async () => Promise.resolve([])) } }));
+vi.mock('@omniviewdev/runtime/api', () => ({ ExecClient: { ListTerminalShells: changedClient.list } }));
 import { appShellList, createShellList, launchOf, shellMenu, shellsOf, type ShellChoice } from './profiles';
 
 // The shells of this machine as the page offers them: what the host lists (`ListTerminalShells`), kept for as long as something listens, asked again when the settings change (the host decides which shell is the default, so
@@ -204,5 +204,16 @@ describe('the list of the app', () => {
     expect(changedClient.onChanged).toHaveBeenCalledTimes(1);
     stop();
     expect(changedClient.off).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the host once more when it starts listening to the settings: a change made before that is not replayed', async () => {
+    changedClient.onChanged.mockClear();
+    changedClient.list.mockClear();
+    const stop = appShellList().subscribe(() => undefined);
+    await vi.dynamicImportSettled();
+    await turns();
+    expect(changedClient.onChanged).toHaveBeenCalledTimes(1);
+    expect(changedClient.list).toHaveBeenCalledTimes(2);
+    stop();
   });
 });
