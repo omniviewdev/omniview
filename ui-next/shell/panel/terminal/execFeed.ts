@@ -21,8 +21,8 @@ import { createHeldOutput } from './heldOutput';
 //     none, and the output continues; some, and the reader is given a fresh replay. A `gap` is the host saying the bytes in between were overwritten before they were sent: the reader is given a replay of nothing at its end,
 //     which resets the emulator. What the reader parsed of a stream that is over is not credited to the next one (`forgiven`);
 //   - the host's word that another stream took the terminal ends the feed for this page (`detached`), input off, and the stream stays open as a WATCHER: the host tells it `released` (the terminal is free to take back: `detached.free`,
-//     at once, nothing is asked) or `ended` (how the terminal ended) and closes it. A watcher the host closes with no word (it watched longest of five, or the connection dropped) asks the host once (`refresh`), which a take-back
-//     also does before it attaches. A host of another version (`unsupported`) and a terminal the host does not know end the feed in words; how a terminal ended (the typed `ended` frame) is read in ONE place and kept in the status;
+//     at once, nothing is asked) or `ended` (how the terminal ended) and closes it. A watcher the host closes with no word (it watched longest of five, or the connection dropped) asks the host (`refresh`: asked again on the
+//     schedule of a reconnect only while the host cannot be reached), which a take-back also does before it attaches. A host of another version (`unsupported`) and a terminal the host does not know end the feed in words; how a terminal ended (the typed `ended` frame) is read in ONE place and kept in the status;
 //   - `leave` (the page is going) sends the detach frame; `redraw` makes a full-screen program draw itself again. A close ends the terminal exactly once (a terminal that ended by itself is dismissed instead), and every
 //     listener and timer is released on every way out (docs/ui-next/optimisations.md HLT-28).
 
@@ -465,7 +465,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let outstanding = 0;
   /** How many of the bytes the reader acknowledges next are bytes of a stream that is over: the host's window of the new stream started at nothing, so they are not passed on. */
   let forgiven = 0;
-  let refreshing: Promise<void> | undefined;
+  let refreshing: Promise<boolean> | undefined;
 
   const closed = (): boolean => closing !== undefined;
 
@@ -947,7 +947,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     if (watching) {
       // The host closed the watcher with no word (it watched longest of five) or the connection dropped: nothing says when the terminal is free, so the host is asked, once.
       unlink(false);
-      void refresh();
+      learn(0);
       return;
     }
 
@@ -1028,16 +1028,16 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
    * `free` (the tab that took it has let it go while this page was not told), and one that a stream holds is not; a terminal the host lists as ended is not free either, since nobody can take it back. A terminal the
    * host has no entry for, an entry that does not say, and a call that fails change nothing (a failure is said once). Only for a lost terminal whose end is not known, and one call at a time: a second call shares the one that is out.
    */
-  const refresh = async (asking?: { readonly fresh?: boolean }): Promise<void> => {
+  const ask = async (asking?: { readonly fresh?: boolean }): Promise<boolean> => {
     if (closed() || status.detached === undefined || status.exit !== undefined) {
-      return;
+      return true;
     }
 
     // A take-back needs an answer that began after its press: it waits for the listing that is out, and asks anew. A poll shares the one that is out.
     if (asking?.fresh === true && refreshing !== undefined) {
       await refreshing;
       if (closed() || status.detached === undefined || status.exit !== undefined) {
-        return;
+        return true;
       }
     }
 
@@ -1049,7 +1049,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         });
         // What the page learned meanwhile stands: a feed that was closed, or whose terminal ended, has nothing to change.
         if (closed() || status.detached === undefined || status.exit !== undefined || typeof entry !== 'object' || entry === null) {
-          return;
+          return true;
         }
 
         const ended: unknown = Reflect.get(entry, 'ended');
@@ -1059,16 +1059,40 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         } else if (typeof attached === 'boolean') {
           setFree(!attached);
         }
+
+        return true;
       } catch (error) {
         if (!warnedRefresh) {
           warnedRefresh = true;
           warn('[terminal] the host could not say who holds the terminal this page lost', error);
         }
+
+        return false;
       } finally {
         refreshing = undefined;
       }
     })();
-    await refreshing;
+    return refreshing;
+  };
+
+  const refresh = async (asking?: { readonly fresh?: boolean }): Promise<void> => {
+    await ask(asking);
+  };
+
+  /**
+   * The host closed the watcher with no word, so nothing will say when the terminal is free: the host is asked. A question that could not be asked (the host was not reached) is asked again on the schedule of a reconnect
+   * (250 ms, one second, four seconds) and then given up; one that was answered is final.
+   */
+  const learn = (attempt: number): void => {
+    void ask().then((answered) => {
+      const delay = delays[attempt];
+      if (!answered && delay !== undefined && !closed() && status.detached?.free !== true) {
+        retry = setTimeout(() => {
+          retry = undefined;
+          learn(attempt + 1);
+        }, delay);
+      }
+    });
   };
 
   /** The page is going away, and its terminal is left for the page that comes back: the detach frame, once; nothing is sent or connected from now on, and a `close` after it does not end the terminal. */

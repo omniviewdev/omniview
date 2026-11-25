@@ -6,9 +6,11 @@ export const KEPT_ENDS: number;
 /** What the shell's `known` and `urls` commands print, a line each (the probe reads them from the fixture's `window.__known` and `window.__urls`). */
 export const KNOWN: readonly string[];
 export const URLS: readonly string[];
-export const FRAME: Readonly<{ attach: 1; input: 2; resize: 3; ack: 4; detach: 5; ready: 0x81; output: 0x82; gap: 0x83; ended: 0x84; takenOver: 0x85; notFound: 0x86 }>;
+export const FRAME: Readonly<{ attach: 1; input: 2; resize: 3; ack: 4; detach: 5; ready: 0x81; output: 0x82; gap: 0x83; ended: 0x84; takenOver: 0x85; notFound: 0x86; applied: 0x87; released: 0x88; unsupported: 0x89 }>;
+/** The one version of the stream the host speaks (`attach.v`). */
+export const VERSION: number;
 export const pageFrames: {
-  attach(cap: string, fromOffset?: number): Uint8Array;
+  attach(cap: string, fromOffset?: number, version?: number): Uint8Array;
   input(bytes: Uint8Array | string): Uint8Array;
   resize(cols: number, rows: number): Uint8Array;
   ack(n: number): Uint8Array;
@@ -21,6 +23,9 @@ export type HostFrame =
   | { kind: 'ended'; end: Record<string, any> }
   | { kind: 'taken-over' }
   | { kind: 'not-found' }
+  | { kind: 'applied'; n: number }
+  | { kind: 'released' }
+  | { kind: 'unsupported'; v: unknown }
   | { kind: 'unknown'; type: number };
 export function readFrame(frame: Uint8Array): HostFrame;
 export function toBase64(bytes: Uint8Array): string;
