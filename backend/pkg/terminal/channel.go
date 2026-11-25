@@ -135,7 +135,19 @@ type channelState struct {
 	waits, stallReleases, noHolderReleases, admitted, refused atomic.Uint64
 	// roomWaits counts the times an input of the stream that holds the terminal waited for room in the queue.
 	roomWaits atomic.Uint64
+	// inputAdmitted is the bytes of input the queue has taken in from this terminal's streams, counted under the session's mu in the
+	// step that admits them; inputApplied is the bytes the device took, counted when each write returns. The first is read in the step
+	// that gives the terminal to a stream (it is the number that stream's ready states), so it is never less than the second, and
+	// neither decreases.
+	inputAdmitted, inputApplied atomic.Uint64
+	// watchers are the streams that were displaced and wait to be told that the terminal is free or ended, oldest first, at most
+	// channelWatchers of them. Guarded by the session's mu.
+	watchers []*channelConn
 }
+
+// channelWatchers is how many displaced streams may watch one terminal: the stream that has watched longest is closed when it would
+// be one more.
+const channelWatchers = 4
 
 func newChannelState(channel bool, secret capability) *channelState {
 	if !channel {
@@ -145,7 +157,43 @@ func newChannelState(channel bool, secret capability) *channelState {
 		capability: secret, holder: nil, holderPtr: atomic.Pointer[channelConn]{}, ended: atomic.Pointer[End]{}, wake: make(chan struct{}, 1),
 		paused: false, stalled: false, waits: atomic.Uint64{}, stallReleases: atomic.Uint64{}, noHolderReleases: atomic.Uint64{},
 		admitted: atomic.Uint64{}, refused: atomic.Uint64{}, roomWaits: atomic.Uint64{},
+		inputAdmitted: atomic.Uint64{}, inputApplied: atomic.Uint64{}, watchers: nil,
 	}
+}
+
+// noteApplied is what a write of a stream of this terminal does when it returns: the bytes the device took are applied, and the
+// stream that holds the terminal is told. It is called by the queue's executor.
+func (c *channelState) noteApplied(n int) {
+	c.inputApplied.Add(uint64(n)) //nolint:gosec // n is a positive count of bytes.
+	if holder := c.holderPtr.Load(); holder != nil {
+		holder.signal()
+	}
+}
+
+// watchLocked makes a stream that was displaced a watcher, and closes the one that has watched longest when there are too many. The
+// caller holds the session's mu.
+func (c *channelState) watchLocked(w *channelConn) {
+	c.watchers = append(c.watchers, w)
+	if len(c.watchers) > channelWatchers {
+		oldest := c.watchers[0]
+		c.watchers = slices.Delete(c.watchers, 0, 1)
+		oldest.evicted.Store(true)
+		oldest.signal()
+	}
+}
+
+// unwatchLocked forgets a watcher whose stream ended. The caller holds the session's mu.
+func (c *channelState) unwatchLocked(w *channelConn) {
+	c.watchers = slices.DeleteFunc(c.watchers, func(other *channelConn) bool { return other == w })
+}
+
+// freeLocked tells every watcher that the terminal is free, once: they are not watchers any more. The caller holds the session's mu.
+func (c *channelState) freeLocked() {
+	for _, w := range c.watchers {
+		w.released.Store(true)
+		w.signal()
+	}
+	c.watchers = nil
 }
 
 // signalPump wakes the pump if it waits, without waiting itself.

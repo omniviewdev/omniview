@@ -48,7 +48,7 @@ func appliedIs(want ...uint64) func(pageState) bool {
 // A write that blocks in the terminal is not applied until it returns: the number is the bytes the device took, at the moment each
 // write returned, and `ready` of the first stream says nothing was applied yet.
 func TestAppliedCountsTheBytesWrittenWhenTheWriteReturnsAndNotBefore(t *testing.T) {
-	m, info, _, dev := wireTerminal(t, `sleep 600`)
+	m, info, s, dev := wireTerminal(t, `sleep 600`)
 	a := m.attach(t, info.Cap, nil)
 	guarded(t, "ready-input-applied", func() { assert.Zero(t, a.waitReady().InputApplied, "nothing was applied yet") })
 	a.waitReady()
@@ -56,7 +56,8 @@ func TestAppliedCountsTheBytesWrittenWhenTheWriteReturnsAndNotBefore(t *testing.
 	a.input("abc")
 	require.Equal(t, "w:abc", dev.waitEntered(t), "the write is inside the device")
 	guarded(t, "applied-after-the-write", func() {
-		assert.Empty(t, a.state().applied, "the write has not returned: nothing is applied")
+		assert.Zero(t, s.channel.inputApplied.Load(), "the write has not returned: the host has applied nothing")
+		assert.Empty(t, a.state().applied, "and the page was told nothing")
 	})
 	dev.letThrough()
 	guarded(t, "applied-after-the-write", func() {
@@ -176,7 +177,9 @@ func TestInputOfADisplacedStreamIsNeverCounted(t *testing.T) {
 	b := m.attach(t, info.Cap, nil)
 	b.waitReady()
 	a.input("zzz")
-	require.Eventually(t, func() bool { return s.channelStats().refused >= 1 }, settle, 1e6, "the host read what the displaced stream typed")
+	guarded(t, "refused-not-counted", func() {
+		require.Eventually(t, func() bool { return s.channelStats().refused >= 1 }, settle, 1e6, "the host read what the displaced stream typed")
+	})
 	b.input("ok")
 	guarded(t, "refused-not-counted", func() {
 		st := b.waitFor("applied 2", appliedIs(2))
@@ -232,7 +235,9 @@ func TestADisplacedStreamStaysAsAWatcherAndIsToldOnceWhenTheTerminalIsFree(t *te
 	a.input("x")
 	a.resize(100, 30)
 	a.ack(1)
-	require.Eventually(t, func() bool { return s.channelStats().refused >= 2 }, settle, 1e6, "its input and its resize are refused")
+	guarded(t, "displaced-cannot-type", func() {
+		require.Eventually(t, func() bool { return s.channelStats().refused >= 2 }, settle, 1e6, "its input and its resize are refused")
+	})
 	hold.release(t)
 	b.waitBytes(len("up\nlater\n"))
 	guarded(t, "watcher-gets-no-output", func() {
@@ -242,19 +247,18 @@ func TestADisplacedStreamStaysAsAWatcherAndIsToldOnceWhenTheTerminalIsFree(t *te
 	})
 
 	b.close()
-	st := a.waitFor("released", func(st pageState) bool { return st.released >= 1 })
-	a.waitServed()
-	st = a.waitClosed()
 	guarded(t, "released-once", func() {
+		a.waitFor("released", func(st pageState) bool { return st.released >= 1 })
+		st := a.waitClosed()
 		assert.Equal(t, 1, st.released, "released is sent once")
 		assert.Equal(t, wReleased, st.order[len(st.order)-1])
 		assert.Empty(t, st.ended, "the terminal did not end")
 		assert.Empty(t, st.faults)
+		waitHost(t, s, nil, "the terminal was never let go", func(cs channelStats) bool { return !cs.held })
+		detached, _, lease, _ := s.state()
+		assert.True(t, detached, "the terminal is detached")
+		assert.True(t, lease, "its lease runs")
 	})
-	waitHost(t, s, nil, "the terminal was never let go", func(cs channelStats) bool { return !cs.held })
-	detached, _, lease, _ := s.state()
-	assert.True(t, detached, "the terminal is detached")
-	assert.True(t, lease, "its lease runs")
 }
 
 // A terminal that ends while a stream watches it: the watcher is sent `ended`, not `released`, and the host closes it.
@@ -268,9 +272,7 @@ func TestAWatcherIsToldHowTheTerminalEndedAndNeverThatItIsFree(t *testing.T) {
 	b.waitReady()
 	a.waitFor("taken-over", func(st pageState) bool { return st.takenOver == 1 })
 	hold.release(t)
-	st := a.waitFor("ended", func(st pageState) bool { return len(st.ended) >= 1 })
-	a.waitServed()
-	st = a.waitClosed()
+	st := a.waitClosed()
 	guarded(t, "ended-not-released", func() {
 		assert.Len(t, st.ended, 1, "the watcher is told how the terminal ended, once")
 		assert.Zero(t, st.released, "and never that it is free")
@@ -278,7 +280,7 @@ func TestAWatcherIsToldHowTheTerminalEndedAndNeverThatItIsFree(t *testing.T) {
 		assert.Equal(t, wEnded, st.order[len(st.order)-1])
 		assert.Empty(t, st.faults)
 	})
-	b.waitFor("ended", func(st pageState) bool { return len(st.ended) >= 1 })
+	guarded(t, "ended-not-released", func() { b.waitFor("ended", func(st pageState) bool { return len(st.ended) >= 1 }) })
 }
 
 // THE HOLDER ENDING AGAINST THE TERMINAL ENDING, in both orders. When the end of the terminal is decided first, the holder's stream
@@ -297,15 +299,15 @@ func TestTheHolderEndingAndTheTerminalEndingAtOnceAreToldInTheOrderTheyHappened(
 		b.waitServed()
 		s.startClose()
 		m.awaitGone([]*session{s})
-		st := a.waitFor("ended", func(st pageState) bool { return len(st.ended) >= 1 })
-		a.waitClosed()
+		st := a.waitClosed()
 		guarded(t, "released-not-on-terminal-end", func() {
 			assert.Zero(t, st.released, "the terminal was ending when the holder let go: it is never free")
+			require.Len(t, st.ended, 1)
 			assert.Equal(t, EndClosed, st.ended[0].Reason)
 		})
 	})
 	t.Run("the holder ends first", func(t *testing.T) {
-		m, info, s, _ := wireTerminal(t, `sleep 600`)
+		m, info, _, _ := wireTerminal(t, `sleep 600`)
 		a := m.attach(t, info.Cap, nil)
 		a.waitReady()
 		b := m.attach(t, info.Cap, nil)
@@ -313,10 +315,8 @@ func TestTheHolderEndingAndTheTerminalEndingAtOnceAreToldInTheOrderTheyHappened(
 		a.waitFor("taken-over", func(st pageState) bool { return st.takenOver == 1 })
 		b.close()
 		b.waitServed()
-		a.waitFor("released", func(st pageState) bool { return st.released >= 1 })
 		st := a.waitClosed()
 		require.NoError(t, m.CloseChannel(info.Cap))
-		_ = s
 		guarded(t, "released-before-the-end", func() {
 			assert.Equal(t, 1, st.released)
 			assert.Empty(t, st.ended, "the terminal ended after the watcher was told it was free, and the stream was closed")
@@ -340,12 +340,13 @@ func TestAReleaseAndANewAttachAtOnceTellEveryWatcherOnceAndNeverEarly(t *testing
 		waitHost(t, s, nil, "the holder's stream never ended", func(cs channelStats) bool { return !cs.held })
 		c := m.attach(t, info.Cap, nil)
 		c.waitReady()
-		st := a.waitFor("released", func(st pageState) bool { return st.released >= 1 })
-		a.waitClosed()
+		st := a.waitClosed()
 		guarded(t, "released-once", func() { assert.Equal(t, 1, st.released) })
 		c.close()
 		c.waitServed()
-		assert.Equal(t, 1, a.state().released, "the new holder ending does not tell a stream that was told already")
+		guarded(t, "released-once", func() {
+			assert.Equal(t, 1, a.state().released, "the new holder ending does not tell a stream that was told already")
+		})
 	})
 	t.Run("the attach is first", func(t *testing.T) {
 		m, info, s, _ := wireTerminal(t, `sleep 600`)
@@ -364,8 +365,7 @@ func TestAReleaseAndANewAttachAtOnceTellEveryWatcherOnceAndNeverEarly(t *testing
 			assert.False(t, a.isClosed())
 		})
 		c.close()
-		st := a.waitFor("released", func(st pageState) bool { return st.released >= 1 })
-		a.waitClosed()
+		st := a.waitClosed()
 		guarded(t, "released-once", func() { assert.Equal(t, 1, st.released) })
 	})
 }
@@ -384,8 +384,8 @@ func TestAtMostFourStreamsWatchATerminalAndTheOldestIsClosedWithoutAFrame(t *tes
 		}
 	}
 	// Pages 0 to 4 were displaced: five watchers, and the bound is four.
-	oldest := pages[0].waitClosed()
 	guarded(t, "watcher-bound", func() {
+		oldest := pages[0].waitClosed()
 		assert.Zero(t, oldest.released, "the evicted watcher is sent no frame after taken-over")
 		assert.Equal(t, wTakenOver, oldest.order[len(oldest.order)-1])
 		for i, p := range pages[1:5] {
@@ -394,9 +394,8 @@ func TestAtMostFourStreamsWatchATerminalAndTheOldestIsClosedWithoutAFrame(t *tes
 	})
 	pages[5].close()
 	for i, p := range pages[1:5] {
-		st := p.waitFor("released", func(st pageState) bool { return st.released >= 1 })
-		p.waitClosed()
-		assert.Equal(t, 1, st.released, "watcher %d", i+1)
+		st := p.waitClosed()
+		guarded(t, "released-once", func() { assert.Equal(t, 1, st.released, "watcher %d", i+1) })
 	}
 }
 
@@ -425,8 +424,10 @@ func TestAWatcherThatLeavesChangesNothingForTheHolderAndTheLease(t *testing.T) {
 		assert.False(t, lease)
 		assert.Zero(t, a.state().released+a2.state().released, "a watcher that left is sent nothing")
 	})
-	b.input("still")
-	b.waitFor("applied 5", appliedIs(5))
+	guarded(t, "watcher-is-not-holder", func() {
+		b.input("still")
+		b.waitFor("applied 5", appliedIs(5))
+	})
 }
 
 // THE END STATE AFTER A STORM. Streams attach, type, die, detach and break the protocol at random against one terminal. Every page
@@ -475,22 +476,36 @@ func TestAStormOfStreamsKeepsTheProtocolCountsEveryByteOnceAndLeavesNothing(t *t
 		}()
 	}
 	wg.Wait()
+	// Every attach has been decided before the last one: a stream whose attach the host has not read yet would take the terminal from it.
+	for _, p := range pages {
+		p.waitFor("the attach decided", func(st pageState) bool { return st.ready != nil || st.closed })
+	}
 
 	last := m.attach(t, info.Cap, nil)
 	ready := last.waitReady()
-	require.Eventually(t, func() bool { return dev.total.Load() == ready.InputApplied }, settle, 1e6,
-		"the device took %d bytes and ready of the last stream says %d", dev.total.Load(), ready.InputApplied)
+	guarded(t, "storm-applied", func() {
+		require.Eventually(t, func() bool { return dev.total.Load() == ready.InputApplied }, settle, 1e6,
+			"the device took %d bytes and ready of the last stream says %d", dev.total.Load(), ready.InputApplied)
+	})
 	require.NoError(t, m.CloseChannel(info.Cap))
 	last.waitClosed()
 
+	guarded(t, "storm-end-state", func() {
+		for _, p := range pages {
+			p.waitClosed()
+			p.waitServed()
+		}
+	})
 	for i, p := range pages {
-		p.waitClosed()
-		p.waitServed()
 		st := p.state()
 		assert.Empty(t, st.faults, "page %d", i)
-		assert.LessOrEqual(t, st.released, 1, "page %d: released at most once", i)
+		guarded(t, "released-once", func() {
+			assert.LessOrEqual(t, st.released, 1, "page %d: released at most once", i)
+		})
 		assert.False(t, st.released > 0 && len(st.ended) > 0, "page %d: released and ended are not both said", i)
-		assert.LessOrEqual(t, len(st.applied), sent[p], "page %d: no more applied frames than inputs", i)
+		guarded(t, "storm-applied", func() {
+			assert.LessOrEqual(t, len(st.applied), sent[p], "page %d: no more applied frames than inputs", i)
+		})
 		if st.released > 0 {
 			assert.Equal(t, wReleased, st.order[len(st.order)-1], "page %d: released is the last thing it is told", i)
 		}
@@ -501,8 +516,10 @@ func TestAStormOfStreamsKeepsTheProtocolCountsEveryByteOnceAndLeavesNothing(t *t
 	}
 	assert.Empty(t, m.running(), "no session")
 	m.Shutdown()
-	require.Eventually(t, func() bool { return runtime.NumGoroutine() <= goroutines+4 }, settle, 1e6, "goroutines: %d before, %d now\n%s", goroutines, runtime.NumGoroutine(), allStacks())
-	require.Eventually(t, func() bool { return openDescriptors(t) <= descriptors+2 }, settle, 1e6, "descriptors: %d before, %d now", descriptors, openDescriptors(t))
+	guarded(t, "storm-end-state", func() {
+		require.Eventually(t, func() bool { return runtime.NumGoroutine() <= goroutines+4 }, settle, 1e6, "goroutines: %d before, %d now\n%s", goroutines, runtime.NumGoroutine(), allStacks())
+		require.Eventually(t, func() bool { return openDescriptors(t) <= descriptors+2 }, settle, 1e6, "descriptors: %d before, %d now", descriptors, openDescriptors(t))
+	})
 }
 
 // countingDevice takes every write and counts its bytes.

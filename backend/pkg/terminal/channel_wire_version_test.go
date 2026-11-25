@@ -38,7 +38,7 @@ func TestAnAttachOfVersionOneIsRefusedWithTheUnsupportedFrameWhateverTheCapabili
 	for name, capability := range map[string]string{"a capability that opens a terminal": info.Cap, "one that opens nothing": "nope"} {
 		f, frame := firstFrame(t, m, rawAttach(1, capability))
 		assert.Equal(t, want, frame, name+": the frame that says which version the host speaks")
-		assert.Eventually(t, f.isClosed, settle, 1e6, name+": and the host closes the stream")
+		guarded(t, "unsupported-closes", func() { assert.Eventually(t, f.isClosed, settle, 1e6, name+": and the host closes the stream") })
 	}
 	guarded(t, "version-refusal-opens-nothing", func() {
 		require.Eventually(t, func() bool { return !m.chanOf(t, info).channelStats().held }, settle, 1e6)

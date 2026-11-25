@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -110,18 +111,21 @@ type readyBody struct {
 	Session    Session       `json:"session"`
 	LeaseMs    int           `json:"lease_ms"`
 	Ended      *End          `json:"ended,omitempty"`
+	// InputApplied is the bytes of input the host has applied from this capability, across streams, plus those it has queued ahead of
+	// this stream's input (section 5 of the protocol): the page resends what it sent after it. Zero for the kept end of a terminal.
+	InputApplied uint64 `json:"input_applied"`
 }
 
 // readyFrame is the host's answer to a request that opens a terminal. lost is how much of what the page asked for is gone: the
 // distance from its offset up to the first byte the host still has, nothing for a page that gave no offset.
-func readyFrame(info Session, view *replayView, from *uint64, leaseMs int, cwd Directory, busy Foreground, ended *End) ([]byte, error) {
+func readyFrame(info Session, view *replayView, from *uint64, leaseMs int, cwd Directory, busy Foreground, ended *End, inputApplied uint64) ([]byte, error) {
 	var lost uint64
 	if from != nil && *from < view.start {
 		lost = view.start - *from
 	}
 	raw, err := json.Marshal(readyBody{
 		V: attachVersion, Start: view.start, End: view.end, Lost: lost, Size: view.size, StartSize: view.startSize, Modes: view.now,
-		StartModes: view.startModes(), Cwd: cwd, Busy: busy, Session: info, LeaseMs: leaseMs, Ended: ended,
+		StartModes: view.startModes(), Cwd: cwd, Busy: busy, Session: info, LeaseMs: leaseMs, Ended: ended, InputApplied: inputApplied,
 	})
 	if err != nil {
 		return nil, err
@@ -150,6 +154,11 @@ func gapFrame(from, to uint64) []byte {
 	frame = append(frame, frameGap)
 	frame = binary.BigEndian.AppendUint64(frame, from)
 	return binary.BigEndian.AppendUint64(frame, to)
+}
+
+// appliedFrame says how many bytes of input the host has applied from the capability.
+func appliedFrame(n uint64) []byte {
+	return binary.BigEndian.AppendUint64([]byte{frameApplied}, n)
 }
 
 func endedFrame(end End) ([]byte, error) {
@@ -186,6 +195,12 @@ type channelConn struct {
 	replayEnd uint64
 	// displaced says another stream took the terminal; stopped says this one's frames are no longer read: the sender ends.
 	displaced, stopped atomic.Bool
+	// released says the terminal was let go by the stream that held it while this stream watched it, and evicted that this watcher
+	// was one too many: both are set once, under the session's mu, and wake the sender.
+	released, evicted atomic.Bool
+	// reported is the input count this stream was last told: set by claim (what its ready states), and from then on only by the
+	// sender, which sends an applied frame when the host's count passes it.
+	reported uint64
 	// gone is closed when another stream takes the terminal: an input of this stream that waits for room in the queue looks again.
 	gone     chan struct{}
 	goneOnce sync.Once
@@ -199,6 +214,7 @@ func newChannelConn(ch Channel, clk clock) *channelConn {
 	return &channelConn{
 		ch: ch, clock: clk, sent: atomic.Uint64{}, begun: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
 		ackSeen: atomic.Bool{}, began: clk.Now(), progressAt: atomic.Int64{}, replayEnd: 0, displaced: atomic.Bool{}, stopped: atomic.Bool{},
+		released: atomic.Bool{}, evicted: atomic.Bool{}, reported: 0,
 		gone: make(chan struct{}), goneOnce: sync.Once{}, wake: make(chan struct{}, 1), finished: make(chan struct{}),
 	}
 }
@@ -303,7 +319,7 @@ func (m *Manager) serveLive(ch Channel, s *session, from *uint64) {
 		return // an offset that is not this terminal's: the stream closes, with no answer
 	}
 	cwd, busy := s.whereAndWhat()
-	ready, err := readyFrame(s.info, &view, from, int(s.lease/time.Millisecond), cwd, busy, nil)
+	ready, err := readyFrame(s.info, &view, from, int(s.lease/time.Millisecond), cwd, busy, nil, c.reported)
 	if err != nil || ch.Send(ready) != nil {
 		m.release(s, c)
 		return
@@ -335,7 +351,7 @@ func (m *Manager) serveEnded(ch Channel, kept *tombstone, from *uint64) {
 	if err != nil {
 		return
 	}
-	ready, err := readyFrame(kept.info, &view, from, 0, Directory{Path: "", Reason: ReasonEnded}, UnknownForeground(ReasonEnded), &kept.end)
+	ready, err := readyFrame(kept.info, &view, from, 0, Directory{Path: "", Reason: ReasonEnded}, UnknownForeground(ReasonEnded), &kept.end, 0)
 	if err != nil || ch.Send(ready) != nil {
 		return
 	}
@@ -376,7 +392,11 @@ func (s *session) claim(c *channelConn, from *uint64) (replayView, error) {
 	}
 	if old := s.channel.holder; old != nil {
 		old.displace()
+		s.channel.watchLocked(old)
 	}
+	// The count this stream's ready states: what the device took and what the queue holds ahead of this stream's input, read in the
+	// step that decides the holder, so that no input is admitted between this number and the stream's first one.
+	c.reported = s.channel.inputAdmitted.Load()
 	s.channel.holder = c
 	s.channel.holderPtr.Store(c)
 	s.endLeaseLocked()
@@ -390,11 +410,15 @@ func (s *session) claim(c *channelConn, from *uint64) (replayView, error) {
 // its lease starts, unless its end is decided. A stream that was displaced has nothing to let go.
 func (m *Manager) release(s *session, c *channelConn) {
 	s.mu.Lock()
+	s.channel.unwatchLocked(c)
 	if s.channel.holder == c {
 		s.channel.holder = nil
 		s.channel.holderPtr.Store(nil)
 		if !s.fate.set && !s.ending.Load() {
 			s.armLeaseLocked(s.lease)
+			// The terminal runs and nobody holds it: the fact is stated to every watcher in this step, so that a stream that attaches
+			// after it is nobody's business to them. A terminal whose end is decided is never free: its watchers are told the end.
+			s.channel.freeLocked()
 		}
 	}
 	s.mu.Unlock()
@@ -408,6 +432,12 @@ func (m *Manager) channelEnded(s *session, end End) {
 	s.channel.ended.Store(&end)
 	if holder := s.channel.holderPtr.Load(); holder != nil {
 		holder.signal()
+	}
+	s.mu.Lock()
+	watchers := slices.Clone(s.channel.watchers)
+	s.mu.Unlock()
+	for _, w := range watchers {
+		w.signal()
 	}
 }
 
@@ -435,7 +465,9 @@ func (m *Manager) takeFrame(s *session, c *channelConn, frame []byte) bool {
 			return false
 		}
 		if len(body) > 0 {
-			m.applyFrom(s, c, writeOp(body))
+			o := writeOp(body)
+			o.applied = s.channel.noteApplied
+			m.applyFrom(s, c, o)
 		}
 		return true
 	case frameResize:
@@ -500,6 +532,9 @@ func (s *session) admitFrom(c *channelConn, o *op) bool {
 			return false
 		}
 		room, err := s.queue.admitOrWait(o)
+		if err == nil && o.kind == opWrite {
+			s.channel.inputAdmitted.Add(uint64(len(o.data)))
+		}
 		s.mu.Unlock()
 		if err == nil {
 			s.channel.admitted.Add(1)
@@ -631,7 +666,7 @@ func (s *session) advance(c *channelConn, step senderStep) {
 // frame it may be parked in, and closed.
 func (m *Manager) runSender(s *session, c *channelConn) {
 	defer close(c.finished)
-	sd := &sender{m: m, s: s, c: c, idle: false}
+	sd := &sender{m: m, s: s, c: c, idle: false, told: false, reported: c.reported}
 	for {
 		if !sd.step() {
 			return
@@ -646,6 +681,9 @@ type sender struct {
 	c *channelConn
 	// idle is set when the last thing the sender did was to wait for output.
 	idle bool
+	// told is set once the stream, displaced, was sent taken-over; reported is the input count the page was last told.
+	told     bool
+	reported uint64
 }
 
 // step does one thing for the stream's sender and says whether the sender goes on.
@@ -655,9 +693,12 @@ func (sd *sender) step() bool {
 	case c.stopped.Load():
 		return false
 	case c.displaced.Load():
-		_ = c.ch.Send([]byte{frameTakenOver})
-		_ = c.ch.Close()
-		return false
+		return sd.watch()
+	}
+	if n := sd.s.channel.inputApplied.Load(); n > sd.reported {
+		// At most one frame for the writes that returned since the last: a page that takes frames slowly is told once, with the total.
+		sd.reported = n
+		return c.ch.Send(appliedFrame(n)) == nil
 	}
 	next := sd.s.nextStep(c, sd.m.channel)
 	switch next.kind {
@@ -682,6 +723,33 @@ func (sd *sender) step() bool {
 		_ = c.ch.Close()
 		return false
 	}
+	return false
+}
+
+// watch is what the sender of a displaced stream does: it tells the page, after the frame it may be parked in, that it lost the terminal,
+// and then waits as a watcher: it sends no output and nothing of input (a displaced stream is told no applied), and it ends with the
+// one frame that says what became of the terminal: released, when the stream that held it ended while it ran, or the end of the terminal.
+// A watcher that was one too many is closed with no frame. It says whether the sender goes on.
+func (sd *sender) watch() bool {
+	c := sd.c
+	if !sd.told {
+		sd.told = true
+		return c.ch.Send([]byte{frameTakenOver}) == nil
+	}
+	switch {
+	case c.evicted.Load():
+	case c.released.Load():
+		_ = c.ch.Send([]byte{frameReleased})
+	default:
+		end := sd.s.channel.ended.Load()
+		if end == nil {
+			return c.wait()
+		}
+		if frame, err := endedFrame(*end); err == nil {
+			_ = c.ch.Send(frame)
+		}
+	}
+	_ = c.ch.Close()
 	return false
 }
 

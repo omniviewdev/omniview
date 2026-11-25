@@ -50,8 +50,7 @@ func TestASecondStreamWithTheCapabilityTakesTheTerminalAndTheFirstIsToldAndCanno
 		assert.EqualValues(t, 1, s.channelStats().refused)
 	})
 	fa.release()
-	a.waitServed()
-	st := a.waitClosed()
+	st := a.waitFor("taken-over", func(st pageState) bool { return st.takenOver >= 1 })
 	guarded(t, "taken-over", func() {
 		assert.Equal(t, 1, st.takenOver, "the stream that lost the terminal is told, once")
 		assert.Equal(t, wTakenOver, st.order[len(st.order)-1], "and it is the last thing it is told")
@@ -214,7 +213,7 @@ func contains(log []string, entry string) bool {
 }
 
 // Of many streams that show the capability at the same time exactly one holds the terminal at the end: the others were told
-// they lost it and are closed, and only the holder's input reaches the shell.
+// they lost it and are watchers (at most four stay open, the others are closed), and only the holder's input reaches the shell.
 func TestOneWinnerOfManyStreamsThatAttachAtOnce(t *testing.T) {
 	const claimants = 8
 	m, _ := newChannelManager(t, smallChannel)
@@ -239,31 +238,34 @@ func TestOneWinnerOfManyStreamsThatAttachAtOnce(t *testing.T) {
 		}
 		close(start)
 		wg.Wait()
-		closed := func() int {
+		told := func() int {
 			n := 0
 			for _, p := range pages {
-				if p.isClosed() {
+				if p.state().takenOver == 1 {
 					n++
 				}
 			}
 			return n
 		}
-		require.Eventually(t, func() bool { return closed() == claimants-1 }, settle, time.Millisecond, "round %d: every stream but one lost the terminal", round)
+		require.Eventually(t, func() bool { return told() == claimants-1 }, settle, time.Millisecond, "round %d: every stream but one lost the terminal and was told", round)
 
 		guarded(t, "one-winner", func() {
-			holders := 0
+			holders, closed := 0, 0
 			for i, p := range pages {
 				st := p.waitFor("an answer", func(s pageState) bool { return s.ready != nil || s.notFound > 0 })
-				if !p.isClosed() {
+				if st.takenOver == 0 {
 					holders++
-					assert.Zero(t, st.takenOver, "round %d: the holder %d was not told it lost the terminal", round, i)
+					assert.False(t, p.isClosed(), "round %d: the holder %d holds the terminal", round, i)
 					p.input(fmt.Sprintf("holder-%d\n", i))
 					continue
 				}
-				p.waitClosed()
-				assert.Equal(t, 1, p.state().takenOver, "round %d: stream %d that lost the terminal was told, once", round, i)
+				if p.isClosed() {
+					closed++
+				}
+				assert.Equal(t, 1, st.takenOver, "round %d: stream %d that lost the terminal was told, once", round, i)
 			}
 			assert.Equal(t, 1, holders, "round %d: one winner", round)
+			assert.Equal(t, claimants-1-channelWatchers, closed, "round %d: the watchers are bounded: the oldest are closed", round)
 			assert.True(t, s.channelStats().held)
 		})
 		require.Eventually(t, func() bool { return len(dev.log()) == 1 }, settle, time.Millisecond, "round %d: the holder's input", round)
