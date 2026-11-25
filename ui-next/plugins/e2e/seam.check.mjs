@@ -9088,6 +9088,8 @@ async function checkTerminalReattach(page, base, engine) {
   assert.equal(panelClosedBefore.open, false, `${engine}: before the reload the panel is closed (${JSON.stringify(panelClosedBefore)})`);
   const restoredClosed = await reloadToTerminals([first, second], 'a reload with the panel closed', false);
   const panelReopened = await panelStateOf(page);
+  // The press that opened the panel again is saved a quiet moment after it (the window's state is written debounced): the next reload is made only once the host holds the panel open, or it would find the panel as it was before the press.
+  await waitUntil('the host to hold the panel open again', async () => (await savedPanel())?.open === true, 30_000);
   assert.equal(panelReopened.session, second, `${engine}: the panel a person opened again has the active session it was left with (${JSON.stringify(panelReopened)})`);
   note('the panel as it was left', `open, on the ${panelLeft.tool} tool with the second terminal selected and ${String(panelLeft.height)} px high (the host held ${String(heightHeld)}), it came back the same ${String(restoredOpen.panel.after)} ms after the reload began with nothing pressed (${String(panelRestored.height)} px); closed, it came back closed after ${String(restoredClosed.panel.after)} ms (watched for 1.6 s), and a press opened it on the same session`);
   await page.locator('[data-shell-part="sessionTab"]').nth(1).locator('[data-shell-part="sessionClose"]').click();
