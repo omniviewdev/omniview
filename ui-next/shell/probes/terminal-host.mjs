@@ -260,6 +260,8 @@ export class Ring {
     this.chunks = [];
     this.end = 0;
     this.held = 0;
+    /** How many times a sequence that outgrew the budget was abandoned. */
+    this.abandoned = 0;
     this.limit = limit;
     this.scanner = new Scanner();
     this.sizes = [{ offset: 0, cols, rows }];
@@ -275,6 +277,14 @@ export class Ring {
 
   record(bytes) {
     let chunk = this.chunks.at(-1);
+    // A sequence that is still open when the chunk has outgrown the whole budget is abandoned: the scanner goes back to the ground state (as a terminal gives up an unterminated string of that length), so that the chunk can close at a
+    // boundary and the ring can drop it. What the ring holds is then bounded whatever the shell writes, and a replay never starts inside a sequence.
+    if (chunk !== undefined && chunk.length >= this.limit && !this.scanner.boundary) {
+      this.scanner.state = 'ground';
+      this.scanner.utf8 = 0;
+      this.abandoned += 1;
+    }
+
     if (chunk === undefined || (chunk.length >= CHUNK && this.scanner.boundary)) {
       chunk = { start: this.end, parts: [], length: 0, modes: this.scanner.clone(), flat: undefined };
       this.chunks.push(chunk);
@@ -446,6 +456,8 @@ export function createHost(options = {}) {
       if (have + first.length <= max) {
         parts.push(first);
         have += first.length;
+        // Consumed: the entry is let go now, and not when the queue is compacted.
+        pty.queue[pty.head] = undefined;
         pty.head += 1;
       } else {
         parts.push(first.subarray(0, max - have));
@@ -626,8 +638,8 @@ export function createHost(options = {}) {
         out(pty, 'hello from the synthetic shell\r\n');
         break;
       case 'size':
-        log.sizeReports.push({ rows: pty.rows, cols: pty.cols });
-        out(pty, `${String(pty.rows)} ${String(pty.cols)}\r\n`);
+        log.sizeReports.push({ rows: pty.rows, cols: pty.ptyCols });
+        out(pty, `${String(pty.rows)} ${String(pty.ptyCols)}\r\n`);
         break;
       case 'colors': {
         const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
@@ -790,6 +802,8 @@ export function createHost(options = {}) {
   /** A terminal the host closed leaves nothing: its capability opens nothing. The stream that holds it, if any, is sent what it was owed and the end, and closed. */
   function closeTerminal(pty, by) {
     if (pty.gone) return;
+    // The close decides how the terminal ends: what a shell that was ending by itself still owed is flushed, and the natural end is not told.
+    pty.closing = true;
     stopJob(pty);
     clearTimeout(pty.lease);
     while (queued(pty) > 0) pty.ring.record(take(pty, READ_MAX));
@@ -850,7 +864,7 @@ export function createHost(options = {}) {
     }
 
     // The shell ended by itself and the stream that holds it has been handed every byte: the end is told.
-    if (pty.finishing !== undefined && !pty.gone && queued(pty) === 0 && conn.cursor >= pty.ring.end) {
+    if (pty.finishing !== undefined && !pty.closing && !pty.gone && queued(pty) === 0 && conn.cursor >= pty.ring.end) {
       conclude(pty);
       return;
     }
@@ -1050,7 +1064,7 @@ export function createHost(options = {}) {
           typed(pty, text);
         };
 
-        applyFrame(entry, apply);
+        applyFrame(entry, apply, () => pty.holder === conn && !conn.displaced);
         return undefined;
       }
 
@@ -1074,9 +1088,10 @@ export function createHost(options = {}) {
           const changed = pty.rows !== rows || pty.cols !== cols;
           pty.rows = rows;
           pty.cols = cols;
+          pty.ptyCols = faults.sizeOff ? cols + 1 : cols;
           pty.ring.resize(cols, rows);
           if (changed && pty.program !== undefined) frame(pty);
-        });
+        }, () => pty.holder === conn && !conn.displaced);
         return undefined;
       }
 
@@ -1116,9 +1131,17 @@ export function createHost(options = {}) {
     }
   }
 
-  /** Applies what a frame does to the shell at once, in the order the frames came, and records it. `hold` (a probe's `net.hold`) makes the host slow to apply the frames: the ones behind it wait, in order. */
-  function applyFrame(entry, apply) {
+  /**
+   * Applies what a frame does to the shell at once, in the order the frames came, and records it. `lag` (a probe's `slow`) makes the host slow to apply the frames: the ones behind it wait, in order. `holds` says whether the stream
+   * that sent the frame still holds the terminal when the frame is applied: a frame that waited and lost its right meanwhile (another stream took the terminal) is refused, as the real host refuses it.
+   */
+  function applyFrame(entry, apply, holds) {
     const done = () => {
+      if (!holds()) {
+        entry.outcome = 'refused';
+        return;
+      }
+
       const result = apply();
       entry.appliedAt = performance.now();
       entry.application = (order += 1);
@@ -1132,15 +1155,21 @@ export function createHost(options = {}) {
 
     if (lag.next > 0) {
       lag.next -= 1;
-      lag.queue = [done];
+      // Each hold is its own: its release drains its own queue once, and cancels its own timer.
+      const queue = [done];
+      let timer;
       const release_ = () => {
-        const waiting = lag.queue ?? [];
+        clearTimeout(timer);
+        if (lag.queue !== queue) return;
         lag.queue = undefined;
-        for (const task of waiting) task();
+        lag.release = undefined;
+        for (const task of queue) task();
       };
 
+      lag.queue = queue;
       lag.release = release_;
-      lag.timer = lag.ms === Infinity ? undefined : setTimeout(release_, lag.ms);
+      timer = lag.ms === Infinity ? undefined : setTimeout(release_, lag.ms);
+      lag.timer = timer;
       return;
     }
 
@@ -1227,6 +1256,7 @@ export function createHost(options = {}) {
     if (!(cols >= 1 && cols <= 1000 && rows >= 1 && rows <= 1000)) throw invalid('cols', 'a size is 1 to 1,000 cells');
     serial += 1;
     const cap = newCapability();
+    // `faults.sizeOff`: the pty is one column wider than it was asked to be, and says nothing of it: the host's own records (the session, the ready) keep the size that was asked, so that only what the shell reports is wrong.
     const wide = faults.sizeOff ? cols + 1 : cols;
     const pty = {
       id: options_.id,
@@ -1237,9 +1267,10 @@ export function createHost(options = {}) {
       leaseMs: lease === 0 ? defaultLease : lease,
       lease: undefined,
       leaseExpires: 0,
-      cols: wide,
+      cols,
+      ptyCols: wide,
       rows,
-      ring: new Ring(wide, rows, ringBytes),
+      ring: new Ring(cols, rows, ringBytes),
       queue: [],
       head: 0,
       waiting: 0,

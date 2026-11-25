@@ -25,7 +25,7 @@ const make = async (host, id = 't', launch = { channel: true, cols: 80, rows: 24
  * of the host, and the test says so), acknowledges what it took when `ack` is on (the first acknowledgement, of nothing, turns the host's window on), and says when the stream is closed.
  */
 function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } = {}) {
-  const page = { frames: [], closed: false, ready: undefined, applied: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, notFound: false, waiters: [], acked: 0, live: 0 };
+  const page = { frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, notFound: false, waiters: [], acked: 0, live: 0 };
   const wake = () => {
     for (const waiter of page.waiters.splice(0)) waiter();
   };
@@ -33,6 +33,7 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } 
   page.stream = host.openStream(
     (frame) => {
       const read = readFrame(frame);
+      page.raw.push(frame);
       page.frames.push(read);
       if (read.kind === 'ready') {
         page.ready = read.ready;
@@ -83,9 +84,13 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } 
 
 const numbersOf = (buffer) => [...buffer.toString('latin1').matchAll(/(\d{7}) x/g)].map((found) => Number(found[1]));
 
-/** Waits for what the host does by itself (a lease, a flood) by its effect: `done` is looked at again after every macrotask. */
-const until = async (done) => {
-  while (!done()) await new Promise((resolve) => setImmediate(resolve));
+/** Waits for what the host does by itself (a lease, a flood) by its effect: `done` is looked at again after every macrotask, and the wait ends with the name of what never came when its deadline is over (a stalled host does not keep the process alive). */
+const until = async (done, what = 'the condition', ms = 20_000) => {
+  const stop = Date.now() + ms;
+  while (!done()) {
+    if (Date.now() > stop) throw new Error(`gave up waiting for ${what} after ${String(ms)} ms`);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 };
 
 test('a capability is answered once, opens a terminal and nothing else, and every call that names one that opens nothing answers the one error', timeout, async () => {
@@ -177,9 +182,9 @@ test('a stream that opens nothing is answered with the one frame, byte for byte,
     page.stream.send(frame);
     await page.until('closed', () => page.closed);
     assert.deepEqual(
-      page.frames.map((read) => read.kind),
-      ['not-found'],
-      'one frame, the same whatever the reason',
+      page.raw.map((bytes) => [...bytes]),
+      [[FRAME.notFound]],
+      'one frame of one byte, the same whatever the reason, and nothing after it',
     );
   }
 
@@ -189,6 +194,7 @@ test('a stream that opens nothing is answered with the one frame, byte for byte,
     const page = pageOf(host, cap);
     await page.until('ready', () => page.ready !== undefined);
     assert.equal(host.state('t').holder, page.stream.id);
+    const before = page.raw.length;
     page.stream.send(frame);
     await page.until('closed', () => page.closed);
     assert.deepEqual(
@@ -196,6 +202,7 @@ test('a stream that opens nothing is answered with the one frame, byte for byte,
       ['ready'],
       'no answer once it has attached',
     );
+    assert.equal(page.raw.slice(before).filter((bytes) => bytes[0] !== FRAME.output).length, 0, 'no reply of any kind to a malformed frame');
     assert.equal(host.state('t').holder, null, 'the terminal is detached as for any end of a stream');
   }
 
@@ -259,13 +266,17 @@ test('a reload under a flood joins with no gap and no duplicate: the lines are i
   await until(() => host.state('t').end >= 2_500_000);
   const reached = first.next;
   first.stream.close();
+  // What the shell writes while nobody holds the terminal is a replay that is certainly not empty.
+  host.append('t', 'written while you were away\r\n');
   const second = pageOf(host, cap, { from: reached });
   await second.until('ready', () => second.ready !== undefined);
   assert.equal(second.ready.start, reached);
-  await until(() => host.log.floods.length === 1);
+  assert.ok(second.ready.end > second.ready.start, 'the replay is not empty');
+  await until(() => host.log.floods.length === 1, 'the flood to end');
   await second.until('everything', () => second.next === host.state('t').end);
   const lines = numbersOf(Buffer.concat([...first.applied, ...second.applied]));
   assert.deepEqual(lines, Array.from({ length: 60_000 }, (_, at) => at), 'every line once and in order');
+  assert.ok(Buffer.concat(second.applied).toString().includes('written while you were away'), 'the missed bytes were replayed');
   assert.equal(second.acked, host.state('t').end - second.ready.start, 'the new stream acknowledged every byte it was sent, the replay included');
   host.stop();
 });
@@ -608,4 +619,56 @@ test('the shell prints what the find, menu and link sections of the probe look f
   assert.equal(short.split('needle').length - 1, 1000, '`dense` writes a thousand lines under capShort');
   assert.equal(faulty.state('t').modes.mouse_tracking, 0, 'mouse-on never asks for the mouse under mouseNever');
   faulty.stop();
+});
+
+test('a ring is bounded whatever the shell writes: a sequence that stays open past the budget is abandoned, and a replay never starts inside one', () => {
+  const ring = new Ring(80, 24, 100_000);
+  ring.record(Buffer.from('\u001b]0;'));
+  for (let at = 0; at < 40; at += 1) ring.record(Buffer.alloc(10_000, 'x'));
+  assert.ok(ring.held <= 100_000 + 65_536 + 10_000, 'the ring does not keep an oversized chunk');
+  assert.ok(ring.abandoned >= 1);
+  assert.equal(ring.end - ring.start, ring.held);
+});
+
+test('a frame that waited and lost its right meanwhile is refused, a hold ends once and cancels its own timer, and a close that wins over a natural end leaves nothing', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const first = pageOf(host, cap);
+  await first.until('ready', () => first.ready !== undefined);
+  host.slow(1, Infinity);
+  first.stream.send(pageFrames.input('held'));
+  const second = pageOf(host, cap);
+  await second.until('ready', () => second.ready !== undefined);
+  host.release();
+  assert.equal(host.log.writes.length, 0, 'the frame of the stream that lost the terminal is not applied');
+  assert.equal(host.log.frames.find((entry) => entry.kind === 'write').outcome, 'refused');
+  // A hold released early does not release the next one when its own timer would have fired.
+  host.slow(1, 30);
+  second.stream.send(pageFrames.input('a'));
+  host.release();
+  host.slow(1, Infinity);
+  second.stream.send(pageFrames.input('b'));
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.deepEqual(
+    host.log.writes.map((entry) => entry.data),
+    ['a'],
+    'the first timer did not release the second hold',
+  );
+  host.release();
+  assert.deepEqual(
+    host.log.writes.map((entry) => entry.data),
+    ['a', 'b'],
+  );
+  // A shell that exits while the holder has no credit is ending by itself; a close that comes then owns the end.
+  const other = await make(host, 'o');
+  const page = pageOf(host, other.cap, { ack: false });
+  await page.until('ready', () => page.ready !== undefined);
+  page.stream.send(pageFrames.ack(0));
+  host.append('o', 'y'.repeat(2_000_000));
+  host.type('o', 'exit 0\r');
+  await host.call('CloseChannelTerminal', [other.cap]);
+  assert.equal(host.keptEnds().some((entry) => entry.id === 'o'), false, 'a requested close leaves nothing');
+  await assert.rejects(host.call('DismissChannelTerminal', [other.cap]), (error) => JSON.parse(error.message).type === 'omniview:session/not-found');
+  assert.equal(page.ended.closed_by, 'request');
+  host.stop();
 });

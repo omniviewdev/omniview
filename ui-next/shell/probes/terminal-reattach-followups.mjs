@@ -81,6 +81,8 @@ export const FOLLOWUP_CONTROLS = {
  * @param {{ check: Function, note: Function, runAxe: Function, helpers: Record<string, any> }} deps
  *   `helpers` are the helpers of terminal-reattach.mjs: `world`, `start`, `reveal`, `until`, `moving`, `perturbed`, `tabsOf`, `laneOf`, `bodyOf`, `rowsOf`, `typeLine`, `slotOf`, `wroteBy` and `AXE`.
  */
+const sleep = async (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export function createFollowupSections({ check, note, runAxe, helpers }) {
   const { world, start, reveal, until, moving, perturbed, tabsOf, laneOf, bodyOf, rowsOf, typeLine, slotOf, wroteBy, AXE } = helpers;
   const sections = {};
@@ -325,11 +327,12 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
         await until(() => host.log.attaches.length, (count) => count > mark, 8000);
         const rowsBack = await until(async () => rowsOf(a), (rows) => rows.some((row) => HELLO.test(row)), 4000);
         // The screen shows the earlier output, which the new stream's replay brought: whatever the press made has been made by now.
-        again = host.log.attaches.slice(mark).filter((entry) => entry.id === id || entry.id === null);
         const keyboard = await until(async () => a.evaluate(() => document.activeElement?.classList.contains('xterm-helper-textarea') === true), (is) => is, 4000);
         await a.keyboard.type('hello');
         await a.keyboard.press('Enter');
         const rowsTyped = await until(async () => rowsOf(a), (rows) => rows.filter((row) => HELLO.test(row)).length >= 2, 6000);
+        // Counted after the keyboard and the typing: a second attach made during them is counted too.
+        again = host.log.attaches.slice(mark).filter((entry) => entry.id === id || entry.id === null);
         moved = {
           tabs: await tabsOf(a),
           lane: await laneOf(a),
@@ -407,14 +410,17 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
   /** The page has been given everything the host has of the terminal and has parsed it, with nothing held: the emulator's screen is what the host wrote. */
   async function caughtUp(w, page, id) {
     const { host } = w;
-    await moving(
+    const settled = (now) => now.delivered === now.end && now.parsed === now.accepted && now.held === 0;
+    const last = await moving(
       async () => {
         const now = await page.evaluate((terminal) => ({ delivered: window.__link.state().delivered[terminal] ?? 0, accepted: window.__engine.accepted, parsed: window.__engine.parsed, held: window.__gate.held() }), id);
         return { ...now, end: host.state(id)?.end ?? 0 };
       },
-      (now) => now.delivered === now.end && now.parsed === now.accepted && now.held === 0,
-      { limit: 30_000 },
+      settled,
+      { stall: 20_000, limit: 120_000 },
     );
+    // A wait that ended by its stall or its limit is not a caught-up page: the section fails here, with the numbers, and not later on a state nobody confirmed.
+    if (!settled(last)) throw new Error(`the page did not catch up: ${JSON.stringify(last)}`);
   }
 
   /**
@@ -438,7 +444,9 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
     const attach = host.log.attaches[mark];
     await finished(w, page, id);
     const lines = await page.evaluate(() => window.__engine.lines);
-    const screen = await rowsOf(page);
+    // The emulator's DOM renderer draws a frame after it parsed the last byte: the screen is read when it shows the last line of the flood (what is waited for is the draw, bounded; a page that never draws it ends the wait and fails the assertion).
+    const lastLine = String(LINES - 1).padStart(7, '0');
+    const screen = await until(async () => rowsOf(page), (rows) => rows.some((row) => row.startsWith(lastLine)), 8000);
     // What the shell writes now is live whatever the page did before, and what is typed reaches the shell through the new stream.
     host.append(id, TAIL);
     await typeLine(page, 'hello');
@@ -547,6 +555,8 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
         (text) => FREE.gone.test(text) || FREE.lost.test(text),
         20_000,
       );
+      // A definitive refusal leaves no retry: the feed's first retry would come after 250 ms and its second after a second more, so the attaches are counted after both could have run.
+      await sleep(1500);
       const attaches = host.log.attaches.slice(mark);
       check(
         'reattach.gone',
@@ -719,9 +729,12 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const attachesBefore = host.log.attaches.length;
       const writesBefore = host.log.writes.length;
       // The host can be asked again in the very task of the press, so that no question of the page's own comes between the two.
-      await a.evaluate(() => {
+      // What the press itself asks of the host is counted in that same task (a call of the list STARTED by it): the page's own poll every 5 s cannot stand in for it.
+      const pressAsked = await a.evaluate(() => {
         window.__link.failLists(false);
+        const started = window.__link.state().started;
         document.querySelector('[data-shell-part="terminalTakeBack"]')?.click();
+        return window.__link.state().started - started;
       });
       // The page asks the host who holds the terminal, and the button goes.
       await until(() => host.log.lists.length, (count) => count > listsBefore, 8000);
@@ -740,6 +753,7 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
         'reattach.takeback-guard',
         stale === 1 &&
           asks >= 1 &&
+          pressAsked >= 1 &&
           attaches === 0 &&
           left === 0 &&
           lane.includes(FREE.taken) &&
@@ -791,10 +805,12 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
 
       // 2. The host can be reached again: the page asks, and the host says that nobody holds the terminal.
       const listed1 = await listedBy(a);
-      await a.evaluate(() => {
+      // The list stays blocked while the stage's fault is planted (`refresh-skipped`), from the first instant of the reconnection until the button state has been read.
+      const blocked = ctx.control?.stage === 'offline';
+      await a.evaluate((keep) => {
         window.__link.up();
-        window.__link.failLists(false);
-      });
+        if (!keep) window.__link.failLists(false);
+      }, blocked);
       await perturbed(ctx, a, 'offline');
       const freed = await until(buttons, (count) => count >= 1, 20_000);
       const laneFreed = await laneOf(a);
