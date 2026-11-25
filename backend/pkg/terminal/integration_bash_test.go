@@ -682,3 +682,15 @@ func TestPwshTheTranscriptHasNoNonceAndNoMarkWithADirectory(t *testing.T) {
 	assert.NotContains(t, transcript, "\x1b]133;D", "no end mark in the transcript")
 	t.Logf("what of the marks the transcript holds: A=%v B=%v", strings.Contains(transcript, "\x1b]133;A"), strings.Contains(transcript, "\x1b]133;B"))
 }
+
+// A function of the user's named like a cmdlet the script uses must not change what the script does.
+func TestPwshAUsersWriteErrorFunctionDoesNotMakeAFailureLookLikeSuccess(t *testing.T) {
+	f := newIntegrationFixture(t, "pwsh", integrationShell(t, "pwsh"))
+	require.NoError(t, os.WriteFile(f.files[0], []byte("function Write-Error {}\nfunction prompt { if ($?) { 'OK> ' } else { 'FAIL> ' } }\n"), 0o600))
+	info := f.start()
+	require.Equal(t, IntegrationOn, info.Integration.State)
+	f.sink.waitFor(t, info.ID, "OK> ")
+	before := strings.Count(string(f.sink.output(info.ID)), "FAIL> ")
+	require.NoError(t, f.m.Write(info.ID, 0, []byte("sh -c 'exit 3'\r")))
+	require.Eventually(t, func() bool { return strings.Count(string(f.sink.output(info.ID)), "FAIL> ") > before }, 20*time.Second, 5*time.Millisecond, "the prompt after a failed command says FAIL")
+}
