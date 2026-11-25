@@ -78,18 +78,42 @@ export function laneFor(lane: readonly ShellScopeFace[] | undefined, pick: ((fac
  */
 export class ConnectionNames {
   private readonly names = new Map<string, string>();
+  private readonly listeners = new Set<() => void>();
 
   /** The name learned for the connection `key` of `plugin`. `undefined`: none. */
   get(plugin: string, key: string): string | undefined {
     return this.names.get(JSON.stringify([plugin, key]));
   }
 
-  /** Remembers `name` for the connection `key` of `plugin`: the latest is the one. An empty name is none. */
+  /** Remembers `name` for the connection `key` of `plugin`: the latest is the one. An empty name is none. Those who `subscribe` are told when what is remembered changed, and not when a name is learned again as it is. */
   learn(plugin: string, key: string, name: string): void {
     const text = textOf(name);
-    if (text !== undefined) {
-      this.names.set(JSON.stringify([plugin, key]), text);
+    const id = JSON.stringify([plugin, key]);
+    if (text === undefined || this.names.get(id) === text) {
+      return;
     }
+
+    this.names.set(id, text);
+    for (const listener of [...this.listeners]) {
+      if (this.listeners.has(listener)) {
+        listener();
+      }
+    }
+  }
+
+  /**
+   * Tells `listener` when a learned name changed: a connection that was not named, or a name that was another. It is told as the name is learned, with the name there to be read, and its work is its own to defer. Each call is a subscription of
+   * its own, whatever function it is given. Answers the function that takes it off.
+   */
+  subscribe(listener: () => void): () => void {
+    const subscription = (): void => {
+      listener();
+    };
+
+    this.listeners.add(subscription);
+    return () => {
+      this.listeners.delete(subscription);
+    };
   }
 }
 

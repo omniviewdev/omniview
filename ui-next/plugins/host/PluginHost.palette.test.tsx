@@ -7,6 +7,7 @@ import { acme, answering, startedOn, widgetPage } from '../testing';
 import * as palette from './palette';
 import { PluginHost } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
+import type { PortForwardNetwork } from './portForward';
 import { NO_ROUTE } from './route';
 
 // The window's command palette through the host (palette.ts is tested on its own): that PluginHost makes it of the window's own models, attaches it for as long as the window is on screen, and
@@ -341,6 +342,45 @@ describe('the providers of the plugins, through the window', () => {
     expect(run.mock.calls[0]?.[0]).toEqual({ all: true });
     expect(run.mock.calls[0]?.[1]).toMatchObject({ plugin: 'acme', panel: { logs: { open: expect.any(Function) } } });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('gives a plugin\'s command a handle with no ports member, though a page of the same plugin in a connection has one: a command runs from the palette and not from a page, so a member that could only refuse is left out (PF1)', async () => {
+    const run = vi.fn<PaletteCommandV1['run']>();
+    const seen: ContextV1[] = [];
+    const entry: PluginEntry = {
+      id: 'acme',
+      name: 'Acme plugin',
+      phase: 'ready',
+      contribution: acme({
+        pages: {
+          widgets: widgetPage('Widgets', (context) => {
+            seen.push(context);
+            return answering([])(context);
+          }),
+        },
+        palette: {
+          providers: { things: { kind: 'match', section: 'Hardware', filter: 'goto', match: () => [{ id: 'r1', label: 'Reset sprockets', icon: 'refresh', command: { id: 'reset' } }] } },
+          commands: { reset: { run } },
+        },
+      }),
+    };
+    const networker: PortForwardNetwork = { start: vi.fn(async () => Promise.resolve({ id: 'forward-1', local_port: 9090 })), stop: vi.fn(async () => Promise.resolve(undefined)) };
+    const { user } = open(source([entry]), { networker, link: { plugin: 'acme', page: 'widgets', connection: 'north', params: {} }, session: undefined });
+    await waitFor(() => {
+      expect(seen.at(-1)?.panel).toBeDefined();
+    });
+    // The window can forward, in the connection the page is read in.
+    expect(seen.at(-1)?.panel?.ports?.forward).toBeTypeOf('function');
+
+    await search(user, 'reset sprockets');
+    await screen.findByRole('option', { name: 'Command: Reset sprockets' });
+    await user.keyboard('{Enter}');
+
+    expect(run).toHaveBeenCalledTimes(1);
+    const given = run.mock.calls[0]?.[1];
+    expect(given?.panel?.logs.open).toBeTypeOf('function');
+    expect(given?.panel?.ports).toBeUndefined();
+    expect(networker.start).not.toHaveBeenCalled();
   });
 
   it('still loads a plugin written before the palette, and draws the window as it always did: the palette lists the host\'s sources and no section of the plugin\'s', async () => {

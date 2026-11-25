@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { IconName, LogFeed, LogFeedSnapshot } from '@omniviewdev/kit';
+import type { ResourceReference, Value } from '@omniviewdev/runtime/ui/v1';
 import type { DetailPageDefinition, DetailSource, ListPageDefinition, ListSource } from '../../page';
 import type { ShellAccent, ShellScopeFace, ShellTreeNode } from '../../shell';
 
@@ -111,6 +112,16 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // gives one and draws its list unsorted (it passes no sort to the table, so no header has a button whatever its columns declare); nothing is refused, and a bundle is never drawn wrong (`admit.test.ts` shows the member is the only difference
 // between a definition of either contract, and that each is the other's in types). The page reads `defaultSort` where it is used and never refuses for it: one that names a column that does not sort (no such column, or one with no `sortKey`) is
 // no default, and the list is drawn in the source's order. The sort a person chose is the page's own, kept in the tab's page state for the window to give back (`ui-next/page/memory.ts`); a plugin never writes it.
+//
+// The ports handle (PF1) is minor, on the terms of the panel handle: `PanelHostV1.ports` is a NEW optional member of the handle the HOST fills in, and what it holds is how a plugin's page asks the host to forward a port of one of its
+// resources to this computer, `ctx.panel?.ports?.forward(request)`. (1) Nothing that exists is removed, renamed or given another meaning: `PanelHostV1` is what it was and one member more, so a handle written without it (a test's, a
+// plugin's own stand-in) is still a `PanelHostV1`, and so is a context, or a command's context, with no handle at all (`contract/ports.test.ts` proves both with the compiler). (2) Every bundle written before it is admitted and drawn as
+// before: a hook that never reads `ctx.panel.ports` is unchanged, and admission reads nothing of it, because the handle is not in the artifact. (3) Rule (3) turns round exactly as it does for the panel handle: a host that lacks the
+// member leaves `ctx.panel.ports` absent, and so does a window with no port-forward service, and so does a handle made for no connection (a page that is read in none, and a command of the palette: a member that could only refuse is
+// worse than one that is absent), so a plugin that offers a forward tests for it, `ctx.panel?.ports?.forward(...)`, and a command may say why it is unavailable; no bundle is drawn wrong, because a page has the member or has not. What
+// the host fills in is what the page's own scope already says: the plugin that asks and the connection the page is read in (`ContextV1.route.connection`), so a page forwards in its own connection and in no other, whatever its request
+// carries. What the plugin is answered is a forward it can read and stop (`PortForwardSessionV1`), and what it is refused with is a `PortForwardErrorV1`: the host's own code and plain words, never a stack and never raw JSON. How long a forward
+// lives, what address it is reached at and which codes a refusal has are written where the member is (`PanelHostV1.ports`, `PortForwardSessionV1`, `PortForwardErrorCodeV1`), and a change to any of them is a change to this contract.
 //
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
@@ -380,12 +391,131 @@ export type LogSessionV1 = {
 };
 
 /**
+ * What a plugin's page asks the host to forward (PF1): one port of one resource, to a port of this computer. The plugin says WHICH resource and WHICH ports; the host says the rest. The plugin that asks and the connection are not in the
+ * request: the host fills them in from the page's own scope (the plugin's id, and `ContextV1.route.connection`), so a page forwards in its own connection and in no other. The members after the resource's id are the ones the plugin's
+ * forwarder reads, written as the runtime's typed start has them (`NetworkerClient.StartResourcePortForwardingSession`): a plugin that holds a `ResourceReference` of the resource, or its body, hands them over as they are. The request has no
+ * `route`: the host's networker admits a reference only with a route of the connection the forward is started in, which is the page's, so the host writes that route itself whenever there is a reference. A member this type does not list is not read.
+ */
+export type PortForwardRequestV1 = {
+  /** The resource whose port is forwarded, by the id the plugin knows it by. A blank id is refused. */
+  readonly resourceId: string;
+  /** The plugin's key for the kind of resource it is, which says which of its forwarders takes the request. Absent: the empty key, which only a forwarder registered under it takes. */
+  readonly resourceKey?: string | undefined;
+  /** The resource's reference, when the plugin holds one. The host's networker admits it only for the connection the forward is started in, which is the page's own: the host writes the route that says so. */
+  readonly reference?: ResourceReference | undefined;
+  /** The resource's body, for a forwarder that reads it. */
+  readonly resourceData?: Value | undefined;
+  /** The port of the resource to forward: a whole number from 1 to 65535. */
+  readonly remotePort: number;
+  /** The port on this computer: a whole number from 1 to 65535. Absent: the host takes a free one (0 is not a way to say so: it is refused). */
+  readonly localPort?: number | undefined;
+  /** The transport. Absent: TCP. */
+  readonly protocol?: 'TCP' | 'UDP' | undefined;
+};
+
+/**
+ * A forward the host started for a plugin (PF1), as the page that asked holds it. The forward is the HOST's, not the page's: how long it lives is written at `PanelHostV1.ports`. The answer is frozen. `sessionId` and `localPort` are what the
+ * host's session states; `localHost` is the host's assumption, and is written as one below.
+ */
+export type PortForwardSessionV1 = {
+  /** The id the host and the Ports tool know the forward by. */
+  readonly sessionId: string;
+  /**
+   * The port on this computer that the forward listens on, as the host's session states it (its `local_port`): the port the plugin asked for, or the free one the host took when it asked for none, which is how a plugin learns it. A
+   * whole number from 1 to 65535. A forward that the host started and did not state a port for is not answered: it is stopped, and the call is refused.
+   */
+  readonly localPort: number;
+  /**
+   * The address of this computer at which the host reaches the forward, so that `localHost` and `localPort` together are where to connect: `127.0.0.1`, always, today. It is the HOST's ASSUMPTION and not a fact the producer states: the
+   * session carries `local_port` and nothing about where the plugin's forwarder listens, and the SDK does not require a forwarder to listen on the loopback (neither `forwarder.go` nor the session states an address), so a forwarder that
+   * listens elsewhere is still said to be here. The Ports tool says the same address, from the same constant, in its Mapping, its Copy address and its Open in browser. A plugin that needs more than the loopback has to know it of its own forwarder.
+   */
+  readonly localHost: string;
+  /**
+   * Stops this forward: the host closes its session (`ClosePortForwardSession`), which ends the tunnel and removes the forward from the host's list and from the Ports tool. It closes the session the forward was answered with, by that session's
+   * id, and asks the host once: a second call, and one made while the first is under way, is the first's outcome (it resolves when the first did, and rejects with the same error when it did not). It resolves for a forward the host no longer has
+   * too (the person stopped it in the Ports tool, or another window did): what a caller wants is that it does not run. It rejects with a `PortForwardErrorV1` when the host cannot close it, as it does for a forward whose plugin has stopped
+   * (`NOT_FOUND`: the plugin is not there). The host closes by the id alone, and the SDK gives every session a fresh UUID, so the id names this forward and no other. A forwarder that chose ids of its own (the SDK lets it; none we have does) and
+   * gave one out twice would let a handle that outlived its forward close the later one: the host's index is overwritten by a later session of the same id, and a handle cannot check what the host does not state. That is a gap of the host and the
+   * SDK, and not of this contract's shape. It is the page's way to clean up after what it started, as the `close` of a Logs session is, and nothing calls it for the page (see `PanelHostV1.ports`).
+   */
+  readonly stop: () => Promise<void>;
+};
+
+/**
+ * The classes of refusal a forward meets (PF1). A code is the host's own when the host's answer has one (the classes of `backend/pkg/apperror`, which the plugin's SDK uses too, read as the runtime's `parseAppError` reads them), and
+ * `INVALID_REQUEST` is also what the host says of what it refuses itself, before it asks anything. `ALREADY_EXISTS` is said as `CONFLICT` and `CERTIFICATE_ERROR` as `CONNECTION_ERROR`, because the host's own classes put them together; a
+ * class a forward does not meet (an expired traversal, a reset, an incomplete result) and a code a later host adds are `UNKNOWN`, as is an answer that carries no code and has no type to read one from. A plugin that tells one class from
+ * another uses a `switch`, with a `default` for the codes it does not act on. The examples below of which refusal arrives as which code (a port in use, a privileged port, UDP, a connection that is not started) were measured on the real host by
+ * the review of the host's PR #710, and are not read from the host's Go [INFERENCE].
+ */
+export type PortForwardErrorCodeV1 =
+  /** The request is not one the host or the plugin's forwarder takes: no resource, a port that is not a whole number from 1 to 65535, a protocol that is not TCP or UDP (the host refuses these itself), or one the forwarder does not take (UDP, for a TCP forwarder). */
+  | 'INVALID_REQUEST'
+  /** The plugin cannot forward ports. */
+  | 'UNSUPPORTED'
+  /** Access to the resource or the connection is refused. */
+  | 'FORBIDDEN'
+  /** The connection needs the person to sign in. */
+  | 'UNAUTHORIZED'
+  /** The host has no such plugin, connection or resource. */
+  | 'NOT_FOUND'
+  /** The request conflicts with the current state. */
+  | 'CONFLICT'
+  /** The call was cancelled before the host answered. */
+  | 'CANCELLED'
+  /** The host or the plugin did not answer in time. */
+  | 'TIMEOUT'
+  /** The source could not be reached, or the port could not be opened: a privileged port that the system refuses is one. */
+  | 'UNAVAILABLE'
+  /** The connection is not started, or could not be verified: starting it is what helps. */
+  | 'CONNECTION_ERROR'
+  /** The request is over a limit of the host, such as the size of the resource's body. */
+  | 'RESOURCE_LIMIT'
+  /** The plugin's forwarder could not do it, and the host does not say why: a local port that is in use and a resource that no forwarder takes both arrive as this code (a gap of the producer's, which states no more than the class). */
+  | 'PROVIDER_ERROR'
+  /** The host failed in a way it did not classify. */
+  | 'INTERNAL'
+  /** The answer has none of the codes above: one that could not be read as an error of the host's, or a class a later host adds. */
+  | 'UNKNOWN';
+
+/**
+ * What `ports.forward` and a forward's `stop` reject with when they cannot do what was asked (PF1): an `Error` named `PortForwardError`, whose `code` is the class of refusal (`PortForwardErrorCodeV1`), whose `message` is plain words for a
+ * person (one sentence: never a stack, a page of output or the host's raw JSON) and whose `cause` is what the host's call rejected with, as the runtime delivered it, for a plugin author to log. A rejection is the only way either call
+ * fails: neither throws into the page. The class is the host's, and a plugin cannot import it, so a page tells the error by its name and reads it as this type:
+ * `if (error instanceof Error && error.name === 'PortForwardError') { const refusal = error as PortForwardErrorV1; ... refusal.code ... }`.
+ */
+export type PortForwardErrorV1 = Error & {
+  readonly name: 'PortForwardError';
+  readonly code: PortForwardErrorCodeV1;
+  readonly cause?: unknown;
+};
+
+/**
  * What a plugin asks of the window's bottom panel. Call it from a user's action on a resource (a command, a click), as owner decision A20 has it, and not from an effect while a page mounts: the panel learns
  * that a plugin is live after the page's own first effects have run, so a call made there is refused. `logs.open` opens a session in the host's Logs tool for a target and answers it, or `undefined` when the host could not (the plugin is not live,
  * the target is not well formed, its `open` threw): the reason is in the console. The panel opens on the new session, as it does for any session the user starts. A target whose session is starting or running is not opened again (A22): that session is answered and `open` is not called, and the panel shows it when it can: a returned handle is the session's, not proof that it is on screen (the host's Logs tool may be gone).
+ *
+ * The handle is the plugin's and, for `ports`, the connection's too, and every page of that plugin in that connection is given the same one: it and each member it holds are frozen, so a page cannot replace a member for the others.
  */
 export type PanelHostV1 = {
   readonly logs: { readonly open: (target: LogTargetV1) => LogSessionV1 | undefined };
+  /**
+   * PF1. `forward` forwards a port of one of the plugin's resources to this computer and answers the forward (`PortForwardSessionV1`: its id, the port it listens on, the address the host reaches it at, and a way to stop it) once the host has
+   * started it, and the Ports tool is shown then. Call it from a user's action on a resource, as `logs.open`. It is bound to the plugin and to the connection the page is read in, and fills both in: the request names neither. It rejects with a
+   * `PortForwardErrorV1`, in the host's own code and plain words, when the request names no resource, a port that is not a whole number from 1 to 65535 or a protocol that is not TCP or UDP, and when the host could not start the forward. The member
+   * is absent on a host that predates it, in a window with no port-forward service, and from the handle of a page that is read in no connection and of a palette command (nothing says which connection to forward in): a plugin tests for it,
+   * `ctx.panel?.ports?.forward`.
+   *
+   * THE FORWARD'S LIFETIME. A forward belongs to the HOST, not to the page that asked, the window it was asked in or the plugin code that holds its answer: it outlives the page, a reload of it and every window (nothing in the host's networker
+   * releases a forward when a page or a window goes: `backend/pkg/plugin/networker` keeps the plugin's sessions with no owner), and nothing the page does ends it but `stop()`. It ends when
+   * - `stop()` of its answer is called, or the person (or any window) stops it in the Ports tool: the host closes the session, which ends the tunnel and removes the forward from its list;
+   * - its plugin stops, or the app quits: the host stops every tunnel of a plugin that stops (`OnPluginStop`), and of every plugin at shutdown (`ServiceShutdown`); a host that is killed outright is not covered here;
+   * - its connection stops or is retired: the SDK cancels the tunnels of a connection that retires, and the session stays listed as Stopped until it is closed [INFERENCE: what retires a connection is the connection's own, and was not read here];
+   * - its tunnel ends on its own or fails: the session stays listed as Stopped or Failed until it is closed, which is why the Ports tool can show it and `stop()` can remove it.
+   * This contract has no event for a forward's end: a page that holds a forward cannot hear that it ended, and what it holds may be one that no longer runs.
+   */
+  readonly ports?: { readonly forward: (request: PortForwardRequestV1) => Promise<PortForwardSessionV1> } | undefined;
 };
 
 /** One chip of the chain that narrows a palette search under the plugin's own (ch16 S69): the connection, then a type, then an object. */
@@ -477,7 +607,7 @@ export type PaletteProviderV1 = PaletteMatchProviderV1 | PaletteSearchProviderV1
 /** What a command's `run` may answer: `false`, or `{ ok: false, reason }` (a plain sentence of at most 160 characters), refuses; the palette stays open and says why. Anything else is done. */
 export type PaletteCommandResultV1 = { readonly ok?: boolean | undefined; readonly reason?: string | undefined };
 
-/** What a command is told: the plugin it belongs to, and, on a host that has it, what the plugin may ask of the bottom panel (as `ContextV1.panel`). */
+/** What a command is told: the plugin it belongs to, and, on a host that has it, what the plugin may ask of the bottom panel (as `ContextV1.panel`). A command runs from the palette and not from a page, so the handle it is given is read in no connection and has no `ports` member: a member that could only refuse is left out. */
 export type PaletteCommandContextV1 = {
   readonly plugin: string;
   readonly panel?: PanelHostV1 | undefined;

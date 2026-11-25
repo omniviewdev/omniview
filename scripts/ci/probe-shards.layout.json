@@ -85,7 +85,18 @@
   "problems-operations-controls-counts": 120,
   "problems-operations-controls-page": 120,
   "home-perf": 85,
-  "home-controls-perf": 75
+  "home-controls-perf": 75,
+  "ports-a": 20,
+  "ports-b": 45,
+  "ports-c": 15,
+  "ports-d": 35,
+  "ports-e": 10,
+  "ports-controls-a": 65,
+  "ports-controls-b": 140,
+  "ports-controls-menu": 40,
+  "ports-controls-c": 40,
+  "ports-controls-d": 45,
+  "ports-controls-e": 10
  },
  "sharedLayoutRuns": [
   {

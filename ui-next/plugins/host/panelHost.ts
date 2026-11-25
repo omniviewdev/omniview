@@ -1,10 +1,14 @@
 import type { LogStreams, LogTarget } from '../../shell';
 import type { LogSessionV1, LogTargetV1, PanelHostV1 } from '../contract/v1';
 import { routeInputOf } from './panel';
+import { portsOf, type PortForwarding } from './portForward';
 
 // The plugin's side of the panel handle (contract/v1.ts, `ContextV1.panel`): what a plugin asks of the window's bottom panel, bound to the plugin that asks. The Logs registry (ui-next/shell/panel/logs) is
 // the host's; this only writes the plugin's words in the host's: a target with no plugin id (the handle knows whose it is, so a plugin cannot open a session in another's name) and a `RouteV1` for the
-// resource, which becomes a route of the tab model in the plugin's own name. `LogStreams.open` is the one entry point; who supplies a target is not decided here (decision A20).
+// resource, which becomes a route of the tab model in the plugin's own name. `LogStreams.open` is the one entry point; who supplies a target is not decided here (decision A20). The ports member (PF1) is bound to the
+// plugin as well, and to the connection the page is read in: the host fills both in when a page forwards a port (`portForward.ts`), so a page forwards in its own connection and in no other. A handle made for no connection has no
+// ports member at all: a member that is there and can only refuse is worse than one that is absent. Every handle is shared by the pages of its plugin (and connection), so each is frozen with the members it holds: a page cannot
+// replace what the others call.
 
 /** The host's descriptor for a plugin's target. A member the plugin did not write well is passed on as it is, for the registry to refuse by name. */
 function descriptorOf(plugin: string, given: unknown): LogTarget {
@@ -22,29 +26,38 @@ function descriptorOf(plugin: string, given: unknown): LogTarget {
   };
 }
 
-/** What `ctx.panel` is for one plugin. */
-function panelHostOf(plugin: string, streams: LogStreams): PanelHostV1 {
-  return {
-    logs: {
-      open: (target): LogSessionV1 | undefined => {
-        const opened = streams.open(descriptorOf(plugin, target));
-        return opened === undefined ? undefined : { id: opened.id, close: opened.close };
-      },
+/** What `ctx.panel.logs` is for one plugin. */
+function logsOf(plugin: string, streams: LogStreams): PanelHostV1['logs'] {
+  return Object.freeze({
+    open: (target: LogTargetV1): LogSessionV1 | undefined => {
+      const opened = streams.open(descriptorOf(plugin, target));
+      return opened === undefined ? undefined : { id: opened.id, close: opened.close };
     },
-  };
+  });
 }
 
+/** What the host holds for a plugin: its Logs member, and its handle for each connection a page of it is read in (`''` for none). */
+type PluginHandles = { readonly logs: PanelHostV1['logs']; readonly byConnection: Map<string, PanelHostV1> };
+
 /**
- * The handle of each plugin, made once for the plugin and given again as it was, so a context that holds it, and a hook that lists it among its dependencies, stay what they were from one render to
- * the next.
+ * The handle of each plugin in each connection, made once and given again as it was, so a context that holds it, and a hook that lists it among its dependencies, stay what they were from one render to the next. A plugin's Logs
+ * member is one object whatever the connection, so a hook that depends on it alone is not told of a page that moves to another connection. A page that is read in no connection, and a palette command, ask for none (or an empty
+ * one) and share a handle with no ports member. With no `forwarding` the window has no port-forward service and no handle has one, as on a host that predates it. Every handle and every member is frozen.
  */
-export function panelHostsOf(streams: LogStreams): (plugin: string) => PanelHostV1 {
-  const hosts = new Map<string, PanelHostV1>();
-  return (plugin) => {
-    let host = hosts.get(plugin);
+export function panelHostsOf(streams: LogStreams, forwarding?: PortForwarding): (plugin: string, connection?: string) => PanelHostV1 {
+  const plugins = new Map<string, PluginHandles>();
+  return (plugin, connection) => {
+    let handles = plugins.get(plugin);
+    if (handles === undefined) {
+      handles = { logs: logsOf(plugin, streams), byConnection: new Map() };
+      plugins.set(plugin, handles);
+    }
+
+    const scope = connection ?? '';
+    let host = handles.byConnection.get(scope);
     if (host === undefined) {
-      host = panelHostOf(plugin, streams);
-      hosts.set(plugin, host);
+      host = Object.freeze(forwarding === undefined || scope === '' ? { logs: handles.logs } : { logs: handles.logs, ports: portsOf(forwarding, plugin, scope) });
+      handles.byConnection.set(scope, host);
     }
 
     return host;
