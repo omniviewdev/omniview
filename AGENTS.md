@@ -28,9 +28,10 @@ Repository guidelines are in `CLAUDE.md`. New UI work (`ui-next/`, `packages/kit
 - Component tests run in the VM pool. A file that cannot is listed in `forksOnly` in `vite.config.ts` with its reason.
 - No debug `console` logging in product code.
 
-## Contracts
-- Never change the signature of something a shipped plugin calls. Add beside it.
-- A change under `packages/omniviewdev-runtime`: type-check the Kubernetes plugin's `main` UI against the built runtime before pushing.
+## APIs and the SDK (alpha: no outside consumers yet)
+- Making an API or the SDK better is wanted, and a breaking change is allowed when the improvement is the point of the work: say what breaks and why the new shape is better, then move every caller (host, runtime, Kubernetes plugin) in the same effort. Leave no shim.
+- A break is never a side effect. Work with another goal leaves existing signatures as they are; a better shape you notice on the way is a proposal in your report, not a change.
+- Know the callers before you change one: for `packages/omniviewdev-runtime`, type-check the Kubernetes plugin's UI against the built runtime before pushing.
 
 ## Machine
 - Work in a worktree under `../worktrees/`. The owner's checkout is read-only.
