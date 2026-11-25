@@ -68,6 +68,9 @@ func appendToFile(t *testing.T, directory, name, text string) {
 // replacing the SDK by a tampered copy, is what Go itself would build against.
 // Verification must ignore it and identify the published release.
 func TestPublishedVerificationIgnoresAParentWorkspaceFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	f := newFixture(t)
 	tampered := filepath.Join(f.world.Root, "tampered")
 	copyDirectory(t, sdktest.PinnedSDK(t), tampered)
@@ -100,6 +103,9 @@ func TestPublishedVerificationIgnoresAParentWorkspaceFile(t *testing.T) {
 // graph itself, or its checksums are absent. Either way no identity is produced,
 // and never the declared one.
 func TestPublishedVerificationNeverReportsTheDeclaredVersionWhenTheGraphSelectsAnother(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	t.Run("an excluded declared version", func(t *testing.T) {
 		f := newFixture(t)
 		appendToFile(t, f.consumer, "go.mod", "\nexclude "+devsdk.Module+" "+f.sdk.Version+"\n")
@@ -181,6 +187,9 @@ func TestPublishedVerificationMapsGoSumDiagnosticsFromRealGo(t *testing.T) {
 // directive change which Go runs unless the environment allows switching, and a
 // toolchain that cannot run fails closed with a typed refusal and no identity.
 func TestPublishedVerificationAndGoToolchainDirectives(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	version, err := exec.Command("go", "env", "GOVERSION").Output()
 	require.NoError(t, err)
 	local := strings.TrimSpace(string(version))
@@ -245,6 +254,9 @@ func TestPublishedVerificationAndGoToolchainDirectives(t *testing.T) {
 // refuses it before anything is resolved. The same flag as an ambient variable is
 // neutralized by ModuleEnvironment.
 func TestPublishedVerificationRefusesGoFlagsFromTheGoEnvironmentFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	scratch := sdktest.TempDir(t)
 	overlay := filepath.Join(scratch, "overlay.json")
 	require.NoError(t, os.WriteFile(overlay, []byte(`{"Replace":{}}`), 0o600))

@@ -43,7 +43,9 @@ describe('the toast layer in the shell frame', () => {
 
   it('is the last region of the window: after the status bar, in the focus order of the shell (S12)', async () => {
     const { f, flush } = mountShell();
-    f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await flush();
     const window = document.querySelector('[data-shell-part="window"]')!;
     const statusBar = screen.getByRole('contentinfo', { name: 'Status bar' });
@@ -53,9 +55,13 @@ describe('the toast layer in the shell frame', () => {
 
   it('is visited by F6 after the page and before the top row, and by Shift+F6 before the page (S12: toasts last)', async () => {
     const { f, flush, user } = mountShell();
-    f.store.notify({ title: 'One' });
+    act(() => {
+      f.store.notify({ title: 'One' });
+    });
     await flush();
-    screen.getByRole('tab', { name: 'Widgets' }).focus();
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
     await user.keyboard('{F6}');
     expect(screen.getByRole('main')).toHaveFocus();
     await user.keyboard('{F6}');
@@ -70,7 +76,9 @@ describe('the toast layer in the shell frame', () => {
 
   it('is not a stop while it has no toast', async () => {
     const { user } = mountShell();
-    screen.getByRole('tab', { name: 'Widgets' }).focus();
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
     await user.keyboard('{F6}');
     expect(screen.getByRole('main')).toHaveFocus();
     await user.keyboard('{F6}');
@@ -79,7 +87,9 @@ describe('the toast layer in the shell frame', () => {
 
   it('closes the focused toast with Escape and gives the focus back to the page it came from, and to the control it came from by Tab', async () => {
     const { f, flush, user } = mountShell();
-    f.store.notify({ title: 'One' });
+    act(() => {
+      f.store.notify({ title: 'One' });
+    });
     await flush();
     screen.getByRole('main').focus();
     await user.keyboard('{F6}');

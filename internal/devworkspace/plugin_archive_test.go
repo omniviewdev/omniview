@@ -278,6 +278,9 @@ func TestArchiveAssetsRefuseRedirectedParentDirectory(t *testing.T) {
 // Frontend-only plugin through the real ledger path: build via the graph, then
 // publish; mutating or redirecting assets after the build record must fail.
 func TestPublishPluginArchiveFrontendOnlyThroughOwnedOutputs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	f := newReuseFixture(t)
 	g := f.g
 	source := filepath.Join(g.workspace.Root, "plugin")

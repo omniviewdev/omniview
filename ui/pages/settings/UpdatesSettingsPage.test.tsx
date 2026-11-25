@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ call: vi.fn(), commit: vi.fn(), showFeatures: false, current: 'stable' }));
@@ -140,7 +140,9 @@ describe('UpdatesSettingsPage channels', () => {
     await screen.findByRole('option', { name: 'feature-abc' });
     fireEvent.change(screen.getByRole('combobox', { name: 'Release channel' }), { target: { value: 'feature-abc' } });
     expect(screen.getByLabelText('Copy my current data to this channel')).toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    });
     await waitFor(() => {
       expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'feature-abc', true);
     });
@@ -156,7 +158,9 @@ describe('UpdatesSettingsPage channels', () => {
     fireEvent.change(select, { target: { value: 'feature-abc' } });
     fireEvent.click(screen.getByLabelText('Copy my current data to this channel'));
     expect(screen.getByLabelText('Copy my current data to this channel')).not.toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download and switch' }));
+    });
     await waitFor(() => {
       expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.SwitchChannel', 'feature-abc', false);
     });

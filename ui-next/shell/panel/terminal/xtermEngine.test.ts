@@ -10,11 +10,6 @@ import { createScreenReaderChoice } from './screenReader';
 import { fakeTerminalFeed, type FakeTerminalFeed } from './testing';
 import { createXtermEngine } from './xtermEngine';
 
-// jsdom has no canvas, and the emulator's colour code asks for a 2D context when it is imported (it never draws here): without this stand-in jsdom says so in the log once for every run.
-vi.hoisted(() => {
-  HTMLCanvasElement.prototype.getContext = () => null;
-});
-
 // The emulators the module made, in order: the engine makes its own inside, and the cursor tests read the one the screen drove (and the private flag it keeps) through it.
 const made = vi.hoisted((): Terminal[] => []);
 vi.mock('@xterm/xterm', async (importOriginal) => {
@@ -1622,10 +1617,11 @@ describe('the find of a real emulator', () => {
     expect(states).toEqual([]);
   });
 
-  it('throws nothing when a finder that was made is used after the emulator is gone: a step finds nothing, and a clear makes no new addon for a terminal that is not there', async () => {
+  it('throws nothing when a finder that was made is used after the emulator is gone: a step finds nothing and never reads the emulator, and a clear makes no new addon for a terminal that is not there', async () => {
     const { engine, terminal, close } = emulator();
     const { finder, states } = await finding(engine);
     close();
+    const read = vi.spyOn(terminal, 'buffer', 'get');
     const loaded = vi.spyOn(terminal, 'loadAddon');
     expect(() => {
       finder.next('foo', OPTS);
@@ -1634,6 +1630,7 @@ describe('the find of a real emulator', () => {
     }).not.toThrow();
     expect(states.at(-1)).toEqual({ index: -1, count: 0, capped: false });
     expect(loaded).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it('finds on the alternate screen of a full-screen program too, and only there while it is up: it counts and selects what is on that screen, and the current match has its place in the count', async () => {

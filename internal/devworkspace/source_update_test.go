@@ -238,6 +238,9 @@ func TestSourceUpdateAdoptsRebasedCompositionIntoCachedGraph(t *testing.T) {
 }
 
 func TestSourceBuildRecoveryRejectsUncapturedCheckoutWithoutLinkJournal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, change := range []string{"head", "marker"} {
 		t.Run(change, func(t *testing.T) {
@@ -318,6 +321,9 @@ func assertSourceCompositionRefusesForeignChanges(t *testing.T, m *Manager, w Wo
 }
 
 func TestSourceUpdateRetainedIntentRejectsNewApplyWithoutMutation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, change := range []string{"selection", "configuration", "target", "launch", "same-plan"} {
 		t.Run(change, func(t *testing.T) {

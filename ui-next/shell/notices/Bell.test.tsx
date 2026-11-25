@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mountWindow, teardown } from './testing';
 
@@ -35,9 +35,11 @@ describe('the bell', () => {
 
   it('says the unread count in words, never a number alone: the name and the tooltip carry it and nothing visible does', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
-    m.f.store.notify({ title: 'Quota almost used', severity: 'warning', source: 'bank' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success', source: 'stack' });
+      m.f.store.notify({ title: 'Quota almost used', severity: 'warning', source: 'bank' });
+    });
     await m.flush();
     expect(bell()).toHaveAccessibleName('Notifications, 3 unread, 1 error, 1 warning');
     expect(bell().getAttribute('data-ov-tip')).toBe('Notifications, 3 unread, 1 error, 1 warning');
@@ -48,23 +50,33 @@ describe('the bell', () => {
 
   it('draws the dot of the worst unread severity: error, else warning, else the accent', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'info', source: 'stack' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'info', source: 'stack' });
+    });
     await m.flush();
     expect(dot()?.getAttribute('data-tone')).toBe('info');
-    m.f.store.notify({ title: 'Quota almost used', severity: 'warning', source: 'bank' });
+    act(() => {
+      m.f.store.notify({ title: 'Quota almost used', severity: 'warning', source: 'bank' });
+    });
     await m.flush();
     expect(dot()?.getAttribute('data-tone')).toBe('warning');
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     expect(dot()?.getAttribute('data-tone')).toBe('error');
   });
 
   it('loses its dot when everything is read, and says so', async () => {
     const m = mountWindow();
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     expect(dot()).not.toBeNull();
-    m.f.store.readAll();
+    act(() => {
+      m.f.store.readAll();
+    });
     await m.flush();
     expect(dot()).toBeNull();
     expect(bell()).toHaveAccessibleName('Notifications');
@@ -100,7 +112,9 @@ describe('the bell', () => {
     bell().focus();
     await m.user.keyboard('{Enter}');
     expect(screen.getByRole('dialog', { name: 'Notifications' })).toBeInTheDocument();
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull();
     bell().focus();
@@ -110,7 +124,9 @@ describe('the bell', () => {
 
   it('is open when the host opens the centre (the summary toast\'s Show): the same popover, the same state', async () => {
     const m = mountWindow();
-    m.centre.open();
+    act(() => {
+      m.centre.open();
+    });
     await m.flush();
     expect(screen.getByRole('dialog', { name: 'Notifications' })).toBeInTheDocument();
     expect(bell().getAttribute('aria-expanded')).toBe('true');
@@ -121,13 +137,19 @@ describe('the bell', () => {
     const remove = vi.spyOn(document, 'removeEventListener');
     const m = mountWindow();
     const presses = () => add.mock.calls.filter(([type]) => type === 'pointerdown').length - remove.mock.calls.filter(([type]) => type === 'pointerdown').length;
-    m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    act(() => {
+      m.f.store.notify({ title: 'Timed out', severity: 'error', source: 'cloud' });
+    });
     await m.flush();
     expect(presses()).toBe(0);
-    m.centre.open();
+    act(() => {
+      m.centre.open();
+    });
     await m.flush();
     expect(presses()).toBe(1);
-    m.centre.close();
+    act(() => {
+      m.centre.close();
+    });
     await m.flush();
     expect(presses()).toBe(0);
   });

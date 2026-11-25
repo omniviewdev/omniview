@@ -115,6 +115,9 @@ func TestPublishedDirectoryNamesTheVerifiedCacheEntry(t *testing.T) {
 }
 
 func TestPublishedVerificationRefusalsAreTypedAndHappenBeforeAnyGoCommandWhenTheFilesDecideThem(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	append := func(f fixture, name, extra string) {
 		data, err := os.ReadFile(filepath.Join(f.consumer, name))
 		require.NoError(t, err)
@@ -361,6 +364,9 @@ func TestPublishedVerificationRefusesAModuleThatDisagreesWithTheReviewedChecksum
 // The Go module cache never re-verifies an extracted directory, so tampering
 // after extraction is invisible to Go and must be caught by hashing the bytes.
 func TestPublishedVerificationRefusesATamperedModuleCacheEntry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	tampers := map[string]func(t *testing.T, directory string){
 		"edited file": func(t *testing.T, directory string) {
 			path := filepath.Join(directory, "pkg", "state", "root.go")

@@ -17,7 +17,6 @@ Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: tru
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 1117 : 0;
 } });
-HTMLCanvasElement.prototype.getContext = () => null;
 
 // The overview page through the host (HM3), against an invented plugin (Acme) whose widgets live in connections: the page of a SCOPE, drawn with the anatomy of a detail page (the header, the in-page tabs, the Overview's summary and
 // sections) for a connection and not for an object. What is under test is what the host does with an `overview` contribution: the heading it draws (the connection's NAME, the page's title when the route names none), the context its hook is

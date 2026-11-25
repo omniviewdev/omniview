@@ -288,6 +288,9 @@ func TestPublishPreflightsEveryCapturedDestination(t *testing.T) {
 }
 
 func TestInterruptedRemovalRetainsLegacyProgressStates(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev outputs over real files and handles")
+	}
 	for _, phase := range []string{"captured", "backed-up", "published"} {
 		t.Run(phase, func(t *testing.T) {
 			for _, progress := range []string{"complete backup", "partial backup", "edited partial backup", "foreign partial backup"} {

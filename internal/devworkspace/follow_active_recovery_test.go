@@ -20,6 +20,9 @@ import (
 // the overlays phase has reached durable storage. The retained process gives
 // interruption a real process handle to dispose of, rather than an idle timer.
 func TestActiveFollowCancellationAndDownRetainCapturedCohort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, action := range []string{"cancel", "down"} {
 		t.Run(action, func(t *testing.T) {

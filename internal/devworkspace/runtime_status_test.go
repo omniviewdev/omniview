@@ -228,6 +228,9 @@ func TestStatusPreservesNonRunningPhasesWithoutHost(t *testing.T) {
 }
 
 func TestReadyInspectionHonorsSessionCancellation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	g := graphFixture(t)
 	s, _ := feedbackSupervisorFixture(t, g)

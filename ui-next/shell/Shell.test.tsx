@@ -284,7 +284,9 @@ describe('the sidebar tree', () => {
   it('moves the stop with the arrow keys, Home and End, and the stop follows the focus', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    act(() => {
+      screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    });
 
     await user.keyboard('{ArrowDown}');
     expect(screen.getByRole('treeitem', { name: 'Gadgets' })).toHaveFocus();
@@ -303,7 +305,9 @@ describe('the sidebar tree', () => {
     const user = userEvent.setup();
     renderShell();
     const group = () => screen.getByRole('treeitem', { name: 'Group' });
-    group().focus();
+    act(() => {
+      group().focus();
+    });
 
     await user.keyboard('{ArrowLeft}');
     expect(group()).toHaveAttribute('aria-expanded', 'false');
@@ -325,7 +329,9 @@ describe('the sidebar tree', () => {
   it('goes from an entry to its parent with ArrowLeft, and into a group with ArrowRight', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    act(() => {
+      screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    });
 
     await user.keyboard('{ArrowLeft}');
     expect(screen.getByRole('treeitem', { name: 'Group' })).toHaveFocus();
@@ -337,7 +343,9 @@ describe('the sidebar tree', () => {
     const user = userEvent.setup();
     renderShell();
     const entry = screen.getByRole('treeitem', { name: 'Widgets 89' });
-    entry.focus();
+    act(() => {
+      entry.focus();
+    });
     const keydown = vi.fn((event: KeyboardEvent) => event.defaultPrevented);
     document.addEventListener('keydown', keydown);
 
@@ -358,7 +366,9 @@ describe('the sidebar tree', () => {
     await user.click(screen.getByRole('treeitem', { name: 'Gadgets' }));
     expect(onChoose).toHaveBeenLastCalledWith('gadgets', expect.objectContaining({ type: 'click', ctrlKey: false, metaKey: false }));
 
-    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    act(() => {
+      screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    });
     await user.keyboard('{Enter}');
     expect(onChoose).toHaveBeenLastCalledWith('widgets', undefined);
     await user.keyboard(' ');
@@ -384,7 +394,9 @@ describe('the sidebar tree', () => {
   it('keeps what the user opened and closed when the screen registers again with a new count', async () => {
     const user = userEvent.setup();
     const { again } = renderShell();
-    screen.getByRole('treeitem', { name: 'Group' }).focus();
+    act(() => {
+      screen.getByRole('treeitem', { name: 'Group' }).focus();
+    });
     await user.keyboard('{ArrowLeft}');
     expect(screen.queryByRole('treeitem', { name: 'Widgets 89' })).toBeNull();
 
@@ -597,7 +609,9 @@ describe('the rail', () => {
   it('is a region of its own for F6, which lands on the current entry, and Escape returns the focus to the page', async () => {
     const user = userEvent.setup();
     renderShell({ ...registration, rail: { ...STATIC_RAIL, current: 'beta' } });
-    screen.getByRole('tab', { name: 'Widgets' }).focus();
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
 
     await user.keyboard('{F6}');
     expect(screen.getByRole('button', { name: 'Beta' })).toHaveFocus();
@@ -656,7 +670,9 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
   it('moves the focus through the regions in reading order, skipping the ones with nothing to focus', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('tab', { name: 'Widgets' }).focus();
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
 
     await user.keyboard('{F6}');
     expect(screen.getByRole('button', { name: 'Acme' })).toHaveFocus();
@@ -671,7 +687,9 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
   it('goes back with Shift+F6, and lands on the stop the tree kept, not on its first row', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('treeitem', { name: 'Gadgets' }).focus();
+    act(() => {
+      screen.getByRole('treeitem', { name: 'Gadgets' }).focus();
+    });
     await user.keyboard('{Shift>}{F6}{/Shift}');
     expect(screen.getByRole('button', { name: 'Acme' })).toHaveFocus();
     await user.keyboard('{Shift>}{F6}{/Shift}');
@@ -694,7 +712,9 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
     await user.keyboard('{F6}');
     expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveFocus();
 
-    screen.getByRole('button', { name: 'Outside' }).focus();
+    act(() => {
+      screen.getByRole('button', { name: 'Outside' }).focus();
+    });
     await user.keyboard('{F6}');
     expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveFocus();
   });
@@ -704,7 +724,9 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
     const { container } = renderShell();
     container.querySelector('[data-shell-region="rail"]')?.setAttribute('inert', '');
     container.querySelector('[data-shell-region="sidebar"]')?.setAttribute('inert', '');
-    screen.getByRole('tab', { name: 'Widgets' }).focus();
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
 
     await user.keyboard('{F6}');
     expect(screen.getByRole('main')).toHaveFocus();
@@ -713,11 +735,15 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
   it('returns the focus to the page with Escape from another region, and leaves Escape alone in the page', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    act(() => {
+      screen.getByRole('treeitem', { name: 'Widgets 89' }).focus();
+    });
     await user.keyboard('{Escape}');
     expect(screen.getByRole('main')).toHaveFocus();
 
-    screen.getByRole('tab', { name: 'Widgets' }).focus();
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
     await user.keyboard('{Escape}');
     expect(screen.getByRole('main')).toHaveFocus();
 
@@ -730,7 +756,9 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
   it('does not take an Escape that something else already took', () => {
     renderShell();
     const entry = screen.getByRole('treeitem', { name: 'Widgets 89' });
-    entry.focus();
+    act(() => {
+      entry.focus();
+    });
     entry.addEventListener('keydown', (event) => {
       event.preventDefault();
     });
@@ -745,7 +773,9 @@ describe('F6, Shift+F6 and Escape (ch16 S12)', () => {
   it('ignores F6 with a modifier, which belongs to the browser or the system', async () => {
     const user = userEvent.setup();
     renderShell();
-    screen.getByRole('tab', { name: 'Widgets' }).focus();
+    act(() => {
+      screen.getByRole('tab', { name: 'Widgets' }).focus();
+    });
 
     await user.keyboard('{Control>}{F6}{/Control}');
     expect(screen.getByRole('tab', { name: 'Widgets' })).toHaveFocus();

@@ -23,6 +23,9 @@ func admit(t *testing.T, policy devsdk.Policy, release sdktest.Release) error {
 // The world's policy is the production policy plus the synthetic releases a test
 // serves: the floor release (the real pinned SDK) is already a reviewed row.
 func TestWorldPolicyExtendsTheProductionRulesWithTheServedReleases(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	table := devsdk.ReviewedReleases()
 	world := sdktest.New(t)
 	floor := world.PublishSDK(devsdk.FloorVersion, nil)
@@ -42,6 +45,9 @@ func TestWorldPolicyExtendsTheProductionRulesWithTheServedReleases(t *testing.T)
 }
 
 func TestWorldServesAndRequiresReleases(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: SDK verification with the real Go toolchain")
+	}
 	world := sdktest.New(t)
 	sdk := world.PublishSDK(devsdk.FloorVersion, nil)
 	required := world.PublishRequiring("example.com/helper", "v1.0.0", sdk)

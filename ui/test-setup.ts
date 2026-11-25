@@ -59,3 +59,7 @@ Element.prototype.scrollIntoView = vi.fn();
 // scrollTo stub (jsdom doesn't implement it)
 Element.prototype.scrollTo = vi.fn();
 window.scrollTo = vi.fn() as any;
+
+// getContext stub (jsdom has no canvas: it answers null and logs "Not implemented" each time). The kit's table then measures text with
+// an estimate, and the terminal's colour code gets no 2D context, as before.
+HTMLCanvasElement.prototype.getContext = () => null;

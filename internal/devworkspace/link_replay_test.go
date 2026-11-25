@@ -11,6 +11,9 @@ import (
 )
 
 func TestFailedLinkResetReplaysAppliedFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, mutation := range []string{"none", "foreign", "symlink", "identity"} {
 		t.Run(mutation, func(t *testing.T) {

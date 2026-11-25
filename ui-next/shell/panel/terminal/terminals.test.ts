@@ -171,7 +171,9 @@ describe('the screen reader choice of the window', () => {
       terminals.screenReader.toggle();
     });
     expect(loader.engines.map((engine) => engine.screenReaderModes)).toEqual([[false], [false]]);
-    stop();
+    act(() => {
+      stop();
+    });
   });
 });
 
@@ -259,13 +261,17 @@ describe('the close question follows what runs in the session (IsBusy: the host 
 
   it('asks the general question when the host cannot tell, or the producer has no way to ask: the shell is a running process, and "may be running" is the truthful answer', async () => {
     const unknown = withTerminal(async () => Promise.resolve({ state: 'unknown' }));
-    unknown.terminals.store.closeSession(unknown.id);
+    act(() => {
+      unknown.terminals.store.closeSession(unknown.id);
+    });
     await settle();
     expect(screen.getByRole('alertdialog').textContent).toContain('This ends the terminal session. Programs it left running in the background may keep running.');
     unknown.stop();
     cleanup();
     const mute = withTerminal();
-    mute.terminals.store.closeSession(mute.id);
+    act(() => {
+      mute.terminals.store.closeSession(mute.id);
+    });
     await settle();
     expect(screen.getByRole('alertdialog').textContent).toContain('Programs it left running in the background may keep running.');
     expect(mute.terminals.modal.open()).toBe(true);

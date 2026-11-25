@@ -155,6 +155,9 @@ func (f *reuseFixture) bootstrap(t *testing.T) []string {
 }
 
 func TestBootstrapReuseAcrossFreshSupervisors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	f := newReuseFixture(t)
 	// Each bootstrap discards in-memory outputs. Exercise the transitions on
@@ -195,6 +198,9 @@ func TestBootstrapReuseAcrossFreshSupervisors(t *testing.T) {
 }
 
 func TestExecuteRunsIndependentNodesConcurrently(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	if buildParallelism() < 2 {
 		t.Skip("single-core parallelism")
@@ -222,6 +228,9 @@ func TestExecuteRunsIndependentNodesConcurrently(t *testing.T) {
 }
 
 func TestExecuteFailureStartsNoDependentAndLetsRunningSiblingFinish(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	if buildParallelism() < 2 {
 		t.Skip("single-core parallelism")

@@ -153,6 +153,9 @@ func TestStoppedRefreshMovesFailureToHistory(t *testing.T) {
 }
 
 func TestLateRefreshFailureRetiresOnlyFailedLaunchWithoutReinstall(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, phase := range []string{refreshStart, refreshVerify} {
 		t.Run(phase, func(t *testing.T) {

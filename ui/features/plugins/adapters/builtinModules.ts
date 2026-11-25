@@ -35,12 +35,13 @@ export function getBuiltinModule(key: string, registry: BuiltinModuleRegistry = 
 }
 
 export function builtinRoutes(key: string, registry: BuiltinModuleRegistry = builtinModules): RouteObject[] {
+  // A declared leaf draws nothing itself (`element: null`) until the plugin's code replaces it: the plugin's wrapper shows PluginRouteStatus.
   return getBuiltinModule(key, registry).routes.map(function route(metadata): RouteObject {
     if (metadata.index) {
-      return { index: true };
+      return { index: true, element: null };
     }
 
-    return { path: metadata.path, children: metadata.children?.map(route) };
+    return { path: metadata.path, children: metadata.children?.map(route), ...(metadata.children === undefined ? { element: null } : {}) };
   });
 }
 

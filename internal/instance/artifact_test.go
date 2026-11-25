@@ -539,6 +539,9 @@ func keys(t *testing.T, object any) []string {
 }
 
 func TestPublishedArtifactRoundTripsWithARealBinary(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: published artifact records over real binaries")
+	}
 	f := newPublishedFixture(t)
 	require.NoError(t, VerifyPluginArtifact(f.workspace, "plugin", f.binary))
 	prepared, cleanup, err := PreparePluginArtifact(f.workspace, "plugin", f.binary)
@@ -553,6 +556,9 @@ func TestPublishedArtifactRoundTripsWithARealBinary(t *testing.T) {
 }
 
 func TestArtifactRecordFieldSets(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: published artifact records over real binaries")
+	}
 	f := newPublishedFixture(t)
 	data, err := os.ReadFile(f.recordPath(t))
 	require.NoError(t, err)
@@ -578,6 +584,9 @@ func TestArtifactRecordFieldSets(t *testing.T) {
 }
 
 func TestPublishedArtifactRefusesChangedBytes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: published artifact records over real binaries")
+	}
 	t.Run("tampered after recording", func(t *testing.T) {
 		f := newPublishedFixture(t)
 		data, err := os.ReadFile(f.binary)
@@ -648,6 +657,9 @@ func TestPublishedArtifactIsRevokedByTheCurrentReleasePolicy(t *testing.T) {
 }
 
 func TestMalformedPublishedArtifactRecordsAreRefused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: published artifact records over real binaries")
+	}
 	cases := map[string]struct {
 		edit func(record map[string]any)
 		want string

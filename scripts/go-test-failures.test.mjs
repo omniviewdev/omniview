@@ -8,7 +8,7 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { failures, render } from './go-test-failures.mjs';
+import { failures, render, renderSkips } from './go-test-failures.mjs';
 
 const script = fileURLToPath(new URL('./go-test-failures.mjs', import.meta.url));
 const PKG = 'github.com/omniviewdev/omniview/internal/example';
@@ -168,7 +168,21 @@ test('the command prints the summary of a file, and nothing for a clean stream o
   assert.match(named.stdout, /### Go tests failed \(run attempt 2\)/);
   assert.match(named.stdout, /\*\*TestA\*\*/);
   assert.equal(run(clean).stdout, '');
+  const skipped = path.join(root, 'skipped.jsonl');
+  writeFileSync(skipped, stream(out('TestA', '    a_test.go:1: slow: many shells'), event('skip', { Test: 'TestA' }), event('pass')));
+  assert.match(run(skipped).stdout, /### Go tests skipped[\s\S]*\| slow \| 1 \|/);
   const missing = run(path.join(root, 'absent.jsonl'));
   assert.equal(missing.status, 0);
   assert.equal(missing.stdout, '');
+});
+
+test('skipped tests are counted by the reason they gave, and none skipped says nothing', () => {
+  const skipped = (name, message) => [out(name, `    a_test.go:9: ${message}`), out(name, `--- SKIP: ${name} (0.00s)`), event('skip', { Test: name })];
+  const text = stream(...skipped('TestA', 'slow: dev workspace, real git worktrees'), ...skipped('TestB', 'slow: two hundred real shells'), ...skipped('TestC', 'no bash on this machine'), event('pass', { Test: 'TestD' }), event('pass'));
+  const markdown = renderSkips(failures(text).skipped);
+  assert.match(markdown, /^### Go tests skipped/);
+  assert.match(markdown, /\| slow \| 2 \|/);
+  assert.match(markdown, /\| no bash on this machine \| 1 \|/);
+  assert.equal(renderSkips(failures(stream(event('pass', { Test: 'TestD' }), event('pass'))).skipped), '');
+  assert.equal(render(failures(text)), '');
 });

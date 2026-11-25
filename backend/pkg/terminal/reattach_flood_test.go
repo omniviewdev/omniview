@@ -173,6 +173,9 @@ func TestAHeldFlowStaysPausedWhateverCreditComesAndARestartOrAReleaseLetsItGo(t 
 // does, in an order that varies: the host must have paused the shell with the credit window full, and the ring
 // must still hold everything the page lacks. At the end the page has every byte, once, in order.
 func TestAReloadUnderAFloodReattachesByteExactByOffset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: 2,000,000-line flood through a real pty, with reloads")
+	}
 	const lines = 2_000_000
 	m, sink := newPageManager(t)
 	tee := teePty(m) // what the kernel gives the host, read before any code of the host sees it: the oracle of the end of this test
@@ -261,6 +264,9 @@ func TestAReloadUnderAFloodReattachesByteExactByOffset(t *testing.T) {
 // events it took in across its reloads, is what the host emitted, byte for byte. (The bytes of `yes` are not a
 // pattern a check can rely on: the terminal of macOS puts an extra CR in at some block boundaries.)
 func TestTwentyReloadsUnderYesLeaveOneShellWithTheSamePIDAndEveryByteAtItsOffset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: 20 reloads under a yes flood")
+	}
 	const step = 3 << 19
 	m, sink := newPageManager(t)
 	page := newTestPage(m, "yes-1")
@@ -308,6 +314,9 @@ func TestTwentyReloadsUnderYesLeaveOneShellWithTheSamePIDAndEveryByteAtItsOffset
 // A terminal nobody is attached to is not read: the shell blocks in its own write (it uses no CPU), the host
 // buffers nothing (the ring does not move, the heap does not grow), and when a page attaches it goes on.
 func TestADetachedTerminalHoldsItsFloodTheChildBlocksAndTheHostBuffersNothing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: floods 32 MiB through a real pty")
+	}
 	m, sink := newPageManager(t)
 	sink.discard = true
 	page := newTestPage(m, "held-1")
@@ -350,7 +359,7 @@ func TestADetachedTerminalHoldsItsFloodTheChildBlocksAndTheHostBuffersNothing(t 
 // rings in a useful time, and the test runs forty.)
 func TestTwoHundredDetachedTerminalsHoldABoundedStateAndTheirLeasesLeaveNothing(t *testing.T) {
 	if testing.Short() {
-		t.Skip("two hundred shells")
+		t.Skip("slow: two hundred real shells")
 	}
 	count := 200
 	if underRace {
@@ -484,6 +493,9 @@ func TestAttachAgainstAttachNeverLosesOrRepeatsAByte(t *testing.T) {
 // running (the old lease does nothing), or the lease wins, and the attach is told there is no such terminal and
 // the terminal ends as a lease ends it. Never an attach that succeeds on a terminal that ends from the old lease.
 func TestAttachAgainstLeaseExpiryHasExactlyOneWinner(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: 150 lease-expiry races on real timers")
+	}
 	m, sink := newPageManager(t)
 	rng := rand.New(rand.NewPCG(9, 9))
 	attached, expired := 0, 0

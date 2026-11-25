@@ -148,13 +148,15 @@ jobs:
         run: task check:go-vet GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       # The stream is kept for the next step: a failed test is named in the job summary, so that a flake that passes on re-run leaves its name behind.
+      # `-short` is the tier of a pull request: the slow tests skip themselves with a reason that starts `slow:` (rule 40 of docs/ui-next/AGENTS.md) and the summary counts the skips by reason.
+      # The nightly (pr.yml, `Go build cache primer`) runs every test, uncached.
       - name: Test
         run: |
           set -o pipefail
-          task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}" | tee "$RUNNER_TEMP/go-test.jsonl"
+          task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}" -- -short | tee "$RUNNER_TEMP/go-test.jsonl"
 
-      - name: Name the failed Go tests in the job summary
-        if: failure()
+      - name: Name the failed Go tests, and count the skipped ones by reason, in the job summary
+        if: ${{ !cancelled() }}
         run: node scripts/go-test-failures.mjs "$RUNNER_TEMP/go-test.jsonl" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Test development control (devcontrol tag)

@@ -504,6 +504,9 @@ func TestCompositionInstallDoesNotAdoptSourceEditAtTerminalBoundary(t *testing.T
 }
 
 func TestDeselectedSourceDoesNotBlockUnlinkOrRemoval(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "ui")
 	ctx := context.Background()

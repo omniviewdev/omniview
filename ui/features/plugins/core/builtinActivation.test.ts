@@ -67,7 +67,8 @@ function setup(options: {
 describe('built-in demand activation', () => {
   it('discovers declarative routes without evaluating modules, even through loadAll', async () => {
     const t = setup();
-    expect(t.service.getSnapshot().registrations.get('native')?.routes).toEqual([{ path: 'home', children: undefined }]);
+    // A declared leaf draws nothing itself until the plugin's code replaces it: the wrapper shows PluginRouteStatus.
+    expect(t.service.getSnapshot().registrations.get('native')?.routes).toEqual([{ path: 'home', children: undefined, element: null }]);
     await t.service.loadAll([{ id: 'native', dev: false, origin: 'builtin' }]);
     expect(t.counts()).toEqual({ activations: 0, evaluations: 0 });
     expect(t.extensions.hasExtensionPoint('builtin/details')).toBe(false);

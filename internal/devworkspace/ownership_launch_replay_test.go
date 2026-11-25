@@ -130,6 +130,9 @@ func TestInitialUpOwnershipGuidanceReplaysSavedLaunch(t *testing.T) {
 }
 
 func TestUnlinkingOwnershipGuidanceCompletesInterruptedTeardown(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, savedLaunch := range []bool{false, true} {
 		t.Run(map[bool]string{false: "without-launch", true: "saved-launch"}[savedLaunch], func(t *testing.T) {
@@ -182,6 +185,9 @@ func TestUnlinkingOwnershipGuidanceCompletesInterruptedTeardown(t *testing.T) {
 }
 
 func TestProducerOwnershipRecoveryRetainsRefreshRoute(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	f := newResetModulesFixture(t, "plugin-sdk")
 	ctx := context.Background()
@@ -211,6 +217,9 @@ func TestProducerOwnershipRecoveryRetainsRefreshRoute(t *testing.T) {
 }
 
 func TestProducerOwnershipRecoveryRetriesOriginalPreservation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, moved := range []bool{false, true} {
 		t.Run(map[bool]string{false: "intent", true: "moved"}[moved], func(t *testing.T) {
@@ -280,6 +289,9 @@ func TestProducerOwnershipRecoveryRetriesOriginalPreservation(t *testing.T) {
 }
 
 func TestProducerPreservationBaseRequiresProducerFilesystem(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	f := newResetModulesFixture(t)
 	base := filepath.Dir(f.m.Root)

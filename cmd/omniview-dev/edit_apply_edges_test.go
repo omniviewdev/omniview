@@ -112,6 +112,9 @@ func startCLIEdgeOwner(t *testing.T, f *cliEdgeFixture) (*devworkspace.Manager, 
 }
 
 func TestWorkspaceInvalidApplyNeverRequestsHealthySupervisorStopEdges(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev CLI over real workspaces and child processes")
+	}
 	for _, test := range []struct {
 		name  string
 		flags []string

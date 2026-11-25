@@ -10,7 +10,6 @@ Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: tru
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: function get(this: HTMLElement) {
   return this.getAttribute('role') === 'region' ? 1117 : 0;
 } });
-HTMLCanvasElement.prototype.getContext = () => null;
 
 // A section is the plugin's data and the plugin's cells, and an Overview is the aggregate of independent reads: one section that cannot be drawn is that section's failure, said in its own card, and the page's header, its summary and every
 // other section stay (S2 of the review of HM3b). The page is plugin-agnostic, so the tests are too: an invented widget in an invented bay.

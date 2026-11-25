@@ -15,6 +15,9 @@ import (
 )
 
 func TestSourceEdgesDependencyAuthorityBoundaries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	cases := []struct {
 		name       string
@@ -98,6 +101,9 @@ func TestSourceEdgesDependencyAuthorityBoundaries(t *testing.T) {
 }
 
 func TestSourceEdgesFollowConsentDoesNotExpandAfterEdit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, change := range []string{"configuration", "selection"} {
 		t.Run(change, func(t *testing.T) {
