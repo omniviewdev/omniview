@@ -104,6 +104,9 @@ test('listFromText reads the phase list and the control tables, and says what is
     'const ISOLATION_CONTROLS = {',
     "  'i1': /x/,",
     '};',
+    'const PROFILE_CONTROLS = {',
+    "  'q1': /x/,",
+    '};',
     'const PORTS_CONTROLS = {',
     "  'w1': /x/,",
     '};',
@@ -125,6 +128,7 @@ test('listFromText reads the phase list and the control tables, and says what is
       { run: 'ports', proves: ['w1'] },
       { run: 'terminal-reconnect', proves: ['r1'] },
       { run: 'terminal-isolation', proves: ['i1'] },
+      { run: 'terminal-profile', proves: ['q1'] },
     ],
   });
   assert.throws(() => listFromText(text.replace('const PHASE_IDS = [', 'const OTHER = [')), /no `const PHASE_IDS = \[` list/);
