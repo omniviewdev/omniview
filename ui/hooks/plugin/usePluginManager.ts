@@ -173,9 +173,7 @@ export const usePluginManager = () => {
   const plugins = useQuery({
     queryKey: [Entity.PLUGINS],
     queryFn: async () => {
-      console.debug('[usePluginManager] fetching plugin list');
       const plugins = await PluginManager.ListPlugins();
-      console.debug('[usePluginManager] got plugins', { count: plugins?.length ?? 0, ids: plugins?.map(p => p.id) });
       if (!plugins) {
         return [];
       }
