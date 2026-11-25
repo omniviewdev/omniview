@@ -137,8 +137,8 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
    * The page asks the host, and what it made of the answer is on screen. A tab asks when its watcher closes with no word and, while the host cannot be reached for the question, on the schedule of a reconnect, so this waits for
    * the question (a count of the page's own) and never makes it.
    */
-  const asked = async (page, ms = 20_000) => {
-    const before = await listedBy(page);
+  const asked = async (page, before, ms = 20_000) => {
+    // `before` is the count the caller read BEFORE the connection was cut: a question made between the cut and a later read would otherwise be left out of the baseline.
     const count = await until(async () => listedBy(page), (now) => now > before, ms);
     await frames(page);
     return count - before;
@@ -798,13 +798,14 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
 
       // 1. The page cannot reach the host, and the tab that took the terminal goes meanwhile: the page is told nothing and shows what it showed, though it asked.
       // The questions fail from the first instant: the page asks when its watcher closes, which is the moment its connection is cut.
+      const baseline = await listedBy(a);
       await a.evaluate(() => {
         window.__link.failLists(true);
         window.__link.down();
       });
       await b.goto('about:blank');
       await until(() => host.state(id)?.holder, (holder) => holder === null, 8000);
-      const triedDown = await asked(a);
+      const triedDown = await asked(a, baseline);
       const laneDown = await laneOf(a);
       const buttonsDown = await buttons();
 
