@@ -675,6 +675,16 @@ export enum IntegrationReason {
     SkipUnsupportedShell = "unsupported-shell",
 
     /**
+     * SkipSettingUnreadable: the setting could not be read, so the host does not touch the user's shell (fail closed).
+     */
+    SkipSettingUnreadable = "setting-unreadable",
+
+    /**
+     * NoReady: the shell did not say it was up within the wait.
+     */
+    NoReady = "no-ready",
+
+    /**
      * FailSetup: the host could not make what the integration needs (its directory, its channel, its nonce); the
      * shell started without it.
      */
@@ -718,6 +728,13 @@ export enum IntegrationState {
      * has none.
      */
     IntegrationFailed = "failed",
+
+    /**
+     * IntegrationUnconfirmed: the shell was started with the integration and did not say it loaded it within the wait
+     * (Reason is no-ready): it may still, or it may never (a startup file stopped the shell's own startup). The host states
+     * only what it knows.
+     */
+    IntegrationUnconfirmed = "unconfirmed",
 };
 
 /**
