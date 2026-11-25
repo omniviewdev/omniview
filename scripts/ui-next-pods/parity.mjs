@@ -987,7 +987,7 @@ async function readRate({ browser, baseURL, kubeconfig, timeoutMs = 90_000 }) {
 }
 
 // The Forward port entry of a Pod's page (PF3-k8s, plugin #288). The Pod is the check's own, as the press-twice one: the fixture declares no container port, so a busybox that declares TCP 8080 is made in `checkout`. Its page is
-// opened from the list as a person opens it, the header's overflow menu must offer `Forward port 8080`, and its press must list a forward in the Ports tool whose mapping says where the plugin states the forward listens:
+// opened from the list as a person opens it, the header's overflow menu must offer `Forward port 8080`, and its press must list a RUNNING forward in the Ports tool (a row of any other state also draws a mapping) whose mapping says where the plugin states the forward listens:
 // `localhost:<port> → :8080/TCP` (the host never guesses an address). The forward is stopped from its row, and when the check fails too: a forward left running would outlive the Pod.
 // Throws ParityError('FORWARD_MISMATCH') when the entry is absent (a plugin before #288 has none) or the row says anything else.
 const FORWARD_POD = { namespace: 'checkout', name: 'forward-port' };
@@ -1016,8 +1016,9 @@ export async function checkForward({ browser, baseURL, kubeconfig, timeoutMs = 6
           throw new ParityError('FORWARD_MISMATCH', `${pod.namespace}/${pod.name}: the Pod page's menu has no Forward port 8080 entry`, { pod });
         });
         await entry.click();
-        await mapping.waitFor({ timeout: timeoutMs });
-        const read = (await mapping.textContent()) ?? '';
+        const running = page.locator('[data-ports-part="row"][data-ports-state="running"] [data-ports-part="mapping"]');
+        await running.waitFor({ timeout: timeoutMs });
+        const read = (await running.textContent()) ?? '';
         if (!FORWARD_MAPPING.test(read)) {
           throw new ParityError('FORWARD_MISMATCH', `${pod.namespace}/${pod.name}: the Ports tool lists ${JSON.stringify(read)}, not localhost:<port> → :8080/TCP`, { read });
         }
