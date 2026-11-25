@@ -4,6 +4,9 @@ import type { DetailPageDefinition, DetailSource, DetailState, DetailView } from
 import { DetailPage } from './DetailPage';
 import { FELT_MS, REFRESH_LIMIT_MS } from './useRefreshFeedback';
 
+// The real `setTimeout`, taken at import, before any test installs a fake clock: a test that has to let REAL time go by (a slow machine) sleeps with it.
+const realSetTimeout = globalThis.setTimeout;
+
 // The page is plugin-agnostic, so the tests are too: an invented widget in an invented bay. What is under test is what the page does with a source that says a read failed while the
 // object is on screen: it keeps the object, and says so where the page's other acknowledgements go, the header's operation slot.
 
@@ -158,6 +161,27 @@ describe('the user\'s own Refresh that does not finish (S3)', () => {
     expect(screen.getByRole('button', { name: 'Refresh lathe-4' })).not.toHaveAttribute('aria-disabled');
     fireEvent.click(screen.getByRole('button', { name: /^Dismiss/ }));
     expect(screen.queryByText('Refresh did not finish')).toBeNull();
+  });
+
+  it('is not moved by real time passing: the thirty seconds are the fake clock\'s, so a starved machine says it at the same tick', async () => {
+    // The twin of the list page's test (`ListPage.test.tsx`): this block's clock is a plain fake one, which real time does not move, and this holds it so.
+    const refresh = vi.fn(async () => new Promise<void>(() => undefined));
+    render(page(source({ kind: 'ready' }, view, { refresh })));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh lathe-4' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REFRESH_LIMIT_MS - 1);
+    });
+    await new Promise<void>((resolve) => {
+      realSetTimeout(resolve, 100);
+    });
+
+    expect(screen.getByText('Refreshing…')).toBeInTheDocument();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(screen.getByRole('article', { name: 'Error: Refresh lathe-4' })).toHaveTextContent('Refresh did not finish');
   });
 });
 
