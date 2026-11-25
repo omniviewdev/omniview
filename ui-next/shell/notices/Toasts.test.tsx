@@ -27,7 +27,9 @@ describe('the layer', () => {
     expect(layer).toHaveAttribute('aria-live', 'polite');
     expect(layer).toHaveAttribute('aria-atomic', 'false');
     expect(toastsOf()).toEqual([]);
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     expect(toastsOf()).toHaveLength(1);
     expect(layerOf()).toBe(layer);
@@ -41,8 +43,10 @@ describe('the layer', () => {
 
   it('is a region named Notifications while it has toasts, and its first toast is its one stop for F6 (S12, S13)', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'One' });
-    m.f.store.notify({ title: 'Two' });
+    act(() => {
+      m.f.store.notify({ title: 'One' });
+      m.f.store.notify({ title: 'Two' });
+    });
     await m.flush();
     const region = screen.getByRole('region', { name: 'Notifications' });
     expect(region).toHaveAttribute('data-shell-region', 'toasts');
@@ -56,7 +60,9 @@ describe('the layer', () => {
 describe('a toast', () => {
   it('says its severity with a glyph and a word, then its title and its one sentence (S83)', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Connection added', detail: 'prod-east is ready to use.', severity: 'info' });
+    act(() => {
+      m.f.store.notify({ title: 'Connection added', detail: 'prod-east is ready to use.', severity: 'info' });
+    });
     await m.flush();
     const toast = screen.getByRole('status', { name: 'Info: Connection added' });
     expect(partOf(toast, 'severity')?.textContent).toBe('Info: ');
@@ -68,8 +74,10 @@ describe('a toast', () => {
 
   it('is a div, whose role is the one that announces it: ARIA in HTML allows neither alert nor status on an article (axe: aria-allowed-role)', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+      m.f.store.notify(failure);
+    });
     await m.flush();
     const toasts = toastsOf();
     expect(toasts.map((toast) => toast.getAttribute('role'))).toEqual(['status', 'alert']);
@@ -78,8 +86,10 @@ describe('a toast', () => {
 
   it('says which toast stays until the user acts (S78): a failure is marked sticky, a timed one is not', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+      m.f.store.notify(failure);
+    });
     await m.flush();
     const [timed, sticky] = toastsOf();
     expect(timed).not.toHaveAttribute('data-sticky');
@@ -90,7 +100,9 @@ describe('a toast', () => {
     const m = mount();
     const severities = [['info', 'status-info', 'Info'], ['success', 'status-success', 'Success'], ['warning', 'status-warning', 'Warning'], ['error', 'status-error', 'Error']] as const;
     for (const [severity, glyph, word] of severities) {
-      m.f.store.notify({ title: `A ${severity}`, severity, initiator: 'system' });
+      act(() => {
+        m.f.store.notify({ title: `A ${severity}`, severity, initiator: 'system' });
+      });
       await m.flush();
       const [toast] = toastsOf();
       expect(partOf(toast, 'glyph')?.querySelector('svg')).toHaveAttribute('data-ov-glyph', glyph);
@@ -105,7 +117,9 @@ describe('a toast', () => {
 
   it('is an alert for an error of work the user started, and a status for everything else (S86, O6)', async () => {
     const m = mount();
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     expect(screen.getByRole('alert', { name: 'Error: Timed out' })).toBeInTheDocument();
     act(() => {
@@ -121,7 +135,9 @@ describe('a toast', () => {
 
   it('draws no second line for a record with no sentence, and no buttons for one with no action', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     const [toast] = toastsOf();
     expect(partOf(toast, 'message')).toBeNull();
@@ -130,7 +146,9 @@ describe('a toast', () => {
 
   it('takes the focus by script only, and its controls are the Tab stops (A14)', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     const [toast] = toastsOf();
     expect(toast).toHaveAttribute('tabindex', '-1');
@@ -142,7 +160,9 @@ describe('a toast', () => {
 
   it('keeps its words in a bidirectional text of its own: a right-to-left sentence aligns and clips at its own end', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'تم الاتصال', detail: 'جاهز للاستخدام.' });
+    act(() => {
+      m.f.store.notify({ title: 'تم الاتصال', detail: 'جاهز للاستخدام.' });
+    });
     await m.flush();
     const [toast] = toastsOf();
     expect(partOf(toast, 'title')).toHaveAttribute('dir', 'auto');
@@ -153,7 +173,9 @@ describe('a toast', () => {
 describe('announced once', () => {
   it('is told by being inserted, and a count that moves is no text added or changed inside the live region', async () => {
     const m = mount();
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     const layer = layerOf();
     const [before] = toastsOf();
@@ -163,9 +185,13 @@ describe('announced once', () => {
       records.push(...list);
     });
     observer.observe(layer, { subtree: true, childList: true, characterData: true, attributes: true });
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     records.push(...observer.takeRecords());
     observer.disconnect();
@@ -180,12 +206,16 @@ describe('announced once', () => {
 
   it('draws the words of a toast that changed as generated content, the second line too (the mock\'s rule for a folded record)', async () => {
     const m = mount();
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     const [toast] = toastsOf();
     expect(partOf(toast, 'message')?.querySelector('[data-text]')).toBeNull();
     expect(wordsOf(partOf(toast, 'message'))).toBe('The cluster did not complete the request in time.');
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     const message = partOf(toast, 'message')?.querySelector('[data-text]');
     expect(message).not.toBeNull();
@@ -195,13 +225,17 @@ describe('announced once', () => {
 
   it('is told again by a toast that comes back: one that was dismissed and fails again is a new node, which a live region announces', async () => {
     const m = mount();
-    const handle = m.f.store.notify(failure);
+    const handle = await act(() => m.f.store.notify(failure));
     await m.flush();
     const [first] = toastsOf();
-    handle.dismiss();
+    act(() => {
+      handle.dismiss();
+    });
     await m.flush();
     expect(toastsOf()).toEqual([]);
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     const [again] = toastsOf();
     expect(again).toBeDefined();
@@ -213,7 +247,9 @@ describe('announced once', () => {
 describe('the buttons of a toast', () => {
   it('opens the page an action names through the tab model, as a notification (S64)', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'go', label: 'Open instance', route }] });
+    act(() => {
+      m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'go', label: 'Open instance', route }] });
+    });
     await m.flush();
     await m.user.click(screen.getByRole('button', { name: 'Open instance' }));
     expect(m.f.opened).toHaveLength(1);
@@ -225,7 +261,9 @@ describe('the buttons of a toast', () => {
 
   it('runs the command an action names through the host\'s registry', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Signed out', severity: 'warning', actions: [{ id: 'in', label: 'Sign in', command: { id: 'host.signIn', arg: { who: 'me' } } }] });
+    act(() => {
+      m.f.store.notify({ title: 'Signed out', severity: 'warning', actions: [{ id: 'in', label: 'Sign in', command: { id: 'host.signIn', arg: { who: 'me' } } }] });
+    });
     await m.flush();
     await m.user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(m.f.commands).toEqual([{ id: 'host.signIn', arg: { who: 'me' } }]);
@@ -233,7 +271,9 @@ describe('the buttons of a toast', () => {
 
   it('paints a Retry as the one primary button, with the glyph that turns', async () => {
     const m = mount();
-    m.f.store.begin({ title: 'Reconnecting data source', initiator: 'user', onRetry: () => undefined }).fail('Nothing answered.');
+    act(() => {
+      m.f.store.begin({ title: 'Reconnecting data source', initiator: 'user', onRetry: () => undefined }).fail('Nothing answered.');
+    });
     await m.flush();
     const [toast] = toastsOf();
     const [retry] = buttonsOf(toast);
@@ -245,7 +285,9 @@ describe('the buttons of a toast', () => {
   it('draws no button for an action that cannot be used, and says why in words under the sentence (a button that does nothing is a stub)', async () => {
     const m = mount();
     m.f.off.add('cloud');
-    m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'go', label: 'Open instance', route }] });
+    act(() => {
+      m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'go', label: 'Open instance', route }] });
+    });
     await m.flush();
     const [toast] = toastsOf();
     expect(buttonsOf(toast)).toEqual([]);
@@ -256,7 +298,9 @@ describe('the buttons of a toast', () => {
   it('draws at most two, and only the ones that can be used', async () => {
     const m = mount();
     const run = (): undefined => undefined;
-    m.f.store.notify({ title: 'Three ways', severity: 'warning', actions: [{ id: 'a', label: 'First', run }, { id: 'b', label: 'Second', run }, { id: 'c', label: 'Third', run }] });
+    act(() => {
+      m.f.store.notify({ title: 'Three ways', severity: 'warning', actions: [{ id: 'a', label: 'First', run }, { id: 'b', label: 'Second', run }, { id: 'c', label: 'Third', run }] });
+    });
     await m.flush();
     const [toast] = toastsOf();
     expect(buttonsOf(toast).map((button) => button.textContent)).toEqual(['First', 'Second']);
@@ -264,7 +308,9 @@ describe('the buttons of a toast', () => {
 
   it('tells the person when the host refuses an action, instead of doing nothing', async () => {
     const m = mount({ store: { run: undefined } });
-    m.f.store.notify({ title: 'Signed out', severity: 'warning', actions: [{ id: 'in', label: 'Sign in', command: { id: 'host.signIn' } }] });
+    act(() => {
+      m.f.store.notify({ title: 'Signed out', severity: 'warning', actions: [{ id: 'in', label: 'Sign in', command: { id: 'host.signIn' } }] });
+    });
     await m.flush();
     await m.user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(m.announcer.polite.getSnapshot().text).toBe('Nothing here can run this command.');
@@ -274,8 +320,10 @@ describe('the buttons of a toast', () => {
 describe('dismissing', () => {
   it('dismisses with its own control, named for the toast, and the record stays in the history, read', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
-    m.f.store.notify({ title: 'Backup finished', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+      m.f.store.notify({ title: 'Backup finished', severity: 'success' });
+    });
     await m.flush();
     await m.user.click(screen.getByRole('button', { name: 'Dismiss: Snapshot created' }));
     await m.flush();
@@ -285,7 +333,9 @@ describe('dismissing', () => {
 
   it('leaves the stack with no toast and no landmark when the last is dismissed, and the live region stays', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     await m.user.click(screen.getByRole('button', { name: 'Dismiss: Snapshot created' }));
     await m.flush();
@@ -297,9 +347,11 @@ describe('dismissing', () => {
 
 describe('the summary toast (S79)', () => {
   const five = async (m: ReturnType<typeof mount>, worst = 4): Promise<void> => {
-    for (let index = 1; index <= 5; index += 1) {
-      m.f.store.forSource(`p${String(index)}`).notify({ title: `Notice ${String(index)}`, severity: index === worst ? 'error' : 'info', initiator: 'system' });
-    }
+    act(() => {
+      for (let index = 1; index <= 5; index += 1) {
+        m.f.store.forSource(`p${String(index)}`).notify({ title: `Notice ${String(index)}`, severity: index === worst ? 'error' : 'info', initiator: 'system' });
+      }
+    });
 
     await m.flush();
   };
@@ -368,9 +420,13 @@ describe('the focus', () => {
     m.opener.focus();
     const moves = vi.fn();
     document.addEventListener('focusin', moves);
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
-    m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    act(() => {
+      m.f.store.notify({ title: 'Snapshot created', severity: 'success' });
+    });
     await m.flush();
     document.removeEventListener('focusin', moves);
     expect(toastsOf()).toHaveLength(2);
@@ -380,8 +436,10 @@ describe('the focus', () => {
 
   it('is reached with F6, which lands on the first toast, from the region the focus was in (S12, S13)', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'One' });
-    m.f.store.notify({ title: 'Two' });
+    act(() => {
+      m.f.store.notify({ title: 'One' });
+      m.f.store.notify({ title: 'Two' });
+    });
     await m.flush();
     pageOf().focus();
     await m.user.keyboard('{F6}');
@@ -399,8 +457,10 @@ describe('the focus', () => {
 
   it('closes the focused toast with Escape and gives the focus back to where it was, and leaves the other toasts (never a trap)', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'One' });
-    m.f.store.notify({ title: 'Two' });
+    act(() => {
+      m.f.store.notify({ title: 'One' });
+      m.f.store.notify({ title: 'Two' });
+    });
     await m.flush();
     pageOf().focus();
     await m.user.keyboard('{F6}');
@@ -414,7 +474,9 @@ describe('the focus', () => {
   it('closes the toast from one of its buttons too, and gives the focus back to the control it came from (Escape acts on the toast the focus is in)', async () => {
     const m = mount();
     m.opener.focus();
-    m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'fix', label: 'Fix it', run: () => undefined }] });
+    act(() => {
+      m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'fix', label: 'Fix it', run: () => undefined }] });
+    });
     await m.flush();
     await m.user.tab();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Fix it' }));
@@ -427,9 +489,11 @@ describe('the focus', () => {
   it('gives the focus back where it was when the toast that has it is removed by anything else: the model dismisses it', async () => {
     const m = mount();
     m.opener.focus();
-    const handle = m.f.store.notify({ title: 'One' });
+    const handle = await act(() => m.f.store.notify({ title: 'One' }));
     await m.flush();
-    toastsOf()[0].focus();
+    await act(async () => {
+      toastsOf()[0].focus();
+    });
     expect(document.activeElement).toBe(toastsOf()[0]);
     act(() => {
       handle.dismiss();
@@ -442,9 +506,11 @@ describe('the focus', () => {
   it('gives the focus back when the toast that has it goes under the summary because more arrived', async () => {
     const m = mount();
     m.opener.focus();
-    m.f.store.forSource('p1').notify({ title: 'Notice 1' });
-    m.f.store.forSource('p2').notify({ title: 'Notice 2' });
-    m.f.store.forSource('p3').notify({ title: 'Notice 3' });
+    act(() => {
+      m.f.store.forSource('p1').notify({ title: 'Notice 1' });
+      m.f.store.forSource('p2').notify({ title: 'Notice 2' });
+      m.f.store.forSource('p3').notify({ title: 'Notice 3' });
+    });
     await m.flush();
     toastsOf()[0].focus();
     m.f.store.forSource('p4').notify({ title: 'Notice 4' });
@@ -457,9 +523,11 @@ describe('the focus', () => {
   it('leaves the focus alone when the user moved it on before the toast went: it is theirs', async () => {
     const m = mount({ around: <button type="button">Other</button> });
     m.opener.focus();
-    const handle = m.f.store.notify({ title: 'One' });
+    const handle = await act(() => m.f.store.notify({ title: 'One' }));
     await m.flush();
-    toastsOf()[0].focus();
+    await act(async () => {
+      toastsOf()[0].focus();
+    });
     const other = screen.getByRole('button', { name: 'Other' });
     other.focus();
     act(() => {
@@ -471,9 +539,11 @@ describe('the focus', () => {
 
   it('closes the summary toast with Escape too, which dismisses what it stands for', async () => {
     const m = mount();
-    for (let index = 1; index <= 5; index += 1) {
-      m.f.store.forSource(`p${String(index)}`).notify({ title: `Notice ${String(index)}` });
-    }
+    act(() => {
+      for (let index = 1; index <= 5; index += 1) {
+        m.f.store.forSource(`p${String(index)}`).notify({ title: `Notice ${String(index)}` });
+      }
+    });
 
     await m.flush();
     pageOf().focus();
@@ -487,8 +557,10 @@ describe('the focus', () => {
 
 describe('the hold of the pointer and the focus on the clocks (S78)', () => {
   const timed = async (m: ReturnType<typeof mount>): Promise<void> => {
-    m.f.store.notify({ title: 'One' });
-    m.f.store.notify({ title: 'Two' });
+    act(() => {
+      m.f.store.notify({ title: 'One' });
+      m.f.store.notify({ title: 'Two' });
+    });
     await m.flush();
   };
 
@@ -552,7 +624,9 @@ describe('the hold of the pointer and the focus on the clocks (S78)', () => {
 
   it('keeps the pause while the focus moves from one control of the stack to another', async () => {
     const m = mount();
-    m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'fix', label: 'Fix it', run: () => undefined }] });
+    act(() => {
+      m.f.store.notify({ title: 'Disk is filling', severity: 'warning', actions: [{ id: 'fix', label: 'Fix it', run: () => undefined }] });
+    });
     await m.flush();
     await act(async () => {
       screen.getByRole('button', { name: 'Fix it' }).focus();
@@ -567,7 +641,9 @@ describe('the hold of the pointer and the focus on the clocks (S78)', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const m = mount();
-      m.f.store.notify({ title: 'One' });
+      act(() => {
+        m.f.store.notify({ title: 'One' });
+      });
       await m.flush();
       const [toast] = toastsOf();
       fireEvent.pointerOver(toast);
@@ -603,7 +679,9 @@ describe('while a modal owns the window (S89a)', () => {
   it('draws nothing, keeps the layer, and brings the stack back when the modal closes, without moving the focus', async () => {
     const m = mount();
     m.opener.focus();
-    m.f.store.notify(failure);
+    act(() => {
+      m.f.store.notify(failure);
+    });
     await m.flush();
     expect(toastsOf()).toHaveLength(1);
     act(() => {
