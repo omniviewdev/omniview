@@ -63,8 +63,14 @@ if [ -n "${__omniview_nonce+set}" ] && [ "${#__omniview_nonce}" -gt 0 ]; then
     # no, or yes), except for our own hooks, which it must not take away.
     local __omniview_ret=${__omniview_rc:-0}
     case $BASH_COMMAND in __omniview_precmd_first|__omniview_precmd_last) __omniview_ret=0 ;; esac
-    # extdebug makes the trap follow into functions: a command of one of ours is none of the user's, and is never refused.
-    case ${FUNCNAME[1]-} in __omniview_*) return 0 ;; esac
+    # extdebug makes the trap follow into functions: a command of one of ours is none of the user's, and is never refused. (The
+    # exact names: a function of the user's that begins like ours is theirs.)
+    case ${FUNCNAME[1]-} in
+      __omniview_escape|__omniview_debug|__omniview_precmd_first|__omniview_precmd_last|__omniview_hup_look|__omniview_hup_on|__omniview_hup_off|__omniview_hup) return 0 ;;
+    esac
+    # extdebug and `set -T` make subshells, command substitutions and the parts of a pipeline inherit the trap: what it prints
+    # there would land in the user's data (a file, a variable), and a command would be recorded twice. They are not the shell.
+    [ "${BASH_SUBSHELL:-0}" = 0 ] || return "$__omniview_ret"
     [ "${__omniview_armed:-0}" = 1 ] || return "$__omniview_ret"
     if [ "$BASH_COMMAND" = __omniview_precmd_first ]; then
       # The prompt commands run again for an empty line and for Ctrl-C, and the first of them is then not the user's command. It
