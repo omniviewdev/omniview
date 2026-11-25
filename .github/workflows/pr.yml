@@ -22,7 +22,7 @@ jobs:
   # script does not know skips nothing. The same job is in pr-checks.yml.
   changes:
     name: Changed paths
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     outputs:
       class: ${{ steps.classify.outputs.class }}
@@ -56,7 +56,7 @@ jobs:
     name: e2e-tests
     needs: [changes, e2e-application]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 1
     steps:
       # Green when the suite succeeded, or when the classifier skipped it (a change that cannot reach the application: documentation, or the new UI alone) and it was skipped. A suite that was
@@ -90,10 +90,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Build Artifacts: compile gate, one build per OS. Nothing downloads or
   # consumes the built binaries (N24 M1), so nothing is uploaded.
-  # macOS here is a thin arm64 build on macos-15. The universal (arm64+amd64)
-  # build runs on every push to main (main-macos-universal.yml) and in
-  # desktop-build.yml (nightly, release tags, feature channel): an x86_64-only
-  # break is first seen there, not on a PR.
+  # There is no macOS build on a pull request (N30): the thin arm64 build here was 435 s on a macOS runner for a break that only a darwin-only file or a cgo setting of that
+  # platform causes, and the universal (arm64+amd64) build that contains it runs on every push to main (main-macos-universal.yml) and in desktop-build.yml (nightly, release
+  # tags, feature channel). A break that is darwin only is first seen on main, in the run that opens the `ci-main-red` issue, not on the pull request.
   # Windows is a job of its own (build-artifacts-windows, below) so that a change to the new UI keeps it while the macOS and Linux builds here are skipped (N24 D1).
   # ─────────────────────────────────────────────────────────────────────────────
   build-artifacts:
@@ -104,11 +103,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            platform: darwin/arm64
-            build-tags: "production"
-            extra-ldflags: ""
-            developer-dir: /Applications/Xcode_26.3.app/Contents/Developer
           - os: ubuntu-24.04
             container: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
             platform: linux/amd64
@@ -124,7 +118,6 @@ jobs:
     timeout-minutes: 30
     env:
       GOWORK: "off"
-      DEVELOPER_DIR: ${{ matrix.developer-dir || '' }}
     steps:
       # Container Git must own the mount after checkout's temporary HOME expires.
       - name: Match checkout directory ownership to container user

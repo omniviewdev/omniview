@@ -28,7 +28,7 @@ jobs:
   # skips nothing. The same job is in pr.yml.
   changes:
     name: Changed paths
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     outputs:
       class: ${{ steps.classify.outputs.class }}
@@ -679,7 +679,7 @@ jobs:
     name: UI checks
     needs: [changes, c02-corpus, ui-build, ui-lint, ui-component-tests, ui-runtime-contract]
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 2
     steps:
       - name: Require every UI check job to have succeeded, or to have been skipped by path

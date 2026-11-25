@@ -632,12 +632,13 @@ test('the shards of a plan are numbered from 1 by length, longest first, hold th
   assert.ok(PLAN.shards.some((shard) => shard.dist) && PLAN.shards.some((shard) => !shard.dist), 'some shards read the build and some do not');
 });
 
-test('the matrix is the one line of JSON the workflow reads: `{ include: [{ shard, units, seconds, dist }] }`, the units as ids joined by commas, in shard order', () => {
+test('the matrix is the one line of JSON the workflow reads: `{ include: [{ shard, units, seconds, dist, engines }] }`, the units as ids joined by commas, in shard order', () => {
   const matrix = matrixOf(PLAN.shards);
   assert.deepEqual(Object.keys(matrix), ['include']);
   assert.equal(matrix.include.length, PLAN.shards.length);
   matrix.include.forEach((entry, index) => {
-    assert.deepEqual(Object.keys(entry), ['shard', 'units', 'seconds', 'dist']);
+    assert.deepEqual(Object.keys(entry), ['shard', 'units', 'seconds', 'dist', 'engines']);
+    assert.equal(entry.engines, '', 'a full run leaves the probes their own engines');
     assert.equal(entry.shard, index + 1);
     assert.equal(entry.dist, PLAN.shards[index].dist, 'the shard builds ui-next exactly when a unit of it reads the build');
     assert.equal(entry.seconds, PLAN.shards[index].seconds);
@@ -1051,10 +1052,16 @@ test('negative control: the ceiling is not a number that lets anything through: 
 test('the job timeout leaves a shard at its ceiling, on the slowest setup of the 70 shard jobs, time to finish and say why it failed, and is not much more: that is a hang', () => {
   assert.equal(engine.SETUP_MAX_SECONDS, 137, 'the slowest setup of the 70 shard jobs (median 87.5 s, 90th percentile 105 s)');
   const needed = Math.ceil((SHARD_CEILING_SECONDS + engine.SETUP_MAX_SECONDS) / 60);
-  const timeout = workflow.jobs.shard['timeout-minutes'];
-  assert.ok(timeout >= needed, `a shard at its ceiling of ${SHARD_CEILING_SECONDS} s with a setup of ${engine.SETUP_MAX_SECONDS} s takes ${needed} minutes and the job is killed at ${timeout}`);
-  assert.ok(timeout <= needed + 3, `${timeout} minutes is more than ${needed} and 3: past that a shard that hangs is told from a slow one too late`);
-  assert.equal(timeout, 15);
+  // The timeout is an expression of the plan's scope (N30): 15 minutes for a full run, 36 for a pull request's longer shards.
+  const [, longer, usual] = /^\$\{\{ needs\.plan\.outputs\.scope == 'pr' && (\d+) \|\| (\d+) \}\}$/.exec(workflow.jobs.shard['timeout-minutes']);
+  for (const [timeout, ceiling] of [[Number(usual), SHARD_CEILING_SECONDS], [Number(longer), engine.PR_SHARD_CEILING_SECONDS]]) {
+    const required = Math.ceil((ceiling + engine.SETUP_MAX_SECONDS) / 60);
+    assert.ok(timeout >= required, `a shard at its ceiling of ${ceiling} s with a setup of ${engine.SETUP_MAX_SECONDS} s takes ${required} minutes and the job is killed at ${timeout}`);
+    assert.ok(timeout <= required + 3, `${timeout} minutes is more than ${required} and 3: past that a shard that hangs is told from a slow one too late`);
+  }
+
+  assert.equal(Number(usual), 15);
+  assert.equal(Number(longer), 36);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1229,7 +1236,8 @@ test('the plan command writes the matrix and the number of shards to $GITHUB_OUT
   assert.deepEqual(matrix.include.flatMap((entry) => entry.units.split(',')).sort(), idsOf(UNITS).sort());
   assert.equal(Number(written.shards), matrix.include.length);
   assert.equal(written.shards, String(PLAN.shards.length));
-  assert.deepEqual(Object.keys(written).sort(), ['matrix', 'shards']);
+  assert.deepEqual(Object.keys(written).sort(), ['matrix', 'scope', 'shards']);
+  assert.equal(written.scope, 'full');
   assert.match(readFileSync(summary, 'utf8'), /^### Kit probes plan$/m);
   assert.match(result.stdout, /Every probe and every control runs/);
 });
@@ -1431,13 +1439,13 @@ const stepNamed = (job, name) => stepsOf(job).find((step) => step.name?.startsWi
 test('the plan job is the first job, runs on a plain runner, installs the pinned Node from .tool-versions, checks the table, packs every unit and writes the matrix and the number of shards the others read', () => {
   const job = workflow.jobs.plan;
   assert.equal(job.name, 'Kit probes plan');
-  assert.equal(job['runs-on'], 'ubuntu-24.04');
+  assert.equal(job['runs-on'], 'ubuntu-slim', 'the smallest runner: it reads two commits and runs two scripts (N30)');
   assert.ok(Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] <= 10);
   assert.equal(job.needs, undefined, 'nothing is before it');
   assert.equal(job.if, undefined, 'it runs on every event: a plan that is skipped is a run with no shard');
   assert.equal(job['continue-on-error'], undefined);
   assert.equal(job.container, undefined, 'it does not pull the CI image: it is on the critical path of every shard');
-  assert.deepEqual(Object.keys(job.outputs).sort(), ['matrix', 'shards']);
+  assert.deepEqual(Object.keys(job.outputs).sort(), ['matrix', 'reason', 'scope', 'shards']);
   assert.equal(job.outputs.matrix, '${{ steps.plan.outputs.matrix }}');
   assert.equal(job.outputs.shards, '${{ steps.plan.outputs.shards }}');
   const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
@@ -1447,9 +1455,14 @@ test('the plan job is the first job, runs on a plain runner, installs the pinned
   assert.equal(node.with['node-version'], undefined);
   const planStep = job.steps.find((step) => step.id === 'plan');
   assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs check/);
-  assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs plan/);
-  assert.ok(planStep.run.indexOf('probe-shards.mjs check') < planStep.run.indexOf('probe-shards.mjs plan'), 'the check first');
-  assert.doesNotMatch(planStep.run, /--base|changed|CHANGED/, 'the plan does not read what a pull request changed: every unit runs on every run');
+  assert.match(planStep.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" plan/);
+  assert.ok(planStep.run.indexOf('probe-shards.mjs check') < planStep.run.indexOf('probe-shards.mjs --scope'), 'the check first');
+  assert.doesNotMatch(planStep.run, /--base|changed|CHANGED/, 'the plan does not read the diff itself: scripts/ci/ci-scope.mjs, the one place, does');
+  const scopeStep = job.steps.find((step) => step.id === 'scope');
+  assert.equal(scopeStep.run, 'node scripts/ci/ci-scope.mjs');
+  assert.equal(checkout.with['fetch-depth'], 2, 'the diff of a pull request is two commits');
+  assert.equal(planStep.env.SCOPE, '${{ steps.scope.outputs.scope }}');
+  assert.equal(job.outputs.scope, '${{ steps.plan.outputs.scope }}');
 });
 
 test('the shard job needs the plan, takes its matrix from the plan\'s output, none stops the others, each has a limit, and the file names its probes only through the table', () => {
@@ -1457,7 +1470,7 @@ test('the shard job needs the plan, takes its matrix from the plan\'s output, no
   assert.equal(job.needs, 'plan');
   assert.equal(job.strategy['fail-fast'], false);
   assert.equal(job.strategy.matrix, '${{ fromJSON(needs.plan.outputs.matrix) }}');
-  assert.ok(Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] > 0);
+  assert.match(String(job['timeout-minutes']), /^\$\{\{ needs\.plan\.outputs\.scope == 'pr' && \d+ \|\| \d+ \}\}$/, 'a limit for each scope');
   assert.equal(job['runs-on'], 'ubuntu-24.04');
   assert.match(job.name, /^Kit probes shard \$\{\{ matrix\.shard \}\}$/);
   const commands = stepsOf('shard').map((step) => step.run ?? '').join('\n');
@@ -1465,7 +1478,8 @@ test('the shard job needs the plan, takes its matrix from the plan\'s output, no
   assert.match(commands, /node --test scripts\/ci\/probe-\*\.test\.mjs/);
   assert.doesNotMatch(commands, /node (packages\/kit\/probes|ui-next\/(shell|page)\/probes)\//, 'a probe run from the workflow file is a probe no table knows');
   const runStep = stepNamed('shard', 'Run the units of this shard');
-  assert.equal(runStep.run, 'node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"', 'the shard\'s step is the command and nothing after it: no `|| true`');
+  assert.equal(runStep.run, 'node scripts/ci/probe-shards.mjs --scope "$SCOPE" run "$SHARD" "$UNITS"', 'the shard\'s step is the command and nothing after it: no `|| true`');
+  assert.equal(runStep.env.SCOPE, '${{ needs.plan.outputs.scope }}');
   assert.equal(runStep.env.SHARD, '${{ matrix.shard }}');
   assert.equal(runStep.env.UNITS, '${{ matrix.units }}');
   assert.equal(/\$\{\{ *matrix\./.test(runStep.run), false, 'the matrix reaches the command through env');
@@ -1487,10 +1501,10 @@ test('nothing in the workflow can turn a failure into a pass: no continue-on-err
   assert.deepEqual(conditional, ['shard: Build ui-next once, for the units of this shard that read it: matrix.dist == true', 'shard: Keep the reports: always()']);
 });
 
-test('the workflow starts for the units, the manifest, the engine and its tests, and runs on a pull request, on main and by hand and on nothing else: every probe and every control runs on every run, so there is no run that checks more and no nightly run', () => {
+test('the workflow starts for the units, the manifest, the engine and its tests, and runs on a pull request, on main, every night and by hand and on nothing else: main, the nightly run and a manual run are the full ones (every probe and every control, both engines), a pull request runs the scope scripts/ci/ci-scope.mjs gives it', () => {
   assert.equal(workflow.env.OMNIVIEW_UI, 'next');
   assert.equal(workflow.env.NODE_VERSION, undefined, 'Node is the image\'s, checked against .tool-versions by the guard step: a second pin here is a second home');
-  assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push', 'workflow_dispatch']);
+  assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push', 'schedule', 'workflow_dispatch']);
   for (const event of ['pull_request', 'push']) {
     const paths = workflow.on[event].paths;
     for (const entry of ['packages/kit/**', 'ui-next/**', 'packages/omniviewdev-runtime/**', 'pnpm-lock.yaml', '.github/workflows/ui-next-kit-probes.yml', 'scripts/ci/probe-shards.mjs', 'scripts/ci/probe-shards.test.mjs', 'scripts/ci/probe-*', 'scripts/ci/probe-units/**']) {
@@ -1506,8 +1520,8 @@ test('the workflow starts for the units, the manifest, the engine and its tests,
   assert.ok('workflow_dispatch' in workflow.on);
 });
 
-test('a newer push to a pull request cancels its older run, as on main, and the runs of other events are grouped by the ref they ran on', () => {
-  assert.equal(workflow.concurrency['cancel-in-progress'], true);
+test('a newer push to a pull request cancels its older run, a run on main is never cancelled, and the runs of other events are grouped by the ref they ran on', () => {
+  assert.equal(workflow.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}", 'a pull request supersedes its older run; a run on main is never cancelled');
   assert.equal(workflow.concurrency.group, 'ui-next-kit-probes-${{ github.event.pull_request.number || github.ref }}');
 });
 
@@ -1608,11 +1622,12 @@ test('the check named `Kit probes` is the aggregating job: the only job of that 
 test('the verdict step reads the number of shards the PLAN made, downloads every artifact of the shards\' reports by the name they were uploaded under, and runs verify on them', () => {
   const step = stepNamed('probes', 'Require every unit of the table to have run and passed');
   assert.equal(step.env.PLAN_SHARDS, '${{ needs.plan.outputs.shards }}');
+  assert.equal(step.env.SCOPE, '${{ needs.plan.outputs.scope }}');
   assert.equal(step.env.GH_TOKEN, '${{ github.token }}');
   const upload = stepsOf('shard').find((entry) => entry.uses?.startsWith('actions/upload-artifact'));
   const prefix = upload.with.name.replace('${{ matrix.shard }}', '');
   assert.match(step.run, new RegExp(`gh run download "\\$GITHUB_RUN_ID" --pattern '${prefix}\\*' --dir "\\$RUNNER_TEMP/reports"`));
-  assert.match(step.run, /node scripts\/ci\/probe-shards\.mjs verify --reports "\$RUNNER_TEMP\/reports" --shards "\$PLAN_SHARDS"/);
+  assert.match(step.run, /node scripts\/ci\/probe-shards\.mjs --scope "\$SCOPE" --reason "\$REASON" verify --reports "\$RUNNER_TEMP\/reports" --shards "\$PLAN_SHARDS"/);
   assert.equal(/\$\{\{/.test(step.run), false, 'nothing of the run reaches the command but through env');
 });
 
@@ -1622,7 +1637,7 @@ function verdictStep() {
   return stepNamed('probes', 'Require every unit of the table to have run and passed').run;
 }
 
-function verdict({ reports = allReports(), shards = String(PLAN.shards.length) } = {}) {
+function verdict({ reports = allReports(), shards = String(PLAN.shards.length), scope = 'full' } = {}) {
   const directory = scratch({ 'gate.sh': verdictStep() });
   const artifacts = path.join(directory, 'artifacts');
   mkdirSync(artifacts, { recursive: true });
@@ -1642,6 +1657,8 @@ function verdict({ reports = allReports(), shards = String(PLAN.shards.length) }
     HOME: directory,
     RUNNER_TEMP: path.join(directory, 'temp'),
     PLAN_SHARDS: shards,
+    SCOPE: scope,
+    REASON: 'a test',
     GH_TOKEN: 'token',
     GITHUB_RUN_ID: '9',
     FAKE_ARTIFACTS: artifacts,
@@ -1831,4 +1848,86 @@ test('the bound still catches the review\'s regression: it is under the open of 
   const busy = /^const SLOW_OPEN_MS = (\d+);$/m.exec(text);
   assert.ok(busy !== null, 'the control\'s busy loop is a named constant');
   assert.ok(Number(busy[1]) >= Math.max(bound.chromium, bound.webkit), `a busy loop of ${busy[1]} ms in the click is over the bound of either engine`);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// The scope of a run (N30): a pull request runs the probes in WebKit and no negative control; main, the nightly run and a manual run run everything
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+test('a pull request\'s scope is the probes and no negative control, in fewer, longer shards; a full run is the table', () => {
+  const probes = engine.unitsOfScope(UNITS, 'pr');
+  assert.ok(probes.length > 0 && probes.every((entry) => entry.controls === undefined));
+  assert.equal(probes.length, UNITS.filter((entry) => entry.controls === undefined).length);
+  assert.deepEqual(engine.unitsOfScope(UNITS, 'full'), UNITS);
+  const pr = planRun({ units: probes, limit: engine.PR_LIMIT_SECONDS });
+  const full = planRun({ units: UNITS });
+  assert.deepEqual(pr.shards.flatMap((shard) => shard.units.map((entry) => entry.id)).sort(), probes.map((entry) => entry.id).sort());
+  assert.ok(pr.shards.length <= full.shards.length / 2, `${pr.shards.length} shards for a pull request against ${full.shards.length} for a full run`);
+  for (const shard of pr.shards) assert.ok(shard.seconds <= engine.PR_LIMIT_SECONDS);
+  assert.deepEqual(matrixOf(pr.shards, { engines: engine.PR_ENGINES }).include.map((entry) => entry.engines), pr.shards.map(() => 'webkit'));
+});
+
+test('the plan command for a pull request writes the scope, plans no control unit, tells the shards the engine, and says so in the summary', () => {
+  const root = treeOfTheUnits();
+  const output = path.join(root, 'github-output');
+  const summary = path.join(root, 'summary.md');
+  const result = cli(root, ['--scope', 'pr', '--reason', '3 changed files, none of them test infrastructure', 'plan'], { GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const written = outputs(output);
+  assert.equal(written.scope, 'pr');
+  const matrix = JSON.parse(written.matrix);
+  assert.deepEqual(matrix.include.flatMap((entry) => entry.units.split(',')).sort(), UNITS.filter((entry) => entry.controls === undefined).map((entry) => entry.id).sort());
+  for (const entry of matrix.include) assert.equal(entry.engines, 'webkit');
+  assert.match(result.stdout, /Pull request scope \(3 changed files, none of them test infrastructure\): the probes in WebKit, the negative controls are NOT run on pull requests/);
+});
+
+test('the verdict of a pull request requires the probes only, passes without a control, and says in its own line that the controls were not run; the verdict of a full run still requires them', async () => {
+  const root = treeOfTheUnits();
+  const probes = engine.unitsOfScope(UNITS, 'pr');
+  const pr = planRun({ units: probes, limit: engine.PR_LIMIT_SECONDS });
+  const reports = pr.shards.map((shard) => ranReport(shard.shard, resultsOf(shard.units.map((entry) => byId(entry.id)))));
+  const reportsDir = path.join(root, 'reports');
+  for (const report of reports) {
+    mkdirSync(path.join(reportsDir, `kit-probe-reports-${report.shard}`), { recursive: true });
+    writeFileSync(path.join(reportsDir, `kit-probe-reports-${report.shard}`, `ran-${report.shard}-probe.json`), JSON.stringify(report));
+  }
+
+  const summary = path.join(root, 'summary.md');
+  const ok = cli(root, ['--scope', 'pr', '--reason', 'a docs change', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)], { GITHUB_STEP_SUMMARY: summary });
+  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  assert.match(ok.stdout, /probe-shards: ok \(\d+ probes and 0 controls, in \d+ units, ran once and passed, in \d+ shards \(WebKit\)\)/);
+  assert.match(ok.stdout, /probe-shards: not run on pull requests: \d+ negative controls in \d+ units were NOT RUN on this pull request/);
+  assert.match(readFileSync(summary, 'utf8'), /\*\*Not run on pull requests:\*\*/);
+  // The same reports against the full table are red: the controls did not run, and a run that was meant to have them is not whole.
+  const full = cli(root, ['verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]);
+  assert.equal(full.status, 1, 'the full scope requires every control unit');
+  // A pull request's verdict still fails for a probe that did not pass, and for a shard that never reported.
+  const failing = structuredClone(reports);
+  failing[0].units[0].ok = false;
+  writeFileSync(path.join(reportsDir, `kit-probe-reports-${failing[0].shard}`, `ran-${failing[0].shard}-probe.json`), JSON.stringify(failing[0]));
+  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length)]).status, 1);
+  assert.equal(cli(root, ['--scope', 'pr', 'verify', '--reports', reportsDir, '--shards', String(pr.shards.length + 1)]).status, 1);
+});
+
+test('a pull request\'s shard runs its probes with ENGINES=webkit, does not warn about a probe that is faster than its two-engine seconds, and fails past its own ceiling', () => {
+  const results = [{ label: 'a', unit: 'a', ok: true, seconds: 10 }];
+  const units = [{ id: 'a', name: 'A', file: 'f.mjs', seconds: 200 }];
+  assert.equal(driftFindings('1', results, units).warnings.length, 1, 'a full run warns for a unit that is far under its seconds');
+  assert.equal(driftFindings('1', results, units, { warnFaster: false }).warnings.length, 0);
+  assert.equal(driftFindings('1', [{ ...results[0], seconds: 261 }], units, { warnFaster: false }).failures.length, 1, 'slower is still a failure');
+  assert.equal(engine.PR_ENGINES, 'webkit');
+  assert.equal(engine.PR_SHARD_CEILING_SECONDS, Math.ceil(engine.PR_LIMIT_SECONDS * 1.3));
+  const text = readFileSync(path.join(repo, 'scripts/ci/probe-shards.mjs'), 'utf8');
+  assert.match(text, /const shardEnv = scope === 'pr' \? \{ \.\.\.env, ENGINES: PR_ENGINES \} : env;/);
+});
+
+test('a pull request\'s scope is decided in one place: the plan reads the output of scripts/ci/ci-scope.mjs, and the shards and the verdict read the plan\'s', () => {
+  const scope = workflow.jobs.plan.steps.find((step) => step.id === 'scope');
+  assert.equal(scope.run, 'node scripts/ci/ci-scope.mjs');
+  assert.equal(scope.env.SCOPE_INPUT, '${{ inputs.scope }}');
+  assert.equal(scope.env.PR_LABELS, undefined, 'a label does not change the scope (a manual run does)');
+  const text = workflowText.replace(/^\s*#.*$/gm, '');
+  assert.equal(/github\.event\.pull_request\.labels/.test(text), false);
+  assert.equal(/steps\.scope\.outputs\.scope/.test(text), true);
+  assert.equal(/github\.event_name == 'pull_request'/.test(text), true);
 });
