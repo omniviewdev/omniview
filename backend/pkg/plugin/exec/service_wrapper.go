@@ -129,7 +129,7 @@ func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.Sessio
 		return nil, err
 	}
 	session, err := s.Ctrl.CreateTerminal(ctx, owner, terminal.Options{
-		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd,
+		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd, Env: launch.Env,
 		PageKey: launch.PageKey, LeaseMs: launch.LeaseMs, Channel: false, Labels: opts.Labels, Params: opts.Params,
 	})
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *ServiceWrapper) CreateTerminal(ctx context.Context, opts execsdk.Sessio
 // the events lane's calls could find.
 func (s *ServiceWrapper) createChannelTerminal(ctx context.Context, opts execsdk.SessionOptions, launch terminal.Launch) (*terminal.Session, error) {
 	return s.Ctrl.CreateTerminal(ctx, nil, terminal.Options{
-		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd,
+		ID: opts.ID, Command: opts.Command, Cols: launch.Cols, Rows: launch.Rows, Cwd: launch.Cwd, Env: launch.Env,
 		PageKey: launch.PageKey, LeaseMs: launch.LeaseMs, Channel: true, Labels: opts.Labels, Params: opts.Params,
 	})
 }
