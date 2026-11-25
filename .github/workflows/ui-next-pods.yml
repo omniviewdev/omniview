@@ -28,42 +28,15 @@ name: UI next Pods cluster check
 # after it has been green for a while on `main` and on pull requests. It is path-filtered, so it cannot be required as it is: a required
 # check that does not run on a pull request blocks the merge.
 
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run it locally before a push when their change touches it (docs/ui-next/AGENTS.md, rule 25).
 on:
-  pull_request:
-    paths:
-      - "ui-next/**"
-      - "packages/kit/**"
-      - "packages/omniviewdev-runtime/**"
-      - "scripts/ui-next-pods/**"
-      - ".github/workflows/ui-next-pods.yml"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
-  push:
-    branches: [main]
-    paths:
-      - "ui-next/**"
-      - "packages/kit/**"
-      - "packages/omniviewdev-runtime/**"
-      - "scripts/ui-next-pods/**"
-      - ".github/workflows/ui-next-pods.yml"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "docs/ui-next/slices/1a-pods-list/fixture.yaml"
+  schedule:
+    - cron: "7 4 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: ui-next-pods-${{ github.event.pull_request.number || github.ref }}
-  # A new push to a pull request supersedes the run of the one before it; a run on main is not cancelled by a newer push (N30; a group still keeps only one pending run).
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ui-next-pods-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

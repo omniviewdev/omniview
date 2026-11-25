@@ -1,11 +1,17 @@
-name: PR Validation
+name: Nightly validation
 
+# NOT ON PULL REQUESTS (N34, the owner's order of 2026-11-25: a pull request runs only what is needed for the IDE to build and its unit tests pass; the rest runs at night and on request, and `ci-main-red`
+# opens its issue when a night is red). This file is still called pr.yml because scripts/ci/check-image.mjs moves the digest of the CI image in it. It holds the application suite (e2e), the Linux build,
+# the Windows tests of the connection profiles and the release packaging contracts. Every job runs: the classifier (scripts/ci/changes.mjs) says `all` for an event that is not a pull request.
 on:
-  pull_request:
+  schedule:
+    - cron: "47 2 * * *"
+  workflow_dispatch:
 
+# A run is never cancelled by a newer one.
 concurrency:
-  group: pr-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -28,7 +34,7 @@ jobs:
       class: ${{ steps.classify.outputs.class }}
       skip_host: ${{ steps.classify.outputs.skip_host }}
       skip_ui: ${{ steps.classify.outputs.skip_ui }}
-      skip_windows: ${{ steps.classify.outputs.skip_windows }}
+      skip_code: ${{ steps.classify.outputs.skip_code }}
     steps:
       # HEAD^1 is the base of the merge commit a pull request is checked out as: two commits are all the script needs.
       - uses: actions/checkout@v4
@@ -42,6 +48,202 @@ jobs:
       - name: Classify the changed paths
         id: classify
         run: node scripts/ci/changes.mjs --base HEAD^1
+
+  windows-connection-profiles:
+    name: Windows connection profiles
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_host != 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Test released-SDK connection profiles and private credentials
+        run: go test ./backend/pkg/plugin/resource -count=1
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: Test plugin archive and startup validation on Windows
+        run: go test ./backend/pkg/plugin -run '^(TestCheckTarball|TestValidateHasBinary|TestValidateForStart|TestValidateForPhase)'
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: Test native output ownership and handle observations
+        run: go test ./internal/devoutputs -count=1
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: Test exclusive private directory creation
+        run: go test ./internal/devsession -run '^TestCreatePrivateDirectoryAt' -count=1
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: Test Windows channel profile deletion
+        run: go test . -run '^(TestWindowsDelete|TestUpdateServiceListCurrentCustomRoot)'
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      # CI5 (docs/ui-next/status/CI5.md): packages whose behaviour differs on Windows. A test that cannot pass there is skipped in the test with its reason (`WINDOWS DEFECT <id>` for a
+      # product defect, a plain reason when the test is Unix-only by nature); the step after them lists every skip with its reason in the job summary, so a skip is never silent.
+      - name: Test cached plugin roots, the settings file and plugin settings on Windows
+        shell: bash
+        run: go test -v -count=1 ./internal/appstate ./internal/settings/store ./backend/pkg/plugin/settings 2>&1 | tee "$RUNNER_TEMP/windows-packages.log"
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: Test plugin uninstall, reinstall and update, and the channel mTLS tests, on Windows
+        shell: bash
+        run: |
+          go test -v -count=1 ./backend/pkg/plugin \
+            -run 'TestPluginFixture|Uninstall|Reinstall|TestInstallPluginFromPath_ConcurrentStateLookups|TestFailedFirstInstall|TestFailedUpdate|TestSuccessfulUpdate|TestHostChannelSyncInstallsSignedFeatureArchive|TestChannelInstallsAndHostSyncSerialize|TestCreateBackend|TestChannel|TestInstalledNative|TestAProcessThat|TestPinnedSDKLoader' \
+            2>&1 | tee "$RUNNER_TEMP/windows-plugin-lifecycle.log"
+        env:
+          GOWORK: "off"
+          GOFLAGS: ""
+      - name: List the tests Windows skipped, with their reasons
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          {
+            echo "### Tests skipped on Windows (CI5)"
+            echo
+            echo "| Test | Reason |"
+            echo "|---|---|"
+            cat "$RUNNER_TEMP"/windows-packages.log "$RUNNER_TEMP"/windows-plugin-lifecycle.log 2>/dev/null |
+              awk '/^=== (RUN|CONT) +/{cur=$3; next} /^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /{r=$0; sub(/^ +[A-Za-z0-9_.]+_test\.go:[0-9]+: /,"",r); sub(/: rename C:.*/,"",r); if (!(cur in why)) why[cur]=r; next} /^ *--- SKIP: /{n=$3; r=why[n]; if (r=="") r="(no reason logged)"; gsub(/\|/,"\\|",r); print "| " n " | " r " |"}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Go checks, Go lint, Bindings freshness and the release packaging contracts are ONE job (N31): four jobs each paid a container, a checkout, Go and Task (about 2 minutes of setup apiece) and a slot. The groups run
+  # one after the other in the same checkout, and a group that comes after another runs whatever happened before it (`!cancelled()`), so one push shows every failing group, as four jobs did. A cancelled
+  # job runs nothing more. The lint reads the patch of the pull request against its base, in a detached worktree of the committed go.mod/go.sum graph (docs/ui-next/status/N24-L2.md).
+
+  # The release packaging contracts (they were steps of Go checks on a pull request): the Homebrew cask publication and the syntax of the macOS packaging scripts.
+  release-contracts:
+    name: Release packaging contracts
+    needs: changes
+    if: ${{ needs.changes.outputs.skip_host != 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check Homebrew cask publication
+        run: node --test build/homebrew/update-cask.test.mjs
+
+      - name: Check macOS packaging shell syntax
+        run: |
+          bash -n build/darwin/build-universal.sh
+          bash -n build/darwin/verify-release-package.sh
+
+  # The caches of a pull request come from main (a cache saved on a pull request is visible to that branch only), and main no longer runs the pull request's jobs on a push (N34): these two jobs, at night, save
+  # the Go build cache and the pnpm store under the keys `Go checks`, `Go lint` and the UI jobs restore (go.sum, pnpm-lock.yaml), so that a pull request starts warm. They fail when the install or the build does.
+  cache-primer-go:
+    name: Go build cache primer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/omniviewdev/omniview-ci:ubuntu24-v1
+      options: --init
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The runner creates this mount as UID 1001; Git must see the same owner
+      # as the container user after checkout's temporary HOME goes away.
+      - name: Match checkout directory ownership to container user
+        run: chown "$(id -u):$(id -g)" "$PWD"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup native pnpm for recovery integration tests
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Select restored Go cache for Task
+        id: go-cache
+        run: |
+          GO_BUILD_CACHE_DIRECTORY="$(GOWORK=off GOFLAGS= go env GOCACHE)"
+          printf 'directory=%s\n' "$GO_BUILD_CACHE_DIRECTORY" >> "$GITHUB_OUTPUT"
+          GOWORK=off GOFLAGS= go env -json GOVERSION GOOS GOARCH GOCACHE
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify effective Task Go cache
+        run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      # The same commands as `Go checks` on a pull request: what they build and compile is what the cache then holds (go.sum is its key).
+      - name: Build
+        run: task check:go-build GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      - name: Vet
+        run: task check:go-vet GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+      - name: Test
+        run: task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+
+  cache-primer-ui:
+    name: pnpm store primer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          version: 12.14.0
+          node-version-file: "false"
+          install: false
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: task check:ui-install
 
   # One canonical application execution; the exact required check name stays
   # stable even though reusable workflow checks have a caller/job prefix.

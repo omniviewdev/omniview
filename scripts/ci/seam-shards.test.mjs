@@ -643,7 +643,7 @@ test('the matrix reaches the commands through env, never through the text of a c
 });
 
 test('the workflow starts for the files of the plan and the units, the job is not allowed the 25 minutes that the seam hit, and the timeout is the one the test above computes', () => {
-  for (const trigger of ['pull_request', 'push']) assert.ok(WORKFLOW.on[trigger].paths.includes('scripts/ci/seam-*'), `${trigger} does not start for scripts/ci/seam-*`);
+  assert.deepEqual(Object.keys(WORKFLOW.on).sort(), ['schedule', 'workflow_dispatch'], 'the seam runs at night and on request, not on a pull request or a push (N34)');
   assert.equal(WORKFLOW.jobs.seam['timeout-minutes'], JOB_TIMEOUT_MINUTES);
   assert.ok(JOB_TIMEOUT_MINUTES < 25);
   assert.match(readFileSync(path.join(repo, '.github/workflows/ui-next-seam.yml'), 'utf8'), new RegExp(`fails past ${String(SHARD_CEILING_SECONDS)} s|546 s`));
@@ -780,7 +780,7 @@ test('N30: the plan and the verdict run on the smallest runner with a sparse che
   assert.equal(WORKFLOW.jobs['seam-check']['runs-on'], 'ubuntu-slim');
   const verdictCheckout = WORKFLOW.jobs['seam-check'].steps.find((step) => step.uses?.startsWith('actions/checkout@'));
   assert.match(verdictCheckout.with['sparse-checkout'], /scripts\/ci\nui-next\/plugins\/e2e\/seam\.check\.mjs/);
-  assert.equal(WORKFLOW.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}");
+  assert.equal(WORKFLOW.concurrency['cancel-in-progress'], false);
   assert.ok('schedule' in WORKFLOW.on);
   assert.ok('workflow_dispatch' in WORKFLOW.on);
   assert.deepEqual(WORKFLOW.on.workflow_dispatch.inputs.scope.options, ['full', 'pr']);

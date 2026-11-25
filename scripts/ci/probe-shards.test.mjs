@@ -1501,28 +1501,18 @@ test('nothing in the workflow can turn a failure into a pass: no continue-on-err
   assert.deepEqual(conditional, ['shard: Build ui-next once, for the units of this shard that read it: matrix.dist == true', 'shard: Keep the reports: always()']);
 });
 
-test('the workflow starts for the units, the manifest, the engine and its tests, and runs on a pull request, on main, every night and by hand and on nothing else: main, the nightly run and a manual run are the full ones (every probe and every control, both engines), a pull request runs the scope scripts/ci/ci-scope.mjs gives it', () => {
+test('N34 (the owner\'s order): the workflow runs every night and by hand and on nothing else: not on a pull request and not on a push to main, and the nightly run is the full one (every probe and every control, both engines)', () => {
   assert.equal(workflow.env.OMNIVIEW_UI, 'next');
   assert.equal(workflow.env.NODE_VERSION, undefined, 'Node is the image\'s, checked against .tool-versions by the guard step: a second pin here is a second home');
-  assert.deepEqual(Object.keys(workflow.on).sort(), ['pull_request', 'push', 'schedule', 'workflow_dispatch']);
-  for (const event of ['pull_request', 'push']) {
-    const paths = workflow.on[event].paths;
-    for (const entry of ['packages/kit/**', 'ui-next/**', 'packages/omniviewdev-runtime/**', 'pnpm-lock.yaml', '.github/workflows/ui-next-kit-probes.yml', 'scripts/ci/probe-shards.mjs', 'scripts/ci/probe-shards.test.mjs', 'scripts/ci/probe-*', 'scripts/ci/probe-units/**']) {
-      assert.ok(paths.includes(entry), `${event} paths lack ${entry}`);
-    }
-    // `scripts/ci/probe-*` is the engine's modules, their tests, their data and the manifest: a change to any of them starts the run that tests it.
-    const globToRegExp = (glob) => new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')}$`);
-    for (const file of ['scripts/ci/probe-pack.mjs', 'scripts/ci/probe-pack.test.mjs', 'scripts/ci/probe-shards.runs.json', MANIFEST, 'scripts/ci/probe-units/panel.mjs']) {
-      assert.ok(paths.some((glob) => globToRegExp(glob).test(file)), `${event} does not start for ${file}`);
-    }
-  }
-  assert.equal(workflow.on.push.branches[0], 'main');
-  assert.ok('workflow_dispatch' in workflow.on);
+  assert.deepEqual(Object.keys(workflow.on).sort(), ['schedule', 'workflow_dispatch']);
+  assert.deepEqual(workflow.on.schedule, [{ cron: '17 3 * * *' }]);
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.scope.options, ['full', 'pr']);
+  assert.equal(workflow.on.workflow_dispatch.inputs.scope.default, 'full');
 });
 
-test('a newer push to a pull request cancels its older run, a run on main is never cancelled, and the runs of other events are grouped by the ref they ran on', () => {
-  assert.equal(workflow.concurrency['cancel-in-progress'], "${{ github.event_name == 'pull_request' }}", 'a pull request supersedes its older run; a run on main is never cancelled');
-  assert.equal(workflow.concurrency.group, 'ui-next-kit-probes-${{ github.event.pull_request.number || github.ref }}');
+test('N34: a run of the probes is never cancelled by a newer one, and the runs are grouped by the ref they ran on', () => {
+  assert.equal(workflow.concurrency['cancel-in-progress'], false);
+  assert.equal(workflow.concurrency.group, 'ui-next-kit-probes-${{ github.ref }}');
 });
 
 // The image (N24 B1): the shards run in the CI image by DIGEST, as `.github/ci/image.lock` pins it, with the credentials of a private package, and ask the guard whether it is the image of this checkout before they do anything
@@ -1936,5 +1926,5 @@ test('a pull request\'s scope is decided in one place: the plan reads the output
   const text = workflowText.replace(/^\s*#.*$/gm, '');
   assert.equal(/github\.event\.pull_request\.labels/.test(text), false);
   assert.equal(/steps\.scope\.outputs\.scope/.test(text), true);
-  assert.equal(/github\.event_name == 'pull_request'/.test(text), true);
+  assert.equal(/github\.event_name == 'pull_request'/.test(text), false, 'the workflow no longer runs on a pull request (N34)');
 });

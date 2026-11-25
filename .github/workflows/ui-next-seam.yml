@@ -32,62 +32,8 @@ name: UI next seam check
 # build), the dependency lock, the flavour switch and the frontend build inputs, and the Go host that `build:server` compiles (`go list -deps -tags production,server .`: the root package, `backend/`, `internal/`, `pkg/`,
 # `go.mod`, `go.sum`, the host module bootstrap in `scripts/hostmod/`, the Taskfiles). Markdown is never an input. A pull request that changes only documentation does not start this workflow.
 
+# NOT ON PULL REQUESTS AND NOT ON PUSHES TO MAIN (N34, the owner's order of 2026-11-25): it runs every night and on request, and `ci-main-red` opens its issue when a night is red. Authors run it locally before a push when their change touches it (docs/ui-next/AGENTS.md, rule 25).
 on:
-  pull_request:
-    paths:
-      - "ui-next/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
-      - "vite.config.ts"
-      - "index.html"
-      - "public/**"
-      - "patches/**"
-      - "tsconfig*.json"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "scripts/hostmod/**"
-      - "Taskfile.yml"
-      - "build/Taskfile.yml"
-      - ".github/ci/image.lock"
-      - "scripts/ci/seam-*"
-      - "scripts/ci/main-red*"
-      - "scripts/ci/ci-scope*"
-      - ".github/workflows/ui-next-seam.yml"
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths:
-      - "ui-next/**"
-      - "packages/**"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - "package.json"
-      - "vite.config.ts"
-      - "index.html"
-      - "public/**"
-      - "patches/**"
-      - "tsconfig*.json"
-      - "*.go"
-      - "backend/**"
-      - "internal/**"
-      - "pkg/**"
-      - "go.mod"
-      - "go.sum"
-      - "scripts/hostmod/**"
-      - "Taskfile.yml"
-      - "build/Taskfile.yml"
-      - ".github/ci/image.lock"
-      - "scripts/ci/seam-*"
-      - "scripts/ci/main-red*"
-      - "scripts/ci/ci-scope*"
-      - ".github/workflows/ui-next-seam.yml"
-      - "!**/*.md"
   # The nightly run: everything (N30). A pull request runs the phases in WebKit and no negative control; this and every push to main run every phase and every control in both engines.
   schedule:
     - cron: "47 3 * * *"
@@ -99,10 +45,10 @@ on:
         options: [full, pr]
         default: full
 
-# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled by a newer push (the latest commit of main is always verified; a group keeps one running and one pending run, so a burst of merges can skip the ones between).
+# A run is never cancelled by a newer one (a group keeps one running and one pending run).
 concurrency:
-  group: ui-next-seam-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ui-next-seam-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read

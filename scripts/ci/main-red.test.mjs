@@ -166,7 +166,7 @@ test('lastGreen takes only a push or the nightly run of this repository before t
 test('the workflow runs on the completion of the workflows that check main, only for main, with the permission to write the one issue and nothing else, one at a time', () => {
   const workflow = parse(readFileSync(path.join(repo, '.github/workflows/ci-main-red.yml'), 'utf8'));
   assert.deepEqual(workflow.on.workflow_run.types, ['completed']);
-  assert.deepEqual([...workflow.on.workflow_run.workflows].sort(), ['Main Windows build', 'Main macOS universal', 'Render Benchmarks', 'UI next Pods cluster check', 'UI next kit probes', 'UI next seam check', 'Whole-App Profile']);
+  assert.deepEqual([...workflow.on.workflow_run.workflows].sort(), ['Main Windows build', 'Main macOS universal', 'Nightly validation', 'Render Benchmarks', 'UI next Pods cluster check', 'UI next kit probes', 'UI next seam check', 'Whole-App Profile']);
   assert.deepEqual(workflow.permissions, { actions: 'read', contents: 'read', issues: 'write' });
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
   const job = workflow.jobs.issue;
@@ -232,10 +232,9 @@ test('S2: a run that ended cancelled is red when a job of it failed or timed out
 
 test('a change to main-red.mjs or its test starts the run whose shards run that test, and a label is not a trigger', () => {
   const seam = parse(readFileSync(path.join(repo, '.github/workflows/ui-next-seam.yml'), 'utf8'));
-  for (const event of ['pull_request', 'push']) assert.ok(seam.on[event].paths.includes('scripts/ci/main-red*'), `${event} does not start for scripts/ci/main-red*`);
+  assert.deepEqual(Object.keys(seam.on).sort(), ['schedule', 'workflow_dispatch'], 'the seam is a nightly check (N34): the shards that run the test of main-red run at night and on request');
   const shard = seam.jobs.seam.steps.find((step) => step.name === 'Check the units and the tests of the plan');
   assert.match(shard.run, /scripts\/ci\/main-red\.test\.mjs/);
-  assert.equal(seam.on.pull_request.types, undefined, 'the default types: no `labeled` run for a label that changes nothing');
 });
 
 test('S1 of #726: a job that reached its timeout (cancelled, with the annotation of a timeout) makes a cancelled run red, so a hang of a single-job workflow opens the issue; a plain cancel with another annotation does not', async () => {
