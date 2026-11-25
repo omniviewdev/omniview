@@ -264,6 +264,10 @@ Record the same workload before and after a change, then choose baseline and can
 Comparisons show coverage and compatibility warnings; incompatible or missing measurements remain unavailable.
 Captures stay in the selected profile across application restarts. Extension Inspector remains a separate developer tool.
 
+### Renderer optimization research
+
+The [renderer performance sprint catalog](docs/roadmap/2026-11-10-renderer-performance-sprint.md) ranks local experiments across compiler coverage, subscriptions, JavaScript delivery and browser rendering. It includes source research, evidence limitations and no-regression gates. Pre-worker improvements come first; external diagnostics come last.
+
 ## Documentation
 
 For detailed instructions, tutorials, and API documentation, visit our [official documentation](https://docs.omniview.dev/docs/introduction).
