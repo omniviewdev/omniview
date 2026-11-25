@@ -115,6 +115,7 @@ describe('the window\'s notification centre', () => {
   });
 
   it('saves what a failed page command leaves in the history, after the quiet time, and nothing before it', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     scale.mockRejectedValue(wails(TIMEOUT));
     const storage = place();
     const { user } = await mount(storage);
@@ -130,9 +131,12 @@ describe('the window\'s notification centre', () => {
     const text = storage.writes.at(-1) ?? '';
     expect(text).toContain('"title":"Timed out"');
     expect(text).toContain('"version":1');
+    expect(report).toHaveBeenCalledExactlyOnceWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 
   it('opens from the summary toast\'s Show when more toasts are due than the stack draws: the same centre as the bell\'s, with the stack waiting and every record listed', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { user } = await mount(place());
     const bodies = [TIMEOUT, FORBIDDEN, UNAUTHORIZED, INTERNAL];
     for (const [index, body] of bodies.entries()) {
@@ -148,9 +152,13 @@ describe('the window\'s notification centre', () => {
     await waitFor(() => {
       expect(toasts()).toHaveLength(0);
     });
+    expect(report).toHaveBeenCalledTimes(bodies.length);
+    expect(report).toHaveBeenCalledWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 
   it('puts a failure that arrives while the centre is open in its list and raises no toast for it, now or when the centre closes: one presenter', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     // A press outside closes the centre, so the command is started first, and fails while the centre is open.
     const later = Promise.withResolvers<void>();
     scale.mockReturnValue(later.promise);
@@ -174,5 +182,7 @@ describe('the window\'s notification centre', () => {
     });
     expect(toasts()).toHaveLength(0);
     expect(await bell()).toHaveAccessibleName('Notifications, 1 unread, 1 error');
+    expect(report).toHaveBeenCalledExactlyOnceWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 });

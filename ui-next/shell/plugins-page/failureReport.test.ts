@@ -59,6 +59,7 @@ describe('reportFailure', () => {
   const failure = (retry: () => void, error: unknown = wails('omniview:plugin/load-failed', 500, POISON)): ActionFailure => ({ operation: 'reload', id: 'alpha', name: 'Alpha Metrics', error, retry });
 
   it('is a sticky error toast of the host with a Retry, in the host\'s words', () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const store = createNoticesStore({});
 
     reportFailure(store, failure(vi.fn()));
@@ -68,9 +69,12 @@ describe('reportFailure', () => {
     expect(toast?.record?.text).toBe('The host couldn\'t stop it or start it.');
     expect(toast?.sticky).toBe(true);
     expect(toast?.record?.actions.map((action) => [action.label, action.icon])).toEqual([['Retry', 'rotate-cw']]);
+    expect(report).toHaveBeenCalledExactlyOnceWith('[plugins] reload of alpha failed', expect.any(Error));
+    report.mockRestore();
   });
 
   it('runs the same call again when the person presses Retry', () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const store = createNoticesStore({});
     const retry = vi.fn();
     reportFailure(store, failure(retry));
@@ -79,14 +83,19 @@ describe('reportFailure', () => {
     store.run(record?.id ?? '', 'again');
 
     expect(retry).toHaveBeenCalledOnce();
+    expect(report).toHaveBeenCalledExactlyOnceWith('[plugins] reload of alpha failed', expect.any(Error));
+    report.mockRestore();
   });
 
   it('leaves no word of the error anywhere in the model: not in the toast, not in the history, not in the diagnostics', () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const store = createNoticesStore({});
 
     reportFailure(store, failure(vi.fn()));
 
     expect(JSON.stringify(store.getSnapshot())).not.toMatch(/Users|token|exec|exited/);
+    expect(report).toHaveBeenCalledExactlyOnceWith('[plugins] reload of alpha failed', expect.any(Error));
+    report.mockRestore();
   });
 
   it('makes no toast for a cancellation', () => {
