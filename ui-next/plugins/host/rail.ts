@@ -8,7 +8,7 @@ import type { PluginEntry } from './pluginStore';
 // own declarations (`RailV1`) and from nothing that depends on how the host happens to list them: a plugin's id, the order its bundles loaded in, and the order the inventory answered in.
 
 /** The glyph of an entry whose contribution names none, or names one the host's kit does not have: the host's own glyph for a plugin (the tab's, before its page says another). */
-export const DEFAULT_RAIL_ICON: IconName = 'box';
+export const DEFAULT_RAIL_ICON: IconName = 'package';
 
 export type RailEntry = {
   /** The plugin's id: what is chosen, and what the shell is told. */

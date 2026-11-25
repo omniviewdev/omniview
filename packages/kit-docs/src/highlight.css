@@ -1,0 +1,24 @@
+.highlighted-code {
+  --code-ink: #dce6df;
+  color: var(--code-ink);
+  font-size: .875rem;
+  line-height: 1.65;
+  tab-size: 2;
+  scrollbar-color: var(--muted) var(--deep);
+}
+
+.highlighted-code ::selection {
+  color: #f4f6f3;
+  background: #345747;
+}
+
+.highlighted-code .token:is(.comment, .prolog, .doctype, .cdata) { color: #9baaa1; }
+.highlighted-code .token.punctuation { color: #b1beb6; }
+.highlighted-code .token:is(.keyword, .atrule, .important) { color: #d8bafa; }
+.highlighted-code .token:is(.string, .attr-value, .char, .url) { color: #c5e7a0; }
+.highlighted-code .token:is(.class-name, .tag, .selector, .builtin, .namespace) { color: #9cdce7; }
+.highlighted-code .token:is(.property, .attr-name) { color: #f0ce9f; }
+.highlighted-code .token:is(.boolean, .number, .constant, .symbol, .regex, .entity) { color: #f3bdab; }
+.highlighted-code .token.function { color: #adceff; }
+.highlighted-code .token:is(.operator, .interpolation-punctuation) { color: #b7dcd1; }
+.highlighted-code .token:is(.plain-text, .script, .spread, .interpolation) { color: var(--code-ink); }

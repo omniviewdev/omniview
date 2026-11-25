@@ -36,9 +36,21 @@ const HOME_GLYPHS = ['house'];
 const CENTRE_LUCIDE_GLYPHS = ['bell-off', 'check-check', 'list-filter'];
 const CENTRE_INT_UI_GLYPHS = ['bell', 'trash', 'undo'];
 
+// G2: the glyphs the shell's own surfaces waited for (status/ST1.md, T1.md, PL1.md). Lucide, 24 artboard: the Plugins page's puzzle, the verbs Enable and Disable (power, power-off), Retry (rotate-cw),
+// the settings Reset (rotate-ccw), a plugin with no glyph of its own (package), and the settings pages' paintbrush, code and beaker. Int UI, 16 artboard: the terminal tool's screen and the top row's gear.
+const SHELL_LUCIDE_GLYPHS = ['beaker', 'code', 'package', 'paintbrush', 'power', 'power-off', 'puzzle', 'rotate-ccw', 'rotate-cw'];
+const SHELL_INT_UI_GLYPHS = ['settings', 'square-terminal'];
+
+// G3: the glyphs other steps asked for (status/T3a.md section 6, the Problems and Operations tools). Lucide, 24 artboard: the empty Problems check, the filter that clears, the find bar's whole-word switch and the
+// terminal menu's Select all (the mock has no select-all glyph; its text-select is the nearest). Int UI, 16 artboard, one even-odd ink fill each: the warning triangle, the external link and the paste.
+const ASKED_LUCIDE_GLYPHS = ['circle-check', 'filter-x', 'select-all', 'whole-word'];
+const ASKED_INT_UI_GLYPHS = ['external-link', 'paste', 'triangle-alert'];
+
 describe('the glyph registry', () => {
   it('holds the glyphs slices 1a and 1b and the per-kind lists draw, and no other', () => {
-    expect([...names].sort()).toEqual([...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...HOME_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS].sort());
+    expect([...names].sort()).toEqual(
+      [...SLICE_1A, ...KIND_GLYPHS, ...LOG_TOOLBAR_GLYPHS, ...FORM_GLYPHS, ...HOME_GLYPHS, ...CENTRE_LUCIDE_GLYPHS, ...CENTRE_INT_UI_GLYPHS, ...SHELL_LUCIDE_GLYPHS, ...SHELL_INT_UI_GLYPHS, ...ASKED_LUCIDE_GLYPHS, ...ASKED_INT_UI_GLYPHS].sort(),
+    );
   });
 
   it('is plain data: nothing in it is a function, a markup string or an element', () => {
@@ -99,23 +111,82 @@ describe('the glyph registry', () => {
     }
   });
 
-  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs, for the key (a filled dot) and for the bell (a clapper at its own stroke width)', () => {
-    const twoTone = ['bell', 'key-round', 'status-error', 'status-info', 'status-success', 'status-warning'];
+  it('costs one svg and one path per paint: two elements, three for the two-tone status glyphs, for the key (a filled dot), for the bell (a clapper at its own stroke width) and for the terminal screen (a filled frame and a prompt at its own stroke width)', () => {
+    const twoTone = ['bell', 'key-round', 'square-terminal', 'status-error', 'status-info', 'status-success', 'status-warning'];
     for (const name of names) {
       const elements = 1 + GLYPHS[name].layers.length;
       expect(elements, name).toBe(twoTone.includes(name) ? 3 : 2);
     }
   });
 
-  it('stays within its byte budget (one glyph 800 bytes, the registry 18,400: it was 7,000, then 7,200 for the bottom panel toggle, then 7,700 for the log view find bar glyphs, then 7,950 for the Logs tool glyph, then 7,060 bytes for the thirty per-kind glyphs, then 417 bytes for the Logs toolbar glyphs, then 854 bytes for the form parts\' three, then 1,774 bytes for the six notification centre glyphs, then about 250 bytes for the Home glyph; the real total is about 18,300 with 77 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not)', () => {
+  it('stays within its byte budget (one glyph 800 bytes but the gear, which is 1,735 as the mock draws it and may be 1,800; the registry 24,740: 7,000 for slice 1a, 18,400 after G1 and the steps that followed it, 22,450 after the eleven glyphs of G2, then 2,288 bytes for the seven of G3; the real total is 24,630 with 95 glyphs, and the registry is one object that is not tree-shakeable per glyph, so every glyph ships whether a screen draws it or not: status/G2.md measures it)', () => {
     let total = 0;
     for (const name of names) {
       const bytes = JSON.stringify(GLYPHS[name]).length;
-      expect(bytes, name).toBeLessThanOrEqual(800);
+      expect(bytes, name).toBeLessThanOrEqual(name === 'settings' ? 1800 : 800);
       total += bytes;
     }
 
-    expect(total).toBeLessThanOrEqual(18400);
+    expect(total).toBeLessThanOrEqual(24740);
+  });
+
+  it('draws the shell glyphs from Lucide as the family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke, no relative moveto', () => {
+    for (const name of SHELL_LUCIDE_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(24);
+      expect(glyph.layers.length, name).toBe(1);
+      for (const layer of glyph.layers) {
+        expect(layer.stroke, name).toBe('ink');
+        expect(layer.fill, name).toBeUndefined();
+        expect(layer.width, name).toBe(2);
+        expect(layer.cap, name).toBe('round');
+        expect(layer.join, name).toBe('round');
+        expect(layer.evenodd, name).toBeUndefined();
+        expect(layer.d, name).not.toMatch(/m/);
+      }
+    }
+  });
+
+  it('draws the glyphs of G3 as their families are drawn here: Lucide on 24 in one ink stroke of 2 with no relative moveto, Int UI on 16 as one even-odd ink fill', () => {
+    for (const name of ASKED_LUCIDE_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(24);
+      expect(glyph.layers.length, name).toBe(1);
+      expect(glyph.layers[0], name).toMatchObject({ stroke: 'ink', width: 2, cap: 'round', join: 'round' });
+      expect(glyph.layers[0].fill, name).toBeUndefined();
+      expect(glyph.layers[0].d, name).not.toMatch(/m/);
+    }
+
+    for (const name of ASKED_INT_UI_GLYPHS as IconName[]) {
+      const glyph = GLYPHS[name];
+      expect(glyph.box, name).toBe(16);
+      expect(glyph.layers.length, name).toBe(1);
+      expect(glyph.layers[0], name).toMatchObject({ fill: 'ink', evenodd: true });
+      expect(glyph.layers[0].stroke, name).toBeUndefined();
+      expect(glyph.layers[0].d, name).not.toMatch(/m/);
+    }
+  });
+
+  it('draws the terminal screen as Int UI draws it: a framed screen on a literal fill of the artwork, and a prompt at a 1.2 stroke, on the 16 artboard', () => {
+    const screen = GLYPHS['square-terminal'];
+    expect(screen.box).toBe(16);
+    expect(screen.layers.length).toBe(2);
+    expect(screen.layers[0]).toMatchObject({ fill: '#43454A', stroke: 'ink' });
+    expect(screen.layers[0].width).toBeUndefined();
+    const prompt = screen.layers.at(1);
+    expect(prompt).toMatchObject({ stroke: 'ink', width: 1.2 });
+    expect(prompt?.fill).toBeUndefined();
+  });
+
+  it('draws the gear as Int UI draws it: one even-odd ink fill on the 16 artboard, in relative coordinates after its first moveto (the mock holds 2,616 bytes of absolute path data), and every moveto after the first is absolute', () => {
+    const gear = GLYPHS.settings;
+    expect(gear.box).toBe(16);
+    expect(gear.layers.length).toBe(1);
+    expect(gear.layers[0]).toMatchObject({ fill: 'ink', evenodd: true });
+    expect(gear.layers[0].stroke).toBeUndefined();
+    expect(gear.layers[0].d).toMatch(/^M/);
+    expect(gear.layers[0].d).not.toMatch(/m/);
+    expect(gear.layers[0].d.match(/M/g)?.length).toBe(4);
   });
 
   it('draws the per-kind glyphs as the Lucide family is drawn here: 24 artboard, stroke 2, round caps and joins, one ink stroke', () => {

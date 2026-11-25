@@ -202,6 +202,8 @@ jobs:
             // Scenarios r6 (the cuts of the page's sockets) and r7 (two pages, nothing of one reaches the other) run every one of their controls from one run: `terminal-reconnect` and `terminal-isolation` run them all (a name of RECONNECT_CONTROLS or ISOLATION_CONTROLS makes one only).
             if (/RECONNECT_CONTROLS/.test(text)) names.push("terminal-reconnect");
             if (/ISOLATION_CONTROLS/.test(text)) names.push("terminal-isolation");
+            // Scenario v runs every one of its controls (PT_CONTROLS) from one run: problems-operations runs them all (a name of the table makes one only).
+            if (/PT_CONTROLS/.test(text)) names.push("problems-operations");
             console.log(names.join(" "));
           ')"
           [ -n "$controls" ] || { echo "::error::no negative control found in seam.check.mjs"; exit 1; }

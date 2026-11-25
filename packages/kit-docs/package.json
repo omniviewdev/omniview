@@ -1,0 +1,30 @@
+{
+  "name": "@omniviewdev/kit-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:docs": "pnpm --filter @omniviewdev/kit build && node scripts/generate.ts",
+    "dev": "pnpm prepare:docs && vite --base ./",
+    "build": "pnpm prepare:docs && tsc --noEmit && vite build --base ./ && storybook build --disable-telemetry -o dist/storybook",
+    "preview": "vite preview",
+    "storybook": "pnpm prepare:docs && storybook dev --disable-telemetry -p 6006"
+  },
+  "dependencies": {
+    "@omniviewdev/kit": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "10.6.5",
+    "@types/node": "26.6.5",
+    "@types/prismjs": "1.26.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "postcss": "8.5.32",
+    "postcss-value-parser": "4.2.0",
+    "prismjs": "1.30.0",
+    "storybook": "10.6.5",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vite": "8.3.8"
+  }
+}

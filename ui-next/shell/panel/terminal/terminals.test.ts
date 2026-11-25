@@ -1170,3 +1170,32 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
   });
 });
+
+describe('the way to open an address outside the app that the window gives the Terminal tool (T3a)', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('is the registry\'s: what a link opens through is the window\'s option, once for each address, and without one the registry cannot open a link at all', () => {
+    const open = vi.fn();
+    const terminals = createTerminals(createPanelStore(), { openExternal: open });
+    expect(terminals.sessions.canOpenExternal()).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+    terminals.sessions.openExternal('https://example.com/docs');
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith('https://example.com/docs');
+    expect(createTerminals(createPanelStore()).sessions.canOpenExternal()).toBe(false);
+  });
+
+  it('refuses what is not an http or https address before the window is asked, with one warning on the console', () => {
+    const open = vi.fn();
+    const terminals = createTerminals(createPanelStore(), { openExternal: open });
+    terminals.sessions.openExternal('file:///etc/passwd');
+    expect(open).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+});

@@ -10,6 +10,8 @@
 //   SCREEN_READER=on          turn the Terminal's screen reader mode on right after each terminal starts, through its palette command and by the keyboard as a person does, so that a section measures a terminal with the mode on:
 //                             `SECTIONS=flood,hidden,idle,commits SCREEN_READER=on` is what the mode costs (docs/ui-next/status/T1.md section 16). Every other section is written for the mode off.
 //
+// T3a (terminal-find.mjs, which has its own header): PART=find-a|find-b|find-c|find-d run the sections of find in the scrollback (find-open, find-count, find-keys, find-lazy, find-replay, find-idle, find-cap, find-axe), the context
+// menu (menu-open, menu-mouse, menu-axe) and the links in the output (links-tooltip, links-activate, links-axe); find-idle needs the development build, and every section waits for a state and never for a time.
 // Sections and their assertions (the name starts each line of a failure). PART=view: geometry, words, title, ended, start, keys, close, resize, size, bundle, paint, axe, screenreader, screenreader-cost. PART=data: hidden, idle, commits, flood, latency, memory, order. PART=reattach-a to f (the terminal channel's capability and stream, terminal-reattach.mjs and terminal-reattach-followups.mjs, which have their own headers: a terminal survives a reload of the page, against the probe's own host, terminal-host.mjs): reattach-slot, reattach-restore, reattach-exact; reattach-muted, reattach-modes, reattach-size; reattach-detached, reattach-lease, reattach-restart, reattach-tombstone, reattach-leave, reattach-axe; restore-open; reattach-takeback, reattach-takeback-guard, reattach-takeback-offline; reattach-reconnect, reattach-reconnect-gap, reattach-gone, reattach-reconnect-keys, reattach-reconnect-acks.
 //   geometry   (both viewports, both engines)  geometry.body / tools / button / screen / lane / rows / colors: the rectangles, sizes and colours of the mock's terminal body (mock-terminal.json: the mock measured in each engine at each
 //              viewport)
@@ -57,6 +59,7 @@ import { sharedBuild } from '../../../packages/kit/probes/build-cache.mjs';
 import { ENGINES, launch } from '../../../packages/kit/probes/probe-lib.mjs';
 import { serve } from '../../../packages/kit/probes/serve.mjs';
 import { AXE } from './harness.mjs';
+import { createFindSections, FIND_CONTROLS, FIND_PARTS } from './terminal-find.mjs';
 import { createReattachSections, REATTACH_CONTROLS, REATTACH_PARTS } from './terminal-reattach.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -168,6 +171,8 @@ const CONTROLS = {
   'axe-failed': { assertion: 'axe.unavailable', section: 'axe', engines: ['chromium'], stage: 'unavailable', after: (page) => page.evaluate(() => { const image = document.createElement('img'); image.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; document.querySelector('[data-shell-part="terminalLane"]').append(image); }) },
   // The reattach assertions (docs/ui-next/status/T2-go.md, T2b): a terminal survives a reload of the page. Their far end, their sections and their controls are in terminal-reattach.mjs.
   ...REATTACH_CONTROLS,
+  // The T3a assertions: find in the scrollback, the context menu, the links in the output. Their sections, their parts and their controls are in terminal-find.mjs.
+  ...FIND_CONTROLS,
 };
 if (CONTROL !== '' && CONTROL !== 'all' && CONTROLS[CONTROL] === undefined) throw new Error(`NEGATIVE_CONTROL must be all or one of ${Object.keys(CONTROLS).join(', ')}`);
 
@@ -489,8 +494,9 @@ async function geometry(ctx) {
     panel: '[data-shell-part="panel"]',
     body: '[data-shell-part="terminalBody"]',
     tools: '[data-shell-part="terminalTools"]',
-    button: '[data-terminal-tool="clear"]',
-    button2: '[data-terminal-tool="copy"]',
+    button: '[data-terminal-tool="find"]',
+    button2: '[data-terminal-tool="clear"]',
+    button3: '[data-terminal-tool="copy"]',
     screen: '[data-shell-part="terminalScreen"]',
     lane: '[data-shell-part="terminalLane"]',
     row: '.xterm-rows > div:nth-child(1)',
@@ -516,12 +522,18 @@ async function geometry(ctx) {
   const ref = REF.viewports[engine]?.[vp] ?? REF.viewports.webkit[vp];
   check('geometry.body', rectNear(r.panel, ref.panel) && rectNear(r.body, ref.body), `${tag}: panel ${JSON.stringify(r.panel)} body ${JSON.stringify(r.body)}, the mock's ${JSON.stringify(ref.panel)} ${JSON.stringify(ref.body)}`);
   check('geometry.tools', rectNear(r.tools, ref.tools), `${tag}: the toolbar column is ${JSON.stringify(r.tools)}, the mock's ${JSON.stringify(ref.tools)}`);
-  check('geometry.button', rectNear(r.button, ref.firstButton), `${tag}: the first button is ${JSON.stringify(r.button)}, the mock's ${JSON.stringify(ref.firstButton)}`);
+  check('geometry.button', rectNear(r.button, ref.firstButton), `${tag}: the first button (Find) is ${JSON.stringify(r.button)}, the mock's ${JSON.stringify(ref.firstButton)}`);
   check('geometry.screen', rectNear(r.screen, ref.screen), `${tag}: the screen is ${JSON.stringify(r.screen)}, the mock's ${JSON.stringify(ref.screen)}`);
   check('geometry.lane', rectNear(r.lane, ref.lane), `${tag}: the lane is ${JSON.stringify(r.lane)}, the mock's ${JSON.stringify(ref.lane)}`);
   check('geometry.rows', rectNear(r.row, ref.firstRow, 1) || (near(r.row?.[1], ref.firstRow[1]) && near(r.row?.[3], ref.firstRow[3]) && near(r.row?.[0], ref.firstRow[0] + REF.rules.inset)), `${tag}: the first row is ${JSON.stringify(r.row)}, the mock's ${JSON.stringify(ref.firstRow)} (its text starts ${String(REF.rules.inset)} px in)`);
 
-  check('geometry.button', near(r.button2?.[1] - r.button?.[1], REF.rules.buttonPitch), `${tag}: the buttons are ${String(r.button2?.[1] - r.button?.[1])} px apart, the mock's ${String(REF.rules.buttonPitch)}`);
+  // Clear and Copy selection take the mock's next two slots, one pitch apart (the mock's column goes on with Paste and the rest, which the host's toolbar does not have yet).
+  const slot = (index) => [ref.firstButton[0], ref.firstButton[1] + index * REF.rules.buttonPitch, ref.firstButton[2], ref.firstButton[3]];
+  check(
+    'geometry.button',
+    near(r.button2?.[1] - r.button?.[1], REF.rules.buttonPitch) && near(r.button3?.[1] - r.button2?.[1], REF.rules.buttonPitch) && rectNear(r.button2, slot(1)) && rectNear(r.button3, slot(2)),
+    `${tag}: Find, Clear and Copy selection are ${String(r.button2?.[1] - r.button?.[1])} and ${String(r.button3?.[1] - r.button2?.[1])} px apart, the mock's ${String(REF.rules.buttonPitch)}; Clear is ${JSON.stringify(r.button2)}, the mock's second slot ${JSON.stringify(slot(1))}; Copy selection is ${JSON.stringify(r.button3)}, its third ${JSON.stringify(slot(2))}`,
+  );
   check('geometry.lane', near(r.lane?.[3], REF.rules.laneHeight) && style.lane?.['border-top-color'] === REF.rules.laneBorderTop && style.lane?.['background-color'] === REF.rules.laneBackground, `${tag}: the lane is ${style.lane?.height} with a ${style.lane?.['border-top-color']} border on ${style.lane?.['background-color']}, the mock's ${REF.rules.laneHeight} px, ${REF.rules.laneBorderTop} on ${REF.rules.laneBackground}`);
   check('geometry.rows', near(r.row2?.[1] - r.row?.[1], REF.rules.rowPitch) && style.row?.['font-size'] === `${REF.rules.fontSize}px`, `${tag}: the rows are ${String(r.row2?.[1] - r.row?.[1])} px apart at ${style.row?.['font-size']}, the mock's ${REF.rules.rowPitch} px at ${REF.rules.fontSize}px (swatch ${JSON.stringify(style.font)})`);
   check('geometry.colors', style.screen?.['background-color'] === REF.rules.screenBackground && style.foreground?.color === REF.rules.rowText, `${tag}: the screen is ${style.screen?.['background-color']} with text ${style.foreground?.color}, the mock's ${REF.rules.screenBackground} and ${REF.rules.rowText}`);
@@ -593,7 +605,7 @@ async function words(ctx) {
       laneRole: document.querySelector('[data-shell-part="terminalLane"]')?.getAttribute('role'),
     };
   });
-  check('words.toolbar', toolbar.label === 'Terminal tools' && toolbar.orientation === 'vertical' && JSON.stringify(toolbar.names) === JSON.stringify(['Clear', 'Copy selection']) && toolbar.copyDisabled === 'true' && toolbar.copyReason === 'Select text in the terminal first', `${engine}: the toolbar is ${JSON.stringify(toolbar)}`);
+  check('words.toolbar', toolbar.label === 'Terminal tools' && toolbar.orientation === 'vertical' && JSON.stringify(toolbar.names) === JSON.stringify(['Find', 'Clear', 'Copy selection']) && toolbar.copyDisabled === 'true' && toolbar.copyReason === 'Select text in the terminal first', `${engine}: the toolbar is ${JSON.stringify(toolbar)}`);
   check('words.input', toolbar.input === 'Terminal input, zsh' && /^Escape and Tab go to the shell\. Press F6 to move to the next part of the window/.test(toolbar.hint ?? ''), `${engine}: the input is ${JSON.stringify([toolbar.input, toolbar.hint])}`);
   check('words.running', toolbar.lane === '' && toolbar.laneRole === 'status', `${engine}: the lane of a running session says ${JSON.stringify(toolbar.lane)} (role ${toolbar.laneRole})`);
   // Ended: the process exits with code 0 (the host's typed end); the lane says so, input is off, the transcript keeps its lines and ends with the exit line (`ended.*` has the other ways a process ends).
@@ -1721,12 +1733,13 @@ async function screenreaderCost(ctx) {
   await page.context().close();
 }
 
-const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order, ...createReattachSections({ check, note, report, runAxe }) };
+const SECTIONS = { geometry, words, title, ended, start: refusals, keys, close, resize, size, bundle, paint, axe, screenreader, 'screenreader-cost': screenreaderCost, hidden, idle, commits, flood, latency, memory, order, ...createReattachSections({ check, note, report, runAxe }), ...createFindSections({ check, note, report, runAxe }) };
 /** The two parts the probe is run in, by the units of CI: the sections of the page (what a person sees and does) and those of the data path (what flows, and what it costs). Every section is in one and only one. */
 const PARTS = {
   view: ['geometry', 'words', 'title', 'ended', 'start', 'keys', 'close', 'resize', 'size', 'bundle', 'paint', 'axe', 'screenreader', 'screenreader-cost'],
   data: ['hidden', 'idle', 'commits', 'flood', 'latency', 'memory', 'order'],
   ...REATTACH_PARTS,
+  ...FIND_PARTS,
 };
 {
   const named = Object.values(PARTS).flat();
@@ -1741,7 +1754,7 @@ const PARTS = {
 const wanted = CONTROL === '' ? (process.env.SECTIONS ?? (PART === '' ? Object.keys(SECTIONS) : PARTS[PART]).join(',')).split(',') : [CONTROLS[CONTROL].section];
 const t0 = Date.now();
 const dist = build('production');
-const needsDev = wanted.includes('commits');
+const needsDev = wanted.includes('commits') || wanted.includes('find-idle');
 const devDist = needsDev ? build('development') : undefined;
 const prod = await serve(dist);
 const dev = devDist === undefined ? undefined : await serve(devDist);

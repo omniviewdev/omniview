@@ -1,4 +1,4 @@
-import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer } from './engine';
+import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
 import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
 import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
 
@@ -221,8 +221,10 @@ export type FakeEngine = Engine & {
   readonly select: (text: string) => void;
   /** The program rang the bell: tells the listeners. */
   readonly ring: () => void;
-  /** Runs the key handler on an event, as the emulator does, and says what it answered. */
-  readonly key: (init: Partial<Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>>) => { readonly handled: boolean; readonly defaultPrevented: boolean };
+  /** Runs the key handler on an event (a keydown unless `type` says another), as the emulator does, and says what it answered. */
+  readonly key: (init: Partial<Pick<KeyboardEvent, 'type' | 'key' | 'code' | 'keyCode' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'isComposing'>>) => { readonly handled: boolean; readonly defaultPrevented: boolean };
+  /** How many key events the handler stopped from propagating (`stopPropagation`): what the window's own key handlers then do not see. */
+  readonly keysStopped: () => number;
   /** What the host measures now (`undefined`: no size). */
   readonly measured: (size: { readonly cols: number; readonly rows: number } | undefined) => void;
   readonly listeners: () => number;
@@ -232,6 +234,28 @@ export type FakeEngine = Engine & {
   readonly resets: () => number;
   /** Everything the emulator sent to its listeners, in order: what the user typed and what it answered to a query it parsed, whether or not anything kept it. */
   readonly emitted: readonly string[];
+  /** Every step of the finder (`next` and `previous`), in order. */
+  readonly finds: ReadonlyArray<{ readonly direction: 'next' | 'previous'; readonly query: string; readonly options: FindOptions }>;
+  /** How many times the finder was cleared. */
+  readonly findClears: () => number;
+  /** How many times the emulator was asked for its finder (`find`). */
+  readonly findAsks: () => number;
+  /** The find stands here now: tells the listeners of the finder, as the emulator does after a step and when the output changes under it. */
+  readonly found: (state: FindState) => void;
+  /** How many listeners the finder has now. */
+  readonly findListeners: () => number;
+  /** The program has the mouse (mouse reporting is on), or lets go of it: what `mouseReporting` answers. */
+  readonly mouseReports: (on: boolean) => void;
+  /** The text `paste` was given, in order. */
+  readonly pastes: readonly string[];
+  /** The attributes the input has now: what the last `decorateInput` set. */
+  readonly inputAttributes: () => Readonly<Record<string, string>>;
+  /** The handler the screen gave the links (`undefined`: it asked for none). */
+  readonly links: () => LinkHandler | undefined;
+  /** The pointer is on a link, or leaves it (`undefined`): tells the handler, as the emulator does. */
+  readonly linkHover: (hover: LinkHover | undefined) => void;
+  /** A link is clicked: tells the handler, as the emulator does, with the event as it came. */
+  readonly linkActivate: (uri: string, event: MouseEvent) => void;
 };
 
 export type FakeEngineOptions = {
@@ -272,6 +296,32 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   let selectAlls = 0;
   let focuses = 0;
   let focused = false;
+  let keysStopped = 0;
+  const finds: Array<{ readonly direction: 'next' | 'previous'; readonly query: string; readonly options: FindOptions }> = [];
+  const findListeners = new Set<(state: FindState) => void>();
+  const pastes: string[] = [];
+  let findClears = 0;
+  let findAsks = 0;
+  let mouse = false;
+  let attributes: Readonly<Record<string, string>> = {};
+  let linkHandler: LinkHandler | undefined;
+  const finder: Finder = {
+    next: (query, findOptions) => {
+      finds.push({ direction: 'next', query, options: findOptions });
+    },
+    previous: (query, findOptions) => {
+      finds.push({ direction: 'previous', query, options: findOptions });
+    },
+    clear: () => {
+      findClears += 1;
+    },
+    onChange: (listener) => {
+      findListeners.add(listener);
+      return () => {
+        findListeners.delete(listener);
+      };
+    },
+  };
 
   const emit = (data: string, user: boolean) => {
     emitted.push(data);
@@ -421,13 +471,51 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       let defaultPrevented = false;
       const event = { type: 'keydown', key: '', code: '', metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...init, preventDefault: () => {
         defaultPrevented = true;
+      }, stopPropagation: () => {
+        keysStopped += 1;
       } } as unknown as KeyboardEvent;
       return { handled: keys?.(event) ?? true, defaultPrevented };
     },
+    keysStopped: () => keysStopped,
     measured: (next) => {
       measured = next;
     },
     listeners: () => dataListeners.size + selectionListeners.size + bellListeners.size,
+    find: async () => {
+      findAsks += 1;
+      return Promise.resolve(finder);
+    },
+    mouseReporting: () => mouse,
+    paste: (text) => {
+      pastes.push(text);
+    },
+    decorateInput: (next) => {
+      attributes = { ...next };
+    },
+    setLinks: (handler) => {
+      linkHandler = handler;
+    },
+    finds,
+    findClears: () => findClears,
+    findAsks: () => findAsks,
+    found: (state) => {
+      for (const listener of [...findListeners]) {
+        listener(state);
+      }
+    },
+    findListeners: () => findListeners.size,
+    mouseReports: (on) => {
+      mouse = on;
+    },
+    pastes,
+    inputAttributes: () => attributes,
+    links: () => linkHandler,
+    linkHover: (hover) => {
+      linkHandler?.hover(hover);
+    },
+    linkActivate: (uri, event) => {
+      linkHandler?.activate(uri, event);
+    },
   };
 }
 

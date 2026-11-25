@@ -1,7 +1,9 @@
 import { IconButton, RovingGroup, tip } from '@omniviewdev/kit';
+import type { Platform } from '../../core/chords';
+import { chordText } from '../../palette/words';
 
 // The Terminal tool's vertical toolbar (the mock's `.panel__tools`, shell-regions.js 314-320; S117's table: Find, Clear, Copy selection, Paste, Rename session): `role="toolbar" aria-orientation="vertical"` with its name,
-// 28 px ghost icon buttons 4 px apart, one Tab stop with the arrows of a column, Home and End. This slice draws the two that work: Clear and Copy selection. Find, Paste and Rename are later slices (docs/ui-next/status/T1.md):
+// 28 px ghost icon buttons 4 px apart, one Tab stop with the arrows of a column, Home and End. This slice draws the three that work: Find, Clear and Copy selection. Paste and Rename are later slices (docs/ui-next/status/T1.md):
 // Paste is the platform's chord, which the browser delivers through the emulator's paste event with no permission, where a button would have to read the clipboard (the mock's own button says "The clipboard isn't
 // readable from here" when the engine refuses). A button that cannot apply stays focusable and says why, in its description and the second line of its tooltip (S117, ch14 P2).
 
@@ -13,13 +15,19 @@ type TerminalToolbarProps = {
   readonly selected: boolean;
   /** A copy was just made: the Copy button confirms itself with a check (the mock's `confirmCopy`). */
   readonly copied: boolean;
+  /** The find bar is open: the Find button is pressed, and a press closes it. */
+  readonly finding: boolean;
+  /** Writes the find chord in the Find button's tip: Command F on a Mac, Control F elsewhere. */
+  readonly platform: Platform;
+  readonly onFind: () => void;
   readonly onClear: () => void;
   readonly onCopy: () => void;
 };
 
-export function TerminalToolbar({ selected, copied, onClear, onCopy }: TerminalToolbarProps) {
+export function TerminalToolbar({ selected, copied, finding, platform, onFind, onClear, onCopy }: TerminalToolbarProps) {
   return (
     <RovingGroup label={TERMINAL_TOOLS_LABEL} kind="column" role="toolbar" gap={4} align="center">
+      <IconButton icon="search" label="Find" variant="ghost" pressed={finding} data-terminal-tool="find" {...tip(`Find\n${chordText('Mod+F', platform)}`)} onClick={onFind} />
       <IconButton icon="eraser" label="Clear" variant="ghost" data-terminal-tool="clear" {...tip('Clear')} onClick={onClear} />
       <IconButton
         icon={copied ? 'check' : 'copy'}

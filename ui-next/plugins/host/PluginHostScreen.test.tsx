@@ -1,3 +1,4 @@
+import { Browser } from '@omniviewdev/runtime/runtime';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TerminalsOptions } from '../../shell';
@@ -41,6 +42,8 @@ vi.mock('@omniviewdev/runtime/runtime', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   Window: { Name: async () => Promise.resolve('main'), Close: async () => Promise.resolve() },
   Events: { On: () => () => undefined },
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- the runtime names its browser call `OpenURL`
+  Browser: { OpenURL: vi.fn() },
 }));
 
 vi.mock('../../shell/panel/terminal/localShell', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), restoreLocalTerminals: vi.fn(), attachLocalTerminal: vi.fn() }));
@@ -63,6 +66,8 @@ beforeEach(() => {
   vi.mocked(attachLocalTerminal).mockReset();
   vi.mocked(loadAppTerminalChannels).mockReset();
   vi.mocked(loadAppTerminalChannels).mockReturnValue(channels);
+  vi.mocked(Browser.OpenURL).mockReset();
+  vi.mocked(Browser.OpenURL).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -92,12 +97,12 @@ describe('the terminal channels the screen gives the Terminal tool', () => {
     expect(loadAppTerminalChannels).toHaveBeenCalledTimes(1);
   });
 
-  it('come as a way to find the terminals the window left and a way to attach one again, and nothing else: no page key, no reconnection signal', async () => {
+  it('come as a way to find the terminals the window left and a way to attach one again, and the way to open a link, and nothing else: no page key, no reconnection signal', async () => {
     render(<PluginHostScreen />);
     await waitFor(() => {
       expect(world.given.length).toBeGreaterThan(0);
     });
-    expect(Object.keys(drawn()?.terminals ?? {}).sort()).toEqual(['reattach', 'restore']);
+    expect(Object.keys(drawn()?.terminals ?? {}).sort()).toEqual(['openExternal', 'reattach', 'restore']);
   });
 
   it('are what the way to find the terminals the window left asks, when it is asked and not before', async () => {
@@ -144,5 +149,34 @@ describe('the terminal channels the screen gives the Terminal tool', () => {
     view.rerender(<PluginHostScreen />);
     expect(world.given.length).toBeGreaterThan(before);
     expect(new Set(world.given.map((props) => props.terminals)).size).toBe(1);
+  });
+});
+
+describe('the way the screen gives the Terminal tool to open an address outside the app (T3a)', () => {
+  it('is the runtime\'s browser call, which the host answers: it opens the address once for each call, and not before one is made', async () => {
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    const open = drawn()?.terminals?.openExternal;
+    expect(open).toBeTypeOf('function');
+    expect(Browser.OpenURL).not.toHaveBeenCalled();
+    await open?.('https://example.com/docs');
+    expect(Browser.OpenURL).toHaveBeenCalledTimes(1);
+    expect(Browser.OpenURL).toHaveBeenCalledWith('https://example.com/docs');
+    await open?.('http://localhost:3000');
+    expect(Browser.OpenURL).toHaveBeenCalledTimes(2);
+    expect(Browser.OpenURL).toHaveBeenLastCalledWith('http://localhost:3000');
+  });
+
+  it('lets the host\'s refusal through, for the Terminal tool to warn of: the screen swallows nothing and says nothing itself', async () => {
+    const refused = new Error('the host does not open an address with a semicolon in it');
+    vi.mocked(Browser.OpenURL).mockRejectedValue(refused);
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    await expect(drawn()?.terminals?.openExternal?.('https://example.com/a;b')).rejects.toBe(refused);
+    expect(console.warn).not.toHaveBeenCalled();
   });
 });

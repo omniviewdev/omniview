@@ -46,6 +46,11 @@ export const KEPT_ENDS = 16;
 const MAX_ATTACH = 1024;
 const PROMPT = '\u001b[32muser@synthetic\u001b[0m:\u001b[34m~\u001b[0m$ ';
 const BANNER = `\u001b[90mSynthetic shell: hello, size, colors, flood N [W], sleep N, exit [code], kill, quit, fail\u001b[0m\r\n${PROMPT}`;
+
+/** What `known` prints, a line each: words that a find has to count (other cases, a word inside another, a word between marks, a word that a pattern also takes). The probe reads the same lines from `window.__known`, so the text is in one place. */
+export const KNOWN = Object.freeze(['alpha Alpha ALPHA alphabet', 'beta alpha_beta alpha-beta betalpha', 'gamma 123 alpha 456 alpha.', 'delta Delta DELTA delta delta', 'epsilon alpha, epsilon; alpha', 'zeta eta theta iota kappa']);
+/** What `urls` prints, a line each: an address that is a link, a script and another scheme that no link opens, and a name that is only text. `window.__urls`. */
+export const URLS = Object.freeze(['docs: https://example.com/docs/alpha for the docs', 'script: javascript:alert(1) in a line', 'ftp: ftp://example.com/file in a line', 'name: example.com in a line']);
 const CAPABILITY = /^[A-Za-z0-9_-]{43}$/;
 
 /** The types of the frames (protocol section 4): below 0x80 the page's, from 0x80 the host's. */
@@ -402,6 +407,8 @@ export function createHost(options = {}) {
     acked: 0,
     maxUnacked: 0,
     reads: 0,
+    /** How many prompts the shell has written: a probe that types a command waits for the next one before it reads the screen. */
+    prompts: 0,
   };
   /** The holds a probe asks for on the `ready` of the next attach to a terminal (`holdReady`). */
   const holds = [];
@@ -417,6 +424,7 @@ export function createHost(options = {}) {
   /** The shell writes: it waits in the pty until the host reads it. */
   const out = (pty, text) => {
     if (pty.ended !== null || pty.finishing || pty.gone) return;
+    if (typeof text === 'string' && text.endsWith(PROMPT)) log.prompts += 1;
     const bytes = typeof text === 'string' ? encoder.encode(text) : text;
     pty.queue.push(bytes);
     pty.waiting += bytes.length;
@@ -628,6 +636,27 @@ export function createHost(options = {}) {
         break;
       }
 
+      case 'known':
+        out(pty, `${(faults.knownShort ? KNOWN.slice(0, 4) : KNOWN).join('\r\n')}\r\n`);
+        break;
+      case 'dense': {
+        // N lines (5,200 by default) of K occurrences (6) of one word each, more matches than the highest count a find shows; `faults.capShort` writes a thousand lines, which is fewer.
+        const count = faults.capShort ? 1000 : Number(args[0] ?? 5200);
+        const each = Number(args[1] ?? 6);
+        out(pty, Array.from({ length: count }, (_, line) => `${String(line).padStart(5, '0')} ${'needle '.repeat(each).trimEnd()}\r\n`).join(''));
+        break;
+      }
+
+      case 'urls':
+        out(pty, `${URLS.join('\r\n')}\r\n`);
+        break;
+      case 'mouse-on':
+        // A program that asks for the mouse: every button, in the encoding that says the button in plain text. `faults.mouseNever`: the shell never asks.
+        if (!faults.mouseNever) out(pty, '\u001b[?1000h\u001b[?1006h');
+        break;
+      case 'mouse-off':
+        out(pty, '\u001b[?1000l\u001b[?1006l');
+        break;
       case 'flood':
         flood(pty, Number(args[0] ?? 1000), Number(args[1] ?? 80));
         return;

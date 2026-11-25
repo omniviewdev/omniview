@@ -51,6 +51,6 @@ export function reportFailure(store: NoticesStore, failure: ActionFailure): void
     title: said.title,
     detail: said.detail,
     initiator: 'user',
-    actions: [{ id: 'again', label: 'Retry', icon: 'refresh', primary: true, run: failure.retry }],
+    actions: [{ id: 'again', label: 'Retry', icon: 'rotate-cw', primary: true, run: failure.retry }],
   });
 }

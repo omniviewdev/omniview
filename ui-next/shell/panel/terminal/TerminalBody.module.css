@@ -22,7 +22,9 @@
     overflow: hidden;
   }
 
+  /* The column of the screen over its lane. It is the positioning context of what floats over the screen (the find bar, `find/FindBar.module.css`), which covers the screen and moves nothing in it. */
   .main {
+    position: relative;
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -37,6 +39,8 @@
      plane shows, and the scrollbar. */
   .screen {
     position: relative;
+    /* The emulator's own layers (its decorations, its scrollbar, its accessibility text) hold z-indexes up to 11: they stay inside the screen, so that what floats over it is painted over them. */
+    isolation: isolate;
     flex: 1 1 auto;
     min-inline-size: 0;
     min-block-size: 0;

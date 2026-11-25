@@ -3,6 +3,9 @@ export const LIMITS: Readonly<Record<string, number>>;
 export const READ_MAX: number;
 export const CHUNK: number;
 export const KEPT_ENDS: number;
+/** What the shell's `known` and `urls` commands print, a line each (the probe reads them from the fixture's `window.__known` and `window.__urls`). */
+export const KNOWN: readonly string[];
+export const URLS: readonly string[];
 export const FRAME: Readonly<{ attach: 1; input: 2; resize: 3; ack: 4; detach: 5; ready: 0x81; output: 0x82; gap: 0x83; ended: 0x84; takenOver: 0x85; notFound: 0x86 }>;
 export const pageFrames: {
   attach(cap: string, fromOffset?: number): Uint8Array;

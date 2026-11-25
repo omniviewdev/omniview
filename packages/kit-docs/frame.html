@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-kit-preview>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Omniview Kit live preview</title>
+    <style>
+      html, body, #root { height: 100%; }
+      body { margin: 0; }
+      .canvas-content {
+        box-sizing: border-box;
+        width: 100%;
+        height: 100%;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: safe center;
+        background-image: radial-gradient(var(--ov-border-control) 0.8px, transparent 0.8px);
+        background-size: 17px 17px;
+        background-position: center;
+      }
+      .canvas-content > * { flex-shrink: 0; min-width: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/frame.tsx"></script>
+  </body>
+</html>

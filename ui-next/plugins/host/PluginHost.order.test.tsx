@@ -242,7 +242,7 @@ const IN_THE_RAILS_ORDER: Seen = {
   rail: ['First plugin', 'Second plugin'],
   home: ['First plugin', 'Second plugin'],
   sidebar: 'First navigation',
-  tools: ['Terminal', 'Logs', 'First streams', 'Second streams'],
+  tools: ['Terminal', 'Logs', 'Problems', 'Operations', 'First streams', 'Second streams'],
   sections: [`${FIRST}:hardware`, `${SECOND}:hardware`],
   goto: [`goto|host:pages|page:${FIRST}:things`, `goto|host:pages|page:${SECOND}:things`],
 };
@@ -313,7 +313,7 @@ describe('a plugin that finishes after the other', () => {
     const app = await open();
     await app.run({ ends: [SECOND] });
     await openPanel(app.user);
-    expect(toolNames()).toEqual(['Terminal', 'Logs', 'Second streams']);
+    expect(toolNames()).toEqual(['Terminal', 'Logs', 'Problems', 'Operations', 'Second streams']);
     // The person is on the tool that is there, with a session of its own open.
     await app.user.click(screen.getByRole('tab', { name: 'Second streams' }));
     await app.user.click(screen.getAllByRole('button', { name: 'New stream' })[0] ?? screen.getByRole('button', { name: 'New stream' }));
@@ -323,7 +323,7 @@ describe('a plugin that finishes after the other', () => {
     // The plugin the rail puts first arrives: its tool is ahead of the one that was there.
     await app.run({ ends: [FIRST] });
 
-    expect(toolNames()).toEqual(['Terminal', 'Logs', 'First streams', 'Second streams']);
+    expect(toolNames()).toEqual(['Terminal', 'Logs', 'Problems', 'Operations', 'First streams', 'Second streams']);
     expect(screen.getByRole('tab', { name: 'Second streams', selected: true })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'First streams', selected: false })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Second run', selected: true })).toBeInTheDocument();

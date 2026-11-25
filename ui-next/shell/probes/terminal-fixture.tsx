@@ -14,6 +14,8 @@
 //   exit [code]     prints "logout" and ends: `exited`, with the code (default 0)         kill     ends: `signaled`, SIGKILL (9)        segv     ends: `signaled`, SIGSEGV (11), core dumped
 //   quit            ends: `closed`, by the host quitting (`shutdown`)                       orphan   ends: `exited` 0, and the host says a program kept the terminal open and it dropped 4,096 bytes
 //   fail            ends the terminal with a typed failure
+//   known           prints six lines of words that a find counts (`window.__known`)          dense [N [K]]   prints N lines (5,200) of K (6) occurrences of one word: more matches than a find shows
+//   urls            prints an address that is a link and three lines that are not (`window.__urls`)     mouse-on / mouse-off   a program that asks for the mouse (every button, SGR encoding), and gives it back
 //   (anything else) prints "synthetic: command not found: <word>"
 // A close the page asks for ends with `closed`, by `request`.
 //
@@ -32,6 +34,10 @@
 //                   cap-in-url (the capability is put in the address: `reattach.slot`), rejoin-from-zero (an attach that gives `from_offset` gives 0: `reattach.rejoin`).
 //                   And the ones of the host (faults of `createHost`): size-off (the pty opens one column wider than it was asked to: `resize.cells`), resize-dropped (the host takes a resize frame and keeps its size: `order.echo`),
 //                   no-shell-name, exit-code-lost, signal-lost, closed-lost, busy-always, busy-nameless, unknown-idle, code-less, start-typed, ack-lost (the credit that comes while the host's pump waits is lost: `flow.hidden`).
+//                   The ones of T3a (find, the menu, the links): known-short (`known` prints four of its six lines: `find.count`) and cap-short (`dense` writes a thousand lines, which hold fewer matches than a find shows: `find.cap`) and mouse-never (the shell's
+//                   `mouse-on` never asks for the mouse: `menu.mouse`) are faults of the host's shell; search-eager (the page asks for the find's lazy chunk when it loads: `find.lazy`), idle-commits (a component renders ten times a second: `find.idle`),
+//                   open-twice (the stub of `openExternal` records each call twice: `links.activate`), open-given (the window gives `openExternal` although `?openExternal=off` says it cannot: `links.activate`) and reopen-forgets (the finder
+//                   looks for nothing once it was cleared: a bar that is opened again does not search the text it kept: `find.keys`) are of the page; the emulator's own (count-case-ignored and the like) are in the wrapper of `load`.
 //
 // `window.__pty` is what the probe reads and drives: `log` (what was created, refused, written, resized, closed, asked of `ChannelTerminalBusy`, what each input or resize frame was (`calls`: its kind, the instant the page sent it
 // and the host's own record of applying it) and what `size` printed, and the credit: `acks` (the count of every acknowledgement frame, in order), `ackState` (what the page had done at each, and the sum acknowledged by then), `acked` (their
@@ -41,18 +47,18 @@
 // (React's profiler; the probe builds this entry with the profiling build of React DOM), `window.__engine` what the emulator was given and parsed (and, for a burst, whether the numbered events came in order).
 import '@omniviewdev/kit/styles.css';
 import '../../global.css';
-import { ThemeProvider } from '@omniviewdev/kit';
+import { MenuHost, ThemeProvider } from '@omniviewdev/kit';
 import { Profiler, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PluginHost } from '../../plugins/host/PluginHost';
 import type { PluginEntry } from '../../plugins/host/pluginStore';
 import type { PluginSource } from '../../plugins/host/contributions';
-import type { EngineLoader } from '../panel/terminal/engine';
+import type { EngineLoader, FindOptions } from '../panel/terminal/engine';
 import { loadXtermEngine } from '../panel/terminal/loadEngine';
 import { attachLocalTerminal, localShellTarget, restoreLocalTerminals } from '../panel/terminal/localShell';
 import { loadTerminalChannels, sessionCapabilityStorage, type ChannelClient, type ChannelSocket } from '../panel/terminal/terminalChannel';
 import { loadSession, windowStorage, type WindowState } from '../session';
-import { createHost, FRAME, fromBase64, toBase64 } from './terminal-host.mjs';
+import { createHost, FRAME, fromBase64, KNOWN, toBase64, URLS } from './terminal-host.mjs';
 
 const params = new URLSearchParams(window.location.search);
 const control = params.get('control');
@@ -77,6 +83,9 @@ const HOST_FAULTS: Readonly<Record<string, string>> = {
   'code-less': 'codeLess',
   'start-typed': 'startTyped',
   'ack-lost': 'ackLost',
+  'known-short': 'knownShort',
+  'cap-short': 'capShort',
+  'mouse-never': 'mouseNever',
 };
 
 /** What yields to the event loop as a task of its own, never a timer (the probe counts timers) and never a microtask. */
@@ -728,6 +737,10 @@ const log = {
   get sizeReports(): Array<{ rows: number; cols: number }> {
     return localHost?.log.sizeReports ?? [];
   },
+  /** How many prompts the shell has written: a probe that types a command waits for the next one (and for the page to have parsed what the host handed to the stream) before it reads the screen. */
+  get prompts(): number {
+    return localHost?.log.prompts ?? 0;
+  },
   /** The count of every acknowledgement frame, in order, what the page had done at the instant of each (the bytes the host had handed to the stream, the emulator had been given and had parsed), the sum acknowledged by then, and their sum. */
   acks: credit.acks,
   ackState: credit.ackState,
@@ -804,6 +817,8 @@ function checkOrder(data: Uint8Array): void {
   }
 }
 
+/** Every address the window was asked to open outside itself, in order (`window.__opened`). */
+const opened: string[] = [];
 /** Burns the main thread for `ms` milliseconds: what a janky renderer or a slow handler does, for the probe's negative controls. */
 const burn = (ms: number): void => {
   const until = performance.now() + ms;
@@ -872,7 +887,9 @@ const load: EngineLoader = async () => {
   const create = await loadXtermEngine();
   return (options) => {
     // `?control=big-scrollback` is the negative control of the probe's scrollback cap: an emulator that keeps four times the lines. `?control=reader-claims` makes it in the mode the person did not choose (off) whatever the window says.
-    const engine = create(control === 'big-scrollback' ? { ...options, scrollback: 20_000 } : control === 'reader-claims' ? { ...options, screenReaderMode: false } : options);
+    const engine = create(
+      control === 'big-scrollback' ? { ...options, scrollback: 20_000 } : control === 'reader-claims' ? { ...options, screenReaderMode: false } : control === 'cap-unlimited' ? { ...options, findLimit: 1_000_000 } : options,
+    );
     stats.engines += 1;
     stats.grid = () => engine.size();
     stats.measure = () => engine.measure() ?? null;
@@ -1018,6 +1035,74 @@ const load: EngineLoader = async () => {
 
         await engine.setRenderer(renderer);
       },
+      // The find, the mouse, the paste, the trigger of the context menu and the links, and what each negative control does to them. `count-case-ignored`, `count-word-ignored` and `count-regex-ignored`: an emulator that reads a query
+      // without one of the three switches of the find bar (`find.count`); `step-stuck`: a find that does not leave the match it is on (`find.count`); `cap-unlimited` (above): one with no highest count (`find.cap`);
+      // `mouse-reporting-lost`: an emulator that never says the program has the mouse (`menu.mouse`); `paste-lost`: a paste that goes nowhere and `trigger-lost`: an input that never gets the attributes of the menu's trigger (`menu.open`);
+      // `links-plain-follows`: a click that the emulator says had the modifier held, `links-hover-never`: a pointer that is never said to be on a link and `links-leave-never`: one that is never said to have left it (`links.activate`, `links.tooltip`).
+      find: async () => {
+        const finder = await engine.find();
+        const read = (query: FindOptions): FindOptions => ({
+          caseSensitive: control === 'count-case-ignored' ? false : query.caseSensitive,
+          wholeWord: control === 'count-word-ignored' ? false : query.wholeWord,
+          regex: control === 'count-regex-ignored' ? false : query.regex,
+        });
+        let last: string | undefined;
+        /** `?control=reopen-forgets`: the finder has been cleared once (the bar was closed), and looks for nothing after it. */
+        let cleared = false;
+        return {
+          ...finder,
+          clear: () => {
+            cleared = true;
+            finder.clear();
+          },
+          next: (query, switches) => {
+            if ((control === 'step-stuck' && query === last) || (control === 'reopen-forgets' && cleared)) {
+              return;
+            }
+
+            last = query;
+            finder.next(query, read(switches));
+          },
+          previous: (query, switches) => {
+            if ((control === 'step-stuck' && query === last) || (control === 'reopen-forgets' && cleared)) {
+              return;
+            }
+
+            last = query;
+            finder.previous(query, read(switches));
+          },
+        };
+      },
+      mouseReporting: () => control !== 'mouse-reporting-lost' && engine.mouseReporting(),
+      paste: (text) => {
+        if (control !== 'paste-lost') {
+          engine.paste(text);
+        }
+      },
+      decorateInput: (attributes) => {
+        if (control !== 'trigger-lost') {
+          engine.decorateInput(attributes);
+        }
+      },
+      setLinks: (handler) => {
+        if (handler === undefined) {
+          engine.setLinks(undefined);
+          return;
+        }
+
+        engine.setLinks({
+          activate: (uri, event) => {
+            handler.activate(uri, control === 'links-plain-follows' ? new MouseEvent('click', { metaKey: true, ctrlKey: true }) : event);
+          },
+          hover: (hover) => {
+            if (control === 'links-hover-never' || (control === 'links-leave-never' && hover === undefined)) {
+              return;
+            }
+
+            handler.hover(hover);
+          },
+        });
+      },
     };
   };
 };
@@ -1061,6 +1146,10 @@ Object.assign(window, {
     /** How many frames `?control=leaky-heap` holds on to. */
     leaked: () => leak.length,
   },
+  /** What the shell prints for `known` and `urls`, line by line, and the addresses the page was asked to open outside the window (`openExternal`). */
+  __known: [...KNOWN],
+  __urls: [...URLS],
+  __opened: opened,
 });
 
 /**
@@ -1080,6 +1169,38 @@ function ChunkCounter() {
     };
   }, []);
   return <span hidden>{count}</span>;
+}
+
+/** `?control=idle-commits`: a component that renders ten times a second for as long as the page lives, as a view that kept a clock would: a page that is at rest commits nothing. */
+function IdleTicker() {
+  const [ticks, setTicks] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTicks((n) => n + 1);
+    }, 100);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
+  return <span hidden>{ticks}</span>;
+}
+
+/**
+ * Every address the window was asked to open outside itself, in order (`window.__opened`): `openExternal` is what the Terminal tool is given to open a link. `?openExternal=off` gives it none, as a window that cannot open one has; `?control=open-twice`
+ * records each call twice; `?control=open-given` gives it whatever `?openExternal=off` says. `?control=search-eager` asks for the find's lazy chunk when the page loads.
+ */
+const openExternal = async (url: string): Promise<void> => {
+  opened.push(url);
+  if (control === 'open-twice') {
+    opened.push(url);
+  }
+
+  return Promise.resolve();
+};
+
+const givesOpenExternal = params.get('openExternal') !== 'off' || control === 'open-given';
+if (control === 'search-eager') {
+  void import('@xterm/addon-search');
 }
 
 const root = document.getElementById('root');
@@ -1111,25 +1232,29 @@ async function mount(): Promise<void> {
         : kept;
   const channels = loadTerminalChannels({ client, openStream, storage });
   const session = shared ? await loadSession(windowStorage({ client: windowState, name: async () => Promise.resolve('main') })) : undefined;
+  // The window's one menu host, as the app's entry mounts it (ui-next/main.tsx): the terminal's context menu opens on it, and without it a trigger is inert.
   createRoot(root).render(
     <ThemeProvider>
-      <Profiler
-        id="host"
-        onRender={(_id, phase, actualDuration) => {
-          commits.push({ phase, actualDuration });
-        }}
-      >
-        {control === 'chunk-commit' ? <ChunkCounter /> : null}
-        <PluginHost
-          plugins={plugins}
-          inventory="ready"
-          link={{ plugin: params.get('plugin') ?? undefined, page: undefined, connection: undefined, params: {} }}
-          onRetry={() => undefined}
-          onRetryInventory={() => undefined}
-          session={session}
-          terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels) }}
-        />
-      </Profiler>
+      <MenuHost>
+        <Profiler
+          id="host"
+          onRender={(_id, phase, actualDuration) => {
+            commits.push({ phase, actualDuration });
+          }}
+        >
+          {control === 'chunk-commit' ? <ChunkCounter /> : null}
+          {control === 'idle-commits' ? <IdleTicker /> : null}
+          <PluginHost
+            plugins={plugins}
+            inventory="ready"
+            link={{ plugin: params.get('plugin') ?? undefined, page: undefined, connection: undefined, params: {} }}
+            onRetry={() => undefined}
+            onRetryInventory={() => undefined}
+            session={session}
+            terminals={{ target: () => localShellTarget(channels), load, restore: async () => restoreLocalTerminals(channels), reattach: (id: string) => attachLocalTerminal(id, undefined, channels), ...(givesOpenExternal ? { openExternal } : {}) }}
+          />
+        </Profiler>
+      </MenuHost>
     </ThemeProvider>,
   );
 }

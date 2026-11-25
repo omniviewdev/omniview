@@ -1,0 +1,49 @@
+Scenario v: the ASSERTION_OFF pairs of PT_CONTROLS (WebKit). For each control the same run is made with the assertion it is named for left out
+(SEAM_CONTROL=<name> SEAM_REMOVE=<name>): its fault (the act not done yet) must then pass undetected, which shows that the control is tripped by that assertion and by nothing else.
+command (one run for each name, six at a time, 13:36:57 to 13:40:45, load average 5 to 8): env -i HOME="$HOME" PATH="$PATH" ENGINES=webkit SEAM_CONTROL=<name> SEAM_REMOVE=<name> node ui-next/plugins/e2e/seam.check.mjs
+result: 22 of 22 runs exit 0 with "NOT DETECTED ... with its assertion removed, as it must be"; 0 of 22 detected by anything else.
+
+NEGATIVE CONTROL "alert-cleared": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "alert-fires": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "alert-kept": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "alert-resolves": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "alert-unknown": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "conn-cleared": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "conn-listed": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "conn-opens": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "conn-refused": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "keys-open": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "keys-reach": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "ops-dot": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "ops-progress": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "ops-read": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "ops-running": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "ops-succeeded": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "ops-unknown-dot": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "ops-unknown": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "page-error": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "recovered": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "row-opens-plugin": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0
+NEGATIVE CONTROL "stopped-listed": NOT DETECTED in webkit with its assertion removed, as it must be
+  -> exit 0

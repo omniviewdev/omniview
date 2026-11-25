@@ -1,5 +1,5 @@
-/* The pages of Settings (the old window's sidebar: 212 px, a group label and a list; the mock's tree rows: 24 px, 13 px text, the selected row on the selection role, which is the active one while it has the focus). The
-   items are the mock's tree rows without their glyph: the host's glyph names are not the kit's, and a nav that drew two of six would look unfinished (see the README, "Later slices"). */
+/* The pages of Settings (the old window's sidebar: 212 px, a group label and a list; the mock's tree rows: 24 px, 13 px text, a 16 px glyph and 8 px before the label, the selected row on the selection role, which is the active one while it has the focus). The
+   glyph column is there for every page, so a page the kit has no glyph for keeps its label where the others have theirs. */
 @layer ov.shell {
   .nav {
     display: flex;
@@ -26,7 +26,8 @@
   }
 
   .item {
-    display: block;
+    display: flex;
+    align-items: center;
     box-sizing: border-box;
     inline-size: 100%;
     block-size: 24px;
@@ -46,8 +47,24 @@
     letter-spacing: normal;
     line-height: var(--ov-lh-16);
     text-align: start;
-    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .glyph {
+    display: grid;
+    flex: 0 0 16px;
+    place-items: center;
+    inline-size: 16px;
+    block-size: 16px;
+    color: var(--ov-icon);
+  }
+
+  .label {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    margin-inline-start: var(--ov-spacing-8);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .item:hover {

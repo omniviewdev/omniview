@@ -8,7 +8,9 @@ import { toggleChordText } from '../words';
 import { readAppearance, SWATCH_ROLES } from './appearance';
 import type { EngineLoader } from './engine';
 import type { TerminalFeedHandle, TerminalFeedSnapshot } from './feed';
+import { createFindSession, useTerminalFind } from './find';
 import { loadXtermEngine } from './loadEngine';
+import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
 import { screenReaderWords, type ScreenReaderSource } from './screenReader';
 import { laneOf } from './state';
@@ -187,6 +189,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
   const hintId = useId();
   const platform = platformOf(navigator);
   const label = name ?? (session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
+  // The find bar's session is made before the screen: the screen's keys (the find chord, F3, Escape) open the bar, step the find and close the bar through it, and `useTerminalFind` below draws the bar once the screen is there.
+  const [finding] = useState(createFindSession);
   const [screen] = useState(() =>
     createScreen({
       feed,
@@ -201,9 +205,13 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
       observe: observeSize,
       fontsReady,
       copy: copyToClipboard,
+      onFind: finding.open,
+      onFindStep: finding.step,
+      onFindClose: finding.closeIfOpen,
     }),
   );
   const view = useSyncExternalStore(screen.subscribe, screen.getSnapshot);
+  const find = useTerminalFind({ screen, visible, ready: view.ready, session: finding });
   // The lane reads the feed's status only while the body is on screen: this listener is the lane's, and it is released while the body is hidden. The screen keeps its own (it goes on reading and acknowledging while hidden), besides the registry's.
   const status = useSyncExternalStore(visible ? feed.subscribe : nothing, feed.getSnapshot);
   // The description says whether the output is read aloud: the same rule as the lane, so a hidden body holds no listener on the window's choice, and reads it again when it is shown.
@@ -296,6 +304,11 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
     });
   };
 
+  // The context menu on the window's menu host and the links in the output (T3a): the screen's element carries the menu's trigger, Find is the bar's, and Copy is the toolbar's own copy, so it confirms itself the same way. A link's
+  // tooltip is drawn where the pointer is on one, and the screen is given links only when the window can open an address.
+  const menu = useTerminalMenu({ screen, status, openFind: find.open, copy });
+  const links = useTerminalLinks({ screen, sessions, platform });
+
   const lane = view.error === undefined ? laneOf(status) : { words: 'The terminal view could not be loaded.', note: `${view.error}.` };
   const hint = `Escape and Tab go to the shell. Press F6 to move to the next part of the window${platform === 'mac' ? `, or ${toggleChordText(platform)} to hide the panel` : ''}. ${screenReaderWords(reading, platform)}`;
 
@@ -305,6 +318,9 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
         <TerminalToolbar
           selected={view.selected}
           copied={copied}
+          finding={find.isOpen}
+          platform={platform}
+          onFind={find.isOpen ? find.close : find.open}
           onClear={() => {
             screen.clear();
           }}
@@ -312,7 +328,9 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
         />
       </div>
       <div className={styles.main}>
-        <div ref={host} className={styles.screen} data-shell-part="terminalScreen" />
+        <div ref={host} className={styles.screen} data-shell-part="terminalScreen" {...menu.host} />
+        {find.element}
+        {links.element}
         <div className={styles.lane} role="status" data-shell-part="terminalLane">
           {lane.words === '' ? null : (
             <>

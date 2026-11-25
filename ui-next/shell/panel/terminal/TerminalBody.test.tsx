@@ -109,11 +109,11 @@ describe('a session with no feed', () => {
 });
 
 describe('a session with a feed', () => {
-  it('draws the toolbar (Clear and Copy selection), the screen and the lane, and loads no emulator while it is not on screen', async () => {
+  it('draws the toolbar (Find, Clear and Copy selection), the screen and the lane, and loads no emulator while it is not on screen', async () => {
     const { loader } = mount({ visible: false });
     await flush();
     const toolbar = page.getByRole('toolbar', { name: 'Terminal tools' });
-    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Clear', 'Copy selection']);
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Find', 'Clear', 'Copy selection']);
     expect(document.querySelector('[data-shell-part="terminalScreen"]')).not.toBeNull();
     expect(loader.loads()).toBe(0);
   });

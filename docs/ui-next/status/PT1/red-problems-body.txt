@@ -1,0 +1,94 @@
+     × says that there is no problem and that plugins and connections are healthy, as the panel's polite status 41ms
+     × draws the glyph the tool names for it 2ms
+     × draws only the empty state: no table, no scroll region and no footer 2ms
+     × gives way to the table as soon as a condition is true, and comes back as soon as the last one stops being true 2ms
+     × lists each condition in the model's order: its word, its source and its target 2ms
+     × draws the condition as the kit's status of its severity: an error, a warning that needs a look, an info 2ms
+     × puts the full sentence in the tooltip of the Condition cell, and in the cell for a screen reader 1ms
+     × does not say a word twice to a screen reader: a sentence that is the word has no second copy 1ms
+     × draws a missing target as the muted dash named No target, not as a word 1ms
+     × draws the source and the target in a box that tells the tooltip when it cuts them: the host shows the full name only while it is cut 1ms
+     × names its columns Condition, Source, Target and Actions (that one is read and not drawn), with no Since and nothing to sort by 1ms
+     × is the table named Problems, of one-line rows 2ms
+     × counts the problems in the footer: 3 problems, 1 problem 1ms
+     × follows the model: a condition that comes is a row, one that goes is no row, and the more severe is first 1ms
+     × has no filter, no toolbar and no inspector yet, and no control that stands in for them: its only buttons are the rows' 1ms
+     × names each button for its action and its object: Open the target, or the source when there is none 1ms
+     × opens the subject of the row when its button is clicked, once, and hands on the click so that its modifiers choose where it opens 1ms
+     × opens the subject of a row that is clicked, with the click: the row does what its button does 1ms
+     × is a button that a keyboard reaches with Tab and presses with Enter and with Space 13ms
+     × is a Tab stop in every row, the one that cannot be opened as well: it is there and says why 1ms
+     × says why a row with no page of its own cannot be opened, to a keyboard and a screen reader, and opens nothing from the button or from the row 1ms
+     × draws the button of a row that can be opened with no reason 1ms
+     × opens with the function it is given now, not the one it was first given 1ms
+     × renders the row of the condition that changed and no other, though the producer built every condition anew 1ms
+     × renders no row, and commits nothing, when the producer says what it said, though every condition is a new object 1ms
+     × renders no row when the last condition goes: the rows before it are as they were 1ms
+     × renders no row when it is given another open function: the rows do not hold it, the buttons read it 1ms
+     × hands the table one list of columns, whatever changes (its rows, the open function): the kit renders every row again for a list it has not seen 0ms
+     × is one commit for two hundred conditions that arrive in one set, as rows are added to the table that shows them 1ms
+     × is one commit of its own for two hundred conditions that arrive in one set, as the table is drawn for the first time: the table's measuring is the only other 1ms
+     × holds one listener on the model for as long as it is on screen, however often the model changes, and none after 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 31 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > with no condition > says that there is no problem and that plugins and connections are healthy, as the panel's polite status
+TestingLibraryElementError: Unable to find an accessible element with the role "status"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > with no condition > draws the glyph the tool names for it
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > with no condition > draws only the empty state: no table, no scroll region and no footer
+TestingLibraryElementError: Unable to find an accessible element with the role "status"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > with no condition > gives way to the table as soon as a condition is true, and comes back as soon as the last one stops being true
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > lists each condition in the model's order: its word, its source and its target
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > draws the condition as the kit's status of its severity: an error, a warning that needs a look, an info
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > puts the full sentence in the tooltip of the Condition cell, and in the cell for a screen reader
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > does not say a word twice to a screen reader: a sentence that is the word has no second copy
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > draws a missing target as the muted dash named No target, not as a word
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > draws the source and the target in a box that tells the tooltip when it cuts them: the host shows the full name only while it is cut
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > names its columns Condition, Source, Target and Actions (that one is read and not drawn), with no Since and nothing to sort by
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > is the table named Problems, of one-line rows
+TestingLibraryElementError: Unable to find an accessible element with the role "region" and name "Problems"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > counts the problems in the footer: 3 problems, 1 problem
+AssertionError: expected undefined to be '3 problems' // Object.is equality
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > follows the model: a condition that comes is a row, one that goes is no row, and the more severe is first
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > the rows > has no filter, no toolbar and no inspector yet, and no control that stands in for them: its only buttons are the rows'
+TestingLibraryElementError: Unable to find an accessible element with the role "button"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > names each button for its action and its object: Open the target, or the source when there is none
+TestingLibraryElementError: Unable to find an accessible element with the role "button"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > opens the subject of the row when its button is clicked, once, and hands on the click so that its modifiers choose where it opens
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Open north"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > opens the subject of a row that is clicked, with the click: the row does what its button does
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > is a button that a keyboard reaches with Tab and presses with Enter and with Space
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Open Alpha Cloud"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > is a Tab stop in every row, the one that cannot be opened as well: it is there and says why
+TestingLibraryElementError: Unable to find an accessible element with the role "button"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > says why a row with no page of its own cannot be opened, to a keyboard and a screen reader, and opens nothing from the button or from the ro
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Open Alpha Cloud"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > draws the button of a row that can be opened with no reason
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Open Alpha Cloud"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > opening a problem > opens with the function it is given now, not the one it was first given
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Open Alpha Cloud"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > renders the row of the condition that changed and no other, though the producer built every condition anew
+AssertionError: expected [] to deeply equal [ 'b' ]
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > renders no row, and commits nothing, when the producer says what it said, though every condition is a new object
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > renders no row when the last condition goes: the rows before it are as they were
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > renders no row when it is given another open function: the rows do not hold it, the buttons read it
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > hands the table one list of columns, whatever changes (its rows, the open function): the kit renders every row again for a list it has not
+AssertionError: expected 0 to be greater than 0
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > is one commit for two hundred conditions that arrive in one set, as rows are added to the table that shows them
+AssertionError: expected [] to deeply equal [ 'update' ]
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > is one commit of its own for two hundred conditions that arrive in one set, as the table is drawn for the first time: the table's measurin
+TestingLibraryElementError: Unable to find an accessible element with the role "table"
+ FAIL  ui-next/shell/panel/problems/ProblemsBody.test.tsx > what a change costs > holds one listener on the model for as long as it is on screen, however often the model changes, and none after
+AssertionError: expected [ +0, +0 ] to deeply equal [ 1, 1 ]
+      Tests  31 failed (31)

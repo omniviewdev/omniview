@@ -148,7 +148,7 @@ describe('the Retry of that toast', () => {
     const w = build();
     failureNotice(w.notices.store, 'west', wails(TIMEOUT), again);
     const record = toastOf(w)?.record;
-    expect(record?.actions.map((action) => [action.label, action.variant, action.icon, action.disabled])).toEqual([['Retry', 'primary', 'refresh', '']]);
+    expect(record?.actions.map((action) => [action.label, action.variant, action.icon, action.disabled])).toEqual([['Retry', 'primary', 'rotate-cw', '']]);
     expect(w.notices.store.run(record?.id ?? '', 'again')).toMatchObject({ status: 'done' });
     expect(again).toHaveBeenCalledTimes(1);
     expect(w.notices.store.getSnapshot().toasts.items).toEqual([]);

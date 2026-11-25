@@ -1,0 +1,333 @@
+# The FIRST run of ui-next/shell/probes/problems-operations-probe.mjs, against the product as it stood (nothing fixed yet): Chromium, 1440 x 900, 1280 x 800 and 800 x 600, every section.
+# env -i HOME="$HOME" PATH="$PATH" ENGINES=chromium node ui-next/shell/probes/problems-operations-probe.mjs   (fixtures built from this tree; load 6 to 7)
+# Exit code 1. What it found (the product, not the probe): the Problems footer is OUTSIDE the panel (the kit's DataView with no header puts its body in the auto track and its footer in the 1fr one), the Operations rows are 32 px
+# and not the mock's 24, the tab dots stand 6 px from the tab's top and end (the mock's 5), a word of the Condition cell is cut with no ellipsis, axe: label-content-name-mismatch on the Problems tab ('Problems2').
+# What the probe got wrong itself: the footer words' height is read from the text's range (15 px) and not from the element that holds them (16 px).
+
+uptime: 13:35  up 14 days,  6:02, 1 user, load averages: 5.96 5.36 5.68
+chromium 1440x900 done
+chromium 1280x800 done
+chromium 800x600 done
+uptime at the start: 13:35  up 14 days,  6:02, 1 user, load averages: 5.96 5.36 5.68
+uptime at the end:   13:36  up 14 days,  6:03, 1 user, load averages: 7.25 5.83 5.83
+seconds: {"chromium commits":8.31,"chromium hidden":10.24,"chromium subscribers":4.68,"chromium virtual":11.72,"chromium geometry":9.05,"chromium layout":6.26,"chromium a11y":14.24,"chromium keyboard":2.74,"chromium":67} (67 in all)
+
+assertion          result  checks
+a11y               FAIL      18  12 failure(s)
+commits.arrive     ok         2
+geometry.fill      FAIL      24  6 failure(s)
+geometry.foot      FAIL      54  6 failure(s)
+geometry.head      ok         6
+geometry.row       FAIL     246  117 failure(s)
+geometry.tab       FAIL      60  12 failure(s)
+hidden.back        ok         6
+hidden.cost        ok        12
+keys.cancel        ok         1
+keys.open          ok        12
+keys.scroll        ok         2
+keys.stops         ok         2
+layout.clip        FAIL       6  3 failure(s)
+layout.overlap     ok         6
+layout.premise     ok         6
+premise            ok        22
+subscribers.body   ok         6
+tick.cells         ok         2
+tick.commits       ok         2
+tick.dom           ok         2
+unmount.heard      ok         1
+unmount.held       ok         1
+virtual.last       ok         6
+virtual.rows       ok         6
+
+156 failures:
+  geometry.fill chromium 1440x900: problems footer bottom against the body's bottom (the footer is the pane's last lane): mock 868 ours 901 (off by 33)
+  geometry.foot chromium 1440x900: problems footer words height: mock 16 ours 15 (off by 1)
+  geometry.tab chromium 1440x900: the warning dot of Problems: the distance from the tab's top edge: mock 5 ours 6 (off by 1)
+  geometry.tab chromium 1440x900: the warning dot of Problems: the distance from the tab's end edge: mock 4.99 ours 6 (off by 1.01)
+  geometry.tab chromium 1440x900: the error dot of Operations: the distance from the tab's top edge: mock 5 ours 6 (off by 1)
+  geometry.tab chromium 1440x900: the error dot of Operations: the distance from the tab's end edge: mock 4.99 ours 6 (off by 1.01)
+  geometry.row chromium 1440x900: operations row 0 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 1 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 2 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 3 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 4 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 5 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 6 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 7 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 8 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 9 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 10 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 11 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 12 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 13 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 14 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 15 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 16 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 17 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 18 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations row 19 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 0 and 1: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 1 and 2: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 2 and 3: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 3 and 4: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 4 and 5: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 5 and 6: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 6 and 7: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 7 and 8: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 8 and 9: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 9 and 10: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 10 and 11: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 11 and 12: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 12 and 13: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 13 and 14: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 14 and 15: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 15 and 16: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 16 and 17: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 17 and 18: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1440x900: operations rows 18 and 19: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.fill chromium 1440x900: operations footer bottom against the body's bottom (the footer is the pane's last lane): mock 868 ours 901 (off by 33)
+  geometry.foot chromium 1440x900: operations footer words height: mock 16 ours 15 (off by 1)
+  layout.clip chromium 1440x900: problems: 1 words are cut with no ellipsis: row 0 cell 0 "A name much too long for" cut by td (text-overflow ellipsis, the word is not in the cutter's own line)
+  a11y chromium 1440x900: Problems, with rows: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="true" aria-cont)
+  a11y chromium 1440x900: Operations, with rows: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="false" aria-con)
+  a11y chromium 1440x900: Problems with rows, and the dot of a failure nobody read on the Operations tab: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="true" aria-cont)
+  a11y chromium 1440x900: Operations with rows, and the dot of warnings on the Problems tab: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="false" aria-con)
+  geometry.fill chromium 1280x800: problems footer bottom against the body's bottom (the footer is the pane's last lane): mock 768 ours 801 (off by 33)
+  geometry.foot chromium 1280x800: problems footer words height: mock 16 ours 15 (off by 1)
+  geometry.tab chromium 1280x800: the warning dot of Problems: the distance from the tab's top edge: mock 5 ours 6 (off by 1)
+  geometry.tab chromium 1280x800: the warning dot of Problems: the distance from the tab's end edge: mock 4.99 ours 6 (off by 1.01)
+  geometry.tab chromium 1280x800: the error dot of Operations: the distance from the tab's top edge: mock 5 ours 6 (off by 1)
+  geometry.tab chromium 1280x800: the error dot of Operations: the distance from the tab's end edge: mock 4.99 ours 6 (off by 1.01)
+  geometry.row chromium 1280x800: operations row 0 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 1 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 2 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 3 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 4 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 5 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 6 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 7 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 8 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 9 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 10 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 11 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 12 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 13 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 14 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 15 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 16 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 17 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 18 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations row 19 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 0 and 1: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 1 and 2: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 2 and 3: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 3 and 4: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 4 and 5: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 5 and 6: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 6 and 7: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 7 and 8: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 8 and 9: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 9 and 10: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 10 and 11: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 11 and 12: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 12 and 13: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 13 and 14: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 14 and 15: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 15 and 16: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 16 and 17: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 17 and 18: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 1280x800: operations rows 18 and 19: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.fill chromium 1280x800: operations footer bottom against the body's bottom (the footer is the pane's last lane): mock 768 ours 801 (off by 33)
+  geometry.foot chromium 1280x800: operations footer words height: mock 16 ours 15 (off by 1)
+  layout.clip chromium 1280x800: problems: 1 words are cut with no ellipsis: row 0 cell 0 "A name much too long for" cut by td (text-overflow ellipsis, the word is not in the cutter's own line)
+  a11y chromium 1280x800: Problems, with rows: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="true" aria-cont)
+  a11y chromium 1280x800: Operations, with rows: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="false" aria-con)
+  a11y chromium 1280x800: Problems with rows, and the dot of a failure nobody read on the Operations tab: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="true" aria-cont)
+  a11y chromium 1280x800: Operations with rows, and the dot of warnings on the Problems tab: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="false" aria-con)
+  geometry.fill chromium 800x600: problems footer bottom against the body's bottom (the footer is the pane's last lane): mock 568 ours 601 (off by 33)
+  geometry.foot chromium 800x600: problems footer words height: mock 16 ours 15 (off by 1)
+  geometry.tab chromium 800x600: the warning dot of Problems: the distance from the tab's top edge: mock 5 ours 6 (off by 1)
+  geometry.tab chromium 800x600: the warning dot of Problems: the distance from the tab's end edge: mock 4.99 ours 6 (off by 1.01)
+  geometry.tab chromium 800x600: the error dot of Operations: the distance from the tab's top edge: mock 5 ours 6 (off by 1)
+  geometry.tab chromium 800x600: the error dot of Operations: the distance from the tab's end edge: mock 4.99 ours 6 (off by 1.01)
+  geometry.row chromium 800x600: operations row 0 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 1 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 2 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 3 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 4 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 5 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 6 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 7 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 8 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 9 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 10 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 11 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 12 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 13 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 14 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 15 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 16 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 17 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 18 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations row 19 height: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 0 and 1: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 1 and 2: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 2 and 3: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 3 and 4: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 4 and 5: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 5 and 6: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 6 and 7: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 7 and 8: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 8 and 9: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 9 and 10: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 10 and 11: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 11 and 12: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 12 and 13: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 13 and 14: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 14 and 15: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 15 and 16: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 16 and 17: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 17 and 18: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.row chromium 800x600: operations rows 18 and 19: the distance between their tops: mock 24 ours 32 (off by 8)
+  geometry.fill chromium 800x600: operations footer bottom against the body's bottom (the footer is the pane's last lane): mock 568 ours 601 (off by 33)
+  geometry.foot chromium 800x600: operations footer words height: mock 16 ours 15 (off by 1)
+  layout.clip chromium 800x600: problems: 1 words are cut with no ellipsis: row 0 cell 0 "A name much too long for" cut by td (text-overflow ellipsis, the word is not in the cutter's own line)
+  a11y chromium 800x600: Problems, with rows: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="true" aria-cont)
+  a11y chromium 800x600: Operations, with rows: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="false" aria-con)
+  a11y chromium 800x600: Problems with rows, and the dot of a failure nobody read on the Operations tab: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="true" aria-cont)
+  a11y chromium 800x600: Operations with rows, and the dot of warnings on the Problems tab: label-content-name-mismatch (serious, 1 nodes: <button type="button" role="tab" id="_r_3_-panel-tool-problems" class="_toolTab_12dqr_19" aria-selected="false" aria-con)
+
+
+# ============================================================================================================================================================
+# THE NEGATIVE CONTROLS, each run twice (a scratch runner, not committed: for each control, NEGATIVE_CONTROL=<name>, then NEGATIVE_CONTROL=<name> ASSERTION_OFF=<its pattern>): detected when planted (exit 0), NOT DETECTED with 0 other
+# failures when its assertion is removed (exit 1). Chromium, 1440 x 900, fixtures prebuilt. FIRST PASS over the 17 (15 good; BAD = the control tripped a second assertion or none: `tiny-rows` set a token the table floors at 24 px, so it was NOT DETECTED;
+# `spill` took the cut from the fixed columns and so tripped `layout.premise`). Both controls were rewritten, and the fixed ones are the second pass below.
+# ============================================================================================================================================================
+OK   all-rows        planted: exit 0 (4s) NEGATIVE CONTROL "all-rows": detected (1 differences, only in ^tick\.cells\b, e.g. tick.cells chromium 1440x900: operations: one row changed (bulk002) and the table rendered the cells of 20 rows (bulk000, seed000, bulk001, seed001
+                     off:     exit 1 (4s) NEGATIVE CONTROL "all-rows": NOT DETECTED (0 other failures)
+OK   leaky-model     planted: exit 0 (5s) NEGATIVE CONTROL "leaky-model": detected (1 differences, only in ^unmount\.heard\b, e.g. unmount.heard chromium 1440x900: after the window went, problems told 7 listeners that had been stopped; 0 commits and 0 nodes after it (want
+                     off:     exit 1 (5s) NEGATIVE CONTROL "leaky-model": NOT DETECTED (0 other failures)
+OK   per-record      planted: exit 0 (6s) NEGATIVE CONTROL "per-record": detected (2 differences, only in ^commits\.arrive\b, e.g. commits.arrive chromium 1440x900: 200 problems arrived at a table of 30 rows that was on screen: 200 commits of the window (update, update, u
+                     off:     exit 1 (6s) NEGATIVE CONTROL "per-record": NOT DETECTED (0 other failures)
+OK   no-detach       planted: exit 0 (5s) NEGATIVE CONTROL "no-detach": detected (1 differences, only in ^unmount\.held\b, e.g. unmount.held chromium 1440x900: the window went and feed still holds 1 (1 subscribed, 0 stopped))
+                     off:     exit 1 (5s) NEGATIVE CONTROL "no-detach": NOT DETECTED (0 other failures)
+BAD  tiny-rows       planted: exit 1 (4s) NEGATIVE CONTROL "tiny-rows": NOT DETECTED (0 other failures)
+                     off:     exit 1 (4s) NEGATIVE CONTROL "tiny-rows": NOT DETECTED (0 other failures)
+OK   hidden-mounted  planted: exit 0 (11s) NEGATIVE CONTROL "hidden-mounted": detected (12 differences, only in ^hidden\.cost\b, e.g. hidden.cost chromium 1440x900: problems hidden: another tool on screen: 200 conditions that no tab counts arrive: 2 commits of the window (
+                     off:     exit 1 (11s) NEGATIVE CONTROL "hidden-mounted": NOT DETECTED (0 other failures)
+OK   tall-rows       planted: exit 0 (3s) NEGATIVE CONTROL "tall-rows": detected (78 differences, only in ^geometry\.row\b, e.g. geometry.row chromium 1440x900: problems row 0 height: mock 24 ours 28 (off by 4))
+                     off:     exit 1 (3s) NEGATIVE CONTROL "tall-rows": NOT DETECTED (0 other failures)
+OK   footer-up       planted: exit 0 (3s) NEGATIVE CONTROL "footer-up": detected (4 differences, only in ^geometry\.fill\b, e.g. geometry.fill chromium 1440x900: problems footer bottom against the body's bottom (the footer is the pane's last lane): mock 868 ours 864 (off 
+                     off:     exit 1 (3s) NEGATIVE CONTROL "footer-up": NOT DETECTED (0 other failures)
+OK   footer-words    planted: exit 0 (3s) NEGATIVE CONTROL "footer-words": detected (2 differences, only in ^geometry\.foot\b, e.g. geometry.foot chromium 1440x900: problems footer words, from the footer's start: mock 12 ours 16 (off by 4))
+                     off:     exit 1 (3s) NEGATIVE CONTROL "footer-words": NOT DETECTED (0 other failures)
+OK   dot-down        planted: exit 0 (3s) NEGATIVE CONTROL "dot-down": detected (2 differences, only in ^geometry\.tab\b, e.g. geometry.tab chromium 1440x900: the warning dot of Problems: the distance from the tab's top edge: mock 5 ours 9 (off by 4))
+                     off:     exit 1 (3s) NEGATIVE CONTROL "dot-down": NOT DETECTED (0 other failures)
+OK   count-colour    planted: exit 0 (3s) NEGATIVE CONTROL "count-colour": detected (1 differences, only in ^geometry\.tab\b, e.g. geometry.tab chromium 1440x900: the count's color: mock rgb(159, 162, 168) ours rgb(1, 2, 3))
+                     off:     exit 1 (3s) NEGATIVE CONTROL "count-colour": NOT DETECTED (0 other failures)
+OK   clip-off        planted: exit 0 (2s) NEGATIVE CONTROL "clip-off": detected (2 differences, only in ^layout\.clip\b, e.g. layout.clip chromium 1440x900: problems: 3 words are cut with no ellipsis: row 0 cell 0 "A name much too long for" cut by td (text-overflow clip);
+                     off:     exit 1 (2s) NEGATIVE CONTROL "clip-off": NOT DETECTED (0 other failures)
+BAD  spill           planted: exit 1 (2s) NEGATIVE CONTROL "spill": FAILED, 2 other failures (a control trips only its own assertion): layout.premise chromium 1440x900: problems: 1 texts were cut in 20 rows, wanted at least 3: the long words are not in the table
+                     off:     exit 1 (2s) NEGATIVE CONTROL "spill": NOT DETECTED (2 other failures, e.g. layout.premise chromium 1440x900: problems: 1 texts were cut in 20 rows, wanted at least 3: the long words are not in the table)
+OK   no-stop         planted: exit 0 (3s) NEGATIVE CONTROL "no-stop": detected (2 differences, only in ^keys\.stops\b, e.g. keys.stops chromium 1440x900: problems: the Tab stops of the body (5 of the buttons have a tabindex under 0) are ["region"], wanted the table's regi
+                     off:     exit 1 (3s) NEGATIVE CONTROL "no-stop": NOT DETECTED (0 other failures)
+OK   no-name         planted: exit 0 (5s) NEGATIVE CONTROL "no-name": detected (4 differences, only in ^a11y\b, e.g. a11y chromium 1440x900: Problems, with rows: button-name (critical, 1 nodes: <button type="button" class="command-module_root_ddyXna" data-ov-shape="icon" 
+                     off:     exit 1 (5s) NEGATIVE CONTROL "no-name": NOT DETECTED (0 other failures)
+OK   open-twice      planted: exit 0 (3s) NEGATIVE CONTROL "open-twice": detected (10 differences, only in ^keys\.open\b, e.g. keys.open chromium 1440x900: problems: Enter on "Open A target with a name much longer than the room its column gives it, A name much too long fo
+                     off:     exit 1 (3s) NEGATIVE CONTROL "open-twice": NOT DETECTED (0 other failures)
+OK   no-scroll       planted: exit 0 (20s) NEGATIVE CONTROL "no-scroll": detected (2 differences, only in ^virtual\.last\b, e.g. virtual.last chromium 1440x900: problems: End did not put the last row in the document and it is not in view (scrollTop 0, 20 rows mounted), Hom
+                     off:     exit 1 (19s) NEGATIVE CONTROL "no-scroll": NOT DETECTED (0 other failures)
+
+15 of 17 controls: detected when planted, and not detected with their assertion removed
+
+# --- the two rewritten controls after one more change each (`tiny-rows` still tripped virtual.last through the end's row count, `spill` still tripped layout.clip through the Progress text's own clip):
+BAD  spill           planted: exit 1 (2s) NEGATIVE CONTROL "spill": FAILED, 1 other failures (a control trips only its own assertion): layout.clip chromium 1440x900: operations: 15 words are cut with no ellipsis: row 0 cell 4 "0 of 200 files" cut by span (text-overflow cl
+                     off:     exit 1 (2s) NEGATIVE CONTROL "spill": NOT DETECTED (1 other failures, e.g. layout.clip chromium 1440x900: operations: 15 words are cut with no ellipsis: row 0 cell 4 "0 of 200 files" cut by span (text-overflow clip, the word is not in the cut
+BAD  tiny-rows       planted: exit 1 (4s) NEGATIVE CONTROL "tiny-rows": FAILED, 2 other failures (a control trips only its own assertion): virtual.last chromium 1440x900: problems: End put the last row in the document and in view (scrollTop 2025, 76 rows mounted), Home ca
+                     off:     exit 1 (4s) NEGATIVE CONTROL "tiny-rows": NOT DETECTED (2 other failures, e.g. virtual.last chromium 1440x900: problems: End put the last row in the document and in view (scrollTop 2025, 76 rows mounted), Home came back to the first (scrollTo
+
+0 of 2 controls: detected when planted, and not detected with their assertion removed
+
+# --- SECOND PASS, after the last change of the probe: the two fixed controls and two more, all four in order:
+OK   clip-off        planted: exit 0 (2s) NEGATIVE CONTROL "clip-off": detected (2 differences, only in ^layout\.clip\b, e.g. layout.clip chromium 1440x900: problems: 3 words are cut with no ellipsis: row 0 cell 0 "A name much too long for" cut by td (text-overflow clip);
+                     off:     exit 1 (2s) NEGATIVE CONTROL "clip-off": NOT DETECTED (0 other failures)
+OK   spill           planted: exit 0 (2s) NEGATIVE CONTROL "spill": detected (2 differences, only in ^layout\.overlap\b, e.g. layout.overlap chromium 1440x900: problems: 0 pairs of cells overlap and 4 contents are outside their cell: row 0 cell 1 "A plugin whose name is m
+                     off:     exit 1 (2s) NEGATIVE CONTROL "spill": NOT DETECTED (0 other failures)
+OK   tiny-rows       planted: exit 0 (4s) NEGATIVE CONTROL "tiny-rows": detected (4 differences, only in ^virtual\.rows\b, e.g. virtual.rows chromium 1440x900: problems: 76 of 200 rows are mounted at the top (wanted 1 to 60): the table is not windowed)
+                     off:     exit 1 (4s) NEGATIVE CONTROL "tiny-rows": NOT DETECTED (0 other failures)
+OK   no-scroll       planted: exit 0 (20s) NEGATIVE CONTROL "no-scroll": detected (2 differences, only in ^virtual\.last\b, e.g. virtual.last chromium 1440x900: problems: End did not put the last row in the document and it is not in view (scrollTop 0), Home came back to th
+                     off:     exit 1 (19s) NEGATIVE CONTROL "no-scroll": NOT DETECTED (0 other failures)
+
+4 of 4 controls: detected when planted, and not detected with their assertion removed
+
+# ============================================================================================================================================================
+# GREEN: the same probe after the product fixes (the Problems and Operations footers, the Operations row height, the Condition cell's ellipsis, the tab dot, the count's text), clean environment, FONT_DELAY_MS=40:
+# ============================================================================================================================================================
+## WebKit
+assertion          result  checks
+a11y               ok        18
+commits.arrive     ok         2
+geometry.fill      ok        24
+geometry.foot      ok        54
+geometry.head      ok         6
+geometry.row       ok       214
+geometry.tab       ok        60
+hidden.back        ok         6
+hidden.cost        ok        12
+keys.cancel        ok         1
+keys.open          ok        12
+keys.scroll        ok         2
+keys.stops         ok         2
+layout.clip        ok         6
+layout.overlap     ok         6
+layout.premise     ok         6
+premise            ok        22
+subscribers.body   ok         6
+tick.cells         ok         2
+tick.commits       ok         2
+tick.dom           ok         2
+unmount.heard      ok         1
+unmount.held       ok         1
+virtual.last       ok         6
+virtual.rows       ok        12
+
+problems and operations probe: no failures
+webkit exit 0
+uptime: 13:47  up 14 days,  6:14, 1 user, load averages: 7.88 11.75 9.55
+uptime at the start: 13:47  up 14 days,  6:14, 1 user, load averages: 7.88 11.75 9.55
+uptime at the end:   13:48  up 14 days,  6:15, 1 user, load averages: 7.04 10.57 9.28
+seconds: {"webkit commits":8.77,"webkit hidden":10.84,"webkit subscribers":4.8,"webkit virtual":12.69,"webkit geometry":9.19,"webkit layout":6.42,"webkit a11y":14.96,"webkit keyboard":2.96,"webkit":71} (71 in all)
+## Chromium
+assertion          result  checks
+a11y               ok        18
+commits.arrive     ok         2
+geometry.fill      ok        24
+geometry.foot      ok        54
+geometry.head      ok         6
+geometry.row       ok       214
+geometry.tab       ok        60
+hidden.back        ok         6
+hidden.cost        ok        12
+keys.cancel        ok         1
+keys.open          ok        12
+keys.scroll        ok         2
+keys.stops         ok         2
+layout.clip        ok         6
+layout.overlap     ok         6
+layout.premise     ok         6
+premise            ok        22
+subscribers.body   ok         6
+tick.cells         ok         2
+tick.commits       ok         2
+tick.dom           ok         2
+unmount.heard      ok         1
+unmount.held       ok         1
+virtual.last       ok         6
+virtual.rows       ok        12
+
+problems and operations probe: no failures
+chromium exit 0
+uptime: 13:47  up 14 days,  6:14, 1 user, load averages: 7.88 11.75 9.55
+uptime at the start: 13:47  up 14 days,  6:14, 1 user, load averages: 7.88 11.75 9.55
+uptime at the end:   13:48  up 14 days,  6:15, 1 user, load averages: 6.25 10.56 9.26
+seconds: {"chromium commits":7.95,"chromium hidden":10.21,"chromium subscribers":4.68,"chromium virtual":11.35,"chromium geometry":8.43,"chromium layout":5.65,"chromium a11y":12.91,"chromium keyboard":2.64,"chromium":64} (64 in all)

@@ -1,0 +1,141 @@
+#!/bin/bash
+# Negative controls for T5-scan (the mark scanner, backend/pkg/terminal/marks). Each fault is put into a SCRATCH copy of
+# one source file and built with `go test -overlay`; the worktree is never edited. A control has two halves:
+#   1. with every test, the tests that go red are exactly the ones named for it (a fault that goes red in a test it
+#      is not named for, or in none, is reported);
+#   2. with the named tests skipped (the assertion removed), the same fault passes: nothing else sees it.
+# Run from anywhere in the worktree:  bash docs/ui-next/status/T5-scan/mutations.sh.txt [control-name]
+export GOWORK=off GOTOOLCHAIN=local
+WT=$(git rev-parse --show-toplevel) || exit 2
+PKG=./backend/pkg/terminal/marks/
+M=$(mktemp -d "${TMPDIR:-/tmp}/t5scan-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M"' EXIT
+cd "$WT" || exit 2
+only="${1:-}"
+bad=0
+
+# name | file | sed expression | the tests named for it (sorted, separated by spaces)
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  cp "$WT/$file" "$M/$name.go"
+  sed -i -e "$expr" "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+
+  out=$(go test -overlay="$M/$name.json" "$PKG" -timeout 300s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E '^--- FAIL' | sed -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | sed 's/ $//')
+  if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
+  elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
+  elif [ "$failed" != "$named" ]; then half1="RED in [$failed], named [$named]"; bad=1
+  else half1="RED in exactly [$failed]"; fi
+
+  skip="^($(echo "$named" | sed 's/ /|/g'))\$"
+  out2=$(go test -overlay="$M/$name.json" "$PKG" -skip "$skip" -timeout 300s 2>&1)
+  if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
+  else half2="without them: STILL RED [$(echo "$out2" | grep -E '^--- FAIL' | tr '\n' ' ')]"; bad=1; fi
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+run nonce-not-checked backend/pkg/terminal/marks/osc.go \
+  's/return len(s.nonce) > 0 \&\& subtle.ConstantTimeCompare(given, s.nonce) == 1/return len(s.nonce) >= 0 || subtle.ConstantTimeCompare(given, s.nonce) == 1/' \
+  'TestAForgedDirectoryNeverChangesTheTrustedOne TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne TestANonceAfterOtherBytesIsRefused TestAWrongOrMissingNonceNeverGivesACommandLine TestNoNonceInTheConfigTrustsNothing TestTheDirectoryOfTheShellNeedsTheNonceToBeTrusted'
+
+run empty-nonce-trusted backend/pkg/terminal/marks/osc.go \
+  's/return len(s.nonce) > 0 \&\& /return /' \
+  'TestNoNonceInTheConfigTrustsNothing'
+
+run forged-directory-accepted-as-trusted backend/pkg/terminal/marks/log.go \
+  's/	if trusted {/	if true {/' \
+  'TestAForgedDirectoryNeverChangesTheTrustedOne TestOSC7GivesTheDirectoryDecodedAndUnverified'
+
+run line-taken-after-the-start backend/pkg/terminal/marks/log.go \
+  's/	case r.State != StateRunning:/	default:/' \
+  'TestAForgedMarkInTheOutputNeverReplacesTheGenuineOne TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand'
+
+run scanner-changes-a-byte backend/pkg/terminal/marks/scanner.go \
+  's/out = s.step(p\[i\], base+uint64(i), out)/out = s.step(p[i], base+uint64(i), out); if s.state == stateOSC { p[i] = 0x20 }/' \
+  'FuzzFeed TestTheScannerNeverChangesAByte'
+
+run record-unbounded backend/pkg/terminal/marks/log.go \
+  's/if len(l.recs) < l.max {/if true {/' \
+  'TestACommandIsFoundByAnOffsetInIt TestTheLogDefaultIsBounded TestTheLogKeepsTheNewestCommandsAndIdsGoOn TestTheRecordStaysBoundedUnderA16MBFlood TestTheRecordStaysBoundedWhateverTheFloodIsMadeOf'
+
+run state-lost-between-reads backend/pkg/terminal/marks/scanner.go \
+  's/	s.off.Store(base + uint64(len(p)))/	s.off.Store(base + uint64(len(p))); s.state = stateGround/' \
+  'FuzzFeed TestMarksAreTheSameWhenTheStreamIsSplitAtEveryOffset'
+
+run control-bytes-kept-in-a-directory backend/pkg/terminal/marks/osc.go \
+  's/if c < c0Limit || c == delByte {/if false {/' \
+  'TestAControlByteThatIsEncodedIsStrippedToo TestATrustedDirectoryHasItsEscapedControlBytesStripped'
+
+run nonce-printed-by-the-scanner backend/pkg/terminal/marks/scanner.go \
+  's/marks.Scanner{offset=%d marks=%d}", s.off.Load(), s.marks.Load())/marks.Scanner{offset=%d marks=%d nonce=%s}", s.off.Load(), s.marks.Load(), s.nonce)/' \
+  'TestTheNonceNeverShowsInAnythingThatPrintsIt'
+
+run pending-line-dropped backend/pkg/terminal/marks/log.go \
+  's/		l.pending = line/		_ = line/' \
+  'TestAVerifiedLineBeforeAnyPromptBelongsToTheNextCommand'
+
+run directory-allocates-on-every-read backend/pkg/terminal/marks/log.go \
+  's/if string(dir) != \*slot {/if true {/' \
+  'TestReadsOfOrdinaryOutputAllocateNothing'
+
+run end-twice-rewrites backend/pkg/terminal/marks/log.go \
+  '/^func (l \*Log) end/,/^}/ s/if !isOpen(r) {/if r == nil {/' \
+  'TestASecondEndOfAnEndedCommandChangesNothing'
+
+run exit-overflow-wraps backend/pkg/terminal/marks/osc.go \
+  's/if n > math.MaxInt32+1 {/if false {/' \
+  'TestAnExitCodeThatDoesNotFitIsNoCodeAndNeverWraps'
+
+run exit-negative-dropped backend/pkg/terminal/marks/osc.go \
+  's/^\t\tn = -n$/\t\tn = n/' \
+  'TestANegativeExitCodeIsRead TestAnExitCodeThatDoesNotFitIsNoCodeAndNeverWraps'
+
+run vscode-letters-not-read backend/pkg/terminal/marks/osc.go \
+  "s/case 'A', 'B', 'C', 'D':/case 'Z':/" \
+  'TestVSCodePromptLettersAreReadLikeOSC133'
+
+run redraw-option-ignored backend/pkg/terminal/marks/osc.go \
+  's/hasOption(opts, "redraw=1")/false/' \
+  'TestRedrawIsReadFromTheOptionAndFromARepeat'
+
+run st-end-offset backend/pkg/terminal/marks/scanner.go \
+  '/^func (s \*Scanner) afterOSCEscape/,/^}/ s/finishOSC(at+1, out)/finishOSC(at, out)/' \
+  'TestAnEndedByTheSTAndByBELGiveTheSameOutputStart'
+
+run mark-prints-directory backend/pkg/terminal/marks/marks.go \
+  's/marks.Mark{kind=%s at=%d id=%s/marks.Mark{cwd=%s kind=%s at=%d id=%s/; s/\t\tm.Kind, m.AtOffset/\t\tm.Cwd, m.Kind, m.AtOffset/' \
+  'TestAMarkOfADirectoryPrintsNoDirectory'
+
+run trusted-directory-keeps-controls backend/pkg/terminal/marks/osc.go \
+  's/dir := stripControls(unescape(field\[len(key):i\]))/dir := unescape(field[len(key):i])/' \
+  'TestATrustedDirectoryHasItsEscapedControlBytesStripped'
+
+run first-semicolon-ends-the-line backend/pkg/terminal/marks/osc.go \
+  '/func (s \*Scanner) readCommandLine/,/^}/ s/bytes.LastIndexByte/bytes.IndexByte/' \
+  'TestASemicolonInAGenuineLineOrDirectoryIsPartOfIt'
+
+run first-semicolon-ends-the-directory backend/pkg/terminal/marks/osc.go \
+  '/func (s \*Scanner) readCwdProperty/,/^}/ s/bytes.LastIndexByte/bytes.IndexByte/' \
+  'TestASemicolonInAGenuineLineOrDirectoryIsPartOfIt'
+
+run nonce-matched-by-suffix backend/pkg/terminal/marks/osc.go \
+  's/subtle.ConstantTimeCompare(given, s.nonce) == 1/bytes.HasSuffix(given, s.nonce) \&\& subtle.ConstantTimeCompare(nil, nil) == 1/' \
+  'TestANonceAfterOtherBytesIsRefused'
+
+run nonce-matched-by-prefix backend/pkg/terminal/marks/osc.go \
+  's/subtle.ConstantTimeCompare(given, s.nonce) == 1/bytes.HasPrefix(given, s.nonce) \&\& subtle.ConstantTimeCompare(nil, nil) == 1/' \
+  'TestANonceAfterOtherBytesIsRefused TestAWrongOrMissingNonceNeverGivesACommandLine'
+
+run nonce-text-prints-value backend/pkg/terminal/marks/nonce.go \
+  '/MarshalText/ s/\[\]byte(secretText)/[]byte(n.v)/' \
+  'TestTheNonceTextAndGoFormsNeverPrintTheValue'
+
+run nonce-gostring-prints-value backend/pkg/terminal/marks/nonce.go \
+  '/func (n Nonce) GoString/ s/return secretText/return n.v/' \
+  'TestTheNonceTextAndGoFormsNeverPrintTheValue'
+
+exit $bad

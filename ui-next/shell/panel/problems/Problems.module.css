@@ -1,0 +1,53 @@
+/* The body of the Problems tool (ch16 S121; the mock's `.ptool--problems`, shell-panel.js 2237): the kit's data view fills the body the panel gives the tool. Host composition, so every rule sits in ov.shell, above the kit's parts. */
+@layer ov.shell {
+  /* The panel lays a body out as an item of a row (`.slot` in ../Panel.module.css), which sizes an item that does not grow to its content. The kit's data view is a block-level grid that takes the width of the box it is given and
+     the height of it (`height: 100%`) and owns its scrolling, so this box takes all the room the panel gives the body and is the row the view fills (the same two boxes as the Logs body, ../logs/LogsBody.module.css). */
+  .problems {
+    display: flex;
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  .view {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  /* The data view lays out three lanes, a header, the body and a footer, and this slice draws no header (no filter row, no toolbar): its two children took the first two tracks, the body the `auto` one and the footer the `1fr` one, so
+     the footer stood under the rows and, with a full table, under the panel (the probe saw it 33 px out). The two lanes it has: the body takes what is left and the footer is the pane's last lane, as the mock's `.data-view` is. */
+  .view > [data-ov-state] {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  /* The Condition cell's status is an inline-flex box, an atomic inline, and the cell's ellipsis is not drawn for one: a word wider than the cell was cut with none (the probe saw it in both engines). Made an inline box, the glyph and the
+     word are the cell's own line and the table's ellipsis cuts it; the 4 px the status's flex gap put between them are the glyph's margin. */
+  .view td > [data-ov-role] {
+    display: inline;
+  }
+
+  .view td > [data-ov-role] > svg {
+    margin-inline-end: var(--ov-spacing-4);
+  }
+
+  /* The Source and the Target are fixed columns, which do not clip their cells (the table clips a flexible column's). A name wider than its column is cut here with an ellipsis, in a box that carries the clip marker, so
+     the one tooltip of the window shows the whole name while it is cut (the mock's `.pclip`, shell-panel.css). */
+  .clip {
+    display: block;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The full sentence of a condition, for a screen reader: in the cell and read, never drawn. It takes no room and holds no focus. */
+  .description {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

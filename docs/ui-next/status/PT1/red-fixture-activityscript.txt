@@ -1,0 +1,82 @@
+# red run of ui-next/plugins/fixture/activityscript against a stub (parse returns nothing, Tick/Run/Start do nothing); lines cut to 300 columns
+# GOWORK=off GOTOOLCHAIN=local go test ./ui-next/plugins/fixture/activityscript/...
+--- FAIL: TestParse (0.00s)
+    script_test.go:222: parse("task begin a 5 Import alpha items"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:1 name:a state: message: key: severity: connection: title:Import alpha items total:5 current:0}
+    script_test.go:222: parse("task step a 3"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:2 name:a state: message: key: severity: connection: title: total:0 current:3}
+    script_test.go:222: parse("task finish a succeeded"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:3 name:a state:succeeded message: key: severity: connection: title: total:0 current:0}
+    script_test.go:222: parse("task finish a failed Acme refused the item"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:3 name:a state:failed message:Acme refused the item key: severity: connection: title: total:0 current:0}
+    script_test.go:222: parse("alert fire k1 warning Acme alpha is slow"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:4 name: state: message: key:k1 severity:warning connection: title:Acme alpha is slow total:0 current:0}
+    script_test.go:222: parse("alert fire k1 error connection=c-1 Acme alpha is down"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:4 name: state: message: key:k1 severity:error connection:c-1 title:Acme alpha is down total:0 current:0}
+    script_test.go:222: parse("alert resolve k1"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:5 name: state: message: key:k1 severity: connection: title: total:0 current:0}
+    script_test.go:222: parse("task step a 3\r"):
+         got {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}
+        want {kind:2 name:a state: message: key: severity: connection: title: total:0 current:3}
+    script_test.go:252: parse("") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("frob x") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task begin a") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task begin a 5") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task begin a 5 ") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task begin a 0 Title") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task begin a x Title") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task begin a 5 ttttttttttttttttttttttttt") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task step a") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task step a -1") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task step a x") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task finish a") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task finish a done") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("task finish a succeeded mmmmmmmmmmmmmmmm") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("alert fire k1 loud Title") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("alert fire k1 info") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("alert fire k1 info connection=c-1") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("alert fire k1 info connection= Title") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("alert fire kkkkkkkkkkkkkkkkkkkkkkkkkkkkk") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("alert resolve") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+    script_test.go:252: parse("alert resolve kkkkkkkkkkkkkkkkkkkkkkkkkk") = {kind:0 name: state: message: key: severity: connection: title: total:0 current:0}, want an error
+--- FAIL: TestCompleteLinesAreThoseThatEndWithANewline (0.00s)
+    script_test.go:271: completeLines("a\n") = [], want ["a"]
+    script_test.go:271: completeLines("a\nb") = [], want ["a"]
+    script_test.go:271: completeLines("a\n\nb\n") = [], want ["a" "" "b"]
+--- FAIL: TestLinesAlreadyInTheScriptAreNeverExecuted (0.00s)
+    script_test.go:289: log:
+         got []
+        want ["ok 3 alert fire k2 info Acme beta"]
+--- FAIL: TestACommandReachesTheReporterAsWritten (0.00s)
+    script_test.go:323: log:
+         got []
+        want ["ok 1 task begin a 5 Import alpha items" "ok 2 task step a 3" "ok 3 task finish a failed Acme refused item 4" "ok 4 alert fire k1 error connection=c-1 Acme alpha is down" "ok 5 alert fire k2 info Acme beta" "ok 6 alert resolve k1"]
+--- FAIL: TestALineWithoutANewlineWaits (0.00s)
+    script_test.go:421: BeginTask [], want one with the title "Import alpha"
+--- FAIL: TestALineThatCannotRunIsAnErrorAtOnceAndDoesNotBlockTheNext (0.00s)
+    script_test.go:511: log [], want 6 lines
+--- FAIL: TestObservedAtOnlyGoesForwardWhenTheClockStandsStill (0.00s)
+    script_test.go:392: calls [], want two steps, one fire and one resolve
+--- FAIL: TestAFinishedTaskNameIsForgotten (0.00s)
+    script_test.go:373: log:
+         got []
+        want ["ok 1 task begin a 2 Import alpha" "ok 2 task finish a succeeded" "error 3 unknown task \"a\"" "ok 4 task begin a 2 Import alpha again"]
+--- FAIL: TestACallThatFailsIsTriedAgainOnTheNextTicks (0.00s)
+    script_test.go:440: tick 1: calls [], want 1 attempts of the first line and none of the second
+--- FAIL: TestRunTicksOnEveryValueUntilTheContextEnds (0.00s)
+    script_test.go:550: Run ended before the context did
+--- FAIL: TestACallThatKeepsFailingIsSkippedAfterTenSecondsAndOrderHolds (0.00s)
+    script_test.go:468: calls []: a later line ran before the earlier one was settled
+--- FAIL: TestStartPollsTheScriptUntilStopped (10.00s)
+    script_test.go:592: the line was not executed by the poll
+FAIL
+FAIL	github.com/omniviewdev/omniview/ui-next/plugins/fixture/activityscript	10.015s
+FAIL

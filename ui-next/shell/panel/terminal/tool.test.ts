@@ -18,9 +18,9 @@ describe('the Terminal tool', () => {
     expect(TERMINAL_TOOL.order ?? Number.POSITIVE_INFINITY).toBeLessThan(LOGS_TOOL.order ?? 0);
   });
 
-  it('names the mock\'s glyph for the tab, the card and the empty state (the kit gets it in the icons step: until then the panel draws its generic one)', () => {
+  it('names the mock\'s glyph for the tab, the card and the empty state: the terminal screen, not the chevron it stood in with while the kit had none', () => {
     expect(TERMINAL_TOOL.icon).toBe(TERMINAL_ICON);
-    // The glyph the mock draws is `square-terminal` (icons.js:253): until the kit has it, the nearest one it has (a chevron, the caret of a prompt), and never a name the registry does not know.
+    expect(TERMINAL_ICON).toBe('square-terminal');
     expect(isIconName(TERMINAL_ICON)).toBe(true);
   });
 

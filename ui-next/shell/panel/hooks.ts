@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { PanelState, Session, SessionId, SessionItem, ToolId, ToolItem } from '../core/panel';
+import type { ToolBadge, ToolBadges } from './badge';
 import { usePanel } from './context';
 
 // What a component of the panel reads of its model. One hook is one slice: the model hands back the same object while its slice is the same (core/panel/README.md), so
@@ -28,6 +29,15 @@ export function useHeight(): number | null {
 export function useToolIds(): readonly ToolId[] {
   const { store } = usePanel();
   return usePanelSelector(store.selectors.toolIds);
+}
+
+/** A host that gives no badges: no tab carries one, and nothing is subscribed to. One object, so a tab's subscription is not made again at every render. */
+const NO_BADGES: ToolBadges = { subscribe: () => () => undefined, of: () => undefined };
+
+/** What a tool tab carries beside its words: the host's badge for the tool, or nothing. The tab renders when its own badge changes. */
+export function useToolBadge(tool: ToolId): ToolBadge | undefined {
+  const { badges = NO_BADGES } = usePanel();
+  return useSyncExternalStore(badges.subscribe, () => badges.of(tool));
 }
 
 export function useToolItem(id: ToolId): ToolItem | undefined {

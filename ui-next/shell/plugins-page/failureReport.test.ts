@@ -67,7 +67,7 @@ describe('reportFailure', () => {
     expect(toast?.record).toMatchObject({ severity: 'error', title: 'Couldn\'t reload Alpha Metrics', source: 'host', initiator: 'user' });
     expect(toast?.record?.text).toBe('The host couldn\'t stop it or start it.');
     expect(toast?.sticky).toBe(true);
-    expect(toast?.record?.actions.map((action) => action.label)).toEqual(['Retry']);
+    expect(toast?.record?.actions.map((action) => [action.label, action.icon])).toEqual([['Retry', 'rotate-cw']]);
   });
 
   it('runs the same call again when the person presses Retry', () => {

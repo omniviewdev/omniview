@@ -5,7 +5,7 @@
 // comes ends at the runner's own deadline, with the name of what it was waiting for.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createHost, FRAME, KEPT_ENDS, LIMITS, pageFrames, readFrame, Ring, Scanner } from './terminal-host.mjs';
+import { createHost, FRAME, KEPT_ENDS, KNOWN, LIMITS, pageFrames, readFrame, Ring, Scanner, URLS } from './terminal-host.mjs';
 
 const text = new TextDecoder();
 const CAP = /^[A-Za-z0-9_-]{43}$/;
@@ -580,4 +580,32 @@ test('faults are single ways of getting the host wrong: a replay that lacks its 
   assert.equal(hidden.log.writes.length, writes, 'it cannot type all the same');
   assert.equal((await hidden.call('ListChannelTerminals', [[two.cap]]))[0].attached, false, 'the list never says that a stream holds a terminal');
   hidden.stop();
+});
+
+test('the shell prints what the find, menu and link sections of the probe look for: known, urls and dense, a program that asks for the mouse and gives it back, and the prompts it has written are counted; the faults take it out', timeout, async () => {
+  const host = createHost();
+  await make(host, 't');
+  const prompts = host.log.prompts;
+  assert.ok(prompts >= 1, 'the banner ends with the first prompt');
+  host.type('t', 'known\rurls\rdense 3 2\r');
+  const printed = text.decode(host.bytes('t'));
+  assert.ok(KNOWN.every((line) => printed.includes(line)), 'every line of `known` is printed');
+  assert.ok(URLS.every((line) => printed.includes(line)), 'every line of `urls` is printed');
+  assert.equal(printed.split('needle needle').length - 1, 3, '`dense 3 2` prints three lines of two occurrences');
+  assert.equal(host.log.prompts, prompts + 3, 'each command ends with a prompt');
+  host.type('t', 'mouse-on\r');
+  assert.equal(host.state('t').modes.mouse_tracking, 1, 'the program asks for the mouse');
+  assert.equal(host.state('t').modes.mouse_encoding, 2, 'in the SGR encoding');
+  host.type('t', 'mouse-off\r');
+  assert.equal(host.state('t').modes.mouse_tracking, 0, 'and gives it back');
+  host.stop();
+
+  const faulty = createHost({ faults: { knownShort: true, capShort: true, mouseNever: true } });
+  await make(faulty, 't');
+  faulty.type('t', 'known\rdense 5 1\rmouse-on\r');
+  const short = text.decode(faulty.bytes('t'));
+  assert.ok(short.includes(KNOWN[3]) && !short.includes(KNOWN[4]), '`known` prints four of its six lines under knownShort');
+  assert.equal(short.split('needle').length - 1, 1000, '`dense` writes a thousand lines under capShort');
+  assert.equal(faulty.state('t').modes.mouse_tracking, 0, 'mouse-on never asks for the mouse under mouseNever');
+  faulty.stop();
 });

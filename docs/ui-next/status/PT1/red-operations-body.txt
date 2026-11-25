@@ -1,0 +1,198 @@
+     × is the host's tool, with the mock's label: a host tool's id has no colon (a plugin's is <plugin>:<tool>) 4ms
+     × is the fourth tool, after Logs, as the mock orders its tools (Terminal 10, Logs 20, Problems 30, Operations 40) 1ms
+     × draws the mock's glyph, which the kit's registry has, on the tab and in the empty state 1ms
+     × says in the mock's words that there is nothing to list and what appears here 0ms
+     × says so in the mock's words, and draws no table 48ms
+     × draws the tool's glyph in the empty state 3ms
+     × is not the empty state when every record is of another kind: an alert is not an operation 3ms
+     × turns into the table when the first operation arrives, and back when the last one goes 1ms
+     × is the one region of the tool, named Operations, with the mock's columns less the Duration no producer can state 2ms
+     × has no sort button in a header, no filter, no search and no toolbar: those are later slices 1ms
+     × counts its rows in the footer, in the singular and the plural 1ms
+     × lists the rows as the model orders them: active work first, then newest first 1ms
+     × shows the title, the source's name, the connection's name, and a dash named No target for work that has none 1ms
+     × marks the words that may be cut for the one tooltip of the window, which says them whole while they are cut 1ms
+     × says a task that is starting with the progress role (glyph clock) and the word "Starting" 1ms
+     × says a task that is running with the progress role (glyph loader-circle) and the word "Running" 1ms
+     × says a task that is paused with the stopped role (glyph circle-minus) and the word "Paused" 0ms
+     × says a task that is succeeded with the healthy role (glyph status-success) and the word "Succeeded" 0ms
+     × says a task that is failed with the error role (glyph status-error) and the word "Failed" 0ms
+     × says a task that is cancelled with the stopped role (glyph circle-minus) and the word "Canceled" 0ms
+     × says a task that is unknown with the attention role (glyph status-warning) and the word "Outcome unknown" 0ms
+     × draws work that has not started with the clock, not the loader of work that is under way: waiting is not moving (SR1) 0ms
+     × says what the producer said of a failure, and of an outcome nobody knows, as the tip of the state: the word is short and the cause is not 0ms
+     × gives no tip to a state that has no cause to say: a message of a task that is running or succeeded is the notification centre's 0ms
+     × says Canceling… while a cancel is pending, whatever state the work was in, with the loader: a change is in motion 0ms
+     × says Canceling… for a request of this window that is in flight, and the word of the state again when it failed 0ms
+     × is the producer's count: a 4 px bar named for the work, the part that is done, and the producer's words beside it 7ms
+     × is "2 of 5" for steps, at the part of the bar that is two of five 1ms
+     × is "40%" for a percent 1ms
+     × puts the bar first and the words after it, and marks the words that may be cut 1ms
+     × is a dash named No progress reported for work that cannot be measured: no bar is made up, and no motion that says nothing 0ms
+     × is the same dash for a task that said nothing, and for one that finished 2ms
+     × says the producer's words and draws no bar when its numbers are not a part of a whole 0ms
+     × keeps a count of any size exact: a bar one unit short of its whole is not full 0ms
+     × says how long ago the host first had the record, in the mock's words, and the absolute stamp in UTC as its tip 0ms
+     × names the instant for assistive technology too: a time element with its machine-readable stamp 0ms
+     × draws a dash named for what is missing when the record's time cannot be read, and no time 0ms
+       × turns "just now" into "1 min ago" when the minute is full, in the cell and in its tip, with no render of the others 0ms
+     × are a Cancel and an Open, in that order, each a button named for its action and its object 0ms
+     × name the thing that Open goes to: the connection when the window knows it, else the plugin, and none for the host's own work 0ms
+     × ask the feed to cancel the task when Cancel is pressed, once, and the row says Canceling… with the button still in its place, unavailable and with the reason 1ms
+     × keep the Cancel of a task whose cancellation the host acknowledged, unavailable, so Open does not move 1ms
+     × are Tab stops, in the order of the row: a row is not one, so the same action is a button in it (A14) 1ms
+     × open the subject of the row when Open is pressed, with the click, and open it once: the press is not also the row's 1ms
+     × hand the modifiers of the click to the host, which picks the way it opens (a background tab, a new tab) 1ms
+     × draw Cancel and Open with the glyphs of the mock: a cross, and the nearest the kit has to an arrow out of a box 0ms
+     × opens the subject of the row with the click, as the Open button does 0ms
+     × opens it in the way the modifiers of the click say 0ms
+     × does nothing for work that has no page: the host's own 0ms
+     × is not what a press of Cancel does 1ms
+     × draws a change of one record in its row, and keeps the other rows' elements 0ms
+     × moves a task that finished below the work that has not, and draws its outcome with the cause as the tip 1ms
+     × is drawn again when the window learns a name: the plugin's id becomes its name once the host says the model changed what it knows 0ms
+     × keeps its rows, with their elements, when the host draws the tool again with another function to open with 0ms
+     × is one commit when the tool was empty 4ms
+     × is one commit when the tool had a row, and the rows in view are the newest of them 3ms
+     × is one commit for a change of one record in view, and none are made for a change that says nothing 4ms
+     × marks the unread ones when the tool has been on screen for a second, and not before 1ms
+     × asks the feed for those ids, through the model 1ms
+     × asks once for the ids it was armed for, and not again while they are the same: the host's answer comes back through the feed 0ms
+     × starts the second again when the unread ones change: a failure that arrives later is not read before it was shown for a second 0ms
+     × is not asked twice by a body that was mounted twice in a row (a development mount runs its effects twice) 1ms
+     × is told of the records that were read, and then arms nothing: the badge went with them 0ms
+     × sits in the shell's layer, above the kit's parts, and writes no colour of its own 0ms
+     × gives the bar of the Progress cell 48 px and keeps it from shrinking 0ms
+     × clips the words of the Progress cell with an ellipsis inside the cell, which the table does not do for a fixed column 0ms
+     × clips the title, the source and the connection with an ellipsis too: a fixed column holds its width and does not cut its text 0ms
+     × lays the row's buttons out in a line, 4 px apart 0ms
+     × fills the room the panel gives the body, as an item of a row that does not grow to its content 0ms
+⎯⎯⎯⎯⎯⎯ Failed Tests 69 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > with no operation > says so in the mock's words, and draws no table
+TestingLibraryElementError: Unable to find an accessible element with the role "status"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > with no operation > draws the tool's glyph in the empty state
+AssertionError: expected null not to be null
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > with no operation > is not the empty state when every record is of another kind: an alert is not an operation
+TestingLibraryElementError: Unable to find an element with the text: No operations. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > with no operation > turns into the table when the first operation arrives, and back when the last one goes
+TestingLibraryElementError: Unable to find an element with the text: No operations. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the table > is the one region of the tool, named Operations, with the mock's columns less the Duration no producer can state
+TestingLibraryElementError: Unable to find an accessible element with the role "region" and name "Operations"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the table > has no sort button in a header, no filter, no search and no toolbar: those are later slices
+TestingLibraryElementError: Unable to find an accessible element with the role "region" and name "Operations"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the table > counts its rows in the footer, in the singular and the plural
+TestingLibraryElementError: Unable to find an element with the text: 1 operation. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make y
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the table > lists the rows as the model orders them: active work first, then newest first
+TestingLibraryElementError: Unable to find an accessible element with the role "region" and name "Operations"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the table > shows the title, the source's name, the connection's name, and a dash named No target for work that has none
+TestingLibraryElementError: Unable to find an element with the text: Reindexing the catalogue. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matc
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the table > marks the words that may be cut for the one tooltip of the window, which says them whole while they are cut
+TestingLibraryElementError: Unable to find an element with the text: Reindexing the catalogue. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matc
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says a task that is starting with the progress role (glyph clock) and the word "Starting"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says a task that is running with the progress role (glyph loader-circle) and the word "Running"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says a task that is paused with the stopped role (glyph circle-minus) and the word "Paused"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says a task that is succeeded with the healthy role (glyph status-success) and the word "Succeeded"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says a task that is failed with the error role (glyph status-error) and the word "Failed"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says a task that is cancelled with the stopped role (glyph circle-minus) and the word "Canceled"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says a task that is unknown with the attention role (glyph status-warning) and the word "Outcome unknown"
+TestingLibraryElementError: Unable to find an element with the text: The work. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > draws work that has not started with the clock, not the loader of work that is under way: waiting is not moving (SR1)
+TestingLibraryElementError: Unable to find an element with the text: Waiting. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your 
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says what the producer said of a failure, and of an outcome nobody knows, as the tip of the state: the word is short and the cause is not
+TestingLibraryElementError: Unable to find an element with the text: Broken. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your m
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > gives no tip to a state that has no cause to say: a message of a task that is running or succeeded is the notification centre's
+TestingLibraryElementError: Unable to find an element with the text: Going. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your ma
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says Canceling… while a cancel is pending, whatever state the work was in, with the loader: a change is in motion
+TestingLibraryElementError: Unable to find an element with the text: Going. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your ma
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the State column > says Canceling… for a request of this window that is in flight, and the word of the state again when it failed
+TestingLibraryElementError: Unable to find an element with the text: Going. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your ma
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > is the producer's count: a 4 px bar named for the work, the part that is done, and the producer's words beside it
+TestingLibraryElementError: Unable to find an element with the text: Reindexing the catalogue. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matc
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > is "2 of 5" for steps, at the part of the bar that is two of five
+TestingLibraryElementError: Unable to find an element with the text: Provisioning. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make 
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > is "40%" for a percent
+TestingLibraryElementError: Unable to find an element with the text: Copying. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your 
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > puts the bar first and the words after it, and marks the words that may be cut
+TestingLibraryElementError: Unable to find an element with the text: Reindexing the catalogue. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matc
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > is a dash named No progress reported for work that cannot be measured: no bar is made up, and no motion that says nothing
+TestingLibraryElementError: Unable to find an element with the text: Scanning. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > is the same dash for a task that said nothing, and for one that finished
+TestingLibraryElementError: Unable to find an element with the text: Quiet. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your ma
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > says the producer's words and draws no bar when its numbers are not a part of a whole
+TestingLibraryElementError: Unable to find an element with the text: Odd. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matc
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Progress column > keeps a count of any size exact: a bar one unit short of its whole is not full
+TestingLibraryElementError: Unable to find an element with the text: Huge. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your mat
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Started column > says how long ago the host first had the record, in the mock's words, and the absolute stamp in UTC as its tip
+TestingLibraryElementError: Unable to find an element with the text: Just started. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make 
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Started column > names the instant for assistive technology too: a time element with its machine-readable stamp
+TestingLibraryElementError: Unable to find an element with the text: Just started. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make 
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Started column > draws a dash named for what is missing when the record's time cannot be read, and no time
+TestingLibraryElementError: Unable to find an element with the text: Timeless. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the Started column > on the page's one age clock > turns "just now" into "1 min ago" when the minute is full, in the cell and in its tip, with no render of 
+TestingLibraryElementError: Unable to find an element with the text: Just started. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make 
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > are a Cancel and an Open, in that order, each a button named for its action and its object
+TestingLibraryElementError: Unable to find an element with the text: Reindexing the catalogue. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matc
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > name the thing that Open goes to: the connection when the window knows it, else the plugin, and none for the host's own work
+TestingLibraryElementError: Unable to find an element with the text: On a connection. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to ma
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > ask the feed to cancel the task when Cancel is pressed, once, and the row says Canceling… with the button still in its place, unava
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Cancel Reindexing the catalogue"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > keep the Cancel of a task whose cancellation the host acknowledged, unavailable, so Open does not move
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Cancel Reindexing the catalogue"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > are Tab stops, in the order of the row: a row is not one, so the same action is a button in it (A14)
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Cancel Reindexing the catalogue"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > open the subject of the row when Open is pressed, with the click, and open it once: the press is not also the row's
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Open north"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > hand the modifiers of the click to the host, which picks the way it opens (a background tab, a new tab)
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Open north"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the actions of a row > draw Cancel and Open with the glyphs of the mock: a cross, and the nearest the kit has to an arrow out of a box
+TestingLibraryElementError: Unable to find an element with the text: Reindexing the catalogue. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matc
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > activating a row > opens the subject of the row with the click, as the Open button does
+TestingLibraryElementError: Unable to find an element with the text: On a plugin. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make y
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > activating a row > opens it in the way the modifiers of the click say
+TestingLibraryElementError: Unable to find an element with the text: On a plugin. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make y
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > activating a row > does nothing for work that has no page: the host's own
+TestingLibraryElementError: Unable to find an element with the text: Host work. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make you
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > activating a row > is not what a press of Cancel does
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "Cancel Going"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the rows follow the model > draws a change of one record in its row, and keeps the other rows' elements
+TestingLibraryElementError: Unable to find an element with the text: Second. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your m
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the rows follow the model > moves a task that finished below the work that has not, and draws its outcome with the cause as the tip
+TestingLibraryElementError: Unable to find an accessible element with the role "region" and name "Operations"
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the rows follow the model > is drawn again when the window learns a name: the plugin's id becomes its name once the host says the model changed what it know
+TestingLibraryElementError: Unable to find an element with the text: On gamma. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the rows follow the model > keeps its rows, with their elements, when the host draws the tool again with another function to open with
+TestingLibraryElementError: Unable to find an element with the text: First. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your ma
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > when 200 rows arrive together > is one commit when the tool was empty
+AssertionError: expected +0 to be 1 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > when 200 rows arrive together > is one commit when the tool had a row, and the rows in view are the newest of them
+AssertionError: expected +0 to be 1 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > when 200 rows arrive together > is one commit for a change of one record in view, and none are made for a change that says nothing
+AssertionError: expected +0 to be 1 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > marks the unread ones when the tool has been on screen for a second, and not before
+AssertionError: expected "markRead" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > asks the feed for those ids, through the model
+AssertionError: expected [] to deeply equal [ [ 'b' ], [ 'a' ] ]
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > asks once for the ids it was armed for, and not again while they are the same: the host's answer 
+AssertionError: expected "markRead" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > starts the second again when the unread ones change: a failure that arrives later is not read bef
+AssertionError: expected "markRead" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > is not asked twice by a body that was mounted twice in a row (a development mount runs its effect
+AssertionError: expected "markRead" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > marking read: what the tool has shown for a second (S81) > is told of the records that were read, and then arms nothing: the badge went with them
+AssertionError: expected "markRead" to be called 1 times, but got 0 times
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the stylesheet of the tool > sits in the shell's layer, above the kit's parts, and writes no colour of its own
+AssertionError: expected '/* STUB: empty on purpose, so the tes…' to match /^[\s\S]*@layer ov\.shell \{/
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the stylesheet of the tool > gives the bar of the Progress cell 48 px and keeps it from shrinking
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the stylesheet of the tool > clips the words of the Progress cell with an ellipsis inside the cell, which the table does not do for a fixed column
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the stylesheet of the tool > clips the title, the source and the connection with an ellipsis too: a fixed column holds its width and does not cut its text
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the stylesheet of the tool > lays the row's buttons out in a line, 4 px apart
+ FAIL  ui-next/shell/panel/operations/OperationsBody.test.tsx > the stylesheet of the tool > fills the room the panel gives the body, as an item of a row that does not grow to its content
+ FAIL  ui-next/shell/panel/operations/tool.test.ts > the Operations tool > is the host's tool, with the mock's label: a host tool's id has no colon (a plugin's is <plugin>:<tool>)
+AssertionError: expected { id: 'stub', label: '', icon: 'box' } to match object { id: 'stub', label: 'Operations' }
+ FAIL  ui-next/shell/panel/operations/tool.test.ts > the Operations tool > is the fourth tool, after Logs, as the mock orders its tools (Terminal 10, Logs 20, Problems 30, Operations 40)
+AssertionError: expected undefined to be 40 // Object.is equality
+ FAIL  ui-next/shell/panel/operations/tool.test.ts > the Operations tool > draws the mock's glyph, which the kit's registry has, on the tab and in the empty state
+AssertionError: expected 'box' to be 'activity' // Object.is equality
+ FAIL  ui-next/shell/panel/operations/tool.test.ts > the Operations tool > says in the mock's words that there is nothing to list and what appears here
+AssertionError: expected { title: '', hint: '' } to deeply equal { title: 'No operations', …(1) }
+      Tests  69 failed | 4 passed (73)
