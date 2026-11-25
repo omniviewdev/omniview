@@ -1,0 +1,9 @@
+# Omniview shell integration for zsh: .zshrc of the shim directory. See .zshenv of this directory.
+if [[ -n ${__omniview_shim-} ]]; then
+  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi
+  # A system file that ran before this one (macOS /etc/zshrc) put the history in ZDOTDIR, which was the shim: it is the user's.
+  if [[ ${HISTFILE-} == $__omniview_shim/* ]]; then HISTFILE=${ZDOTDIR:-$HOME}/${HISTFILE:t}; fi
+  [[ -r ${ZDOTDIR:-$HOME}/.zshrc ]] && builtin source ${ZDOTDIR:-$HOME}/.zshrc
+  __omniview_zd_set=${+ZDOTDIR} __omniview_zd_val=${ZDOTDIR-}
+  export ZDOTDIR=$__omniview_shim
+fi

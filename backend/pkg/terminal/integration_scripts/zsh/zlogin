@@ -1,0 +1,71 @@
+# Omniview shell integration for zsh: .zlogin of the shim directory, the last file zsh reads. See .zshenv of this
+# directory. It gives ZDOTDIR back (the user's own value, or none), runs the user's .zlogin, installs the hooks that print the marks and tells the host
+# the shell is up.
+if [[ -n ${__omniview_shim-} ]]; then
+  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi
+  [[ -r ${ZDOTDIR:-$HOME}/.zlogin ]] && builtin source ${ZDOTDIR:-$HOME}/.zlogin
+
+  # The marks. Everything below prints only inside an OSC sequence, and nothing else.
+  #   OSC 133;A / B   the prompt starts / the input starts (inside PS1, so that they are where the prompt is drawn)
+  #   OSC 633;E       the command line (escaped) with the nonce, then 133;C: the output starts
+  #   OSC 133;D;<n>   the command ended with status n
+  #   OSC 7, 633;P    the directory, without and with the nonce
+  # Every hook turns xtrace off first, so that a user's `setopt xtrace` never prints the nonce.
+  __omniview_escape() {
+    setopt localoptions noxtrace
+    emulate -L zsh
+    setopt noxtrace
+    setopt extendedglob
+    local LC_ALL=C
+    local s=${1[1,4096]}
+    s=${s//\\/\\\\}
+    s=${s//;/\\x3b}
+    s=${s//(#m)[$'\x01'-$'\x1f'$'\x7f']/\\x${(l:2::0:)$(( [##16] #MATCH ))}}
+    REPLY=$s
+  }
+  __omniview_preexec() {
+    setopt localoptions noxtrace
+    emulate -L zsh
+    setopt noxtrace
+    __omniview_ran=1
+    local REPLY
+    __omniview_escape $1
+    builtin print -rn -- $'\e]633;E;'$REPLY';'$__omniview_nonce$'\a\e]133;C\a'
+  }
+  __omniview_precmd_first() {
+    local __omniview_last=$?
+    setopt localoptions noxtrace
+    if (( ${__omniview_ran:-0} )); then
+      __omniview_ran=0
+      builtin print -rn -- $'\e]133;D;'$__omniview_last$'\a'
+    fi
+    return $__omniview_last
+  }
+  __omniview_precmd_last() {
+    local __omniview_last=$?
+    setopt localoptions noxtrace
+    emulate -L zsh
+    setopt noxtrace
+    setopt extendedglob
+    local REPLY path_=$PWD
+    {
+      local LC_ALL=C
+      builtin print -rn -- $'\e]7;file://'${HOST-}${path_//(#m)[^a-zA-Z0-9\/._~-]/%${(l:2::0:)$(( [##16] #MATCH ))}}$'\a'
+    }
+    __omniview_escape $path_
+    builtin print -rn -- $'\e]633;P;Cwd='$REPLY';'$__omniview_nonce$'\a'
+    if [[ $PS1 != *$'\e]133;A'* ]]; then
+      PS1=$'%{\e]133;A\a%}'$PS1$'%{\e]133;B\a%}'
+    fi
+    return $__omniview_last
+  }
+  if (( ! ${+P9K_VERSION} )); then
+    typeset -ga precmd_functions preexec_functions
+    preexec_functions+=(__omniview_preexec)
+    precmd_functions=(__omniview_precmd_first $precmd_functions __omniview_precmd_last)
+  fi
+  unset __omniview_shim __omniview_zd_set __omniview_zd_val
+  # Tell the host the shell is up, then give the channel back.
+  { builtin print -u $__omniview_fd ready; exec {__omniview_fd}>&-; } 2>/dev/null
+  unset __omniview_fd
+fi

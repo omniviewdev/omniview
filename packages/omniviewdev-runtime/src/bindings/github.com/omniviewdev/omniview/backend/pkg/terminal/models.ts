@@ -607,6 +607,137 @@ export class Foreground {
 }
 
 /**
+ * Integration is the typed fact of the create answer. Reason is set for skipped and failed only. The nonce of the
+ * session is not in it: the host keeps the nonce and the page never needs it.
+ */
+export class Integration {
+    "state": IntegrationState;
+    "reason"?: IntegrationReason;
+
+    /** Creates a new Integration instance. */
+    constructor($$source: Partial<Integration> = {}) {
+        if (!("state" in $$source)) {
+            this["state"] = IntegrationState.$zero;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Integration instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Integration {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Integration($$parsedSource as Partial<Integration>);
+    }
+}
+
+/**
+ * IntegrationReason is why an integration is skipped or failed: a token, never free text, so that no path or
+ * message of the user's reaches the answer.
+ */
+export enum IntegrationReason {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * The reasons of a skipped integration and of a failed one.
+     *
+     * SkipCommand: the shell was asked to run a command (`-c`), not to be a terminal.
+     */
+    SkipCommand = "command",
+
+    /**
+     * SkipArguments: the shell was given arguments the host does not know (the user's profile is not broken for it).
+     */
+    SkipArguments = "arguments",
+
+    /**
+     * SkipPosix: the shell was started in POSIX mode, which does not read the startup files the integration uses.
+     */
+    SkipPosix = "posix",
+
+    /**
+     * SkipPowerlevel10k: powerlevel10k is loaded (P9K_VERSION): it draws its own prompt and marks.
+     */
+    SkipPowerlevel10k = "powerlevel10k",
+
+    /**
+     * SkipMultiplexer: the host itself runs inside tmux or screen.
+     */
+    SkipMultiplexer = "multiplexer",
+
+    /**
+     * SkipUnsupportedShell: the integration has no script for this shell yet.
+     */
+    SkipUnsupportedShell = "unsupported-shell",
+
+    /**
+     * SkipSettingUnreadable: the setting could not be read, so the host does not touch the user's shell (fail closed).
+     */
+    SkipSettingUnreadable = "setting-unreadable",
+
+    /**
+     * NoReady: the shell did not say it was up within the wait.
+     */
+    NoReady = "no-ready",
+
+    /**
+     * FailSetup: the host could not make what the integration needs (its directory, its channel, its nonce); the
+     * shell started without it.
+     */
+    FailSetup = "setup",
+
+    /**
+     * FailExitedEarly: the shell ended within moments of its start with the integration and was started once more
+     * without it.
+     */
+    FailExitedEarly = "exited-early",
+};
+
+/**
+ * IntegrationState is what the host says of a terminal's shell integration.
+ */
+export enum IntegrationState {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * The states of the fact. A terminal has exactly one.
+     *
+     * IntegrationOn: the shell was started with the integration and said it loaded it.
+     */
+    IntegrationOn = "on",
+
+    /**
+     * IntegrationOff: the user turned the integration off in Settings.
+     */
+    IntegrationOff = "off",
+
+    /**
+     * IntegrationSkipped: the host did not try (Reason says why).
+     */
+    IntegrationSkipped = "skipped",
+
+    /**
+     * IntegrationFailed: the host tried and the shell did not come up with it (Reason says why); the shell that runs
+     * has none.
+     */
+    IntegrationFailed = "failed",
+
+    /**
+     * IntegrationUnconfirmed: the shell was started with the integration and did not say it loaded it within the wait
+     * (Reason is no-ready): it may still, or it may never (a startup file stopped the shell's own startup). The host states
+     * only what it knows.
+     */
+    IntegrationUnconfirmed = "unconfirmed",
+};
+
+/**
  * Launch is the second argument of CreateTerminal: where the terminal starts, how big it is, and how
  * its output is paced. Every field is optional; zero is "not given".
  */
@@ -1119,6 +1250,12 @@ export class Session {
     "environment": Environment;
 
     /**
+     * Integration says whether the shell tells the host where its commands start and end (shell integration), and
+     * when it does not, why not. The page reads it and never guesses.
+     */
+    "integration": Integration;
+
+    /**
      * LeaseMs is how long the terminal is kept for its page once the page is gone, in milliseconds. Zero: it
      * has no page key and ends with its window.
      */
@@ -1160,6 +1297,9 @@ export class Session {
         if (!("environment" in $$source)) {
             this["environment"] = (new Environment());
         }
+        if (!("integration" in $$source)) {
+            this["integration"] = (new Integration());
+        }
         if (!("lease_ms" in $$source)) {
             this["lease_ms"] = 0;
         }
@@ -1174,6 +1314,7 @@ export class Session {
         const $$createField3_0 = $$createType6;
         const $$createField7_0 = $$createType13;
         const $$createField8_0 = $$createType14;
+        const $$createField9_0 = $$createType15;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
             $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
@@ -1183,6 +1324,9 @@ export class Session {
         }
         if ("environment" in $$parsedSource) {
             $$parsedSource["environment"] = $$createField8_0($$parsedSource["environment"]);
+        }
+        if ("integration" in $$parsedSource) {
+            $$parsedSource["integration"] = $$createField9_0($$parsedSource["integration"]);
         }
         return new Session($$parsedSource as Partial<Session>);
     }
@@ -1357,7 +1501,7 @@ export class TerminalModes {
      * Creates a new TerminalModes instance from a string or object.
      */
     static createFrom($$source: any = {}): TerminalModes {
-        const $$createField8_0 = $$createType15;
+        const $$createField8_0 = $$createType16;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("kitty_keyboard" in $$parsedSource) {
             $$parsedSource["kitty_keyboard"] = $$createField8_0($$parsedSource["kitty_keyboard"]);
@@ -1414,4 +1558,5 @@ const $$createType11 = Probe.createFrom;
 const $$createType12 = TerminalModes.createFrom;
 const $$createType13 = Limits.createFrom;
 const $$createType14 = Environment.createFrom;
-const $$createType15 = $Create.Array($Create.Any);
+const $$createType15 = Integration.createFrom;
+const $$createType16 = $Create.Array($Create.Any);

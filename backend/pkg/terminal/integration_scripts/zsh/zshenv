@@ -1,0 +1,35 @@
+# Omniview shell integration for zsh: .zshenv of the shim directory.
+#
+# Provenance: written for Omniview from the protocol (OSC 133 semantic prompts, OSC 7 and the 633;E / 633;P marks of
+# VS Code's shell integration) and from the zsh manual's startup-file order. No line is copied from another project's
+# script. VS Code (MIT) and Wave (Apache-2.0) were read as references for the idea of a ZDOTDIR shim only; the scripts
+# of Ghostty, kitty, iTerm2, Zed and Warp (copyleft) were not read for this file.
+#
+# The host starts zsh with ZDOTDIR pointing at the directory of this file and sends two lines on file descriptor 3:
+# the session's nonce, and the ZDOTDIR the user had ("s:<path>" or "u:" when it was unset). This file keeps both in
+# shell parameters that are not exported, moves the descriptor out of the way of the user's programs, then runs the
+# user's own .zshenv with the user's ZDOTDIR. The other files of this directory do the same for their namesakes, so
+# the user's files run in the order zsh would have run them and are never edited. The last of them gives ZDOTDIR back.
+typeset -g __omniview_shim=${ZDOTDIR-} __omniview_nonce= __omniview_zd_set=0 __omniview_zd_val= __omniview_fd= __omniview_line=
+{
+  if IFS= read -r -t 5 -u 3 __omniview_nonce && IFS= read -r -t 5 -u 3 __omniview_line; then
+    # A descriptor above 9 is not inherited by the programs the user starts.
+    exec {__omniview_fd}>&3
+    if [[ $__omniview_line == s:* ]]; then
+      __omniview_zd_set=1 __omniview_zd_val=${__omniview_line#s:}
+    fi
+  else
+    __omniview_nonce=
+  fi
+  exec 3>&-
+} 2>/dev/null
+unset __omniview_line
+if [[ -z $__omniview_nonce ]]; then
+  # No channel from the host: this is a shell that only inherited the shim. Behave as zsh would without it.
+  unset ZDOTDIR __omniview_shim
+else
+  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi
+  [[ -r ${ZDOTDIR:-$HOME}/.zshenv ]] && builtin source ${ZDOTDIR:-$HOME}/.zshenv
+  __omniview_zd_set=${+ZDOTDIR} __omniview_zd_val=${ZDOTDIR-}
+  export ZDOTDIR=$__omniview_shim
+fi

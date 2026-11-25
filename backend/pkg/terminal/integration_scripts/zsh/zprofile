@@ -1,0 +1,7 @@
+# Omniview shell integration for zsh: .zprofile of the shim directory. See .zshenv of this directory.
+if [[ -n ${__omniview_shim-} ]]; then
+  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi
+  [[ -r ${ZDOTDIR:-$HOME}/.zprofile ]] && builtin source ${ZDOTDIR:-$HOME}/.zprofile
+  __omniview_zd_set=${+ZDOTDIR} __omniview_zd_val=${ZDOTDIR-}
+  export ZDOTDIR=$__omniview_shim
+fi

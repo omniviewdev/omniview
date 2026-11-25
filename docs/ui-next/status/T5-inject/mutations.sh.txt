@@ -1,0 +1,121 @@
+#!/bin/bash
+# Negative controls for T5-inject (shell integration of zsh and fish: backend/pkg/terminal/integration*.go and the scripts in
+# backend/pkg/terminal/integration_scripts). Each fault is put into a SCRATCH copy of one source file (a Go file or an embedded
+# script) and built with `go test -overlay`; the worktree is never edited. A control has two halves:
+#   1. with every test of the integration, the tests that go red are exactly the ones named for it (a fault that goes red in a
+#      test it is not named for, or in none, is reported);
+#   2. with the named tests skipped (the assertion removed), the same fault passes: nothing else sees it.
+# fish must be runnable for the fish subtests to run (a machine with no fish skips them by name, "NOT RUN", and a control
+# whose named tests are only fish's is then reported as undetected). A subtest is named by its test: either half is on the
+# whole test.
+# Run from anywhere in the worktree:  bash docs/ui-next/status/T5-inject/mutations.sh.txt [control-name]
+# A control named "?" prints what goes red (a discovery run) instead of comparing.
+export GOWORK=off GOTOOLCHAIN=local
+WT=$(git rev-parse --show-toplevel) || exit 2
+PKG=./backend/pkg/terminal/
+RUN='^(TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand|TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks|TestTheUsersStartupFilesAreByteIdenticalAfterASession|TestAZDOTDIRTheUserSetIsHonouredAndRestored|TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt|TestTheNonceIsInNoLogNoErrorAndNoAnswerThatTheHostGives|TestANestedLoginShellDoesNotInheritTheIntegration|TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment|TestNoDescriptorOfTheChannelReachesAProgramOfTheUser|TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem|TestAFishUserWhoBoundEnterKeepsTheirBindingAndTheCommandHasNoTrustedLine|TestAFishAbbreviationIsRecordedExpandedAsWhatRan|TestTheFishEscapeOfA4KBLineWithControlBytesIsCorrectAndCheap|TestZshXtraceNeverPrintsTheNonce|TestTheFactSaysWhyTheIntegrationIsOffOrSkipped|TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration|TestTheSettingIsAskedForEveryTerminal|TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser|TestTheIntegrationDirectoryIsRemovedOnEveryEnd|TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt|TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore|TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain|TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor|TestTheFactIsOnOnlyAfterTheShellSaidItIsReady|TestARealShellWhoseScriptNeverRunsIsUnconfirmedAndNotOn|TestASettingThatCannotBeReadFailsClosed)$'
+M=$(mktemp -d "${TMPDIR:-/tmp}/t5inject-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
+trap 'rm -rf -- "$M"' EXIT
+cd "$WT" || exit 2
+only="${1:-}"
+bad=0
+
+# name | file | sed script | the tests named for it (sorted, separated by spaces) | optional: tests that may also go red
+# (racy detections): half 1 passes when the red set is the named set plus any subset of the optional set.
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"; optional="${5:-}"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  cp "$WT/$file" "$M/$name.src"
+  sed -i -e "$expr" "$M/$name.src"
+  if cmp -s "$WT/$file" "$M/$name.src"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.src" > "$M/$name.json"
+
+  out=$(go test -overlay="$M/$name.json" -run "$RUN" "$PKG" -timeout 600s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E '^--- FAIL' | sed -E 's/--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort | tr '\n' ' ' | sed 's/ $//')
+  if [ "$named" = "?" ]; then echo "CONTROL $name: red in [$failed]"; return; fi
+  if [ $code -eq 0 ]; then half1="UNDETECTED (every test passed)"; bad=1
+  elif [ -z "$failed" ]; then half1="NOT A DETECTION (the build or the setup failed)"; bad=1
+  else
+    core=$(for t in $failed; do case " $optional " in *" $t "*) ;; *) echo "$t";; esac; done | tr '\n' ' ' | sed 's/ $//')
+    if [ "$core" != "$named" ]; then half1="RED in [$failed], named [$named] (optional [$optional])"; bad=1
+    else half1="RED in [$failed] = named plus optional"; fi
+  fi
+
+  skip="^($(echo "$named $optional" | sed 's/  *$//; s/ /|/g'))\$"
+  out2=$(go test -overlay="$M/$name.json" -run "$RUN" -skip "$skip" "$PKG" -timeout 600s 2>&1)
+  if [ $? -eq 0 ]; then half2="without them: PASS (undetected)"
+  else half2="without them: STILL RED [$(echo "$out2" | grep -E '^--- FAIL' | tr '\n' ' ')]"; bad=1; fi
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+I=backend/pkg/terminal/integration.go
+M2=backend/pkg/terminal/manager.go
+Z=backend/pkg/terminal/integration_scripts/zsh
+
+run nonce-exported "$I" \
+  's|inj.env = \[\]string{"ZDOTDIR=" + inj.dir}|inj.env = []string{"ZDOTDIR=" + inj.dir, "OMNIVIEW_NONCE=" + nonce.Reveal()}|' \
+  'TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt'
+
+run user-file-edited "$Z/zlogin" \
+  's|^  \[\[ -r ${ZDOTDIR:-$HOME}/.zlogin \]\] && builtin source ${ZDOTDIR:-$HOME}/.zlogin|  [[ -r ${ZDOTDIR:-$HOME}/.zlogin ]] \&\& builtin source ${ZDOTDIR:-$HOME}/.zlogin; print "# omniview" >> ${ZDOTDIR:-$HOME}/.zshrc|' \
+  'TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheUsersStartupFilesAreByteIdenticalAfterASession'
+
+run script-prints-outside-its-marks "$Z/zlogin" \
+  's|^  unset __omniview_fd$|  unset __omniview_fd; builtin print -rn -- "integration loaded"|' \
+  'TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks'
+
+run relaunch-loop "$M2" \
+  $'s|second, err := m.spawn(id, path, args, dir, env, size, nil)|second, err := m.relaunchLoop(id, path, args, dir, env, size, kind)|\n$a\\\nfunc (m *Manager) relaunchLoop(id, path string, args []string, dir string, env []string, size *pty.Winsize, kind shellKind) (*process, error) {\\\n\tvar p *process\\\n\tvar err error\\\n\tfor range 5 {\\\n\t\tinj, _ := prepareInjection(kind, env)\\\n\t\tif p, err = m.spawn(id, path, args, dir, env, size, inj); err != nil {\\\n\t\t\treturn nil, err\\\n\t\t}\\\n\t\tif result, _ := inj.await(m.ctx, p.reaped); result != outcomeGone {\\\n\t\t\treturn p, nil\\\n\t\t}\\\n\t\tp.discard()\\\n\t\tinj.close()\\\n\t}\\\n\treturn p, err\\\n}' \
+  'TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt'
+
+run temp-dir-left-behind "$I" \
+  's|_ = os.RemoveAll(i.dir)|_ = i.dir|' \
+  'TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt TestTheFactIsOnOnlyAfterTheShellSaidItIsReady TestTheIntegrationDirectoryIsRemovedOnEveryEnd TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
+
+run integration-with-the-setting-off "$I" \
+  's|	if !enabled {|	if false {|' \
+  'TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain TestTheFactSaysWhyTheIntegrationIsOffOrSkipped TestTheSettingIsAskedForEveryTerminal TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration'
+
+run dir-world-readable "$I" \
+  's|os.Chmod(inj.dir, 0o700)|os.Chmod(inj.dir, 0o755)|' \
+  'TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser'
+
+# (TestTheUsersStartupFilesAreByteIdenticalAfterASession is red for this fault in some runs only: zsh writes a file into the
+# leftover ZDOTDIR at exit, a race; it is the control's optional test.)
+run zdotdir-not-given-back "$Z/zlogin" \
+  's|^  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi|  :|' \
+  'TestANestedLoginShellDoesNotInheritTheIntegration TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor TestZshXtraceNeverPrintsTheNonce' \
+  'TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheUsersStartupFilesAreByteIdenticalAfterASession'
+
+run channel-left-open "$Z/zshenv" \
+  's|^  exec 3>\&-$|  :|' \
+  'TestNoDescriptorOfTheChannelReachesAProgramOfTheUser'
+
+run command-flag-not-skipped "$I" \
+  's|			return SkipCommand|			continue|' \
+  'TestTheFactSaysWhyTheIntegrationIsOffOrSkipped'
+
+run powerlevel10k-not-skipped "$I" \
+  's|	if envValue(env, "P9K_VERSION") != "" {|	if false {|' \
+  'TestTheFactSaysWhyTheIntegrationIsOffOrSkipped'
+
+F=backend/pkg/terminal/integration_scripts/fish/omniview-integration.fish
+
+run fish-escape-drops-newlines "$F" \
+  '/x3b/s/| string collect)/| string join "")/' \
+  'TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem'
+
+run unconfirmed-said-on "$M2" \
+  's|fact = Integration{State: IntegrationUnconfirmed, Reason: NoReady}|_ = fact|' \
+  'TestARealShellWhoseScriptNeverRunsIsUnconfirmedAndNotOn TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser TestTheIntegrationDirectoryIsRemovedOnEveryEnd'
+
+run zsh-xtrace-prints-the-nonce "$Z/zlogin" \
+  '/noxtrace/d' \
+  'TestZshXtraceNeverPrintsTheNonce'
+
+run unreadable-setting-turns-it-on "$M2" \
+  's|kind, fact = kindNone, skipped(SkipSettingUnreadable)|_ = kind|' \
+  'TestASettingThatCannotBeReadFailsClosed'
+
+exit $bad

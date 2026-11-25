@@ -9,6 +9,9 @@ import (
 	"github.com/omniviewdev/plugin-sdk/settings"
 )
 
+// settingShellIntegration is the id of the opt-out of the shell integration in the terminal category: on by default.
+const settingShellIntegration = "shellIntegration"
+
 // defaultTerminalFontSize is the default terminal font size in pixels.
 const defaultTerminalFontSize = 12
 
@@ -58,6 +61,14 @@ var Terminal = settings.Category{
 
 				return settings.ValidationResult{Valid: true, Code: "shell_executable", Message: "Shell executable is available."}
 			},
+		},
+
+		settingShellIntegration: {
+			ID:          settingShellIntegration,
+			Type:        settings.Toggle,
+			Label:       "Shell Integration",
+			Default:     true,
+			Description: "Let the shell tell the terminal where each command starts and ends, and in which directory. Applies to terminals opened after the change; the shell's startup files are never edited.",
 		},
 
 		settingTheme: {
