@@ -13,6 +13,9 @@ import (
 )
 
 func TestApplyingResetPreservesIntentAndDeletesOnlySelectedModules(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -53,6 +56,9 @@ func TestRenameLinkAdmissionRejectsChangedAggregateBeforeTeardown(t *testing.T) 
 }
 
 func TestRenameLinkTeardownRemovesAbsoluteRootJournal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -66,6 +72,9 @@ func TestRenameLinkTeardownRemovesAbsoluteRootJournal(t *testing.T) {
 }
 
 func TestLinkedRenamePreservesWorkspaceIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -95,6 +104,9 @@ func TestLinkedRenamePreservesWorkspaceIdentity(t *testing.T) {
 }
 
 func TestLinkedRenameRefusesUnknownMetadataAndRootNeighbors(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, relative := range []string{".local/unknown", "foreign.txt"} {
 		t.Run(relative, func(t *testing.T) {
@@ -131,6 +143,9 @@ func TestLinkedRenameRefusesRedirectedLinkJournal(t *testing.T) {
 }
 
 func TestLinkedRenameResumesRestoredLinkFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	f := newResetModulesFixture(t)
@@ -164,6 +179,9 @@ func TestLinkedRenameRefusesChangedLinkJournalIdentity(t *testing.T) {
 }
 
 func TestApplyingModulesConflictGivesRetainedOrderedRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	f := newResetModulesFixture(t)
 	j, err := loadLinkJournal(f.w)
@@ -205,6 +223,9 @@ func TestLinkedRenameRefusesUnfinishedInstallerBeforeMutation(t *testing.T) {
 }
 
 func TestRenameLaunchRestorationResumesAfterMove(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, restored := range []bool{false, true} {
 		t.Run(map[bool]string{false: "before-launch-publication", true: "after-launch-publication"}[restored], func(t *testing.T) {
@@ -239,6 +260,9 @@ func TestRenameLaunchRestorationResumesAfterMove(t *testing.T) {
 }
 
 func TestRenamePublicationInterruptedBeforeLedger(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, foreign := range []bool{false, true} {
 		t.Run(map[bool]string{false: "resume", true: "foreign"}[foreign], func(t *testing.T) {
@@ -275,6 +299,9 @@ func TestRenamePublicationInterruptedBeforeLedger(t *testing.T) {
 }
 
 func TestSeededRenameRetainsReceiptAndDisclosure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	ctx := context.Background()
 	m, _ := fixtureManager(t, "omniview")

@@ -131,6 +131,9 @@ func TestCreditComesFromTheTransportUntilTheClientAcknowledgesOnceAndFromTheClie
 // Ten mebibytes arrive complete and in order whatever the sink does about credit: a sink that returns when
 // the transport took the output, a transport that reports it, a client that acknowledges.
 func TestTenMebibytesOfOutputArriveCompleteAndInOrderWhoeverGivesTheCredit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: 3 x 10 MiB through a real pty")
+	}
 	const lines = 1 << 20 // each is eight digits, a carriage return and a line feed: ten bytes, 10 MiB in all
 	expected := sha256.New()
 	for i := range lines {

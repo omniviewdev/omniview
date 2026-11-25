@@ -13,6 +13,9 @@ import (
 )
 
 func TestSeedResumePreservesOlderExplanatoryReceiptBytes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, markerPresent := range []bool{false, true} {
 		t.Run(map[bool]string{false: "pending-intent", true: "completed-import"}[markerPresent], func(t *testing.T) {

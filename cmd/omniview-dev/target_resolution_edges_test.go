@@ -13,6 +13,9 @@ import (
 )
 
 func TestWorkspaceLifecycleTargetFormsPreserveDecoyEdges(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev CLI over real workspaces and child processes")
+	}
 	for _, verb := range []string{"resume", "remove", "recover"} {
 		for _, form := range []string{"slug", "uuid", "relative-directory", "absolute-directory", "manifest"} {
 			t.Run(verb+"/"+form, func(t *testing.T) {

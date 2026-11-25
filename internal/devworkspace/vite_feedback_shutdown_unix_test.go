@@ -35,6 +35,9 @@ func feedbackShutdownChildren(t *testing.T, s *workspaceSupervisor) (*ownedChild
 }
 
 func TestViteFeedbackUnfencedShutdownRetiresViteBeforeBackend(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, refusal := range []bool{false, true} {
 		t.Run(map[bool]string{false: "vite-retired", true: "vite-disposal-refused"}[refusal], func(t *testing.T) {
@@ -140,6 +143,9 @@ func assertFeedbackChildrenRetained(t *testing.T, s *workspaceSupervisor, retain
 }
 
 func TestViteFeedbackSyncFailureRetainsOwnerPublicationForDurableRetry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, publication := range []string{"shutdown-hold", "release"} {
 		t.Run(publication, func(t *testing.T) {

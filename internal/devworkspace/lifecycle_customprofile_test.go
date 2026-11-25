@@ -153,6 +153,9 @@ func TestProfileBindingSurvivesManagerRenameAndDefaultRuntimePaths(t *testing.T)
 }
 
 func TestStoppedSlugRenameRetiresAttestedOutputsAndPreservesState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, custom := range []bool{false, true} {
 		t.Run(map[bool]string{false: "default", true: "custom"}[custom], func(t *testing.T) {
@@ -215,6 +218,9 @@ func TestStoppedSlugRenameRetiresAttestedOutputsAndPreservesState(t *testing.T) 
 }
 
 func TestStoppedSlugRenameRefusesChangedOrForeignOutputsUnchanged(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	// Cases share one attested workspace per source selection instead of
 	// rebuilding it. They run in order, never in parallel, and each restores

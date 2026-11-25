@@ -16,6 +16,9 @@ import (
 // the non-reentrant UUID guard refusal, then records under the manager's actual
 // home and invokes the verified archive writer while stopped guards are held.
 func TestStoppedArchiveRecordsRealBackendBetweenGuardsWithoutAmbientHome(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	ctx := context.Background()
 	env := newPubEnv(t)
 	workspace := env.workspace()

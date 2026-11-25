@@ -1,12 +1,13 @@
 // Names the failed tests of a `go test -json` stream as Markdown, for $GITHUB_STEP_SUMMARY, so that a flake is named without reading a 7 MB log.
 //
-//   node scripts/go-test-failures.mjs <go-test.jsonl>      prints nothing when no test failed or the file is absent
+//   node scripts/go-test-failures.mjs <go-test.jsonl>      prints nothing when no test failed, none was skipped, or the file is absent
 //
 // What it reports, per package:
 //   - every test that failed (a parent whose subtest failed is not listed twice), with the first lines of what it printed;
 //   - when the test binary died (a panic, a timeout, os.Exit) the failing test is not named by the stream: the tests that started and never finished are, and the ones whose
 //     output holds the panic come first;
 //   - a package that did not build, with its compiler output.
+//   - after them, how many tests were skipped, for each reason they gave (the text before the first colon of the skip message: `slow` is the tier that `go test -short` skips), so that a skip is never silent.
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -54,7 +55,8 @@ export function failures(text) {
     if (!tests.has(key)) tests.set(key, { pkg: event.Package, test: event.Test, state: 'running', output: [] });
     const test = tests.get(key);
     if (event.Action === 'output') test.output.push(...(event.Output ?? '').split('\n').filter((row) => row !== ''));
-    else if (event.Action === 'pass' || event.Action === 'skip') test.state = 'done';
+    else if (event.Action === 'pass') test.state = 'done';
+    else if (event.Action === 'skip') Object.assign(test, { state: 'done', skipped: true });
     else if (event.Action === 'fail') test.state = 'failed';
   }
 
@@ -75,7 +77,7 @@ export function failures(text) {
     else if (unfinished.length > 0) died.set(name, unfinished);
     else unbuilt.push({ pkg: name, via: pkg.failedBuild && pkg.failedBuild !== name ? pkg.failedBuild : '', output: builds.get(pkg.failedBuild || name) ?? [] });
   }
-  return { failed, died, unbuilt };
+  return { failed, died, unbuilt, skipped: all.filter((test) => test.skipped) };
 }
 
 const short = (pkg) => pkg.replace(MODULE, '');
@@ -111,7 +113,36 @@ export function render({ failed, died, unbuilt }, attempt = '') {
   ].join('\n');
 }
 
+// A skipped test says why in its last `file.go:12: message` row (`t.Skip` logs the message, then stops the test). The reason is the text before the first colon: `slow: dev workspace ...` is `slow`.
+const SKIP_MESSAGE = /^\s*\S+\.go:\d+: (.*)$/;
+const MAX_REASONS = 12;
+
+function reasonOf(test) {
+  const rows = test.output.filter((row) => SKIP_MESSAGE.test(row));
+  if (rows.length === 0) return '(no reason given)';
+  const message = SKIP_MESSAGE.exec(rows.at(-1))[1].trim();
+  const colon = message.indexOf(':');
+  return (colon > 0 ? message.slice(0, colon) : message).slice(0, 60);
+}
+
+/** The Markdown for a job summary: how many tests were skipped, for each reason they gave; empty when none was. */
+export function renderSkips(skipped) {
+  const counts = new Map();
+  for (const test of skipped) {
+    const reason = reasonOf(test);
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  if (counts.size === 0) return '';
+  const rows = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const lines = rows.slice(0, MAX_REASONS).map(([reason, count]) => `| ${reason.replaceAll('|', '\\|')} | ${count} |`);
+  if (rows.length > MAX_REASONS) lines.push(`| … ${rows.length - MAX_REASONS} more reasons | ${rows.slice(MAX_REASONS).reduce((sum, [, count]) => sum + count, 0)} |`);
+  return ['### Go tests skipped', '', '| Reason | Tests |', '|---|--:|', ...lines, '', '`slow` is the tier that `-short` skips and the nightly runs (rule 40 of docs/ui-next/AGENTS.md).', ''].join('\n');
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const file = process.argv[2];
-  if (file && existsSync(file)) process.stdout.write(render(failures(readFileSync(file, 'utf8')), process.env.GITHUB_RUN_ATTEMPT));
+  if (file && existsSync(file)) {
+    const result = failures(readFileSync(file, 'utf8'));
+    process.stdout.write([render(result, process.env.GITHUB_RUN_ATTEMPT), renderSkips(result.skipped)].filter((part) => part !== '').join('\n'));
+  }
 }

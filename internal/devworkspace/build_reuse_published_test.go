@@ -59,6 +59,9 @@ func pluginBackendNode(w Workspace) BuildNode {
 // on reuse: the buildinfo check refuses it before any evidence is written, and
 // the graph rebuilds the node against the current release instead.
 func TestBuildReuseRefusesAPluginBinaryBuiltAgainstAnotherReleaseAndRebuilds(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	env := newPubEnv(t)
 	w := env.workspace()
 	env.activate()
@@ -126,6 +129,9 @@ func mustPublished(t *testing.T, identity devsdk.Identity) devsdk.Published {
 // before the build's own verification, the build attested another identity and
 // no reuse record may name the stale one.
 func TestBuildReuseStoresNoRecordWhenTheSDKMovedAfterFingerprinting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	for _, moved := range []bool{false, true} {
 		name := "unchanged"
 		if moved {
@@ -209,6 +215,9 @@ func TestHostReuseVerifiesThePublishedBinaryBeforeAdoptingIt(t *testing.T) {
 // whose published binary was built against another release is rebuilt, never
 // adopted.
 func TestBuildReuseRebuildsAHostBuiltAgainstAnotherRelease(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	env := newPubEnv(t)
 	w := env.workspace()
 	env.activate()
@@ -251,6 +260,9 @@ func TestBuildReuseRebuildsAHostBuiltAgainstAnotherRelease(t *testing.T) {
 // the typed refusal and leaves the consumer unresolved, never verified at the
 // moved release.
 func TestSDKStatusOfARealPluginBuildFollowsItsBeforeAfterComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	env := newPubEnv(t)
 	w := env.workspace()
 	env.activate()

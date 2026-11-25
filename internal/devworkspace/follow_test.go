@@ -167,6 +167,9 @@ func TestFollowRetainsFailedBuildCohortWhenCheckoutIsCurrent(t *testing.T) {
 }
 
 func TestApplyFollowSerializesSuccessorAndSkipsDuplicateCohorts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, w, remote, _ := upstreamFixture(t)
 	first := upstreamCommit(t, remote, "component.ts", "export const revision = 1")
@@ -205,6 +208,9 @@ func TestApplyFollowSerializesSuccessorAndSkipsDuplicateCohorts(t *testing.T) {
 }
 
 func TestApplyFollowDoesNotAdoptChangedPolicyAfterOwnProgress(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	checkout := filepath.Join(w.Root, "omniview")

@@ -24,6 +24,9 @@ var errPhaseInterrupted = errors.New("interrupt after durable phase write")
 // intents. Stopped source updates cover every persisted source phase; pinned,
 // current and stopped are result classifications, not durable intent phases.
 func TestSourceDurablePhaseRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	phases := []string{
 		sourceUpdatePrepared, sourceUpdateCheckout, sourceUpdateOverlays, sourceUpdateBuild, sourceUpdateComplete,
@@ -89,6 +92,9 @@ func TestSourceDurablePhaseRecovery(t *testing.T) {
 // builds and rendering: its ready response proves supervisor transport only,
 // not host/plugin application readiness. No installer or Git operation is mocked.
 func TestRefreshDurablePhaseRecovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, phase := range []string{"stop", "retire", "update", "install", "start", "verify"} {
 		t.Run(phase, func(t *testing.T) {

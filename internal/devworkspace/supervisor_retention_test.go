@@ -20,6 +20,9 @@ import (
 )
 
 func TestSupervisorFailedStopRetainsOwnerAndLeaseForRetry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, canceled := range []bool{true, false} {
 		t.Run(map[bool]string{true: "canceled", false: "signal-failed"}[canceled], func(t *testing.T) {
@@ -84,6 +87,9 @@ func TestSupervisorFailedStopRetainsOwnerAndLeaseForRetry(t *testing.T) {
 }
 
 func TestViteFeedbackStopRetainsHandleUntilExactOwnedDisposal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, tamper := range []bool{false, true} {
 		t.Run(map[bool]string{false: "owned-metadata", true: "foreign-replacement"}[tamper], func(t *testing.T) {

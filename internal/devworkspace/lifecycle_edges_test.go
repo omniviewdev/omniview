@@ -271,6 +271,9 @@ func TestLifecycleEdgesConcurrentSameSlugHasOneDurableWinner(t *testing.T) {
 }
 
 func TestLifecycleEdgesCancelledCreateAfterFirstWorktreeResumesSameIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "ui")
 	listener := lifecycleEdgeListener(t)
@@ -296,6 +299,9 @@ func TestLifecycleEdgesCancelledCreateAfterFirstWorktreeResumesSameIdentity(t *t
 }
 
 func TestLifecycleEdgesLaterEditFailureRetainsWholeIntent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "plugin-sdk", "ui")
 	ctx := context.Background()
@@ -335,6 +341,9 @@ func TestLifecycleEdgesLaterEditFailureRetainsWholeIntent(t *testing.T) {
 }
 
 func TestLifecycleEdgesCancelledRemovalAfterFirstDeletionKeepsOriginalFlags(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "ui")
 	w := fixtureWorkspace(t, m, CreateOptions{Slug: "partial-remove", Repositories: []string{"ui"}})
@@ -371,6 +380,9 @@ func TestLifecycleEdgesCancelledRemovalAfterFirstDeletionKeepsOriginalFlags(t *t
 }
 
 func TestLifecycleEdgesRemoveContendsWithRemoveEditAndResume(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	for _, action := range []string{"remove", "edit", "resume"} {
 		t.Run(action, func(t *testing.T) {

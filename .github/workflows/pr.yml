@@ -168,15 +168,16 @@ jobs:
       - name: Verify effective Task Go cache
         run: task check:go-cache GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
-      # The same commands as `Go checks` on a pull request: what they build and compile is what the cache then holds (go.sum is its key).
+      # The same commands as `Go checks` on a pull request, except the tests: what they build and compile is what the cache then holds (go.sum is its key).
+      # A pull request runs `go test -short` (the slow tests skip themselves, rule 40 of docs/ui-next/AGENTS.md); this runs EVERY test and none from the result cache (`-count=1`): it is the Go safety net, and this workflow is on the `ci-main-red` list.
       - name: Build
         run: task check:go-build GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
       - name: Vet
         run: task check:go-vet GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
 
-      - name: Test
-        run: task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}"
+      - name: Test (every test, no -short)
+        run: task check:go-test GO_BUILD_CACHE_DIRECTORY="${{ steps.go-cache.outputs.directory }}" -- -count=1
 
   cache-primer-ui:
     name: pnpm store primer

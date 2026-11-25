@@ -25,6 +25,9 @@ import (
 // that the actual Go build has completed and the publisher has entered its
 // metadata read. No compiler, filesystem watcher, or publication is replaced.
 func TestGoWatcherStopRetiresActivePublisher(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: plugin dev server with a real compile and file watcher")
+	}
 	goPath, err := exec.LookPath("go")
 	require.NoError(t, err)
 
@@ -310,6 +313,9 @@ func (reloader *serializingGoWatcherReloader) ReloadManagedPlugin(ctx context.Co
 }
 
 func TestGoWatcherSerializesPublicationThroughReload(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: plugin dev server with a real compile and file watcher")
+	}
 	goPath, err := exec.LookPath("go")
 	require.NoError(t, err)
 	const id = "ordered-reloads"

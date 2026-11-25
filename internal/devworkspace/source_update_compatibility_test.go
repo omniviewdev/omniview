@@ -212,6 +212,9 @@ func TestSupervisorSnapshotAdvertisesSourceUpdateSupport(t *testing.T) {
 }
 
 func TestFollowOldSupervisorRetainsRestartGuidanceAcrossObservations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, w, remote, source := upstreamFixture(t)
 	_, commands := sourceCompatibilitySupervisor(t, w, false)

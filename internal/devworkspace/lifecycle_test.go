@@ -208,6 +208,9 @@ func fixtureWorkspace(t *testing.T, m *Manager, options CreateOptions) Workspace
 }
 
 func TestCreateIndependentFeaturesWithBareUIAndPluginMetadata(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t)
 	ctx := context.Background()
@@ -318,6 +321,9 @@ func TestOccupiedBranchIsNeverAttached(t *testing.T) {
 }
 
 func TestEditPreservesIdentityAndRejectsDirtyRefAndCommitLoss(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "ui", "kubernetes")
 	ctx := context.Background()
@@ -415,6 +421,9 @@ func TestManifestIsPortableAndOwnershipCannotBeForgedByChangingManifest(t *testi
 }
 
 func TestSlugRenameMovesGitWorktreesWithoutChangingProfileOrBranches(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, _ := fixtureManager(t, "ui")
 	ctx := context.Background()
@@ -520,6 +529,9 @@ func TestCleanPartialCreationRollbackDeletesOnlyOwnedUnmodifiedResources(t *test
 }
 
 func TestRetiredSourceCanBeReselectedWithItsOriginalBranchAndCommits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: dev workspace, real git worktrees and child processes")
+	}
 	t.Parallel()
 	m, root := fixtureManager(t, "ui")
 	ctx := context.Background()
