@@ -41,6 +41,7 @@ on:
       - "scripts/ci/probe-shards.test.mjs"
       - "scripts/ci/probe-*"
       - "scripts/ci/probe-units/**"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-kit-probes.yml"
   push:
     branches: [main]
@@ -53,12 +54,23 @@ on:
       - "scripts/ci/probe-shards.test.mjs"
       - "scripts/ci/probe-*"
       - "scripts/ci/probe-units/**"
+      - "scripts/ci/ci-scope*"
       - ".github/workflows/ui-next-kit-probes.yml"
+  # The nightly run: everything (N30). A pull request runs the probes in WebKit and no negative control; this and every push to main run every probe and every control in both engines.
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      scope:
+        description: "full (everything: the default) or pr (what a pull request runs: WebKit, no negative controls)"
+        type: choice
+        options: [full, pr]
+        default: full
 
+# A new push to a pull request supersedes the run of the one before it; a run on main is never cancelled by a newer push (the latest commit of main is always verified; a group keeps one running and one pending run, so a burst of merges can skip the ones between).
 concurrency:
   group: ui-next-kit-probes-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -71,25 +83,39 @@ jobs:
   # matrix the shard jobs read and the number of shards, which `Kit probes` compares with what the shards report. It fails when it would plan no shard.
   plan:
     name: Kit probes plan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
+      scope: ${{ steps.plan.outputs.scope }}
+      reason: ${{ steps.scope.outputs.reason }}
     steps:
+      # Two commits: the base of the merge commit a pull request is checked out as, and the pull request (scripts/ci/ci-scope.mjs reads the diff between them).
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 2
           persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: .tool-versions
 
+      # The ONE place that says what this run does (scripts/ci/ci-scope.mjs): everything on main, every night, on request and for a change to the test infrastructure; a pull request's scope (WebKit, no negative control) otherwise.
+      - name: Decide the scope of this run
+        id: scope
+        env:
+          SCOPE_INPUT: ${{ inputs.scope }}
+        run: node scripts/ci/ci-scope.mjs
+
       - name: Check the table and pack the shards
         id: plan
+        env:
+          SCOPE: ${{ steps.scope.outputs.scope }}
+          REASON: ${{ steps.scope.outputs.reason }}
         run: |
           node scripts/ci/probe-shards.mjs check
-          node scripts/ci/probe-shards.mjs plan
+          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" plan
 
   shard:
     name: Kit probes shard ${{ matrix.shard }}
@@ -100,7 +126,7 @@ jobs:
     # A shard is planned at 432 s of units (scripts/ci/probe-shards.mjs, LIMIT_SECONDS) plus a setup of 88 s (median), and fails past 614 s of units (SHARD_CEILING_SECONDS, derived from the runner's own 70 shard jobs). The job must be
     # able to take that ceiling and the slowest setup seen (137 s) to the end, so that a slow shard says what it is: 751 s, 13 minutes. 15 is the wall for a shard that hangs, and a test pins both. The 30 it had was for the bounded
     # browser install of #557 (a first attempt killed after 15 minutes, then a second), which the image made unnecessary.
-    timeout-minutes: 15
+    timeout-minutes: ${{ needs.plan.outputs.scope == 'pr' && 36 || 15 }}
     # The CI image (.github/ci/Dockerfile, built by ci-image.yml) holds Node, pnpm, Task, the Playwright browsers of the version pnpm-lock.yaml resolves and the system libraries of WebKit and Chromium: the job installs none of
     # them. It is pinned by DIGEST, the one in .github/ci/image.lock (scripts/ci/check-image.mjs fails when a workflow pins another and when the lock is behind the repository's inputs). The package is private: the job token
     # reads it (`packages: read`), and the image is pulled with the credentials block, as the other container jobs do. `--init` is theirs too.
@@ -177,7 +203,8 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           UNITS: ${{ matrix.units }}
-        run: node scripts/ci/probe-shards.mjs run "$SHARD" "$UNITS"
+          SCOPE: ${{ needs.plan.outputs.scope }}
+        run: node scripts/ci/probe-shards.mjs --scope "$SCOPE" run "$SHARD" "$UNITS"
 
       # The probes' reports and what the shard says it ran (`ran-<shard>-probe.json`): `Kit probes` downloads them all.
       - name: Keep the reports
@@ -198,15 +225,19 @@ jobs:
     name: Kit probes
     needs: [plan, shard]
     if: ${{ always() }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     permissions:
       actions: read
       contents: read
     steps:
+      # The verdict needs the table and the engine, nothing else: a sparse checkout of scripts/ci (a few files, a second), on the smallest runner, and nothing is built.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          sparse-checkout: |
+            scripts/ci
+            .tool-versions
 
       - uses: actions/setup-node@v4
         with:
@@ -238,7 +269,9 @@ jobs:
       - name: Require every unit of the table to have run and passed
         env:
           PLAN_SHARDS: ${{ needs.plan.outputs.shards }}
+          SCOPE: ${{ needs.plan.outputs.scope }}
+          REASON: ${{ needs.plan.outputs.reason }}
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download "$GITHUB_RUN_ID" --pattern 'kit-probe-reports-*' --dir "$RUNNER_TEMP/reports"
-          node scripts/ci/probe-shards.mjs verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"
+          node scripts/ci/probe-shards.mjs --scope "$SCOPE" --reason "$REASON" verify --reports "$RUNNER_TEMP/reports" --shards "$PLAN_SHARDS"
