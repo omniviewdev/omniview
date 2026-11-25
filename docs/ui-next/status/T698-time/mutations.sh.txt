@@ -1,0 +1,67 @@
+#!/bin/bash
+# Negative controls for T698-time (#698 item 23): each fault is put into a SCRATCH copy of one source file and built
+# with `go test -overlay`; the worktree is never edited. A control passes when the named test turns red.
+# ROOT is the worktree (default: the current directory); ONLY=<regexp> runs the controls whose name matches.
+# Needs the Go toolchain on PATH; GOWORK=off GOTOOLCHAIN=local are set here.
+export GOWORK=off GOTOOLCHAIN=local
+WT=${ROOT:-$PWD}
+M=${MDIR:-/tmp/t698-time-mut}
+ONLY=${ONLY:-.}
+rm -rf "$M" && mkdir -p "$M"
+cd "$WT" || exit 2
+
+# name | file | sed expression | test regexp
+run() {
+  name="$1"; file="$2"; expr="$3"; test="$4"
+  echo "$name" | grep -Eq "$ONLY" || return
+  cp "$WT/$file" "$M/$name.go"
+  sed -i -E -e "$expr" "$M/$name.go"
+  if cmp -s "$WT/$file" "$M/$name.go"; then echo "CONTROL $name: FAULT NOT APPLIED"; return; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+  out=$(go test -overlay="$M/$name.json" ./backend/pkg/terminal/ -run "$test" -count=1 -timeout 200s 2>&1)
+  code=$?
+  failed=$(echo "$out" | grep -E "^\s*--- FAIL" | sed 's/ (.*//' | tr '\n' ' ')
+  if [ $code -eq 0 ]; then echo "CONTROL $name: UNDETECTED (tests passed) <- $test"
+  elif [ -z "$failed" ]; then echo "CONTROL $name: NOT A DETECTION (no test failed: the build or the setup did)"
+  else echo "CONTROL $name: RED  $failed"; fi
+}
+
+R=backend/pkg/terminal/reattach.go
+G=backend/pkg/terminal/manager.go
+LEASE='^TestAWindowGoingAwayDetaches|^TestDetachKeepsTheTerminalForALease|^TestALeaseThatRunsOutEnds'
+CLOSE='^TestClosingASessionThatIsPausedForCredit|^TestShutdownEndsEverySession|^TestClosingHangsUpAtOnce'
+
+# the lease half: where the expiry is read
+run lease-end-read-from-the-wall-clock $R \
+  's/^\ts.leaseEnd = s.clock.Now\(\).Add\(lease\)$/\ts.leaseEnd = time.Now().Add(lease)/' \
+  '^TestAWindowGoingAwayDetaches|^TestDetachKeepsTheTerminalForALease'
+run lease-end-one-second-late $R \
+  's/^\ts.leaseEnd = s.clock.Now\(\).Add\(lease\)$/\ts.leaseEnd = s.clock.Now().Add(lease + time.Second)/' \
+  '^TestAWindowGoingAwayDetaches|^TestDetachKeepsTheTerminalForALease'
+# the lease half: when the terminal ends
+run lease-timer-fires-early $R \
+  's/s.clock.AfterFunc\(lease, func\(\) \{ s.expire\(gen\) \}\)/s.clock.AfterFunc(lease\/2, func() { s.expire(gen) })/' \
+  '^TestALeaseThatRunsOutEnds'
+run lease-timer-fires-late $R \
+  's/s.clock.AfterFunc\(lease, func\(\) \{ s.expire\(gen\) \}\)/s.clock.AfterFunc(lease*2, func() { s.expire(gen) })/' \
+  '^TestALeaseThatRunsOutEnds'
+
+# the close half: what ends a close
+run close-does-not-wait-for-the-session $G \
+  's/^\tm.awaitGone\(\[\]\*session\{s\}\)$/\t_ = s/' \
+  '^TestClosingASessionThatIsPausedForCredit|^TestClosingHangsUpAtOnce'
+run shutdown-does-not-wait-for-the-sessions $G \
+  's/^\tm.awaitGone\(sessions\)$/\t_ = sessions/' \
+  '^TestShutdownEndsEverySession'
+run close-does-not-release-the-pacing $G \
+  's/^\ts.flow.release\(\)$/\t_ = 0/' \
+  '^TestClosingASessionThatIsPausedForCredit'
+run hangup-does-not-reach-the-shell $G \
+  's/^\t_ = s.cmd.Process.Signal\(syscall.SIGHUP\)$/\t_ = 0/' \
+  '^TestClosingHangsUpAtOnce/a_shell_at_its_prompt'
+run grace-never-kills $G \
+  '/^func \(s \*session\) hangup/,/^}/{s/^\ts.signalForeground\(syscall.SIGKILL\)$/\t_ = 0/;s/^\ts.cancel\(\)$/\t_ = 0/}' \
+  '^TestClosingHangsUpAtOnce'
+run grace-is-no-grace $G \
+  's/^\ttimer := time.NewTimer\(grace\)$/\ttimer := time.NewTimer(0)/' \
+  '^TestClosingHangsUpAtOnce/a_program_that_ignores'

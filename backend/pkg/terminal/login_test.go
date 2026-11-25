@@ -263,21 +263,40 @@ func TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace(t *te
 	sink := newChunkSink()
 	m := newChunkManager(t, sink)
 
-	t.Run("a shell at its prompt ends at once", func(t *testing.T) {
+	// The grace is a timer of the hangup, on the wall clock by design (clock.go). A test that handed it the real 1.5 s
+	// and asserted that a close took less (or more) was decided by how fast the machine ran the shell. These pass a
+	// grace that no test lives to see (an hour), so that what ends the shell is the hangup or nothing, and wait for
+	// the event.
+	t.Run("a shell at its prompt ends by the hangup alone", func(t *testing.T) {
 		info, err := m.Start(Options{Command: []string{shell}}, nil)
 		require.NoError(t, err)
 		send(t, m, info.ID, "echo ready-$((40+2))")
 		sink.waitFor(t, info.ID, "ready-42")
-		begin := time.Now()
+		s := m.session(t, info.ID)
+		go s.hangup(time.Hour)
+		select {
+		case <-s.exited:
+		case <-time.After(30 * time.Second):
+			require.FailNow(t, "the hangup did not end a shell that does not ignore it, and no kill was due")
+		}
+		sink.waitEnd(t, info.ID, 20*time.Second)
+		assert.True(t, gone(info.PID))
+	})
+
+	t.Run("a close ends a shell at its prompt, delivers one CLOSE and leaves nothing", func(t *testing.T) {
+		info, err := m.Start(Options{Command: []string{shell}}, nil)
+		require.NoError(t, err)
+		send(t, m, info.ID, "echo ready-$((40+2))")
+		sink.waitFor(t, info.ID, "ready-42")
 		require.NoError(t, m.CloseSession(info.ID))
-		assert.Less(t, time.Since(begin), HangupGrace, "the hangup alone ends a shell that does not ignore it")
+		assert.Empty(t, m.running(), "CloseSession returned with the session gone, not because closeWait passed")
 		end := sink.waitEnd(t, info.ID, 20*time.Second)
 		assert.Equal(t, EndClosed, end.Reason)
 		assert.Equal(t, ClosedByRequest, end.ClosedBy)
 		assert.True(t, gone(info.PID))
 	})
 
-	t.Run("a program that ignores the hangup is killed after the grace", func(t *testing.T) {
+	t.Run("a program that ignores the hangup lives until the grace and is killed by it", func(t *testing.T) {
 		info, err := m.Start(Options{Command: []string{shell}}, nil)
 		require.NoError(t, err)
 		send(t, m, info.ID, "trap '' HUP")
@@ -294,11 +313,20 @@ func TestClosingHangsUpAtOnceAndKillsWhatIgnoresTheHangupOnlyAfterTheGrace(t *te
 			return true
 		}, 20*time.Second, 10*time.Millisecond)
 
-		begin := time.Now()
+		// The hangup, and a grace that does not come: what ignores it lives. A wait that says nothing happens can
+		// only get weaker on a busy machine.
+		s := m.session(t, info.ID)
+		go s.hangup(time.Hour)
+		select {
+		case <-s.exited:
+			require.FailNow(t, "what ignores the hangup ended before any grace was over")
+		case <-time.After(500 * time.Millisecond):
+		}
+		assert.False(t, ended(foreground.PGID), "the program that ignored the hangup lives")
+
+		// The close of the host: its grace passes (it is the only thing that can end this shell), and it kills.
 		require.NoError(t, m.CloseSession(info.ID))
-		elapsed := time.Since(begin)
-		assert.GreaterOrEqual(t, elapsed, HangupGrace-200*time.Millisecond, "what ignores the hangup lives until the grace has passed")
-		assert.Less(t, elapsed, closeWait)
+		assert.Empty(t, m.running(), "CloseSession returned with the session gone, not because closeWait passed")
 		assert.Equal(t, EndClosed, sink.waitEnd(t, info.ID, 20*time.Second).Reason)
 		assert.True(t, gone(info.PID))
 		require.Eventually(t, func() bool { return ended(foreground.PGID) }, 10*time.Second, 20*time.Millisecond, "the program that ignored the hangup was killed")

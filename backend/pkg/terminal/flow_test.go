@@ -207,13 +207,14 @@ func TestClosingASessionThatIsPausedForCreditEndsItAndDeliversItsClose(t *testin
 			require.Eventually(t, func() bool { return sink.size() >= FlowHighBytes }, 30*time.Second, 2*time.Millisecond, "the session never paused")
 			time.Sleep(20 * time.Millisecond)
 
-			begin := time.Now()
+			flow := m.session(t, info.ID).flow
 			require.NoError(t, m.CloseSession(info.ID))
-			assert.Less(t, time.Since(begin), 3*time.Second, "CloseSession waited for a shell that could not exit")
+			released, _, _ := flow.check()
+			assert.True(t, released, "closing releases the pacing: a shell that is dying has to be read to finish exiting")
 			end := sink.waitEnd(t, 5*time.Second)
 			assert.Equal(t, EndClosed, end.Reason)
 			assert.Equal(t, ClosedByRequest, end.ClosedBy)
-			assert.Empty(t, m.running(), "the session is gone")
+			assert.Empty(t, m.running(), "CloseSession returned with the session gone, not because closeWait passed")
 			assert.True(t, ended(info.PID), "the shell is gone")
 		})
 	}
@@ -271,9 +272,8 @@ func TestShutdownEndsEverySessionAndRefusesNewOnes(t *testing.T) {
 		ids = append(ids, info.ID)
 	}
 
-	begin := time.Now()
 	m.Shutdown()
-	assert.Less(t, time.Since(begin), closeWait)
+	assert.Empty(t, m.running(), "Shutdown returned with the sessions gone, not because closeWait passed")
 	for _, id := range ids {
 		end := sink.waitEnd(t, id, 5*time.Second)
 		assert.Equal(t, EndClosed, end.Reason)
