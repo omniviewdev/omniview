@@ -386,4 +386,12 @@ describe('a group that says it starts open (`expanded`, KL7)', () => {
 
     expect(screen.getByRole('treeitem', { name: 'More' })).toHaveAttribute('aria-expanded', 'false');
   });
+
+  it('settles a long chain of groups that all say it in one update: the deepest of 30 levels is on screen, where an update for each level would meet React\'s limit on the updates of one render at 26', () => {
+    const chain = (level: number): ShellTreeNode => (level === 0 ? entry('deepest', 'Deepest') : starts(`level-${String(level)}`, `Level ${String(level)}`, [chain(level - 1)]));
+    renderTree([chain(30)], { open: [], current: undefined });
+
+    expect(screen.getByRole('treeitem', { name: 'Deepest' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Level 1' })).toHaveAttribute('aria-expanded', 'true');
+  });
 });

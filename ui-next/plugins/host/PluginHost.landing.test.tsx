@@ -1,7 +1,7 @@
 import { Link } from '@omniviewdev/kit';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore } from '../../shell';
 import { openSession, SESSION_VERSION } from '../../shell/session';
@@ -162,9 +162,16 @@ function All() {
   );
 }
 
-/** A page of a connection (scope `connection`): it reads the connection and a parameter, and changes the parameter itself. */
+/** What a page of a connection was last given to change its own parameters with: a test keeps the call a page left behind. */
+const given: { setParams: CustomPageContextV1['setParams'] | undefined } = { setParams: undefined };
+
+/** A page of a connection (scope `connection`): it reads the connection and a parameter, changes the parameter itself, and links to the same page in another connection. */
 function Settings({ context }: { readonly context: CustomPageContextV1 }) {
   const [typed, setTyped] = useState('');
+  const { setParams } = context;
+  useEffect(() => {
+    given.setParams = setParams;
+  }, [setParams]);
   return (
     <section aria-label="Acme settings">
       <h1>Acme settings</h1>
@@ -185,6 +192,7 @@ function Settings({ context }: { readonly context: CustomPageContextV1 }) {
       >
         Show the logs
       </button>
+      <Link to={{ page: 'settings', params: { connection: SOUTH } }}>Show south</Link>
     </section>
   );
 }
@@ -575,6 +583,34 @@ describe('a custom page that changes its own parameters', () => {
     expect(screen.getByText(`Connection: ${NORTH}`)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Note' })).toBe(field);
     expect(field).toHaveValue('abc');
+  });
+
+  it('holds a call to the page that made it: one a page of another connection left behind, and one from before the page was drawn again, change nothing; the page that is drawn can', async () => {
+    const { user } = mount(navigated(), { link: { plugin: 'acme', page: 'settings', connection: NORTH, params: {} } });
+    expect(await screen.findByText(`Connection: ${NORTH}`)).toBeInTheDocument();
+    const left = given.setParams;
+
+    // The tab goes to the page of south, in place (Alt is "here"): north's page is drawn no more, and a call it left behind finds the tab in south's.
+    fireEvent.click(screen.getByRole('link', { name: 'Show south' }), { altKey: true });
+    expect(await screen.findByText(`Connection: ${SOUTH}`)).toBeInTheDocument();
+    act(() => {
+      left?.({ tab: 'logs' });
+    });
+    expect(screen.getByText('Tab: none')).toBeInTheDocument();
+
+    // Back is north's page again, drawn anew: the callback of the page that was is still not its own.
+    await user.click(back());
+    expect(await screen.findByText(`Connection: ${NORTH}`)).toBeInTheDocument();
+    act(() => {
+      left?.({ tab: 'logs' });
+    });
+    expect(screen.getByText('Tab: none')).toBeInTheDocument();
+
+    act(() => {
+      given.setParams?.({ tab: 'logs' });
+    });
+    expect(await screen.findByText('Tab: logs')).toBeInTheDocument();
+    expect(screen.getByText(`Connection: ${NORTH}`)).toBeInTheDocument();
   });
 });
 

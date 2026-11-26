@@ -90,16 +90,20 @@ describe('startingOpen (the groups that say they start open, KL7)', () => {
     { id: 'gamma', children: [{ id: 'gamma-1' }] },
     { id: 'delta', expanded: false, children: [{ id: 'delta-1' }] },
   ];
-  const starting = (open: ReadonlySet<string>, seeded: ReadonlySet<string> = set()) => startingOpen(visibleRows(declared, open), seeded);
+  const starting = (open: ReadonlySet<string>, seeded: ReadonlySet<string> = set()) => {
+    const settled = startingOpen(declared, open, seeded);
+    return settled === undefined ? undefined : { open: [...settled.open].sort(), seeded: [...settled.seeded].sort() };
+  };
 
-  it('lists the groups on screen that say `expanded`, and no entry, no group that does not, and no group that is not on screen yet; a group inside one that is closed comes when it is in view', () => {
-    expect(starting(set())).toEqual(['alpha']);
-    expect(starting(set('alpha'))).toEqual(['alpha', 'alpha-inner']);
+  it('settles the groups on screen that say `expanded` in one walk, and no entry and no group that does not: a group that comes into view inside one its own start opens is settled with it', () => {
+    expect(starting(set())).toEqual({ open: ['alpha', 'alpha-inner'], seeded: ['alpha', 'alpha-inner'] });
+    expect(starting(set('gamma'))).toEqual({ open: ['alpha', 'alpha-inner', 'gamma'], seeded: ['alpha', 'alpha-inner'] });
   });
 
-  it('lists none that was given its start already, even one the user has closed since: it has had its start, and what they did is theirs', () => {
-    expect(starting(set('alpha'), set('alpha'))).toEqual(['alpha-inner']);
-    expect(starting(set(), set('alpha'))).toEqual([]);
+  it('settles none that was given its start already, even one the user has closed since: it has had its start, and what they did is theirs; and says nothing when there is nothing to settle', () => {
+    expect(starting(set('alpha'), set('alpha'))).toEqual({ open: ['alpha', 'alpha-inner'], seeded: ['alpha', 'alpha-inner'] });
+    expect(starting(set(), set('alpha'))).toBeUndefined();
+    expect(starting(set('alpha', 'alpha-inner'), set('alpha', 'alpha-inner'))).toBeUndefined();
   });
 });
 

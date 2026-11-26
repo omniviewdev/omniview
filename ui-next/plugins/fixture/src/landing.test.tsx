@@ -171,7 +171,10 @@ describe('the connections fixture with a landing', () => {
     expect(nodes.map((node) => [node.label, node.count])).toEqual([['All', 2], ['Connected', 1], ['Needs attention', 1], ['Connections', undefined]]);
     expect(nodes[2]).toMatchObject({ page: 'landing', params: { filter: 'attention' } });
     expect(nodes[3]).toMatchObject({ expanded: true });
-    expect((answer('landing', { filter: 'connected', sort: 'state' }) ?? []).slice(1, 3).map((node) => node.params)).toEqual([{ filter: 'connected', sort: 'state' }, { filter: 'attention', sort: 'state' }]);
+    // All carries the order as the filters do: it is the place of the page with no filter, so choosing it keeps the order the person chose.
+    const carried = answer('landing', { filter: 'connected', sort: 'state' }) ?? [];
+    expect(carried.slice(0, 3).map((node) => [node.label, node.params])).toEqual([['All', { sort: 'state' }], ['Connected', { filter: 'connected', sort: 'state' }], ['Needs attention', { filter: 'attention', sort: 'state' }]]);
+    expect(nodes[0]).toMatchObject({ page: 'landing', params: {} });
     expect(nodes[3].children).toEqual([
       { id: `connection-${north.key}`, label: 'north', icon: 'server', tone: 'green', connection: north.key },
       { id: `connection-${south.key}`, label: 'south', icon: 'server', tone: 'amber', connection: south.key, status: { role: 'attention', label: 'Needs sign-in' } },

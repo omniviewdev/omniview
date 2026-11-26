@@ -179,13 +179,15 @@ export function Tree({ label, nodes, open, current, accent, memory, memoryKey = 
     memory?.keep(memoryKey, { open: state.open, shown, seeded: state.seeded });
   }, [memory, memoryKey, state.open, state.seeded, shown]);
 
-  const rows = visibleRows(nodes, state.open);
   // A group that says it starts open (`expanded`, KL7) is opened once, the first time the tree has it on screen: with the tree, with a later answer of the plugin that brings the group, or when it comes into view inside a group that was closed. It is then kept as given, so
-  // what the user does with it is theirs: a group they closed is not opened again by the next answer, and the tree that comes back from the window's memory opens nothing the user closed.
-  const starting = startingOpen(rows, state.seeded);
-  if (starting.length > 0) {
-    setState((before) => ({ ...before, open: new Set([...before.open, ...starting]), seeded: new Set([...before.seeded, ...starting]) }));
+  // what the user does with it is theirs: a group they closed is not opened again by the next answer, and the tree that comes back from the window's memory opens nothing the user closed. Every group that is newly on screen is settled in this one update, whatever the depth of the
+  // chain they make: an update for each level would meet React's limit on the updates of one render (25) at the 26th.
+  const starting = startingOpen(nodes, state.open, state.seeded);
+  if (starting !== undefined) {
+    setState((before) => ({ ...before, ...startingOpen(nodes, before.open, before.seeded) }));
   }
+
+  const rows = visibleRows(nodes, state.open);
 
   const stop = stopOf(rows, state.stop, current);
 

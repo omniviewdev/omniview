@@ -1,5 +1,5 @@
 import { ErrorBody, LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit';
-import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { DetailPage, ListPage, type PageMemory } from '../../page';
 import {
   createLogStreams,
@@ -699,7 +699,7 @@ type CustomProps = {
  * The custom page's own component (KL2): the plugin's Body runs here, in its tab's own subtree and the page's own boundary, and is told its context. The host draws nothing around it: no header, no heading, and for a page read in no connection no lane. The page is told its route's
  * parameters (KL5, `RouteV1.params`, as a detail page is: the route's, as text) and, for a page read in no connection, no connection, whatever its route carries. The place a tab is at is its page and its parameters, but the page is drawn again from scratch only when its page or its connection
  * changes (`pageKeyOf`, KL7): a change of the parameters alone, by `setParams`, a link, an entry of the sidebar, Back or Forward, gives the same Body a new context. `setParams` changes the parameters of the route of the tab this page is in, as a link to the same page would, and does it in place:
- * `replace` (the default) takes the tab's history entry, `push` adds one (`navigate` and `replace` of the tab model, which decide the rest: the unsaved-changes question, the singleton rule, the page memory). It is for the page that is on screen: a call that comes after the tab has left it is dropped.
+ * `replace` (the default) takes the tab's history entry, `push` adds one (`navigate` and `replace` of the tab model, which decide the rest: the unsaved-changes question, the singleton rule, the page memory). A call is held to the page instance that made it: this plugin, this page and this connection of this tab, from the commit that draws the instance to the commit that takes it away, so a callback a page left behind (the page of another connection, a page drawn again by a reload of the tab or a return to it, a plugin that came back) changes nothing, and neither does a call from a page that is not on screen (a hidden page's effects are released).
  * The tab's face is the route's and the definition's (`describeCustom`), the same before this component has run.
  */
 function CustomContribution({ entry, route, page: pageId, frames, names, tabs, tabId, panelHost, connections }: CustomProps) {
@@ -711,11 +711,21 @@ function CustomContribution({ entry, route, page: pageId, frames, names, tabs, t
   const connection = page.scope === 'plugin' ? undefined : connectionOf(route);
   const params = useMemo(() => textParamsOf(route), [route]);
   const { contribution } = entry;
+  // The connection the route names, which this page was drawn for: the page is another page when it changes (`pageKeyOf`), and a call that finds the tab in another is not this page's.
+  const drawnFor = connectionOf(route);
+  // Whether this instance of the page is the one that is drawn: from the commit that draws it to the commit that takes it away (a page is drawn again for another page, another connection, a reload of the tab, a return to the page and a plugin that came back), and not while its effects are released (a hidden page).
+  const drawn = useRef(true);
+  useLayoutEffect(() => {
+    drawn.current = true;
+    return () => {
+      drawn.current = false;
+    };
+  }, []);
   const setParams = useMemo<CustomPageContextV1['setParams']>(
     () => (next, options) => {
-      // The route the tab is at now, not the one this render was made for: a callback the page left behind answers for the page it is in, and for none that the tab has left.
+      // A callback the page left behind is not this page's: its instance is gone, or the tab is at another plugin, page or connection now. The route the tab is at now, not the one this render was made for, is the one that changes.
       const at = tabs.selectors.tab(tabs.getSnapshot(), tabId)?.location.route;
-      if (at?.plugin !== entry.id || pageOf(contribution, at) !== pageId) {
+      if (!drawn.current || at?.plugin !== entry.id || pageOf(contribution, at) !== pageId || connectionOf(at) !== drawnFor) {
         return;
       }
 
@@ -731,7 +741,7 @@ function CustomContribution({ entry, route, page: pageId, frames, names, tabs, t
         tabs.replace(tabId, asked.route);
       }
     },
-    [tabs, tabId, entry.id, contribution, pageId],
+    [tabs, tabId, entry.id, contribution, pageId, drawnFor],
   );
   const context = useMemo<CustomPageContextV1>(
     () => ({ plugin: entry.id, route: { page: pageId, connection, params }, panel: panelHost, connections, setParams }),

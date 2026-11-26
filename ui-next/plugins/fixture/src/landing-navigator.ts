@@ -44,11 +44,11 @@ function leafOf(connection: ConnectionV1): SidebarNodeV1 {
   };
 }
 
-/** The navigator: counts are held (`null`) until the host has read the connections, so that a number that arrives moves no label. The filters open the landing in the order the page is in now (`sort`). */
+/** The navigator: counts are held (`null`) until the host has read the connections, so that a number that arrives moves no label. Every entry that opens the landing, All included, opens it in the order the page is in now (`sort`), so choosing one keeps the order the person chose. */
 export function navigatorOf(view: ConnectionsViewV1, sort: Sort = 'name'): readonly SidebarNodeV1[] {
   const count = (filter: Filter): number | null => (view.loaded ? view.connections.filter((connection) => inFilter(connection, filter)).length : null);
   return [
-    { id: 'landing', label: 'All', icon: 'layers', count: view.loaded ? view.connections.length : null },
+    { id: 'filter-all', label: 'All', icon: 'layers', count: view.loaded ? view.connections.length : null, page: 'landing', params: paramsOf(undefined, sort) },
     ...(Object.keys(FILTERS) as Filter[]).map((filter): SidebarNodeV1 => ({ id: `filter-${filter}`, label: FILTERS[filter], icon: FILTER_ICONS[filter], count: count(filter), page: 'landing', params: paramsOf(filter, sort) })),
     { id: 'connections', label: 'Connections', icon: 'server', expanded: true, children: view.connections.map(leafOf) },
   ];
