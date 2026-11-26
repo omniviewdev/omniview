@@ -193,3 +193,36 @@ describe('the keys of the context menu', () => {
     expect(keyOf(key('ContextMenu', { key: 'ContextMenu', altKey: true }), platform, false)).toBe('terminal');
   });
 });
+
+// THE JUMP TO A COMMAND (issue #694 step 5): VS Code's chords. Command Up and Down on a Mac (the window's own Command chords stay the window's), Control Up and Down on Windows and Linux (a Control chord without Shift is the shell's, and
+// this is the one the terminal takes back), each with Shift to select the command's output as well. Option is the word movement of the shell, and Control and Command together are nobody's.
+
+describe('the keys that jump to a command', () => {
+  it('are Command Up and Down on a Mac, and with Shift they select the output', () => {
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', metaKey: true }), 'mac', false)).toBe('previousCommand');
+    expect(keyOf(key('ArrowDown', { key: 'ArrowDown', metaKey: true }), 'mac', false)).toBe('nextCommand');
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', metaKey: true, shiftKey: true }), 'mac', false)).toBe('selectPreviousCommand');
+    expect(keyOf(key('ArrowDown', { key: 'ArrowDown', metaKey: true, shiftKey: true }), 'mac', false)).toBe('selectNextCommand');
+  });
+
+  it('are Control Up and Down on Windows and Linux, and with Shift they select the output', () => {
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', ctrlKey: true }), 'other', false)).toBe('previousCommand');
+    expect(keyOf(key('ArrowDown', { key: 'ArrowDown', ctrlKey: true }), 'other', false)).toBe('nextCommand');
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', ctrlKey: true, shiftKey: true }), 'other', false)).toBe('selectPreviousCommand');
+    expect(keyOf(key('ArrowDown', { key: 'ArrowDown', ctrlKey: true, shiftKey: true }), 'other', false)).toBe('selectNextCommand');
+  });
+
+  it('are not the other platform\'s: Control Up on a Mac is the shell\'s, Command Up on Windows and Linux the window\'s', () => {
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', ctrlKey: true }), 'mac', false)).toBe('terminal');
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', metaKey: true }), 'other', false)).toBe('app');
+  });
+
+  it('are not these keys with Option or Alt, with both Control and Command, or on the other keys of the arrow cluster: Option Up is the shell\'s, Control Left is the shell\'s word movement', () => {
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', metaKey: true, altKey: true }), 'mac', false)).toBe('app');
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', ctrlKey: true, altKey: true }), 'other', false)).toBe('terminal');
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp', altKey: true }), 'mac', false)).toBe('terminal');
+    expect(keyOf(key('ArrowLeft', { key: 'ArrowLeft', ctrlKey: true }), 'other', false)).toBe('terminal');
+    expect(keyOf(key('ArrowLeft', { key: 'ArrowLeft', metaKey: true }), 'mac', false)).toBe('app');
+    expect(keyOf(key('ArrowUp', { key: 'ArrowUp' }), 'other', false), 'plain Up is the shell\'s history').toBe('terminal');
+  });
+});
