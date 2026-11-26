@@ -372,9 +372,9 @@ func (m *Manager) ChannelBusy(presented string) (Foreground, error) {
 		return Foreground{}, ChannelNotFound()
 	}
 	if !known {
-		return UnknownForeground(ReasonQueryFailed), nil
+		return s.withMarks(UnknownForeground(ReasonQueryFailed)), nil
 	}
-	return foregroundOf(shell, group), nil
+	return s.withMarks(foregroundOf(shell, group)), nil
 }
 
 // ChannelCwd says which directory the shell of a channel terminal is in now.

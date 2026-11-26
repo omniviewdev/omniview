@@ -555,6 +555,9 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 		mu: sync.Mutex{}, fate: fate{set: false, closedBy: "", failure: nil}, attached: false,
 		owner: owner, detached: false, leaseGen: 0, leaseTimer: nil, leaseEnd: time.Time{}, leaseLen: 0, attachment: 0, channel: newChannelState(opts.Channel, secret),
 	}
+	if !started.nonce.IsZero() {
+		s.ring.marks = newMarkStore(started.nonce)
+	}
 	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
 	return s, nil
 }
@@ -1003,9 +1006,9 @@ func (m *Manager) Busy(sessionID string) (Foreground, error) {
 		return Foreground{}, apperror.SessionNotFound(sessionID)
 	}
 	if !known {
-		return UnknownForeground(ReasonQueryFailed), nil
+		return s.withMarks(UnknownForeground(ReasonQueryFailed)), nil
 	}
-	return foregroundOf(shell, group), nil
+	return s.withMarks(foregroundOf(shell, group)), nil
 }
 
 // groups reads the shell's process group and the pty's foreground group. It reports false when the

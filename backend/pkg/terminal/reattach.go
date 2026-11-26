@@ -429,6 +429,7 @@ func (m *Manager) attachLive(s *session, caller Owner, req AttachRequest) (*Atta
 	if shell, group, known := s.groups(); known {
 		busy = foregroundOf(shell, group)
 	}
+	busy = s.withMarks(busy)
 	return &Attached{
 		Session: s.info, Replay: hand.view.replay(), Cwd: Directory{Path: path, Reason: reason}, Busy: busy, Ended: nil,
 		Attachment: hand.attachment, NextInputSeq: s.queue.expects(),
