@@ -304,3 +304,19 @@ func TestATitleThePromptDrawsBetweenItsMarksIsNotMadeAProgramsByTheNextCommand(t
 		assert.Equal(t, []titleWire{{V: 1, Title: "user@host: ~", Program: false}}, got, "the PS1's title, drawn between the marks of the prompt, is the shell's")
 	})
 }
+
+// The same, with the command line and the start mark in reads of their own: the start mark comes alone, as it does when the shell draws the line before it runs it.
+func TestATitleThePromptDrawsIsNotMadeAProgramsWhenTheStartMarkComesInAReadOfItsOwn(t *testing.T) {
+	k := newMarked(t)
+	page := k.f.m.attachTitle(t, k.info.Cap, nil, true)
+	page.waitReady()
+	k.print(osc("133;A") + osc("0;user@host: ~") + "$ " + osc("133;B"))
+	k.print("ls\r\n" + osc("633;E;ls;"+k.nonce))
+	k.print(osc("133;C"))
+	k.print("barrier\n")
+	waitOutput(t, page, "barrier")
+	got := page.state().titles
+	guarded(t, "prompt-title-is-not-made-a-programs", func() {
+		assert.Equal(t, []titleWire{{V: 1, Title: "user@host: ~", Program: false}}, got, "the PS1's title is the shell's, whichever read the start mark is in")
+	})
+}
