@@ -1,15 +1,21 @@
 #!/bin/bash
-# Negative controls of the page's side of the marks (issue #694 step 4): one fault at a time in execFeed.ts (the file is restored by `git checkout`
-# after each run), and the run of its tests must FAIL in the test named for it and in no other (the count of the others is printed: it must be 0), so
-# that no test catches the fault for another reason.
+# Negative controls of the page's side of the marks (issue #694 step 4): one fault at a time in execFeed.ts. A control is good when the run of the marks
+# tests FAILS in the test named for it and in no other, and when the same fault PASSES with the named test left out of the run.
 #
-# usage: bash mutations-page.sh.txt   (from the worktree root, the kit built)
+# usage, from the worktree root (the kit built):  bash docs/ui-next/status/T5-marks-page/mutations-page.sh.txt
+# It refuses to run when execFeed.ts has edits, and puts the file back from a copy on exit and on interruption.
 set -u
 FILE=ui-next/shell/panel/terminal/execFeed.ts
 TEST=ui-next/shell/panel/terminal/execFeed.test.ts
+if ! git diff --quiet -- "$FILE" || ! git diff --cached --quiet -- "$FILE"; then echo "$FILE has edits: commit or stash them first"; exit 2; fi
+COPY=$(mktemp)
+cp "$FILE" "$COPY"
+trap 'cp "$COPY" "$FILE"; rm -f "$COPY"' EXIT INT TERM
+BAD=0
 
 run() {
   name=$1 old=$2 new=$3 only=$4
+  cp "$COPY" "$FILE"
   python3 - "$FILE" "$old" "$new" <<'PY'
 import sys
 p, old, new = sys.argv[1:4]
@@ -17,13 +23,17 @@ s = open(p).read()
 assert old in s, "the fault does not apply: " + old
 open(p, 'w').write(s.replace(old, new, 1))
 PY
-  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; git checkout -q -- "$FILE"; return; }
-  out=$(npx vitest run "$TEST" -t 'the marks of the shell' 2>&1)
-  if echo "$out" | grep -q "$only"; then c1=RED-IN-ITS-TEST; else c1=NOT-CAUGHT; fi
-  # The same fault, the test that names it skipped: nothing else may fail.
-  others=$(echo "$out" | grep -E '^ FAIL ' | grep -vc "$only")
-  echo "CONTROL $name: $c1 (want RED-IN-ITS-TEST), failures in other tests: $others (want 0)"
-  git checkout -q -- "$FILE"
+  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; BAD=1; cp "$COPY" "$FILE"; return; }
+  out=$(npx vitest run "$TEST" -t 'the marks of the shell' 2>&1); s1=$?
+  fails=$(echo "$out" | grep -E '^ FAIL ' | sort -u)
+  named=$(echo "$fails" | grep -c "$only")
+  others=$(echo "$fails" | grep -vc "$only")
+  # The same fault with the named test left out of the run must pass.
+  pattern="^(?!.*the marks of the shell.*$(printf '%s' "$only" | sed 's/[][\.*^$(){}?+|/]/\\&/g')).*the marks of the shell"
+  out2=$(npx vitest run "$TEST" -t "$pattern" 2>&1); s2=$?
+  echo "CONTROL $name: exit $s1 (want nonzero), named test red: $named (want 1+), other failures: $others (want 0), named test left out: exit $s2 (want 0)"
+  if [ $s1 -eq 0 ] || [ "$named" -lt 1 ] || [ "$others" -ne 0 ] || [ $s2 -ne 0 ]; then BAD=1; fi
+  cp "$COPY" "$FILE"
 }
 
 run unproven-start-is-running "if (mark.kind === 'command-start' && mark.trust === 'nonce') {" "if (mark.kind === 'command-start') {" 'does not take a start that the host did not prove'
@@ -35,6 +45,8 @@ run fresh-screen-keeps-marks "    if (!resumed) {
 run gap-keeps-marks "    cursor = to;
     forgetMarks(to);" "    cursor = to;" 'forgets what it knew of a running command at a gap'
 run marks-unbounded "if (marks.length > MAX_MARKS) {" "if (false) {" 'keeps no more than the newest MAX_MARKS marks'
-run busy-asks-host "      if (running !== undefined) {" "      if (false as boolean) {" 'knows that a command is running from its start mark'
-run end-does-not-end "      } else if (mark.kind === 'command-end') {
-        running = undefined;" "      } else if (mark.kind === 'command-end') {" 'is idle for the host to say once the end mark has come'
+run busy-ignores-marks "      if (running) {" "      if (false as boolean) {" 'knows that a command is running from its start mark'
+run end-does-not-end "      } else if (mark.kind === 'command-end' || mark.kind === 'prompt-start') {" "      } else if (mark.kind === 'prompt-start') {" 'is idle for the host to say once the end mark or a later prompt has come'
+run prompt-does-not-end "      } else if (mark.kind === 'command-end' || mark.kind === 'prompt-start') {" "      } else if (mark.kind === 'command-end') {" 'is idle for the host to say once the end mark or a later prompt has come'
+run gone-is-busy "return channels.isGone(error) ? IDLE : { state: 'busy' };" "return { state: 'busy' };" 'says idle when the host says the terminal is gone'
+exit $BAD

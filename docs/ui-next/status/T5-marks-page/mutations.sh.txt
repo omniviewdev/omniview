@@ -13,6 +13,7 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 # control name | file | python expression that makes the fault: (old, new)
+BAD=0
 run() {
   name=$1 file=$2 old=$3 new=$4
   # ONLY="name name" runs those controls alone.
@@ -25,13 +26,15 @@ s = open(p).read()
 assert old in s, "the fault does not apply: " + old
 open(p, 'w').write(s.replace(old, new, 1))
 PY
-  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; return; }
+  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; BAD=1; return; }
   printf '{"Replace":{"%s":"%s"}}' "$ROOT/$file" "$WORK/mut.go" > "$WORK/overlay.json"
-  caught=$(go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1)
-  if echo "$caught" | grep -q '^--- FAIL'; then c1=RED; else c1=GREEN; fi
-  off=$(TERMINAL_CHANNEL_CONTROL_OFF=$name go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1)
-  if echo "$off" | grep -q '^--- FAIL'; then c2=RED; else c2=GREEN; fi
+  # With the guard: the run must FAIL, in a test (not in the build). Guard off: the same fault must PASS.
+  caught=$(go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1); s1=$?
+  off=$(TERMINAL_CHANNEL_CONTROL_OFF=$name go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1); s2=$?
+  if [ $s1 -ne 0 ] && echo "$caught" | grep -q '^--- FAIL'; then c1=RED; else c1=GREEN-OR-BROKEN; fi
+  if [ $s2 -eq 0 ]; then c2=GREEN; else c2=RED-OR-BROKEN; fi
   echo "CONTROL $name: with the guard $c1 (want RED), guard off $c2 (want GREEN)"
+  if [ "$c1" != RED ] || [ "$c2" != GREEN ]; then BAD=1; fi
 }
 
 run forged-dropped backend/pkg/terminal/channel_marks.go 'if m.Kind == marks.KindCwd && m.Trust != marks.TrustNonce {
@@ -45,10 +48,10 @@ run resume-marks,resume-marks-after backend/pkg/terminal/channel_serve.go 'if fr
 		return start
 	}' ''
 run forged-start-not-busy backend/pkg/terminal/channel_marks.go 'if !ok || rec.Trust != marks.TrustNonce {' 'if !ok {'
-run busy-from-marks,ready-busy-from-marks backend/pkg/terminal/channel_marks.go 'rec, running := s.verifiedRunning()
-	if !running {' 'rec, running := s.verifiedRunning()
-	if true || !running {'
+run busy-from-marks,ready-busy-from-marks backend/pkg/terminal/channel_marks.go 'if _, running := s.verifiedRunning(); !running {' 'if _, running := s.verifiedRunning(); true || !running {'
 run no-integration-no-marks backend/pkg/terminal/manager.go 'if !started.nonce.IsZero() {' 'if true {'
 run forged-not-in-record backend/pkg/terminal/channel_marks.go 'if rec.CwdTrust == marks.TrustNonce {
 		c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()
 	}' 'c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()'
+run prompt-ends-running backend/pkg/terminal/marks_store.go 'PromptEndsCommand: true' 'PromptEndsCommand: false'
+exit $BAD
