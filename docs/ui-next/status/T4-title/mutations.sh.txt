@@ -90,6 +90,6 @@ unit no-title-no-program $T 'if text == "" {
 		program = false
 	}' '' TestTheTrackerStatesAChangeOnlyWhenThePairChanges
 unit invalid-utf8-collapses $T 'strings.ToValidUTF8(string(raw), "\ufffd")' 'string(raw)' TestACleanTitleHasNoControl
-unit cf-characters-stay $T "case unicode.Is(unicode.Cf, r) && r != '\u200d':" 'case false:' TestACleanTitleHasNoControl
+unit cf-characters-stay $T "case unicode.Is(unicode.Cf, r) && r != '\u200d' && r != '\u200c':" 'case false:' TestACleanTitleHasNoControl
 unit fillers-stay $T "case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0' || r == '\u2800':" 'case false:' TestACleanTitleHasNoControl
 exit $BAD

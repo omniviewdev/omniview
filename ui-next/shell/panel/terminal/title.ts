@@ -5,7 +5,7 @@
 export const MAX_TITLE_BYTES = 256;
 
 /** What a title never holds: controls (C0, DEL, C1), line and paragraph separators, invisible and bidirectional format characters (all of Cf but the joiner of an emoji sequence) and the fillers. */
-const NOT_IN_A_TITLE = /[\p{Cc}\u2028\u2029\u115f\u1160\u3164\uffa0\u2800]|(?!\u200d)\p{Cf}/gu;
+const NOT_IN_A_TITLE = /[\p{Cc}\u2028\u2029\u115f\u1160\u3164\uffa0\u2800]|(?![\u200c\u200d])\p{Cf}/gu;
 
 /** A UTF-16 unit of a surrogate pair that has no partner. */
 const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;

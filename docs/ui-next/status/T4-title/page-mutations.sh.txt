@@ -125,11 +125,11 @@ run unpinned-tab-keeps-the-name "ui-next/shell/panel/terminal/TerminalSessions.t
   'names the tab by the program again when the person clears'
 
 run model-keeps-invisible-characters "ui-next/shell/core/panel/sessions.ts" \
-  's#\|\(\?!\\u200d\)\\p\{Cf\}##' \
+  's#\|\(\?!\[\\u200c\\u200d\]\)\\p\{Cf\}##' \
   'drops zero-width and invisible characters from a title|is the same for a name of nothing but invisible|cuts the title as a title is cut'
 
 run feed-keeps-invisible-characters "ui-next/shell/panel/terminal/title.ts" \
-  's#\|\(\?!\\u200d\)\\p\{Cf\}##' \
+  's#\|\(\?!\[\\u200c\\u200d\]\)\\p\{Cf\}##' \
   'says no title for one of zero-width and invisible characters|says no title for one that is empty once cleaned|is bounded and clean'
 
 run toolbar-rename-ignores-held "ui-next/shell/panel/terminal/TerminalBody.tsx" \

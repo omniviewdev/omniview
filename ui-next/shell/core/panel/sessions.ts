@@ -118,7 +118,7 @@ export function setSessionState(state: PanelState, id: SessionId, change: StateC
 }
 
 /** Characters a title never holds: controls (C0, DEL, C1), line and paragraph separators, format characters that draw nothing or reorder (zero-width, bidirectional, the tags: all of Cf but the joiner an emoji sequence is made of) and the fillers. A title is drawn on one line as text, and nothing in it may carry an escape sequence or reorder the tab's words. */
-const NOT_IN_A_TITLE = /[\p{Cc}\u2028\u2029\u115f\u1160\u3164\uffa0\u2800]|(?!\u200d)\p{Cf}/gu;
+const NOT_IN_A_TITLE = /[\p{Cc}\u2028\u2029\u115f\u1160\u3164\uffa0\u2800]|(?![\u200c\u200d])\p{Cf}/gu;
 
 /** A title as the model keeps it: the words of `text` without what a title never holds. */
 const titleText = (value: unknown): string => (typeof value === 'string' ? text(value.replaceAll(NOT_IN_A_TITLE, '')) : '');

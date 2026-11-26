@@ -22,7 +22,7 @@ type markStore struct {
 	scanner *marks.Scanner
 	items   []marks.Mark
 	scratch []marks.Mark
-	// promptEnd is the offset after the last prompt-start mark: a title set after it was set after the prompt began.
+	// promptEnd is the offset after the last input-start mark (the end of the prompt, PS1 included, which may set a title of its own): a title set after it was set after the prompt was drawn.
 	promptEnd uint64
 }
 
@@ -41,7 +41,7 @@ func (st *markStore) feed(p []byte) {
 		if m.Kind == marks.KindCwd && m.Trust != marks.TrustNonce {
 			continue
 		}
-		if m.Kind == marks.KindPromptStart {
+		if m.Kind == marks.KindInputStart {
 			st.promptEnd = m.EndOffset
 		}
 		st.items = append(st.items, m)
