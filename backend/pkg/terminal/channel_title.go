@@ -90,6 +90,10 @@ func (s *session) settleTitle() {
 	}
 	running, known := s.programRuns()
 	s.outMu.Lock()
+	if tracker.has && s.ring.marks != nil && tracker.pendingAt <= s.ring.marks.promptEnd {
+		// The title was drawn at or before the end of the prompt (PS1 sets one): it is the shell's, whatever command starts in the same read. A title after the prompt is the command's.
+		running, known = false, true
+	}
 	changed := tracker.settle(running, known)
 	s.outMu.Unlock()
 	if !changed {

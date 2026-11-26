@@ -20,7 +20,7 @@
 
 ## Checks run
 
-See the last section, filled at the end.
+Linux amd64, Go 1.27.4, load average 5 to 10. Passed on head after the review fixes: Go `-race` of `backend/pkg/terminal/...` and `backend/pkg/plugin/exec/...`; golangci-lint v2.15.0 CI form (0 issues); `tsc` app and test; eslint of `ui-next/shell/core/panel` and `ui-next/shell/panel`; vitest of `ui-next/shell/panel` (3084) and `core/panel` (the two `fuzz.test.ts` tests time out at 5 s under load, and fail the same at the scaffold commit `808365e08`); both controls scripts (every control as wanted). Seam `terminal-core,terminal-restart,terminal-channel,terminal-find`, both engines: passed (before the review fixes; the lead reran it). Probe `terminal`: `words.toolbar` fixed to the toolbar with Rename session; the 10 hidden-panel timing controls (`hidden.longtask`, `hidden.work`) fail under load.
 
 ## Controls
 
@@ -29,6 +29,7 @@ See the last section, filled at the end.
 
 ## Not verified / not done
 
+- Kit `verify` (`pnpm --filter @omniviewdev/kit run verify`): NOT run for this step. No file of `packages/kit/` changed; the step touches `ui-next/` only. T4-here recorded that `verify` fails by 5 s timeouts in untouched kit files under load, so a run here would not be a clean answer either. Not claimed.
 - The seam scenario `r6` and the probe sections for the title, the rename and the reload: reserved for step 6 of the issue. The seam's frame table knows `0x8c` (a real zsh or bash that sets its own title would otherwise be an unknown frame). The fixture host (`terminal-host.mjs`) does not speak the title frame.
 - A real zsh and bash end to end on the title (a program that prints `ESC ] 0 ; title BEL`), macOS, Windows.
 - Independent review: the Go half scans program output in the pump's step and adds a frame; the page half is CodeRabbit's.

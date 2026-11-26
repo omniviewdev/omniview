@@ -112,9 +112,10 @@ run title-keeps-control-characters "ui-next/shell/core/panel/sessions.ts" \
   's/text\(value\.replaceAll\(NOT_IN_A_TITLE, ..\)\)/text(value)/' \
   'cuts the title as a title is cut, and drops control characters|drops control characters from a title the owner gives too'
 
-run unchanged-name-pins "ui-next/shell/panel/SessionTabs.tsx" \
-  's/title\.trim\(\) !== store\.getSnapshot\(\)\.sessions\[session\]\?\.title/title.trim() !== undefined/' \
-  'pins the name the person gave'
+run unchanged-name-pins "ui-next/shell/panel/SessionRename.tsx" \
+  's/onDone\(value === initial \? null : value, refocus\);/onDone(value, refocus);/' \
+  'pins the name the person gave|does not pin the title an unedited field started with'
+
 
 run clearing-the-name-does-not-unpin "ui-next/shell/core/panel/sessions.ts" \
   's/if \(cut === .. && pinned && session\.titlePinned === true\) \{/if (false) {/' \

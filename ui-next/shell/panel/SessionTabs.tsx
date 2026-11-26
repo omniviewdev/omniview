@@ -280,8 +280,8 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
           onRename={rename}
           onRenamed={(session, title, refocus) => {
             renames.clear();
-            // A name left as it was is not a name the person gave: only a changed one is theirs, and pinned.
-            if (title !== null && title.trim() !== store.getSnapshot().sessions[session]?.title) {
+            // A field left as it was reports nothing (`SessionRename`): any other value is the person's, an empty one clears their name.
+            if (title !== null) {
               store.renameSession(session, title);
             }
 

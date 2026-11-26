@@ -228,18 +228,12 @@ func droppedInTitle(r rune) bool {
 	case unicode.IsControl(r):
 		return true
 	case unicode.Is(unicode.Cf, r) && r != '\u200d' && r != '\u200c':
-		// Zero-width and invisible format characters (U+200B, U+2060, U+FEFF, U+00AD, the tags), but for the joiners (U+200D of an emoji sequence, U+200C of Persian and Hindi spellings).
+		// Zero-width, invisible and bidirectional format characters (U+200B, U+2060, U+FEFF, U+00AD, U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069, the tags), but for the joiners (U+200D of an emoji sequence, U+200C of Persian and Hindi spellings).
 		return true
 	case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0' || r == '\u2800':
 		// Fillers and the blank braille cell: they draw as nothing.
 		return true
 	case r == '\u2028' || r == '\u2029':
-		return true
-	case r == '\u061c' || r == '\u200e' || r == '\u200f':
-		return true
-	case r >= '\u202a' && r <= '\u202e':
-		return true
-	case r >= '\u2066' && r <= '\u2069':
 		return true
 	}
 	return false
