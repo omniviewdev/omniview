@@ -46,6 +46,8 @@ export type ExecFeedOptions = {
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
   /** How long the host keeps a terminal this feed made once no stream holds it, in milliseconds. Absent: the host's own. */
   readonly leaseMs?: number | undefined;
+  /** The directory in `launch` is one an ended terminal started in: if the host refuses it (it was removed since), the terminal is made again in the host's default directory, with the note. */
+  readonly homeIfMissing?: boolean | undefined;
   /** The terminal starts in the home directory because the directory it was to start in was not known: the status says so until the first thing is typed (`startNote`). Absent: it was asked for nowhere in particular, or for a directory. */
   readonly startNote?: TerminalFeedSnapshot['startNote'] | undefined;
   /** The shell, directory and environment the terminal is made with (`ChannelLaunch`). Absent: the host's own choices. */

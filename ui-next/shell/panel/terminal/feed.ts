@@ -143,7 +143,7 @@ export type TerminalFeedHandle = {
    */
   readonly ack: (bytes: number) => void;
   /** What the user typed or pasted. Delivered in order; ignored once the session is over. */
-  readonly write: (text: string) => void;
+  readonly write: (text: string, options?: { readonly reply?: boolean }) => void;
   /**
    * How many calls of `write` the user's typing has made so far: it only goes up, and counts what the feed took (typing it ignored, and a call with nothing typed, are not counted). A close that asked what runs in the
    * session compares it before and after the answer: `idle` is true of the moment the host looked, and what was typed since may have started a program. A producer that does not count leaves it out, and then its `idle`

@@ -94,6 +94,13 @@ describe('the target of "New terminal here"', () => {
     expect(made().launch).toEqual({ cwd: '/srv/app' });
   });
 
+  it('falls back to home, with the note, when the directory an ended terminal started in is gone: only a start directory can have been removed since', () => {
+    localHereTarget({ state: 'known', path: '/srv/app', source: 'start' }, channels()).open();
+    expect(made().homeIfMissing).toBe(true);
+    localHereTarget({ state: 'known', path: '/usr', source: 'shell' }, channels()).open();
+    expect(made().homeIfMissing).toBeUndefined();
+  });
+
   it('asks for no directory when the terminal it was opened from could not say where it is, so that the host starts it in home, and says so in the status', () => {
     localHereTarget({ state: 'unknown', reason: 'query-failed' }, channels()).open();
     expect(made()).not.toHaveProperty('launch');

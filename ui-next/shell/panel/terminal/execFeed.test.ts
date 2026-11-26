@@ -27,6 +27,7 @@ type RigOptions = {
   readonly leaseMs?: number;
   readonly launch?: { readonly command: readonly string[]; readonly cwd?: string; readonly env?: Readonly<Record<string, string>> };
   readonly startNote?: 'home-for-unknown-directory';
+  readonly homeIfMissing?: boolean;
   readonly delays?: readonly number[];
 };
 
@@ -51,6 +52,7 @@ function rig(options: RigOptions = {}): Rig {
     ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }),
     ...(options.launch === undefined ? {} : { launch: options.launch }),
     ...(options.startNote === undefined ? {} : { startNote: options.startNote }),
+    ...(options.homeIfMissing === true ? { homeIfMissing: true } : {}),
     ...(options.delays === undefined ? {} : { reconnectDelaysMs: options.delays }),
   });
   let wakes = 0;
@@ -2596,5 +2598,54 @@ describe('a terminal that started in the home directory because the directory it
     expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
     r.feed.write('a');
     expect(r.wakes() - before).toBe(1);
+  });
+});
+
+describe('a terminal opened in the directory an ended terminal started in, which was removed since (`homeIfMissing`)', () => {
+  const refused = () => Object.assign(new Error('cwd must be a directory that exists'), { code: 'INVALID_REQUEST' });
+  const note = 'home-for-unknown-directory';
+
+  it('is made again with no directory when the host refuses the directory, with the note, and fails nothing', async () => {
+    let calls = 0;
+    const r = await connecting({
+      homeIfMissing: true,
+      launch: { command: [], cwd: '/gone' },
+      channels: {
+        create: (id) => {
+          calls += 1;
+          if (calls === 1) {
+            throw refused();
+          }
+
+          return { id, shell: { path: '/bin/zsh', name: 'zsh' } };
+        },
+      },
+    });
+    expect(r.channels.of('create').map((call) => call.cwd)).toEqual(['/gone', undefined]);
+    r.stream().ready();
+    expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh', startNote: note });
+  });
+
+  it('fails as before for a feed that did not ask for it: a profile\'s directory that is missing is the person\'s to read', async () => {
+    const r = await connecting({ launch: { command: [], cwd: '/gone' }, channels: { create: () => { throw refused(); } } });
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.channels.of('create')).toHaveLength(1);
+  });
+
+  it('does not make it again for another refusal', async () => {
+    const r = await connecting({ homeIfMissing: true, launch: { command: [], cwd: '/gone' }, channels: { create: () => { throw Object.assign(new Error('x'), { code: 'SHELL_UNAVAILABLE' }); } } });
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.channels.of('create')).toHaveLength(1);
+  });
+});
+
+describe('what clears the note of a terminal that started in the home directory (`startNote`)', () => {
+  it('is what the person typed, and not what the emulator answered by itself', async () => {
+    const r = await connecting({ startNote: 'home-for-unknown-directory' });
+    r.stream().ready();
+    r.feed.write('\u001b[1;1R', { reply: true });
+    expect(r.feed.getSnapshot().startNote).toBe('home-for-unknown-directory');
+    r.feed.write('ls');
+    expect(r.feed.getSnapshot().startNote).toBeUndefined();
   });
 });
