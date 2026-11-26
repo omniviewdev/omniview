@@ -411,3 +411,19 @@ describe('a restart: the screen goes on with the next feed (#695 step 5)', () =>
     expect(screen.commands.state().rerun).toBeUndefined();
   });
 });
+
+describe('a restart while the old feed\'s marks are still queued (#695 step 5)', () => {
+  it('keeps a mark in an old write that the emulator has not parsed at the restart with the old terminal: its command ends as incomplete, and does not run in the new one', async () => {
+    const { feed, frame, engine, screen } = await rig({ auto: false });
+    feed.push('$ make\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make'))]);
+    frame();
+    expect(screen.commands.state().count, 'the old marks are still queued').toBe(0);
+    feed.set({ state: 'ended', exit: { signal: 'SIGKILL' } });
+    screen.continueWith(fakeTerminalFeed({ state: 'starting', takeReplay: true }));
+    engine().complete();
+    engine().complete();
+    engine().complete();
+    expect(screen.commands.state().count).toBe(1);
+    expect(screen.commands.state().rerun, 'nothing runs in the new terminal').toBeUndefined();
+  });
+});
