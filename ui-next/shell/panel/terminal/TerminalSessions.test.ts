@@ -621,6 +621,14 @@ describe('naming the tab by what the producer says it runs', () => {
     expect(store.getSnapshot().sessions[id]?.title).toBe('vim');
   });
 
+  it('goes on following the program when the title the target opened with is longer than the panel keeps: that title is not the person\'s', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: named, title: 'x'.repeat(300) });
+    const id = sessions.open(given)?.id ?? '';
+    feed.set({ program: 'vim' });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('vim');
+  });
+
   it('stops a running session: its process is closed, the tab stays and says it ended, and nothing is left to stop', () => {
     const { store, sessions, target } = harness();
     const { target: given, feed } = target();

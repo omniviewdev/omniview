@@ -177,6 +177,17 @@ describe('the menu of a session tab', () => {
     expect(stop).toHaveBeenCalledWith(Object.keys(store.getSnapshot().sessions)[1]);
   });
 
+  it('does not stop a session that failed while the menu was open: the failure stays', () => {
+    const stop = vi.fn();
+    const store = createPanelStore();
+    mountMenu(['a', 'b'], store, () => stop);
+    const menu = openOn('b');
+    const id = Object.keys(store.getSnapshot().sessions)[1] ?? '';
+    store.setSessionState(id, { state: 'failed' });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Stop session' }));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['a session that is not running', true],
     ['a session the host holds nothing of', false],

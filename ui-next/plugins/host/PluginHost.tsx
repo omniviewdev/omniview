@@ -1070,12 +1070,12 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   useEffect(() => logs.attach(), [logs]);
   // The terminals are the host's too: each process is released with its session, with its plugin, and with the window.
   useEffect(() => terminals.attach(), [terminals]);
-  // The items of the native menu (`backend/menus`) arrive as the app event `menu/command`, with a host command id, at every window: the one that has the focus runs the command as the palette runs a chosen row, unless the palette is open (a modal keeps
-  // the window's chords from what is behind it), and says why when it cannot. A browser tab has no window service and listens to nothing.
+  // The items of the native menu (`backend/menus`) arrive as the app event `menu/command`, with a host command id, at every window: the one that has the focus runs the command as the palette runs a chosen row, unless the palette or the question a close of a running terminal asks is open (a modal keeps
+  // the window's chords from what is behind it: the same condition that holds the toasts' timers), and says why when it cannot. A browser tab has no window service and listens to nothing.
   useEffect(
     () =>
       windows?.on('menu/command', (id) => {
-        if (typeof id !== 'string' || !document.hasFocus() || host.palette.store.getSnapshot().open) {
+        if (typeof id !== 'string' || !document.hasFocus() || host.palette.store.getSnapshot().open || host.terminals.modal.open()) {
           return;
         }
 

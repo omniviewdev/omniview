@@ -86,7 +86,7 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
   });
   report();
 
-  // The tab leaves only once `send` has put it in the other window: whatever goes wrong leaves it here. A `send` that answers `false` sent nothing, and the tab stays.
+  // The tab leaves only once `send` has put it in the other window: whatever goes wrong leaves it here. A `send` that answers `false` sent nothing, and the tab stays, as does one that changed (or became unsaved) while `send` waited.
   const leave = (id: TabId, guard: Guard | undefined, send: (tab: PersistedTab) => Promise<unknown>): ReturnType<TabWindows['moveToNew']> => {
     const tab = tabs.serialise().tabs.find((saved) => saved.id === id);
     if (tab === undefined) {
@@ -97,7 +97,19 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
       return { status: 'confirm', action: 'close', tabs: [id] };
     }
 
-    send(tab).then((sent) => (sent === false ? undefined : tabs.detach(id, { confirmed: true }))).catch(warn('the tab could not be moved'));
+    const sent = JSON.stringify(tab);
+    send(tab).then((answer) => {
+      if (answer === false) {
+        return;
+      }
+
+      if (JSON.stringify(tabs.serialise().tabs.find((saved) => saved.id === id)) !== sent || tabs.getSnapshot().tabs[id]?.flags.unsaved) {
+        warn('the tab changed while it was moved, and stays')(id);
+        return;
+      }
+
+      tabs.detach(id, { confirmed: true });
+    }).catch(warn('the tab could not be moved'));
     return { status: 'done' };
   };
 
@@ -141,7 +153,7 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
         const moved = leave(id, undefined, async (tab) => {
           const { accepted, targetWindow } = await run(async () => service.endDrag(sessionId, x, y));
           if (accepted) {
-            return service.focus(targetWindow);
+            return service.focus(targetWindow).catch(warn('the window could not be focused'));
           }
 
           return targetWindow === '' ? tearOff(tab, { x, y }) : false;
@@ -253,7 +265,7 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
     moveToNew: (id, guard) => leave(id, guard, launch),
     moveTo: (target, id, guard) => leave(id, guard, async (tab) => {
       await deliver(target, tab);
-      return service.focus(target);
+      return service.focus(target).catch(warn('the window could not be focused'));
     }),
     dragOut,
     receive: (next) => {
@@ -279,10 +291,10 @@ export function withWindows(tabs: TabsStore, panel: PanelStore, service: WindowS
     return moved.status === 'confirm' ? moved : result;
   };
 
+  const stranding = () => Object.values(panel.getSnapshot().sessions).some((session) => session.state === 'starting' || session.state === 'running');
   tabs.subscribeTo((state) => state.order.length === 0, (empty) => {
-    const live = Object.values(panel.getSnapshot().sessions).some((session) => session.state === 'starting' || session.state === 'running');
-    if (empty && !live) {
-      void own().then(async (name) => (name !== MAIN_WINDOW && tabs.getSnapshot().order.length === 0 ? service.close(name) : undefined)).catch(warn('the window could not be closed'));
+    if (empty && !stranding()) {
+      void own().then(async (name) => (name !== MAIN_WINDOW && tabs.getSnapshot().order.length === 0 && !stranding() ? service.close(name) : undefined)).catch(warn('the window could not be closed'));
     }
   });
 

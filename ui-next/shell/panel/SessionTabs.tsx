@@ -181,6 +181,8 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
         }
       },
     });
+    // Read when asked and again when chosen: a session that failed or ended while the menu was open is not stopped, which would overwrite what it says.
+    const stoppable = (id: SessionId): boolean => stopOf?.(id) !== undefined && ['starting', 'running'].includes(store.getSnapshot().sessions[id]?.state ?? '');
     return [
       {
         kind: 'action',
@@ -198,9 +200,11 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
             kind: 'action' as const,
             id: 'stop',
             label: 'Stop session',
-            disabled: stopOf(key) !== undefined && ['starting', 'running'].includes(store.getSnapshot().sessions[key]?.state ?? '') ? false : 'The session isn\'t running.',
+            disabled: stoppable(key) ? false : 'The session isn\'t running.',
             onSelect: () => {
-              stopOf(key)?.();
+              if (stoppable(key)) {
+                stopOf(key)?.();
+              }
             },
           },
         ]),

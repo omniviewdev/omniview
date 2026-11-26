@@ -623,6 +623,8 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
           warn(`[panel] ${plugin} could not open a terminal for ${targetId}: ${opened.message}`);
           return undefined;
         }
+
+        entry.title = store.getSnapshot().sessions[id]?.title ?? entry.title;
       }
 
       // The panel tells its listeners as the session opens, and one of them may have closed it (the registry released the entry, and with it the feed): nothing is followed or asked for then.

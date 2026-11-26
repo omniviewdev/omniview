@@ -261,6 +261,17 @@ describe('a window whose last tab leaves (S30)', () => {
     expect(service.close).not.toHaveBeenCalled();
   });
 
+  it('stays open when a session starts before the window knows its name: the sessions are read again just before the window closes', async () => {
+    const name = Promise.withResolvers<string>();
+    const panel = createPanelStore();
+    const { h, service } = world('window-2', panel, undefined, undefined, undefined, async () => name.promise);
+    h.store.close(h.current());
+    panel.openSession({ tool: 'terminal', plugin: 'host', title: 'zsh', state: 'running' });
+    name.resolve('window-2');
+    await settled();
+    expect(service.close).not.toHaveBeenCalled();
+  });
+
   it('asks the service for its name again after it failed once: a rejection is not kept', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const name = vi.fn<WindowService['name']>().mockRejectedValueOnce(new Error('not yet')).mockResolvedValue('window-2');
@@ -325,6 +336,25 @@ describe('moving a tab to a new window', () => {
     expect(checkInvariants(h.state())).toEqual([]);
   });
 
+  it.each([
+    ['navigated', (h: Harness, id: string) => h.store.navigate(id, cloudPage('snapshots'))],
+    ['became unsaved', (h: Harness, id: string) => h.store.setUnsaved(id, true)],
+  ])('keeps the tab, and warns, when it %s while the window was opening: what is there is not what was sent', async (_how, change) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { h, id, service, tabs } = moving();
+    const exists = Promise.withResolvers<string>();
+    service.open.mockReturnValue(exists.promise);
+
+    tabs.windows?.moveToNew(id);
+    await settled();
+    change(h, id);
+    exists.resolve('window-2');
+    await settled();
+
+    expect(h.ids()).toContain(id);
+    expect(warn).toHaveBeenCalled();
+  });
+
   it('asks first when the tab has unsaved changes, and opens nothing', () => {
     const { h, id, service, tabs } = moving();
     h.store.setUnsaved(id, true);
@@ -363,6 +393,19 @@ describe('moving a tab to another window', () => {
     expect(here.service.focus).toHaveBeenCalledExactlyOnceWith('window-2');
     expect(checkInvariants(there.h.state())).toEqual([]);
     expect(checkInvariants(here.h.state())).toEqual([]);
+  });
+
+  it('leaves this window once the other has the tab, though focusing the other fails: that is only a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { here, there, id } = two();
+    here.service.focus.mockRejectedValue(new Error('no focus'));
+
+    here.tabs.windows?.moveTo('window-2', id);
+    await settled();
+
+    expect(there.h.ids()).toContain(id);
+    expect(here.h.ids()).not.toContain(id);
+    expect(warn).toHaveBeenCalled();
   });
 
   it('changes nothing in a window the delivery is not addressed to, and the sender keeps its tab', async () => {

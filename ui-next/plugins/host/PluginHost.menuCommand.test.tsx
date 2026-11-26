@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, PANEL_HOST, type TerminalsOptions } from '../../shell';
@@ -139,6 +139,22 @@ describe('the menu\'s commands in a native window', () => {
     world.emit('host.panel.toggle');
 
     expect(panel.getSnapshot().open).toBe(false);
+  });
+
+  it('is ignored while the question of closing a running terminal is open: nothing runs behind that modal either', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const world = service();
+    const { loader, panel } = mount(world.windows);
+    world.emit('host.terminal.new');
+    await waitFor(() => {
+      expect(loader.engines).toHaveLength(1);
+    });
+    fireEvent.keyDown(document.querySelector('[data-shell-part="sessionTab"] [role="tab"]') ?? document.body, { key: 'Delete' });
+    expect(await screen.findByRole('alertdialog')).toBeTruthy();
+
+    world.emit('host.panel.toggle');
+
+    expect(panel.getSnapshot().open).toBe(true);
   });
 
   it('says why a command cannot run, through the polite live region, and says nothing for a payload that is no id', async () => {
