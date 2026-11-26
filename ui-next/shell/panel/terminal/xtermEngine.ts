@@ -643,6 +643,16 @@ export function createXtermEngine(options: EngineOptions): Engine {
       addon.activate(terminal);
     },
 
+    mark: () => undefined,
+    decorate: () => undefined,
+    cursor: () => ({ line: 0, column: 0 }),
+    viewport: () => ({ top: 0, rows: terminal.rows, atBottom: true }),
+    lines: () => '',
+    selectLines: () => undefined,
+    scrollTo: () => undefined,
+    scrollToBottom: () => undefined,
+    alternate: () => false,
+
     dispose: () => {
       disposed = true;
       links?.dispose();
