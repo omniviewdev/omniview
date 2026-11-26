@@ -19,6 +19,16 @@ export type TerminalMenuActions = {
   readonly find: () => void;
   /** Opens a new terminal in the directory of this one, as the host says it is. Absent: the menu has no such item (a window that cannot open a terminal). */
   readonly newHere?: (() => void) | undefined;
+  /** What the commands of the shell's marks offer (issue #694 step 5): go to the previous and the next command, select and copy a command's output, type a command again. Absent: the menu has no such items. */
+  readonly commands?: TerminalMenuCommandActions | undefined;
+};
+
+export type TerminalMenuCommandActions = {
+  readonly previous: () => void;
+  readonly next: () => void;
+  readonly selectOutput: () => void;
+  readonly copyOutput: () => void;
+  readonly rerun: () => void;
 };
 
 /** What the terminal is now, as the menu is opened. */
@@ -29,6 +39,8 @@ export type TerminalMenuState = {
   readonly input: boolean;
   /** The terminal can say where it is (its feed has a `directory`): "New terminal here" has a directory to start in. Read only when the menu has a `newHere` action. */
   readonly here?: boolean | undefined;
+  /** What the screen holds of commands now, read only when the menu has `commands` actions: how many there are, whether the one the actions are for printed output, and why it cannot be typed again (`undefined`: it can). */
+  readonly commands?: { readonly count: number; readonly output: boolean; readonly rerun: string | undefined } | undefined;
 };
 
 /**
@@ -36,7 +48,7 @@ export type TerminalMenuState = {
  * does Paste when the terminal takes no input, and New terminal here when the terminal cannot say where it is. Paste and Select all have no glyph yet: the kit has none for either, and an item with none keeps its label on the same track
  * as the ones that have.
  */
-export function terminalMenu(actions: TerminalMenuActions, { selected, input, here }: TerminalMenuState): readonly MenuItem[] {
+export function terminalMenu(actions: TerminalMenuActions, { selected, input, here, commands }: TerminalMenuState): readonly MenuItem[] {
   // No item passes a `shortcut`, the hint the kit draws at the end of a row, though the terminal takes the chords (`keys.ts`). The kit's `MenuPanel` (packages/kit/src/components/Menu/MenuPanel.tsx) names an item with
   // `aria-label={entry.label}` and leaves the drawn shortcut out of that name, so an item that draws one fails Label in Name (WCAG 2.5.3, axe `label-content-name-mismatch`): the terminal's probe measured it, and found that hiding the
   // shortcut from the accessibility tree does not help where not drawing it does. Add the hints back, written with `chordText` as the Find button's tip is, when the kit names an item together with its shortcut.
@@ -48,6 +60,7 @@ export function terminalMenu(actions: TerminalMenuActions, { selected, input, he
     { kind: 'action', id: 'clear', label: 'Clear', icon: 'eraser', onSelect: actions.clear },
     { kind: 'action', id: 'find', label: 'Find', icon: 'search', onSelect: actions.find },
   ];
+  void commands;
   const { newHere } = actions;
   if (newHere !== undefined) {
     // It does not depend on the input: a terminal that ended is still a place to open a new one from (the directory it started in).
