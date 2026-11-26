@@ -169,7 +169,7 @@ describe('the capability and the host\'s window service', () => {
     const socket = world.sockets.at(-1);
     expect(socket).toBeDefined();
     const attach = JSON.parse(new TextDecoder().decode((socket?.sent[0] ?? new Uint8Array()).subarray(1))) as unknown;
-    expect(attach).toEqual({ v: 2, cap: CAP, from_offset: 7 });
+    expect(attach).toEqual({ v: 2, marks: 1, cap: CAP, from_offset: 7 });
   });
 
   it('is forgotten from the tab\'s storage when the terminal is closed', async () => {
