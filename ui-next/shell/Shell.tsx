@@ -35,6 +35,8 @@ export type ShellProps = {
   readonly tabs: TabsStore;
   /** Draws the page of one tab. Called for every tab the model keeps mounted, so a hidden page keeps its state. */
   readonly renderPage: (tab: PageTab) => ReactNode;
+  /** What a tab's page is drawn from scratch for (`PageHost`): by default its place, so a new route is a new page. A page that keeps part of its route in its own state gives a key without that part, and is given the new location instead of being drawn again. */
+  readonly pageKey?: ((tab: PageTab) => string) | undefined;
   /** What the island shows while no tab is on screen: the plugins are loading, or none is installed. */
   readonly empty: ReactNode;
   /**
@@ -86,7 +88,7 @@ export type ShellProps = {
  * Every region is drawn from the registration in the first commit and sized by CSS alone, so nothing measures and nothing shifts; a frame that is pending reserves the regions a
  * plugin's frame has. State is in ./core and ./Tree; see README.md for the contract and the decisions.
  */
-export function Shell({ registration, tabs, renderPage, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette, notices, settings }: ShellProps) {
+export function Shell({ registration, tabs, renderPage, pageKey, empty, onChoose, onSidebarOpen, onSelectRail, onNewTab, onCloseWindow, panel, palette, notices, settings }: ShellProps) {
   const { plugin, rail, sidebar, scope, layout = 'document', pending = false, held = false } = registration;
   const ids = useId();
   const prefix = `${ids}-tab`;
@@ -113,7 +115,7 @@ export function Shell({ registration, tabs, renderPage, empty, onChoose, onSideb
             {hasLane ? <ScopeLane label={scope === undefined || scope.length === 0 ? undefined : `${plugin.name} scope`} faces={scope ?? []} /> : null}
             {/* A document page that scrolls is a tab stop of its own, as the tabs pattern asks of a panel that may hold no focusable content: a page of text
                 scrolls from the keyboard. A pane scrolls nothing here: its own region is the stop. */}
-            <PageHost renderPage={renderPage} empty={empty} layout={layout} prefix={prefix} panelId={panelId} />
+            <PageHost renderPage={renderPage} pageKey={pageKey} empty={empty} layout={layout} prefix={prefix} panelId={panelId} />
           </main>
         </div>
         {panel === undefined ? null : <Panel platform={platform} />}

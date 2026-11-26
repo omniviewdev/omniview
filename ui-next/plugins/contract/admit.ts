@@ -490,6 +490,18 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
       problems.push('sidebar.useNodes is not a function');
     }
 
+    // What the sidebar is called on a page that is read in no connection (KL7): each member that is given is a name, and one that is left out is the sidebar's own.
+    const scoped = sidebar.pluginScope;
+    if (scoped !== undefined && !isRecord(scoped)) {
+      problems.push('sidebar.pluginScope is not an object');
+    } else if (scoped !== undefined) {
+      for (const member of ['label', 'title'] as const) {
+        if (scoped[member] !== undefined && !isText(scoped[member])) {
+          problems.push(`sidebar.pluginScope.${member} is not a non-empty string`);
+        }
+      }
+    }
+
     checkNodes(sidebar.nodes, 'sidebar.nodes', problems, new Set<string>(), leaves);
   }
 

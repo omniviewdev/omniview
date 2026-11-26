@@ -485,6 +485,31 @@ describe('admit: the custom page and the landing (a minor addition to version 1)
   });
 });
 
+// The landing's seams (KL7) are minor additions on the terms of the sidebar on a landing (the rule is at the head of `v1.ts`): `pluginScope` is a NEW optional member of the sidebar, and `expanded` of a node. A host that predates them never reads either; this one refuses a malformed `pluginScope` by name
+// and keeps `expanded` on a group of what a hook answers.
+describe('admit: the landing\'s seams (KL7, a minor addition to version 1)', () => {
+  it.each([[{ title: 'Connections', label: 'Acme connections' }], [{ title: 'Connections' }], [{ label: 'Acme connections' }], [{}]])('admits what the sidebar is called on a page that is read in no connection, %j, and hands back the plugin\'s own object', (pluginScope) => {
+    const value = contribution({ sidebar: sidebar({ pluginScope }) });
+    const admission = admit(exportsOf(value));
+
+    expect(admission.ok && admission.contribution).toBe(value);
+  });
+
+  it.each([
+    ['a plugin-scope name that is not an object', 'Connections', 'sidebar.pluginScope is not an object'],
+    ['a plugin-scope title that is empty', { title: ' ' }, 'sidebar.pluginScope.title is not a non-empty string'],
+    ['a plugin-scope label that is not text', { label: 3 }, 'sidebar.pluginScope.label is not a non-empty string'],
+  ])('refuses %s, in the words of its own member', (_name, pluginScope, expected) => {
+    expect(problemsOf(contribution({ sidebar: sidebar({ pluginScope }) }))).toEqual([expected]);
+  });
+
+  it('keeps `expanded` on a group of what a hook answers: the gate takes nothing off a group that says it starts open', () => {
+    const nodes: readonly SidebarNodeV1[] = [{ id: 'group', label: 'Group', icon: 'layers', expanded: true, children: [{ id: 'widgets', label: 'Widgets', icon: 'box' }] }];
+
+    expect(openable(nodes, { widgets: {} })).toEqual(nodes);
+  });
+});
+
 // The keywords of a sidebar node (C1e) are a minor addition to version 1, on the terms of the palette's providers (the rule is at the head of `v1.ts`): `keywords` is a NEW optional member of a node, and a host that
 // predates it never reads it. Admission does not read it at all: what a plugin says there, a sidebar hook answers anew on every render, so it is read where it is used (`sidebarKeywords.ts`), and a keyword that is not
 // valid is left out with a problem there, never a reason to refuse a bundle or to lose a node.

@@ -6,9 +6,9 @@
 // Not built yet: type-ahead, PageUp and PageDown, and the windowing and chunked expand-all a catalog of thousands of nodes needs
 // (docs/ui-next/optimisations.md LIB-10 to LIB-15). Rows are plain data and `visibleRows` is O(visible rows), so none of it is foreclosed.
 
-/** What the core needs of a node: an id, and children when it is a group. A screen's own node type is richer; each row hands it back untouched. */
-export type TreeShape<Node> = { readonly id: string; readonly children?: readonly Node[] };
-export type TreeLike = { readonly id: string; readonly children?: readonly TreeLike[] };
+/** What the core needs of a node: an id, children when it is a group, and `expanded` when a group says it starts open. A screen's own node type is richer; each row hands it back untouched. */
+export type TreeShape<Node> = { readonly id: string; readonly children?: readonly Node[]; readonly expanded?: boolean | undefined };
+export type TreeLike = { readonly id: string; readonly children?: readonly TreeLike[]; readonly expanded?: boolean | undefined };
 
 /** One visible row, with what a tree item announces. */
 export type TreeRow<Node extends TreeShape<Node> = TreeLike> = {
@@ -82,6 +82,14 @@ export function revealed<Node extends TreeShape<Node>>(nodes: readonly Node[], o
   }
 
   return result;
+}
+
+/**
+ * The groups on screen that declare they start open (`expanded`) and have not been given that start yet (`seeded`): the ids the tree opens now, and then keeps as given, so that what the user does with a group afterwards is theirs and a later answer that says `expanded` again opens
+ * nothing. A group is on screen when it has a visible row, so one that is inside a closed group is given its start when it first comes into view, and the walk is as long as the rows are (`visibleRows`), not as long as the nodes. A group that is open already is listed too: it has had its start.
+ */
+export function startingOpen<Node extends TreeShape<Node>>(rows: ReadonlyArray<TreeRow<Node>>, seeded: ReadonlySet<string>): readonly string[] {
+  return rows.filter((row) => row.expandable && row.node.expanded === true && !seeded.has(row.id)).map((row) => row.id);
 }
 
 /** Whether an entry or a group with this id is anywhere in the tree. */
@@ -162,9 +170,10 @@ export function press<Node extends TreeShape<Node>>(rows: ReadonlyArray<TreeRow<
 /**
  * What a tree held when it was last on screen: the groups its user had open (every one they opened and did not close, whether or not the nodes hold it now: a plugin's skeleton comes before its data, and a group that is
  * not there yet must not be lost with the first answer), and the current entry it last made sure was in view (`undefined`: none yet). The second is what tells a tree that comes back whether its current entry
- * changed while it was away: only then is the entry brought into view again, so a group the user closed with the current entry inside it stays closed.
+ * changed while it was away: only then is the entry brought into view again, so a group the user closed with the current entry inside it stays closed. `seeded` (KL7) is the groups that were given their start (`startingOpen`): a tree that comes
+ * back opens no group the user closed because its node says `expanded`. Absent: none was given one yet.
  */
-export type TreeRecord = { readonly open: ReadonlySet<string>; readonly shown: string | undefined };
+export type TreeRecord = { readonly open: ReadonlySet<string>; readonly shown: string | undefined; readonly seeded?: ReadonlySet<string> | undefined };
 
 /**
  * What a window remembers of its sidebars' trees while a tree is not on screen, by the key of the tree (the rail entry it belongs to and its name): a plugin that stopped and was loaded again, or a rail that went to

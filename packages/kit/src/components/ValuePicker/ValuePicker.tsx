@@ -66,6 +66,7 @@ export function ValuePicker({ label, options, value, onValueChange, allOption, s
     }
   }
 
+  // The mock's multi-select trigger (`H.valuePicker`, core.js:1811) says "N selected" for one value as for many, "None selected" for an empty set and the all row's name for no narrowing: it never says the one value's label.
   const summary = value.length === 0 ? (allOption ?? 'None selected') : `${value.length} selected`;
   const describedBy = [summaryId, control.describedBy].filter((id) => id !== undefined).join(' ');
 

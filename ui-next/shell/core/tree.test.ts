@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTreeMemory, expandedIds, press, revealed, stopOf, toggled, visibleRows, type TreeLike } from './tree';
+import { createTreeMemory, expandedIds, press, revealed, startingOpen, stopOf, toggled, visibleRows, type TreeLike } from './tree';
 
 // Two groups and a lone entry, one level of nesting deeper in the second group: enough shape for every rule, none of a real screen.
 const nodes: readonly TreeLike[] = [
@@ -80,6 +80,26 @@ describe('revealed', () => {
 
   it('ignores an id that is not a group: only groups are ever open', () => {
     expect([...revealed(nodes, ['beta', 'unknown'], undefined)]).toEqual([]);
+  });
+});
+
+describe('startingOpen (the groups that say they start open, KL7)', () => {
+  const declared: readonly TreeLike[] = [
+    { id: 'alpha', expanded: true, children: [{ id: 'alpha-1' }, { id: 'alpha-inner', expanded: true, children: [{ id: 'alpha-x' }] }] },
+    { id: 'beta', expanded: true },
+    { id: 'gamma', children: [{ id: 'gamma-1' }] },
+    { id: 'delta', expanded: false, children: [{ id: 'delta-1' }] },
+  ];
+  const starting = (open: ReadonlySet<string>, seeded: ReadonlySet<string> = set()) => startingOpen(visibleRows(declared, open), seeded);
+
+  it('lists the groups on screen that say `expanded`, and no entry, no group that does not, and no group that is not on screen yet; a group inside one that is closed comes when it is in view', () => {
+    expect(starting(set())).toEqual(['alpha']);
+    expect(starting(set('alpha'))).toEqual(['alpha', 'alpha-inner']);
+  });
+
+  it('lists none that was given its start already, even one the user has closed since: it has had its start, and what they did is theirs', () => {
+    expect(starting(set('alpha'), set('alpha'))).toEqual(['alpha-inner']);
+    expect(starting(set(), set('alpha'))).toEqual([]);
   });
 });
 

@@ -2,7 +2,7 @@ import { Icon, Status, Text, tip } from '@omniviewdev/kit';
 import { useLayoutEffect, useState, type KeyboardEvent } from 'react';
 import { countText, type CountText } from './core/count';
 import type { ModifierEvent } from './core/tabs';
-import { expandedIds, hasNode, press, revealed, stopOf, toggled, visibleRows, type TreeMemory } from './core/tree';
+import { expandedIds, hasNode, press, revealed, startingOpen, stopOf, toggled, visibleRows, type TreeMemory } from './core/tree';
 import type { ShellAccent, ShellCount, ShellRowStatus, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
 
@@ -143,7 +143,10 @@ function Row({ id, label, icon, count, status, tone, level, position, setSize, e
   );
 }
 
-type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | undefined };
+type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | undefined; readonly seeded: ReadonlySet<string> };
+
+/** The groups that were given their start: none, for a tree that was never on screen under its key. */
+const NO_GROUPS: ReadonlySet<string> = new Set();
 
 /**
  * The tree view of a sidebar: a roving tab stop on the current entry, the WAI-ARIA tree view keys (core/tree.ts holds every rule), and a
@@ -153,7 +156,10 @@ type TreeState = { readonly open: ReadonlySet<string>; readonly stop: string | u
  * it opened, and that entry becomes current. Kit part it should become: Tree.
  */
 export function Tree({ label, nodes, open, current, accent, memory, memoryKey = label, onChoose, onOpenChange }: TreeProps) {
-  const [state, setState] = useState<TreeState>(() => ({ open: memory?.recall(memoryKey)?.open ?? revealed(nodes, open ?? [], current), stop: undefined }));
+  const [state, setState] = useState<TreeState>(() => {
+    const recalled = memory?.recall(memoryKey);
+    return { open: recalled?.open ?? revealed(nodes, open ?? [], current), stop: undefined, seeded: recalled?.seeded ?? NO_GROUPS };
+  });
   // The current entry is never hidden: when it is, or becomes, an entry inside a group that is closed (another tab was activated, the plugin's frame registered after the tree did, or the entry only
   // comes with the nodes the plugin's data hook answers after the page did), its ancestors open, once. What the user opened or closed stays when the same entry registers again, and when the tree
   // comes back after it went away: `shown` is what it last made sure of, so a tree that returns on the same entry opens nothing the user closed.
@@ -170,10 +176,17 @@ export function Tree({ label, nodes, open, current, accent, memory, memoryKey = 
   }
 
   useLayoutEffect(() => {
-    memory?.keep(memoryKey, { open: state.open, shown });
-  }, [memory, memoryKey, state.open, shown]);
+    memory?.keep(memoryKey, { open: state.open, shown, seeded: state.seeded });
+  }, [memory, memoryKey, state.open, state.seeded, shown]);
 
   const rows = visibleRows(nodes, state.open);
+  // A group that says it starts open (`expanded`, KL7) is opened once, the first time the tree has it on screen: with the tree, with a later answer of the plugin that brings the group, or when it comes into view inside a group that was closed. It is then kept as given, so
+  // what the user does with it is theirs: a group they closed is not opened again by the next answer, and the tree that comes back from the window's memory opens nothing the user closed.
+  const starting = startingOpen(rows, state.seeded);
+  if (starting.length > 0) {
+    setState((before) => ({ ...before, open: new Set([...before.open, ...starting]), seeded: new Set([...before.seeded, ...starting]) }));
+  }
+
   const stop = stopOf(rows, state.stop, current);
 
   // What is on screen is told to the host: the key stands for the list, so the host hears of a change of the groups and not of a render. The tree that goes away tells it that nothing is open.
@@ -207,7 +220,7 @@ export function Tree({ label, nodes, open, current, accent, memory, memoryKey = 
     }
 
     event.preventDefault();
-    setState({ open: result.open, stop: result.stop });
+    setState((before) => ({ ...before, open: result.open, stop: result.stop }));
     if (result.activate !== undefined) {
       onChoose?.(result.activate, undefined);
     }

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, renderHook, screen, waitFor, within } from 
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { admit, openable } from '../../contract/admit';
-import type { ConnectionV1, ConnectionVerbResultV1, ConnectionsHostV1, ConnectionsViewV1 } from '../../contract/v1';
+import type { ConnectionV1, ConnectionVerbResultV1, ConnectionsHostV1, ConnectionsViewV1, CustomPageContextV1 } from '../../contract/v1';
 import { contributionV1 as withoutLanding } from './entry-connections';
 import { contributionV1 } from './entry-landing';
 
@@ -26,7 +26,7 @@ const south: ConnectionV1 = { key: 'south-0c3d9e1f42', name: 'south', descriptio
 
 const links: LinkHandler = { hrefOf: (target) => `#/fixture-f-conn/${target.page}`, onOpen: vi.fn() };
 
-function mount(page: 'landing' | 'all', connectionsOver: Partial<ConnectionsHostV1> = {}) {
+function mount(page: 'landing' | 'all', connectionsOver: Partial<ConnectionsHostV1> = {}, params: Readonly<Record<string, string>> = {}) {
   const view: ConnectionsViewV1 = { loaded: true, failed: false, connections: [north, south] };
   const open = vi.fn<ConnectionsHostV1['open']>(async () => Promise.resolve({ ok: true }));
   const worked = async (): Promise<ConnectionVerbResultV1> => Promise.resolve({ ok: true });
@@ -42,14 +42,16 @@ function mount(page: 'landing' | 'all', connectionsOver: Partial<ConnectionsHost
     ...connectionsOver,
   };
   const { Body } = contributionV1.pages[page];
+  // The host's call that changes the parameters of the page's own route (KL7): a stand-in that records what the page asks.
+  const setParams = vi.fn<CustomPageContextV1['setParams']>();
   render(
     <MenuHost>
       <LinkProvider handler={links}>
-        <Body context={{ plugin: 'fixture-f-conn', route: { page, connection: undefined, params: {} }, connections }} />
+        <Body context={{ plugin: 'fixture-f-conn', route: { page, connection: undefined, params }, connections, setParams }} />
       </LinkProvider>
     </MenuHost>,
   );
-  return { open, connections, user: userEvent.setup() };
+  return { open, connections, setParams, user: userEvent.setup() };
 }
 
 let shown: HTMLStyleElement;
@@ -131,18 +133,45 @@ describe('the connections fixture with a landing', () => {
     expect(contributionV1.home).toBe('overview');
     expect(contributionV1.pages.overview).toBe(withoutLanding.pages.overview);
     expect(Object.hasOwn(withoutLanding, 'landing')).toBe(false);
+    expect(contributionV1.sidebar.pluginScope).toEqual({ title: 'Plugin', label: 'Seam Connections plugin navigation' });
   });
 
-  it('answers a navigator on the pages that are read in no connection, which the host keeps whole, and nothing on a page of a connection: the filters with their counts, and the connections with a colour and, on the one that needs a look, a badge (KL5)', () => {
+  it('changes its own parameters with the host\'s call, keeping the other: the strip of filters pushes an entry in the tab\'s history, the order takes the tab\'s own, and no parameter is written for what is the default', async () => {
+    const { user, setParams } = mount('landing', {}, { filter: 'connected' });
+
+    await user.click(within(screen.getByRole('radiogroup', { name: 'Sort connections' })).getByRole('radio', { name: 'State' }));
+    expect(setParams).toHaveBeenLastCalledWith({ filter: 'connected', sort: 'state' });
+    await user.click(within(screen.getByRole('group', { name: 'Connection state' })).getByRole('button', { name: /^Needs attention/ }));
+    expect(setParams).toHaveBeenLastCalledWith({ filter: 'attention' }, { history: 'push' });
+    await user.click(within(screen.getByRole('group', { name: 'Connection state' })).getByRole('button', { name: /^All/ }));
+    expect(setParams).toHaveBeenLastCalledWith({}, { history: 'push' });
+  });
+
+  it('reads the filter and the order from the route, and narrows what it lists by what is typed in its search, which is the page\'s own state and no parameter', async () => {
+    const { user, setParams } = mount('landing', {}, { filter: 'attention', sort: 'state' });
+    const cards = () => screen.queryAllByRole('listitem').map((card) => card.querySelector('[data-ov-part="title"]')?.textContent);
+
+    expect(cards()).toEqual(['south']);
+    expect(screen.getByText('Showing: Needs attention')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'State' })).toBeChecked();
+    await user.type(screen.getByRole('searchbox', { name: 'Search connections' }), 'nor');
+
+    expect(cards()).toEqual([]);
+    expect(setParams).not.toHaveBeenCalled();
+  });
+
+  it('answers a navigator on the pages that are read in no connection, which the host keeps whole, and nothing on a page of a connection: the filters with their counts, and the connections, in a group that starts open, with a colour and, on the one that needs a look, a badge (KL5, KL7); the filters carry the order the page is in', () => {
     const view: ConnectionsViewV1 = { loaded: true, failed: false, connections: [north, south] };
     const worked = async (): Promise<ConnectionVerbResultV1> => Promise.resolve({ ok: true });
     const connections: ConnectionsHostV1 = { subscribe: () => () => undefined, getSnapshot: () => view, open: async () => Promise.resolve({ ok: true }), connect: worked, check: worked, disconnect: worked, remove: worked, refresh: async () => Promise.resolve() };
-    const answer = (page: string) => renderHook(() => contributionV1.sidebar.useNodes({ plugin: 'fixture-f-conn', route: { page, connection: undefined, params: {} }, open: [], connections })).result.current;
+    const answer = (page: string, params: Readonly<Record<string, string>> = {}) => renderHook(() => contributionV1.sidebar.useNodes({ plugin: 'fixture-f-conn', route: { page, connection: undefined, params }, open: [], connections })).result.current;
     const nodes = answer('landing') ?? [];
 
     expect(openable(nodes, contributionV1.pages)).toEqual(nodes);
     expect(nodes.map((node) => [node.label, node.count])).toEqual([['All', 2], ['Connected', 1], ['Needs attention', 1], ['Connections', undefined]]);
     expect(nodes[2]).toMatchObject({ page: 'landing', params: { filter: 'attention' } });
+    expect(nodes[3]).toMatchObject({ expanded: true });
+    expect((answer('landing', { filter: 'connected', sort: 'state' }) ?? []).slice(1, 3).map((node) => node.params)).toEqual([{ filter: 'connected', sort: 'state' }, { filter: 'attention', sort: 'state' }]);
     expect(nodes[3].children).toEqual([
       { id: `connection-${north.key}`, label: 'north', icon: 'server', tone: 'green', connection: north.key },
       { id: `connection-${south.key}`, label: 'south', icon: 'server', tone: 'amber', connection: south.key, status: { role: 'attention', label: 'Needs sign-in' } },
