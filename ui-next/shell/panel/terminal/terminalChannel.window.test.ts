@@ -101,6 +101,7 @@ const recorder = () => {
       gap: () => said.push('gap'),
       ended: () => said.push('ended'),
       applied: () => said.push('applied'),
+      marks: () => said.push('marks'),
       takenOver: () => said.push('takenOver'),
       released: () => said.push('released'),
       closeRefused: () => said.push('closeRefused'),
