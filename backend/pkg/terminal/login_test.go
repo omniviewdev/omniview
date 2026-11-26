@@ -363,17 +363,44 @@ func TestClosingHangsUpTheBackgroundJobsOfABashShell(t *testing.T) {
 	}, 20*time.Second, 10*time.Millisecond)
 	t.Cleanup(func() { _ = syscall.Kill(job, syscall.SIGKILL) })
 	require.False(t, gone(job))
-	// The shell is at its prompt when the window closes: the prompt after the job's command has been drawn, which the integration
-	// says with its second input-start mark (the first is the first prompt). With the integration bash runs its prompt commands
-	// as a non-interactive shell, which does not hang its jobs up, between the end of a command and the first hook that sets a
-	// handler (about 0.1 ms: a DEBUG trap and a fork); a close that lands in it is a known gap (T5-inject-bash.md), and a test
-	// that closed the instant the job is named would fall into it by its own timing.
+	waitForThePromptAfterTheJob(t, sink, info)
+	require.NoError(t, m.CloseSession(info.ID))
+	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
+}
+
+// waitForThePromptAfterTheJob waits until the shell is at its prompt after the job's command: the prompt after it has been drawn,
+// which the integration says with its second input-start mark (the first is the first prompt). With the integration bash runs its
+// prompt commands as a non-interactive shell, which does not hang its jobs up, between the end of a command and the first hook that
+// sets a handler (T5-inject-bash.md, the known gap: tens of microseconds, longer in wall time when the machine is busy); a test that
+// closed the instant the job is named would fall into it by its own timing. A bash with no integration has no such window.
+func waitForThePromptAfterTheJob(t *testing.T, sink *chunkSink, info Session) {
+	t.Helper()
 	if info.Integration.State == IntegrationOn {
 		require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 2 },
 			20*time.Second, 5*time.Millisecond, "the prompt after the job's command was never drawn")
 	}
-	require.NoError(t, m.CloseSession(info.ID))
-	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
+}
+
+// A bash that is slow to start says `unconfirmed` for its integration (it has not said `ready` in 500 ms) and still has it: the test
+// waits for the prompt then too. (A prompt command that takes 0.3 s puts the second prompt well after the job's output.) (It did not, and closed inside the hooks' window about one run in twenty on a busy machine.)
+func TestTheWaitForThePromptAfterTheJobWaitsForASlowBashToo(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no bash on this machine")
+	}
+	home := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".bash_profile"), []byte("sleep 1\nPROMPT_COMMAND='sleep 0.3'\n"), 0o600))
+	t.Setenv("HOME", home)
+	sink := newChunkSink()
+	m := newChunkManager(t, sink)
+	info, err := m.Start(Options{Command: []string{bash}}, nil)
+	require.NoError(t, err)
+	require.Equal(t, IntegrationUnconfirmed, info.Integration.State, "a bash that takes a second to start has not said ready in 500 ms")
+	send(t, m, info.ID, "echo job-$$")
+	jobLine := regexp.MustCompile(`job-\d`)
+	require.Eventually(t, func() bool { return jobLine.Match(sink.output(info.ID)) }, 20*time.Second, 5*time.Millisecond)
+	waitForThePromptAfterTheJob(t, sink, info)
+	assert.GreaterOrEqual(t, bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")), 2, "the shell is at the prompt after its line")
 }
 
 // (g) The host passes the shell's bytes untouched: a multi-byte character cut between two reads arrives
