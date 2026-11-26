@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -389,15 +390,61 @@ func waitForThePromptAfterTheJob(t *testing.T, sink *chunkSink, info Session) {
 	require.True(t, waiting, "the shell never waited for input at its prompt")
 }
 
-// waitingForInput waits until the process is blocked in the system call that waits for input on its standard input (Linux): `read` of
-// descriptor 0, or the `select` that readline makes of descriptor 0 alone while it waits for a key. That is a shell that has drawn its
+// waitingForInput waits until the process is blocked in a system call that waits for input to be readable (Linux: a `read`, or the
+// `select` or `poll` that a shell makes while it waits for a key). That is a shell that has drawn its
 // prompt and done what it does around it: before it, bash is still in readline's redisplay (state R) and a hangup that lands there does
 // not hang its jobs up (with or without the integration: seen on plain bash). It is the event itself, so one observation is enough. A
 // process asleep for another reason (a `wait4` for a hook's fork, a `write` to a full pty, a `nanosleep`) is not it. It reports whether
 // the process was seen waiting, and whether the machine can tell (`/proc/<pid>/syscall`, or `wchan`).
-// (Stub: says it was, and that it can tell.)
-func waitingForInput(pid int, within time.Duration) (waiting, known bool) {
-	return true, true
+func waitingForInput(pid int, within time.Duration) (bool, bool) {
+	deadline := time.Now().Add(within)
+	for {
+		seen, tell := waitsForInputNow(pid)
+		if !tell {
+			return false, false
+		}
+		if seen {
+			return true, true
+		}
+		if time.Now().After(deadline) {
+			return false, true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// waitsForInputNow looks once. /proc/<pid>/syscall gives the system call the process is in: one that waits for input to be readable (`read`,
+// `select`, `pselect6`, `poll`, `ppoll`: bash waits in a `select` of its terminal, zsh in a `read` of its own descriptor for it, fish in a
+// `poll`). A `wait4` for a hook's fork, a `write` to a full pty and a `nanosleep` are other calls. Where the numbers are not known (an
+// architecture this table lacks) the kernel's name for where the process sleeps, wchan, is read instead.
+func waitsForInputNow(pid int) (bool, bool) {
+	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/syscall"); err == nil {
+		fields := strings.Fields(string(data))
+		if len(fields) >= 1 && fields[0] == "running" {
+			return false, true
+		}
+		if number, errNumber := strconv.Atoi(fields[0]); len(fields) >= 1 && errNumber == nil && number >= 0 {
+			var waits []int
+			switch runtime.GOARCH {
+			case "amd64":
+				waits = []int{0, 7, 23, 270, 271}
+			case "arm64":
+				waits = []int{63, 72, 73}
+			}
+			if waits != nil {
+				return slices.Contains(waits, number), true
+			}
+		}
+	}
+	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/wchan"); err == nil {
+		for _, name := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
+			if strings.Contains(string(data), name) {
+				return true, true
+			}
+		}
+		return false, true
+	}
+	return false, false
 }
 
 func TestWaitingForInputIsAProcessBlockedReadingItsStdinAndNothingElse(t *testing.T) {
