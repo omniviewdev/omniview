@@ -236,8 +236,11 @@ export function createGutterSections({ check, note, report, runAxe }) {
       await page.keyboard.type('fullscreen');
       await page.keyboard.press('Enter');
       const alternate = await waitFor(page, () => document.querySelector('[data-shell-part="terminalScreen"]')?.hasAttribute('data-alternate') === true);
+      // The emulator hides the decorations of the normal screen's lines itself while the other screen is up (measured: its own `display: none`); the stylesheet's rule is what holds when it does not, so the emulator's is put aside here and the
+      // rule is read alone: the marks must still not be drawn.
+      await page.addStyleTag({ content: '.xterm-decoration{display:block !important}' });
       await perturb(ctx, page, 'alt');
-      const hidden = await page.evaluate(() => window.__gutter.read().marks.filter((mark) => mark.inView && mark.shown).length);
+      const hidden = await page.evaluate(() => window.__gutter.read().marks.filter((mark) => mark.shown).length);
       if (!alternate) problems.push('the screen never said a program has the alternate screen');
       if (hidden !== 0) problems.push(`${String(hidden)} marks are drawn on the alternate screen`);
       check('gutter.marks', problems.length === 0, `${tag}: two commands ran; ${problems.length === 0 ? 'a success mark beside the row of each command that is in the view and over no cell, none on the alternate screen' : problems.join('; ')}`);
