@@ -1045,7 +1045,11 @@ func (m *Manager) Cwd(sessionID string) (Directory, error) {
 // shell's own only when it is the very inode the process's cwd link follows to (`live`). Elsewhere the system's answer
 // is taken as it is: a live directory whose name ends so is a real one.
 func namesTheShellsDirectory(path string, info os.FileInfo, goos string, live func() (os.FileInfo, error)) bool {
-	return true
+	if goos != "linux" || !strings.HasSuffix(path, " (deleted)") {
+		return true
+	}
+	cwd, err := live()
+	return err == nil && os.SameFile(cwd, info)
 }
 
 func (s *session) directory() (string, UnknownReason) {

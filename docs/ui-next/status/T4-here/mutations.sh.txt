@@ -8,8 +8,8 @@ trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
 F=backend/pkg/terminal/manager.go
 # same-file-check-removed: the sibling named like the link suffix is taken for the shell's directory
-sed -E 's/!os\.SameFile\(live, info\)/(!os.SameFile(live, info) \&\& false)/' "$F" > "$M/m.go"
+sed -E 's/return err == nil && os\.SameFile\(cwd, info\)/return true || (err == nil \&\& os.SameFile(cwd, info))/' "$F" > "$M/m.go"
 cmp -s "$F" "$M/m.go" && { echo "FAULT NOT APPLIED"; exit 1; }
 printf '{"Replace":{"%s":"%s"}}' "$WT/$F" "$M/m.go" > "$M/o.json"
 out=$(go test -overlay="$M/o.json" ./backend/pkg/terminal/ -run 'TestARemovedDirectory|TestTheDirectoryOfAShell' 2>&1)
-echo "$out" | grep -E '^--- FAIL' || echo "UNDETECTED"
+echo "$out" | grep -E '^--- FAIL: TestARemovedDirectoryIsNotMistaken' || { echo "UNDETECTED or not a test failure"; echo "$out" | tail -5; exit 1; }

@@ -7,18 +7,20 @@
 WT=$(git rev-parse --show-toplevel) || exit 2
 cd "$WT" || exit 2
 P=ui-next/shell/panel/terminal
-FILES="$P/execFeed.test.ts $P/localShell.test.ts $P/terminalChannel.test.ts $P/terminals.test.ts $P/state.test.ts $P/menu"
+FILES="$P/execFeed.test.ts $P/localShell.test.ts $P/terminalChannel.test.ts $P/terminals.test.ts $P/state.test.ts $P/menu $P/screen.test.ts"
 B=$(mktemp -d "${TMPDIR:-/tmp}/t4here-page.XXXXXX") || exit 2
 current=""
 restore() { if [ -n "$current" ] && [ -f "$B/backup" ]; then cp "$B/backup" "$current"; fi; }
 trap 'restore; rm -rf -- "$B"' EXIT
 only="${1:-}"
 bad=0
+matched=0
 
 # name | file | sed expression | the tests named for it, each as a unique substring of its title, separated by '|'
 run() {
   name="$1"; file="$2"; expr="$3"; named="$4"
   [ -n "$only" ] && [ "$only" != "$name" ] && return
+  matched=1
   cp "$file" "$B/backup"; current="$file"
   sed -i -E -e "$expr" "$file"
   if cmp -s "$file" "$B/backup"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; restore; current=""; return; fi
@@ -85,8 +87,8 @@ run directory-throws-on-a-failed-question "$P/execFeed.ts" \
   'says unknown, and never throws, when the question fails'
 
 run note-kept-after-typing "$P/execFeed.ts" \
-  's/ \|\| \(status\.startNote !== undefined && writeOptions\?\.reply !== true\)//' \
-  'stops saying so at the first thing typed|is what the person typed, and not what the emulator answered'
+  's/const clearNote = .*;/const clearNote = false;/' \
+  'stops saying so at the first thing typed|is what the person typed, and not what the emulator answered|keeps where the terminal started when the emulator'"'"'s reply clears the loss of input'
 
 run note-dropped-at-running "$P/execFeed.ts" \
   's/\.\.\.\(startNote === undefined \? \{\} : \{ startNote \}\) \};$/ };/' \
@@ -138,13 +140,21 @@ run body-says-it-can-always "$P/TerminalBody.tsx" \
   's/available: feed\.directory !== undefined/available: true/' \
   'is unavailable when the session'"'"'s feed cannot say where it is'
 
+run screen-drops-the-reply-mark "$P/screen.ts" \
+  's/feed\.write\(data, \{ reply: true \}\)/feed.write(data)/' \
+  'is heard again once the replay is parsed'
+
+run note-cleared-with-the-loss-of-input "$P/execFeed.ts" \
+  's/status = clearNote \|\| startNote === undefined \? rest : \{ \.\.\.rest, startNote \};/status = rest;/' \
+  'keeps where the terminal started when the emulator'"'"'s reply clears the loss of input'
+
 run lane-says-nothing-of-the-note "$P/state.ts" \
   's/snapshot\.startNote === undefined \? \{ words: .., note: .. \}/true ? { words: "", note: "" }/' \
   'says in words that the terminal started in the home directory'
 
 run reply-clears-the-note "$P/execFeed.ts" \
-  's/ && writeOptions\?\.reply !== true//' \
-  'is what the person typed, and not what the emulator answered'
+  's/writeOptions\?\.reply !== true && status\.startNote !== undefined/status.startNote !== undefined/' \
+  'is what the person typed, and not what the emulator answered|keeps where the terminal started when the emulator'"'"'s reply clears the loss of input'
 
 run home-if-missing-never "$P/execFeed.ts" \
   's/options\.homeIfMissing !== true \|\|/true ||/' \
@@ -154,4 +164,5 @@ run start-target-no-fallback "$P/localShell.ts" \
   "s/, undefined, where\.source === 'start'\)/)/" \
   'falls back to home, with the note'
 
+[ -n "$only" ] && [ "$matched" -eq 0 ] && { echo "no control named $only"; exit 2; }
 exit $bad

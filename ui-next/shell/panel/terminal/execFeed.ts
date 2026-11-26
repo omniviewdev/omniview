@@ -1399,10 +1399,14 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         typed += 1;
       }
 
-      if (text !== '' && (status.inputLost === true || (status.startNote !== undefined && writeOptions?.reply !== true))) {
-        const { inputLost: _lost, startNote: _note, ...rest } = status;
-        status = rest;
-        tell();
+      if (text !== '') {
+        // The two notes are cleared on their own: the loss of input by anything written, and where the terminal started only by what the person typed (the emulator's replies are not theirs).
+        const clearNote = writeOptions?.reply !== true && status.startNote !== undefined;
+        if (status.inputLost === true || clearNote) {
+          const { inputLost: _lost, startNote, ...rest } = status;
+          status = clearNote || startNote === undefined ? rest : { ...rest, startNote };
+          tell();
+        }
       }
 
       if (keep(text)) {

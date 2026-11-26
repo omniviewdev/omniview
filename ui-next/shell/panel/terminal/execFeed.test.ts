@@ -2653,3 +2653,19 @@ describe('what clears the note of a terminal that started in the home directory 
     expect(r.feed.getSnapshot().startNote).toBeUndefined();
   });
 });
+
+describe('the two notes of a running terminal are cleared on their own (`inputLost` and `startNote`)', () => {
+  it('keeps where the terminal started when the emulator\'s reply clears the loss of input, and drops it for what the person types', async () => {
+    const r = await running({}, { startNote: 'home-for-unknown-directory' });
+    r.feed.write('abc', { reply: true });
+    r.stream().drop();
+    r.feed.write('def', { reply: true });
+    reconnect(r).ready({ inputApplied: 0, writerKnown: false });
+    expect(r.feed.getSnapshot()).toMatchObject({ inputLost: true, startNote: 'home-for-unknown-directory' });
+    r.feed.write('\u001b[1;1R', { reply: true });
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    expect(r.feed.getSnapshot().startNote).toBe('home-for-unknown-directory');
+    r.feed.write('ls');
+    expect(r.feed.getSnapshot().startNote).toBeUndefined();
+  });
+});

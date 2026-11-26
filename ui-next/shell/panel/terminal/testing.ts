@@ -14,6 +14,8 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly reads: () => number;
   /** What was typed, in the order it was given. */
   readonly typed: () => readonly string[];
+  /** What was written as the emulator's own reply to a query (`{ reply: true }`), as opposed to what the person typed. */
+  readonly replies: () => readonly string[];
   /** The sizes asked for, as [columns, rows], in order. */
   readonly sizes: () => ReadonlyArray<readonly [number, number]>;
   /** A new status: only what is given changes, and every listener is told. */
@@ -62,6 +64,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   const acks: number[] = [];
   let woken = false;
   const typed: string[] = [];
+  const replies: string[] = [];
   /** The calls of the typing that the feed took: what `inputs` says. */
   let taken = 0;
   const sizes: Array<readonly [number, number]> = [];
@@ -143,8 +146,12 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       held = held.slice(count);
       return { chunks, bytes: chunks.reduce((sum, chunk) => sum + chunk.length, 0) };
     },
-    write: (text) => {
+    write: (text, writeOptions) => {
       typed.push(text);
+      if (writeOptions?.reply === true) {
+        replies.push(text);
+      }
+
       // A real feed takes what is typed while the process starts or runs, and not a call with nothing in it, nor anything once it was closed or the session is over.
       if (text !== '' && closed === 0 && (status.state === 'starting' || status.state === 'running')) {
         taken += 1;
@@ -173,6 +180,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     closed: () => closed,
     reads: () => reads,
     typed: () => typed,
+    replies: () => replies,
     inputs: () => taken,
     sizes: () => sizes,
     acks: () => acks,
