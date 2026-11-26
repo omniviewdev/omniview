@@ -44,7 +44,7 @@ run() {
   [ "$ok" -eq 0 ] && bad=1
 
   # `-t` takes a pattern: every test whose title holds none of the named parts.
-  alternatives=$(echo "$named" | tr '|' '\n' | sed -E 's/[][.*^$()+?{|\\]/\\&/g' | paste -sd'|')
+  alternatives=$(echo "$named" | tr '|' '\n' | sed -E 's/[]\[.*^$()+?{|\\]/\\&/g' | paste -sd'|')
   out2=$(pnpm exec vitest run $FILES -t "^(?!.*($alternatives))" 2>&1)
   code2=$?
   if echo "$out2" | grep -qE '^ FAIL '; then half2="without them: STILL RED"; bad=1
@@ -66,7 +66,7 @@ run directory-falls-back-to-start-when-unknown "$P/execFeed.ts" \
 
 run directory-asks-an-ended-terminal "$P/execFeed.ts" \
   '/directory: async/,/^    },/ s/status\.state !== .running./status.state === "failed"/' \
-  'once it ended, and the host is not asked|for a terminal this page lost to another tab|and the host never said where it started|for a terminal a page found again after a reload that had ended|says unknown for a terminal that could not be started'
+  'once it ended, and the host is not asked|for a terminal this page lost to another tab|and the host never said where it started|for a terminal a page found again after a reload that had ended|the answer to the call that made the terminal said'
 
 run directory-gone-is-unknown "$P/execFeed.ts" \
   's/channels\.isGone\(error\) \? start :/channels.isGone(error) ? { state: "unknown", reason: "ended" } :/' \
@@ -78,7 +78,7 @@ run directory-ignores-the-created-answer "$P/execFeed.ts" \
 
 run directory-ignores-ready "$P/execFeed.ts" \
   '/^    startedIn = ready\.startedIn \?\? startedIn;$/d' \
-  'the host'"'"'s `ready` says the terminal started in|asks the host for a terminal a page found again that runs'
+  'the host'"'"'s `ready` says the terminal started in'
 
 run directory-throws-on-a-failed-question "$P/execFeed.ts" \
   's/return channels\.isGone\(error\) \? start : \{ state: .unknown., reason: .unanswered. \};/if (channels.isGone(error)) { return start; } throw error;/' \
@@ -90,13 +90,13 @@ run note-kept-after-typing "$P/execFeed.ts" \
 
 run note-dropped-at-running "$P/execFeed.ts" \
   's/\.\.\.\(startNote === undefined \? \{\} : \{ startNote \}\) \};$/ };/' \
-  'says so while it starts and while it runs'
+  'says so while it starts and while it runs|stops saying so at the first thing typed'
 
 # ---- the channel ----
 
 run channel-cwd-asks-busy "$P/terminalChannel.ts" \
   's/client\.ChannelTerminalCwd\(cap\)/client.ChannelTerminalBusy(cap)/' \
-  'cwd answers what the host answers'
+  'cwd answers what the host answers|cwd rejects with an error that holds no capability|cwd keeps what a reader of errors needs|cwd forgets a capability the host refuses'
 
 # ---- the target and the window ----
 
