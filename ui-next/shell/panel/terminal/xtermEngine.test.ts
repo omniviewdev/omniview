@@ -847,6 +847,55 @@ describe('the screen over a real emulator', () => {
       }
     });
   });
+
+  // Review of #791: the separator a restart writes between the ended process and the new shell, on the real emulator. DECSTR resets the saved cursor and `?1049l` restores it, which homed the cursor and wrote over the transcript.
+  describe('the separator of a restart, on the real emulator', () => {
+    const rows = (terminal: Terminal): string[] => Array.from({ length: terminal.buffer.normal.length }, (_, index) => terminal.buffer.normal.getLine(index)?.translateToString(true) ?? '');
+
+    async function restarted(program: string): Promise<{ readonly terminal: Terminal; readonly next: FakeTerminalFeed }> {
+      const feed = fakeTerminalFeed();
+      const { screen, terminal } = await showOver(feed);
+      feed.push(`transcript one\r\ntranscript two\r\n$ ${program}`);
+      await settle();
+      feed.set({ state: 'ended', exit: { signal: 'SIGKILL' } });
+      await settle();
+      const next = fakeTerminalFeed({ state: 'starting' });
+      screen.continueWith(next);
+      next.set({ state: 'running' });
+      next.push('$ new');
+      await settle();
+      return { terminal, next };
+    }
+
+    const expectKept = (terminal: Terminal): void => {
+      expect(terminal.buffer.active.type).toBe('normal');
+      const lines = rows(terminal).filter((line) => line !== '');
+      const at = (text: string): number => lines.findIndex((line) => line.includes(text));
+      expect(at('transcript one')).toBe(0);
+      expect(at('transcript two')).toBe(1);
+      expect(at('[Restarted]')).toBeGreaterThan(at('transcript two'));
+      expect(at('$ new')).toBe(at('[Restarted]') + 1);
+      expect(terminal.modes).toMatchObject({ mouseTrackingMode: 'none', bracketedPasteMode: false, sendFocusMode: false, applicationCursorKeysMode: false });
+    };
+
+    it('keeps the transcript above, the prompt after [Restarted] and every mode off, for vim killed on the alternate screen with the mouse on', async () => {
+      const { terminal } = await restarted('vim\r\n\u001b[?1049h\u001b[?1000h\u001b[?1002h\u001b[?1006h\u001b[?2004h\u001b[?1h\u001b[?1004hvim screen');
+      expectKept(terminal);
+    });
+
+    it('keeps it for a program with the any-motion mouse on, on the normal screen', async () => {
+      const { terminal } = await restarted('top\r\n\u001b[?1003h\u001b[?1015h');
+      expectKept(terminal);
+    });
+
+    it('keeps it for a program that set a scroll region (3;6), and the region is reset: a line feed at its last row moves the cursor on', async () => {
+      const { terminal, next } = await restarted('less\r\n\u001b[3;6r\u001b[10;1H');
+      expectKept(terminal);
+      next.push('\u001b[6;1H\n');
+      await settle();
+      expect(terminal.buffer.normal.cursorY).toBeGreaterThanOrEqual(6);
+    });
+  });
 });
 
 // Who sends what a real emulator sends toward the shell (T2d fix round). xterm has one event for all it says to the shell, and the screen must tell what the person did (typed, pasted, composed: kept while a replay is

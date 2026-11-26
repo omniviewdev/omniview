@@ -23,6 +23,8 @@
 - A replaced shell restarts as the shell that ran with none of the arguments asked for the missing one.
 - A take-back carries what the lost terminal was asked to start with (`feed.launch()`, `reattach(id, lost)`), so a restart after it keeps the environment and arguments.
 
+- **A program killed on the alternate screen** (vim): the `[Process exited …]` line is written to the alternate buffer, and the restart's separator leaves that buffer (`?47l`), so the line is gone after the restart (since `e1b9f957f`). The transcript of the normal screen stays above.
+
 ## Shas
 
 Red: `0b260f1fc` (feed, target, registry, screen, body), `ddd533326` (take-back by the terminal's id), `a2be5c0a1` (flush), `48b914c77` (host wiring). Green: `e1b9f957f`. Controls and probe/seam reads: `605edbb20`, `35e769559`, and the seam text fix. Review round: see the log of the branch.
