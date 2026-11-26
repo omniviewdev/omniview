@@ -663,6 +663,8 @@ func newTestControllerWithEmitter(t *testing.T) (*controller, *recordingEmitter)
 	ctrl := NewController(logging.NewNop(), nil, svc.PluginStore, nil).(*controller)
 	ctrl.emitter = emitter
 	t.Cleanup(ctrl.actions.stopAll)
+	// The state service closes after this cleanup: no write of the last-known metadata may be left to fire after it.
+	t.Cleanup(ctrl.lastKnown.close)
 	t.Cleanup(func() {
 		ctrl.pluginsMu.Lock()
 		defer ctrl.pluginsMu.Unlock()

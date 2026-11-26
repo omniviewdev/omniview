@@ -173,6 +173,9 @@ type controller struct {
 	onCrashCallback  func(pluginID string)
 	onFatalTransport func(string, plugintypes.PluginBackend, func(func()) bool)
 	pluginStoreFn    func(pluginID string) (*appstate.ScopedRoot, error)
+	// lastKnown is the host's copy of what each plugin's connections last answered as metadata, kept across restarts. Its mutex is a
+	// leaf lock: take it after pluginsMu and profilesMu, never before them, and never call into the controller while holding it.
+	lastKnown *lastKnownMetadata
 	// schemas is the authoritative schema catalog. Its mutex is a leaf lock:
 	// never call into the controller while holding it.
 	schemas *resourcecatalog.Catalog
@@ -209,6 +212,7 @@ func NewController(
 		actions:             newActionRegistry(),
 		onCrashCallback:     nil,
 		pluginStoreFn:       pluginStoreFn,
+		lastKnown:           newLastKnownMetadata(logger.Named("ResourceController"), pluginStoreFn),
 		schemas:             resourcecatalog.NewCatalog(resourcecatalog.DefaultPolicy()),
 	}
 	c.sources = newSourceCoordinator(c)
@@ -243,6 +247,7 @@ func (c *controller) ServiceStartup(_ context.Context, _ application.ServiceOpti
 // ServiceShutdown is called by the Wails v3 runtime when the application shuts down.
 func (c *controller) ServiceShutdown() error {
 	c.actions.stopAll()
+	c.lastKnown.shutdown()
 	return nil
 }
 
@@ -763,9 +768,8 @@ func (c *controller) LoadConnections(ctx context.Context, pluginID string) (_res
 		telemetryutil.RecordError(span, err)
 		return nil, err
 	}
-
+	c.retainLastKnownMetadata(pluginID, conns)
 	return conns, nil
-
 }
 
 func (c *controller) ListConnections(ctx context.Context, pluginID string) (_result []types.Connection, retErr error) {

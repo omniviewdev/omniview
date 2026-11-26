@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+# Negative controls for KL6 (rule 28): each fault is planted alone in a scratch copy of one source file, which `go test -overlay`
+# substitutes for the real one, so the repository is never edited. A control is CAUGHT when the tests named for it fail.
+# Run from the repository root (drop the .txt):  python3 mutants.py [substring of a fault name ...]
+import json, os, re, subprocess, sys, tempfile
+
+root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+pkg = root + "/backend/pkg/plugin/resource/"
+files = {"lk": "connection_metadata_last_known.go", "meta": "connection_metadata.go"}
+sources = {key: open(pkg + name).read() for key, name in files.items()}
+
+COMPLETE = "snapshot.Active && !snapshot.Refreshing && snapshot.LastRefreshError == nil && len(snapshot.Entries) > 0"
+faults = {
+    "M01 a connection nobody connected is shown nothing of what was kept": ("lk", "	if len(c.entries) == 0 {\n		return snapshot.Entries\n	}", "	if true {\n		return snapshot.Entries\n	}"),
+    "M02 a complete answer keeps the keys it leaves out": ("lk", "	if completeAnswer(snapshot) {", "	if false && completeAnswer(snapshot) {"),
+    "M03 no redaction of values": ("lk", "func carriesCredential(node any) bool {\n", "func carriesCredential(node any) bool {\n	if true {\n		return false\n	}\n"),
+    "M04 no redaction of keys": ("lk", "	if devdiag.SensitiveKey(key) {\n		return refused, errLastKnownCredential\n	}", "	if false {\n		return refused, errLastKnownCredential\n	}"),
+    "M05 an uninstall leaves its pending write and does not mark the plugin gone": ("lk", "		p.gone = true\n		if p.stop != nil {\n			p.stop()\n			p.stop = nil\n		}\n		for p.writing {", "		for p.writing {"),
+    "M06 every change arms its own write": ("lk", "	if p.stop != nil {\n		if delay >= p.delay {\n			return\n		}\n		p.stop()\n	}\n	p.delay = delay", "	p.delay = delay"),
+    "M07 the write holds the lock across the disk": ("lk", "	err := s.write(p.id, doc)\n	s.end(p, err)", "	s.mu.Lock()\n	err := s.write(p.id, doc)\n	s.mu.Unlock()\n	s.end(p, err)"),
+    "M08 no limit on a value": ("lk", "	if len(encoded) > valueBytes {\n		return refused, errLastKnownTooLarge\n	}", "	if false {\n		return refused, errLastKnownTooLarge\n	}"),
+    "M09 no limit on a connection's entries": ("lk", "	if len(c.entries) <= limit {\n		return false\n	}", "	if true {\n		return false\n	}"),
+    "M10 a refused value leaves the older one standing": ("lk", "		c.refused[key] = observed\n		delete(c.entries, key)\n		drops.note(err, key)\n		return known", "		c.refused[key] = observed\n		drops.note(err, key)\n		return false"),
+    "M11 a stale entry of the plugin replaces a later one": ("lk", "(entry.State == metadataStateStale && !prior.observedAt.Before(observed))", "false"),
+    "M12 a snapshot is kept before the epoch and registration fences": ("meta", "	defer func() { c.lastKnown.report(pluginID, dropped) }()\n	c.pluginsMu.Lock()", "	defer func() { c.lastKnown.report(pluginID, dropped) }()\n	_, dropped = known.observe(snapshot)\n	c.pluginsMu.Lock()"),
+    "M13 no limit on a plugin": ("lk", "	if p.bytes > s.limits.pluginBytes {", "	if false && p.bytes > s.limits.pluginBytes {"),
+    "M14 a refusal is reported again with each revision": ("lk", "	if refusedAt, was := c.refused[key]; was && refusedAt.Equal(observed) {\n		return false\n	}", ""),
+    "M15 the shutdown writes nothing": ("lk", "	for _, p := range behind {\n		s.flush(p)\n	}\n	s.close()", "	s.close()"),
+    "M16 the snapshot the SDK publishes at a connect, active with no entries, is a complete answer": ("lk", COMPLETE, COMPLETE.replace(" && len(snapshot.Entries) > 0", "")),
+    "M17 a failed refresh is a complete answer": ("lk", COMPLETE, COMPLETE.replace(" && snapshot.LastRefreshError == nil", "")),
+    "M18 what was refused is remembered for ever": ("lk", "	for key := range c.refused {\n		if _, reported := snapshot.Entries[key]; !reported {\n			delete(c.refused, key)\n		}\n	}\n", ""),
+    "M19 the listed connections are read without connsMu (the race detector is the control)": ("lk", "	c.connsMu.RLock()\n	ids := connectionIDs(listed)\n	c.connsMu.RUnlock()\n", "	ids := connectionIDs(listed)\n"),
+}
+
+# A fault whose control is the race detector runs the tests with -race.
+RACE = ("M19",)
+
+only = sys.argv[1:]
+env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="local")
+caught = total = 0
+for name, (which, old, new) in faults.items():
+    if only and not any(o in name for o in only):
+        continue
+    assert old in sources[which], name + ": the text to change is not in the file"
+    with tempfile.TemporaryDirectory() as scratch:
+        mutant = os.path.join(scratch, files[which])
+        open(mutant, "w").write(sources[which].replace(old, new, 1))
+        overlay = os.path.join(scratch, "overlay.json")
+        json.dump({"Replace": {pkg + files[which]: mutant}}, open(overlay, "w"))
+        run = subprocess.run(
+            ["go", "test", "-overlay", overlay, "./backend/pkg/plugin/resource/", "-run", "TestConnectionMetadataLastKnown|TestLastKnown", "-count=1", "-timeout", "120s"] + (["-race"] if name.startswith(RACE) else []),
+            cwd=root, env=env, capture_output=True, text=True,
+        )
+    out = run.stdout + run.stderr
+    failed = sorted({m for m in re.findall(r"--- FAIL: (\S+)", out) if "/" not in m})
+    total += 1
+    caught += run.returncode != 0 and "[build failed]" not in out
+    print(("CAUGHT  " if run.returncode != 0 else "SURVIVED"), name, failed, flush=True)
+print("%d of %d caught" % (caught, total))

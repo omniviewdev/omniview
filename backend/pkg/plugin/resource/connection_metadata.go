@@ -153,6 +153,11 @@ func (c *controller) admitMetadata(pluginID string, state *pluginState, event re
 	if err := resourcev2.ValidateConnectionMetadataSnapshot(snapshot); err != nil {
 		return HostConnectionMetadata{}, err
 	}
+	// What the host last knew of the plugin's connections is read from disk once, here, before any lock is taken: nothing below
+	// does I/O. The report of what was left out of the copy is deferred before the unlock, so it runs after it.
+	known := c.lastKnown.warm(pluginID)
+	var dropped lastKnownDrops
+	defer func() { c.lastKnown.report(pluginID, dropped) }()
 	c.pluginsMu.Lock()
 	defer c.pluginsMu.Unlock()
 	if c.plugins[pluginID] != state || state.ctx.Err() != nil || state.provider == nil || state.metadataEpoch != epoch {
@@ -181,7 +186,12 @@ func (c *controller) admitMetadata(pluginID string, state *pluginState, event re
 	value := metadataEnvelope(pluginID, state)
 	value.ConnectionID, value.Revision, value.Removed = snapshot.ConnectionID, snapshot.Revision, event.Removed
 	value.TransportAvailable = true
-	if !event.Removed {
+	if event.Removed {
+		known.forget(snapshot.ConnectionID)
+	} else {
+		// The fences above have admitted this snapshot, in the order of admission, so what it answers is what is kept. A reader is
+		// shown the plugin's own entries and, for a key the plugin has none for, the kept one, stale and with its observation time.
+		snapshot.Entries, dropped = known.observe(snapshot)
 		value.Snapshot = &snapshot
 	}
 	owned := cloneMetadata(value)

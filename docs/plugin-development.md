@@ -873,9 +873,11 @@ Get/subscription reads never connect or acquire facts. Call the hook's `refresh(
 
 Entries expose `current`, `stale`, or `unavailable` and per-key observation times. Current means generation-valid, not recently checked. A stop retains values as stale; reconnect replaces the generation. Transport loss also makes cached values unsuitable for decisions. Display can show stale values with a warning, but metadata never grants authorization or replaces catalog capabilities.
 
+The host also keeps the last answer of every connection, for every plugin, across restarts of the plugin and of the host (in the plugin's store, `connection-metadata-v1`), and serves it as `stale` entries with their observation times for a connection that is not connected. A provider does nothing for this. A fresh answer replaces the kept value of its key, and an acquisition that completes without a key drops that key from the kept copy, so return an explicit `remove` for a fact that no longer applies. Uninstalling the plugin or removing a connection erases what was kept. The host keeps at most 32 entries for a connection and 8 KiB of JSON for a value, and does not keep a key or a value that looks like a credential (the redaction the host applies to its logs), so publish only what is safe to show.
+
 `useConnectionMetadataSelector(pluginID, connectionID, selector)` supports narrow subscriptions whose selected value remains unchanged when unrelated facts update. `useConnectionMetadataConnections` shares the same store for dynamic connection collections such as folder-rule evaluation; it does not introduce batch acquisition.
 
-Providers configure `Config.ConnectionMetadata` in the SDK and return atomic keyed observations/removals. Use literal dotted keys, stable JSON types, bounded values, and safe errors. Strip credentials and endpoint queries/fragments before publication. Metadata remains in memory, separate from profile persistence.
+Providers configure `Config.ConnectionMetadata` in the SDK and return atomic keyed observations/removals. Use literal dotted keys, stable JSON types, bounded values, and safe errors. Strip credentials and endpoint queries/fragments before publication. The SDK keeps metadata in memory only, separate from profile persistence; the host's copy is described above.
 
 
 Use `valueToJSON` only for presentation: signed and unsigned integers within the
