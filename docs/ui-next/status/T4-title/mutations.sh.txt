@@ -10,7 +10,7 @@
 set -u
 ROOT=$(pwd)
 PKG=./backend/pkg/terminal
-STREAM='TestTheTitleAProgramSets|TestATitleTheShell|TestAPageThatDidNotAskIsSentNoTitle|TestAPageThatComesBackIsSentTheTitle|TestATitleOfAHundred|TestACommandTheShellVouchedFor|TestATitleSetBefore|TestAPromptTitleInTheRead|TestATitleThePrompt|TestATitleFromBefore|TestAnEmptyTitleTakes|TestATitleFromBefore|TestAnEmptyTitleTakes|TestAForgedStartMark|TestATerminalThatEndedAndIsAttached'
+STREAM='TestTheTitleAProgramSets|TestATitleTheShell|TestAPageThatDidNotAskIsSentNoTitle|TestAPageThatComesBackIsSentTheTitle|TestATitleOfAHundred|TestACommandTheShellVouchedFor|TestATitleSetBefore|TestAPromptTitleInTheRead|TestATitleThePrompt|TestARemotePrompt|TestATitleFromBefore|TestAnEmptyTitleTakes|TestATitleFromBefore|TestAnEmptyTitleTakes|TestAForgedStartMark|TestATerminalThatEndedAndIsAttached'
 UNIT='TestTheScanner|TestAnOSC|TestAHundredKilobytes|TestACleanTitle|TestTheTracker'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -74,6 +74,7 @@ run pending-prompt-title-is-not-made-a-programs $C 'tracker.pendingAt <= s.ring.
 run pending-preexec-title-is-made-a-programs $C 'tracker.pendingAt <= s.ring.marks.promptEnd' 'true'
 run same-title-is-one-frame,title-while-the-program-runs,title-detached-when-the-program-ends,title-of-a-vouched-command,title-detached-by-the-end-mark,title-sent-to-a-page-that-comes-back,shell-title-is-not-a-program,forged-start-is-no-program $T 'if text == t.text && program == t.program {' 'if false {'
 run ended-terminal-no-title $S 'marksVersionFor(kept.ring, req.Marks), 0)' 'marksVersionFor(kept.ring, req.Marks), titleFrameVersion)'
+run remote-prompt-title-is-the-commands $C 'rec.OutputStart > s.ring.marks.promptEnd' 'rec.OutputStart >= 0'
 run preexec-title-is-decided-at-the-start-mark $C 'waiting := !look && tracker != nil && s.ring.marks != nil && tracker.setAfter(s.ring.marks.promptEnd)' 'waiting := false'
 run stale-title-is-not-made-a-programs $T 'return t.text != "" && !t.program && t.at > promptEnd' 'return t.text != "" && !t.program'
 run empty-title-is-no-program $T 'if text == "" {

@@ -90,8 +90,8 @@ func (s *session) settleTitle() {
 	}
 	running, known := s.programRuns()
 	s.outMu.Lock()
-	if tracker.has && s.ring.marks != nil && tracker.pendingAt <= s.ring.marks.promptEnd {
-		// The title was drawn at or before the end of the prompt (PS1 sets one): it is the shell's, whatever command starts in the same read. A title after the prompt is the command's.
+	if rec, vouched := s.verifiedRunning(); vouched && tracker.has && rec.OutputStart > s.ring.marks.promptEnd && tracker.pendingAt <= s.ring.marks.promptEnd {
+		// The title was drawn at or before the end of the prompt (PS1 sets one) and the command started after that prompt, in the same read: the title is the shell's. A title after the prompt is the command's, and so is any title while a command that started before the last prompt mark runs (ssh: the remote shell's prompt marks are not ours).
 		running, known = false, true
 	}
 	changed := tracker.settle(running, known)
