@@ -206,7 +206,7 @@ flowchart LR
     H --> U[Host and plugin UI consumers]
 ```
 
-The SDK owns observations, revisions, and lifecycle transitions. The host never independently rewrites entry state or allocates revisions.
+The SDK owns observations, revisions, and lifecycle transitions. The host never allocates revisions and never rewrites the state of an entry the SDK published. The one thing it adds is its own copy of what a connection last answered (section 13), as stale entries next to the SDK's.
 
 If the plugin crashes, the host reports **transport unavailable**. It can display cached facts as stale without pretending that the SDK published a new snapshot.
 
@@ -251,7 +251,7 @@ Reads never acquire. Refresh never implicitly connects, probes, or lists resourc
 | Endpoint/authentication changes | Clear old facts immediately |
 | Connection removed | Clear facts and publish an ordered removal tombstone |
 | Plugin replaced | Retire registration; discard old mirror and delayed responses |
-| Application restarted | No observations retained; storage is in-memory |
+| Plugin or application restarted | The SDK retains no observations; the host serves the last answer it kept (section 13) as stale entries until a fresh answer replaces them |
 
 A repeated stop is a no-op. Cancelled waiters do not change metadata. Lifecycle cancellation cannot publish callback failures into a retired generation.
 
@@ -334,7 +334,7 @@ The core validates JSON shape, entry shape, and limits. Providers validate their
 
 No-op means identical values, timestamps, errors, and lifecycle state. A successful unchanged-value re-observation can still advance its timestamp.
 
-No general rules engine, schema registry, multi-writer system, polling, delta replay, per-key subscriptions, or durable cache is required. Add those only through a separate design justified by actual needs.
+No general rules engine, schema registry, multi-writer system, polling, delta replay, or per-key subscriptions is required. The one durable piece is the host's copy of the last answer (section 13). Add anything else only through a separate design justified by actual needs.
 
 ## 11. First consumer: Kubernetes
 
@@ -371,6 +371,30 @@ Two independent agents reviewed lifecycle/ordering and efficiency/extensibility.
 | Provider mutates returned maps | Authoritative snapshot remains unchanged |
 
 This checklist states required outcomes. Executed verification is recorded below.
+
+## 13. Last known values, kept by the host
+
+The SDK keeps its snapshots in memory, so a restart of the plugin or the host used to leave a connection that is not connected with nothing to show. The host now keeps the last answer of every connection of every plugin that supports metadata, and serves it the way the SDK serves what a stop leaves: as `stale` entries with the time each was observed. A fresh answer replaces them. No plugin does anything for this.
+
+| Question | Rule |
+| --- | --- |
+| Where | `plugins/<pluginID>/store/connection-metadata-v1` under the channel's state root: one JSON file for each plugin (`version`, and for each connection ID its entries as `{ "state": "stale", "value", "observedAt" }`). It is replaced through the private temporary file and rename the connection profile store uses (mode 0600). |
+| What is kept | The value and observation time of each `current` or `stale` entry of an admitted snapshot, for each connection and key. No error, generation or revision, no connection configuration, no credentials. |
+| What a reader sees | The SDK's own entries and, for each kept key the SDK has no entry for, a stale entry with the kept value and time. A key the SDK says is `unavailable`, and the host has a value for, is served `stale` with the SDK's error, as the SDK serves a failed refresh of a key it has a value for. A snapshot that holds kept entries and no generation of the SDK's carries the generation `host-last-known` (opaque, like every generation), because the SDK's validation wants one for any snapshot with facts; what the host serves passes that validation, and a result that would not (more entries or bytes than the SDK admits) is the SDK's snapshot as it came. |
+| When it changes | A `current` entry replaces what was kept, and so does an observation at the same time whose value differs; a `stale` entry only if it is later. A complete answer (active, not refreshing, no refresh error, with at least one entry) also drops the kept keys it leaves out, which is how a provider's `remove` reaches the copy. A tombstone, a listing that no longer has the connection, every change of the connection's profile (save, import, reset, removal) and the snapshot the SDK publishes to clear a connection whose endpoint or credentials changed (inactive, no generation, no entries, after one of a generation) drop its entries. A plugin that stops, crashes or restarts keeps them; an uninstall erases them. |
+| Ordering | A snapshot reaches the copy only after the epoch, registration and revision checks that admit it, so an entry from a retired epoch or an older revision never replaces a newer one. A retired registration reads nothing from the disk. |
+| Bounds | 32 entries for a connection, 16 KiB of JSON for a value (what the SDK admits for an entry), 4 MiB for a plugin; the entries, then the connections, observed earliest go first. A value over its limit is not kept and removes the older value of its key. The host logs one line for what it left out. |
+| Redaction | A heuristic, not a guarantee. A key, a connection ID, a string of a value or a member name of one that looks like a credential (`devdiag.Redact`, `devdiag.SensitiveKey`: the redaction the log sinks apply), and an object whose `name` or `key` member is the name of one (`{"name": "DB_PASSWORD", "value": …}`), are not kept: the value or the connection is refused, not redacted in place, and the host logs one line. A secret with no such shape under a harmless name is not found. A window is still shown what the plugin published. |
+| Writes | Debounced (2 s) and coalesced, one write at a time for a plugin, with no lock held. A removal is written at once, even when it comes while a write is in flight. What is pending is written before a plugin's stop returns, so that no write holds a file under the plugin's store while an update or an uninstall moves it, and when the host quits, which waits for the disk for 3 s at most. A file that cannot be read for another reason than being absent is never replaced: nothing is kept or written for the plugin until it can be read; a file that is not what this version wrote is moved aside (`.invalid.<time>`) and the copy starts empty; a leftover temporary file is removed at load. A connection start or stop never waits for the disk. |
+
+What the copy does not know:
+
+- It follows a connection's ID. The SDK clears a connection's facts when its endpoint or credentials change while the host runs, and the host drops its copy with them; every change made through the host's profile operations drops it too. The SDK's clearing reaches the host only for a connection that was connected in this run: after a restart with no connect, an `ApplyConnections` with changed `Data` publishes nothing (the SDK deduplicates the identical empty snapshot), so only the host's own profile operations drop the copy. A connection that is deleted and created again under the same ID, or pointed elsewhere, while the host is closed (a kubeconfig edited in an editor) shows its old facts, stale and with their observation times, until it connects and answers.
+- An answer with no entries at all does not drop what was kept: the SDK publishes an active snapshot with no entries at every connect, before its acquisition, which looks the same. A fact is retired by an answer that carries another entry and leaves it out.
+- A successful `LoadConnections` that lists no connections (a kubeconfig that is briefly empty) drops the copy of every connection of the plugin; the next connect writes it again.
+- The file is in the plugin's store, so a switch to another release channel that copies the stores ("Copy my current data to this channel", `channels.md`) copies it too, and the other channel serves the same last-known facts, stale, until it connects.
+
+Providers keep metadata public-safe, as section 9 says; the host's redaction is a second gate with holes, and not a reason to publish what is not.
 
 ---
 

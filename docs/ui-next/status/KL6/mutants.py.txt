@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+# Negative controls for KL6 (rule 28): each fault is planted alone in a scratch copy of one source file, which `go test -overlay`
+# substitutes for the real one, so the repository is never edited. A control is CAUGHT when the tests named for it fail (a fault that
+# does not build is reported as BUILD and counts for nothing). Four run at a time.
+# Run from the repository root (drop the .txt):  python3 mutants.py [substring of a fault name ...]
+import concurrent.futures, json, os, re, subprocess, sys, tempfile
+
+root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+pkg = root + "/backend/pkg/plugin/resource/"
+files = {"lk": "connection_metadata_last_known.go", "meta": "connection_metadata.go", "prof": "connection_profiles.go", "ctl": "controller.go"}
+sources = {key: open(pkg + name).read() for key, name in files.items()}
+
+COMPLETE = "snapshot.Active && !snapshot.Refreshing && snapshot.LastRefreshError == nil && len(snapshot.Entries) > 0"
+faults = {
+    "M01 kept entries are never served": ("lk", "\tif !added {\n\t\treturn snapshot\n\t}", "\tif !added || true {\n\t\treturn snapshot\n\t}"),
+    "M02 a complete answer keeps the keys it leaves out": ("lk", "\tif completeAnswer(snapshot) {", "\tif false && completeAnswer(snapshot) {"),
+    "M03 no redaction of values": ("lk", "func carriesCredential(node any) bool {\n", "func carriesCredential(node any) bool {\n\tif true {\n\t\treturn false\n\t}\n"),
+    "M04 no redaction of keys": ("lk", "\tif devdiag.SensitiveKey(key) {\n\t\treturn refused, errLastKnownCredential\n\t}", "\tif false {\n\t\treturn refused, errLastKnownCredential\n\t}"),
+    "M05 an uninstall neither marks the plugin gone nor cancels its write": ("lk", "\tp.gone = true\n\tclear(p.conns)\n\tclear(p.refusedIDs)\n\tp.bytes = 0\n\tif p.stop != nil {\n\t\tp.stop()\n\t\tp.stop = nil\n\t}\n\ts.mu.Unlock()\n\n\tp.writeMu.Lock()", "\ts.mu.Unlock()\n\n\tp.writeMu.Lock()"),
+    "M06 every change arms its own write": ("lk", "\tif p.stop != nil {\n\t\tif delay >= p.delay {\n\t\t\treturn\n\t\t}\n\t\tp.stop()\n\t}\n\tp.delay = delay", "\tp.delay = delay"),
+    "M07 the write holds the lock across the disk": ("lk", "\terr := s.write(p.id, doc)\n\tif err == nil {", "\ts.mu.Lock()\n\terr := s.write(p.id, doc)\n\ts.mu.Unlock()\n\tif err == nil {"),
+    "M08 no limit on a value": ("lk", "\tif len(encoded) > valueBytes {\n\t\treturn refused, errLastKnownTooLarge\n\t}", "\tif false {\n\t\treturn refused, errLastKnownTooLarge\n\t}"),
+    "M09 no limit on a connection's entries": ("lk", "\tif len(c.entries) <= limit {\n\t\treturn false\n\t}", "\tif true {\n\t\treturn false\n\t}"),
+    "M10 a refused value leaves the older one standing": ("lk", "\t\t_, known := c.entries[key]\n\t\tdelete(c.entries, key)\n\t\tdrops.note(candidate.err, key)\n\t\treturn known", "\t\tdrops.note(candidate.err, key)\n\t\treturn false"),
+    "M11 a stale entry of the plugin replaces a later one": ("lk", "} else if entry.State == metadataStateStale && prior.observedAt.After(observed) {", "} else if false {"),
+    "M12 a snapshot is kept before the epoch and registration fences": ("meta", "\tdefer func() { c.lastKnown.report(pluginID, dropped) }()\n\tc.pluginsMu.Lock()", "\tdefer func() { c.lastKnown.report(pluginID, dropped) }()\n\t_, dropped = known.observe(snapshot, prepared, false)\n\tc.pluginsMu.Lock()"),
+    "M13 no limit on a plugin": ("lk", "\tif p.bytes > s.limits.pluginBytes {", "\tif false && p.bytes > s.limits.pluginBytes {"),
+    "M14 a refusal is reported again with each revision": ("lk", "\t\tif prior, was := c.refused[key]; was && prior.observed.Equal(observed) && prior.digest == refusal.digest {\n\t\t\treturn false\n\t\t}\n", ""),
+    "M15 the shutdown writes nothing": ("lk", "\ts.within(\"the quit\", deadline, func() {\n\t\tfor _, p := range behind {\n\t\t\ts.flush(p)\n\t\t}\n\t})\n\ts.closeBy(deadline)", "\ts.closeBy(deadline)"),
+    "M16 the connect snapshot, active with no entries, is a complete answer": ("lk", COMPLETE, COMPLETE.replace(" && len(snapshot.Entries) > 0", "")),
+    "M17 a failed refresh is a complete answer": ("lk", COMPLETE, COMPLETE.replace(" && snapshot.LastRefreshError == nil", "")),
+    "M18 what was refused is remembered for ever": ("lk", "\tfor key := range c.refused {\n\t\tif _, reported := snapshot.Entries[key]; !reported {\n\t\t\tdelete(c.refused, key)\n\t\t}\n\t}\n", ""),
+    "M19 the listed connections are read without connsMu (the race detector is the control)": ("lk", "\tc.connsMu.RLock()\n\tids := connectionIDs(listed)\n\tc.connsMu.RUnlock()\n", "\tids := connectionIDs(listed)\n"),
+    "M20 the SDK's clearing of a changed connection is not recognised": ("lk", "\treturn previous != nil && previous.Generation != \"\" && previous.Generation != lastKnownGeneration &&\n\t\t!snapshot.Active && snapshot.Generation == \"\" && len(snapshot.Entries) == 0", "\treturn false"),
+    "M21 a change of a connection's profile does not drop what was kept": ("prof", "\tlastKnown.forget(id)\n", "\t_ = lastKnown\n"),
+    "M22 a plugin's stop does not write what is pending": ("ctl", "\tdefer c.lastKnown.settle(pluginID)\n", ""),
+    "M23 a retired registration reads the plugin's file": ("meta", "\tif !admitted {\n\t\treturn HostConnectionMetadata{}, context.Canceled\n\t}\n", "\t_ = admitted\n"),
+    "M24 a changed value observed at the kept time is not kept": ("lk", "\t\t\tif prior.digest == candidate.entry.digest {\n\t\t\t\treturn false\n\t\t\t}", "\t\t\treturn false"),
+    "M25 a read that failed is an empty copy": ("lk", "\t\treturn nil, err\n\t}\n\tsweepLastKnownTemporaries(root)", "\t\treturn map[string]*lastKnownConnection{}, nil\n\t}\n\tsweepLastKnownTemporaries(root)"),
+    "M26 a file that cannot be parsed is not moved aside": ("lk", "\t\treturn map[string]*lastKnownConnection{}, s.quarantine(root, pluginID, err)", "\t\treturn map[string]*lastKnownConnection{}, nil"),
+    "M27 the leftovers of a cut-short write are not swept": ("lk", "\tsweepLastKnownTemporaries(root)\n\tdata, found, err := readLastKnownFile(root)", "\tdata, found, err := readLastKnownFile(root)"),
+    "M28 the quit waits for a hung disk": ("lk", "\ttimer := time.NewTimer(time.Until(deadline))", "\ttimer := time.NewTimer(time.Hour)"),
+    "M29 a removal during a write waits for the debounce": ("lk", "\tif p.forgetLocked(connectionID) {\n\t\ts.touchLocked(p, 0)\n\t}", "\tif p.forgetLocked(connectionID) {\n\t\ts.touchLocked(p, s.debounce)\n\t}"),
+    "M30 a snapshot of kept entries alone has no generation": ("lk", "\tif candidate.Generation == \"\" {\n\t\tcandidate.Generation = lastKnownGeneration\n\t}", ""),
+    "M31 an object named for a credential in its name or key member is kept": ("lk", "\t\tfor _, member := range [...]string{\"name\", \"key\"} {", "\t\tfor _, member := range [...]string{} {"),
+    "M32 a connection ID that looks like a credential is kept": ("lk", "\tprepared.idRefused = devdiag.Redact(snapshot.ConnectionID) != snapshot.ConnectionID", "\tprepared.idRefused = false"),
+    "M33 what is served is not held to the SDK's validation": ("lk", "\tif resourcev2.ValidateConnectionMetadataSnapshot(candidate) != nil {\n\t\treturn snapshot\n\t}", ""),
+    "M34 a change that raced a plugin's stop arms a write after it": ("lk", "\tif s.closed || p.settled {", "\tif s.closed {"),
+    "M35 the quit waits twice for a hung disk": ("lk", "\ts.closeBy(deadline)\n}", "\ts.closeBy(time.Now().Add(s.quitWait))\n}"),
+    "M36 a read that keeps failing is tried on every admission": ("lk", "\tif p.failures >= 2 && s.now().Before(p.retryAt) {", "\tif false {"),
+}
+
+# A fault whose control is the race detector runs the tests with -race.
+RACE = ("M19",)
+only = sys.argv[1:]
+env = dict(os.environ, GOWORK="off", GOTOOLCHAIN="local")
+
+
+def run(name, which, old, new):
+    assert old in sources[which], name + ": the text to change is not in the file"
+    assert sources[which].count(old) == 1, name + ": the text to change is not unique"
+    with tempfile.TemporaryDirectory() as scratch:
+        mutant = os.path.join(scratch, files[which])
+        open(mutant, "w").write(sources[which].replace(old, new, 1))
+        overlay = os.path.join(scratch, "overlay.json")
+        json.dump({"Replace": {pkg + files[which]: mutant}}, open(overlay, "w"))
+        command = ["go", "test", "-overlay", overlay, "./backend/pkg/plugin/resource/", "-run", "TestConnectionMetadataLastKnown|TestLastKnown", "-count=1", "-timeout", "150s"]
+        done = subprocess.run(command + (["-race"] if name.startswith(RACE) else []), cwd=root, env=env, capture_output=True, text=True)
+    out = done.stdout + done.stderr
+    names = re.findall(r"--- FAIL: (\S+)", out)
+    failed = sorted({m for m in names if "/" not in m}) or sorted(set(names))[:2] or re.findall(r"panic: [^\n]{0,60}", out)[:1]
+    if "[build failed]" in out:
+        return name, "BUILD   ", failed
+    return name, "CAUGHT  " if done.returncode != 0 else "SURVIVED", failed
+
+
+selected = [(n, *f) for n, f in faults.items() if not only or any(o in n for o in only)]
+counts = {"CAUGHT  ": 0, "SURVIVED": 0, "BUILD   ": 0}
+with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    for name, status, failed in pool.map(lambda args: run(*args), selected):
+        counts[status] += 1
+        print(status, name, failed, flush=True)
+print("%d of %d caught, %d survived, %d did not build" % (counts["CAUGHT  "], len(selected), counts["SURVIVED"], counts["BUILD   "]))

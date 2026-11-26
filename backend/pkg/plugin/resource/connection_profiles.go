@@ -184,19 +184,31 @@ func encodeDesiredConnections(state desiredConnectionState) ([]byte, error) {
 }
 
 func writeDesiredConnections(root *appstate.ScopedRoot, data []byte) error {
-	if err := utils.InitializePluginStore(root); err != nil {
-		return err
+	committed, err := writeStoreFile(root, connectionProfileStoreName, data)
+	if err != nil && committed {
+		return resourcev2.NewError("RESET_REQUIRED", "Connection profile commit durability is unknown. Reload before using this connection.")
 	}
-	temp := connectionProfileStoreName + "." + uuid.NewString() + ".tmp"
+	return err
+}
+
+// writeStoreFile replaces the file name of a plugin's store with data through a private temporary file and a rename, so that a
+// reader sees the old content or the new and never part of either, and a crash leaves at most a temporary file nothing refers
+// to. The first result says whether the rename took effect: true with an error says only that the directory entry's durability
+// is unknown.
+func writeStoreFile(root *appstate.ScopedRoot, name string, data []byte) (bool, error) {
+	if err := utils.InitializePluginStore(root); err != nil {
+		return false, err
+	}
+	temp := name + "." + uuid.NewString() + ".tmp"
 	file, err := root.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() {
 		if removeErr := root.Remove(temp); removeErr != nil && !os.IsNotExist(removeErr) {
 			logging.Default().Warnw(
 				context.Background(),
-				"connection profile temporary cleanup failed",
+				"plugin store temporary cleanup failed",
 				"errorClass",
 				telemetryutil.ErrorClass(removeErr),
 			)
@@ -206,35 +218,31 @@ func writeDesiredConnections(root *appstate.ScopedRoot, data []byte) error {
 		if closeErr := file.Close(); closeErr != nil {
 			logging.Default().Debugw(
 				context.Background(),
-				"connection profile file close failed",
+				"plugin store file close failed",
 				"errorClass",
 				telemetryutil.ErrorClass(closeErr),
 			)
 		}
-		return err
+		return false, err
 	}
 	if err := file.Sync(); err != nil {
 		if closeErr := file.Close(); closeErr != nil {
 			logging.Default().Debugw(
 				context.Background(),
-				"connection profile file close failed",
+				"plugin store file close failed",
 				"errorClass",
 				telemetryutil.ErrorClass(closeErr),
 			)
 		}
-		return err
+		return false, err
 	}
 	if err := file.Close(); err != nil {
-		return err
+		return false, err
 	}
-	if err := root.Rename(temp, connectionProfileStoreName); err != nil {
-		return err
+	if err = root.Rename(temp, name); err != nil {
+		return false, err
 	}
-	err = syncConnectionProfileDirectory(root)
-	if err != nil {
-		return resourcev2.NewError("RESET_REQUIRED", "Connection profile commit durability is unknown. Reload before using this connection.")
-	}
-	return nil
+	return true, syncConnectionProfileDirectory(root)
 }
 
 // Windows does not support syncing a read-only directory handle. File contents
@@ -525,6 +533,9 @@ func withoutDesiredConnection(state desiredConnectionState, id string) desiredCo
 }
 
 func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, operation string, connection *types.Connection, credentials *ConnectionProfileCredentials) (_result ConnectionProfileResult, retErr error) {
+	// Every change of a connection's profile (a save, an import, a reset, a removal) drops what the host last knew of it: that is
+	// about a connection that was configured otherwise, or is gone. The plugin's file is read before any lock is taken.
+	lastKnown := c.lastKnownOf(pluginID)
 	defer c.notifyInventory()
 	if id == "" || !utf8.ValidString(id) {
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "An explicit UTF-8 connection ID is required.")
@@ -689,6 +700,7 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 		return ConnectionProfileResult{}, err
 	}
 	committed = true
+	lastKnown.forget(id)
 	if err := c.publishProfileConnections(context.WithoutCancel(ctx), pluginID, generation, native, effective); err != nil {
 		return ConnectionProfileResult{}, err
 	}
