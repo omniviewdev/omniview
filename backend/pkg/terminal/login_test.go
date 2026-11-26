@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -495,7 +496,7 @@ func wchanWaitsForInput(name string) bool {
 func TestTheWchanThatWaitsForInputIsAReadAndNotAWriteOrAChildOrASleep(t *testing.T) {
 	for name, want := range map[string]bool{
 		"n_tty_read": true, "do_select": true, "do_sys_poll": true, "poll_schedule_timeout.constprop.0": true, "wait_woken": true,
-		"pipe_read": true, "pipe_write": false, "do_wait": false, "hrtimer_nanosleep": false, "0": false, "": false,
+		"pipe_read": false, "pipe_write": false, "do_wait": false, "hrtimer_nanosleep": false, "0": false, "": false,
 	} {
 		assert.Equal(t, want, wchanWaitsForInput(name), name)
 	}
@@ -532,15 +533,26 @@ func TestWaitingForInputIsAProcessBlockedReadingItsStdinAndNothingElse(t *testin
 	if _, err := os.Stat("/proc/self/syscall"); err != nil {
 		t.Skip("NOT RUN: no /proc/<pid>/syscall on this machine")
 	}
-	// cat with a pipe that nobody writes to is blocked in read(0).
-	reader := exec.Command("cat")
-	stdin, err := reader.StdinPipe()
+	// cat on a terminal nobody types on is blocked in read(0) of a tty: it waits for input.
+	master, slave, err := pty.Open()
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })
+	reader := exec.Command("cat")
+	reader.Stdin = slave
 	require.NoError(t, reader.Start())
-	t.Cleanup(func() { _ = stdin.Close(); _ = reader.Process.Kill(); _ = reader.Wait() })
+	t.Cleanup(func() { _ = reader.Process.Kill(); _ = reader.Wait() })
 	waiting, known := waitingForInput(reader.Process.Pid, 5*time.Second)
 	assert.True(t, known)
-	assert.True(t, waiting, "cat is blocked reading its stdin")
+	assert.True(t, waiting, "cat is blocked reading a terminal")
+
+	// A shell blocked in the `$(…)` of a hook reads a pipe: that is the window the wait is there to avoid.
+	piper := exec.Command("cat")
+	pipeIn, err := piper.StdinPipe()
+	require.NoError(t, err)
+	require.NoError(t, piper.Start())
+	t.Cleanup(func() { _ = pipeIn.Close(); _ = piper.Process.Kill(); _ = piper.Wait() })
+	waiting, _ = waitingForInput(piper.Process.Pid, 400*time.Millisecond)
+	assert.False(t, waiting, "a process blocked reading a pipe does not wait for input")
 
 	// sleep is asleep (nanosleep), and a shell waiting for a child is in wait4: neither waits for input.
 	sleeper := exec.Command("sh", "-c", "sleep 30; true")
