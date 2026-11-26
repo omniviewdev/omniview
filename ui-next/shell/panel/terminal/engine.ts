@@ -210,8 +210,8 @@ export type Engine = {
   /** The line of the buffer the cursor is on and its column, now (which, while a write waits, is not where the parse of the bytes after it will leave it). */
   readonly cursor: () => { readonly line: number; readonly column: number };
   readonly viewport: () => EngineViewport;
-  /** The text of the lines `[from, to)` of the buffer: a wrapped line is joined to its continuation, the end of a line is trimmed, lines are joined with a line feed. Empty for a range with no line. */
-  readonly lines: (from: number, to: number) => string;
+  /** The text of the lines `[from, to)` of the buffer: a wrapped line is joined to its continuation, the end of a line is trimmed, lines are joined with a line feed. Empty for a range with no line. `columns` cuts, in terminal cells (a wide character is two), the first row from a column and the last row at a column. */
+  readonly lines: (from: number, to: number, columns?: { readonly from?: number; readonly to?: number }) => string;
   /** Selects the lines `[from, to)` whole. */
   readonly selectLines: (from: number, to: number) => void;
   /** Scrolls so that `line` is the top of the view (as far as the buffer allows). */

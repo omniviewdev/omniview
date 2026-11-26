@@ -724,7 +724,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
       return { top: buffer.viewportY, rows: terminal.rows, atBottom: buffer.viewportY >= buffer.baseY };
     },
 
-    lines: (from, to) => {
+    lines: (from, to, columns) => {
       const buffer = terminal.buffer.active;
       const out: string[] = [];
       for (let index = Math.max(0, from); index < Math.min(to, buffer.length); index += 1) {
@@ -734,7 +734,9 @@ export function createXtermEngine(options: EngineOptions): Engine {
         }
 
         // A row that the next one continues is full, so its end is part of the text; the end of the last row of a logical line is trimmed below.
-        const text = line.translateToString(false);
+        const first = index === Math.max(0, from) ? columns?.from : undefined;
+        const last = index === Math.min(to, buffer.length) - 1 ? columns?.to : undefined;
+        const text = line.translateToString(false, first, last);
         if (line.isWrapped && out.length > 0 && index > from) {
           out[out.length - 1] = `${out[out.length - 1] ?? ''}${text}`;
         } else {

@@ -350,7 +350,10 @@ describe('what review found, in the screen', () => {
     const text = '$ ls\r\nout\r\nmore\r\n';
     const { frame, screen, engine } = await rig({ auto: false, replay: replayWith(text, [placed(0, A()), placed(2, B()), placed(6, C('ls')), placed(6, D(0))]) });
     frame();
-    for (let guard = 0; guard < 10 && screen.commands.state().count === 0; guard += 1) engine().complete(1);
+    for (let guard = 0; guard < 10 && screen.commands.state().count === 0; guard += 1) {
+      engine().complete(1);
+    }
+
     expect(screen.commands.state().count).toBe(1);
     expect(engine().pendingWrites(), 'the replay is not over').toBeGreaterThan(0);
     expect(screen.commands.state().rerun).toBeDefined();

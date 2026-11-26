@@ -110,44 +110,40 @@ export const GUTTER_CONTROLS = {
   'gutter-covers-text': {
     assertion: 'gutter.marks',
     section: 'gutter-marks',
-    engines: ['chromium'],
     stage: 'marks',
     after: (page) => page.addStyleTag({ content: '.xterm-decoration > [data-state]{inset-inline-end:auto !important;inset-inline-start:0 !important}' }),
   },
   'gutter-alt-shown': {
     assertion: 'gutter.marks',
     section: 'gutter-marks',
-    engines: ['chromium'],
     stage: 'alt',
     after: (page) => page.addStyleTag({ content: '[data-shell-part="terminalScreen"] .xterm-decoration > [data-state]{display:flex !important}' }),
   },
   // The shell's marks never reach the page: the host sends no marks frame.
-  'gutter-marks-never': { assertion: 'gutter.marks', section: 'gutter-marks', engines: ['chromium'], host: { faults: { marksNever: true } } },
+  'gutter-marks-never': { assertion: 'gutter.marks', section: 'gutter-marks', host: { faults: { marksNever: true } } },
   // A pointer that is never said to have left the mark.
   'gutter-tip-stuck': {
     assertion: 'gutter.hover',
     section: 'gutter-hover',
-    engines: ['chromium'],
     init: () => {
       document.addEventListener('mouseleave', (event) => { if (event.target instanceof Element && event.target.hasAttribute('data-state')) event.stopImmediatePropagation(); }, true);
     },
   },
-  'gutter-tip-never': { assertion: 'gutter.hover', section: 'gutter-hover', engines: ['chromium'], init: () => {
+  'gutter-tip-never': { assertion: 'gutter.hover', section: 'gutter-hover', init: () => {
     document.addEventListener('mouseenter', (event) => { if (event.target instanceof Element && event.target.hasAttribute('data-state')) event.stopImmediatePropagation(); }, true);
   } },
   // A jump chord that never reaches the product, and a clipboard that keeps nothing it is given.
   'gutter-jump-lost': {
     assertion: 'gutter.keys',
     section: 'gutter-keys',
-    engines: ['chromium'],
     init: () => {
-      window.addEventListener('keydown', (event) => { if (event.key === 'ArrowUp' && event.ctrlKey) event.stopImmediatePropagation(); }, true);
+      window.addEventListener('keydown', (event) => { if (event.key === 'ArrowUp' && (event.ctrlKey || event.metaKey)) event.stopImmediatePropagation(); }, true);
     },
   },
-  'gutter-clipboard-dropped': { assertion: 'gutter.keys', section: 'gutter-keys', engines: ['chromium'], clipboard: { drop: true } },
+  'gutter-clipboard-dropped': { assertion: 'gutter.keys', section: 'gutter-keys', clipboard: { drop: true } },
   // A host whose replay brings no marks.
-  'gutter-reload-forgets': { assertion: 'gutter.reload', section: 'gutter-reload', engines: ['chromium'], host: { faults: { marksAfterFirst: true } } },
-  'gutter-axe': { assertion: 'axe.gutter', section: 'gutter-axe', engines: ['chromium'], stage: 'axe', after: plantImage },
+  'gutter-reload-forgets': { assertion: 'gutter.reload', section: 'gutter-reload', host: { faults: { marksAfterFirst: true } } },
+  'gutter-axe': { assertion: 'axe.gutter', section: 'gutter-axe', stage: 'axe', after: plantImage },
 };
 
 /**
@@ -350,6 +346,8 @@ export function createGutterSections({ check, note, report, runAxe }) {
       if (!shown) await page.click('[data-shell-part="panelToggle"]');
       await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
       // The gutter is the page's own after the reload: every command the replay holds is a command to jump to, and the marks the emulator draws are those of the rows in the view, so the proof is the jump: two jumps back reach the first of two.
+      // The jump keys are the terminal's only once the replay has made its commands: wait for both before the first press.
+      await waitFor(page, () => window.__gutter.marks().length >= 2, undefined, 12_000);
       await page.locator('.xterm-helper-textarea').focus();
       const mac = await isMac(page);
       const up = mac ? 'Meta+ArrowUp' : 'Control+ArrowUp';

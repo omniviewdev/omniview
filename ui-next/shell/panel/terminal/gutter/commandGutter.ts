@@ -26,7 +26,9 @@ export type GutterCommand = {
 
 export type GutterEvent =
   | { readonly kind: 'hover'; readonly command: GutterCommand | undefined; readonly x: number; readonly y: number }
-  | { readonly kind: 'said'; readonly words: string };
+  | { readonly kind: 'said'; readonly words: string }
+  /** The commands, their states or what the actions can do changed: a menu that is open is out of date. */
+  | { readonly kind: 'commands' };
 
 /** The most commands the gutter keeps and draws. */
 export const MAX_COMMANDS = 200;
@@ -84,6 +86,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   let counter = 0;
   let focused: { readonly entry: Entry; readonly top: number } | undefined;
   let hovered: Entry | undefined;
+  let hoverAt = { x: 0, y: 0 };
   const listeners = new Set<(event: GutterEvent) => void>();
 
   const tell = (event: GutterEvent) => {
@@ -132,6 +135,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       return;
     }
 
+    tell({ kind: 'commands' });
     entries.splice(at, 1);
     entry.stop?.();
     entry.stop = undefined;
@@ -142,10 +146,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     release(entry.start);
     release(entry.end);
     unhover(entry);
-    if (running === entry) {
-      running = undefined;
-    }
-
+    // `running` stays: that the line is gone (an erase) says nothing of the command; only the shell's end mark, a prompt back or a new start do.
     if (focused?.entry === entry) {
       focused = undefined;
     }
@@ -157,6 +158,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
         unhover(entry);
       } else {
         hovered = entry;
+        hoverAt = { x: box.right, y: box.top };
         tell({ kind: 'hover', command: viewOf(entry), x: box.right, y: box.top });
       }
     });
@@ -165,11 +167,18 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   const settle = (entry: Entry, state: CommandState) => {
     entry.state = state;
     entry.decoration?.refresh();
+    tell({ kind: 'commands' });
+    // The pointer is on the mark: the tooltip is told what is true now.
+    if (hovered === entry) {
+      tell({ kind: 'hover', command: viewOf(entry), x: hoverAt.x, y: hoverAt.y });
+    }
   };
 
   const onPrompt = (mark: TerminalMark) => {
     // A prompt back while a command runs: the shell is back and nobody printed the end (a shell that was replaced, an ssh that ended).
     if (running !== undefined && mark.redraw !== true) {
+      // Its output ends where this prompt starts: what comes after is not its.
+      running.end ??= anchor();
       settle(running, 'incomplete');
       running = undefined;
     }
@@ -192,6 +201,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     }
 
     if (running !== undefined) {
+      running.end ??= anchor();
       settle(running, 'incomplete');
     }
 
@@ -247,13 +257,14 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   };
 
   /** The lines `[from, to)` of a command's output: from the line the start mark is on to the line its end is on, which is part of it when the end came after output with no line feed. */
-  const rangeOf = (entry: Entry): readonly [number, number] | undefined => {
+  const rangeOf = (entry: Entry): readonly [number, number, number | undefined] | undefined => {
     const from = entry.start.marker.line();
     if (from < 0) {
       return undefined;
     }
 
     let to: number;
+    let tail: number | undefined;
     if (entry.end === undefined) {
       const cursor = engine.cursor();
       to = cursor.column > 0 ? cursor.line + 1 : cursor.line;
@@ -264,9 +275,11 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       }
 
       to = entry.end.column > 0 ? line + 1 : line;
+      // The last row holds the output up to the end mark's column, and then what the shell drew after it.
+      tail = entry.end.column > 0 ? entry.end.column : undefined;
     }
 
-    return to > from ? [from, to] : undefined;
+    return to > from ? [from, to, tail] : undefined;
   };
 
   const entryOf = (command: GutterCommand | undefined): Entry | undefined => {
@@ -345,7 +358,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   const output = (command?: GutterCommand): string | undefined => {
     const entry = entryOf(command);
     const range = entry === undefined ? undefined : rangeOf(entry);
-    return range === undefined ? undefined : engine.lines(range[0], range[1]);
+    return range === undefined ? undefined : engine.lines(range[0], range[1], range[2] === undefined ? undefined : { to: range[2] });
   };
 
   const rerun = (command?: GutterCommand): { readonly text: string; readonly enter: boolean } | undefined => {
@@ -366,7 +379,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       return undefined;
     }
 
-    const shown = engine.lines(from, to).slice(input.column);
+    const shown = engine.lines(from, to, { from: input.column });
     // A line the shell did not prove is refused when it has a line break: with bracketed paste off a pasted line feed is a carriage return, and the first line would run.
     if (/[\r\n]/.test(shown)) {
       return undefined;

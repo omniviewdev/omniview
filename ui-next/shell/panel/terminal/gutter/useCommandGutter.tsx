@@ -72,6 +72,10 @@ export function useCommandGutter({ screen, say }: CommandGutterOptions): Command
         return;
       }
 
+      if (event.kind === 'commands') {
+        return;
+      }
+
       const { command } = event;
       if (command === undefined) {
         setHover(undefined);

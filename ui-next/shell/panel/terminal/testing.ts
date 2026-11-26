@@ -643,9 +643,10 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       const top = atTop === undefined ? bottom : Math.min(atTop, bottom);
       return { top, rows, atBottom: top >= bottom } satisfies EngineViewport;
     },
-    lines: (from, to) => {
+    lines: (from, to, columns) => {
       sync();
-      return buffer.slice(Math.max(0, from), Math.max(0, to)).map((line) => line.trimEnd()).join('\n');
+      const rows = buffer.slice(Math.max(0, from), Math.max(0, to));
+      return rows.map((line, at) => (at === rows.length - 1 && columns?.to !== undefined ? line.slice(0, columns.to) : line).slice(at === 0 ? (columns?.from ?? 0) : 0).trimEnd()).join('\n');
     },
     selectLines: (from, to) => {
       sync();

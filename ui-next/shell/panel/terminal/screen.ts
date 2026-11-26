@@ -226,7 +226,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** The emulator holds output: live bytes were written to it, or a replay was applied. A replay that comes after that is a LATE one (a stream that lost bytes, a gap), not the first of a terminal the page took back. */
   let holds = false;
   /** The replay being applied: its bytes are written a share at a time, and nothing the emulator says is heard until the last of them is parsed. */
-  let replaying: { readonly replay: TerminalReplay; readonly late: boolean; written: number; marked: number } | undefined;
+  let replaying: { readonly replay: TerminalReplay; readonly late: boolean; written: number; marked: number; placing: number; bytesDone: boolean } | undefined;
   /**
    * What the screen has still to settle with the host once a replay is parsed: the size the host's terminal has, and whether the replay came late. When the host has the size the panel has, a full-screen program is made to paint
    * again; when it has another and the replay was late, the feed is told the panel's size again (the feed was told it before the gap, and whoever held the terminal meanwhile may have changed the host's: a first replay needs no
@@ -306,11 +306,22 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
    * The marks of the shell stand here, between the bytes written so far and the bytes after them: an empty write, which the emulator runs when it has parsed what was written before it, makes their markers (a marker made before
    * the parse reads the line the cursor was on, xterm.js #5214). It is no byte, and is neither counted nor acknowledged.
    */
-  function place(emulator: Engine, group: readonly PlacedMark[]): void {
+  function place(emulator: Engine, group: readonly PlacedMark[], inReplay?: NonNullable<typeof replaying>): void {
     markWrites += 1;
+    if (inReplay !== undefined) {
+      inReplay.placing += 1;
+    }
+
     emulator.write(NOTHING, () => {
       markWrites -= 1;
       gutter?.ingest(group.map((one) => one.mark));
+      if (inReplay !== undefined) {
+        inReplay.placing -= 1;
+        if (replaying === inReplay) {
+          finishReplayWhenPlaced();
+        }
+      }
+
       if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
         schedule();
       }
@@ -320,7 +331,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** Writes what is held in slices the emulator parses without a long task, counts what it has accepted and not parsed, and tells the feed what it parsed: the host paces the shell by that. The slices end where a mark stands. */
   function send(emulator: Engine, chunks: readonly Uint8Array[], marks: readonly PlacedMark[] = []): void {
     holds = true;
-    let piece = new Uint8Array(FLOW.slice);
+    let piece: Uint8Array | undefined = new Uint8Array(FLOW.slice);
     let filled = 0;
     // The bytes handed over so far, and the next mark that has not been placed.
     let handed = 0;
@@ -332,10 +343,16 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
       const bytes = filled;
       pending += bytes;
-      emulator.write(piece.subarray(0, bytes), () => {
+      // A full scratch is handed over whole and a new one made when more comes; a short one (a mark cut the slice) is copied to a buffer of its own size, so that the write does not hold the 64 KiB until it is parsed.
+      const scratch = piece ?? new Uint8Array(0);
+      const out = bytes === FLOW.slice ? scratch : scratch.slice(0, bytes);
+      emulator.write(out, () => {
         parsed(bytes, true);
       });
-      piece = new Uint8Array(FLOW.slice);
+      if (bytes === FLOW.slice) {
+        piece = undefined;
+      }
+
       filled = 0;
     };
 
@@ -356,6 +373,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       for (let at = 0; at < chunk.length; ) {
         const untilMark = next < marks.length ? Math.max(1, (marks[next]?.at ?? Infinity) - handed) : Infinity;
         const take = Math.min(chunk.length - at, FLOW.slice - filled, untilMark);
+        piece ??= new Uint8Array(FLOW.slice);
         piece.set(chunk.subarray(at, at + take), filled);
         filled += take;
         at += take;
@@ -379,8 +397,9 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     pending += bytes;
     emulator.write(piece, () => {
       parsed(bytes, false);
-      if (last) {
-        finishReplay();
+      if (last && replaying !== undefined) {
+        replaying.bytesDone = true;
+        finishReplayWhenPlaced();
       }
     });
   }
@@ -393,7 +412,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     const late = holds;
     holds = true;
     gutter?.reset();
-    replaying = { replay: taken, late, written: 0, marked: 0 };
+    replaying = { replay: taken, late, written: 0, marked: 0, placing: 0, bytesDone: false };
     const { cols, rows } = taken.startSize;
     const now = emulator.size();
     if (now.cols !== cols || now.rows !== rows) {
@@ -446,7 +465,14 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
     if (marks !== undefined && next > from) {
       replaying.marked = next;
-      place(emulator, marks.slice(from, next));
+      place(emulator, marks.slice(from, next), replaying);
+    }
+  }
+
+  /** The last byte of the replay is parsed and every mark of it is placed (the ones at its end after it): the replay is over. A mark placed after the replay ended would be made at a size and a time that are not the replay's. */
+  function finishReplayWhenPlaced(): void {
+    if (replaying !== undefined && replaying.bytesDone && replaying.placing === 0 && replaying.marked >= (replaying.replay.marks?.length ?? 0)) {
+      finishReplay();
     }
   }
 
@@ -719,7 +745,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       case 'selectNextCommand':
         // With no commands to go to, or a program that has the whole screen, the key is what it was: the window's on a Mac, the shell's elsewhere.
         if (!commands.has()) {
-          return deps.platform !== 'mac';
+          return deps.platform !== 'mac' && !event.shiftKey;
         }
 
         event.preventDefault();
@@ -888,7 +914,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       return INPUT_OFF;
     }
 
-    if (gutter.busy()) {
+    if (replaying !== undefined || gutter.busy()) {
       return RERUN_RUNNING;
     }
 
@@ -897,15 +923,20 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
   const commands: ScreenCommands = {
     has: () => gutter !== undefined && engine?.alternate() !== true && gutter.commands().length > 0,
-    state: () => ({ count: gutter?.commands().length ?? 0, output: gutter?.output() !== undefined, rerun: rerunBlocked() }),
+    state: () => ({ count: gutter?.commands().length ?? 0, output: engine?.alternate() !== true && gutter?.output() !== undefined, rerun: rerunBlocked() }),
     jump: (direction, options) => {
       gutter?.jump(direction, options);
     },
     selectOutput: () => {
+      if (engine?.alternate() === true) {
+        sayCommands(NO_OUTPUT);
+        return;
+      }
+
       gutter?.selectOutput();
     },
     copyOutput: async () => {
-      const text = gutter?.output();
+      const text = engine?.alternate() === true ? undefined : gutter?.output();
       if (text === undefined) {
         sayCommands(NO_OUTPUT);
         return false;
