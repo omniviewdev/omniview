@@ -376,7 +376,7 @@ describe('the terminals a page that reloaded finds again: the tab, the shell and
     const launch = JSON.stringify({ env: { A: '1', B: 2, C: null, D: '' } });
     const [target] = await restoreLocalTerminals(channels([listed('a', { params: { launch } })]));
     target?.open();
-    expect(made().attach).toMatchObject({ launch: { env: { A: '1', D: '' } } });
+    expect(made().attach?.launch).toEqual({ env: { A: '1', D: '' } });
   });
 
   it.each([

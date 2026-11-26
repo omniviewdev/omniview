@@ -2929,9 +2929,10 @@ describe('a restart: the screen goes on with the next feed of its session (`cont
     next.push('$ ');
     r.frame();
     next.push('exit\r\n');
-    next.set({ state: 'ended', exit: { code: 1 } });
+    // It ended the way the first did: the end of the new process is its own line, written once, though the words are the same.
+    next.set({ state: 'ended', exit: { code: 3 } });
     r.frame();
-    expect(r.engine().text()).toBe(`${ENDED}${SEPARATOR}$ exit\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 1]\u001b[0m\r\n`);
+    expect(r.engine().text()).toBe(`${ENDED}${SEPARATOR}$ exit\r\n${ENDED}`);
   });
 
   it('tells the new feed the size of the screen at once: that size starts the terminal, and the old feed is told nothing more', async () => {
