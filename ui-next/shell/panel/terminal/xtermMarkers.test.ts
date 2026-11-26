@@ -18,11 +18,14 @@ const EMPTY = new Uint8Array(0);
 const opened: Array<{ readonly engine: Engine; readonly host: HTMLElement }> = [];
 const registered: Terminal[] = [];
 
-function emulator(scrollback = 100, rows = 24) {
+function emulator(scrollback = 100, rows = 24, open = true) {
   const host = document.createElement('div');
   document.body.append(host);
   const engine = createXtermEngine({ cols: 80, rows, scrollback, appearance: APPEARANCE, screenReaderMode: false });
-  engine.open(host);
+  if (open) {
+    engine.open(host);
+  }
+
   opened.push({ engine, host });
   /** Writes and answers once the emulator has parsed it. */
   const parsed = async (data: string | Uint8Array): Promise<void> => {
@@ -105,7 +108,7 @@ describe('a marker made where the parse stands', () => {
     expect(gone).toHaveBeenCalledTimes(1);
   });
 
-  it('is gone after a clear but for the one on the line the cursor is on, as the emulator leaves that line', async () => {
+  it('is gone after a clear, the one on the cursor\'s line too (the emulator keeps that line and disposes every marker)', async () => {
     const { engine, parsed } = emulator();
     await parsed('old\r\n');
     const old = engine.mark();
@@ -114,9 +117,9 @@ describe('a marker made where the parse stands', () => {
     expect(old?.marker.line()).toBe(1);
     expect(current?.marker.line()).toBe(1);
     engine.clear();
-    expect(engine.cursor().line).toBe(0);
-    expect(current?.marker.line(), 'the cursor\'s line is kept and is the first line now').toBe(0);
+    expect(engine.cursor().line, 'the cursor\'s line is kept and is the first line now').toBe(0);
     expect(old?.marker.line()).toBe(-1);
+    expect(current?.marker.line(), 'the emulator disposes every marker of the buffer, the cursor\'s line too').toBe(-1);
   });
 
   it('is gone when it is disposed, and a listener added after that is told at once; a listener that was stopped is not told', async () => {
@@ -182,7 +185,7 @@ describe('the view and the text, by line', () => {
   it('reads the text of a range of lines: a wrapped line is one, the end of a line is trimmed, the lines are joined with a line feed', async () => {
     const { engine, parsed } = emulator();
     await parsed(`${'x'.repeat(100)}\r\nsecond   \r\nthird\r\n`);
-    expect(engine.lines(0, 2)).toBe(`${'x'.repeat(100)}\nsecond`);
+    expect(engine.lines(0, 3), 'rows 0 and 1 are one wrapped line').toBe(`${'x'.repeat(100)}\nsecond`);
     expect(engine.lines(2, 3)).toBe('second');
     expect(engine.lines(3, 4)).toBe('third');
     expect(engine.lines(50, 60), 'a range with no line').toBe('');
@@ -196,8 +199,8 @@ describe('the view and the text, by line', () => {
     expect(engine.selection()).toBe('one\ntwo');
   });
 
-  it('scrolls a line to the top of the view and back to the bottom, and says where the view is', async () => {
-    const { engine, parsed } = emulator(1000, 10);
+  it('scrolls a line to the top of the view and back to the bottom, and says where the view is (an emulator that is not opened: the scroll of an opened one goes through its element, which a document with no layout does not follow; the probe proves that one)', async () => {
+    const { engine, parsed } = emulator(1000, 10, false);
     let text = '';
     for (let line = 0; line < 60; line += 1) {
       text += `row ${String(line)}\r\n`;
