@@ -3,6 +3,7 @@ import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppeara
 import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
+import type { GutterEvent } from './gutter/commandGutter';
 import { drainLine, exitLine, failureLines } from './state';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It is framework-free and knows no xterm: it is written against `Engine`, and the body
@@ -105,6 +106,24 @@ export type ScreenDeps = {
   readonly onFindClose?: (() => boolean) | undefined;
 };
 
+/**
+ * What a person does with the commands the shell's marks made (issue #694 step 5): jump to the previous and the next, select, copy and run again. Every action says what it did, for a person who cannot see the view move
+ * (`onEvent`), and the hover of a mark is told the same way.
+ */
+export type ScreenCommands = {
+  /** There are commands to act on, and the emulator is not showing a program's alternate screen: the jump keys are the terminal's. */
+  readonly has: () => boolean;
+  /** What the menu offers now: how many commands, whether the target printed output, and the reason a command cannot be run again (`undefined`: it can). */
+  readonly state: () => { readonly count: number; readonly output: boolean; readonly rerun: string | undefined };
+  readonly jump: (direction: 'previous' | 'next', options?: { readonly select?: boolean }) => void;
+  readonly selectOutput: () => void;
+  readonly copyOutput: () => Promise<boolean>;
+  /** Types the target's command line into the shell (and Enter only for a line the shell proved). */
+  readonly rerun: () => void;
+  /** The gutter's events: where the pointer is on a mark, and what an action did. Returns what stops it. */
+  readonly onEvent: (listener: (event: GutterEvent) => void) => () => void;
+};
+
 export type TerminalScreen = {
   /** The element the emulator draws in. Nothing else happens. */
   readonly mount: (host: HTMLElement) => void;
@@ -136,6 +155,8 @@ export type TerminalScreen = {
   readonly setLinks: (handler: LinkHandler | undefined) => void;
   /** Selects the whole buffer, the screen and the scrollback (nothing before the emulator is made): the key does it too. */
   readonly selectAll: () => void;
+  /** The commands of the shell's marks: nothing before the emulator is made. */
+  readonly commands: ScreenCommands;
 };
 
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
@@ -618,6 +639,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         }
 
         return !event.metaKey;
+      case 'previousCommand':
+      case 'nextCommand':
+      case 'selectPreviousCommand':
+      case 'selectNextCommand':
+        return true;
     }
   }
 
@@ -880,5 +906,15 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     },
 
     getSnapshot: () => snapshot,
+
+    commands: {
+      has: () => false,
+      state: () => ({ count: 0, output: false, rerun: undefined }),
+      jump: () => undefined,
+      selectOutput: () => undefined,
+      copyOutput: async () => Promise.resolve(false),
+      rerun: () => undefined,
+      onEvent: () => () => undefined,
+    },
   };
 }

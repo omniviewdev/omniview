@@ -32,8 +32,25 @@ export type KeyEventLike = {
  *   `find`      the find over the output opens: Command F on a Mac, Control F and Control Shift F elsewhere (VS Code and JetBrains bind Control F, the written spec Control Shift F: both are taken, and the shell loses Control F,
  *               as VS Code's does)
  *   `findNext`  a find steps: F3 on every platform, Command G on a Mac; with Shift, `findPrevious`. They stay the terminal's (F3) or the window's (Command G) unless the find bar takes them
+ *   `previousCommand`, `nextCommand`  the view jumps to the previous or the next command (issue #694 step 5): Command Up and Down on a Mac, Control Up and Down elsewhere (VS Code's chords); with Shift, `selectPreviousCommand` and
+ *               `selectNextCommand` jump and select the command's output. They are the terminal's only while it has commands to jump to and no program has the alternate screen: otherwise the key is what it was (the window's on a Mac,
+ *               the shell's elsewhere), and the screen says which
  */
-export type TerminalKey = 'terminal' | 'leave' | 'app' | 'copy' | 'paste' | 'selectAll' | 'clear' | 'find' | 'findNext' | 'findPrevious';
+export type TerminalKey =
+  | 'terminal'
+  | 'leave'
+  | 'app'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'clear'
+  | 'find'
+  | 'findNext'
+  | 'findPrevious'
+  | 'previousCommand'
+  | 'nextCommand'
+  | 'selectPreviousCommand'
+  | 'selectNextCommand';
 
 const MODIFIERS: Readonly<Record<string, true>> = { Shift: true, Control: true, Alt: true, Meta: true, AltGraph: true, CapsLock: true, Fn: true, FnLock: true, OS: true, Hyper: true, Super: true, Dead: true, Process: true, Unidentified: true };
 

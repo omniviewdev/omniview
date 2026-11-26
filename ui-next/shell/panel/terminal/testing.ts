@@ -211,7 +211,11 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     },
     push: (output, marks) => {
       const chunk = typeof output === 'string' ? new TextEncoder().encode(output) : output;
-      held.push(chunk);
+      // A push of marks alone holds no chunk, as a feed whose reader has read the bytes before the marks came.
+      if (chunk.length > 0) {
+        held.push(chunk);
+      }
+
       for (const one of marks ?? []) {
         heldMarks.push({ mark: one.mark, at: pushed + one.at });
       }
