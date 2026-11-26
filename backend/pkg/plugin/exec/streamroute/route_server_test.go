@@ -53,6 +53,7 @@ const (
 	hApplied  byte = 0x87
 	hTaken    byte = 0x85
 	hRefused  byte = 0x8a
+	hMarks    byte = 0x8b
 	pClose    byte = 0x06
 )
 
@@ -164,7 +165,24 @@ type streamState struct {
 	applied []uint64
 	// takenOver and closeRefused count the frames of those types.
 	takenOver, closeRefused int
-	faults                  []string
+	// marks is every mark of every marks frame, and markFrames the frames themselves.
+	marks      []routeMark
+	markFrames []string
+	faults     []string
+}
+
+// routeMark is one mark of a marks frame, as the page reads it: the wire is written out here by hand.
+type routeMark struct {
+	Kind    string `json:"kind"`
+	At      uint64 `json:"at"`
+	End     uint64 `json:"end"`
+	ID      string `json:"id"`
+	Trust   string `json:"trust"`
+	Command string `json:"command"`
+	Cwd     string `json:"cwd"`
+	Exit    *int32 `json:"exit"`
+	// seenAt is where the page stood when the frame came.
+	seenAt uint64
 }
 
 func (s *streamState) take(frame []byte) {
@@ -214,6 +232,23 @@ func (s *streamState) take(frame []byte) {
 		s.takenOver++
 	case hRefused:
 		s.closeRefused++
+	case hMarks:
+		var frameBody struct {
+			V     int         `json:"v"`
+			Marks []routeMark `json:"marks"`
+		}
+		if err := json.Unmarshal(body, &frameBody); err != nil || frameBody.V != 1 || len(frameBody.Marks) == 0 {
+			s.faults = append(s.faults, fmt.Sprintf("a marks frame that is not version 1 with marks: %v", err))
+			return
+		}
+		s.markFrames = append(s.markFrames, string(body))
+		for _, mark := range frameBody.Marks {
+			if mark.End > s.next {
+				s.faults = append(s.faults, fmt.Sprintf("a mark ending at %d before its bytes: the page stands at %d", mark.End, s.next))
+			}
+			mark.seenAt = s.next
+			s.marks = append(s.marks, mark)
+		}
 	case hApplied:
 		if len(body) != 8 {
 			s.faults = append(s.faults, fmt.Sprintf("an applied frame of %d bytes", len(body)))
@@ -280,6 +315,19 @@ func (c *client) requireClosed() {
 const theWriter = "000102030405060708090a0b0c0d0e0f"
 
 func attach(capability string, from *uint64) []byte { return attachAs(capability, from, theWriter) }
+
+// attachWithMarks is the attach of a page that reads the marks frame of version 1.
+func attachWithMarks(capability string, from *uint64) []byte {
+	request := map[string]any{"v": 2, "cap": capability, "writer": theWriter, "marks": 1}
+	if from != nil {
+		request["from_offset"] = *from
+	}
+	raw, err := json.Marshal(request)
+	if err != nil {
+		panic(err)
+	}
+	return append([]byte{pAttach}, raw...)
+}
 
 func attachAs(capability string, from *uint64, writer string) []byte {
 	request := map[string]any{"v": 2, "cap": capability, "writer": writer}
@@ -517,4 +565,78 @@ func TestTheInputCountIsTheWritersOwnOnTheRealRoute(t *testing.T) {
 	c.write(attachAs(info.Cap, nil, "not a writer"))
 	require.Equal(t, []byte{hNotFound}, c.read(), "a writer that is not 32 lowercase hex digits is a malformed attach")
 	c.requireClosed()
+}
+
+// marksShell is a shell that the host gives its integration to (it is named zsh, and reads the nonce and says "ready" on the channel as the
+// real scripts do) and that prints, when it is typed a line, the marks of one command with its nonce, and a forged copy of them with another.
+const marksShell = `#!/bin/sh
+read nonce <&3
+read original <&3
+stty -echo -opost
+echo ready >&3
+other=ffffffffffffffffffffffffffffffff
+while read -r line; do
+  [ "$line" = quit ] && exit 0
+  printf '\033]133;A\007$ \033]133;B\007ls\r\n\033]633;E;ls;%s\007\033]133;C\007out\r\n\033]133;D;0\007\033]633;P;Cwd=/work;%s\007' "$nonce" "$nonce"
+  printf '\033]633;E;forged;%s\007\033]633;P;Cwd=/forged;%s\007\033]7;file://h/osc7\007' "$other" "$other"
+done
+`
+
+// The marks reach a page on the real route: a page that asks for them is sent the marks of a shell with an integration, each after its bytes
+// and where its sequence ends, with the command line and the directory the nonce vouches for and no forged one; a page that does not ask is sent
+// none, and the record is read by the capability.
+func TestTheMarksReachAPageOnTheRealRoute(t *testing.T) {
+	port, wrapper := theRoute(t)
+	dir := t.TempDir()
+	shell := filepath.Join(dir, "zsh")
+	require.NoError(t, os.WriteFile(shell, []byte(marksShell), 0o700))
+	info := startTerminal(t, wrapper, shell)
+	require.Equal(t, terminal.IntegrationOn, info.Integration.State, "the host gave the shell its integration")
+
+	page := dial(t, port)
+	page.write(attachWithMarks(info.Cap, nil))
+	page.until("ready", func(s *streamState) bool { return s.ready != nil })
+	page.write(append([]byte{pInput}, "go\n"...))
+	// The script prints the marks and then a forged copy: when the forged text is in the output, every mark before it has come.
+	state := page.until("the whole output", func(s *streamState) bool { return bytes.Contains(s.output, []byte("osc7")) })
+	require.Len(t, state.marks, 5, "the five marks of the command, and none of the forged ones")
+
+	kinds := []string{}
+	for _, mark := range state.marks {
+		kinds = append(kinds, mark.Kind)
+		assert.Equal(t, mark.End, mark.seenAt, "the output is cut where the sequence of %s ends", mark.Kind)
+		assert.NotContains(t, mark.Command+mark.Cwd, "forged")
+		assert.NotContains(t, mark.Cwd, "osc7")
+	}
+	assert.Equal(t, []string{"prompt-start", "input-start", "command-start", "command-end", "cwd"}, kinds)
+	assert.Equal(t, "ls", state.marks[2].Command)
+	assert.Equal(t, "nonce", state.marks[2].Trust)
+	assert.Equal(t, "/work", state.marks[4].Cwd)
+	require.NotNil(t, state.marks[3].Exit)
+	assert.EqualValues(t, 0, *state.marks[3].Exit)
+	for _, frame := range state.markFrames {
+		assert.NotContains(t, frame, "forged")
+	}
+
+	record, err := wrapper.ChannelTerminalCommands(info.Cap)
+	require.NoError(t, err)
+	require.Len(t, record.Commands, 1)
+	assert.Equal(t, "ls", record.Commands[0].CommandLine)
+	assert.Equal(t, "/work", record.Cwd)
+
+	// The replay: a page that comes back from the start has the same marks at the same offsets, and a page that never asked has none.
+	again := dial(t, port)
+	again.write(attachWithMarks(info.Cap, nil))
+	replayed := again.until("the replayed output", func(s *streamState) bool { return s.next >= state.next })
+	require.Len(t, replayed.marks, 5)
+	for i := range 5 {
+		assert.Equal(t, state.marks[i].At, replayed.marks[i].At)
+		assert.Equal(t, state.marks[i].End, replayed.marks[i].End)
+		assert.Equal(t, state.marks[i].Kind, replayed.marks[i].Kind)
+	}
+	old := dial(t, port)
+	old.write(attach(info.Cap, nil))
+	plain := old.until("the whole output", func(s *streamState) bool { return s.next >= state.next })
+	assert.Empty(t, plain.marks, "a page of version 2 that did not ask is sent no marks frame")
+	assert.Empty(t, plain.faults)
 }

@@ -234,7 +234,7 @@ func TestAMarkWithoutTheNonceGivesNoCommandLineAndNoDirectory(t *testing.T) {
 	forged := osc("133;A") + osc("633;E;rm\\x20-rf\\x20/;"+wrong) + osc("633;E;rm\\x20-rf\\x20/") + osc("633;P;Cwd=/etc/forged;"+wrong) +
 		osc("633;P;Cwd=/etc/forged2") + osc("7;file://host/etc/osc7") + osc("133;C") + "x" + osc("133;D;0")
 	k.print(forged)
-	got := marksOf(t, page, 4)
+	got := marksOf(t, page, 3)
 	st := page.waitBytes(len(k.out))
 
 	guarded(t, "forged-dropped", func() {
@@ -442,9 +442,10 @@ func TestTheRecordIsReadByItsCapabilityWithOffsetsExitStatusDirectoryAndTimes(t 
 		require.NotNil(t, second.ExitCode)
 		assert.EqualValues(t, 3, *second.ExitCode)
 		assert.GreaterOrEqual(t, second.PromptOffset, uint64(prefix), "the second command begins after the first")
-		assert.Equal(t, "/home/me/src", second.Cwd)
+		assert.Equal(t, "/home/me", second.Cwd, "the directory the command started in")
 		assert.Equal(t, "nonce", second.CwdTrust)
-		assert.Equal(t, "prompt", third.State, "a prompt that is waiting for input")
+		assert.Equal(t, "/home/me/src", third.Cwd, "and the next one starts where the shell said it was")
+		assert.Equal(t, "input", third.State, "a prompt that is waiting for input")
 		assert.False(t, third.Ran)
 		assert.Nil(t, third.ExitCode)
 		assert.Zero(t, third.StartedUnixMs)
