@@ -360,7 +360,7 @@ export class Command {
  */
 export class Commands {
     /**
-     * Integration is the state of the shell integration of the terminal: the record is empty unless it is on.
+     * Integration is the state of the shell integration of the terminal: the record is empty for off, skipped and failed (unconfirmed has a scanner).
      */
     "integration": IntegrationState;
 
