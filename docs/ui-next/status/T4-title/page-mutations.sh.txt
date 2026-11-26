@@ -64,7 +64,7 @@ run title-ignores-the-hosts-program-word "$P/execFeed.ts" \
 
 run title-not-cleaned "$P/title.ts" \
   "s#replaceAll\(NOT_IN_A_TITLE, ''\)#replaceAll(/(?!)/g, '')#" \
-  'is bounded and clean|says no title for one that is empty once cleaned'
+  'is bounded and clean|says no title for one that is empty once cleaned|is bounded and clean'
 
 run title-unbounded "$P/title.ts" \
   's/if \(bytes \+ size > MAX_TITLE_BYTES\) \{/if (false) {/' \
@@ -126,11 +126,11 @@ run unpinned-tab-keeps-the-name "ui-next/shell/panel/terminal/TerminalSessions.t
 
 run model-keeps-invisible-characters "ui-next/shell/core/panel/sessions.ts" \
   's#\|\(\?!\\u200d\)\\p\{Cf\}##' \
-  'drops zero-width and invisible characters from a title|is the same for a name of nothing but invisible'
+  'drops zero-width and invisible characters from a title|is the same for a name of nothing but invisible|cuts the title as a title is cut'
 
 run feed-keeps-invisible-characters "ui-next/shell/panel/terminal/title.ts" \
   's#\|\(\?!\\u200d\)\\p\{Cf\}##' \
-  'says no title for one of zero-width and invisible characters'
+  'says no title for one of zero-width and invisible characters|says no title for one that is empty once cleaned|is bounded and clean'
 
 run toolbar-rename-ignores-held "ui-next/shell/panel/terminal/TerminalBody.tsx" \
   's/renaming === null \|\| session\.held === true \?/renaming === null ?/' \
