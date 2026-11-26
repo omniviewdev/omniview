@@ -166,9 +166,9 @@ type Entry = {
 /** What stands where a target says its session is (`claim`): a saved tab to give the feed to, or nothing there (`saved` is undefined: a session is made), or why this terminal cannot have that id. */
 type Claim = { readonly saved: Session | undefined } | { readonly why: string };
 
-const MEMBERS = ['subscribe', 'getSnapshot', 'read', 'ack', 'write', 'resize', 'close'] as const;
+const MEMBERS = ['subscribe', 'getSnapshot', 'read', 'ack', 'write', 'writeBinary', 'resize', 'close'] as const;
 
-/** A feed has all seven members (what it can say about what runs in it is optional). A supplier that hands over less has made a mistake the host names, and does not run. */
+/** A feed has all eight members (what it can say about what runs in it is optional). A supplier that hands over less has made a mistake the host names, and does not run. */
 function isFeed(value: unknown): value is TerminalFeedHandle {
   return typeof value === 'object' && value !== null && MEMBERS.every((name) => typeof Reflect.get(value, name) === 'function');
 }

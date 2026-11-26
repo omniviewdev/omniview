@@ -111,8 +111,9 @@ export type Engine = {
    */
   readonly onData: (listener: (data: string, user: boolean) => void) => () => void;
   /**
-   * What the emulator sends toward the shell that is raw bytes and not text (a legacy X10 mouse report with a coordinate above 95: a byte above 127). The bytes are what the shell must read, one for each byte; `onData`'s string is
-   * UTF-8 text and would turn each of them into two. Always the person's (a click), never an answer. Returns what stops it.
+   * What the emulator sends toward the shell as raw bytes and not text: EVERY mouse report in the default encoding (mouse modes 9, 1000, 1002 and 1003 without SGR 1006 or urxvt 1015), because xterm sends those through its binary
+   * event and not through `onData`; a coordinate above 95 is a byte above 127. Before this was heard every legacy mouse report was lost. The bytes are what the shell must read, one for each byte; `onData`'s string is UTF-8 text and
+   * would turn each of them into two. Always the person's (a click), never an answer. Returns what stops it.
    */
   readonly onBinary: (listener: (bytes: Uint8Array) => void) => () => void;
   /** The selection changed. Returns what stops it. */
