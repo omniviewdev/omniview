@@ -657,3 +657,15 @@ describe('a new terminal takes the place of an ended one (`seal`, #695 step 5)',
     expect(gutter.commands().map((one) => one.line), 'a start with no prompt of its own is on its own line, not on the old prompt\'s').toEqual([2]);
   });
 });
+
+describe('running again a command of the terminal before a restart (#695 step 5)', () => {
+  it('types its line without Enter, and says it came from the terminal before: the old shell\'s proof does not hold for the new one, and its directory may differ; a command of the new terminal is proven as ever', async () => {
+    const { gutter, run } = setup();
+    await run('make test', 'ok\r\n', { id: 'c1', exit: 0 });
+    gutter.seal();
+    await run('ls', 'x\r\n', { id: 'c1', exit: 0 });
+    const [old, fresh] = gutter.commands();
+    expect(gutter.rerun(old)).toEqual({ text: 'make test', enter: false, earlier: true });
+    expect(gutter.rerun(fresh)).toEqual({ text: 'ls', enter: true });
+  });
+});

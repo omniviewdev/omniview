@@ -427,3 +427,37 @@ describe('a restart while the old feed\'s marks are still queued (#695 step 5)',
     expect(screen.commands.state().rerun, 'nothing runs in the new terminal').toBeUndefined();
   });
 });
+
+describe('what a restart must not lose of the gutter (#695 step 5)', () => {
+  it('keeps a command whose marks the ended feed still held when the screen was told to flush and continue: the loop does not stop at the bytes when only marks are left', async () => {
+    const { feed, screen } = await rig();
+    feed.push('$ make\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make')), placed(8, D(0))]);
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    screen.flush();
+    screen.continueWith(fakeTerminalFeed({ state: 'starting', takeReplay: true }));
+    expect(screen.commands.state().count).toBe(1);
+  });
+
+  it('keeps a command whose marks alone are held (their bytes were drawn): the marks are placed all the same', async () => {
+    const { feed, frame, screen } = await rig();
+    feed.push('$ make\r\n');
+    frame();
+    feed.push(new Uint8Array(0), [placed(0, C('make'))]);
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    screen.flush();
+    expect(screen.commands.state().count).toBe(1);
+  });
+
+  it('runs again a command of the terminal before the restart WITHOUT Enter, and says where the line came from', async () => {
+    const { feed, frame, screen, engine, events } = await rig();
+    feed.push('$ make\r\nout\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make')), placed(13, D(0))]);
+    frame();
+    feed.set({ state: 'ended', exit: { code: 0 } });
+    const next = fakeTerminalFeed({ state: 'running', takeReplay: true });
+    screen.continueWith(next);
+    screen.commands.rerun();
+    expect(engine().pastes).toEqual(['make']);
+    expect(next.typed(), 'no Enter: the old shell\'s proof does not hold for the new one').toEqual([]);
+    expect(events.at(-1)).toEqual({ kind: 'said', words: 'The command line is typed from the terminal before the restart; press Enter to run it' });
+  });
+});
