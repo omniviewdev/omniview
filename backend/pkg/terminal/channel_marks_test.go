@@ -258,15 +258,18 @@ func TestAMarkWithoutTheNonceGivesNoCommandLineAndNoDirectory(t *testing.T) {
 		assert.Empty(t, record.Commands[0].CommandLine)
 		assert.Equal(t, "unverified", record.Commands[0].CommandTrust)
 		assert.Empty(t, record.Cwd, "the record has no directory the nonce did not vouch for")
+		assert.Empty(t, record.Commands[0].Cwd, "and no command started in one")
 	})
 
 	// The other half: the same marks with the nonce are believed.
 	k.print(k.command("echo hi", "hi", 0, "/real"))
-	all := marksOf(t, page, 8)
+	believed := page.waitFor("the genuine directory", func(s pageState) bool {
+		return slices.ContainsFunc(s.marks, func(m markWire) bool { return m.Kind == "cwd" && m.Cwd == "/real" })
+	}).marks
 	guarded(t, "genuine-believed", func() {
-		assert.Equal(t, "echo hi", all[5].Command)
-		assert.Equal(t, "nonce", all[5].Trust)
-		assert.Equal(t, "/real", all[7].Cwd)
+		at := slices.IndexFunc(believed, func(m markWire) bool { return m.Kind == "command-start" && m.Command == "echo hi" })
+		require.GreaterOrEqual(t, at, 0, "the command line with the nonce is in the start mark")
+		assert.Equal(t, "nonce", believed[at].Trust)
 	})
 }
 
@@ -350,7 +353,11 @@ func TestTheRecordAndTheMarksSentAreBounded(t *testing.T) {
 	})
 	page := k.attach(nil)
 	page.waitReady()
-	st := page.waitFor("the output", func(s pageState) bool { return len(s.bytes()) >= len(k.out) })
+	// The last mark comes after the last bytes: the page has all of it when the last mark has come.
+	st := page.waitFor("the last mark", func(s pageState) bool {
+		n := len(s.marks)
+		return n > 0 && s.marks[n-1].End == uint64(len(k.out))
+	})
 	guarded(t, "marks-bounded", func() {
 		assert.GreaterOrEqual(t, len(st.marks), 1024, "the newest 1,024 marks are kept")
 		assert.LessOrEqual(t, len(st.marks), 2048, "and no more than twice that is held, whatever the flood")

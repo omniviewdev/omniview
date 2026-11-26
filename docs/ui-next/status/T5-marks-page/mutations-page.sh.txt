@@ -1,0 +1,40 @@
+#!/bin/bash
+# Negative controls of the page's side of the marks (issue #694 step 4): one fault at a time in execFeed.ts (the file is restored by `git checkout`
+# after each run), and the run of its tests must FAIL in the test named for it. Second half: the test that names it removed from the run (`-t` with
+# the other tests only) must PASS with the fault, so that no other test catches it for another reason.
+#
+# usage: bash mutations-page.sh.txt   (from the worktree root, the kit built)
+set -u
+FILE=ui-next/shell/panel/terminal/execFeed.ts
+TEST=ui-next/shell/panel/terminal/execFeed.test.ts
+
+run() {
+  name=$1 old=$2 new=$3 only=$4
+  python3 - "$FILE" "$old" "$new" <<'PY'
+import sys
+p, old, new = sys.argv[1:4]
+s = open(p).read()
+assert old in s, "the fault does not apply: " + old
+open(p, 'w').write(s.replace(old, new, 1))
+PY
+  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; git checkout -q -- "$FILE"; return; }
+  out=$(npx vitest run "$TEST" -t 'the marks of the shell' 2>&1)
+  if echo "$out" | grep -q "$only"; then c1=RED-IN-ITS-TEST; else c1=NOT-CAUGHT; fi
+  # The same fault, the test that names it skipped: nothing else may fail.
+  others=$(echo "$out" | grep -E '^ FAIL ' | grep -vc "$only")
+  echo "CONTROL $name: $c1 (want RED-IN-ITS-TEST), failures in other tests: $others (want 0)"
+  git checkout -q -- "$FILE"
+}
+
+run unproven-start-is-running "if (mark.kind === 'command-start' && mark.trust === 'nonce') {" "if (mark.kind === 'command-start') {" 'does not take a start that the host did not prove'
+run mark-taken-twice "if (mark.end <= markedEnd) {" "if (false) {" 'takes a mark once'
+run fresh-screen-keeps-marks "    if (!resumed) {
+      forgetMarks(-1);
+    }
+" "" 'starts over when the host brings the screen afresh'
+run gap-keeps-marks "    cursor = to;
+    forgetMarks(to);" "    cursor = to;" 'forgets what it knew of a running command at a gap'
+run marks-unbounded "if (marks.length > MAX_MARKS) {" "if (false) {" 'keeps no more than the newest MAX_MARKS marks'
+run busy-asks-host "      if (running !== undefined) {" "      if (false as boolean) {" 'knows that a command is running from its start mark'
+run end-does-not-end "      } else if (mark.kind === 'command-end') {
+        running = undefined;" "      } else if (mark.kind === 'command-end') {" 'is idle for the host to say once the end mark has come'
