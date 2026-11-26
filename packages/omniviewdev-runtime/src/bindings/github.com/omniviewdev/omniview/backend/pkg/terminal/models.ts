@@ -278,6 +278,138 @@ export enum ClosedBy {
 };
 
 /**
+ * Command is one command of a terminal's record: what the shell's integration said about it (the marks of package marks), with the offsets of
+ * the output it printed. The offsets are those of the terminal's output stream (the `offset` of an output frame): `[output_start, output_end)` is
+ * what the command printed. Times are on the host's clock when it read the marks.
+ * 
+ * `command_line` and `cwd` are the user's data: the command line is here only when the shell sent it with the session's nonce (`command_trust`
+ * `nonce`), and the directory says in `cwd_trust` how far it can be believed. A mark any program could have printed gives neither.
+ */
+export class Command {
+    "id": string;
+
+    /**
+     * State is prompt, input, running or ended. Ran is false for a prompt that ended with no command (Ctrl-C at an empty prompt).
+     */
+    "state": string;
+    "ran": boolean;
+
+    /**
+     * CommandLine is the line as the shell sent it, empty without the nonce.
+     */
+    "command_line"?: string;
+    "command_trust": string;
+    "cwd"?: string;
+    "cwd_trust": string;
+
+    /**
+     * ExitCode is absent while the command runs and for a shell that sends none (pwsh).
+     */
+    "exit_code"?: number | null;
+
+    /**
+     * StartedUnixMs and EndedUnixMs are absent for a time that has not come.
+     */
+    "started_unix_ms"?: number;
+    "ended_unix_ms"?: number;
+    "prompt_offset": number;
+    "output_start": number;
+    "output_end": number;
+
+    /** Creates a new Command instance. */
+    constructor($$source: Partial<Command> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("state" in $$source)) {
+            this["state"] = "";
+        }
+        if (!("ran" in $$source)) {
+            this["ran"] = false;
+        }
+        if (!("command_trust" in $$source)) {
+            this["command_trust"] = "";
+        }
+        if (!("cwd_trust" in $$source)) {
+            this["cwd_trust"] = "";
+        }
+        if (!("prompt_offset" in $$source)) {
+            this["prompt_offset"] = 0;
+        }
+        if (!("output_start" in $$source)) {
+            this["output_start"] = 0;
+        }
+        if (!("output_end" in $$source)) {
+            this["output_end"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Command instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Command {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Command($$parsedSource as Partial<Command>);
+    }
+}
+
+/**
+ * Commands is the record of a channel terminal: the newest commands the shell's integration told of, oldest first, at most 512.
+ */
+export class Commands {
+    /**
+     * Integration is the state of the shell integration of the terminal: the record is empty unless it is on.
+     */
+    "integration": IntegrationState;
+
+    /**
+     * Running is the id of the command that has started and not ended, empty when none has.
+     */
+    "running"?: string;
+
+    /**
+     * Cwd is the directory the shell last said it is in, and CwdTrust how far that can be believed (`nonce`, or empty when it said none).
+     */
+    "cwd"?: string;
+    "cwd_trust"?: string;
+
+    /**
+     * End is the length of the output the record was read at.
+     */
+    "end": number;
+    "commands": Command[];
+
+    /** Creates a new Commands instance. */
+    constructor($$source: Partial<Commands> = {}) {
+        if (!("integration" in $$source)) {
+            this["integration"] = IntegrationState.$zero;
+        }
+        if (!("end" in $$source)) {
+            this["end"] = 0;
+        }
+        if (!("commands" in $$source)) {
+            this["commands"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Commands instance from a string or object.
+     */
+    static createFrom($$source: any = {}): Commands {
+        const $$createField5_0 = $$createType10;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("commands" in $$parsedSource) {
+            $$parsedSource["commands"] = $$createField5_0($$parsedSource["commands"]);
+        }
+        return new Commands($$parsedSource as Partial<Commands>);
+    }
+}
+
+/**
  * DetachRequest is the second argument of DetachTerminal.
  */
 export class DetachRequest {
@@ -428,7 +560,7 @@ export class End {
      * Creates a new End instance from a string or object.
      */
     static createFrom($$source: any = {}): End {
-        const $$createField6_0 = $$createType10;
+        const $$createField6_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("failure" in $$parsedSource) {
             $$parsedSource["failure"] = $$createField6_0($$parsedSource["failure"]);
@@ -499,7 +631,7 @@ export class Environment {
      * Creates a new Environment instance from a string or object.
      */
     static createFrom($$source: any = {}): Environment {
-        const $$createField1_0 = $$createType11;
+        const $$createField1_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("probe" in $$parsedSource) {
             $$parsedSource["probe"] = $$createField1_0($$parsedSource["probe"]);
@@ -1214,9 +1346,9 @@ export class Replay {
     static createFrom($$source: any = {}): Replay {
         const $$createField2_0 = $Create.ByteSlice;
         const $$createField3_0 = $$createType8;
-        const $$createField4_0 = $$createType12;
+        const $$createField4_0 = $$createType14;
         const $$createField5_0 = $$createType8;
-        const $$createField6_0 = $$createType12;
+        const $$createField6_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField2_0($$parsedSource["data"]);
@@ -1338,9 +1470,9 @@ export class Session {
      */
     static createFrom($$source: any = {}): Session {
         const $$createField3_0 = $$createType6;
-        const $$createField7_0 = $$createType13;
-        const $$createField8_0 = $$createType14;
-        const $$createField9_0 = $$createType15;
+        const $$createField7_0 = $$createType15;
+        const $$createField8_0 = $$createType16;
+        const $$createField9_0 = $$createType17;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("shell" in $$parsedSource) {
             $$parsedSource["shell"] = $$createField3_0($$parsedSource["shell"]);
@@ -1527,7 +1659,7 @@ export class TerminalModes {
      * Creates a new TerminalModes instance from a string or object.
      */
     static createFrom($$source: any = {}): TerminalModes {
-        const $$createField8_0 = $$createType16;
+        const $$createField8_0 = $$createType18;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("kitty_keyboard" in $$parsedSource) {
             $$parsedSource["kitty_keyboard"] = $$createField8_0($$parsedSource["kitty_keyboard"]);
@@ -1578,11 +1710,13 @@ const $$createType5 = $Create.Nullable($$createType4);
 const $$createType6 = Shell.createFrom;
 const $$createType7 = $Create.Map($Create.Any, $Create.Any);
 const $$createType8 = Size.createFrom;
-const $$createType9 = Failure.createFrom;
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = Probe.createFrom;
-const $$createType12 = TerminalModes.createFrom;
-const $$createType13 = Limits.createFrom;
-const $$createType14 = Environment.createFrom;
-const $$createType15 = Integration.createFrom;
-const $$createType16 = $Create.Array($Create.Any);
+const $$createType9 = Command.createFrom;
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = Failure.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = Probe.createFrom;
+const $$createType14 = TerminalModes.createFrom;
+const $$createType15 = Limits.createFrom;
+const $$createType16 = Environment.createFrom;
+const $$createType17 = Integration.createFrom;
+const $$createType18 = $Create.Array($Create.Any);

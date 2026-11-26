@@ -339,6 +339,13 @@ func (s *ServiceWrapper) ChannelTerminalCwd(capability string) (terminal.Directo
 	return s.Ctrl.ChannelTerminalCwd(capability)
 }
 
+// ChannelTerminalCommands reads the record of the channel terminal that the capability names: the commands its shell's integration told of
+// (at most 512, oldest first), each with the offsets of the output it printed in the terminal's output stream, its exit status, its directory and
+// the times the host read its marks. A command line is there only when the shell sent it with the session's nonce.
+func (s *ServiceWrapper) ChannelTerminalCommands(capability string) (terminal.Commands, error) {
+	return s.Ctrl.ChannelTerminalCommands(capability)
+}
+
 // ListChannelTerminals says what the capabilities a page holds open: one entry for each of those that names a channel terminal
 // (or the end of one that is kept), in the order given, naming the terminal by its id. A capability that opens nothing has no
 // entry, and nothing lists a terminal for a capability that was not given, so a page cannot enumerate terminals it was not given.

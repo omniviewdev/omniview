@@ -113,6 +113,12 @@ func (m *Manager) ChannelBusy(_ string) (Foreground, error) {
 	return none, unsupportedError()
 }
 
+// ChannelCommands is not supported.
+func (m *Manager) ChannelCommands(_ string) (Commands, error) {
+	var none Commands
+	return none, unsupportedError()
+}
+
 // ChannelCwd is not supported.
 func (m *Manager) ChannelCwd(_ string) (Directory, error) {
 	var none Directory

@@ -6,6 +6,8 @@ export {
     Attached,
     ChannelListed,
     ClosedBy,
+    Command,
+    Commands,
     DetachRequest,
     Detached,
     Directory,

@@ -75,12 +75,14 @@ type Controller interface {
 	// ServeTerminalChannel serves one stream of the terminal channel until it ends (terminal.Manager.ServeChannel). The
 	// stream names its terminal by a capability, never by an id, and uses no window.
 	ServeTerminalChannel(ch terminal.Channel)
-	// CloseChannelTerminal, ChannelTerminalBusy, ChannelTerminalCwd, ListChannelTerminals and DismissChannelTerminal are
+	// CloseChannelTerminal, ChannelTerminalBusy, ChannelTerminalCwd, ChannelTerminalCommands, ListChannelTerminals and DismissChannelTerminal are
 	// the calls that name a channel terminal by its capability. Each answers one not-found for a capability that opens
 	// nothing, whatever the reason.
 	CloseChannelTerminal(capability string) error
 	ChannelTerminalBusy(capability string) (terminal.Foreground, error)
 	ChannelTerminalCwd(capability string) (terminal.Directory, error)
+	// ChannelTerminalCommands reads the record of the commands the shell of a channel terminal told of (its integration's marks).
+	ChannelTerminalCommands(capability string) (terminal.Commands, error)
 	ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error)
 	DismissChannelTerminal(capability string) error
 	ListSessions() ([]*exec.Session, error)

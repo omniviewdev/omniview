@@ -43,6 +43,8 @@ const (
 	frameUnsupported byte = 0x89
 	// frameCloseRefused answers a close from a stream that does not hold the terminal.
 	frameCloseRefused byte = 0x8a
+	// frameMarks carries the marks of the shell's integration, to a page that asked for them in its attach (attachRequest.Marks).
+	frameMarks byte = 0x8b
 )
 
 const (
@@ -67,6 +69,9 @@ type attachRequest struct {
 	// makes for each feed, not a secret). The input counts of ready and applied are the writer's. Absent: the stream is a writer of its own
 	// that nothing remembers.
 	Writer string `json:"writer"`
+	// Marks is the version of the marks frame the page reads: absent or zero, none (the host sends it no frame it does not know); 1, the frame of
+	// docs/ui-next/terminal-channel-protocol.md section 4a. A page of this version 2 that never heard of marks does not ask, and is sent none.
+	Marks int `json:"marks"`
 }
 
 // writerIDLen is the length of a writer id: 16 bytes as lowercase hex digits.
