@@ -1475,8 +1475,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         try {
           const pulled = busyOf(await channels.busy(id));
           return pulled.state === 'busy' ? pulled : { state: 'busy' };
-        } catch {
-          return { state: 'busy' };
+        } catch (error) {
+          // A terminal the host says is gone has nothing running in it, whatever a mark said; any other failure of the question keeps what the shell said.
+          return channels.isGone(error) ? IDLE : { state: 'busy' };
         }
       }
 
