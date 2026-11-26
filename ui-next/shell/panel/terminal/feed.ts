@@ -110,6 +110,34 @@ export type TerminalFeedSnapshot = {
   readonly inputLost?: boolean | undefined;
 };
 
+/** What a mark of the shell's integration marks (the host's words, `docs/ui-next/terminal-channel-protocol.md` section 4a). */
+export type TerminalMarkKind = 'prompt-start' | 'input-start' | 'command-start' | 'command-end' | 'cwd';
+
+/**
+ * One mark the shell's integration made in the output, as the host typed it. `at` and `end` are the offsets of its sequence in the terminal's output (the offsets of the output frames): the host sends the mark when the page
+ * stands at `end`. `trust` is the host's: `nonce` for what the shell proved (the command line, the directory), `unverified` for what any program could have printed (every prompt and command mark): the page never decides it.
+ * Times are the host's clock when it read the mark, never the page's.
+ */
+export type TerminalMark = {
+  readonly kind: TerminalMarkKind;
+  readonly at: number;
+  readonly end: number;
+  /** The command the mark belongs to (`c1`, `c2`, ...). */
+  readonly id?: string | undefined;
+  readonly trust: 'nonce' | 'unverified';
+  /** The command line, on a command start with trust `nonce`. */
+  readonly command?: string | undefined;
+  /** The directory, on a `cwd` mark (always `nonce`). */
+  readonly cwd?: string | undefined;
+  /** The exit status, on a command end when the shell sent one. */
+  readonly exit?: number | undefined;
+  readonly durationMs?: number | undefined;
+  /** When the command started or ended, in Unix milliseconds. */
+  readonly timeMs?: number | undefined;
+  /** A prompt that is the same prompt drawn again. */
+  readonly redraw?: boolean | undefined;
+};
+
 /** What the process wrote since the last read, oldest first: its bytes (an escape sequence may be cut between two chunks, the emulator keeps its state). */
 export type TerminalOutput = {
   readonly chunks: readonly Uint8Array[];
@@ -157,6 +185,11 @@ export type TerminalFeedHandle = {
   readonly resize: (cols: number, rows: number) => void;
   /** What runs in the session besides its shell, asked now. A producer that cannot tell leaves it out, and a close asks. A producer that tells and cannot count the typing (`inputs`) is asked about all the same, but its `idle` is read as `unknown`. */
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
+  /**
+   * The marks the shell's integration made, oldest first, the newest at most `MAX_MARKS`: what a gutter and a jump read. A producer whose shell has no integration, or that has no marks, leaves it out or says none. The same
+   * mark is never in it twice, and a replay that starts the screen afresh starts it over.
+   */
+  readonly marks?: (() => readonly TerminalMark[]) | undefined;
   readonly close: () => Promise<void> | void;
   /**
    * A replay waiting for the reader (a terminal taken over, one whose stream dropped and lost bytes the page asked for, or a gap: a replay of nothing, which resets the screen): taken once, before any live output is read; `read`

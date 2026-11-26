@@ -20,6 +20,8 @@ export type ChannelEvents = {
   readonly takenOver: () => void;
   /** `0x8a`: the stream's `close` ended nothing: it does not hold the terminal (another stream took it). The stream goes on, as a watcher. */
   readonly closeRefused: () => void;
+  /** `0x8b`: the marks of the shell's integration (protocol section 4a), the frame's JSON parsed and unchecked: `{v: 1, marks: [...]}`. Sent only to a page that said `marks: 1` in its attach, after the bytes of each mark's sequence. */
+  readonly marks: (frame: unknown) => void;
   /** `0x88`, to a watcher: the stream that held the terminal ended and the terminal runs and is free. The stream is over. */
   readonly released: () => void;
   /** `0x89`: the host speaks another version of the stream (its number, parsed from `{"v":n}` and unchecked). The stream is over; nothing is tried again. */
@@ -92,6 +94,12 @@ export type TerminalChannels = {
 
 /** The version of the stream this page speaks (`attach.v`, protocol section 4). */
 export const CHANNEL_VERSION = 2;
+
+/** The version of the marks frame this page reads (`attach.marks`, protocol section 4a): the host sends the frame only to a page that says it. */
+export const CHANNEL_MARKS_VERSION = 1;
+
+/** The most marks a feed keeps (the host keeps the newest 1,024 and at most twice that): the oldest go first. */
+export const MAX_MARKS = 2048;
 
 /** The most input the page keeps that the host has not said it applied (`channel_max_input_bytes`, the host's own queue): the bytes after the last `applied` are kept to be sent again after a reconnect, and a page that has typed more than this fails in words. */
 export const MAX_KEPT_INPUT_BYTES = 1_048_576;

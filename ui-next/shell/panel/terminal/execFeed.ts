@@ -1019,6 +1019,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
   };
 
+  /** The marks of the shell's integration (not read yet). */
+  const onMarks = (_frame: unknown) => undefined;
+
   /** The host says how much input it has applied: the kept bytes up to it are let go. */
   const onApplied = (total: number) => {
     if (!streaming) {
@@ -1155,6 +1158,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         },
         gap: heard(onGap),
         applied: heard(onApplied),
+        marks: heard(onMarks),
         ended: heardEnd(onEnded),
         takenOver: heard(onTakenOver),
         closeRefused: heardEnd(() => undefined),
