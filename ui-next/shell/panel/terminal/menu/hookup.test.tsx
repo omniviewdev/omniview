@@ -411,7 +411,7 @@ describe('with the real emulator', () => {
 // every item is named), what the pointer does on a mark is the tooltip, and what an action did is said in the body's live region. A fake emulator draws nothing: where a mark is drawn is the probes' to prove.
 
 describe('the commands in the body', () => {
-  const mark = (kind: 'prompt-start' | 'input-start' | 'command-start' | 'command-end', extra: object = {}) => ({ kind, at: 0, end: 1, id: 'c1', trust: 'unverified' as const, ...extra });
+  const mark = (kind: 'prompt-start' | 'input-start' | 'command-start' | 'command-end', extra: Record<string, unknown> = {}) => ({ kind, at: 0, end: 1, id: 'c1', trust: 'unverified' as const, ...extra });
   const ran = async (m: Mounted) => {
     m.feed.push('$ make test\r\nout1\r\nout2\r\n', [
       { mark: mark('prompt-start'), at: 0 },

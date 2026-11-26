@@ -70,10 +70,12 @@ function setup(options: { readonly rows?: number; readonly scrollback?: number; 
     });
     return promise;
   };
+
   const prompt = async (id = 'c1'): Promise<void> => {
     await feed('', [A(id)]);
     await feed('$ ', [B(id)]);
   };
+
   /** A whole command: the prompt, the line typed, the output, the end. `proven`: the shell proved the line with the nonce. */
   const run = async (command: string, output: string, init: { readonly id?: string; readonly exit?: number | undefined; readonly ms?: number | undefined; readonly proven?: boolean } = {}): Promise<void> => {
     const id = init.id ?? 'c1';
@@ -81,11 +83,13 @@ function setup(options: { readonly rows?: number; readonly scrollback?: number; 
     await feed(`${command}\r\n`, [C(init.proven === false ? undefined : command, id)]);
     await feed(output, [D('exit' in init ? init.exit : 0, 'ms' in init ? init.ms : 1_500, id)]);
   };
+
   const close = () => {
     gutter.dispose();
     real.dispose();
     host.remove();
   };
+
   rigs.push(close);
   return { engine, gutter, events, decorations, feed, prompt, run, host };
 }

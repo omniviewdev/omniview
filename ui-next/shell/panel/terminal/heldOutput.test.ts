@@ -102,8 +102,8 @@ describe('the output a session holds', () => {
 // THE MARKS IN THE OUTPUT (issue #694 step 5). A reader creates a marker at the place a mark stands, which is a place in the emulator's parse: so what is taken is cut where a mark stands, and the mark goes with the bytes that
 // end at it. A mark that arrives when its bytes were taken already goes with the next take, which then holds no bytes.
 
-const prompt = (end: number, extra: object = {}) => ({ kind: 'prompt-start' as const, at: end - 4, end, trust: 'unverified' as const, ...extra });
-const placed = (taken: { readonly marks?: readonly { readonly mark: { readonly end: number }; readonly at: number }[] | undefined }): Array<readonly [number, number]> => (taken.marks ?? []).map((one) => [one.mark.end, one.at]);
+const prompt = (end: number, extra: Record<string, unknown> = {}) => ({ kind: 'prompt-start' as const, at: end - 4, end, trust: 'unverified' as const, ...extra });
+const placed = (taken: { readonly marks?: ReadonlyArray<{ readonly mark: { readonly end: number }; readonly at: number }> | undefined }): Array<readonly [number, number]> => (taken.marks ?? []).map((one) => [one.mark.end, one.at]);
 
 describe('the marks in the output a session holds', () => {
   it('hands a mark over with the bytes that end at it, and cuts what it hands over there: the bytes after the mark wait for the next take', () => {

@@ -80,6 +80,7 @@ async function rig(options: { readonly auto?: boolean; readonly replay?: Termina
 
     return made;
   };
+
   return {
     screen,
     feed,

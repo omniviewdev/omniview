@@ -1,4 +1,4 @@
-import { Terminal } from '@xterm/xterm';
+import { type Terminal } from '@xterm/xterm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Engine, EngineAppearance } from './engine';
 import { createXtermEngine } from './xtermEngine';

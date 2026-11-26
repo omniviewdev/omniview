@@ -85,7 +85,7 @@ export function useCommandGutter({ screen, say }: CommandGutterOptions): Command
       }
 
       const away = dismissed.current;
-      if (away !== undefined && away.id === command.id && !away.left) {
+      if (away?.id === command.id && !away.left) {
         return;
       }
 
