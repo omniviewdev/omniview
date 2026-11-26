@@ -1239,6 +1239,13 @@ describe('a terminal this page lost, and takes back (T2d: its tab says so, and a
       expect(r.sessions.recordOf('term-a')).toMatchObject({ id: 'local', plugin: HOST, snapshot: { state: 'starting' } });
     });
 
+    it('attaches a terminal by the id the producer says it has when that is not the session\'s: the terminal a restart made for a tab has an id of its own, and the tab\'s is that of the terminal it replaced (#695 step 5)', async () => {
+      const { r, again, reattach } = lost({ old: keyedFeed({ id: 'term-restarted' }) });
+      await expect(r.sessions.takeBack('term-a')).resolves.toBe(true);
+      expect(reattach).toHaveBeenCalledWith('term-restarted');
+      expect(r.sessions.feedOf('term-a')).toBe(again);
+    });
+
     it('lets go of the feed it replaces: closed once, and nobody hears it any more; the new feed has the registry for its one listener', async () => {
       const { r, old, again } = lost();
       expect(old.listeners()).toBe(1);

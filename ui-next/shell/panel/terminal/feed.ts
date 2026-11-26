@@ -172,6 +172,11 @@ export type TerminalOutput = {
  * reads, never one per chunk). `close` ends the process, once: it releases every listener and what the feed holds in the backend. A `close` that rejects or throws is logged.
  */
 export type TerminalFeedHandle = {
+  /**
+   * The producer's own id for the terminal, when it is not the id of the panel session that shows it: a terminal a restart made for the tab of an ended one has an id of its own, and the session keeps the id of the terminal it replaced.
+   * What a take-back attaches. A producer whose terminal has the session's id leaves it out.
+   */
+  readonly id?: string | undefined;
   readonly subscribe: (listener: () => void) => () => void;
   readonly getSnapshot: () => TerminalFeedSnapshot;
   /**

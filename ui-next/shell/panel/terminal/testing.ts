@@ -45,6 +45,8 @@ export type FakeTerminalFeedOptions = {
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
   /** What the feed answers when it is asked where a new terminal opened from it starts; default: the feed cannot tell (it has no such member). */
   readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
+  /** The producer's own id for the terminal (`TerminalFeedHandle.id`); default: the feed says none. */
+  readonly id?: string | undefined;
   /** What the feed says a restart of it is made from (`restart`); default: the feed says nothing (it has no such member). A function is asked every time, as the real feed's is. */
   readonly restart?: TerminalRestart | (() => TerminalRestart | undefined) | undefined;
   /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`, unless `takeReplay` says it has). */
@@ -180,6 +182,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
     ...(options.directory === undefined ? {} : { directory: options.directory }),
+    ...(options.id === undefined ? {} : { id: options.id }),
     ...(options.restart === undefined ? {} : { restart: typeof options.restart === 'function' ? options.restart : () => options.restart as TerminalRestart }),
     ...(options.replay === undefined && options.takeReplay !== true ? {} : { takeReplay }),
     ...(options.leave === true ? { leave } : {}),
