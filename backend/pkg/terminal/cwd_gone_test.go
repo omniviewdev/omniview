@@ -53,3 +53,35 @@ func TestARemovedDirectoryIsNotMistakenForASiblingNamedLikeTheLinkSuffix(t *test
 	assert.Empty(t, gone.Path, "the sibling is not where the shell is: %q", gone.Path)
 	assert.Equal(t, ReasonQueryFailed, gone.Reason)
 }
+
+// Off Linux the system never names a removed directory with the suffix, so a live directory whose name ends in it is real
+// and the stat of /proc (which does not exist there) is not asked.
+func TestOffLinuxADirectoryNamedWithTheSuffixIsTheShellsOwn(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "y (deleted)")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	asked := false
+	here := namesTheShellsDirectory(dir, info, "darwin", func() (os.FileInfo, error) {
+		asked = true
+		return nil, os.ErrNotExist
+	})
+	assert.True(t, here, "the live directory is where the shell is")
+	assert.False(t, asked, "/proc is not asked off Linux")
+}
+
+func TestOnLinuxASiblingIsNotTheShellsDirectoryAndTheSameInodeIs(t *testing.T) {
+	parent := t.TempDir()
+	mine := filepath.Join(parent, "y (deleted)")
+	other := filepath.Join(parent, "z")
+	require.NoError(t, os.Mkdir(mine, 0o700))
+	require.NoError(t, os.Mkdir(other, 0o700))
+	mineInfo, err := os.Stat(mine)
+	require.NoError(t, err)
+	otherInfo, err := os.Stat(other)
+	require.NoError(t, err)
+	assert.True(t, namesTheShellsDirectory(mine, mineInfo, "linux", func() (os.FileInfo, error) { return mineInfo, nil }))
+	assert.False(t, namesTheShellsDirectory(mine, mineInfo, "linux", func() (os.FileInfo, error) { return otherInfo, nil }))
+	assert.False(t, namesTheShellsDirectory(mine, mineInfo, "linux", func() (os.FileInfo, error) { return nil, os.ErrNotExist }))
+	assert.True(t, namesTheShellsDirectory(other, otherInfo, "linux", func() (os.FileInfo, error) { return nil, os.ErrNotExist }), "a path without the suffix needs no proof")
+}
