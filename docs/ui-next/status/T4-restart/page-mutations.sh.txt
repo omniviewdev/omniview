@@ -292,5 +292,17 @@ run screen-unmutes-at-restart "$P/screen.ts" \
   's/^      draining = pending > 0;$/      draining = false;/' \
   'writes no more of the ended feed'"'"'s replay after the restart'
 
+run gutter-seal-keeps-running "$P/gutter/commandGutter.ts" \
+  '/    seal: \(\) => \{/,/^    },/ s/settle\(running, .incomplete.\);/void running;/' \
+  'keeps the commands of the old terminal with its transcript'
+
+run gutter-seal-keeps-the-ids "$P/gutter/commandGutter.ts" \
+  's/^      epoch \+= 1;$/      epoch += 0;/' \
+  'lets the new terminal count from c1 again'
+
+run screen-restart-does-not-seal "$P/screen.ts" \
+  's/^      gutter\?\.seal\(\);$/      void gutter;/' \
+  'keeps the commands of the ended terminal, and a command it was running'
+
 if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
 exit $bad

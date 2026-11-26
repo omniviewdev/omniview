@@ -1100,6 +1100,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       replayHeld = undefined;
       // A replay of the ended feed that is still being written is dropped: its remaining slices are never written, what the queued ones make the emulator answer is muted until they are parsed, and what was typed meanwhile was for the ended terminal.
       replaying = undefined;
+      // The commands of the ended terminal stay with its transcript, none of them runs any more, and the new terminal's are its own.
+      gutter?.seal();
       draining = pending > 0;
       held = [];
       heldLength = 0;

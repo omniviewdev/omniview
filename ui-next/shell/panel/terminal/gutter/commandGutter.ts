@@ -91,6 +91,8 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   let running: Entry | undefined;
   let cwd: string | undefined;
   let counter = 0;
+  /** The terminals this gutter has seen before the one now: a new terminal's ids are its own, so they are told apart from the old ones' by it. */
+  let epoch = 0;
   let focused: { readonly entry: Entry; readonly top: number } | undefined;
   let hovered: Entry | undefined;
   let hoverAt = { x: 0, y: 0 };
@@ -188,6 +190,8 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     }
   };
 
+  const idOf = (id: string | undefined): string | undefined => (id === undefined || epoch === 0 ? id : `${String(epoch)}:${id}`);
+
   const onPrompt = (mark: TerminalMark) => {
     // A prompt back while a command runs: the shell is back and nobody printed the end (a shell that was replaced, an ssh that ended).
     if (running !== undefined && mark.redraw !== true) {
@@ -221,7 +225,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
 
     counter += 1;
     const entry: Entry = {
-      id: mark.id ?? `command-${String(counter)}`,
+      id: idOf(mark.id) ?? `command-${String(counter)}`,
       prompt: pending.prompt,
       input: pending.input,
       start,
@@ -257,7 +261,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
   };
 
   const onEnd = (mark: TerminalMark) => {
-    const target = running !== undefined && (mark.id === undefined || mark.id === running.id) ? running : undefined;
+    const target = running !== undefined && (mark.id === undefined || idOf(mark.id) === running.id) ? running : undefined;
     if (target === undefined) {
       // An end that closes no command that runs: Ctrl-C at an empty prompt, or the end of a command this screen never saw.
       return;
@@ -450,7 +454,19 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       }
     },
     reset,
-    seal: () => undefined,
+    seal: () => {
+      if (running !== undefined) {
+        closeOutput(running);
+        settle(running, 'incomplete');
+        running = undefined;
+      }
+
+      release(pending.prompt);
+      release(pending.input);
+      pending = {};
+      cwd = undefined;
+      epoch += 1;
+    },
     commands: () => entries.map(viewOf),
     target: () => {
       const entry = targetEntry();
