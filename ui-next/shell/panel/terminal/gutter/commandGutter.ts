@@ -50,6 +50,8 @@ export type CommandGutter = {
   readonly selectOutput: (command?: GutterCommand) => boolean;
   /** The text of the output of a command (the target by default): `undefined` when it printed none or its lines are gone. */
   readonly output: (command?: GutterCommand) => string | undefined;
+  /** Whether there is output to read, from the marks alone: no text is read. */
+  readonly hasOutput: (command?: GutterCommand) => boolean;
   /** What typing a command again takes: its line, and whether the shell proved it (then Enter is pressed; a line read from the screen is left for the person to run). `undefined` while a command runs, on the alternate screen, and for a line that is gone. */
   readonly rerun: (command?: GutterCommand) => { readonly text: string; readonly enter: boolean } | undefined;
   /** A command runs now (the shell's own word). */
@@ -174,11 +176,18 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     }
   };
 
+  /** Where a command's output ends: here. A command the gutter no longer holds (its line was erased) has nothing to own a marker, and one that already has an end keeps it. */
+  const closeOutput = (entry: Entry) => {
+    if (entry.end === undefined && entries.includes(entry)) {
+      entry.end = anchor();
+    }
+  };
+
   const onPrompt = (mark: TerminalMark) => {
     // A prompt back while a command runs: the shell is back and nobody printed the end (a shell that was replaced, an ssh that ended).
     if (running !== undefined && mark.redraw !== true) {
       // Its output ends where this prompt starts: what comes after is not its.
-      running.end ??= anchor();
+      closeOutput(running);
       settle(running, 'incomplete');
       running = undefined;
     }
@@ -201,7 +210,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     }
 
     if (running !== undefined) {
-      running.end ??= anchor();
+      closeOutput(running);
       settle(running, 'incomplete');
     }
 
@@ -249,7 +258,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       return;
     }
 
-    target.end = anchor();
+    closeOutput(target);
     target.exit = mark.exit;
     target.durationMs = mark.durationMs;
     running = undefined;
@@ -389,6 +398,12 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     return text === '' ? undefined : { text, enter: false };
   };
 
+  /** Whether the command the actions are for has output lines to read: the marks and the cursor only, never the text. */
+  const hasOutput = (command?: GutterCommand): boolean => {
+    const entry = entryOf(command);
+    return entry !== undefined && rangeOf(entry) !== undefined;
+  };
+
   const reset = () => {
     for (const entry of [...entries]) {
       forget(entry);
@@ -438,6 +453,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     jump,
     selectOutput: (command) => select(entryOf(command)),
     output,
+    hasOutput,
     rerun,
     busy: () => running !== undefined,
     onEvent: (listener) => {

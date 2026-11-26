@@ -925,8 +925,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
   const commands: ScreenCommands = {
     has: () => gutter !== undefined && engine?.alternate() !== true && gutter.commands().length > 0,
-    revision: () => JSON.stringify(commands.state()),
-    state: () => ({ count: gutter?.commands().length ?? 0, output: engine?.alternate() !== true && gutter?.output() !== undefined, rerun: rerunBlocked() }),
+    revision: () => `${String(gutter?.commands().length ?? 0)} commands, ${engine?.alternate() === true ? 'alternate' : 'normal'}, ${gutter?.busy() === true ? 'running' : 'idle'}, ${gutter?.hasOutput() === true ? 'output' : 'no output'}, ${takesInput(feed.getSnapshot()) ? 'input' : 'no input'}`,
+    state: () => ({ count: gutter?.commands().length ?? 0, output: engine?.alternate() !== true && gutter?.hasOutput() === true, rerun: rerunBlocked() }),
     jump: (direction, options) => {
       gutter?.jump(direction, options);
     },

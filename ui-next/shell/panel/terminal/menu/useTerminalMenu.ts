@@ -19,7 +19,7 @@ import { terminalMenu } from './terminalMenu';
 export const TERMINAL_MENU_LABEL = 'Terminal actions';
 
 /** What the menu needs of the screen: a real `TerminalScreen` has all of it, and a test makes one with these members only. */
-export type TerminalMenuScreen = Pick<TerminalScreen, 'clear' | 'selectAll' | 'paste' | 'mouseReporting' | 'decorateInput' | 'subscribe' | 'getSnapshot'> & { readonly commands?: Pick<TerminalScreen['commands'], 'state' | 'jump' | 'selectOutput' | 'copyOutput' | 'rerun' | 'onEvent'> | undefined };
+export type TerminalMenuScreen = Pick<TerminalScreen, 'clear' | 'selectAll' | 'paste' | 'mouseReporting' | 'decorateInput' | 'subscribe' | 'getSnapshot'> & { readonly commands?: Pick<TerminalScreen['commands'], 'state' | 'revision' | 'jump' | 'selectOutput' | 'copyOutput' | 'rerun' | 'onEvent'> | undefined };
 
 export type TerminalMenuOptions = {
   /** The screen of the session. Before there is one (`undefined`) there is no menu to open. */
@@ -99,10 +99,7 @@ export function useTerminalMenu({ screen, status, openFind, copy, here }: Termin
         listener();
       }
     }) ?? quiet(),
-    () => {
-      const state = screen?.commands?.state();
-      return state === undefined ? 'no commands' : `${String(state.count)} commands, ${state.output ? 'output' : 'no output'}, ${state.rerun ?? 'rerun'}`;
-    },
+    () => screen?.commands?.revision() ?? 'no commands',
   );
   const id = useMenu(() => {
     if (screen === undefined) {
