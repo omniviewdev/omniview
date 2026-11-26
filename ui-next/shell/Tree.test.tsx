@@ -343,3 +343,55 @@ describe('the open groups a tree keeps while it is not on screen (the plugin sto
     expect(screen.queryByRole('treeitem', { name: 'Gamma' })).toBeNull();
   });
 });
+
+describe('a group that says it starts open (`expanded`, KL7)', () => {
+  const starts = (id: string, label: string, children: readonly ShellTreeNode[]): ShellTreeNode => ({ ...group(id, label, children), expanded: true });
+  const nodes = [entry('top', 'Top'), starts('more', 'More', [entry('c', 'Gamma')]), group('things', 'Things', [entry('a', 'Alpha')])];
+
+  it('opens when the tree mounts, with no click of the user, and the host is told it is open; a group that does not say it stays closed', () => {
+    const onOpenChange = vi.fn();
+    renderTree(nodes, { open: [], current: 'top', onOpenChange });
+
+    expect(screen.getByRole('treeitem', { name: 'More' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', { name: 'Gamma' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Things' })).toHaveAttribute('aria-expanded', 'false');
+    expect(onOpenChange).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenCalledWith(['more']);
+  });
+
+  it('opens once when a later answer brings it, and what the user does with it is theirs: the next answer that says it again opens nothing', async () => {
+    const user = userEvent.setup();
+    const view = renderTree([nodes[0], nodes[2]], { open: [], current: 'top' });
+    expect(screen.queryByRole('treeitem', { name: 'More' })).toBeNull();
+
+    view.again({ nodes });
+    expect(screen.getByRole('treeitem', { name: 'More' })).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(screen.getByRole('treeitem', { name: 'More' }));
+    view.again({ nodes: [...nodes] });
+    view.again({ nodes: [nodes[0], starts('more', 'More', [entry('c', 'Gamma'), entry('d', 'Delta')]), nodes[2]] });
+
+    expect(screen.getByRole('treeitem', { name: 'More' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('treeitem', { name: 'Gamma' })).toBeNull();
+  });
+
+  it('is not opened again when the tree comes back from the window\'s memory: a group the user closed stays closed', async () => {
+    const user = userEvent.setup();
+    const kept = { memory: createTreeMemory(), memoryKey: 'acme\u0000Acme items' };
+    const first = renderTree(nodes, { ...kept, open: [], current: 'top' });
+    await user.click(screen.getByRole('treeitem', { name: 'More' }));
+    first.unmount();
+
+    renderTree(nodes, { ...kept, open: [], current: 'top' });
+
+    expect(screen.getByRole('treeitem', { name: 'More' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('settles a long chain of groups that all say it in one update: the deepest of 30 levels is on screen, where an update for each level would meet React\'s limit on the updates of one render at 26', () => {
+    const chain = (level: number): ShellTreeNode => (level === 0 ? entry('deepest', 'Deepest') : starts(`level-${String(level)}`, `Level ${String(level)}`, [chain(level - 1)]));
+    renderTree([chain(30)], { open: [], current: undefined });
+
+    expect(screen.getByRole('treeitem', { name: 'Deepest' })).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', { name: 'Level 1' })).toHaveAttribute('aria-expanded', 'true');
+  });
+});

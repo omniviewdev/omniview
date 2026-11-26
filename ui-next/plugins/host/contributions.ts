@@ -59,6 +59,37 @@ export function panelConnectionOf(route: Route, choice: PluginChoice | undefined
 export const textParamsOf = (route: Route): Readonly<Record<string, string>> =>
   Object.fromEntries(Object.entries(route.params).flatMap(([name, value]) => (name !== 'connection' && typeof value === 'string' ? [[name, value] as const] : [])));
 
+/** What a custom page asked for with `context.setParams` (KL7): the route it asks the tab to be at, or what is wrong with the call. */
+export type ParamsAsked = { readonly route: Route } | { readonly problem: string };
+
+/**
+ * The route a custom page asks for when it sets its own parameters: the route the tab is at, with `next` for its parameters (as the whole set: the ones it does not name are gone) and the connection the page is read in kept, which a call never changes. Plugin data, read as such and never trusted
+ * to its type: parameters that are text, with the empty ones left out (an empty parameter names nothing, as the tab model has it). Anything else, and a parameter called `connection`, is a problem that names it, and the call is ignored. Entries, not assignments: a name such as `__proto__` is data here.
+ */
+export function askedParams(route: Route, next: unknown): ParamsAsked {
+  if (typeof next !== 'object' || next === null || Array.isArray(next)) {
+    return { problem: 'the parameters are not an object of text values' };
+  }
+
+  const kept: Array<readonly [string, string]> = [];
+  for (const [name, value] of Object.entries(next)) {
+    if (typeof value !== 'string') {
+      return { problem: `the parameter "${name}" is not text` };
+    }
+
+    if (name === 'connection') {
+      return { problem: 'the parameters hold "connection", which is not a parameter: it is the connection the page is read in, and a call never changes it' };
+    }
+
+    if (value !== '') {
+      kept.push([name, value]);
+    }
+  }
+
+  const connection = connectionOf(route);
+  return { route: { plugin: route.plugin, contribution: route.contribution, params: Object.fromEntries([...kept, ...(connection === undefined ? [] : [['connection', connection] as const])]) } };
+}
+
 /** What the host reads of its plugins: the entries now, and a way to hear that they changed. `PluginStore` is one. */
 export type PluginSource = {
   readonly getSnapshot: () => readonly PluginEntry[];

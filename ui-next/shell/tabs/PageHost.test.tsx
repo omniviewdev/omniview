@@ -234,6 +234,33 @@ describe('keeping a page alive', () => {
     expect(screen.getByRole('button', { name: 'delta 0' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^beta/ })).toBeNull();
   });
+
+  it('keeps a page mounted, with its state, when its tab moves to another place that `pageKey` says is the same page, and draws it again when the key changes and when the tab is reloaded', async () => {
+    const h = boot({ home: false });
+    const [id] = h.openAll(['alpha']);
+    act(() => {
+      h.store.navigate(id ?? '', cloudPage('alpha', { item: 'one' }));
+    });
+    // The place of the tab holds the item, so a move to another item is another place; the key the host gives leaves the item out.
+    render(<Shell registration={{ plugin: { name: 'Cloud' } }} tabs={h.store} renderPage={({ location }) => <Page name={location.key} />} pageKey={({ location }) => location.route.contribution} empty={null} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'cloud:alpha|one 0' }));
+    expect(screen.getByRole('button', { name: 'cloud:alpha|one 1' })).toBeInTheDocument();
+
+    act(() => {
+      h.store.navigate(id ?? '', cloudPage('alpha', { item: 'two' }));
+    });
+    expect(screen.getByRole('button', { name: 'cloud:alpha|two 1' })).toBeInTheDocument();
+
+    act(() => {
+      h.store.navigate(id ?? '', cloudPage('beta'));
+    });
+    expect(screen.getByRole('button', { name: 'cloud:beta| 0' })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'cloud:beta| 0' }));
+    act(() => {
+      h.store.reload(id);
+    });
+    expect(screen.getByRole('button', { name: 'cloud:beta| 0' })).toBeInTheDocument();
+  });
 });
 
 describe('the scroll offset of the region', () => {

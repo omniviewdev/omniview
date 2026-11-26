@@ -1,13 +1,14 @@
-import { Button, CardGrid, DataView, KindTile, Link, Notice, PageHeader, ResourceCard, Stack, Status, Text, WorkspaceToolbar, useMenu, type DataTableColumn, type MenuItem, type StatusRole } from '@omniviewdev/kit';
+import { Button, CardGrid, DataView, KindTile, Link, Notice, PageHeader, QuickFilters, ResourceCard, SearchField, SegmentedControl, Stack, Status, Text, WorkspaceToolbar, useMenu, type DataTableColumn, type MenuItem, type SegmentedOption, type StatusRole } from '@omniviewdev/kit';
 import { useState, useSyncExternalStore } from 'react';
 import type { ConnectionBusyV1, ConnectionV1, ConnectionVerbResultV1, ConnectionsHostV1, CustomPageContextV1, CustomPageV1 } from '../../contract/v1';
-import { FILTERS, inFilter, isFilter } from './landing-navigator';
+import { FILTERS, inFilter, isFilter, isSort, paramsOf, SORTS, type Filter, type Sort } from './landing-navigator';
 
 // The pages of the connections fixture's landing variant (KL2; `entry-landing.tsx`): two custom pages that are read in no connection, drawn whole from the kit. The landing is the page the host opens when the plugin is opened and no connection is named; it lists the plugin's
 // connections as cards in the host's own words and opens one (`context.connections`, which is the window's store: nothing here reads the host or holds a list of its own). The second page, `all`, is the same connections as a table in a page that owns its scrolling
-// (`layout: 'pane'`: a kit data view takes the height it is given), and the two link to each other with the kit's `Link`, which is how a page of a plugin goes to another of its own. The landing reads the parameter the navigator's entries open it with (KL5,
-// `context.route.params.filter`, `landing-navigator.ts`) and lists the connections in that filter alone. The menu of a card offers the host's verbs on the connection (KL4: connect, check, disconnect and remove, which the host confirms itself), and the page says what each
-// answered, in a notice: it holds no state of the connection of its own, and it leaves the choice of what is refused to the host.
+// (`layout: 'pane'`: a kit data view takes the height it is given), and the two link to each other with the kit's `Link`, which is how a page of a plugin goes to another of its own. The landing reads the two parameters of its route (KL5, `context.route.params`,
+// `landing-navigator.ts`): the filter the navigator's entries open it with, and the order its cards are listed in. It changes them itself with `context.setParams` (KL7: the strip of filters pushes an entry in the tab's history, so Back returns to the filter it left; the order
+// takes the tab's entry), and the host keeps the page where it is: what is typed into its search is the page's own state, and it stays through every one of those changes, by a press on the page, an entry of the sidebar, a link and Back and Forward. The menu of a card offers the host's
+// verbs on the connection (KL4: connect, check, disconnect and remove, which the host confirms itself), and the page says what each answered, in a notice: it holds no state of the connection of its own, and it leaves the choice of what is refused to the host.
 
 export const PLUGIN_NAME = 'Seam Connections';
 
@@ -88,9 +89,13 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
   const { connections } = context;
   const view = useSyncExternalStore(connections.subscribe, connections.getSnapshot);
   const [answer, setAnswer] = useState<Answer | undefined>(undefined);
-  const asked = context.route.params.filter;
-  const filter = isFilter(asked) ? asked : undefined;
-  const shown = filter === undefined ? view.connections : view.connections.filter((connection) => inFilter(connection, filter));
+  const filter = isFilter(context.route.params.filter) ? context.route.params.filter : undefined;
+  const sort: Sort = isSort(context.route.params.sort) ? context.route.params.sort : 'name';
+  // The search is the page's own: it is no parameter of the route, and a change of one does not take it away.
+  const [query, setQuery] = useState('');
+  const matching = view.connections.filter((connection) => (filter === undefined || inFilter(connection, filter)) && connection.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const shown = sort === 'state' ? [...matching].sort((a, b) => a.word.localeCompare(b.word) || a.name.localeCompare(b.name)) : matching;
+  const counted = (chosen: Filter): number | undefined => (view.loaded ? view.connections.filter((connection) => inFilter(connection, chosen)).length : undefined);
   const menu = useMenu(itemsOf(connections, setAnswer));
   const refresh = () => {
     void connections.refresh();
@@ -103,6 +108,30 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
         tile={{ icon: 'server', tone: 'blue' }}
         commands={{ utility: { id: 'refresh', label: 'Refresh connections', icon: 'refresh', onSelect: refresh } }}
       />
+      <QuickFilters
+        label="Connection state"
+        total={view.loaded ? view.connections.length : undefined}
+        filters={(Object.keys(FILTERS) as Filter[]).map((id) => ({ id, label: FILTERS[id], count: counted(id) }))}
+        selected={filter ?? null}
+        onSelect={(id) => {
+          context.setParams(paramsOf(id !== null && isFilter(id) ? id : undefined, sort), { history: 'push' });
+        }}
+      />
+      <WorkspaceToolbar
+        label="Landing tools"
+        end={
+          <SegmentedControl<Sort>
+            label="Sort connections"
+            options={(Object.keys(SORTS) as Sort[]).map((value): SegmentedOption<Sort> => ({ value, label: SORTS[value] }))}
+            value={sort}
+            onValueChange={(next) => {
+              context.setParams(paramsOf(filter, next));
+            }}
+          />
+        }
+      >
+        <SearchField label="Search connections" value={query} onValueChange={setQuery} />
+      </WorkspaceToolbar>
       {view.loaded ? null : (
         <Text as="p" tone="muted">
           {READING_WORDS}

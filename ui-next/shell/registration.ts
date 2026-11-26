@@ -44,6 +44,11 @@ export type ShellTreeNode = {
    * The hue never carries a meaning alone: the label beside it does. Absent: the glyph takes the tree's accent, else the icon colour of the theme.
    */
   readonly tone?: DataColor | undefined;
+  /**
+   * A group that starts open (KL7): the tree opens it once, the first time it has the group on screen (when it mounts, when the group arrives with a later answer of the plugin, or when it comes into view inside a group that was closed), and from then on what the person did with it is theirs: a group
+   * they closed is not opened again by a later answer, nor by the tree coming back (the window's memory of its trees). Initial state only; a leaf has no use for it. Absent: the group starts closed, unless it is one of `ShellSidebar.open` or holds the current entry.
+   */
+  readonly expanded?: boolean | undefined;
   readonly children?: readonly ShellTreeNode[];
 };
 

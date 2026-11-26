@@ -166,6 +166,14 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // that names its page with `page` (or opens a connection) is refused at admission as an entry that opens no page, and one a hook answers is left out of the tree, never drawn as a place it does not open; `status` and `tone` are not drawn, and `connections` is absent from the hook's
 // context, which a plugin that reads it tests for, as it tests for `open`. A leaf that carries `params` has an `id` that is no page's key (it is the leaf's own name, and `page` says the page): were it a page's key, a host that predates the members would open that page without the parameters.
 //
+// The landing's seams (KL7) are minor, on the terms of the sidebar on a landing. A custom page's context gains ONE member the host fills in, `setParams`; a sidebar node gains ONE optional member, `expanded`, and the sidebar ONE, `pluginScope`; and the sidebar hook's `context.route.params` is
+// the route's parameters, where it was always empty. (1) Nothing that exists is removed, renamed or given another meaning: `CustomPageContextV1` is what it was and one member more, as it was when it gained `connections`; a node with no `expanded` is the group it was, closed unless it is asked
+// open or holds the current entry; a sidebar with no `pluginScope` is called as it was everywhere; and the hook's route is the route it was told of, with the parameters it was never given (a hook that never read them is unchanged). What a change of a custom page's parameters alone does is different:
+// by `setParams`, a link, an entry of the sidebar, Back or Forward, it no longer draws the page again from scratch. The page host keys a custom page by its page and its connection, so its Body is kept, with what it keeps in state, and is given the new `context.route.params`; another page,
+// another connection, another tab and a reload are drawn again as they were, and a list, a detail and an overview page are keyed by their place as they were. (2) Every bundle written before it is admitted and drawn as before (`admit.test.ts` keeps one; `PluginHost.landing.test.tsx` runs a page that
+// keeps state across a change of its parameters). (3) Rule (3) cannot be kept by the letter for new members, as for `keywords`: admission never refused a member it does not know, so a host that predates them admits a bundle that has them and draws it without them: `setParams` is absent from
+// the Body's context, which a plugin that calls it tests for, as it tests for `connections`; a group that says `expanded` starts closed; the sidebar has the one heading, and a page that changes its parameters is drawn again from scratch. The host that ships `pluginScope` refuses a malformed one by name.
+//
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
 
@@ -180,6 +188,9 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
  * `keywords` (C1e) are the other names the entry's page is known by, which its label does not say: the short name a tool gives the thing (`ws` for Workshops, `rk` for Racks), or its kind written out. The window's palette
  * finds the page by them as it finds it by its label: typed whole, a keyword ranks the page with an exact match on its label, and typed as the start of one, with a prefix of it; nothing of them is drawn. A keyword is
  * one word (no white space) of 1 to 32 characters; at most eight are read, and one that is not valid is left out with a problem for the plugin's author (`sidebarKeywords.ts`). The keywords of a group are not read.
+ *
+ * `expanded` (KL7, from the shell's tree node) is a group's way of saying it starts open: the tree opens it once, the first time it has the group on screen (when it mounts, when a later answer of the hook brings the group, or when the group comes into view inside one that was closed), and from then on
+ * what the person did with it is theirs: a group they closed is not opened again by a later answer, nor by the tree coming back. Initial state only; only a group can say it, and only the value `true` does.
  */
 export type SidebarNodeV1 = Omit<ShellTreeNode, 'children'> & {
   readonly keywords?: readonly string[] | undefined;
@@ -203,8 +214,8 @@ export type SidebarNodeV1 = Omit<ShellTreeNode, 'children'> & {
 };
 
 /**
- * Where the host asks a contribution to show itself. `connection` is the scope the user chose; it is absent until one is chosen. `params` are the route's other parameters, strings: empty
- * for a list page and for an overview page, the object's identity for a detail page (`connection` is not repeated in them).
+ * Where the host asks a contribution to show itself. `connection` is the scope the user chose; it is absent until one is chosen. `params` are the route's other parameters, strings (`connection` is not repeated in them): empty for a list page's and an overview page's own hooks, the object's identity for a detail
+ * page, a custom page's own parameters (`CustomPageContextV1.setParams` changes them), and, for the sidebar's hook (KL7), those of the route it is called for, whatever its page.
  */
 export type RouteV1 = {
   /** A key of `ContributionV1.pages`. */
@@ -388,16 +399,33 @@ export type ConnectionsHostV1 = {
   readonly refresh: () => Promise<void>;
 };
 
-/** What a custom page's Body is told: the context every hook of the plugin gets, and the plugin's connections. The route names a page, its parameters (`route.params`: the route's, as text; empty when it names none) and, for a page of scope `connection`, the connection; for a page of scope `plugin`, `route.connection` is `undefined`. A change of the parameters alone draws the page again, from scratch: the place a tab is at is its page and its parameters. */
+/**
+ * What a custom page's Body is told: the context every hook of the plugin gets, and the plugin's connections. The route names a page, its parameters (`route.params`: the route's, as text; empty when it names none) and, for a page of scope `connection`, the connection; for a page of scope `plugin`, `route.connection` is
+ * `undefined`. A change of the parameters alone keeps the Body (KL7): the place a tab is at is still its page and its parameters (it is saved with the tab, and a tab that shows it is shown), but the page host draws a custom page again from scratch only when its page, its connection or the tab's generation changes,
+ * and otherwise gives the same Body the new `context`. Two tabs of one page with different parameters are two pages: each keeps its own.
+ */
 export type CustomPageContextV1 = ContextV1 & {
   readonly connections: ConnectionsHostV1;
+  /**
+   * Changes this page's own route parameters (KL7), where a link to the same page with other ones would do the same but would draw nothing in place: the tab's route changes (the sidebar's current entry follows it, a saved window comes back at it, and Back and Forward step through it by the tab's own
+   * history rules) and the SAME Body, with what it keeps in state (a search, an open picker, the focus), is given the new `context.route.params`. `next` is the whole set: the parameters it does not name are gone, an empty value names nothing, and a call that names the parameters the page has changes
+   * nothing. It is text only, and a parameter cannot be called `connection` (the connection a page is read in is never changed by it): a call that holds anything else is ignored, with a line in the console. `options.history` is `replace` (the default: the page's own entry in the tab's history takes the new
+   * parameters, nothing is pushed, and the tab's page memory stays) or `push` (a new entry: Back returns to the parameters it left, as it does for a link). A call is held to the page that made it: it never throws and does nothing once that page is gone (the tab is at another plugin, page or connection, or the page was drawn again: a reload of the tab, a return to the page, a plugin that came back) or while it is not on screen, so a callback a page left behind is dropped. Absent on a host that predates it: a plugin tests for it.
+   */
+  readonly setParams: (next: Readonly<Record<string, string>>, options?: SetParamsOptionsV1) => void;
+};
+
+/** How `CustomPageContextV1.setParams` records the change in the tab's history. */
+export type SetParamsOptionsV1 = {
+  /** `replace` (the default): the page's entry takes the new parameters. `push`: a new entry, which Back leaves. */
+  readonly history?: 'push' | 'replace' | undefined;
 };
 
 /**
  * A custom page (added to version 1 by KL2, see the rule above): a page the plugin draws itself, whole, from the kit's parts. The host draws the tab (`title`, `icon`), the page's frame and, for a page of scope `connection`, the scope lane (the connection's NAME, made from the host's own list
  * of connections, with the picker every lane has); the Body is the page: its header, its data and its states are the plugin's. A Body is a component, so it may use hooks, the kit (a `PageHeader`, a `DataView`, cards, rows, `useMenu` and `menuTrigger` as Home does, a `Link` that names a page of
  * this plugin, which the host's `LinkProvider` opens) and the runtime's data hooks, and it is given its `context`. The host runs it inside the page's own error boundary: a Body that throws is replaced, alone, by `This page failed to display.` with a Retry, and the frame, the sidebar and the
- * other tabs stay. It is kept alive, and loses what it keeps in state when the tab's page is evicted, as every page does (the tab model's keep-alive policy).
+ * other tabs stay. It is kept alive, and loses what it keeps in state when the tab's page is evicted, as every page does (the tab model's keep-alive policy, which keeps pages by tab). A change of its parameters alone (KL7: `context.setParams`, a link, an entry of the sidebar, Back and Forward) does not draw it again.
  *
  * `scope: 'plugin'` is a page read in NO connection: the route names none (a connection that a link or a sidebar entry carries to it is dropped, so the page is one place whoever opened it), there is no scope lane, the panel handle it is given has no `ports` member (nothing says which connection to
  * forward in), and the tab is told from another plugin's by the plugin's name. While it is on screen the plugin's rail entry is current, and the window draws the plugin's sidebar only as the sidebar's hook answers it for the page (`SidebarV1`: the skeleton's entries are pages of a connection, and there is
@@ -424,7 +452,7 @@ export type SidebarContextV1 = ContextV1 & {
   /**
    * The ids of the groups of the tree that are open on screen, sorted: the entries of an open group are on screen and those of a closed one are not, so a hook that reads something for each entry (what it counts) has a
    * reason to read it only for the entries of these groups, and of the entries that have no group. A group inside a closed group is not listed: none of its entries is on screen. Empty until the tree is on screen, and
-   * again when it is not (the rail shows another plugin's sidebar). The list is the same array for as long as the set of groups is the same, and the context is the same object for as long as it and the route are, so
+   * again when it is not (the rail shows another plugin's sidebar). The list is the same array for as long as the set of groups is the same, and the context is the same object for as long as it and the route (its page, its connection and its parameters, which are the route's, KL7) are, so
    * a hook may use either as a dependency and is not run again by a render of the host.
    */
   readonly open: readonly string[];
@@ -443,14 +471,27 @@ export type SidebarContextV1 = ContextV1 & {
  *
  * On a page that is read in no connection (a custom page of scope `plugin`, such as the landing: KL5) the hook is called as it is for any page, with a route that names no connection, and what it answers is the sidebar: the skeleton is never drawn there, because its
  * entries are pages of a connection. Where the hook answers `undefined` or no entry that opens something, or the plugin has none, the window draws no sidebar for the page. A hook that answers on its first render draws the sidebar with the page; one that answers later moves the page once.
+ *
+ * What the sidebar is called on such a page can differ from what it is called on a page of a connection (KL7, `pluginScope`): the navigator there is another list than the tree of a connection's own pages, and its heading says which.
  */
 export type SidebarV1 = {
   /** Names the navigation landmark and its tree. */
   readonly label: string;
   /** The title of the sidebar's header. */
   readonly title: string;
+  /** What the sidebar is called on a page that is read in no connection, where that is not what it is called on a page of a connection (KL7). Absent: it is called as it is everywhere. */
+  readonly pluginScope?: SidebarPluginScopeV1 | undefined;
   readonly nodes: readonly SidebarNodeV1[];
   readonly useNodes?: ((context: SidebarContextV1) => readonly SidebarNodeV1[] | undefined) | undefined;
+};
+
+/**
+ * What a sidebar is called on a page that is read in no connection (KL7: a custom page of scope `plugin`, such as the landing). A member that is left out is the sidebar's own: `title` heads the sidebar, and `label` names its landmark and its tree. A label of its own makes the tree another tree than the one of a page of a
+ * connection (the window remembers what the person opened in a tree by the tree's name), which is right: it is another list.
+ */
+export type SidebarPluginScopeV1 = {
+  readonly label?: string | undefined;
+  readonly title?: string | undefined;
 };
 
 /**

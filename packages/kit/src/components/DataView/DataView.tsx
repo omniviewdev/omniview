@@ -31,7 +31,7 @@ export type DataViewProps<TRow> = {
   readonly label: string;
   /** The page's header, fixed above the collection: a `PageHeader`. The 12 px under it are the view's. */
   readonly header?: ReactNode;
-  /** The quick filters of the collection (design 13 QF1), 8 px above the toolbar. */
+  /** The quick filters of the collection (design 13 QF1), 8 px above the toolbar. Their `data-*` reach the strip. */
   readonly quickFilters?: QuickFiltersProps | undefined;
   /** The one command lane (design 12 TB1): a `WorkspaceToolbar`. The 8 px under it are the view's. */
   readonly toolbar?: ReactNode;
@@ -120,7 +120,7 @@ export function DataView<TRow>({ label, header, quickFilters, toolbar, table, ca
           )}
           {quickFilters === undefined ? null : (
             <div className={styles.filters} data-ov-block="filters">
-              <QuickFilters label={quickFilters.label} total={quickFilters.total} filters={quickFilters.filters} selected={quickFilters.selected} onSelect={quickFilters.onSelect} />
+              <QuickFilters {...dataAttributes(quickFilters)} label={quickFilters.label} total={quickFilters.total} filters={quickFilters.filters} selected={quickFilters.selected} onSelect={quickFilters.onSelect} />
             </div>
           )}
           {toolbar === undefined || toolbar === null ? null : (

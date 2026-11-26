@@ -1,5 +1,5 @@
 import { ErrorBody, LinkProvider, type PageHeaderCrumb } from '@omniviewdev/kit';
-import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from 'react';
 import { DetailPage, ListPage, type PageMemory } from '../../page';
 import {
   createLogStreams,
@@ -61,7 +61,7 @@ import { ContributionBoundary } from './ContributionBoundary';
 import { ConnectionNames, connectionNameOf, laneFor } from './connectionName';
 import { ConnectionQuestion, createConnectionActions, createConnectionsStore, createConnectionVerbs, createRecents, pickerOf, reachOf, usesOf, type ConnectionsApi, type ConnectionVerbs, type HostConnections } from './connections';
 import { connectionsHostsOf } from './connectionsHost';
-import { connectionOf, createContributions, describeCustom, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, panelConnectionOf, readsNoConnection, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
+import { askedParams, connectionOf, createContributions, describeCustom, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, panelConnectionOf, readsNoConnection, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
 import { homePage } from './homePage';
 import { HOME_PAGE_ID, HOST_PLUGIN, hostPageOf, registerHostPage } from './hostPages';
 import { createLinkHandler } from './links';
@@ -362,10 +362,13 @@ function activeRoute(tabs: TabsStore): Route | undefined {
 /** What the rail follows: the tab on screen and its plugin, so the user's choice stands until either changes. Nothing while there is no tab. */
 const followOf = (active: string | null, route: Route | undefined): string | undefined => (active === null || route === undefined ? undefined : `${active}\u0000${route.plugin}`);
 
-/** The sidebar as the shell reads it: the contribution's words, the nodes that open something (`openable`), and the entry of the page on screen as current, when it is this plugin's. */
-function sidebarOf(contribution: ContributionV1, nodes: readonly SidebarNodeV1[], current: string | undefined): ShellSidebar {
-  const { label, title } = contribution.sidebar;
-  return { label, title, nodes, current, accent: contribution.plugin.accent };
+/**
+ * The sidebar as the shell reads it: the contribution's words, the nodes that open something (`openable`), and the entry of the page on screen as current, when it is this plugin's. On a page that is read in no connection (`bare`) the sidebar may be called something else (`pluginScope`,
+ * KL7): each of its members that is left out is the sidebar's own.
+ */
+function sidebarOf(contribution: ContributionV1, nodes: readonly SidebarNodeV1[], current: string | undefined, bare: boolean): ShellSidebar {
+  const { label, title, pluginScope } = contribution.sidebar;
+  return { label: (bare ? pluginScope?.label : undefined) ?? label, title: (bare ? pluginScope?.title : undefined) ?? title, nodes, current, accent: contribution.plugin.accent };
 }
 
 type FrameInputs = {
@@ -394,6 +397,23 @@ type FrameInputs = {
 
 /** The page of a contribution a route names, as the host draws it: the plugin's own first page for one it does not have. */
 const pageOf = (contribution: ContributionV1, route: Route): string => (Object.hasOwn(contribution.pages, route.contribution) ? route.contribution : contribution.home);
+
+/**
+ * What a tab's page is drawn from scratch for (`Shell`'s `pageKey`, KL7): the tab's place, which holds the route's parameters, except for a custom page, whose Body keeps what it keeps in state across a change of its own parameters (`context.setParams`, a link or an entry of the sidebar to the same
+ * page, Back and Forward). It is another page when its plugin, its page or the connection it is read in changes, and the same page, given the new parameters, when they alone do; a reload and another tab draw it again as they always did (the tab's generation and its slot are not here). Keep-alive is by
+ * tab (`state.mounted`), and a tab's page memory (`pageState`) by tab and history entry, so neither depends on the parameters: two tabs of one page with different parameters keep a Body each. A tab whose plugin is not ready draws a state and not a page, and its place stands.
+ */
+function pageKeyOf(entries: readonly PluginEntry[], { location }: PageTab): string {
+  const { route, key } = location;
+  const entry = entries.find((candidate) => candidate.id === route.plugin);
+  if (entry?.phase !== 'ready') {
+    return key;
+  }
+
+  const page = pageOf(entry.contribution, route);
+  const connection = connectionOf(route);
+  return entry.contribution.pages[page]?.kind === 'custom' ? routeKey({ plugin: route.plugin, contribution: page, params: connection === undefined ? {} : { connection } }) : key;
+}
 
 /** Whether a plugin that is ready declares a landing (KL2): what it opens when it is opened and no connection is named is the landing, which needs no list of connections to be chosen from. */
 const hasLanding = (entries: readonly PluginEntry[], plugin: string | undefined): boolean => entries.some((entry) => entry.id === plugin && entry.phase === 'ready' && entry.contribution.landing !== undefined);
@@ -431,7 +451,7 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
     // The entry of the page on screen: the leaf that opens that page with the parameters the route carries, else the page's leaf that names none. An object's page selects the list it belongs to (its parameters are the object's, and no leaf is made of them).
     const asked = route?.plugin === shown.id ? (onScreen?.kind === 'detail' ? { page: onScreen.definition.list?.page, params: NO_PARAMS } : { page: pageOf(contribution, route), params: textParamsOf(route) }) : undefined;
     const current = asked?.page === undefined ? undefined : currentOf(opened, asked.page, asked.params);
-    return sidebarOf(contribution, opened, current);
+    return sidebarOf(contribution, opened, current, bare);
   })();
   const listed = [...rail, ...failed];
   const railData: ShellRail | undefined =
@@ -666,6 +686,9 @@ type CustomProps = {
   readonly page: string;
   readonly frames: Published<FrameV1>;
   readonly names: ConnectionNames;
+  /** The tab model and the tab this page is drawn for: `context.setParams` changes the route of that tab. */
+  readonly tabs: TabsStore;
+  readonly tabId: TabId;
   /** What the plugin asks of the bottom panel: `ctx.panel`. */
   readonly panelHost: PanelHostV1;
   /** What the plugin asks of the window about its connections: `context.connections`. */
@@ -674,10 +697,12 @@ type CustomProps = {
 
 /**
  * The custom page's own component (KL2): the plugin's Body runs here, in its tab's own subtree and the page's own boundary, and is told its context. The host draws nothing around it: no header, no heading, and for a page read in no connection no lane. The page is told its route's
- * parameters (KL5, `RouteV1.params`, as a detail page is: the route's, as text) and, for a page read in no connection, no connection, whatever its route carries. The place a tab is at is its page and its parameters, so a change of the parameters alone is another place: the tab's page is
- * drawn again, from scratch, with them (`PageHost` keys it by the place). The tab's face is the route's and the definition's (`describeCustom`), the same before this component has run.
+ * parameters (KL5, `RouteV1.params`, as a detail page is: the route's, as text) and, for a page read in no connection, no connection, whatever its route carries. The place a tab is at is its page and its parameters, but the page is drawn again from scratch only when its page or its connection
+ * changes (`pageKeyOf`, KL7): a change of the parameters alone, by `setParams`, a link, an entry of the sidebar, Back or Forward, gives the same Body a new context. `setParams` changes the parameters of the route of the tab this page is in, as a link to the same page would, and does it in place:
+ * `replace` (the default) takes the tab's history entry, `push` adds one (`navigate` and `replace` of the tab model, which decide the rest: the unsaved-changes question, the singleton rule, the page memory). A call is held to the page instance that made it: this plugin, this page and this connection of this tab, from the commit that draws the instance to the commit that takes it away, so a callback a page left behind (the page of another connection, a page drawn again by a reload of the tab or a return to it, a plugin that came back) changes nothing, and neither does a call from a page that is not on screen (a hidden page's effects are released).
+ * The tab's face is the route's and the definition's (`describeCustom`), the same before this component has run.
  */
-function CustomContribution({ entry, route, page: pageId, frames, names, panelHost, connections }: CustomProps) {
+function CustomContribution({ entry, route, page: pageId, frames, names, tabs, tabId, panelHost, connections }: CustomProps) {
   const page = entry.contribution.pages[pageId];
   if (page?.kind !== 'custom') {
     throw new Error(`The plugin has no custom page "${pageId}"`);
@@ -685,7 +710,43 @@ function CustomContribution({ entry, route, page: pageId, frames, names, panelHo
 
   const connection = page.scope === 'plugin' ? undefined : connectionOf(route);
   const params = useMemo(() => textParamsOf(route), [route]);
-  const context = useMemo<CustomPageContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params }, panel: panelHost, connections }), [entry.id, pageId, connection, params, panelHost, connections]);
+  const { contribution } = entry;
+  // The connection the route names, which this page was drawn for: the page is another page when it changes (`pageKeyOf`), and a call that finds the tab in another is not this page's.
+  const drawnFor = connectionOf(route);
+  // Whether this instance of the page is the one that is drawn: from the commit that draws it to the commit that takes it away (a page is drawn again for another page, another connection, a reload of the tab, a return to the page and a plugin that came back), and not while its effects are released (a hidden page).
+  const drawn = useRef(true);
+  useLayoutEffect(() => {
+    drawn.current = true;
+    return () => {
+      drawn.current = false;
+    };
+  }, []);
+  const setParams = useMemo<CustomPageContextV1['setParams']>(
+    () => (next, options) => {
+      // A callback the page left behind is not this page's: its instance is gone, or the tab is at another plugin, page or connection now. The route the tab is at now, not the one this render was made for, is the one that changes.
+      const at = tabs.selectors.tab(tabs.getSnapshot(), tabId)?.location.route;
+      if (!drawn.current || at?.plugin !== entry.id || pageOf(contribution, at) !== pageId || connectionOf(at) !== drawnFor) {
+        return;
+      }
+
+      const asked = askedParams(at, next);
+      if ('problem' in asked) {
+        console.warn(`[plugins] ${entry.id} page ${pageId}: setParams was ignored: ${asked.problem}`);
+        return;
+      }
+
+      if (options?.history === 'push') {
+        tabs.navigate(tabId, { route: asked.route }, { history: 'push', source: 'page' });
+      } else {
+        tabs.replace(tabId, asked.route);
+      }
+    },
+    [tabs, tabId, entry.id, contribution, pageId, drawnFor],
+  );
+  const context = useMemo<CustomPageContextV1>(
+    () => ({ plugin: entry.id, route: { page: pageId, connection, params }, panel: panelHost, connections, setParams }),
+    [entry.id, pageId, connection, params, panelHost, connections, setParams],
+  );
   const { Body } = page;
   return (
     <>
@@ -802,7 +863,7 @@ function HostPage({ entries, route, tabId, pluginName, frames, names, tabs, plat
           <OverviewContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, panelConnection)} />
         ) : found?.kind === 'custom' ? (
           // A page read in no connection is read in none for the panel too: the plugin's only connection is not the one it is read in, and a handle with a `ports` member that could not say which connection to forward in is worse than one without.
-          <CustomContribution entry={entry} route={route} page={page} frames={frames} names={names} panelHost={panelHosts(entry.id, readsNoConnection(found) ? undefined : panelConnection)} connections={connectionsHosts(entry.id)} />
+          <CustomContribution entry={entry} route={route} page={page} frames={frames} names={names} tabs={tabs} tabId={tabId} panelHost={panelHosts(entry.id, readsNoConnection(found) ? undefined : panelConnection)} connections={connectionsHosts(entry.id)} />
         ) : (
           <ListContribution entry={entry} route={route} page={page} frames={frames} panelHost={panelHosts(entry.id, panelConnection)} memory={memory} />
         )}
@@ -829,14 +890,18 @@ const NONE_OPEN: readonly string[] = [];
 
 /**
  * Runs the sidebar's data hook for the plugin on the rail, and publishes what it answers: nothing until it answers, and the skeleton stands (a page read in no connection has none). It draws nothing. The hook is told the context every hook of the plugin
- * gets and, as well, which groups of its tree are open on screen (the entries of a group that is closed are not on screen, and the hook has no reason to ask for what they count) and the plugin's connections (KL5). The context is the same object for as long
- * as the plugin, the page, the connection, the connections handle and the open groups are the same, and the open groups are the same list until the set of them changes, so a hook may use either as a dependency.
+ * gets and, as well, which groups of its tree are open on screen (the entries of a group that is closed are not on screen, and the hook has no reason to ask for what they count) and the plugin's connections (KL5). Its route is the route of the page it is called for, with that route's own
+ * parameters as text (KL7: they were none, so a navigator could not tell which of the places of a page was on screen, nor carry what the page keeps in its route to the place an entry opens). The context is the same object for as long as the plugin, the page, the connection, the parameters (by their
+ * text), the connections handle and the open groups are the same, and the open groups are the same list until the set of them changes, so a hook may use either as a dependency.
  */
 function NodesSource({ plugin, route, useNodes, nodes, open, panelHost, connections }: NodesProps) {
   const page = route.contribution;
   const connection = connectionOf(route);
+  // The route a hook is called for is the tab's, or the one the plugin was last shown at, or its first page made anew on every render: the parameters are the same object while their text is, so none of them runs the hook again.
+  const paramsText = JSON.stringify(textParamsOf(route));
+  const params = useMemo(() => (paramsText === '{}' ? NO_PARAMS : (JSON.parse(paramsText) as Readonly<Record<string, string>>)), [paramsText]);
   const expanded = useSyncExternalStore(open.subscribe, () => open.get(plugin) ?? NONE_OPEN);
-  const answer = useNodes(useMemo<SidebarContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS }, panel: panelHost, open: expanded, connections }), [plugin, page, connection, panelHost, expanded, connections]));
+  const answer = useNodes(useMemo<SidebarContextV1>(() => ({ plugin, route: { page, connection, params }, panel: panelHost, open: expanded, connections }), [plugin, page, connection, params, panelHost, expanded, connections]));
   useLayoutEffect(() => {
     nodes.publish(plugin, answer ?? null);
   }, [nodes, plugin, answer]);
@@ -1288,6 +1353,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
       <Shell
         registration={registrationOf({ entries, coming, waiting, held, route, lane, frame, rail, failed, railPlugin, nodes: published, bare })}
         tabs={tabs}
+        pageKey={(tab: PageTab) => pageKeyOf(entries, tab)}
         renderPage={(tab: PageTab) => (
           <HostPage
             entries={entries}

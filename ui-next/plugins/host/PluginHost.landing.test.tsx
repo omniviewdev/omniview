@@ -1,6 +1,7 @@
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { Link } from '@omniviewdev/kit';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore } from '../../shell';
 import { openSession, SESSION_VERSION } from '../../shell/session';
@@ -73,6 +74,8 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
   const { connections } = context;
   const view = useSyncExternalStore(connections.subscribe, connections.getSnapshot);
   const [answer, setAnswer] = useState('');
+  // What the person typed: the page's own state, which a change of the page's parameters must not take from it (KL7).
+  const [typed, setTyped] = useState('');
   const said = (result: ConnectionVerbResultV1) => {
     setAnswer(result.ok ? 'done' : result.cancelled === true ? 'cancelled' : result.reason);
   };
@@ -81,6 +84,40 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
     <section aria-label="Acme landing">
       <h1>Acme home</h1>
       <p>{`Filter: ${context.route.params.filter ?? 'all'}`}</p>
+      <input
+        aria-label="Search"
+        value={typed}
+        onChange={(event) => {
+          setTyped(event.target.value);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          context.setParams({ filter: 'attention' });
+        }}
+      >
+        Set the filter
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          context.setParams({ filter: 'connected' }, { history: 'push' });
+        }}
+      >
+        Push the filter
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          // Plugin code that is not typed as the contract asks: the host reads what it is given.
+          context.setParams({ filter: 3 } as unknown as Readonly<Record<string, string>>);
+        }}
+      >
+        Ask for a number
+      </button>
+      <Link to={{ page: 'landing', params: { filter: 'connected' } }}>Link to connected</Link>
+      <Link to={{ page: 'all' }}>Link to all</Link>
       <p role="status">{view.loaded ? `${String(view.connections.length)} connections` : 'Reading the connections…'}</p>
       <p aria-label="Last answer">{answer}</p>
       {view.connections.map((connection) => (
@@ -107,12 +144,65 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
   );
 }
 
+/** A second page of the plugin that is read in no connection, with a state of its own. */
+function All() {
+  const [typed, setTyped] = useState('');
+  return (
+    <section aria-label="Acme all">
+      <h1>Acme all</h1>
+      <input
+        aria-label="Search all"
+        value={typed}
+        onChange={(event) => {
+          setTyped(event.target.value);
+        }}
+      />
+      <Link to={{ page: 'landing' }}>Link to the landing</Link>
+    </section>
+  );
+}
+
+/** What a page of a connection was last given to change its own parameters with: a test keeps the call a page left behind. */
+const given: { setParams: CustomPageContextV1['setParams'] | undefined } = { setParams: undefined };
+
+/** A page of a connection (scope `connection`): it reads the connection and a parameter, changes the parameter itself, and links to the same page in another connection. */
+function Settings({ context }: { readonly context: CustomPageContextV1 }) {
+  const [typed, setTyped] = useState('');
+  const { setParams } = context;
+  useEffect(() => {
+    given.setParams = setParams;
+  }, [setParams]);
+  return (
+    <section aria-label="Acme settings">
+      <h1>Acme settings</h1>
+      <p>{`Connection: ${context.route.connection ?? 'none'}`}</p>
+      <p>{`Tab: ${context.route.params.tab ?? 'none'}`}</p>
+      <input
+        aria-label="Note"
+        value={typed}
+        onChange={(event) => {
+          setTyped(event.target.value);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          context.setParams({ tab: 'logs' });
+        }}
+      >
+        Show the logs
+      </button>
+      <Link to={{ page: 'settings', params: { connection: SOUTH } }}>Show south</Link>
+    </section>
+  );
+}
+
 /** Acme, with a landing or without one: the same plugin otherwise. */
 const entry = (landing: boolean, sidebar: ContributionV1['sidebar'] = acme().sidebar): PluginEntry => ({
   id: 'acme',
   name: 'Acme plugin',
   phase: 'ready',
-  contribution: landing ? acme({ pages: { ...acme().pages, landing: { kind: 'custom', scope: 'plugin', title: 'Acme home', icon: 'house', Body: Landing } }, landing: 'landing', sidebar }) : acme(),
+  contribution: landing ? acme({ pages: { ...acme().pages, landing: { kind: 'custom', scope: 'plugin', title: 'Acme home', icon: 'house', Body: Landing }, all: { kind: 'custom', scope: 'plugin', title: 'Acme all', icon: 'server', Body: All }, settings: { kind: 'custom', scope: 'connection', title: 'Acme settings', icon: 'settings-2', Body: Settings } }, landing: 'landing', sidebar }) : acme(),
 });
 
 const link = (page: string | undefined): HostRoute => ({ plugin: 'acme', page, connection: undefined, params: {} });
@@ -328,7 +418,7 @@ describe('a plugin whose sidebar answers on its landing', () => {
     expect(seen.at(-1)?.connections.open).toEqual(expect.any(Function));
   });
 
-  it('opens the landing with the parameters of an entry, in the tab on screen, and selects that entry and no other: the page is drawn again with the parameters it reads', async () => {
+  it('opens the landing with the parameters of an entry, in the tab on screen, and selects that entry and no other: the page reads the parameters', async () => {
     const { user } = mount(navigated(), { link: link(undefined) });
     const tree = await sidebar();
     expect(await tree.findByRole('treeitem', { name: 'All 2' })).toHaveAttribute('aria-selected', 'true');
@@ -373,5 +463,212 @@ describe('a plugin whose sidebar answers on its landing', () => {
 
     expect(await screen.findByText('Filter: attention')).toBeInTheDocument();
     expect(await (await sidebar()).findByRole('treeitem', { name: 'Needs attention 0' })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+// A custom page changes its own parameters in place (KL7): `context.setParams`, a link, an entry of the sidebar, and Back and Forward all move the tab to the same page with other parameters, and the Body, with what it keeps in state, is the same one before and after.
+describe('a custom page that changes its own parameters', () => {
+  const navigated = () => entry(true, { ...acme().sidebar, useNodes: useNavigator });
+  const tree = async () => within(await screen.findByRole('navigation', { name: 'Acme navigation' }));
+  const search = () => screen.getByRole('textbox', { name: 'Search' });
+  const back = () => screen.getByRole('button', { name: 'Back' });
+  const forward = () => screen.getByRole('button', { name: 'Forward' });
+
+  it('is given the new parameters by setParams while its Body stays, with what it keeps in state: the sidebar\'s current entry follows, and nothing is added to the tab\'s history', async () => {
+    const { user } = mount(navigated(), { link: link(undefined) });
+    await user.type(await screen.findByRole('textbox', { name: 'Search' }), 'abc');
+    const field = search();
+
+    await user.click(screen.getByRole('button', { name: 'Set the filter' }));
+
+    expect(await screen.findByText('Filter: attention')).toBeInTheDocument();
+    expect(search()).toBe(field);
+    expect(field).toHaveValue('abc');
+    expect((await tree()).getByRole('treeitem', { name: 'Needs attention 0' })).toHaveAttribute('aria-selected', 'true');
+    expect(back()).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('steps through the parameters it pushed with Back and Forward, in place: the Body is the one it started with at every step', async () => {
+    const { user } = mount(navigated(), { link: link(undefined) });
+    await user.type(await screen.findByRole('textbox', { name: 'Search' }), 'abc');
+    const field = search();
+
+    await user.click(screen.getByRole('button', { name: 'Push the filter' }));
+    expect(await screen.findByText('Filter: connected')).toBeInTheDocument();
+    expect(back()).not.toHaveAttribute('aria-disabled');
+    await user.click(back());
+    expect(await screen.findByText('Filter: all')).toBeInTheDocument();
+    await user.click(forward());
+
+    expect(await screen.findByText('Filter: connected')).toBeInTheDocument();
+    expect(search()).toBe(field);
+    expect(field).toHaveValue('abc');
+  });
+
+  it('keeps the Body when a link or an entry of the sidebar opens the same page with other parameters, as setParams does: the place is one tab, and the tab\'s Body is not drawn again', async () => {
+    const { user } = mount(navigated(), { link: link(undefined) });
+    await user.type(await screen.findByRole('textbox', { name: 'Search' }), 'abc');
+    const field = search();
+
+    await user.click(screen.getByRole('link', { name: 'Link to connected' }));
+    expect(await screen.findByText('Filter: connected')).toBeInTheDocument();
+    await user.click((await tree()).getByRole('treeitem', { name: 'Needs attention 0' }));
+
+    expect(await screen.findByText('Filter: attention')).toBeInTheDocument();
+    expect(search()).toBe(field);
+    expect(field).toHaveValue('abc');
+    expect(faces()).toEqual(['Acme home']);
+  });
+
+  it('is kept by tab and not by place: two tabs of one page with different parameters have a Body each, and a change in one leaves the other as it was', async () => {
+    const { user } = mount(navigated(), { link: link(undefined) });
+    await user.type(await screen.findByRole('textbox', { name: 'Search' }), 'abc');
+    await user.click(screen.getByRole('button', { name: 'Set the filter' }));
+    expect(await screen.findByText('Filter: attention')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'New tab' }));
+    expect(await screen.findByText('Filter: all')).toBeInTheDocument();
+    expect(search()).toHaveValue('');
+    await user.type(search(), 'xyz');
+    await user.click(screen.getByRole('button', { name: 'Push the filter' }));
+    expect(await screen.findByText('Filter: connected')).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('tab')[0]);
+    expect(await screen.findByText('Filter: attention')).toBeInTheDocument();
+    expect(search()).toHaveValue('abc');
+    await user.click(screen.getAllByRole('tab')[1]);
+    expect(await screen.findByText('Filter: connected')).toBeInTheDocument();
+    expect(search()).toHaveValue('xyz');
+  });
+
+  it('is drawn again from scratch when the tab goes to another page: the page it left has none of what it kept when the tab comes back to it', async () => {
+    const { user } = mount(navigated(), { link: link(undefined) });
+    await user.type(await screen.findByRole('textbox', { name: 'Search' }), 'abc');
+
+    await user.click(screen.getByRole('link', { name: 'Link to all' }));
+    expect(await screen.findByRole('heading', { name: 'Acme all' })).toBeInTheDocument();
+    await user.click(back());
+
+    expect(await screen.findByRole('heading', { name: 'Acme home' })).toBeInTheDocument();
+    expect(search()).toHaveValue('');
+  });
+
+  it('ignores a call that holds anything but text, with one line in the console: the route stays as it was', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { user } = mount(navigated(), { session: saved(['l', 'acme', 'landing', 'Acme home', { filter: 'attention' }]) });
+    await user.click(await screen.findByRole('button', { name: 'Ask for a number' }));
+
+    expect(screen.getByText('Filter: attention')).toBeInTheDocument();
+    expect(back()).toHaveAttribute('aria-disabled', 'true');
+    expect(warn.mock.calls.filter(([line]) => typeof line === 'string' && line.startsWith('[plugins]'))).toEqual([['[plugins] acme page landing: setParams was ignored: the parameter "filter" is not text']]);
+    warn.mockRestore();
+  });
+
+  it('does nothing for a call that names the parameters the page has: no entry is added to the tab\'s history, even for a push', async () => {
+    const { user } = mount(navigated(), { session: saved(['l', 'acme', 'landing', 'Acme home', { filter: 'connected' }]) });
+    await user.click(await screen.findByRole('button', { name: 'Push the filter' }));
+
+    expect(screen.getByText('Filter: connected')).toBeInTheDocument();
+    expect(back()).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('keeps the connection a page of a connection is read in when it sets its own parameters, and its Body with them: a call never changes the scope', async () => {
+    const { user } = mount(navigated(), { link: { plugin: 'acme', page: 'settings', connection: NORTH, params: {} } });
+    await user.type(await screen.findByRole('textbox', { name: 'Note' }), 'abc');
+    const field = screen.getByRole('textbox', { name: 'Note' });
+
+    await user.click(screen.getByRole('button', { name: 'Show the logs' }));
+
+    expect(await screen.findByText('Tab: logs')).toBeInTheDocument();
+    expect(screen.getByText(`Connection: ${NORTH}`)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Note' })).toBe(field);
+    expect(field).toHaveValue('abc');
+  });
+
+  it('holds a call to the page that made it: one a page of another connection left behind, and one from before the page was drawn again, change nothing; the page that is drawn can', async () => {
+    const { user } = mount(navigated(), { link: { plugin: 'acme', page: 'settings', connection: NORTH, params: {} } });
+    expect(await screen.findByText(`Connection: ${NORTH}`)).toBeInTheDocument();
+    const left = given.setParams;
+
+    // The tab goes to the page of south, in place (Alt is "here"): north's page is drawn no more, and a call it left behind finds the tab in south's.
+    fireEvent.click(screen.getByRole('link', { name: 'Show south' }), { altKey: true });
+    expect(await screen.findByText(`Connection: ${SOUTH}`)).toBeInTheDocument();
+    act(() => {
+      left?.({ tab: 'logs' });
+    });
+    expect(screen.getByText('Tab: none')).toBeInTheDocument();
+
+    // Back is north's page again, drawn anew: the callback of the page that was is still not its own.
+    await user.click(back());
+    expect(await screen.findByText(`Connection: ${NORTH}`)).toBeInTheDocument();
+    act(() => {
+      left?.({ tab: 'logs' });
+    });
+    expect(screen.getByText('Tab: none')).toBeInTheDocument();
+
+    act(() => {
+      given.setParams?.({ tab: 'logs' });
+    });
+    expect(await screen.findByText('Tab: logs')).toBeInTheDocument();
+    expect(screen.getByText(`Connection: ${NORTH}`)).toBeInTheDocument();
+  });
+});
+
+// The sidebar's hook is told the route's parameters (KL7): the navigator of a landing carries the ones the page keeps in its route (here `sort`) to the entries it opens, so the entry of the place on screen is the one that is selected. A group that says `expanded` starts open.
+describe('the sidebar hook of a plugin on its landing, told the route\'s parameters', () => {
+  const heard: SidebarContextV1[] = [];
+
+  function useCarrying(context: SidebarContextV1): readonly SidebarNodeV1[] | undefined {
+    heard.push(context);
+    const { connections, route } = context;
+    const view = useSyncExternalStore(connections.subscribe, connections.getSnapshot);
+    const { sort } = route.params;
+    return useMemo(
+      () =>
+        route.page === 'landing'
+          ? [
+            { id: 'landing', label: 'All', icon: 'layers' },
+            { id: 'attention', label: 'Needs attention', icon: 'bell', page: 'landing', params: { filter: 'attention', ...(sort === undefined ? {} : { sort }) } },
+            { id: 'connections', label: 'Connections', icon: 'server', expanded: true, children: view.connections.map((connection): SidebarNodeV1 => ({ id: `connection-${connection.key}`, label: connection.name, icon: 'server', connection: connection.key })) },
+          ]
+          : undefined,
+      [route.page, sort, view],
+    );
+  }
+
+  it('is given them as text, so that the entry that carries them is the one selected, and the group that says it starts open is open, with the hook told so', async () => {
+    heard.length = 0;
+    mount(entry(true, { ...acme().sidebar, useNodes: useCarrying }), { session: saved(['l', 'acme', 'landing', 'Acme home', { filter: 'attention', sort: 'state' }]) });
+    const tree = within(await screen.findByRole('navigation', { name: 'Acme navigation' }));
+
+    expect(await tree.findByRole('treeitem', { name: 'Needs attention' })).toHaveAttribute('aria-selected', 'true');
+    expect(tree.getByRole('treeitem', { name: 'All' })).toHaveAttribute('aria-selected', 'false');
+    expect(heard.at(-1)?.route).toEqual({ page: 'landing', connection: undefined, params: { filter: 'attention', sort: 'state' } });
+    expect(await tree.findByRole('treeitem', { name: /^north/ })).toBeInTheDocument();
+    expect(heard.at(-1)?.open).toEqual(['connections']);
+  });
+});
+
+// What the sidebar is called on a page that is read in no connection (KL7): the plugin may say, and a member it leaves out is the sidebar's own.
+describe('the words of a sidebar on a page read in no connection', () => {
+  const scoped = (pluginScope: NonNullable<ContributionV1['sidebar']['pluginScope']>) => entry(true, { ...acme().sidebar, pluginScope, useNodes: useNavigator });
+
+  it('are the plugin\'s own on the landing, for the heading and the landmark, and the sidebar\'s own on a page of a connection', async () => {
+    const { user } = mount(scoped({ title: 'Connections', label: 'Acme connections' }), { link: link(undefined) });
+    const landing = within(await screen.findByRole('navigation', { name: 'Acme connections' }));
+    expect(landing.getByRole('heading', { level: 2, name: 'Connections' })).toBeInTheDocument();
+
+    await user.click(await landing.findByRole('treeitem', { name: 'Connections' }));
+    await user.click(landing.getByRole('treeitem', { name: /^north/ }));
+
+    const own = within(await screen.findByRole('navigation', { name: 'Acme navigation' }));
+    expect(own.getByRole('heading', { level: 2, name: 'Acme' })).toBeInTheDocument();
+  });
+
+  it('fall back to the sidebar\'s own for a member the plugin leaves out', async () => {
+    mount(scoped({ title: 'Connections' }), { link: link(undefined) });
+
+    const landing = within(await screen.findByRole('navigation', { name: 'Acme navigation' }));
+    expect(landing.getByRole('heading', { level: 2, name: 'Connections' })).toBeInTheDocument();
   });
 });

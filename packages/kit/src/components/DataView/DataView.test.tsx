@@ -109,6 +109,15 @@ describe('DataView, the composition (design 12 section 5)', () => {
     const { container } = render(view({ 'data-testid': 'collection' }));
     expect(screen.getByTestId('collection')).toBe(root(container));
   });
+
+  it('passes the data attributes of its quick filters to the strip, and nothing else of what a caller adds to them', () => {
+    // A caller in plain JavaScript (or a cast) can hand the strip more than its type says: only `data-*` reaches the element.
+    const loose: Record<string, unknown> = { ...FILTERS, 'data-testid': 'strip', id: 'not-an-attribute-of-a-part' };
+    render(view({ quickFilters: loose as unknown as typeof FILTERS }));
+
+    expect(screen.getByTestId('strip')).toBe(screen.getByRole('group', { name: 'Item state' }));
+    expect(screen.getByTestId('strip').hasAttribute('id')).toBe(false);
+  });
 });
 
 describe('DataView, the rows', () => {

@@ -5,7 +5,7 @@ import { useActiveId, useLocation, useMountedIds } from './hooks';
 import styles from './PageHost.module.css';
 import { tabDomId } from './words';
 
-/** What a host is asked to draw: the tab, and where it is. The page is drawn again when the tab's route changes or it is reloaded, never for a title. */
+/** What a host is asked to draw: the tab, and where it is. The page is drawn again when its key changes (`PageHostProps.pageKey`: by default the tab's place, so a new route is a new page) or the tab is reloaded, never for a title. */
 export type PageTab = { readonly id: TabId; readonly location: Location };
 
 type PageHostProps = {
@@ -17,9 +17,14 @@ type PageHostProps = {
   readonly layout: 'document' | 'pane';
   readonly prefix: string;
   readonly panelId: string;
+  /**
+   * What a tab's page is drawn from scratch for: while the answer is the same text the page stays mounted, with what it keeps in state, and `renderPage` is called again with the new location; when it changes (and when the tab is reloaded) the page is
+   * drawn again from scratch. Default: the tab's place (`location.key`), so a new route is a new page. A host whose page keeps part of its route in its own state gives a key that leaves that part out, so a change of it alone is no new page.
+   */
+  readonly pageKey?: ((tab: PageTab) => string) | undefined;
 };
 
-type Slot = { readonly id: TabId; readonly visible: boolean; readonly layout: 'document' | 'pane'; readonly renderPage: PageHostProps['renderPage'] };
+type Slot = { readonly id: TabId; readonly visible: boolean; readonly layout: 'document' | 'pane'; readonly renderPage: PageHostProps['renderPage']; readonly pageKey: PageHostProps['pageKey'] };
 
 type Position = { readonly top: number; readonly left: number };
 
@@ -78,7 +83,7 @@ function useScrollRestore(root: RefObject<HTMLDivElement | null>, memory: Map<st
 }
 
 /** One mounted page. It reads its own tab's location, so a route change in another tab does not render it. */
-function PageSlot({ id, visible, layout, renderPage }: Slot) {
+function PageSlot({ id, visible, layout, renderPage, pageKey }: Slot) {
   const store = useTabs();
   const location = useLocation(store, id);
   const root = useRef<HTMLDivElement>(null);
@@ -89,7 +94,7 @@ function PageSlot({ id, visible, layout, renderPage }: Slot) {
   }
 
   // React hides what is not on screen: its effects are released, so a hidden page holds no timer and no subscription, its renders wait for idle time, and the browser does no layout and
-  // no paint for it (`display: none`). Its state and its DOM stay, so it comes back as it was. The key is the page's place: a new route, or a reload, draws it from scratch.
+  // no paint for it (`display: none`). Its state and its DOM stay, so it comes back as it was. The key is the page's own (`pageKey`, by default its place): another page, or a reload, draws it from scratch, and a page whose key did not change is given the new location.
   return (
     <Activity mode={visible ? 'visible' : 'hidden'}>
       <div
@@ -104,7 +109,7 @@ function PageSlot({ id, visible, layout, renderPage }: Slot) {
           }
         }}
       >
-        <Fragment key={`${location.key}|${String(location.generation)}`}>{renderPage({ id, location })}</Fragment>
+        <Fragment key={`${pageKey?.({ id, location }) ?? location.key}|${String(location.generation)}`}>{renderPage({ id, location })}</Fragment>
       </div>
     </Activity>
   );
@@ -118,7 +123,7 @@ function PageSlot({ id, visible, layout, renderPage }: Slot) {
  * Scroll. A hidden page's own scrollers keep their offsets (measured in WebKit and Chromium: `display: none` does not reset them). The region itself scrolls the pages that do not own
  * their scrolling (`document`), and it is one element for every tab, so its offset is kept per tab here and put back before the tab is painted.
  */
-export function PageHost({ renderPage, empty, layout, prefix, panelId }: PageHostProps) {
+export function PageHost({ renderPage, empty, layout, prefix, panelId, pageKey }: PageHostProps) {
   const store = useTabs();
   const mounted = useMountedIds(store);
   const active = useActiveId(store);
@@ -168,7 +173,7 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId }: PageHos
       }}
     >
       {hosted ? (
-        mounted.map((id) => <PageSlot key={id} id={id} visible={id === active} layout={layout} renderPage={renderPage} />)
+        mounted.map((id) => <PageSlot key={id} id={id} visible={id === active} layout={layout} renderPage={renderPage} pageKey={pageKey} />)
       ) : (
         <div className={styles.content} data-layout={layout}>
           {empty}
