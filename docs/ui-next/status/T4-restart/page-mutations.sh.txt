@@ -68,7 +68,7 @@ run restart-not-offered-after-an-end "$P/execFeed.ts" \
 
 run restart-not-offered-for-a-forgotten-terminal "$P/execFeed.ts" \
   '/const onNotFound = /,/^  };/ s/processOver = true;/processOver = false;/' \
-  'is offered for a terminal the host does not know any more'
+  'is offered for a terminal the host does not know any more|restarts as the shell that ran with no arguments when the listing said it was replaced'
 
 run restart-directory-from-the-launch "$P/execFeed.ts" \
   's/\.\.\.\(startedIn === undefined \? \{\} : \{ cwd: startedIn \}\)/...(options.launch?.cwd === undefined ? {} : { cwd: options.launch.cwd })/' \
@@ -80,11 +80,11 @@ run restart-drops-the-arguments "$P/execFeed.ts" \
 
 run restart-drops-the-environment "$P/execFeed.ts" \
   's/, \.\.\.\(env === undefined \? \{\} : \{ env \}\) \};$/ };/' \
-  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more|says what it was asked to start with|restarts as the shell that ran, with none of the arguments asked for the shell that was not there'
+  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more|says what it was asked to start with|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|tells a take-back the shell that ran'
 
 run restart-ignores-the-resolved-shell "$P/execFeed.ts" \
   's/const path = startedShell;/const path = undefined as string | undefined;/' \
-  'is the id the terminal had|is the shell'"'"'s path alone|ended while no page held it|is offered after|when the stream drops after its whole replay|runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there'
+  'is the id the terminal had|is the shell'"'"'s path alone|ended while no page held it|is offered after|when the stream drops after its whole replay|runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|restarts as the shell that ran with no arguments when the listing said it was replaced'
 
 run params-without-the-tab "$P/execFeed.ts" \
   "s/params\.tab = options\.tab;/params.tab = '';/" \
@@ -206,7 +206,7 @@ run screen-enter-while-typing "$P/screen.ts" \
 
 run screen-no-separator "$P/screen.ts" \
   "s/^const SEPARATOR = .*/const SEPARATOR = '';/" \
-  'keeps the emulator, and with it the transcript|draws what the new feed holds after the separator|draws what the ended feed still holds|puts a new feed in the same session when pressed|draws what the ended terminal still held'
+  'keeps the emulator, and with it the transcript|draws what the new feed holds after the separator|draws what the ended feed still holds|puts a new feed in the same session when pressed|draws what the ended terminal still held|draws what the ended feed still holds, and how it ended|when Enter restarts it as when the button does|the separator of a restart, on the real emulator'
 
 run screen-flush-reads-nothing "$P/screen.ts" \
   '/    flush: \(\) => \{/,/^    },/ s/send\(engine, out\.chunks\);/void out;/' \
@@ -262,7 +262,7 @@ run restart-hint-end-not-over "$P/execFeed.ts" \
 
 run restart-keeps-args-of-a-missing-shell "$P/execFeed.ts" \
   's/\.\.\.\(shellReplaced \? \[\] : /...(false ? [] : /' \
-  'runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|restarts as the shell that ran with no arguments when the listing said it was replaced|tells a take-back the shell that ran'
+  'runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|restarts as the shell that ran with no arguments when the listing said it was replaced'
 
 run feed-says-no-launch "$P/execFeed.ts" \
   's/^    launch: \(\) => \{$/    launch: () => { return undefined;/' \
