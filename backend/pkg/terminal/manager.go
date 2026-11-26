@@ -255,11 +255,11 @@ func (s *session) decide(f fate) bool {
 
 // decideReadFailure records that a read of the pty failed. A shell that was reaped before the reader got there has recorded its own
 // exit (a fate with nothing in it): the pty failing was what killed it (the kernel hangs the shell up when the master closes),
-// so the failure stands over that. A close the host asked for stands over it.
+// so the failure stands over that. A close the host asked for stands over it. (No failure exists before this one: settle is the first to record one.)
 func (s *session) decideReadFailure(failure *Failure) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.fate.set && (s.fate.closedBy != "" || s.fate.failure != nil) {
+	if s.fate.set && s.fate.closedBy != "" {
 		return
 	}
 	s.fate = fate{set: true, closedBy: "", failure: failure}
