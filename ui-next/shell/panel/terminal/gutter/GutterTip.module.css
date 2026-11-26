@@ -1,0 +1,22 @@
+@layer ov.shell {
+  /* The tooltip of a command's mark in the gutter (issue #694 step 5): the look of a link's tooltip in the same output (`links/LinkTip.module.css`: the kit's own tooltip drawn at a place and not at an element, in the top layer,
+     taking no pointer event), with more than one line: the command line (the shell's own word, a line of code), how it ended and for how long, and the directory. A line that is longer than the tooltip may be is cut with an ellipsis. */
+  .tip {
+    composes: tip from '../links/LinkTip.module.css';
+    max-inline-size: min(60ch, calc(100vw - var(--ov-spacing-16)));
+    white-space: pre;
+  }
+
+  .line {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .command {
+    font-family: var(--ov-font-mono);
+  }
+
+  .muted {
+    color: var(--ov-fg-muted);
+  }
+}

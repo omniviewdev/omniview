@@ -1,4 +1,5 @@
 import type { MenuItem } from '@omniviewdev/kit';
+import { NO_COMMANDS, NO_OUTPUT } from '../gutter/words';
 import { NO_SELECTION } from '../TerminalToolbar';
 
 // The terminal's context menu as data (docs/ui-next/status/T-terminal-bar.md: Copy, Paste, Select all, Clear, Find): the items of the kit's menu model, for what the terminal is now. Pure, so that its test can read it whole. The hook
@@ -60,7 +61,21 @@ export function terminalMenu(actions: TerminalMenuActions, { selected, input, he
     { kind: 'action', id: 'clear', label: 'Clear', icon: 'eraser', onSelect: actions.clear },
     { kind: 'action', id: 'find', label: 'Find', icon: 'search', onSelect: actions.find },
   ];
-  void commands;
+  if (commands !== undefined && actions.commands !== undefined) {
+    const go = actions.commands;
+    // Every item says why it is unavailable: with no commands there is nothing to go to or act on; the two that act on the output need some.
+    const none = commands.count === 0 ? NO_COMMANDS : undefined;
+    const output = none ?? (commands.output ? undefined : NO_OUTPUT);
+    items.push(
+      { kind: 'separator', id: 'commands' },
+      { kind: 'action', id: 'previous-command', label: 'Previous command', disabled: none, onSelect: go.previous },
+      { kind: 'action', id: 'next-command', label: 'Next command', disabled: none, onSelect: go.next },
+      { kind: 'action', id: 'select-command-output', label: 'Select command output', disabled: output, onSelect: go.selectOutput },
+      { kind: 'action', id: 'copy-command-output', label: 'Copy command output', disabled: output, onSelect: go.copyOutput },
+      { kind: 'action', id: 'rerun-command', label: 'Run command again', disabled: none ?? commands.rerun, onSelect: go.rerun },
+    );
+  }
+
   const { newHere } = actions;
   if (newHere !== undefined) {
     // It does not depend on the input: a terminal that ended is still a place to open a new one from (the directory it started in).

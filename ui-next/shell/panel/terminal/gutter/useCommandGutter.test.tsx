@@ -1,14 +1,24 @@
 import { act, cleanup, render, screen as page } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GutterEvent } from './commandGutter';
 import { useCommandGutter, type CommandGutterScreen } from './useCommandGutter';
 
 // THE HOVER OF A MARK AND WHAT THE GUTTER SAYS (issue #694 step 5). The tooltip is in the document only while the pointer is on a mark, says what the producer said of the command (its line when the shell proved it, the status and the
 // duration, the directory), can be put away with Escape without moving the pointer (WCAG 1.4.13), and what an action did is said to the body's live region, once. The screen is a fake with the one member the hook uses.
 
+let shown: HTMLStyleElement;
+
+beforeEach(() => {
+  // jsdom has no Popover API: the setup's stand-in marks an element and nothing shows it, and a popover is `display: none` until a rule says otherwise, which makes it inaccessible to the queries (the links' tests do the same).
+  shown = document.createElement('style');
+  shown.textContent = '[popover] { display: block !important; }';
+  document.head.append(shown);
+});
+
 afterEach(() => {
   cleanup();
+  shown.remove();
 });
 
 const COMMAND = { id: 'c1', state: 'failure', exit: 2, durationMs: 3_000, command: 'make test', cwd: '/home/u/src', line: 4 } as const;
