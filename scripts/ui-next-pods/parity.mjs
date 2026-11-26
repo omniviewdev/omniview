@@ -116,8 +116,8 @@ export async function openWindow(browser, baseURL, options = {}) {
   return page;
 }
 
-// From the empty window to the page of a connection, as a person goes: the plugin's row in the list of plugins that can be opened, and, when that opened the plugin's landing (plugin #289: a page of the plugin that belongs to no connection, a table of its
-// connections and no sidebar, landing.mjs), the connection of the context kubectl calls current, pressed there: the host starts it and opens its Overview in a NEW tab, where the sidebar is. It is the same in every mode of the check: a plugin installed
+// From the empty window to the page of a connection, as a person goes: the plugin's row in the list of plugins that can be opened, and, when that opened the plugin's landing (plugin #289: a page of the plugin that belongs to no connection, so it has no scope lane: a table
+// of its connections beside the plugin's own sidebar, the navigator of its connections (plugin #292), landing.mjs), the connection of the context kubectl calls current, pressed there, in the table (the navigator lists the connection too, as a leaf, and a leaf is no button): the host starts it and opens its Overview in a NEW tab, where the tree of the resources is. It is the same in every mode of the check: a plugin installed
 // without its bundle is in the list too ("Did not load") and its row opens the page that names the failure, which is not the landing and is left as it is, and a host without the plugin has no row, so the window stays at its own list of plugins (the
 // page the check reads and finds wanting). Returns whether there was a row to press.
 export async function openConnection(page, kubeconfig) {
@@ -133,7 +133,7 @@ export async function openConnection(page, kubeconfig) {
 }
 
 // The Pods list, opened the way a person opens it: the plugin's row, the connection in the landing's table, and then the sidebar's Workloads group and its Pods entry. Every check of a list or of the page of an object starts here. A window that
-// has no row to press has no sidebar to choose from either, and is read as it stands (the control of a host without the plugin). A page that fails on the way is closed, and the failure is the caller's.
+// has no row to press has no plugin page, and so no sidebar of the plugin's to choose from, and is read as it stands (the control of a host without the plugin). A page that fails on the way is closed, and the failure is the caller's.
 export async function openPods(browser, baseURL, kubeconfig, options = {}) {
   const page = await openWindow(browser, baseURL, options);
   try {
@@ -194,7 +194,7 @@ export async function readLandingDom(page) {
 }
 
 // A press on the connection's name in the landing's table: the name is a button that opens the connection (`connections.open` of the host, which starts the connection first when it is not connected and then opens its Overview in a NEW tab, the landing
-// staying where it is). A table that does not list the connection fails the check here, naming what it lists (landing.mjs, the `listed` rule): ParityError('LANDING_MISMATCH').
+// staying where it is). The press is scoped to the table: the landing's navigator lists the connection too, as a leaf, which a text of the name finds as well (a role of button finds the table's alone, and the scope says it). A table that does not list the connection fails the check here, naming what it lists (landing.mjs, the `listed` rule): ParityError('LANDING_MISMATCH').
 export async function openFromLanding(page, context, timeoutMs = 20_000) {
   const button = page.getByRole('region', { name: LANDING_TABLE, exact: true }).getByRole('button', { name: context, exact: true });
   try {
@@ -232,8 +232,8 @@ async function readOpenedLanding(page, { context, version, timeoutMs }) {
   return read.find((candidate) => candidate.name === context);
 }
 
-// The sidebar's Pods entry, on a window that has the connection's page: the Workloads group is opened when it is closed, and Pods is pressed, which opens the list in the tab. A window with no sidebar (the plugin's page failed to load, or the connection was
-// never opened from the landing) is left as it is.
+// The sidebar's Pods entry, on a window that has the connection's page: its tree of the resources, a navigation named `Kubernetes resources` (the landing's sidebar is another, the navigator of the connections, named `Kubernetes connections`). The Workloads group is opened when it is
+// closed, and Pods is pressed, which opens the list in the tab. A window with no such tree (the plugin's page failed to load, or the connection was never opened from the landing) is left as it is.
 export async function choosePods(page) {
   const tree = page.getByRole('navigation', { name: 'Kubernetes resources' });
   const workloads = tree.getByRole('treeitem', { name: 'Workloads', exact: true });

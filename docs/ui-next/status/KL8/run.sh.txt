@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# The job of .github/workflows/ui-next-pods.yml on a kind cluster of my own, on macOS arm64, for KL8 (the pin to plugin #292, the landing's navigator, in the host's cluster check).
+# Same steps, same order as the workflow; Chromium is the one engine the check launches (parity.mjs `launchBrowser`). Only the cluster this run made (by its exact name) is deleted.
+#   run.sh [<run-name>]      env: PLUGIN_DIR (the plugin checkout at the pin), SKIP_BUILD=1 to reuse the builds of the last run
+set -uo pipefail
+RUN="${1:-final}"
+ROOT="${ROOT:-$HOME/Repos/omniviewdev/worktrees/landing-pin-2}"
+PLUGIN_DIR="${PLUGIN_DIR:-/tmp/landing-pin/omniview-plugin-kubernetes}"
+SCRATCH=/tmp/landing-pin
+export OMNIVIEW_E2E_WORK="$SCRATCH/work-$RUN"
+KC="$OMNIVIEW_E2E_WORK/kubeconfig"
+NAME="landing-pin2-$RUN"
+REF="$(sed -n 's/^  KUBERNETES_PLUGIN_REF: //p' "$ROOT/.github/workflows/ui-next-pods.yml")"
+IMAGE="$(sed -n 's/^  KIND_NODE_IMAGE: //p' "$ROOT/.github/workflows/ui-next-pods.yml")"
+export PATH="$SCRATCH/bin:$PATH"   # kubectl v1.35.0 (the workflow's KUBECTL_VERSION), checked by its published sha256
+P1=${P1:-24401}; P2=$((P1 + 1)); P3=$((P1 + 2)); P4=$((P1 + 3))
+cd "$ROOT"
+secs() { echo $(( $(date +%s) - $1 )); }
+step() { echo; echo "=== $(date '+%H:%M:%S') $*"; uptime; }
+cleanup() {
+  for host in with-plugin without-plugin without-bundle unavailable-group; do scripts/ui-next-pods/host.sh stop "$host" 2>/dev/null || true; done
+  kind delete cluster --name "$NAME" --kubeconfig "$KC" 2>&1 | tail -1 || true
+}
+trap cleanup EXIT
+rm -rf "$OMNIVIEW_E2E_WORK"; mkdir -p "$OMNIVIEW_E2E_WORK"
+declare -a RESULTS
+record() { RESULTS+=("$1|$2|$3"); }   # name | exit | seconds
+
+check() { # check <label> <mode|-> <port>
+  local t0; t0=$(date +%s)
+  local mode_env=()
+  [ "$2" != "-" ] && mode_env=(OMNIVIEW_CHECK_MODE="$2")
+  step "check $1 (mode ${2}, port $3)"
+  env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL="http://127.0.0.1:$3" OMNIVIEW_CHECK_KUBECONFIG="$KC" "${mode_env[@]}" \
+    node --test --test-reporter=spec scripts/ui-next-pods/pods-cluster.check.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -vE '^\s*$' | cut -c1-2200
+  local rc=${PIPESTATUS[0]}
+  echo "check $1: exit $rc in $(secs "$t0") s"
+  record "$1" "$rc" "$(secs "$t0")"
+}
+
+step "Contracts that need no cluster"
+t0=$(date +%s)
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" node --test scripts/ui-next-pods/*.test.mjs 2>&1 | grep -E '^ℹ (tests|pass|fail|duration)|^✖' | head -20
+rc=${PIPESTATUS[0]}; echo "contracts: exit $rc in $(secs "$t0") s"; record "contracts that need no cluster" "$rc" "$(secs "$t0")"
+
+step "Check the pin ($REF)"
+t0=$(date +%s)
+status="$(gh api "repos/omniviewdev/omniview-plugin-kubernetes/compare/$REF...feature/ui-next" --jq .status 2>&1)"; echo "compare says: $status"
+( cd "$PLUGIN_DIR" && test "$(git rev-parse HEAD)" = "$REF" && echo "plugin checkout is at the pin" )
+node scripts/ui-next-pods/pin.mjs "$PLUGIN_DIR" HEAD; rc=$?
+record "check the pin" "$rc" "$(secs "$t0")"
+
+if [ "${SKIP_BUILD:-0}" != 1 ]; then
+  step "Build the workspace packages, the host (OMNIVIEW_UI=next, server mode) and the plugin from the pin"
+  t0=$(date +%s)
+  ( set -e
+    task packages > "$SCRATCH/logs/build-packages-$RUN.log" 2>&1
+    git checkout -- packages/omniviewdev-vite-plugin/shims/_omniviewdev__runtime__models.mjs
+    export OMNIVIEW_UI=next GOWORK=off GOFLAGS= GOTOOLCHAIN=local
+    PRODUCTION=true pnpm run build > "$SCRATCH/logs/build-host-$RUN.log" 2>&1
+    HOST_MODFILE="$(task --silent host:prepare)"
+    CGO_ENABLED=0 go build -tags production,server -trimpath -buildvcs=false -ldflags="-w -s" -modfile="$HOST_MODFILE" -o bin/Omniview-server . >> "$SCRATCH/logs/build-host-$RUN.log" 2>&1
+    git checkout -- dist/.gitkeep
+    cd "$PLUGIN_DIR"
+    test "$(git rev-parse HEAD)" = "$REF"
+    unset OMNIVIEW_UI
+    version="$(sed -n 's/^version: //p' plugin.yaml | head -n 1)"
+    GOWORK=off GOFLAGS= GOTOOLCHAIN=local hack/package.sh "$version" darwin_arm64 > "$SCRATCH/logs/build-plugin-$RUN.log" 2>&1
+  ); rc=$?
+  echo "builds: exit $rc in $(secs "$t0") s"; record "builds" "$rc" "$(secs "$t0")"
+  [ "$rc" = 0 ] || exit 1
+fi
+mkdir -p "$OMNIVIEW_E2E_WORK/plugin"
+tar -xzf "$PLUGIN_DIR/dist/kubernetes-darwin_arm64.tar.gz" -C "$OMNIVIEW_E2E_WORK/plugin"
+test -x "$OMNIVIEW_E2E_WORK/plugin/bin/plugin" && test -s "$OMNIVIEW_E2E_WORK/plugin/assets/entry.js" || { echo "plugin archive incomplete"; exit 1; }
+cp -R "$OMNIVIEW_E2E_WORK/plugin" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
+rm -rf "$OMNIVIEW_E2E_WORK/plugin-no-bundle/assets"; mkdir "$OMNIVIEW_E2E_WORK/plugin-no-bundle/assets"
+
+step "Create the kind cluster"
+t0=$(date +%s)
+unset KUBECONFIG
+kind create cluster --name "$NAME" --kubeconfig "$KC" --image "$IMAGE" --wait 180s 2>&1 | tail -2
+echo "cluster: $(secs "$t0") s"; record "kind cluster" "${PIPESTATUS[0]}" "$(secs "$t0")"
+
+step "Start the host with the plugin"
+scripts/ui-next-pods/host.sh start with-plugin "$P1" "$KC" "$OMNIVIEW_E2E_WORK/plugin"
+check "negative control, cluster without the fixture" control-fixture-absent "$P1"
+
+step "Apply the fixture"
+t0=$(date +%s)
+( export KUBECONFIG="$KC"
+  kubectl apply -f docs/ui-next/slices/1a-pods-list/fixture.yaml >/dev/null
+  kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s >/dev/null
+  kubectl -n checkout rollout status sts/cart-cache --timeout=240s >/dev/null
+  kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s >/dev/null
+  kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s >/dev/null
+  kubectl get pods -A --no-headers | wc -l | xargs echo "pods:" )
+echo "fixture: $(secs "$t0") s"
+
+scripts/ui-next-pods/host.sh start without-plugin "$P2" "$KC" none
+check "negative control, host without the Kubernetes plugin" control-plugin-absent "$P2"
+scripts/ui-next-pods/host.sh start without-bundle "$P3" "$KC" "$OMNIVIEW_E2E_WORK/plugin-no-bundle"
+check "negative control, the plugin without its bundle" control-bundle-absent "$P3"
+
+check "Check that the page and kubectl agree (parity)" - "$P1"
+check "negative control, a cluster without the unavailable API group" control-group-absent "$P1"
+
+step "Register an API group that cannot answer"
+( export KUBECONFIG="$KC"
+  kubectl apply -f scripts/ui-next-pods/unavailable-group.yaml
+  kubectl wait --for=condition=Available=false apiservice/v1beta1.inv4-unavailable.example.com --timeout=120s
+  kubectl get apiservice v1beta1.inv4-unavailable.example.com )
+scripts/ui-next-pods/host.sh start unavailable-group "$P4" "$KC" "$OMNIVIEW_E2E_WORK/plugin"
+check "Check that the connection starts with an unavailable API group" unavailable-group "$P4"
+
+step "Summary"
+for line in "${RESULTS[@]}"; do IFS='|' read -r name rc s <<<"$line"; printf '%-78s exit %s  %s s\n' "$name" "$rc" "$s"; done
+for host in with-plugin without-plugin without-bundle unavailable-group; do echo "--- host $host log (errors/warnings, last 8)"; grep -iE "error|panic|fatal" "$OMNIVIEW_E2E_WORK/$host/host.log" 2>/dev/null | tail -8 | cut -c1-300; done

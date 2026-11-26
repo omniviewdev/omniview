@@ -11,7 +11,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 // What the host returns for the connection's facts (`ServiceWrapper.GetConnectionMetadata`: the envelope, then the SDK's snapshot) when the plugin has read a cluster with the one unavailable group.
 const NAMED = { groups: [{ groupVersion: GROUP_VERSION, reason: REASON }], count: 1 };
 const metadata = (entries, over = {}) => ({ pluginID: 'kubernetes', supported: true, transportAvailable: true, snapshot: { connectionID: 'kind-ui-next-pods-54c660ecd1', active: true, entries }, ...over });
-const named = (value = NAMED, state = 'current') => metadata({ 'kubernetes.server_version': { state: 'current', value: 'v1.35.0' }, [FACT]: { state, value } });
+const named = (value = NAMED, state = 'current') => metadata({ 'kubernetes.server.version': { state: 'current', value: 'v1.35.0' }, [FACT]: { state, value } });
 const failure = (status, answered, asked = '') => ({ status, method: 'POST', path: '/wails/runtime', asked, answered });
 
 // What the host answers a call it refuses with, as the real host wrote them (backend/pkg/apperror: the error as JSON in the `message` of a 422): the admission it refused before plugin #281 (what the demo drew as "Couldn't load Pods"),
@@ -65,7 +65,7 @@ test('negative control: no metadata, a plugin without the trait, and a snapshot 
 });
 
 test('negative control: the plugin that names no unavailable group (the fact is absent, as it is when every group answers, and as it was before #281) is reported with the facts it does have', () => {
-  assert.deepEqual(compareFacts(metadata({ 'kubernetes.server_version': { state: 'current', value: 'v1.35.0' } })), [`the connection has no fact ${FACT}: the plugin named no unavailable group (the facts it has: kubernetes.server_version)`]);
+  assert.deepEqual(compareFacts(metadata({ 'kubernetes.server.version': { state: 'current', value: 'v1.35.0' } })), [`the connection has no fact ${FACT}: the plugin named no unavailable group (the facts it has: kubernetes.server.version)`]);
   assert.match(compareFacts(metadata({}))[0], /the facts it has: none/);
 });
 

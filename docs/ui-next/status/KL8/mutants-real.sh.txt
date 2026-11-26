@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Scratch (not committed): rule 28 on the real page, KL8. One fault at a time planted in a COPY of scripts/ui-next-pods, the Overview test of the copy run against a running host (BASE) with the pin's plugin
+# on a cluster (KC) that holds the fixture: the unmutated check first (it must pass on the same host), then each mutant, which must fail with the code and the rule it is named for.
+set -uo pipefail
+ROOT="${ROOT:-$HOME/Repos/omniviewdev/worktrees/landing-pin-2}"
+SCRATCH=/tmp/landing-pin
+BASE="${BASE:?BASE is the address of the host}"; KC="${KC:?KC is the kubeconfig}"
+export PATH="$SCRATCH/bin:$PATH"
+cd "$ROOT"
+trap 'rm -rf "$SCRATCH/mut-real"' EXIT
+rm -rf "$SCRATCH/mut-real"
+run() { # run <check file>
+  env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL="$BASE" OMNIVIEW_CHECK_KUBECONFIG="$KC" \
+    node --test --test-reporter=spec --test-name-pattern="landing opens the connection" "$1" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "^✔|^✖ the plugin|Error \[|code:" | cut -c1-460 | head -5
+}
+mutate() { # mutate <id> <file> <find> <replace>
+  local copy="$SCRATCH/mut-real/$1"
+  mkdir -p "$copy/scripts"; cp -R "$ROOT/scripts/ui-next-pods" "$copy/scripts/ui-next-pods"; ln -s "$ROOT/node_modules" "$copy/node_modules"
+  node -e "const fs=require('fs');const f=process.argv[1];const t=fs.readFileSync(f,'utf8');if(!t.includes(process.argv[2])){console.error('NOT FOUND: '+process.argv[2]);process.exit(3)}fs.writeFileSync(f,t.replace(process.argv[2],process.argv[3]))" "$copy/scripts/ui-next-pods/$2" "$3" "$4" || return 3
+  echo "--- mutant $1 ($2)"
+  run "$copy/scripts/ui-next-pods/pods-cluster.check.mjs"
+}
+echo "=== the unmutated check on the same host (the control for the mutants)"
+run scripts/ui-next-pods/pods-cluster.check.mjs
+echo "=== the landing's assertion on the real page, one planted fault at a time"
+mutate version-wrong parity.mjs "version: shortVersion(facts.version)" "version: 'v0.0.0'"
+mutate state-wrong landing.mjs "export const CONNECTED = 'Connected';" "export const CONNECTED = 'Online';"
+mutate not-listed parity.mjs "await openFromLanding(page, identity.context);" 'await openFromLanding(page, `${identity.context}-x`);'
+echo "=== the tab rule on the real page: the landing's tab wanted under another title"
+mutate tab-wrong landing.mjs "export const LANDING_TAB = 'Kubernetes';" "export const LANDING_TAB = 'Kubernetez';"

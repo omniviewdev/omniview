@@ -1,0 +1,56 @@
+// Scratch (not committed): what the landing of plugin #292 draws on a real host, as the check reads it, before and after the connection is opened. KL8.
+import { chromium } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin-2/node_modules/playwright/index.mjs';
+import { openPluginPage, openWindow, landingIsUp, readLandingDom } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin-2/scripts/ui-next-pods/parity.mjs';
+
+const base = process.env.BASE ?? 'http://127.0.0.1:24421';
+const context = process.env.CONTEXT ?? 'kind-landing-pin2-x';
+const browser = await chromium.launch();
+const page = await openWindow(browser, base);
+
+const dump = async (label) => {
+  const read = await page.evaluate(() => {
+    const norm = (t) => (t ?? '').replace(/\s+/g, ' ').trim();
+    const visible = (el) => el.getClientRects().length > 0;
+    return {
+      tabs: [...document.querySelectorAll('[role=tablist][aria-label="Open tabs"] [role=tab]')].map((tab) => ({ title: norm(tab.textContent), label: tab.getAttribute('aria-label'), selected: tab.getAttribute('aria-selected') })),
+      navs: [...document.querySelectorAll('nav')].map((n) => ({ label: n.getAttribute('aria-label'), visible: visible(n) })),
+      trees: [...document.querySelectorAll('[role=tree]')].map((t) => ({ label: t.getAttribute('aria-label'), visible: visible(t), items: [...t.querySelectorAll('[role=treeitem]')].map((i) => ({ text: norm(i.textContent), selected: i.getAttribute('aria-selected'), expanded: i.getAttribute('aria-expanded'), tag: i.tagName })) })),
+      regions: [...document.querySelectorAll('[role=region]')].map((r) => ({ label: r.getAttribute('aria-label'), visible: visible(r) })),
+      lane: [...document.querySelectorAll('[data-shell-part=lane] [data-shell-part=scopeFace]')].map((f) => norm(f.textContent)),
+      h1: [...document.querySelectorAll('h1')].map((h) => ({ text: norm(h.textContent), visible: visible(h) })),
+    };
+  });
+  console.log(label, JSON.stringify(read, null, 1));
+};
+
+const counts = async (label) => {
+  const out = {};
+  for (const role of ['button', 'treeitem', 'link', 'row', 'cell', 'tab']) {
+    out[role] = await page.getByRole(role, { name: context, exact: true }).count();
+  }
+  out.regionScopedButton = await page.getByRole('region', { name: 'Connections', exact: true }).getByRole('button', { name: context, exact: true }).count();
+  out.regionConnections = await page.getByRole('region', { name: 'Connections', exact: true }).count();
+  out.regionConnectionsAnyCase = await page.getByRole('region', { name: /connections/i }).count();
+  out.textMatches = await page.getByText(context, { exact: true }).count();
+  console.log(label, JSON.stringify(out));
+};
+
+console.log('pressed the plugin row:', await openPluginPage(page));
+console.log('landing is up:', await landingIsUp(page));
+await page.waitForTimeout(800);
+await dump('landing, before the connection is opened');
+await counts('matches of the name, before:');
+console.log('landing dom before:', JSON.stringify(await readLandingDom(page)));
+await page.screenshot({ path: '/tmp/landing-pin/kl8-landing-before.png', clip: { x: 0, y: 0, width: 1440, height: 420 } });
+
+await page.getByRole('region', { name: 'Connections', exact: true }).getByRole('button', { name: context, exact: true }).click({ timeout: 20000 });
+await page.waitForTimeout(1500);
+await dump('after the press on the connection');
+await counts('matches of the name, after (the Overview on screen):');
+await page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab', { name: 'Kubernetes', exact: true }).click();
+await page.waitForTimeout(800);
+await dump('back on the landing tab');
+await counts('matches of the name, on the landing again:');
+console.log('landing dom after:', JSON.stringify(await readLandingDom(page)));
+await page.screenshot({ path: '/tmp/landing-pin/kl8-landing-after.png', clip: { x: 0, y: 0, width: 1440, height: 420 } });
+await browser.close();

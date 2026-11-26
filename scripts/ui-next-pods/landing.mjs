@@ -1,10 +1,11 @@
-// The plugin's landing in the Pods cluster check (KL3; plugin PR #289, on the host's seam of #772): the page a press on the plugin's row opens on a window that names no connection. Every page of the check is reached through it, and the
+// The plugin's landing in the Pods cluster check (KL3; plugin PR #289, on the host's seam of #772; KL8: with its navigator, plugin #292): the page a press on the plugin's row opens on a window that names no connection. Every page of the check is reached through it, and the
 // check holds it to one fact of kubectl's. Pure functions only (no process, no browser), so `landing.test.mjs` proves each failure mode without a cluster. The browser part is `landingIsUp`, `openFromLanding` and `readLandingDom` in parity.mjs.
 //
-// What the page is (the plugin's `ui/src/landing/`: pages.ts, home.tsx, collection.tsx, parts.tsx; the host's `custom` page kind draws it, with no sidebar and no scope lane because it is read in no connection): a tab titled Kubernetes;
-// one h1, the plugin's name; a section Connections whose table, a region of that name, has one row for each connection the host lists for the plugin. A row says the connection's name (a button: its press opens the connection, which the
-// host starts first when it is not connected and then opens its Overview in a NEW tab, the landing staying where it is), its state in the host's word (`Disconnected`, `Connecting`, `Connected`, ...), the Kubernetes version of its server (`v1.35.0`;
-// a dash while the connection is not connected, nothing while the read is on its way) and its region.
+// What the page is (the plugin's `ui/src/landing/`: pages.ts, home.tsx, collection.tsx, parts.tsx, navigator.ts; the host's `custom` page kind draws it, with no scope lane because it is read in no connection): a tab titled Kubernetes; a sidebar, which is the plugin's navigator,
+// a navigation named `Kubernetes connections` (the way back to the plugin's home, the state filters with their counts, and each connection as a leaf, a tree item and not a button), where a connection's own pages have the tree of their resources, a navigation named `Kubernetes resources`;
+// one h1, the plugin's name; a section Connections whose table, a region of that name, has one row for each connection the host lists for the plugin. The check reads that table and nothing of the navigator. A row says the connection's name (a button: its press opens the connection, which the
+// host starts first when it is not connected and then opens its Overview in a NEW tab, the landing staying where it is), its state in the host's word (`Disconnected`, `Connecting`, `Connected`, ...), the Kubernetes version of its server (`v1.35.0`, as the cluster says it once the connection
+// is connected; for one that is not connected, the last version the host kept for it, drawn muted, and a dash when it kept none, which is what a host the check starts says, each on a home of its own; nothing while the read is on its way) and its region.
 
 /** The title of the landing's tab. */
 export const LANDING_TAB = 'Kubernetes';
