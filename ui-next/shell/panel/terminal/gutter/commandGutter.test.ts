@@ -159,6 +159,13 @@ describe('the commands the marks make', () => {
     expect(gutter.commands().map((one) => one.state)).toEqual(['success']);
   });
 
+  it('takes a command line only from a start the host proved: an unverified start that carries one is no command line', async () => {
+    const { gutter, feed, prompt } = setup();
+    await prompt();
+    await feed('x\r\n', [mark('command-start', { id: 'c1', trust: 'unverified', command: 'rm -rf ~' })]);
+    expect(gutter.commands()[0]?.command).toBeUndefined();
+  });
+
   it('keeps the line a command was typed on out of what a program can print: a start mark the shell did not prove has no command line, and the hover has none to show', async () => {
     const { gutter, run } = setup();
     await run('echo forged', '', { proven: false });
@@ -441,6 +448,14 @@ describe('running a command again', () => {
     expect(gutter.rerun()).toEqual({ text: 'echo hi', enter: false });
   });
 
+  it('refuses a line the shell did not prove when it has a line break: with bracketed paste off a pasted line feed is a carriage return, and the first line would run (a forged "touch x" over "echo harmless")', async () => {
+    const { gutter, feed, prompt } = setup();
+    await prompt();
+    await feed('touch /tmp/pwned\r\necho harmless\r\n', [C(undefined)]);
+    await feed('', [D(0, 1)]);
+    expect(gutter.rerun()).toBeUndefined();
+  });
+
   it('types nothing while a command runs: the line would go to the program', async () => {
     const { gutter, feed, prompt } = setup();
     await prompt();
@@ -492,6 +507,25 @@ describe('what the gutter tells', () => {
     const glyph = element.firstElementChild;
     expect(glyph?.getAttribute('data-state')).toBe('failure');
     expect(glyph?.getAttribute('aria-hidden'), 'the announcement of a jump is what a screen reader hears, not a node for each command').toBe('true');
+  });
+
+  it('paints a mark again only when its state changed: the emulator draws every decoration on every render, and a repaint that changes nothing is DOM work for each of 200 marks', async () => {
+    const { run, decorations } = setup();
+    await run('make', '', { exit: 0 });
+    const element = document.createElement('div');
+    decorations[0]?.paint(element);
+    const first = element.firstElementChild;
+    const changes: number[] = [];
+    const watch = new MutationObserver((list) => {
+      changes.push(list.length);
+    });
+    watch.observe(element, { childList: true, subtree: true, attributes: true });
+    decorations[0]?.paint(element);
+    decorations[0]?.paint(element);
+    expect(watch.takeRecords()).toHaveLength(0);
+    expect(element.firstElementChild, 'the same node').toBe(first);
+    void changes;
+    watch.disconnect();
   });
 
   it('stops telling the pointer is on a command that is gone: a decoration that is disposed while the pointer is on it says it left', async () => {

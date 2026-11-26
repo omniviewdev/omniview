@@ -243,6 +243,16 @@ describe('what the person does with the commands', () => {
     expect(events.at(-1)).toEqual({ kind: 'said', words: 'The command line is typed; press Enter to run it' });
   });
 
+  it('types nothing of a forged unproven line that has a line break, whether or not the program asked for bracketed paste: nothing with CR or LF reaches the shell', async () => {
+    const { screen, engine, feed, frame, events } = await rig();
+    feed.push('$ touch /tmp/pwned\r\necho harmless\r\n', [placed(0, A()), placed(2, B()), placed(34, C(undefined)), placed(34, D(0))]);
+    frame();
+    screen.commands.rerun();
+    expect(engine().pastes).toEqual([]);
+    expect(feed.typed().join('')).not.toMatch(/[\r\n]/);
+    expect(events.at(-1)?.kind).toBe('said');
+  });
+
   it('types nothing while a command runs or when the terminal takes no input, and says why', async () => {
     const running = await rig();
     running.feed.push('$ sleep 9\r\n', [placed(0, A()), placed(2, B()), placed(11, C('sleep 9'))]);
@@ -256,6 +266,22 @@ describe('what the person does with the commands', () => {
     ended.screen.commands.rerun();
     expect(ended.engine().pastes).toEqual([]);
     expect(ended.events.at(-1)).toEqual({ kind: 'said', words: 'Input is off' });
+  });
+});
+
+describe('a replay and a marker write that waits', () => {
+  it('does not begin a replay while the write that makes a marker has not run: the replay would let go of the gutter under it', async () => {
+    const { feed, frame, engine } = await rig({ auto: false });
+    feed.push('$ ls\r\n', [placed(6, C('ls'))]);
+    frame();
+    engine().complete(1);
+    expect(engine().pendingWrites(), 'the bytes are parsed, the marker write waits').toBe(1);
+    feed.offerReplay({ data: bytesOf('fresh\r\n'), startSize: { cols: 80, rows: 24 }, startModes: NO_MODES, size: { cols: 80, rows: 24 }, modes: NO_MODES, end: 7 });
+    frame();
+    expect(engine().resets(), 'no reset while the marker write waits').toBe(0);
+    engine().complete(1);
+    frame();
+    expect(engine().resets()).toBe(1);
   });
 });
 
