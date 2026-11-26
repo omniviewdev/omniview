@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 )
 
 // Kind says what a Mark marks (the SDK's MarkKind).
@@ -83,8 +84,10 @@ func (t Trust) String() string {
 // Mark is one mark read from the output (the SDK's Mark).
 type Mark struct {
 	Kind Kind
-	// AtOffset is the offset of the first byte of the sequence.
-	AtOffset uint64
+	// AtOffset is the offset of the first byte of the sequence, EndOffset the offset after its last byte: the mark is
+	// read when the output has been read up to EndOffset, and no byte of the sequence is addressed above it.
+	AtOffset  uint64
+	EndOffset uint64
 	// ExitCode is the status of a command end; HasExitCode is false when the shell sent none (pwsh does not).
 	ExitCode    int32
 	HasExitCode bool
@@ -100,13 +103,15 @@ type Mark struct {
 	DurationMS uint64
 	// Redraw is a prompt that is the same prompt drawn again, not a new one.
 	Redraw bool
+	// Time is the producer's clock (Config.Now) when a command started or ended: zero on every other mark.
+	Time time.Time
 }
 
 // newMark makes a mark with every field set.
 func newMark(kind Kind, at uint64) Mark {
 	return Mark{
-		Kind: kind, AtOffset: at, ExitCode: 0, HasExitCode: false, Cwd: "", CommandID: "", CommandLine: "",
-		Trust: TrustUnverified, DurationMS: 0, Redraw: false,
+		Kind: kind, AtOffset: at, EndOffset: at, ExitCode: 0, HasExitCode: false, Cwd: "", CommandID: "", CommandLine: "",
+		Trust: TrustUnverified, DurationMS: 0, Redraw: false, Time: time.Time{},
 	}
 }
 
