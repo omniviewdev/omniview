@@ -54,6 +54,19 @@ export type TerminalKey =
 
 const MODIFIERS: Readonly<Record<string, true>> = { Shift: true, Control: true, Alt: true, Meta: true, AltGraph: true, CapsLock: true, Fn: true, FnLock: true, OS: true, Hyper: true, Super: true, Dead: true, Process: true, Unidentified: true };
 
+/** The chord that jumps between commands: the arrow up or down, with Shift to select the output too. The caller has checked the modifier that makes it the terminal's (Command on a Mac, Control elsewhere) and that no other is held. */
+function commandJump(event: KeyEventLike): TerminalKey | undefined {
+  if (event.code === 'ArrowUp') {
+    return event.shiftKey ? 'selectPreviousCommand' : 'previousCommand';
+  }
+
+  if (event.code === 'ArrowDown') {
+    return event.shiftKey ? 'selectNextCommand' : 'nextCommand';
+  }
+
+  return undefined;
+}
+
 /**
  * The rule. Copy and paste are the platform's, and VS Code and JetBrains agree on them: Command C and V on a Mac (Control C is the interrupt, always); Control C and V on Windows, where C copies while there is a
  * selection and is the interrupt without one, and Control Shift C and V on Linux and Windows Terminal, which copy and paste always. `selected` is whether the terminal has a selection now.
@@ -109,6 +122,14 @@ export function keyOf(event: KeyEventLike, platform: Platform, selected: boolean
         }
       }
 
+      // The jump to a previous or a next command (the screen hands the key back when there is none).
+      if (!event.altKey && !event.ctrlKey) {
+        const jump = commandJump(event);
+        if (jump !== undefined) {
+          return jump;
+        }
+      }
+
       return 'app';
     }
 
@@ -142,8 +163,8 @@ export function keyOf(event: KeyEventLike, platform: Platform, selected: boolean
       return 'find';
     }
 
-    // Control with Shift is the window's; Control without it is the shell's.
-    return event.shiftKey ? 'app' : 'terminal';
+    // Control and the arrows up and down jump between commands (with Shift, and select the output); the rest of Control with Shift is the window's, and Control without it the shell's.
+    return commandJump(event) ?? (event.shiftKey ? 'app' : 'terminal');
   }
 
   return 'terminal';

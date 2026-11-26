@@ -392,24 +392,25 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     record.listeners.clear();
   };
 
-  const parse = (data: Uint8Array | string) => {
-    const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
-    if (text.includes('\u001bc')) {
-      for (const record of records) {
-        goneRecord(record);
+  // What the emulator has parsed and the plain buffer has not read yet: the buffer is read when something asks about it (a marker, the cursor, the lines), so a flood of output costs the screen's tests nothing.
+  const unread: Array<Uint8Array | string> = [];
+  const sync = () => {
+    for (const data of unread.splice(0)) {
+      const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      const reset = text.lastIndexOf('\u001bc');
+      if (reset !== -1) {
+        for (const record of records) {
+          goneRecord(record);
+        }
+
+        buffer = [''];
       }
 
-      buffer = [''];
-    }
-
-    for (const character of text.replaceAll('\u001bc', '')) {
-      if (character === '\n') {
-        buffer.push('');
-      } else if (character === '\r') {
-        // The carriage return moves the cursor to the first column; text written after it overwrites, which this plain buffer does not draw.
-        buffer[buffer.length - 1] = buffer[buffer.length - 1] ?? '';
-      } else if (character >= ' ') {
-        buffer[buffer.length - 1] = `${buffer[buffer.length - 1] ?? ''}${character}`;
+      // Plain text: a line feed ends a line, a carriage return and the other controls draw nothing.
+      const parts = text.slice(reset === -1 ? 0 : reset + 2).replaceAll('\u001bc', '').replaceAll('\r', '').split('\n').map((part) => part.replace(/[\u0000-\u001f]/g, ''));
+      buffer[buffer.length - 1] = `${buffer[buffer.length - 1] ?? ''}${parts[0] ?? ''}`;
+      for (const part of parts.slice(1)) {
+        buffer.push(part);
       }
     }
   };
@@ -498,7 +499,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       // What a real emulator answers to a query it parses goes out as it parses the bytes, just before it says it has: a reply is the emulator's own output, in the middle of the stream.
       const parsed = () => {
         parsedBytes += typeof data === 'string' ? 0 : data.length;
-        parse(data);
+        unread.push(data);
         answer(data);
         done?.();
       };
@@ -561,6 +562,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     selection: () => selected,
     clear: () => {
       clears += 1;
+      sync();
       // The line the cursor is on stays, as the real emulator's `clear` leaves it: the markers on the others are gone.
       const keep = buffer.length - 1;
       buffer = [buffer[keep] ?? ''];
@@ -579,6 +581,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       disposed += 1;
     },
     mark: () => {
+      sync();
       if (alternate || disposed > 0) {
         return undefined;
       }
@@ -629,15 +632,23 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
         },
       } satisfies EngineDecoration;
     },
-    cursor: () => ({ line: buffer.length - 1, column: (buffer[buffer.length - 1] ?? '').length }),
+    cursor: () => {
+      sync();
+      return { line: buffer.length - 1, column: (buffer[buffer.length - 1] ?? '').length };
+    },
     viewport: () => {
+      sync();
       const rows = size.rows;
       const bottom = Math.max(0, buffer.length - rows);
       const top = atTop === undefined ? bottom : Math.min(atTop, bottom);
       return { top, rows, atBottom: top >= bottom } satisfies EngineViewport;
     },
-    lines: (from, to) => buffer.slice(Math.max(0, from), Math.max(0, to)).map((line) => line.trimEnd()).join('\n'),
+    lines: (from, to) => {
+      sync();
+      return buffer.slice(Math.max(0, from), Math.max(0, to)).map((line) => line.trimEnd()).join('\n');
+    },
     selectLines: (from, to) => {
+      sync();
       lineSelections.push([from, to]);
       selected = buffer.slice(Math.max(0, from), Math.max(0, to)).map((line) => line.trimEnd()).join('\n');
       for (const listener of [...selectionListeners]) {
@@ -727,6 +738,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     markers: () => records.map((record) => record.marker),
     decorations: () => decorations.map((one) => ({ marker: one.marker, element: one.element, disposed: () => one.disposed })),
     scrollOut: (count) => {
+      sync();
       const kept = Math.min(count, Math.max(0, buffer.length - 1));
       buffer = buffer.slice(kept);
       for (const record of records) {
@@ -744,7 +756,10 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     },
     scrolls,
     lineSelections,
-    bufferLines: () => buffer,
+    bufferLines: () => {
+      sync();
+      return buffer;
+    },
   };
 }
 

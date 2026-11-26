@@ -86,3 +86,4 @@ export const RERUN_RUNNING = 'A command is running';
 export const RERUN_TYPED = 'The command line is typed; press Enter to run it';
 export const RERUN_SENT = 'Running the command again';
 export const NO_LINE = 'The command line is not known';
+export const INPUT_OFF = 'Input is off';
