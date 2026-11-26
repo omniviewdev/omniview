@@ -1,11 +1,14 @@
 import {
   createAnnouncer,
   createPaletteStore,
+  NEW_TERMINAL,
   normaliseRoute,
   SCREEN_READER_COMMAND,
   screenReaderSaid,
   seedChips,
   settingsChordText,
+  TAB_PALETTE_COMMANDS,
+  tabCommands,
   TERMINAL_TOOL,
   toggleChordText,
   togglePanel,
@@ -15,6 +18,7 @@ import {
   type PaletteBindings,
   type PaletteCandidate,
   type PaletteCommandOutcome,
+  type PaletteCommandRef,
   type PaletteScope,
   type PaletteSource,
   type PanelStore,
@@ -73,6 +77,8 @@ export type HostPaletteDeps = {
    * Absent: the window has no Terminal tool, and the command is not offered.
    */
   readonly terminalScreenReader?: { readonly toggle: () => boolean; readonly say: (text: string) => void } | undefined;
+  /** Starts a session in the Terminal tool, as its `+` does. Absent: the window has no Terminal tool, and the command is not offered. */
+  readonly newTerminal?: (() => void) | undefined;
   /** Where each plugin was last shown. A page of a plugin that is not on screen opens at the connection that plugin was last used in, as the entries of its own sidebar do. Absent: no connection is carried. */
   readonly remembered?: ((plugin: string) => Route | undefined) | undefined;
   /**
@@ -99,20 +105,20 @@ export type HostPalette = PaletteBindings & {
    * but those subscriptions.
    */
   readonly attach: () => () => void;
+  /**
+   * Runs a command of the host by its id, as the palette does when a row is chosen: looked up again, and checked against what is true now, immediately before it runs. The app menu's items run through it,
+   * and so does `host.search`, which opens the palette and is the one command it never lists.
+   */
+  readonly run: (command: PaletteCommandRef) => PaletteCommandOutcome | Promise<PaletteCommandOutcome>;
 };
 
 /** What the model calls the host's own sources, and the plugin it says owns them. */
 const OWN = { plugin: 'host', pluginName: 'Omniview' } as const;
 
-const NO_TAB = 'There is no tab to close.';
-const NO_OTHER_TAB = 'There is no other tab.';
 const UNSAVED = 'This tab has unsaved changes.';
-/** Command W on a Mac and Control W elsewhere, as the panel's toggle chord is written (`toggleChordText`). */
-const CLOSE_TAB_CHORD = { mac: '⌘W', other: 'Ctrl+W' } as const;
 /** The app menu's Close Window. Only a Mac has it, and only a Mac is offered the command. */
 const CLOSE_WINDOW_CHORD = '⌘⇧W';
-/** A browser tab keeps Command or Control W and J for itself, so the shell also binds Control Option (Control Alt): that is the chord that works where the window is not the app's own, and the one said there. */
-const WEB_CLOSE_TAB_CHORD = { mac: '⌃⌥W', other: 'Ctrl+Alt+W' } as const;
+/** A browser tab keeps Command or Control J for itself, so the shell also binds Control Option (Control Alt): that is the chord that works where the window is not the app's own, and the one said there. */
 const WEB_TOGGLE_CHORD = { mac: '⌃⌥J', other: 'Ctrl+Alt+J' } as const;
 /** The most distinct things the host says of one plugin's sidebar, whatever the plugin does next (`tell`). */
 const MAX_SAID = 8;
@@ -386,26 +392,23 @@ type HostCommand = {
 };
 
 /**
- * The commands the host can run from here, made from what is true now: Close tab, Toggle panel (when there is a panel), the Terminal's screen reader switch (when the window has the Terminal tool), Settings (when the window has them),
- * Close window (only on a Mac, and only when the app can close its window: elsewhere the main window hides and nothing brings it back, decision A17), and Next tab and Previous tab. The palette lists them and the runner looks them
+ * The commands the host can run from here, made from what is true now: the tab commands (`shell/tabs/commands.ts`, the tab context menu's too), Toggle panel (when there is a panel), New terminal and the Terminal's screen reader switch (when the window has the Terminal tool), Settings (when the window has them),
+ * Close window (only on a Mac, and only when the app can close its window: elsewhere the main window hides and nothing brings it back, decision A17). The palette lists them and the runner looks them
  * up here, so what it runs is what it checked a moment before.
  */
-function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, terminalScreenReader }: HostPaletteDeps): HostCommand[] {
-  const state = tabs.getSnapshot();
-  const others = state.order.length > 1 ? undefined : NO_OTHER_TAB;
+function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, terminalScreenReader, newTerminal }: HostPaletteDeps): HostCommand[] {
   // The app's own window gets the chords the shell binds natively; a browser tab keeps those for itself, and the shell's Control Option chords are what work there.
   const native = onCloseWindow !== undefined;
-  const commands: HostCommand[] = [
-    {
-      id: 'host.tab.close',
-      title: 'Close tab',
-      context: 'Tabs',
-      icon: 'close',
-      shortcut: native ? CLOSE_TAB_CHORD[platform] : WEB_CLOSE_TAB_CHORD[platform],
-      unavailable: state.active === null ? NO_TAB : undefined,
-      run: () => outcomeOf(tabs.close()),
-    },
-  ];
+  const tabRows = tabCommands({ tabs, platform, native }, tabs.getSnapshot().active);
+  const commands: HostCommand[] = TAB_PALETTE_COMMANDS.map((id) => ({
+    id: `host.tab.${id}`,
+    title: tabRows[id].title,
+    context: 'Tabs',
+    icon: tabRows[id].icon,
+    shortcut: tabRows[id].shortcut,
+    unavailable: tabRows[id].unavailable,
+    run: () => outcomeOf(tabRows[id].run()),
+  }));
   if (panel !== undefined) {
     commands.push({
       id: 'host.panel.toggle',
@@ -415,6 +418,19 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
       shortcut: native ? toggleChordText(platform) : WEB_TOGGLE_CHORD[platform],
       run: () => {
         togglePanel(panel);
+        return true;
+      },
+    });
+  }
+
+  if (newTerminal !== undefined) {
+    commands.push({
+      id: 'host.terminal.new',
+      title: NEW_TERMINAL,
+      context: 'Panel',
+      icon: TERMINAL_TOOL.icon,
+      run: () => {
+        newTerminal();
         return true;
       },
     });
@@ -468,11 +484,6 @@ function commandsOf({ tabs, panel, platform, onCloseWindow, openSettings, termin
     });
   }
 
-  // No chord is bound to either of these today, so none is shown.
-  commands.push(
-    { id: 'host.tab.next', title: 'Next tab', context: 'Tabs', icon: 'arrow-right', unavailable: others, run: () => outcomeOf(tabs.next()) },
-    { id: 'host.tab.previous', title: 'Previous tab', context: 'Tabs', icon: 'arrow-left', unavailable: others, run: () => outcomeOf(tabs.previous()) },
-  );
   // The host's own pages (Plugins, Home): Plugins opens in its singleton tab wherever the person is (ch16 S9, S26) and is shown, as any other tab, if it is already open; Home is an ordinary tab and the command opens a new one every
   // time, as the design lab's does (`openHostPage`, `plain: 'new'`, shell-regions.js).
   for (const page of allHostPages()) {
@@ -551,6 +562,43 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
   };
 
   const announcer = createAnnouncer();
+  // The command is looked up again, and checked against what is true now, immediately before it runs: the palette may have listed it a moment ago, and the host answers for the rest. The app menu runs its items through it too.
+  const run = (command: PaletteCommandRef): PaletteCommandOutcome | Promise<PaletteCommandOutcome> => {
+    // The app menu's Search opens the palette, as its chord does. The palette never lists it: it is open when a person could choose it.
+    if (command.id === 'host.search') {
+      store.open(opening());
+      return true;
+    }
+
+    const found = commandsOf(deps).find((candidate) => candidate.id === command.id);
+    if (found !== undefined) {
+      return found.unavailable === undefined ? found.run() : { ok: false, reason: found.unavailable };
+    }
+
+    // A connection's row: the host starts the connection when it is not connected and goes to it, and the palette says why when it could not (the row is inert while it runs; a failure leaves the palette open for another choice).
+    if (command.id === GO_CONNECTION) {
+      // The argument is the row's own: `{ plugin, connection }`, copied and frozen by the model, and read here as data again because the plugin that was listed may have left.
+      const given: Readonly<Record<string, unknown>> | undefined = typeof command.arg === 'object' && command.arg !== null && !Array.isArray(command.arg) ? (command.arg as Readonly<Record<string, unknown>>) : undefined;
+      const target = given?.plugin;
+      const connection = given?.connection;
+      if (deps.connections === undefined || typeof target !== 'string' || typeof connection !== 'string') {
+        return { ok: false, reason: 'This command is not available.' };
+      }
+
+      return deps.connections.actions.goOrSwitch(target, connection).then((result): PaletteCommandOutcome => (result.ok ? true : { ok: false, reason: result.reason }));
+    }
+
+    // A command a plugin's row names, by the id the plugin and the command make together: the plugin may have left since the row was listed.
+    const plugin = commandOf(plugins.getSnapshot(), command.id);
+    if (plugin === undefined) {
+      return { ok: false, reason: 'This command is not available.' };
+    }
+
+    return runCommand(plugin, command.arg, deps.panelHosts?.(plugin.plugin), (error) => {
+      console.error(`[palette] ${plugin.plugin}:${plugin.local} failed`, error);
+    });
+  };
+
   const store = createPaletteStore({
     // What the tab model made of the open (the route with the connection the tab was given) is what is remembered, whichever tab it opened, so a place is remembered as it was reached and not as its row named it.
     open: (destination, options) => {
@@ -570,37 +618,8 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     describe: described,
     announce: announcer.announce,
     platform,
-    // `windows` is not passed: the shell has no second window, so the footer does not say New window and Shift+Enter is refused with the reason, until a step builds one.
-    // The command is looked up again, and checked against what is true now, immediately before it runs: the palette may have listed it a moment ago, and the host answers for the rest.
-    run: (command): PaletteCommandOutcome | Promise<PaletteCommandOutcome> => {
-      const found = commandsOf(deps).find((candidate) => candidate.id === command.id);
-      if (found !== undefined) {
-        return found.unavailable === undefined ? found.run() : { ok: false, reason: found.unavailable };
-      }
-
-      // A connection's row: the host starts the connection when it is not connected and goes to it, and the palette says why when it could not (the row is inert while it runs; a failure leaves the palette open for another choice).
-      if (command.id === GO_CONNECTION) {
-        // The argument is the row's own: `{ plugin, connection }`, copied and frozen by the model, and read here as data again because the plugin that was listed may have left.
-        const given: Readonly<Record<string, unknown>> | undefined = typeof command.arg === 'object' && command.arg !== null && !Array.isArray(command.arg) ? (command.arg as Readonly<Record<string, unknown>>) : undefined;
-        const target = given?.plugin;
-        const connection = given?.connection;
-        if (deps.connections === undefined || typeof target !== 'string' || typeof connection !== 'string') {
-          return { ok: false, reason: 'This command is not available.' };
-        }
-
-        return deps.connections.actions.goOrSwitch(target, connection).then((result): PaletteCommandOutcome => (result.ok ? true : { ok: false, reason: result.reason }));
-      }
-
-      // A command a plugin's row names, by the id the plugin and the command make together: the plugin may have left since the row was listed.
-      const plugin = commandOf(plugins.getSnapshot(), command.id);
-      if (plugin === undefined) {
-        return { ok: false, reason: 'This command is not available.' };
-      }
-
-      return runCommand(plugin, command.arg, deps.panelHosts?.(plugin.plugin), (error) => {
-        console.error(`[palette] ${plugin.plugin}:${plugin.local} failed`, error);
-      });
-    },
+    windows: tabs.windows !== undefined,
+    run,
   });
 
   const report = deps.report ?? ((problem: PaletteProblem): void => {
@@ -801,5 +820,5 @@ export function createHostPalette(deps: HostPaletteDeps): HostPalette {
     };
   };
 
-  return { store, announcer, opening, attach };
+  return { store, announcer, opening, attach, run };
 }

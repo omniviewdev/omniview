@@ -310,6 +310,34 @@ export type OpenOptions = {
 
 export type Guard = { readonly confirmed?: boolean | undefined };
 
+/** A point in a window's own pixels (the client space of its page). */
+export type WindowPoint = { readonly x: number; readonly y: number };
+
+/** A tab dragged out of its strip (S58): told where the pointer is in this window's pixels while it is out of the strip, and how the drag ends: released there, or ended any other way (Escape, the window's blur, the pointer back in the strip). */
+export type DragOut = {
+  readonly move: (x: number, y: number) => void;
+  readonly drop: (x: number, y: number) => void;
+  readonly cancel: () => void;
+};
+
+/** Where a tab dropped on a strip goes: the index it takes and, beside the separator of the pinned tabs, which side of it it is dropped on (the index says anywhere else). */
+export type TabPlace = { readonly to: number; readonly pinned: boolean | undefined };
+
+/** The strip of this window as the place a tab dragged in from another window lands. Given the point of the window the tab is over, it marks the place a drop there would give the tab and says it; a point that is not over the strip, or none, takes the mark away and says nothing. */
+export type TabReceiver = (at: WindowPoint | undefined) => TabPlace | undefined;
+
+/** What a tab can do about the other windows of the app. A move answers at once and runs on: the tab leaves this window only after the other one has it, so a move that fails loses nothing. */
+export type TabWindows = {
+  /** The other workspace windows, in creation order, named by that order. */
+  readonly others: () => ReadonlyArray<{ readonly name: string; readonly label: string }>;
+  readonly moveToNew: (id: TabId, guard?: Guard) => Done | Noop | Confirm;
+  readonly moveTo: (window: string, id: TabId, guard?: Guard) => Done | Noop | Confirm;
+  /** The pointer takes a tab out of its strip: it goes over the other windows, and released over a strip of one it moves there; released over none it opens a window of its own under the pointer (the only tab of a window other than the main one moves that window instead). */
+  readonly dragOut: (id: TabId) => DragOut;
+  /** Makes `strip` the place a tab dragged in from another window lands. Answers the way to stop. */
+  readonly receive: (strip: TabReceiver) => () => void;
+};
+
 export type NavigateOptions = Guard & {
   /** `push` (the default) adds an entry to the tab's history; `replace` swaps the current one, as a change of scope does (ch16 S60). */
   readonly history?: 'push' | 'replace' | undefined;

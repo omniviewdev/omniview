@@ -1,5 +1,6 @@
 import { activityClient, ActivityProvider, useActivities } from '@omniviewdev/runtime';
 import { NetworkerClient, WindowClient } from '@omniviewdev/runtime/api';
+import { window as windowModels } from '@omniviewdev/runtime/models';
 import { Browser, Events, Window } from '@omniviewdev/runtime/runtime';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindowName, windowStorage, type LoadedNotices, type LoadedSession } from '../../shell';
@@ -14,6 +15,7 @@ import { PluginStore } from './pluginStore';
 import type { PortForwardNetwork } from './portForward';
 import { useHashLink } from './route';
 import { useInstalledPlugins } from './useInstalledPlugins';
+import type { WindowService } from './windows';
 
 /**
  * Hands what the runtime's activity provider holds to the feed the Problems and Operations tools read (`shell/panel/activity.ts`): its records, and its `unavailable`, the sentence for why it cannot observe the host's activity service
@@ -84,6 +86,26 @@ const networker: PortForwardNetwork = {
 /** The name of the window this page is in, as the host's window service knows it (`resolveWindowName`): the key of its slots. */
 const windowName = async (): Promise<string> => resolveWindowName({ name: async () => Window.Name(), list: async () => WindowClient.List() });
 
+/** The host's window service over the runtime's calls: `WindowClient` and the runtime's events. */
+const windowService: WindowService = {
+  name: windowName,
+  open: async (session, at) => WindowClient.Open({ kind: windowModels.Kind.KindWorkspace, initialState: { session }, anchorWindow: at?.window ?? '', clientX: at?.x ?? 0, clientY: at?.y ?? 0, hasPosition: at !== undefined, width: 0, height: 0 }),
+  close: async (name) => WindowClient.Close(name),
+  focus: async (name) => WindowClient.Focus(name),
+  place: async (name, x, y) => WindowClient.MoveToPointer(name, x, y),
+  viewport: async (name, width, height) => WindowClient.ReportViewport(name, width, height),
+  beginDrag: async (drag) => WindowClient.BeginDrag(drag),
+  moveDrag: async (session, x, y) => WindowClient.MoveDrag(session, x, y),
+  endDrag: async (session, x, y) => WindowClient.EndDrag(session, x, y),
+  cancelDrag: async (session) => WindowClient.CancelDrag(session),
+  respondDrop: async (session, accepted, tab) => WindowClient.RespondDrop(session, accepted, tab),
+  list: async () => WindowClient.List(),
+  emit: async (event, data) => Events.Emit(event, data),
+  on: (event, listener) => Events.On(event, ({ data }) => {
+    listener(data);
+  }),
+};
+
 /**
  * This window's saved session, read through the host's window service: the slots the Go side keeps for the window this page is in (`backend/window`, persisted to `windows.json` in the
  * instance's state root). It never rejects: a window that cannot name itself, or whose slots cannot be read, starts empty and saves nothing, with a note on the console (`shell/session`).
@@ -108,6 +130,7 @@ const loadWindowNotices = async (): Promise<LoadedNotices> => loadNotices(notice
 export function PluginHostScreen() {
   const [store] = useState(() => new PluginStore());
   const [onCloseWindow] = useState(() => (isNativeWindow() ? closeWindow : undefined));
+  const [windows] = useState(() => (isNativeWindow() ? windowService : undefined));
   const [openSettingsWindow] = useState(() => (isNativeWindow() ? showSettingsWindow : undefined));
   const inventory = useInstalledPlugins();
   const link = useHashLink();
@@ -164,6 +187,7 @@ export function PluginHostScreen() {
           }}
           onRetryInventory={inventory.retry}
           onCloseWindow={onCloseWindow}
+          windows={windows}
           openSettingsWindow={openSettingsWindow}
           session={loaded.session}
           savedNotices={loaded.notices}

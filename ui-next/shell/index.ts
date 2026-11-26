@@ -17,6 +17,7 @@ export type {
   ShellTreeNode,
 } from './registration';
 export type { PageTab } from './tabs/PageHost';
+export { TAB_PALETTE_COMMANDS, tabCommands } from './tabs/commands';
 export { platformOf } from './core/chords';
 export { clip, createTabsStore, dispositionOf, LIMITS, normaliseRoute } from './core/tabs';
 export type { Contributions, Description, Destination, Face, Location, ModifierEvent, Route, RouteInput, TabId, TabsStore } from './core/tabs';
@@ -50,7 +51,7 @@ export { settingsChordText, WEB_SETTINGS_CHORD } from './settings/chords';
 export { WindowKindScreen } from './settings/WindowKindScreen';
 export { resolveWindowKind } from './settings/windowKind';
 export type { WindowKind } from './settings/windowKind';
-export { createTerminals, SCREEN_READER_COMMAND, screenReaderSaid, TERMINAL_TOOL, TERMINAL_TOOL_ID } from './panel/terminal';
+export { createTerminals, NEW_TERMINAL, SCREEN_READER_COMMAND, screenReaderSaid, TERMINAL_TOOL, TERMINAL_TOOL_ID } from './panel/terminal';
 export type { ScreenReaderChoice, Terminals, TerminalsOptions, TerminalsRestored, TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './panel/terminal';
 export { createPorts, PORTS_TOOL, PORTS_TOOL_ID, revealPortsTool } from './panel/ports';
 export type { PortNames, Ports, PortsDeps, PortsOptions } from './panel/ports';

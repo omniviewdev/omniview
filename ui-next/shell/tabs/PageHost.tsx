@@ -143,6 +143,11 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId }: PageHos
     element.scrollLeft = saved?.left ?? 0;
   }, [active, mounted, memory]);
 
+  // A press or a key in the page is use: a preview tab becomes permanent (S24); a permanent tab is no change.
+  const keep = () => {
+    store.keep();
+  };
+
   const hosted = active !== null && mounted.length > 0;
   return (
     <div
@@ -154,6 +159,8 @@ export function PageHost({ renderPage, empty, layout, prefix, panelId }: PageHos
       aria-labelledby={hosted ? tabDomId(prefix, active) : undefined}
       data-shell-part="page"
       data-layout={layout}
+      onPointerDownCapture={keep}
+      onKeyDownCapture={keep}
       onScroll={(event) => {
         if (active !== null) {
           memory.set(active, { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft });

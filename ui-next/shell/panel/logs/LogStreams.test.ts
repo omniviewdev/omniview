@@ -590,6 +590,16 @@ describe('a plugin that goes away', () => {
     expect(streams.feedOf(id)).toBe(feed);
   });
 
+  it('stops a running stream: it is closed, the tab stays and says it ended, and nothing is left to stop', () => {
+    const { store, streams, target } = harness();
+    const { target: given, feed } = target();
+    const id = streams.open(given)?.id ?? '';
+    streams.stopOf(id)?.();
+    expect(feed.closed()).toBe(1);
+    expect(store.getSnapshot().sessions[id]?.state).toBe('ended');
+    expect(streams.stopOf(id)).toBeUndefined();
+  });
+
   it('hears nothing more of the stream it closed: the end the stream publishes as it closes, and anything after, writes nothing to the session, which keeps the unload\'s cause', () => {
     const { store, streams } = harness();
     const feed: FakeFeed = fakeFeed({

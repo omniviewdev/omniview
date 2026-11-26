@@ -602,6 +602,43 @@ describe('naming the tab by what the producer says it runs', () => {
     expect(store.getSnapshot().sessions[opened?.id ?? '']?.title).toBe('Terminal');
   });
 
+  it('keeps the name the person gave the session when the program changes again', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: named });
+    const id = sessions.open(given)?.id ?? '';
+    feed.set({ program: 'zsh' });
+    store.retitleSession(id, 'build');
+    feed.set({ program: 'vim' });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('build');
+  });
+
+  it('goes on following the program after a title longer than the panel keeps: the title it set is the one the panel holds', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: named });
+    const id = sessions.open(given)?.id ?? '';
+    feed.set({ program: 'x'.repeat(300) });
+    feed.set({ program: 'vim' });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('vim');
+  });
+
+  it('goes on following the program when the title the target opened with is longer than the panel keeps: that title is not the person\'s', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: named, title: 'x'.repeat(300) });
+    const id = sessions.open(given)?.id ?? '';
+    feed.set({ program: 'vim' });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('vim');
+  });
+
+  it('stops a running session: its process is closed, the tab stays and says it ended, and nothing is left to stop', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target();
+    const id = sessions.open(given)?.id ?? '';
+    sessions.stopOf(id)?.();
+    expect(feed.closed()).toBe(1);
+    expect(store.getSnapshot().sessions[id]?.state).toBe('ended');
+    expect(sessions.stopOf(id)).toBeUndefined();
+  });
+
   it('makes two shells of one name twins, as two sessions of one title are (A22): the strip tells them apart', () => {
     const { store, sessions, target } = harness();
     const first = target({ retitle: named });

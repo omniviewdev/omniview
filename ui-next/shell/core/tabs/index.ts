@@ -1,5 +1,6 @@
 // The tab and open model of the shell: framework-free, plugin-agnostic, no UI. README.md in this directory is the guide; types.ts is the contract.
-export { createTabsStore } from './store';
+export { createTabsStore, newUuid } from './store';
+export { closeSet } from './close';
 export type { TabsStore, TabsStoreOptions } from './store';
 export { createSelectors } from './selectors';
 export { dispositionOf } from './disposition';

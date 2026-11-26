@@ -28,7 +28,7 @@ function listedOf(state: PanelState, toolId: string): Session[] {
  * implements them: a sentence for each rule a tool's tabs break, none when they are sound. The tabs are those `selectors` gives for `state`.
  *
  *   - a tab draws its scope exactly when its session has one and another listed session of its tool has the same title and another scope, and then the scope it draws is its own;
- *   - the sessions of one title and one scope are numbered in the order they were opened, the first having none (the second is `(2)`); a number is skipped when it would give a tab the name of one before it
+ *   - the sessions of one title and one scope are numbered in the strip's order (a session the user moves takes the number of its place), the first having none (the second is `(2)`); a number is skipped when it would give a tab the name of one before it
  *     (a title that looks like an ordinal beside two sessions of the title it looks like, or like another session's name and state);
  *   - a tab's name is its title, its ordinal and the scope it draws, in that order, and its head and its tail are the title and the ordinal: the tab draws what its name says;
  *   - no two tabs of a tool are DRAWN alike or HEARD alike, runs of white space counting as one space: what a person who cannot see the strip hears of a tab is its name and, when its session is not running, its state
