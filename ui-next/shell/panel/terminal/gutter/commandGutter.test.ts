@@ -515,16 +515,12 @@ describe('what the gutter tells', () => {
     const element = document.createElement('div');
     decorations[0]?.paint(element);
     const first = element.firstElementChild;
-    const changes: number[] = [];
-    const watch = new MutationObserver((list) => {
-      changes.push(list.length);
-    });
+    const watch = new MutationObserver(() => undefined);
     watch.observe(element, { childList: true, subtree: true, attributes: true });
     decorations[0]?.paint(element);
     decorations[0]?.paint(element);
     expect(watch.takeRecords()).toHaveLength(0);
     expect(element.firstElementChild, 'the same node').toBe(first);
-    void changes;
     watch.disconnect();
   });
 

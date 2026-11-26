@@ -245,7 +245,7 @@ describe('what the person does with the commands', () => {
 
   it('types nothing of a forged unproven line that has a line break, whether or not the program asked for bracketed paste: nothing with CR or LF reaches the shell', async () => {
     const { screen, engine, feed, frame, events } = await rig();
-    feed.push('$ touch /tmp/pwned\r\necho harmless\r\n', [placed(0, A()), placed(2, B()), placed(34, C(undefined)), placed(34, D(0))]);
+    feed.push('$ touch /tmp/pwned\r\necho harmless\r\n', [placed(0, A()), placed(2, B()), placed(35, C(undefined)), placed(35, D(0))]);
     frame();
     screen.commands.rerun();
     expect(engine().pastes).toEqual([]);

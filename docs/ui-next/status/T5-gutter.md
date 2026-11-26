@@ -1,7 +1,39 @@
 # Status: T5-gutter (the command gutter on the page, issue #694 step 5)
 
 - Goal: a gutter beside every command (success, failure, running), a hover with the command, its exit status, its duration from the producer's times and its directory, keys to jump to the previous and next command, to select, copy and re-run a command's output, markers made at the offset, dying on clear and on scroll-out, hidden in the alternate screen, capped.
-- Worktree: `~/omniview/wt/t694-gutter`. Branch: `feat/terminal-command-gutter` on `origin/main` `80bfe44c1`. Epic #692, issue #694, after #784 (marks on the channel) and #787.
+- Worktree: `~/omniview/wt/t694-gutter`. Branch: `feat/terminal-command-gutter` on `origin/main` `80bfe44c1`. Epic #692, issue #694, after #784 (marks on the channel) and #787 (titles).
+- Owned: `ui-next/shell/panel/terminal/{heldOutput.ts,feed.ts,execFeed.ts (onMarks, Gathering.marks only),engine.ts,xtermEngine.ts,screen.ts,keys.ts,testing.ts,TerminalBody.tsx}`, `gutter/*`, `menu/{terminalMenu.ts,useTerminalMenu.ts}`, the probe `terminal-gutter.mjs` (+ `terminal-gutter-probe.mjs`, one host fault in `terminal-host.mjs`), the probe units, `docs/ui-next/terminal-channel-protocol.md` (4a, "The page"). Not touched: `state.ts`, `TerminalSessions.ts`, the execFeed create path (RestartEnded's).
+
+## Decisions
+
+- **Placement by bytes, not by guess.** `heldOutput.mark(mark, behind)` stands a mark in the bytes the feed holds for the reader; `take` is cut where the next mark stands (inside a chunk too, no byte lost) and hands the mark over with the bytes that end at it. A mark that arrives after its bytes were read comes with the next read, which then holds no bytes, and wakes the reader. A replay carries `marks` (each with the bytes of the replay before it); a mark that completes the replay arrives after the last byte and is added to the replay while it waits. Position comes from the mark's own `end`, so a host that did not cut where protocol 4a says still gives the right line.
+- **Markers inside the write callback.** The screen writes the bytes up to a mark, then an empty write whose callback makes the markers (xterm.js #5214 is a test: a marker made before the parse reads line 0). Slices end at the marks; no byte changes, the acknowledgement is of the bytes. A replay is not begun while a marker write waits (`markWrites`), and begins by letting go of the gutter.
+- **The model** (`gutter/commandGutter.ts`) keeps a command from its start mark (a prompt and an input start wait for it; an end with no start, Ctrl-C at an empty prompt, makes none). The marker of the line it was typed on is its life: when the emulator drops that line (scrollback full, `clear()`, which disposes EVERY marker including the cursor's) the command and its decoration go. 200 commands at most, oldest let go. No marker on the alternate screen. States: running, success (0), failure (!= 0), incomplete (no status, or a prompt came back while it ran). Duration, exit and cwd are the host's marks; the model reads no clock (a test spies `Date.now` and `performance.now`). The command line exists only for a start the host proved (`trust: nonce`); a directory only from a `nonce` cwd mark.
+- **Re-run** types the line as the person's own input (a paste, so bracketed paste applies; control characters dropped) and presses Enter ONLY for a line the shell proved; a line the screen shows (read from where the input starts) is typed WITHOUT Enter and the person is told. Nothing while a command runs, the input is off, the alternate screen is up, or the line is gone.
+- **Jump**: Cmd Up/Down (Mac), Ctrl Up/Down (elsewhere), Shift selects the output. From the bottom, previous is the last command; after a jump the target is the command jumped to while the view is where the jump left it. When there is nothing to jump to or a program has the alternate screen, the key is what it was (the window's on a Mac, the shell's elsewhere).
+- **Keys**: on Linux and Windows, Ctrl Up and Ctrl Down no longer reach the shell once the terminal has commands (VS Code's own trade); with none, or on the alternate screen, they do.
+- **Re-run safety**: a line the shell did not prove is refused when it has any line break (bracketed paste off turns LF into CR, which would run the first line of a forged text).
+- **a11y**: the glyph is a shape (check, cross, ring, dash) and a colour, `aria-hidden` (a node for each of 200 commands would bury a reader); what a person who cannot see hears is the words of each action, in the body's polite live region ("Command 2 of 3, Failed, exit 1, took 1.5 s: make"); every action is a named item of the terminal's menu (Shift F10 or the Menu key): Previous command, Next command, Select command output, Copy command output, Run command again, each with the reason it is unavailable. The items are in the menu of a terminal that has commands. The hover tip is a `role=tooltip`, not a live region (the hover is not announced; the jump's words carry the same facts), and is dismissible with Escape (WCAG 1.4.13). A mark is repainted only when its state changed. The kit draws no shortcut on an item (its own rule, `terminalMenu.ts`), so the chords are not on the items. Screen reader mode: markers are unchanged by it (test).
+- **Where it is drawn**: the decoration sits in the 12 px left inset of the screen (`gutter/Glyph.module.css`; `TerminalBody.module.css` insets the emulator by 12 px), over no cell; `data-alternate` on the screen element hides it (the emulator hides the normal screen's decorations itself, measured; the rule holds if it does not).
 
 ## Log
 
+- 2026-11-27 `fd58be2cd`/`dc22c7fb4` (red: 12 failures by assertion, e.g. `expected [] to deeply equal [ [ 1, 3 ] ]`) / `fe949f524`: types, the feed's cut and placed marks. `9d4ca6411`/`d31fa6094` (red: 11 of 11) / `40f507f41`: the engine on a real emulator. `e79924893`/`fd487f327` (red: 33 of 37 by assertion) / `d4afd1d98`: the model and its words. `59d9dae22`/`8c551d916` (red: 18) / `57c56897c`: the screen and the keys. `f69c1d390`/`2de474603` (red: 12) / `08263d561`: the menu items and the tip. `caac869a0`: the body. `4158c4bca`, `fd7baef62`, `8cfa0661c`: the probe.
+- Corrected after red (same commit as the fix): `clear()` disposes every marker (the red said a cursor-line marker survives, the real emulator says not); `lines()` trims every logical line; the hookup test says no items while there are no commands; the fake emulator's buffer is read lazily (a char loop made a 10 MiB flow test 2x slower).
+
+## Verification
+
+Linux amd64, Node, the packages built with `OMNIVIEW_UI=next`. SYNTHETIC far end: the probe's host with a synthetic shell that prints the marks of a shell with the integration; a real zsh or bash producing marks end to end is step 7's and was NOT run here.
+
+- Unit: `vitest run ui-next/shell/panel` 3190+ passed; the real emulator tests (`xtermMarkers.test.ts`, `gutter/commandGutter.test.ts`) run xterm.js. tsc app and test clean.
+- Probe `terminal-gutter` (both engines, both viewports): 20 assertions pass. `terminal-controls-gutter`: each of the nine controls is detected by the assertion it is named for (`gutter-alt-shown` after the probe put the emulator's own `display: none` aside). A screenshot was looked at (chromium 1440x900): a green check circle in the inset, left of the row of its command.
+- Not verified: macOS and Windows, WKWebView; the jump on an emulator with a real layout and a scrolled-up view beyond the probe's two cases; commands from p10k, starship, oh-my-zsh (step 7); output copy of a command whose output wraps in the real emulator beyond the unit test's one wrapped line.
+
+## Dev tools
+
+- `GUTTER_SHOT=<dir> SECTIONS=gutter-marks ENGINES=chromium VIEWPORTS=1440x900 node ui-next/shell/probes/terminal-gutter-probe.mjs` photographs the terminal with its marks.
+- `terminal-host.mjs` faults `marksNever` and `marksAfterFirst` (no marks frame; none after the first attach).
+
+## Backend catalog
+
+- Nothing for the host or the SDK: the page reads the marks the host already sends. The SDK's X4 (pods) would send the same frame and the page would draw the same gutter.

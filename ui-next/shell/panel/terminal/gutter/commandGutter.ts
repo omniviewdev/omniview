@@ -366,7 +366,13 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       return undefined;
     }
 
-    const text = engine.lines(from, to).slice(input.column).replace(unsafe, '');
+    const shown = engine.lines(from, to).slice(input.column);
+    // A line the shell did not prove is refused when it has a line break: with bracketed paste off a pasted line feed is a carriage return, and the first line would run.
+    if (/[\r\n]/.test(shown)) {
+      return undefined;
+    }
+
+    const text = shown.replace(unsafe, '');
     return text === '' ? undefined : { text, enter: false };
   };
 

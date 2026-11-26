@@ -40,6 +40,11 @@ function shapeOf(spec: string): SVGElement {
  * Fills `element` with the mark of a command in `state`. `hover` is told where the mark is (its box, in the pixels of the window) when the pointer comes onto it and `undefined` when it leaves.
  */
 export function paintGlyph(element: HTMLElement, state: CommandState, hover: (box: DOMRect | undefined) => void): void {
+  // The emulator draws every decoration on every render: a mark whose state has not changed is left as it is.
+  if (element.firstElementChild instanceof HTMLElement && element.firstElementChild.dataset.state === state) {
+    return;
+  }
+
   element.classList.add(styles.decoration ?? 'decoration');
   const glyph = document.createElement('span');
   glyph.className = styles.glyph ?? 'glyph';
