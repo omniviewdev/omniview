@@ -11,7 +11,7 @@ import { shellsOf, type ShellChoice, type ShellList } from './profiles';
 import { createScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
 import { stateWords } from './state';
-import { ASK_MS, LOST_REFRESH_MS, createTerminals, type TerminalsOptions } from './terminals';
+import { ASK_MS, createTerminals, type TerminalsOptions } from './terminals';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngineLoader, type FakeTerminalFeed, type FakeTerminalFeedOptions } from './testing';
 import { TERMINAL_TOOL } from './tool';
 
@@ -1095,25 +1095,10 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
   });
 
-  describe('learning that the tab that took a terminal has gone, without a click (the host sends no word of it)', () => {
+  describe('learning that the tab that took a terminal has gone (the host says `released`: nothing is asked)', () => {
     const visibility = (state: 'visible' | 'hidden'): void => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
     };
-
-    /** A window with a terminal another tab took: its feed answers `refresh` from `holder.held`. */
-    function taken() {
-      const holder = { held: true };
-      const feed = keyedFeed();
-      const refresh = vi.fn(async (): Promise<void> => {
-        feed.set({ detached: holder.held ? { by: 'taken-over' } : { by: 'taken-over', free: true } });
-      });
-      const full: FakeTerminalFeed = { ...feed, refresh };
-      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
-      const stop = r.terminals.attach();
-      r.terminals.sessions.open(found('term-a', full));
-      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
-      return { r, stop, holder, refresh };
-    }
 
     beforeEach(() => {
       vi.useFakeTimers();
@@ -1124,120 +1109,61 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       visibility('visible');
     });
 
-    it('says the tab has closed and offers the way back after the taker leaves, with nobody clicking: the next tick asks the host', async () => {
-      const { r, stop, holder, refresh } = taken();
+    it('asks the host nothing, on a timer, when the page is shown or when the window gets the focus, however long a terminal stays lost, and runs no timer', async () => {
+      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
+      const stop = r.terminals.attach();
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+      stop();
+    });
+
+    it('offers the way back the moment the feed says the terminal is free, with nobody clicking and nothing asked', async () => {
+      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
+      const stop = r.terminals.attach();
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
       expect(r.terminals.sessions.canTakeBack('term-a')).toBe(false);
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS);
-      expect(refresh).toHaveBeenCalledTimes(1);
-      expect(r.terminals.sessions.canTakeBack('term-a')).toBe(false);
-      holder.held = false;
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS);
+      feed.set({ detached: { by: 'taken-over', free: true } });
       const snapshot = r.terminals.sessions.recordOf('term-a')?.snapshot;
-      expect(snapshot?.detached?.free).toBe(true);
       expect(stateWords(snapshot)).toBe('The tab that took this terminal has closed.');
       expect(r.terminals.sessions.canTakeBack('term-a')).toBe(true);
-      stop();
-    });
-
-    it('runs no timer while nothing is lost, arms one when a feed is taken over, and clears it when the terminal ends or is taken back', async () => {
-      const r = reloaded({ reattach: (id) => found(id, again) });
-      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
-      const again = keyedFeed({ state: 'starting' });
-      const stop = r.terminals.attach();
-      expect(vi.getTimerCount()).toBe(0);
-      r.terminals.sessions.open(found('term-a', feed));
-      expect(vi.getTimerCount()).toBe(0);
-      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
-      expect(vi.getTimerCount()).toBe(1);
-      feed.set({ exit: { code: 0 } });
-      expect(vi.getTimerCount()).toBe(0);
-      feed.set({ exit: undefined });
-      expect(vi.getTimerCount()).toBe(1);
-      feed.set({ detached: { by: 'taken-over', free: true } });
-      await r.terminals.sessions.takeBack('term-a');
-      expect(r.terminals.sessions.feedOf('term-a')).toBe(again);
-      expect(vi.getTimerCount()).toBe(0);
-      stop();
-    });
-
-    it('runs no timer while the page is hidden, and arms it when it shows', () => {
-      const { stop } = taken();
-      expect(vi.getTimerCount()).toBe(1);
-      visibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(vi.getTimerCount()).toBe(0);
-      visibility('visible');
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(vi.getTimerCount()).toBe(1);
-      stop();
-    });
-
-    it('arms the poll at attach when a terminal is already lost', () => {
-      const r = reloaded({});
-      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
-      r.terminals.sessions.open(found('term-a', feed));
-      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
-      expect(vi.getTimerCount()).toBe(0);
-      const stop = r.terminals.attach();
-      expect(vi.getTimerCount()).toBe(1);
-      stop();
-    });
-
-    it('asks every 5 seconds and no sooner', async () => {
-      const { stop, refresh } = taken();
-      await vi.advanceTimersByTimeAsync(4_999);
-      expect(refresh).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
-      expect(refresh).toHaveBeenCalledTimes(1);
-      expect(LOST_REFRESH_MS).toBe(5_000);
-      stop();
-    });
-
-    it('asks when the page becomes visible and when the window gets the focus', async () => {
-      const { stop, refresh } = taken();
-      window.dispatchEvent(new Event('focus'));
-      expect(refresh).toHaveBeenCalledTimes(1);
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(refresh).toHaveBeenCalledTimes(2);
-      visibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(refresh).toHaveBeenCalledTimes(2);
-      stop();
-    });
-
-    it('asks the host nothing while no terminal is lost', async () => {
-      const r = reloaded({});
-      const stop = r.terminals.attach();
-      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
-      r.terminals.sessions.open(found('term-a', feed));
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS * 4);
-      window.dispatchEvent(new Event('focus'));
       expect(feed.refresh).not.toHaveBeenCalled();
       stop();
     });
 
-    it('asks nothing while the page is hidden, and again once it shows', async () => {
-      const { stop, refresh } = taken();
+    it('asks a terminal whose watcher was lost once when the person comes back to the tab (visible), and not when it is hidden, on the focus or on a timer', async () => {
+      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined) };
+      const stop = r.terminals.attach();
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over', unwatched: true } });
+      await vi.advanceTimersByTimeAsync(60_000);
+      window.dispatchEvent(new Event('focus'));
       visibility('hidden');
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS * 3);
-      window.dispatchEvent(new Event('focus'));
-      expect(refresh).not.toHaveBeenCalled();
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).not.toHaveBeenCalled();
       visibility('visible');
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS);
-      expect(refresh).toHaveBeenCalledTimes(1);
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).toHaveBeenCalledTimes(1);
+      expect(feed.refresh).toHaveBeenCalledWith({ fresh: true });
+      expect(vi.getTimerCount()).toBe(0);
+      const asked = vi.spyOn(r.terminals.sessions, 'refreshUnwatched');
       stop();
-    });
-
-    it('stops everything when the window detaches', async () => {
-      const { r, stop, refresh } = taken();
-      const asked = vi.spyOn(r.terminals.sessions, 'refreshLost');
-      stop();
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS * 3);
-      window.dispatchEvent(new Event('focus'));
       document.dispatchEvent(new Event('visibilitychange'));
       expect(asked).not.toHaveBeenCalled();
-      expect(refresh).not.toHaveBeenCalled();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(feed.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not export the poll interval', async () => {
+      expect(await import('./terminals')).not.toHaveProperty('LOST_REFRESH_MS');
     });
   });
 

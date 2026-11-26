@@ -48,7 +48,7 @@ describe('the fake feed\'s count of what was typed (`inputs`)', () => {
 describe('the fake terminal channel', () => {
   const connected = () => {
     const channels = fakeChannels();
-    const events = { ready: vi.fn(), output: vi.fn(), gap: vi.fn(), ended: vi.fn(), takenOver: vi.fn(), notFound: vi.fn(), closed: vi.fn() };
+    const events = { ready: vi.fn(), output: vi.fn(), gap: vi.fn(), ended: vi.fn(), applied: vi.fn(), takenOver: vi.fn(), closeRefused: vi.fn(), released: vi.fn(), unsupported: vi.fn(), notFound: vi.fn(), closed: vi.fn() };
     const link = channels.connect('term-1', 7, events);
     return { channels, events, link, stream: channels.stream() };
   };
@@ -58,7 +58,16 @@ describe('the fake terminal channel', () => {
     expect(stream.id).toBe('term-1');
     expect(stream.fromOffset).toBe(7);
     stream.ready({ start: 3, end: 9, lost: 1, size: { cols: 100, rows: 30 } });
-    expect(events.ready).toHaveBeenCalledWith(expect.objectContaining({ v: 1, start: 3, end: 9, lost: 1, size: { cols: 100, rows: 30 }, start_size: { cols: 100, rows: 30 }, ended: null }));
+    expect(events.ready).toHaveBeenCalledWith(expect.objectContaining({ v: 2, input_applied: 0, start: 3, end: 9, lost: 1, size: { cols: 100, rows: 30 }, start_size: { cols: 100, rows: 30 }, ended: null }));
+  });
+
+  it('records the close the feed sends on the stream, and says close-refused to it without ending it', () => {
+    const { link, events, stream } = connected();
+    expect(link.end()).toBe(true);
+    expect(stream.sent()).toEqual([{ kind: 'close' }]);
+    stream.closeRefused();
+    expect(events.closeRefused).toHaveBeenCalledTimes(1);
+    expect(stream.open()).toBe(true);
   });
 
   it('records what the feed sent, in order, and what was typed', () => {
@@ -74,7 +83,7 @@ describe('the fake terminal channel', () => {
   });
 
   it('is over after each end the host can send, and after the feed closed it: the feed\'s frames are dropped and counted, and the test\'s throw', () => {
-    for (const end of ['ended', 'takenOver', 'notFound', 'drop'] as const) {
+    for (const end of ['ended', 'unsupported', 'notFound', 'drop'] as const) {
       const { link, stream } = connected();
       stream[end]();
       expect(stream.open()).toBe(false);
@@ -96,6 +105,53 @@ describe('the fake terminal channel', () => {
     }).toThrow('over');
   });
 
+  it('keeps a stream the host took the terminal from open as a watcher: the test may send it released or ended and nothing else, and the feed\'s frames are still recorded', () => {
+    const { link, events, stream } = connected();
+    stream.takenOver();
+    expect(events.takenOver).toHaveBeenCalledTimes(1);
+    expect(stream.open()).toBe(true);
+    const speaking: Array<() => void> = [
+      () => {
+        stream.output(0, 'x');
+      },
+      () => {
+        stream.gap(0, 1);
+      },
+      () => {
+        stream.applied(1);
+      },
+      () => {
+        stream.ready();
+      },
+      () => {
+        stream.notFound();
+      },
+      () => {
+        stream.unsupported();
+      },
+      () => {
+        stream.takenOver();
+      },
+    ];
+    for (const speak of speaking) {
+      expect(speak).toThrow('watcher');
+    }
+
+    link.detach();
+    expect(stream.sent()).toEqual([{ kind: 'detach' }]);
+    stream.released();
+    expect(events.released).toHaveBeenCalledTimes(1);
+    expect(stream.open()).toBe(false);
+    const other = connected();
+    other.stream.takenOver();
+    other.stream.ended();
+    expect(other.events.ended).toHaveBeenCalledTimes(1);
+    expect(other.stream.open()).toBe(false);
+    expect(() => {
+      connected().stream.released();
+    }).toThrow('holds');
+  });
+
   it('says what the host says to the feed: output as bytes, a gap, the end typed, the host\'s ends', () => {
     const { events, stream } = connected();
     stream.output(4, 'hi');
@@ -103,8 +159,13 @@ describe('the fake terminal channel', () => {
     expect(events.output).toHaveBeenCalledWith(4, expect.anything());
     expect([...(events.output.mock.calls[0]?.[1] as Uint8Array)]).toEqual([104, 105]);
     expect(events.gap).toHaveBeenCalledWith(6, 20);
+    stream.applied(5);
+    expect(events.applied).toHaveBeenCalledWith(5);
     stream.ended();
     expect(events.ended).toHaveBeenCalledWith({ reason: 'exited', exit_code: 0 });
+    const refused = connected();
+    refused.stream.unsupported(3);
+    expect(refused.events.unsupported).toHaveBeenCalledWith(3);
   });
 
   it('answers its calls with what the test gave, and records them', async () => {

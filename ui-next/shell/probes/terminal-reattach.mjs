@@ -2,7 +2,7 @@
 // (terminal-host.mjs), held in this process for a whole browser context: it outlives the fixture page, and a second page of the same context shares it. The fixture page (`?host=shared`) forwards the host's calls to it, opens one stream
 // for each terminal through it, keeps its capabilities in the tab's own sessionStorage (never in the host's window state: the probe fails if a `SaveState` call carries one) and its saved session in the host's window state (the real `loadSession` over a fake window service), and counts the numbered lines of a flood that its emulator is given.
 // The host models what the real one does: a capability answered once by `CreateTerminal` that is the only way to a terminal, one stream for each terminal that is its holder, a second stream with the capability that takes the terminal
-// (the first is sent `taken-over` and is refused from then on), a lease that runs when no stream holds the terminal and closes it silently when it ends, the kept end of a shell that ended while nobody held it, and a ring that a stream
+// (the first is sent `taken-over`, stays open as a watcher and is refused from then on), a lease that runs when no stream holds the terminal and closes it silently when it ends, the kept end of a shell that ended while nobody held it, and a ring that a stream
 // is replayed from exactly where it asks. A page that goes away sends the `detach` frame as a keepalive request (the binding is dropped with the page in Chromium).
 // This file knows nothing of the probe's own internals: terminal-probe.mjs hands it `check`, `note`, `report` and `runAxe`, and adds its sections, its parts and its negative controls to its own. The sections of T2d (the saved open flag
 // of the panel, taking a terminal back with the guard of its button and what a tab that was offline learns, the reattach from the offset the page has, the reattach past the host's ring, the keys typed while a late replay is written, the acknowledgement in
@@ -539,7 +539,7 @@ export function createReattachSections({ check, note, report, runAxe }) {
     }
   };
 
-  /** A second tab takes the terminal: the first says so, takes no input, and sends no detach or close when it goes; the tab that took it is not told it lost it. */
+  /** A second tab takes the terminal: the first says so, takes no input, and sends no detach when it goes (its watcher is closed by its connection and leaves the host's watchers); the tab that took it is not told it lost it. */
   sections['reattach-detached'] = async (ctx) => {
     const { engine, vp } = ctx;
     const w = await world(ctx);
@@ -565,17 +565,17 @@ export function createReattachSections({ check, note, report, runAxe }) {
       const typedInA = host.log.writes.filter((entry) => entry.stream === first && /zzz/.test(entry.data));
       await a.goto('about:blank');
       await sleep(600);
-      const leftByA = host.log.frames.slice(frameMark).filter((entry) => entry.stream === first && (entry.kind === 'detach' || entry.kind === 'close'));
+      const leftByA = host.log.frames.slice(frameMark).filter((entry) => entry.stream === first && entry.kind === 'detach');
       const detachedByA = host.log.detaches.filter((entry) => entry.stream === first);
       const laneB = await laneOf(b);
       await typeLine(b, 'hello');
       const echoed = await until(async () => (await rowsOf(b)).some((row) => /hello from the synthetic shell/.test(row)), (shown) => shown, 4000);
       check(
         'reattach.detached',
-        lane.includes(WORDS.takenOver) && taken.length === 1 && taken[0].from === first && taken[0].by === holder && sentByA.length === 0 && typedInA.length === 0 && leftByA.length === 0 && detachedByA.length === 0 && host.state(id)?.holder === holder && laneB === '' && echoed,
+        lane.includes(WORDS.takenOver) && taken.length === 1 && taken[0].from === first && taken[0].by === holder && sentByA.length === 0 && typedInA.length === 0 && leftByA.length === 0 && detachedByA.length === 0 && host.state(id)?.watchers === 0 && host.state(id)?.holder === holder && laneB === '' && echoed,
         `${engine} ${vp}: the first tab's lane says ${JSON.stringify(lane)} (${JSON.stringify(WORDS.takenOver)} is right); the host recorded ${JSON.stringify(taken.map((entry) => `${String(entry.from)} by ${String(entry.by)}`))} (one, from the first stream to the holder ${String(holder)}); what it typed afterwards sent ${JSON.stringify(sentByA.map((entry) => entry.kind))} and reached the shell ${String(typedInA.length)} time(s) (nothing is right); when it went it sent ${JSON.stringify(leftByA.map((entry) => entry.kind))} and ${String(detachedByA.length)} detach(es) were applied (nothing is right); the other tab holds the terminal (${String(host.state(id)?.holder)}), its lane says ${JSON.stringify(laneB)} (nothing is right), and it still takes input: ${String(echoed)}`,
       );
-      note(`reattach detached ${engine} ${vp}: the first tab was told taken-over, took no input and sent nothing when it went; the tab that took the terminal says nothing of it and works`);
+      note(`reattach detached ${engine} ${vp}: the first tab was told taken-over, took no input and sent no detach when it went (its watcher left the host's); the tab that took the terminal says nothing of it and works`);
     } finally {
       await w.close();
     }
