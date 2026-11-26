@@ -18,7 +18,7 @@ require (
 	github.com/hashicorp/yamux v0.1.2
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/nxadm/tail v1.4.11
-	github.com/omniviewdev/plugin-sdk v0.22.1
+	github.com/omniviewdev/plugin-sdk v0.23.0
 	github.com/omniviewdev/registry v0.3.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0

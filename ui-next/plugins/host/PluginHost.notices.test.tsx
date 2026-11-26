@@ -59,6 +59,7 @@ const toasts = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>('
 
 describe('a command of a page that fails', () => {
   it('is a failure toast of that plugin: the class\'s title and the plugin\'s one sentence, an alert, with a Retry (E0-1)', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     scale.mockRejectedValue(wails(TIMEOUT));
     const { user } = mount();
     await user.click(await screen.findByRole('button', { name: 'Scale' }));
@@ -67,9 +68,12 @@ describe('a command of a page that fails', () => {
     expect(within(toast).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(toast).toHaveAttribute('data-sticky');
     expect(layer().contains(toast)).toBe(true);
+    expect(report).toHaveBeenCalledExactlyOnceWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 
   it('is told once more with a count when it fails again: Retry asks the same command, and the one toast says "Timed out 2 times"', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     scale.mockClear();
     scale.mockRejectedValue(wails(TIMEOUT));
     const { user } = mount();
@@ -80,9 +84,15 @@ describe('a command of a page that fails', () => {
       expect(toasts()).toHaveLength(1);
       expect(toasts()[0]).toHaveAttribute('aria-label', 'Error: Timed out 2 times');
     });
+    expect(report.mock.calls).toEqual([
+      ['[notices] a command of acme failed', expect.any(Error)],
+      ['[notices] a command of acme failed', expect.any(Error)],
+    ]);
+    report.mockRestore();
   });
 
   it('shows none of the text of an error that is not the host\'s envelope: raw text is never chrome', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     restart.mockImplementation(() => {
       throw new Error('connect ECONNREFUSED 10.0.0.5:5432 password=hunter2');
     });
@@ -91,9 +101,12 @@ describe('a command of a page that fails', () => {
     const toast = await screen.findByRole('alert', { name: 'Error: Operation failed' });
     expect(within(toast).getByText('The operation could not be completed.')).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('hunter2');
+    expect(report).toHaveBeenCalledExactlyOnceWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 
-  it('is no toast when the command works, and none when it was a cancellation', async () => {
+  it('is no toast when the command works, and none when it was a cancellation, which reports no failure on the console', async () => {
+    const report = vi.spyOn(console, 'error');
     scale.mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'));
     const { user } = mount();
     await user.click(await screen.findByRole('button', { name: 'Pause' }));
@@ -105,11 +118,14 @@ describe('a command of a page that fails', () => {
     });
     expect(fine).toHaveBeenCalled();
     expect(toasts()).toEqual([]);
+    expect(report).not.toHaveBeenCalled();
+    report.mockRestore();
   });
 });
 
 describe('a command of a list page that fails', () => {
   it('is the same failure toast: the guard is on the header of a list page too, not only a detail page\'s', async () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     sync.mockRejectedValue(wails(TIMEOUT));
     const base = widgetPage('Widgets', answering(WIDGETS));
     const widgets = { ...base, definition: { ...base.definition, commands: { primary: { id: 'sync', label: 'Sync', onSelect: sync } } } };
@@ -119,5 +135,7 @@ describe('a command of a list page that fails', () => {
     const toast = await screen.findByRole('alert', { name: 'Error: Timed out' });
     expect(within(toast).getByText('The cluster did not complete the request in time.')).toBeInTheDocument();
     expect(within(toast).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(report).toHaveBeenCalledExactlyOnceWith('[notices] a command of acme failed', expect.any(Error));
+    report.mockRestore();
   });
 });

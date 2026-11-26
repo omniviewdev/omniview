@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import type { IconName, LogFeed, LogFeedSnapshot } from '@omniviewdev/kit';
+import type { ComponentType, ReactNode } from 'react';
+import type { IconName, LogFeed, LogFeedSnapshot, StatusRole } from '@omniviewdev/kit';
 import type { ResourceReference, Value } from '@omniviewdev/runtime/ui/v1';
 import type { DetailPageDefinition, DetailSource, DetailTab, ListPageDefinition, ListSource } from '../../page';
 import type { ShellAccent, ShellScopeFace, ShellTreeNode } from '../../shell';
@@ -117,9 +117,9 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // resources to this computer, `ctx.panel?.ports?.forward(request)`. (1) Nothing that exists is removed, renamed or given another meaning: `PanelHostV1` is what it was and one member more, so a handle written without it (a test's, a
 // plugin's own stand-in) is still a `PanelHostV1`, and so is a context, or a command's context, with no handle at all (`contract/ports.test.ts` proves both with the compiler). (2) Every bundle written before it is admitted and drawn as
 // before: a hook that never reads `ctx.panel.ports` is unchanged, and admission reads nothing of it, because the handle is not in the artifact. (3) Rule (3) turns round exactly as it does for the panel handle: a host that lacks the
-// member leaves `ctx.panel.ports` absent, and so does a window with no port-forward service, and so does a handle made for no connection (a page that is read in none, and a command of the palette: a member that could only refuse is
+// member leaves `ctx.panel.ports` absent, and so does a window with no port-forward service, and so does a handle made for no connection (a page that is read in none, which is a page whose route names none in a plugin that has not exactly one connection, and a command of the palette: a member that could only refuse is
 // worse than one that is absent), so a plugin that offers a forward tests for it, `ctx.panel?.ports?.forward(...)`, and a command may say why it is unavailable; no bundle is drawn wrong, because a page has the member or has not. What
-// the host fills in is what the page's own scope already says: the plugin that asks and the connection the page is read in (`ContextV1.route.connection`), so a page forwards in its own connection and in no other, whatever its request
+// the host fills in is what the page's own scope already says: the plugin that asks and the connection the page is read in (`ContextV1.route.connection`, or, when the route names none, the plugin's only connection: a route of a plugin with one connection names none), so a page forwards in its own connection and in no other, whatever its request
 // carries. What the plugin is answered is a forward it can read and stop (`PortForwardSessionV1`), and what it is refused with is a `PortForwardErrorV1`: the host's own code and plain words, never a stack and never raw JSON. How long a forward
 // lives, which rules a call is held to (a user action; the bounds on the request; the caps on what a plugin and a window may hold), what address it is reached at (none unless the producer states one) and which codes a refusal has are written where the
 // member is (`PanelHostV1.ports`, `PortForwardRequestV1`, `PortForwardSessionV1`, `PortForwardErrorCodeV1`), and a change to any of them is a change to this contract. The rules of a call were written before any plugin used the member, because
@@ -146,6 +146,16 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // section's own state is the plugin's own words IN THE SECTION, in its rows and its cells, its `count` and its `action` (a Retry on the section): a count that is still being read says it is, a list built from some of the reads says which it lacks, a read that failed says that it failed and, where asking again
 // helps, offers the way. The kit's `MissingValue` is the dash of a value that does not apply and never the answer for a read that failed. The host cannot enforce this rule, because it cannot know what a read is; what it does enforce is that a section cannot take the page with it. A section that throws while it
 // draws, or whose rows or items are not a list, is that section's card saying `<title> failed to display.` with a Retry, and the header, the summary and every other section stay (`SectionBoundary`, `ui-next/page`).
+//
+// The custom page and the landing (KL2) are minor, on the terms of the overview page: `custom` is a NEW kind of page (`CustomPageV1`, a member of the `PageV1` union) and `landing` a NEW optional member of the contribution. A custom page is a page the PLUGIN draws, whole,
+// from the kit's parts (the page header, a data view, cards, rows): the host draws its frame, its tab, its error boundary and, for a page read in a connection, the scope lane, and nothing inside. Its `scope` says what it is read in: `connection`, where it is a page of a
+// connection as the others are (its route names the connection, a connection chosen on its tab keeps the page), or `plugin`, where it is read in NO connection (none is ever carried to it, it has no lane, and the panel handle it is given has no `ports`). What the window opens
+// when a plugin is opened and no connection is named is the plugin's `landing`, a custom page of scope `plugin`, instead of Home or a connection the window chooses; `home` keeps its meaning, the page a chosen connection opens. A Body reads the plugin's connections through
+// `context.connections` (`ConnectionsHostV1`): the host's own list, words and way of opening one, handed over as plain data and three functions, so a plugin draws them and holds no second store. (1) It is new, and nothing that exists is removed, renamed or given another meaning: no
+// list, detail or overview page is read or drawn differently, `ContextV1` is what it was (a Body is given it and one member more, as the sidebar's hook is given `open`), and `home` is read as before. (2) Every bundle written before it is admitted and drawn as before
+// (`admit.test.ts` keeps one), and a plugin that declares no `landing` is completed exactly as it was (`contributions.test.ts`). (3) A host that lacks the kind refuses a bundle that uses it by name, at admission, from the artifact: its check reads a page's `kind` as `list`,
+// `detail` or `overview` and nothing else, so a custom page, and a `landing`, which must name one, are refused with `pages.<id>.kind is "custom", and this version draws "list", "detail" and "overview" pages` (the `contract` failure, R11's refusal on proof of mismatch): a typed
+// refusal, never a crash, and the page is never drawn wrong. The cost falls on the plugin's whole contribution on that host, as it did for the detail page and the overview page.
 //
 // Everything a plugin may use at run time is the shared list (`../loader/specifiers.ts`): React, the kit and, with the curated runtime entry, the
 // data hooks. A contribution is plain data and functions; it never reaches into the shell's DOM and never imports the host.
@@ -266,6 +276,95 @@ export type OverviewPageV1 = {
 };
 
 /**
+ * Where a connection stands, as the host says it (HM1): connected; being connected; not connected; or a start that failed, by the class of the failure, which is what the person can do about it (sign in, ask for access, wait for the server). The class is read from the host's own
+ * error, never from the text a plugin wrote.
+ */
+export type ConnectionStateV1 = 'connected' | 'connecting' | 'disconnected' | 'unauthorized' | 'forbidden' | 'unreachable' | 'failed';
+
+/** One connection of the plugin, as the host holds it: what the SDK gives every connection (a key, a name, a description, a readiness) and the host's own words for where it stands. Nothing of what a connection is (a cluster, an account, a database) is known to the host. */
+export type ConnectionV1 = {
+  /** The plugin's id for the connection: what `ConnectionsHostV1.open` takes and what a route carries. It is never drawn: a connection is said by its `name`. */
+  readonly key: string;
+  /** What a person reads. Never empty and never the key. */
+  readonly name: string;
+  /** The plugin's secondary text for it (the SDK connection's description: a region, a provider), one line as the host makes it: white space collapsed, at most 200 characters. Absent when the plugin gives none. */
+  readonly description?: string | undefined;
+  readonly state: ConnectionStateV1;
+  /** The host's word for the state ("Connected", "Connecting…", "Needs sign-in", "Access denied", "Not responding", "Connection failed", "Disconnected"): one word for each state, so two states are never told apart by a glyph alone. */
+  readonly word: string;
+  /** The role of the kit's `Status` that draws the state: `<Status role={connection.role}>{connection.word}</Status>`. */
+  readonly role: StatusRole;
+  /** Why the last start failed, in one line the host made safe to show (never a stack, a payload or a page of output). Absent unless the state is a failure the host saw. */
+  readonly reason?: string | undefined;
+};
+
+/** What the host knows of the plugin's connections now. */
+export type ConnectionsViewV1 = {
+  /** A read of the host's list has finished, whether it worked or not. Until then `connections` is empty because nothing was asked, not because there is none: a page says it is reading them. */
+  readonly loaded: boolean;
+  /** The last read failed. `connections` is what the last read that worked said (empty before one): a page says it could not read them, and offers `refresh`. */
+  readonly failed: boolean;
+  /** The plugin's connections, sorted by name, then by key. The same array until one of them changes. */
+  readonly connections: readonly ConnectionV1[];
+};
+
+/** How `ConnectionsHostV1.open` places the page. */
+export type ConnectionOpenOptionsV1 = {
+  /** Opens a new tab even where a tab already shows the connection's page. Absent or `false`: the open model's smart open (a tab that shows it is shown, else a new tab opens, and the tab the person is on keeps its page). */
+  readonly newTab?: boolean | undefined;
+};
+
+/** What opening a connection came to: done, or why not, in a sentence a person reads. */
+export type ConnectionOpenResultV1 = { readonly ok: true } | { readonly ok: false; readonly reason: string };
+
+/**
+ * What a custom page asks of the window about its plugin's connections (KL2): the host's own store, words and actions, for this plugin alone, so a plugin that draws its connections (a landing) holds no second store and words no state of its own. It is read the way React reads
+ * an external store, `useSyncExternalStore(connections.subscribe, connections.getSnapshot)`: the snapshot is the same object until something in it changes, and a change of another plugin's connection is none of this one's. In a window with no connection data it
+ * says no connection and `open` refuses.
+ */
+export type ConnectionsHostV1 = {
+  /** Calls `listener` after every change of the view, and never for a read or a start that changed nothing of this plugin's. Answers the function that stops it. */
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly getSnapshot: () => ConnectionsViewV1;
+  /**
+   * Opens the plugin's `home` page in the connection, as a press on one of Home's rows does. A connection that is not connected is started FIRST, by the host, with its state saying `connecting` while it runs and its `reason` saying why when it failed; only a connection that is
+   * connected is routed to, and a page is never left to start the connection it finds stopped. Call it from a person's action (a press, a menu item), not from an effect. Resolves when the tab has opened or when it could not; it never rejects. A key that is not one of this plugin's
+   * connections is a failed start like any other.
+   */
+  readonly open: (key: string, options?: ConnectionOpenOptionsV1) => Promise<ConnectionOpenResultV1>;
+  /** Reads the host's list again now; calls that overlap share one read. It never rejects: a read that failed is `failed: true` in the view. */
+  readonly refresh: () => Promise<void>;
+};
+
+/** What a custom page's Body is told: the context every hook of the plugin gets, and the plugin's connections. The route names a page and, for a page of scope `connection`, the connection, and no parameters (`route.params` is empty); for a page of scope `plugin`, `route.connection` is `undefined`. */
+export type CustomPageContextV1 = ContextV1 & {
+  readonly connections: ConnectionsHostV1;
+};
+
+/**
+ * A custom page (added to version 1 by KL2, see the rule above): a page the plugin draws itself, whole, from the kit's parts. The host draws the tab (`title`, `icon`), the page's frame and, for a page of scope `connection`, the scope lane (the connection's NAME, made from the host's own list
+ * of connections, with the picker every lane has); the Body is the page: its header, its data and its states are the plugin's. A Body is a component, so it may use hooks, the kit (a `PageHeader`, a `DataView`, cards, rows, `useMenu` and `menuTrigger` as Home does, a `Link` that names a page of
+ * this plugin, which the host's `LinkProvider` opens) and the runtime's data hooks, and it is given its `context`. The host runs it inside the page's own error boundary: a Body that throws is replaced, alone, by `This page failed to display.` with a Retry, and the frame, the sidebar and the
+ * other tabs stay. It is kept alive, and loses what it keeps in state when the tab's page is evicted, as every page does (the tab model's keep-alive policy).
+ *
+ * `scope: 'plugin'` is a page read in NO connection: the route names none (a connection that a link or a sidebar entry carries to it is dropped, so the page is one place whoever opened it), there is no scope lane, the panel handle it is given has no `ports` member (nothing says which connection to
+ * forward in), and the tab is told from another plugin's by the plugin's name. While it is on screen the plugin's rail entry is current and the window draws no sidebar for it: a sidebar entry is a page read in a connection, and there is none to open it in. `scope: 'connection'` is a page of a connection
+ * as a list page is: its route names the connection, taken from the tab it is opened from, and a route that names none is the plugin's landing when it has one (else the one the plugin was last used in, else Home); a connection chosen on its tab keeps the page.
+ *
+ * `layout` is who scrolls the page, as the host's own pages say it: `document` (the default) the island, header and body together; `pane` the page itself, whose root fills the island, as a kit data view (`DataView`) does: it takes the height it is given.
+ */
+export type CustomPageV1 = {
+  readonly kind: 'custom';
+  readonly scope: 'plugin' | 'connection';
+  /** The page's name in the sidebar's words: the title of the tab (at most three words) and of the palette's row for it. */
+  readonly title: string;
+  /** The tab's glyph, a name from the kit's registry. A name the host's kit does not have draws the host's own glyph, as a tab's glyph does. */
+  readonly icon: IconName;
+  readonly layout?: 'document' | 'pane' | undefined;
+  readonly Body: ComponentType<{ readonly context: CustomPageContextV1 }>;
+};
+
+/**
  * What the host tells the sidebar's data hook: the context every hook of the plugin gets, and which groups of the sidebar's tree are open (Q2a).
  */
 export type SidebarContextV1 = ContextV1 & {
@@ -295,9 +394,9 @@ export type SidebarV1 = {
 
 /**
  * A page of any kind and any row type. The host holds pages of different row types in one record, and each page's definition and hook are typed together where the
- * plugin writes them (`satisfies ListPageV1<Row>`, `satisfies DetailPageV1`, `satisfies OverviewPageV1`), so the record erases the row type in this one place.
+ * plugin writes them (`satisfies ListPageV1<Row>`, `satisfies DetailPageV1`, `satisfies OverviewPageV1`, `satisfies CustomPageV1`), so the record erases the row type in this one place.
  */
-export type PageV1 = ListPageV1<any> | DetailPageV1 | OverviewPageV1;
+export type PageV1 = ListPageV1<any> | DetailPageV1 | OverviewPageV1 | CustomPageV1;
 
 /**
  * The plugin's entry in the window's rail, the 40 px column left of the sidebar: one entry for every plugin that contributes, and choosing it shows this plugin's sidebar. The entries are
@@ -490,9 +589,9 @@ export type PortForwardSessionV1 = {
    */
   readonly localPort: number;
   /**
-   * The address of this computer at which the forward listens, present ONLY when the producer states it. The host's session carries `local_port` and no address (the SDK's session has no `local_host` yet, and its forwarder contract does not
-   * require a forwarder to listen on the loopback), so the host answers without one and the member is absent: a plugin must not read an address into its absence, and one that needs the address has to know it of its own forwarder. A plugin that
-   * reads `answer.localHost` when it is there is right on a host whose SDK states it and on one whose SDK does not. The Ports tool says a host in its rows in the same way: only when the session carries one.
+   * The host the forward listens on, present ONLY when the producer states it (the SDK's `local_host`, from plugin-sdk v0.23.0: an IP address or `localhost`; empty is unknown and the member is absent, a plugin must not read an address into its
+   * absence). The host passes it on as stated and reads nothing into it. A plugin takes the forward as reachable only from this computer if and only if the value is `localhost` (ASCII, any case) or an IP address that is loopback once an IPv4-mapped
+   * IPv6 address is unmapped (127.0.0.0/8, ::1, ::ffff:127.x.y.z); `0.0.0.0`, `::`, a LAN or a link-local address are reachable from other computers. The Ports tool says a host in its rows in the same way: only when the session carries one.
    */
   readonly localHost?: string | undefined;
   /**
@@ -573,8 +672,8 @@ export type PanelHostV1 = {
    * PF1, PF2. `forward` forwards a port of one of the plugin's resources to this computer and answers the forward (`PortForwardSessionV1`: its id, the port it listens on and a way to stop it, and the address when the producer states one) once the
    * host has started it, and the Ports tool is shown then. It is bound to the plugin and to the connection the page is read in, and fills both in: the request names neither. It rejects with a `PortForwardErrorV1`, in the host's own code and plain
    * words, when the call is not from a user action, when the request names no resource, a port that is not a whole number from 1 to 65535 or a protocol that is not TCP or UDP or is over a bound, when the plugin or the window already holds as many
-   * forwards as it may, and when the host could not start the forward. The member is absent on a host that predates it, in a window with no port-forward service, and from the handle of a page that is read in no connection and of a palette command
-   * (nothing says which connection to forward in): a plugin tests for it, `ctx.panel?.ports?.forward`.
+   * forwards as it may, and when the host could not start the forward. The member is absent on a host that predates it, in a window with no port-forward service, and from the handle of a page that is read in no connection (its route names none, and
+   * its plugin has not exactly one connection: with exactly one, that is the connection the page is read in) and of a palette command (nothing says which connection to forward in): a plugin tests for it, `ctx.panel?.ports?.forward`.
    *
    * FROM A USER ACTION ONLY. A forward is started from a click or a key press, never from a render, an effect, a timer or a message: it starts a listener in the plugin's process. The host asks the engine at the call, before it reads the request
    * or awaits anything (`navigator.userActivation.isActive`), and refuses `FORBIDDEN` when none is under way: 'A forward can only be started from a user action: a click or a key press.' An action's activation lasts about five seconds, so a page
@@ -722,6 +821,12 @@ export type ContributionV1 = {
   readonly pages: Readonly<Record<string, PageV1>>;
   /** The page the window opens first for this plugin, with no URL: a key of `pages`. */
   readonly home: string;
+  /**
+   * The page the window opens when this plugin is opened and no connection is named: a press on its entry in the rail or on Home, `+`, the palette's row for the plugin, a link that names no connection. A key of `pages` that is a `custom` page with `scope: 'plugin'`, which the plugin
+   * draws itself (KL2). With it the window completes no such open by choosing for the person (the connection the plugin was last used in, or its first, or Home): the plugin says what is shown, and the person chooses a connection there (`context.connections.open`). `home` keeps its meaning:
+   * the page a chosen connection opens. Absent: such an open is completed as it always was.
+   */
+  readonly landing?: string | undefined;
   /** What the plugin brings to the bottom panel: tools of its own, and the card of the sessions it opens in a tool of the host. Absent: nothing. */
   readonly panel?: PanelV1 | undefined;
   /** What the plugin brings to the command palette: providers of results and the commands their rows may name. Absent: nothing. */

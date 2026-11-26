@@ -23,12 +23,14 @@ describe('normalizePluginRoutes', () => {
     vi.spyOn(console, 'error').mockImplementation(vi.fn());
     const broken: RouteObject = failure === 'render'
       ? { path: '/broken', Component: CrashingPage }
-      : { path: '/broken', loader: () => {
+      : { path: '/broken', element: <div>Broken page</div>, loader: () => {
         throw new Error('route loader failed');
       } };
     const router = createMemoryRouter(normalizePluginRoutes([{
       path: '/plugin',
       Component: PluginLayout,
+      // As the host's pathless root does (pageRoutes.tsx, hydrateFallbackElement): this router opens on a route with a loader.
+      HydrateFallback: () => null,
       children: [broken, { path: '/healthy', element: <div>Healthy page</div> }],
     }], 'test-plugin'), { initialEntries: ['/plugin/broken'] });
     render(<RouterProvider router={router} />);
@@ -51,6 +53,7 @@ describe('normalizePluginRoutes', () => {
     const router = createMemoryRouter(normalizePluginRoutes([{
       path: '/plugin',
       Component: PluginLayout,
+      HydrateFallback: () => null,
       children: [{
         path: 'retry',
         loader: () => {

@@ -166,6 +166,8 @@ it('retires live polling and ignores its late response when the frontend becomes
   expect(fetchStatus).toHaveBeenCalledOnce();
   expect(screen.getByRole('button', { name: 'DEV · main · Static' })).toBeVisible();
   host.info.endpoints.vite = 'http://127.0.0.1:5173';
-  view.rerender(<InstanceIndicator />);
+  await act(async () => {
+    view.rerender(<InstanceIndicator />);
+  });
   expect(fetchStatus).toHaveBeenCalledTimes(2);
 });

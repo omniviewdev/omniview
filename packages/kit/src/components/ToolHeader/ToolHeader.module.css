@@ -1,0 +1,56 @@
+@layer ov.components {
+  /* The tool header of the mock (`.toolheader`, shell-widgets.css 92-93): 41 px high, a 12 px start and an 8 px end, the title and the actions 8 px apart. */
+  .root {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    height: 41px;
+    min-height: 41px;
+    padding-inline: var(--ov-spacing-12) var(--ov-spacing-8);
+    color: var(--ov-fg);
+  }
+
+  /* The title: 600 13/16, on one line, clipped. */
+  .title {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 600;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The actions keep their width at rest: they are painted only while the pointer or the focus is in the header, or while a menu they opened is
+     open. An action is never removed from the tab order or from the accessibility tree. */
+  .actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    margin-inline-start: auto;
+  }
+
+  .actions button {
+    opacity: 0;
+  }
+
+  .root:is(:hover, :focus-within) .actions button,
+  .actions button[aria-expanded='true'] {
+    opacity: 1;
+  }
+
+  /* No pointer to hover with: the actions are always shown. */
+  @media (hover: none) {
+    .actions button {
+      opacity: 1;
+    }
+  }
+}

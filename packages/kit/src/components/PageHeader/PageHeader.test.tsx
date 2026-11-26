@@ -362,6 +362,32 @@ describe('PageHeader, the commands (design 12 PH2)', () => {
       expect(screen.getAllByRole('separator')).toHaveLength(1);
     });
 
+    it('draws an entry\'s icon, and a disabled entry with a reason keeps its focus, shows the reason and never activates', () => {
+      const select = vi.fn();
+      render(header({ commands: { menu: [
+        { id: 'add', label: 'Add folder', icon: 'plus', onSelect: noop },
+        { id: 'order', label: 'Reorder sections', icon: 'layers', disabled: 'Create a folder first', onSelect: select },
+      ] } }));
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for orders-api' }));
+      expect(screen.getByRole('menuitem', { name: 'Add folder' }).querySelector('[data-ov-menu-icon]')).not.toBeNull();
+      const disabled = screen.getByRole('menuitem', { name: 'Reorder sections' });
+      expect(disabled.getAttribute('aria-disabled')).toBe('true');
+      expect(disabled.getAttribute('data-ov-tip')).toBe('Create a folder first');
+      fireEvent.click(disabled);
+      expect(select).not.toHaveBeenCalled();
+    });
+
+    it('keeps the icon and the reason of a secondary command that moved into the menu', () => {
+      const select = vi.fn();
+      render(header({ commands: { secondary: [command('a', 'Alpha'), command('b', 'Beta'), command('c', 'Gamma', { icon: 'copy', disabledReason: 'Nothing to copy', onSelect: select })] } }));
+      fireEvent.click(screen.getByRole('button', { name: 'More actions for orders-api' }));
+      const moved = screen.getByRole('menuitem', { name: 'Gamma' });
+      expect(moved.querySelector('[data-ov-menu-icon]')).not.toBeNull();
+      expect(moved.getAttribute('data-ov-tip')).toBe('Nothing to copy');
+      fireEvent.click(moved);
+      expect(select).not.toHaveBeenCalled();
+    });
+
     it('is not drawn when no item is left: a trigger that opens nothing is not a control', () => {
       render(header({ commands: { primary: command('scale', 'Scale'), menu: [{ id: 'scale', label: 'Scale', onSelect: noop }] } }));
       expect(screen.queryByRole('button', { name: /More actions/ })).toBeNull();
@@ -462,7 +488,7 @@ describe('the examples of PageHeader', () => {
 
   it('has an example for each configuration the design names', () => {
     expect(entries.map(([name]) => name).sort()).toEqual(
-      ['Detail', 'DetailLong', 'DisabledReason', 'List', 'ListWithCreate', 'Note', 'OperationFailed', 'OperationLive', 'OperationRest', 'OperationRunning', 'OperationSucceeded'].sort(),
+      ['Detail', 'DetailLong', 'DisabledReason', 'List', 'ListWithCreate', 'Note', 'OperationFailed', 'OperationLive', 'OperationRest', 'OperationRunning', 'OperationSucceeded', 'OverflowEntries'].sort(),
     );
   });
 

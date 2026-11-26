@@ -1,4 +1,4 @@
-import type { LinkActivation } from '@omniviewdev/kit';
+import type { LinkActivation, MenuItem } from '@omniviewdev/kit';
 import type { ReactElement } from 'react';
 import type { PanelStore, Route, Session, ToolId } from '../core/panel';
 import type { ToolBadges } from './badge';
@@ -28,7 +28,17 @@ export type PanelCard = {
 };
 
 /** How a session starts from its tool: the label of the `+` and of the empty tool's button, and the start. */
-export type PanelNewSession = { readonly label: string; readonly start: () => void };
+export type PanelNewSession = { readonly label: string; readonly start: () => void; readonly menu?: PanelNewSessionMenu | undefined };
+
+/**
+ * What a tool offers to start besides its default, as the items of the kit's menu (an arrow beside the `+` opens them): the name of the menu, the items now, and the way to hear that they changed. `getSnapshot` answers the same
+ * list until the items change, which is what a store read by the panel requires. A tool with no items has no arrow.
+ */
+export type PanelNewSessionMenu = {
+  readonly label: string;
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly getSnapshot: () => readonly MenuItem[];
+};
 
 /** What a tool with no session says, in its owner's words: what is missing, and how one arrives. */
 export type PanelEmpty = { readonly title: string; readonly hint: string };

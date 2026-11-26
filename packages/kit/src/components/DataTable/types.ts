@@ -96,4 +96,10 @@ export type DataTableProps<TRow> = {
   readonly rowsAreImmutable?: boolean | undefined;
   /** The height at which the region starts to scroll, in px. Without it the region fills what its parent gives it (a data view's body). */
   readonly maxHeight?: number | undefined;
+  /**
+   * The id `useMenu` returned for the owning view. Each row becomes a context trigger (secondary click, Shift+F10, the Menu key) keyed by
+   * `getRowKey(row)`: the table marks rows and registers nothing, so the view's one resolver builds the items when a menu opens and returns
+   * none for a key that no longer names a row.
+   */
+  readonly rowMenu?: string | undefined;
 } & DataAttributes;

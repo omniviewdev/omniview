@@ -224,12 +224,15 @@ describe('BottomDrawerProvider', () => {
     expect(mocks.showSnackbar).not.toHaveBeenCalled();
   });
 
-  it('createTabs([]) is a no-op and does not emit onTabCreated', () => {
+  it('createTabs([]) is a no-op and does not emit onTabCreated', async () => {
     render(
       <BottomDrawerProvider>
         <TestHarness />
       </BottomDrawerProvider>,
     );
+    await waitFor(() => {
+      expect(drawerWindow.restoreComplete).toBe(true);
+    });
 
     expect(screen.getByTestId('tab-count').textContent).toBe('0');
 
@@ -239,12 +242,15 @@ describe('BottomDrawerProvider', () => {
     expect(mocks.mockEmit).not.toHaveBeenCalled();
   });
 
-  it('createTabs([tab]) appends tabs and emits onTabCreated', () => {
+  it('createTabs([tab]) appends tabs and emits onTabCreated', async () => {
     render(
       <BottomDrawerProvider>
         <TestHarness />
       </BottomDrawerProvider>,
     );
+    await waitFor(() => {
+      expect(drawerWindow.restoreComplete).toBe(true);
+    });
 
     fireEvent.click(screen.getByTestId('create-one'));
 

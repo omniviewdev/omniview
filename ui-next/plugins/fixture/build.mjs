@@ -16,6 +16,8 @@
 //   fixture-c-old      a bundle of the old shell: it imports the old UI library, which the new shell does not serve, and must be refused unrun
 //   fixture-d-missing  a plugin whose `assets/` holds no bundle
 // A fifth plugin, `fixture-f-conn` (Seam Connections), is written only on request (`writeConnectionsPlugin`, see below): it has a process of its own, with a `resource` capability and two connections.
+// `writeConnectionsPlugin(root, binary, { landing: true })` writes it with a landing (KL2): its bundle is `src/entry-landing.tsx`, the same plugin and the same process with two custom pages that are read in no connection, so that a plugin that declares a landing
+// opens at it. It is a variant of the fifth plugin and not a plugin of its own, and the default is the plugin as it was, so that no scenario of the seam that opens `fixture-f-conn` sees a plugin whose open means anything else than what it meant.
 // A sixth, `fixture-g-ports` (Seam Ports), is written only on request too (`writePortsPlugin`): its process (`./ports-process`) has the `resource` capability, for the one connection the host needs to start a forward in, and the
 // `networker` capability, a real forwarder to a TCP server of its own (`./portforward`), and its page has seven buttons: three that ask the host to forward that port, to stop what was forwarded and to forward the same port again, and four that drive the host's rules of a forward (a thousand asked at once, the stop of all of them, an id of a mebibyte, and an ask made after the action has lapsed) (`src/ports.ts` says what it is).
 import { execFile } from 'node:child_process';
@@ -157,7 +159,7 @@ function virtualOldEntry() {
 }
 
 /** The entry of the bundle of each variant that has one of its own; every other variant builds `src/entry.tsx`. */
-const ENTRIES = { connections: 'src/entry-connections.tsx', ports: 'src/entry-ports.tsx' };
+const ENTRIES = { connections: 'src/entry-connections.tsx', landing: 'src/entry-landing.tsx', ports: 'src/entry-ports.tsx' };
 
 async function buildBundle(id, variant, directory, rail) {
   const old = variant === 'old';
@@ -236,10 +238,11 @@ export async function writePlugin(root, id, binary = undefined) {
 
 /**
  * Builds the connections plugin (`fixture-f-conn`) into `<root>/fixture-f-conn/`: its bundle, and with `binary` (the path `buildConnectionsProcess` answered) `bin/plugin` and the capabilities `resource`, `settings`
- * and `ui`. Without a binary it is a plugin with no process, which lists no connections. Its `connection-mode` file (next to `bin/`) is the check's to write.
+ * and `ui`. Without a binary it is a plugin with no process, which lists no connections. Its `connection-mode` file (next to `bin/`) is the check's to write. With `landing` its bundle declares a landing (KL2: `src/entry-landing.tsx`),
+ * the page it is opened at when no connection is named; without it the plugin is what it always was.
  */
-export async function writeConnectionsPlugin(root, binary = undefined) {
-  return install(root, CONNECTIONS_ID, CONNECTIONS, binary, ['resource']);
+export async function writeConnectionsPlugin(root, binary = undefined, { landing = false } = {}) {
+  return install(root, CONNECTIONS_ID, landing ? { ...CONNECTIONS, variant: 'landing' } : CONNECTIONS, binary, ['resource']);
 }
 
 /**

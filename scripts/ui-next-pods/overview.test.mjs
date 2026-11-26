@@ -3,7 +3,7 @@ import test from 'node:test';
 import { parseKubectlTable } from './oracle.mjs';
 import { CLUSTER_LABELS, compareOverview, expectedOverview, frameProblems, hasLoadingRow, isSettled, loadingFrames, OVERVIEW_TAB, readFigure, readOverview, sanitizedServer, shortVersion, WORKLOAD_KINDS } from './overview.mjs';
 
-// The Overview the Kubernetes plugin lands on (plugin PR #287), against what kubectl alone says (overview.mjs, with its controls): how a reading of the page's DOM becomes a model, how the expected model is made from
+// The Overview the Kubernetes plugin opens a connection on (plugin PR #287), against what kubectl alone says (overview.mjs, with its controls): how a reading of the page's DOM becomes a model, how the expected model is made from
 // kubectl's output, how the two are compared, and what the page may never say in a frame while it loads. Nothing here needs a cluster or a browser: the DOM readings below are what the page printed in a real
 // run (WebKit and Chromium, kind v1.35.0 holding docs/ui-next/slices/1a-pods-list/fixture.yaml), and kubectl's side is that cluster's own output.
 
@@ -72,7 +72,11 @@ const oracle = (over = {}) => expectedOverview({ pods: PODS, objects: OBJECTS, v
 
 // What the page printed once it had settled (the in-page reading of parity.mjs: the tabs of the strip, the headings, the sidebar's current entries, the items of the summary line, each section as its rows of text).
 const SETTLED = {
-  tabs: [{ title: 'Overview', name: 'Overview', selected: true }],
+  // The plugin's landing, where the press on the connection was made and which stays, and the Overview that press opened in a new tab (a tab's name is its title, then the connection's name).
+  tabs: [
+    { title: 'Kubernetes', name: 'Kubernetes', selected: false },
+    { title: 'Overview', name: 'Overview, kind-hm3-pin', selected: true },
+  ],
   headings: ['kind-hm3-pin'],
   current: ['Overview'],
   summary: ['Needs attention', '4 failing'],
@@ -451,12 +455,21 @@ test('control summary: Everything is running where kubectl lists failing objects
   assert.match(problemsOf(seeded((dom) => (dom.summary = ['Checking', 'Not checked in full yet: Pods']))).join('\n'), /^summary: the page says "Checking · Not checked in full yet: Pods", wanted "Needs attention · 4 failing"$/m);
 });
 
-test('control tab: no tab, another page\'s tab, two tabs and a tab that is not on screen are each reported by the tab rule', () => {
-  const wanted = 'wanted one tab, titled "Overview", on screen';
-  assert.deepEqual(problemsOf(seeded((dom) => (dom.tabs = []))), [`tab: the window's tabs are [], ${wanted}`]);
-  assert.deepEqual(problemsOf(seeded((dom) => (dom.tabs = [{ title: 'Pods', name: 'Pods', selected: true }]))), [`tab: the window's tabs are ["Pods" on screen], ${wanted}`]);
-  assert.deepEqual(problemsOf(seeded((dom) => dom.tabs.push({ title: 'Pods', name: 'Pods', selected: false }))), [`tab: the window's tabs are ["Overview" on screen, "Pods"], ${wanted}`]);
-  assert.deepEqual(problemsOf(seeded((dom) => (dom.tabs[0].selected = false))), [`tab: the window's tabs are ["Overview"], ${wanted}`]);
+test('control tab: no tab, the landing alone, the Overview alone, another page\'s tab, a third tab, the tabs the other way round and an Overview that is not on screen are each reported by the tab rule', () => {
+  const landing = { title: 'Kubernetes', name: 'Kubernetes', selected: false };
+  const overview = { title: 'Overview', name: 'Overview, kind-hm3-pin', selected: true };
+  const pods = { title: 'Pods', name: 'Pods, kind-hm3-pin', selected: false };
+  const wanted = 'wanted two tabs: the plugin\'s landing, titled "Kubernetes", then one titled "Overview", on screen';
+  const tabsProblems = (...tabs) => problemsOf(seeded((dom) => (dom.tabs = tabs)));
+  assert.deepEqual(tabsProblems(), [`tab: the window's tabs are [], ${wanted}`]);
+  // The press on the connection opened nothing: the landing is the one tab. Or it opened the Overview in the landing's own tab, and the landing is gone.
+  assert.deepEqual(tabsProblems({ ...landing, selected: true }), [`tab: the window's tabs are ["Kubernetes" on screen], ${wanted}`]);
+  assert.deepEqual(tabsProblems(overview), [`tab: the window's tabs are ["Overview" on screen], ${wanted}`]);
+  assert.deepEqual(tabsProblems(landing, { ...pods, selected: true }), [`tab: the window's tabs are ["Kubernetes", "Pods" on screen], ${wanted}`]);
+  assert.deepEqual(tabsProblems(pods, overview), [`tab: the window's tabs are ["Pods", "Overview" on screen], ${wanted}`]);
+  assert.deepEqual(tabsProblems(landing, overview, pods), [`tab: the window's tabs are ["Kubernetes", "Overview" on screen, "Pods"], ${wanted}`]);
+  assert.deepEqual(tabsProblems(overview, landing), [`tab: the window's tabs are ["Overview" on screen, "Kubernetes"], ${wanted}`]);
+  assert.deepEqual(tabsProblems({ ...landing, selected: true }, { ...overview, selected: false }), [`tab: the window's tabs are ["Kubernetes" on screen, "Overview"], ${wanted}`]);
 });
 
 test('control heading: the connection\'s ID, another name, no heading and two headings are each reported by the heading rule, and the ID is named as the ID', () => {
@@ -477,11 +490,14 @@ test('control sidebar: another entry current, none, and two are each reported by
   assert.deepEqual(problemsOf(seeded((dom) => (dom.current = ['Overview', 'Nodes']))), ['sidebar: the current entries are ["Overview","Nodes"], wanted only "Overview"']);
 });
 
-test('control: the page of the plugin before the Overview, a list of Pods that is the landing, is reported by every rule that can see it, and passes none', () => {
-  const landing = { tabs: [{ title: 'Pods', name: 'Pods', selected: true }], headings: [], current: ['Pods'], summary: null, sections: [] };
-  const problems = problemsOf(landing);
-  for (const rule of ['tab', 'heading', 'sidebar', 'sections', 'summary']) {
-    assert.match(problems.join('\n'), new RegExp(`^${rule}: `, 'm'), rule);
+test('control: the page of the plugin before the Overview, a list of Pods, and the plugin\'s landing where the connection was never opened are reported by every rule that can see them, and pass none', () => {
+  const pods = { tabs: [{ title: 'Pods', name: 'Pods', selected: true }], headings: [], current: ['Pods'], summary: null, sections: [] };
+  const landing = { tabs: [{ title: 'Kubernetes', name: 'Kubernetes', selected: true }], headings: ['Kubernetes'], current: [], summary: null, sections: [] };
+  for (const dom of [pods, landing]) {
+    const problems = problemsOf(dom);
+    for (const rule of ['tab', 'heading', 'sidebar', 'sections', 'summary']) {
+      assert.match(problems.join('\n'), new RegExp(`^${rule}: `, 'm'), rule);
+    }
   }
 });
 

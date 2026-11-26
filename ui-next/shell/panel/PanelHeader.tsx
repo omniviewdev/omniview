@@ -34,7 +34,7 @@ export function PanelHeader({ prefix, controls, platform }: PanelHeaderProps) {
           <span className={styles.separator} aria-hidden="true" data-shell-part="panelSeparator" />
           <div className={styles.sessions} data-shell-part="panelSessions">
             <SessionTabs tool={tool} prefix={prefix} controls={controls} />
-            {add === undefined ? null : <NewSession label={add.label} onStart={add.start} />}
+            {add === undefined ? null : <NewSession label={add.label} onStart={add.start} {...(add.menu === undefined ? {} : { menu: add.menu })} />}
           </div>
         </>
       ) : null}

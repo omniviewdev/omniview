@@ -470,7 +470,9 @@ it.each(['ctrlKey', 'metaKey'] as const)('toggles with exact %s+K and restores f
 });
 
 it('leaves modifier variants, held keys and consumed shortcuts to their owner', async () => {
-  renderSearchHeader();
+  await act(async () => {
+    renderSearchHeader();
+  });
   for (const detail of [
     { ctrlKey: true, shiftKey: true },
     { metaKey: true, shiftKey: true },
@@ -495,7 +497,9 @@ it('leaves modifier variants, held keys and consumed shortcuts to their owner', 
 });
 
 it.each(['dialog', 'alertdialog', 'menu', 'listbox'])('does not steal focus from another %s', async (role) => {
-  renderSearchHeader();
+  await act(async () => {
+    renderSearchHeader();
+  });
   const owner = document.createElement('div');
   owner.setAttribute('role', role);
   const input = document.createElement('input');
@@ -1033,7 +1037,9 @@ it('uses connection-depth adapter targets and isolates throwing adapters', async
   native.listAllConnections.mockResolvedValue({ [pluginId]: [{ id: 'cluster', name: 'Cluster' }] });
   native.checkConnection.mockResolvedValue({ status: ConnectionStatusCode.ConnectionStatusDisconnected, details: '', error: '' });
   try {
-    renderSearchHeader(true, service);
+    await act(async () => {
+      renderSearchHeader(true, service);
+    });
     const provider = EXTENSION_REGISTRY.getExtensionPoint('omniview/global-search')!.listAll()
       .find((entry) => entry.id === 'core/global-search/connections')!.value as RuntimeCore.SearchProviderV1;
     const request = { query: '', scopes: [], signal: new AbortController().signal, limit: 20, generation: 1 };

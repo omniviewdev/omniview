@@ -105,11 +105,14 @@ describe('guardCommands', () => {
   });
 
   it('does not let a reporter that throws take the click down: a window must not lose its page to its own error report', () => {
+    const report = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const guarded = guardCommands({ primary: { id: 'a', label: 'Scale', onSelect: throws } }, () => {
       throw new Error('the report failed');
     });
     expect(() => {
       guarded?.primary?.onSelect();
     }).not.toThrow();
+    expect(report).toHaveBeenCalledExactlyOnceWith('[page] the report of a failed command failed', expect.any(Error));
+    report.mockRestore();
   });
 });

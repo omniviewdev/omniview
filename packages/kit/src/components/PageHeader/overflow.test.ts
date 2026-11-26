@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { overflowItems, type MenuEntry } from './overflow';
+import { overflowItems, type OverflowEntry } from './overflow';
 
-const entry = (id: string, rest: Partial<MenuEntry> = {}): MenuEntry => ({ id, label: id.toUpperCase(), onSelect: () => undefined, ...rest });
+const entry = (id: string, rest: Partial<OverflowEntry> = {}): OverflowEntry => ({ id, label: id.toUpperCase(), onSelect: () => undefined, ...rest });
 const ids = (items: ReadonlyArray<{ readonly id: string }>) => items.map((item) => item.id);
 const ignore = () => undefined;
 
@@ -53,6 +53,11 @@ describe('overflowItems', () => {
     }
 
     expect(selected).toBe('a');
+  });
+
+  it('passes the icon and the reason a disabled entry gives through to the menu item', () => {
+    const [item] = overflowItems([entry('a', { icon: 'plus', disabled: 'Create a folder first' })], new Set(), ignore);
+    expect(item).toMatchObject({ kind: 'action', icon: 'plus', disabled: 'Create a folder first' });
   });
 
   it('is nothing for nothing: the menu then has no trigger', () => {

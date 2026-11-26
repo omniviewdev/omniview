@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Scratch: (1) the landing's assertion tripped on the REAL page by three faults planted in a COPY of the check (rule 28 on the real surface), (2) which requests the page's own cancelled queries are, with the pin.
+set -uo pipefail
+ROOT="$HOME/Repos/omniviewdev/worktrees/landing-pin"
+SCRATCH=/tmp/landing-pin
+export OMNIVIEW_E2E_WORK="$SCRATCH/work-misc"
+KC="$OMNIVIEW_E2E_WORK/kubeconfig"
+NAME=landing-pin-misc
+IMAGE="$(sed -n 's/^  KIND_NODE_IMAGE: //p' "$ROOT/.github/workflows/ui-next-pods.yml")"
+export PATH="$SCRATCH/bin:$PATH"
+cd "$ROOT"
+cleanup() { for h in m1 m2; do scripts/ui-next-pods/host.sh stop "$h" 2>/dev/null || true; done; unset KUBECONFIG; kind delete cluster --name "$NAME" --kubeconfig "$KC" 2>&1 | tail -1; rm -rf "$SCRATCH/mut-real"; }
+trap cleanup EXIT
+rm -rf "$OMNIVIEW_E2E_WORK" "$SCRATCH/mut-real"; mkdir -p "$OMNIVIEW_E2E_WORK/plugin-new"
+tar -xzf "$SCRATCH/omniview-plugin-kubernetes/dist/kubernetes-darwin_arm64.tar.gz" -C "$OMNIVIEW_E2E_WORK/plugin-new"
+unset KUBECONFIG
+kind create cluster --name "$NAME" --kubeconfig "$KC" --image "$IMAGE" --wait 180s 2>&1 | tail -1
+( export KUBECONFIG="$KC"
+  kubectl apply -f docs/ui-next/slices/1a-pods-list/fixture.yaml >/dev/null
+  kubectl -n checkout rollout status deploy/cart-api deploy/payment-gateway --timeout=240s >/dev/null
+  kubectl -n checkout rollout status sts/cart-cache --timeout=240s >/dev/null
+  kubectl -n monitoring rollout status ds/node-agent deploy/alertmanager --timeout=240s >/dev/null
+  kubectl -n batch wait --for=condition=complete job/nightly-report --timeout=240s >/dev/null )
+scripts/ui-next-pods/host.sh start m1 24431 "$KC" "$OMNIVIEW_E2E_WORK/plugin-new" | tail -1
+
+mutate() { # mutate <id> <file> <find> <replace>
+  local copy="$SCRATCH/mut-real/$1"
+  mkdir -p "$copy/scripts"; cp -R "$ROOT/scripts/ui-next-pods" "$copy/scripts/ui-next-pods"; ln -s "$ROOT/node_modules" "$copy/node_modules"
+  node -e "const fs=require('fs');const f=process.argv[1];const t=fs.readFileSync(f,'utf8');if(!t.includes(process.argv[2])){console.error('NOT FOUND: '+process.argv[2]);process.exit(3)}fs.writeFileSync(f,t.replace(process.argv[2],process.argv[3]))" "$copy/scripts/ui-next-pods/$2" "$3" "$4" || return 3
+  echo "--- mutant $1 ($2)"
+  env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL=http://127.0.0.1:24431 OMNIVIEW_CHECK_KUBECONFIG="$KC" \
+    node --test --test-reporter=spec --test-name-pattern="landing opens the connection" "$copy/scripts/ui-next-pods/pods-cluster.check.mjs" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "^✔|^✖|Error \[|LANDING_MISMATCH|code:" | cut -c1-420 | head -6
+}
+echo "=== the unmutated check on the same host (control for the mutants)"
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" OMNIVIEW_CHECK_BASE_URL=http://127.0.0.1:24431 OMNIVIEW_CHECK_KUBECONFIG="$KC" node --test --test-reporter=spec --test-name-pattern="landing opens the connection" scripts/ui-next-pods/pods-cluster.check.mjs 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "^✔|^✖" | cut -c1-200
+echo "=== the landing's assertion on the real page, one planted fault at a time"
+mutate version-wrong parity.mjs "version: shortVersion(facts.version)" "version: 'v0.0.0'"
+mutate state-wrong landing.mjs "export const CONNECTED = 'Connected';" "export const CONNECTED = 'Online';"
+mutate not-listed parity.mjs "await openFromLanding(page, identity.context);" 'await openFromLanding(page, `${identity.context}-x`);'
+echo "=== the tab rule on the real page: the landing's tab named for another title"
+mutate tab-wrong landing.mjs "export const LANDING_TAB = 'Kubernetes';" "export const LANDING_TAB = 'Kubernetez';"
+
+echo "=== which requests are the page's own cancelled queries (the pin, a fresh host after the group is registered)"
+( export KUBECONFIG="$KC"; kubectl apply -f scripts/ui-next-pods/unavailable-group.yaml >/dev/null; kubectl wait --for=condition=Available=false apiservice/v1beta1.inv4-unavailable.example.com --timeout=120s >/dev/null )
+scripts/ui-next-pods/host.sh start m2 24432 "$KC" "$OMNIVIEW_E2E_WORK/plugin-new" | tail -1
+cat > "$SCRATCH/cancelled.mjs" <<'EOF'
+import { chromium } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin/node_modules/playwright/index.mjs';
+import { choosePods, openConnection, openWindow } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin/scripts/ui-next-pods/parity.mjs';
+const browser = await chromium.launch();
+const page = await openWindow(browser, process.env.BASE);
+const failures = [];
+const stamps = [];
+const t0 = Date.now();
+page.on('response', (response) => {
+  if (response.status() < 400) return;
+  const request = response.request();
+  const entry = { at: Date.now() - t0, status: response.status(), asked: String(request.postData() ?? '').slice(0, 200), body: undefined };
+  failures.push(entry);
+  response.text().then((text) => { entry.body = text.slice(0, 240); });
+});
+await openConnection(page, process.env.KC);
+stamps.push(['landing connection pressed', Date.now() - t0]);
+await choosePods(page);
+stamps.push(['Pods chosen', Date.now() - t0]);
+await page.waitForTimeout(4000);
+console.log(JSON.stringify({ stamps, failures }, null, 1));
+await browser.close();
+EOF
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="${TMPDIR:-/tmp}" BASE=http://127.0.0.1:24432 KC="$KC" node "$SCRATCH/cancelled.mjs" 2>&1 | cut -c1-600

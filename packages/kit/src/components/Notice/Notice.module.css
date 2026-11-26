@@ -1,0 +1,71 @@
+@layer ov.components {
+  /* An inline notice (the mock's `.notice`): 8/12 inset, a 1 px tone border, the control radius, the tone fill, a 16 px glyph, 13/16 text
+     and the commands at the end, 8 px apart. The paint is two private properties that the tone sets. */
+  .root {
+    --_border: var(--ov-info-border);
+    --_bg: var(--ov-info-bg);
+
+    display: flex;
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    margin: 0;
+    padding: var(--ov-spacing-8) var(--ov-spacing-12);
+    border: 1px solid var(--_border);
+    border-radius: var(--ov-radius-control);
+    background: var(--_bg);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+  }
+
+  .root[data-ov-tone='success'] {
+    --_border: var(--ov-success-border);
+    --_bg: var(--ov-success-bg);
+  }
+
+  .root[data-ov-tone='warning'] {
+    --_border: var(--ov-warning-border);
+    --_bg: var(--ov-warning-bg);
+  }
+
+  .root[data-ov-tone='error'] {
+    --_border: var(--ov-error-border);
+    --_bg: var(--ov-error-bg);
+  }
+
+  .glyph {
+    display: inline-flex;
+    flex: 0 0 16px;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+  }
+
+  .body {
+    flex: 1 1 200px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .title {
+    font-weight: 600;
+  }
+
+  .actions {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    margin-inline-start: auto;
+  }
+}

@@ -329,6 +329,7 @@ describe('the lane', () => {
   });
 
   it('says that the emulator could not load, and what the person can do: the terminal view is the one thing that loads late', async () => {
+    const report = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const store = createPanelStore({ now: () => 1, newId: () => 's1' });
     store.registerTool(TERMINAL_TOOL);
     const sessions = createTerminalSessions(store);
@@ -340,6 +341,8 @@ describe('the lane', () => {
     loader.fail(new Error('Failed to fetch'));
     await flush();
     expect(page.getByRole('status')).toHaveTextContent('The terminal view could not be loaded. Failed to fetch.');
+    expect(report).toHaveBeenCalledExactlyOnceWith('[terminal] the terminal view could not be loaded', expect.any(Error));
+    report.mockRestore();
   });
 });
 

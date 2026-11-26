@@ -1,0 +1,173 @@
+@layer ov.components {
+  /* The one resource card (the mock's `.resource-card`, design 14 K1): a 12 px inset inside a 1 px edge with a 4 px radius, and up to three bands 8 px
+     apart: the identity, the facts, the commands. The edge is one private property that a tone sets, so a state never repeats a colour; only the edge
+     changes with the tone, the footer's rule stays subtle.
+
+     The card is two boxes. The root draws the edge and nothing contains it; the body inside the edge holds the inset, the bands and the containment. A
+     contained box (layout and paint, and so every `content-visibility: auto` box) is painted from a rounded origin and keeps its fractional width, so in
+     Chromium, in a grid of fractional columns, its right edge falls up to a pixel beyond where it was laid out; an ancestor that clips at the grid's edge
+     (the scrolling body of a data view) then drops the last column's right edge. With the containment on the body, that overshoot is inside the card, over
+     the inset, and the edge is drawn where it was laid out. The body's clip is the box inside the edge, 12 px from the controls, so their focus rings
+     (2 px, offset 2 px) are whole.
+
+     The card is a column that fills the box it is given (a row of a grid gives every card the height of the tallest). Room to spare goes to the identity,
+     as it does in the mock, where the card is a subgrid and its identity band is as tall as the tallest of the row: the facts and the commands sit on the
+     card's bottom, so they line up across the row whatever the lines over them (a title with and without a muted line under it), and the title is centred
+     in the room it has. Layout containment makes a subgrid an ordinary grid, so this column stands in for it. A card as tall as its contents has no room to
+     spare and is the plain column. Nothing in the body changes the page around it. */
+  .root {
+    --_edge: var(--ov-border-subtle);
+
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    border: 1px solid var(--_edge);
+    border-radius: var(--ov-radius-control);
+    background-color: transparent;
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-feature-settings: var(--ov-font-features);
+    font-size: var(--ov-fs-13);
+    font-synthesis: none;
+    font-weight: 400;
+    letter-spacing: normal;
+    line-height: var(--ov-lh-16);
+    text-align: start;
+    white-space: normal;
+  }
+
+  /* The inset and the bands, 8 px apart. The browser skips the body while the card is far off screen (`content-visibility: auto`), and then the card is as
+     high as the last body it drew, and as high as 125 px of content before any was: the height measured of a body of the full anatomy (the identity and its
+     muted line, one row of facts, a standard command), which with the inset and the edge is the 151 px of the mock's card. */
+  .body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--ov-spacing-8);
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--ov-spacing-12);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 125px;
+  }
+
+  .root[data-ov-tone='warning'] {
+    --_edge: var(--ov-warning-border);
+  }
+
+  .root[data-ov-tone='error'] {
+    --_edge: var(--ov-error-border);
+  }
+
+  /* The identity is three columns, a lead, the title and a status, with the muted line under the title: a column that has nothing in it is 0 wide,
+     because the gaps are the margins of the things that are there. With facts or commands under it, it takes the room to spare. */
+  .identity {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--ov-spacing-4) 0;
+    min-width: 0;
+  }
+
+  .identity:not(:last-child) {
+    flex-grow: 1;
+  }
+
+  .lead {
+    display: flex;
+    grid-column: 1;
+    grid-row: 1;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-inline-end: var(--ov-spacing-8);
+  }
+
+  /* The title: 13/16 semibold. Its link is the title's own colour, underlined on hover (the mock's `.resource-card__link`); it does not clip, so its
+     ring is not cut. The text inside it does. */
+  .name {
+    display: flex;
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    font-weight: 600;
+  }
+
+  .name > [data-ov-part='link'] {
+    color: var(--ov-fg);
+  }
+
+  .clip {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status {
+    display: flex;
+    grid-column: 3;
+    grid-row: 1;
+    justify-content: flex-end;
+    min-width: 0;
+    margin-inline-start: var(--ov-spacing-8);
+  }
+
+  .meta {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Up to three facts, equal columns 12 px apart: a muted 12/16 label over a 13/16 value in tabular figures, each on one line. */
+  .metrics {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: var(--ov-spacing-12);
+    min-width: 0;
+    margin: 0;
+  }
+
+  .metric {
+    min-width: 0;
+  }
+
+  .label {
+    color: var(--ov-fg-muted);
+    font-size: var(--ov-fs-12);
+  }
+
+  .value {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .label,
+  .value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The commands: a rule, 8 px of air under it, the controls 8 px apart. */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ov-spacing-8);
+    min-width: 0;
+    padding-block-start: var(--ov-spacing-8);
+    border-top: 1px solid var(--ov-border-subtle);
+  }
+}

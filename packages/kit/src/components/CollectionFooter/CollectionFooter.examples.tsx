@@ -24,3 +24,21 @@ export const Selected = () => <CollectionFooter shown={89} total={{ kind: 'exact
 export const HiddenColumns = () => (
   <CollectionFooter shown={89} total={{ kind: 'exact', value: 89 }} noun="item" plural="items" hiddenColumns={{ names: ['Node', 'Address'] }} />
 );
+
+/** The data is being read again: one muted item at the end of the lane. It is not announced here: the page's operation slot says it once. */
+export const Refreshing = () => <CollectionFooter shown={89} total={{ kind: 'exact', value: 89 }} noun="item" plural="items" status={{ text: 'Refreshing…', busy: true }} />;
+
+/** The read is done: the same item says so, for a while, and then the caller takes it away. */
+export const Updated = () => <CollectionFooter shown={89} total={{ kind: 'exact', value: 89 }} noun="item" plural="items" status={{ text: 'Updated just now' }} />;
+
+/** The two ambient items share the trailing cluster, 12 px apart: the note about the width first, the state of the data last. */
+export const StatusWithHiddenColumns = () => (
+  <CollectionFooter
+    shown={89}
+    total={{ kind: 'exact', value: 89 }}
+    noun="item"
+    plural="items"
+    hiddenColumns={{ names: ['Node', 'Address'] }}
+    status={{ text: 'Refreshing…', busy: true }}
+  />
+);

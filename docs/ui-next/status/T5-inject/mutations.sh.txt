@@ -13,7 +13,7 @@
 export GOWORK=off GOTOOLCHAIN=local
 WT=$(git rev-parse --show-toplevel) || exit 2
 PKG=./backend/pkg/terminal/
-RUN='^(TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand|TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks|TestTheUsersStartupFilesAreByteIdenticalAfterASession|TestAZDOTDIRTheUserSetIsHonouredAndRestored|TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt|TestTheNonceIsInNoLogNoErrorAndNoAnswerThatTheHostGives|TestANestedLoginShellDoesNotInheritTheIntegration|TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment|TestNoDescriptorOfTheChannelReachesAProgramOfTheUser|TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem|TestAFishUserWhoBoundEnterKeepsTheirBindingAndTheCommandHasNoTrustedLine|TestAFishAbbreviationIsRecordedExpandedAsWhatRan|TestTheFishEscapeOfA4KBLineWithControlBytesIsCorrectAndCheap|TestZshXtraceNeverPrintsTheNonce|TestTheFactSaysWhyTheIntegrationIsOffOrSkipped|TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration|TestTheSettingIsAskedForEveryTerminal|TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser|TestTheIntegrationDirectoryIsRemovedOnEveryEnd|TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt|TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore|TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain|TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor|TestTheFactIsOnOnlyAfterTheShellSaidItIsReady|TestARealShellWhoseScriptNeverRunsIsUnconfirmedAndNotOn|TestASettingThatCannotBeReadFailsClosed)$'
+RUN='^(TestARealBashTheHostSkipsIsNotRunForTheTestsThatNeedTheIntegrationOn|TestTheSinkThatAnswersQueriesAnswersOneThatAReadCutInTwo|TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand|TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks|TestTheUsersStartupFilesAreByteIdenticalAfterASession|TestAZDOTDIRTheUserSetIsHonouredAndRestored|TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt|TestTheNonceIsInNoLogNoErrorAndNoAnswerThatTheHostGives|TestANestedLoginShellDoesNotInheritTheIntegration|TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment|TestNoDescriptorOfTheChannelReachesAProgramOfTheUser|TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem|TestTheFishVersionGateReadsTheMajorVersion|TestAFishUserWhoBoundEnterKeepsTheirBindingAndTheCommandHasNoTrustedLine|TestAFishAbbreviationIsRecordedExpandedAsWhatRan|TestTheFishEscapeOfA4KBLineWithControlBytesIsCorrectAndCheap|TestZshXtraceNeverPrintsTheNonce|TestTheFactSaysWhyTheIntegrationIsOffOrSkipped|TestWithTheSettingOffARealShellStartsWithNothingOfTheIntegration|TestTheSettingIsAskedForEveryTerminal|TestTheIntegrationDirectoryIsOwnerOnlyAndOwnedByTheUser|TestTheIntegrationDirectoryIsRemovedOnEveryEnd|TestAShellThatDiesAtOnceWithTheIntegrationIsStartedOnceMoreWithoutIt|TestAShellThatAlwaysDiesIsStartedTwiceAndNoMore|TestAShellThatDiesAtOnceWithoutTheIntegrationIsNotStartedAgain|TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor|TestTheFactIsOnOnlyAfterTheShellSaidItIsReady|TestARealShellWhoseScriptNeverRunsIsUnconfirmedAndNotOn|TestASettingThatCannotBeReadFailsClosed|TestAFakeShellLogThatHasNoLineYetHasNoStart|TestBashIsStartedWithItsOwnRcfileAndWithoutTheLoginFlag|TestBashBefore4_1IsSkippedAndStartedAsBefore|TestABashWhoseVersionCannotBeToldIsSkippedAndNotGuessed|TestTheRealBashProbeSaysItsVersion|TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne|TestTheBashrcThatTheLoginFileSourcesRunsOnce|TestAUserPromptCommandStillSeesTheStatusOfTheCommand|TestAnArrayPromptCommandIsKeptAndSeesTheStatus|TestAUsersDebugTrapAndPromptCommandKeepWorkingNextToTheScript|TestAHistoryThatDoesNotHaveTheLineGivesNoLineAndNeverAWrongOne|TestTheScriptNeverClobbersBASHREMATCHOrTheStatus|TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight|TestBashClosesTheChannelBeforeAProgramOfTheUserRuns|TestABashLineWithControlBytesAndSeparatorsIsEscapedAndRecordedAsTyped|TestPwshIsStartedWithNoExitAndTheScriptAsItsCommand|TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet|TestAHangupDuringThePromptCommandsStillHangsUpTheJobs|TestAnEmptyLineAndACtrlCAtThePromptMakeNoCommand|TestAUserWithErrexitKeepsTheirShellWhenAStatusIsNotZero|TestAUserWithNounsetKeepsTheMarksAndTheShell|TestTheHooksLeaveNoHUPHandlerAtThePromptAndNeverReplaceTheUsers|TestPwshAnEmptyLineRunsNoCommand|TestPwshTheUsersPromptThatRunsANativeCommandDoesNotChangeLASTEXITCODE|TestTheScriptDefinesNoTrapFunctionAndARETURNTrapFiresOnce|TestAHUPHandlerSetByBuiltinTrapOrByAPromptCommandIsKept|TestACommentLineIsNotACommand|TestAUsersDebugTrapThatSkipsACommandWithExtdebugStillSkipsIt|TestPwshTheUsersPromptSeesTheStatusOfTheLastCommand|TestAUsersDebugTrapThatRefusesOurHooksDoesNotTakeThemAway|TestACommandThatTheUsersDebugTrapSkipsIsNotRecordedAsRun|TestTheDebugTrapOfASubshellNeverWritesIntoTheUsersData|TestAUsersFunctionNamedLikeOursIsStillTheirs|TestTheMarksNeverLandInAFileThatTheUserRedirectsTo|TestNoDescriptorOfTheHooksIsInheritedByAChild|TestTheMarksOfZshAndFishAndPwshNeverLandInAFileThatTheUserRedirectsTo|TestPwshTheTranscriptHasNoNonceAndNoMarkWithADirectory|TestPwshAUsersWriteErrorFunctionDoesNotMakeAFailureLookLikeSuccess)$'
 M=$(mktemp -d "${TMPDIR:-/tmp}/t5inject-mut.XXXXXX") || { echo "no scratch directory" >&2; exit 2; }
 trap 'rm -rf -- "$M"' EXIT
 cd "$WT" || exit 2
@@ -85,8 +85,8 @@ run dir-world-readable "$I" \
 # leftover ZDOTDIR at exit, a race; it is the control's optional test.)
 run zdotdir-not-given-back "$Z/zlogin" \
   's|^  if (( __omniview_zd_set )); then ZDOTDIR=$__omniview_zd_val; else unset ZDOTDIR; fi|  :|' \
-  'TestANestedLoginShellDoesNotInheritTheIntegration TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor TestZshXtraceNeverPrintsTheNonce' \
-  'TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheUsersStartupFilesAreByteIdenticalAfterASession'
+  'TestANestedLoginShellDoesNotInheritTheIntegration TestAZDOTDIRTheUserSetIsHonouredAndRestored TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestZshXtraceNeverPrintsTheNonce' \
+  'TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
 
 run channel-left-open "$Z/zshenv" \
   's|^  exec 3>\&-$|  :|' \
@@ -117,5 +117,135 @@ run zsh-xtrace-prints-the-nonce "$Z/zlogin" \
 run unreadable-setting-turns-it-on "$M2" \
   's|kind, fact = kindNone, skipped(SkipSettingUnreadable)|_ = kind|' \
   'TestASettingThatCannotBeReadFailsClosed'
+
+# ---- bash and pwsh (step 3). pwsh and fish must be on PATH for their subtests to run; bash needs 5.1 for the array test.
+B=backend/pkg/terminal/integration_scripts/bash/bashrc
+P=backend/pkg/terminal/integration_scripts/pwsh/integration.ps1
+IB=backend/pkg/terminal/integration_bash.go
+
+run bash-login-flag-kept "$I" \
+  's|"--rcfile", script, "-i"}|"--rcfile", script, "-i", "-l"}|' \
+  'TestABashLineWithControlBytesAndSeparatorsIsEscapedAndRecordedAsTyped TestAHangupDuringThePromptCommandsStillHangsUpTheJobs TestAHistoryThatDoesNotHaveTheLineGivesNoLineAndNeverAWrongOne TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem TestANestedLoginShellDoesNotInheritTheIntegration TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand TestAUserPromptCommandStillSeesTheStatusOfTheCommand TestAUserWithErrexitKeepsTheirShellWhenAStatusIsNotZero TestAUserWithNounsetKeepsTheMarksAndTheShell TestAUsersDebugTrapAndPromptCommandKeepWorkingNextToTheScript TestAnArrayPromptCommandIsKeptAndSeesTheStatus TestAnEmptyLineAndACtrlCAtThePromptMakeNoCommand TestBashClosesTheChannelBeforeAProgramOfTheUserRuns TestBashIsStartedWithItsOwnRcfileAndWithoutTheLoginFlag TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight TestTheBashrcThatTheLoginFileSourcesRunsOnce TestTheHooksLeaveNoHUPHandlerAtThePromptAndNeverReplaceTheUsers TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheIntegrationPrintsNothingOnTheTerminalOutsideItsMarks TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTheScriptNeverClobbersBASHREMATCHOrTheStatus TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
+
+run bash-every-login-file-runs "$B" \
+  's|^    break$|    :|' \
+  'TestTheLoginEmulationRunsTheFirstLoginFileOnceAndNoOtherOne'
+
+run bash-nonce-exported "$B" \
+  's|^unset __omniview_unused$|unset __omniview_unused; export __omniview_nonce|' \
+  'TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt'
+
+run bash-history-line-always "$B" \
+  's|if \[ "${HISTCMD:-0}" -ge "${__omniview_histcmd:-1}" \] 2>/dev/null; then|if true; then|' \
+  'TestAHistoryThatDoesNotHaveTheLineGivesNoLineAndNeverAWrongOne'
+
+run bash-status-not-handed-on "$B" \
+  's|return "$__omniview_status"|return 0|' \
+  'TestAUserPromptCommandStillSeesTheStatusOfTheCommand'
+
+run bash-rematch-clobbered "$B" \
+  's|^    __omniview_histcmd=${HISTCMD:-0}$|    __omniview_histcmd=${HISTCMD:-0}; [[ x =~ (x) ]]|' \
+  'TestTheScriptNeverClobbersBASHREMATCHOrTheStatus'
+
+run bash-xtrace-stays-on "$B" \
+  's|{ set +x; } 2>/dev/null|:|' \
+  'TestBashXtraceNeverPrintsTheNonceAndTheStatusesAreRight'
+
+run bash-hup-handler-never-set "$B" \
+  "s|      builtin trap -- '__omniview_hup' HUP|      :|" \
+  'TestAHangupDuringThePromptCommandsStillHangsUpTheJobs'
+
+run bash-3-2-not-skipped "$IB" \
+  's#case major < 4 || (major == 4 \&\& minor < 1):#case major < 0 \&\& minor < 0:#' \
+  'TestBashBefore4_1IsSkippedAndStartedAsBefore'
+
+run pwsh-ready-wait-too-short "$I" \
+  's|pwshReadyWait = 4 \* time.Second|pwshReadyWait = 500 * time.Millisecond|' \
+  'TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem TestANestedLoginShellDoesNotInheritTheIntegration TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand TestPwshAnEmptyLineRunsNoCommand TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet TestPwshTheUsersPromptThatRunsANativeCommandDoesNotChangeLASTEXITCODE TestTheIntegrationKeepsTheUsersPathOrderOnTheLaunchEnvironment TestTheNonceIsInNoVariableOfTheShellAndNoChildGetsIt TestTheUsersStartupFilesAreByteIdenticalAfterASession TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
+
+run pwsh-native-code-lost "$P" \
+  's|-and $lastExit -ne 0) { $status = $lastExit }|-and $false) { $status = $lastExit }|' \
+  'TestPwshStatusIsExitCodeOfANativeCommandAndOneForAFailedCmdlet'
+
+run pwsh-line-not-escaped "$P" \
+  "s|\[regex\]::Replace(\$Text, '\[\\\\x00-\\\\x1f\\\\x7f\\\\\\\\;\]'|[regex]::Replace(\$Text, '[\\\\x00-\\\\x08]'|" \
+  'TestAMultiLineCommandIsRecordedWithItsNewlinesAndNotWithoutThem TestAShellStartedWithTheIntegrationPrintsTheMarksWithTheSessionNonceAroundACommand'
+
+run bash-empty-line-recorded "$B" \
+  's#if \[ "$BASH_COMMAND" = __omniview_precmd_first \] \&\& ! \[ "${HISTCMD:-0}" -gt "${__omniview_histcmd:-0}" \] 2>/dev/null; then#if false; then#' \
+  'TestAnEmptyLineAndACtrlCAtThePromptMakeNoCommand'
+
+run bash-errexit-left-on "$B" \
+  's#case $- in \*e\*) __omniview_errexit=1; set +e ;; esac#:#' \
+  'TestAUserWithErrexitKeepsTheirShellWhenAStatusIsNotZero'
+
+run bash-user-hup-handler-replaced "$B" \
+  's#if \[ -z "$__omniview_current" \]; then#if true; then#' \
+  'TestAHUPHandlerSetByBuiltinTrapOrByAPromptCommandIsKept TestTheHooksLeaveNoHUPHandlerAtThePromptAndNeverReplaceTheUsers' \
+  'TestTwoHundredStartsAndKillsLeaveNoDirectoryNoProcessAndNoDescriptor'
+
+run pwsh-empty-line-recorded "$P" \
+  's#if ($line -and $line.Trim().Length -gt 0) {#if ($true) {#' \
+  'TestPwshAnEmptyLineRunsNoCommand'
+
+run pwsh-lastexitcode-not-restored "$P" \
+  's#^        $global:LASTEXITCODE = $lastExit$#        $null = $lastExit#' \
+  'TestPwshTheUsersPromptThatRunsANativeCommandDoesNotChangeLASTEXITCODE'
+
+run bash-trap-function-defined "$B" \
+  '/# Tell the host the shell is up/i\  trap() { builtin trap "$@"; }' \
+  'TestTheScriptDefinesNoTrapFunctionAndARETURNTrapFiresOnce'
+
+run bash-comment-line-recorded "$B" \
+  's#= "\#" \]#= "NEVER" ]#' \
+  'TestACommentLineIsNotACommand'
+
+run bash-hup-handler-taken-unlooked "$B" \
+  "s#case \$__omniview_current in \*\"'__omniview_hup'\"\*) builtin trap - HUP ;; esac#builtin trap - HUP#" \
+  'TestAHUPHandlerSetByBuiltinTrapOrByAPromptCommandIsKept'
+
+run bash-debug-status-dropped "$B" \
+  's#local __omniview_ret=${__omniview_rc:-0}#local __omniview_ret=0#' \
+  'TestACommandThatTheUsersDebugTrapSkipsIsNotRecordedAsRun TestAUsersDebugTrapThatSkipsACommandWithExtdebugStillSkipsIt'
+
+run pwsh-status-not-given-to-the-prompt "$P" \
+  "s#else { Microsoft[^ ]*Write-Error 'omniview' -ErrorAction Ignore }#else { \$null = \$true }#" \
+  'TestPwshAUsersWriteErrorFunctionDoesNotMakeAFailureLookLikeSuccess TestPwshTheUsersPromptSeesTheStatusOfTheLastCommand'
+
+run bash-hooks-refused-by-the-users-trap "$B" \
+  's#__omniview_precmd_first|__omniview_precmd_last) __omniview_ret=0 ;; esac#__omniview_never) __omniview_ret=0 ;; esac#' \
+  'TestAUsersDebugTrapThatRefusesOurHooksDoesNotTakeThemAway'
+
+run bash-skipped-command-recorded "$B" \
+  's#elif \[ "$__omniview_ret" != 0 \] \&\& shopt -q extdebug; then#elif false; then#' \
+  'TestACommandThatTheUsersDebugTrapSkipsIsNotRecordedAsRun'
+
+run bash-own-commands-seen-by-the-trap "$B" \
+  's#case ${FUNCNAME\[1\]-} in __omniview_\*) return 0 ;; esac#:#' \
+  'TestACommandThatTheUsersDebugTrapSkipsIsNotRecordedAsRun TestAUsersDebugTrapThatRefusesOurHooksDoesNotTakeThemAway'
+
+run bash-subshell-traced "$B" \
+  's#\[ "${BASH_SUBSHELL:-0}" = 0 \] || return "$__omniview_ret"#:#' \
+  'TestTheDebugTrapOfASubshellNeverWritesIntoTheUsersData'
+
+run bash-own-functions-by-prefix "$B" \
+  's#^      __omniview_escape|.*) return 0 ;;$#      __omniview_*) return 0 ;;#' \
+  'TestAUsersFunctionNamedLikeOursIsStillTheirs'
+
+run bash-marks-to-stdout "$B" \
+  's# 2>/dev/null >/dev/tty##' \
+  'TestTheMarksNeverLandInAFileThatTheUserRedirectsTo'
+
+run zsh-marks-to-stdout "$Z/zlogin" \
+  's# 2>/dev/null >/dev/tty##' \
+  'TestTheMarksOfZshAndFishAndPwshNeverLandInAFileThatTheUserRedirectsTo'
+
+run pwsh-marks-in-the-prompt-string "$P" \
+  's#\[Console\]::Write($marks)#$null = $marks#; s#^        $text = "$esc]133;A$bel"$#        $text = $marks + "$esc]133;A$bel"#' \
+  'TestPwshTheTranscriptHasNoNonceAndNoMarkWithADirectory'
+
+run pwsh-write-error-not-qualified "$P" \
+  's#Microsoft\.PowerShell\.Utility.Write-Error#Write-Error#' \
+  'TestPwshAUsersWriteErrorFunctionDoesNotMakeAFailureLookLikeSuccess'
 
 exit $bad

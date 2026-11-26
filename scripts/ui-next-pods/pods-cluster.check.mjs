@@ -1,13 +1,14 @@
 // The Pods cluster check (plan docs/ui-next/slices/1a-pods-list.md, PR 1a.1; N19d): the new shell, served by the real Go host from `OMNIVIEW_UI=next` and opened the
 // way the native window opens it for a first run (no URL parameter, no hash, nothing saved: the window is empty, S3a), the Kubernetes plugin opened from the window's list of plugins as a person
-// opens it (it lands on the connection's Overview, HM3, and the Pods list is one choice away in the sidebar), against a real kind cluster holding the plan's fixture, with the Kubernetes plugin installed from the
-// archive of its `feature/ui-next` branch (the plugin's own bundle is the only place the Overview and the Pods list are written: the host holds no Pods code).
+// opens it (it opens the plugin's own landing, KL3: a table of its connections; the connection of the current context is pressed there and the host opens its Overview, HM3, in a new tab, and the Pods list is one choice away in its sidebar), against a real kind
+// cluster holding the plan's fixture, with the Kubernetes plugin installed from the archive of its `feature/ui-next` branch (the plugin's own bundle is the only place the landing, the Overview and the Pods list are written: the host holds no Pods code).
 //
 //   OMNIVIEW_CHECK_BASE_URL   http://127.0.0.1:<port> of the host under test
 //   OMNIVIEW_CHECK_KUBECONFIG the cluster's kubeconfig, for the kubectl oracle
-//   OMNIVIEW_CHECK_MODE       parity (default): the Overview the plugin lands on says what kubectl says (HM3c, plugin #287: the connection's name, Needs attention, the Workloads table, the Cluster rows, and no zero in any frame while it loads: overview.mjs); the Pods list, opened from the Overview through the sidebar, and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says, and one deleted while its page is open is titled "was deleted"; the Logs command of a Pod
+//   OMNIVIEW_CHECK_MODE       parity (default): the Overview a press on the connection in the plugin's landing opens says what kubectl says (HM3c, plugin #287: the connection's name, Needs attention, the Workloads table, the Cluster rows, and no zero in any frame while it loads: overview.mjs), and the landing then lists that connection Connected with the server's version (KL3, plugin #289: landing.mjs); the Pods list, opened from the Overview through the sidebar, and `kubectl get pods -A` agree, and follow a live change; the Pod detail page opened from the list prints what kubectl says; the generic detail page of a Deployment (K2c-2) opened from the Deployments list prints its Details rows as kubectl says, and one deleted while its page is open is titled "was deleted"; the Logs command of a Pod
 //                             opens a session in the Logs tool with the lines `kubectl logs --timestamps` prints, and closing its tab closes the SDK's session; pressed twice on a running Pod it shows its one session (A22)
 //                             a press on a column header sorts a list (K3a): the Pods list by Restarts and the Deployments list by Age, twice each, against `kubectl get <kind> -A -o json` (sort.mjs)
+//                             a Pod that declares a port offers Forward port in its page's menu (PF3-k8s, plugin #288), and the forward started from it is listed in the Ports tool as `localhost:<port> → :8080/TCP`, the host the plugin states (parity.mjs, `checkForward`)
 //                             control-fixture-absent: both checks, the Pods list's and the Overview's, must report FIXTURE_MISSING (cluster without the fixture)
 //                             control-plugin-absent:  the Pods check must report PAGE_MISMATCH with no rows and the Overview check OVERVIEW_MISMATCH with no tab (host without the plugin: the kit's empty state of the plugin list)
 //                             control-bundle-absent:  the Pods check must report PAGE_MISMATCH with no rows and the Overview check OVERVIEW_MISMATCH with no section (plugin installed without assets/: "Couldn't load Kubernetes"), and the failure must be found from the empty
@@ -23,7 +24,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { isAgreement, diffNames, ParityError } from './oracle.mjs';
-import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkLogs, checkLogsRate, checkLogsTwice, checkOverview, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
+import { checkCounts, checkDeploymentDetail, checkDeploymentGone, checkDetail, checkForward, checkLogs, checkLogsRate, checkLogsTwice, checkOverview, checkParity, checkSort, checkUnavailableGroup, expectedLane, kubectl, launchBrowser, openPods, openWindow, oraclePods, settle } from './parity.mjs';
 import { compareDrawn, compareLane, readDrawn } from './lane.mjs';
 import { compareTabName } from './logs.mjs';
 import { compareFacts } from './unavailable.mjs';
@@ -133,18 +134,20 @@ if (mode === 'control-fixture-absent') {
     assert.deepEqual(compareFacts(facts), [], 'the connection\'s facts name the group that cannot answer');
   });
 } else {
-  // The Overview (HM3c, plugin #287): the page a connection lands on. The window opens as the native app opens it and the plugin's row is pressed: one tab titled Overview, the connection's NAME as the one heading, the sidebar's Overview entry
-  // current, Needs attention naming what fails (the fixture's failing Job and Pods), the Workloads table's Totals and Failing counts and the Cluster rows, each equal to what kubectl and the kubeconfig say (overview.mjs, with its controls in
-  // overview.test.mjs). The page is sampled from the press, and no frame of it says a zero for a row that has not finished loading. It comes first: it is the one test that sees the page load on a connection the host has not started yet.
-  test('the Overview the plugin lands on says what kubectl says, and says no zero while it loads', async (t) => {
-    const { read, expected, identity, frames } = await checkOverview({ browser, baseURL, kubeconfig });
+  // The Overview (HM3c, plugin #287): the page a connection opens on, reached as a person reaches it (KL3, plugin #289). The window opens as the native app opens it, the plugin's row is pressed and opens the plugin's landing, and the connection of the current context is
+  // pressed there: two tabs, the landing and then the Overview, on screen, the connection's NAME as the one heading, the sidebar's Overview entry current, Needs attention naming what fails (the fixture's failing Job and Pods), the Workloads table's Totals and Failing counts and
+  // the Cluster rows, each equal to what kubectl and the kubeconfig say (overview.mjs, with its controls in overview.test.mjs). The page is sampled from the press, and no frame of it says a zero for a row that has not finished loading. The landing is then read again from its tab: it lists the
+  // connection of the current context, Connected, with the version kubectl says the server is (landing.mjs, with its controls in landing.test.mjs: the one assertion about the landing). It comes first: it is the one test that sees the page load on a connection the host has not started yet.
+  test('the plugin\'s landing opens the connection: its Overview says what kubectl says, and says no zero while it loads, and the landing then shows it Connected, with the server\'s version', async (t) => {
+    const { read, expected, identity, frames, landing } = await checkOverview({ browser, baseURL, kubeconfig });
     t.diagnostic(`the page was sampled every 10 ms from the press: ${String(frames.samples)} samples read ${String(frames.distinct)} distinct pages, ${String(frames.loading.distinct)} of them with a row that was Loading (${String(frames.loading.samples)} samples), and it settled ${String(frames.settledAt)} ms after the press`);
-    assert.deepEqual(read.tabs.map((tab) => tab.title), ['Overview'], 'one tab, titled Overview');
+    assert.deepEqual(read.tabs.map((tab) => tab.title), ['Kubernetes', 'Overview'], 'two tabs: the plugin\'s landing, then the Overview the press on the connection opened');
     assert.deepEqual(read.headings, [identity.context], 'the one heading is the connection\'s NAME, and not the ID the host lists for it');
     assert.deepEqual(read.current, ['Overview'], 'the sidebar\'s Overview entry is the current one');
     assert.equal(read.attention.count, expected.failingCount, 'Needs attention counts the objects kubectl lists as failing');
     assert.ok(read.attention.rows.some((row) => row.kind === 'Jobs' && row.names.includes('broken-migration')), 'Needs attention names the fixture\'s failing Job');
     assert.equal(read.summary.text, expected.summary);
+    assert.deepEqual(landing, { name: identity.context, status: 'Connected', version: new Map(expected.cluster).get('Kubernetes version') }, 'the landing lists the connection of the current context, Connected, with the version kubectl says the server is');
   });
 
   test('the page and kubectl agree on the Pods of every namespace, on their count and on the quick filters', async () => {
@@ -159,7 +162,7 @@ if (mode === 'control-fixture-absent') {
 
   // C1h: the ID is a key; no text the window draws and no accessible name carries it (the tab's name, the status bar, the sidebar's and the page's labels).
   test('the window draws no connection ID in its text or its accessible names', async () => {
-    const page = await openPods(browser, baseURL);
+    const page = await openPods(browser, baseURL, kubeconfig);
     try {
       const { id } = await expectedLane({ baseURL, kubeconfig });
       const problems = compareDrawn(await readDrawn(page), id);
@@ -172,7 +175,7 @@ if (mode === 'control-fixture-absent') {
   // The runtime's live feed, end to end: a Pod created and deleted with kubectl appears and disappears without a reload.
   test('the page follows a Pod created and deleted with kubectl', async () => {
     const probe = 'checkout/live-probe';
-    const page = await openPods(browser, baseURL);
+    const page = await openPods(browser, baseURL, kubeconfig);
     try {
       const listed = await oraclePods(kubeconfig);
       const initial = await settle(page, (read) => isAgreement(diffNames(read.names, listed)), 30_000);
@@ -261,5 +264,12 @@ if (mode === 'control-fixture-absent') {
     const { samples, pod } = await checkLogsRate({ browser, baseURL, kubeconfig });
     assert.ok(samples.length >= 24, `the strip was read ${String(samples.length)} times`);
     assert.equal(pod.containers.length, 2);
+  });
+
+  // PF3-k8s (plugin #288): the Pod page's Forward port entry. A Pod that declares TCP 8080 (made for the check, the fixture declares no port) offers `Forward port 8080` in the page's menu, and the forward its press starts is listed in
+  // the Ports tool with the host the plugin states: `localhost:<port> → :8080/TCP` (parity.mjs, `checkForward`). A plugin before #288 has no such entry and fails here. Parity mode only; it makes a Pod of its own, as the ones above.
+  test('the Forward port entry of a Pod that declares a port starts a forward the Ports tool lists as localhost:<port>', async () => {
+    const { read } = await checkForward({ browser, baseURL, kubeconfig });
+    assert.match(read, /^localhost:\d+ → :8080\/TCP$/);
   });
 }
