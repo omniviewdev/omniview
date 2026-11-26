@@ -20,6 +20,8 @@
 
 Calls are on `ExecClient` (`@omniviewdev/runtime/api`); the types are generated in `packages/omniviewdev-runtime/src/bindings/github.com/omniviewdev/omniview/backend/pkg/terminal/models.ts` and exported as the `terminal` namespace of `@omniviewdev/runtime/models`.
 
+**Since the terminal channel (#704 on the host, #716 on the page).** A terminal made with `launch.channel` is reached by none of the calls and events of this section: by its capability and its stream only (`docs/ui-next/terminal-channel-protocol.md`). Every call here answers it as an id that never was, except a create (`CreateTerminal`, `CreateSession`) that names its id: that is refused as an id in use (409 `ALREADY_EXISTS`), which tells only that the id is taken. The new UI (`ui-next/`) makes only channel terminals. This section is the events lane, which the legacy UI (`ui/`) uses until the flip; what the page key and the capability each guard is `T2-go.md` 2.7 (with protocol version 2 of the stream, #763: watchers and `released`, the holder-only `close`, per-writer `input_applied` and `writer_known`, control frames read while input waits; see [`terminal-channel-protocol.md`](../terminal-channel-protocol.md)).
+
 ### 2.1 Calls
 
 ```ts
