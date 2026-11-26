@@ -37,6 +37,8 @@ type titleScanner struct {
 	buf []byte
 	// ignore says the OSC being read is not one this scanner reads, and over that its text was longer than maxTitleRead.
 	ignore, over bool
+	// off is the offset of the next byte to be fed, cur the offset of the byte being read, and lastEnd the offset after the last title that was read.
+	off, cur, lastEnd uint64
 }
 
 type titleScanState uint8
@@ -67,10 +69,13 @@ func (t *titleScanner) Feed(p []byte) (string, bool) {
 			}
 			i += j
 		}
+		t.cur = t.off + uint64(i) //nolint:gosec // An index is never negative.
 		if text, ok := t.step(p[i]); ok {
 			title, found = text, true
+			t.lastEnd = t.cur + 1
 		}
 	}
+	t.off += uint64(len(p))
 	return title, found
 }
 
@@ -222,6 +227,12 @@ func droppedInTitle(r rune) bool {
 	switch {
 	case unicode.IsControl(r):
 		return true
+	case unicode.Is(unicode.Cf, r) && r != '\u200d':
+		// Zero-width and invisible format characters (U+200B, U+2060, U+FEFF, U+00AD, the tags), but for the joiner an emoji sequence is made of.
+		return true
+	case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0' || r == '\u2800':
+		// Fillers and the blank braille cell: they draw as nothing.
+		return true
 	case r == '\u2028' || r == '\u2029':
 		return true
 	case r == '\u061c' || r == '\u200e' || r == '\u200f':
@@ -238,13 +249,16 @@ func droppedInTitle(r rune) bool {
 type titleTracker struct {
 	scan titleScanner
 	// pending is the last title the scanner read since the last settle, and has says there is one.
-	pending string
-	has     bool
+	pending   string
+	pendingAt uint64
+	has       bool
 	// text and program are the fact the host states: the title, and whether a program runs while it is set. seq counts the changes of the pair, so
 	// that a stream tells by one number whether it has sent the current one. A terminal that never had a title has seq 0.
 	text    string
 	program bool
 	seq     uint64
+	// at is the offset after the sequence that set text.
+	at uint64
 }
 
 func newTitleTracker() *titleTracker { return new(titleTracker) }
@@ -252,19 +266,25 @@ func newTitleTracker() *titleTracker { return new(titleTracker) }
 // feed reads the next bytes of the output.
 func (t *titleTracker) feed(p []byte) {
 	if title, ok := t.scan.Feed(p); ok {
-		t.pending, t.has = title, true
+		t.pending, t.pendingAt, t.has = title, t.scan.lastEnd, true
 	}
 }
 
 // wantsLook says the foreground has to be looked at: a title came, or a program runs under the one that is shown (and may have ended).
 func (t *titleTracker) wantsLook() bool { return t.has || t.program }
 
+// setAfter says the title is one the shell's prompt did not draw: it was set after the last prompt began (promptEnd is the offset after the last prompt-start mark), as a
+// preexec hook sets it, and no program holds it yet. The vouched start of a command that follows makes it that program's.
+func (t *titleTracker) setAfter(promptEnd uint64) bool {
+	return t.text != "" && !t.program && t.at > promptEnd
+}
+
 // settle takes what the scanner read and the foreground fact and says whether the stated pair changed. known is false when the host
 // could not tell, and then the last answer stands. A terminal with no title has no program under it.
 func (t *titleTracker) settle(program, known bool) bool {
 	text := t.text
 	if t.has {
-		text, t.pending, t.has = t.pending, "", false
+		text, t.at, t.pending, t.has = t.pending, t.pendingAt, "", false
 	}
 	if !known {
 		program = t.program

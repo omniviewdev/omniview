@@ -10,7 +10,7 @@
 set -u
 ROOT=$(pwd)
 PKG=./backend/pkg/terminal
-STREAM='TestTheTitleAProgramSets|TestATitleTheShell|TestAPageThatDidNotAskIsSentNoTitle|TestAPageThatComesBackIsSentTheTitle|TestATitleOfAHundred|TestACommandTheShellVouchedFor|TestAForgedStartMark|TestATerminalThatEndedAndIsAttached'
+STREAM='TestTheTitleAProgramSets|TestATitleTheShell|TestAPageThatDidNotAskIsSentNoTitle|TestAPageThatComesBackIsSentTheTitle|TestATitleOfAHundred|TestACommandTheShellVouchedFor|TestATitleSetBefore|TestATitleFromBefore|TestAnEmptyTitleTakes|TestAForgedStartMark|TestATerminalThatEndedAndIsAttached'
 UNIT='TestTheScanner|TestAnOSC|TestAHundredKilobytes|TestACleanTitle|TestTheTracker'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -68,6 +68,11 @@ run title-has-no-control $T 'case unicode.IsControl(r):
 run title-has-no-bidi-control $T "case r >= '\\u202a' && r <= '\\u202e':" 'case false:'
 run same-title-is-one-frame,title-while-the-program-runs,title-detached-when-the-program-ends,title-of-a-vouched-command,title-detached-by-the-end-mark,title-sent-to-a-page-that-comes-back,shell-title-is-not-a-program,forged-start-is-no-program $T 'if text == t.text && program == t.program {' 'if false {'
 run ended-terminal-no-title $S 'marksVersionFor(kept.ring, req.Marks), 0)' 'marksVersionFor(kept.ring, req.Marks), titleFrameVersion)'
+run preexec-title-is-decided-at-the-start-mark $C 'waiting := !look && tracker != nil && s.ring.marks != nil && tracker.setAfter(s.ring.marks.promptEnd)' 'waiting := false'
+run stale-title-is-not-made-a-programs $T 'return t.text != "" && !t.program && t.at > promptEnd' 'return t.text != "" && !t.program'
+run empty-title-is-no-program $T 'if text == "" {
+		program = false
+	}' ''
 
 unit can-sub-cancel $T 'case canByte, subByte:
 		t.state = titleGround
@@ -85,4 +90,6 @@ unit no-title-no-program $T 'if text == "" {
 		program = false
 	}' '' TestTheTrackerStatesAChangeOnlyWhenThePairChanges
 unit invalid-utf8-collapses $T 'strings.ToValidUTF8(string(raw), "\ufffd")' 'string(raw)' TestACleanTitleHasNoControl
+unit cf-characters-stay $T "case unicode.Is(unicode.Cf, r) && r != '\u200d':" 'case false:' TestACleanTitleHasNoControl
+unit fillers-stay $T "case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0' || r == '\u2800':" 'case false:' TestACleanTitleHasNoControl
 exit $BAD

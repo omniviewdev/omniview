@@ -78,7 +78,13 @@ func (s *session) settleTitle() {
 	s.outMu.Lock()
 	tracker := s.ring.title
 	look := tracker != nil && tracker.wantsLook()
+	// A title set after the prompt began and before the command was vouched for (zsh runs the user's preexec before the integration's) is decided when the
+	// vouched start comes: a start mark is a reason to look, and a title from before the prompt is not the command's.
+	waiting := !look && tracker != nil && s.ring.marks != nil && tracker.setAfter(s.ring.marks.promptEnd)
 	s.outMu.Unlock()
+	if waiting {
+		_, look = s.verifiedRunning()
+	}
 	if !look {
 		return
 	}
