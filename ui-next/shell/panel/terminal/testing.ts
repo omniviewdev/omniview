@@ -672,7 +672,7 @@ export type FakeStream = {
   /** Another stream took the terminal: this stream stays open as a watcher, which hears `released` or `ended` and nothing else. */
   readonly takenOver: () => void;
   /** Frames the host may never send, for a test of how the feed takes a host that breaks the protocol: they reach the feed with no check of the stream's state. */
-  readonly raw: { readonly released: () => void };
+  readonly raw: { readonly released: () => void; readonly title: (title: string, program: boolean) => void };
   /** `close-refused`: the stream's close ended nothing, it does not hold the terminal. The stream goes on (as a watcher). */
   readonly closeRefused: () => void;
   /** To a watcher: the terminal is running and free. The stream is over. */
@@ -874,6 +874,9 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       raw: {
         released: () => {
           events.released();
+        },
+        title: (title, program) => {
+          events.title({ v: 1, title, program });
         },
       },
       closeRefused: () => {

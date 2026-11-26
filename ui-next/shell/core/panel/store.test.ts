@@ -1455,3 +1455,44 @@ describe('a session id that is reused in another tool (CodeRabbit, selectors.ts:
     expect(h.store.selectors.sessionItem(h.snapshot(), 'x')).toBe(before);
   });
 });
+
+describe('undoing a name (an empty name clears the pin)', () => {
+  it('clears the pin of a session the person named, keeps the title until its owner names it again, and lets the owner name it', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    h.store.renameSession('s1', 'mine');
+    const told = h.notified();
+    expect(h.store.renameSession('s1', '  ')).toEqual({ status: 'done' });
+    expect(h.notified()).toBe(told + 1);
+    expect(h.snapshot().sessions.s1).toMatchObject({ title: 'mine' });
+    expect(h.snapshot().sessions.s1).not.toHaveProperty('titlePinned');
+    expect(h.store.retitleSession('s1', 'zsh')).toEqual({ status: 'done' });
+    expect(h.snapshot().sessions.s1?.title).toBe('zsh');
+    expect(h.store.serialise().sessions[0]).not.toHaveProperty('titlePinned');
+  });
+
+  it('is the same for a name of nothing but invisible characters', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    h.store.renameSession('s1', 'mine');
+    expect(h.store.renameSession('s1', '\u200b\u2060')).toEqual({ status: 'done' });
+    expect(h.snapshot().sessions.s1).not.toHaveProperty('titlePinned');
+  });
+
+  it('still refuses an empty name for a session nobody named, and a held session', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    expect(h.store.renameSession('s1', '')).toMatchObject({ status: 'refused', reason: 'invalid' });
+  });
+
+  it('drops zero-width and invisible characters from a title, and keeps a joiner', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    h.store.renameSession('s1', 'a\u200bb\ufeffc\u3164d');
+    expect(h.snapshot().sessions.s1?.title).toBe('abcd');
+    h.store.retitleSession('s1', 'x');
+    h.store.renameSession('s1', '\u{1F468}\u200d\u{1F469}');
+    expect(h.snapshot().sessions.s1?.title).toBe('\u{1F468}\u200d\u{1F469}');
+    expect(h.store.retitleSession('s1', '\u200b')).toMatchObject({ status: 'refused' });
+  });
+});

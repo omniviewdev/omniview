@@ -31,7 +31,7 @@ type Rig = {
 
 let counter = 0;
 
-function mount(options: { readonly focus?: boolean; readonly visible?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly screenReader?: boolean; readonly retitle?: boolean; readonly name?: string; readonly renaming?: Renaming } = {}): Rig {
+function mount(options: { readonly focus?: boolean; readonly visible?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly screenReader?: boolean; readonly retitle?: boolean; readonly name?: string; readonly renaming?: Renaming; readonly held?: boolean } = {}): Rig {
   counter = 0;
   const store = createPanelStore({ now: () => 1_000, newId: () => `s${String(++counter)}` });
   store.registerTool(TERMINAL_TOOL);
@@ -55,7 +55,10 @@ function mount(options: { readonly focus?: boolean; readonly visible?: boolean; 
   const target: TerminalTarget = { plugin: HOST, id: 'local', title: 'Terminal', open: () => feed, ...(options.retitle === true ? { retitle: (status: TerminalFeedSnapshot) => status.program } : {}) };
   const opened = sessions.open(target, { focus: options.focus === true });
   const id = opened?.id ?? '';
-  const session = () => store.getSnapshot().sessions[id];
+  const session = () => {
+    const found = store.getSnapshot().sessions[id];
+    return options.held === true && found !== undefined ? { ...found, held: true as const } : found;
+  };
   const body = (visible: boolean) => <TerminalBody sessions={sessions} session={session()} visible={visible} load={loader.load} screenReader={counted} {...(options.name === undefined ? {} : { name: options.name })} />;
   const ui = (visible: boolean) => (options.renaming === undefined ? body(visible) : <RenamingProvider renaming={options.renaming}>{body(visible)}</RenamingProvider>);
   const view = render(ui(options.visible ?? true));
@@ -370,6 +373,20 @@ describe('the toolbar', () => {
     });
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith(session().id);
+  });
+
+  it('cannot rename a session its plugin left behind, with the words of the tab\'s menu, and asks nobody', async () => {
+    const request = vi.fn();
+    const renaming: Renaming = { current: () => null, request, clear: vi.fn(), subscribe: () => () => undefined };
+    mount({ renaming, held: true });
+    await flush();
+    const button = page.getByRole('button', { name: 'Rename session' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAccessibleDescription('The plugin was unloaded: this session stays as it is until it is closed.');
+    act(() => {
+      button.click();
+    });
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('cannot rename where there is no tab to draw the field in, says why, and stays reachable', async () => {

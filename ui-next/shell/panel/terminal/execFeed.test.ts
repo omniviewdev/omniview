@@ -3003,3 +3003,34 @@ describe('the title a program sets', () => {
     expect(r.feed.getSnapshot().title).toBe('less');
   });
 });
+
+describe('the title a program sets: when the feed takes it', () => {
+  it('takes none before the host said ready, whatever a stream that broke the protocol sent', async () => {
+    const r = await connecting();
+    r.stream().raw.title('vim', true);
+    expect(r.feed.getSnapshot()).toEqual({ state: 'starting' });
+    r.stream().ready();
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+  });
+
+  it('takes none once the terminal is not this page\'s: a watcher that was sent a title it may never be sent', async () => {
+    const r = await running();
+    r.stream().title('vim', true);
+    r.stream().takenOver();
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+    r.stream().raw.title('less', true);
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+    expect(r.feed.getSnapshot().state).toBe('ended');
+  });
+
+  it('says no title for one of zero-width and invisible characters, and keeps what is visible of one that has some', async () => {
+    const r = await running();
+    r.stream().title('vim', true);
+    r.stream().title('\u200b\u2060\u3164\ufeff', true);
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+    r.stream().title('a\u200bb\u00adc\u{e0041}d\u3164e', true);
+    expect(r.feed.getSnapshot().title).toBe('abcde');
+    r.stream().title('\u{1F468}\u200d\u{1F469}', true);
+    expect(r.feed.getSnapshot().title, 'the joiner an emoji sequence is made of stays').toBe('\u{1F468}\u200d\u{1F469}');
+  });
+});

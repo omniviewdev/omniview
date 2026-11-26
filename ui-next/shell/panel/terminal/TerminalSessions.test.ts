@@ -640,6 +640,20 @@ describe('naming the tab by what the producer says it runs', () => {
     expect(store.getSnapshot().sessions[id]?.title).toBe('zsh');
   });
 
+  it('names the tab by the program again when the person clears their name, at once and with no change of the feed', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: (status) => status.title ?? status.program });
+    const id = sessions.open(given)?.id ?? '';
+    feed.set({ program: 'zsh', title: 'vim: notes' });
+    store.renameSession(id, 'mine');
+    expect(store.getSnapshot().sessions[id]?.title).toBe('mine');
+    store.renameSession(id, '');
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ title: 'vim: notes' });
+    expect(store.getSnapshot().sessions[id]).not.toHaveProperty('titlePinned');
+    feed.set({ program: 'zsh', title: undefined });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('zsh');
+  });
+
   it('keeps a name the person gave after a reload: the saved tab says it is theirs, and the shell\'s name does not take it back', () => {
     const initial = savedPanel([{ id: 'term-a', title: 'my build', titlePinned: true }, { id: 'term-b', title: 'old shell' }]);
     const r = harness({ initial });

@@ -261,6 +261,22 @@ describe('the menu of a session tab', () => {
     expect(store.getSnapshot().sessions[second ?? '']).not.toHaveProperty('titlePinned');
   });
 
+  it('undoes a name: clearing the field of a tab the person named unpins it, so that the session\'s owner names it again', () => {
+    const store = createPanelStore();
+    mountMenu(['a'], store);
+    const edit = (): HTMLInputElement => screen.getByRole<HTMLInputElement>('textbox', { name: 'Session name' });
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.change(edit(), { target: { value: 'build' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    const id = Object.keys(store.getSnapshot().sessions)[0] ?? '';
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ titlePinned: true });
+    fireEvent.click(within(openOn('build')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.change(edit(), { target: { value: '' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(store.getSnapshot().sessions[id]).not.toHaveProperty('titlePinned');
+    expect(store.retitleSession(id, 'zsh')).toEqual({ status: 'done' });
+  });
+
   it('starts the rename on a double click of the tab and on F2, and draws the tab\'s keys in its description', () => {
     mountMenu(['a', 'b']);
     expect(tab('a').getAttribute('aria-keyshortcuts')).toBe('F2 Delete');
