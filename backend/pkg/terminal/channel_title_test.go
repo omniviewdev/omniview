@@ -289,3 +289,18 @@ func TestAnEmptyTitleTakesTheTitleBackAndSaysNoProgramRunsUnderIt(t *testing.T) 
 		assert.Equal(t, []titleWire{{V: 1, Title: "mytitle", Program: true}, {V: 1, Title: "", Program: false}}, got, "the program took its title back while it still runs: no title, and no program under it")
 	})
 }
+
+// bash puts the user's PS1 between the prompt-start and the input-start marks, and Debian's default PS1 sets the title there: that title is the shell's own, not the next command's.
+func TestATitleThePromptDrawsBetweenItsMarksIsNotMadeAProgramsByTheNextCommand(t *testing.T) {
+	k := newMarked(t)
+	page := k.f.m.attachTitle(t, k.info.Cap, nil, true)
+	page.waitReady()
+	k.print(osc("133;A") + osc("0;user@host: ~") + "$ " + osc("133;B"))
+	k.print("ls\r\n" + osc("633;E;ls;"+k.nonce) + osc("133;C"))
+	k.print("barrier\n")
+	waitOutput(t, page, "barrier")
+	got := page.state().titles
+	guarded(t, "prompt-title-is-not-made-a-programs", func() {
+		assert.Equal(t, []titleWire{{V: 1, Title: "user@host: ~", Program: false}}, got, "the PS1's title, drawn between the marks of the prompt, is the shell's")
+	})
+}

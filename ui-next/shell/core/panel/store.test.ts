@@ -1494,6 +1494,8 @@ describe('undoing a name (an empty name clears the pin)', () => {
     h.store.retitleSession('s1', 'x');
     h.store.renameSession('s1', '\u{1F468}\u200d\u{1F469}');
     expect(h.snapshot().sessions.s1?.title).toBe('\u{1F468}\u200d\u{1F469}');
+    h.store.renameSession('s1', '\u0641\u0627\u0631\u0633\u06cc\u200c\u0646\u0648\u06cc\u0633');
+    expect(h.snapshot().sessions.s1?.title).toBe('\u0641\u0627\u0631\u0633\u06cc\u200c\u0646\u0648\u06cc\u0633');
     expect(h.store.retitleSession('s1', '\u200b')).toMatchObject({ status: 'refused' });
   });
 });

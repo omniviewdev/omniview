@@ -3030,6 +3030,8 @@ describe('the title a program sets: when the feed takes it', () => {
     expect(r.feed.getSnapshot().title).toBeUndefined();
     r.stream().title('a\u200bb\u00adc\u{e0041}d\u3164e', true);
     expect(r.feed.getSnapshot().title).toBe('abcde');
+    r.stream().title('\u0641\u0627\u0631\u0633\u06cc\u200c\u0646\u0648\u06cc\u0633', true);
+    expect(r.feed.getSnapshot().title, 'the non-joiner a Persian word is spelled with stays').toBe('\u0641\u0627\u0631\u0633\u06cc\u200c\u0646\u0648\u06cc\u0633');
     r.stream().title('\u{1F468}\u200d\u{1F469}', true);
     expect(r.feed.getSnapshot().title, 'the joiner an emoji sequence is made of stays').toBe('\u{1F468}\u200d\u{1F469}');
   });
