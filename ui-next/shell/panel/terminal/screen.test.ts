@@ -951,6 +951,14 @@ describe('what the user types', () => {
     expect(feed.typed()).toEqual(['ls\r', '\u0003']);
   });
 
+  it('sends the raw bytes of a legacy mouse report to the feed as bytes, and not as text: a byte above 127 is one byte', async () => {
+    const { feed, engine } = await shown();
+    const report = Uint8Array.from([0x1b, 0x5b, 0x4d, 0x20, 0xb6, 0x23]);
+    engine().binary(report);
+    expect(feed.binaries()).toEqual([report]);
+    expect(feed.typed()).toEqual([]);
+  });
+
   it('is taken while the session starts or runs and refused once it is over: the emulator is told, so that a key press does nothing and nobody waits for a reply', async () => {
     const { feed, engine } = await shown();
     expect(engine().inputs.at(-1)).toBe(true);
@@ -1682,6 +1690,16 @@ describe('a replay: a terminal the page took back after a reload', () => {
       expect(r.feed.typed()).toEqual([]);
       r.engine().type('ls\r');
       expect(r.feed.typed()).toEqual(['ls\r']);
+    });
+
+    it('drops a mouse report the emulator makes while the replay is applied (it refers to a screen the replay replaces) and sends one after it', async () => {
+      const r = await reattached(replayOf('kept'));
+      const stale = Uint8Array.from([0x1b, 0x5b, 0x4d, 0x20, 0xb6, 0x23]);
+      r.engine().binary(stale);
+      expect(r.feed.binaries()).toEqual([]);
+      r.frame();
+      r.engine().binary(stale);
+      expect(r.feed.binaries()).toEqual([stale]);
     });
 
     it('leaves the join with the live output alone: nothing is written between the last byte the host kept and the first live byte, so an escape sequence or a character that the cut falls inside is the emulator\'s to finish (the host cuts at the end of a read, not at the end of a sequence)', async () => {

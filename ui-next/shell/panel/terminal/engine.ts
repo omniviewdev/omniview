@@ -110,6 +110,11 @@ export type Engine = {
    * two must be told apart because the second is the answer of a program that may be long past (while a replay is applied it is dropped), and the first is the person's, which is never lost. Returns what stops it.
    */
   readonly onData: (listener: (data: string, user: boolean) => void) => () => void;
+  /**
+   * What the emulator sends toward the shell that is raw bytes and not text (a legacy X10 mouse report with a coordinate above 95: a byte above 127). The bytes are what the shell must read, one for each byte; `onData`'s string is
+   * UTF-8 text and would turn each of them into two. Always the person's (a click), never an answer. Returns what stops it.
+   */
+  readonly onBinary: (listener: (bytes: Uint8Array) => void) => () => void;
   /** The selection changed. Returns what stops it. */
   readonly onSelection: (listener: () => void) => () => void;
   /**

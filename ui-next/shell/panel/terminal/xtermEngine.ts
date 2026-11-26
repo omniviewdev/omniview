@@ -479,6 +479,8 @@ export function createXtermEngine(options: EngineOptions): Engine {
       };
     },
 
+    onBinary: () => () => undefined,
+
     onSelection: (listener) => {
       const subscription = terminal.onSelectionChange(listener);
       return () => {

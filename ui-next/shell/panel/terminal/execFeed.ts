@@ -1342,6 +1342,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
     },
 
+    writeBinary: () => undefined,
+
     inputs: () => typed,
 
     // Nothing typed waits for a stream, and nothing sent waits in the link; a session that is over sends nothing more, so nothing is left to wait for.

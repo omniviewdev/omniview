@@ -2446,3 +2446,56 @@ describe('the writer_known rule, pinned (review of the review)', () => {
     }
   });
 });
+
+describe('raw bytes the emulator sends for the person (`writeBinary`: a legacy X10 mouse report)', () => {
+  const report = Uint8Array.from([0x1b, 0x5b, 0x4d, 0x20, 0xb6, 0x23]);
+  const inputBytes = (stream: ReturnType<typeof reconnect>): number[] => stream.sent().flatMap((frame) => (frame.kind === 'input' ? [...frame.bytes] : []));
+
+  it('reaches the shell byte for byte: a byte above 127 is one byte, and not the two of UTF-8', async () => {
+    const r = await running();
+    r.feed.writeBinary(report);
+    expect(inputBytes(r.stream())).toEqual([...report]);
+  });
+
+  it('is in order with the typing around it, and counts as typing for a close that asked what runs', async () => {
+    const r = await running();
+    r.feed.write('a');
+    r.feed.writeBinary(report);
+    r.feed.write('b');
+    expect(inputBytes(r.stream())).toEqual([0x61, ...report, 0x62]);
+    expect(r.feed.inputs?.()).toBe(3);
+  });
+
+  it('is kept until the host applies it and sent again once after a cut, in order, and never twice: what the host applied of it is not sent', async () => {
+    const r = await running();
+    r.feed.write('a');
+    r.feed.writeBinary(report);
+    r.stream().drop();
+    r.feed.writeBinary(report);
+    const again = reconnect(r);
+    // The host applied the `a` and the first two bytes of the first report.
+    again.ready({ inputApplied: 3 });
+    expect(inputBytes(again)).toEqual([...report.subarray(2), ...report]);
+    expect(r.feed.keptPieces()).toBeGreaterThan(0);
+  });
+
+  it('is dropped, with what was typed, when the host does not know the feed\'s writer, and the user is told', async () => {
+    const r = await running();
+    r.feed.writeBinary(report);
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ inputApplied: 0, writerKnown: false });
+    expect(inputBytes(again)).toEqual([]);
+    expect(r.feed.keptPieces()).toBe(0);
+    expect(r.feed.getSnapshot().inputLost).toBe(true);
+  });
+
+  it('is ignored once the session is over, and counted in the bound of the kept input like text', async () => {
+    const r = await running();
+    r.feed.writeBinary(new Uint8Array(1024 * 1024).fill(0xb6));
+    expect(r.feed.getSnapshot().state).toBe('running');
+    r.stream().drop();
+    r.feed.writeBinary(Uint8Array.of(0xb6));
+    expect(r.feed.getSnapshot().state).toBe('failed');
+  });
+});

@@ -1694,6 +1694,29 @@ describe('a paste into a real emulator', () => {
   });
 });
 
+describe('onBinary of a real emulator (#698 item 14)', () => {
+  it('gives the six raw bytes of a legacy X10 mouse report whole: ESC [ M and three bytes, the coordinates above 127 intact and not UTF-8', async () => {
+    const { engine, terminal, write, close } = emulator();
+    const sent: number[][] = [];
+    const text: string[] = [];
+    engine.onBinary((bytes) => {
+      sent.push([...bytes]);
+    });
+    engine.onData((data) => {
+      text.push(data);
+    });
+    engine.resize(200, 24);
+    await write('\u001b[?9h');
+    // A press of the left button at column 150 (0-based 149), row 5: X10 sends the button and the 1-based cell, each plus 32, so column 150 is 182, above 127.
+    const core = (terminal as unknown as { _core: { coreMouseService: { triggerMouseEvent: (event: unknown) => boolean } } })._core;
+    const taken = core.coreMouseService.triggerMouseEvent({ col: 149, row: 4, x: 0, y: 0, button: 0, action: 1, ctrl: false, alt: false, shift: false });
+    expect(taken).toBe(true);
+    expect(sent).toEqual([[0x1b, 0x5b, 0x4d, 0x20, 32 + 150, 32 + 5]]);
+    expect(text).toEqual([]);
+    close();
+  });
+});
+
 describe('one paste path into a real emulator (#698 item 13)', () => {
   const HOSTILE = 'a\u001b[201~rm -rf x\r';
   const BRACKETED = '\u001b[200~a[201~rm -rf x\r\u001b[201~';
