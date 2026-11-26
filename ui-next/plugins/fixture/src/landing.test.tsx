@@ -1,8 +1,8 @@
 import { LinkProvider, MenuHost, type LinkHandler } from '@omniviewdev/kit';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { admit } from '../../contract/admit';
+import { admit, openable } from '../../contract/admit';
 import type { ConnectionV1, ConnectionsHostV1, ConnectionsViewV1 } from '../../contract/v1';
 import { contributionV1 as withoutLanding } from './entry-connections';
 import { contributionV1 } from './entry-landing';
@@ -77,5 +77,21 @@ describe('the connections fixture with a landing', () => {
     expect(contributionV1.home).toBe('overview');
     expect(contributionV1.pages.overview).toBe(withoutLanding.pages.overview);
     expect(Object.hasOwn(withoutLanding, 'landing')).toBe(false);
+  });
+
+  it('answers a navigator on the pages that are read in no connection, which the host keeps whole, and nothing on a page of a connection: the filters with their counts, and the connections with a colour and, on the one that needs a look, a badge (KL5)', () => {
+    const view: ConnectionsViewV1 = { loaded: true, failed: false, connections: [north, south] };
+    const connections: ConnectionsHostV1 = { subscribe: () => () => undefined, getSnapshot: () => view, open: async () => Promise.resolve({ ok: true }), refresh: async () => Promise.resolve() };
+    const answer = (page: string) => renderHook(() => contributionV1.sidebar.useNodes({ plugin: 'fixture-f-conn', route: { page, connection: undefined, params: {} }, open: [], connections })).result.current;
+    const nodes = answer('landing') ?? [];
+
+    expect(openable(nodes, contributionV1.pages)).toEqual(nodes);
+    expect(nodes.map((node) => [node.label, node.count])).toEqual([['All', 2], ['Connected', 1], ['Needs attention', 1], ['Connections', undefined]]);
+    expect(nodes[2]).toMatchObject({ page: 'landing', params: { filter: 'attention' } });
+    expect(nodes[3].children).toEqual([
+      { id: `connection-${north.key}`, label: 'north', icon: 'server', tone: 'green', connection: north.key },
+      { id: `connection-${south.key}`, label: 'south', icon: 'server', tone: 'amber', connection: south.key, status: { role: 'attention', label: 'Needs sign-in' } },
+    ]);
+    expect(answer('overview')).toBeUndefined();
   });
 });

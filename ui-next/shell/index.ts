@@ -11,6 +11,7 @@ export type {
   ShellRail,
   ShellRailEntry,
   ShellRegistration,
+  ShellRowStatus,
   ShellScopeFace,
   ShellScopePicker,
   ShellSidebar,

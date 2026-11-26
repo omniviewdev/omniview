@@ -1,11 +1,11 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore } from '../../shell';
 import { openSession, SESSION_VERSION } from '../../shell/session';
 import { memoryStorage } from '../../shell/session/testing';
-import type { CustomPageContextV1 } from '../contract/v1';
+import type { ContributionV1, CustomPageContextV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { acme } from '../testing';
 import type { ConnectionsApi, StateRecord } from './connections/api';
 import { PluginHost, type PluginHostProps } from './PluginHost';
@@ -58,6 +58,7 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
   return (
     <section aria-label="Acme landing">
       <h1>Acme home</h1>
+      <p>{`Filter: ${context.route.params.filter ?? 'all'}`}</p>
       <p role="status">{view.loaded ? `${String(view.connections.length)} connections` : 'Reading the connections…'}</p>
       {view.connections.map((connection) => (
         <button
@@ -75,17 +76,17 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
 }
 
 /** Acme, with a landing or without one: the same plugin otherwise. */
-const entry = (landing: boolean): PluginEntry => ({
+const entry = (landing: boolean, sidebar: ContributionV1['sidebar'] = acme().sidebar): PluginEntry => ({
   id: 'acme',
   name: 'Acme plugin',
   phase: 'ready',
-  contribution: landing ? acme({ pages: { ...acme().pages, landing: { kind: 'custom', scope: 'plugin', title: 'Acme home', icon: 'house', Body: Landing } }, landing: 'landing' }) : acme(),
+  contribution: landing ? acme({ pages: { ...acme().pages, landing: { kind: 'custom', scope: 'plugin', title: 'Acme home', icon: 'house', Body: Landing } }, landing: 'landing', sidebar }) : acme(),
 });
 
 const link = (page: string | undefined): HostRoute => ({ plugin: 'acme', page, connection: undefined, params: {} });
 
-/** A saved window whose tabs are these, the last on screen: `[id, plugin, page, title]`. */
-const saved = (...tabs: ReadonlyArray<readonly [string, string, string, string]>) =>
+/** A saved window whose tabs are these, the last on screen: `[id, plugin, page, title, params?]`. */
+const saved = (...tabs: ReadonlyArray<readonly [string, string, string, string, Readonly<Record<string, string>>?]>) =>
   openSession(
     memoryStorage().storage,
     JSON.stringify({
@@ -93,14 +94,14 @@ const saved = (...tabs: ReadonlyArray<readonly [string, string, string, string]>
       tabs: {
         version: 1,
         active: tabs.at(-1)?.[0] ?? null,
-        tabs: tabs.map(([id, plugin, page, title]) => ({
+        tabs: tabs.map(([id, plugin, page, title, params = {}]) => ({
           id,
-          route: { plugin, contribution: page, params: {} },
-          key: `${plugin}:${page}`,
+          route: { plugin, contribution: page, params },
+          key: Object.keys(params).length === 0 ? `${plugin}:${page}` : `${plugin}:${page}?${JSON.stringify(params)}`,
           face: { title, icon: 'box', path: [], facets: [], pluginName: plugin === 'host' ? '' : 'Acme plugin', singleton: false, identity: 'key' },
           pinned: false,
           preview: false,
-          history: { entries: [{ plugin, contribution: page, params: {} }], index: 0 },
+          history: { entries: [{ plugin, contribution: page, params }], index: 0 },
         })),
       },
       rail: null,
@@ -213,5 +214,103 @@ describe('a plugin that declares none', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument();
     expect(faces()).toEqual(['Home']);
+  });
+});
+
+// The plugin's sidebar on its landing (KL5): Acme's hook answers a navigator for the landing from the connections it is given (an entry that opens the landing, one that opens it with a parameter, and a group of its connections, each a leaf that opens that connection, with a badge on the
+// ones that are not connected), and nothing for a page of a connection, where its skeleton stands.
+const seen: SidebarContextV1[] = [];
+
+function useNavigator(context: SidebarContextV1): readonly SidebarNodeV1[] | undefined {
+  seen.push(context);
+  const { connections, route } = context;
+  const view = useSyncExternalStore(connections.subscribe, connections.getSnapshot);
+  return useMemo(
+    () =>
+      route.page === 'landing'
+        ? [
+          { id: 'landing', label: 'All', icon: 'layers', count: view.connections.length },
+          { id: 'attention', label: 'Needs attention', icon: 'bell', count: view.connections.filter((connection) => connection.role === 'attention').length, page: 'landing', params: { filter: 'attention' } },
+          {
+            id: 'connections',
+            label: 'Connections',
+            icon: 'server',
+            children: view.connections.map((connection): SidebarNodeV1 => ({
+              id: `connection-${connection.key}`,
+              label: connection.name,
+              icon: 'server',
+              tone: 'green',
+              connection: connection.key,
+              ...(connection.role === 'healthy' ? {} : { status: { role: connection.role, label: connection.word } }),
+            })),
+          },
+        ]
+        : undefined,
+    [route.page, view],
+  );
+}
+
+describe('a plugin whose sidebar answers on its landing', () => {
+  const navigated = () => entry(true, { ...acme().sidebar, useNodes: useNavigator });
+  const sidebar = async () => within(await screen.findByRole('navigation', { name: 'Acme navigation' }));
+
+  it('draws what its hook answers for the landing and no skeleton under it, and the hook is given a route that names no connection and the plugin\'s connections; a badge is part of what its row says', async () => {
+    seen.length = 0;
+    const { user } = mount(navigated(), { link: link(undefined) });
+    const tree = await sidebar();
+
+    expect(await tree.findByRole('treeitem', { name: 'All 2' })).toBeInTheDocument();
+    expect(tree.queryByRole('treeitem', { name: 'Group' })).toBeNull();
+    await user.click(tree.getByRole('treeitem', { name: 'Connections' }));
+    expect(tree.getAllByRole('treeitem').map((item) => item.textContent)).toEqual(['All 2', 'Needs attention 0', 'Connections', 'north Disconnected', 'south']);
+    expect(seen.at(-1)?.route).toEqual({ page: 'landing', connection: undefined, params: {} });
+    expect(seen.at(-1)?.connections.open).toEqual(expect.any(Function));
+  });
+
+  it('opens the landing with the parameters of an entry, in the tab on screen, and selects that entry and no other: the page is drawn again with the parameters it reads', async () => {
+    const { user } = mount(navigated(), { link: link(undefined) });
+    const tree = await sidebar();
+    expect(await tree.findByRole('treeitem', { name: 'All 2' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Filter: all')).toBeInTheDocument();
+
+    await user.click(tree.getByRole('treeitem', { name: 'Needs attention 0' }));
+
+    expect(await screen.findByText('Filter: attention')).toBeInTheDocument();
+    expect(tree.getByRole('treeitem', { name: 'Needs attention 0' })).toHaveAttribute('aria-selected', 'true');
+    expect(tree.getByRole('treeitem', { name: 'All 2' })).toHaveAttribute('aria-selected', 'false');
+    expect(faces()).toEqual(['Acme home']);
+  });
+
+  it('opens a connection from the entry that names it, as a press on one of Home\'s rows does: the host starts it first, and the plugin\'s home opens in it, in a tab beside the landing', async () => {
+    const { user, host } = mount(navigated(), { link: link(undefined) });
+    const tree = await sidebar();
+    await user.click(await tree.findByRole('treeitem', { name: 'Connections' }));
+
+    await user.click(tree.getByRole('treeitem', { name: /^north/ }));
+
+    await waitFor(() => {
+      expect(faces()).toEqual(['Acme home', 'Widgets']);
+    });
+    expect(host.api.start).toHaveBeenCalledExactlyOnceWith('acme', NORTH);
+  });
+
+  it('says why when the connection cannot be opened, as the host says it of a row of Problems: an error notice that names the connection, with the host\'s sentence, and no tab opens', async () => {
+    const { user, host } = mount(navigated(), { link: link(undefined) });
+    vi.mocked(host.api.start).mockResolvedValueOnce({ status: 'UNAUTHORIZED' });
+    const tree = await sidebar();
+    await user.click(await tree.findByRole('treeitem', { name: 'Connections' }));
+
+    await user.click(tree.getByRole('treeitem', { name: /^north/ }));
+
+    const notice = await screen.findByRole('alert', { name: 'Error: Couldn\'t open north' });
+    expect(within(notice).getByText('The connection needs you to sign in.')).toBeInTheDocument();
+    expect(faces()).toEqual(['Acme home']);
+  });
+
+  it('comes back from a saved window at the place it was saved at: the parameters of the landing are kept, the page reads them and the entry that opens them is selected', async () => {
+    mount(navigated(), { session: saved(['l', 'acme', 'landing', 'Acme home', { filter: 'attention' }]) });
+
+    expect(await screen.findByText('Filter: attention')).toBeInTheDocument();
+    expect(await (await sidebar()).findByRole('treeitem', { name: 'Needs attention 0' })).toHaveAttribute('aria-selected', 'true');
   });
 });

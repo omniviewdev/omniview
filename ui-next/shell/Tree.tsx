@@ -1,9 +1,9 @@
-import { Icon, Text } from '@omniviewdev/kit';
+import { Icon, Status, Text, tip } from '@omniviewdev/kit';
 import { useLayoutEffect, useState, type KeyboardEvent } from 'react';
 import { countText, type CountText } from './core/count';
 import type { ModifierEvent } from './core/tabs';
 import { expandedIds, hasNode, press, revealed, stopOf, toggled, visibleRows, type TreeMemory } from './core/tree';
-import type { ShellAccent, ShellCount, ShellTreeNode } from './registration';
+import type { ShellAccent, ShellCount, ShellRowStatus, ShellTreeNode } from './registration';
 import styles from './Tree.module.css';
 
 type TreeProps = {
@@ -37,6 +37,8 @@ type RowProps = {
   readonly label: string;
   readonly icon: ShellTreeNode['icon'];
   readonly count: ShellCount | null | undefined;
+  readonly status: ShellRowStatus | undefined;
+  readonly tone: ShellTreeNode['tone'];
   readonly level: number;
   readonly position: number;
   readonly setSize: number;
@@ -79,8 +81,24 @@ function CountSlot({ text }: { readonly text: CountText | undefined }) {
   );
 }
 
-// A row is named by its text, the label and the count (WCAG 2.5.3: the name contains the visible text), and so a screen reader hears "Label 89", and for an approximate count "Label about 89".
-function Row({ id, label, icon, count, level, position, setSize, expandable, expanded, selected, isStop, onToggle, onFocusRow, onChoose }: RowProps) {
+/**
+ * The state badge at the end of a row (KL5): the glyph of the kit's `Status` for the role, and the label as the row's accessible text and the glyph's tooltip. The kit draws a state as a glyph and its word side by side;
+ * a row has room for the glyph, so the box is the glyph's size and clips the word, which stays in the row's text for assistive technology (the row is named "Label 89 Needs sign-in") and in the tip. The tip is the
+ * kit's one delegated tooltip (an attribute, no listener of the row's own), so a tree of thousands of rows pays nothing for it. The space before the box is a text node, as the count's is.
+ */
+function StatusBadge({ role, label }: ShellRowStatus) {
+  return (
+    <>
+      {' '}
+      <span className={styles.status} data-shell-part="status" {...tip(label)}>
+        <Status role={role}>{label}</Status>
+      </span>
+    </>
+  );
+}
+
+// A row is named by its text, the label, the count and the badge's label (WCAG 2.5.3: the name contains the visible text), and so a screen reader hears "Label 89", for an approximate count "Label about 89", and for a badge "Label 89 Needs sign-in".
+function Row({ id, label, icon, count, status, tone, level, position, setSize, expandable, expanded, selected, isStop, onToggle, onFocusRow, onChoose }: RowProps) {
   const text = count === undefined ? undefined : countText(count);
   return (
     <li
@@ -88,6 +106,7 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
       className={styles.row}
       style={{ '--_level': level - 1 }}
       data-id={id}
+      data-tone={tone}
       data-shell-focus={isStop ? '' : undefined}
       tabIndex={isStop ? 0 : -1}
       aria-level={level}
@@ -114,6 +133,7 @@ function Row({ id, label, icon, count, level, position, setSize, expandable, exp
         <Text>{label}</Text>
       </span>
       {count === undefined ? null : <CountSlot text={text} />}
+      {status === undefined ? null : <StatusBadge role={status.role} label={status.label} />}
       {expandable ? (
         <span className={styles.disclosure}>
           <Icon name="chevron-right" />
@@ -209,6 +229,8 @@ export function Tree({ label, nodes, open, current, accent, memory, memoryKey = 
           label={row.node.label}
           icon={row.node.icon}
           count={row.node.count}
+          status={row.node.status}
+          tone={row.node.tone}
           level={row.level}
           position={row.position}
           setSize={row.setSize}

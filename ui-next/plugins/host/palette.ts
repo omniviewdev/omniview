@@ -28,6 +28,7 @@ import {
 } from '../../shell';
 import { openable } from '../contract/admit';
 import { readKeywords } from '../contract/sidebarKeywords';
+import { readTarget } from '../contract/sidebarTargets';
 import type { ContributionV1, FrameV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { laneNameOf } from './connectionName';
 import type { HostConnections } from './connections';
@@ -259,8 +260,14 @@ function pagesOf({ tabs, plugins, contributions, nodes, frames, remembered }: Ho
     const pages = new Map<string, { readonly node: SidebarNodeV1; groups: readonly string[]; readonly route: Route; readonly words: string[]; readonly places: string[] }>();
     const leaves = entry.phase === 'ready' ? leavesOf(openable(nodes.get(entry.id) ?? entry.contribution.sidebar.nodes, entry.contribution.pages)) : [];
     for (const { node, groups } of leaves) {
-      const plain: Route = { plugin: entry.id, contribution: node.id, params: {} };
-      const route: Route = connection === undefined ? plain : { ...plain, params: { connection } };
+      // What an entry opens (KL5): a page with the parameters it opens with is that place, one row for each place; an entry that opens a connection is no page (the palette lists the plugin's connections itself).
+      const opens = readTarget(node);
+      const plain = 'target' in opens && opens.target.kind === 'page' ? normaliseRoute({ plugin: entry.id, contribution: opens.target.page, params: opens.target.params }) : undefined;
+      if (plain === undefined) {
+        continue;
+      }
+
+      const route: Route = connection === undefined ? plain : { ...plain, params: { ...plain.params, connection } };
       const read = readKeywords(node);
       for (const problem of read.problems) {
         tell(entry, problem);
@@ -271,9 +278,9 @@ function pagesOf({ tabs, plugins, contributions, nodes, frames, remembered }: Ho
         homeWords.push(...read.words);
         context = context === '' && node.label.toLowerCase() !== name.toLowerCase() ? node.label : context;
       } else {
-        const same = pages.get(node.id);
+        const same = pages.get(routeKey(plain));
         if (same === undefined) {
-          pages.set(node.id, { node, groups, route, words: [...read.words], places: [...groups] });
+          pages.set(routeKey(plain), { node, groups, route, words: [...read.words], places: [...groups] });
         } else {
           // The row keeps what either entry gave: the words of both, the groups of both as words it is found by, and the first group there was to say (a page named at the top and again in a group is in the group).
           same.words.push(...read.words);

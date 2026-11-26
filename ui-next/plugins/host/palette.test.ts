@@ -334,6 +334,22 @@ describe('the pages source', () => {
     expect(racks.action).toMatchObject({ type: 'open', destination: { route: { plugin: 'beta', contribution: 'racks' } } });
   });
 
+  it('lists an entry that opens a page with parameters as that place, a row of its own beside the page\'s, and no row for one that opens a connection: the palette lists the plugin\'s connections itself (KL5)', () => {
+    const w = build();
+    w.nodes.publish('beta', [
+      { id: 'items', label: 'Items', icon: 'box' },
+      { id: 'recent', label: 'Recent items', icon: 'clock', page: 'items', params: { sort: 'recent' } },
+      { id: 'north', label: 'north', icon: 'server', connection: 'north-1' },
+    ]);
+    w.store.open({ kind: 'goto' });
+
+    expect(rowsOf(w, 'goto').filter((row) => row.route?.plugin === 'beta').map((row) => [row.kind, row.title.text, row.route?.contribution, row.route?.params])).toEqual([
+      ['home', 'Beta', 'overview', {}],
+      ['page', 'Items', 'items', {}],
+      ['page', 'Recent items', 'items', { sort: 'recent' }],
+    ]);
+  });
+
   it('opens a page of a plugin that is not on screen at the connection that plugin was last used in, as its own sidebar does, and leaves the plugin on screen to the tab model', () => {
     const w = build({ remembered: (plugin) => (plugin === 'acme' ? { plugin: 'acme', contribution: 'widgets', params: { connection: 'north' } } : undefined) });
     w.open(at('beta', 'items'));
