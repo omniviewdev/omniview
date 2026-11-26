@@ -1,7 +1,7 @@
 #!/bin/bash
 # Negative controls of the page's side of the marks (issue #694 step 4): one fault at a time in execFeed.ts (the file is restored by `git checkout`
-# after each run), and the run of its tests must FAIL in the test named for it. Second half: the test that names it removed from the run (`-t` with
-# the other tests only) must PASS with the fault, so that no other test catches it for another reason.
+# after each run), and the run of its tests must FAIL in the test named for it and in no other (the count of the others is printed: it must be 0), so
+# that no test catches the fault for another reason.
 #
 # usage: bash mutations-page.sh.txt   (from the worktree root, the kit built)
 set -u

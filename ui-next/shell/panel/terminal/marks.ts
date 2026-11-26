@@ -72,7 +72,6 @@ export function marksOf(frame: unknown): readonly TerminalMark[] {
 
 /** What a command is called in the question a close asks: the first word of its line, without control characters, at most `MAX_NAME_CHARS`; nothing when the line has none. */
 export function commandNameOf(line: string | undefined): string | undefined {
-  // eslint-disable-next-line no-control-regex -- a command line is the user's data and may hold control characters
   const word = (line ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().split(/\s+/, 1)[0] ?? '';
   return word === '' ? undefined : [...word].slice(0, MAX_NAME_CHARS).join('');
 }

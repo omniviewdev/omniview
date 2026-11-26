@@ -452,7 +452,6 @@ export class MarkScanner {
         return;
       }
 
-      // eslint-disable-next-line no-control-regex -- no directory has a control character in it that a terminal could be made to read
       const dir = unescapeMark(field.slice('Cwd='.length, cut)).replace(/[\u0000-\u001f\u007f]/g, '');
       if (dir === '' || dir.length > 4096) return;
       this.trustedCwd = dir;
@@ -462,7 +461,6 @@ export class MarkScanner {
 
   readUrl(url) {
     const found = /^file:\/\/[^/]*(\/.*)$/.exec(url);
-    // eslint-disable-next-line no-control-regex -- see above
     if (found !== null) this.looseCwd = decodeURIComponent(found[1]).replace(/[\u0000-\u001f\u007f]/g, '');
   }
 
