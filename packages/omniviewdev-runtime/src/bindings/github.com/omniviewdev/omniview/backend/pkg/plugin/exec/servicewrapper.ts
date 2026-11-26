@@ -82,11 +82,22 @@ export function ChannelTerminalBusy(capability: string): $CancellablePromise<ter
 }
 
 /**
+ * ChannelTerminalCommands reads the record of the channel terminal that the capability names: the commands its shell's integration told of
+ * (at most 512, oldest first), each with the offsets of the output it printed in the terminal's output stream, its exit status, its directory and
+ * the times the host read its marks. A command line is there only when the shell sent it with the session's nonce.
+ */
+export function ChannelTerminalCommands(capability: string): $CancellablePromise<terminal$0.Commands> {
+    return $Call.ByID(4233718513, capability).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
  * ChannelTerminalCwd says which directory the shell of the channel terminal that the capability names is in now.
  */
 export function ChannelTerminalCwd(capability: string): $CancellablePromise<terminal$0.Directory> {
     return $Call.ByID(4276309675, capability).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
@@ -132,7 +143,7 @@ export function CreateSession(plugin: string, connectionID: string, encoded: str
  */
 export function CreateTerminal(opts: exec$0.SessionOptions, launch: terminal$0.Launch): $CancellablePromise<terminal$0.Session | null> {
     return $Call.ByID(4182196712, opts, launch).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType8($result);
     });
 }
 
@@ -153,7 +164,7 @@ export function DetachSession(sessionID: string): $CancellablePromise<exec$0.Ses
  */
 export function DetachTerminal(sessionID: string, request: terminal$0.DetachRequest): $CancellablePromise<terminal$0.Detached | null> {
     return $Call.ByID(3844471071, sessionID, request).then(($result: any) => {
-        return $$createType9($result);
+        return $$createType10($result);
     });
 }
 
@@ -172,19 +183,19 @@ export function DismissChannelTerminal(capability: string): $CancellablePromise<
  */
 export function GetCwd(sessionID: string): $CancellablePromise<terminal$0.Directory> {
     return $Call.ByID(3534704186, sessionID).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType6($result);
     });
 }
 
 export function GetHandler(plugin: string, resource: string): $CancellablePromise<exec$0.Handler | null> {
     return $Call.ByID(1779192716, plugin, resource).then(($result: any) => {
-        return $$createType11($result);
+        return $$createType12($result);
     });
 }
 
 export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: exec$0.Handler } }> {
     return $Call.ByID(4033362541).then(($result: any) => {
-        return $$createType13($result);
+        return $$createType14($result);
     });
 }
 
@@ -193,7 +204,7 @@ export function GetHandlers(): $CancellablePromise<{ [_ in string]?: { [_ in str
  */
 export function GetNativeTerminalApplications(): $CancellablePromise<nativeapps$0.Application[]> {
     return $Call.ByID(2940999236).then(($result: any) => {
-        return $$createType15($result);
+        return $$createType16($result);
     });
 }
 
@@ -203,7 +214,7 @@ export function GetNativeTerminalSupport(): $CancellablePromise<boolean> {
 
 export function GetPluginHandlers(plugin: string): $CancellablePromise<{ [_ in string]?: exec$0.Handler }> {
     return $Call.ByID(2619212338, plugin).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType13($result);
     });
 }
 
@@ -235,19 +246,19 @@ export function IsBusy(sessionID: string): $CancellablePromise<terminal$0.Foregr
  */
 export function ListChannelTerminals(capabilities: string[]): $CancellablePromise<terminal$0.ChannelListed[]> {
     return $Call.ByID(3911742752, capabilities).then(($result: any) => {
-        return $$createType17($result);
+        return $$createType18($result);
     });
 }
 
 export function ListPlugins(): $CancellablePromise<string[]> {
     return $Call.ByID(3006426324).then(($result: any) => {
-        return $$createType18($result);
+        return $$createType19($result);
     });
 }
 
 export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
     return $Call.ByID(265791345).then(($result: any) => {
-        return $$createType19($result);
+        return $$createType20($result);
     });
 }
 
@@ -258,7 +269,7 @@ export function ListSessions(): $CancellablePromise<(exec$0.Session | null)[]> {
  */
 export function ListTerminalShells(): $CancellablePromise<shellenv$0.Shell[]> {
     return $Call.ByID(2954183303).then(($result: any) => {
-        return $$createType21($result);
+        return $$createType22($result);
     });
 }
 
@@ -271,7 +282,7 @@ export function ListTerminalShells(): $CancellablePromise<shellenv$0.Shell[]> {
  */
 export function ListTerminals(pageKey: string): $CancellablePromise<terminal$0.Listed[]> {
     return $Call.ByID(867361533, pageKey).then(($result: any) => {
-        return $$createType23($result);
+        return $$createType24($result);
     });
 }
 
@@ -313,22 +324,23 @@ const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = terminal$0.Attached.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = terminal$0.Foreground.createFrom;
-const $$createType5 = terminal$0.Directory.createFrom;
-const $$createType6 = terminal$0.Session.createFrom;
-const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = terminal$0.Detached.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = exec$0.Handler.createFrom;
-const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = $Create.Map($Create.Any, $$createType10);
-const $$createType13 = $Create.Map($Create.Any, $$createType12);
-const $$createType14 = nativeapps$0.Application.createFrom;
-const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = terminal$0.ChannelListed.createFrom;
-const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = $Create.Array($Create.Any);
-const $$createType19 = $Create.Array($$createType1);
-const $$createType20 = shellenv$0.Shell.createFrom;
-const $$createType21 = $Create.Array($$createType20);
-const $$createType22 = terminal$0.Listed.createFrom;
-const $$createType23 = $Create.Array($$createType22);
+const $$createType5 = terminal$0.Commands.createFrom;
+const $$createType6 = terminal$0.Directory.createFrom;
+const $$createType7 = terminal$0.Session.createFrom;
+const $$createType8 = $Create.Nullable($$createType7);
+const $$createType9 = terminal$0.Detached.createFrom;
+const $$createType10 = $Create.Nullable($$createType9);
+const $$createType11 = exec$0.Handler.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = $Create.Map($Create.Any, $$createType11);
+const $$createType14 = $Create.Map($Create.Any, $$createType13);
+const $$createType15 = nativeapps$0.Application.createFrom;
+const $$createType16 = $Create.Array($$createType15);
+const $$createType17 = terminal$0.ChannelListed.createFrom;
+const $$createType18 = $Create.Array($$createType17);
+const $$createType19 = $Create.Array($Create.Any);
+const $$createType20 = $Create.Array($$createType1);
+const $$createType21 = shellenv$0.Shell.createFrom;
+const $$createType22 = $Create.Array($$createType21);
+const $$createType23 = terminal$0.Listed.createFrom;
+const $$createType24 = $Create.Array($$createType23);

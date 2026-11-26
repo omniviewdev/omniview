@@ -51,6 +51,7 @@ const (
 	wApplied      byte = 0x87
 	wReleased     byte = 0x88
 	wCloseRefused byte = 0x8a
+	wMarks        byte = 0x8b
 )
 
 // settle is the bound of a wait for an event that must come.
@@ -311,6 +312,31 @@ type readyWire struct {
 	InputApplied uint64 `json:"input_applied"`
 	// WriterKnown says the host had a count for the attach's writer before this attach.
 	WriterKnown bool `json:"writer_known"`
+	// Marks is the version of the marks frame this stream carries: absent when the page asked for none or the terminal has none.
+	Marks int `json:"marks"`
+}
+
+// markWire is one mark of a marks frame, as the page reads it.
+type markWire struct {
+	Kind       string `json:"kind"`
+	At         uint64 `json:"at"`
+	End        uint64 `json:"end"`
+	ID         string `json:"id"`
+	Trust      string `json:"trust"`
+	Command    string `json:"command"`
+	Cwd        string `json:"cwd"`
+	Exit       *int32 `json:"exit"`
+	DurationMs *int64 `json:"duration_ms"`
+	TimeMs     int64  `json:"time_ms"`
+	Redraw     bool   `json:"redraw"`
+	// seenAt is where the page stood in the output when the frame came: set by the test page, not part of the wire.
+	seenAt uint64
+}
+
+// marksWire is the JSON of a marks frame.
+type marksWire struct {
+	V     int        `json:"v"`
+	Marks []markWire `json:"marks"`
 }
 
 // hostFrame is a frame the host sent, read.
@@ -322,6 +348,8 @@ type hostFrame struct {
 	from, to uint64
 	end      End
 	applied  uint64
+	marks    marksWire
+	raw      []byte
 }
 
 func decodeHostFrame(raw []byte) (hostFrame, error) {
@@ -355,6 +383,11 @@ func decodeHostFrame(raw []byte) (hostFrame, error) {
 			return frame, fmt.Errorf("an applied frame of %d bytes", len(raw))
 		}
 		frame.applied = binary.BigEndian.Uint64(body)
+	case wMarks:
+		frame.raw = body
+		if err := json.Unmarshal(body, &frame.marks); err != nil {
+			return frame, fmt.Errorf("a marks frame that is not JSON: %w", err)
+		}
 	case wTakenOver, wNotFound, wReleased, wCloseRefused:
 		if len(body) != 0 {
 			return frame, fmt.Errorf("a frame of type %#x that has a payload", frame.kind)
@@ -394,12 +427,15 @@ type chanPage struct {
 	applied      []uint64
 	released     int
 	closeRefused int
-	faults       []string
-	frames       int
-	order        []byte
-	closed       bool
-	ackEvery     int
-	unacked      int
+	// marks is every mark of every marks frame, in the order they came, with the offset the page stood at when each came; markFrames is the raw JSON of each frame.
+	marks      []markWire
+	markFrames [][]byte
+	faults     []string
+	frames     int
+	order      []byte
+	closed     bool
+	ackEvery   int
+	unacked    int
 	// dead says the page has gone: what the host sent after is lost to it, as the frames queued in a closed tab are.
 	dead bool
 	// lag is how late the page's goroutine is for each frame it takes, in nanoseconds: the page of a machine that is busy. A test sets
@@ -471,6 +507,22 @@ func (p *chanPage) take(raw []byte) uint32 {
 		p.next = frame.to
 	case wEnded:
 		p.ended = append(p.ended, frame.end)
+	case wMarks:
+		p.requireReady("a marks")
+		p.markFrames = append(p.markFrames, frame.raw)
+		if len(frame.marks.Marks) == 0 || frame.marks.V != 1 {
+			p.faults = append(p.faults, fmt.Sprintf("a marks frame of version %d with %d marks", frame.marks.V, len(frame.marks.Marks)))
+		}
+		for _, mark := range frame.marks.Marks {
+			if mark.End > p.next {
+				p.faults = append(p.faults, fmt.Sprintf("a mark %s ending at %d before the bytes of it: the page stands at %d", mark.Kind, mark.End, p.next))
+			}
+			if n := len(p.marks); n > 0 && mark.End <= p.marks[n-1].End {
+				p.faults = append(p.faults, fmt.Sprintf("a mark ending at %d after one ending at %d", mark.End, p.marks[n-1].End))
+			}
+			mark.seenAt = p.next
+			p.marks = append(p.marks, mark)
+		}
 	case wApplied:
 		p.requireReady("an applied")
 		if n := len(p.applied); n > 0 && frame.applied <= p.applied[n-1] {
@@ -550,6 +602,8 @@ type pageState struct {
 	applied      []uint64
 	released     int
 	closeRefused int
+	marks        []markWire
+	markFrames   [][]byte
 	faults       []string
 	frames       int
 	order        []byte
@@ -562,7 +616,7 @@ func (p *chanPage) state() pageState {
 	defer p.mu.Unlock()
 	return pageState{
 		ready: p.ready, segs: slices.Clone(p.segs), gaps: slices.Clone(p.gaps), ended: slices.Clone(p.ended), takenOver: p.takenOver, notFound: p.notFound,
-		applied: slices.Clone(p.applied), released: p.released, closeRefused: p.closeRefused, faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
+		applied: slices.Clone(p.applied), released: p.released, closeRefused: p.closeRefused, marks: slices.Clone(p.marks), markFrames: slices.Clone(p.markFrames), faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
 	}
 }
 
@@ -743,6 +797,30 @@ func (m *Manager) attachAs(t *testing.T, capability, writer string) *chanPage {
 		m.ServeChannel(f)
 	}()
 	f.pageSend(attachFrameAs(capability, writer))
+	return p
+}
+
+// attachFrameWithMarks is an attach of a page that reads the marks frame of version 1 (docs/ui-next/terminal-channel-protocol.md section 4a).
+func attachFrameWithMarks(capability string, from *uint64) []byte {
+	if from == nil {
+		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q,"marks":1}`, capability, writerID(0))...)
+	}
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d,"writer":%q,"marks":1}`, capability, *from, writerID(0))...)
+}
+
+// attachMarks opens a stream of a page that reads marks, and serves it on a goroutine of its own.
+func (m *Manager) attachMarks(t *testing.T, capability string, from *uint64) *chanPage {
+	t.Helper()
+	f := newFakeChannel(t)
+	p := newChanPage(t, f, 0)
+	served := make(chan struct{})
+	p.served = served
+	go p.run()
+	go func() {
+		defer close(served)
+		m.ServeChannel(f)
+	}()
+	f.pageSend(attachFrameWithMarks(capability, from))
 	return p
 }
 

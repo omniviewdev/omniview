@@ -1,5 +1,6 @@
-import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
+import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
+import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
+import { marksOf } from './marks';
 import { createHeldOutput } from './heldOutput';
 
 // A terminal of the host as a feed, over the terminal channel (docs/ui-next/terminal-channel-protocol.md; `channel.ts` is the contract with the one place that holds the capabilities and the streams). It is the one place the
@@ -531,6 +532,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** A stream was ever opened for this feed: from then on another stream may have taken the terminal, and only the stream (or the lease) may end it. */
   let everConnected = false;
   let retry: Timer | undefined;
+  /** The marks of the shell's integration taken so far, oldest first, the end offset of the last one, what a command start said runs (the producer's word), and the list the feed hands out until a mark comes. */
+  let marks: TerminalMark[] = [];
+  let markedEnd = -1;
+  let running = false;
+  let markList: readonly TerminalMark[] | undefined;
+
   /** The offset the feed has applied up to: what a stream that drops is connected again from. A terminal the feed made starts at 0; one it attaches to has nothing until its replay is complete. */
   let next: number | undefined = attachTo === undefined ? 0 : undefined;
   /** Where the next frame of the stream now open must start. */
@@ -887,6 +894,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     streaming = true;
+    if (!resumed) {
+      forgetMarks(-1);
+    }
+
     size = ready.size;
     modes = ready.modes;
     delivered = ready.size;
@@ -1011,6 +1022,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     cursor = to;
+    forgetMarks(to);
     if (gathering !== undefined) {
       // The bytes gathered so far are not the terminal: the replay starts again at `to`, and is over when `to` is at its end or past it.
       gathering.parts = [];
@@ -1059,6 +1071,49 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     if (gathering !== undefined) {
       publishGathered();
     }
+  };
+
+  /**
+   * The marks of the shell's integration, in the order of the output. A mark is taken once: the host sends again the one that ends at the offset a stream came back from (it may have cut after the bytes and before the frame), so a mark
+   * that ends at or before the last one taken is one the feed has. What runs is the host's word: a command start whose line the shell proved (`nonce`) is a command running until an end mark comes; a start that anything could have
+   * printed is not (the host holds the nonce, the page never decides trust).
+   */
+  const onMarks = (frame: unknown) => {
+    if (!streaming) {
+      return;
+    }
+
+    let taken = false;
+    for (const mark of marksOf(frame)) {
+      if (mark.end <= markedEnd) {
+        continue;
+      }
+
+      taken = true;
+      markedEnd = mark.end;
+      marks.push(mark);
+      if (mark.kind === 'command-start' && mark.trust === 'nonce') {
+        running = true;
+      } else if (mark.kind === 'command-end' || mark.kind === 'prompt-start') {
+        running = false;
+      }
+    }
+
+    if (marks.length > MAX_MARKS) {
+      marks.splice(0, marks.length - MAX_MARKS / 2);
+    }
+
+    if (taken) {
+      markList = undefined;
+    }
+  };
+
+  /** The marks and what is known of what runs start over: the screen is brought afresh (a replay of the terminal, or a gap), so the marks of the screen that was are of lines that are not there. */
+  const forgetMarks = (from: number) => {
+    marks = [];
+    markedEnd = from;
+    running = false;
+    markList = undefined;
   };
 
   /** The host says how much input it has applied: the kept bytes up to it are let go. */
@@ -1197,6 +1252,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         },
         gap: heard(onGap),
         applied: heard(onApplied),
+        marks: heard(onMarks),
         ended: heardEnd(onEnded),
         takenOver: heard(onTakenOver),
         closeRefused: heardEnd(() => undefined),
@@ -1406,9 +1462,23 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       sendAck();
     },
 
+    marks: () => (markList ??= [...marks]),
+
     busy: async () => {
       if (closed() || left || status.state !== 'running') {
         return IDLE;
+      }
+
+      // The shell said a command is running: busy, even when the host's pull fact says idle (the shell itself holds the foreground while a builtin loops). The host's fact is asked all the same and wins when it is busy: it
+      // knows the program's name, which the marks do not (the first word of a line can be an assignment).
+      if (running) {
+        try {
+          const pulled = busyOf(await channels.busy(id));
+          return pulled.state === 'busy' ? pulled : { state: 'busy' };
+        } catch (error) {
+          // A terminal the host says is gone has nothing running in it, whatever a mark said; any other failure of the question keeps what the shell said.
+          return channels.isGone(error) ? IDLE : { state: 'busy' };
+        }
       }
 
       try {

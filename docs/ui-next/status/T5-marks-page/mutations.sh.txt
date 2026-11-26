@@ -1,0 +1,58 @@
+#!/bin/bash
+# Negative controls of the marks on the channel stream (issue #694 step 4). Each control puts ONE fault in a scratch copy of one source file and runs
+# the tests with `go test -overlay`, the worktree untouched. A control is good when (1) the run FAILS in the assertion it is named for (the guard of
+# channel_marks_test.go, `guarded(t, "<name>", ...)`) and (2) the same fault PASSES with that guard switched off
+# (TERMINAL_CHANNEL_CONTROL_OFF=<name>): a fault that a guard catches for another reason proves nothing.
+#
+# usage: bash mutations.sh.txt            (from the worktree root; Go 1.27 on PATH, GOWORK=off GOTOOLCHAIN=local)
+set -u
+ROOT=$(pwd)
+PKG=./backend/pkg/terminal
+TESTS='TestMarksArrive|TestAReplayGivesTheSame|TestAMarkWithoutTheNonce|TestATerminalWithoutIntegration|TestAPageThatDidNotAsk|TestTheRecordAndTheMarks|TestACommandRunsFrom|TestTheRecordIsRead|TestTheNonceIsInNo|TestTheKeptEnd|TestOnlyOurNextPromptEndsACommandWhoseEndNeverCame|TestMarksThatEnded|TestMarksNever'
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+# control name | file | python expression that makes the fault: (old, new)
+BAD=0
+run() {
+  name=$1 file=$2 old=$3 new=$4
+  # ONLY="name name" runs those controls alone.
+  if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then return; fi
+  cp "$ROOT/$file" "$WORK/mut.go"
+  python3 - "$WORK/mut.go" "$old" "$new" <<'PY'
+import sys
+p, old, new = sys.argv[1:4]
+s = open(p).read()
+assert old in s, "the fault does not apply: " + old
+open(p, 'w').write(s.replace(old, new, 1))
+PY
+  [ $? -eq 0 ] || { echo "CONTROL $name: DOES NOT APPLY"; BAD=1; return; }
+  printf '{"Replace":{"%s":"%s"}}' "$ROOT/$file" "$WORK/mut.go" > "$WORK/overlay.json"
+  # With the guard: the run must FAIL, in a test (not in the build). Guard off: the same fault must PASS.
+  caught=$(go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1); s1=$?
+  off=$(TERMINAL_CHANNEL_CONTROL_OFF=$name go test -overlay="$WORK/overlay.json" "$PKG" -run "$TESTS" 2>&1); s2=$?
+  if [ $s1 -ne 0 ] && echo "$caught" | grep -q '^--- FAIL'; then c1=RED; else c1=GREEN-OR-BROKEN; fi
+  if [ $s2 -eq 0 ]; then c2=GREEN; else c2=RED-OR-BROKEN; fi
+  echo "CONTROL $name: with the guard $c1 (want RED), guard off $c2 (want GREEN)"
+  if [ "$c1" != RED ] || [ "$c2" != GREEN ]; then BAD=1; fi
+}
+
+run forged-dropped backend/pkg/terminal/marks_store.go 'if m.Kind == marks.KindCwd && m.Trust != marks.TrustNonce {
+			continue
+		}' ''
+run unasked-no-marks-frame backend/pkg/terminal/channel_serve.go 'if asked == marksFrameVersion && ring.marks != nil {' 'if (asked == marksFrameVersion || asked == 0) && ring.marks != nil {'
+run other-version-no-marks backend/pkg/terminal/channel_serve.go 'if asked == marksFrameVersion && ring.marks != nil {' 'if asked != 0 && ring.marks != nil {'
+run marks-at-their-offset,replay-marks-at-their-offset backend/pkg/terminal/marks_store.go 'return nil, int(min(uint64(limit), st.items[i].EndOffset-pos))' 'return nil, limit'
+run marks-bounded backend/pkg/terminal/marks_store.go 'if len(st.items) >= 2*maxMarksKept {' 'if false {'
+run resume-marks,resume-marks-after backend/pkg/terminal/channel_serve.go 'if from != nil && *from == start {
+		return start
+	}' ''
+run forged-start-not-busy backend/pkg/terminal/marks_store.go 'if !ok || rec.Trust != marks.TrustNonce {' 'if !ok {'
+run busy-from-marks,ready-busy-from-marks backend/pkg/terminal/channel_marks.go 'if _, running := s.verifiedRunning(); !running {' 'if _, running := s.verifiedRunning(); true || !running {'
+run no-integration-no-marks backend/pkg/terminal/manager.go 'if !started.nonce.IsZero() {' 'if true {'
+run forged-not-in-record backend/pkg/terminal/channel_marks.go 'if rec.CwdTrust == marks.TrustNonce {
+		c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()
+	}' 'c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()'
+run prompt-ends-running,next-command-after-replaced backend/pkg/terminal/marks_store.go 'PromptEndsCommand: true' 'PromptEndsCommand: false'
+run foreign-prompt-ends-nothing backend/pkg/terminal/marks/osc.go 'if s.promptEnds && proven {' 'if s.promptEnds && (proven || true) {'
+exit $BAD

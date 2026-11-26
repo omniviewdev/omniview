@@ -361,6 +361,15 @@ func (c *controller) ChannelTerminalCwd(capability string) (_ terminal.Directory
 	return c.terminalManager.ChannelCwd(capability)
 }
 
+// ChannelTerminalCommands reads the record of the commands the shell of a channel terminal told of.
+//
+//nolint:nonamedreturns // The deferred span records the returned error.
+func (c *controller) ChannelTerminalCommands(capability string) (_ terminal.Commands, err error) {
+	_, span := tracer.Start(context.Background(), "exec.ChannelTerminalCommands")
+	defer finishOp(span, &err)
+	return c.terminalManager.ChannelCommands(capability)
+}
+
 // ListChannelTerminals lists the channel terminals of the capabilities given, and only those, in the order given. It
 // opens no span: a page asks it once as it loads.
 func (c *controller) ListChannelTerminals(capabilities []string) ([]terminal.ChannelListed, error) {

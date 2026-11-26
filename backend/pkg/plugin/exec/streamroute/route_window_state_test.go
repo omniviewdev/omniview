@@ -163,6 +163,9 @@ func TestNoWindowStateCallReturnsTheCapabilityOfAChannelTerminalAtAnyStepOfItsLi
 	_, err = wrapper.ChannelTerminalCwd(info.Cap)
 	require.NoError(t, err)
 	state.check("ChannelTerminalCwd")
+	_, err = wrapper.ChannelTerminalCommands(info.Cap)
+	require.NoError(t, err)
+	state.check("ChannelTerminalCommands")
 
 	require.NoError(t, page.conn.CloseNow(), "the page is gone, with no frame to say so")
 	waitListed(t, wrapper, info.Cap, func(l terminal.ChannelListed) bool { return !l.Attached })

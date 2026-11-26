@@ -41,6 +41,8 @@ type replayRing struct {
 	sizes  []sizeAt
 	// overwritten counts the bytes the ring dropped for room, oldest first: the output less what it holds, always.
 	overwritten uint64
+	// marks is what the shell's integration marked in the output, read in write: nil for a terminal that has no integration (channel_marks.go).
+	marks *markStore
 }
 
 // replayChunk is a run of whole reads.
@@ -72,6 +74,9 @@ func offset(n int) uint64 { return uint64(n) } //nolint:gosec // A length is nev
 // takes bytes up to chunkBytes, and then up to the first boundary, wherever in a read that is: the next chunk
 // begins there. (A chunk that no boundary has ended at twice the size is ended anyway.)
 func (r *replayRing) write(p []byte) {
+	if r.marks != nil {
+		r.marks.feed(p)
+	}
 	for len(p) > 0 {
 		if len(r.chunks) == 0 {
 			r.openChunk()
@@ -204,6 +209,9 @@ func (r *replayRing) freeze() *replayRing {
 	frozen.live = r.live.clone()
 	frozen.front = r.front.clone()
 	frozen.sizes = slices.Clone(r.sizes)
+	if r.marks != nil {
+		frozen.marks = r.marks.clone()
+	}
 	return frozen
 }
 

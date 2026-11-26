@@ -54,6 +54,10 @@ type Config struct {
 	MaxRecords int
 	// StartOffset is the offset of the first byte fed: a scanner that is made when the session has output already.
 	StartOffset uint64
+	// PromptEndsCommand makes a prompt start (OSC 133 A) while a command runs end that command, with no exit code: a command whose end mark never came (it was lost, or the shell
+	// went on to its next prompt without it) is ended by the integration's own next prompt, which follows a directory with the nonce. A nested or exec'd shell has
+	// no integration and never prints that directory, so it errs toward asking: the command reads running until the terminal closes. The default (false) keeps a prompt inside a running command as output.
+	PromptEndsCommand bool
 }
 
 // Scanner reads the output of one session, in the pieces it came in, and says which marks are in it. It never
@@ -73,10 +77,13 @@ type Scanner struct {
 	skip bool
 	over bool
 
-	nonce []byte
-	now   func() time.Time
-	log   *Log
-	start uint64
+	nonce      []byte
+	now        func() time.Time
+	log        *Log
+	start      uint64
+	promptEnds bool
+	// ourPrompt is set by a directory that carries the nonce and cleared by the next prompt or command mark: the prompt that follows is the shell integration's own.
+	ourPrompt bool
 
 	off       atomic.Uint64
 	marks     atomic.Uint64
@@ -95,6 +102,7 @@ func New(cfg Config) *Scanner {
 	}
 	s.log = newLog(cfg.MaxRecords)
 	s.start = cfg.StartOffset
+	s.promptEnds = cfg.PromptEndsCommand
 	s.off.Store(cfg.StartOffset)
 	return s
 }
@@ -280,13 +288,17 @@ func (s *Scanner) finishOSC(end uint64, out []Mark) []Mark {
 		return out
 	}
 	body := s.buf[:s.n]
+	before := len(out)
 	switch {
 	case hasPrefix(body, "7;"):
-		return s.readCwdURL(body[len("7;"):], out)
+		out = s.readCwdURL(body[len("7;"):], out)
 	case hasPrefix(body, "133;"):
-		return s.readPrompt(body[len("133;"):], end, out)
+		out = s.readPrompt(body[len("133;"):], end, out)
 	case hasPrefix(body, "633;"):
-		return s.readVSCode(body[len("633;"):], end, out)
+		out = s.readVSCode(body[len("633;"):], end, out)
+	}
+	for i := before; i < len(out); i++ {
+		out[i].EndOffset = end
 	}
 	return out
 }

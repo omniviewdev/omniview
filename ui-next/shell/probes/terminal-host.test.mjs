@@ -26,8 +26,8 @@ const make = async (host, id = 't', launch = { channel: true, cols: 80, rows: 24
  * A page that follows the protocol: it opens a stream, sends `attach` (with `from` when it has the bytes before it), keeps every frame the host sends in order, applies the output by offset (a frame that does not join is a failure
  * of the host, and the test says so), acknowledges what it took when `ack` is on (the first acknowledgement, of nothing, turns the host's window on), and says when the stream is closed.
  */
-function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true, writer } = {}) {
-  const page = { frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, released: false, refused: 0, unsupported: undefined, counts: [], notFound: false, waiters: [], acked: 0, live: 0 };
+function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true, writer, marks } = {}) {
+  const page = { marks: [], markFrames: [], frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, released: false, refused: 0, unsupported: undefined, counts: [], notFound: false, waiters: [], acked: 0, live: 0 };
   const wake = () => {
     for (const waiter of page.waiters.splice(0)) waiter();
   };
@@ -73,6 +73,10 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true, w
         page.unsupported = read.v;
       } else if (read.kind === 'not-found') {
         page.notFound = true;
+      } else if (read.kind === 'marks') {
+        page.markFrames.push(frame);
+        // A mark comes after the bytes of its sequence: the page stands where it ends, or later.
+        for (const mark of read.frame.marks) page.marks.push({ ...mark, seenAt: page.next });
       }
 
       wake();
@@ -88,7 +92,7 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true, w
   };
 
   page.bytes = () => Buffer.concat(page.applied);
-  if (sendAttach) page.stream.send(pageFrames.attach(cap, from, undefined, writer));
+  if (sendAttach) page.stream.send(pageFrames.attach(cap, from, undefined, writer, marks));
   return page;
 }
 
@@ -1049,4 +1053,177 @@ test('the input applied is counted for each writer: another writer\'s input is i
   assert.equal(kept.ready.input_applied, 1);
   assert.equal(kept.ready.writer_known, true);
   host.stop();
+});
+
+// ---- the marks of the shell's integration (issue #694 step 4, protocol section 4a) ---------------------------------------------------------------------------------------------------------------------------
+
+/** A host whose shell has the integration, a terminal on it, and a page that asks for the marks. */
+const marked = async (options = {}) => {
+  const host = createHost({ integration: true });
+  const made = await make(host, 't');
+  const page = pageOf(host, made.cap, { marks: 1, ...options });
+  await page.until('ready', () => page.ready !== undefined);
+  return { host, made, page };
+};
+
+const sequencesOf = (bytes, marks) => marks.map((mark) => bytes.subarray(mark.at, mark.end).toString('latin1'));
+
+test('the marks come after the bytes of their sequence, each addressing its own sequence by offset, with the command line and directory the nonce vouches for', timeout, async () => {
+  const { host, page } = await marked();
+  assert.equal(page.ready.marks, 1, 'ready says that marks are coming');
+  host.type('t', 'hello\r');
+  await page.until('the second prompt', () => page.marks.filter((mark) => mark.kind === 'input-start').length >= 2);
+  const marks = page.marks;
+  // The shell tells its directory before each prompt, the first one too.
+  assert.deepEqual(marks.map((mark) => mark.kind), ['cwd', 'prompt-start', 'input-start', 'command-start', 'command-end', 'cwd', 'prompt-start', 'input-start']);
+  const bytes = page.bytes();
+  assert.deepEqual(sequencesOf(bytes, marks).map((sequence) => sequence.slice(0, 7)), ['\u001b]633;P', '\u001b]133;A', '\u001b]133;B', '\u001b]133;C', '\u001b]133;D', '\u001b]633;P', '\u001b]133;A', '\u001b]133;B']);
+  for (const mark of marks) assert.equal(mark.seenAt, mark.end, `the output is cut where the sequence of ${mark.kind} ends`);
+  const start = marks[3];
+  assert.equal(start.command, 'hello');
+  assert.equal(start.trust, 'nonce');
+  assert.equal(marks[1].trust, 'unverified', 'a prompt mark is navigation only');
+  assert.equal(marks[4].exit, 0);
+  assert.equal(marks[5].cwd, '/home/user');
+  assert.ok(start.time_ms > 0 && marks[4].time_ms >= start.time_ms, 'the producer\'s time of the start and the end');
+  assert.match(bytes.subarray(start.end).toString('latin1'), /^hello from the synthetic shell/, 'the output of the command starts where the start mark ends');
+});
+
+test('a replay gives the same marks at the same offsets, a page that comes back by its offset is sent the ones it has not seen (the one that ends at its offset again), and the kept end of a terminal has its marks', timeout, async () => {
+  const { host, made, page } = await marked();
+  host.type('t', 'hello\r');
+  await page.until('the second prompt', () => page.marks.length >= 8);
+  const again = pageOf(host, made.cap, { marks: 1 });
+  await again.until('the replayed marks', () => again.marks.length >= 8);
+  assert.deepEqual(again.marks.map(({ seenAt, ...mark }) => mark), page.marks.map(({ seenAt, ...mark }) => mark), 'the same marks at the same offsets');
+  assert.ok(again.marks.every((mark) => mark.seenAt === mark.end), 'cut where they end in the replay too');
+  const from = page.marks[4].end;
+  const back = pageOf(host, made.cap, { marks: 1, from });
+  await back.until('the marks after its offset', () => back.marks.length >= 4);
+  assert.deepEqual(back.marks.map((mark) => mark.end), page.marks.slice(4).map((mark) => mark.end), 'the mark that ends at its offset is sent again, and the ones before it are not');
+  host.end('t');
+  const kept = pageOf(host, made.cap, { marks: 1 });
+  await kept.until('the end', () => kept.ended !== undefined);
+  assert.equal(kept.ready.marks, 1);
+  assert.deepEqual(kept.marks.map((mark) => mark.end), page.marks.map((mark) => mark.end), 'the kept end has its marks');
+});
+
+test('a mark that no nonce vouches for gives no command line and no directory, anywhere, and the nonce is in no frame the host composes but the output', timeout, async () => {
+  const { host, made, page } = await marked();
+  host.type('t', 'forge\r');
+  await page.until('the forged output', () => page.bytes().toString('latin1').includes('forged\r\n'));
+  await page.until('the prompt again', () => page.marks.filter((mark) => mark.kind === 'input-start').length >= 2);
+  assert.ok(page.marks.every((mark) => !JSON.stringify(mark).includes('forged') && !JSON.stringify(mark).includes('/etc')), 'no forged line or directory in any mark');
+  assert.ok(page.marks.filter((mark) => mark.kind === 'cwd').every((mark) => mark.cwd === '/home/user'), 'the only directory is the shell\'s own, with its nonce');
+  const record = await host.call('ChannelTerminalCommands', [made.cap]);
+  assert.ok(record.commands.every((command) => !('command_line' in command && command.command_line.includes('rm'))), 'no forged line in the record');
+  assert.equal(record.cwd, '/home/user');
+  const nonce = host.nonceOf('t');
+  assert.match(nonce, /^[0-9a-f]{32}$/);
+  assert.ok(page.bytes().toString('latin1').includes(nonce), 'the output holds the nonce, inside the shell\'s own marks: the one sink the canary does not search');
+  for (const frame of page.markFrames) assert.ok(!Buffer.from(frame).toString('latin1').includes(nonce), 'a marks frame');
+  assert.ok(!JSON.stringify(page.ready).includes(nonce), 'ready');
+  assert.ok(!JSON.stringify(record).includes(nonce), 'the record');
+  assert.ok(!JSON.stringify(host.log.calls).includes(nonce), 'the log of the calls');
+});
+
+test('a page that did not ask for marks, another version of the frame, and a terminal with no integration are sent none: a v2 page that does not know the frame is not broken by it', timeout, async () => {
+  const host = createHost({ integration: true });
+  const made = await make(host, 't');
+  const plain = pageOf(host, made.cap);
+  await plain.until('ready', () => plain.ready !== undefined);
+  host.type('t', 'hello\r');
+  await plain.until('the output', () => plain.bytes().toString('latin1').includes('hello from'));
+  assert.equal(plain.ready.marks, undefined);
+  assert.ok(plain.frames.every((frame) => frame.kind !== 'marks' && frame.kind !== 'unknown'), 'no frame of a type it does not know');
+  const other = pageOf(host, made.cap, { marks: 2 });
+  await other.until('ready', () => other.ready !== undefined);
+  assert.equal(other.ready.marks, undefined, 'the host speaks version 1 of the frame');
+  await other.until('its replay', () => other.next >= other.end);
+  assert.deepEqual(other.marks, [], 'a page that asked for another version is sent no marks frame');
+  const bare = createHost();
+  const none = await make(bare, 'n');
+  const page = pageOf(bare, none.cap, { marks: 1 });
+  await page.until('ready', () => page.ready !== undefined);
+  bare.type('n', 'forge\r');
+  await page.until('the output', () => page.bytes().toString('latin1').includes('forged\r\n'));
+  assert.equal(page.ready.marks, undefined, 'a terminal with no integration promises none');
+  assert.deepEqual(page.marks, []);
+  assert.equal((await bare.call('ChannelTerminalCommands', [none.cap])).integration, 'off');
+});
+
+test('a command is running from its start mark to its end mark on the shell\'s word, though the shell holds the foreground; a start that carries no proof does not make the terminal busy', timeout, async () => {
+  const { host, made, page } = await marked();
+  assert.deepEqual(await host.call('ChannelTerminalBusy', [made.cap]), { state: 'idle' });
+  host.type('t', 'loop\r');
+  await page.until('the start', () => page.marks.some((mark) => mark.kind === 'command-start'));
+  assert.deepEqual(await host.call('ChannelTerminalBusy', [made.cap]), { state: 'busy' }, 'a builtin loop: the shell holds the foreground and the shell said a command runs');
+  const record = await host.call('ChannelTerminalCommands', [made.cap]);
+  assert.equal(record.running, record.commands.at(-1).id);
+  const again = pageOf(host, made.cap, { marks: 1 });
+  await again.until('ready', () => again.ready !== undefined);
+  assert.equal(again.ready.busy.state, 'busy', 'a page that attaches while it runs is told so');
+  host.type('t', '\u0003');
+  await again.until('the end', () => again.marks.some((mark) => mark.kind === 'command-end'));
+  assert.deepEqual(await host.call('ChannelTerminalBusy', [made.cap]), { state: 'idle' });
+  // The other half: a start nobody proved (no nonce\'d line before it).
+  host.append('t', '\u001b]133;A\u0007\u001b]133;B\u0007\u001b]133;C\u0007output of a program that printed a start');
+  await again.until('the forged start', () => again.bytes().toString('latin1').includes('printed a start'));
+  assert.deepEqual(await host.call('ChannelTerminalBusy', [made.cap]), { state: 'idle' });
+});
+
+test('the record is read by its capability: the commands with the offsets of their output, exit status, directory, line and times, bounded to 512, and the marks held are bounded whatever the flood', timeout, async () => {
+  const { host, made, page } = await marked();
+  host.type('t', 'hello\r');
+  await page.until('the second prompt', () => page.marks.length >= 8);
+  const record = await host.call('ChannelTerminalCommands', [made.cap]);
+  assert.equal(record.integration, 'on');
+  await page.until('the whole output', () => page.next >= record.end);
+  assert.equal(record.end, page.bytes().length);
+  const [first] = record.commands;
+  assert.equal(first.id, 'c1');
+  assert.equal(first.state, 'ended');
+  assert.equal(first.command_line, 'hello');
+  assert.equal(first.command_trust, 'nonce');
+  assert.equal(first.exit_code, 0);
+  assert.equal(first.cwd, '/home/user');
+  assert.equal(first.output_start, page.marks[3].end);
+  assert.equal(first.output_end, page.marks[4].at);
+  assert.ok(first.started_unix_ms > 0 && first.ended_unix_ms >= first.started_unix_ms);
+  await assert.rejects(host.call('ChannelTerminalCommands', ['x'.repeat(43)]), (error) => JSON.parse(error.message).type === 'omniview:session/not-found');
+  const flood = '\u001b]133;A\u0007\u001b]133;B\u0007\u001b]133;C\u0007\u001b]133;D;0\u0007'.repeat(3000);
+  host.append('t', flood);
+  const big = await host.call('ChannelTerminalCommands', [made.cap]);
+  assert.ok(big.commands.length <= 512, 'the record keeps the newest 512');
+  assert.equal(big.commands.at(-1).id, 'c3001', 'and they are the newest');
+  const late = pageOf(host, made.cap, { marks: 1 });
+  await late.until('the output', () => late.next >= big.end);
+  assert.ok(late.marks.length >= 1024 && late.marks.length <= 2048, `the marks held are bounded: ${String(late.marks.length)}`);
+});
+
+test('a command line and a directory are UTF-8, a malformed OSC 7 does not break the ring, and a prompt ends a running command so that the next one is its own', timeout, async () => {
+  const { host, made, page } = await marked();
+  host.type('t', 'echo caf\u00e9\r');
+  await page.until('the start', () => page.marks.some((mark) => mark.kind === 'command-start'));
+  assert.equal(page.marks.find((mark) => mark.kind === 'command-start').command, 'echo caf\u00e9', 'the line is decoded as UTF-8, not byte by byte');
+  host.append('t', '\u001b]7;file://h/%zz\u0007after-bad-osc7\r\n');
+  await page.until('the output after it', () => page.bytes().toString('latin1').includes('after-bad-osc7'));
+  const quiet = await host.call('ChannelTerminalCommands', [made.cap]);
+  assert.ok(quiet.commands.every((command) => command.cwd_trust === 'nonce' || command.cwd === undefined), 'an ignored OSC 7 leaves no directory in the record');
+  // A shell that is replaced never prints the end of its command: the prompt of the new one does.
+  host.type('t', 'loop\r');
+  await page.until('the loop', () => page.marks.filter((mark) => mark.kind === 'command-start').length >= 2);
+  const nonce = host.nonceOf('t');
+  // A prompt that is not the shell integration's own (a nested shell's prompt framework) ends nothing.
+  host.append('t', '\u001b]133;A\u0007\u001b]133;B\u0007');
+  await page.until('the foreign prompt', () => page.marks.filter((mark) => mark.kind === 'input-start').length >= 3);
+  assert.equal((await host.call('ChannelTerminalBusy', [made.cap])).state, 'busy', 'a foreign prompt ends nothing');
+  host.append('t', `\u001b]633;P;Cwd=/w;${nonce}\u0007\u001b]133;A\u0007\u001b]133;B\u0007\u001b]633;E;sleep\\x2030;${nonce}\u0007\u001b]133;C\u0007`);
+  await page.until('the next start', () => page.marks.filter((mark) => mark.kind === 'command-start').length >= 3);
+  const record = await host.call('ChannelTerminalCommands', [made.cap]);
+  const [replaced, next] = record.commands.slice(-2);
+  assert.equal(replaced.state, 'ended');
+  assert.equal(replaced.exit_code, undefined, 'no exit code is invented for the replaced command');
+  assert.equal(next.command_line, 'sleep 30', 'the next command has its own line');
+  assert.equal(record.running, next.id);
 });

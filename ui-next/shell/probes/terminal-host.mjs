@@ -57,8 +57,8 @@ export const KNOWN = Object.freeze(['alpha Alpha ALPHA alphabet', 'beta alpha_be
 export const URLS = Object.freeze(['docs: https://example.com/docs/alpha for the docs', 'script: javascript:alert(1) in a line', 'ftp: ftp://example.com/file in a line', 'name: example.com in a line']);
 const CAPABILITY = /^[A-Za-z0-9_-]{43}$/;
 
-/** The types of the frames (protocol section 4): below 0x80 the page's, from 0x80 the host's. Version 2 added `applied`, `released` and `unsupported`. */
-export const FRAME = Object.freeze({ attach: 0x01, input: 0x02, resize: 0x03, ack: 0x04, detach: 0x05, close: 0x06, ready: 0x81, output: 0x82, gap: 0x83, ended: 0x84, takenOver: 0x85, notFound: 0x86, applied: 0x87, released: 0x88, unsupported: 0x89, closeRefused: 0x8a });
+/** The types of the frames (protocol section 4): below 0x80 the page's, from 0x80 the host's. Version 2 added `applied`, `released` and `unsupported`; the marks frame (0x8b) is additive inside version 2, sent only to a page that asks for it in its attach (`marks: 1`, section 4a). */
+export const FRAME = Object.freeze({ attach: 0x01, input: 0x02, resize: 0x03, ack: 0x04, detach: 0x05, close: 0x06, ready: 0x81, output: 0x82, gap: 0x83, ended: 0x84, takenOver: 0x85, notFound: 0x86, applied: 0x87, released: 0x88, unsupported: 0x89, closeRefused: 0x8a, marks: 0x8b });
 
 // ---- the frames --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -100,7 +100,7 @@ const gapFrame = (from, to) => {
 
 /** The frames a page sends, as a test or a probe makes them. */
 export const pageFrames = {
-  attach: (cap, fromOffset, version = VERSION, writer = undefined) => withType(FRAME.attach, encoder.encode(JSON.stringify({ v: version, cap, ...(fromOffset === undefined ? {} : { from_offset: fromOffset }), ...(writer === undefined ? {} : { writer }) }))),
+  attach: (cap, fromOffset, version = VERSION, writer = undefined, marks = undefined) => withType(FRAME.attach, encoder.encode(JSON.stringify({ v: version, cap, ...(marks === undefined ? {} : { marks }), ...(fromOffset === undefined ? {} : { from_offset: fromOffset }), ...(writer === undefined ? {} : { writer }) }))),
   input: (bytes) => withType(FRAME.input, typeof bytes === 'string' ? encoder.encode(bytes) : bytes),
   resize: (cols, rows) => {
     const payload = new Uint8Array(4);
@@ -139,6 +139,8 @@ export function readFrame(frame) {
       return { kind: 'released' };
     case FRAME.closeRefused:
       return { kind: 'close-refused' };
+    case FRAME.marks:
+      return { kind: 'marks', frame: JSON.parse(decoder.decode(frame.subarray(1))) };
     case FRAME.unsupported:
       return { kind: 'unsupported', v: JSON.parse(decoder.decode(frame.subarray(1))).v };
     default:
@@ -272,6 +274,271 @@ export class Scanner {
   }
 }
 
+
+// ---- the marks a scanner reads from the output --------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** How many marks a ring keeps at least (the newest), and how many commands the record keeps: the host's numbers (`backend/pkg/terminal/channel_marks.go`). A ring holds at most twice the marks. */
+export const MARKS_KEPT = 1024;
+export const COMMANDS_KEPT = 512;
+const OSC_LIMIT = 8192;
+const NONCE_BYTES = 16;
+
+/** A random nonce: the session's secret, which the synthetic shell prints inside its own marks and the host never says anywhere else. */
+const newNonce = () => {
+  const bytes = new Uint8Array(NONCE_BYTES);
+  globalThis.crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+
+/** VS Code's escaping of a value: `\\` and `\xHH`. */
+const unescapeMark = (text) => text.replace(/\\(\\|x[0-9a-fA-F]{2})/g, (_, code) => (code === '\\' ? '\\' : String.fromCharCode(Number.parseInt(code.slice(1), 16))));
+
+/**
+ * The marks of OSC 133 (prompt start A, input start B, command start C, command end D), 633;E (the command line) and 633;P;Cwd (the directory) and OSC 7, read from the output a byte at a time, so that a sequence cut across two reads reads the same.
+ * It is the host's scanner (`backend/pkg/terminal/marks`) in the words of a fixture: a mark's `at` is the offset of its ESC and its `end` the offset after its terminator; the command line and the directory are believed only with the session's
+ * nonce (a wrong or missing one gives nothing and is counted); every prompt and command mark is `unverified` (any program can print it); a directory from OSC 7 is read but never kept (the host drops it: nothing may believe it). The record is the commands, newest 512.
+ */
+export class MarkScanner {
+  constructor(nonce) {
+    this.nonce = nonce;
+    this.state = 'ground';
+    this.seq = 0;
+    this.seqStart = 0;
+    this.escAt = 0;
+    this.body = [];
+    this.over = false;
+    /** The marks that are kept, oldest first (newest 1,024 at least, 2,048 at most). */
+    this.marks = [];
+    /** The commands of the record, oldest first. */
+    this.commands = [];
+    this.trustedCwd = '';
+    this.pending = '';
+    /** Marks whose nonce was wrong or missing. */
+    this.forged = 0;
+    this.ourPrompt = false;
+  }
+
+  feed(bytes, base) {
+    for (let index = 0; index < bytes.length; index += 1) this.step(bytes[index], base + index);
+  }
+
+  step(byte, at) {
+    if (byte === 0x18 || byte === 0x1a) {
+      this.state = 'ground';
+      return;
+    }
+
+    switch (this.state) {
+      case 'ground':
+        if (byte === 0x1b) Object.assign(this, { state: 'esc', seqStart: at });
+        break;
+      case 'esc':
+        this.afterEscape(byte);
+        break;
+      case 'csi':
+        if (byte >= 0x40 && byte <= 0x7e) this.state = 'ground';
+        else if (byte === 0x1b) Object.assign(this, { state: 'esc', seqStart: at });
+        break;
+      case 'string':
+        if (byte === 0x1b) Object.assign(this, { state: 'stringEsc', escAt: at });
+        break;
+      case 'stringEsc':
+        if (byte === 0x5c) {
+          this.state = 'ground';
+        } else {
+          this.seqStart = this.escAt;
+          this.afterEscape(byte);
+        }
+
+        break;
+      case 'osc':
+        if (byte === 0x07) this.finish(at + 1);
+        else if (byte === 0x1b) Object.assign(this, { state: 'oscEsc', escAt: at });
+        else if (byte >= 0x20 && byte !== 0x7f) this.collect(byte);
+        break;
+      case 'oscEsc':
+        if (byte === 0x5c) this.finish(at + 1);
+        else {
+          this.finish(this.escAt);
+          this.seqStart = this.escAt;
+          this.state = 'esc';
+          this.afterEscape(byte);
+        }
+
+        break;
+      default:
+        this.state = 'ground';
+    }
+  }
+
+  afterEscape(byte) {
+    if (byte === 0x5b) this.state = 'csi';
+    else if (byte === 0x5d) Object.assign(this, { state: 'osc', body: [], over: false });
+    else if (byte === 0x50 || byte === 0x58 || byte === 0x5e || byte === 0x5f) this.state = 'string';
+    else if (byte >= 0x20 && byte <= 0x2f) this.state = 'esc';
+    else this.state = 'ground';
+  }
+
+  collect(byte) {
+    if (this.over) return;
+    if (this.body.length >= OSC_LIMIT) this.over = true;
+    else this.body.push(byte);
+  }
+
+  verified(given) {
+    return this.nonce !== '' && given === this.nonce;
+  }
+
+  /** The OSC that ends before `end` is read. */
+  finish(end) {
+    this.state = 'ground';
+    if (this.over) return;
+    // The whole body is decoded as UTF-8, so that a character cut across two reads reads whole.
+    const body = new TextDecoder().decode(Uint8Array.from(this.body));
+    if (body.startsWith('133;') || body.startsWith('633;')) this.read(body.slice(4), end);
+  }
+
+  read(args, end) {
+    const at = this.seqStart;
+    const letter = args[0];
+    const rest = args.slice(1);
+    if (rest !== '' && rest[0] !== ';') return;
+    // Only the prompt that follows a directory with the nonce is the integration's own (the next prompt or command mark clears it).
+    const proven = this.ourPrompt;
+    this.ourPrompt = false;
+    if (letter === 'A') {
+      // The prompt of a shell that replaced the one that ran the command: that command ends, with no exit code.
+      const running = this.open();
+      if (proven && running?.state === 'running') Object.assign(running, { state: 'ended', endedMs: Date.now(), outputEnd: at });
+      const newest = this.open();
+      if (newest === undefined || newest.state === 'ended') this.keep({ kind: 'prompt-start', at, end, id: this.begin('prompt', at).id, trust: 'unverified', redraw: false });
+      else this.keep({ kind: 'prompt-start', at, end, id: newest.id, trust: 'unverified', redraw: newest.state !== 'running' });
+    } else if (letter === 'B') {
+      let record = this.open();
+      if (record === undefined || record.state === 'ended') record = this.begin('input', at);
+      else if (record.state === 'prompt') record.state = 'input';
+      this.keep({ kind: 'input-start', at, end, id: record.id, trust: 'unverified' });
+    } else if (letter === 'C') {
+      let record = this.open();
+      if (record === undefined || record.state === 'ended') record = this.begin('prompt', at);
+      const started = record.state !== 'running';
+      const now = Date.now();
+      if (started) Object.assign(record, { state: 'running', ran: true, startedMs: now, outputStart: end, ...this.currentCwd() });
+      this.keep({ kind: 'command-start', at, end, id: record.id, trust: started ? record.lineTrust : 'unverified', ...(started && record.line !== '' ? { command: record.line } : {}), timeMs: now });
+    } else if (letter === 'D') {
+      const record = this.open();
+      const code = /^;(-?\d+)/.exec(rest)?.[1];
+      const now = Date.now();
+      if (record === undefined || record.state === 'ended') {
+        this.keep({ kind: 'command-end', at, end, id: '', trust: 'unverified', ...(code === undefined ? {} : { exit: Number(code) }), timeMs: now });
+        return;
+      }
+
+      Object.assign(record, { state: 'ended', exit: code === undefined ? undefined : Number(code), endedMs: now });
+      if (record.ran) record.outputEnd = at;
+      this.keep({ kind: 'command-end', at, end, id: record.id, trust: 'unverified', ...(code === undefined ? {} : { exit: Number(code) }), durationMs: record.ran ? Math.max(0, now - record.startedMs) : 0, timeMs: now });
+    } else if (letter === 'E') {
+      const field = rest.slice(1);
+      const cut = field.lastIndexOf(';');
+      if (cut < 0 || !this.verified(field.slice(cut + 1))) {
+        this.forged += 1;
+        return;
+      }
+
+      const line = unescapeMark(field.slice(0, cut)).slice(0, 4096);
+      const record = this.open();
+      if (record === undefined || record.state === 'ended') this.pending = line;
+      else if (record.state !== 'running') Object.assign(record, { line, lineTrust: 'nonce' });
+    } else if (letter === 'P') {
+      const field = rest.slice(1);
+      if (!field.startsWith('Cwd=')) return;
+      const cut = field.lastIndexOf(';');
+      if (cut < 0 || !this.verified(field.slice(cut + 1))) {
+        this.forged += 1;
+        return;
+      }
+
+      const dir = unescapeMark(field.slice('Cwd='.length, cut)).replace(/[\u0000-\u001f\u007f]/g, '');
+      if (dir === '' || dir.length > 4096) return;
+      this.trustedCwd = dir;
+      this.ourPrompt = true;
+      this.keep({ kind: 'cwd', at, end, trust: 'nonce', cwd: dir });
+    }
+  }
+
+  currentCwd() {
+    return this.trustedCwd !== '' ? { cwd: this.trustedCwd, cwdTrust: 'nonce' } : { cwd: '', cwdTrust: 'unverified' };
+  }
+
+  /** The newest command, when it has not ended. */
+  open() {
+    const newest = this.commands.at(-1);
+    return newest !== undefined && newest.state !== 'ended' ? newest : undefined;
+  }
+
+  begin(state, at) {
+    this.seq += 1;
+    const record = { id: `c${String(this.seq)}`, state, ran: false, line: this.pending, lineTrust: this.pending === '' ? 'unverified' : 'nonce', ...this.currentCwd(), exit: undefined, startedMs: 0, endedMs: 0, promptOffset: at, outputStart: 0, outputEnd: 0 };
+    this.pending = '';
+    this.commands.push(record);
+    if (this.commands.length > COMMANDS_KEPT) this.commands.shift();
+    return record;
+  }
+
+  keep(mark) {
+    this.marks.push(mark);
+    if (this.marks.length >= 2 * MARKS_KEPT) this.marks.splice(0, this.marks.length - MARKS_KEPT);
+  }
+
+  /** The command that the shell said it started and has not ended, with the nonce's proof of its line: what "a command is running" means. */
+  running() {
+    const newest = this.commands.at(-1);
+    return newest !== undefined && newest.state === 'running' && newest.lineTrust === 'nonce' ? newest : undefined;
+  }
+
+  /** The first mark that ends at or after `from`, as an index: the marks that end at or before `pos` are due, and the first after it says where the output is cut. */
+  firstFrom(from) {
+    let lo = 0;
+    let hi = this.marks.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.marks[mid].end >= from) hi = mid;
+      else lo = mid + 1;
+    }
+
+    return lo;
+  }
+}
+
+/** The JSON of a mark in the marks frame (`channel_marks.go`'s `markJSON`): the command line and the directory only with the nonce's trust. */
+const markJson = (mark) => ({
+  kind: mark.kind,
+  at: mark.at,
+  end: mark.end,
+  ...(mark.id === undefined || mark.id === '' ? {} : { id: mark.id }),
+  trust: mark.trust,
+  ...(mark.command === undefined ? {} : { command: mark.command }),
+  ...(mark.cwd === undefined ? {} : { cwd: mark.cwd }),
+  ...(mark.exit === undefined ? {} : { exit: mark.exit }),
+  ...(mark.durationMs === undefined ? {} : { duration_ms: mark.durationMs }),
+  ...(mark.timeMs === undefined ? {} : { time_ms: mark.timeMs }),
+  ...(mark.redraw === true ? { redraw: true } : {}),
+});
+
+/** What a stream that stands at `pos` and wants the marks that end at or after `from` is owed next: the marks that are due (at most 64), or, when none is, how long the next frame of output may be so that it ends where the next mark ends. */
+const planMarks = (scanner, from, pos) => {
+  const first = scanner.firstFrom(from);
+  const next = scanner.marks[first];
+  if (next === undefined) return { due: [], cut: Infinity };
+  if (next.end > pos) return { due: [], cut: next.end - pos };
+  let last = first;
+  while (last < scanner.marks.length && last - first < 64 && scanner.marks[last].end <= pos) last += 1;
+  return { due: scanner.marks.slice(first, last), cut: Infinity };
+};
+
+/** The marks frame: a type byte and the JSON of version 1 of the frame. */
+const marksFrame = (marks) => withType(FRAME.marks, encoder.encode(JSON.stringify({ v: 1, marks: marks.map(markJson) })));
+
 // ---- the ring ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
@@ -279,7 +546,9 @@ export class Scanner {
  * `limit` bytes the oldest chunks are overwritten, so `start` is always at a boundary, and `overwritten` counts what was lost: the output less what the ring holds.
  */
 export class Ring {
-  constructor(cols, rows, limit = LIMITS.channel_ring_bytes) {
+  constructor(cols, rows, limit = LIMITS.channel_ring_bytes, nonce = '') {
+    /** The marks of the shell's integration, read as the output is written: none for a terminal that has no integration (no nonce). */
+    this.markScanner = nonce === '' ? undefined : new MarkScanner(nonce);
     this.chunks = [];
     this.end = 0;
     this.held = 0;
@@ -317,6 +586,7 @@ export class Ring {
     chunk.flat = undefined;
     chunk.length += bytes.length;
     this.held += bytes.length;
+    this.markScanner?.feed(bytes, this.end);
     this.end += bytes.length;
     this.scanner.feed(bytes);
     while (this.chunks.length > 1 && this.held > this.limit) this.held -= this.chunks.shift().length;
@@ -404,7 +674,7 @@ const defaultDefer = (task) => {
  *   typed 422, `start` its plain start failure); `busy` is what `ChannelTerminalBusy` answers while the shell runs (`unknown`, or no answer at all); `defer` is how a flood yields between two batches.
  */
 export function createHost(options = {}) {
-  const { stallMs = LIMITS.channel_stall_ms, leaseMs: defaultLease = LIMITS.lease_default_ms, ringBytes = LIMITS.channel_ring_bytes, shell = 'zsh', fail, busy: busyMode, defer = defaultDefer } = options;
+  const { stallMs = LIMITS.channel_stall_ms, leaseMs: defaultLease = LIMITS.lease_default_ms, ringBytes = LIMITS.channel_ring_bytes, shell = 'zsh', integration = false, fail, busy: busyMode, defer = defaultDefer } = options;
   const faults = { ...options.faults };
   const limits = { ...LIMITS, channel_ring_bytes: ringBytes };
   const ptys = new Map();
@@ -455,9 +725,18 @@ export function createHost(options = {}) {
   // ---- the shell ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
   /** The shell writes: it waits in the pty until the host reads it. */
-  const out = (pty, text) => {
+  const out = (pty, written) => {
     if (pty.ended !== null || pty.finishing || pty.gone) return;
-    if (typeof text === 'string' && text.endsWith(PROMPT)) log.prompts += 1;
+    // A shell with the integration draws its prompt between the marks of the end of the command that ran, the directory and the start of the prompt and its input.
+    let text = written;
+    if (pty.nonce !== '' && typeof text === 'string' && text.endsWith(PROMPT)) {
+      const ended = pty.ranCommand ? `\u001b]133;D;${String(pty.status)}\u0007` : '';
+      pty.ranCommand = false;
+      pty.status = 0;
+      text = `${text.slice(0, -PROMPT.length)}${ended}\u001b]633;P;Cwd=/home/user;${pty.nonce}\u0007\u001b]133;A\u0007${PROMPT}\u001b]133;B\u0007`;
+    }
+
+    if (typeof written === 'string' && written.endsWith(PROMPT)) log.prompts += 1;
     const bytes = typeof text === 'string' ? encoder.encode(text) : text;
     pty.queue.push(bytes);
     pty.waiting += bytes.length;
@@ -741,6 +1020,17 @@ export function createHost(options = {}) {
         return;
       }
 
+      case 'loop':
+        // A builtin loop: the shell itself holds the foreground and the command never ends until Ctrl-C (a suspended or builtin command reads idle by the process that holds the foreground: B-106).
+        pty.loop = true;
+        return;
+      case 'forge': {
+        // A program that prints marks it made up: a command line, a directory and a start with a nonce that is not the session's, OSC 7, and a start of a command with no line.
+        const wrong = 'f'.repeat(32);
+        out(pty, `\u001b]633;E;rm\\x20-rf\\x20/;${wrong}\u0007\u001b]633;P;Cwd=/etc/forged;${wrong}\u0007\u001b]7;file://host/etc/osc7\u0007\u001b]133;C\u0007forged\r\n`);
+        break;
+      }
+
       case 'fullscreen':
         pty.program = { name: 'fullscreen', frame: 0 };
         out(pty, FULLSCREEN_ON);
@@ -792,12 +1082,20 @@ export function createHost(options = {}) {
       if (ch === '\u0003') {
         pty.line = '';
         stopJob(pty);
+        pty.loop = false;
+        pty.status = 130;
         out(pty, `^C\r\n${PROMPT}`);
-      } else if (pty.job !== undefined) continue;
+      } else if (pty.job !== undefined || pty.loop) continue;
       else if (ch === '\r') {
         out(pty, '\r\n');
         const line = pty.line;
         pty.line = '';
+        if (pty.nonce !== '' && line.trim() !== '') {
+          // The shell with the integration says what it is about to run, with the nonce, and that the output starts.
+          pty.ranCommand = true;
+          out(pty, `\u001b]633;E;${line.replace(/[\\;\u0000-\u0020\u007f]/g, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, '0')}`)};${pty.nonce}\u0007\u001b]133;C\u0007`);
+        }
+
         run(pty, line);
       } else if (ch === '\u007f') {
         if (pty.line !== '') {
@@ -923,11 +1221,26 @@ export function createHost(options = {}) {
           deliver(conn, gapFrame(conn.cursor, to));
           if (to >= conn.replayEnd) conn.replayEnd = 0;
           conn.cursor = to;
+          // What the gap skipped is not sent: its marks end at or before where the stream goes on.
+          conn.markNext = Math.max(conn.markNext, to + 1);
           continue;
         }
 
+        // The marks that end at or before the cursor are due, after the bytes of their sequence; the output is cut where the next one ends, so that the page stands exactly there when it is handed.
+        let cut = Infinity;
+        if (conn.marks) {
+          const plan = planMarks(ring.markScanner, conn.markNext, conn.cursor);
+          if (plan.due.length > 0) {
+            deliver(conn, marksFrame(plan.due));
+            conn.markNext = plan.due.at(-1).end + 1;
+            continue;
+          }
+
+          cut = plan.cut;
+        }
+
         if (conn.cursor >= ring.end) break;
-        let n = Math.min(limits.channel_frame_bytes, ring.end - conn.cursor);
+        let n = Math.min(limits.channel_frame_bytes, ring.end - conn.cursor, cut);
         if (conn.cursor < conn.replayEnd) n = Math.min(n, conn.replayEnd - conn.cursor);
         if (conn.explicit && !flush) {
           const credit = limits.channel_inflight_bytes - Math.min(conn.begun - conn.acked, limits.channel_inflight_bytes);
@@ -982,7 +1295,7 @@ export function createHost(options = {}) {
       if (from !== undefined && from !== null && (!Number.isSafeInteger(from) || from < 0)) return undefined;
       // A writer that is present and is not 32 lowercase hex digits makes the attach malformed.
       if (request.writer !== undefined && (typeof request.writer !== 'string' || !/^[0-9a-f]{32}$/.test(request.writer))) return undefined;
-      return { cap: request.cap, from: from ?? undefined, v: request.v, writer: request.writer };
+      return { cap: request.cap, from: from ?? undefined, v: request.v, writer: request.writer, marks: request.marks };
     } catch {
       return undefined;
     }
@@ -1013,9 +1326,9 @@ export function createHost(options = {}) {
     const pty = find(request.cap);
     const end = kept.get(request.cap);
     if (pty !== undefined && !pty.finishing) {
-      claim(conn, pty, request.from, request.writer);
+      claim(conn, pty, request.from, request.writer, request.marks);
     } else if (end !== undefined) {
-      serveEnded(conn, end, request.from);
+      serveEnded(conn, end, request.from, request.marks);
     } else if (pty !== undefined) {
       // The shell is ending by itself while this stream attaches: the attach waits for the end to be decided, and then is served the kept end, or told nothing is there when a close won.
       pty.deferred.push(() => dispatchAttach(conn, request));
@@ -1028,6 +1341,9 @@ export function createHost(options = {}) {
   }
 
   /** The ready of a terminal that runs, for the stream that takes it from `from`: the replay `[start, end)` and what it was written under, and what is in force at its end. */
+  /** The end offset of the first mark a stream that starts at `start` is owed: a page that comes back by an offset and gets it is sent again the mark that ends there (the stream may have been cut after the bytes and before the frame); a page that starts afresh, or whose offset was lost, is not sent one that ends at the start. */
+  const markStart = (from, start) => (from !== undefined && from === start ? start : start + 1);
+
   function readyOf(pty, conn, from) {
     const ring = pty.ring;
     const asked = from !== undefined;
@@ -1052,6 +1368,7 @@ export function createHost(options = {}) {
       session: pty.info(),
       lease_ms: pty.leaseMs,
       ended: null,
+      ...(conn.marks ? { marks: 1 } : {}),
     };
   }
 
@@ -1069,7 +1386,7 @@ export function createHost(options = {}) {
     return known;
   }
 
-  function claim(conn, pty, from, writer) {
+  function claim(conn, pty, from, writer, asked) {
     if (from !== undefined && from > pty.ring.end) {
       log.attaches.push({ stream: conn.id, id: pty.id, from_offset: from, outcome: 'bad-offset', at: now() });
       shut(conn);
@@ -1096,6 +1413,8 @@ export function createHost(options = {}) {
       }
     }
 
+    // The marks frame goes only to a page that asked for version 1 of it and to a terminal that has an integration: any other page is sent none.
+    conn.marks = asked === 1 && pty.ring.markScanner !== undefined;
     clearTimeout(pty.lease);
     pty.lease = undefined;
     pty.holder = conn;
@@ -1106,6 +1425,7 @@ export function createHost(options = {}) {
     const ready = readyOf(pty, conn, from);
     conn.cursor = ready.start;
     conn.replayEnd = ready.end;
+    conn.markNext = markStart(from, ready.start);
     conn.begun = 0;
     conn.acked = 0;
     conn.explicit = false;
@@ -1140,7 +1460,7 @@ export function createHost(options = {}) {
   }
 
   /** The kept end of a terminal: the ready (it says how it ended), what it wrote from the offset the page has, the end again, and the stream closes. Nobody holds a terminal that has ended and nothing is read from the page. */
-  function serveEnded(conn, entry, from) {
+  function serveEnded(conn, entry, from, marksVersion) {
     const ring = entry.ring;
     if (from !== undefined && from > ring.end) {
       log.attaches.push({ stream: conn.id, id: entry.id, from_offset: from, outcome: 'bad-offset', at: now() });
@@ -1152,9 +1472,25 @@ export function createHost(options = {}) {
     const start = asked && from >= ring.start ? from : ring.start;
     const ready = { v: VERSION, start, end: ring.end, lost: asked && from < ring.start ? ring.start - from : 0, input_applied: 0, writer_known: false, size: entry.size, start_size: ring.sizeAt(start), modes: ring.modesAt(ring.end), start_modes: ring.modesAt(Math.max(start, ring.start)), cwd: { reason: 'ended' }, busy: { state: 'unknown', reason: 'ended' }, session: entry.info, lease_ms: 0, ended: entry.end };
     log.attaches.push({ stream: conn.id, id: entry.id, from_offset: from ?? null, outcome: 'ended', start, end: ring.end, lost: ready.lost, bytes: ring.end - start, at: now(), writesAt: log.writes.length, framesAt: log.frames.length, order: (order += 1) });
+    const wantMarks = marksVersion === 1 && ring.markScanner !== undefined;
+    if (wantMarks) ready.marks = 1;
     deliver(conn, jsonFrame(FRAME.ready, ready));
-    for (let at = start; at < ring.end; ) {
-      const to = Math.min(ring.end, at + limits.channel_frame_bytes);
+    let markNext = markStart(from, start);
+    for (let at = start; ; ) {
+      let cut = Infinity;
+      while (wantMarks) {
+        const plan = planMarks(ring.markScanner, markNext, at);
+        if (plan.due.length === 0) {
+          cut = plan.cut;
+          break;
+        }
+
+        deliver(conn, marksFrame(plan.due));
+        markNext = plan.due.at(-1).end + 1;
+      }
+
+      if (at >= ring.end) break;
+      const to = Math.min(ring.end, at + limits.channel_frame_bytes, at + cut);
       deliver(conn, outputFrame(at, ring.read(at, to)));
       at = to;
     }
@@ -1451,6 +1787,8 @@ export function createHost(options = {}) {
     if (!(cols >= 1 && cols <= 1000 && rows >= 1 && rows <= 1000)) throw invalid('cols', 'a size is 1 to 1,000 cells');
     serial += 1;
     const cap = newCapability();
+    // The session's secret: made for a terminal whose shell has the integration, which prints it inside its own marks. It is in nothing the host says.
+    const nonce = integration ? newNonce() : '';
     // `faults.sizeOff`: the pty is one column wider than it was asked to be, and says nothing of it: the host's own records (the session, the ready) keep the size that was asked, so that only what the shell reports is wrong.
     const wide = faults.sizeOff ? cols + 1 : cols;
     const pty = {
@@ -1465,7 +1803,9 @@ export function createHost(options = {}) {
       cols,
       ptyCols: wide,
       rows,
-      ring: new Ring(cols, rows, ringBytes),
+      nonce,
+      ring: new Ring(cols, rows, ringBytes, nonce),
+      status: 0,
       queue: [],
       head: 0,
       waiting: 0,
@@ -1479,6 +1819,8 @@ export function createHost(options = {}) {
       room: [],
       empty: [],
       line: '',
+      loop: false,
+      ranCommand: false,
       job: undefined,
       program: undefined,
       finishing: undefined,
@@ -1501,8 +1843,43 @@ export function createHost(options = {}) {
     if (busyMode === 'unknown') return faults.unknownIdle ? { state: 'idle' } : { state: 'unknown', reason: 'query-failed' };
     if (faults.busyAlways) return { state: 'busy', pgid: 4242, name: 'sleep' };
     if (pty.program !== undefined) return { state: 'busy', pgid: 4242, name: pty.program.name };
-    if (pty.job === undefined) return { state: 'idle' };
+    if (pty.job === undefined) {
+      // The shell holds the foreground: a command that it said it started and has not ended is running all the same (a builtin loop), on the shell's word and only with the nonce's proof of its line.
+      const running = pty.ring.markScanner?.running();
+      if (running === undefined) return { state: 'idle' };
+      // Marks add busy and nothing else: the name is the pull fact's.
+      return { state: 'busy' };
+    }
+
     return faults.busyNameless ? { state: 'busy', pgid: 4242 } : { state: 'busy', pgid: 4242, name: pty.job.name };
+  };
+
+  /** The record of the commands the shell's integration told of (`terminal.Commands`): newest 512, oldest first, with the offsets of their output. A terminal with no integration has none. */
+  const commandsOf = (pty) => {
+    const scanner = pty.ring.markScanner;
+    const running = scanner?.running();
+    const trustedCwd = scanner?.trustedCwd ?? '';
+    return {
+      integration: scanner === undefined ? 'off' : 'on',
+      ...(running === undefined ? {} : { running: running.id }),
+      ...(trustedCwd === '' ? {} : { cwd: trustedCwd, cwd_trust: 'nonce' }),
+      end: pty.ring.end,
+      commands: (scanner?.commands ?? []).map((record) => ({
+        id: record.id,
+        state: record.state,
+        ran: record.ran,
+        ...(record.line === '' ? {} : { command_line: record.line }),
+        command_trust: record.lineTrust,
+        ...(record.cwdTrust === 'nonce' && record.cwd !== '' ? { cwd: record.cwd } : {}),
+        cwd_trust: record.cwdTrust,
+        ...(record.state === 'ended' && record.exit !== undefined ? { exit_code: record.exit } : {}),
+        ...(record.startedMs === 0 ? {} : { started_unix_ms: record.startedMs }),
+        ...(record.endedMs === 0 ? {} : { ended_unix_ms: record.endedMs }),
+        prompt_offset: record.promptOffset,
+        output_start: record.outputStart,
+        output_end: record.outputEnd,
+      })),
+    };
   };
 
   const listed = (pty) => ({
@@ -1572,6 +1949,12 @@ export function createHost(options = {}) {
         if (busyMode === 'hang') return new Promise(() => undefined);
         if (pty === undefined) throw gone();
         return busyOf(pty);
+      }
+
+      case 'ChannelTerminalCommands': {
+        const pty = find(args[0]);
+        if (pty === undefined) throw gone();
+        return commandsOf(pty);
       }
 
       case 'ChannelTerminalCwd': {
@@ -1646,6 +2029,8 @@ export function createHost(options = {}) {
       out(pty, text);
       pump(pty);
     },
+    /** The session's nonce, for a test that checks that it is in nothing the host says (the canary): `undefined` for a terminal with no integration. A page is never given it. */
+    nonceOf: (id) => ptyOf(id).ring.markScanner?.nonce,
     flood: (id, lines, width) => flood(ptyOf(id), lines, width),
     burst: (id, events) => burst(ptyOf(id), events),
     type: (id, text) => {

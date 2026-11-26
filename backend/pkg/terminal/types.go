@@ -328,6 +328,46 @@ type Directory struct {
 	Reason UnknownReason `json:"reason,omitempty"`
 }
 
+// Command is one command of a terminal's record: what the shell's integration said about it (the marks of package marks), with the offsets of
+// the output it printed. The offsets are those of the terminal's output stream (the `offset` of an output frame): `[output_start, output_end)` is
+// what the command printed. Times are on the host's clock when it read the marks.
+//
+// `command_line` and `cwd` are the user's data: the command line is here only when the shell sent it with the session's nonce (`command_trust`
+// `nonce`), and the directory says in `cwd_trust` how far it can be believed. A mark any program could have printed gives neither.
+type Command struct {
+	ID string `json:"id"`
+	// State is prompt, input, running or ended. Ran is false for a prompt that ended with no command (Ctrl-C at an empty prompt).
+	State string `json:"state"`
+	Ran   bool   `json:"ran"`
+	// CommandLine is the line as the shell sent it, empty without the nonce.
+	CommandLine  string `json:"command_line,omitempty"`
+	CommandTrust string `json:"command_trust"`
+	Cwd          string `json:"cwd,omitempty"`
+	CwdTrust     string `json:"cwd_trust"`
+	// ExitCode is absent while the command runs and for a shell that sends none (pwsh).
+	ExitCode *int32 `json:"exit_code,omitempty"`
+	// StartedUnixMs and EndedUnixMs are absent for a time that has not come.
+	StartedUnixMs int64  `json:"started_unix_ms,omitempty"`
+	EndedUnixMs   int64  `json:"ended_unix_ms,omitempty"`
+	PromptOffset  uint64 `json:"prompt_offset"`
+	OutputStart   uint64 `json:"output_start"`
+	OutputEnd     uint64 `json:"output_end"`
+}
+
+// Commands is the record of a channel terminal: the newest commands the shell's integration told of, oldest first, at most 512.
+type Commands struct {
+	// Integration is the state of the shell integration of the terminal: the record is empty for off, skipped and failed (unconfirmed has a scanner).
+	Integration IntegrationState `json:"integration"`
+	// Running is the id of the command that has started and not ended, empty when none has.
+	Running string `json:"running,omitempty"`
+	// Cwd is the directory the shell last said it is in, and CwdTrust how far that can be believed (`nonce`, or empty when it said none).
+	Cwd      string `json:"cwd,omitempty"`
+	CwdTrust string `json:"cwd_trust,omitempty"`
+	// End is the length of the output the record was read at.
+	End      uint64    `json:"end"`
+	Commands []Command `json:"commands"`
+}
+
 // Sink receives a session's events. All calls for one session come from one goroutine at a time and
 // in order: every Output of a session precedes its one Closed. Calls for different sessions may be
 // concurrent. A Sink must not call back into the Manager for the same session, except Ack and Delivered.
