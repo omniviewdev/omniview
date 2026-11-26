@@ -1,6 +1,6 @@
 import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
 import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
+import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -14,6 +14,8 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly reads: () => number;
   /** What was typed, in the order it was given. */
   readonly typed: () => readonly string[];
+  /** What was written as the emulator's own reply to a query (`{ reply: true }`), as opposed to what the person typed. */
+  readonly replies: () => readonly string[];
   /** The raw bytes of `writeBinary`, in the order they were given. */
   readonly binaries: () => readonly Uint8Array[];
   /** The sizes asked for, as [columns, rows], in order. */
@@ -41,6 +43,8 @@ export type FakeTerminalFeedOptions = {
   readonly close?: (() => Promise<void> | void) | undefined;
   /** What the feed answers when it is asked what runs in it; default: the feed cannot tell (it has no such member). */
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
+  /** What the feed answers when it is asked where a new terminal opened from it starts; default: the feed cannot tell (it has no such member). */
+  readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
   /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`, unless `takeReplay` says it has). */
   readonly replay?: TerminalReplay | undefined;
   /** The feed has a `leave`, counted by `left`. Default: it has none. */
@@ -62,6 +66,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   const acks: number[] = [];
   let woken = false;
   const typed: string[] = [];
+  const replies: string[] = [];
   const binaries: Uint8Array[] = [];
   /** The calls of the typing that the feed took: what `inputs` says. */
   let taken = 0;
@@ -144,8 +149,12 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       held = held.slice(count);
       return { chunks, bytes: chunks.reduce((sum, chunk) => sum + chunk.length, 0) };
     },
-    write: (text) => {
+    write: (text, writeOptions) => {
       typed.push(text);
+      if (writeOptions?.reply === true) {
+        replies.push(text);
+      }
+
       // A real feed takes what is typed while the process starts or runs, and not a call with nothing in it, nor anything once it was closed or the session is over.
       if (text !== '' && closed === 0 && (status.state === 'starting' || status.state === 'running')) {
         taken += 1;
@@ -168,6 +177,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       acks.push(bytes);
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
+    ...(options.directory === undefined ? {} : { directory: options.directory }),
     ...(options.replay === undefined && options.takeReplay !== true ? {} : { takeReplay }),
     ...(options.leave === true ? { leave } : {}),
     ...(options.redraw === true ? { redraw } : {}),
@@ -179,6 +189,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     closed: () => closed,
     reads: () => reads,
     typed: () => typed,
+    replies: () => replies,
     binaries: () => binaries,
     inputs: () => taken,
     sizes: () => sizes,
@@ -624,6 +635,8 @@ export type ReadyInit = {
   readonly modes?: Readonly<Record<string, unknown>>;
   readonly startModes?: Readonly<Record<string, unknown>>;
   readonly shell?: string;
+  /** The directory the host says the shell started in (`ready.session.cwd`). Default: `/home/u`. */
+  readonly startedIn?: string;
   readonly ended?: unknown;
   /** The bytes of input the host has applied from the capability, across streams (`ready.input_applied`). Default: 0. */
   readonly inputApplied?: number;
@@ -695,6 +708,7 @@ export type ChannelCall =
   | { readonly kind: 'close'; readonly id: string }
   | { readonly kind: 'dismiss'; readonly id: string }
   | { readonly kind: 'busy'; readonly id: string }
+  | { readonly kind: 'cwd'; readonly id: string }
   | { readonly kind: 'listed'; readonly id: string }
   | { readonly kind: 'list' };
 
@@ -704,6 +718,8 @@ export type FakeChannelsOptions = {
   readonly close?: ((id: string) => Promise<void> | void) | undefined;
   readonly dismiss?: ((id: string) => Promise<void> | void) | undefined;
   readonly busy?: ((id: string) => unknown) | undefined;
+  /** What `cwd` answers (`ChannelTerminalCwd`: `{ path }` or `{ reason }`). Default: `{ path: '/home/u' }`. A function may answer with a promise the test holds, or throw. */
+  readonly cwd?: ((id: string) => unknown) | undefined;
   readonly list?: (() => unknown) | undefined;
   readonly listed?: ((id: string) => unknown) | undefined;
 };
@@ -796,7 +812,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
           start_modes: { ...PLAIN_MODES, ...init.startModes },
           cwd: { path: '/home/u' },
           busy: { state: 'idle' },
-          session: { id, pid: 4242, shell: { path: `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
+          session: { id, pid: 4242, shell: { path: `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
           lease_ms: 300_000,
           ended: init.ended ?? null,
           ...init.raw,
@@ -917,7 +933,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         ...(launch.cwd === undefined ? {} : { cwd: launch.cwd }),
         ...(launch.env === undefined ? {} : { env: launch.env }),
       });
-      return options.create === undefined ? { id, shell: { path: '/bin/zsh', name: 'zsh' } } : options.create(id);
+      return options.create === undefined ? { id, shell: { path: '/bin/zsh', name: 'zsh' }, cwd: launch.cwd ?? '/home/u' } : options.create(id);
     },
     connect,
     close: async (id) => {
@@ -931,6 +947,10 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     busy: async (id) => {
       calls.push({ kind: 'busy', id });
       return options.busy === undefined ? { state: 'idle' } : options.busy(id);
+    },
+    cwd: async (id) => {
+      calls.push({ kind: 'cwd', id });
+      return options.cwd === undefined ? { path: '/home/u' } : options.cwd(id);
     },
     list: async () => {
       calls.push({ kind: 'list' });

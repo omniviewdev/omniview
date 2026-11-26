@@ -5,8 +5,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock }
 import { createPanelStore, HOST, PANEL_VERSION, restorePanel, type PanelState, type PanelStore, type Session } from '../../core/panel';
 import { focusTab } from '../focus';
 import type { EngineAppearance } from './engine';
-import type { TerminalBusy, TerminalFeedHandle, TerminalTarget } from './feed';
-import { localProfileTarget, localShellTarget } from './localShell';
+import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalTarget } from './feed';
+import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
 import { shellsOf, type ShellChoice, type ShellList } from './profiles';
 import { createScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
@@ -19,7 +19,7 @@ vi.mock('../focus', () => ({ focusTab: vi.fn(), focusPage: vi.fn(), focusPanel: 
 // What `New terminal` starts when nothing else is given is the host's own shell: a test says what it is asked for, and what it answers.
 vi.mock('./localShell', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
-  return { ...original, localShellTarget: vi.fn(), localProfileTarget: vi.fn() };
+  return { ...original, localShellTarget: vi.fn(), localProfileTarget: vi.fn(), localHereTarget: vi.fn() };
 });
 
 // The terminal's one listener on the window: Command K clears a terminal that has the focus, ahead of the palette that also has it for a chord (docs/ui-next/status/T1.md, decision 13). It is added before the
@@ -663,6 +663,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.mocked(localShellTarget).mockReset();
     vi.mocked(localProfileTarget).mockReset();
+    vi.mocked(localHereTarget).mockReset();
   });
 
   afterEach(() => {
@@ -991,6 +992,113 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       expect(localShellTarget).not.toHaveBeenCalled();
       expect(Object.values(given.store.getSnapshot().sessions).map((session) => session.title)).toEqual(['Synthetic']);
       stopGiven();
+    });
+  });
+
+  describe('what `New terminal here` starts (the menu\'s item, `openHere`)', () => {
+    const SHELL: TerminalDirectory = { state: 'known', path: '/usr', source: 'shell' };
+    let counter = 0;
+    /** A target of the host's own shell, under an id of its own, that opens a feed. */
+    const targetFor = (): TerminalTarget => {
+      counter += 1;
+      return { plugin: HOST, id: 'local', title: 'Terminal', sessionId: `term-here-${String(counter)}`, open: () => keyedFeed() };
+    };
+
+    beforeEach(() => {
+      counter = 0;
+      vi.mocked(localHereTarget).mockReset();
+      vi.mocked(localHereTarget).mockImplementation(targetFor);
+    });
+
+    /** A window with a terminal whose feed says where it is by `directory`. */
+    function withTerminal(directory: (() => Promise<TerminalDirectory>) | undefined, options: TerminalsOptions = {}) {
+      const r = reloaded(options);
+      const stop = r.terminals.attach();
+      const opened = r.terminals.sessions.open(found('term-a', keyedFeed(directory === undefined ? {} : { directory })));
+      return { ...r, stop, id: opened?.id ?? '' };
+    }
+
+    it('opens a terminal in the directory the feed of the session says, on screen and focused, and asks the feed and nothing else where it is', async () => {
+      const directory = vi.fn(async () => Promise.resolve(SHELL));
+      const r = withTerminal(directory);
+      await r.terminals.openHere(r.id);
+      expect(directory).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([SHELL]);
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a', 'term-here-1']);
+      expect(r.terminals.sessions.takeFocus('term-here-1')).toBe(true);
+      expect(r.store.getSnapshot().open).toBe(true);
+      expect(localShellTarget).not.toHaveBeenCalled();
+      r.stop();
+    });
+
+    it('gives the target what the feed said as it said it, an unknown directory included: the target is the one that starts in home and says so, and the window does not choose a directory', async () => {
+      const unknown: TerminalDirectory = { state: 'unknown', reason: 'query-failed' };
+      const r = withTerminal(async () => Promise.resolve(unknown));
+      await r.terminals.openHere(r.id);
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([unknown]);
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a', 'term-here-1']);
+      r.stop();
+    });
+
+    it('opens the terminal only when the feed has answered: nothing is opened for a question still out, and what the host says at the answer is what is used', async () => {
+      const answer = Promise.withResolvers<TerminalDirectory>();
+      const r = withTerminal(async () => answer.promise);
+      const opening = r.terminals.openHere(r.id);
+      await turns();
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a']);
+      answer.resolve({ state: 'known', path: '/var', source: 'shell' });
+      await opening;
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([{ state: 'known', path: '/var', source: 'shell' }]);
+      r.stop();
+    });
+
+    it('opens nothing for a session whose feed cannot say where it is, and for a session that has no feed or does not exist: no target is made', async () => {
+      const r = withTerminal(undefined);
+      await r.terminals.openHere(r.id);
+      await r.terminals.openHere('no-such-session');
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a']);
+      r.stop();
+    });
+
+    it('takes a feed that throws for one that could not say, which is how it is told: the terminal still opens, in home, and the throw is not the person\'s to read', async () => {
+      const r = withTerminal(async () => Promise.reject(new Error('boom')));
+      await r.terminals.openHere(r.id);
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([{ state: 'unknown', reason: 'unanswered' }]);
+      r.stop();
+    });
+
+    it('opens one terminal for each press, each under an id of its own: the same terminal can be the place of two', async () => {
+      const r = withTerminal(async () => Promise.resolve(SHELL));
+      await Promise.all([r.terminals.openHere(r.id), r.terminals.openHere(r.id)]);
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a', 'term-here-1', 'term-here-2']);
+      r.stop();
+    });
+
+    it('uses the target a probe gives, as the `+` does, and then makes none of its own', async () => {
+      const given = vi.fn((_where: TerminalDirectory): TerminalTarget => ({ plugin: HOST, id: 'synthetic', title: 'Synthetic', open: () => fakeTerminalFeed() }));
+      const r = withTerminal(async () => Promise.resolve(SHELL), { here: given });
+      await r.terminals.openHere(r.id);
+      expect(given.mock.calls.map(([where]) => where)).toEqual([SHELL]);
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(Object.values(r.store.getSnapshot().sessions).map((session) => session.title)).toEqual(['Terminal', 'Synthetic']);
+      r.stop();
+    });
+
+    it('is what the body\'s menu item runs: the body is given it by the window, for the session it shows', async () => {
+      const directory = vi.fn(async () => Promise.resolve(SHELL));
+      const r = withTerminal(directory);
+      const session = r.store.getSnapshot().sessions[r.id];
+      expect(session).toBeDefined();
+      const body = r.terminals.bodyOf(session, true);
+      // The element's props are the body's own (`onNewHere`); the cast says so once, in a named constant.
+      const props = body.props as { readonly session: Session; readonly onNewHere: (id: string) => void };
+      expect(props.session.id).toBe(r.id);
+      props.onNewHere(r.id);
+      await turns();
+      expect(directory).toHaveBeenCalledTimes(1);
+      r.stop();
     });
   });
 

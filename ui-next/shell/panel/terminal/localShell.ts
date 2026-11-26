@@ -1,9 +1,9 @@
 import { HOST } from '../../core/panel';
-import type { TerminalChannels } from './channel';
+import type { ChannelLaunch, TerminalChannels } from './channel';
 import { createExecFeed, newTerminalId } from './execFeed';
-import type { TerminalTarget } from './feed';
+import type { TerminalDirectory, TerminalFeedSnapshot, TerminalTarget } from './feed';
 import { appTerminalChannels } from './terminalChannel';
-import { launchOf, type ProfileLaunch, type TerminalProfile } from './profiles';
+import { launchOf, type TerminalProfile } from './profiles';
 
 // The host's own shell as a feed, on the terminal channel (docs/ui-next/terminal-channel-protocol.md): `CreateTerminal` with `launch.channel` starts the user's login shell on a pty of this machine
 // (backend/pkg/terminal/manager.go: an empty command is the account shell, with `TERM=xterm-256color`), and the terminal is reached by one stream (`terminalChannel.ts`, which holds the capabilities and speaks the frames).
@@ -31,7 +31,22 @@ export function localProfileTarget(profile: TerminalProfile, channels: TerminalC
   return targetOf(profile.name, channels, leaseMs, launchOf(profile));
 }
 
-function targetOf(title: string, channels: TerminalChannels, leaseMs: number | undefined, launch: ProfileLaunch | undefined): TerminalTarget {
+/**
+ * The target of "New terminal here": the host's own shell, started where the terminal it was opened from says it is (a `known` directory goes to the host as the terminal's `cwd`) or, when that terminal could not say, in the host's
+ * own default directory (home), with the status saying so until the first thing is typed. The directory is the producer's fact (`TerminalFeedHandle.directory`), passed on as it was given.
+ */
+export function localHereTarget(where: TerminalDirectory, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
+  return where.state === 'known' ? targetOf('Terminal', channels, leaseMs, { cwd: where.path }, undefined, where.source === 'start') : targetOf('Terminal', channels, leaseMs, undefined, 'home-for-unknown-directory');
+}
+
+function targetOf(
+  title: string,
+  channels: TerminalChannels,
+  leaseMs: number | undefined,
+  launch: Pick<ChannelLaunch, 'command' | 'cwd' | 'env'> | undefined,
+  startNote?: TerminalFeedSnapshot['startNote'],
+  homeIfMissing?: boolean,
+): TerminalTarget {
   const sessionId = newTerminalId();
   return {
     plugin: HOST,
@@ -39,7 +54,15 @@ function targetOf(title: string, channels: TerminalChannels, leaseMs: number | u
     title,
     retitle,
     sessionId,
-    open: () => createExecFeed({ channels, newId: () => sessionId, ...(leaseMs === undefined ? {} : { leaseMs }), ...(launch === undefined ? {} : { launch }) }),
+    open: () =>
+      createExecFeed({
+        channels,
+        newId: () => sessionId,
+        ...(leaseMs === undefined ? {} : { leaseMs }),
+        ...(launch === undefined ? {} : { launch }),
+        ...(startNote === undefined ? {} : { startNote }),
+        ...(homeIfMissing === true ? { homeIfMissing } : {}),
+      }),
   };
 }
 

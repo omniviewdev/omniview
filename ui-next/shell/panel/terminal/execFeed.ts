@@ -1,5 +1,5 @@
 import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalClosedBy, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
+import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
 import { createHeldOutput } from './heldOutput';
 
 // A terminal of the host as a feed, over the terminal channel (docs/ui-next/terminal-channel-protocol.md; `channel.ts` is the contract with the one place that holds the capabilities and the streams). It is the one place the
@@ -46,6 +46,10 @@ export type ExecFeedOptions = {
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
   /** How long the host keeps a terminal this feed made once no stream holds it, in milliseconds. Absent: the host's own. */
   readonly leaseMs?: number | undefined;
+  /** The directory in `launch` is one an ended terminal started in: if the host refuses it (it was removed since), the terminal is made again in the host's default directory, with the note. */
+  readonly homeIfMissing?: boolean | undefined;
+  /** The terminal starts in the home directory because the directory it was to start in was not known: the status says so until the first thing is typed (`startNote`). Absent: it was asked for nowhere in particular, or for a directory. */
+  readonly startNote?: TerminalFeedSnapshot['startNote'] | undefined;
   /** The shell, directory and environment the terminal is made with (`ChannelLaunch`). Absent: the host's own choices. */
   readonly launch?: Pick<ChannelLaunch, 'command' | 'cwd' | 'env'> | undefined;
   /** How long the feed waits before it connects again after each stream that dropped; the feed fails when they are used up. Default: `RECONNECT_DELAYS_MS`. */
@@ -144,6 +148,33 @@ function programOf(answer: unknown): string | undefined {
 
   const shell: unknown = Reflect.get(answer, 'shell');
   return typeof shell === 'object' && shell !== null ? worded(Reflect.get(shell, 'name')) : undefined;
+}
+
+/** The directory the host started a shell in, as it says it in a `terminal.Session` (`cwd`, an absolute path); nothing when it does not say. */
+function startOf(session: unknown): string | undefined {
+  if (typeof session !== 'object' || session === null) {
+    return undefined;
+  }
+
+  const cwd: unknown = Reflect.get(session, 'cwd');
+  return typeof cwd === 'string' && cwd !== '' ? cwd : undefined;
+}
+
+/** The host's answer to "which directory is the shell in now" (`terminal.Directory`: a `path`, or a `reason` when it cannot tell), as the fact it states. An answer that says neither is unreadable, and nothing is made up. */
+function directoryOf(answer: unknown): TerminalDirectory {
+  if (typeof answer === 'object' && answer !== null) {
+    const path: unknown = Reflect.get(answer, 'path');
+    if (typeof path === 'string' && path !== '') {
+      return { state: 'known', path, source: 'shell' };
+    }
+
+    const reason: unknown = Reflect.get(answer, 'reason');
+    if (typeof reason === 'string' && reason !== '') {
+      return { state: 'unknown', reason };
+    }
+  }
+
+  return { state: 'unknown', reason: 'unreadable' };
 }
 
 /**
@@ -355,6 +386,8 @@ type Ready = {
   readonly modes: TerminalModes;
   readonly startModes: TerminalModes;
   readonly program: string | undefined;
+  /** The directory the host says the terminal started in (`session.cwd`). */
+  readonly startedIn: string | undefined;
   /** How the terminal ended, when the host's `ready` says it had: its `ended` frame follows the replay. */
   readonly ended: unknown;
 };
@@ -394,6 +427,7 @@ function readyOf(value: unknown): Ready | undefined {
     modes: modesOf(Reflect.get(value, 'modes')),
     startModes: modesOf(Reflect.get(value, 'start_modes')),
     program: programOf(Reflect.get(value, 'session')),
+    startedIn: startOf(Reflect.get(value, 'session')),
     ended: typeof ended === 'object' && ended !== null ? ended : undefined,
   };
 }
@@ -435,13 +469,15 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const encoder = new TextEncoder();
   const listeners = new Set<() => void>();
   const listed = attachTo?.program;
-  let status: TerminalFeedSnapshot = listed === undefined ? { state: 'starting' } : { state: 'starting', program: listed };
+  let status: TerminalFeedSnapshot = { state: 'starting', ...(listed === undefined ? {} : { program: listed }), ...(options.startNote === undefined ? {} : { startNote: options.startNote }) };
   /** The host has the terminal: the call that made it was answered, or it is a terminal this page attaches to. A close of a terminal the host never made has nothing to end. */
   let created = attachTo !== undefined;
   let started = attachTo !== undefined;
   /** The call that makes the terminal, while it is out: a close waits for it, so that what the host made is ended. */
   let creating: Promise<void> | undefined;
   let createdProgram: string | undefined;
+  /** The directory the host says the terminal started in (the answer to the call that made it, or the `session` of a `ready`): where "New terminal here" opens once the shell is not there to ask. */
+  let startedIn: string | undefined;
   let fate: Fate = attachTo?.ended === true ? 'dismiss' : 'ours';
   let closing: Promise<void> | undefined;
   let woken = false;
@@ -624,7 +660,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   };
 
   /** What the user typed, as text or as raw bytes: counted, kept and sent the same way. `empty` is a call with nothing in it, which is no typing. */
-  const type = (empty: boolean, kept: () => boolean): void => {
+  const type = (empty: boolean, kept: () => boolean, reply = false): void => {
     if (closed() || left || (status.state !== 'running' && status.state !== 'starting')) {
       return;
     }
@@ -633,10 +669,14 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       typed += 1;
     }
 
-    if (status.inputLost === true && !empty) {
-      const { inputLost: _lost, ...rest } = status;
-      status = rest;
-      tell();
+    if (!empty) {
+      // The two notes are cleared on their own: the loss of input by anything written, and where the terminal started only by what the person typed (the emulator's replies are not theirs).
+      const clearNote = !reply && status.startNote !== undefined;
+      if (status.inputLost === true || clearNote) {
+        const { inputLost: _lost, startNote, ...rest } = status;
+        status = clearNote || startNote === undefined ? rest : { ...rest, startNote };
+        tell();
+      }
     }
 
     if (kept()) {
@@ -896,9 +936,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       attempts = 0;
     }
 
+    startedIn = ready.startedIn ?? startedIn;
     if (status.state === 'starting') {
       const program = ready.program ?? createdProgram ?? status.program;
-      status = program === undefined ? { state: 'running' } : { state: 'running', program };
+      const { startNote } = status;
+      status = { state: 'running', ...(program === undefined ? {} : { program }), ...(startNote === undefined ? {} : { startNote }) };
       tell();
     }
 
@@ -1173,20 +1215,34 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const start = (first: Size) => {
     started = true;
     delivered = first;
-    creating = channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...options.launch }).then(
-      (answer: unknown) => {
-        created = true;
-        createdProgram = programOf(answer);
-        if (!closed() && !left && status.state === 'starting') {
-          connect(next);
-        }
-      },
-      (error: unknown) => {
-        if (!closed()) {
-          over({ state: 'failed', cause: causeOf('start', error) });
-        }
-      },
-    );
+    const made = async (launch: ExecFeedOptions['launch']) => channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...launch });
+    const answered = (answer: unknown) => {
+      created = true;
+      createdProgram = programOf(answer);
+      startedIn = startOf(answer);
+      if (!closed() && !left && status.state === 'starting') {
+        connect(next);
+      }
+    };
+
+    const failed = (error: unknown) => {
+      if (!closed()) {
+        over({ state: 'failed', cause: causeOf('start', error) });
+      }
+    };
+
+    creating = made(options.launch).then(answered, async (error: unknown) => {
+      const dir = options.launch?.cwd;
+      // The directory an ended terminal started in may have been removed since: the host refuses it (`INVALID_REQUEST`) and the terminal starts in its default directory instead, and says so.
+      if (options.homeIfMissing !== true || dir === undefined || closed() || channels.codeOf(error) !== 'INVALID_REQUEST') {
+        failed(error);
+        return;
+      }
+
+      const { cwd: _removed, ...rest } = options.launch ?? { command: [] };
+      status = { ...status, startNote: 'home-for-unknown-directory' };
+      await made(rest).then(answered, failed);
+    });
   };
 
   /**
@@ -1363,8 +1419,24 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
     },
 
-    write: (text) => {
-      type(text === '', () => keep(text));
+    directory: async (): Promise<TerminalDirectory> => {
+      // Where the terminal started is what the host said at its start; a terminal that never said has no such fact, and nothing is made up in its place.
+      const start: TerminalDirectory = startedIn === undefined ? { state: 'unknown', reason: 'ended' } : { state: 'known', path: startedIn, source: 'start' };
+      // Only a shell that runs and that this page holds can be asked: an ended terminal, one this page lost, one that could not be started and one the page is leaving have the directory they started in.
+      if (closed() || left || status.state !== 'running') {
+        return start;
+      }
+
+      try {
+        return directoryOf(await channels.cwd(id));
+      } catch (error) {
+        // A terminal the host says is gone ended since the page last heard; a question that failed is a question not answered.
+        return channels.isGone(error) ? start : { state: 'unknown', reason: 'unanswered' };
+      }
+    },
+
+    write: (text, writeOptions) => {
+      type(text === '', () => keep(text), writeOptions?.reply === true);
     },
 
     writeBinary: (bytes) => {

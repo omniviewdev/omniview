@@ -98,6 +98,17 @@ describe('the status lane under the screen (the mock\'s .ptool__status, a fixed 
     expect(laneOf(snap('running'))).toEqual({ words: '', note: '' });
   });
 
+  it('says in words that the terminal started in the home directory because the directory it was to open in was not known, while it runs', () => {
+    expect(laneOf(snap('running', { startNote: 'home-for-unknown-directory' }))).toEqual({
+      words: 'Started in your home directory',
+      note: 'The directory of the terminal it was opened from is not known.',
+    });
+  });
+
+  it('says the loss of input before it says where the terminal started: the first can cost what the person typed', () => {
+    expect(laneOf(snap('running', { startNote: 'home-for-unknown-directory', inputLost: true })).words).toBe('Input may be lost');
+  });
+
   it('says it is connecting while the session starts', () => {
     expect(laneOf(snap('starting'))).toEqual({ words: 'Connecting', note: '' });
   });

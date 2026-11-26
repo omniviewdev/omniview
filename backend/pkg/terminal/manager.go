@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1039,10 +1040,33 @@ func (m *Manager) Cwd(sessionID string) (Directory, error) {
 	return Directory{Path: path, Reason: reason}, nil
 }
 
+// namesTheShellsDirectory says whether path, which exists and is the directory `info`, is where the shell is. Only Linux
+// names a removed directory with a ` (deleted)` suffix, and a sibling may be literally named so: there the path is the
+// shell's own only when it is the very inode the process's cwd link follows to (`live`). Elsewhere the system's answer
+// is taken as it is: a live directory whose name ends so is a real one.
+func namesTheShellsDirectory(path string, info os.FileInfo, goos string, live func() (os.FileInfo, error)) bool {
+	if goos != "linux" || !strings.HasSuffix(path, " (deleted)") {
+		return true
+	}
+	cwd, err := live()
+	return err == nil && os.SameFile(cwd, info)
+}
+
 func (s *session) directory() (string, UnknownReason) {
 	path, err := processCwd(s.cmd.Process.Pid)
 	switch {
 	case err == nil:
+		// The system still names a directory that was removed under the shell (Linux reads `<path> (deleted)`), and a
+		// terminal cannot start in it: a path that is not a directory now is not a fact worth passing on.
+		info, statErr := os.Stat(path)
+		if statErr != nil || !info.IsDir() {
+			return "", ReasonQueryFailed
+		}
+		if !namesTheShellsDirectory(path, info, runtime.GOOS, func() (os.FileInfo, error) {
+			return os.Stat("/proc/" + strconv.Itoa(s.cmd.Process.Pid) + "/cwd")
+		}) {
+			return "", ReasonQueryFailed
+		}
 		return path, ""
 	case errors.Is(err, errors.ErrUnsupported):
 		return "", ReasonUnsupported

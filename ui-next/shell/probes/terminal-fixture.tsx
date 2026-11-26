@@ -575,6 +575,7 @@ const client: ChannelClient = {
   CloseChannelTerminal: async (cap) => callHost('CloseChannelTerminal', [cap]),
   DismissChannelTerminal: async (cap) => callHost('DismissChannelTerminal', [cap]),
   ChannelTerminalBusy: async (cap) => callHost('ChannelTerminalBusy', [cap]),
+  ChannelTerminalCwd: async (cap) => callHost('ChannelTerminalCwd', [cap]),
   ListChannelTerminals: async (caps) => {
     link.started += 1;
     try {

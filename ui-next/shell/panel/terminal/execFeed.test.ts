@@ -26,6 +26,8 @@ type RigOptions = {
   readonly settleMs?: number;
   readonly leaseMs?: number;
   readonly launch?: { readonly command: readonly string[]; readonly cwd?: string; readonly env?: Readonly<Record<string, string>> };
+  readonly startNote?: 'home-for-unknown-directory';
+  readonly homeIfMissing?: boolean;
   readonly delays?: readonly number[];
 };
 
@@ -49,6 +51,8 @@ function rig(options: RigOptions = {}): Rig {
     ...(options.attach === undefined ? {} : { attach: options.attach }),
     ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }),
     ...(options.launch === undefined ? {} : { launch: options.launch }),
+    ...(options.startNote === undefined ? {} : { startNote: options.startNote }),
+    ...(options.homeIfMissing === true ? { homeIfMissing: true } : {}),
     ...(options.delays === undefined ? {} : { reconnectDelaysMs: options.delays }),
   });
   let wakes = 0;
@@ -2444,6 +2448,225 @@ describe('the writer_known rule, pinned (review of the review)', () => {
       expect(again.typed()).not.toBe('');
       again.drop();
     }
+  });
+});
+
+// "New terminal here" (#695 step 3): the directory a new terminal opens in is the HOST's fact. While the shell runs it is `ChannelTerminalCwd` (where the shell is now: the tracked directory once shell integration is on), asked at the
+// moment a person chooses the item and never kept, and for a terminal that ended or that this page lost it is the directory the host said the terminal started in (`session.cwd`). The page never works out a directory from what
+// it typed or from what the screen shows.
+describe('where a new terminal opened from this one starts (`directory`)', () => {
+  const made = { launch: { command: ['/bin/zsh'], cwd: '/work' } } as const;
+
+  it('is the directory the host says the shell is in now while it runs, and not the one it started in: the shell moved', async () => {
+    const r = await running({}, { ...made, channels: { cwd: () => ({ path: '/usr' }) } });
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/usr', source: 'shell' });
+  });
+
+  it('asks the host at the moment it is called and never before: no call at the start, none on the stream, none with the time passing, and no timer of its own', async () => {
+    const r = await running({}, { ...made });
+    const timers = vi.getTimerCount();
+    vi.advanceTimersByTime(600_000);
+    expect(r.channels.of('cwd')).toEqual([]);
+    expect(vi.getTimerCount()).toBe(timers);
+    await r.feed.directory?.();
+    expect(r.channels.of('cwd')).toEqual([{ kind: 'cwd', id: 'term-1' }]);
+    expect(vi.getTimerCount()).toBe(timers);
+  });
+
+  it('is asked afresh every time, so that a shell that moved between two presses is where it is now: nothing is kept', async () => {
+    let where = '/usr';
+    const r = await running({}, { ...made, channels: { cwd: () => ({ path: where }) } });
+    expect(await r.feed.directory?.()).toMatchObject({ path: '/usr' });
+    where = '/var';
+    expect(await r.feed.directory?.()).toMatchObject({ path: '/var' });
+    expect(r.channels.of('cwd')).toHaveLength(2);
+  });
+
+  it('says unknown, with the host\'s reason, when the host cannot say where the shell is, and does not put the directory it started in in its place', async () => {
+    const r = await running({}, { ...made, channels: { cwd: () => ({ reason: 'query-failed' }) } });
+    expect(await r.feed.directory?.()).toEqual({ state: 'unknown', reason: 'query-failed' });
+  });
+
+  it('says unknown when the host\'s answer is neither a path nor a reason: an answer that cannot be read is no directory', async () => {
+    for (const answer of [undefined, null, 'home', {}, { path: '' }, { path: 7 }]) {
+      const r = await running({}, { ...made, channels: { cwd: () => answer } });
+      expect(await r.feed.directory?.(), JSON.stringify(answer)).toEqual({ state: 'unknown', reason: 'unreadable' });
+    }
+  });
+
+  it('says unknown, and never throws, when the question fails: a question that was not answered is not a directory', async () => {
+    const r = await running({}, {
+      ...made,
+      channels: {
+        cwd: () => {
+          throw new Error('the host is not there');
+        },
+      },
+    });
+    expect(await r.feed.directory?.()).toEqual({ state: 'unknown', reason: 'unanswered' });
+  });
+
+  it('is the directory the answer to the call that made the terminal said, when its `ready` does not say: the page keeps the first thing the host said of where it started', async () => {
+    const r = await running({ raw: { session: { id: 'term-1', shell: { path: '/bin/zsh', name: 'zsh' } } } }, { ...made });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/work', source: 'start' });
+  });
+
+  it('is the directory the terminal started in once the host says it is not there any more: the shell ended between the last news and the question', async () => {
+    const r = await running({ startedIn: '/work' }, {
+      ...made,
+      channels: {
+        cwd: () => {
+          throw goneError();
+        },
+      },
+    });
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/work', source: 'start' });
+  });
+
+  it('is the directory the terminal started in once it ended, and the host is not asked: there is no shell to ask', async () => {
+    const r = await running({ startedIn: '/work' }, { ...made, channels: { cwd: () => ({ path: '/usr' }) } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/work', source: 'start' });
+    expect(r.channels.of('cwd')).toEqual([]);
+  });
+
+  it('is the directory it started in for a terminal this page lost to another tab, whose shell runs on: the page does not ask a terminal it no longer holds', async () => {
+    const r = await running({ startedIn: '/work' }, { ...made, channels: { cwd: () => ({ path: '/usr' }) } });
+    r.stream().takenOver();
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/work', source: 'start' });
+    expect(r.channels.of('cwd')).toEqual([]);
+  });
+
+  it('is the directory the host\'s `ready` says the terminal started in, for a terminal a page found again after a reload that had ended: the page never saw it start', async () => {
+    const r = attaching({ ended: true });
+    r.stream().ready({ startedIn: '/srv', ended: { reason: 'exited', exit_code: 0 } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/srv', source: 'start' });
+    expect(r.channels.of('cwd')).toEqual([]);
+  });
+
+  it('asks the host for a terminal a page found again that runs, with the directory of its `ready` as the fallback', async () => {
+    const r = attaching({}, { channels: { cwd: () => ({ path: '/usr' }) } });
+    r.stream().ready({ startedIn: '/srv' });
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/usr', source: 'shell' });
+  });
+
+  it('says unknown when the terminal ended and the host never said where it started: nothing is made up', async () => {
+    const r = await running({ raw: { session: { id: 'term-1', shell: { path: '/bin/zsh', name: 'zsh' } } } }, { channels: { create: (id) => ({ id, shell: { name: 'zsh' } }) } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(await r.feed.directory?.()).toEqual({ state: 'unknown', reason: 'ended' });
+  });
+
+  it('says unknown for a terminal that could not be started, and asks the host nothing', async () => {
+    const r = await connecting({
+      channels: {
+        create: async () => {
+          throw new Error('refused');
+        },
+      },
+    });
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(await r.feed.directory?.()).toEqual({ state: 'unknown', reason: 'ended' });
+    expect(r.channels.of('cwd')).toEqual([]);
+  });
+});
+
+// The status of a terminal that started in the home directory because the directory it was to start in was not known (`startNote`): the lane says so, and it stops saying so with the first thing typed, as the note about lost input does.
+describe('a terminal that started in the home directory because the directory it was to open in was not known (`startNote`)', () => {
+  const note = 'home-for-unknown-directory';
+
+  it('says so while it starts and while it runs, with its program', async () => {
+    const r = await connecting({ startNote: note });
+    expect(r.feed.getSnapshot()).toEqual({ state: 'starting', startNote: note });
+    r.stream().ready();
+    expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh', startNote: note });
+  });
+
+  it('says nothing of it for a terminal that was not given one', async () => {
+    const r = await running();
+    expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+  });
+
+  it('stops saying so at the first thing typed, and tells its listeners once', async () => {
+    const r = await connecting({ startNote: note });
+    r.stream().ready();
+    const before = r.wakes();
+    r.feed.write('');
+    expect(r.feed.getSnapshot().startNote).toBe(note);
+    r.feed.write('ls');
+    expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh' });
+    r.feed.write('a');
+    expect(r.wakes() - before).toBe(1);
+  });
+});
+
+describe('a terminal opened in the directory an ended terminal started in, which was removed since (`homeIfMissing`)', () => {
+  const refused = () => Object.assign(new Error('cwd must be a directory that exists'), { code: 'INVALID_REQUEST' });
+  const note = 'home-for-unknown-directory';
+
+  it('is made again with no directory when the host refuses the directory, with the note, and fails nothing', async () => {
+    let calls = 0;
+    const r = await connecting({
+      homeIfMissing: true,
+      launch: { command: [], cwd: '/gone' },
+      channels: {
+        create: (id) => {
+          calls += 1;
+          if (calls === 1) {
+            throw refused();
+          }
+
+          return { id, shell: { path: '/bin/zsh', name: 'zsh' } };
+        },
+      },
+    });
+    expect(r.channels.of('create').map((call) => call.cwd)).toEqual(['/gone', undefined]);
+    r.stream().ready();
+    expect(r.feed.getSnapshot()).toEqual({ state: 'running', program: 'zsh', startNote: note });
+  });
+
+  it('fails as before for a feed that did not ask for it: a profile\'s directory that is missing is the person\'s to read', async () => {
+    const r = await connecting({ launch: { command: [], cwd: '/gone' }, channels: { create: () => {
+      throw refused(); 
+    } } });
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.channels.of('create')).toHaveLength(1);
+  });
+
+  it('does not make it again for another refusal', async () => {
+    const r = await connecting({ homeIfMissing: true, launch: { command: [], cwd: '/gone' }, channels: { create: () => {
+      throw Object.assign(new Error('x'), { code: 'SHELL_UNAVAILABLE' }); 
+    } } });
+    expect(r.feed.getSnapshot().state).toBe('failed');
+    expect(r.channels.of('create')).toHaveLength(1);
+  });
+});
+
+describe('what clears the note of a terminal that started in the home directory (`startNote`)', () => {
+  it('is what the person typed, and not what the emulator answered by itself', async () => {
+    const r = await connecting({ startNote: 'home-for-unknown-directory' });
+    r.stream().ready();
+    r.feed.write('\u001b[1;1R', { reply: true });
+    expect(r.feed.getSnapshot().startNote).toBe('home-for-unknown-directory');
+    r.feed.write('ls');
+    expect(r.feed.getSnapshot().startNote).toBeUndefined();
+  });
+});
+
+describe('the two notes of a running terminal are cleared on their own (`inputLost` and `startNote`)', () => {
+  it('keeps where the terminal started when the emulator\'s reply clears the loss of input, and drops it for what the person types', async () => {
+    const r = await running({}, { startNote: 'home-for-unknown-directory' });
+    r.feed.write('abc', { reply: true });
+    r.stream().drop();
+    r.feed.write('def', { reply: true });
+    reconnect(r).ready({ inputApplied: 0, writerKnown: false });
+    expect(r.feed.getSnapshot()).toMatchObject({ inputLost: true, startNote: 'home-for-unknown-directory' });
+    r.feed.write('\u001b[1;1R', { reply: true });
+    expect(r.feed.getSnapshot().inputLost).toBeUndefined();
+    expect(r.feed.getSnapshot().startNote).toBe('home-for-unknown-directory');
+    r.feed.write('ls');
+    expect(r.feed.getSnapshot().startNote).toBeUndefined();
   });
 });
 

@@ -47,6 +47,11 @@ export type TerminalBusy =
 /** A size in cells. */
 export type TerminalSize = { readonly cols: number; readonly rows: number };
 
+/** Where a new terminal opened from a terminal starts: a directory the producer named, and which fact it is (`shell`: where the shell is now; `start`: where it started), or unknown, with the producer's reason when it gives one. */
+export type TerminalDirectory =
+  | { readonly state: 'known'; readonly path: string; readonly source: 'shell' | 'start' }
+  | { readonly state: 'unknown'; readonly reason?: string | undefined };
+
 /** The modes a terminal is in at an offset of its output (T2-go `TerminalModes`): what a reattach has to switch back on before it writes the bytes. `mouseTracking` is bits (1 click, 2 drag, 4 any motion), `mouseEncoding` is 0 X10, 1 UTF-8, 2 SGR, 3 urxvt. */
 export type TerminalModes = {
   readonly altScreen: boolean;
@@ -108,6 +113,8 @@ export type TerminalFeedSnapshot = {
   readonly detached?: TerminalDetached | undefined;
   /** The host did not know this feed's writer when its stream came back (a host restart, an evicted writer), or applied none of what was resent: what was typed while the connection was away may be lost, and the lane says so until the next thing is typed. */
   readonly inputLost?: boolean | undefined;
+  /** Set on a terminal that started in the home directory because the directory it was to start in was not known (`New terminal here` of a terminal whose directory the host could not name): the lane says so until the first thing is typed. */
+  readonly startNote?: 'home-for-unknown-directory' | undefined;
 };
 
 /** What the process wrote since the last read, oldest first: its bytes (an escape sequence may be cut between two chunks, the emulator keeps its state). */
@@ -136,7 +143,7 @@ export type TerminalFeedHandle = {
    */
   readonly ack: (bytes: number) => void;
   /** What the user typed or pasted. Delivered in order; ignored once the session is over. */
-  readonly write: (text: string) => void;
+  readonly write: (text: string, options?: { readonly reply?: boolean }) => void;
   /**
    * Raw bytes the emulator sends for the person (a legacy X10 mouse report: its three bytes after `ESC [ M` are the coordinates plus 32, and a byte above 127 is not UTF-8). They go the way typed text goes (kept until the host
    * applies them, sent again once after a cut, dropped when the host does not know the writer) and reach the shell as they are, never as UTF-8 of a character.
@@ -179,6 +186,12 @@ export type TerminalFeedHandle = {
    * A feed that is not lost does nothing. A poll shares the listing that is out; `fresh` (a take-back) waits for it and asks again, so that its answer begins after the press. A producer that cannot leaves it out.
    */
   readonly refresh?: ((options?: { readonly fresh?: boolean }) => Promise<void>) | undefined;
+  /**
+   * Where a new terminal opened from this one starts (the producer's fact, never the page's guess): the directory the shell is in now while it runs (`source: 'shell'`), the directory it started in once it ended or this page lost
+   * it (`source: 'start'`), and `unknown` (with the host's reason) when the host cannot say where the shell is or the terminal never said where it started. Never throws, and asks nothing until it is called. A producer that cannot
+   * leaves it out, and nothing is opened from it.
+   */
+  readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
 };
 
 /** What opens a terminal session: plain data and one function. Who supplies it (the host's own shell today) is not the registry's business. */

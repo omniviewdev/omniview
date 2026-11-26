@@ -1856,6 +1856,8 @@ describe('a replay: a terminal the page took back after a reload', () => {
       expect(r.feed.typed()).toEqual([REPLY]);
       r.engine().type('ls\r');
       expect(r.feed.typed()).toEqual([REPLY, 'ls\r']);
+      // The emulator's own answer is written as a reply, and the person's key is not: only the key clears what a new terminal says of where it started.
+      expect(r.feed.replies()).toEqual([REPLY]);
     });
 
     it('is muted from the first byte of the replay until the callback of its LAST slice has fired, and not a byte longer', async () => {
