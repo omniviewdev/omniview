@@ -348,6 +348,73 @@ describe('the output of a command', () => {
   });
 });
 
+describe('what review found', () => {
+  it('keeps a command running when the emulator drops its line (an erase), until the shell says it ended: the busy fact is the producer\'s', async () => {
+    const { gutter, feed, prompt, engine } = setup();
+    await prompt();
+    await feed('sleep 9\r\n', [C('sleep 9')]);
+    engine.clear();
+    expect(gutter.busy()).toBe(true);
+    await feed('', [D(0, 9_000)]);
+    expect(gutter.busy()).toBe(false);
+  });
+
+  it('tells the tooltip the new facts when the command under the pointer finishes', async () => {
+    const { feed, prompt, decorations, events } = setup();
+    await prompt();
+    await feed('sleep 1\r\n', [C('sleep 1')]);
+    const element = document.createElement('div');
+    decorations[0]?.paint(element);
+    element.firstElementChild?.dispatchEvent(new MouseEvent('mouseenter'));
+    await feed('', [D(1, 1_000)]);
+    const hover = events.findLast((event) => event.kind === 'hover');
+    expect(hover).toMatchObject({ kind: 'hover', command: { state: 'failure', exit: 1 } });
+  });
+
+  it('freezes the output of a command that was settled by the next prompt: what the next command prints is not its output', async () => {
+    const { gutter, feed, prompt } = setup();
+    await prompt();
+    await feed('printf a\r\n', [C('printf a')]);
+    await feed('a\r\n');
+    await feed('', [A('c2')]);
+    await feed('$ ', [B('c2')]);
+    await feed('echo b\r\n', [C('echo b', 'c2')]);
+    await feed('b\r\n', [D(0, 5, 'c2')]);
+    expect(gutter.output(gutter.commands()[0])).toBe('a');
+  });
+
+  it('stops the output at the end column: the prompt that is drawn on the row after output with no line feed is not output', async () => {
+    const { gutter, feed, prompt } = setup();
+    await prompt();
+    await feed('printf abc\r\n', [C('printf abc')]);
+    await feed('abc', [D(0, 4)]);
+    await feed('', [A('c2')]);
+    await feed('$ ', [B('c2')]);
+    expect(gutter.output(gutter.commands()[0])).toBe('abc');
+  });
+
+  it('reads an unproven line from its terminal cell, not its string index: a wide character in the prompt does not eat the first letter', async () => {
+    const { gutter, feed } = setup();
+    await feed('', [A()]);
+    await feed('\u754c> ', [B()]);
+    await feed('echo hi\r\n', [C(undefined)]);
+    await feed('hi\r\n', [D(0, 1)]);
+    expect(gutter.rerun()).toEqual({ text: 'echo hi', enter: false });
+  });
+
+  it('tells that the commands changed when a command settles or goes, so that an open menu can close', async () => {
+    const { feed, prompt, events, engine } = setup();
+    await prompt();
+    await feed('x\r\n', [C('x')]);
+    const before = events.filter((event) => event.kind === 'commands').length;
+    await feed('', [D(0, 1)]);
+    expect(events.filter((event) => event.kind === 'commands').length).toBeGreaterThan(before);
+    const mid = events.filter((event) => event.kind === 'commands').length;
+    engine.clear();
+    expect(events.filter((event) => event.kind === 'commands').length).toBeGreaterThan(mid);
+  });
+});
+
 describe('the jump to a command', () => {
   async function three() {
     const rig = setup({ rows: 6 });

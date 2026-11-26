@@ -321,3 +321,52 @@ describe('the keys that jump', () => {
     expect(engine().scrolls).toEqual([]);
   });
 });
+
+describe('what review found, in the screen', () => {
+  const replayWith = (data: string, marks: readonly PlacedMark[]): TerminalReplay => ({ data: bytesOf(data), startSize: { cols: 80, rows: 24 }, startModes: NO_MODES, size: { cols: 80, rows: 24 }, modes: NO_MODES, end: data.length, marks });
+
+  it('keeps Control Shift Up and Down with the window when there are no commands (not handled, as before): only Control without Shift is the shell\'s', async () => {
+    const { engine } = await rig();
+    expect(engine().key({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true, shiftKey: true })).toEqual({ handled: false, defaultPrevented: false });
+    expect(engine().key({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true })).toEqual({ handled: true, defaultPrevented: false });
+  });
+
+  it('writes a short marked slice in a buffer of its own size: a view of a 64 KiB scratch would hold the whole allocation until the emulator parses it', async () => {
+    const { feed, frame, engine } = await rig({ auto: false });
+    feed.push('ab\r\ncd\r\n', [placed(4, C('x'))]);
+    frame();
+    const writes = engine().writes.filter((one): one is Uint8Array => typeof one !== 'string' && one.length > 0);
+    expect(writes.map((one) => one.buffer.byteLength)).toEqual(writes.map((one) => one.length));
+  });
+
+  it('places the marks at the very end of a replay whose last write is parsed at once, so that the restored command has its exit status and can be run again', async () => {
+    const text = '$ ls\r\nout\r\n';
+    const { frame, screen } = await rig({ replay: replayWith(text, [placed(0, A()), placed(2, B()), placed(6, C('ls')), placed(text.length, D(0))]) });
+    frame();
+    expect(screen.commands.state().rerun, 'the command ended: it can be run again').toBeUndefined();
+  });
+
+  it('refuses to run a command again while a replay is applied: the line would be queued and sent after a program that started during the replay', async () => {
+    const text = '$ ls\r\nout\r\nmore\r\n';
+    const { frame, screen, engine } = await rig({ auto: false, replay: replayWith(text, [placed(0, A()), placed(2, B()), placed(6, C('ls')), placed(6, D(0))]) });
+    frame();
+    for (let guard = 0; guard < 10 && screen.commands.state().count === 0; guard += 1) engine().complete(1);
+    expect(screen.commands.state().count).toBe(1);
+    expect(engine().pendingWrites(), 'the replay is not over').toBeGreaterThan(0);
+    expect(screen.commands.state().rerun).toBeDefined();
+  });
+
+  it('offers no output action while a program has the alternate screen: the rows are of the normal screen and the engine reads the active one', async () => {
+    const r = await rig();
+    r.feed.push('$ make\r\nout1\r\n', [placed(0, A()), placed(2, B()), placed(8, C('make')), placed(15, D(0))]);
+    r.frame();
+    expect(r.screen.commands.state().output).toBe(true);
+    r.engine().alternateScreen(true);
+    expect(r.screen.commands.state().output).toBe(false);
+    r.screen.commands.selectOutput();
+    expect(r.engine().lineSelections).toEqual([]);
+    expect(await r.screen.commands.copyOutput()).toBe(false);
+    r.engine().alternateScreen(false);
+    expect(r.screen.commands.state().output).toBe(true);
+  });
+});
