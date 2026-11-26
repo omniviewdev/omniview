@@ -316,6 +316,8 @@ export class MarkScanner {
     this.pending = '';
     /** Marks whose nonce was wrong or missing. */
     this.forged = 0;
+    /** Where the last prompt start ends: a prompt ends a command that was running (a shell that is replaced never prints the end). */
+    this.promptEnd = 0;
   }
 
   feed(bytes, base) {
@@ -484,6 +486,7 @@ export class MarkScanner {
   }
 
   keep(mark) {
+    if (mark.kind === 'prompt-start') this.promptEnd = mark.end;
     this.marks.push(mark);
     if (this.marks.length >= 2 * MARKS_KEPT) this.marks.splice(0, this.marks.length - MARKS_KEPT);
   }
@@ -491,7 +494,7 @@ export class MarkScanner {
   /** The command that the shell said it started and has not ended, with the nonce's proof of its line: what "a command is running" means. */
   running() {
     const newest = this.commands.at(-1);
-    return newest !== undefined && newest.state === 'running' && newest.lineTrust === 'nonce' ? newest : undefined;
+    return newest !== undefined && newest.state === 'running' && newest.lineTrust === 'nonce' && this.promptEnd <= newest.outputStart ? newest : undefined;
   }
 
   /** The first mark that ends at or after `from`, as an index: the marks that end at or before `pos` are due, and the first after it says where the output is cut. */
@@ -536,9 +539,6 @@ const planMarks = (scanner, from, pos) => {
 
 /** The marks frame: a type byte and the JSON of version 1 of the frame. */
 const marksFrame = (marks) => withType(FRAME.marks, encoder.encode(JSON.stringify({ v: 1, marks: marks.map(markJson) })));
-
-/** The first word of a command line, for the name of what runs. */
-const nameOfLine = (line) => line.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().split(/\s+/, 1)[0].slice(0, 64);
 
 // ---- the ring ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -1848,8 +1848,8 @@ export function createHost(options = {}) {
       // The shell holds the foreground: a command that it said it started and has not ended is running all the same (a builtin loop), on the shell's word and only with the nonce's proof of its line.
       const running = pty.ring.markScanner?.running();
       if (running === undefined) return { state: 'idle' };
-      const name = nameOfLine(running.line);
-      return name === '' ? { state: 'busy' } : { state: 'busy', name };
+      // Marks add busy and nothing else: the name is the pull fact's.
+      return { state: 'busy' };
     }
 
     return faults.busyNameless ? { state: 'busy', pgid: 4242 } : { state: 'busy', pgid: 4242, name: pty.job.name };

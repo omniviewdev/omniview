@@ -2765,21 +2765,32 @@ const finish = (end: number, extra: Readonly<Record<string, unknown>> = {}): Rea
 const prompt = (end: number): Readonly<Record<string, unknown>> => ({ kind: 'prompt-start', at: end - 8, end, id: 'c2', trust: 'unverified' });
 
 describe('the marks of the shell', () => {
-  it('knows that a command is running from its start mark, and asks the host nothing', async () => {
+  it('knows that a command is running from its start mark though the host says idle, and takes the host\'s name when it has one', async () => {
     const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
     r.stream().output(0, 'x'.repeat(40));
     r.stream().marks(start(40));
-    expect(await r.feed.busy?.()).toEqual({ state: 'busy', name: 'sleep' });
-    expect(r.channels.of('busy'), 'the producer said it: nothing is asked').toEqual([]);
+    expect(await r.feed.busy?.()).toEqual({ state: 'busy' });
+    const named = await running({ end: 0 }, { channels: { busy: () => ({ state: 'busy', name: 'make', pgid: 9 }) } });
+    named.stream().output(0, 'x'.repeat(40));
+    named.stream().marks(start(40, { command: 'FOO=1 make' }));
+    expect(await named.feed.busy?.()).toEqual({ state: 'busy', name: 'make' });
+    const failed = await running({ end: 0 }, { channels: { busy: async () => Promise.reject(new Error('x')) } });
+    failed.stream().output(0, 'x'.repeat(40));
+    failed.stream().marks(start(40));
+    expect(await failed.feed.busy?.()).toEqual({ state: 'busy' });
   });
 
-  it('is idle for the host to say once the end mark has come: the question goes back to the host', async () => {
+  it('is idle for the host to say once the end mark or a later prompt has come', async () => {
     const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
-    r.stream().output(0, 'x'.repeat(60));
+    r.stream().output(0, 'x'.repeat(80));
     r.stream().marks(start(40));
     r.stream().marks(finish(60));
     expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
-    expect(r.channels.of('busy')).toHaveLength(1);
+    const replaced = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
+    replaced.stream().output(0, 'x'.repeat(80));
+    replaced.stream().marks(start(40));
+    replaced.stream().marks(prompt(60));
+    expect(await replaced.feed.busy?.(), 'a shell that was replaced never prints the end').toEqual({ state: 'idle' });
   });
 
   it('does not take a start that the host did not prove for a command that runs: trust is the host\'s word', async () => {
@@ -2787,18 +2798,6 @@ describe('the marks of the shell', () => {
     r.stream().output(0, 'x'.repeat(40));
     r.stream().marks(start(40, { trust: 'unverified', command: undefined }));
     expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
-    expect(r.channels.of('busy')).toHaveLength(1);
-  });
-
-  it('names the command by the first word of its line and leaves a name out when the line has none', async () => {
-    const r = await running({ end: 0 });
-    r.stream().output(0, 'x'.repeat(40));
-    r.stream().marks(start(40, { command: '  git push --force ' }));
-    expect(await r.feed.busy?.()).toEqual({ state: 'busy', name: 'git' });
-    const bare = await running({ end: 0 });
-    bare.stream().output(0, 'x'.repeat(40));
-    bare.stream().marks(start(40, { command: undefined, trust: 'nonce' }));
-    expect(await bare.feed.busy?.()).toEqual({ state: 'busy' });
   });
 
   it('keeps the marks it was given, oldest first, each with what the host typed, and the same list object until another comes', async () => {

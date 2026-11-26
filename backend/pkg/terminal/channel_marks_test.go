@@ -51,12 +51,18 @@ type marked struct {
 	n   int
 }
 
-func newMarked(t *testing.T, env ...string) *marked {
+func newMarked(t *testing.T, env ...string) *marked { return newMarkedWith(t, nil, env...) }
+
+// newMarkedWith is newMarked with prep run on the manager before the terminal starts (its limits, its clock).
+func newMarkedWith(t *testing.T, prep func(*Manager), env ...string) *marked {
 	t.Helper()
 	dir := t.TempDir()
 	shell := filepath.Join(dir, "zsh")
 	require.NoError(t, os.WriteFile(shell, []byte(marksShellScript), 0o700))
 	f := newIntegrationFixture(t, "zsh", shell, append([]string{"MARKS_DIR=" + dir}, env...)...)
+	if prep != nil {
+		prep(f.m)
+	}
 	info, err := f.m.Start(Options{Command: []string{shell}, Cwd: f.home, Cols: 100, Rows: 30, Channel: true}, nil)
 	require.NoError(t, err)
 	require.Equal(t, IntegrationOn, info.Integration.State, "the host gave the fake shell its integration")
@@ -383,7 +389,7 @@ func TestACommandRunsFromItsStartMarkToItsEndMark(t *testing.T) {
 		busy, busyErr := k.f.m.ChannelBusy(k.info.Cap)
 		require.NoError(t, busyErr)
 		assert.Equal(t, StateBusy, busy.State, "the shell holds the foreground and a command runs: the shell said so")
-		assert.Equal(t, "while", busy.Name, "named by the first word of the line it sent with the nonce")
+		assert.Empty(t, busy.Name, "marks add busy, never a name that the pull fact has not: the first word of a line can be an assignment")
 		record, recordErr := k.f.m.ChannelCommands(k.info.Cap)
 		require.NoError(t, recordErr)
 		assert.Equal(t, "c1", record.Running)
@@ -514,5 +520,86 @@ func TestTheKeptEndOfATerminalHasItsMarks(t *testing.T) {
 		assert.Equal(t, 1, ready.Marks)
 		assert.NotNil(t, ready.Ended)
 		assert.Equal(t, strip(all), strip(got))
+	})
+}
+
+// A page that sleeps while the ring overwrites is told one gap, and the marks that ended inside what the gap skipped are not sent after it: the
+// stream goes on with the marks that end after the gap.
+func TestMarksThatEndedInsideAGapAreNotSentAfterIt(t *testing.T) {
+	var clock *fakeClock
+	k := newMarkedWith(t, func(m *Manager) {
+		smallChannel(&m.channel)
+		clock = withFakeClock(m)
+	})
+	s := k.f.m.chanOf(t, k.info)
+	f := newFakeChannel(t)
+	f.park(1)
+	page := newChanPage(t, f, 0)
+	go page.run()
+	go k.f.m.ServeChannel(f)
+	f.pageSend(attachFrameWithMarks(k.info.Cap, nil))
+	page.waitReady()
+	first := k.command("ls", "a", 0, "/a")
+	var flood strings.Builder
+	flood.WriteString(first)
+	for range 600 {
+		flood.WriteString(osc("133;A") + osc("133;C") + strings.Repeat("x", 1000) + osc("133;D;0"))
+	}
+	text := flood.String()
+	require.Greater(t, len(text), 2*k.f.m.channel.ring)
+	require.NoError(t, os.WriteFile(filepath.Join(k.dir, "flood"), []byte(text), 0o600))
+	_, err := s.master.Write([]byte("flood\n"))
+	require.NoError(t, err)
+	waitSenderParked(t, f)
+	require.Eventually(t, func() bool { return s.channelStats().waits >= 1 }, settle, time.Millisecond)
+	clock.Advance(k.f.m.channel.stall)
+	require.Eventually(t, func() bool { return s.channelStats().end == uint64(len(text)) }, settle, time.Millisecond, "the shell wrote it all with the page asleep")
+	f.release()
+	st := page.waitFor("the gap", func(s pageState) bool { return len(s.gaps) >= 1 })
+	gap := st.gaps[0]
+	last := page.waitFor("the last mark", func(s pageState) bool {
+		n := len(s.marks)
+		return n > 0 && s.marks[n-1].End == uint64(len(text))
+	})
+	guarded(t, "gap-skips-marks", func() {
+		assert.Empty(t, last.faults)
+		for _, m := range last.marks {
+			if m.End > gap[0] {
+				assert.Greater(t, m.End, gap[1], "mark %s ending at %d is inside what the gap [%d,%d) skipped", m.Kind, m.End, gap[0], gap[1])
+			}
+		}
+	})
+}
+
+// What the pull fact knows is never removed by the marks: a program that holds the foreground keeps its name and process group (the close flow
+// kills by group), and the marks only add busy where the pull fact says idle.
+func TestMarksNeverRemoveWhatTheForegroundFactKnows(t *testing.T) {
+	k := newMarked(t)
+	s := k.f.m.chanOf(t, k.info)
+	k.print(osc("133;A") + osc("133;B") + "make\r\n" + osc("633;E;FOO\\x3d1\\x20make;"+k.nonce) + osc("133;C"))
+	pull := Foreground{State: StateBusy, Name: "sleep", PGID: 4242, Reason: ""}
+	guarded(t, "marks-keep-pull-fact", func() {
+		assert.Equal(t, pull, s.withMarks(pull))
+		idle := s.withMarks(Foreground{State: StateIdle, Name: "", PGID: 0, Reason: ""})
+		assert.Equal(t, StateBusy, idle.State)
+		assert.Empty(t, idle.Name)
+	})
+}
+
+// A shell that is replaced (exec zsh) never prints the end of its command: the prompt of the new one does, and a prompt ends any running command.
+func TestANewPromptEndsAnyRunningCommand(t *testing.T) {
+	k := newMarked(t)
+	k.print(osc("133;A") + osc("133;B") + "exec zsh\r\n" + osc("633;E;exec\\x20zsh;"+k.nonce) + osc("133;C"))
+	busy, err := k.f.m.ChannelBusy(k.info.Cap)
+	require.NoError(t, err)
+	require.Equal(t, StateBusy, busy.State)
+	k.print(osc("133;A") + "$ " + osc("133;B"))
+	guarded(t, "prompt-ends-running", func() {
+		busy, err = k.f.m.ChannelBusy(k.info.Cap)
+		require.NoError(t, err)
+		assert.Equal(t, StateIdle, busy.State)
+		record, recordErr := k.f.m.ChannelCommands(k.info.Cap)
+		require.NoError(t, recordErr)
+		assert.Empty(t, record.Running)
 	})
 }

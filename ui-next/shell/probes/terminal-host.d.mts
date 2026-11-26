@@ -6,7 +6,7 @@ export const KEPT_ENDS: number;
 /** What the shell's `known` and `urls` commands print, a line each (the probe reads them from the fixture's `window.__known` and `window.__urls`). */
 export const KNOWN: readonly string[];
 export const URLS: readonly string[];
-export const FRAME: Readonly<{ attach: 1; input: 2; resize: 3; ack: 4; detach: 5; close: 6; ready: 0x81; output: 0x82; gap: 0x83; ended: 0x84; takenOver: 0x85; notFound: 0x86; applied: 0x87; released: 0x88; unsupported: 0x89; closeRefused: 0x8a }>;
+export const FRAME: Readonly<{ attach: 1; input: 2; resize: 3; ack: 4; detach: 5; close: 6; ready: 0x81; output: 0x82; gap: 0x83; ended: 0x84; takenOver: 0x85; notFound: 0x86; applied: 0x87; released: 0x88; unsupported: 0x89; closeRefused: 0x8a; marks: 0x8b }>;
 /** The one version of the stream the host speaks (`attach.v`). */
 export const VERSION: number;
 export const pageFrames: {
@@ -56,6 +56,8 @@ export type HostOptions = {
   leaseMs?: number;
   ringBytes?: number;
   shell?: string;
+  /** The synthetic shell has the shell integration: it prints marks with a nonce (`nonceOf`), and the terminals carry the marks frame to a page that asks. */
+  integration?: boolean;
   fail?: 'shell-unavailable' | 'start';
   busy?: 'unknown' | 'hang';
   defer?: (task: () => void) => void;

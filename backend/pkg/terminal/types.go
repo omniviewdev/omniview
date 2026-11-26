@@ -356,7 +356,7 @@ type Command struct {
 
 // Commands is the record of a channel terminal: the newest commands the shell's integration told of, oldest first, at most 512.
 type Commands struct {
-	// Integration is the state of the shell integration of the terminal: the record is empty unless it is on.
+	// Integration is the state of the shell integration of the terminal: the record is empty for off, skipped and failed (unconfirmed has a scanner).
 	Integration IntegrationState `json:"integration"`
 	// Running is the id of the command that has started and not ended, empty when none has.
 	Running string `json:"running,omitempty"`

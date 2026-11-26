@@ -1155,7 +1155,7 @@ test('a command is running from its start mark to its end mark on the shell\'s w
   assert.deepEqual(await host.call('ChannelTerminalBusy', [made.cap]), { state: 'idle' });
   host.type('t', 'loop\r');
   await page.until('the start', () => page.marks.some((mark) => mark.kind === 'command-start'));
-  assert.deepEqual(await host.call('ChannelTerminalBusy', [made.cap]), { state: 'busy', name: 'loop' }, 'a builtin loop: the shell holds the foreground and the shell said a command runs');
+  assert.deepEqual(await host.call('ChannelTerminalBusy', [made.cap]), { state: 'busy' }, 'a builtin loop: the shell holds the foreground and the shell said a command runs');
   const record = await host.call('ChannelTerminalCommands', [made.cap]);
   assert.equal(record.running, record.commands.at(-1).id);
   const again = pageOf(host, made.cap, { marks: 1 });

@@ -8,9 +8,6 @@ const KINDS: Readonly<Record<TerminalMarkKind, true>> = { 'prompt-start': true, 
 /** The version of the frame this reads. */
 const FRAME_VERSION = 1;
 
-/** The longest name a command is given in a question: a line is the user's, and the first word of it is enough. */
-const MAX_NAME_CHARS = 64;
-
 const isOffset = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
 const text = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
@@ -68,10 +65,4 @@ export function marksOf(frame: unknown): readonly TerminalMark[] {
     const mark = markOf(raw);
     return mark === undefined ? [] : [mark];
   });
-}
-
-/** What a command is called in the question a close asks: the first word of its line, without control characters, at most `MAX_NAME_CHARS`; nothing when the line has none. */
-export function commandNameOf(line: string | undefined): string | undefined {
-  const word = (line ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().split(/\s+/, 1)[0] ?? '';
-  return word === '' ? undefined : [...word].slice(0, MAX_NAME_CHARS).join('');
 }

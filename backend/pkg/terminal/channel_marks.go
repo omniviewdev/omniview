@@ -4,9 +4,6 @@ package terminal
 
 import (
 	"encoding/json"
-	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/omniviewdev/omniview/backend/pkg/terminal/marks"
 )
@@ -28,8 +25,6 @@ import (
 const (
 	// marksFrameVersion is the version of the marks frame: the value of the attach's `marks` and of the ready frame's.
 	marksFrameVersion = 1
-	// maxNameBytes is the most bytes of a command's name taken from its line.
-	maxNameBytes = 64
 )
 
 // markJSON is one mark of the frame, as the page reads it. Command and Cwd are the user's data: they are here only with trust `nonce`.
@@ -93,11 +88,7 @@ func (s *session) verifiedRunning() (marks.Record, bool) {
 	if s.ring.marks == nil {
 		return none, false
 	}
-	rec, ok := s.ring.marks.log().Running()
-	if !ok || rec.Trust != marks.TrustNonce {
-		return none, false
-	}
-	return rec, true
+	return s.ring.marks.running()
 }
 
 // withMarks is what holds the terminal, given what the shell said about its commands: a command that runs makes the terminal busy even when the
@@ -107,31 +98,12 @@ func (s *session) withMarks(fg Foreground) Foreground {
 	if fg.State == StateBusy {
 		return fg
 	}
-	rec, running := s.verifiedRunning()
-	if !running {
+	if _, running := s.verifiedRunning(); !running {
 		return fg
 	}
-	return Foreground{State: StateBusy, Name: commandName(rec.CommandLine), PGID: 0, Reason: ""}
-}
-
-// commandName is the first word of a command line, for the question a close asks: at most maxNameBytes bytes, no control character and no part of a
-// character. The line is the user's data.
-func commandName(line string) string {
-	word, _, _ := strings.Cut(strings.TrimSpace(line), " ")
-	word = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, word)
-	if len(word) <= maxNameBytes {
-		return word
-	}
-	cut := maxNameBytes
-	for cut > 0 && !utf8.RuneStart(word[cut]) {
-		cut--
-	}
-	return word[:cut]
+	// Marks add busy and nothing else: the name and the process group are the pull fact's, which knows none here. The first word of a line can be an
+	// assignment (`FOO=1 make`), so it is not made a name.
+	return Foreground{State: StateBusy, Name: "", PGID: 0, Reason: ""}
 }
 
 // commands is the record of the terminal, read in one step with the output's length.
@@ -149,7 +121,7 @@ func (r *replayRing) commandsInto(out Commands) Commands {
 		return out
 	}
 	log := r.marks.log()
-	if rec, ok := log.Running(); ok && rec.Trust == marks.TrustNonce {
+	if rec, ok := r.marks.running(); ok {
 		out.Running = rec.CommandID
 	}
 	if dir, trust := log.Cwd(); trust == marks.TrustNonce {

@@ -1,6 +1,6 @@
 import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
 import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
-import { commandNameOf, marksOf } from './marks';
+import { marksOf } from './marks';
 import { createHeldOutput } from './heldOutput';
 
 // A terminal of the host as a feed, over the terminal channel (docs/ui-next/terminal-channel-protocol.md; `channel.ts` is the contract with the one place that holds the capabilities and the streams). It is the one place the
@@ -535,7 +535,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** The marks of the shell's integration taken so far, oldest first, the end offset of the last one, what a command start said runs (the producer's word), and the list the feed hands out until a mark comes. */
   let marks: TerminalMark[] = [];
   let markedEnd = -1;
-  let running: { readonly name: string | undefined } | undefined;
+  let running = false;
   let markList: readonly TerminalMark[] | undefined;
 
   /** The offset the feed has applied up to: what a stream that drops is connected again from. A terminal the feed made starts at 0; one it attaches to has nothing until its replay is complete. */
@@ -1093,8 +1093,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       markedEnd = mark.end;
       marks.push(mark);
       if (mark.kind === 'command-start' && mark.trust === 'nonce') {
-        running = { name: commandNameOf(mark.command) };
-      } else if (mark.kind === 'command-end') {
+        running = true;
+      } else if (mark.kind === 'command-end' || mark.kind === 'prompt-start') {
         running = undefined;
       }
     }
@@ -1112,7 +1112,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const forgetMarks = (from: number) => {
     marks = [];
     markedEnd = from;
-    running = undefined;
+    running = false;
     markList = undefined;
   };
 
@@ -1469,9 +1469,15 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         return IDLE;
       }
 
-      // The shell said a command is running: that is the fact, and the host is not asked (the process that holds the foreground is the shell itself while a builtin loops).
-      if (running !== undefined) {
-        return running.name === undefined ? { state: 'busy' } : { state: 'busy', name: running.name };
+      // The shell said a command is running: busy, even when the host's pull fact says idle (the shell itself holds the foreground while a builtin loops). The host's fact is asked all the same and wins when it is busy: it
+      // knows the program's name, which the marks do not (the first word of a line can be an assignment).
+      if (running) {
+        try {
+          const pulled = busyOf(await channels.busy(id));
+          return pulled.state === 'busy' ? pulled : { state: 'busy' };
+        } catch {
+          return { state: 'busy' };
+        }
       }
 
       try {
