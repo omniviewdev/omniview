@@ -311,7 +311,14 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
 
   // The context menu on the window's menu host and the links in the output (T3a): the screen's element carries the menu's trigger, Find is the bar's, and Copy is the toolbar's own copy, so it confirms itself the same way. A link's
   // tooltip is drawn where the pointer is on one, and the screen is given links only when the window can open an address.
-  const here = onNewHere === undefined ? undefined : { open: () => { onNewHere(session.id); }, available: feed.directory !== undefined };
+  const here = onNewHere === undefined
+    ? undefined
+    : {
+      open: () => {
+        onNewHere(session.id);
+      },
+      available: feed.directory !== undefined,
+    };
   const menu = useTerminalMenu({ screen, status, openFind: find.open, copy, here });
   const links = useTerminalLinks({ screen, sessions, platform });
 

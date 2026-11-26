@@ -303,7 +303,7 @@ function createCore(deps: ChannelDeps): Core {
     },
 
     busy: async (id) => named(id, async (cap) => client.ChannelTerminalBusy(cap)),
-    cwd: async () => undefined,
+    cwd: async (id) => named(id, async (cap) => client.ChannelTerminalCwd(cap)),
 
     list: async () => {
       const held = [...caps];

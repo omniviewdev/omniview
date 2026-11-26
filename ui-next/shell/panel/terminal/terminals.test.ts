@@ -1082,7 +1082,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       await r.terminals.openHere(r.id);
       expect(given.mock.calls.map(([where]) => where)).toEqual([SHELL]);
       expect(localHereTarget).not.toHaveBeenCalled();
-      expect(Object.values(r.store.getSnapshot().sessions).map((session) => session.title)).toEqual(['zsh', 'Synthetic']);
+      expect(Object.values(r.store.getSnapshot().sessions).map((session) => session.title)).toEqual(['Terminal', 'Synthetic']);
       r.stop();
     });
 
@@ -1091,7 +1091,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       const r = withTerminal(directory);
       const session = r.store.getSnapshot().sessions[r.id];
       expect(session).toBeDefined();
-      const body = r.terminals.bodyOf(session!, true);
+      const body = r.terminals.bodyOf(session, true);
       // The element's props are the body's own (`onNewHere`); the cast says so once, in a named constant.
       const props = body.props as { readonly session: Session; readonly onNewHere: (id: string) => void };
       expect(props.session.id).toBe(r.id);

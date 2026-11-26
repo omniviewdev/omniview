@@ -137,11 +137,15 @@ export function stateWords(snapshot: TerminalFeedSnapshot | undefined): string {
   }
 }
 
-/** What the lane under the screen says: the state, and the one sentence that goes with it. A running terminal says nothing (the mock's strip is empty for a ready session). */
+/** What the lane under the screen says: the state, and the one sentence that goes with it. A running terminal says nothing (the mock's strip is empty for a ready session) unless it lost input, or started in the home directory because the one it was to open in was not known. */
 export function laneOf(snapshot: TerminalFeedSnapshot | undefined): { readonly words: string; readonly note: string } {
   switch (snapshot?.state) {
     case 'running':
-      return snapshot.inputLost === true ? { words: 'Input may be lost', note: 'What was typed while the connection was away may not have reached the shell.' } : { words: '', note: '' };
+      if (snapshot.inputLost === true) {
+        return { words: 'Input may be lost', note: 'What was typed while the connection was away may not have reached the shell.' };
+      }
+
+      return snapshot.startNote === undefined ? { words: '', note: '' } : { words: 'Started in your home directory', note: 'The directory of the terminal it was opened from is not known.' };
     case 'starting':
       return { words: stateWords(snapshot), note: '' };
     case 'failed':

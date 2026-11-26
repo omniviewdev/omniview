@@ -9,7 +9,7 @@ import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
 import type { TerminalBusy, TerminalDirectory, TerminalTarget } from './feed';
 import { keyOf } from './keys';
-import { localProfileTarget, localShellTarget } from './localShell';
+import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
 import { clearScreenIn } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
@@ -246,7 +246,23 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     },
   });
 
-  const openHere = async (_session: SessionId): Promise<void> => undefined;
+  // The directory comes from the session's own feed and from nothing the page knows: the host's `ChannelTerminalCwd` while the shell runs, the directory it started in once it ended or was lost. A feed that throws instead of
+  // saying `unknown` is a feed that could not say, and the terminal opens in the host's default directory all the same.
+  const openHere = async (session: SessionId): Promise<void> => {
+    const feed = sessions.feedOf(session);
+    if (feed?.directory === undefined) {
+      return;
+    }
+
+    let where: TerminalDirectory;
+    try {
+      where = await feed.directory();
+    } catch {
+      where = { state: 'unknown', reason: 'unanswered' };
+    }
+
+    sessions.open(options.here?.(where) ?? localHereTarget(where), { focus: true });
+  };
 
   return {
     screenReader,
@@ -311,7 +327,18 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     },
     empty: TERMINAL_EMPTY,
     openHere,
-    bodyOf: (session, visible) => createElement(TerminalBody, { sessions, session, visible, load: options.load, screenReader, name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name, onNewHere: (id) => void openHere(id) }),
+    bodyOf: (session, visible) =>
+      createElement(TerminalBody, {
+        sessions,
+        session,
+        visible,
+        load: options.load,
+        screenReader,
+        name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name,
+        onNewHere: (id) => {
+          void openHere(id);
+        },
+      }),
     cardOf: (session) => terminalCardOf(sessions.recordOf(session.id)),
     prompt: createElement(ClosePrompt, { guard }),
     modal: { subscribe: guard.subscribe, open: () => guard.getSnapshot() !== null },

@@ -11276,7 +11276,7 @@ async function checkTerminalFindMenu(page, base, engine) {
   await rightClick(0.97, 0.5);
   const menuOpened = await holdsWithin(menuIsOpen, 10_000);
   assert.ok(menuOpened, `${engine}: a right click on the screen opens the context menu`);
-  assert.deepEqual(await menuItems(), ['Copy', 'Paste', 'Select all', 'Clear', 'Find'], `${engine}: the context menu offers Copy, Paste, Select all, Clear and Find, in that order`);
+  assert.deepEqual(await menuItems(), ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here'], `${engine}: the context menu offers Copy, Paste, Select all, Clear, Find and New terminal here, in that order`);
   assert.equal(await item('Copy').getAttribute('aria-disabled'), 'true', `${engine}: Copy is not available with nothing selected`);
   assert.match((await item('Copy').getAttribute('aria-description')) ?? '', /Select text in the terminal first/, `${engine}: Copy says why it is not available`);
   await page.keyboard.press('Escape');

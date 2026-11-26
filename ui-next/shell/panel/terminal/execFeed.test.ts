@@ -2504,8 +2504,14 @@ describe('where a new terminal opened from this one starts (`directory`)', () =>
     expect(await r.feed.directory?.()).toEqual({ state: 'unknown', reason: 'unanswered' });
   });
 
+  it('is the directory the answer to the call that made the terminal said, when its `ready` does not say: the page keeps the first thing the host said of where it started', async () => {
+    const r = await running({ raw: { session: { id: 'term-1', shell: { path: '/bin/zsh', name: 'zsh' } } } }, { ...made });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/work', source: 'start' });
+  });
+
   it('is the directory the terminal started in once the host says it is not there any more: the shell ended between the last news and the question', async () => {
-    const r = await running({}, {
+    const r = await running({ startedIn: '/work' }, {
       ...made,
       channels: {
         cwd: () => {
@@ -2517,14 +2523,14 @@ describe('where a new terminal opened from this one starts (`directory`)', () =>
   });
 
   it('is the directory the terminal started in once it ended, and the host is not asked: there is no shell to ask', async () => {
-    const r = await running({}, { ...made, channels: { cwd: () => ({ path: '/usr' }) } });
+    const r = await running({ startedIn: '/work' }, { ...made, channels: { cwd: () => ({ path: '/usr' }) } });
     r.stream().ended({ reason: 'exited', exit_code: 0 });
     expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/work', source: 'start' });
     expect(r.channels.of('cwd')).toEqual([]);
   });
 
   it('is the directory it started in for a terminal this page lost to another tab, whose shell runs on: the page does not ask a terminal it no longer holds', async () => {
-    const r = await running({}, { ...made, channels: { cwd: () => ({ path: '/usr' }) } });
+    const r = await running({ startedIn: '/work' }, { ...made, channels: { cwd: () => ({ path: '/usr' }) } });
     r.stream().takenOver();
     expect(await r.feed.directory?.()).toEqual({ state: 'known', path: '/work', source: 'start' });
     expect(r.channels.of('cwd')).toEqual([]);
