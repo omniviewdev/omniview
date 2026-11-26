@@ -135,7 +135,8 @@ describe('the connections fixture with a landing', () => {
 
   it('answers a navigator on the pages that are read in no connection, which the host keeps whole, and nothing on a page of a connection: the filters with their counts, and the connections with a colour and, on the one that needs a look, a badge (KL5)', () => {
     const view: ConnectionsViewV1 = { loaded: true, failed: false, connections: [north, south] };
-    const connections: ConnectionsHostV1 = { subscribe: () => () => undefined, getSnapshot: () => view, open: async () => Promise.resolve({ ok: true }), refresh: async () => Promise.resolve() };
+    const worked = async (): Promise<ConnectionVerbResultV1> => Promise.resolve({ ok: true });
+    const connections: ConnectionsHostV1 = { subscribe: () => () => undefined, getSnapshot: () => view, open: async () => Promise.resolve({ ok: true }), connect: worked, check: worked, disconnect: worked, remove: worked, refresh: async () => Promise.resolve() };
     const answer = (page: string) => renderHook(() => contributionV1.sidebar.useNodes({ plugin: 'fixture-f-conn', route: { page, connection: undefined, params: {} }, open: [], connections })).result.current;
     const nodes = answer('landing') ?? [];
 

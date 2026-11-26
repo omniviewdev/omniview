@@ -3,7 +3,7 @@
 Goal: round 2 of the plugin landing. `context.connections` (KL2) listed a plugin's connections and opened one; a landing could not show their labels, start one without opening a page, check, stop or remove one, or reload the list from the backend. This adds those generically (the host stays plugin-agnostic: the vocabulary guard is green) and puts the confirmation of what is destructive in the HOST, so no plugin can run a disconnect or a removal without the question.
 
 - Worktree: `~/Repos/omniviewdev/worktrees/landing-verbs`
-- Branch: `feat/landing-verbs` (from `origin/main` d1b735cb6). Nothing committed, pushed or opened as a PR: the lead does that.
+- Branch: `feat/landing-verbs`, rebased onto `origin/main` 90efcd202 (the sidebar slice, #780: `SidebarContextV1.connections` is the same handle, so it carries the verbs too). Nothing pushed or opened as a PR: the lead does that.
 
 ## What changed
 
