@@ -209,8 +209,8 @@ run screen-no-separator "$P/screen.ts" \
   'keeps the emulator, and with it the transcript|draws what the new feed holds after the separator|draws what the ended feed still holds|puts a new feed in the same session when pressed|draws what the ended terminal still held|draws what the ended feed still holds, and how it ended|when Enter restarts it as when the button does|the separator of a restart, on the real emulator'
 
 run screen-flush-reads-nothing "$P/screen.ts" \
-  '/    flush: \(\) => \{/,/^    },/ s/send\(engine, out\.chunks\);/void out;/' \
-  'draws what the ended feed still holds|draws what the ended terminal still held'
+  '/    flush: \(\) => \{/,/^    },/ s/send\(engine, out\.chunks, out\.marks\);/void out;/' \
+  'draws what the ended feed still holds|draws what the ended terminal still held|keeps a command whose marks the ended feed still held|keeps a command whose marks alone are held'
 
 run screen-continue-keeps-the-old-feed "$P/screen.ts" \
   's/^      stopFeed = next\.subscribe\(heard\);$/      stopFeed = () => undefined;/' \
@@ -298,11 +298,11 @@ run gutter-seal-keeps-running "$P/gutter/commandGutter.ts" \
 
 run gutter-seal-keeps-the-ids "$P/gutter/commandGutter.ts" \
   's/^      epoch \+= 1;$/      epoch += 0;/' \
-  'lets the new terminal count from c1 again'
+  'lets the new terminal count from c1 again|runs again a command of the terminal before the restart WITHOUT Enter|types its line without Enter, and says it came from the terminal before'
 
 run screen-restart-does-not-seal "$P/screen.ts" \
   's/^      gutter\?\.seal\(\);$/      void gutter;/' \
-  'keeps the commands of the ended terminal, and a command it was running|keeps a mark in an old write that the emulator has not parsed at the restart'
+  'keeps the commands of the ended terminal, and a command it was running|keeps a mark in an old write that the emulator has not parsed at the restart|runs again a command of the terminal before the restart WITHOUT Enter'
 
 run gutter-seal-keeps-the-prompt "$P/gutter/commandGutter.ts" \
   '/    seal: \(\) => \{/,/^    },/ { /release\(pending\./d; /pending = \{\};/d }' \
@@ -313,11 +313,11 @@ run screen-seal-at-once "$P/screen.ts" \
   'keeps a mark in an old write that the emulator has not parsed at the restart'
 
 run screen-flush-drops-marks "$P/screen.ts" \
-  's/if \(out\.chunks\.length === 0 && out\.marks === undefined\) \{/if (out.chunks.length === 0) {/' \
+  '/    flush: \(\) => \{/,/^    },/ s/if \(out\.chunks\.length === 0 \&\& out\.marks === undefined\) \{/if (out.chunks.length === 0) {/' \
   'keeps a command whose marks'
 
 run screen-flush-sends-no-marks "$P/screen.ts" \
-  's/send\(engine, out\.chunks, out\.marks\);/send(engine, out.chunks);/' \
+  '/    flush: \(\) => \{/,/^    },/ s/send\(engine, out\.chunks, out\.marks\);/send(engine, out.chunks);/' \
   'keeps a command whose marks'
 
 run gutter-old-command-with-enter "$P/gutter/commandGutter.ts" \
