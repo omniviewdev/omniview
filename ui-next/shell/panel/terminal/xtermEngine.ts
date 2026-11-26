@@ -479,7 +479,20 @@ export function createXtermEngine(options: EngineOptions): Engine {
       };
     },
 
-    onBinary: () => () => undefined,
+    onBinary: (listener) => {
+      const subscription = terminal.onBinary((data) => {
+        // xterm hands the bytes as a string of one char for each byte (0 to 255): the shell must read those bytes, and not the UTF-8 of the chars.
+        const bytes = new Uint8Array(data.length);
+        for (let at = 0; at < data.length; at += 1) {
+          bytes[at] = data.charCodeAt(at) & 0xff;
+        }
+
+        listener(bytes);
+      });
+      return () => {
+        subscription.dispose();
+      };
+    },
 
     onSelection: (listener) => {
       const subscription = terminal.onSelectionChange(listener);

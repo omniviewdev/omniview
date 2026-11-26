@@ -623,6 +623,27 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
   };
 
+  /** What the user typed, as text or as raw bytes: counted, kept and sent the same way. `empty` is a call with nothing in it, which is no typing. */
+  const type = (empty: boolean, kept: () => boolean): void => {
+    if (closed() || left || (status.state !== 'running' && status.state !== 'starting')) {
+      return;
+    }
+
+    if (!empty) {
+      typed += 1;
+    }
+
+    if (status.inputLost === true && !empty) {
+      const { inputLost: _lost, ...rest } = status;
+      status = rest;
+      tell();
+    }
+
+    if (kept()) {
+      pump();
+    }
+  };
+
   /** Sends what the user typed that the stream now open has not taken, in order, in frames of at most `MAX_INPUT_BYTES`. */
   const pump = () => {
     while (sentTo < kept.length && usable()) {
@@ -642,26 +663,46 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     let rest = text;
     while (rest !== '') {
       const length = pieceLength(rest);
-      const piece = encoder.encode(rest.slice(0, length));
-      if (keptBytes + piece.length > MAX_KEPT_INPUT_BYTES) {
-        failStream(INPUT_OVERFLOW);
+      if (!keepPiece(encoder.encode(rest.slice(0, length)))) {
         return false;
       }
 
-      // What waits for a stream goes in as few frames as it can: typing while the stream is away is one frame, as it was typed.
-      const last = kept.length > sentTo ? kept[kept.length - 1] : undefined;
-      if (last !== undefined && last.length + piece.length <= MAX_INPUT_BYTES) {
-        const joinedPiece = new Uint8Array(last.length + piece.length);
-        joinedPiece.set(last);
-        joinedPiece.set(piece, last.length);
-        kept[kept.length - 1] = joinedPiece;
-      } else {
-        kept.push(piece);
-      }
-
-      keptBytes += piece.length;
       rest = rest.slice(length);
     }
+
+    return true;
+  };
+
+  /** Keeps raw bytes (a mouse report), in pieces of at most `MAX_INPUT_BYTES`, as `keep` keeps text: the same bound, the same order, the same resend. */
+  const keepBinary = (bytes: Uint8Array): boolean => {
+    for (let at = 0; at < bytes.length; at += MAX_INPUT_BYTES) {
+      if (!keepPiece(bytes.slice(at, at + MAX_INPUT_BYTES))) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  /** Keeps one piece of at most `MAX_INPUT_BYTES`. False: there is no more room, and the feed has given the terminal up. */
+  const keepPiece = (piece: Uint8Array): boolean => {
+    if (keptBytes + piece.length > MAX_KEPT_INPUT_BYTES) {
+      failStream(INPUT_OVERFLOW);
+      return false;
+    }
+
+    // What waits for a stream goes in as few frames as it can: typing while the stream is away is one frame, as it was typed.
+    const last = kept.length > sentTo ? kept[kept.length - 1] : undefined;
+    if (last !== undefined && last.length + piece.length <= MAX_INPUT_BYTES) {
+      const joinedPiece = new Uint8Array(last.length + piece.length);
+      joinedPiece.set(last);
+      joinedPiece.set(piece, last.length);
+      kept[kept.length - 1] = joinedPiece;
+    } else {
+      kept.push(piece);
+    }
+
+    keptBytes += piece.length;
 
     return true;
   };
@@ -1323,26 +1364,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     },
 
     write: (text) => {
-      if (closed() || left || (status.state !== 'running' && status.state !== 'starting')) {
-        return;
-      }
-
-      if (text !== '') {
-        typed += 1;
-      }
-
-      if (status.inputLost === true && text !== '') {
-        const { inputLost: _lost, ...rest } = status;
-        status = rest;
-        tell();
-      }
-
-      if (keep(text)) {
-        pump();
-      }
+      type(text === '', () => keep(text));
     },
 
-    writeBinary: () => undefined,
+    writeBinary: (bytes) => {
+      type(bytes.length === 0, () => keepBinary(bytes));
+    },
 
     inputs: () => typed,
 

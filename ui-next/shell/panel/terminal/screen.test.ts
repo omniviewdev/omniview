@@ -1692,16 +1692,6 @@ describe('a replay: a terminal the page took back after a reload', () => {
       expect(r.feed.typed()).toEqual(['ls\r']);
     });
 
-    it('drops a mouse report the emulator makes while the replay is applied (it refers to a screen the replay replaces) and sends one after it', async () => {
-      const r = await reattached(replayOf('kept'));
-      const stale = Uint8Array.from([0x1b, 0x5b, 0x4d, 0x20, 0xb6, 0x23]);
-      r.engine().binary(stale);
-      expect(r.feed.binaries()).toEqual([]);
-      r.frame();
-      r.engine().binary(stale);
-      expect(r.feed.binaries()).toEqual([stale]);
-    });
-
     it('leaves the join with the live output alone: nothing is written between the last byte the host kept and the first live byte, so an escape sequence or a character that the cut falls inside is the emulator\'s to finish (the host cuts at the end of a read, not at the end of a sequence)', async () => {
       const kept = Uint8Array.from([...bytesOf('plain \u001b[3'), 0xe2, 0x82]);
       const live = Uint8Array.from([0xac, ...bytesOf('1mred')]);
@@ -2288,6 +2278,17 @@ describe('what the person types while a replay is applied', () => {
       r.frame();
       r.engine().complete();
       expect(r.feed.typed()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('drops a mouse report the emulator makes while the replay is applied (it refers to a screen the replay replaces), and sends one after it', async () => {
+      const r = await begin();
+      const report = Uint8Array.from([0x1b, 0x5b, 0x4d, 0x20, 0xb6, 0x23]);
+      r.engine().binary(report);
+      expect(r.feed.binaries()).toEqual([]);
+      r.engine().complete();
+      expect(r.feed.binaries()).toEqual([]);
+      r.engine().binary(report);
+      expect(r.feed.binaries()).toEqual([report]);
     });
 
     it('never sends what the emulator says by itself, while the replay is applied or after: an answer between two keys is dropped, and the keys keep their order', async () => {

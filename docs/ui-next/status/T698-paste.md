@@ -16,16 +16,13 @@ Worktree: `~/omniview/wt/t698-paste`. Branch: `fix/terminal-paste-and-binary` (f
 - xterm 6.1 beta replaces ESC with U+241B (`␛`) inside `bracketTextForPaste`. Ours removes ESC first, so the two do not both act; moving to the beta would leave our rule the one that shows.
 - Tests (`xtermEngine.test.ts`, real emulator, "one paste path into a real emulator"): red by assertion in `6adfdf0a`, green in the fix commit. Hostile `a ESC[201~ rm -rf x CR` reaches the shell with no ESC inside one bracket; menu paste and chord paste give equal bytes; one paste event is one write.
 
-## Item 14: deferred
+## Item 14: `onBinary` (done on `feat/terminal-onbinary`, after the channel v2 of #716 and #763)
 
-`onBinary` needs a binary write through the feed, and that is outside this PR's files:
-
-- `Engine` gets `onBinary(listener: (bytes: string) => void)`, the bytes as latin1 chars (xterm's `onBinary` data), implemented in `xtermEngine.ts`.
-- `screen.ts` subscribes it and hands the bytes to the feed (the same drop rule as the emulator's own answers while a replay is applied).
-- `TerminalFeed` needs a `writeBinary(bytes: string)` (feed.ts); `execFeed.ts` sends it as base64 of the latin1 bytes. `feed.write(text)` encodes UTF-8 (`encodeInput`), so a byte at or above 0x80 would be sent as two bytes and corrupt a report; that is why `onData` cannot carry it.
-- `testing.ts`' fake engine and feed get the same members.
-- Test plan (real emulator): X10 (`ESC [ ? 9 h`) on 200 columns, a click at column 150: `ESC [ M` plus three bytes, the column byte at or above 0x80, intact. xterm's click needs layout, which jsdom has not, so the test calls the emulator's mouse service (`_core.coreMouseService.triggerMouseEvent`).
-- Deferred until the channel PR (#693 step 4) merges.
+- `Engine.onBinary(listener: (bytes: Uint8Array) => void)` (`engine.ts`, `xtermEngine.ts`): xterm's latin1 string becomes one byte for each char, so a coordinate above 127 is one byte and not the two of UTF-8.
+- `screen.ts` hands them to `TerminalFeed.writeBinary(bytes)` (`feed.ts`), and drops them while a replay is applied (they refer to the screen the replay replaces; the emulator's other answers are dropped the same way).
+- `execFeed.ts`: `write` and `writeBinary` share one path (`type`): counted for `inputs`, clear `inputLost`, kept in pieces of at most `MAX_INPUT_BYTES` inside the 1 MiB bound, sent again once in order after a cut, dropped on `writer_known: false`. Only the encoding differs (`keep` for text, `keepBinary` for bytes).
+- `testing.ts`: fake engine `binary(bytes)`, fake feed `binaries()`.
+- Tests: real emulator (`xtermEngine.test.ts`: DECSET 9, a press at column 150 gives `ESC [ M` and the three bytes, 182 intact, nothing on `onData`), `screen.test.ts`, `execFeed.test.ts`.
 
 ## Item 16: the xterm.js line
 
