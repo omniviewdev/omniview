@@ -73,7 +73,7 @@ unit can-sub-cancel $T 'case canByte, subByte:
 		t.state = titleGround
 		return "", false' 'case 0xff:' TestTheScannerReadsNothingOfOtherSequences
 unit osc-one-is-not-a-title $T "if b != '0' && b != '2' {" "if b != '0' && b != '2' && b != '1' {" TestTheScannerReadsNothingOfOtherSequences
-unit scanner-holds-its-bound $T 'if len(t.buf) == maxTitleRead+2 {' 'if false {' TestAHundredKilobytesOfTitleCostsTheScannerItsBound
+unit scanner-holds-its-bound $T 'if len(t.buf) == maxTitleRead+titlePrefixBytes {' 'if false {' TestAHundredKilobytesOfTitleCostsTheScannerItsBound
 unit esc-ends-the-osc $T 'text, ok := t.finish()
 		t.afterEscape(b)
 		return text, ok' 'text, ok := t.finish()

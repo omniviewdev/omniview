@@ -61,7 +61,7 @@ func titleVersionFor(ring *replayRing, asked int) int {
 
 // programRuns is the producer's word on whether a program runs in the terminal: a command the shell's integration vouched for and that has not
 // ended, or a process group other than the shell's that holds the foreground. known is false when the system could not say.
-func (s *session) programRuns() (running, known bool) {
+func (s *session) programRuns() (bool, bool) {
 	if _, vouched := s.verifiedRunning(); vouched {
 		return true, true
 	}

@@ -24,6 +24,8 @@ const (
 	maxTitleBytes = 256
 	// maxTitleRead is the most of one title that the scanner holds: the rest of a longer one is dropped as it passes.
 	maxTitleRead = 1024
+	// titlePrefixBytes is the "0;" or "2;" that begins the body of the OSC.
+	titlePrefixBytes = 2
 	// titleFrameVersion is the version of the title frame: the value of the attach's `title` and of the ready frame's.
 	titleFrameVersion = 1
 )
@@ -147,7 +149,7 @@ func (t *titleScanner) afterEscape(b byte) {
 	case b == ']':
 		t.state = titleOSC
 		if t.buf == nil {
-			t.buf = make([]byte, 0, maxTitleRead+2)
+			t.buf = make([]byte, 0, maxTitleRead+titlePrefixBytes)
 		}
 		t.buf = t.buf[:0]
 		t.ignore, t.over = false, false
@@ -168,7 +170,7 @@ func (t *titleScanner) collect(b byte) {
 	if t.ignore || t.over {
 		return
 	}
-	if len(t.buf) == maxTitleRead+2 {
+	if len(t.buf) == maxTitleRead+titlePrefixBytes {
 		t.over = true
 		return
 	}
@@ -179,7 +181,7 @@ func (t *titleScanner) collect(b byte) {
 		if b != '0' && b != '2' {
 			t.ignore = true
 		}
-	case 2:
+	case titlePrefixBytes:
 		if b != ';' {
 			t.ignore = true
 		}
@@ -189,11 +191,11 @@ func (t *titleScanner) collect(b byte) {
 // finish ends the OSC being read.
 func (t *titleScanner) finish() (string, bool) {
 	t.state = titleGround
-	if t.ignore || len(t.buf) < 2 {
+	if t.ignore || len(t.buf) < titlePrefixBytes {
 		return "", false
 	}
 	// A title that was longer than the scanner holds is cut here, as one that is longer than a title keeps.
-	return cleanTitle(t.buf[2:]), true
+	return cleanTitle(t.buf[titlePrefixBytes:]), true
 }
 
 // cleanTitle is what a title keeps of the bytes a program sent: valid UTF-8 (a byte that is not becomes U+FFFD), without a control character

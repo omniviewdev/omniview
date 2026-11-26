@@ -116,8 +116,8 @@ func TestAHundredKilobytesOfTitleCutAcrossManyChunks(t *testing.T) {
 	_, ok := scan.Feed([]byte("\x1b]2;"))
 	assert.False(t, ok)
 	for range 100 {
-		_, ok := scan.Feed([]byte(strings.Repeat("B", 1024)))
-		assert.False(t, ok, "the title is not read before its end")
+		_, read := scan.Feed([]byte(strings.Repeat("B", 1024)))
+		assert.False(t, read, "the title is not read before its end")
 	}
 	title, ok := scan.Feed([]byte("\x07"))
 	require.True(t, ok)
