@@ -397,3 +397,17 @@ describe('the output items for a command that printed nothing', () => {
     expect(r.screen.commands.state().output).toBe(false);
   });
 });
+
+describe('a restart: the screen goes on with the next feed (#695 step 5)', () => {
+  it('keeps the commands of the ended terminal, and a command it was running is not running any more: the new terminal can be asked to run a command again', async () => {
+    const { feed, frame, screen } = await rig();
+    feed.push('$ make\r\n', [placed(0, A()), placed(2, B()), placed(7, C('make'))]);
+    frame();
+    expect(screen.commands.state().rerun, 'the old command runs').toBeDefined();
+    feed.set({ state: 'ended', exit: { signal: 'SIGKILL' } });
+    const next = fakeTerminalFeed({ state: 'starting', takeReplay: true });
+    screen.continueWith(next);
+    expect(screen.commands.state().count).toBe(1);
+    expect(screen.commands.state().rerun).toBeUndefined();
+  });
+});

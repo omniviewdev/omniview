@@ -623,3 +623,38 @@ describe('what the gutter tells', () => {
     expect(events.at(-1)).toEqual({ kind: 'hover', command: undefined, x: 0, y: 0 });
   });
 });
+
+describe('a new terminal takes the place of an ended one (`seal`, #695 step 5)', () => {
+  it('keeps the commands of the old terminal with its transcript, ends the one that ran as incomplete, and has no command running', async () => {
+    const { gutter, feed, prompt, run } = setup();
+    await run('true', '', { id: 'c1', exit: 0 });
+    await prompt('c2');
+    await feed('sleep 9\r\n', [C('sleep 9', 'c2')]);
+    expect(gutter.busy()).toBe(true);
+    gutter.seal();
+    expect(gutter.busy()).toBe(false);
+    expect(gutter.commands().map((one) => [one.id, one.state])).toEqual([['c1', 'success'], ['c2', 'incomplete']]);
+  });
+
+  it('lets the new terminal count from c1 again: its commands never meet the old ones by id, and its end mark closes its own command', async () => {
+    const { gutter, feed, run } = setup();
+    await run('old', 'out\r\n', { id: 'c1', exit: 7 });
+    gutter.seal();
+    await run('new', 'out\r\n', { id: 'c1', exit: 0 });
+    const commands = gutter.commands();
+    expect(commands.map((one) => one.state)).toEqual(['failure', 'success']);
+    expect(new Set(commands.map((one) => one.id)).size).toBe(2);
+    await feed('', []);
+    expect(gutter.output(commands[1])).toBe('out');
+    expect(gutter.output(commands[0])).toBe('out');
+  });
+
+  it('lets go of the prompt that was waiting: the new terminal\'s first command does not take the old terminal\'s line', async () => {
+    const { gutter, feed } = setup();
+    await feed('old $ ', [A('c1'), B('c1')]);
+    gutter.seal();
+    await feed('\r\nnew $ ', [A('c1'), B('c1')]);
+    await feed('x\r\n', [C('x', 'c1')]);
+    expect(gutter.commands().map((one) => one.line)).toEqual([1]);
+  });
+});

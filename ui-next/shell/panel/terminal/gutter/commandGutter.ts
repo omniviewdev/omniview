@@ -38,6 +38,11 @@ export type GutterEngine = Pick<Engine, 'mark' | 'decorate' | 'cursor' | 'viewpo
 export type CommandGutter = {
   /** Takes the marks that stand at the place the parse is at: call it in the callback of the write that ends there. */
   readonly ingest: (marks: readonly TerminalMark[]) => void;
+  /**
+   * A new terminal takes the place of the one that ended (a restart): the commands of the old one stay, with the transcript they mark, and the one that was running is `incomplete`; the prompt that was waiting is let go. The new terminal's
+   * commands are its own: they never meet the old ones by id (its shell counts from `c1` again).
+   */
+  readonly seal: () => void;
   /** The screen the markers were on is gone (a replay brings it afresh): every marker and decoration is let go. */
   readonly reset: () => void;
   /** The commands the screen still shows or holds, oldest first. */
@@ -445,6 +450,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
       }
     },
     reset,
+    seal: () => undefined,
     commands: () => entries.map(viewOf),
     target: () => {
       const entry = targetEntry();
