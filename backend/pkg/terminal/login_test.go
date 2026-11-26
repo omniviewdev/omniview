@@ -364,9 +364,21 @@ func TestClosingHangsUpTheBackgroundJobsOfABashShell(t *testing.T) {
 	}, 20*time.Second, 10*time.Millisecond)
 	t.Cleanup(func() { _ = syscall.Kill(job, syscall.SIGKILL) })
 	require.False(t, gone(job))
+	waitForTheJobToExec(t, job)
 	waitForThePromptAfterTheJob(t, sink, info)
 	require.NoError(t, m.CloseSession(info.ID))
 	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
+}
+
+// waitForTheJobToExec waits until the job (`sleep`) is the program and no longer a fork of its shell: a hangup that reaches it before is lost.
+func waitForTheJobToExec(t *testing.T, job int) {
+	t.Helper()
+	became, known := waitForExec(job, "sleep", 20*time.Second)
+	if !known {
+		t.Log("NOT RUN: no /proc/<pid>/comm: the wait for the job to exec")
+		return
+	}
+	require.True(t, became, "the job never became `sleep`")
 }
 
 // waitForThePromptAfterTheJob waits until the shell is at its prompt after the job's command: the prompt after it has been drawn,
@@ -393,9 +405,22 @@ func waitForThePromptAfterTheJob(t *testing.T, sink *chunkSink, info Session) {
 // waitForExec waits until the process has become the program of that name (Linux, /proc/<pid>/comm): a shell's background job is a fork of the
 // shell until its exec, and a hangup that reaches it there is lost (zsh's handler in the child queues the signal, and the exec drops it:
 // seen with the job still named `zsh` when the hangup came, in 17 of 33 such runs on a busy machine, in none of 87 once it was `sleep`). It
-// reports whether it became it, and whether the machine can tell. (Stub: says yes at once.)
+// reports whether it became it, and whether the machine can tell.
 func waitForExec(pid int, name string, within time.Duration) (bool, bool) {
-	return true, true
+	path := "/proc/" + strconv.Itoa(pid) + "/comm"
+	if _, err := os.Stat("/proc/self/comm"); err != nil {
+		return false, false
+	}
+	deadline := time.Now().Add(within)
+	for {
+		if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) == name {
+			return true, true
+		}
+		if time.Now().After(deadline) {
+			return false, true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
 }
 
 func TestWaitForExecWaitsUntilTheProcessIsTheProgram(t *testing.T) {
@@ -446,34 +471,44 @@ func waitingForInput(pid int, within time.Duration) (bool, bool) {
 // `poll`). A `wait4` for a hook's fork, a `write` to a full pty and a `nanosleep` are other calls. Where the numbers are not known (an
 // architecture this table lacks) the kernel's name for where the process sleeps, wchan, is read instead.
 func waitsForInputNow(pid int) (bool, bool) {
-	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/syscall"); err == nil {
-		fields := strings.Fields(string(data))
-		if len(fields) >= 1 && fields[0] == "running" {
-			return false, true
-		}
-		if len(fields) == 0 {
-			return false, false
-		}
-		if number, errNumber := strconv.Atoi(fields[0]); errNumber == nil && number >= 0 {
-			var waits []int
-			switch runtime.GOARCH {
-			case "amd64":
-				waits = []int{0, 7, 23, 270, 271}
-			case "arm64":
-				waits = []int{63, 72, 73}
-			}
-			if waits != nil {
-				return slices.Contains(waits, number), true
-			}
+	if waiting, known := syscallWaitsForInput(pid); known {
+		return waiting, true
+	}
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/wchan")
+	if err != nil {
+		return false, false
+	}
+	for _, name := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
+		if strings.Contains(string(data), name) {
+			return true, true
 		}
 	}
-	if data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/wchan"); err == nil {
-		for _, name := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
-			if strings.Contains(string(data), name) {
-				return true, true
-			}
-		}
+	return false, true
+}
+
+// syscallWaitsForInput reads /proc/<pid>/syscall: the number of the system call the process is in, or `running`. It does not know the
+// numbers of every architecture (then it says it cannot tell).
+func syscallWaitsForInput(pid int) (bool, bool) {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/syscall")
+	if err != nil {
+		return false, false
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return false, false
+	}
+	if fields[0] == "running" {
 		return false, true
+	}
+	number, err := strconv.Atoi(fields[0])
+	if err != nil || number < 0 {
+		return false, false
+	}
+	switch runtime.GOARCH {
+	case "amd64":
+		return slices.Contains([]int{0, 7, 23, 270, 271}, number), true
+	case "arm64":
+		return slices.Contains([]int{63, 72, 73}, number), true
 	}
 	return false, false
 }

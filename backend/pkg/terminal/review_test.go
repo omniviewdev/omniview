@@ -128,6 +128,7 @@ func TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell(t *testing.T) {
 			pidFile := filepath.Join(t.TempDir(), "job")
 			send(t, m, info.ID, "sleep 60011 & echo $! > "+pidFile)
 			job := pidIn(t, pidFile)
+			waitForTheJobToExec(t, job)
 			// The shell has finished the line that started the job when it runs the next one: a quit is
 			// not signalled to a shell that is still building its job table (zsh then has no job to hang up).
 			send(t, m, info.ID, "echo ready-$((40+2))")
