@@ -1,11 +1,11 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore } from '../../shell';
 import { openSession, SESSION_VERSION } from '../../shell/session';
 import { memoryStorage } from '../../shell/session/testing';
-import type { ContributionV1, CustomPageContextV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
+import type { ConnectionVerbResultV1, ContributionV1, CustomPageContextV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { acme } from '../testing';
 import type { ConnectionsApi, StateRecord } from './connections/api';
 import { PluginHost, type PluginHostProps } from './PluginHost';
@@ -19,6 +19,16 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
   return this.getAttribute('role') === 'region' ? 1117 : 0;
 } });
 
+// jsdom has no modal dialog: stand-ins that open and close the element, as the attribute does (what a modal does in a real engine is the browser's to show).
+const modal = HTMLDialogElement.prototype as unknown as { showModal?: () => void; close?: () => void };
+modal.showModal ??= function showModal(this: HTMLDialogElement) {
+  this.setAttribute('open', '');
+};
+
+modal.close ??= function close(this: HTMLDialogElement) {
+  this.removeAttribute('open');
+};
+
 // The plugin's landing through the host (KL2), against an invented plugin (Acme) that declares one: a custom page of scope `plugin` that lists the plugin's connections from `context.connections` and opens one. The host's connection API is a fake with two
 // connections of Acme and a start that connects; the list can be held on its way, so that an open that waits for it is seen to wait.
 
@@ -30,6 +40,13 @@ function fakeHost() {
   let gate: PromiseWithResolvers<void> | undefined;
   const record = (id: string, name: string): StateRecord => ({ connection: { id, name }, readiness: readiness[id] ?? 'DISCONNECTED' });
   const api: ConnectionsApi = {
+    check: vi.fn(async () => Promise.resolve({ status: 'CONNECTED' })),
+    stop: vi.fn(async (_plugin: string, key: string) => {
+      readiness[key] = 'DISCONNECTED';
+      return Promise.resolve(undefined);
+    }),
+    remove: vi.fn(async () => Promise.resolve()),
+    load: vi.fn(async () => Promise.resolve([])),
     states: vi.fn(async () => {
       await gate?.promise;
       return { acme: [record(NORTH, 'north'), record(SOUTH, 'south')] };
@@ -55,21 +72,36 @@ function fakeHost() {
 function Landing({ context }: { readonly context: CustomPageContextV1 }) {
   const { connections } = context;
   const view = useSyncExternalStore(connections.subscribe, connections.getSnapshot);
+  const [answer, setAnswer] = useState('');
+  const said = (result: ConnectionVerbResultV1) => {
+    setAnswer(result.ok ? 'done' : result.cancelled === true ? 'cancelled' : result.reason);
+  };
+
   return (
     <section aria-label="Acme landing">
       <h1>Acme home</h1>
       <p>{`Filter: ${context.route.params.filter ?? 'all'}`}</p>
       <p role="status">{view.loaded ? `${String(view.connections.length)} connections` : 'Reading the connections…'}</p>
+      <p aria-label="Last answer">{answer}</p>
       {view.connections.map((connection) => (
-        <button
-          key={connection.key}
-          type="button"
-          onClick={() => {
-            void connections.open(connection.key);
-          }}
-        >
-          {`Open ${connection.name}`}
-        </button>
+        <div key={connection.key}>
+          <button
+            type="button"
+            onClick={() => {
+              void connections.open(connection.key);
+            }}
+          >
+            {`Open ${connection.name}`}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void connections.disconnect(connection.key).then(said);
+            }}
+          >
+            {`Disconnect ${connection.name}`}
+          </button>
+        </div>
       ))}
     </section>
   );
@@ -203,6 +235,35 @@ describe('a plugin that declares a landing', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Acme home' })).toBeInTheDocument();
     expect(faces()).toEqual(['Acme home']);
+  });
+});
+
+describe('the verbs of a landing', () => {
+  it('asks the person in the host\'s own dialog before it stops a connection, naming the connection and the tabs of it that are open: a no stops nothing and the plugin is told so, a yes stops it', async () => {
+    const { user, host } = mount(entry(true), { link: link(undefined) });
+    await user.click(await screen.findByRole('button', { name: 'Open south' }));
+    await waitFor(() => {
+      expect(faces()).toEqual(['Acme home', 'Widgets']);
+    });
+    await user.click(screen.getByRole('tab', { name: 'Acme home' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Disconnect south' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Disconnect' });
+
+    expect(within(dialog).getByText('south')).toBeInTheDocument();
+    expect(within(dialog).getByText('1 open tab of south will lose the connection. You can connect again at any time.')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByLabelText('Last answer')).toHaveTextContent('cancelled');
+    expect(host.api.stop).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect south' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Disconnect' })).getByRole('button', { name: 'Disconnect' }));
+    await waitFor(() => {
+      expect(screen.getByLabelText('Last answer')).toHaveTextContent('done');
+    });
+    expect(host.api.stop).toHaveBeenCalledExactlyOnceWith('acme', SOUTH);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
 

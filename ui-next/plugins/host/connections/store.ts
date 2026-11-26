@@ -1,6 +1,6 @@
 import type { ConnectionsApi, StateRecord } from './api';
-import type { ConnectOutcome, HostConnection } from './types';
-import { detailOf, failureOf, nameOf, outcomeOfStatus, stateOfReadiness } from './words';
+import type { ConnectionBusy, ConnectOutcome, HostConnection } from './types';
+import { detailOf, failureOf, labelsOf, NOT_LISTED, nameOf, outcomeOfStatus, refusalOf, sameLabels, stateOfReadiness } from './words';
 
 // What the window knows of the connections of every plugin (HM1), and what it does to learn more: one list, read from the host, with a start of this window that is running shown as connecting. Framework-free, like `pluginStore.ts`:
 // React reads it through `useSyncExternalStore` (`getSnapshot` is the same object until something in it changes), and the host is injected (`ConnectionsApi`), so the rules here are tests with no runtime and no host.
@@ -16,6 +16,10 @@ import { detailOf, failureOf, nameOf, outcomeOfStatus, stateOfReadiness } from '
 // so a connection is what the last list said, whichever window made the start, and a list that says something else the next time is believed. The one thing that comes from the start itself is the answer of `connect`: its
 // rejection (or the status it answered) is worded for the caller, given to it and not stored.
 //
+// HOLDS. A verb that is not a start (a check, a stop, a removal: `verbs.ts`) holds the connection while it runs: the list says what it is doing (`busy`) and every other verb on the connection, a start included, is refused with a
+// sentence until it is over, so a connection is never started while it is stopped, nor stopped while it is removed. A hold is let go like a start's mark, after the read that follows the verb has landed. A connection that is connecting, here
+// or in another window, is never held: the host's own stop waits behind a start that does not end (backend catalog B-56), so the verbs are refused for it instead of waiting.
+//
 // EVENTS. `attach` keeps the window in step with the host while it lives: the host says that something changed (`connection/status`, and `<plugin>/connection/sync` for each plugin), not what, so every event
 // asks for a read, and a burst of them asks for one, 100 ms after the first.
 
@@ -29,6 +33,9 @@ export type ConnectionsState = {
   readonly connections: readonly HostConnection[];
 };
 
+/** What `hold` answers: the connection is held until `release`, or the sentence of why it is not. */
+export type Hold = { readonly ok: true; readonly release: () => Promise<void> } | { readonly ok: false; readonly reason: string };
+
 export type ConnectionsStore = {
   /** The state. The same object until something in it changes. */
   readonly getSnapshot: () => ConnectionsState;
@@ -39,9 +46,19 @@ export type ConnectionsStore = {
   /**
    * Starts a connection of a plugin by its key. A connection that is listed and connected is not started: the answer is `connected`. Otherwise it is `connecting` at once, and the answer comes after the host ended the
    * start AND the list was read again, so whoever routes on it finds the state current. The answer is what the start came to (a failure carries its class and one line that is safe to show); what the connection is afterwards is what
-   * the list says, and the store keeps nothing of a failed start of its own. Calls for the same connection that overlap share one start. Never rejects.
+   * the list says, and the store keeps nothing of a failed start of its own. Calls for the same connection that overlap share one start. A connection that a verb holds is not started: the answer is a failure that says so. Never rejects.
    */
   readonly connect: (plugin: string, key: string) => Promise<ConnectOutcome>;
+  /**
+   * Holds a connection for a verb (`busy`): it is listed with what the verb is doing and nothing else runs on it, until `release`, which reads the list again and only then lets go. Not held, and told why in a sentence: the connection
+   * is not listed, another verb holds it, or it is connecting.
+   */
+  readonly hold: (plugin: string, key: string, busy: Exclude<ConnectionBusy, 'connecting'>) => Hold;
+  /**
+   * Asks the plugin's backend to load its connections again (`LoadConnections`) and then reads the host's list. Calls for the same plugin that overlap share one. Never rejects: a load that failed is `failed: true` (the host clears the
+   * plugin's list for it, and a list with nothing in it must not pass for a plugin with no connections), until the next read that lands.
+   */
+  readonly reload: (plugin: string) => Promise<void>;
   /**
    * Keeps the window in step with the host for as long as it lives: reads once, follows `connection/status` and the sync of each plugin `plugins` lists (read again after every read), and reads again 100 ms after the first
    * event of a burst. Answers the function that undoes it: no event is followed afterwards, no read is scheduled, and a read that was in flight changes nothing. Attached twice, one set of events stays until both are undone.
@@ -87,7 +104,7 @@ function flatten(answer: Readonly<Record<string, readonly StateRecord[]>>): Host
   for (const [plugin, records] of Object.entries(answer)) {
     for (const record of records) {
       const { state, reason } = stateOfReadiness(record.readiness, record.readinessError);
-      connections.push({ plugin, key: record.connection.id, name: nameOf(record.connection), detail: detailOf(record.connection), state, reason });
+      connections.push({ plugin, key: record.connection.id, name: nameOf(record.connection), detail: detailOf(record.connection), labels: labelsOf(record.connection), state, reason });
     }
   }
 
@@ -103,7 +120,7 @@ function reuse(previous: readonly HostConnection[], next: readonly HostConnectio
 
   const kept = next.map((entry) => {
     const before = held.get(idOf(entry.plugin, entry.key));
-    return before?.name === entry.name && before.detail === entry.detail && before.state === entry.state && before.reason === entry.reason ? before : entry;
+    return before?.name === entry.name && before.detail === entry.detail && sameLabels(before.labels, entry.labels) && before.state === entry.state && before.reason === entry.reason && before.busy === entry.busy ? before : entry;
   });
   return kept.length === previous.length && kept.every((entry, index) => entry === previous[index]) ? previous : kept;
 }
@@ -137,6 +154,10 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
   // What this window does to the connections the host lists: the starts that are running (shown as connecting), and the promise each running start answers by.
   const marks = new Set<string>();
   const attempts = new Map<string, Promise<ConnectOutcome>>();
+  // The verbs that hold a connection while they run (`hold`), by connection: what each is doing to it. A start is not one of them: it is a mark and an attempt.
+  const holds = new Map<string, Exclude<ConnectionBusy, 'connecting'>>();
+  // The loads of a plugin's connections that are running (`reload`), by plugin, and the promise each answers by.
+  const reloads = new Map<string, Promise<void>>();
 
   // The reads. `started` counts the reads begun and `newest` is the last one whose answer was taken: an answer is taken only if no later read's has been, so what is said last about the host is what began last.
   // `version` counts what may have changed the host under a read in flight, and `shared` is the read that a call may share (the one that began at the version the host is at).
@@ -163,9 +184,17 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     }
   };
 
-  /** The host's list with the starts of this window that are running shown as connecting. Nothing else is laid over what the host said. */
+  /** The host's list with the starts of this window that are running shown as connecting, and each connection that a verb holds shown with what the verb is doing (`busy`). Nothing else is laid over what the host said. */
   const overlay = (): readonly HostConnection[] =>
-    host.map((entry): HostConnection => (marks.has(idOf(entry.plugin, entry.key)) ? { ...entry, state: 'connecting', reason: undefined } : entry));
+    host.map((entry): HostConnection => {
+      const id = idOf(entry.plugin, entry.key);
+      if (marks.has(id)) {
+        return { ...entry, state: 'connecting', reason: undefined, busy: 'connecting' };
+      }
+
+      const busy = holds.get(id);
+      return busy === undefined ? entry : { ...entry, busy };
+    });
 
   const publish = (): void => {
     const connections = reuse(snapshot.connections, overlay());
@@ -346,7 +375,14 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
       return running;
     }
 
-    if (snapshot.connections.some((entry) => entry.plugin === plugin && entry.key === key && entry.state === 'connected')) {
+    // A connection that a verb holds is not started: a start while it is being stopped or removed would undo what the person asked for.
+    const entry = snapshot.connections.find((candidate) => candidate.plugin === plugin && candidate.key === key);
+    const refusal = holds.has(id) && entry !== undefined ? refusalOf(entry) : undefined;
+    if (refusal !== undefined) {
+      return { status: 'failed', state: 'failed', reason: refusal };
+    }
+
+    if (entry?.state === 'connected') {
       return CONNECTED;
     }
 
@@ -362,6 +398,67 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     }
   };
 
+  const hold = (plugin: string, key: string, busy: Exclude<ConnectionBusy, 'connecting'>): Hold => {
+    const entry = snapshot.connections.find((candidate) => candidate.plugin === plugin && candidate.key === key);
+    if (entry === undefined) {
+      return { ok: false, reason: NOT_LISTED };
+    }
+
+    const refusal = refusalOf(entry);
+    if (refusal !== undefined) {
+      return { ok: false, reason: refusal };
+    }
+
+    // Held and told to everyone before anything else can ask, so that nobody who hears the hold can run a second verb.
+    const id = idOf(plugin, key);
+    holds.set(id, busy);
+    publish();
+    return {
+      ok: true,
+      release: async () => {
+        // The host is not what a read in flight has seen: the verb has changed it, so the read below is a new one. The hold goes once it has landed, as a start's mark does, so the list never goes back to what it said before the verb.
+        version += 1;
+        await refresh();
+        holds.delete(id);
+        publish();
+      },
+    };
+  };
+
+  /** Asks the plugin's backend to load its connections, and reads the list once it has answered, whether it loaded them or not. */
+  const load = async (plugin: string): Promise<void> => {
+    let isLoaded = true;
+    try {
+      await api.load(plugin);
+    } catch {
+      isLoaded = false;
+    }
+
+    // The host is not what a read in flight has seen: the load has changed it.
+    version += 1;
+    await refresh();
+    // The host clears the plugin's list for a load that failed, and a list with nothing in it is not an answer to "what are its connections": the view says they could not be read, until the next read that lands.
+    if (!isLoaded) {
+      didFail = true;
+      publish();
+    }
+  };
+
+  const reload = async (plugin: string): Promise<void> => {
+    const running = reloads.get(plugin);
+    if (running !== undefined) {
+      return running;
+    }
+
+    const mine = load(plugin);
+    reloads.set(plugin, mine);
+    try {
+      await mine;
+    } finally {
+      reloads.delete(plugin);
+    }
+  };
+
   return {
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
@@ -372,6 +469,8 @@ export function createConnectionsStore(api: ConnectionsApi, options: Connections
     },
     refresh,
     connect,
+    hold,
+    reload,
     attach,
   };
 }

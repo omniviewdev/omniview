@@ -49,6 +49,7 @@ const CONNECTION_SEVERITY: Readonly<Record<ConnectionState, Severity | undefined
   disconnected: undefined,
   unauthorized: 'warning',
   forbidden: 'error',
+  certificate: 'error',
   unreachable: 'error',
   failed: 'error',
 };

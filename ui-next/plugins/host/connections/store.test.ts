@@ -2,7 +2,8 @@ import type { AppError } from '@omniviewdev/runtime/ui/v1';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConnectionsApi, StartStatus, StateRecord } from './api';
 import { NAME_MAX } from '../connectionName';
-import { createConnectionsStore, type ConnectionsStore, type ConnectionsStoreOptions } from './store';
+import { unusedVerbs } from '../homeTesting';
+import { createConnectionsStore, type ConnectionsStore, type ConnectionsStoreOptions, type Hold } from './store';
 import type { ConnectOutcome, ConnectionState } from './types';
 import { DETAIL_MAX } from './words';
 
@@ -25,6 +26,7 @@ function fakeApi(overrides: Partial<ConnectionsApi> = {}) {
   const everyStatusListener: Array<() => void> = [];
   const syncListeners = new Map<string, Set<() => void>>();
   const api: ConnectionsApi = {
+    ...unusedVerbs,
     states: async () => {
       const read = deferred<Answer>();
       reads.push(read);
@@ -951,5 +953,122 @@ describe('attach', () => {
     expect(world.store.getSnapshot().loaded).toBe(true);
     expect(logged).toHaveBeenCalled();
     stop();
+  });
+});
+
+describe('labels', () => {
+  it('carries the labels that are text, none for a backend that put none, and keeps the connection the same object while a read says the same labels again, in a new object and in another order', async () => {
+    const world = build();
+    const labelled = (labels: unknown): StateRecord => ({ connection: { id: 'main', name: 'Main', labels }, readiness: 'CONNECTED' });
+    const others = [record('plain', 'Plain'), { connection: { id: 'none', name: 'None', labels: null }, readiness: 'CONNECTED' }];
+    await loadedWith(world, { acme: [labelled({ env: 'prod', team: 'core', replicas: 3 }), ...others] });
+    const first = connection(world, 'acme', 'main');
+
+    expect(first?.labels).toEqual({ env: 'prod', team: 'core' });
+    expect(connection(world, 'acme', 'plain')?.labels).toBeUndefined();
+    expect(connection(world, 'acme', 'none')?.labels).toBeUndefined();
+
+    await loadedWith(world, { acme: [labelled({ team: 'core', env: 'prod' }), ...others] });
+    expect(connection(world, 'acme', 'main')).toBe(first);
+
+    await loadedWith(world, { acme: [labelled({ env: 'dev', team: 'core' }), ...others] });
+    expect(connection(world, 'acme', 'main')).not.toBe(first);
+    expect(connection(world, 'acme', 'main')?.labels).toEqual({ env: 'dev', team: 'core' });
+  });
+});
+
+/** What a hold lets go of: the test takes it for granted that the connection was held. */
+const releaseOf = async (held: Hold): Promise<void> => {
+  if (!held.ok) {
+    throw new Error(held.reason);
+  }
+
+  return held.release();
+};
+
+describe('hold', () => {
+  it('marks the connection busy and refuses every other verb on it, a start included, until it is released: the list is read again first, and the mark goes after the read has landed', async () => {
+    const world = build();
+    await loadedWith(world, { acme: [record('main', 'Main'), record('spare', 'Spare', 'DISCONNECTED')] });
+
+    const held = world.store.hold('acme', 'main', 'disconnecting');
+
+    expect(held.ok).toBe(true);
+    expect(connection(world, 'acme', 'main')).toMatchObject({ state: 'connected', busy: 'disconnecting' });
+    expect(connection(world, 'acme', 'spare')?.busy).toBeUndefined();
+    const refusal = 'Main is disconnecting. Try again when it has finished.';
+    expect(world.store.hold('acme', 'main', 'checking')).toEqual({ ok: false, reason: refusal });
+    await expect(world.store.connect('acme', 'main')).resolves.toEqual({ status: 'failed', state: 'failed', reason: refusal });
+    expect(world.starts).toHaveLength(0);
+
+    const released = watch(releaseOf(held));
+    expect(world.reads).toHaveLength(2);
+    expect(connection(world, 'acme', 'main')?.busy).toBe('disconnecting');
+    world.reads[1].resolve({ acme: [record('main', 'Main', 'DISCONNECTED'), record('spare', 'Spare', 'DISCONNECTED')] });
+    await flush();
+
+    expect(released.isDone()).toBe(true);
+    expect(connection(world, 'acme', 'main')?.state).toBe('disconnected');
+    expect(connection(world, 'acme', 'main')?.busy).toBeUndefined();
+    expect(world.store.hold('acme', 'main', 'removing').ok).toBe(true);
+  });
+
+  it('does not hold what is not listed, nor a connection that is connecting, whether this window started it or the host says so: the host\'s stop would wait behind the start', async () => {
+    const world = build();
+    await loadedWith(world, { acme: [record('main', 'Main', 'DISCONNECTED'), record('other', 'Other', 'PENDING')] });
+
+    expect(world.store.hold('acme', 'gone', 'removing')).toEqual({ ok: false, reason: 'This connection is not in the list.' });
+    expect(world.store.hold('acme', 'other', 'disconnecting')).toEqual({ ok: false, reason: 'Other is connecting. Try again when it has finished.' });
+
+    void world.store.connect('acme', 'main');
+
+    expect(world.store.hold('acme', 'main', 'disconnecting')).toEqual({ ok: false, reason: 'Main is connecting. Try again when it has finished.' });
+  });
+});
+
+describe('reload', () => {
+  it('asks the plugin\'s backend to load its connections and reads the list only after it has answered, and calls that overlap share one load', async () => {
+    const loads: Array<{ readonly plugin: string; readonly resolve: (value: unknown) => void }> = [];
+    const world = build({}, {
+      load: async (plugin) => {
+        const load = deferred<unknown>();
+        loads.push({ plugin, resolve: load.resolve });
+        return load.promise;
+      },
+    });
+    await loadedWith(world, { acme: [record('main', 'Main')] });
+
+    const first = watch(world.store.reload('acme'));
+    const second = world.store.reload('acme');
+
+    expect(loads.map((load) => load.plugin)).toEqual(['acme']);
+    expect(world.reads).toHaveLength(1);
+    loads[0].resolve(undefined);
+    await flush();
+    expect(world.reads).toHaveLength(2);
+    world.reads[1].resolve({ acme: [record('main', 'Main'), record('new', 'New')] });
+    await second;
+
+    expect(first.isDone()).toBe(true);
+    expect(keys(world)).toEqual(['acme/main', 'acme/new']);
+  });
+
+  it('says the connections could not be read when the load failed, since the host clears the plugin\'s list for it, until a read lands that no failed load came before', async () => {
+    const world = build({}, {
+      load: async () => {
+        throw new Error('the plugin could not read its connections');
+      },
+    });
+    await loadedWith(world, { acme: [record('main', 'Main')] });
+
+    const done = world.store.reload('acme');
+    await flush();
+    world.reads[1].resolve({});
+    await done;
+
+    expect(world.store.getSnapshot()).toMatchObject({ loaded: true, failed: true, connections: [] });
+
+    await loadedWith(world, { acme: [record('main', 'Main')] });
+    expect(world.store.getSnapshot()).toMatchObject({ failed: false, connections: [{ key: 'main' }] });
   });
 });

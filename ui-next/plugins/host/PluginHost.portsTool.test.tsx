@@ -5,6 +5,7 @@ import { createPanelStore, restorePanel, type PanelStore, type PortsDeps } from 
 import { fakePorts, session, settle, type FakePorts } from '../../shell/panel/ports/testing';
 import { acme } from '../testing';
 import type { ConnectionsApi } from './connections';
+import { unusedVerbs } from './homeTesting';
 import { PluginHost } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import { NO_ROUTE } from './route';
@@ -23,6 +24,7 @@ const plugins = { getSnapshot: () => entries, subscribe: () => () => undefined }
 
 /** The connections the window lists for its plugins: Acme has one, named Staging. */
 const connections: ConnectionsApi = {
+  ...unusedVerbs,
   states: async () => Promise.resolve({ acme: [{ connection: { id: 'conn-1', name: 'Staging' }, readiness: 'CONNECTED' }] }),
   start: async () => Promise.resolve({ status: 'CONNECTED' }),
   onStatus: () => () => undefined,

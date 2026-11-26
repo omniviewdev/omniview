@@ -1,7 +1,7 @@
 import type { IconName } from '@omniviewdev/kit';
 import { vi, type Mock } from 'vitest';
 import type { ShellAccent } from '../../shell';
-import { createRecents, type ActionResult, type ConnectionActions, type ConnectionState, type ConnectionsState, type ConnectionsStore, type HostConnection, type HostConnections, type RecentsStore } from './connections';
+import { createRecents, type ActionResult, type ConnectionActions, type ConnectionsApi, type ConnectionState, type ConnectionsState, type ConnectionsStore, type HostConnection, type HostConnections, type RecentsStore } from './connections';
 import type { PluginSource } from './contributions';
 import type { PluginEntry } from './pluginStore';
 
@@ -47,7 +47,7 @@ export function pluginSource(initial: readonly PluginEntry[]): FakePlugins {
 }
 
 /** One connection as the host's store lists it. */
-export const connection = (plugin: string, key: string, name: string, state: ConnectionState = 'connected', over: Partial<Pick<HostConnection, 'detail' | 'reason'>> = {}): HostConnection => ({ plugin, key, name, state, reason: undefined, ...over });
+export const connection = (plugin: string, key: string, name: string, state: ConnectionState = 'connected', over: Partial<Pick<HostConnection, 'detail' | 'reason' | 'labels' | 'busy'>> = {}): HostConnection => ({ plugin, key, name, state, reason: undefined, ...over });
 
 export type FakeStore = ConnectionsStore & {
   /** The state is replaced: a list is read, a read failed. */
@@ -75,6 +75,8 @@ export function connectionStore(connections: readonly HostConnection[], over: Pa
     },
     refresh: vi.fn<ConnectionsStore['refresh']>(async () => Promise.resolve()),
     connect: vi.fn(async () => Promise.resolve({ status: 'connected' as const })),
+    hold: vi.fn<ConnectionsStore['hold']>(() => ({ ok: false, reason: 'This test does not hold connections.' })),
+    reload: vi.fn<ConnectionsStore['reload']>(async () => Promise.resolve()),
     attach: vi.fn(() => () => undefined),
   };
 }
@@ -96,3 +98,11 @@ export function hostConnections(store: FakeStore): FakeHost {
     go,
   };
 }
+
+/** The calls of the host's connection API that a verb makes, for a test of another part that gives the window an API and never calls them: each one says so if it is. */
+export const unusedVerbs: Pick<ConnectionsApi, 'check' | 'stop' | 'remove' | 'load'> = {
+  check: async () => Promise.reject(new Error('this test does not check a connection')),
+  stop: async () => Promise.reject(new Error('this test does not stop a connection')),
+  remove: async () => Promise.reject(new Error('this test does not remove a connection')),
+  load: async () => Promise.reject(new Error('this test does not load connections')),
+};

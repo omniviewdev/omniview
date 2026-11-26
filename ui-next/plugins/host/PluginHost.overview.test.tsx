@@ -6,6 +6,7 @@ import { createPanelStore } from '../../shell';
 import type { ContextV1, DetailSource, DetailView, ListPageV1, OverviewPageV1 } from '../contract/v1';
 import { acme, answering, startedOn, widgetPage, WIDGETS, type Widget } from '../testing';
 import type { ConnectionsApi } from './connections/api';
+import { unusedVerbs } from './homeTesting';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import { NO_ROUTE, type HostRoute } from './route';
@@ -301,6 +302,7 @@ describe('a connection chosen while the overview is on screen', () => {
 
   const connected = (id: string) => ({ connection: { id, name: NAMES[id] }, readiness: 'CONNECTED' });
   const api: ConnectionsApi = {
+    ...unusedVerbs,
     states: async () => ({ acme: [connected(KEY), connected(OTHER)] }),
     start: async () => ({ status: 'CONNECTED' }),
     onStatus: () => () => undefined,

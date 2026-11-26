@@ -6,6 +6,7 @@ import { createActivityFeed, type ActivityRecordLike } from '../../shell/panel/a
 import { unloadedFailure } from '../loader/failure';
 import { acme } from '../testing';
 import type { ConnectionsApi } from './connections';
+import { unusedVerbs } from './homeTesting';
 import { PluginHost } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import { NO_ROUTE } from './route';
@@ -52,6 +53,7 @@ const orphan: ActivityRecordLike = {
 
 /** The host's connection API: one connection of Acme, `north`, which the host says is connected. */
 const api: ConnectionsApi = {
+  ...unusedVerbs,
   states: async () => Promise.resolve({ acme: [{ connection: { id: 'c-1', name: 'north' }, readiness: 'CONNECTED' }] }),
   start: async () => Promise.resolve({ status: 'CONNECTED' }),
   onStatus: () => () => undefined,

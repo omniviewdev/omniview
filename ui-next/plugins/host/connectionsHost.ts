@@ -1,15 +1,18 @@
 import type { ConnectionOpenResultV1, ConnectionV1, ConnectionsHostV1, ConnectionsViewV1 } from '../contract/v1';
-import { faceOf, type ConnectionsState, type ConnectionsStore, type HostConnection, type HostConnections } from './connections';
+import { faceOf, type ConnectionsState, type ConnectionsStore, type ConnectionVerbs, type HostConnection, type HostConnections } from './connections';
 
-// What a custom page asks of the window about its plugin's connections (KL2; `ConnectionsHostV1`): the window's own store, words and actions (`connections/`), for ONE plugin, handed over as one external store and three
-// functions. There is no second store: the view is the window's list of connections cut to the plugin's, so what a landing draws is what Home and the scope lane draw, in the same words, at the same moment. `ctx.panel` is made
+// What a custom page asks of the window about its plugin's connections (KL2, KL4; `ConnectionsHostV1`): the window's own store, words and actions (`connections/`), for ONE plugin, handed over as one external store and the functions that open, start, check, stop and
+// remove a connection and read the list again. There is no second store: the view is the window's list of connections cut to the plugin, so what a landing draws is what Home and the scope lane draw, in the same words, at the same moment. `ctx.panel` is made
 // the same way (`panelHost.ts`): one handle for each plugin, made once and given again as it was, so a context that holds it stays the same object.
 
 /** Where an open that a plugin's page asked for says it came from, in the tab model's record of where an open came from (`Home` says `home`, the palette `palette`). */
 const SOURCE = 'landing';
 
-/** The words a plugin's page gets when the window has no connection data (a test of another part): no connection, none that can be opened. */
-const NO_CONNECTIONS = 'This window has no connections to open.';
+/** The words a plugin's page gets when the window has no connection data (a test of another part): no connection, none that can be opened or changed. */
+const NO_CONNECTIONS = 'This window has no connections.';
+
+/** The labels of a connection whose plugin put none on it: one object for all of them. */
+const NO_LABELS: Readonly<Record<string, string>> = Object.freeze({});
 
 /**
  * The connection a plugin's page is told of, made once for each `HostConnection`. The store keeps the same object for a connection that did not change (`store.ts`, `reuse`), so a connection that did not change is the same object here, and a page that
@@ -24,7 +27,7 @@ function toldOf(connection: HostConnection): ConnectionV1 {
   }
 
   const { role, word } = faceOf(connection.state);
-  const made: ConnectionV1 = Object.freeze({ key: connection.key, name: connection.name, description: connection.detail, state: connection.state, word, role, reason: connection.reason });
+  const made: ConnectionV1 = Object.freeze({ key: connection.key, name: connection.name, description: connection.detail, labels: connection.labels ?? NO_LABELS, state: connection.state, word, role, reason: connection.reason, busy: connection.busy });
   told.set(connection, made);
   return made;
 }
@@ -56,7 +59,7 @@ function viewOf(store: ConnectionsStore, plugin: string): () => ConnectionsViewV
   };
 }
 
-function handleOf({ store, actions }: HostConnections, plugin: string): ConnectionsHostV1 {
+function handleOf({ store, actions }: HostConnections, verbs: ConnectionVerbs, plugin: string): ConnectionsHostV1 {
   const view = viewOf(store, plugin);
   return Object.freeze({
     // Called for a change of the window's list, whoever's it is; the listener hears of this plugin's alone.
@@ -73,24 +76,32 @@ function handleOf({ store, actions }: HostConnections, plugin: string): Connecti
     getSnapshot: view,
     // The plugin is the handle's, whatever the key: a page opens a connection of its own plugin and of no other.
     open: async (key: string, options?: { readonly newTab?: boolean | undefined }): Promise<ConnectionOpenResultV1> => actions.go(plugin, key, { how: options?.newTab === true ? 'new' : 'smart', source: SOURCE }),
-    refresh: async () => store.refresh(),
+    connect: async (key: string) => verbs.connect(plugin, key),
+    check: async (key: string) => verbs.check(plugin, key),
+    disconnect: async (key: string) => verbs.disconnect(plugin, key),
+    remove: async (key: string) => verbs.remove(plugin, key),
+    refresh: async () => verbs.refresh(plugin),
   });
 }
 
 const NONE_VIEW: ConnectionsViewV1 = Object.freeze({ loaded: true, failed: false, connections: Object.freeze([]) });
 
-/** What a window with no connection data gives a page: it reads no connection, and opening one is refused in words. */
+/** What a window with no connection data gives a page: it reads no connection, and opening one or doing anything to one is refused in words. */
 const NONE: ConnectionsHostV1 = Object.freeze({
   subscribe: () => () => undefined,
   getSnapshot: () => NONE_VIEW,
   open: async () => Promise.resolve({ ok: false, reason: NO_CONNECTIONS }),
+  connect: async () => Promise.resolve({ ok: false, reason: NO_CONNECTIONS }),
+  check: async () => Promise.resolve({ ok: false, reason: NO_CONNECTIONS }),
+  disconnect: async () => Promise.resolve({ ok: false, reason: NO_CONNECTIONS }),
+  remove: async () => Promise.resolve({ ok: false, reason: NO_CONNECTIONS }),
   refresh: async () => Promise.resolve(),
 });
 
 /**
  * What `context.connections` is for each plugin: one handle for each plugin, made on the first ask and given again as it was. `undefined` connections (a window with no connection API) give every plugin the handle that reads none.
  */
-export function connectionsHostsOf(connections: HostConnections | undefined): (plugin: string) => ConnectionsHostV1 {
+export function connectionsHostsOf(connections: HostConnections | undefined, verbs: ConnectionVerbs | undefined): (plugin: string) => ConnectionsHostV1 {
   const made = new Map<string, ConnectionsHostV1>();
   return (plugin) => {
     const known = made.get(plugin);
@@ -98,7 +109,7 @@ export function connectionsHostsOf(connections: HostConnections | undefined): (p
       return known;
     }
 
-    const handle = connections === undefined ? NONE : handleOf(connections, plugin);
+    const handle = connections === undefined || verbs === undefined ? NONE : handleOf(connections, verbs, plugin);
     made.set(plugin, handle);
     return handle;
   };

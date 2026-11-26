@@ -349,6 +349,7 @@ describe('the files that read a route\'s connection parameter', () => {
   const ALLOWED: Readonly<Record<string, string>> = {
     'plugins/host/connectionName.ts': 'the naming module: a saved face holds the key of its route, and the key is taken out of it here',
     'plugins/host/connections/actions.ts': 'changes a tab\'s connection and opens a plugin\'s first page in one: the route it makes carries the key the person chose, and a tab already in that connection is left alone',
+    'plugins/host/connections/reach.ts': 'counts the tabs and the live sessions of the bottom panel that are in one connection, for the question a disconnect asks: the number is drawn, never the key',
     'plugins/host/connections/recents.ts': 'remembers which connection a tab was in: the list of connections used last (Home\'s Recent, and the connection a plugin opens in when none is named) is made from the routes of the tabs the window came back with and of the tab on screen; it is never drawn',
     'plugins/host/contributions.ts': 'makes a face from a route: the key is the scope\'s id and never a label; `complete` opens a page in the connection of the tab it is opened from; `panelConnectionOf` says the connection a page is read in for the bottom panel',
     'plugins/host/PluginHost.tsx': 'tells a page\'s hook the connection it is read in, opens a link, and carries the connection of the plugin a sidebar was last shown for',

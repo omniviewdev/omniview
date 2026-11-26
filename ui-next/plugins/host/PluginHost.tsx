@@ -59,7 +59,7 @@ import type { ConnectionsHostV1, ContextV1, ContributionV1, CustomPageContextV1,
 import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
 import { ConnectionNames, connectionNameOf, laneFor } from './connectionName';
-import { createConnectionActions, createConnectionsStore, createRecents, pickerOf, usesOf, type ConnectionsApi, type HostConnections } from './connections';
+import { ConnectionQuestion, createConnectionActions, createConnectionsStore, createConnectionVerbs, createRecents, pickerOf, reachOf, usesOf, type ConnectionsApi, type ConnectionVerbs, type HostConnections } from './connections';
 import { connectionsHostsOf } from './connectionsHost';
 import { connectionOf, createContributions, describeCustom, describeDetail, describeOverview, HOME_PAGE, OVERVIEW_SUBJECT, overviewAsDetail, panelConnectionOf, readsNoConnection, routeKey, textParamsOf, type PluginChoice, type PluginSource } from './contributions';
 import { homePage } from './homePage';
@@ -194,6 +194,8 @@ type Host = {
   readonly connections: HostConnections | undefined;
   /** What `context.connections` is for each plugin: the window's connections cut to the plugin, with the way to open one and to read them again (`connectionsHost.ts`). A custom page is given it (KL2). */
   readonly connectionsHosts: (plugin: string) => ConnectionsHostV1;
+  /** What the verbs of `context.connections` do and the question they ask (KL4; `connections/verbs.ts`): made with the connections, so absent when the window has none. The window draws the question (`ConnectionQuestion`). */
+  readonly verbs: ConnectionVerbs | undefined;
   /** The Problems and Operations tools of the bottom panel: their models, fed by what the window already holds (`panelTools.ts`), the badges their tabs carry, and the answer to "what is this plugin or connection called". */
   readonly problems: Problems;
   readonly operations: Operations;
@@ -298,6 +300,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const panelHosts = panelHostsOf(logs, forwarding);
   const connections = makeConnections(connectionsApi, tabs, plugins);
   known.current = connections;
+  const verbs = connections === undefined || connectionsApi === undefined ? undefined : createConnectionVerbs({ store: connections.store, api: connectionsApi, reach: reachOf(tabs, store) });
   // A forward's connection is named by what the window knows of its connections, and an address is opened with the window's own way; what a test gives wins.
   const ports = createPorts(store, { openExternal, names: portNamesOf(connections?.store, names), ...portsOptions });
   seedRoutes(tabs, routes);
@@ -335,7 +338,8 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     notices,
     settings,
     connections,
-    connectionsHosts: connectionsHostsOf(connections),
+    connectionsHosts: connectionsHostsOf(connections, verbs),
+    verbs,
     problems,
     operations,
     toolBadges: badgesOf(problems, operations),
@@ -1316,6 +1320,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
         settings={host.settings}
       />
       {terminals.prompt}
+      {host.verbs === undefined ? null : <ConnectionQuestion questions={host.verbs.questions} />}
     </>
   );
 }

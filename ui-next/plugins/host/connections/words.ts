@@ -1,6 +1,6 @@
 import { ErrorTypes, parseAppError, type AppError } from '@omniviewdev/runtime/ui/v1';
 import { nameText } from '../connectionName';
-import type { ConnectOutcome, ConnectionState, StateFace } from './types';
+import type { ConnectOutcome, ConnectionBusy, ConnectionState, HostConnection, StateFace } from './types';
 
 // The words of a connection (HM1): what each state is called, which of the host's answers is which state, and the one line a person may be shown about a failure. The host says what happened in its own
 // vocabulary (a readiness word, an `apperror` envelope, a status code) and a plugin adds text of its own; this is the one place that turns both into what the window draws. Framework-free, like `published.ts`.
@@ -8,7 +8,7 @@ import type { ConnectOutcome, ConnectionState, StateFace } from './types';
 // The class of a failure is read from the host's envelope (`parseAppError`, the runtime's one parser: decision R13) and never from the text a plugin wrote. The text is shown only when it is one plain
 // sentence (`safeReason`): anything that looks like a stack, a payload or a page of output gives way to a sentence of the host's own.
 
-/** The states a start can fail into: what the person can do about it (sign in, ask for access, wait for the server), or nothing in particular (`failed`). */
+/** The states a start can fail into: what the person can do about it (sign in, ask for access, trust the server's certificate, wait for the server), or nothing in particular (`failed`). */
 export type FailedState = Extract<ConnectOutcome, { readonly status: 'failed' }>['state'];
 
 /** A failure as the window says it: its class and one line that is safe to show. */
@@ -24,6 +24,7 @@ const FACES: Readonly<Record<ConnectionState, StateFace>> = {
   disconnected: { role: 'stopped', word: 'Disconnected' },
   unauthorized: { role: 'attention', word: 'Needs sign-in' },
   forbidden: { role: 'error', word: 'Access denied' },
+  certificate: { role: 'error', word: 'Certificate problem' },
   unreachable: { role: 'error', word: 'Not responding' },
   failed: { role: 'error', word: 'Connection failed' },
 };
@@ -32,6 +33,7 @@ const FACES: Readonly<Record<ConnectionState, StateFace>> = {
 const REASONS: Readonly<Record<FailedState, string>> = {
   unauthorized: 'The connection needs you to sign in.',
   forbidden: 'You do not have access to this connection.',
+  certificate: 'The certificate of the server could not be verified.',
   unreachable: 'The server did not answer.',
   failed: 'The connection did not start.',
 };
@@ -68,7 +70,8 @@ export function safeReason(text: string | undefined, fallback: string): string {
 
 /**
  * The class of a failure by what the host's envelope says (the checks run in this order, so a 401 that also says `reconnect` is a sign-in, not a server that is silent): a 401, the code UNAUTHORIZED or its type is
- * `unauthorized`; a 403, the code FORBIDDEN or its type is `forbidden`; the host says to reconnect, the type says the connection failed or timed out, or the status is a 502, 503 or 504, `unreachable`; anything else `failed`.
+ * `unauthorized`; a 403, the code FORBIDDEN or its type is `forbidden`; the code CERTIFICATE_ERROR, which the host sends as a failed connection with a 502 and `reconnect` and so is told from a server that does not answer by its
+ * code alone, `certificate`; the host says to reconnect, the type says the connection failed or timed out, or the status is a 502, 503 or 504, `unreachable`; anything else `failed`.
  */
 function classOf(error: AppError): FailedState {
   if (error.status === 401 || error.code === 'UNAUTHORIZED' || error.type === ErrorTypes.RESOURCE_UNAUTHORIZED) {
@@ -77,6 +80,10 @@ function classOf(error: AppError): FailedState {
 
   if (error.status === 403 || error.code === 'FORBIDDEN' || error.type === ErrorTypes.RESOURCE_FORBIDDEN) {
     return 'forbidden';
+  }
+
+  if (error.code === 'CERTIFICATE_ERROR') {
+    return 'certificate';
   }
 
   if (
@@ -147,6 +154,36 @@ export function outcomeOfStatus(status: { readonly status: string; readonly erro
   }
 }
 
+/** What a person is told when a check's status is not one of the classes below and the host gave no line to show. */
+const UNHEALTHY = 'The connection is not healthy.';
+
+/**
+ * What the status a check RETURNED says of the connection (`CheckConnection`): undefined when it is healthy (CONNECTED), else the one line to tell the person. UNAUTHORIZED and FORBIDDEN say the class's sentence; a connection that is
+ * not connected, or still connecting, says so; any other word (NOT_FOUND, ERROR, one this does not know) says the status's own line when it is safe to show, else that the connection is not healthy.
+ */
+export function unhealthyReason(status: { readonly status: string; readonly error?: string | undefined; readonly details?: string | undefined }): string | undefined {
+  const text = status.error !== undefined && status.error !== '' ? status.error : status.details;
+  switch (status.status) {
+    case 'CONNECTED':
+      return undefined;
+    case 'UNAUTHORIZED':
+      return safeReason(text, REASONS.unauthorized);
+    case 'FORBIDDEN':
+      return safeReason(text, REASONS.forbidden);
+    case 'DISCONNECTED':
+      return 'The connection is not connected.';
+    case 'PENDING':
+      return 'The connection is still connecting.';
+    default:
+      return safeReason(text, UNHEALTHY);
+  }
+}
+
+/** The one line a person may be shown about a verb that threw: the host's own line from its envelope when that is one to show, else `fallback` (the verb's own sentence: what did not happen). */
+export function verbFailure(error: unknown, fallback: string): string {
+  return safeReason(parseAppError(error).detail, fallback);
+}
+
 /**
  * What a person reads for a connection: its name trimmed and clipped to `NAME_MAX` (`connectionName.ts`: the host's list is one of the places a name comes in, so Home's rows, the picker's options and the palette's rows never draw a longer one), else
  * `Unnamed connection`. Never its key.
@@ -162,4 +199,47 @@ export const DETAIL_MAX = 200;
 export function detailOf(connection: { readonly description?: string | undefined }): string | undefined {
   const text = typeof connection.description === 'string' ? connection.description.replace(/\s+/g, ' ').trim() : '';
   return text === '' ? undefined : text.length > DETAIL_MAX ? `${text.slice(0, DETAIL_MAX - 1)}…` : text;
+}
+
+/**
+ * The labels the plugin's backend put on a connection (the SDK connection's `labels`) that are text, as one frozen record in the order the host gave them; undefined when there are none. The host's list is JSON, so the
+ * record may be `null` (a backend that set none), and a label whose value is not text (a number, a list, nothing) is left out: the contract says a label is text.
+ */
+export function labelsOf(connection: { readonly labels?: unknown }): Readonly<Record<string, string>> | undefined {
+  const { labels } = connection;
+  if (typeof labels !== 'object' || labels === null || Array.isArray(labels)) {
+    return undefined;
+  }
+
+  const text = Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === 'string');
+  return text.length === 0 ? undefined : Object.freeze(Object.fromEntries(text));
+}
+
+/** Whether two label records say the same: the same labels with the same values, whatever the order. */
+export function sameLabels(a: Readonly<Record<string, string>> | undefined, b: Readonly<Record<string, string>> | undefined): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  return a !== undefined && b !== undefined && Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([key, value]) => Object.hasOwn(b, key) && b[key] === value);
+}
+
+/** What a verb is told when the connection it names is not in the window's list (it was removed, or never was one of the plugin's). */
+export const NOT_LISTED = 'This connection is not in the list.';
+
+/** What a connection is doing, as a verb that is refused says it. */
+const BUSY_WORDS: Readonly<Record<ConnectionBusy, string>> = {
+  connecting: 'connecting',
+  checking: 'being checked',
+  disconnecting: 'disconnecting',
+  removing: 'being removed',
+};
+
+/**
+ * Why a verb may not run on a connection now, in one sentence, or undefined when it may: the window is doing something to it (a start of this window, or a verb that holds it), or the host says it is connecting (a start of another
+ * window, or the host's own: a stop waits behind a start that does not end, so a connection that is connecting is not stopped, checked or removed). One verb at a time.
+ */
+export function refusalOf(connection: HostConnection): string | undefined {
+  const busy = connection.busy ?? (connection.state === 'connecting' ? 'connecting' : undefined);
+  return busy === undefined ? undefined : `${connection.name} is ${BUSY_WORDS[busy]}. Try again when it has finished.`;
 }

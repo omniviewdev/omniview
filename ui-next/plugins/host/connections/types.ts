@@ -5,9 +5,12 @@ import type { StatusRole } from '@omniviewdev/kit';
 
 /**
  * Where a connection stands, as the host says it: connected; being connected; not connected; or a start that failed, by the class of the failure. The class is what the person can do about it
- * (sign in, ask for access, wait for the server), and it is read from the host's own error (`words.ts`), never from the text a plugin wrote.
+ * (sign in, ask for access, trust the server's certificate, wait for the server), and it is read from the host's own error (`words.ts`), never from the text a plugin wrote.
  */
-export type ConnectionState = 'connected' | 'connecting' | 'disconnected' | 'unauthorized' | 'forbidden' | 'unreachable' | 'failed';
+export type ConnectionState = 'connected' | 'connecting' | 'disconnected' | 'unauthorized' | 'forbidden' | 'certificate' | 'unreachable' | 'failed';
+
+/** What this window is doing to a connection: a start (`connecting`), or the verb that holds it (`checking`, `disconnecting`, `removing`; `store.ts`, `hold`). One at a time. */
+export type ConnectionBusy = 'connecting' | 'checking' | 'disconnecting' | 'removing';
 
 /** One connection of one plugin. */
 export type HostConnection = {
@@ -16,11 +19,15 @@ export type HostConnection = {
   readonly key: string;
   /** The plugin's secondary text for it (the SDK connection's `description`: a region, a provider), one line as the host makes it: whitespace collapsed, at most `DETAIL_MAX` characters. Absent when the plugin gives none. */
   readonly detail?: string | undefined;
+  /** The labels the plugin's backend put on it (the SDK connection's `labels`), the ones whose value is text, in the order the host gave them. Absent when there are none. The same object while they do not change. */
+  readonly labels?: Readonly<Record<string, string>> | undefined;
   /** What a person reads. Never empty and never the key. */
   readonly name: string;
   readonly state: ConnectionState;
   /** Why the last start failed, in one line the host made safe to show. Absent unless the state is a failure the host saw. */
   readonly reason: string | undefined;
+  /** What this window is doing to it now (`connecting` while a start of this window runs, else the verb that holds it). Absent when it is doing nothing: while it is set, no other verb runs on the connection. */
+  readonly busy?: ConnectionBusy | undefined;
 };
 
 /** How a start ended. */
