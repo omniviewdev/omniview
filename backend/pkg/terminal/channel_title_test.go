@@ -320,3 +320,26 @@ func TestATitleThePromptDrawsIsNotMadeAProgramsWhenTheStartMarkComesInAReadOfIts
 		assert.Equal(t, []titleWire{{V: 1, Title: "user@host: ~", Program: false}}, got, "the PS1's title is the shell's, whichever read the start mark is in")
 	})
 }
+
+// The prompt's title and a preexec title can both be pending in the read that carries the start mark: the one drawn at or before the end of the prompt is the shell's,
+// the one set after it is the command's.
+func TestAPromptTitleInTheReadOfTheStartMarkIsNotTheCommandsAndAPreexecTitleIs(t *testing.T) {
+	k := newMarked(t)
+	page := k.f.m.attachTitle(t, k.info.Cap, nil, true)
+	page.waitReady()
+	k.print(osc("133;A") + osc("0;user@host: ~") + "$ " + osc("133;B") + "ls\r\n" + osc("633;E;ls;"+k.nonce) + osc("133;C"))
+	k.print("barrier one\n")
+	waitOutput(t, page, "barrier one")
+	got := page.state().titles
+	guarded(t, "pending-prompt-title-is-not-made-a-programs", func() {
+		assert.Equal(t, []titleWire{{V: 1, Title: "user@host: ~", Program: false}}, got, "one read held the prompt with its title and the start mark: the title is the shell's")
+	})
+	k.print(osc("133;D;0") + osc("133;A") + "$ " + osc("133;B") + osc("2;build") + "build\r\n" + osc("633;E;build;"+k.nonce) + osc("133;C"))
+	k.print("barrier two\n")
+	waitOutput(t, page, "barrier two")
+	got = page.state().titles
+	guarded(t, "pending-preexec-title-is-made-a-programs", func() {
+		require.NotEmpty(t, got)
+		assert.Equal(t, titleWire{V: 1, Title: "build", Program: true}, got[len(got)-1], "a title set after the prompt, in the read of the start mark, is the command's")
+	})
+}

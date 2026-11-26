@@ -277,6 +277,27 @@ describe('the menu of a session tab', () => {
     expect(store.retitleSession(id, 'zsh')).toEqual({ status: 'done' });
   });
 
+  it('does not pin the title an unedited field started with when the feed has retitled the session meanwhile, and pins a name typed to the live title', () => {
+    const store = createPanelStore();
+    mountMenu(['a'], store);
+    const edit = (): HTMLInputElement => screen.getByRole<HTMLInputElement>('textbox', { name: 'Session name' });
+    const id = Object.keys(store.getSnapshot().sessions)[0] ?? '';
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    act(() => {
+      store.retitleSession(id, 'vim: notes');
+    });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(store.getSnapshot().sessions[id]).not.toHaveProperty('titlePinned');
+    expect(store.getSnapshot().sessions[id]?.title).toBe('vim: notes');
+    fireEvent.click(within(openOn('vim: notes')).getByRole('menuitem', { name: 'Rename session…' }));
+    act(() => {
+      store.retitleSession(id, 'less');
+    });
+    fireEvent.change(edit(), { target: { value: 'less' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ title: 'less', titlePinned: true });
+  });
+
   it('starts the rename on a double click of the tab and on F2, and draws the tab\'s keys in its description', () => {
     mountMenu(['a', 'b']);
     expect(tab('a').getAttribute('aria-keyshortcuts')).toBe('F2 Delete');
