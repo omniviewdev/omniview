@@ -587,10 +587,11 @@ func TestMarksNeverRemoveWhatTheForegroundFactKnows(t *testing.T) {
 	})
 }
 
-// A shell that is replaced (exec zsh) never prints the end of its command: the prompt of the new one does, and a prompt ends any running command.
-func TestANewPromptEndsAnyRunningCommand(t *testing.T) {
+// A command whose end mark never came is ended by the integration's own next prompt (the directory with the nonce, then the prompt), and a prompt that
+// is not ours ends nothing.
+func TestOnlyOurNextPromptEndsACommandWhoseEndNeverCame(t *testing.T) {
 	k := newMarked(t)
-	k.print(osc("133;A") + osc("133;B") + "exec zsh\r\n" + osc("633;E;exec\\x20zsh;"+k.nonce) + osc("133;C"))
+	k.print(osc("133;A") + osc("133;B") + "sleep 60\r\n" + osc("633;E;sleep\\x2060;"+k.nonce) + osc("133;C"))
 	busy, err := k.f.m.ChannelBusy(k.info.Cap)
 	require.NoError(t, err)
 	guarded(t, "busy-from-marks", func() { require.Equal(t, StateBusy, busy.State) })

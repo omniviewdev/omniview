@@ -54,8 +54,9 @@ type Config struct {
 	MaxRecords int
 	// StartOffset is the offset of the first byte fed: a scanner that is made when the session has output already.
 	StartOffset uint64
-	// PromptEndsCommand makes a prompt start (OSC 133 A) while a command runs end that command, with no exit code: a shell that is replaced (`exec zsh`)
-	// never prints the end of its command, and the prompt of the new one comes. The default (false) keeps a prompt inside a running command as output.
+	// PromptEndsCommand makes a prompt start (OSC 133 A) while a command runs end that command, with no exit code: a command whose end mark never came (it was lost, or the shell
+	// went on to its next prompt without it) is ended by the integration's own next prompt, which follows a directory with the nonce. A nested or exec'd shell has
+	// no integration and never prints that directory, so it errs toward asking: the command reads running until the terminal closes. The default (false) keeps a prompt inside a running command as output.
 	PromptEndsCommand bool
 }
 

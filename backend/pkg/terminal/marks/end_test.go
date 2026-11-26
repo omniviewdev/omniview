@@ -61,7 +61,7 @@ func TestAMarkCutAcrossReadsHasTheSameEnd(t *testing.T) {
 	}
 }
 
-// A shell that is replaced never prints the end of its command: with PromptEndsCommand the prompt of OUR next shell ends it, with no exit code (our
+// A command whose end mark never came: with PromptEndsCommand the prompt of OUR next shell ends it, with no exit code (our
 // scripts print the directory with the nonce right before each prompt), and the next command gets a record of its own. A prompt that is not ours (a
 // prompt framework in a nested shell or an ssh, a program that prints one) ends nothing: the command is one record.
 func TestOurPromptEndsARunningCommandAndAForeignOneDoesNot(t *testing.T) {
@@ -72,7 +72,7 @@ func TestOurPromptEndsARunningCommandAndAForeignOneDoesNot(t *testing.T) {
 	ours := osc("633;P;Cwd=/w;"+testNonce) + osc("133;A")
 	run := func(ends bool, prompt string) []Record {
 		s := New(Config{Nonce: nonce, Now: newClock().Now, MaxRecords: 0, StartOffset: 0, PromptEndsCommand: ends})
-		feedAll(s, osc("133;A")+osc("633;E;exec\\x20zsh;"+testNonce)+osc("133;C")+"x"+prompt+"y"+osc("133;B")+
+		feedAll(s, osc("133;A")+osc("633;E;sleep\\x2060;"+testNonce)+osc("133;C")+"x"+prompt+"y"+osc("133;B")+
 			osc("633;E;ls;"+testNonce)+osc("133;C")+"z"+osc("133;D;3"))
 		return s.Log().Records()
 	}
@@ -80,7 +80,7 @@ func TestOurPromptEndsARunningCommandAndAForeignOneDoesNot(t *testing.T) {
 	if len(recs) != 2 {
 		t.Fatalf("our prompt: the log keeps %d commands, want 2: %v", len(recs), recs)
 	}
-	if recs[0].State != StateEnded || recs[0].HasExitCode || recs[0].CommandLine != "exec zsh" {
+	if recs[0].State != StateEnded || recs[0].HasExitCode || recs[0].CommandLine != "sleep 60" {
 		t.Errorf("the replaced command: %v", recs[0])
 	}
 	if recs[1].CommandLine != "ls" || !recs[1].HasExitCode || recs[1].ExitCode != 3 {
@@ -94,5 +94,19 @@ func TestOurPromptEndsARunningCommandAndAForeignOneDoesNot(t *testing.T) {
 	}
 	if old := run(false, ours); len(old) != 1 {
 		t.Errorf("without the config a prompt inside a running command is output: %d commands, want 1", len(old))
+	}
+}
+
+// The proof of a prompt is used up by the prompt and by every command mark after it: a foreign prompt that comes later, while a command runs, ends nothing.
+func TestTheProofOfOurPromptIsUsedUpByTheMarksAfterIt(t *testing.T) {
+	nonce, err := ParseNonce(testNonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Config{Nonce: nonce, Now: newClock().Now, MaxRecords: 0, StartOffset: 0, PromptEndsCommand: true})
+	feedAll(s, osc("633;P;Cwd=/w;"+testNonce)+osc("133;A")+osc("133;B")+osc("633;E;make;"+testNonce)+osc("133;C")+"out"+osc("133;A")+"more"+osc("133;D;1"))
+	recs := s.Log().Records()
+	if len(recs) != 1 || recs[0].State != StateEnded || !recs[0].HasExitCode || recs[0].ExitCode != 1 {
+		t.Fatalf("a foreign prompt after our own marks ended the command: %v", recs)
 	}
 }
