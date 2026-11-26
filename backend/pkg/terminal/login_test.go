@@ -485,7 +485,7 @@ func waitsForInputNow(pid int) (bool, bool) {
 // wchanWaitsForInput says whether the kernel function a process sleeps in (wchan) is one that waits for input to be readable: a tty
 // read, a select or poll, a read of an empty pipe. Not a pipe write, a wait for a child, or a sleep.
 func wchanWaitsForInput(name string) bool {
-	for _, waits := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken", "pipe_read"} {
+	for _, waits := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
 		if strings.Contains(name, waits) {
 			return true
 		}
@@ -520,13 +520,33 @@ func syscallWaitsForInput(pid int) (bool, bool) {
 	if err != nil || number < 0 {
 		return false, false
 	}
+	var read int
+	var selects []int
 	switch runtime.GOARCH {
 	case "amd64":
-		return slices.Contains([]int{0, 7, 23, 270, 271}, number), true
+		read, selects = 0, []int{7, 23, 270, 271}
 	case "arm64":
-		return slices.Contains([]int{63, 72, 73}, number), true
+		read, selects = 63, []int{72, 73}
+	default:
+		return false, false
 	}
-	return false, false
+	if slices.Contains(selects, number) {
+		return true, true // select and poll take pointers: the number is all there is to check
+	}
+	if number != read || len(fields) < 2 {
+		return false, true
+	}
+	// A read waits for input when it reads the terminal; a shell blocked in a hook's `$(…)` reads a pipe. The shell reads its terminal on
+	// whatever fd it likes (zsh: not 0), so the first argument is looked up.
+	fd, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "0x"), 16, 32)
+	if err != nil {
+		return false, true
+	}
+	target, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/fd/" + strconv.FormatInt(fd, 10))
+	if err != nil {
+		return false, true
+	}
+	return strings.HasPrefix(target, "/dev/pts/") || target == "/dev/tty", true
 }
 
 func TestWaitingForInputIsAProcessBlockedReadingItsStdinAndNothingElse(t *testing.T) {
