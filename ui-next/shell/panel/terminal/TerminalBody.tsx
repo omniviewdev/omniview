@@ -15,7 +15,7 @@ import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
 import { screenReaderWords, type ScreenReaderSource } from './screenReader';
 import { laneOf } from './state';
-import { TerminalToolbar } from './TerminalToolbar';
+import { HELD_RENAME, TerminalToolbar } from './TerminalToolbar';
 import type { TerminalSessions } from './TerminalSessions';
 import { TERMINAL_GONE, TERMINAL_ICON } from './tool';
 import styles from './TerminalBody.module.css';
@@ -344,7 +344,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
             screen.clear();
           }}
           onCopy={copy}
-          onRename={renaming === null ? undefined : rename}
+          onRename={renaming === null || session.held === true ? undefined : rename}
+          renameReason={session.held === true ? HELD_RENAME : undefined}
         />
       </div>
       <div className={styles.main}>

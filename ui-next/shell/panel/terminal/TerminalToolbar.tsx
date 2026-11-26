@@ -10,6 +10,8 @@ import { chordText } from '../../palette/words';
 export const TERMINAL_TOOLS_LABEL = 'Terminal tools';
 export const NO_SELECTION = 'Select text in the terminal first';
 export const NO_TAB = 'The session\'s tab is not on screen';
+/** The words of the tab menu's Rename session… for a session its plugin left behind. */
+export const HELD_RENAME = 'The plugin was unloaded: this session stays as it is until it is closed.';
 
 type TerminalToolbarProps = {
   /** Some of the output is selected: Copy has something to copy. */
@@ -25,9 +27,11 @@ type TerminalToolbarProps = {
   readonly onCopy: () => void;
   /** Starts the rename of this session's tab (the strip draws the field); absent where there is no strip to draw it in. */
   readonly onRename: (() => void) | undefined;
+  /** Why Rename cannot apply, when it is not for want of a strip (`NO_TAB`): the words of the tab's own menu. */
+  readonly renameReason?: string | undefined;
 };
 
-export function TerminalToolbar({ selected, copied, finding, platform, onFind, onClear, onCopy, onRename }: TerminalToolbarProps) {
+export function TerminalToolbar({ selected, copied, finding, platform, onFind, onClear, onCopy, onRename, renameReason }: TerminalToolbarProps) {
   return (
     <RovingGroup label={TERMINAL_TOOLS_LABEL} kind="column" role="toolbar" gap={4} align="center">
       <IconButton icon="search" label="Find" variant="ghost" pressed={finding} data-terminal-tool="find" {...tip(`Find\n${chordText('Mod+F', platform)}`)} onClick={onFind} />
@@ -45,9 +49,9 @@ export function TerminalToolbar({ selected, copied, finding, platform, onFind, o
         icon="pencil"
         label="Rename session"
         variant="ghost"
-        disabledReason={onRename === undefined ? NO_TAB : undefined}
+        disabledReason={onRename === undefined ? (renameReason ?? NO_TAB) : undefined}
         data-terminal-tool="rename"
-        {...tip(onRename === undefined ? `Rename session\n${NO_TAB}` : 'Rename session')}
+        {...tip(onRename === undefined ? `Rename session\n${renameReason ?? NO_TAB}` : 'Rename session')}
         onClick={onRename}
       />
     </RovingGroup>

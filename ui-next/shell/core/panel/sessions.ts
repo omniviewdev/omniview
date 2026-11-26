@@ -117,8 +117,8 @@ export function setSessionState(state: PanelState, id: SessionId, change: StateC
   return { state: settle(patch(state, { sessions: Object.freeze({ ...state.sessions, [id]: next }) })), result: { status: 'done' } };
 }
 
-/** Characters a title never holds: controls (C0, DEL, C1), line and paragraph separators and bidirectional controls. A title is drawn on one line as text, and nothing in it may carry an escape sequence or reorder the tab's words. */
-const NOT_IN_A_TITLE = /[\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+/** Characters a title never holds: controls (C0, DEL, C1), line and paragraph separators, format characters that draw nothing or reorder (zero-width, bidirectional, the tags: all of Cf but the joiner an emoji sequence is made of) and the fillers. A title is drawn on one line as text, and nothing in it may carry an escape sequence or reorder the tab's words. */
+const NOT_IN_A_TITLE = /[\p{Cc}\u2028\u2029\u115f\u1160\u3164\uffa0\u2800]|(?!\u200d)\p{Cf}/gu;
 
 /** A title as the model keeps it: the words of `text` without what a title never holds. */
 const titleText = (value: unknown): string => (typeof value === 'string' ? text(value.replaceAll(NOT_IN_A_TITLE, '')) : '');
@@ -126,7 +126,7 @@ const titleText = (value: unknown): string => (typeof value === 'string' ? text(
 /**
  * The title of a session, from its owner (`pinned` false) or from the person (`pinned` true). The title is cut as an opened session's is and has no control character. Only the title (and the pin) change, so the state, the
  * time, the place and the choices of the session are as they were; the tab's name, its twins and its ordinal follow from the snapshot (`selectors`). The same title changes nothing. A held session (A21) is over and never
- * changes again, so it is refused like a change of its state. A session the person named refuses its owner's naming.
+ * changes again, so it is refused like a change of its state. A session the person named refuses its owner's naming, until the person clears the name (an empty title from them).
  */
 function titled(state: PanelState, id: SessionId, title: string, pinned: boolean): Step<PanelResult> {
   const session = own(state.sessions, id);
@@ -143,6 +143,12 @@ function titled(state: PanelState, id: SessionId, title: string, pinned: boolean
   }
 
   const cut = titleText(title);
+  if (cut === '' && pinned && session.titlePinned === true) {
+    // An empty name undoes the person's name: the title stays as it is until its owner names the session again, and the owner may.
+    const { titlePinned: _named, ...rest } = session;
+    return { state: settle(patch(state, { sessions: Object.freeze({ ...state.sessions, [id]: Object.freeze(rest) }) })), result: { status: 'done' } };
+  }
+
   if (cut === '') {
     return refuse(state, 'invalid', 'A session needs a title.');
   }

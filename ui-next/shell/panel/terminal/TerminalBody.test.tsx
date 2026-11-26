@@ -59,6 +59,7 @@ function mount(options: { readonly focus?: boolean; readonly visible?: boolean; 
     const found = store.getSnapshot().sessions[id];
     return options.held === true && found !== undefined ? { ...found, held: true as const } : found;
   };
+
   const body = (visible: boolean) => <TerminalBody sessions={sessions} session={session()} visible={visible} load={loader.load} screenReader={counted} {...(options.name === undefined ? {} : { name: options.name })} />;
   const ui = (visible: boolean) => (options.renaming === undefined ? body(visible) : <RenamingProvider renaming={options.renaming}>{body(visible)}</RenamingProvider>);
   const view = render(ui(options.visible ?? true));

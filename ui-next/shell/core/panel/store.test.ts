@@ -655,7 +655,8 @@ describe('naming a session (the person\'s name is theirs: the owner no longer na
     expect(h.snapshot().sessions.s1?.title).toHaveLength(LIMITS.text);
     h.store.renameSession('s1', 'a\u001b[31m\nb\u0007\u202ec');
     expect(h.snapshot().sessions.s1?.title).toBe('a[31mbc');
-    expect(h.store.renameSession('s1', '\u001b\u0007')).toMatchObject({ status: 'refused', reason: 'invalid' });
+    h.store.openSession(session('terminal', 'host', 'b'));
+    expect(h.store.renameSession('s2', '\u001b\u0007')).toMatchObject({ status: 'refused', reason: 'invalid' });
   });
 
   it('drops control characters from a title the owner gives too', () => {

@@ -151,6 +151,8 @@ type Entry = {
   /** What the target says the tab is called once the feed says more than the target knew (`TerminalTarget.retitle`), and the title the session has now. */
   readonly retitle: TerminalTarget['retitle'];
   title: string;
+  /** The person had named the session when the registry last looked: when the name is cleared (the pin is gone) the registry names the session by what the feed says now. */
+  named: boolean;
   /** The status the registry last copied to the session. */
   last: TerminalFeedSnapshot;
   /** The registry stopped listening to the feed and closed it, and the session stays (A21): the entry is kept for the feed, which the view reads, and for the card's record, until the tab closes. Closed only once. */
@@ -363,6 +365,17 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         } else {
           release(id);
         }
+      } else {
+        const session = state.sessions[id];
+        const named = session?.titlePinned === true;
+        if (entry.named && !named && session !== undefined) {
+          // The person cleared their name: the tab is named by what the feed says now, without waiting for the feed to change.
+          entry.named = false;
+          entry.title = session.title;
+          retitle(id, entry, entry.feed.getSnapshot());
+        } else {
+          entry.named = named;
+        }
       }
     }
   };
@@ -476,7 +489,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
 
     // The session is the same one: its entry is replaced, with what the tab was named and what the card knows, and the feed that was lost is let go of (it sends the host nothing for a terminal it lost, and nobody hears it
     // any more). The entry is the new one before the panel hears of the first status, as when a session opens.
-    const next: Entry = { plugin: old.plugin, target: old.target, resource: old.resource, feed, stop, retitle: old.retitle, title: old.title, last: old.last, ended: false, left: false, announced: true, taking: false };
+    const next: Entry = { plugin: old.plugin, target: old.target, resource: old.resource, feed, stop, retitle: old.retitle, title: old.title, named: old.named, last: old.last, ended: false, left: false, announced: true, taking: false };
     entries.set(session, next);
     end(old);
     retitle(session, next, first);
@@ -595,6 +608,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         stop: () => undefined,
         retitle: target.retitle,
         title: saved?.title ?? text(target.title),
+        named: saved?.titlePinned === true,
         last: saved === undefined ? first : { state: saved.state },
         ended: false,
         left: false,

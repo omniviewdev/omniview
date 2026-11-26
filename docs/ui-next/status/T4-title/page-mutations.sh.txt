@@ -116,6 +116,30 @@ run unchanged-name-pins "ui-next/shell/panel/SessionTabs.tsx" \
   's/title\.trim\(\) !== store\.getSnapshot\(\)\.sessions\[session\]\?\.title/title.trim() !== undefined/' \
   'pins the name the person gave'
 
+run clearing-the-name-does-not-unpin "ui-next/shell/core/panel/sessions.ts" \
+  's/if \(cut === .. && pinned && session\.titlePinned === true\) \{/if (false) {/' \
+  'clears the pin of a session the person named|is the same for a name of nothing but invisible|undoes a name: clearing the field|names the tab by the program again when the person clears'
+
+run unpinned-tab-keeps-the-name "ui-next/shell/panel/terminal/TerminalSessions.ts" \
+  's/if \(entry\.named && !named && session !== undefined\) \{/if (false) {/' \
+  'names the tab by the program again when the person clears'
+
+run model-keeps-invisible-characters "ui-next/shell/core/panel/sessions.ts" \
+  's#\|\(\?!\\u200d\)\\p\{Cf\}##' \
+  'drops zero-width and invisible characters from a title|is the same for a name of nothing but invisible'
+
+run feed-keeps-invisible-characters "ui-next/shell/panel/terminal/title.ts" \
+  's#\|\(\?!\\u200d\)\\p\{Cf\}##' \
+  'says no title for one of zero-width and invisible characters'
+
+run toolbar-rename-ignores-held "ui-next/shell/panel/terminal/TerminalBody.tsx" \
+  's/renaming === null \|\| session\.held === true \?/renaming === null ?/' \
+  'cannot rename a session its plugin left behind'
+
+run feed-takes-a-title-whenever-it-comes "ui-next/shell/panel/terminal/execFeed.ts" \
+  "s/if \(!streaming \|\| status\.state !== 'running'\) \{/if (false) {/" \
+  'takes none before the host said ready|takes none once the terminal is not this page'
+
 # ---- Rename ----
 
 run toolbar-rename-asks-nobody "ui-next/shell/panel/terminal/TerminalBody.tsx" \
