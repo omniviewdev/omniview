@@ -133,3 +133,72 @@ describe('New terminal here', () => {
     }
   });
 });
+
+// THE COMMANDS OF THE SHELL'S MARKS (issue #694 step 5): the keyboard path to what the gutter shows. Every action of the gutter is an item of this menu, named, with the reason it is unavailable when it is.
+
+describe('the commands of the shell', () => {
+  const withCommands = (commands: { readonly count?: number; readonly output?: boolean; readonly rerun?: string | undefined } = {}) => {
+    const actions = { ...fakes(), commands: { previous: vi.fn(), next: vi.fn(), selectOutput: vi.fn(), copyOutput: vi.fn(), rerun: vi.fn() } };
+    const items = terminalMenu(actions, { selected: true, input: true, commands: { count: commands.count ?? 3, output: commands.output ?? true, rerun: 'rerun' in commands ? commands.rerun : undefined } });
+    return { actions, items };
+  };
+
+  it('are not in the menu of a window or a screen that has none: no actions, no items', () => {
+    expect(menu().map((item) => item.id)).not.toContain('previous-command');
+  });
+
+  it('are five items after the tools, behind a separator of their own: the jumps, the output, and the line again, in the words a person says', () => {
+    const { items } = withCommands();
+    expect(items.map((item) => [item.kind, item.id, 'label' in item ? item.label : undefined])).toEqual([
+      ['action', 'copy', 'Copy'],
+      ['action', 'paste', 'Paste'],
+      ['action', 'select-all', 'Select all'],
+      ['separator', 'tools', undefined],
+      ['action', 'clear', 'Clear'],
+      ['action', 'find', 'Find'],
+      ['separator', 'commands', undefined],
+      ['action', 'previous-command', 'Previous command'],
+      ['action', 'next-command', 'Next command'],
+      ['action', 'select-command-output', 'Select command output'],
+      ['action', 'copy-command-output', 'Copy command output'],
+      ['action', 'rerun-command', 'Run command again'],
+    ]);
+  });
+
+  it('are available when there are commands, and each says why it is not when there are none', () => {
+    const some = withCommands().items;
+    expect(['previous-command', 'next-command', 'select-command-output', 'copy-command-output', 'rerun-command'].map((id) => action(some, id).disabled ?? false)).toEqual([false, false, false, false, false]);
+    const none = withCommands({ count: 0, output: false, rerun: 'No commands yet' }).items;
+    expect(['previous-command', 'next-command', 'select-command-output', 'copy-command-output', 'rerun-command'].map((id) => action(none, id).disabled)).toEqual(Array.from({ length: 5 }, () => 'No commands yet'));
+  });
+
+  it('say that the command printed no output for the two items that need it, and leave the jumps and the re-run alone', () => {
+    const { items } = withCommands({ output: false });
+    expect(action(items, 'select-command-output').disabled).toBe('This command printed no output');
+    expect(action(items, 'copy-command-output').disabled).toBe('This command printed no output');
+    expect(action(items, 'previous-command').disabled).toBeFalsy();
+    expect(action(items, 'rerun-command').disabled).toBeFalsy();
+  });
+
+  it('say why the line cannot be typed again: a command that runs, input that is off', () => {
+    expect(action(withCommands({ rerun: 'A command is running' }).items, 'rerun-command').disabled).toBe('A command is running');
+    expect(action(withCommands({ rerun: 'Input is off' }).items, 'rerun-command').disabled).toBe('Input is off');
+  });
+
+  it('draw no shortcut and call their own action, once, and no other', () => {
+    const { actions, items } = withCommands();
+    expect(items.flatMap((item) => ('shortcut' in item && item.shortcut !== undefined ? [item.id] : []))).toEqual([]);
+    const names = { 'previous-command': 'previous', 'next-command': 'next', 'select-command-output': 'selectOutput', 'copy-command-output': 'copyOutput', 'rerun-command': 'rerun' } as const;
+    for (const [id, name] of Object.entries(names)) {
+      action(items, id).onSelect();
+      expect(actions.commands[name], id).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('come before New terminal here, which stays the last item', () => {
+    const actions = { ...fakes(), newHere: vi.fn(), commands: { previous: vi.fn(), next: vi.fn(), selectOutput: vi.fn(), copyOutput: vi.fn(), rerun: vi.fn() } };
+    const ids = terminalMenu(actions, { selected: true, input: true, here: true, commands: { count: 1, output: true, rerun: undefined } }).map((item) => item.id);
+    expect(ids.at(-1)).toBe('new-here');
+    expect(ids.indexOf('rerun-command')).toBeLessThan(ids.indexOf('terminals'));
+  });
+});

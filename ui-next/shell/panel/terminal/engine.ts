@@ -96,6 +96,37 @@ export type LinkHandler = {
   readonly hover: (hover: LinkHover | undefined) => void;
 };
 
+/**
+ * A line of the buffer that the emulator keeps in step with the text: it moves up as the buffer scrolls, and is gone (`line` answers -1, `onDispose` is told) when its line is, which happens when the scrollback drops it,
+ * when the buffer is cleared, and when the screen is reset. It costs the emulator a few bytes and no DOM.
+ */
+export type EngineMarker = {
+  /** The line of the buffer the marker is on (0 is the oldest line the emulator holds), or -1 once it is gone. */
+  readonly line: () => number;
+  /** Tells `listener` once, when the marker is gone (at once, if it already is). Returns what stops it. */
+  readonly onDispose: (listener: () => void) => () => void;
+  readonly dispose: () => void;
+};
+
+/** Where the parse stands: a marker on the cursor's line, and the column the cursor is in. */
+export type EngineMark = {
+  readonly marker: EngineMarker;
+  readonly column: number;
+};
+
+/** What `Engine.decorate` returns: a decoration is drawn beside its marker's line while the marker lives; `refresh` paints it again (its state changed). */
+export type EngineDecoration = {
+  readonly refresh: () => void;
+  readonly dispose: () => void;
+};
+
+/** Where the screen's view is, in lines of the buffer: the top line it shows, how many it shows, and whether it is at the bottom (following the output). */
+export type EngineViewport = {
+  readonly top: number;
+  readonly rows: number;
+  readonly atBottom: boolean;
+};
+
 export type Engine = {
   /** Draws the screen inside `host`, which is laid out and visible when this is called. */
   readonly open: (host: HTMLElement) => void;
@@ -165,6 +196,29 @@ export type Engine = {
    * then does nothing. The emulator's own way of opening a link (a question, then a window) is never used, with a handler or without.
    */
   readonly setLinks: (handler: LinkHandler | undefined) => void;
+  /**
+   * A marker on the cursor's line, for the place the parse stands. It is right only INSIDE the callback of a write (`write`'s `done`), which runs when the bytes before it are parsed: a marker made while a write is still
+   * waiting reads the line the cursor was on before it (xterm.js #5214). Nothing on the alternate screen (`undefined`: a program that has the whole screen has no command lines, and a marker made there is the other buffer's),
+   * and nothing once the emulator is disposed.
+   */
+  readonly mark: () => EngineMark | undefined;
+  /**
+   * Draws a decoration in the gutter beside the line of `marker` (the column left of the first cell): `paint` gets its element, when the emulator draws it and again whenever it is drawn anew, and fills it. A decoration is a
+   * DOM node of the emulator's for as long as its marker lives, so the caller caps them. The screen hides them while a program has the alternate screen up. `undefined` for a marker that is gone.
+   */
+  readonly decorate: (marker: EngineMarker, paint: (element: HTMLElement) => void) => EngineDecoration | undefined;
+  /** The line of the buffer the cursor is on and its column, now (which, while a write waits, is not where the parse of the bytes after it will leave it). */
+  readonly cursor: () => { readonly line: number; readonly column: number };
+  readonly viewport: () => EngineViewport;
+  /** The text of the lines `[from, to)` of the buffer: a wrapped line is joined to its continuation, the end of a line is trimmed, lines are joined with a line feed. Empty for a range with no line. `columns` cuts, in terminal cells (a wide character is two), the first row from a column and the last row at a column. */
+  readonly lines: (from: number, to: number, columns?: { readonly from?: number; readonly to?: number }) => string;
+  /** Selects the lines `[from, to)` whole. */
+  readonly selectLines: (from: number, to: number) => void;
+  /** Scrolls so that `line` is the top of the view (as far as the buffer allows). */
+  readonly scrollTo: (line: number) => void;
+  readonly scrollToBottom: () => void;
+  /** Whether a program has the alternate screen up. */
+  readonly alternate: () => boolean;
   readonly dispose: () => void;
 };
 

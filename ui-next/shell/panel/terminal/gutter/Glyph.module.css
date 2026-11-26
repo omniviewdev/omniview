@@ -1,0 +1,51 @@
+@layer ov.shell {
+  /* The mark of a command in the gutter (issue #694 step 5): the emulator draws a decoration at the first cell of the command's line, and this sits in the left inset of the screen, outside the text (`TerminalBody.module.css`
+     insets the emulator by 12 px), so that no cell of output is covered. The decoration takes no pointer event, which would stop a selection that starts at the first cell; the mark does, to be hovered. The state is a
+     shape as well as a colour (a check, a cross, a ring, a dash): the colour alone would be lost to a person who cannot tell it. It is not drawn while a program has the alternate screen up (the host element says so):
+     a decoration is drawn by the line of its marker, whichever screen is shown. */
+  .decoration {
+    pointer-events: none;
+  }
+
+  .glyph {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    inline-size: var(--ov-spacing-12);
+    block-size: 100%;
+    color: var(--ov-fg-muted);
+    cursor: default;
+    pointer-events: auto;
+  }
+
+  .glyph[data-state='success'] {
+    color: var(--ov-icon-success);
+  }
+
+  .glyph[data-state='failure'] {
+    color: var(--ov-icon-error);
+  }
+
+  .glyph[data-state='incomplete'] {
+    color: var(--ov-icon-warning);
+  }
+
+  .glyph svg {
+    display: block;
+    inline-size: 10px;
+    block-size: 10px;
+    fill: none;
+    stroke: currentcolor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.5;
+  }
+
+  :global([data-alternate]) .glyph {
+    display: none;
+  }
+}

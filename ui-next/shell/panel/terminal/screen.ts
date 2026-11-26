@@ -1,8 +1,10 @@
 import type { Platform } from '../../core/chords';
 import { CURSOR_INIT, FULL_RESET, modesPrologue, type Engine, type EngineAppearance, type EngineLoader, type EngineOptions, type Finder, type LinkHandler } from './engine';
-import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
+import type { PlacedMark, TerminalFeedHandle, TerminalFeedSnapshot, TerminalReplay, TerminalSize } from './feed';
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
+import { createCommandGutter, type CommandGutter, type GutterEvent } from './gutter/commandGutter';
+import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED } from './gutter/words';
 import { drainLine, exitLine, failureLines } from './state';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It is framework-free and knows no xterm: it is written against `Engine`, and the body
@@ -56,6 +58,9 @@ export const HELD_TYPING = 64 << 10;
 /** How long a screen waits for a frame before it goes on from a timer, shown or hidden (the name is from its first use, a hidden screen): a window that is minimized or covered suspends its frames, and a build in a session must not stall for it. */
 export const HIDDEN_TICK_MS = 250;
 
+/** No bytes: a write of them runs when what was written before it is parsed. */
+const NOTHING = new Uint8Array(0);
+
 /** The cells an emulator is made with, until the host is measured. */
 const INITIAL = Object.freeze({ cols: 80, rows: 24 });
 
@@ -105,6 +110,26 @@ export type ScreenDeps = {
   readonly onFindClose?: (() => boolean) | undefined;
 };
 
+/**
+ * What a person does with the commands the shell's marks made (issue #694 step 5): jump to the previous and the next, select, copy and run again. Every action says what it did, for a person who cannot see the view move
+ * (`onEvent`), and the hover of a mark is told the same way.
+ */
+export type ScreenCommands = {
+  /** There are commands to act on, and the emulator is not showing a program's alternate screen: the jump keys are the terminal's. */
+  readonly has: () => boolean;
+  /** What the menu offers now: how many commands, whether the target printed output, and the reason a command cannot be run again (`undefined`: it can). */
+  /** A string that changes when what the menu offers may have: cheap (no output is read), for a menu that is open to be put away. */
+  readonly revision: () => string;
+  readonly state: () => { readonly count: number; readonly output: boolean; readonly rerun: string | undefined };
+  readonly jump: (direction: 'previous' | 'next', options?: { readonly select?: boolean }) => void;
+  readonly selectOutput: () => void;
+  readonly copyOutput: () => Promise<boolean>;
+  /** Types the target's command line into the shell (and Enter only for a line the shell proved). */
+  readonly rerun: () => void;
+  /** The gutter's events: where the pointer is on a mark, and what an action did. Returns what stops it. */
+  readonly onEvent: (listener: (event: GutterEvent) => void) => () => void;
+};
+
 export type TerminalScreen = {
   /** The element the emulator draws in. Nothing else happens. */
   readonly mount: (host: HTMLElement) => void;
@@ -136,6 +161,8 @@ export type TerminalScreen = {
   readonly setLinks: (handler: LinkHandler | undefined) => void;
   /** Selects the whole buffer, the screen and the scrollback (nothing before the emulator is made): the key does it too. */
   readonly selectAll: () => void;
+  /** The commands of the shell's marks: nothing before the emulator is made. */
+  readonly commands: ScreenCommands;
 };
 
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
@@ -201,7 +228,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** The emulator holds output: live bytes were written to it, or a replay was applied. A replay that comes after that is a LATE one (a stream that lost bytes, a gap), not the first of a terminal the page took back. */
   let holds = false;
   /** The replay being applied: its bytes are written a share at a time, and nothing the emulator says is heard until the last of them is parsed. */
-  let replaying: { readonly replay: TerminalReplay; readonly late: boolean; written: number } | undefined;
+  let replaying: { readonly replay: TerminalReplay; readonly late: boolean; written: number; marked: number; placing: number; bytesDone: boolean } | undefined;
   /**
    * What the screen has still to settle with the host once a replay is parsed: the size the host's terminal has, and whether the replay came late. When the host has the size the panel has, a full-screen program is made to paint
    * again; when it has another and the replay was late, the feed is told the panel's size again (the feed was told it before the gap, and whoever held the terminal meanwhile may have changed the host's: a first replay needs no
@@ -218,6 +245,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** The attributes the host asked the emulator's input to have, and the handler it asked its links to have: kept for an emulator that is not made yet, and given to the one that is. */
   let inputAttributes: Readonly<Record<string, string>> | undefined;
   let linkHandler: LinkHandler | undefined;
+  /** The command gutter of the emulator: made with it. */
+  let gutter: CommandGutter | undefined;
+  /** The writes that make markers that the emulator has not run yet: a replay is not begun while one waits (it would let go of the gutter under it). */
+  let markWrites = 0;
+  const commandListeners = new Set<(event: GutterEvent) => void>();
 
   const set = (change: Partial<ScreenSnapshot>) => {
     snapshot = { ...snapshot, ...change };
@@ -266,17 +298,46 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       feed.ack(bytes);
     }
 
-    if ((blocked && pending < FLOW.high / 2) || (replayHeld !== undefined && pending === 0)) {
+    if ((blocked && pending < FLOW.high / 2) || (replayHeld !== undefined && pending === 0 && markWrites === 0)) {
       blocked = false;
       schedule();
     }
   }
 
-  /** Writes what is held in slices the emulator parses without a long task, counts what it has accepted and not parsed, and tells the feed what it parsed: the host paces the shell by that. */
-  function send(emulator: Engine, chunks: readonly Uint8Array[]): void {
+  /**
+   * The marks of the shell stand here, between the bytes written so far and the bytes after them: an empty write, which the emulator runs when it has parsed what was written before it, makes their markers (a marker made before
+   * the parse reads the line the cursor was on, xterm.js #5214). It is no byte, and is neither counted nor acknowledged.
+   */
+  function place(emulator: Engine, group: readonly PlacedMark[], inReplay?: NonNullable<typeof replaying>): void {
+    markWrites += 1;
+    if (inReplay !== undefined) {
+      inReplay.placing += 1;
+    }
+
+    emulator.write(NOTHING, () => {
+      markWrites -= 1;
+      gutter?.ingest(group.map((one) => one.mark));
+      if (inReplay !== undefined) {
+        inReplay.placing -= 1;
+        if (replaying === inReplay) {
+          finishReplayWhenPlaced();
+        }
+      }
+
+      if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
+        schedule();
+      }
+    });
+  }
+
+  /** Writes what is held in slices the emulator parses without a long task, counts what it has accepted and not parsed, and tells the feed what it parsed: the host paces the shell by that. The slices end where a mark stands. */
+  function send(emulator: Engine, chunks: readonly Uint8Array[], marks: readonly PlacedMark[] = []): void {
     holds = true;
-    let piece = new Uint8Array(FLOW.slice);
+    let piece: Uint8Array | undefined = new Uint8Array(FLOW.slice);
     let filled = 0;
+    // The bytes handed over so far, and the next mark that has not been placed.
+    let handed = 0;
+    let next = 0;
     const flush = () => {
       if (filled === 0) {
         return;
@@ -284,26 +345,52 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
       const bytes = filled;
       pending += bytes;
-      emulator.write(piece.subarray(0, bytes), () => {
+      // A full scratch is handed over whole and a new one made when more comes; a short one (a mark cut the slice) is copied to a buffer of its own size, so that the write does not hold the 64 KiB until it is parsed.
+      const scratch = piece ?? new Uint8Array(0);
+      const out = bytes === FLOW.slice ? scratch : scratch.slice(0, bytes);
+      emulator.write(out, () => {
         parsed(bytes, true);
       });
-      piece = new Uint8Array(FLOW.slice);
+      if (bytes === FLOW.slice) {
+        piece = undefined;
+      }
+
       filled = 0;
     };
 
+    const placeDue = (all: boolean) => {
+      const from = next;
+      while (next < marks.length && (all || (marks[next]?.at ?? Infinity) <= handed)) {
+        next += 1;
+      }
+
+      if (next > from) {
+        flush();
+        place(emulator, marks.slice(from, next));
+      }
+    };
+
+    placeDue(false);
     for (const chunk of chunks) {
       for (let at = 0; at < chunk.length; ) {
-        const take = Math.min(chunk.length - at, FLOW.slice - filled);
+        const untilMark = next < marks.length ? Math.max(1, (marks[next]?.at ?? Infinity) - handed) : Infinity;
+        const take = Math.min(chunk.length - at, FLOW.slice - filled, untilMark);
+        piece ??= new Uint8Array(FLOW.slice);
         piece.set(chunk.subarray(at, at + take), filled);
         filled += take;
         at += take;
+        handed += take;
         if (filled === FLOW.slice) {
           flush();
         }
+
+        placeDue(false);
       }
     }
 
     flush();
+    // A mark that claims a place past the bytes (a host that did not cut) stands after them.
+    placeDue(true);
   }
 
   /** One write of a replay: counted as accepted until it is parsed, never acknowledged, and the last of them ends the replay. */
@@ -312,8 +399,9 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     pending += bytes;
     emulator.write(piece, () => {
       parsed(bytes, false);
-      if (last) {
-        finishReplay();
+      if (last && replaying !== undefined) {
+        replaying.bytesDone = true;
+        finishReplayWhenPlaced();
       }
     });
   }
@@ -325,7 +413,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   function beginReplay(emulator: Engine, taken: TerminalReplay): void {
     const late = holds;
     holds = true;
-    replaying = { replay: taken, late, written: 0 };
+    gutter?.reset();
+    replaying = { replay: taken, late, written: 0, marked: 0, placing: 0, bytesDone: false };
     const { cols, rows } = taken.startSize;
     const now = emulator.size();
     if (now.cols !== cols || now.rows !== rows) {
@@ -335,6 +424,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     // An emulator that was only written to draws no cursor (`CURSOR_INIT`). The reset leaves it on the normal screen, so a replay that starts there needs the bounce; one that starts on the alternate screen switches to it in its modes.
     const cursor = taken.startModes.altScreen ? '' : CURSOR_INIT;
     writeReplay(emulator, `${FULL_RESET}${cursor}${modesPrologue(taken.startModes)}`, taken.data.length === 0);
+    placeReplayMarks(emulator);
   }
 
   /** Writes the next slice of the replay's bytes, at most `budget` of them, and says how many: none once they all are written, when the parse of the last slice ends the replay. */
@@ -343,8 +433,14 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       return 0;
     }
 
-    const { data } = replaying.replay;
-    const count = Math.min(data.length - replaying.written, FLOW.slice, budget);
+    const { data, marks } = replaying.replay;
+    let count = Math.min(data.length - replaying.written, FLOW.slice, budget);
+    // The slice ends where the next mark stands.
+    const markAt = marks?.[replaying.marked]?.at;
+    if (markAt !== undefined && markAt > replaying.written) {
+      count = Math.min(count, markAt - replaying.written);
+    }
+
     if (count <= 0) {
       return 0;
     }
@@ -352,7 +448,34 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     const at = replaying.written;
     replaying.written += count;
     writeReplay(emulator, data.subarray(at, at + count), replaying.written === data.length);
+    placeReplayMarks(emulator);
     return count;
+  }
+
+  /** Places the marks of the replay that stand at the bytes written so far (the ones at its first byte after its prologue, the ones inside after the slice that ends at them, the ones at its end after the last). */
+  function placeReplayMarks(emulator: Engine): void {
+    if (replaying === undefined) {
+      return;
+    }
+
+    const { marks } = replaying.replay;
+    const from = replaying.marked;
+    let next = from;
+    while (next < (marks?.length ?? 0) && (marks?.[next]?.at ?? Infinity) <= replaying.written) {
+      next += 1;
+    }
+
+    if (marks !== undefined && next > from) {
+      replaying.marked = next;
+      place(emulator, marks.slice(from, next), replaying);
+    }
+  }
+
+  /** The last byte of the replay is parsed and every mark of it is placed (the ones at its end after it): the replay is over. A mark placed after the replay ended would be made at a size and a time that are not the replay's. */
+  function finishReplayWhenPlaced(): void {
+    if (replaying !== undefined && replaying.bytesDone && replaying.placing === 0 && replaying.marked >= (replaying.replay.marks?.length ?? 0)) {
+      finishReplay();
+    }
   }
 
   /**
@@ -423,7 +546,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     if (replaying === undefined) {
       replayHeld ??= feed.takeReplay?.();
       if (replayHeld !== undefined) {
-        if (pending > 0) {
+        if (pending > 0 || markWrites > 0) {
           return;
         }
 
@@ -459,11 +582,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       }
 
       const out = feed.read(budget);
-      if (out.chunks.length === 0) {
+      if (out.chunks.length === 0 && out.marks === undefined) {
         break;
       }
 
-      send(engine, out.chunks);
+      send(engine, out.chunks, out.marks);
       taken += out.bytes;
     }
 
@@ -618,6 +741,21 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         }
 
         return !event.metaKey;
+      case 'previousCommand':
+      case 'nextCommand':
+      case 'selectPreviousCommand':
+      case 'selectNextCommand':
+        // With no commands to go to, or a program that has the whole screen, the key is what it was: the window's on a Mac, the shell's elsewhere.
+        if (!commands.has()) {
+          return deps.platform !== 'mac' && !event.shiftKey;
+        }
+
+        event.preventDefault();
+        if (event.type === 'keydown') {
+          commands.jump(kind === 'previousCommand' || kind === 'selectPreviousCommand' ? 'previous' : 'next', { select: kind === 'selectPreviousCommand' || kind === 'selectNextCommand' });
+        }
+
+        return false;
     }
   }
 
@@ -675,6 +813,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     readerMode = deps.screenReader.getSnapshot();
     const made = factory({ cols: INITIAL.cols, rows: INITIAL.rows, scrollback: SCROLLBACK, appearance: deps.appearance(host), screenReaderMode: readerMode });
     engine = made;
+    gutter = createCommandGutter(made);
+    stops.push(
+      gutter.onEvent((event) => {
+        tellCommands(event);
+      }),
+    );
     made.open(host);
     made.describe(label, deps.descriptionId);
     made.setKeys(onKey);
@@ -751,6 +895,83 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       create();
     }
   }
+
+  const tellCommands = (event: GutterEvent) => {
+    for (const listener of [...commandListeners]) {
+      listener(event);
+    }
+  };
+
+  const sayCommands = (words: string) => {
+    tellCommands({ kind: 'said', words });
+  };
+
+  /** Why the line of the command cannot be typed again now, or nothing when it can. */
+  const rerunBlocked = (): string | undefined => {
+    if (gutter === undefined || gutter.commands().length === 0) {
+      return NO_COMMANDS;
+    }
+
+    if (!takesInput(feed.getSnapshot())) {
+      return INPUT_OFF;
+    }
+
+    if (replaying !== undefined || gutter.busy()) {
+      return RERUN_RUNNING;
+    }
+
+    return gutter.rerun() === undefined ? NO_LINE : undefined;
+  };
+
+  const commands: ScreenCommands = {
+    has: () => gutter !== undefined && engine?.alternate() !== true && gutter.commands().length > 0,
+    revision: () => `${String(gutter?.commands().length ?? 0)} commands, ${engine?.alternate() === true ? 'alternate' : 'normal'}, ${gutter?.busy() === true ? 'running' : 'idle'}, ${gutter?.hasOutput() === true ? 'output' : 'no output'}, ${takesInput(feed.getSnapshot()) ? 'input' : 'no input'}`,
+    state: () => ({ count: gutter?.commands().length ?? 0, output: engine?.alternate() !== true && gutter?.hasOutput() === true, rerun: rerunBlocked() }),
+    jump: (direction, options) => {
+      gutter?.jump(direction, options);
+    },
+    selectOutput: () => {
+      if (engine?.alternate() === true) {
+        sayCommands(NO_OUTPUT);
+        return;
+      }
+
+      gutter?.selectOutput();
+    },
+    copyOutput: async () => {
+      const text = engine?.alternate() === true ? undefined : gutter?.output();
+      if (text === undefined) {
+        sayCommands(NO_OUTPUT);
+        return false;
+      }
+
+      const copied = await deps.copy(text);
+      sayCommands(copied ? COPIED_OUTPUT : COULD_NOT_COPY);
+      return copied;
+    },
+    rerun: () => {
+      const blocked = rerunBlocked();
+      const plan = blocked === undefined ? gutter?.rerun() : undefined;
+      if (blocked !== undefined || plan === undefined || engine === undefined) {
+        sayCommands(blocked ?? NO_LINE);
+        return;
+      }
+
+      // The person's own input, as a paste is: a program that asked for bracketed paste gets the line between its markers, and the line is not run by the paste. Enter is pressed only for a line the shell proved.
+      engine.paste(plan.text);
+      if (plan.enter) {
+        typed('\r');
+      }
+
+      sayCommands(plan.enter ? RERUN_SENT : RERUN_TYPED);
+    },
+    onEvent: (listener) => {
+      commandListeners.add(listener);
+      return () => {
+        commandListeners.delete(listener);
+      };
+    },
+  };
 
   return {
     mount: (element) => {
@@ -868,6 +1089,9 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         stop();
       }
 
+      gutter?.dispose();
+      gutter = undefined;
+      commandListeners.clear();
       engine?.dispose();
       engine = undefined;
     },
@@ -880,5 +1104,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     },
 
     getSnapshot: () => snapshot,
+
+    commands,
   };
 }

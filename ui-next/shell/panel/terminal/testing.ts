@@ -1,6 +1,6 @@
-import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
+import type { Engine, EngineAppearance, EngineDecoration, EngineLoader, EngineMarker, EngineOptions, EngineRenderer, EngineViewport, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
 import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
+import type { PlacedMark, TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -22,8 +22,8 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly sizes: () => ReadonlyArray<readonly [number, number]>;
   /** A new status: only what is given changes, and every listener is told. */
   readonly set: (change: Partial<TerminalFeedSnapshot>) => void;
-  /** Holds bytes for the reader (the text as UTF-8, or the bytes as they are), and wakes the listeners once, until the next read. */
-  readonly push: (output: string | Uint8Array) => void;
+  /** Holds bytes for the reader (the text as UTF-8, or the bytes as they are), and wakes the listeners once, until the next read. `marks` stand in these bytes (`at`: the bytes of this push before the mark), and come with the read that takes them. */
+  readonly push: (output: string | Uint8Array, marks?: readonly PlacedMark[]) => void;
   /** The byte count of every `ack`, in order: what the screen told the feed it had parsed. */
   readonly acks: () => readonly number[];
   /** Tells the listeners without changing anything: what a feed does when held output became readable. */
@@ -63,6 +63,10 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   let reads = 0;
   let status: TerminalFeedSnapshot = { state: options.state ?? 'running' };
   let held: Uint8Array[] = [];
+  /** The marks that wait for the read that takes the bytes they stand in: at a count of bytes since the feed was made. */
+  let heldMarks: Array<{ readonly mark: PlacedMark['mark']; readonly at: number }> = [];
+  let pushed = 0;
+  let readBytes = 0;
   const acks: number[] = [];
   let woken = false;
   const typed: string[] = [];
@@ -100,6 +104,8 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     offered += 1;
     // What the feed held and nobody read is older than the replay and would be written after it: it is dropped, as a real feed drops it.
     held = [];
+    heldMarks = [];
+    readBytes = pushed;
     // A replay is something the reader must come for, whether or not a wake-up is pending: it is told at once.
     woken = true;
     tell();
@@ -147,7 +153,12 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
 
       const chunks = held.slice(0, count);
       held = held.slice(count);
-      return { chunks, bytes: chunks.reduce((sum, chunk) => sum + chunk.length, 0) };
+      const bytes = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      const before = readBytes;
+      readBytes += bytes;
+      const marks = heldMarks.filter((one) => one.at <= readBytes).map((one): PlacedMark => ({ mark: one.mark, at: Math.max(0, one.at - before) }));
+      heldMarks = heldMarks.filter((one) => one.at > readBytes);
+      return marks.length === 0 ? { chunks, bytes } : { chunks, bytes, marks };
     },
     write: (text, writeOptions) => {
       typed.push(text);
@@ -198,8 +209,18 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       status = { ...status, ...change };
       tell();
     },
-    push: (output) => {
-      held.push(typeof output === 'string' ? new TextEncoder().encode(output) : output);
+    push: (output, marks) => {
+      const chunk = typeof output === 'string' ? new TextEncoder().encode(output) : output;
+      // A push of marks alone holds no chunk, as a feed whose reader has read the bytes before the marks came.
+      if (chunk.length > 0) {
+        held.push(chunk);
+      }
+
+      for (const one of marks ?? []) {
+        heldMarks.push({ mark: one.mark, at: pushed + one.at });
+      }
+
+      pushed += chunk.length;
       if (!woken) {
         woken = true;
         tell();
@@ -281,6 +302,23 @@ export type FakeEngine = Engine & {
   readonly linkHover: (hover: LinkHover | undefined) => void;
   /** A link is clicked: tells the handler, as the emulator does, with the event as it came. */
   readonly linkActivate: (uri: string, event: MouseEvent) => void;
+  /**
+   * The markers `mark` made, in order, and the decorations `decorate` drew. The buffer is a plain one: every line feed that was PARSED (a write whose callback ran) ends a line, and a marker is on the line the cursor is on
+   * when it is made, so that a marker made before the bytes before it are parsed has their line missing, as in the real emulator.
+   */
+  readonly markers: () => readonly EngineMarker[];
+  readonly decorations: () => ReadonlyArray<{ readonly marker: EngineMarker; readonly element: HTMLElement; readonly disposed: () => boolean }>;
+  /** The buffer drops its oldest `count` lines (the scrollback is full), and clears (`clear` of the emulator): the markers on the lines that are gone are disposed. */
+  readonly scrollOut: (count: number) => void;
+  /** A program takes the alternate screen, or leaves it. */
+  readonly alternateScreen: (on: boolean) => void;
+  /** The top line the view shows now; the view is at the bottom when it is `lines - rows` or more. Default: the bottom. */
+  readonly viewTo: (top: number) => void;
+  /** What `scrollTo` and `scrollToBottom` were asked, in order (a line, or `'bottom'`), and the line ranges `selectLines` was asked for. */
+  readonly scrolls: ReadonlyArray<number | 'bottom'>;
+  readonly lineSelections: ReadonlyArray<readonly [number, number]>;
+  /** The lines the buffer holds, as text. */
+  readonly bufferLines: () => readonly string[];
 };
 
 export type FakeEngineOptions = {
@@ -332,6 +370,51 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   let mouse = false;
   let attributes: Readonly<Record<string, string>> = {};
   let linkHandler: LinkHandler | undefined;
+  // The plain buffer of the marker tests: the lines parsed so far (the last is the one the cursor is on), the markers made, the decorations drawn.
+  let buffer: string[] = [''];
+  let atTop: number | undefined;
+  let alternate = false;
+  const scrolls: Array<number | 'bottom'> = [];
+  const lineSelections: Array<readonly [number, number]> = [];
+  type MarkerRecord = { at: number; gone: boolean; readonly listeners: Set<() => void>; readonly marker: EngineMarker };
+  const records: MarkerRecord[] = [];
+  const decorations: Array<{ readonly marker: EngineMarker; readonly element: HTMLElement; disposed: boolean }> = [];
+  const goneRecord = (record: MarkerRecord) => {
+    if (record.gone) {
+      return;
+    }
+
+    record.gone = true;
+    for (const listener of [...record.listeners]) {
+      listener();
+    }
+
+    record.listeners.clear();
+  };
+
+  // What the emulator has parsed and the plain buffer has not read yet: the buffer is read when something asks about it (a marker, the cursor, the lines), so a flood of output costs the screen's tests nothing.
+  const unread: Array<Uint8Array | string> = [];
+  const sync = () => {
+    for (const data of unread.splice(0)) {
+      const text = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      const reset = text.lastIndexOf('\u001bc');
+      if (reset !== -1) {
+        for (const record of records) {
+          goneRecord(record);
+        }
+
+        buffer = [''];
+      }
+
+      // Plain text: a line feed ends a line, a carriage return and the other controls draw nothing.
+      const parts = text.slice(reset === -1 ? 0 : reset + 2).replaceAll('\u001bc', '').replaceAll('\r', '').split('\n').map((part) => part.replace(/[\u0000-\u001f]/g, ''));
+      buffer[buffer.length - 1] = `${buffer[buffer.length - 1] ?? ''}${parts[0] ?? ''}`;
+      for (const part of parts.slice(1)) {
+        buffer.push(part);
+      }
+    }
+  };
+
   const finder: Finder = {
     next: (query, findOptions) => {
       finds.push({ direction: 'next', query, options: findOptions });
@@ -416,6 +499,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
       // What a real emulator answers to a query it parses goes out as it parses the bytes, just before it says it has: a reply is the emulator's own output, in the middle of the stream.
       const parsed = () => {
         parsedBytes += typeof data === 'string' ? 0 : data.length;
+        unread.push(data);
         answer(data);
         done?.();
       };
@@ -478,6 +562,17 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     selection: () => selected,
     clear: () => {
       clears += 1;
+      sync();
+      // The line the cursor is on stays, as the real emulator's `clear` leaves it: the markers on the others are gone.
+      const keep = buffer.length - 1;
+      buffer = [buffer[keep] ?? ''];
+      for (const record of records) {
+        if (record.at === keep) {
+          record.at = 0;
+        } else {
+          goneRecord(record);
+        }
+      }
     },
     selectAll: () => {
       selectAlls += 1;
@@ -485,6 +580,91 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     dispose: () => {
       disposed += 1;
     },
+    mark: () => {
+      sync();
+      if (alternate || disposed > 0) {
+        return undefined;
+      }
+
+      const record: MarkerRecord = {
+        at: buffer.length - 1,
+        gone: false,
+        listeners: new Set(),
+        marker: {
+          line: () => (record.gone ? -1 : record.at),
+          onDispose: (listener) => {
+            if (record.gone) {
+              listener();
+              return () => undefined;
+            }
+
+            record.listeners.add(listener);
+            return () => {
+              record.listeners.delete(listener);
+            };
+          },
+          dispose: () => {
+            goneRecord(record);
+          },
+        },
+      };
+      records.push(record);
+      return { marker: record.marker, column: (buffer[buffer.length - 1] ?? '').length };
+    },
+    decorate: (marker, paint) => {
+      if (marker.line() < 0) {
+        return undefined;
+      }
+
+      const element = document.createElement('div');
+      const decoration = { marker, element, disposed: false };
+      decorations.push(decoration);
+      paint(element);
+      marker.onDispose(() => {
+        decoration.disposed = true;
+      });
+      return {
+        refresh: () => {
+          paint(element);
+        },
+        dispose: () => {
+          decoration.disposed = true;
+        },
+      } satisfies EngineDecoration;
+    },
+    cursor: () => {
+      sync();
+      return { line: buffer.length - 1, column: (buffer[buffer.length - 1] ?? '').length };
+    },
+    viewport: () => {
+      sync();
+      const rows = size.rows;
+      const bottom = Math.max(0, buffer.length - rows);
+      const top = atTop === undefined ? bottom : Math.min(atTop, bottom);
+      return { top, rows, atBottom: top >= bottom } satisfies EngineViewport;
+    },
+    lines: (from, to, columns) => {
+      sync();
+      const rows = buffer.slice(Math.max(0, from), Math.max(0, to));
+      return rows.map((line, at) => (at === rows.length - 1 && columns?.to !== undefined ? line.slice(0, columns.to) : line).slice(at === 0 ? (columns?.from ?? 0) : 0).trimEnd()).join('\n');
+    },
+    selectLines: (from, to) => {
+      sync();
+      lineSelections.push([from, to]);
+      selected = buffer.slice(Math.max(0, from), Math.max(0, to)).map((line) => line.trimEnd()).join('\n');
+      for (const listener of [...selectionListeners]) {
+        listener();
+      }
+    },
+    scrollTo: (line) => {
+      scrolls.push(line);
+      atTop = line;
+    },
+    scrollToBottom: () => {
+      scrolls.push('bottom');
+      atTop = undefined;
+    },
+    alternate: () => alternate,
     type: (data) => {
       emit(data, true);
     },
@@ -555,6 +735,31 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     },
     linkActivate: (uri, event) => {
       linkHandler?.activate(uri, event);
+    },
+    markers: () => records.map((record) => record.marker),
+    decorations: () => decorations.map((one) => ({ marker: one.marker, element: one.element, disposed: () => one.disposed })),
+    scrollOut: (count) => {
+      sync();
+      const kept = Math.min(count, Math.max(0, buffer.length - 1));
+      buffer = buffer.slice(kept);
+      for (const record of records) {
+        record.at -= kept;
+        if (record.at < 0) {
+          goneRecord(record);
+        }
+      }
+    },
+    alternateScreen: (on) => {
+      alternate = on;
+    },
+    viewTo: (top) => {
+      atTop = top;
+    },
+    scrolls,
+    lineSelections,
+    bufferLines: () => {
+      sync();
+      return buffer;
     },
   };
 }
