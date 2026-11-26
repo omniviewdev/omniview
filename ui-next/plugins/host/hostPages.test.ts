@@ -63,7 +63,7 @@ describe('with no host page registered', () => {
 
     expect(allHostPages()).toEqual([]);
     expect(hostPageOf(route('alpha'))).toBeUndefined();
-    expect(commandsOf(paletteOver(tabs, contributions, plugins)).map((command) => command.title)).toEqual(['Close tab', 'Next tab', 'Previous tab']);
+    expect(commandsOf(paletteOver(tabs, contributions, plugins)).map((command) => command.title)).toEqual(['Close tab', 'Close other tabs', 'Close tabs to the left', 'Close all but pinned', 'Duplicate tab', 'Pin tab', 'Reload tab', 'Next tab', 'Previous tab']);
   });
 });
 
@@ -166,7 +166,7 @@ describe('the palette\'s commands for the host\'s pages', () => {
     expect(own).toEqual(allHostPages().map((registered) => ({ title: registered.title, context: 'Window', icon: registered.icon, command: `host.${registered.id}` })));
     expect(own.map((command) => command.command)).toEqual(expect.arrayContaining(['host.alpha', 'host.beta']));
     const titles = commands.map((command) => command.title);
-    expect(titles.slice(0, 3)).toEqual(['Close tab', 'Next tab', 'Previous tab']);
+    expect(titles[0]).toBe('Close tab');
     expect(titles.indexOf('Alpha')).toBeGreaterThan(titles.indexOf('Previous tab'));
     expect(titles.indexOf('Beta')).toBeGreaterThan(titles.indexOf('Previous tab'));
   });

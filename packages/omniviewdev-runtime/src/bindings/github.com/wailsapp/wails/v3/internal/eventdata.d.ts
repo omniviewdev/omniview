@@ -44,11 +44,8 @@ declare module "@wailsio/runtime" {
             "mcp/confirmation/resolved": mcprelay$0.ConfirmationResolved;
             "mcp/status": mcprelay$0.Status;
             "mcp/tools_changed": string;
-            "menu/context/drawer-tab/close": string;
-            "menu/context/drawer-tab/close-others": string;
-            "menu/view/bottomdrawer/fullscreen": void;
+            "menu/command": string;
             "menu/view/bottomdrawer/minimize": void;
-            "menu/view/sidebar/minimize": void;
             "menu/view/terminal/create": void;
             "menu/view/zoom/in": void;
             "menu/view/zoom/out": void;

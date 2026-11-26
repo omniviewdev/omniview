@@ -54,6 +54,7 @@ import { createProblems, ProblemsBody, PROBLEMS_TOOL, PROBLEMS_TOOL_ID, type Pro
 import type { OpenSubject } from '../../shell/panel/subject';
 import { pluginsPage } from '../../shell/plugins-page';
 import { openable } from '../contract/admit';
+import { currentOf, leafOf, readTarget } from '../contract/sidebarTargets';
 import type { ConnectionsHostV1, ContextV1, ContributionV1, CustomPageContextV1, CustomPageV1, FrameV1, PanelHostV1, SidebarContextV1, SidebarNodeV1 } from '../contract/v1';
 import { canRetry } from '../loader/failure';
 import { ContributionBoundary } from './ContributionBoundary';
@@ -80,6 +81,7 @@ import type { PluginEntry } from './pluginStore';
 import { Published } from './published';
 import { currentRail, failedOf, railOf, type RailEntry } from './rail';
 import { NO_PARAMS, type HostRoute } from './route';
+import { withWindows, type WindowService } from './windows';
 
 // The Plugins page is the host's own page (ch16 S9): one registration, and a test or a probe registers another in its place.
 registerHostPage(pluginsPage);
@@ -149,6 +151,8 @@ export type PluginHostProps = {
    * knows for its connections, and the host's own way of opening an address (`openExternal.ts`). A test or a probe gives a fake host.
    */
   readonly ports?: Partial<PortsDeps> | undefined;
+  /** The host's window service, where the app has native windows: a destination can open a window (`how: 'window'`), a tab can move to another window or be dragged out into one, and a secondary window closes when its last tab leaves. Absent in a browser tab, which has one window and refuses the request. */
+  readonly windows?: WindowService | undefined;
 };
 
 type Host = {
@@ -156,6 +160,8 @@ type Host = {
   /** The names this window has learned for its connections (`connectionName.ts`): from the lanes its pages publish and from the faces its tabs were saved with. */
   readonly names: ConnectionNames;
   readonly nodes: Published<readonly SidebarNodeV1[] | null>;
+  /** What each plugin's sidebar hook answered for a page that is read in no connection (KL5), by plugin: its navigator on a landing. Kept apart from `nodes`, which is the plugin's pages and what the palette lists them from: a navigator is not a list of pages. */
+  readonly pluginScopeNodes: Published<readonly SidebarNodeV1[] | null>;
   /** The groups of each plugin's sidebar that are open on screen, by plugin: what the plugin's sidebar hook is told (`SidebarContextV1.open`). Nothing is held for a plugin whose tree is not on screen. */
   readonly sidebarOpen: Published<readonly string[]>;
   /** What the shell's tree tells the host: the rail entry whose tree it is, and the groups of it that are open on screen. */
@@ -195,7 +201,7 @@ type Host = {
   readonly feed: ActivityFeed;
   readonly resolve: SourceResolver;
   /** What choosing a row of each tool does: it opens the thing the row is about (`subjectOpener`). */
-  readonly openers: { readonly problems: OpenSubject; readonly operations: OpenSubject };
+  readonly openers: { readonly problems: OpenSubject; readonly operations: OpenSubject; readonly sidebar: OpenSubject };
 };
 
 /**
@@ -258,9 +264,10 @@ function seedRoutes(tabs: TabsStore, routes: Published<Route>): void {
  * The tab model, the panel, the rail's choice and the command palette of a window, over its plugins, from the session when there is one. They live as long as the window does. A part the session has
  * nothing for starts as it does with no session: no tab (the empty window), a closed panel, no rail entry chosen.
  */
-function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined): Host {
+function createHost(plugins: PluginSource, panel: PanelStore | undefined, session: LoadedSession | undefined, onCloseWindow: (() => void) | undefined, saved: LoadedNotices | undefined, openSettingsWindow: (() => Promise<unknown>) | undefined, terminalOptions: TerminalsOptions | undefined, connectionsApi: ConnectionsApi | undefined, activity: ActivityFeed | undefined, networker: PortForwardNetwork | undefined, userActivation: (() => boolean | undefined) | undefined, portsOptions: Partial<PortsDeps> | undefined, windows: WindowService | undefined): Host {
   const frames = new Published<FrameV1>();
   const nodes = new Published<readonly SidebarNodeV1[] | null>();
+  const pluginScopeNodes = new Published<readonly SidebarNodeV1[] | null>();
   const sidebarOpen = new Published<readonly string[]>();
   const names = new ConnectionNames();
   const routes = new Published<Route>();
@@ -272,7 +279,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
   const logs = createLogStreams(store);
   // The Terminal's screen reader choice is the window's: it comes back from the session as the person left it (off when the session says nothing), and the session saves it again.
   const terminals = createTerminals(store, terminalOptions, { screenReader: restored?.terminalScreenReader });
-  const tabs = createTabsStore({ contributions, initial: restored?.tabs });
+  const tabs = withWindows(createTabsStore({ contributions, initial: restored?.tabs }), store, windows);
   // A page forwards a port where the window has a networker to ask, from a user action: the Ports tool is shown once a forward has started, and a plugin that stops has no forwards left (the host says nothing of it, the window's own store does).
   const forwarding: PortForwarding | undefined =
     networker === undefined
@@ -307,6 +314,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     frames,
     names,
     nodes,
+    pluginScopeNodes,
     sidebarOpen,
     reportSidebarOpen: (owner, open) => {
       if (owner !== undefined) {
@@ -323,7 +331,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     rail: createRailChoice(restored?.rail ?? null),
     contributions,
     opened: new Published<string>(),
-    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce } }),
+    palette: createHostPalette({ tabs, plugins, contributions, nodes, frames, connections, panel: store, platform: platformOf(navigator), onCloseWindow, openSettings: settings.open, remembered: (plugin) => routes.get(plugin), panelHosts, terminalScreenReader: { toggle: terminals.screenReader.toggle, say: notices.announcer.polite.announce }, newTerminal: terminals.newSession.start }),
     notices,
     settings,
     connections,
@@ -336,6 +344,7 @@ function createHost(plugins: PluginSource, panel: PanelStore | undefined, sessio
     openers: {
       problems: subjectOpener({ tabs, contributions, connections, notices: notices.store, resolve, platform: platformOf(navigator) }, 'problems'),
       operations: subjectOpener({ tabs, contributions, connections, notices: notices.store, resolve, platform: platformOf(navigator) }, 'operations'),
+      sidebar: subjectOpener({ tabs, contributions, connections, notices: notices.store, resolve, platform: platformOf(navigator) }, 'sidebar'),
     },
   };
 }
@@ -349,10 +358,10 @@ function activeRoute(tabs: TabsStore): Route | undefined {
 /** What the rail follows: the tab on screen and its plugin, so the user's choice stands until either changes. Nothing while there is no tab. */
 const followOf = (active: string | null, route: Route | undefined): string | undefined => (active === null || route === undefined ? undefined : `${active}\u0000${route.plugin}`);
 
-/** The sidebar as the shell reads it: the contribution's words, the nodes that open a page, and the page on screen as current, when it is this plugin's. */
+/** The sidebar as the shell reads it: the contribution's words, the nodes that open something (`openable`), and the entry of the page on screen as current, when it is this plugin's. */
 function sidebarOf(contribution: ContributionV1, nodes: readonly SidebarNodeV1[], current: string | undefined): ShellSidebar {
   const { label, title } = contribution.sidebar;
-  return { label, title, nodes: openable(nodes, contribution.pages), current, accent: contribution.plugin.accent };
+  return { label, title, nodes, current, accent: contribution.plugin.accent };
 }
 
 type FrameInputs = {
@@ -371,8 +380,10 @@ type FrameInputs = {
   /** The plugins that did not load: entries of the rail after those, with no sidebar. */
   readonly failed: readonly RailEntry[];
   readonly railPlugin: string | undefined;
-  /** What the sidebar's data hook of the plugin on the rail answered: nothing until it does, and the contribution's skeleton stands. */
+  /** What the sidebar's data hook of the plugin on the rail answered: nothing until it does, and the contribution's skeleton stands (but for a page read in no connection: `bare`). */
   readonly nodes: readonly SidebarNodeV1[] | null | undefined;
+  /** The sidebar is that of a page read in no connection (KL5): what the hook answered for it is the whole sidebar, with no skeleton under it, and none is drawn while it answers none. */
+  readonly bare: boolean;
   /** The scope lane the page on screen published, as the shell draws it: its connection face a control when the window knows the plugin's connections (HM1; `connectionName.ts`, `laneFor`). */
   readonly lane: readonly ShellLaneFace[] | undefined;
 };
@@ -393,7 +404,7 @@ const ABSENT = { subscribe: (): (() => void) => () => undefined, getSnapshot: ()
  * plugin has settled once they are held (`held`): reserved empty, chosen when the last plugin has said what it is, so a plugin that registers late moves no entry that is drawn. With no plugin
  * that contributes there is nothing to reserve for and nothing to show: the frame is bare.
  */
-function registrationOf({ entries, coming, waiting, held, route, lane, rail, failed, railPlugin, nodes }: FrameInputs): ShellRegistration {
+function registrationOf({ entries, coming, waiting, held, route, lane, rail, failed, railPlugin, nodes, bare }: FrameInputs): ShellRegistration {
   const active = route === undefined ? undefined : entries.find((candidate) => candidate.id === route.plugin);
   const loading = entries.find((candidate) => candidate.phase === 'loading');
 
@@ -406,13 +417,17 @@ function registrationOf({ entries, coming, waiting, held, route, lane, rail, fai
     const { contribution } = shown;
     // The entry that stays selected while an object is open is the list it belongs to.
     const onScreen = route?.plugin === shown.id ? contribution.pages[pageOf(contribution, route)] : undefined;
-    // A page that is read in no connection (the landing) has no sidebar (KL2): the entries of a sidebar are pages of a connection and there is none to open them in, so the window draws that page with the rail and no tree, and not a tree whose every entry would open the landing again.
-    if (readsNoConnection(onScreen)) {
+    // A page that is read in no connection (the landing) has no skeleton under its sidebar (KL5): the skeleton's entries are pages of a connection and there is none to open them in, so what the plugin's hook answers for the page is the sidebar, and the window draws the page with the rail and no
+    // tree (an empty `role=tree` is an axe fault) while it answers none.
+    const opened = openable(bare ? (nodes ?? []) : (nodes ?? contribution.sidebar.nodes), contribution.pages);
+    if (bare && opened.length === 0) {
       return undefined;
     }
 
-    const current = route?.plugin === shown.id ? (onScreen?.kind === 'detail' ? onScreen.definition.list?.page : pageOf(contribution, route)) : undefined;
-    return sidebarOf(contribution, nodes ?? contribution.sidebar.nodes, current);
+    // The entry of the page on screen: the leaf that opens that page with the parameters the route carries, else the page's leaf that names none. An object's page selects the list it belongs to (its parameters are the object's, and no leaf is made of them).
+    const asked = route?.plugin === shown.id ? (onScreen?.kind === 'detail' ? { page: onScreen.definition.list?.page, params: NO_PARAMS } : { page: pageOf(contribution, route), params: textParamsOf(route) }) : undefined;
+    const current = asked?.page === undefined ? undefined : currentOf(opened, asked.page, asked.params);
+    return sidebarOf(contribution, opened, current);
   })();
   const listed = [...rail, ...failed];
   const railData: ShellRail | undefined =
@@ -654,8 +669,9 @@ type CustomProps = {
 };
 
 /**
- * The custom page's own component (KL2): the plugin's Body runs here, in its tab's own subtree and the page's own boundary, and is told its context. The host draws nothing around it: no header, no heading, and for a page read in no connection no lane. The page has no parameters of its own
- * (`RouteV1.params` is empty: what an address adds to its route is not an identity it reads), and a page read in no connection is told none, whatever its route carries. The tab's face is the route's and the definition's (`describeCustom`), the same before this component has run.
+ * The custom page's own component (KL2): the plugin's Body runs here, in its tab's own subtree and the page's own boundary, and is told its context. The host draws nothing around it: no header, no heading, and for a page read in no connection no lane. The page is told its route's
+ * parameters (KL5, `RouteV1.params`, as a detail page is: the route's, as text) and, for a page read in no connection, no connection, whatever its route carries. The place a tab is at is its page and its parameters, so a change of the parameters alone is another place: the tab's page is
+ * drawn again, from scratch, with them (`PageHost` keys it by the place). The tab's face is the route's and the definition's (`describeCustom`), the same before this component has run.
  */
 function CustomContribution({ entry, route, page: pageId, frames, names, panelHost, connections }: CustomProps) {
   const page = entry.contribution.pages[pageId];
@@ -664,7 +680,8 @@ function CustomContribution({ entry, route, page: pageId, frames, names, panelHo
   }
 
   const connection = page.scope === 'plugin' ? undefined : connectionOf(route);
-  const context = useMemo<CustomPageContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params: NO_PARAMS }, panel: panelHost, connections }), [entry.id, pageId, connection, panelHost, connections]);
+  const params = useMemo(() => textParamsOf(route), [route]);
+  const context = useMemo<CustomPageContextV1>(() => ({ plugin: entry.id, route: { page: pageId, connection, params }, panel: panelHost, connections }), [entry.id, pageId, connection, params, panelHost, connections]);
   const { Body } = page;
   return (
     <>
@@ -799,21 +816,23 @@ type NodesProps = {
   readonly open: Published<readonly string[]>;
   /** What the plugin asks of the bottom panel: `ctx.panel`. */
   readonly panelHost: PanelHostV1;
+  /** What the plugin asks of the window about its connections: `context.connections`, as a custom page is given it (KL5). */
+  readonly connections: ConnectionsHostV1;
 };
 
 /** The groups open on screen while the tree has told the host none, and before it has: no group is open, and the entries of no group are on screen. One list, so that nothing that reads it sees a change. */
 const NONE_OPEN: readonly string[] = [];
 
 /**
- * Runs the sidebar's data hook for the plugin on the rail, and publishes what it answers: nothing until it answers, and the skeleton stands. It draws nothing. The hook is told the context every hook of the plugin
- * gets and, as well, which groups of its tree are open on screen (the entries of a group that is closed are not on screen, and the hook has no reason to ask for what they count). The context is the same object for as long
- * as the plugin, the page, the connection and the open groups are the same, and the open groups are the same list until the set of them changes, so a hook may use either as a dependency.
+ * Runs the sidebar's data hook for the plugin on the rail, and publishes what it answers: nothing until it answers, and the skeleton stands (a page read in no connection has none). It draws nothing. The hook is told the context every hook of the plugin
+ * gets and, as well, which groups of its tree are open on screen (the entries of a group that is closed are not on screen, and the hook has no reason to ask for what they count) and the plugin's connections (KL5). The context is the same object for as long
+ * as the plugin, the page, the connection, the connections handle and the open groups are the same, and the open groups are the same list until the set of them changes, so a hook may use either as a dependency.
  */
-function NodesSource({ plugin, route, useNodes, nodes, open, panelHost }: NodesProps) {
+function NodesSource({ plugin, route, useNodes, nodes, open, panelHost, connections }: NodesProps) {
   const page = route.contribution;
   const connection = connectionOf(route);
   const expanded = useSyncExternalStore(open.subscribe, () => open.get(plugin) ?? NONE_OPEN);
-  const answer = useNodes(useMemo<SidebarContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS }, panel: panelHost, open: expanded }), [plugin, page, connection, panelHost, expanded]));
+  const answer = useNodes(useMemo<SidebarContextV1>(() => ({ plugin, route: { page, connection, params: NO_PARAMS }, panel: panelHost, open: expanded, connections }), [plugin, page, connection, panelHost, expanded, connections]));
   useLayoutEffect(() => {
     nodes.publish(plugin, answer ?? null);
   }, [nodes, plugin, answer]);
@@ -878,9 +897,9 @@ function portsBodyOf(ports: Ports): ReactElement {
   );
 }
 
-export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, userActivation, ports: portsOptions }: PluginHostProps) {
+export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory, onCloseWindow, openSettingsWindow, panel: given, session, savedNotices, terminals: terminalOptions, connections: connectionsApi, activity, networker, userActivation, ports: portsOptions, windows }: PluginHostProps) {
   const entries = useSyncExternalStore(plugins.subscribe, plugins.getSnapshot);
-  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions));
+  const [host] = useState(() => createHost(plugins, given, session, onCloseWindow, savedNotices, openSettingsWindow, terminalOptions, connectionsApi, activity, networker, userActivation, portsOptions, windows));
   const [platform] = useState(() => platformOf(navigator));
   // A link at load waits for its plugin; each distinct link opens once. Where it stands is the host's (an external store), not state of this component: opening it is the effect's whole job.
   const { tabs, frames, names, nodes, routes, opened } = host;
@@ -1012,12 +1031,16 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
     return remembered ?? (home === undefined ? undefined : { plugin: home.plugin, contribution: home.contribution, params: NO_PARAMS });
   })();
   const railConnection = usePanelConnection(hostConnections, railRoute);
+  // The sidebar of a page read in no connection (KL5), by the page of the route the sidebar's hook is called for: what the hook answers for it is a navigator and not a list of the plugin's pages, so it is kept apart (`pluginScopeNodes`, which the palette does not list pages from),
+  // and the panel handle the hook is given has no connection, as a page's has none.
+  const bare = readsNoConnection(shown?.phase === 'ready' && railRoute !== undefined ? shown.contribution.pages[pageOf(shown.contribution, railRoute)] : undefined);
+  const sidebarNodes = bare ? host.pluginScopeNodes : nodes;
   // What a page of the plugin on the rail opens at when the tab on screen is another plugin's: the connection that plugin was last used in.
   const carried = route?.plugin === railPlugin || remembered === undefined ? undefined : connectionOf(remembered);
 
   const key = route === undefined ? undefined : routeKey(route);
   const frame = useSyncExternalStore(frames.subscribe, () => (key === undefined ? undefined : frames.get(key)));
-  const published = useSyncExternalStore(nodes.subscribe, () => (shown === undefined ? undefined : nodes.get(shown.id)));
+  const published = useSyncExternalStore(sidebarNodes.subscribe, () => (shown === undefined ? undefined : sidebarNodes.get(shown.id)));
 
   // The scope lane of the page on screen, with its connection face made a control (HM1): the picker is the host's, made from the state of the plugin's connections, and what it chooses is the tab's change of connection (`actions.switchTab`).
   const lane = laneFor(
@@ -1041,10 +1064,22 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   );
 
   const choose = (id: string, event: ModifierEvent | undefined): void => {
-    if (railPlugin !== undefined) {
-      // The model's result is the answer: a destination that wants a window of its own (there is none) or that would discard unsaved changes (no page reports a draft yet) changes nothing.
-      tabs.open({ route: { plugin: railPlugin, contribution: id, params: carried === undefined ? undefined : { connection: carried } } }, { how: dispositionOf(event, { platform }), source: 'sidebar' });
+    if (railPlugin === undefined) {
+      return;
     }
+
+    // What the entry opens (KL5): the page its id names, as it always did, or the page and the parameters it names, or one of the plugin's connections. It is read among what the sidebar draws: what the hook answered, else the skeleton.
+    const leaf = leafOf(published ?? (shown?.phase === 'ready' ? shown.contribution.sidebar.nodes : []), id);
+    const read = leaf === undefined ? undefined : readTarget(leaf);
+    const target = read !== undefined && 'target' in read ? read.target : { kind: 'page' as const, page: id, params: NO_PARAMS };
+    if (target.kind === 'connection') {
+      // As Home's rows and the palette open one: the host starts the connection first, and a start that fails or an open the window refuses is told in a notice. The modifiers of the click pick the tab as they do for a page.
+      host.openers.sidebar({ kind: 'connection', plugin: railPlugin, connection: target.key }, event);
+      return;
+    }
+
+    // The model's result is the answer: a destination that wants a window of its own (there is none) or that would discard unsaved changes (no page reports a draft yet) changes nothing.
+    tabs.open({ route: { plugin: railPlugin, contribution: target.page, params: carried === undefined ? target.params : { ...target.params, connection: carried } } }, { how: dispositionOf(event, { platform }), source: 'sidebar' });
   };
 
   // An open that names no connection waits for the list of connections when it has not come back (rule R4): the plugin is never opened on a connection nobody chose, and a press that comes first is answered when the list is known. A plugin that
@@ -1067,11 +1102,11 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   const newTab =
     railPlugin === undefined
       ? undefined
-      : () => {
+      : (after?: TabId) => {
         const home = host.contributions.home?.(railPlugin);
         if (home !== undefined) {
           whenListed(railPlugin, () => {
-            tabs.open({ route: carried === undefined ? home : { ...home, params: { ...home.params, connection: carried } } }, { how: 'new', source: 'new-tab' });
+            tabs.open({ route: carried === undefined ? home : { ...home, params: { ...home.params, connection: carried } } }, { how: 'new', after, source: 'new-tab' });
           });
         }
       };
@@ -1146,6 +1181,23 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   useEffect(() => logs.attach(), [logs]);
   // The terminals are the host's too: each process is released with its session, with its plugin, and with the window.
   useEffect(() => terminals.attach(), [terminals]);
+  // The items of the native menu (`backend/menus`) arrive as the app event `menu/command`, with a host command id, at every window: the one that has the focus runs the command as the palette runs a chosen row, unless the palette or the question a close of a running terminal asks is open (a modal keeps
+  // the window's chords from what is behind it: the same condition that holds the toasts' timers), and says why when it cannot. A browser tab has no window service and listens to nothing.
+  useEffect(
+    () =>
+      windows?.on('menu/command', (id) => {
+        if (typeof id !== 'string' || !document.hasFocus() || host.palette.store.getSnapshot().open || host.terminals.modal.open()) {
+          return;
+        }
+
+        void Promise.resolve(host.palette.run({ id })).then((outcome) => {
+          if (typeof outcome === 'object' && outcome.ok === false) {
+            host.notices.announcer.polite.announce(outcome.reason ?? 'It could not run.');
+          }
+        });
+      }),
+    [windows, host],
+  );
   // What the two tools list is read from the producers the window already holds, and kept true by their events for as long as the window is on screen (`panelTools.ts`).
   useEffect(() => attachPanelTools({ plugins, connections: host.connections?.store, feed: host.feed, problems: host.problems, operations: host.operations, resolve: host.resolve }), [plugins, host]);
   // Command K clears a terminal that has the focus (VS Code and JetBrains agree) and is also the palette's chord: a layout effect runs before every passive one, so this listener is the window's first and sees the key first.
@@ -1209,6 +1261,7 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
           }
         });
       },
+      stopOf: (id) => terminals.sessions.stopOf(id) ?? logs.stopOf(id),
       linkOf: (route) => ({
         href: routeAddressOf(route),
         open: (activation) => {
@@ -1224,12 +1277,12 @@ export function PluginHost({ plugins, inventory, link, onRetry, onRetryInventory
   return (
     <>
       {shown?.phase === 'ready' && railRoute !== undefined && sidebar?.useNodes !== undefined ? (
-        <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={nodes} />}>
-          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={nodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, railConnection)} />
+        <ContributionBoundary key={shown.id} name={`${shown.id} sidebar`} fallback={() => <NoNodes plugin={shown.id} nodes={sidebarNodes} />}>
+          <NodesSource plugin={shown.id} route={railRoute} useNodes={sidebar.useNodes} nodes={sidebarNodes} open={host.sidebarOpen} panelHost={panelHosts(shown.id, bare ? undefined : railConnection)} connections={host.connectionsHosts(shown.id)} />
         </ContributionBoundary>
       ) : null}
       <Shell
-        registration={registrationOf({ entries, coming, waiting, held, route, lane, frame, rail, failed, railPlugin, nodes: published })}
+        registration={registrationOf({ entries, coming, waiting, held, route, lane, frame, rail, failed, railPlugin, nodes: published, bare })}
         tabs={tabs}
         renderPage={(tab: PageTab) => (
           <HostPage

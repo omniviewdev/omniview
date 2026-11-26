@@ -440,7 +440,7 @@ func TestEndDragAccepted(t *testing.T) {
 }
 
 func TestEndDragDeclined(t *testing.T) {
-	h, _, _ := newDragFixture(t, 5*time.Second)
+	h, left, _ := newDragFixture(t, 5*time.Second)
 	h.emitter.onEmit = func(name string, data any) {
 		if name == EventDragDrop {
 			go h.service.RespondDrop(data.(DragPointerEvent).SessionID, false, "")
@@ -449,17 +449,17 @@ func TestEndDragDeclined(t *testing.T) {
 	beginTestDrag(t, h, "s1")
 	result, err := endFromMain(context.Background(), h, "s1", 650, 50)
 	require.NoError(t, err)
-	assert.False(t, result.Accepted)
+	assert.Equal(t, DropResult{Accepted: false, TargetWindow: left}, result, "the window that declined is still the one under the pointer")
 }
 
 func TestEndDragTimeoutIsNotAccepted(t *testing.T) {
-	h, _, _ := newDragFixture(t, 30*time.Millisecond)
+	h, left, _ := newDragFixture(t, 30*time.Millisecond)
 	beginTestDrag(t, h, "s1")
 
 	started := time.Now()
 	result, err := endFromMain(context.Background(), h, "s1", 650, 50)
 	require.NoError(t, err)
-	assert.False(t, result.Accepted)
+	assert.Equal(t, DropResult{Accepted: false, TargetWindow: left}, result)
 	assert.Less(t, time.Since(started), time.Second)
 	assert.Len(t, h.emitter.eventsNamed(EventDragEnd), 1)
 
@@ -493,7 +493,7 @@ func TestEndDragOverNothingLeavesPreviousTarget(t *testing.T) {
 
 	result, err := endFromMain(context.Background(), h, "s1", 3000, 3000)
 	require.NoError(t, err)
-	assert.False(t, result.Accepted)
+	assert.Equal(t, DropResult{}, result, "no window was under the pointer: the name is empty")
 	assert.Equal(t, []recordedEvent{
 		{EventDragLeave, DragLeaveEvent{SessionID: "s1", TargetWindow: left}},
 		{EventDragEnd, DragEndEvent{SessionID: "s1"}},

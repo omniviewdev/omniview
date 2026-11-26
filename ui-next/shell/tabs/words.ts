@@ -1,3 +1,4 @@
+import type { Platform } from '../core/chords';
 import type { StripItem, TabId } from '../core/tabs';
 
 // The words a tab is read and described with. The model's identity is the one answer for what a tab is called (core/tabs/identity.ts: label, accessible name, tooltip); what the strip
@@ -23,3 +24,13 @@ export function tabTip(item: StripItem): string {
 export function tabDomId(prefix: string, id: TabId): string {
   return `${prefix}-${id}`;
 }
+
+const CHORDS = {
+  close: { native: { mac: '⌘W', other: 'Ctrl+W' }, web: { mac: '⌃⌥W', other: 'Ctrl+Alt+W' } },
+  reopen: { native: { mac: '⌘⇧T', other: 'Ctrl+Alt+Shift+T' }, web: { mac: '⌃⌥⇧T', other: 'Ctrl+Alt+Shift+T' } },
+  next: { native: { mac: '⌃Tab', other: 'Ctrl+Tab' }, web: { mac: '⌃⌥→', other: 'Ctrl+Alt+→' } },
+  previous: { native: { mac: '⌃⇧Tab', other: 'Ctrl+Shift+Tab' }, web: { mac: '⌃⌥←', other: 'Ctrl+Alt+←' } },
+} as const;
+
+/** The chord of a tab command as it is said: the one of the app's own window, or, in a browser tab, which keeps those for itself, the shell's Control Option (Control Alt) one. Reopen is that one in the app's own window on Windows and Linux too: its menu owns Control Shift T. */
+export const tabChordText = (command: keyof typeof CHORDS, platform: Platform, native: boolean): string => CHORDS[command][native ? 'native' : 'web'][platform];

@@ -1,10 +1,12 @@
 import { Button, CardGrid, DataView, KindTile, Link, PageHeader, ResourceCard, Stack, Status, Text, WorkspaceToolbar, useMenu, type DataTableColumn, type MenuItem, type StatusRole } from '@omniviewdev/kit';
 import { useSyncExternalStore } from 'react';
 import type { ConnectionV1, ConnectionsHostV1, CustomPageContextV1, CustomPageV1 } from '../../contract/v1';
+import { FILTERS, inFilter, isFilter } from './landing-navigator';
 
 // The pages of the connections fixture's landing variant (KL2; `entry-landing.tsx`): two custom pages that are read in no connection, drawn whole from the kit. The landing is the page the host opens when the plugin is opened and no connection is named; it lists the plugin's
 // connections as cards in the host's own words and opens one (`context.connections`, which is the window's store: nothing here reads the host or holds a list of its own). The second page, `all`, is the same connections as a table in a page that owns its scrolling
-// (`layout: 'pane'`: a kit data view takes the height it is given), and the two link to each other with the kit's `Link`, which is how a page of a plugin goes to another of its own.
+// (`layout: 'pane'`: a kit data view takes the height it is given), and the two link to each other with the kit's `Link`, which is how a page of a plugin goes to another of its own. The landing reads the parameter the navigator's entries open it with (KL5,
+// `context.route.params.filter`, `landing-navigator.ts`) and lists the connections in that filter alone.
 
 export const PLUGIN_NAME = 'Seam Connections';
 
@@ -48,6 +50,9 @@ const itemsOf =
 function Landing({ context }: { readonly context: CustomPageContextV1 }) {
   const { connections } = context;
   const view = useSyncExternalStore(connections.subscribe, connections.getSnapshot);
+  const asked = context.route.params.filter;
+  const filter = isFilter(asked) ? asked : undefined;
+  const shown = filter === undefined ? view.connections : view.connections.filter((connection) => inFilter(connection, filter));
   const menu = useMenu(itemsOf(connections));
   const refresh = () => {
     void connections.refresh();
@@ -70,6 +75,11 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
           {FAILED_WORDS}
         </Text>
       ) : null}
+      {filter === undefined ? null : (
+        <Text as="p" tone="muted">
+          {`Showing: ${FILTERS[filter]}`}
+        </Text>
+      )}
       {view.loaded && !view.failed && view.connections.length === 0 ? (
         <Text as="p" tone="muted">
           {NONE_WORDS}
@@ -77,7 +87,7 @@ function Landing({ context }: { readonly context: CustomPageContextV1 }) {
       ) : null}
       <CardGrid<ConnectionV1>
         label="Connections"
-        items={view.connections}
+        items={shown}
         getKey={(connection) => connection.key}
         renderCard={(connection) => (
           <ResourceCard

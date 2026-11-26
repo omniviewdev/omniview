@@ -1,4 +1,5 @@
 import { findByKey } from './open';
+import { readTab } from './persist';
 import { repairHistory, type Context } from './resolve';
 import { sameRoute } from './route';
 import { closedEntry, freshId, historyOf, makeTab, patch, pinnedCount, refuse, show, unchanged, withTab, type Step } from './state';
@@ -35,9 +36,9 @@ const without = <T extends Record<string, unknown>>(map: Readonly<Record<string,
 
 /**
  * Closes tabs in one step: each goes to the closed list in strip order with the index it had when its turn came, so reopening newest first rebuilds the strip (ch16 S42, S43). The last tab
- * closes like any other and leaves the strip empty: no page opens by itself (decision A17, see `ensureHome`).
+ * closes like any other and leaves the strip empty: no page opens by itself (decision A17, see `ensureHome`). A tab that is moving to another window (`detach`) is not recorded: it is not closed.
  */
-function closeTabs(state: TabsState, ids: readonly TabId[]): Step<CloseResult> {
+function closeTabs(state: TabsState, ids: readonly TabId[], record = true): Step<CloseResult> {
   const closing = new Set(ids.filter((id) => state.tabs[id] !== undefined));
   if (closing.size === 0) {
     return unchanged(state);
@@ -63,7 +64,7 @@ function closeTabs(state: TabsState, ids: readonly TabId[]): Step<CloseResult> {
     tabs: Object.freeze(without(state.tabs, closing)),
     order: Object.freeze(survivors),
     mounted: Object.freeze(state.mounted.filter((id) => !closing.has(id))),
-    closed: Object.freeze([...records.slice().reverse(), ...state.closed].slice(0, LIMITS.closed)),
+    closed: record ? Object.freeze([...records.slice().reverse(), ...state.closed].slice(0, LIMITS.closed)) : state.closed,
     active: neighbour === was ? was : null,
   });
   const shown = neighbour !== was && neighbour !== null ? show(next, neighbour) : next;
@@ -73,9 +74,9 @@ function closeTabs(state: TabsState, ids: readonly TabId[]): Step<CloseResult> {
 /** The unsaved tabs among `ids`, in strip order: what a batch asks about once. */
 const unsavedAmong = (state: TabsState, ids: readonly TabId[]): TabId[] => ids.filter((id) => state.tabs[id]?.flags.unsaved);
 
-function closeGuarded(state: TabsState, ids: readonly TabId[], guard: Guard): Step<CloseResult> {
+function closeGuarded(state: TabsState, ids: readonly TabId[], guard: Guard, record = true): Step<CloseResult> {
   const dirty = unsavedAmong(state, ids);
-  return dirty.length > 0 && guard.confirmed !== true ? { state, result: { status: 'confirm', action: 'close', tabs: dirty } } : closeTabs(state, ids);
+  return dirty.length > 0 && guard.confirmed !== true ? { state, result: { status: 'confirm', action: 'close', tabs: dirty } } : closeTabs(state, ids, record);
 }
 
 export function close(state: TabsState, id: TabId | null, guard: Guard = {}): Step<CloseResult> {
@@ -86,21 +87,31 @@ export function close(state: TabsState, id: TabId | null, guard: Guard = {}): St
   return closeGuarded(state, [id], guard);
 }
 
-/** Close others, to the right, to the left, all but pinned (ch16 S42): pinned tabs are skipped, and unsaved tabs ask once for the batch. */
-export function closeMany(state: TabsState, scope: CloseScope, id: TabId | null, guard: Guard = {}): Step<CloseResult> {
-  const at = id === null ? -1 : state.order.indexOf(id);
-  if (id === null || at < 0) {
-    return refuse(state, 'missing', 'There is no tab to close the others of.');
-  }
+/** A tab that now lives in another window: gone from this strip, and not offered under Recently closed here (it would be in two windows). */
+export function detach(state: TabsState, id: TabId, guard: Guard = {}): Step<CloseResult> {
+  return closeGuarded(state, [id], guard, false);
+}
 
+/** The tabs a close others, to the right, to the left or all but pinned would close (ch16 S42): pinned tabs are skipped. */
+export function closeSet(state: TabsState, scope: CloseScope, id: TabId): readonly TabId[] {
+  const at = state.order.indexOf(id);
   const free = (other: TabId) => !(state.tabs[other]?.flags.pinned);
-  const ids = scope === 'others'
+  return scope === 'others'
     ? state.order.filter((other) => other !== id && free(other))
     : scope === 'right'
       ? state.order.slice(at + 1).filter(free)
       : scope === 'left'
         ? state.order.slice(0, at).filter(free)
         : state.order.filter(free);
+}
+
+/** Close others, to the right, to the left, all but pinned (ch16 S42): pinned tabs are skipped, and unsaved tabs ask once for the batch. */
+export function closeMany(state: TabsState, scope: CloseScope, id: TabId | null, guard: Guard = {}): Step<CloseResult> {
+  if (id === null || !state.order.includes(id)) {
+    return refuse(state, 'missing', 'There is no tab to close the others of.');
+  }
+
+  const ids = closeSet(state, scope, id);
   return ids.length === 0 ? unchanged(state) : closeGuarded(state, ids, guard);
 }
 
@@ -194,6 +205,12 @@ export function reopen(state: TabsState, ctx: Context, options: ReopenOptions = 
     ? { status: 'refused', reason: 'nothing-closed', message: 'There are no recently closed tabs.' }
     : { status: 'refused', reason: 'unavailable', message: refusal };
   return { state: remaining, result };
+}
+
+/** A tab that arrives from another window, as it was saved there (`serialise`): shown with its id, route, history and pin, by the way a closed tab comes back (a singleton that is open is shown instead; an id taken here is made fresh). */
+export function adopt(state: TabsState, ctx: Context, saved: unknown): Step<TabResult> {
+  const tab = readTab(saved, ctx.plugins, () => undefined);
+  return tab === undefined ? refuse(state, 'invalid', 'That is not a tab.') : bringBack(state, ctx, closedEntry(tab, state.order.length), tab.location.route);
 }
 
 /** A new tab on the route of `id`, right of it, in the foreground, with a history of its own that starts there and no page state (ch16 S37). A singleton cannot be duplicated. */

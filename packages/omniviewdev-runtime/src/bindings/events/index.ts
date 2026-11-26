@@ -49,29 +49,14 @@ export const McpStatus = "mcp/status";
 export const McpToolsChanged = "mcp/tools_changed";
 
 /**
- * Name of the custom event "menu/context/drawer-tab/close".
+ * Name of the custom event "menu/command".
  */
-export const MenuContextDrawerTabClose = "menu/context/drawer-tab/close";
-
-/**
- * Name of the custom event "menu/context/drawer-tab/close-others".
- */
-export const MenuContextDrawerTabCloseOthers = "menu/context/drawer-tab/close-others";
-
-/**
- * Name of the custom event "menu/view/bottomdrawer/fullscreen".
- */
-export const MenuViewBottomdrawerFullscreen = "menu/view/bottomdrawer/fullscreen";
+export const MenuCommand = "menu/command";
 
 /**
  * Name of the custom event "menu/view/bottomdrawer/minimize".
  */
 export const MenuViewBottomdrawerMinimize = "menu/view/bottomdrawer/minimize";
-
-/**
- * Name of the custom event "menu/view/sidebar/minimize".
- */
-export const MenuViewSidebarMinimize = "menu/view/sidebar/minimize";
 
 /**
  * Name of the custom event "menu/view/terminal/create".

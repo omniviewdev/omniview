@@ -104,7 +104,7 @@ export type PanelState = {
   readonly active: Readonly<Record<ToolId, SessionId>>;
   readonly tools: Readonly<Record<ToolId, Tool>>;
   readonly sessions: Readonly<Record<SessionId, Session>>;
-  /** Every session in the order it was opened, oldest first: the strip's order. */
+  /** Every session in the strip's order: the order they were opened in, until the user moves one (`reorderSession`). */
   readonly order: readonly SessionId[];
   /**
    * The sessions whose body is mounted: shown at least once, and not closed. A session's body lives as long as the session does (docs/ui-next/optimisations.md HSH-32, HLT-32: a
@@ -185,14 +185,14 @@ export type Selectors = {
   readonly toolItem: (state: PanelState, id: ToolId) => ToolItem | undefined;
   /** The tool the strip marks selected: `null` while there is no visible tool. */
   readonly activeTool: (state: PanelState) => ToolId | null;
-  /** The session tabs of a tool, in the order they were opened: the visible sessions. */
+  /** The session tabs of a tool, in the strip's order: the visible sessions. */
   readonly sessionIds: (state: PanelState, tool: ToolId) => readonly SessionId[];
   readonly sessionItem: (state: PanelState, id: SessionId) => SessionItem | undefined;
   /** The session the tool's strip marks selected: `null` while it has none. */
   readonly activeSession: (state: PanelState, tool: ToolId) => SessionId | null;
   /** The record of a visible session: what its body and its card read. */
   readonly session: (state: PanelState, id: SessionId) => Session | undefined;
-  /** The sessions whose body is mounted, in the order they were opened. */
+  /** The sessions whose body is mounted, in the order they were first shown and never in the strip's: a session moved in its strip keeps its body where it is in the document. */
   readonly mounted: (state: PanelState) => readonly SessionId[];
   readonly shown: (state: PanelState) => Shown | null;
   /** Whether this session's body is the one on screen: the panel is open, its tool is the tool on screen and it is the tool's session on screen. */

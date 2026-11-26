@@ -17,12 +17,13 @@
     list-style: none;
   }
 
-  /* Columns: the indent (7 px and a step per level), the glyph, the label, what trails (the count, or the disclosure of a group), 7 px. */
+  /* Columns: the indent (7 px and a step per level), the glyph, the label, then what trails, each in a column of its own so that none lies on another (a group may have a count, a badge and its disclosure): the count, the state badge, the
+     disclosure of a group, and 7 px. A column no row of the tree fills is 0 px wide, and the items carry their own margins, so a row that has none of them is the row it was. */
   .row {
     --_indent: calc(7px + var(--_level, 0) * 26px);
     grid-column: 2;
     display: grid;
-    grid-template-columns: var(--_indent) 16px minmax(0, 1fr) auto 7px;
+    grid-template-columns: var(--_indent) 16px minmax(0, 1fr) auto auto auto 7px;
     align-items: center;
     box-sizing: border-box;
     block-size: 24px;
@@ -98,6 +99,36 @@
     color: var(--ov-brand-teal);
   }
 
+  /* A row's own colour for its glyph (KL5): a hue of the kit's data palette, painted as the kit paints its own data glyphs (the avatar's: `dataColor.ts` names the role of each). It is the entry's own word, so it follows the tree's accent
+     in the cascade and wins over it: the two rules have one specificity and this comes after. */
+  .row[data-tone='blue'] .glyph {
+    color: var(--ov-link);
+  }
+
+  .row[data-tone='green'] .glyph {
+    color: var(--ov-success-fg);
+  }
+
+  .row[data-tone='amber'] .glyph {
+    color: var(--ov-warning-fg);
+  }
+
+  .row[data-tone='red'] .glyph {
+    color: var(--ov-error-fg);
+  }
+
+  .row[data-tone='purple'] .glyph {
+    color: var(--ov-chart-purple);
+  }
+
+  .row[data-tone='cyan'] .glyph {
+    color: var(--ov-chart-teal);
+  }
+
+  .row[data-tone='gray'] .glyph {
+    color: var(--ov-fg-muted);
+  }
+
   .label {
     grid-column: 3;
     min-inline-size: 0;
@@ -124,6 +155,18 @@
     text-align: end;
   }
 
+  /* The state badge (KL5): the kit's glyph for the row's state, after the count (the mock's `.tree__status`: 16 px, then the gap). The kit draws a state as its glyph and its word, so the box is the glyph's size, a flex container (so that the
+     word, a flex item that does not shrink, never makes a line of its own), and it clips the word, which stays in the row's text and in the tip. */
+  .status {
+    display: flex;
+    grid-column: 5;
+    align-items: center;
+    inline-size: 16px;
+    block-size: 16px;
+    margin-inline-start: var(--ov-spacing-8);
+    overflow: hidden;
+  }
+
   /* A word for assistive technology that draws nothing: the mock's `.visually-hidden` (base.css 1592), as the kit's table keeps it. */
   .about {
     position: absolute;
@@ -141,7 +184,7 @@
   /* A group's disclosure is the chevron at the row's end, a 24 px box; open, it points down. */
   .disclosure {
     display: grid;
-    grid-column: 4;
+    grid-column: 6;
     place-items: center;
     inline-size: 24px;
     block-size: 24px;

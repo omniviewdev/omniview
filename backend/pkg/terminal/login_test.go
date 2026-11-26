@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -363,17 +365,251 @@ func TestClosingHangsUpTheBackgroundJobsOfABashShell(t *testing.T) {
 	}, 20*time.Second, 10*time.Millisecond)
 	t.Cleanup(func() { _ = syscall.Kill(job, syscall.SIGKILL) })
 	require.False(t, gone(job))
-	// The shell is at its prompt when the window closes: the prompt after the job's command has been drawn, which the integration
-	// says with its second input-start mark (the first is the first prompt). With the integration bash runs its prompt commands
-	// as a non-interactive shell, which does not hang its jobs up, between the end of a command and the first hook that sets a
-	// handler (about 0.1 ms: a DEBUG trap and a fork); a close that lands in it is a known gap (T5-inject-bash.md), and a test
-	// that closed the instant the job is named would fall into it by its own timing.
-	if info.Integration.State == IntegrationOn {
+	waitForTheJobToExec(t, job)
+	waitForThePromptAfterTheJob(t, sink, info)
+	require.NoError(t, m.CloseSession(info.ID))
+	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
+}
+
+// waitForTheJobToExec waits until the job (`sleep`) is the program and no longer a fork of its shell: a hangup that reaches it before is lost.
+func waitForTheJobToExec(t *testing.T, job int) {
+	t.Helper()
+	became, known := waitForExec(job, "sleep", 20*time.Second)
+	if !known {
+		t.Log("NOT RUN: no /proc/<pid>/comm: the wait for the job to exec")
+		return
+	}
+	require.True(t, became, "the job never became `sleep`")
+}
+
+// waitForThePromptAfterTheJob waits until the shell is at its prompt after the job's command: the prompt after it has been drawn,
+// which the integration says with its second input-start mark (the first is the first prompt). With the integration bash runs its
+// prompt commands as a non-interactive shell, which does not hang its jobs up, between the end of a command and the first hook that
+// sets a handler (T5-inject-bash.md, the known gap: tens of microseconds, longer in wall time when the machine is busy); a test that
+// closed the instant the job is named would fall into it by its own timing. A bash with no integration has no such window; one whose
+// integration is `unconfirmed` (it was slow to start) has it.
+func waitForThePromptAfterTheJob(t *testing.T, sink *chunkSink, info Session) {
+	t.Helper()
+	if info.Integration.State == IntegrationOn || info.Integration.State == IntegrationUnconfirmed {
 		require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 2 },
 			20*time.Second, 5*time.Millisecond, "the prompt after the job's command was never drawn")
 	}
-	require.NoError(t, m.CloseSession(info.ID))
-	require.Eventually(t, func() bool { return ended(job) }, 10*time.Second, 20*time.Millisecond, "the background job was hung up with its shell")
+	// Whatever the integration says: a bash with none is in readline's redisplay after it has drawn its prompt too.
+	waiting, known := waitingForInput(info.PID, 20*time.Second)
+	if !known {
+		t.Log("NOT RUN: this machine cannot say whether the shell waits for input (no /proc/<pid>/syscall or wchan): the close may land in readline's redisplay")
+		return
+	}
+	require.True(t, waiting, "the shell never waited for input at its prompt")
+}
+
+// waitForExec waits until the process has become the program of that name (Linux, /proc/<pid>/comm): a shell's background job is a fork of the
+// shell until its exec, and a hangup that reaches it there is lost (zsh's handler in the child queues the signal, and the exec drops it:
+// seen with the job still named `zsh` when the hangup came, in 17 of 33 such runs on a busy machine, in none of 87 once it was `sleep`). It
+// reports whether it became it, and whether the machine can tell.
+func waitForExec(pid int, name string, within time.Duration) (bool, bool) {
+	path := "/proc/" + strconv.Itoa(pid) + "/comm"
+	if _, err := os.Stat("/proc/self/comm"); err != nil {
+		return false, false
+	}
+	deadline := time.Now().Add(within)
+	for {
+		if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) == name {
+			return true, true
+		}
+		if time.Now().After(deadline) {
+			return false, true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+func TestWaitForExecWaitsUntilTheProcessIsTheProgram(t *testing.T) {
+	if _, err := os.Stat("/proc/self/comm"); err != nil {
+		t.Skip("NOT RUN: no /proc/<pid>/comm on this machine")
+	}
+	cmd := exec.Command("sh", "-c", "sleep 0.4; exec sleep 30")
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	became, known := waitForExec(cmd.Process.Pid, "sleep", 10*time.Second)
+	assert.True(t, known)
+	assert.True(t, became)
+	comm, err := os.ReadFile("/proc/" + strconv.Itoa(cmd.Process.Pid) + "/comm")
+	require.NoError(t, err)
+	assert.Equal(t, "sleep", strings.TrimSpace(string(comm)), "it returned when the exec was done, not before")
+	became, _ = waitForExec(cmd.Process.Pid, "cat", 200*time.Millisecond)
+	assert.False(t, became, "it is not another program")
+}
+
+// waitingForInput waits until the process is blocked in a system call that waits for input to be readable (Linux: a `read`, or the
+// `select` or `poll` that a shell makes while it waits for a key). That is a shell that has drawn its
+// prompt and done what it does around it: before it, bash is still in readline's redisplay (state R) and a hangup that lands there does
+// not hang its jobs up (with or without the integration: seen on plain bash). It is the event itself, so one observation is enough. A
+// process asleep for another reason (a `wait4` for a hook's fork, a `write` to a full pty, a `nanosleep`) is not it. It reports whether
+// the process was seen waiting, and whether the machine can tell (`/proc/<pid>/syscall`, or `wchan`).
+func waitingForInput(pid int, within time.Duration) (bool, bool) {
+	deadline := time.Now().Add(within)
+	for {
+		seen, tell := waitsForInputNow(pid)
+		if !tell {
+			return false, false
+		}
+		if seen {
+			return true, true
+		}
+		if time.Now().After(deadline) {
+			return false, true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// Limits (outside CI, which is ubuntu amd64): the wchan fallback matches `wait_woken`, which a `write` blocked on a full pty is in too, and
+// a 32-bit bash on an amd64 kernel makes its system calls with the i386 numbers, which the table does not have.
+//
+// waitsForInputNow looks once. /proc/<pid>/syscall gives the system call the process is in: one that waits for input to be readable (`read`,
+// `select`, `pselect6`, `poll`, `ppoll`: bash waits in a `select` of its terminal, zsh in a `read` of its own descriptor for it, fish in a
+// `poll`). A `wait4` for a hook's fork, a `write` to a full pty and a `nanosleep` are other calls. Where the numbers are not known (an
+// architecture this table lacks) the kernel's name for where the process sleeps, wchan, is read instead.
+func waitsForInputNow(pid int) (bool, bool) {
+	if waiting, known := syscallWaitsForInput(pid); known {
+		return waiting, true
+	}
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/wchan")
+	if err != nil {
+		return false, false
+	}
+	return wchanWaitsForInput(strings.TrimSpace(string(data))), true
+}
+
+// wchanWaitsForInput says whether the kernel function a process sleeps in (wchan) is one that waits for input to be readable: a tty
+// read, a select or poll, a read of an empty pipe. Not a pipe write, a wait for a child, or a sleep.
+func wchanWaitsForInput(name string) bool {
+	for _, waits := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
+		if strings.Contains(name, waits) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestTheWchanThatWaitsForInputIsAReadAndNotAWriteOrAChildOrASleep(t *testing.T) {
+	for name, want := range map[string]bool{
+		"n_tty_read": true, "do_select": true, "do_sys_poll": true, "poll_schedule_timeout.constprop.0": true, "wait_woken": true,
+		"pipe_read": false, "pipe_write": false, "do_wait": false, "hrtimer_nanosleep": false, "0": false, "": false,
+	} {
+		assert.Equal(t, want, wchanWaitsForInput(name), name)
+	}
+}
+
+// syscallWaitsForInput reads /proc/<pid>/syscall: the number of the system call the process is in, or `running`. It does not know the
+// numbers of every architecture (then it says it cannot tell).
+func syscallWaitsForInput(pid int) (bool, bool) {
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/syscall")
+	if err != nil {
+		return false, false
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return false, false
+	}
+	if fields[0] == "running" {
+		return false, true
+	}
+	number, err := strconv.Atoi(fields[0])
+	if err != nil || number < 0 {
+		return false, false
+	}
+	var read int
+	var selects []int
+	switch runtime.GOARCH {
+	case "amd64":
+		read, selects = 0, []int{7, 23, 270, 271}
+	case "arm64":
+		read, selects = 63, []int{72, 73}
+	default:
+		return false, false
+	}
+	if slices.Contains(selects, number) {
+		return true, true // select and poll take pointers: the number is all there is to check
+	}
+	if number != read || len(fields) < 2 {
+		return false, true
+	}
+	// A read waits for input when it reads the terminal; a shell blocked in a hook's `$(…)` reads a pipe. The shell reads its terminal on
+	// whatever fd it likes (zsh: not 0), so the first argument is looked up.
+	fd, err := strconv.ParseInt(strings.TrimPrefix(fields[1], "0x"), 16, 32)
+	if err != nil {
+		return false, true
+	}
+	target, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/fd/" + strconv.FormatInt(fd, 10))
+	if err != nil {
+		return false, true
+	}
+	return strings.HasPrefix(target, "/dev/pts/") || target == "/dev/tty", true
+}
+
+func TestWaitingForInputIsAProcessBlockedReadingItsStdinAndNothingElse(t *testing.T) {
+	if _, err := os.Stat("/proc/self/syscall"); err != nil {
+		t.Skip("NOT RUN: no /proc/<pid>/syscall on this machine")
+	}
+	// cat on a terminal nobody types on is blocked in read(0) of a tty: it waits for input.
+	master, slave, err := pty.Open()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })
+	reader := exec.Command("cat")
+	reader.Stdin = slave
+	require.NoError(t, reader.Start())
+	t.Cleanup(func() { _ = reader.Process.Kill(); _ = reader.Wait() })
+	waiting, known := waitingForInput(reader.Process.Pid, 5*time.Second)
+	assert.True(t, known)
+	assert.True(t, waiting, "cat is blocked reading a terminal")
+
+	// A shell blocked in the `$(…)` of a hook reads a pipe: that is the window the wait is there to avoid.
+	piper := exec.Command("cat")
+	pipeIn, err := piper.StdinPipe()
+	require.NoError(t, err)
+	require.NoError(t, piper.Start())
+	t.Cleanup(func() { _ = pipeIn.Close(); _ = piper.Process.Kill(); _ = piper.Wait() })
+	waiting, _ = waitingForInput(piper.Process.Pid, 400*time.Millisecond)
+	assert.False(t, waiting, "a process blocked reading a pipe does not wait for input")
+
+	// sleep is asleep (nanosleep), and a shell waiting for a child is in wait4: neither waits for input.
+	sleeper := exec.Command("sh", "-c", "sleep 30; true")
+	require.NoError(t, sleeper.Start())
+	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
+	waiting, _ = waitingForInput(sleeper.Process.Pid, 400*time.Millisecond)
+	assert.False(t, waiting, "a shell that waits for its child does not wait for input")
+	napper := exec.Command("sleep", "30")
+	require.NoError(t, napper.Start())
+	t.Cleanup(func() { _ = napper.Process.Kill(); _ = napper.Wait() })
+	waiting, _ = waitingForInput(napper.Process.Pid, 400*time.Millisecond)
+	assert.False(t, waiting, "a process asleep for a time does not wait for input")
+}
+
+// A bash that is slow to start says `unconfirmed` for its integration (it has not said `ready` in 500 ms) and still has it: the test
+// waits for the prompt then too. (A prompt command that takes 0.3 s puts the second prompt well after the job's output.) (It did not, and closed inside the hooks' window about one run in twenty on a busy machine.)
+func TestTheWaitForThePromptAfterTheJobWaitsForASlowBashToo(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("no bash on this machine")
+	}
+	if reason := integrationShellSkip("bash", func() (int, int, error) { return probeBashVersion(bash) }); reason != "" {
+		t.Skipf("NOT RUN: %s", reason)
+	}
+	home := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".bash_profile"), []byte("sleep 1\nPROMPT_COMMAND='sleep 0.3'\n"), 0o600))
+	t.Setenv("HOME", home)
+	sink := newChunkSink()
+	m := newChunkManager(t, sink)
+	info, err := m.Start(Options{Command: []string{bash}}, nil)
+	require.NoError(t, err)
+	require.Equal(t, IntegrationUnconfirmed, info.Integration.State, "a bash that takes a second to start has not said ready in 500 ms")
+	send(t, m, info.ID, "echo job-$$")
+	jobLine := regexp.MustCompile(`job-\d`)
+	require.Eventually(t, func() bool { return jobLine.Match(sink.output(info.ID)) }, 20*time.Second, 5*time.Millisecond)
+	waitForThePromptAfterTheJob(t, sink, info)
+	assert.GreaterOrEqual(t, bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")), 2, "the shell is at the prompt after its line")
 }
 
 // (g) The host passes the shell's bytes untouched: a multi-byte character cut between two reads arrives

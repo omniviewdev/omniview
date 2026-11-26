@@ -901,8 +901,6 @@ func main() {
 			log.Errorw(context.Background(), "failed to open settings", "error", err)
 		}
 	}, menus.AppMenuOptions{Reload: profile.Descriptor.Kind == "development"})
-	menus.SetupKeyBindings(app)
-	menus.SetupContextMenus(app)
 
 	// Run the application
 	if runErr := app.Run(); runErr != nil {

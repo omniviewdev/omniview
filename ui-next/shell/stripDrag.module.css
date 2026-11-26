@@ -1,0 +1,60 @@
+/* The pointer's drag of a tab (ch16 S56 to S58; stripDrag.ts): the marker of the place a drop lands, the ghost of the tab and the zone a release outside the strip takes it to, in one popover, so that the top layer holds them over the window without a z-index. */
+@layer ov.shell {
+  /* A point at the window's corner: the marker, the ghost and the zone are placed from it by `translate`, in the window's own pixels. It draws nothing and takes no pointer. */
+  .layer {
+    position: fixed;
+    inset: 0 auto auto 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: visible;
+    background-color: transparent;
+    pointer-events: none;
+  }
+
+  /* 2 px wide and as high as a face, centred on its place. */
+  .marker {
+    position: absolute;
+    inset: 0 auto auto -1px;
+    inline-size: 2px;
+    block-size: 28px;
+    border-radius: var(--ov-radius-mark);
+    background-color: var(--ov-accent);
+  }
+
+  /* The page, outlined where it is while the pointer is out of the strip (S58, "New window"), and named on a chip so that the name stays clear of the page's rows. Its place and size are set once, when the drag begins. */
+  .zone {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    border: 2px solid var(--ov-accent);
+    border-radius: var(--ov-radius-island);
+    background-color: var(--ov-hover-row);
+  }
+
+  .zone[hidden] {
+    display: none;
+  }
+
+  .zone::after {
+    content: 'New window';
+    padding: var(--ov-spacing-4) var(--ov-spacing-12);
+    border: 1px solid var(--ov-border-popup);
+    border-radius: var(--ov-radius-tab);
+    background-color: var(--ov-bg-popup);
+    color: var(--ov-fg);
+    font-family: var(--ov-font-ui);
+    font-size: var(--ov-fs-13);
+    font-weight: 600;
+    line-height: var(--ov-lh-16);
+  }
+
+  /* While a drag runs the window carries `data-tab-dragging`: the grabbing cursor shows over whatever the pointer is on and nothing is selected. Never on <html>: an attribute there restyles the page. */
+  :global([data-shell-part='window'][data-tab-dragging]),
+  :global([data-shell-part='window'][data-tab-dragging] *) {
+    cursor: grabbing;
+    user-select: none;
+  }
+}

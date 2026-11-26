@@ -1,5 +1,6 @@
 import { ContractError } from '../loader/failure';
 import { PALETTE_LIMITS } from './paletteRows';
+import { dressed, dressProblems, readTarget } from './sidebarTargets';
 import type { ContributionV1, SidebarNodeV1 } from './v1';
 
 // Admission: what a bundle's exports must be before the host builds anything from them. A bundle is plugin code, and what it hands over is
@@ -32,7 +33,10 @@ function isCount(count: unknown): boolean {
   return count === undefined || count === null || typeof count === 'number' || (isRecord(count) && count.approximate === true && typeof count.value === 'number');
 }
 
-function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set<string>, leaves: string[]): void {
+/** A leaf of the skeleton and the page it opens: the leaf's `id` unless it names another with `page`. A leaf that opens a connection opens no page, and is not here. */
+type Leaf = { readonly id: string; readonly page: string };
+
+function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set<string>, leaves: Leaf[]): void {
   if (!Array.isArray(nodes)) {
     problems.push(`${where} is not a list`);
     return;
@@ -66,10 +70,19 @@ function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set
       problems.push(`${at}.count is not a number, null, or { value, approximate: true }`);
     }
 
+    // How a row is dressed (KL5): a badge and a colour the shell can draw. A group is dressed as an entry is.
+    for (const problem of dressProblems(node as SidebarNodeV1)) {
+      problems.push(`${at}.${problem}`);
+    }
+
     const children = node.children;
     if (children === undefined) {
-      if (isText(id)) {
-        leaves.push(id);
+      // A leaf opens a page (its `id`'s, or the one `page` names, with the parameters it opens with) or a connection (KL5); a group opens nothing, whatever else it names.
+      const read = readTarget(node as SidebarNodeV1);
+      if ('problem' in read) {
+        problems.push(`${at}.${read.problem}`);
+      } else if (read.target.kind === 'page' && isText(id)) {
+        leaves.push({ id, page: read.target.page });
       }
     } else {
       checkNodes(children, `${at}.children`, problems, seen, leaves);
@@ -464,7 +477,7 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
   checkPanel(value.panel, problems);
   checkPalette(value.palette, problems);
 
-  const leaves: string[] = [];
+  const leaves: Leaf[] = [];
   const sidebar = value.sidebar;
   if (!isRecord(sidebar)) {
     problems.push('sidebar is not an object');
@@ -494,10 +507,10 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
     }
 
     for (const leaf of leaves) {
-      if (!Object.hasOwn(pages, leaf)) {
-        problems.push(`the sidebar entry "${leaf}" opens no page`);
-      } else if (isDetail(pages[leaf])) {
-        problems.push(`the sidebar entry "${leaf}" opens a detail page, which needs an object`);
+      if (!Object.hasOwn(pages, leaf.page)) {
+        problems.push(leaf.page === leaf.id ? `the sidebar entry "${leaf.id}" opens no page` : `the sidebar entry "${leaf.id}" opens no page "${leaf.page}"`);
+      } else if (isDetail(pages[leaf.page])) {
+        problems.push(`the sidebar entry "${leaf.id}" opens a detail page, which needs an object`);
       }
     }
 
@@ -545,15 +558,34 @@ export function admitOrThrow(exports: unknown): ContributionV1 {
   return admission.contribution;
 }
 
-/** The nodes a hook answered that open a page of this contribution: a dynamic entry that opens nothing would be a stub, and a detail page opens nothing without an object. */
+/**
+ * The nodes a hook answered that open something of this contribution, as the shell may draw them: a dynamic entry that opens nothing would be a stub, and a detail page opens nothing without an object. A leaf opens a page of the contribution (its `id`'s or
+ * the one `page` names, with its `params`) or one of the plugin's connections (KL5); one that is not a valid way of saying so is left out (`sidebarTargets.ts`: a leaf opens one thing), and what a row is dressed with that the shell cannot draw (a `status` or a
+ * `tone` that is not valid) is taken off it and costs the row nothing else. A group that is left with nothing to open is left out.
+ */
 export function openable(nodes: readonly SidebarNodeV1[], pages: Readonly<Record<string, unknown>>): readonly SidebarNodeV1[] {
   const keep = (node: SidebarNodeV1): SidebarNodeV1 | undefined => {
     if (node.children === undefined) {
-      return Object.hasOwn(pages, node.id) && !isDetail(pages[node.id]) ? node : undefined;
+      const read = readTarget(node);
+      if (!('target' in read)) {
+        return undefined;
+      }
+
+      const { target } = read;
+      if (target.kind === 'page') {
+        if (!Object.hasOwn(pages, target.page) || isDetail(pages[target.page])) {
+          return undefined;
+        }
+
+        // Parameters that name nothing (an empty one) are the same place without them: the leaf is kept as the place it opens.
+        return dressed(node.params !== undefined && node.params !== target.params ? { ...node, params: target.params } : node);
+      }
+
+      return dressed(node);
     }
 
     const children = node.children.map(keep).filter((child): child is SidebarNodeV1 => child !== undefined);
-    return children.length === 0 ? undefined : { ...node, children };
+    return children.length === 0 ? undefined : dressed({ ...node, children });
   };
 
   return nodes.map(keep).filter((node): node is SidebarNodeV1 => node !== undefined);

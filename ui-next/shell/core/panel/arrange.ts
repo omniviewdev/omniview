@@ -1,5 +1,5 @@
 import { limitsOf, MIN_HEIGHT } from './height';
-import { effectiveTool, own, patch, refuse, sessionVisible, settle, toolVisible, unchanged, type Step } from './state';
+import { effectiveTool, own, patch, refuse, sessionVisible, settle, toolVisible, unchanged, visibleSessions, type Step } from './state';
 import type { PanelResult, PanelState, Resize, SessionId, ToolId } from './types';
 
 // What the user does to the panel itself: show and hide it, size it, choose a tool, choose a session. Each is a function from a state to a state; one that changes nothing returns the
@@ -105,4 +105,26 @@ export function revealSession(state: PanelState, id: SessionId): Step<PanelResul
   }
 
   return { state: settle(patch(state, { open: true, tool: session.tool, active: Object.freeze({ ...state.active, [session.tool]: id }) })), result: DONE };
+}
+
+/**
+ * Moves a session to an index of its tool's strip, kept within it (the mock's `reorderSession`, shell-panel.js:1023). The strip is the visible sessions of the tool in `order`, so the tool's sessions take its places in that
+ * order in the new sequence and every other session, of another tool or hidden, stays where it was.
+ */
+export function reorderSession(state: PanelState, id: SessionId, to: number): Step<PanelResult> {
+  const session = own(state.sessions, id);
+  if (session === undefined || !sessionVisible(state, session)) {
+    return refuse(state, 'missing', `There is no session ${id}.`);
+  }
+
+  const strip = visibleSessions(state, session.tool).map((one) => one.id);
+  const target = Math.min(Math.max(to, 0), strip.length - 1);
+  if (target === strip.indexOf(id)) {
+    return unchanged(state);
+  }
+
+  strip.splice(target, 0, ...strip.splice(strip.indexOf(id), 1));
+  const places = new Set(strip);
+  const order = state.order.map((one) => (places.has(one) ? strip.shift() ?? one : one));
+  return { state: settle(patch(state, { order: Object.freeze(order) })), result: DONE };
 }

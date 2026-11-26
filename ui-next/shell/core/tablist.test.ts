@@ -49,3 +49,29 @@ describe('the keys of a strip of tabs', () => {
     expect(key('ArrowLeft', 0, 1)).toEqual({ to: 0 });
   });
 });
+
+describe('the keys that move a tab (Alt and Shift with a key)', () => {
+  const move = (name: string, at = 1, count = 4, rtl = false) => tablistKey(name, at, count, rtl, true, true);
+
+  it('arrows ask for the next and the previous place, Home and End for the ends', () => {
+    expect(move('ArrowRight')).toEqual({ move: 2 });
+    expect(move('ArrowLeft')).toEqual({ move: 0 });
+    expect(move('Home', 2)).toEqual({ move: 0 });
+    expect(move('End')).toEqual({ move: 3 });
+  });
+
+  it('do not wrap: at an end the tab asks to stay', () => {
+    expect(move('ArrowRight', 3)).toEqual({ move: 3 });
+    expect(move('ArrowLeft', 0)).toEqual({ move: 0 });
+  });
+
+  it('are mirrored in a right-to-left strip', () => {
+    expect(move('ArrowRight', 1, 4, true)).toEqual({ move: 0 });
+  });
+
+  it('leave Delete, Backspace and every other key alone', () => {
+    expect(move('Delete')).toBeUndefined();
+    expect(move('Backspace')).toBeUndefined();
+    expect(move('a')).toBeUndefined();
+  });
+});

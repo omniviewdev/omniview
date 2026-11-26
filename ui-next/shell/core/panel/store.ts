@@ -1,4 +1,4 @@
-import { activateSession, activateTool, fitHeight, hide, resize, revealSession, setHeight, show, type ShowOptions } from './arrange';
+import { activateSession, activateTool, fitHeight, hide, reorderSession, resize, revealSession, setHeight, show, type ShowOptions } from './arrange';
 import { serialise } from './persist';
 import { createSelectors } from './selectors';
 import { closeSession, openSession, retitleSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
@@ -57,6 +57,8 @@ export type PanelStore = {
   /** Gives a session another title (the shell's real name once the host has it): one change, and the tab's name, twins and ordinal follow from the snapshot. The same title changes nothing; a held session is refused. */
   readonly retitleSession: (id: SessionId, title: string) => PanelResult;
   readonly closeSession: (id: SessionId) => CloseResult;
+  /** Moves a session to an index of its tool's strip (kept within it): the other sessions keep their places, and the saved panel lists them in the new order. The place it has changes nothing. */
+  readonly reorderSession: (id: SessionId, to: number) => PanelResult;
 
   /** What the session saves; see `restorePanel` for the way back and `createSaver` for the writing. */
   readonly serialise: () => PersistedPanel;
@@ -145,6 +147,7 @@ export function createPanelStore(options: PanelStoreOptions = {}): PanelStore {
     setSessionState: (id, change) => run(setSessionState(state, id, change, ctx.now())),
     retitleSession: (id, title) => run(retitleSession(state, id, title)),
     closeSession: (id) => run(closeSession(state, id)),
+    reorderSession: (id, to) => run(reorderSession(state, id, to)),
 
     serialise: () => serialise(state),
     dispose: () => {

@@ -13,6 +13,9 @@
 //              outline, colour, radius) of the tab on screen, a tab at rest, the close control, the new-tab control and Back, at rest, hovered and focused
 //   keyboard   with real key presses: Tab lands on the tab on screen, the arrows move the focus and select nothing, Home and End, Enter and Space select, Delete closes and moves the focus to the neighbour,
 //              the chords (close, jump to a tab, the last tab), a middle click and the close control close, the new-tab control opens a tab, the page region is labelled by the selected tab
+//   drag       with a real pointer (S45, S56 to S59): a press moved past the threshold is a drag, the window and the face are marked and <html> is not, the marker and the ghost are in the top layer on the strip and at the pointer, the
+//              tab is painted as one that is not on screen and its ghost on the popup's plane, the order is the model's own until the release; a release on the pinned side of the separator pins, on the other side unpins; Escape and a
+//              release 40 px below the row put the tab back
 //   a11y       axe-core on the strip with 3 and with 30 tabs and on the host
 //   counts     the DOM nodes of a tab (exact), and the commits one tab switch costs (React development build, React's profiler): exact
 //   keep-alive on the host: a hidden page keeps its scroll offset, its local state and its DOM, holds no timer while it is hidden and takes it up again, tabs past the cap are unmounted, a hidden
@@ -50,7 +53,7 @@ const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 const failures = [];
-const report = { parity: {}, states: {}, keyboard: {}, a11y: {}, counts: {}, keepAlive: {}, switchTimes: {}, load: {}, arrival: {}, notes: [] };
+const report = { parity: {}, states: {}, keyboard: {}, drag: {}, a11y: {}, counts: {}, keepAlive: {}, switchTimes: {}, load: {}, arrival: {}, notes: [] };
 const fail = (where, what) => failures.push(`${where}: ${what}`);
 
 const fixtureUrl = (origin, query) => `${origin}/shell/probes/fixture.html?${query}`;
@@ -339,6 +342,86 @@ async function keyboard(browser, engine, viewportName, viewport, origin) {
   check('the close control closes the tab', s.titles.length === 1, s);
   // F6 from nothing enters the top row on the tab on screen; Back and Forward walk the history of the tab on screen (the page opened a second route through the strip's `+` and a third).
   report.keyboard[`${engine} ${viewportName}`] = log;
+  await context.close();
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+async function drag(browser, engine, viewportName, viewport, origin) {
+  const where = `drag ${engine} ${viewportName}`;
+  const { page, context, errors } = await open(browser, fixtureUrl(origin, 'case=tabs&tabs=5'), viewport);
+  const log = {};
+  const check = (name, ok, got) => {
+    log[name] = got;
+    if (!ok) fail(where, `${name}: ${JSON.stringify(got)}`);
+  };
+  const settle = () => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  // The window's first two tabs are pinned. What the probe reads: the strip as the model has it (the pinned tabs starred), the faces' rectangles, and what a drag has drawn.
+  await page.evaluate(() => {
+    const [first, second] = window.__tabs.getSnapshot().order;
+    window.__tabs.pin(first, true);
+    window.__tabs.pin(second, true);
+  });
+  await settle();
+  const order = () => page.evaluate(() => { const { order: ids, tabs } = window.__tabs.getSnapshot(); return ids.map((id) => `${tabs[id].face.title}${tabs[id].flags.pinned ? '*' : ''}`).join(', '); });
+  const faces = () => page.evaluate(() => [...document.querySelectorAll('[data-shell-part="tabStrip"] [data-shell-part="tab"]')].map((el) => el.getBoundingClientRect().toJSON()));
+  const paint = (token) => page.evaluate((name) => { const el = document.createElement('i'); el.style.backgroundColor = `var(${name})`; document.body.append(el); const fill = getComputedStyle(el).backgroundColor; el.remove(); return fill; }, token);
+  const drawn = async () => {
+    await settle();
+    return page.evaluate(() => {
+      const box = (el) => el.getBoundingClientRect().toJSON();
+      const layer = document.querySelector('[data-shell-part="tabDrag"]');
+      const source = document.querySelector('[data-dragging]');
+      const ghost = layer?.querySelector('[data-shell-part="tabGhost"]');
+      return {
+        window: document.querySelector('[data-shell-part="window"]').hasAttribute('data-tab-dragging'),
+        root: document.documentElement.hasAttribute('data-tab-dragging'),
+        source: source?.querySelector('[role=tab]').getAttribute('aria-label') ?? null,
+        sourceFill: source ? getComputedStyle(source).backgroundColor : null,
+        layer: layer === null ? null : { open: layer.matches(':popover-open'), marker: box(layer.firstElementChild), hidden: layer.firstElementChild.hidden, ghost: box(ghost), ghostFill: getComputedStyle(ghost).backgroundColor },
+      };
+    });
+  };
+  /** Presses on the face `index`, travels to (x, y) and waits for the frame that draws the drag. The release is the caller's. */
+  const take = async (index, x, y) => {
+    const face = (await faces())[index];
+    await page.mouse.move(face.x + face.width / 2, face.y + face.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x, y, { steps: 8 });
+    return drawn();
+  };
+  const rest = 'Page 1*, Page 2*, Page 3, Page 4, Page 5';
+  let r = await faces();
+  const y = r[0].y + r[0].height / 2;
+  // Page 5 over the gap on the pinned side of the separator, 1 px from Page 2: the marker is in that gap, the order is still the model's own, and the faces have not moved.
+  let d = await take(4, r[1].right + 1, y);
+  const marker = d.layer?.marker;
+  check('a press moved past the threshold is a drag: the window and the face are marked, <html> is not', d.window && !d.root && d.source === 'Page 5', d);
+  check('the marker and the ghost are in the top layer, and the order is the model\'s own', d.layer?.open === true && (await order()) === rest, [d.layer?.open, await order()]);
+  check('the marker is 2 px wide, as high as a face, 2 px from Page 2 on the strip', marker && Math.abs(marker.width - 2) < 0.1 && Math.abs(marker.height - 28) < 0.1 && Math.abs(marker.x - (r[1].right + 1)) < 0.6 && Math.abs(marker.y - r[0].y) < 0.6, { marker, page2: r[1] });
+  check('the ghost is a face wide, 12 px from the pointer', d.layer?.ghost && Math.abs(d.layer.ghost.width - r[4].width) < 0.6 && Math.abs(d.layer.ghost.x - (r[1].right + 1 + 12)) < 0.6 && Math.abs(d.layer.ghost.y - (y + 12)) < 0.6, d.layer?.ghost);
+  check('the tab is painted as one that is not on screen, and the ghost on the popup\'s plane', d.sourceFill === (await paint('--ov-selection-inactive')) && d.layer?.ghostFill === (await paint('--ov-bg-popup')), [d.sourceFill, d.layer?.ghostFill]);
+  check('the faces have not moved', JSON.stringify(await faces()) === JSON.stringify(r), 'moved');
+  await page.mouse.up();
+  d = await drawn();
+  check('a release on the pinned side of the separator pins the tab there, and the drag leaves nothing behind', (await order()) === 'Page 1*, Page 2*, Page 5*, Page 3, Page 4' && d.layer === null && !d.window && d.source === null, [await order(), d]);
+  // Page 5 over the gap on the other side of the separator, 1 px from Page 3: it is unpinned and stays beside the separator.
+  r = await faces();
+  await take(2, r[3].x - 1, y);
+  await page.mouse.up();
+  check('a release on the other side of the separator unpins the tab', (await order()) === 'Page 1*, Page 2*, Page 5, Page 3, Page 4', await order());
+  // Escape puts the tab back, and the release that follows does nothing; so does a release 40 px below the row, where the marker is gone.
+  r = await faces();
+  await take(4, r[0].x + 4, y);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  d = await drawn();
+  check('Escape puts the tab back and leaves nothing behind', (await order()) === 'Page 1*, Page 2*, Page 5, Page 3, Page 4' && d.layer === null && !d.window && d.source === null, [await order(), d]);
+  d = await take(4, r[0].x + 4, r[0].y + r[0].height + 40);
+  check('past the band below the row the marker is gone', d.layer?.hidden === true, d.layer);
+  await page.mouse.up();
+  check('a release there puts the tab back', (await order()) === 'Page 1*, Page 2*, Page 5, Page 3, Page 4', await order());
+  for (const error of errors) fail(`errors ${where}`, error);
+  report.drag[`${engine} ${viewportName}`] = log;
   await context.close();
 }
 
@@ -664,6 +747,7 @@ for (const engineName of engineNames) {
     await parity(browser, engineName, viewportName, viewport, production.origin);
     await states(browser, engineName, viewportName, viewport, production.origin);
     await keyboard(browser, engineName, viewportName, viewport, production.origin);
+    await drag(browser, engineName, viewportName, viewport, production.origin);
     await a11y(browser, engineName, viewportName, viewport, production.origin, axe);
     await counts(browser, engineName, viewportName, viewport, development.origin);
     await keepAlive(browser, engineName, viewportName, viewport, production.origin);

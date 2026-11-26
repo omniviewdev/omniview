@@ -26,3 +26,6 @@ export const toggleChordText = (platform: Platform): string => (platform === 'ma
 
 /** The chord as `aria-keyshortcuts` writes it. */
 export const toggleChordKeys = (platform: Platform): string => (platform === 'mac' ? 'Meta+J' : 'Control+J');
+
+/** The text of the Close session chord, which usePanelChords binds: Command W on a Mac, Control Shift W elsewhere. */
+export const closeChordText = (platform: Platform): string => (platform === 'mac' ? '⌘W' : 'Ctrl+Shift+W');

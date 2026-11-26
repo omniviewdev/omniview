@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { isIconName } from '@omniviewdev/kit';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPanelStore, createTabsStore, seedChips, SCREEN_READER_COMMAND, TERMINAL_TOOL, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
+import { createPanelStore, createTabsStore, NEW_TERMINAL, seedChips, SCREEN_READER_COMMAND, TERMINAL_TOOL, type Destination, type PaletteStore, type PanelStore, type Route, type TabsStore } from '../../shell';
 import type { FrameV1, PaletteCommandV1, PaletteJsonV1, PaletteMatchProviderV1, PaletteRowV1, PaletteSearchProviderV1, PaletteV1, PanelHostV1, SidebarNodeV1 } from '../contract/v1';
 import { acme, answering, widgetPage } from '../testing';
 import { createContributions, HOME_PAGE, routeKey, type PluginSource } from './contributions';
@@ -155,6 +157,8 @@ type Setup = {
   readonly terminalScreenReader?: HostPaletteDeps['terminalScreenReader'];
   /** Opens Settings: the window's own, or the sheet. Present, the palette offers the Settings command. */
   readonly openSettings?: () => void;
+  /** Starts a session in the Terminal tool. Present, the palette offers the New terminal command. */
+  readonly newTerminal?: () => void;
 };
 
 /** What a test holds of the palette it built: the palette and its store, the tab store, what the plugins and the published values are, and the handles that change them. */
@@ -198,7 +202,7 @@ function build(setup: Setup = {}): World {
     },
   });
   const watched = watching(setup.tabs === undefined ? tabs : setup.tabs(tabs));
-  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader, openSettings: setup.openSettings });
+  const palette = createHostPalette({ tabs: watched.store, plugins, contributions, nodes, frames, panel: setup.panel, platform: setup.platform ?? 'mac', onCloseWindow: setup.onCloseWindow, remembered: setup.remembered, report: setup.report, panelHosts: setup.panelHosts, terminalScreenReader: setup.terminalScreenReader, openSettings: setup.openSettings, newTerminal: setup.newTerminal });
   return {
     palette,
     store: palette.store,
@@ -241,6 +245,12 @@ function nameConnection(w: World, route: Route, name: string, title = 'Widgets',
 
 const rowsOf = (w: World, section: string) => w.store.getSnapshot().sections.find((candidate) => candidate.id === section)?.rows ?? [];
 const titlesOf = (w: World, section: string): string[] => rowsOf(w, section).map((row) => row.title.text);
+
+/** The tab commands (`shell/tabs/commands.ts`) the palette lists, in its order, when they can run: with the last of two tabs on screen, and with the only tab. */
+const TWO_TABS = ['Close tab', 'Close other tabs', 'Close tabs to the left', 'Close all but pinned', 'Duplicate tab', 'Pin tab', 'Reload tab', 'Next tab', 'Previous tab'];
+const ONE_TAB = ['Close tab', 'Close all but pinned', 'Duplicate tab', 'Pin tab', 'Reload tab'];
+/** The Close tab and Toggle panel chords the palette says. */
+const chordsOf = (w: World) => rowsOf(w, 'commands').filter((row) => ['Close tab', 'Toggle panel'].includes(row.title.text)).map((row) => [row.title.text, row.shortcut]);
 
 /** The palette says nothing matched `query`: it offers the places to start from instead, and counts no result. */
 function expectNoResults(w: World, query: string): void {
@@ -324,6 +334,22 @@ describe('the pages source', () => {
     expect(racks.action).toMatchObject({ type: 'open', destination: { route: { plugin: 'beta', contribution: 'racks' } } });
   });
 
+  it('lists an entry that opens a page with parameters as that place, a row of its own beside the page\'s, and no row for one that opens a connection: the palette lists the plugin\'s connections itself (KL5)', () => {
+    const w = build();
+    w.nodes.publish('beta', [
+      { id: 'items', label: 'Items', icon: 'box' },
+      { id: 'recent', label: 'Recent items', icon: 'clock', page: 'items', params: { sort: 'recent' } },
+      { id: 'north', label: 'north', icon: 'server', connection: 'north-1' },
+    ]);
+    w.store.open({ kind: 'goto' });
+
+    expect(rowsOf(w, 'goto').filter((row) => row.route?.plugin === 'beta').map((row) => [row.kind, row.title.text, row.route?.contribution, row.route?.params])).toEqual([
+      ['home', 'Beta', 'overview', {}],
+      ['page', 'Items', 'items', {}],
+      ['page', 'Recent items', 'items', { sort: 'recent' }],
+    ]);
+  });
+
   it('opens a page of a plugin that is not on screen at the connection that plugin was last used in, as its own sidebar does, and leaves the plugin on screen to the tab model', () => {
     const w = build({ remembered: (plugin) => (plugin === 'acme' ? { plugin: 'acme', contribution: 'widgets', params: { connection: 'north' } } : undefined) });
     w.open(at('beta', 'items'));
@@ -336,7 +362,7 @@ describe('the pages source', () => {
     expect(rowTitled(w, 'Gadgets').route).toEqual({ plugin: 'acme', contribution: 'gadgets', params: {} });
   });
 
-  it('says only the keys that work for a place: the four open keys of the tab model, no New window (the shell has no second window), and refuses Shift+Enter with the reason', () => {
+  it('says only the keys that work for a place: in a browser tab, which has one window, the four open keys of the tab model and no New window, and Shift+Enter is refused with the reason', () => {
     const w = build();
     w.store.open({ kind: 'goto' });
     expect(w.store.getSnapshot().hints.map((hint) => hint.label)).toEqual(['Open', 'Here', 'New tab', 'Background tab']);
@@ -345,6 +371,16 @@ describe('the pages source', () => {
     expect(w.store.activate(undefined, { shiftKey: true })).toMatchObject({ status: 'refused', message: 'This window cannot open another one yet.' });
     expect(w.store.getSnapshot().open).toBe(true);
     expect(w.tabs.getSnapshot().order).toHaveLength(tabsBefore);
+  });
+
+  it('says New window and opens the place in a window of its own on Shift+Enter where the app has windows', () => {
+    const windows: NonNullable<TabsStore['windows']> = { others: () => [], moveToNew: vi.fn(), moveTo: vi.fn(), dragOut: vi.fn(), receive: vi.fn() };
+    const w = build({ tabs: (real) => ({ ...real, windows }) });
+    w.store.open({ kind: 'goto' });
+    expect(w.store.getSnapshot().hints.map((hint) => hint.label)).toEqual(['Open', 'Here', 'New tab', 'Background tab', 'New window']);
+
+    expect(w.store.activate(undefined, { shiftKey: true })).toMatchObject({ status: 'opened', result: { status: 'window' } });
+    expect(w.store.getSnapshot().open).toBe(false);
   });
 
   it('does not offer the leaf that opens the plugin\'s home as a second row: its label joins the home\'s context when that was empty, and the home\'s keywords in any case', () => {
@@ -1121,7 +1157,7 @@ describe('the host\'s sources', () => {
     w.open(at('delta', HOME_PAGE));
 
     // Each kind lists whole what its source offers, so the model reads every candidate.
-    for (const [kind, section, count] of [['goto', 'goto', 7], ['tabs', 'tabs', 3], ['commands', 'commands', 5]] as const) {
+    for (const [kind, section, count] of [['goto', 'goto', 7], ['tabs', 'tabs', 3], ['commands', 'commands', 11]] as const) {
       w.store.open({ kind });
       expect(rowsOf(w, section)).toHaveLength(count);
       expect(w.store.getSnapshot().sources).toEqual([]);
@@ -1152,7 +1188,7 @@ describe('the host\'s sources', () => {
       ['Omniview · Pages', 'Pages: Unavailable'],
       ['Omniview · Tabs', 'Tabs: Unavailable'],
     ]);
-    expect(titlesOf(w, 'commands')).toEqual(['Close tab', 'Next tab', 'Previous tab']);
+    expect(titlesOf(w, 'commands')).toContain('Close tab');
   });
 });
 
@@ -1163,12 +1199,21 @@ describe('the commands', () => {
     w.open(at('beta', 'items'));
     w.store.open({ kind: 'commands' });
 
-    expect(rowsOf(w, 'commands').map((row) => ({ title: row.title.text, context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, command: row.action.type === 'run' ? row.action.command.id : row.action.type, kind: row.kind, state: row.availability.state }))).toEqual([
-      { title: 'Close tab', context: 'Tabs', icon: 'close', shortcut: '⌘W', command: 'host.tab.close', kind: 'command', state: 'available' },
+    const rows = rowsOf(w, 'commands').map((row) => ({ title: row.title.text, context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, command: row.action.type === 'run' ? row.action.command.id : row.action.type, kind: row.kind, state: row.availability.state }));
+    expect(rows.filter((row) => row.context !== 'Tabs')).toEqual([
       { title: 'Toggle panel', context: 'Panel', icon: 'panel-bottom', shortcut: '⌘J', command: 'host.panel.toggle', kind: 'command', state: 'available' },
       { title: 'Close window', context: 'Window', icon: 'close', shortcut: '⌘⇧W', command: 'host.window.close', kind: 'command', state: 'available' },
-      { title: 'Next tab', context: 'Tabs', icon: 'arrow-right', shortcut: undefined, command: 'host.tab.next', kind: 'command', state: 'available' },
-      { title: 'Previous tab', context: 'Tabs', icon: 'arrow-left', shortcut: undefined, command: 'host.tab.previous', kind: 'command', state: 'available' },
+    ]);
+    expect(rows.filter((row) => row.context === 'Tabs').map((row) => [row.title, row.icon, row.shortcut, row.command])).toEqual([
+      ['Close tab', 'close', '⌘W', 'host.tab.close'],
+      ['Close other tabs', 'close', undefined, 'host.tab.close-others'],
+      ['Close tabs to the left', 'close', undefined, 'host.tab.close-left'],
+      ['Close all but pinned', 'close', undefined, 'host.tab.close-unpinned'],
+      ['Duplicate tab', 'copy', undefined, 'host.tab.duplicate'],
+      ['Pin tab', 'pin', undefined, 'host.tab.pin'],
+      ['Reload tab', 'refresh', undefined, 'host.tab.reload'],
+      ['Next tab', 'arrow-right', '⌃Tab', 'host.tab.next'],
+      ['Previous tab', 'arrow-left', '⌃⇧Tab', 'host.tab.previous'],
     ]);
   });
 
@@ -1180,7 +1225,7 @@ describe('the commands', () => {
     expectNoResults(w, 'window');
 
     w.store.setQuery('');
-    expect(rowsOf(w, 'commands').map((row) => [row.title.text, row.shortcut])).toEqual([
+    expect(chordsOf(w)).toEqual([
       ['Close tab', 'Ctrl+W'],
       ['Toggle panel', 'Ctrl+J'],
     ]);
@@ -1191,7 +1236,7 @@ describe('the commands', () => {
       const w = build({ platform, panel: createPanelStore() });
       w.open(at('acme', 'widgets'));
       w.store.open({ kind: 'commands' });
-      expect(rowsOf(w, 'commands').map((row) => [row.title.text, row.shortcut]).slice(0, 2)).toEqual([['Close tab', close], ['Toggle panel', toggle]]);
+      expect(chordsOf(w)).toEqual([['Close tab', close], ['Toggle panel', toggle]]);
     }
   });
 
@@ -1200,32 +1245,34 @@ describe('the commands', () => {
     none.open(at('acme', 'widgets'));
     none.open(at('beta', 'items'));
     none.store.open({ kind: 'commands' });
-    expect(titlesOf(none, 'commands')).toEqual(['Close tab', 'Next tab', 'Previous tab']);
+    expect(titlesOf(none, 'commands')).toEqual(TWO_TABS);
 
     const panel = build({ platform: 'mac', panel: createPanelStore(), onCloseWindow: undefined });
     panel.open(at('acme', 'widgets'));
     panel.open(at('beta', 'items'));
     panel.store.open({ kind: 'commands' });
-    expect(titlesOf(panel, 'commands')).toEqual(['Close tab', 'Toggle panel', 'Next tab', 'Previous tab']);
+    expect(titlesOf(panel, 'commands')).toEqual([...TWO_TABS, 'Toggle panel']);
 
     const window = build({ platform: 'mac', onCloseWindow: vi.fn() });
     window.open(at('acme', 'widgets'));
     window.open(at('beta', 'items'));
     window.store.open({ kind: 'commands' });
-    expect(titlesOf(window, 'commands')).toEqual(['Close tab', 'Close window', 'Next tab', 'Previous tab']);
+    expect(titlesOf(window, 'commands')).toEqual([...TWO_TABS, 'Close window']);
   });
 
   it('keeps a command the state forbids, with its reason, until a query reaches it', () => {
     const w = build();
     w.store.open({ kind: 'commands' });
-    // With no tab on screen none of the three can run, and an empty list leaves them out.
+    // With no tab on screen none of them can run, and an empty list leaves them out.
     expect(titlesOf(w, 'commands')).toEqual([]);
 
     w.store.setQuery('tab');
     expect(rowsOf(w, 'commands').map((row) => [row.title.text, row.availability, row.word])).toEqual([
-      ['Close tab', { state: 'unavailable', reason: 'There is no tab to close.' }, 'Unavailable'],
+      ...['Close tab', 'Close other tabs', 'Close tabs to the right', 'Close tabs to the left', 'Duplicate tab', 'Pin tab', 'Reload tab'].map((title) => [title, { state: 'unavailable', reason: 'There is no tab' }, 'Unavailable']),
+      ['Reopen closed tab', { state: 'unavailable', reason: 'There are no recently closed tabs' }, 'Unavailable'],
       ['Next tab', { state: 'unavailable', reason: 'There is no other tab.' }, 'Unavailable'],
       ['Previous tab', { state: 'unavailable', reason: 'There is no other tab.' }, 'Unavailable'],
+      ['Close all but pinned', { state: 'unavailable', reason: 'There is no tab' }, 'Unavailable'],
     ]);
 
     // One tab: it can be closed, and there is no other to go to.
@@ -1233,13 +1280,15 @@ describe('the commands', () => {
     w.store.refresh();
     expect(rowsOf(w, 'commands').map((row) => [row.title.text, row.availability.state])).toEqual([
       ['Close tab', 'available'],
-      ['Next tab', 'unavailable'],
-      ['Previous tab', 'unavailable'],
+      ...['Close other tabs', 'Close tabs to the right', 'Close tabs to the left'].map((title) => [title, 'unavailable']),
+      ...['Duplicate tab', 'Pin tab', 'Reload tab'].map((title) => [title, 'available']),
+      ...['Reopen closed tab', 'Next tab', 'Previous tab'].map((title) => [title, 'unavailable']),
+      ['Close all but pinned', 'available'],
     ]);
 
     w.open(at('beta', 'items'));
     w.store.refresh();
-    expect(rowsOf(w, 'commands').map((row) => row.availability.state)).toEqual(['available', 'available', 'available']);
+    expect(rowsOf(w, 'commands').filter((row) => ['Close tab', 'Next tab', 'Previous tab'].includes(row.title.text)).map((row) => row.availability.state)).toEqual(['available', 'available', 'available']);
   });
 
   it('answers while the palette is narrowed to a plugin: the host\'s commands stay reachable', () => {
@@ -1247,7 +1296,7 @@ describe('the commands', () => {
     w.open(at('acme', 'widgets'));
     w.store.open({ kind: 'commands', scope: seedChips({ plugin: 'acme', pluginName: 'Acme', scope: { id: 'north', label: 'north' } }) });
 
-    expect(titlesOf(w, 'commands')).toEqual(['Close tab', 'Toggle panel']);
+    expect(titlesOf(w, 'commands')).toEqual([...ONE_TAB, 'Toggle panel']);
   });
 
   it('finds a command by the words of its title', () => {
@@ -1267,7 +1316,7 @@ describe('the commands', () => {
     w.open(at('beta', 'items'));
     w.store.open({ kind: 'commands' });
 
-    expect(rowsOf(w, 'commands')).toHaveLength(5);
+    expect(rowsOf(w, 'commands')).toHaveLength(TWO_TABS.length + 2);
     for (const row of rowsOf(w, 'commands')) {
       expect(isIconName(row.tile?.icon ?? '')).toBe(true);
     }
@@ -1277,13 +1326,13 @@ describe('the commands', () => {
     const without = build({ platform: 'mac', panel: createPanelStore() });
     without.open(at('acme', 'widgets'));
     without.store.open({ kind: 'commands' });
-    expect(titlesOf(without, 'commands')).toEqual(['Close tab', 'Toggle panel']);
+    expect(titlesOf(without, 'commands')).toEqual([...ONE_TAB, 'Toggle panel']);
 
     const w = build({ platform: 'mac', panel: createPanelStore(), terminalScreenReader: { toggle: () => true, say: vi.fn() } });
     w.open(at('acme', 'widgets'));
     w.open(at('beta', 'items'));
     w.store.open({ kind: 'commands' });
-    expect(titlesOf(w, 'commands')).toEqual(['Close tab', 'Toggle panel', 'Terminal: Toggle Screen Reader Mode', 'Next tab', 'Previous tab']);
+    expect(titlesOf(w, 'commands')).toEqual([...TWO_TABS, 'Toggle panel', 'Terminal: Toggle Screen Reader Mode']);
     expect(SCREEN_READER_COMMAND).toBe('Terminal: Toggle Screen Reader Mode');
     const row = rowTitled(w, SCREEN_READER_COMMAND);
     expect({ context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, kind: row.kind, state: row.availability.state, command: row.action.type === 'run' ? row.action.command.id : row.action.type }).toEqual({
@@ -1294,6 +1343,17 @@ describe('the commands', () => {
       state: 'available',
       command: 'host.terminal.toggleScreenReader',
     });
+  });
+
+  it('offers New terminal when the window has the Terminal tool: in the tool\'s own words and glyph, in the Panel context, and with no chord, which only the app\'s menu binds', () => {
+    const without = build({ platform: 'mac', panel: createPanelStore() });
+    without.store.open({ kind: 'commands' });
+    expect(titlesOf(without, 'commands')).not.toContain(NEW_TERMINAL);
+
+    const w = build({ platform: 'mac', panel: createPanelStore(), newTerminal: vi.fn() });
+    w.store.open({ kind: 'commands' });
+    const row = rowTitled(w, NEW_TERMINAL);
+    expect({ context: row.context.text, icon: row.tile?.icon, shortcut: row.shortcut, command: row.action.type === 'run' ? row.action.command.id : row.action.type }).toEqual({ context: 'Panel', icon: TERMINAL_TOOL.icon, shortcut: undefined, command: 'host.terminal.new' });
   });
 
   it('offers Settings with the mock\'s gear when the window can open it', () => {
@@ -1360,9 +1420,9 @@ describe('running a command', () => {
     const result = w.store.activate(row.id);
 
     expect(result).toMatchObject({ status: 'ran', outcome: 'refused' });
-    expect(w.store.getSnapshot().notice).toBe('Close tab: There is no tab to close.');
+    expect(w.store.getSnapshot().notice).toBe('Close tab: There is no tab');
     expect(w.store.getSnapshot().open).toBe(true);
-    expect(w.palette.announcer.getSnapshot().text).toBe('Close tab: There is no tab to close.');
+    expect(w.palette.announcer.getSnapshot().text).toBe('Close tab: There is no tab');
   });
 
   it('checks Next tab against the strip as it is now: the other tab closed after the list was made', () => {
@@ -1472,6 +1532,57 @@ describe('running a command', () => {
     vi.advanceTimersByTime(0);
     expect(say).toHaveBeenCalledTimes(1);
     expect(say).toHaveBeenCalledWith('Terminal screen reader mode off.');
+  });
+});
+
+describe('running a command by its id: what the app menu does', () => {
+  const UNKNOWN = { ok: false, reason: 'This command is not available.' };
+
+  it('runs it as a chosen row does, and answers in the command\'s own words when it cannot', () => {
+    const w = build({ panel: createPanelStore() });
+    w.open(at('acme', 'widgets'));
+    w.open(at('beta', 'items'));
+
+    expect(w.palette.run({ id: 'host.tab.close' })).toBe(true);
+    expect(stripOf(w)).toEqual(['acme/widgets']);
+    expect(w.palette.run({ id: 'host.tab.next' })).toEqual({ ok: false, reason: 'There is no other tab.' });
+  });
+
+  it('starts a terminal for host.terminal.new where the window has the Terminal tool, and knows no such command where it has none', () => {
+    const newTerminal = vi.fn();
+    expect(build({ newTerminal }).palette.run({ id: 'host.terminal.new' })).toBe(true);
+    expect(newTerminal).toHaveBeenCalledTimes(1);
+    expect(build().palette.run({ id: 'host.terminal.new' })).toEqual(UNKNOWN);
+  });
+
+  it('opens the palette for host.search as its chord does, on the place on screen and narrowed to it, and never lists it', () => {
+    const w = build();
+    nameConnection(w, routeAt('acme', 'widgets', 'north'), 'north');
+    w.open(at('acme', 'widgets', 'north'));
+    w.store.open({ kind: 'commands' });
+    w.store.setQuery('search');
+    expect(titlesOf(w, 'commands')).toEqual([]);
+    w.store.close();
+
+    expect(w.palette.run({ id: 'host.search' })).toBe(true);
+
+    expect(w.store.getSnapshot().open).toBe(true);
+    expect(w.store.getSnapshot().chips.map((chip) => chip.label)).toEqual(['Acme', 'north']);
+  });
+
+  it('knows no command it was not given', () => {
+    expect(build().palette.run({ id: 'host.nope' })).toEqual(UNKNOWN);
+  });
+
+  it('runs every command the app menu\'s table names (backend/menus/app_v3.go): the table and the host\'s commands cannot drift apart', () => {
+    const source = readFileSync(path.join(__dirname, '../../../backend/menus/app_v3.go'), 'utf8');
+    const ids = [...source.matchAll(/\bid: "([^"]*)"/g)].map((match) => match[1] ?? '');
+    const w = build({ panel: createPanelStore(), newTerminal: vi.fn() });
+
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(w.palette.run({ id }), id).not.toEqual(UNKNOWN);
+    }
   });
 });
 

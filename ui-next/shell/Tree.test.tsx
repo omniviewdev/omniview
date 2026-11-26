@@ -95,6 +95,27 @@ describe('the count slot of an entry', () => {
   });
 });
 
+describe('the badge and the colour of an entry (KL5)', () => {
+  it('draws the glyph of the kit\'s Status for the badge\'s role after the count, and says what it stands for as the row\'s text and as the glyph\'s tip: the row is named by its label, its count and the badge\'s words', () => {
+    renderTree([group('things', 'Things', [{ ...entry('a', 'Alpha', 5), status: { role: 'attention', label: 'Needs sign-in' } }, entry('b', 'Beta', 2)])]);
+
+    const row = screen.getByRole('treeitem', { name: 'Alpha 5 Needs sign-in' });
+    const badge = row.querySelector('[data-shell-part="status"]');
+    expect(badge).toHaveAttribute('data-ov-tip', 'Needs sign-in');
+    expect(badge?.querySelector('svg')).toHaveAttribute('data-ov-glyph', 'status-warning');
+    expect(row.querySelector('[data-shell-part="count"]')?.nextElementSibling).toBe(badge);
+    expect(row).not.toHaveAttribute('aria-label');
+    expect(screen.getByRole('treeitem', { name: 'Beta 2' }).querySelector('[data-shell-part="status"]')).toBeNull();
+  });
+
+  it('says the colour a glyph is tinted with as a data attribute the stylesheet reads, on the entry that names one and on no other', () => {
+    renderTree([group('things', 'Things', [{ ...entry('a', 'Alpha'), tone: 'green' }, entry('b', 'Beta')])], { accent: 'blue' });
+
+    expect(screen.getByRole('treeitem', { name: 'Alpha' })).toHaveAttribute('data-tone', 'green');
+    expect(screen.getByRole('treeitem', { name: 'Beta' })).not.toHaveAttribute('data-tone');
+  });
+});
+
 describe('a label that is cut (ch12 SB1: a long name is clipped at its end, with the full name as a tooltip)', () => {
   it('is a clipping element for the one tooltip of the window, which names it in full while it is cut and says nothing while it is not: its text is its name, and no title or tip of its own repeats it', () => {
     renderTree([group('things', 'Things', [entry('a', 'A name much too long for the room it is given', 12), entry('b', 'Beta')])]);

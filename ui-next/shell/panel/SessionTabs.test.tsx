@@ -1,8 +1,13 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { MenuHost } from '@omniviewdev/kit';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeNotices } from '../core/notices/testing';
+import { createPanelStore, type PanelStore } from '../core/panel';
+import { createNoticesAnnouncer } from '../notices/host';
+import { installPopover, teardown } from '../notices/testing';
 import type { ShellRegistration } from '../registration';
 import { StaticShell } from '../testing';
 import { staticPanel, type StaticSession } from './testing';
@@ -84,6 +89,228 @@ describe('the close control of a session tab', () => {
   it('keeps its slot laid out whether it is shown or not, as the mock does, so a tab never moves when the control appears; the pointer reveals it', () => {
     expect(rule('.sessionClose')).toMatchObject({ flex: '0 0 24px', opacity: '0' });
     expect(sheet).toMatch(/\.sessionItem:is\(\[data-selected\], :hover, :focus-within\) > \.sessionClose\s*\{\s*opacity: 1;/);
+  });
+});
+
+describe('the menu of a session tab', () => {
+  beforeEach(installPopover);
+  afterEach(teardown);
+
+  const tab = (name: string): HTMLElement => screen.getByRole('tab', { name });
+  const itemsOf = (menu: HTMLElement): string[] => within(menu).getAllByRole('menuitem').map((item) => item.getAttribute('aria-label') ?? '');
+  const names = (): string[] => [...document.querySelectorAll('[data-shell-part="sessionTab"]')].map((one) => one.querySelector('[role="tab"]')?.getAttribute('aria-label') ?? '');
+
+  function mountMenu(titles: readonly string[], store: PanelStore = createPanelStore(), stopOf?: (id: string) => (() => void) | undefined) {
+    const panel = { ...staticPanel({ store, tools: [{ id: 'terminal', label: 'Terminal', icon: 'terminal', order: 10 }], open: true, sessions: titles.map((title) => session(title)) }), stopOf };
+    return render(
+      <MenuHost>
+        <StaticShell registration={registration} panel={panel} />
+      </MenuHost>,
+    );
+  }
+
+  const openOn = (name: string): HTMLElement => {
+    fireEvent.contextMenu(tab(name), { button: 2 });
+    return screen.getByRole('menu', { name: `Actions for ${name}` });
+  };
+
+  it('lists the actions in order, with the close chord on Close session', () => {
+    mountMenu(['a', 'b', 'c']);
+    const menu = openOn('b');
+    expect(itemsOf(menu)).toEqual(['Rename session…', 'Close session', 'Close other sessions', 'Close sessions to the right', 'Close sessions to the left']);
+    expect(within(menu).getByRole('menuitem', { name: 'Close session' }).getAttribute('aria-description')).toMatch(/⌘W|Ctrl\+Shift\+W/);
+  });
+
+  it.each([
+    ['a', 'Close sessions to the left', 'There are no sessions to the left'],
+    ['c', 'Close sessions to the right', 'There are no sessions to the right'],
+  ])('disables what has nothing to close at the end of the strip, and says why: %s, %s', (name, label, reason) => {
+    mountMenu(['a', 'b', 'c']);
+    const item = within(openOn(name)).getByRole('menuitem', { name: label });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item.getAttribute('aria-description')).toBe(reason);
+  });
+
+  it('disables every close of a set for the only session, and leaves Close session and Rename', () => {
+    mountMenu(['a']);
+    const menu = openOn('a');
+    const disabled = within(menu).getAllByRole('menuitem').filter((item) => item.getAttribute('aria-disabled') === 'true').map((item) => item.getAttribute('aria-label'));
+    expect(disabled).toEqual(['Close other sessions', 'Close sessions to the right', 'Close sessions to the left']);
+    expect(within(menu).getByRole('menuitem', { name: 'Close other sessions' }).getAttribute('aria-description')).toBe('There are no other sessions');
+  });
+
+  it.each([
+    ['Close session', ['a', 'c', 'd']],
+    ['Close other sessions', ['b']],
+    ['Close sessions to the right', ['a', 'b']],
+    ['Close sessions to the left', ['b', 'c', 'd']],
+  ])('%s closes the sessions it names and no others', (label, remaining) => {
+    mountMenu(['a', 'b', 'c', 'd']);
+    fireEvent.click(within(openOn('b')).getByRole('menuitem', { name: label }));
+    expect(names()).toEqual(remaining);
+  });
+
+  it('puts the focus on the session that is on screen next after Close session, not on the page\'s body', async () => {
+    mountMenu(['a', 'b', 'c']);
+    fireEvent.click(tab('b'));
+    const focused = tab('b');
+    focused.focus();
+    fireEvent.keyDown(focused, { key: 'F10', shiftKey: true });
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Actions for b' })).getByRole('menuitem', { name: 'Close session' }));
+
+    expect(names()).toEqual(['a', 'c']);
+    await waitFor(() => {
+      expect(tab('c')).toHaveFocus();
+    });
+  });
+
+  it('offers Stop session after Rename when the host can stop sessions, and stops the session it opened on', () => {
+    const stop = vi.fn();
+    const store = createPanelStore();
+    const stopOf = vi.fn((id: string) => () => {
+      stop(id);
+    });
+    mountMenu(['a', 'b'], store, stopOf);
+    const menu = openOn('b');
+    expect(itemsOf(menu).slice(0, 3)).toEqual(['Rename session…', 'Stop session', 'Close session']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Stop session' }));
+    expect(stop).toHaveBeenCalledWith(Object.keys(store.getSnapshot().sessions)[1]);
+  });
+
+  it('does not stop a session that failed while the menu was open: the failure stays', () => {
+    const stop = vi.fn();
+    const store = createPanelStore();
+    mountMenu(['a', 'b'], store, () => stop);
+    const menu = openOn('b');
+    const id = Object.keys(store.getSnapshot().sessions)[1] ?? '';
+    store.setSessionState(id, { state: 'failed' });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Stop session' }));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a session that is not running', true],
+    ['a session the host holds nothing of', false],
+  ])('disables Stop session for %s, and says why', (_name, ended) => {
+    const store = createPanelStore();
+    mountMenu(['a', 'b'], store, () => (ended ? () => undefined : undefined));
+    if (ended) {
+      store.setSessionState(Object.keys(store.getSnapshot().sessions)[0] ?? '', { state: 'ended' });
+    }
+
+    const item = within(openOn('a')).getByRole('menuitem', { name: 'Stop session' });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item.getAttribute('aria-description')).toBe('The session isn\'t running.');
+  });
+
+  it.each([
+    ['Shift F10', { key: 'F10', shiftKey: true }],
+    ['the Menu key', { key: 'ContextMenu' }],
+  ])('opens on %s with the focus on the tab', (_name, init) => {
+    mountMenu(['a', 'b']);
+    const focused = tab('b');
+    focused.focus();
+    fireEvent.keyDown(focused, init);
+    expect(screen.getByRole('menu', { name: 'Actions for b' })).toBeInTheDocument();
+  });
+
+  it('closes through the panel\'s own close: a session whose close the panel refuses (a terminal that asks first) stays, and the others go', () => {
+    const store = createPanelStore();
+    const closeSession = store.closeSession.bind(store);
+    mountMenu(['a', 'b', 'c'], { ...store, closeSession: (id) => (store.getSnapshot().sessions[id]?.title === 'c' ? { status: 'refused', reason: 'invalid', message: 'asks first' } : closeSession(id)) });
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Close other sessions' }));
+    expect(names()).toEqual(['a', 'c']);
+  });
+
+  it('renames in place: Enter commits and the tab keeps the focus, Escape and an empty name leave the name as it was', () => {
+    mountMenu(['a', 'b']);
+    const edit = (): HTMLInputElement => screen.getByRole<HTMLInputElement>('textbox', { name: 'Session name' });
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    expect(edit()).toHaveFocus();
+    expect(edit().value).toBe('a');
+    fireEvent.change(edit(), { target: { value: 'build' } });
+    fireEvent.keyDown(edit(), { key: 'Escape' });
+    expect(names()).toEqual(['a', 'b']);
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.change(edit(), { target: { value: '  ' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(names()).toEqual(['a', 'b']);
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.change(edit(), { target: { value: 'build' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(names()).toEqual(['build', 'b']);
+  });
+
+  it('cannot rename a session its plugin left behind', () => {
+    const store = createPanelStore();
+    store.syncPlugins([{ id: 'acme', tools: [] }]);
+    const panel = staticPanel({ store, tools: [{ id: 'terminal', label: 'Terminal', icon: 'terminal' }], open: true });
+    store.openSession({ tool: 'terminal', plugin: 'acme', title: 'm', state: 'running' });
+    store.syncPlugins([]);
+    render(
+      <MenuHost>
+        <StaticShell registration={registration} panel={panel} />
+      </MenuHost>,
+    );
+    fireEvent.contextMenu(screen.getByRole('tab', { name: /^m/ }), { button: 2 });
+    expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Rename session…' })).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('moving a session tab', () => {
+  // jsdom lays nothing out: three tabs 100 px wide at x = 0, 104 and 208 in a strip 400 px wide.
+  const rect = (left: number, right: number) => () => ({ left, right, width: right - left, top: 6, bottom: 34, height: 28, x: left, y: 6, toJSON: () => ({}) });
+  const pointer = (x: number) => ({ pointerId: 1, isPrimary: true, pointerType: 'mouse', button: 0, clientX: x, clientY: 20 });
+
+  function mountStrip() {
+    const announcer = createNoticesAnnouncer();
+    const panel = staticPanel({ tools: [{ id: 'terminal', label: 'Terminal', icon: 'terminal', order: 10 }], open: true, sessions: ['a', 'b', 'c'].map((title) => session(title)) });
+    render(<StaticShell registration={registration} panel={panel} notices={{ store: makeNotices().store, announcer }} />);
+    const strip = screen.getByRole('tablist', { name: 'Terminal sessions' });
+    strip.getBoundingClientRect = rect(0, 400);
+    [0, 104, 208].forEach((left, at) => {
+      (strip.children[at] as HTMLElement).getBoundingClientRect = rect(left, left + 100);
+    });
+
+    return { strip, told: () => announcer.polite.getSnapshot().text };
+  }
+
+  const names = (): string[] => within(screen.getByRole('tablist', { name: 'Terminal sessions' })).getAllByRole('tab').map((one) => one.getAttribute('aria-label') ?? '');
+
+  it('moves with Alt+Shift and an arrow, Home or End, keeps the focus on it and says where it went', () => {
+    const { told } = mountStrip();
+    screen.getByRole('tab', { name: 'a' }).focus();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'a' }), { key: 'ArrowRight', altKey: true, shiftKey: true });
+    expect(names()).toEqual(['b', 'a', 'c']);
+    expect(screen.getByRole('tab', { name: 'a' })).toHaveFocus();
+    expect(told()).toBe('a moved to position 2 of 3');
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'a' }), { key: 'End', altKey: true, shiftKey: true });
+    expect(names()).toEqual(['b', 'c', 'a']);
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'a' }), { key: 'Home', altKey: true, shiftKey: true });
+    expect(names()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('moves where the pointer drops it, and nowhere for a drop where it was', async () => {
+    const { strip, told } = mountStrip();
+    const drag = async (title: string, from: number, to: number) => {
+      fireEvent.pointerDown(screen.getByRole('tab', { name: title }), pointer(from));
+      fireEvent.pointerMove(strip, pointer(to));
+      await act(async () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        requestAnimationFrame(() => {
+          resolve();
+        });
+        await promise;
+      });
+      fireEvent.pointerUp(strip, pointer(to));
+    };
+
+    await drag('b', 150, 150);
+    expect(names()).toEqual(['a', 'b', 'c']);
+    expect(told()).toBe('');
+    await drag('a', 50, 300);
+    expect(names()).toEqual(['b', 'c', 'a']);
+    expect(told()).toBe('a moved to position 3 of 3');
   });
 });
 

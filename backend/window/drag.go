@@ -139,7 +139,8 @@ func (s *Service) EndDrag(ctx context.Context, sessionID string, clientX, client
 	case waitErr != nil:
 		return notAccepted, waitErr
 	case !response.accepted:
-		return notAccepted, nil
+		// A window that declined, closed or did not answer was still under the pointer: only no window at all leaves the name empty.
+		return DropResult{Accepted: false, TargetWindow: target.name, TargetInstanceID: ""}, nil
 	default:
 		return DropResult{Accepted: true, TargetWindow: target.name, TargetInstanceID: response.targetInstanceID}, nil
 	}

@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { platformOf } from './core/chords';
-import type { ModifierEvent, TabsStore } from './core/tabs';
+import type { ModifierEvent, TabId, TabsStore } from './core/tabs';
 import { createTreeMemory } from './core/tree';
 import { NoticesProvider } from './notices/context';
 import type { NoticesBindings } from './notices/host';
@@ -53,7 +53,7 @@ export type ShellProps = {
    */
   readonly onSelectRail?: ((id: string) => void) | undefined;
   /** What the strip's new-tab control does. Absent: the strip draws none. */
-  readonly onNewTab?: (() => void) | undefined;
+  readonly onNewTab?: ((after?: TabId) => void) | undefined;
   /**
    * Closes the window. Command or Control W closes the tab on screen; with no tab on screen there is nothing left for it to close, and on a Mac it asks for this (decision A17: an empty window
    * is never a trap). Elsewhere it asks for nothing: the main window hides when it closes, and only macOS can bring it back (the Dock icon). Absent where there is no window of the app's own to close, a browser tab: the chord then does nothing.

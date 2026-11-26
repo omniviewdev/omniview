@@ -56,6 +56,8 @@ export type LogStreams = {
   readonly open: (target: LogTarget) => LogOpened | undefined;
   /** The stream of a session the registry holds, by identity: the stream of a live session, or the closed one of a held session (A21); `undefined` for a session that has none (one that closed, one restored from the last run, one hidden with its plugin and back). */
   readonly feedOf: (session: SessionId) => LogFeedHandle | undefined;
+  /** What stops this session and keeps its tab, which then says it ended (Stop session): `undefined` for a session that holds no stream now. */
+  readonly stopOf: (session: SessionId) => (() => void) | undefined;
   /** What the card of a session needs of its stream; `undefined` when it has none. */
   readonly recordOf: (session: SessionId) => LogSessionRecord | undefined;
 };
@@ -309,6 +311,18 @@ export function createLogStreams(store: PanelStore, options: LogStreamsOptions =
     },
 
     feedOf: (session) => entries.get(session)?.feed,
+
+    stopOf: (session) => {
+      const entry = entries.get(session);
+      if (entry === undefined || entry.ended) {
+        return undefined;
+      }
+
+      return () => {
+        end(entry);
+        store.setSessionState(session, { state: 'ended' });
+      };
+    },
 
     recordOf: (session) => {
       const entry = entries.get(session);

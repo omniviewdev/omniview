@@ -128,6 +128,7 @@ func TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell(t *testing.T) {
 			pidFile := filepath.Join(t.TempDir(), "job")
 			send(t, m, info.ID, "sleep 60011 & echo $! > "+pidFile)
 			job := pidIn(t, pidFile)
+			waitForTheJobToExec(t, job)
 			// The shell has finished the line that started the job when it runs the next one: a quit is
 			// not signalled to a shell that is still building its job table (zsh then has no job to hang up).
 			send(t, m, info.ID, "echo ready-$((40+2))")
@@ -138,6 +139,12 @@ func TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell(t *testing.T) {
 			if bytes.Contains(sink.output(info.ID), []byte("\x1b]133;A")) {
 				require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 3 },
 					20*time.Second, 5*time.Millisecond, "the prompt after the line was never drawn")
+			}
+			// Whatever the integration says: a shell with none is in its redisplay after it has drawn its prompt too.
+			if waiting, known := waitingForInput(info.PID, 20*time.Second); known {
+				require.True(t, waiting, "the shell never waited for input at its prompt")
+			} else {
+				t.Log("NOT RUN: no /proc/<pid>/syscall or wchan: the wait for the shell to wait for input")
 			}
 			require.False(t, ended(job))
 

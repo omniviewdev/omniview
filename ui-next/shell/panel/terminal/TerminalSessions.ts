@@ -113,6 +113,8 @@ export type TerminalSessions = {
    * is read where the lane reads that status.
    */
   readonly canTakeBack: (session: SessionId) => boolean;
+  /** What stops this session and keeps its tab, which then says it ended (Stop session): `undefined` for a session that holds no process now. */
+  readonly stopOf: (session: SessionId) => (() => void) | undefined;
   /**
    * Takes the terminal of this session back (T2d). The host is asked first who holds it now (`TerminalFeedHandle.refresh` of the feed that was lost): the page's word that nobody does may be old, and attaching takes a terminal
    * from whoever holds it. Only a session that is still this window's lost terminal, which the feed still says is free, goes on: the target the window makes for the session's id attaches it again, the session is given its feed,
@@ -382,12 +384,13 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       return;
     }
 
-    if (named === undefined || named === '' || named === entry.title) {
+    // A title the registry did not set is the person's (Rename session): the program does not take it back.
+    if (named === undefined || named === '' || named === entry.title || store.getSnapshot().sessions[id]?.title !== entry.title) {
       return;
     }
 
-    entry.title = named;
     store.retitleSession(id, named);
+    entry.title = store.getSnapshot().sessions[id]?.title ?? entry.title;
   };
 
   /** A feed told its listeners something: only a new status is the session's business, and not once the registry has closed the feed (the session is ended for good, with its own cause). */
@@ -607,6 +610,8 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
           warn(`[panel] ${plugin} could not open a terminal for ${targetId}: ${opened.message}`);
           return undefined;
         }
+
+        entry.title = store.getSnapshot().sessions[id]?.title ?? entry.title;
       }
 
       // The panel tells its listeners as the session opens, and one of them may have closed it (the registry released the entry, and with it the feed): nothing is followed or asked for then.
@@ -670,6 +675,18 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
     takeFocus: (session) => wanted.delete(session),
 
     canTakeBack: (session) => lostEntry(session) !== undefined,
+
+    stopOf: (session) => {
+      const entry = entries.get(session);
+      if (entry === undefined || entry.ended) {
+        return undefined;
+      }
+
+      return () => {
+        end(entry);
+        store.setSessionState(session, { state: 'ended' });
+      };
+    },
 
     takeBack: async (session) => {
       const old = lostEntry(session);

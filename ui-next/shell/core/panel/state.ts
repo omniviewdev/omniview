@@ -80,7 +80,7 @@ export function sessionVisible(state: PanelState, session: Session): boolean {
   return tool !== undefined && toolVisible(state, tool) && (isLive(state, session.plugin) || session.held === true);
 }
 
-/** The visible sessions of a tool, in the order they were opened. */
+/** The visible sessions of a tool, in the strip's order. */
 export function visibleSessions(state: PanelState, tool: ToolId): Session[] {
   const out: Session[] = [];
   for (const id of state.order) {
