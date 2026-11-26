@@ -8553,9 +8553,9 @@ async function checkTerminal(page, base, engine) {
   await typeLine(page, 'exit 3');
   await page.getByText('Input is off. Its output stays readable here.', { exact: true }).waitFor({ timeout: 15_000 });
   const laneText = async () => ((await page.locator('[data-shell-part="terminalLane"]').textContent()) ?? '').replace(/\s+/g, ' ').trim();
-  await waitUntil('the lane to say how the shell ended', async () => (await laneText()) === 'Exited with code 3 Input is off. Its output stays readable here.', 10_000).catch(() => undefined);
+  await waitUntil('the lane to say how the shell ended', async () => (await laneText()) === 'Exited with code 3 Input is off. Its output stays readable here. Restart', 10_000).catch(() => undefined);
   const lane = await laneText();
-  assert.equal(lane, 'Exited with code 3 Input is off. Its output stays readable here.', `${engine}: the lane under the screen says how the shell ended, in the host's words: the code it exited with, and that the input is off`);
+  assert.equal(lane, 'Exited with code 3 Input is off. Its output stays readable here. Restart', `${engine}: the lane under the screen says how the shell ended, in the host's words: the code it exited with, and that the input is off, and offers Restart (#695 step 5: the shell is over for good)`);
   let ended = '';
   await waitUntil('the emulator to hold the end of the process', async () => {
     ended = await bufferOf(page, mac);

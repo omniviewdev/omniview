@@ -434,11 +434,16 @@ async function startRefused(page) {
 const readTerminal = (page) =>
   page.evaluate(() => {
     const lane = document.querySelector('[data-shell-part="terminalLane"]');
+    // The lane's words, without the button of its actions (Restart): the button is read on its own (`restart`).
+    const words = lane === null ? null : lane.cloneNode(true);
+    const restart = lane?.querySelector('[data-shell-part="terminalRestart"]') ?? null;
+    words?.querySelectorAll('[data-shell-part="terminalRestart"]').forEach((button) => button.parentElement?.remove());
     return {
+      restart: restart !== null,
       session: [...document.querySelectorAll('[data-shell-part="sessionTabs"] [role="tab"]')].map((tab) => tab.getAttribute('aria-label') ?? ''),
       tools: [...document.querySelectorAll('[data-shell-part="panelTools"] [role="tab"]')].map((tab) => tab.textContent ?? ''),
       words: lane?.querySelector('span')?.textContent ?? '',
-      lane: lane?.textContent ?? '',
+      lane: words?.textContent ?? '',
       rows: [...document.querySelectorAll('.xterm-rows > div')].map((row) => (row.textContent ?? '').trimEnd()).filter((text) => text !== ''),
       input: document.querySelector('.xterm-helper-textarea')?.getAttribute('aria-label') ?? '',
     };
@@ -778,7 +783,7 @@ async function ended(ctx) {
     const read = await readTerminal(page);
     const tail = read.rows.slice(-one.tail.length);
     const said = `${one.words} ${NOTE}`;
-    check(one.assertion, read.words === one.words && read.lane === said && JSON.stringify(tail) === JSON.stringify(one.tail) && read.session[0] === 'zsh, ended', `${engine}: after "${one.command}" the lane says ${JSON.stringify(read.lane)} (${JSON.stringify(said)}), the last lines of the transcript are ${JSON.stringify(tail)} (${JSON.stringify(one.tail)}) and the session's tab is ${JSON.stringify(read.session)} (zsh, ended)`);
+    check(one.assertion, read.words === one.words && read.lane === said && read.restart === true && JSON.stringify(tail) === JSON.stringify(one.tail) && read.session[0] === 'zsh, ended', `${engine}: after "${one.command}" the lane says ${JSON.stringify(read.lane)} (${JSON.stringify(said)}) and offers Restart: ${String(read.restart)}, the last lines of the transcript are ${JSON.stringify(tail)} (${JSON.stringify(one.tail)}) and the session's tab is ${JSON.stringify(read.session)} (zsh, ended)`);
     await page.context().close();
   }
 }
