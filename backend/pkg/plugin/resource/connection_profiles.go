@@ -533,6 +533,9 @@ func withoutDesiredConnection(state desiredConnectionState, id string) desiredCo
 }
 
 func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, operation string, connection *types.Connection, credentials *ConnectionProfileCredentials) (_result ConnectionProfileResult, retErr error) {
+	// Every change of a connection's profile (a save, an import, a reset, a removal) drops what the host last knew of it: that is
+	// about a connection that was configured otherwise, or is gone. The plugin's file is read before any lock is taken.
+	lastKnown := c.lastKnownOf(pluginID)
 	defer c.notifyInventory()
 	if id == "" || !utf8.ValidString(id) {
 		return ConnectionProfileResult{}, resourcev2.NewError("INVALID_REQUEST", "An explicit UTF-8 connection ID is required.")
@@ -697,6 +700,7 @@ func (c *controller) changeConnectionProfile(ctx context.Context, pluginID, id, 
 		return ConnectionProfileResult{}, err
 	}
 	committed = true
+	lastKnown.forget(id)
 	if err := c.publishProfileConnections(context.WithoutCancel(ctx), pluginID, generation, native, effective); err != nil {
 		return ConnectionProfileResult{}, err
 	}
@@ -771,11 +775,6 @@ func (c *controller) RemoveConnection(ctx context.Context, pluginID, connectionI
 		return err
 	}
 	defer finishResource(ctx, &retErr)
-	if _, err = c.changeConnectionProfile(ctx, pluginID, connectionID, "remove", nil, nil); err != nil {
-		return err
-	}
-	// The connection is gone, and so is what the host last knew about it. No lock is held here, so the first read of the plugin's
-	// file is the only disk access, and a plugin that does not support metadata has no file to read.
-	c.lastKnownOf(pluginID).forget(connectionID)
-	return nil
+	_, err = c.changeConnectionProfile(ctx, pluginID, connectionID, "remove", nil, nil)
+	return err
 }

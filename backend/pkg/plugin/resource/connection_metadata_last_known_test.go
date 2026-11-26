@@ -296,14 +296,22 @@ func TestLastKnownConnectionMergesAndServes(t *testing.T) {
 			var drops lastKnownDrops
 			limits := lastKnownLimits{entries: lastKnownMaxEntries, valueBytes: lastKnownMaxValueBytes, pluginBytes: lastKnownMaxPluginBytes}
 			// What an earlier run answered: two keys.
-			conn.merge(resourcev2.ConnectionMetadataSnapshot{Active: true, Entries: map[string]resourcev2.ConnectionMetadataEntry{
+			mergeSnapshot(conn, resourcev2.ConnectionMetadataSnapshot{Active: true, Entries: map[string]resourcev2.ConnectionMetadataEntry{
 				"a": currentEntry("old", earlier), "b": currentEntry("same", earlier),
 			}}, limits, &drops)
 
-			conn.merge(tc.snapshot, limits, &drops)
+			// The snapshot the SDK would publish: it names its connection and revision, and an active one has a generation.
+			snapshot := tc.snapshot
+			snapshot.ConnectionID, snapshot.Revision = "c", "1"
+			if snapshot.Active {
+				snapshot.Generation = "g"
+			}
+			mergeSnapshot(conn, snapshot, limits, &drops)
 
+			served := conn.serve(snapshot)
+			require.NoError(t, resourcev2.ValidateConnectionMetadataSnapshot(served), "what is served is valid by the SDK's own validation")
 			got := map[string]shown{}
-			for key, entry := range conn.serve(tc.snapshot) {
+			for key, entry := range served.Entries {
 				row := shown{state: entry.State, value: entry.Value, at: stamp(*entry.ObservedAt), code: ""}
 				if entry.Error != nil {
 					row.code = entry.Error.Code

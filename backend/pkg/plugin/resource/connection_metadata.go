@@ -153,19 +153,36 @@ func (c *controller) admitMetadata(pluginID string, state *pluginState, event re
 	if err := resourcev2.ValidateConnectionMetadataSnapshot(snapshot); err != nil {
 		return HostConnectionMetadata{}, err
 	}
-	// What the host last knew of the plugin's connections is read from disk once, here, before any lock is taken: nothing below
-	// does I/O. The report of what was left out of the copy is deferred before the unlock, so it runs after it.
+	// Fence once before anything is read: a retired registration costs no read of the plugin's file, and cannot bring the entry of
+	// an uninstalled plugin back to life.
+	c.pluginsMu.RLock()
+	admitted := c.metadataAdmittedLocked(pluginID, state, epoch)
+	c.pluginsMu.RUnlock()
+	if !admitted {
+		return HostConnectionMetadata{}, context.Canceled
+	}
+	// What the host last knew of the plugin's connections is read from disk once, here, and what the snapshot would add to it is
+	// prepared (encoded, redacted, sized): none of that is done under a lock. The report of what was left out of the copy is
+	// deferred before the unlock, so it runs after it.
 	known := c.lastKnown.warm(pluginID)
+	var prepared lastKnownPrepared
+	if !event.Removed {
+		prepared = c.lastKnown.prepare(snapshot)
+	}
 	var dropped lastKnownDrops
 	defer func() { c.lastKnown.report(pluginID, dropped) }()
 	c.pluginsMu.Lock()
 	defer c.pluginsMu.Unlock()
-	if c.plugins[pluginID] != state || state.ctx.Err() != nil || state.provider == nil || state.metadataEpoch != epoch {
+	if !c.metadataAdmittedLocked(pluginID, state, epoch) {
 		return HostConnectionMetadata{}, context.Canceled
 	}
 	if stream {
 		state.metadataAvailable = true
 	}
+	// The SDK clears a connection's facts on purpose, when its endpoint or credentials change, with a snapshot that follows one of a
+	// generation; the previous snapshot is read before the revision fence returns for a snapshot that is not newer.
+	before, hadBefore := state.metadata[snapshot.ConnectionID]
+	cleared := hadBefore && clearedBySDK(before.Snapshot, snapshot)
 	if old, ok := state.metadata[snapshot.ConnectionID]; ok {
 		// Stored revisions were parsed successfully before publication.
 		previous, _ := strconv.ParseUint(old.Revision, 10, 64)
@@ -189,9 +206,10 @@ func (c *controller) admitMetadata(pluginID string, state *pluginState, event re
 	if event.Removed {
 		known.forget(snapshot.ConnectionID)
 	} else {
-		// The fences above have admitted this snapshot, in the order of admission, so what it answers is what is kept. A reader is
-		// shown the plugin's own entries and, for a key the plugin has none for, the kept one, stale and with its observation time.
-		snapshot.Entries, dropped = known.observe(snapshot)
+		// The fences above have admitted this snapshot, in the order of admission, so what it answers is what is kept; one the SDK
+		// published to clear the connection (its endpoint or credentials changed) first erases what was kept. A reader is shown the
+		// plugin's own entries and, for a key the plugin has none for, the kept one, stale and with its observation time.
+		snapshot, dropped = known.observe(snapshot, prepared, cleared)
 		value.Snapshot = &snapshot
 	}
 	owned := cloneMetadata(value)
@@ -206,6 +224,12 @@ func (c *controller) admitMetadata(pluginID string, state *pluginState, event re
 		return HostConnectionMetadata{}, nil
 	}
 	return cloneMetadata(owned), nil
+}
+
+// metadataAdmittedLocked reports whether the registration is still the plugin's, alive, with its transport of that epoch. The
+// caller holds pluginsMu.
+func (c *controller) metadataAdmittedLocked(pluginID string, state *pluginState, epoch uint64) bool {
+	return c.plugins[pluginID] == state && state.ctx.Err() == nil && state.provider != nil && state.metadataEpoch == epoch
 }
 
 func (c *controller) GetConnectionMetadata(ctx context.Context, pluginID, connectionID string) (result HostConnectionMetadata, retErr error) {

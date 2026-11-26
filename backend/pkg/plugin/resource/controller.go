@@ -421,6 +421,9 @@ func (c *controller) onPluginStart(pluginID string, backend plugintypes.PluginBa
 }
 
 func (c *controller) OnPluginStop(pluginID string, _ config.PluginMeta) error {
+	// What is pending for the plugin is written before the stop returns, and after the lifecycle lock is released: a write that
+	// fired later could hold a file under the plugin's store while the manager moves or removes it.
+	defer c.lastKnown.settle(pluginID)
 	defer c.notifyInventory()
 	logger := c.logger.With(logging.Any("pluginID", pluginID))
 	logger.Debugw(context.Background(), "OnPluginStop")
