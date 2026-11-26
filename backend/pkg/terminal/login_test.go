@@ -484,7 +484,7 @@ func waitsForInputNow(pid int) (bool, bool) {
 // wchanWaitsForInput says whether the kernel function a process sleeps in (wchan) is one that waits for input to be readable: a tty
 // read, a select or poll, a read of an empty pipe. Not a pipe write, a wait for a child, or a sleep.
 func wchanWaitsForInput(name string) bool {
-	for _, waits := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
+	for _, waits := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken", "pipe_read"} {
 		if strings.Contains(name, waits) {
 			return true
 		}

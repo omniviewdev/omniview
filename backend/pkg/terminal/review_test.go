@@ -139,11 +139,12 @@ func TestAGracefulShutdownHangsUpTheBackgroundJobsOfEveryShell(t *testing.T) {
 			if bytes.Contains(sink.output(info.ID), []byte("\x1b]133;A")) {
 				require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 3 },
 					20*time.Second, 5*time.Millisecond, "the prompt after the line was never drawn")
-				if waiting, known := waitingForInput(info.PID, 20*time.Second); known {
-					require.True(t, waiting, "the shell never waited for input at its prompt")
-				} else {
-					t.Log("NOT RUN: no /proc/<pid>/syscall or wchan: the wait for the shell to wait for input")
-				}
+			}
+			// Whatever the integration says: a shell with none is in its redisplay after it has drawn its prompt too.
+			if waiting, known := waitingForInput(info.PID, 20*time.Second); known {
+				require.True(t, waiting, "the shell never waited for input at its prompt")
+			} else {
+				t.Log("NOT RUN: no /proc/<pid>/syscall or wchan: the wait for the shell to wait for input")
 			}
 			require.False(t, ended(job))
 
