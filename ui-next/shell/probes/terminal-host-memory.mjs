@@ -403,7 +403,7 @@ async function openStream(port, cap, { ack }) {
 
       upgraded = true;
       pending = pending.subarray(end + 4);
-      send(ATTACH, Buffer.from(JSON.stringify({ v: 1, cap })));
+      send(ATTACH, Buffer.from(JSON.stringify({ v: 2, cap })));
     }
 
     // A frame that cannot be parsed (a type byte alone where an offset is due) is the stream's failure: it is recorded, the open that waits for `ready` is refused, and the socket is destroyed, so that the exception never leaves the callback and `runCase` still stops its host.

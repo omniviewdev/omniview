@@ -575,9 +575,10 @@ export function fakeEngineLoader(config: FakeEngineOptions & { readonly deferred
 
 // ---- the terminal channel, for the tests of the feed and of the whole data path ----------------------------------------------------------------------------------------------------------------------------
 //
-// `TerminalChannels` (channel.ts) as the tests drive it: the test is the host. Every stream the feed opens is a `FakeStream` the test speaks on frame by frame (`ready`, `output`, `gap`, `ended`, `takenOver`,
-// `notFound`, `drop`), and what the feed sent on it is recorded as frames (`sent`), in the order it sent them. The contract of channel.ts is kept as the real one keeps it: a stream is over after one of the
-// four ends or after the feed closed it, and the host's frames after that, like the feed's, are mistakes of the test (the host's throw, the feed's are dropped and counted). The calls that answer (`create`, `close`, `dismiss`,
+// `TerminalChannels` (channel.ts) as the tests drive it: the test is the host. Every stream the feed opens is a `FakeStream` the test speaks on frame by frame (`ready`, `output`, `gap`, `applied`, `ended`, `takenOver`,
+// `released`, `notFound`, `unsupported`, `drop`), and what the feed sent on it is recorded as frames (`sent`), in the order it sent them. The contract of channel.ts is kept as the real one keeps it: a stream is over after one of the
+// five ends (`ended`, `released`, `notFound`, `unsupported`, `closed`) or after the feed closed it, and the host's frames after that, like the feed's, are mistakes of the test (the host's throw, the feed's are dropped and counted). `takenOver` is not an end: the
+// stream stays open as a watcher, and the host's only frames on it are `released` or `ended` (protocol, section 8). The calls that answer (`create`, `close`, `dismiss`,
 // `busy`, `list`, `listed`) are answered by what the test gives, and may be answered by a promise the test holds. Nothing here is a host: no ring, no credit, no timers.
 
 /** What the feed sent on a stream, in order. `input` carries the bytes as text, as the shell would read them. */
@@ -585,6 +586,7 @@ export type SentFrame =
   | { readonly kind: 'input'; readonly bytes: Uint8Array; readonly text: string }
   | { readonly kind: 'resize'; readonly cols: number; readonly rows: number }
   | { readonly kind: 'ack'; readonly bytes: number }
+  | { readonly kind: 'close' }
   | { readonly kind: 'detach' };
 
 /** What the test says in a `ready`: what it leaves out is a terminal at the start of its output, 80 by 24, with nothing switched on. */
@@ -599,6 +601,10 @@ export type ReadyInit = {
   readonly startModes?: Readonly<Record<string, unknown>>;
   readonly shell?: string;
   readonly ended?: unknown;
+  /** The bytes of input the host has applied from the capability, across streams (`ready.input_applied`). Default: 0. */
+  readonly inputApplied?: number;
+  /** Whether the host had a count for this feed's writer before this attach (`ready.writer_known`). Default: true. */
+  readonly writerKnown?: boolean;
   /** Whole members to put in the payload as they are, or `undefined` to leave a member out. */
   readonly raw?: Readonly<Record<string, unknown>>;
 };
@@ -607,14 +613,27 @@ export type FakeStream = {
   /** The terminal this stream is for, and the offset the feed asked from (`undefined`: the feed had nothing). */
   readonly id: string;
   readonly fromOffset: number | undefined;
+  /** The writer id the feed said in its attach (`undefined`: it said none). */
+  readonly writer: string | undefined;
   /** The first frame of the host. */
   readonly ready: (init?: ReadyInit) => void;
   /** Output from `offset`, as the bytes or the text as UTF-8. */
   readonly output: (offset: number, data: string | Uint8Array) => void;
   readonly gap: (from: number, to: number) => void;
+  /** `applied`: the bytes of input the host has applied from the capability, across streams, so far. */
+  readonly applied: (total: number) => void;
   /** How the terminal ended: `terminal.End` as the host sends it. Default: the shell exited with code 0. */
   readonly ended: (end?: unknown) => void;
+  /** Another stream took the terminal: this stream stays open as a watcher, which hears `released` or `ended` and nothing else. */
   readonly takenOver: () => void;
+  /** Frames the host may never send, for a test of how the feed takes a host that breaks the protocol: they reach the feed with no check of the stream's state. */
+  readonly raw: { readonly released: () => void };
+  /** `close-refused`: the stream's close ended nothing, it does not hold the terminal. The stream goes on (as a watcher). */
+  readonly closeRefused: () => void;
+  /** To a watcher: the terminal is running and free. The stream is over. */
+  readonly released: () => void;
+  /** The host speaks another version than the attach said (`{"v": version}`). The stream is over. */
+  readonly unsupported: (version?: unknown) => void;
   readonly notFound: () => void;
   /** The stream ends without a word of the host: a connection that dropped. */
   readonly drop: () => void;
@@ -685,7 +704,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
   const calls: ChannelCall[] = [];
   const text = new TextDecoder();
 
-  const connect = (id: string, fromOffset: number | undefined, events: ChannelEvents): ChannelLink => {
+  const connect = (id: string, fromOffset: number | undefined, events: ChannelEvents, writer?: string): ChannelLink => {
     const sent: SentFrame[] = [];
     let open = true;
     let byFeed = false;
@@ -693,9 +712,18 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     let pending = 0;
     let dead = false;
     let inputsLeft = Number.POSITIVE_INFINITY;
+    let watching = false;
     const alive = (what: string): void => {
       if (!open) {
         throw new Error(`the test spoke on a stream that is over (${what})`);
+      }
+    };
+
+    /** The host's frames of a stream it took the terminal from: only `released` and `ended`. */
+    const holder = (what: string): void => {
+      alive(what);
+      if (watching) {
+        throw new Error(`the test spoke on a watcher: the host sends it only released or ended (${what})`);
       }
     };
 
@@ -727,14 +755,17 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     streams.push({
       id,
       fromOffset,
+      writer,
       ready: (init = {}) => {
-        alive('ready');
+        holder('ready');
         const size = init.size ?? { cols: 80, rows: 24 };
         const payload: Record<string, unknown> = {
-          v: 1,
+          v: 2,
           start: init.start ?? 0,
           end: init.end ?? init.start ?? 0,
           lost: init.lost ?? 0,
+          input_applied: init.inputApplied ?? 0,
+          writer_known: init.writerKnown ?? true,
           size,
           start_size: init.startSize ?? size,
           modes: { ...PLAIN_MODES, ...init.modes },
@@ -755,11 +786,11 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         events.ready(payload);
       },
       output: (offset, data) => {
-        alive('output');
+        holder('output');
         events.output(offset, typeof data === 'string' ? new TextEncoder().encode(data) : data);
       },
       gap: (from, to) => {
-        alive('gap');
+        holder('gap');
         events.gap(from, to);
       },
       ended: (end = { reason: 'exited', exit_code: 0 }) => {
@@ -767,13 +798,40 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         finish();
         events.ended(end);
       },
+      applied: (total) => {
+        holder('applied');
+        events.applied(total);
+      },
       takenOver: () => {
-        alive('taken-over');
-        finish();
+        holder('taken-over');
+        watching = true;
         events.takenOver();
       },
+      raw: {
+        released: () => {
+          events.released();
+        },
+      },
+      closeRefused: () => {
+        alive('close-refused');
+        events.closeRefused();
+      },
+      released: () => {
+        alive('released');
+        if (!watching) {
+          throw new Error('the test sent released to a stream that holds the terminal');
+        }
+
+        finish();
+        events.released();
+      },
+      unsupported: (version = 2) => {
+        holder('unsupported');
+        finish();
+        events.unsupported(version);
+      },
       notFound: () => {
-        alive('not-found');
+        holder('not-found');
         finish();
         events.notFound();
       },
@@ -809,6 +867,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       ack: (bytes) => {
         send({ kind: 'ack', bytes });
       },
+      end: () => send({ kind: 'close' }),
       detach: () => {
         send({ kind: 'detach' });
       },

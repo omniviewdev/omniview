@@ -36,17 +36,21 @@ import (
 
 // The frame types of the protocol.
 const (
-	wAttach    byte = 0x01
-	wInput     byte = 0x02
-	wResize    byte = 0x03
-	wAck       byte = 0x04
-	wDetach    byte = 0x05
-	wReady     byte = 0x81
-	wOutput    byte = 0x82
-	wGap       byte = 0x83
-	wEnded     byte = 0x84
-	wTakenOver byte = 0x85
-	wNotFound  byte = 0x86
+	wAttach       byte = 0x01
+	wInput        byte = 0x02
+	wResize       byte = 0x03
+	wAck          byte = 0x04
+	wDetach       byte = 0x05
+	wClose        byte = 0x06
+	wReady        byte = 0x81
+	wOutput       byte = 0x82
+	wGap          byte = 0x83
+	wEnded        byte = 0x84
+	wTakenOver    byte = 0x85
+	wNotFound     byte = 0x86
+	wApplied      byte = 0x87
+	wReleased     byte = 0x88
+	wCloseRefused byte = 0x8a
 )
 
 // settle is the bound of a wait for an event that must come.
@@ -271,9 +275,9 @@ func (f *fakeChannel) lastSendFrame() []byte {
 
 func attachFrame(capability string, from *uint64) []byte {
 	if from == nil {
-		return append([]byte{wAttach}, fmt.Sprintf(`{"v":1,"cap":%q}`, capability)...)
+		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q}`, capability, writerID(0))...)
 	}
-	return append([]byte{wAttach}, fmt.Sprintf(`{"v":1,"cap":%q,"from_offset":%d}`, capability, *from)...)
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d,"writer":%q}`, capability, *from, writerID(0))...)
 }
 
 func inputFrame(text string) []byte { return append([]byte{wInput}, text...) }
@@ -285,6 +289,8 @@ func resizeFrame(cols, rows uint16) []byte {
 func ackFrame(n uint32) []byte { return binary.BigEndian.AppendUint32([]byte{wAck}, n) }
 
 func detachFrame() []byte { return []byte{wDetach} }
+
+func closeFrame() []byte { return []byte{wClose} }
 
 // readyWire is the JSON of the ready frame, as the page reads it.
 type readyWire struct {
@@ -301,6 +307,10 @@ type readyWire struct {
 	Session    Session       `json:"session"`
 	LeaseMs    int           `json:"lease_ms"`
 	Ended      *End          `json:"ended"`
+	// InputApplied is the bytes of input the host has applied from this capability, across streams.
+	InputApplied uint64 `json:"input_applied"`
+	// WriterKnown says the host had a count for the attach's writer before this attach.
+	WriterKnown bool `json:"writer_known"`
 }
 
 // hostFrame is a frame the host sent, read.
@@ -311,6 +321,7 @@ type hostFrame struct {
 	data     []byte
 	from, to uint64
 	end      End
+	applied  uint64
 }
 
 func decodeHostFrame(raw []byte) (hostFrame, error) {
@@ -339,7 +350,12 @@ func decodeHostFrame(raw []byte) (hostFrame, error) {
 		if err := json.Unmarshal(body, &frame.end); err != nil {
 			return frame, fmt.Errorf("an ended frame that is not JSON: %w", err)
 		}
-	case wTakenOver, wNotFound:
+	case wApplied:
+		if len(body) != 8 {
+			return frame, fmt.Errorf("an applied frame of %d bytes", len(raw))
+		}
+		frame.applied = binary.BigEndian.Uint64(body)
+	case wTakenOver, wNotFound, wReleased, wCloseRefused:
 		if len(body) != 0 {
 			return frame, fmt.Errorf("a frame of type %#x that has a payload", frame.kind)
 		}
@@ -374,12 +390,16 @@ type chanPage struct {
 	ended     []End
 	takenOver int
 	notFound  int
-	faults    []string
-	frames    int
-	order     []byte
-	closed    bool
-	ackEvery  int
-	unacked   int
+	// applied is the value of every applied frame, in order; released counts the released frames.
+	applied      []uint64
+	released     int
+	closeRefused int
+	faults       []string
+	frames       int
+	order        []byte
+	closed       bool
+	ackEvery     int
+	unacked      int
 	// dead says the page has gone: what the host sent after is lost to it, as the frames queued in a closed tab are.
 	dead bool
 	// lag is how late the page's goroutine is for each frame it takes, in nanoseconds: the page of a machine that is busy. A test sets
@@ -451,6 +471,16 @@ func (p *chanPage) take(raw []byte) uint32 {
 		p.next = frame.to
 	case wEnded:
 		p.ended = append(p.ended, frame.end)
+	case wApplied:
+		p.requireReady("an applied")
+		if n := len(p.applied); n > 0 && frame.applied <= p.applied[n-1] {
+			p.faults = append(p.faults, fmt.Sprintf("an applied frame of %d after one of %d", frame.applied, p.applied[n-1]))
+		}
+		p.applied = append(p.applied, frame.applied)
+	case wReleased:
+		p.released++
+	case wCloseRefused:
+		p.closeRefused++
 	case wTakenOver:
 		p.takenOver++
 	case wNotFound:
@@ -493,6 +523,7 @@ func (p *chanPage) input(text string)        { p.f.pageSend(inputFrame(text)) }
 func (p *chanPage) resize(cols, rows uint16) { p.f.pageSend(resizeFrame(cols, rows)) }
 func (p *chanPage) ack(n uint32)             { p.f.pageSend(ackFrame(n)) }
 func (p *chanPage) detach()                  { p.f.pageSend(detachFrame()) }
+func (p *chanPage) closeTerminal()           { p.f.pageSend(closeFrame()) }
 func (p *chanPage) send(frame []byte)        { p.f.pageSend(frame) }
 func (p *chanPage) close()                   { _ = p.f.Close() }
 func (p *chanPage) isClosed() bool           { return p.f.isClosed() }
@@ -510,17 +541,20 @@ func (p *chanPage) die() pageState {
 
 // state is a copy of what the page saw.
 type pageState struct {
-	ready     *readyWire
-	segs      []pageSegment
-	gaps      [][2]uint64
-	ended     []End
-	takenOver int
-	notFound  int
-	faults    []string
-	frames    int
-	order     []byte
-	closed    bool
-	next      uint64
+	ready        *readyWire
+	segs         []pageSegment
+	gaps         [][2]uint64
+	ended        []End
+	takenOver    int
+	notFound     int
+	applied      []uint64
+	released     int
+	closeRefused int
+	faults       []string
+	frames       int
+	order        []byte
+	closed       bool
+	next         uint64
 }
 
 func (p *chanPage) state() pageState {
@@ -528,7 +562,7 @@ func (p *chanPage) state() pageState {
 	defer p.mu.Unlock()
 	return pageState{
 		ready: p.ready, segs: slices.Clone(p.segs), gaps: slices.Clone(p.gaps), ended: slices.Clone(p.ended), takenOver: p.takenOver, notFound: p.notFound,
-		faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
+		applied: slices.Clone(p.applied), released: p.released, closeRefused: p.closeRefused, faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
 	}
 }
 
@@ -695,6 +729,41 @@ func (m *Manager) attachOn(t *testing.T, f *fakeChannel, capability string, from
 	f.pageSend(attachFrame(capability, from))
 	return p
 }
+
+// attachAs opens a stream whose attach states the writer (docs/ui-next/terminal-channel-protocol.md section 5): the opaque id of one feed.
+func (m *Manager) attachAs(t *testing.T, capability, writer string) *chanPage {
+	t.Helper()
+	f := newFakeChannel(t)
+	p := newChanPage(t, f, 0)
+	served := make(chan struct{})
+	p.served = served
+	go p.run()
+	go func() {
+		defer close(served)
+		m.ServeChannel(f)
+	}()
+	f.pageSend(attachFrameAs(capability, writer))
+	return p
+}
+
+func attachFrameAs(capability, writer string) []byte {
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q}`, capability, writer)...)
+}
+
+// writerApplied is the bytes the device took from the writer, as the host counts them.
+func (s *session) writerApplied(id string) uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.channel.writers {
+		if w.id == id {
+			return w.applied.Load()
+		}
+	}
+	return 0
+}
+
+// writerID is the id of the nth test writer: 16 bytes as 32 lowercase hex digits.
+func writerID(n int) string { return fmt.Sprintf("%032x", n) }
 
 // chanOf is the session of a channel terminal.
 func (m *Manager) chanOf(t *testing.T, info Session) *session { return m.session(t, info.ID) }

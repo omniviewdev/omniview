@@ -1990,61 +1990,82 @@ describe('the feed a session has can be followed (T2d: a body that was drawn bef
   });
 });
 
-describe('asking who holds the terminals this page lost (`refreshLost`)', () => {
-  const asking = (): FakeTerminalFeed & { readonly refresh: Mock<() => Promise<void>> } => ({ ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) });
+describe('who holds the terminals this page lost', () => {
+  it('can take back a terminal whose watcher the host closed with no word, until the host says another tab holds it', () => {
+    const r = harness({ reattach: (id) => terminalOf(keyedFeed(), id) });
+    const feed = keyedFeed();
+    r.sessions.open(terminalOf(feed, 'term-u'));
+    feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+    expect(r.sessions.canTakeBack('term-u')).toBe(false);
+    feed.set({ detached: { by: 'taken-over', unwatched: true } });
+    expect(r.sessions.canTakeBack('term-u')).toBe(true);
+    feed.set({ detached: { by: 'taken-over', unwatched: true, free: false } });
+    expect(r.sessions.canTakeBack('term-u')).toBe(true);
+  });
 
-  it('asks `refresh` of every feed this page lost, once each, and of no other: not a running feed, not one that ended by itself', () => {
+  it('attaches nothing after its fresh question unless the host said the terminal is free: a holder it never learned of is not displaced, and the button stays', async () => {
+    const reattach = vi.fn((id: string) => terminalOf(keyedFeed(), id));
+    const r = harness({ reattach });
+    const feed = keyedFeed();
+    r.sessions.open(terminalOf(feed, 'term-u'));
+    feed.set({ state: 'ended', detached: { by: 'taken-over', unwatched: true } });
+    for (const answer of [undefined, false] as const) {
+      Object.assign(feed, {
+        refresh: async (): Promise<void> => {
+          if (answer === false) {
+            feed.set({ detached: { by: 'taken-over', unwatched: true, free: false } });
+          }
+        },
+      });
+      await expect(r.sessions.takeBack('term-u')).resolves.toBe(false);
+      expect(reattach).not.toHaveBeenCalled();
+      expect(r.sessions.canTakeBack('term-u')).toBe(true);
+    }
+
+    Object.assign(feed, {
+      refresh: async (): Promise<void> => {
+        feed.set({ detached: { by: 'taken-over', unwatched: true, free: true } });
+      },
+    });
+    await expect(r.sessions.takeBack('term-u')).resolves.toBe(true);
+    expect(reattach).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a feed the registry has let go of (an entry kept ended by its plugin\'s unload) even when it is marked unwatched', () => {
+    const r = harness({ plugins: ['acme'] });
+    const feed = { ...keyedFeed(), refresh: vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined) };
+    r.sessions.open({ plugin: 'acme', id: 'item', title: 'web', sessionId: 'item-1', open: () => feed });
+    feed.set({ state: 'ended', detached: { by: 'taken-over', unwatched: true } });
+    expect(r.sessions.refreshUnwatched()).toBe(true);
+    expect(feed.refresh).toHaveBeenCalledTimes(1);
+    r.store.syncPlugins([]);
+    expect(r.sessions.feedOf('item-1')).toBe(feed);
+    expect(r.sessions.refreshUnwatched()).toBe(false);
+    expect(feed.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks every unwatched feed for a fresh answer (`refreshUnwatched`) and no other: not a watched one, not one that ended, not a running one', () => {
     const r = harness();
-    const [held, free, running, finished] = [asking(), asking(), asking(), asking()];
-    for (const [index, feed] of [held, free, running, finished].entries()) {
+    const asking = (): FakeTerminalFeed & { readonly refresh: Mock<(options?: { readonly fresh?: boolean }) => Promise<void>> } => ({ ...keyedFeed(), refresh: vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined) });
+    const [unwatched, watched, finished, running] = [asking(), asking(), asking(), asking()];
+    for (const [index, feed] of [unwatched, watched, finished, running].entries()) {
       r.sessions.open(terminalOf(feed, `term-${String(index)}`));
     }
 
-    lostTo(held, { by: 'taken-over' });
-    lostTo(free);
-    finished.set({ state: 'ended', exit: { code: 0 } });
-    expect(r.sessions.refreshLost()).toBe(true);
-    expect([held, free, running, finished].map((feed) => feed.refresh.mock.calls.length)).toEqual([1, 1, 0, 0]);
+    unwatched.set({ state: 'ended', detached: { by: 'taken-over', unwatched: true } });
+    watched.set({ state: 'ended', detached: { by: 'taken-over' } });
+    finished.set({ state: 'ended', exit: { code: 0 }, detached: { by: 'taken-over', unwatched: true } });
+    expect(r.sessions.refreshUnwatched()).toBe(true);
+    expect([unwatched, watched, finished, running].map((feed) => feed.refresh.mock.calls.length)).toEqual([1, 0, 0, 0]);
+    expect(unwatched.refresh).toHaveBeenCalledWith({ fresh: true });
+    unwatched.set({ detached: { by: 'taken-over' } });
+    expect(r.sessions.refreshUnwatched()).toBe(false);
   });
 
-  it('is a no-op, and says so, with nothing lost', () => {
+  it('is not asked on a poll: the registry has no way to ask every lost feed, because the host says when a terminal is free (`released`)', () => {
     const r = harness();
-    const running = asking();
-    r.sessions.open(terminalOf(running, 'term-a'));
-    expect(r.sessions.refreshLost()).toBe(false);
-    expect(running.refresh).not.toHaveBeenCalled();
-  });
-
-  it('contains a refresh that throws or rejects: one warning each, the others are asked, and it never throws', async () => {
-    const r = harness();
-    const throwing: FakeTerminalFeed = { ...keyedFeed(), refresh: (): never => {
-      throw new Error('threw'); 
-    } };
-    const rejecting: FakeTerminalFeed = { ...keyedFeed(), refresh: async () => Promise.reject(new Error('no')) };
-    const fine = asking();
-    for (const [index, feed] of [throwing, rejecting, fine].entries()) {
-      r.sessions.open(terminalOf(feed, `term-${String(index)}`));
-      lostTo(feed);
-    }
-
-    expect(() => r.sessions.refreshLost()).not.toThrow();
-    expect(fine.refresh).toHaveBeenCalledTimes(1);
-    await flush();
-    expect(r.warn).toHaveBeenCalledTimes(2);
-  });
-
-  it('counts only a lost feed that can be asked: one with no `refresh` is not lost for the poll', () => {
-    const r = harness();
-    const mute = keyedFeed();
-    r.sessions.open(terminalOf(mute, 'term-a'));
-    lostTo(mute);
-    expect(r.sessions.hasLost()).toBe(false);
-    expect(r.sessions.refreshLost()).toBe(false);
-    const askable = asking();
-    r.sessions.open(terminalOf(askable, 'term-b'));
-    lostTo(askable);
-    expect(r.sessions.hasLost()).toBe(true);
-    expect(r.sessions.refreshLost()).toBe(true);
+    expect(r.sessions).not.toHaveProperty('refreshLost');
+    expect(r.sessions).not.toHaveProperty('hasLost');
   });
 });
 

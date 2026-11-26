@@ -5,10 +5,10 @@
 //
 // Each assertion has its own controls, each ONE fault, which trip only it:
 //   restore-open        a saved OPEN panel comes back open with its saved tool, its saved active session and its height; a saved CLOSED panel stays closed and, when it is opened, is on the tool and at the height it was left at, before another tool is chosen (restore.open)
-//   reattach-takeback   a tab that lost its terminal to another tab and whose taker then went says so once it has asked the host (a visible tab asks when it is shown, when it gets the focus and every few seconds: the probe waits for
-//                       the question and never provokes it), has a real button that takes it back (Tab reaches it, Enter presses it, a visible ring), makes ONE new stream that attaches with no offset, runs again in the same place with
-//                       its earlier output and the keyboard in it, with the lane no higher than before; while the taker lives, also when a third tab took the terminal from the taker, there is no button and the old sentence (reattach.takeback);
-//                       axe finds nothing in the lane with the button (reattach.axe-free)
+//   reattach-takeback   a tab that lost its terminal to another tab and whose taker then went says so the moment the host tells it (`released`: the host says when a terminal is free, nothing is asked, nothing polls: the probe
+//                       waits for the frame and never provokes it), has a real button that takes it back (Tab reaches it, Enter presses it, a visible ring), makes ONE new stream that attaches with no offset, runs again in the same
+//                       place with its earlier output and the keyboard in it, with the lane no higher than before; while the taker lives, also when a third tab took the terminal from the taker, there is no button and the old sentence
+//                       (reattach.takeback); axe finds nothing in the lane with the button (reattach.axe-free)
 //   reattach-reconnect  the stream of a terminal is lost and comes back: the page connects ONCE more, with the offset it has applied up to, the host continues exactly there, the numbered lines are in order with no gap and no
 //                       duplicate across the blip, the screen is not reset, every byte of output the new stream sent (the replay included, never a gap) is acknowledged, and what is typed afterwards reaches the shell (reattach.reconnect)
 //   reattach-reconnect-gap  the host's ring no longer reaches back to what the page has (`ready.lost` is more than nothing): the screen is reset and brought to the ring by a replay, and the lines are in order from the first of the replay to the end (reattach.reconnect-gap)
@@ -19,7 +19,8 @@
 //                       attach is the bytes the new stream sent and nothing else (reattach.reconnect-acks)
 //   reattach-takeback-guard  a tab whose free flag is stale (a third tab holds the terminal and the tab has not asked since) presses Take it back: it asks the host who holds the terminal and attaches nothing, the button goes, the lane
 //                       says the terminal is taken over again and the third tab goes on typing (reattach.takeback-guard)
-//   reattach-takeback-offline  a tab that could not reach the host when the tab that took the terminal let it go is told nothing and shows what it showed, and shows the button once the host can be asked again (reattach.takeback-offline)
+//   reattach-takeback-offline  a tab whose connection was cut while it watched (it cannot be told `released`) asks the host when its watcher closes, and again on the schedule of a reconnect while the host cannot be reached: it is told
+//                       nothing and shows what it showed meanwhile, and shows the button once the host can be asked (reattach.takeback-offline)
 
 /** The lines of the flood of the blips, and the bytes they are: a flood that is still running when the stream is lost, and that the host's backlog stops. */
 const LINES = 60_000;
@@ -53,8 +54,8 @@ export const FOLLOWUP_CONTROLS = {
   // The saved panel comes back with the flag the other way: a restore that forgot that the panel was open, and one that forgot that it was closed.
   'restore-forgets-open': { assertion: 'restore.open', section: 'restore-open', engines: ['chromium'], query: 'control=restore-forgets-open' },
   'restore-forgets-closed': { assertion: 'restore.open', section: 'restore-open', engines: ['chromium'], query: 'control=restore-forgets-closed' },
-  // The host's list says that a stream holds a terminal nobody holds, so that no button appears once the taker has gone; and a button that, once pressed, attaches twice.
-  'taker-gone-ignored': { assertion: 'reattach.takeback', section: 'reattach-takeback', engines: ['chromium'], host: { faults: { attachedStuck: true } } },
+  // The host never tells the watcher that the terminal is free (`released` is lost), so that no button appears once the taker has gone; and a button that, once pressed, attaches twice.
+  'taker-gone-ignored': { assertion: 'reattach.takeback', section: 'reattach-takeback', engines: ['chromium'], host: { faults: { releasedNever: true } } },
   'take-back-twice': { assertion: 'reattach.takeback', section: 'reattach-takeback', engines: ['chromium'], stage: 'press', after: (page) => page.evaluate(() => { window.__link.arm(true); }) },
   // A violation that exists only in the lane of a tab that can be taken back: an image with no text alternative, planted once the lane with its button is drawn (the pattern of `axe-failed`).
   'free-axe': { assertion: 'reattach.axe-free', section: 'reattach-takeback', engines: ['chromium'], stage: 'free', after: (page) => page.evaluate((src) => { const image = document.createElement('img'); image.src = src; document.querySelector('[data-shell-part="terminalLane"]').append(image); }, IMAGE) },
@@ -133,11 +134,11 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
   const listedBy = async (page) => page.evaluate(() => window.__link.state().listed);
 
   /**
-   * The page asks the host once more, and what it made of the answer is on screen. A visible tab asks when it is shown, when it gets the focus and every few seconds, so this waits for the question (a count of the page's
-   * own) and never makes it.
+   * The page asks the host, and what it made of the answer is on screen. A tab asks when its watcher closes with no word and, while the host cannot be reached for the question, on the schedule of a reconnect, so this waits for
+   * the question (a count of the page's own) and never makes it.
    */
-  const asked = async (page, ms = 20_000) => {
-    const before = await listedBy(page);
+  const asked = async (page, before, ms = 20_000) => {
+    // `before` is the count the caller read BEFORE the connection was cut: a question made between the cut and a later read would otherwise be left out of the baseline.
     const count = await until(async () => listedBy(page), (now) => now > before, ms);
     await frames(page);
     return count - before;
@@ -244,14 +245,13 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const buttonsTaken = await buttons();
       const c = await w.open();
       await until(() => host.state(id)?.holder, (holder) => holder !== null && holder !== holderB, 8000);
-      // The first taker goes while the third tab holds the terminal; the page asks the host after both, and the host says that a stream holds it.
-      const listedBefore = await listedBy(a);
+      // The first taker goes while the third tab holds the terminal: the host watches the terminal for the first tab only now, and says nothing to it, because the terminal is not free.
       await b.goto('about:blank');
-      await until(async () => listedBy(a), (count) => count > listedBefore, 20_000);
+      await until(() => host.state(id)?.watchers, (watchers) => watchers === 1, 8000);
       await frames(a);
       const third = await laneOf(a);
       const buttonsThird = await buttons();
-      // The tab that holds it now goes: nobody has it, its lease runs, and the page learns it by asking.
+      // The tab that holds it now goes: nobody has it, its lease runs, and the host tells the first tab (`released`) at once.
       await c.goto('about:blank');
       const free = await until(buttons, (count) => count >= 1, 20_000);
       const laneFree = await laneOf(a);
@@ -365,10 +365,10 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           moved.earlier &&
           moved.keyboard &&
           moved.typed >= 2,
-        `${engine} ${vp}: while the tab that took the terminal lives the lane says ${JSON.stringify(taken)} and has ${String(buttonsTaken)} buttons (none is right), after a third tab took it from that tab and the first taker went, and the page asked the host, ${JSON.stringify(third)} and ${String(buttonsThird)}; when the tab that holds it went it has ${String(free)} button (one is right) and the lane says ${JSON.stringify(laneFree)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right), ${String(heightFree)} px high where it was ${String(heightTaken)}; the button is a ${String(element.tag)} (BUTTON), Tab reaches it in ${String(reached)} presses (0 is never; the focus went ${JSON.stringify(trail)}; F6 then Shift+Tab reaches it: ${String(viaF6)}), its ring ${element.ringed ? 'shows' : 'does NOT show'} (focus-visible ${String(element.focusVisible)}); Enter made ${String(again.length)} attach(es) (one is right) with the offset ${JSON.stringify(again[0]?.from_offset ?? null)} (null: a new stream that has nothing), the tabs are ${JSON.stringify(moved.tabs) === JSON.stringify(tabs) ? 'the same' : 'DIFFERENT'}, the lane says ${JSON.stringify(moved.lane)} (nothing), the earlier output is ${moved.earlier ? 'back' : 'NOT back'}, the keyboard is ${moved.keyboard ? '' : 'NOT '}in the screen, and typed hello was answered ${String(moved.typed)} time(s) on screen (2 or more)`,
+        `${engine} ${vp}: while the tab that took the terminal lives the lane says ${JSON.stringify(taken)} and has ${String(buttonsTaken)} buttons (none is right), after a third tab took it from that tab and the first taker went, ${JSON.stringify(third)} and ${String(buttonsThird)}; when the tab that holds it went it has ${String(free)} button (one is right) and the lane says ${JSON.stringify(laneFree)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right), ${String(heightFree)} px high where it was ${String(heightTaken)}; the button is a ${String(element.tag)} (BUTTON), Tab reaches it in ${String(reached)} presses (0 is never; the focus went ${JSON.stringify(trail)}; F6 then Shift+Tab reaches it: ${String(viaF6)}), its ring ${element.ringed ? 'shows' : 'does NOT show'} (focus-visible ${String(element.focusVisible)}); Enter made ${String(again.length)} attach(es) (one is right) with the offset ${JSON.stringify(again[0]?.from_offset ?? null)} (null: a new stream that has nothing), the tabs are ${JSON.stringify(moved.tabs) === JSON.stringify(tabs) ? 'the same' : 'DIFFERENT'}, the lane says ${JSON.stringify(moved.lane)} (nothing), the earlier output is ${moved.earlier ? 'back' : 'NOT back'}, the keyboard is ${moved.keyboard ? '' : 'NOT '}in the screen, and typed hello was answered ${String(moved.typed)} time(s) on screen (2 or more)`,
       );
       check('reattach.axe-free', axeFree.length === 0, `${engine} ${vp}: the tab that can be taken back, with its lane and its button: ${JSON.stringify(axeFree)}`);
-      note(`reattach takeback ${engine} ${vp}: no button while the taker lived, a button ${String(reached)} Tab presses from the tab once the last taker went and the page asked, one attach with no offset, the lane ${String(heightFree)} px high where it was ${String(heightTaken)}`);
+      note(`reattach takeback ${engine} ${vp}: no button while the taker lived, a button ${String(reached)} Tab presses from the tab once the last taker went and the host said it was free, one attach with no offset, the lane ${String(heightFree)} px high where it was ${String(heightTaken)}`);
     } finally {
       await w.close();
     }
@@ -732,7 +732,7 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const attachesBefore = host.log.attaches.length;
       const writesBefore = host.log.writes.length;
       // The host can be asked again in the very task of the press, so that no question of the page's own comes between the two.
-      // What the press itself asks of the host is counted in that same task (a call of the list STARTED by it): the page's own poll every 5 s cannot stand in for it.
+      // What the press itself asks of the host is counted in that same task (a call of the list STARTED by it): nothing the page asked of its own can stand in for it.
       const pressAsked = await a.evaluate(() => {
         window.__link.failLists(false);
         const started = window.__link.state().started;
@@ -775,8 +775,9 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
   };
 
   /**
-   * A tab that could not reach the host when the tab that took its terminal let it go. It was told nothing and shows what it showed (its questions fail, and the transport of its streams is down); once the host can be asked again
-   * the page asks, the host says that nobody holds the terminal, and the tab shows the button. It attaches nothing: only a press takes the terminal back.
+   * A tab that could not reach the host when the tab that took its terminal let it go: its connection was cut while it watched, so the host could not tell it (`released`) and the watcher is closed. The page asks the host when the
+   * watcher closes and, while the host cannot be reached for the question, again on the schedule of a reconnect (250 ms, one second, four seconds). It cannot be told when the terminal is free, so it offers the button at once and shows the words of a terminal another tab holds (its questions fail,
+   * and the transport of its streams is down); once the host can be asked the page asks, the host says that nobody holds the terminal, and the lane says the taker has closed. It attaches nothing: only a press takes the terminal back.
    */
   sections['reattach-takeback-offline'] = async (ctx) => {
     const { engine, vp } = ctx;
@@ -796,17 +797,19 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
       const attachesBefore = host.log.attaches.length;
 
       // 1. The page cannot reach the host, and the tab that took the terminal goes meanwhile: the page is told nothing and shows what it showed, though it asked.
+      // The questions fail from the first instant: the page asks when its watcher closes, which is the moment its connection is cut.
+      const baseline = await listedBy(a);
       await a.evaluate(() => {
-        window.__link.down();
         window.__link.failLists(true);
+        window.__link.down();
       });
       await b.goto('about:blank');
       await until(() => host.state(id)?.holder, (holder) => holder === null, 8000);
-      const triedDown = await asked(a);
+      const triedDown = await asked(a, baseline);
       const laneDown = await laneOf(a);
       const buttonsDown = await buttons();
 
-      // 2. The host can be reached again: the page asks, and the host says that nobody holds the terminal.
+      // 2. The host can be reached again: the page asks again on its schedule, and the host says that nobody holds the terminal.
       const listed1 = await listedBy(a);
       // The list stays blocked while the stage's fault is planted (`refresh-skipped`), from the first instant of the reconnection until the button state has been read.
       const blocked = ctx.control?.stage === 'offline';
@@ -815,14 +818,15 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
         if (!keep) window.__link.failLists(false);
       }, blocked);
       await perturbed(ctx, a, 'offline');
-      const freed = await until(buttons, (count) => count >= 1, 20_000);
+      await until(async () => laneOf(a), (text) => text.includes(FREE.closed), 20_000);
+      const freed = await buttons();
       const laneFreed = await laneOf(a);
       const asks = (await listedBy(a)) - listed1;
       const attaches = host.log.attaches.length - attachesBefore;
       check(
         'reattach.takeback-offline',
         triedDown >= 1 &&
-          buttonsDown === 0 &&
+          buttonsDown === 1 &&
           laneDown.includes(FREE.taken) &&
           FREE.old.test(laneDown) &&
           freed === 1 &&
@@ -830,9 +834,9 @@ export function createFollowupSections({ check, note, runAxe, helpers }) {
           laneFreed.includes(FREE.lease) &&
           asks >= 1 &&
           attaches === 0,
-        `${engine} ${vp}: with the host out of reach while the tab that took the terminal went the page tried to ask ${String(triedDown)} time(s) and the lane says ${JSON.stringify(laneDown)} with ${String(buttonsDown)} buttons (the old words and none is right: it was told nothing); once the host could be reached it asked ${String(asks)} time(s) (once or more) and has ${String(freed)} button (one is right) and the lane says ${JSON.stringify(laneFreed)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right); it made ${String(attaches)} attach(es) (none: only a press takes the terminal back)`,
+        `${engine} ${vp}: with the host out of reach while the tab that took the terminal went the page tried to ask ${String(triedDown)} time(s) and the lane says ${JSON.stringify(laneDown)} with ${String(buttonsDown)} buttons (the old words, which do not claim the taker has gone, and one button is right: the page lost its watcher and cannot be told); once the host could be reached it asked ${String(asks)} time(s) (once or more) and has ${String(freed)} button (one is right) and the lane says ${JSON.stringify(laneFreed)} (${JSON.stringify(FREE.closed)} and ${JSON.stringify(FREE.lease)} are right); it made ${String(attaches)} attach(es) (none: only a press takes the terminal back)`,
       );
-      note(`reattach takeback-offline ${engine} ${vp}: no button while the host could not be reached when the taker went, one once it could and the page had asked (${String(asks)} call(s)), no attach`);
+      note(`reattach takeback-offline ${engine} ${vp}: the button offered at once while the host could not be reached (the lane not claiming the taker had gone), the words of a taker that has gone once it could and the page had asked (${String(asks)} call(s)), no attach`);
     } finally {
       await w.close();
     }

@@ -24,9 +24,6 @@ import { CHOOSE_SHELL, NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_TOOL_ID } from './
  */
 export const ASK_MS = 1_500;
 
-/** How often a visible window asks the host who holds the terminals it lost: the host says nothing when the tab that took one goes, so a lost terminal is asked about until it is free. */
-export const LOST_REFRESH_MS = 5_000;
-
 /** The host's answer to "what runs in it", or `unknown` when it does not come in time or the question fails: a question that was not answered is never "nothing runs". */
 async function answered(question: Promise<TerminalBusy>): Promise<TerminalBusy> {
   return new Promise((resolve) => {
@@ -253,35 +250,14 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       };
 
       window.addEventListener('pagehide', hide);
-      // The host does not tell a page that the tab that took its terminal has gone: a visible window asks when it is shown, when it gets the focus and every few seconds, and only while it has a lost terminal.
-      const ask = (): void => {
-        if (document.visibilityState === 'visible') {
-          sessions.refreshLost();
-        }
-      };
-
-      // The interval exists only while a terminal is lost and the page is visible: an idle terminal runs no timer.
-      let timer: ReturnType<typeof setInterval> | undefined;
-      const arm = (): void => {
-        const wanted = document.visibilityState === 'visible' && sessions.hasLost();
-        if (wanted && timer === undefined) {
-          timer = setInterval(ask, LOST_REFRESH_MS);
-        } else if (!wanted && timer !== undefined) {
-          clearInterval(timer);
-          timer = undefined;
-        }
-      };
-
+      // A terminal whose watcher was lost cannot be told when it is free: when the person comes back to the tab the host is asked, once, with no timer.
       const shown = (): void => {
-        arm();
-        ask();
+        if (document.visibilityState === 'visible') {
+          sessions.refreshUnwatched();
+        }
       };
 
       document.addEventListener('visibilitychange', shown);
-      window.addEventListener('focus', ask);
-      const stopStore = store.subscribe(arm);
-      const stopFeeds = sessions.subscribeFeeds(arm);
-      arm();
       attached += 1;
       findTerminals();
       openFound();
@@ -295,13 +271,6 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         attached -= 1;
         window.removeEventListener('pagehide', hide);
         document.removeEventListener('visibilitychange', shown);
-        window.removeEventListener('focus', ask);
-        stopStore();
-        stopFeeds();
-        if (timer !== undefined) {
-          clearInterval(timer);
-        }
-
         stop();
       };
     },
