@@ -114,6 +114,7 @@ type Answers = {
   /** What `ListChannelTerminals` answers, given the capabilities. */
   list: (capabilities: readonly string[]) => unknown;
   busy: unknown;
+  cwd: unknown;
 };
 
 type Rig = {
@@ -143,6 +144,7 @@ function rig(options: RigOptions = {}): Rig {
     fails: {},
     list: (capabilities) => capabilities.map((cap) => ({ id: cap === CAP ? 't1' : cap === CAP_2 ? 't2' : 't3', shell: { name: 'zsh' } })),
     busy: { state: 'idle' },
+    cwd: { path: '/home/u' },
   };
   const call = async (name: string, ...args: unknown[]): Promise<unknown> => {
     calls.push([name, ...args]);
@@ -150,7 +152,9 @@ function rig(options: RigOptions = {}): Rig {
       return Promise.reject(answers.fails[name]);
     }
 
-    return Promise.resolve(name === 'CreateTerminal' ? answers.create() : name === 'ListChannelTerminals' ? answers.list(args[0] as string[]) : name === 'ChannelTerminalBusy' ? answers.busy : undefined);
+    return Promise.resolve(
+      name === 'CreateTerminal' ? answers.create() : name === 'ListChannelTerminals' ? answers.list(args[0] as string[]) : name === 'ChannelTerminalBusy' ? answers.busy : name === 'ChannelTerminalCwd' ? answers.cwd : undefined,
+    );
   };
 
   const client: ChannelClient = {
@@ -158,6 +162,7 @@ function rig(options: RigOptions = {}): Rig {
     CloseChannelTerminal: async (cap) => call('CloseChannelTerminal', cap),
     DismissChannelTerminal: async (cap) => call('DismissChannelTerminal', cap),
     ChannelTerminalBusy: async (cap) => call('ChannelTerminalBusy', cap),
+    ChannelTerminalCwd: async (cap) => call('ChannelTerminalCwd', cap),
     ListChannelTerminals: async (caps) => call('ListChannelTerminals', caps),
   };
   const storage: CapabilityStorage = {
@@ -723,7 +728,7 @@ describe('a terminal the page holds no capability for', () => {
 
   it('answers every call as the host answers a capability that opens nothing, and does not call the host', async () => {
     const r = rig();
-    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1')]) {
+    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1'), r.channels.cwd('t1')]) {
       const error = await call.then(
         () => undefined,
         (failure: unknown) => failure,
@@ -748,7 +753,7 @@ describe('a terminal the host says is not there', () => {
     await turns();
     expect(again.said).toEqual([['notFound']]);
     expect(r.opened).toEqual(['terminal']);
-    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1')]) {
+    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1'), r.channels.cwd('t1')]) {
       const error = await call.then(
         () => undefined,
         (failure: unknown) => failure,
@@ -896,6 +901,24 @@ describe('the calls that name a terminal', () => {
     r.answers.busy = { state: 'busy', name: 'sleep' };
     await expect(r.channels.busy('t1')).resolves.toEqual({ state: 'busy', name: 'sleep' });
     expect(r.calls).toEqual([['ChannelTerminalBusy', CAP]]);
+  });
+
+  it('cwd answers what the host answers, by the capability, and asks nothing else', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.cwd = { path: '/usr' };
+    await expect(r.channels.cwd('t1')).resolves.toEqual({ path: '/usr' });
+    r.answers.cwd = { reason: 'query-failed' };
+    await expect(r.channels.cwd('t1')).resolves.toEqual({ reason: 'query-failed' });
+    expect(r.calls).toEqual([['ChannelTerminalCwd', CAP], ['ChannelTerminalCwd', CAP]]);
+  });
+
+  it('cwd forgets a capability the host refuses, as every call does', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.fails.ChannelTerminalCwd = notFound();
+    await expect(r.channels.cwd('t1')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
+    r.calls.length = 0;
+    await r.channels.close('t1').catch(() => undefined);
+    expect(r.calls).toEqual([]);
   });
 });
 
@@ -1179,7 +1202,8 @@ describe('the capability, which nothing says', () => {
     failing.answers.fails.DismissChannelTerminal = echoing(CAP);
     failing.answers.fails.ListChannelTerminals = echoing(CAP);
     await failing.channels.create('t1', { cols: 80, rows: 24 });
-    for (const call of [failing.channels.busy('t1'), failing.channels.close('t1'), failing.channels.dismiss('t1'), failing.channels.list()]) {
+    failing.answers.fails.ChannelTerminalCwd = echoing(CAP);
+    for (const call of [failing.channels.busy('t1'), failing.channels.cwd('t1'), failing.channels.close('t1'), failing.channels.dismiss('t1'), failing.channels.list()]) {
       const error = await call.then(
         () => undefined,
         (failure: unknown) => failure,
@@ -1271,6 +1295,7 @@ describe('the errors that leave the channel', () => {
     ['close', 'CloseChannelTerminal', async (channels) => channels.close('t1')],
     ['dismiss', 'DismissChannelTerminal', async (channels) => channels.dismiss('t1')],
     ['busy', 'ChannelTerminalBusy', async (channels) => channels.busy('t1')],
+    ['cwd', 'ChannelTerminalCwd', async (channels) => channels.cwd('t1')],
     ['list', 'ListChannelTerminals', async (channels) => channels.list()],
     ['listed', 'ListChannelTerminals', async (channels) => channels.listed('t1')],
     ['create', 'CreateTerminal', async (channels) => channels.create('t2', { cols: 80, rows: 24 })],

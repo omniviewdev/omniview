@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen as page } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPanelStore, HOST } from '../../../core/panel';
 import type { EngineLoader } from '../engine';
-import type { TerminalFeedSnapshot, TerminalTarget } from '../feed';
+import type { TerminalDirectory, TerminalFeedSnapshot, TerminalTarget } from '../feed';
 import { createScreenReaderChoice } from '../screenReader';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngineLoader, type FakeTerminalFeed } from '../testing';
 import { TerminalBody } from '../TerminalBody';
@@ -24,6 +24,10 @@ type Mounted = {
   readonly feed: FakeTerminalFeed;
   readonly openExternal: Mock<(url: string) => void>;
   readonly screen: () => HTMLElement;
+  /** What the body was given to open "New terminal here" with (never called unless the test asked for the item). */
+  readonly newHere: Mock<(session: string) => void>;
+  /** The id of the session the body shows. */
+  readonly sessionId: string;
 };
 
 /** The real emulator's code, as the body's loader gives it. */
@@ -32,7 +36,9 @@ const real: EngineLoader = async () => Promise.resolve(createXtermEngine);
 let counter = 0;
 let shown: HTMLStyleElement;
 
-function mount(options: { readonly platform?: string; readonly links?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly real?: boolean } = {}): Mounted {
+function mount(
+  options: { readonly platform?: string; readonly links?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly real?: boolean; readonly here?: { readonly directory: boolean } } = {},
+): Mounted {
   counter = 0;
   const openExternal = vi.fn<(url: string) => void>();
   vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: vi.fn(async () => Promise.resolve()), readText: vi.fn(async () => Promise.resolve('echo hi')) }, platform: options.platform ?? MAC });
@@ -40,7 +46,10 @@ function mount(options: { readonly platform?: string; readonly links?: boolean; 
   store.registerTool(TERMINAL_TOOL);
   const sessions = createTerminalSessions(store, { newId: () => `term-${String(++counter)}`, ...(options.links === false ? {} : { openExternal }) });
   sessions.attach();
-  const feed = fakeTerminalFeed({ state: options.state ?? 'running' });
+  const feed = fakeTerminalFeed({
+    state: options.state ?? 'running',
+    ...(options.here?.directory === true ? { directory: async () => Promise.resolve<TerminalDirectory>({ state: 'known', path: '/usr', source: 'shell' }) } : {}),
+  });
   const loader = fakeEngineLoader();
   const target: TerminalTarget = { plugin: HOST, id: 'local', title: 'Terminal', open: () => feed };
   const opened = sessions.open(target, { focus: false });
@@ -49,15 +58,25 @@ function mount(options: { readonly platform?: string; readonly links?: boolean; 
     throw new Error('the session did not open');
   }
 
+  const newHere = vi.fn<(session: string) => void>();
   render(
     <MenuHost>
-      <TerminalBody sessions={sessions} session={session} visible load={options.real === true ? real : loader.load} screenReader={createScreenReaderChoice()} />
+      <TerminalBody
+        sessions={sessions}
+        session={session}
+        visible
+        load={options.real === true ? real : loader.load}
+        screenReader={createScreenReaderChoice()}
+        {...(options.here === undefined ? {} : { onNewHere: newHere })}
+      />
     </MenuHost>,
   );
   return {
     loader,
     feed,
     openExternal,
+    newHere,
+    sessionId: session.id,
     screen: () => {
       const element = document.querySelector<HTMLElement>('[data-shell-part="terminalScreen"]');
       if (element === null) {
@@ -126,6 +145,35 @@ describe('the menu in the body', () => {
     rightClick(screen());
     expect(page.getAllByRole('menuitem')).toHaveLength(5);
     expect(document.querySelectorAll('[role="menu"] kbd')).toHaveLength(0);
+  });
+
+  describe('New terminal here', () => {
+    it('is in the menu of a body that is given a way to open one, and asks for it by the id of its session: the body asks nothing of the host itself', async () => {
+      const { screen, newHere, sessionId } = mount({ here: { directory: true } });
+      await flush();
+      rightClick(screen());
+      expect(page.getAllByRole('menuitem').map((entry) => entry.getAttribute('aria-label'))).toEqual(['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here']);
+      expect(item('New terminal here')).not.toHaveAttribute('aria-disabled');
+      fireEvent.click(item('New terminal here'));
+      expect(newHere).toHaveBeenCalledTimes(1);
+      expect(newHere).toHaveBeenCalledWith(sessionId);
+    });
+
+    it('is unavailable when the session\'s feed cannot say where it is, and opens nothing', async () => {
+      const { screen, newHere } = mount({ here: { directory: false } });
+      await flush();
+      rightClick(screen());
+      expect(item('New terminal here')).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(item('New terminal here'));
+      expect(newHere).not.toHaveBeenCalled();
+    });
+
+    it('is not in the menu of a body that is given no way to open one', async () => {
+      const { screen } = mount();
+      await flush();
+      rightClick(screen());
+      expect(page.queryByRole('menuitem', { name: 'New terminal here' })).toBeNull();
+    });
   });
 
   it('selects all the output, and clears it, in the emulator', async () => {

@@ -71,6 +71,7 @@ export type ChannelClient = {
   CloseChannelTerminal(capability: string): PromiseLike<unknown>;
   DismissChannelTerminal(capability: string): PromiseLike<unknown>;
   ChannelTerminalBusy(capability: string): PromiseLike<unknown>;
+  ChannelTerminalCwd(capability: string): PromiseLike<unknown>;
   ListChannelTerminals(capabilities: string[]): PromiseLike<unknown>;
 };
 
@@ -302,6 +303,7 @@ function createCore(deps: ChannelDeps): Core {
     },
 
     busy: async (id) => named(id, async (cap) => client.ChannelTerminalBusy(cap)),
+    cwd: async () => undefined,
 
     list: async () => {
       const held = [...caps];

@@ -30,6 +30,8 @@ export type TerminalMenuOptions = {
   readonly openFind: () => void;
   /** Copies the selection, as the toolbar's Copy button does (it confirms itself and says when the clipboard refused): the Copy item. */
   readonly copy: () => void;
+  /** "New terminal here": what it opens and whether this terminal can say where it is. Absent: the menu has no such item. */
+  readonly here?: TerminalMenuHere | undefined;
 };
 
 /** What the screen's element is given: the attributes of the menu's trigger, and the one rule that keeps a click for the program. Spread it on the element the emulator draws in. */
@@ -41,6 +43,9 @@ export type TerminalMenuHost = MenuTriggerAttributes & {
 export type TerminalMenu = {
   readonly host: TerminalMenuHost;
 };
+
+/** "New terminal here" of the menu: what it opens, and whether this terminal can say where it is (its feed has a `directory`). */
+export type TerminalMenuHere = { readonly open: () => void; readonly available: boolean };
 
 const quiet = (): (() => void) => () => undefined;
 

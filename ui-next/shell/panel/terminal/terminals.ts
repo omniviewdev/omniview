@@ -7,7 +7,7 @@ import { terminalCardOf } from './card';
 import { ClosePrompt } from './ClosePrompt';
 import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
-import type { TerminalBusy, TerminalTarget } from './feed';
+import type { TerminalBusy, TerminalDirectory, TerminalTarget } from './feed';
 import { keyOf } from './keys';
 import { localProfileTarget, localShellTarget } from './localShell';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
@@ -71,6 +71,8 @@ export type TerminalsOptions = {
   readonly shells?: ShellList | undefined;
   /** What "New terminal" starts: a target the registry opens. Default: the host's own shell. A probe gives a synthetic one. */
   readonly target?: (() => TerminalTarget) | undefined;
+  /** What "New terminal here" starts, given where the terminal it was opened from is: a target the registry opens. Default: the host's own shell, started there. A probe gives a synthetic one. */
+  readonly here?: ((where: TerminalDirectory) => TerminalTarget) | undefined;
   /** Where the emulator's code comes from. Default: the lazy chunk. A test gives a fake emulator. */
   readonly load?: EngineLoader | undefined;
   /**
@@ -111,6 +113,11 @@ export type Terminals = {
   readonly takeKeys: () => () => void;
   /** What the `+` of the tool and the button of its empty state start. */
   readonly newSession: PanelNewSession;
+  /**
+   * "New terminal here" of the session: asks the session's feed where its terminal is (`TerminalFeedHandle.directory`: the host's fact, never the page's guess) and opens a new terminal there, on screen and focused; a terminal whose
+   * directory is unknown starts in the host's default directory and says so. A session with no feed, or whose feed cannot say, opens nothing. Resolves once the new terminal is opened.
+   */
+  readonly openHere: (session: SessionId) => Promise<void>;
   /** The window's one screen reader choice: every terminal follows it (a terminal that is made later is made in it), and the session saves it. Off until the person turns it on. */
   readonly screenReader: ScreenReaderChoice;
   readonly empty: PanelEmpty;
@@ -238,6 +245,9 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       return store.selectors.sessionItem(state, id)?.name ?? (session === undefined ? '' : session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
     },
   });
+
+  const openHere = async (_session: SessionId): Promise<void> => undefined;
+
   return {
     screenReader,
     sessions,
@@ -300,7 +310,8 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       },
     },
     empty: TERMINAL_EMPTY,
-    bodyOf: (session, visible) => createElement(TerminalBody, { sessions, session, visible, load: options.load, screenReader, name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name }),
+    openHere,
+    bodyOf: (session, visible) => createElement(TerminalBody, { sessions, session, visible, load: options.load, screenReader, name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name, onNewHere: (id) => void openHere(id) }),
     cardOf: (session) => terminalCardOf(sessions.recordOf(session.id)),
     prompt: createElement(ClosePrompt, { guard }),
     modal: { subscribe: guard.subscribe, open: () => guard.getSnapshot() !== null },

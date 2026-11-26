@@ -7,6 +7,9 @@ import { NO_SELECTION } from '../TerminalToolbar';
 /** Why Paste is unavailable: the terminal takes no input (an ended or taken-over session: the lane says "Input is off" for it), so a paste would have nowhere to go. */
 export const NO_INPUT = 'Input is off';
 
+/** Why "New terminal here" is unavailable: the terminal's producer cannot say where it is (a terminal of a plugin runs on another machine), so there is no directory to open in. */
+export const NO_DIRECTORY = 'This terminal cannot say where it is';
+
 /** What each item does. The menu does not bind a key and does not know how any of it is done. */
 export type TerminalMenuActions = {
   readonly copy: () => void;
@@ -14,6 +17,8 @@ export type TerminalMenuActions = {
   readonly selectAll: () => void;
   readonly clear: () => void;
   readonly find: () => void;
+  /** Opens a new terminal in the directory of this one, as the host says it is. Absent: the menu has no such item (a window that cannot open a terminal). */
+  readonly newHere?: (() => void) | undefined;
 };
 
 /** What the terminal is now, as the menu is opened. */
@@ -22,6 +27,8 @@ export type TerminalMenuState = {
   readonly selected: boolean;
   /** The terminal takes what is typed or pasted. */
   readonly input: boolean;
+  /** The terminal can say where it is (its feed has a `directory`): "New terminal here" has a directory to start in. Read only when the menu has a `newHere` action. */
+  readonly here?: boolean | undefined;
 };
 
 /**

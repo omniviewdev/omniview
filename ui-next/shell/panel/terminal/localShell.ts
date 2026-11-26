@@ -1,7 +1,7 @@
 import { HOST } from '../../core/panel';
 import type { TerminalChannels } from './channel';
 import { createExecFeed, newTerminalId } from './execFeed';
-import type { TerminalTarget } from './feed';
+import type { TerminalDirectory, TerminalTarget } from './feed';
 import { appTerminalChannels } from './terminalChannel';
 import { launchOf, type ProfileLaunch, type TerminalProfile } from './profiles';
 
@@ -29,6 +29,14 @@ export function localShellTarget(channels: TerminalChannels = appTerminalChannel
  */
 export function localProfileTarget(profile: TerminalProfile, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
   return targetOf(profile.name, channels, leaseMs, launchOf(profile));
+}
+
+/**
+ * The target of "New terminal here": the host's own shell, started where the terminal it was opened from says it is (a `known` directory goes to the host as the terminal's `cwd`) or, when that terminal could not say, in the host's
+ * own default directory (home), with the status saying so until the first thing is typed. The directory is the producer's fact (`TerminalFeedHandle.directory`), passed on as it was given.
+ */
+export function localHereTarget(_where: TerminalDirectory, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
+  return targetOf('Terminal', channels, leaseMs, undefined);
 }
 
 function targetOf(title: string, channels: TerminalChannels, leaseMs: number | undefined, launch: ProfileLaunch | undefined): TerminalTarget {
