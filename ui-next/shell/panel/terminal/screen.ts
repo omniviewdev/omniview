@@ -693,7 +693,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         if (user) {
           typed(data);
         } else if (replaying === undefined) {
-          feed.write(data);
+          feed.write(data, { reply: true });
         }
       }),
       // A mouse report in raw bytes (a legacy X10 click). It refers to the screen the person sees: while a replay is applied the screen is about to be replaced, and the report is dropped, as the emulator's other answers are.

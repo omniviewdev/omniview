@@ -112,20 +112,26 @@ type Rig = {
   readonly fake: FakeScreen;
   readonly openFind: Mock<() => void>;
   readonly copy: Mock<() => void>;
+  /** What "New terminal here" opens. */
+  readonly open: Mock<() => void>;
   readonly host: () => HTMLElement;
   readonly input: () => HTMLTextAreaElement;
   readonly rerender: (props?: Partial<Props>) => void;
 };
 
-function mount(options: { readonly host?: boolean; readonly strict?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly decorate?: boolean } = {}): Rig {
+function mount(
+  options: { readonly host?: boolean; readonly strict?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly decorate?: boolean; readonly here?: { readonly available: boolean } } = {},
+): Rig {
   const fake = fakeScreen();
   const openFind = vi.fn<() => void>();
   const copy = vi.fn<() => void>();
+  const open = vi.fn<() => void>();
   const props = (more: Partial<Props> = {}): Props => ({
     fake,
     status: { state: options.state ?? 'running' },
     openFind,
     copy,
+    ...(options.here === undefined ? {} : { here: { open, available: options.here.available } }),
     decorate: options.decorate,
     ...more,
   });
@@ -140,6 +146,7 @@ function mount(options: { readonly host?: boolean; readonly strict?: boolean; re
     fake,
     openFind,
     copy,
+    open,
     host: () => page.getByTestId(HOST),
     input: () => page.getByLabelText<HTMLTextAreaElement>(`Terminal input ${HOST}`),
     rerender: (more) => {
@@ -459,6 +466,57 @@ describe('the items', () => {
     fireEvent.click(item('Find'));
     expect(later).toHaveBeenCalledTimes(1);
     expect(rig.openFind).not.toHaveBeenCalled();
+  });
+});
+
+describe('New terminal here', () => {
+  it('is not in the menu when the hook is given no way to open one', () => {
+    const { host } = mount();
+    rightClick(host());
+    expect(names()).not.toContain('New terminal here');
+  });
+
+  it('is the last item, after a separator of its own, and runs what it was given, once, after the focus is back in the terminal\'s input', () => {
+    const rig = mount({ here: { available: true } });
+    let focused: Element | null = null;
+    rig.open.mockImplementation(() => {
+      focused = document.activeElement;
+    });
+    rig.input().focus();
+    rightClick(rig.host());
+    expect(names()).toEqual(['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here']);
+    expect(page.getAllByRole('separator')).toHaveLength(2);
+    expect(item('New terminal here')).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(item('New terminal here'));
+    expect(rig.open).toHaveBeenCalledTimes(1);
+    expect(focused).toBe(rig.input());
+    expect(menu()).toBeNull();
+  });
+
+  it('is unavailable for a terminal that cannot say where it is, and opens nothing', () => {
+    const rig = mount({ here: { available: false } });
+    rightClick(rig.host());
+    expect(item('New terminal here')).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(item('New terminal here'));
+    expect(rig.open).not.toHaveBeenCalled();
+    expect(menu()).toBeInTheDocument();
+  });
+
+  it('is available once the terminal ended: it opens from the directory the terminal started in', () => {
+    const rig = mount({ here: { available: true }, state: 'ended' });
+    rightClick(rig.host());
+    expect(item('New terminal here')).not.toHaveAttribute('aria-disabled');
+    expect(item('Paste')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('runs the function of the render the menu was chosen in, not the one it opened with', () => {
+    const rig = mount({ here: { available: true } });
+    const later = vi.fn();
+    rightClick(rig.host());
+    rig.rerender({ here: { available: true, open: later } });
+    fireEvent.click(item('New terminal here'));
+    expect(later).toHaveBeenCalledTimes(1);
+    expect(rig.open).not.toHaveBeenCalled();
   });
 });
 

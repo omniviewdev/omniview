@@ -1,0 +1,15 @@
+#!/bin/bash
+# Negative control for T4-here, the Go half: the fault goes into a SCRATCH copy of manager.go built with `go test -overlay`.
+# Run from the worktree: bash docs/ui-next/status/T4-here/mutations.sh.txt
+export GOWORK=off GOTOOLCHAIN=local
+WT=$(git rev-parse --show-toplevel) || exit 2
+M=$(mktemp -d) || exit 2
+trap 'rm -rf -- "$M"' EXIT
+cd "$WT" || exit 2
+F=backend/pkg/terminal/manager.go
+# same-file-check-removed: the sibling named like the link suffix is taken for the shell's directory
+sed -E 's/return err == nil && os\.SameFile\(cwd, info\)/return true || (err == nil \&\& os.SameFile(cwd, info))/' "$F" > "$M/m.go"
+cmp -s "$F" "$M/m.go" && { echo "FAULT NOT APPLIED"; exit 1; }
+printf '{"Replace":{"%s":"%s"}}' "$WT/$F" "$M/m.go" > "$M/o.json"
+out=$(go test -overlay="$M/o.json" ./backend/pkg/terminal/ -run 'TestARemovedDirectory|TestTheDirectoryOfAShell' 2>&1)
+echo "$out" | grep -E '^--- FAIL: TestARemovedDirectoryIsNotMistaken' || { echo "UNDETECTED or not a test failure"; echo "$out" | tail -5; exit 1; }

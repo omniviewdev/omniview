@@ -124,13 +124,15 @@ type TerminalBodyProps = {
   readonly screenReader: ScreenReaderSource;
   /** The session as its tab names it, with the ordinal of a twin (`zsh (2)`: the panel's rule): the emulator's input is named by it. Absent, the title and the scope are. */
   readonly name?: string | undefined;
+  /** Opens a new terminal where this session's terminal is (the menu's "New terminal here"): the window's own way to do it, which asks the session's feed where it is. Absent: the menu has no such item. */
+  readonly onNewHere?: ((session: SessionId) => void) | undefined;
 };
 
 /**
  * The body of a Terminal session. A session with no feed (restored from the last run: the host keeps no output across a restart, or its terminal is not adopted yet) has nothing to draw: it says that the earlier output is gone
  * and how to get a shell again, in the empty state the panel has for it, and draws the screen when the registry gives it a feed.
  */
-export function TerminalBody({ sessions, session, visible, load, screenReader, name }: TerminalBodyProps) {
+export function TerminalBody({ sessions, session, visible, load, screenReader, name, onNewHere }: TerminalBodyProps) {
   const feed = useSyncExternalStore(sessions.subscribeFeeds, () => sessions.feedOf(session.id));
   // The person pressed a control in the lane (Take it back) and wants the keyboard in the screen the registry makes for it: the request lives here, which that screen does not replace.
   const keyboard = useRef(false);
@@ -166,6 +168,7 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, n
       name={name}
       takeBack={takeBack}
       takeKeyboard={takeKeyboard}
+      onNewHere={onNewHere}
     />
   );
 }
@@ -182,9 +185,11 @@ type TerminalViewProps = {
   readonly takeBack: () => void;
   /** Whether the person pressed a control in the lane that asked for the keyboard, once: true the first time it is asked after the press. */
   readonly takeKeyboard: () => boolean;
+  /** Opens a new terminal where this one is (the menu's "New terminal here"): the window's own way to do it. Absent: the menu has no such item. */
+  readonly onNewHere: ((session: SessionId) => void) | undefined;
 };
 
-function TerminalView({ sessions, session, feed, visible, load, screenReader, name, takeBack, takeKeyboard }: TerminalViewProps) {
+function TerminalView({ sessions, session, feed, visible, load, screenReader, name, takeBack, takeKeyboard, onNewHere }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const hintId = useId();
   const platform = platformOf(navigator);
@@ -306,7 +311,15 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
 
   // The context menu on the window's menu host and the links in the output (T3a): the screen's element carries the menu's trigger, Find is the bar's, and Copy is the toolbar's own copy, so it confirms itself the same way. A link's
   // tooltip is drawn where the pointer is on one, and the screen is given links only when the window can open an address.
-  const menu = useTerminalMenu({ screen, status, openFind: find.open, copy });
+  const here = onNewHere === undefined
+    ? undefined
+    : {
+      open: () => {
+        onNewHere(session.id);
+      },
+      available: feed.directory !== undefined,
+    };
+  const menu = useTerminalMenu({ screen, status, openFind: find.open, copy, here });
   const links = useTerminalLinks({ screen, sessions, platform });
 
   const lane = view.error === undefined ? laneOf(status) : { words: 'The terminal view could not be loaded.', note: `${view.error}.` };

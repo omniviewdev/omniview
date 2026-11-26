@@ -1,0 +1,87 @@
+//go:build !windows
+
+package terminal
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// A shell that is in a directory somebody removed has no directory a new terminal can start in: the system still names
+// the removed one (Linux reads `<path> (deleted)` from /proc), and the host does not pass that on as a fact. It says
+// the directory is unknown, so that "New terminal here" starts in the home directory and says so.
+func TestTheDirectoryOfAShellWhoseDirectoryWasRemovedIsUnknownAndNeverTheRemovedOne(t *testing.T) {
+	shell := sh(t)
+	t.Setenv("HOME", t.TempDir())
+	doomed := filepath.Join(t.TempDir(), "doomed")
+	require.NoError(t, os.Mkdir(doomed, 0o700))
+	m := newChunkManager(t, newChunkSink())
+	info, err := m.Start(Options{Command: []string{shell}, Cwd: doomed}, nil)
+	require.NoError(t, err)
+
+	here, err := m.Cwd(info.ID)
+	require.NoError(t, err)
+	require.Equal(t, physical(t, doomed), physical(t, here.Path), "before the removal the host names the directory")
+
+	require.NoError(t, os.Remove(doomed))
+	gone, err := m.Cwd(info.ID)
+	require.NoError(t, err, "a removed directory is a fact about the terminal, not a failed call")
+	assert.Empty(t, gone.Path, "the removed directory is not named: %q", gone.Path)
+	assert.Equal(t, ReasonQueryFailed, gone.Reason, "the directory is unknown, with the reason a failed query has")
+}
+
+// Removing `y` while a sibling directory literally named `y (deleted)` exists: the system names `.../y (deleted)`, which
+// is another real directory. The host must not take it for where the shell is.
+func TestARemovedDirectoryIsNotMistakenForASiblingNamedLikeTheLinkSuffix(t *testing.T) {
+	shell := sh(t)
+	t.Setenv("HOME", t.TempDir())
+	parent := t.TempDir()
+	doomed := filepath.Join(parent, "y")
+	require.NoError(t, os.Mkdir(doomed, 0o700))
+	require.NoError(t, os.Mkdir(filepath.Join(parent, "y (deleted)"), 0o700))
+	m := newChunkManager(t, newChunkSink())
+	info, err := m.Start(Options{Command: []string{shell}, Cwd: doomed}, nil)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(doomed))
+
+	gone, err := m.Cwd(info.ID)
+	require.NoError(t, err)
+	assert.Empty(t, gone.Path, "the sibling is not where the shell is: %q", gone.Path)
+	assert.Equal(t, ReasonQueryFailed, gone.Reason)
+}
+
+// Off Linux the system never names a removed directory with the suffix, so a live directory whose name ends in it is real
+// and the stat of /proc (which does not exist there) is not asked.
+func TestOffLinuxADirectoryNamedWithTheSuffixIsTheShellsOwn(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "y (deleted)")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	info, err := os.Stat(dir)
+	require.NoError(t, err)
+	asked := false
+	here := namesTheShellsDirectory(dir, info, "darwin", func() (os.FileInfo, error) {
+		asked = true
+		return nil, os.ErrNotExist
+	})
+	assert.True(t, here, "the live directory is where the shell is")
+	assert.False(t, asked, "/proc is not asked off Linux")
+}
+
+func TestOnLinuxASiblingIsNotTheShellsDirectoryAndTheSameInodeIs(t *testing.T) {
+	parent := t.TempDir()
+	mine := filepath.Join(parent, "y (deleted)")
+	other := filepath.Join(parent, "z")
+	require.NoError(t, os.Mkdir(mine, 0o700))
+	require.NoError(t, os.Mkdir(other, 0o700))
+	mineInfo, err := os.Stat(mine)
+	require.NoError(t, err)
+	otherInfo, err := os.Stat(other)
+	require.NoError(t, err)
+	assert.True(t, namesTheShellsDirectory(mine, mineInfo, "linux", func() (os.FileInfo, error) { return mineInfo, nil }))
+	assert.False(t, namesTheShellsDirectory(mine, mineInfo, "linux", func() (os.FileInfo, error) { return otherInfo, nil }))
+	assert.False(t, namesTheShellsDirectory(mine, mineInfo, "linux", func() (os.FileInfo, error) { return nil, os.ErrNotExist }))
+	assert.True(t, namesTheShellsDirectory(other, otherInfo, "linux", func() (os.FileInfo, error) { return nil, os.ErrNotExist }), "a path without the suffix needs no proof")
+}

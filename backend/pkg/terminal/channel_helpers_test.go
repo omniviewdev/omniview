@@ -991,6 +991,14 @@ func newGate(t *testing.T) gate {
 	return gate{path: path}
 }
 
+// wait is the shell's side of the gate: nothing for the zero gate.
+func (g gate) wait() string {
+	if g.path == "" {
+		return ""
+	}
+	return "read go < '" + g.path + "'; "
+}
+
 // release lets the child go: it opens the pipe for writing once the child has opened it for reading, and writes it a line. The open
 // does not wait for the child (a non-blocking open of a pipe that nothing has open for reading is refused with ENXIO), so that a
 // child that never opens the pipe is a failure at the bound, with a message, and not a test that hangs until the binary's timeout.

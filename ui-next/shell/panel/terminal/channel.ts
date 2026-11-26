@@ -78,6 +78,8 @@ export type TerminalChannels = {
   readonly dismiss: (id: string) => Promise<void>;
   /** What runs in the terminal (`ChannelTerminalBusy`): the host's answer, which the feed reads. */
   readonly busy: (id: string) => Promise<unknown>;
+  /** Which directory the shell of the terminal is in now (`ChannelTerminalCwd`): the host's answer, which the feed reads (`path`, or `reason` when the host cannot tell). */
+  readonly cwd: (id: string) => Promise<unknown>;
   /** The terminals this page holds a capability for that the host still has (`ListChannelTerminals`), as the host lists them (`terminal.ChannelListed`, by id). A capability the host answered nothing for is forgotten. */
   readonly list: () => Promise<readonly unknown[]>;
   /** The host's entry for one terminal, or `undefined` when it has none (`ListChannelTerminals` of one capability). Never attaches. */

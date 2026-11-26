@@ -3,7 +3,7 @@ import { HOST } from '../../core/panel';
 import type { TerminalChannels } from './channel';
 import { createExecFeed } from './execFeed';
 import type { TerminalFeedHandle } from './feed';
-import { attachLocalTerminal, localProfileTarget, localShellTarget, restoreLocalTerminals } from './localShell';
+import { attachLocalTerminal, localHereTarget, localProfileTarget, localShellTarget, restoreLocalTerminals } from './localShell';
 import { appTerminalChannels } from './terminalChannel';
 
 // The host's own shell as a feed, on the terminal channel: `localShell.ts` only maps the targets of the Terminal tool onto `TerminalChannels` (`channel.ts`): which feed a target opens, under which id, with which lease, and
@@ -25,6 +25,7 @@ function channels(listed: readonly unknown[] = []): TerminalChannels & { readonl
     close: refuse,
     dismiss: refuse,
     busy: refuse,
+    cwd: refuse,
     list: vi.fn(async () => Promise.resolve(listed)),
     listed: refuse,
     describe: () => '',
@@ -78,6 +79,45 @@ describe('the target of a terminal started from a profile', () => {
   it('asks for no shell when it is the target of the `+`, which has no profile: the host starts the default', () => {
     localShellTarget(channels()).open();
     expect(made()).not.toHaveProperty('launch');
+  });
+});
+
+describe('the target of "New terminal here"', () => {
+  it('asks the host for the directory the terminal it was opened from said it is in, and for nothing else: the shell is the host\'s default, with no arguments and no environment', () => {
+    localHereTarget({ state: 'known', path: '/usr', source: 'shell' }, channels()).open();
+    expect(made().launch).toEqual({ cwd: '/usr' });
+    expect(made().startNote).toBeUndefined();
+  });
+
+  it('asks for the directory a terminal that ended started in, as it is: the producer\'s fact is passed on, whichever fact it is', () => {
+    localHereTarget({ state: 'known', path: '/srv/app', source: 'start' }, channels()).open();
+    expect(made().launch).toEqual({ cwd: '/srv/app' });
+  });
+
+  it('falls back to home, with the note, when the directory an ended terminal started in is gone: only a start directory can have been removed since', () => {
+    localHereTarget({ state: 'known', path: '/srv/app', source: 'start' }, channels()).open();
+    expect(made().homeIfMissing).toBe(true);
+    localHereTarget({ state: 'known', path: '/usr', source: 'shell' }, channels()).open();
+    expect(made().homeIfMissing).toBeUndefined();
+  });
+
+  it('asks for no directory when the terminal it was opened from could not say where it is, so that the host starts it in home, and says so in the status', () => {
+    localHereTarget({ state: 'unknown', reason: 'query-failed' }, channels()).open();
+    expect(made()).not.toHaveProperty('launch');
+    expect(made().startNote).toBe('home-for-unknown-directory');
+  });
+
+  it('is the target of the `+` in every other way: called Terminal until the host names the shell, under the id of its session, on the channels and with the lease it was given', () => {
+    const given = channels();
+    const target = localHereTarget({ state: 'known', path: '/usr', source: 'shell' }, given, 90_000);
+    expect(target).toMatchObject({ plugin: HOST, id: 'local', title: 'Terminal' });
+    expect(target.retitle?.({ program: 'zsh' } as never)).toBe('zsh');
+    expect(localHereTarget({ state: 'unknown' }, given).sessionId).not.toBe(target.sessionId);
+    target.open();
+    const options = made();
+    expect(options.channels).toBe(given);
+    expect(options.newId?.()).toBe(target.sessionId);
+    expect(options.leaseMs).toBe(90_000);
   });
 });
 
