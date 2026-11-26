@@ -16,7 +16,7 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 BAD=0
 # Every assertion about what the host says of a program answers to each fault in the program fact: a fault there is caught by all of them, so the guard-off run switches all of them off.
-PROGRAM="title-while-the-program-runs,title-detached-when-the-program-ends,same-title-is-one-frame,title-of-a-vouched-command,title-detached-by-the-end-mark,shell-title-is-not-a-program,forged-start-is-no-program,title-sent-to-a-page-that-comes-back,stale-title-is-not-made-a-programs,preexec-title-is-decided-at-the-start-mark,empty-title-is-no-program,pending-prompt-title-is-not-made-a-programs,pending-preexec-title-is-made-a-programs,prompt-title-is-not-made-a-programs"
+PROGRAM="title-while-the-program-runs,title-detached-when-the-program-ends,same-title-is-one-frame,title-of-a-vouched-command,title-detached-by-the-end-mark,shell-title-is-not-a-program,forged-start-is-no-program,title-sent-to-a-page-that-comes-back,stale-title-is-not-made-a-programs,preexec-title-is-decided-at-the-start-mark,empty-title-is-no-program,pending-prompt-title-is-not-made-a-programs,pending-preexec-title-is-made-a-programs,prompt-title-is-not-made-a-programs,remote-prompt-title-is-the-commands"
 
 fault() { # file old new -> $WORK/overlay.json
   cp "$ROOT/$1" "$WORK/mut.go"
@@ -59,7 +59,7 @@ S=backend/pkg/terminal/channel_serve.go
 run ready-says-title $C 'if c.title {' 'if false {'
 run title-while-the-program-runs,title-detached-when-the-program-ends,same-title-is-one-frame $C 'return group != shell, true' 'return false && group != shell, true'
 run title-detached-when-the-program-ends,title-detached-by-the-end-mark $T 'return t.has || t.program' 'return t.has'
-run title-of-a-vouched-command,title-detached-by-the-end-mark $C 'if _, vouched := s.verifiedRunning(); vouched {' 'if false {'
+run title-of-a-vouched-command,title-detached-by-the-end-mark,preexec-title-is-decided-at-the-start-mark,remote-prompt-title-is-the-commands $C 'if _, vouched := s.verifiedRunning(); vouched {' 'if false {'
 run forged-start-is-no-program backend/pkg/terminal/marks_store.go 'if !ok || rec.Trust != marks.TrustNonce {' 'if !ok {'
 run shell-title-is-not-a-program,title-detached-when-the-program-ends,forged-start-is-no-program,title-detached-by-the-end-mark,title-sent-to-a-page-that-comes-back $C 'return group != shell, true' 'return true || group != shell, true'
 run unasked-page-no-title $C 'if asked == titleFrameVersion && ring.title != nil {' 'if ring.title != nil {'
