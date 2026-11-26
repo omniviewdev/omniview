@@ -415,6 +415,16 @@ describe('what review found', () => {
   });
 });
 
+describe('whether there is output to act on', () => {
+  it('says there is none for a command that printed nothing and some for one that did, from the marks alone', async () => {
+    const { gutter, run } = setup();
+    await run('true', '', { id: 'c1' });
+    expect(gutter.hasOutput()).toBe(false);
+    await run('ls', 'a\r\n', { id: 'c2' });
+    expect(gutter.hasOutput()).toBe(true);
+  });
+});
+
 describe('markers of a command whose line was erased', () => {
   it('makes no new marker for the end of a command the gutter no longer holds: nothing would own it', async () => {
     const { feed, prompt, engine } = setup();

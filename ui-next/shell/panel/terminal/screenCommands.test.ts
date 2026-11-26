@@ -388,3 +388,12 @@ describe('the cost of the menu\'s revision', () => {
     expect(read, 'no line was read for a revision or a change').not.toHaveBeenCalled();
   });
 });
+
+describe('the output items for a command that printed nothing', () => {
+  it('are unavailable: the menu state says no output, and nothing is copied', async () => {
+    const r = await rig();
+    r.feed.push('$ true\r\n', [placed(0, A()), placed(2, B()), placed(8, C('true')), placed(8, D(0))]);
+    r.frame();
+    expect(r.screen.commands.state().output).toBe(false);
+  });
+});
