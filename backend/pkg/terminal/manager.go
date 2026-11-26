@@ -253,6 +253,18 @@ func (s *session) decide(f fate) bool {
 	return true
 }
 
+// decideReadFailure records that a read of the pty failed. A shell that was reaped before the reader got there has recorded its own
+// exit (a fate with nothing in it): the pty failing was what killed it (the kernel hangs the shell up when the master closes),
+// so the failure stands over that. A close the host asked for stands over it.
+func (s *session) decideReadFailure(failure *Failure) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fate.set && (s.fate.closedBy != "" || s.fate.failure != nil) {
+		return
+	}
+	s.fate = fate{set: true, closedBy: "", failure: failure}
+}
+
 func (s *session) settled() fate {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -857,7 +869,7 @@ func (m *Manager) finish(s *session, readErr error) {
 // read that failed, ends the session: the shell is killed.
 func (m *Manager) settle(s *session, readErr error) End {
 	if !readEnded(readErr) {
-		s.decide(fate{set: true, closedBy: "", failure: &Failure{Stage: StageRead, Message: readErr.Error()}})
+		s.decideReadFailure(&Failure{Stage: StageRead, Message: readErr.Error()})
 	}
 	exited := s.awaitExit(exitGrace)
 	if !exited {
