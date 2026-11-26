@@ -315,6 +315,7 @@ export class MarkScanner {
     this.pending = '';
     /** Marks whose nonce was wrong or missing. */
     this.forged = 0;
+    this.ourPrompt = false;
   }
 
   feed(bytes, base) {
@@ -402,10 +403,13 @@ export class MarkScanner {
     const letter = args[0];
     const rest = args.slice(1);
     if (rest !== '' && rest[0] !== ';') return;
+    // Only the prompt that follows a directory with the nonce is the integration's own (the next prompt or command mark clears it).
+    const proven = this.ourPrompt;
+    this.ourPrompt = false;
     if (letter === 'A') {
       // The prompt of a shell that replaced the one that ran the command: that command ends, with no exit code.
       const running = this.open();
-      if (running?.state === 'running') Object.assign(running, { state: 'ended', endedMs: Date.now(), outputEnd: at });
+      if (proven && running?.state === 'running') Object.assign(running, { state: 'ended', endedMs: Date.now(), outputEnd: at });
       const newest = this.open();
       if (newest === undefined || newest.state === 'ended') this.keep({ kind: 'prompt-start', at, end, id: this.begin('prompt', at).id, trust: 'unverified', redraw: false });
       else this.keep({ kind: 'prompt-start', at, end, id: newest.id, trust: 'unverified', redraw: newest.state !== 'running' });
@@ -457,6 +461,7 @@ export class MarkScanner {
       const dir = unescapeMark(field.slice('Cwd='.length, cut)).replace(/[\u0000-\u001f\u007f]/g, '');
       if (dir === '' || dir.length > 4096) return;
       this.trustedCwd = dir;
+      this.ourPrompt = true;
       this.keep({ kind: 'cwd', at, end, trust: 'nonce', cwd: dir });
     }
   }

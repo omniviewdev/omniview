@@ -54,4 +54,5 @@ run forged-not-in-record backend/pkg/terminal/channel_marks.go 'if rec.CwdTrust 
 		c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()
 	}' 'c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()'
 run prompt-ends-running,next-command-after-replaced backend/pkg/terminal/marks_store.go 'PromptEndsCommand: true' 'PromptEndsCommand: false'
+run foreign-prompt-ends-nothing backend/pkg/terminal/marks/osc.go 'if s.promptEnds && proven {' 'if s.promptEnds && (proven || true) {'
 exit $BAD

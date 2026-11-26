@@ -20,9 +20,11 @@ func (s *Scanner) readPrompt(args []byte, end uint64, out []Mark) []Mark {
 		return out
 	}
 	at := s.oscStart
+	proven := s.ourPrompt
+	s.ourPrompt = false
 	switch args[0] {
 	case 'A':
-		if s.promptEnds {
+		if s.promptEnds && proven {
 			s.log.interrupt(at, s.now())
 		}
 		id, redraw := s.log.prompt(at)
@@ -180,6 +182,7 @@ func (s *Scanner) readCwdProperty(rest []byte, out []Mark) []Mark {
 		s.forged.Add(1)
 		return out
 	}
+	s.ourPrompt = true
 	dir := stripControls(unescape(field[len(key):i]))
 	return s.emitCwd(dir, true, out)
 }

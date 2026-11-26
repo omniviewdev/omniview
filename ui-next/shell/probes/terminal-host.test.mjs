@@ -1214,7 +1214,11 @@ test('a command line and a directory are UTF-8, a malformed OSC 7 does not break
   host.type('t', 'loop\r');
   await page.until('the loop', () => page.marks.filter((mark) => mark.kind === 'command-start').length >= 2);
   const nonce = host.nonceOf('t');
-  host.append('t', `\u001b]133;A\u0007\u001b]133;B\u0007\u001b]633;E;sleep\\x2030;${nonce}\u0007\u001b]133;C\u0007`);
+  // A prompt that is not the shell integration's own (a nested shell's prompt framework) ends nothing.
+  host.append('t', '\u001b]133;A\u0007\u001b]133;B\u0007');
+  await page.until('the foreign prompt', () => page.marks.filter((mark) => mark.kind === 'input-start').length >= 3);
+  assert.equal((await host.call('ChannelTerminalBusy', [made.cap])).state, 'busy', 'a foreign prompt ends nothing');
+  host.append('t', `\u001b]633;P;Cwd=/w;${nonce}\u0007\u001b]133;A\u0007\u001b]133;B\u0007\u001b]633;E;sleep\\x2030;${nonce}\u0007\u001b]133;C\u0007`);
   await page.until('the next start', () => page.marks.filter((mark) => mark.kind === 'command-start').length >= 3);
   const record = await host.call('ChannelTerminalCommands', [made.cap]);
   const [replaced, next] = record.commands.slice(-2);

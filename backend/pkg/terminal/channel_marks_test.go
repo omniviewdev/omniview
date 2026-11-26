@@ -594,7 +594,15 @@ func TestANewPromptEndsAnyRunningCommand(t *testing.T) {
 	busy, err := k.f.m.ChannelBusy(k.info.Cap)
 	require.NoError(t, err)
 	guarded(t, "busy-from-marks", func() { require.Equal(t, StateBusy, busy.State) })
+	// A prompt that is not ours (a prompt framework in a nested shell, a program) ends nothing.
 	k.print(osc("133;A") + "$ " + osc("133;B"))
+	guarded(t, "foreign-prompt-ends-nothing", func() {
+		busy, err = k.f.m.ChannelBusy(k.info.Cap)
+		require.NoError(t, err)
+		assert.Equal(t, StateBusy, busy.State)
+	})
+	// Ours: the directory with the nonce, then the prompt.
+	k.print(osc("633;P;Cwd=/w;"+k.nonce) + osc("133;A") + "$ " + osc("133;B"))
 	guarded(t, "prompt-ends-running", func() {
 		busy, err = k.f.m.ChannelBusy(k.info.Cap)
 		require.NoError(t, err)

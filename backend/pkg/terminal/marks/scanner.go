@@ -81,6 +81,8 @@ type Scanner struct {
 	log        *Log
 	start      uint64
 	promptEnds bool
+	// ourPrompt is set by a directory that carries the nonce and cleared by the next prompt or command mark: the prompt that follows is the shell integration's own.
+	ourPrompt bool
 
 	off       atomic.Uint64
 	marks     atomic.Uint64
