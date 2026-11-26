@@ -63,7 +63,7 @@ run title-ignores-the-hosts-program-word "$P/execFeed.ts" \
   'is in the status while the host says a program runs|does not infer that a program runs'
 
 run title-not-cleaned "$P/title.ts" \
-  "s/raw\.replaceAll\(NOT_IN_A_TITLE, ''\)\.//" \
+  "s#replaceAll\(NOT_IN_A_TITLE, ''\)#replaceAll(/(?!)/g, '')#" \
   'is bounded and clean|says no title for one that is empty once cleaned'
 
 run title-unbounded "$P/title.ts" \
