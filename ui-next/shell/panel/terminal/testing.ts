@@ -646,6 +646,8 @@ export type ReadyInit = {
   readonly shell?: string;
   /** The absolute path of the shell the host says started (`ready.session.shell.path`). Default: `/bin/<shell>`. */
   readonly shellPath?: string;
+  /** The shell the caller asked for when the host started another in its place (`ready.session.shell.requested`). */
+  readonly shellRequested?: string;
   /** The directory the host says the shell started in (`ready.session.cwd`). Default: `/home/u`. */
   readonly startedIn?: string;
   readonly ended?: unknown;
@@ -832,7 +834,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
           start_modes: { ...PLAIN_MODES, ...init.startModes },
           cwd: { path: '/home/u' },
           busy: { state: 'idle' },
-          session: { id, pid: 4242, shell: { path: init.shellPath ?? `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
+          session: { id, pid: 4242, shell: { path: init.shellPath ?? `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh', ...(init.shellRequested === undefined ? {} : { requested: init.shellRequested }) }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
           lease_ms: 300_000,
           ended: init.ended ?? null,
           ...init.raw,

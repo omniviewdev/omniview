@@ -64,7 +64,7 @@ run restart-offered-while-running "$P/execFeed.ts" \
 
 run restart-not-offered-after-an-end "$P/execFeed.ts" \
   '/const onEnded = /,/^  };/ s/processOver = true;/processOver = false;/' \
-  'is offered after|is offered once the terminal another tab took has ended|is the id the terminal had|is the shell'"'"'s path alone|takes the directory from the host'"'"'s word|ended while no page held it'
+  'is offered after|is offered once the terminal another tab took has ended|is the id the terminal had|is the shell'"'"'s path alone|takes the directory from the host'"'"'s word|ended while no page held it|runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|keeps the arguments when the shell that ran is the one'
 
 run restart-not-offered-for-a-forgotten-terminal "$P/execFeed.ts" \
   '/const onNotFound = /,/^  };/ s/processOver = true;/processOver = false;/' \
@@ -75,16 +75,16 @@ run restart-directory-from-the-launch "$P/execFeed.ts" \
   'is the id the terminal had|is the shell'"'"'s path alone|takes the directory from the host'"'"'s word|ended while no page held it'
 
 run restart-drops-the-arguments "$P/execFeed.ts" \
-  's/: \[path, \.\.\.\(asked\?\.command\?\.slice\(1\) \?\? \[\]\)\];/: [path];/' \
-  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more'
+  's/\[path, \.\.\.\(shellReplaced \? \[\] : \(asked\?\.command\?\.slice\(1\) \?\? \[\]\)\)\]/[path]/' \
+  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more|keeps the arguments when the shell that ran is the one'
 
 run restart-drops-the-environment "$P/execFeed.ts" \
   's/, \.\.\.\(env === undefined \? \{\} : \{ env \}\) \};$/ };/' \
-  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more'
+  'is the id the terminal had|ended while no page held it|is offered for a terminal the host does not know any more|says what it was asked to start with|restarts as the shell that ran, with none of the arguments asked for the shell that was not there'
 
 run restart-ignores-the-resolved-shell "$P/execFeed.ts" \
   's/const path = startedShell;/const path = undefined as string | undefined;/' \
-  'is the id the terminal had|is the shell'"'"'s path alone|ended while no page held it|is offered after'
+  'is the id the terminal had|is the shell'"'"'s path alone|ended while no page held it|is offered after|when the stream drops after its whole replay|runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there'
 
 run params-without-the-tab "$P/execFeed.ts" \
   "s/params\.tab = options\.tab;/params.tab = '';/" \
@@ -99,8 +99,8 @@ run params-carry-the-directory "$P/execFeed.ts" \
   'is nothing for a terminal that asked for the host'"'"'s own choices|asks for the shell, directory and environment of its launch'
 
 run shell-replaced-never-said "$P/execFeed.ts" \
-  's/replacedOf\(answer\) && status\.startNote === undefined/false/' \
-  'says so until the first thing is typed, when the host says it started another shell'
+  's/if \(replacedOf\(answer\)\) \{/if (false) {/' \
+  'says so until the first thing is typed, when the host says it started another shell|runs the shell that actually ran with none of the arguments'
 
 run home-note-is-the-old-one "$P/execFeed.ts" \
   "s/startNote: 'home-for-removed-directory' \};/startNote: 'home-for-unknown-directory' };/" \
@@ -175,7 +175,7 @@ run registry-keeps-the-ended-feed "$P/TerminalSessions.ts" \
   'makes the new feed from what the producer said|leaves the ended feed and listens to the new one alone'
 
 run takeback-attaches-the-tab-id "$P/TerminalSessions.ts" \
-  's/reattach\(old\.feed\.id \?\? session\)/reattach(session)/' \
+  's/reattach\(old\.feed\.id \?\? session, old\.feed\)/reattach(session, old.feed)/' \
   'attaches a terminal by the id the producer says it has'
 
 run terminals-drop-the-restart "$P/terminals.ts" \
@@ -262,7 +262,7 @@ run restart-hint-end-not-over "$P/execFeed.ts" \
 
 run restart-keeps-args-of-a-missing-shell "$P/execFeed.ts" \
   's/\.\.\.\(shellReplaced \? \[\] : /...(false ? [] : /' \
-  'runs the shell that actually ran with none of the arguments'
+  'runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there'
 
 run feed-says-no-launch "$P/execFeed.ts" \
   's/^    launch: \(\) => \{$/    launch: () => { return undefined;/' \
@@ -270,7 +270,11 @@ run feed-says-no-launch "$P/execFeed.ts" \
 
 run takeback-drops-the-lost-feed "$P/TerminalSessions.ts" \
   's/reattach\(old\.feed\.id \?\? session, old\.feed\)/reattach(old.feed.id ?? session)/' \
-  'gives the window the feed that was lost with the id'
+  'attaches a terminal by the id the producer says it has|attaches the terminal again for the session of its id|gives the window the feed that was lost with the id|is taken back through the way the window was given to attach it again'
+
+run restart-ignores-the-ready-replaced-shell "$P/execFeed.ts" \
+  's/shellReplaced = shellReplaced \|\| ready\.replaced;/void ready;/' \
+  'a feed that attaches learns from the ready that another shell ran|restarts as the shell that ran, with none of the arguments'
 
 if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
 exit $bad

@@ -3254,3 +3254,12 @@ describe('review of #695 step 5: a restart runs the shell that ran, and what it 
     expect(r.feed.restart?.()).toMatchObject({ id: 'term-1', command: ['/usr/bin/zsh'] });
   });
 });
+
+describe('review of #695 step 5, round 2: a feed that attaches learns from the ready that another shell ran', () => {
+  it('restarts as the shell that ran, with none of the arguments asked for the shell that was not there (a reattach after a reload, or a take-back)', async () => {
+    const r = attaching({ program: 'bash', launch: { command: ['/opt/gone/zsh', '-f'], env: { A: '1' } } });
+    r.stream().ready({ shell: 'bash', shellPath: '/bin/bash', shellRequested: '/opt/gone/zsh' });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(r.feed.restart?.()).toMatchObject({ command: ['/bin/bash'], env: { A: '1' } });
+  });
+});
