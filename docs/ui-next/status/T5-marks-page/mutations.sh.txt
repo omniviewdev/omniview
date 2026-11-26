@@ -8,7 +8,7 @@
 set -u
 ROOT=$(pwd)
 PKG=./backend/pkg/terminal
-TESTS='TestMarksArrive|TestAReplayGivesTheSame|TestAMarkWithoutTheNonce|TestATerminalWithoutIntegration|TestAPageThatDidNotAsk|TestTheRecordAndTheMarks|TestACommandRunsFrom|TestTheRecordIsRead|TestTheNonceIsInNo|TestTheKeptEnd'
+TESTS='TestMarksArrive|TestAReplayGivesTheSame|TestAMarkWithoutTheNonce|TestATerminalWithoutIntegration|TestAPageThatDidNotAsk|TestTheRecordAndTheMarks|TestACommandRunsFrom|TestTheRecordIsRead|TestTheNonceIsInNo|TestTheKeptEnd|TestANewPrompt|TestMarksThatEnded|TestMarksNever'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -37,21 +37,21 @@ PY
   if [ "$c1" != RED ] || [ "$c2" != GREEN ]; then BAD=1; fi
 }
 
-run forged-dropped backend/pkg/terminal/channel_marks.go 'if m.Kind == marks.KindCwd && m.Trust != marks.TrustNonce {
+run forged-dropped backend/pkg/terminal/marks_store.go 'if m.Kind == marks.KindCwd && m.Trust != marks.TrustNonce {
 			continue
 		}' ''
 run unasked-no-marks-frame backend/pkg/terminal/channel_serve.go 'if asked == marksFrameVersion && ring.marks != nil {' 'if (asked == marksFrameVersion || asked == 0) && ring.marks != nil {'
 run other-version-no-marks backend/pkg/terminal/channel_serve.go 'if asked == marksFrameVersion && ring.marks != nil {' 'if asked != 0 && ring.marks != nil {'
-run marks-at-their-offset,replay-marks-at-their-offset backend/pkg/terminal/channel_marks.go 'return nil, int(min(uint64(limit), st.items[i].EndOffset-pos))' 'return nil, limit'
-run marks-bounded backend/pkg/terminal/channel_marks.go 'if len(st.items) >= 2*maxMarksKept {' 'if false {'
+run marks-at-their-offset,replay-marks-at-their-offset backend/pkg/terminal/marks_store.go 'return nil, int(min(uint64(limit), st.items[i].EndOffset-pos))' 'return nil, limit'
+run marks-bounded backend/pkg/terminal/marks_store.go 'if len(st.items) >= 2*maxMarksKept {' 'if false {'
 run resume-marks,resume-marks-after backend/pkg/terminal/channel_serve.go 'if from != nil && *from == start {
 		return start
 	}' ''
-run forged-start-not-busy backend/pkg/terminal/channel_marks.go 'if !ok || rec.Trust != marks.TrustNonce {' 'if !ok {'
+run forged-start-not-busy backend/pkg/terminal/marks_store.go 'if !ok || rec.Trust != marks.TrustNonce {' 'if !ok {'
 run busy-from-marks,ready-busy-from-marks backend/pkg/terminal/channel_marks.go 'if _, running := s.verifiedRunning(); !running {' 'if _, running := s.verifiedRunning(); true || !running {'
 run no-integration-no-marks backend/pkg/terminal/manager.go 'if !started.nonce.IsZero() {' 'if true {'
 run forged-not-in-record backend/pkg/terminal/channel_marks.go 'if rec.CwdTrust == marks.TrustNonce {
 		c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()
 	}' 'c.Cwd, c.CwdTrust = rec.Cwd, rec.CwdTrust.String()'
-run prompt-ends-running backend/pkg/terminal/marks_store.go 'PromptEndsCommand: true' 'PromptEndsCommand: false'
+run prompt-ends-running,next-command-after-replaced backend/pkg/terminal/marks_store.go 'PromptEndsCommand: true' 'PromptEndsCommand: false'
 exit $BAD
