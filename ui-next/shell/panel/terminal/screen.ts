@@ -153,8 +153,8 @@ export type TerminalScreen = {
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
 const muted = (text: string): string => `\u001b[0m\r\n\u001b[90m${text}\u001b[0m\r\n`;
 
-/** What the transcript gets between an ended process and its restart, before the muted line: the soft terminal reset (`DECSTR`: every mode a program left on is off) and the way out of the alternate screen. */
-const SEPARATOR = '\u001b[!p\u001b[?1049l';
+/** What the transcript gets between an ended process and its restart, before the muted line: the soft terminal reset (`DECSTR`) after the modes a program may have left on are switched off by name (mouse tracking and its encodings, focus events, bracketed paste, application cursor keys: DECSTR resets none of the mouse), and the way out of the alternate screen that keeps the normal screen's cursor (`?47l`: `?1049l` would restore a saved cursor that DECSTR has reset, to the top). */
+const SEPARATOR = '\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p';
 
 const takesInput = (status: TerminalFeedSnapshot): boolean => status.state === 'starting' || status.state === 'running';
 
@@ -211,6 +211,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** What a screen reader says for the emulator's input: the tab's title, which the shell may rename. */
   let label = deps.label;
   let pending = 0;
+  /** A restart came while bytes of the ended feed's replay were still queued in the emulator: what it answers to them is not for the new shell. */
+  let draining = false;
   let blocked = false;
   /** A replay the feed gave while the emulator was still parsing what came before it: applied once it has, so that what the emulator says of those bytes is the shell's and what it says of the replay is not. */
   let replayHeld: TerminalReplay | undefined;
@@ -278,6 +280,10 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   /** The emulator parsed `bytes` it had accepted: a frame that stopped at the bound goes on once half of it is parsed, a replay that waited for the emulator to be idle comes once it is, and the feed is told what was live, which is what the host paces the shell by. */
   function parsed(bytes: number, owner: TerminalFeedHandle | undefined): void {
     pending -= bytes;
+    if (pending === 0) {
+      draining = false;
+    }
+
     // What the emulator parsed is credited to the feed it came from: a restart may have given the screen another feed since.
     owner?.ack(bytes);
 
@@ -720,7 +726,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         // What the person types in that window is theirs: it is kept, and sent once the replay is applied.
         if (user) {
           typed(data);
-        } else if (replaying === undefined) {
+        } else if (replaying === undefined && !draining) {
           feed.write(data, { reply: true });
         }
       }),
@@ -871,6 +877,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
       // The ended process's end, what it left on, and its failure are told again for the next one; nothing of the earlier feed is held or owed any more.
       replayHeld = undefined;
+      // A replay of the ended feed that is still being written is dropped: its remaining slices are never written, what the queued ones make the emulator answer is muted until they are parsed, and what was typed meanwhile was for the ended terminal.
+      replaying = undefined;
+      draining = pending > 0;
+      held = [];
+      heldLength = 0;
+      heldFull = false;
       endLine = '';
       drainWritten = false;
       failureWritten = false;

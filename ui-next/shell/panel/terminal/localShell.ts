@@ -107,7 +107,7 @@ function targetOf(
 }
 
 /** What a page that reloaded learns of a terminal from the host's listing besides its id and shell: the tab it belongs to (`params.tab`), the path of its shell and what it was asked to start with (`params.launch`). */
-type Kept = { readonly tab?: string | undefined; readonly shell?: string | undefined; readonly launch?: ExecAttach['launch'] };
+type Kept = { readonly tab?: string | undefined; readonly shell?: string | undefined; readonly replaced?: true; readonly launch?: ExecAttach['launch'] };
 
 /**
  * The target of one terminal the host keeps for this page: its `sessionId` is the tab it belongs to (the terminal's own id, unless a restart made it for the tab of an ended terminal: `Kept.tab`; the saved tab that has the same id is the one
@@ -121,7 +121,7 @@ export function attachLocalTerminal(id: string, program?: string, channels: Term
     title: program ?? 'Terminal',
     retitle,
     sessionId: kept.tab ?? id,
-    open: () => createExecFeed({ channels, attach: { id, ...(program === undefined ? {} : { program }), ...(kept.shell === undefined ? {} : { shell: kept.shell }), ...(kept.launch === undefined ? {} : { launch: kept.launch }) } }),
+    open: () => createExecFeed({ channels, attach: { id, ...(program === undefined ? {} : { program }), ...(kept.shell === undefined ? {} : { shell: kept.shell }), ...(kept.replaced === true ? { replaced: true } : {}), ...(kept.launch === undefined ? {} : { launch: kept.launch }) } }),
   };
 }
 
@@ -185,13 +185,23 @@ function listedOf(entry: unknown): Listed | undefined {
   const path = typeof shell === 'object' && shell !== null ? text((shell as { readonly path?: unknown }).path) : undefined;
   const attached = typeof params === 'object' && params !== null ? (params as { readonly tab?: unknown; readonly launch?: unknown }) : {};
   const launch = keptLaunchOf(attached.launch);
+  const replaced = typeof shell === 'object' && shell !== null && text((shell as { readonly requested?: unknown }).requested) !== undefined;
   return {
     id,
     program: typeof name === 'string' && name !== '' ? name : undefined,
     ended: ended !== undefined && ended !== null,
     madeAt: typeof madeAt === 'string' ? madeAt : '',
-    kept: { tab: text(attached.tab), shell: path, ...(launch === undefined ? {} : { launch }) },
+    kept: { tab: text(attached.tab), shell: path, ...(replaced ? { replaced: true as const } : {}), ...(launch === undefined ? {} : { launch }) },
   };
+}
+
+/**
+ * An RFC 3339 time (Go's `time.Time` JSON, which trims the zeros of its fraction) as a number that orders as the instants do: the seconds, then the fraction to nanoseconds. A time that cannot be read is the earliest.
+ */
+function instantOf(raw: string): string {
+  const found = /^(.*?T\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)$/.exec(raw);
+  const seconds = found === null ? Number.NaN : Date.parse(`${found[1] ?? ''}${found[3] ?? ''}`);
+  return Number.isNaN(seconds) ? '' : `${String(seconds / 1000).padStart(15, '0')}.${(found?.[2] ?? '').padEnd(9, '0').slice(0, 9)}`;
 }
 
 /** Whether `next` is the terminal a tab keeps, in place of `held`, when the host lists two for it (the one a restart replaced may still be listed): the one that runs, else the one made last, else the later listed. */
@@ -200,7 +210,7 @@ function replaces(next: Listed, held: Listed): boolean {
     return !next.ended;
   }
 
-  return next.madeAt >= held.madeAt;
+  return instantOf(next.madeAt) >= instantOf(held.madeAt);
 }
 
 /**

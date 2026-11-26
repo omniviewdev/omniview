@@ -36,6 +36,8 @@ export type ExecAttach = {
   readonly ended?: boolean | undefined;
   /** The absolute path of the shell the host listed for the terminal: what a restart runs when the host cannot say more (it does not know the terminal any more). */
   readonly shell?: string | undefined;
+  /** The host listed another shell than the one asked for as the one that runs (`shell.requested`): the arguments asked for belong to the shell that was not there. */
+  readonly replaced?: boolean | undefined;
   /** What the terminal was asked to start with, as the host listed it back (`params`): the shell and its arguments, and the environment. A restart runs the same. */
   readonly launch?: { readonly command?: readonly string[] | undefined; readonly env?: Readonly<Record<string, string>> | undefined } | undefined;
 };
@@ -538,7 +540,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** The path of the shell the host says started, from the answer to the call that made the terminal or the `session` of a `ready`: what a restart runs. */
   let startedShell: string | undefined = attachTo?.shell;
   /** The host started another shell than the one asked for: the arguments asked for belong to the shell that was not there. */
-  let shellReplaced = false;
+  let shellReplaced = attachTo?.replaced === true;
   /** The process is over for good, which only the host's word says: it ended (`ended`, whatever the reason, a failed pty included) or it does not know the terminal. What `restart` waits for. */
   let processOver = false;
   let fate: Fate = attachTo?.ended === true ? 'dismiss' : 'ours';
@@ -1609,7 +1611,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     launch: () => {
       const asked = options.launch ?? attachTo?.launch;
-      const command = asked?.command === undefined || asked.command.length === 0 ? undefined : [...asked.command];
+      // The arguments asked for a shell that was not there are not carried on: the shell that ran, alone.
+      const command = shellReplaced ? (startedShell === undefined ? undefined : [startedShell]) : asked?.command === undefined || asked.command.length === 0 ? undefined : [...asked.command];
       const env = asked?.env === undefined || Object.keys(asked.env).length === 0 ? undefined : asked.env;
       return command === undefined && env === undefined ? undefined : { ...(command === undefined ? {} : { command }), ...(env === undefined ? {} : { env }) };
     },

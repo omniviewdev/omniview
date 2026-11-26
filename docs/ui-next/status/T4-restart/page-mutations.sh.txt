@@ -133,8 +133,8 @@ run restore-keeps-the-ended-one "$P/localShell.ts" \
   'make one target for a tab two terminals say they belong to, the one that runs'
 
 run restore-keeps-the-older-one "$P/localShell.ts" \
-  's/return next\.madeAt >= held\.madeAt;/return next.madeAt <= held.madeAt;/' \
-  'make one target for a tab two terminals that ended say they belong to, the one made last'
+  's/return instantOf\(next\.madeAt\) >= instantOf\(held\.madeAt\);/return instantOf(next.madeAt) <= instantOf(held.madeAt);/' \
+  'make one target for a tab two terminals that ended say they belong to, the one made last|keeps the one made last whichever is listed first'
 
 run restore-believes-any-command "$P/localShell.ts" \
   's/Array\.isArray\(command\) && command\.every\(\(word\) => typeof word === .string.\)/true/' \
@@ -262,11 +262,11 @@ run restart-hint-end-not-over "$P/execFeed.ts" \
 
 run restart-keeps-args-of-a-missing-shell "$P/execFeed.ts" \
   's/\.\.\.\(shellReplaced \? \[\] : /...(false ? [] : /' \
-  'runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there'
+  'runs the shell that actually ran with none of the arguments|restarts as the shell that ran, with none of the arguments asked for the shell that was not there|restarts as the shell that ran with no arguments when the listing said it was replaced|tells a take-back the shell that ran'
 
 run feed-says-no-launch "$P/execFeed.ts" \
   's/^    launch: \(\) => \{$/    launch: () => { return undefined;/' \
-  'says what it was asked to start with'
+  'says what it was asked to start with|tells a take-back the shell that ran'
 
 run takeback-drops-the-lost-feed "$P/TerminalSessions.ts" \
   's/reattach\(old\.feed\.id \?\? session, old\.feed\)/reattach(old.feed.id ?? session)/' \
@@ -274,7 +274,23 @@ run takeback-drops-the-lost-feed "$P/TerminalSessions.ts" \
 
 run restart-ignores-the-ready-replaced-shell "$P/execFeed.ts" \
   's/shellReplaced = shellReplaced \|\| ready\.replaced;/void ready;/' \
-  'a feed that attaches learns from the ready that another shell ran|restarts as the shell that ran, with none of the arguments'
+  'a feed that attaches learns from the ready that another shell ran|restarts as the shell that ran, with none of the arguments|tells a take-back the shell that ran'
+
+run restore-compares-instants-as-strings "$P/localShell.ts" \
+  's/return instantOf\(next\.madeAt\) >= instantOf\(held\.madeAt\);/return next.madeAt >= held.madeAt;/' \
+  'keeps the one made last whichever is listed first'
+
+run restore-ignores-the-requested-shell "$P/localShell.ts" \
+  's/const replaced = typeof shell/const replaced = false \&\& typeof shell/' \
+  'says the shell was replaced when the listing names the shell that was asked for'
+
+run screen-keeps-the-old-replay-running "$P/screen.ts" \
+  's/^      replaying = undefined;$/      replaying = replaying;/' \
+  'writes no more of the ended feed'"'"'s replay after the restart'
+
+run screen-unmutes-at-restart "$P/screen.ts" \
+  's/^      draining = pending > 0;$/      draining = false;/' \
+  'writes no more of the ended feed'"'"'s replay after the restart'
 
 if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
 exit $bad

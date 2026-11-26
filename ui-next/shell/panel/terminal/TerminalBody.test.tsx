@@ -1158,7 +1158,7 @@ describe('the lane\'s Restart', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20);
     });
-    expect(r.loader.engines[0]?.text()).toBe('bye\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n$ ');
+    expect(r.loader.engines[0]?.text()).toBe('bye\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n$ ');
   });
 
   it('draws what the ended terminal still held before the new shell starts: the last lines of the transcript are not lost to the restart', async () => {
@@ -1169,7 +1169,7 @@ describe('the lane\'s Restart', () => {
       page.queryByRole('button', RESTART)?.click();
     });
     await flush();
-    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
+    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
   });
 
   it('is the lane of the new feed afterwards: no button while the new shell starts or runs, and Connected when it does', async () => {
@@ -1288,7 +1288,7 @@ describe('Enter in the screen of an ended terminal', () => {
     r.end({ exit: { code: 3 } });
     r.loader.engines[0]?.key(ENTER);
     await flush();
-    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
+    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
   });
 
   it('restarts once for two presses in a row: the second finds a terminal that starts', async () => {
