@@ -412,3 +412,28 @@ describe('the terminals a page that reloaded finds again: the tab, the shell and
     expect(made().attach).toMatchObject({ id: 'newer' });
   });
 });
+
+describe('review of #791: which of two ended terminals of a tab is the later, by instant', () => {
+  const ended = (id: string, madeAt: string) => ({ id, shell: { name: 'zsh' }, params: { tab: 'tab-3' }, ended: { reason: 'exited' }, created_at: madeAt });
+
+  it.each([
+    ['a fraction trimmed of its zeros', '2026-11-26T10:00:00Z', '2026-11-26T10:00:00.1Z'],
+    ['fractions of different length', '2026-11-26T10:00:00.12Z', '2026-11-26T10:00:00.2Z'],
+    ['nanoseconds', '2026-11-26T10:00:00.123456789Z', '2026-11-26T10:00:00.123456790Z'],
+  ])('keeps the one made last whichever is listed first: %s', async (_what, older, newer) => {
+    for (const order of [[ended('old', older), ended('new', newer)], [ended('new', newer), ended('old', older)]]) {
+      const [target] = await restoreLocalTerminals(channels(order));
+      target?.open();
+      expect(made().attach).toMatchObject({ id: 'new' });
+    }
+  });
+});
+
+describe('review of #791: a replaced shell is listed with what was asked for it', () => {
+  it('says the shell was replaced when the listing names the shell that was asked for, so that a restart gives its arguments to nobody', async () => {
+    const launch = JSON.stringify({ command: ['/opt/gone/zsh', '--no-rcs'] });
+    const [target] = await restoreLocalTerminals(channels([{ id: 'a', shell: { name: 'bash', path: '/bin/bash', requested: '/opt/gone/zsh' }, params: { launch } }]));
+    target?.open();
+    expect(made().attach).toMatchObject({ replaced: true });
+  });
+});

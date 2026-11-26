@@ -3263,3 +3263,18 @@ describe('review of #695 step 5, round 2: a feed that attaches learns from the r
     expect(r.feed.restart?.()).toMatchObject({ command: ['/bin/bash'], env: { A: '1' } });
   });
 });
+
+describe('review of #791: the replacement of the shell is known before the ready', () => {
+  it('restarts as the shell that ran with no arguments when the listing said it was replaced and the host does not know the terminal any more', async () => {
+    const r = attaching({ program: 'bash', shell: '/bin/bash', replaced: true, launch: { command: ['/opt/gone/zsh', '--no-rcs'] } });
+    r.stream().notFound();
+    expect(r.feed.restart?.()?.command).toEqual(['/bin/bash']);
+  });
+
+  it('tells a take-back the shell that ran and no arguments when it was replaced, and the asked arguments when it was not', async () => {
+    const replaced = await running({ shell: 'bash', shellPath: '/bin/bash', shellRequested: '/opt/gone/zsh' }, { launch: { command: ['/opt/gone/zsh', '--no-rcs'], env: { A: '1' } } });
+    expect(replaced.feed.launch?.()).toEqual({ command: ['/bin/bash'], env: { A: '1' } });
+    const plain = await running({ shellPath: '/bin/zsh' }, { launch: { command: ['/bin/zsh', '-f'] } });
+    expect(plain.feed.launch?.()).toEqual({ command: ['/bin/zsh', '-f'] });
+  });
+});

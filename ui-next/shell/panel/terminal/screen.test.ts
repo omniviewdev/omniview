@@ -2886,7 +2886,7 @@ describe('Escape with the find bar open', () => {
 // selection continue), a separator after it, and the size told to the new feed at once (it starts the terminal). Enter, in a screen that takes no input, asks to restart.
 
 describe('a restart: the screen goes on with the next feed of its session (`continueWith`)', () => {
-  const SEPARATOR = '\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n';
+  const SEPARATOR = '\u001b[?47l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1004l\u001b[?1005l\u001b[?1006l\u001b[?1015l\u001b[?2004l\u001b[?1l\u001b[!p\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n';
   const ENDED = '\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n';
 
   async function shown(options: RigOptions = {}) {
@@ -3133,5 +3133,29 @@ describe('what a restart must not lose or repeat (review of #695 step 5)', () =>
     r.engine().complete();
     expect(r.engine().resets()).toBe(0);
     expect(r.engine().text()).not.toContain('old');
+  });
+});
+
+describe('review of #791: a restart over a replay that is still being applied, and the separator', () => {
+  const big = 5 << 20;
+
+  it('writes no more of the ended feed\'s replay after the restart, mutes the replies its queued bytes draw until they are parsed, and drops what was typed meanwhile', async () => {
+    const data = new Uint8Array(big).fill(97);
+    const r = await reattached({ data, startSize: { cols: 80, rows: 24 }, startModes: { altScreen: false, bracketedPaste: false, applicationCursor: false, focusEvents: false, cursorHidden: false, mouseTracking: 0, mouseEncoding: 0, kittyKeyboard: [] }, size: { cols: 80, rows: 24 }, modes: { altScreen: false, bracketedPaste: false, applicationCursor: false, focusEvents: false, cursorHidden: false, mouseTracking: 0, mouseEncoding: 0, kittyKeyboard: [] }, end: big }, { auto: false });
+    r.frame();
+    r.engine().type('typed during the replay');
+    const before = r.engine().writes.length;
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    r.engine().say('reply of the old bytes');
+    expect(next.replies()).toEqual([]);
+    r.engine().complete();
+    r.frame();
+    r.engine().complete();
+    const after = r.engine().writes.slice(before).filter((w): w is Uint8Array => typeof w !== 'string').reduce((sum, w) => sum + w.length, 0);
+    expect(after).toBe(0);
+    expect(next.typed()).toEqual([]);
+    r.engine().say('reply of the new shell');
+    expect(next.replies()).toEqual(['reply of the new shell']);
   });
 });
