@@ -1414,7 +1414,8 @@ export function createHost(options = {}) {
     }
 
     // The marks frame goes only to a page that asked for version 1 of it and to a terminal that has an integration: any other page is sent none.
-    conn.marks = asked === 1 && pty.ring.markScanner !== undefined;
+    // `faults.marksNever`: no marks frame at all; `faults.marksAfterFirst`: none to a page that attaches after the first attach (a host whose replay brings no marks).
+    conn.marks = asked === 1 && pty.ring.markScanner !== undefined && !faults.marksNever && !(faults.marksAfterFirst && log.attaches.length > 0);
     clearTimeout(pty.lease);
     pty.lease = undefined;
     pty.holder = conn;

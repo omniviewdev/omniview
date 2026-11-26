@@ -140,6 +140,22 @@ describe('a marker made where the parse stands', () => {
   });
 });
 
+describe('the screen reader mode', () => {
+  it('changes nothing of the markers: a marker made in the callback of a write is on the same line with the mode on, and the mode can be switched on and off with markers alive', async () => {
+    const { engine, parsed } = emulator();
+    await parsed('one\r\ntwo\r\n');
+    const before = engine.mark();
+    engine.setScreenReaderMode(true);
+    await parsed('three\r\nfour');
+    const during = engine.mark();
+    expect(before?.marker.line()).toBe(2);
+    expect(during?.marker.line()).toBe(3);
+    engine.setScreenReaderMode(false);
+    expect(before?.marker.line(), 'the mode does not rebuild the buffer').toBe(2);
+    expect(during?.marker.line()).toBe(3);
+  });
+});
+
 describe('the alternate screen', () => {
   it('has no marker: a program that has the whole screen has no command lines, and the screen says it is up (the stylesheet hides the gutter by it)', async () => {
     const { engine, host, parsed } = emulator();
