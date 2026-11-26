@@ -1,0 +1,39 @@
+// Scratch (not committed): where does the connection's derived ID occur in the landing of plugin #292 and its navigator? The check's C1h test reads what the window draws and names (`readDrawn`); this reads the landing too, which the test never has on screen. KL8.
+import { chromium } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin-2/node_modules/playwright/index.mjs';
+import { expectedLane, openPluginPage, openWindow, landingIsUp } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin-2/scripts/ui-next-pods/parity.mjs';
+import { compareDrawn, readDrawn } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin-2/scripts/ui-next-pods/lane.mjs';
+
+const base = process.env.BASE ?? 'http://127.0.0.1:24421';
+const kubeconfig = process.env.KC ?? '/tmp/landing-pin/work-x/kubeconfig';
+const { id, context } = await expectedLane({ baseURL: base, kubeconfig });
+console.log('context', context, 'id', id);
+const browser = await chromium.launch();
+const page = await openWindow(browser, base);
+await openPluginPage(page);
+await landingIsUp(page);
+await page.waitForTimeout(800);
+
+const where = async (label) => {
+  const drawn = compareDrawn(await readDrawn(page), id);
+  // Every attribute of every element, visible or not, that holds the ID: where it is, and not only what a reader of `readDrawn` sees.
+  const holders = await page.evaluate((needle) => {
+    const out = [];
+    for (const element of document.querySelectorAll('*')) {
+      for (const attribute of element.getAttributeNames()) {
+        const value = element.getAttribute(attribute);
+        if (value && value.includes(needle)) out.push({ tag: element.tagName, attribute, value: value.slice(0, 160), visible: element.getClientRects().length > 0 });
+      }
+    }
+    return out;
+  }, id);
+  console.log(label, 'readDrawn problems:', JSON.stringify(drawn), '| holders of the ID in any attribute:', JSON.stringify(holders));
+};
+
+await where('landing, before the open:');
+await page.getByRole('region', { name: 'Connections', exact: true }).getByRole('button', { name: context, exact: true }).click({ timeout: 20000 });
+await page.waitForTimeout(1500);
+await where('Overview on screen (landing kept hidden):');
+await page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab', { name: 'Kubernetes', exact: true }).click();
+await page.waitForTimeout(800);
+await where('landing again, connected:');
+await browser.close();

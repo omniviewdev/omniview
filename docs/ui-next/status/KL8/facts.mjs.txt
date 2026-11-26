@@ -1,0 +1,15 @@
+// Scratch (not committed): the host's facts for the connection (the envelope the unavailable-group check reads), as the plugin of #291 states them. KL8.
+import { chromium } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin-2/node_modules/playwright/index.mjs';
+import { choosePods, expectedLane, openConnection, openWindow, readConnectionMetadata } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin-2/scripts/ui-next-pods/parity.mjs';
+const base = process.env.BASE; const kubeconfig = process.env.KC;
+const browser = await chromium.launch();
+const page = await openWindow(browser, base);
+await openConnection(page, kubeconfig);
+await choosePods(page);
+await page.waitForTimeout(3000);
+const { id } = await expectedLane({ baseURL: base, kubeconfig });
+const facts = await readConnectionMetadata(base, id);
+const entries = facts.snapshot?.entries ?? {};
+console.log(JSON.stringify({ supported: facts.supported, transportAvailable: facts.transportAvailable, active: facts.snapshot?.active }));
+for (const [key, entry] of Object.entries(entries).sort()) console.log(key.padEnd(36), String(entry.state).padEnd(8), JSON.stringify(entry.value).slice(0, 110));
+await browser.close();
