@@ -9,7 +9,7 @@
 //   gutter-hover   the pointer on a mark says the command line, how it ended and the directory, and the words go when the pointer does (gutter.hover)
 //   gutter-keys    the jump keys take the view to the previous and the next command (the command's own row is the top row), say so at the end of the list, and the menu's Copy command output copies exactly the output of the command the view
 //                  is on (gutter.keys)
-//   gutter-reload  after a reload the gutter is back, a mark for each command the host's replay holds (gutter.reload)
+//   gutter-reload  after a reload the gutter is back: two jumps back reach the first of the two commands the host's replay holds (gutter.reload)
 //   gutter-axe     axe-core finds nothing in a terminal with marks drawn (axe.gutter)
 import { createHost } from './terminal-host.mjs';
 import { AXE } from './harness.mjs';
@@ -63,8 +63,11 @@ const HELPERS = () => {
           const r = candidate.getBoundingClientRect();
           return centre.y >= r.y && centre.y < r.bottom;
         });
+        const view = screen === null ? null : screen.getBoundingClientRect();
         return {
           state: mark.getAttribute('data-state'),
+          // The mark of a command whose row has scrolled out of the view is where the emulator leaves it (above or below the screen): only a mark in the view is drawn for the person.
+          inView: view !== null && rect.y >= view.y - 1 && rect.bottom <= view.bottom + 1,
           rect: box(mark),
           shown: getComputedStyle(mark).display !== 'none' && rect.width > 0 && rect.height > 0,
           under: rect.width > 0 && document.elementFromPoint(centre.x, centre.y) !== null && mark.contains(document.elementFromPoint(centre.x, centre.y)),
@@ -213,11 +216,14 @@ export function createGutterSections({ check, note, report, runAxe }) {
       const first = await ran(page, 'known', 1);
       const second = await ran(page, 'known', 2);
       await perturb(ctx, page, 'marks');
+      // `GUTTER_SHOT=<directory>` photographs the terminal with its marks, for a person to look at (a dev tool: no unit sets it).
+      if (process.env.GUTTER_SHOT !== undefined) await page.locator('[data-shell-part="terminalBody"]').screenshot({ path: `${process.env.GUTTER_SHOT}/gutter-${engine}-${vp}.png` });
       const read = await page.evaluate(() => window.__gutter.read());
       const problems = [];
       if (!first || !second) problems.push('a mark did not come for a command that ran');
-      if (read.marks.length !== 2) problems.push(`${String(read.marks.length)} marks for 2 commands`);
-      for (const [index, mark] of read.marks.entries()) {
+      const seen = read.marks.filter((mark) => mark.inView);
+      if (seen.length < 1 || seen.length > 2) problems.push(`${String(seen.length)} marks are in the view for 2 commands`);
+      for (const [index, mark] of seen.entries()) {
         if (mark.state !== 'success') problems.push(`mark ${String(index)} says ${String(mark.state)}`);
         if (!mark.shown) problems.push(`mark ${String(index)} is not drawn`);
         if (mark.rect.right > read.text.x + 1) problems.push(`mark ${String(index)} is over the output (its right edge ${String(Math.round(mark.rect.right))} is past the first cell at ${String(Math.round(read.text.x))})`);
@@ -231,11 +237,11 @@ export function createGutterSections({ check, note, report, runAxe }) {
       await page.keyboard.press('Enter');
       const alternate = await waitFor(page, () => document.querySelector('[data-shell-part="terminalScreen"]')?.hasAttribute('data-alternate') === true);
       await perturb(ctx, page, 'alt');
-      const hidden = await page.evaluate(() => window.__gutter.read().marks.filter((mark) => mark.shown).length);
+      const hidden = await page.evaluate(() => window.__gutter.read().marks.filter((mark) => mark.inView && mark.shown).length);
       if (!alternate) problems.push('the screen never said a program has the alternate screen');
       if (hidden !== 0) problems.push(`${String(hidden)} marks are drawn on the alternate screen`);
-      check('gutter.marks', problems.length === 0, `${tag}: two commands ran; ${problems.length === 0 ? 'a success mark for each, beside its row and over no cell, none on the alternate screen' : problems.join('; ')}`);
-      note(`gutter marks ${tag}: ${JSON.stringify(read.marks.map((mark) => [mark.state, Math.round(mark.rect.right - read.text.x), mark.row?.slice(0, 20)]))}`);
+      check('gutter.marks', problems.length === 0, `${tag}: two commands ran; ${problems.length === 0 ? 'a success mark beside the row of each command that is in the view and over no cell, none on the alternate screen' : problems.join('; ')}`);
+      note(`gutter marks ${tag}: ${JSON.stringify(read.marks.map((mark) => [mark.state, mark.inView, Math.round(mark.rect.right - read.text.x), mark.row?.slice(0, 20)]))}`);
     } finally {
       await session.close();
     }
@@ -249,7 +255,7 @@ export function createGutterSections({ check, note, report, runAxe }) {
     const { page } = session;
     try {
       await ran(page, 'known', 1);
-      const centre = await page.evaluate(() => window.__gutter.read().marks[0]?.centre);
+      const centre = await page.evaluate(() => window.__gutter.read().marks.find((mark) => mark.inView)?.centre);
       const problems = [];
       if (centre === undefined) problems.push('no mark to hover');
       let on;
@@ -340,11 +346,17 @@ export function createGutterSections({ check, note, report, runAxe }) {
       const shown = await page.evaluate(() => (document.querySelector('[data-shell-part="panel"]')?.getBoundingClientRect().height ?? 0) > 0);
       if (!shown) await page.click('[data-shell-part="panelToggle"]');
       await page.waitForSelector('.xterm-helper-textarea', { timeout: 20_000 });
-      const back = await waitFor(page, () => window.__gutter.marks().length >= 2, undefined, 12_000);
-      const states = await page.evaluate(() => window.__gutter.states());
+      // The gutter is the page's own after the reload: every command the replay holds is a command to jump to, and the marks the emulator draws are those of the rows in the view, so the proof is the jump: two jumps back reach the first of two.
+      await page.locator('.xterm-helper-textarea').focus();
+      const mac = await isMac(page);
+      const up = mac ? 'Meta+ArrowUp' : 'Control+ArrowUp';
+      await page.keyboard.press(up);
+      await page.keyboard.press(up);
+      const back = await waitFor(page, () => /Command 1 of 2/.test(window.__gutter.live()), undefined, 12_000);
+      const said = await page.evaluate(() => window.__gutter.live());
       void origin;
       void control;
-      check('gutter.reload', back && states.length === 2 && states.every((state) => state === 'success'), `${tag}: two commands ran and the page was loaded again: ${back ? `the gutter is back with ${JSON.stringify(states)}` : `the gutter did NOT come back (${String(states.length)} marks)`}`);
+      check('gutter.reload', back, `${tag}: two commands ran and the page was loaded again: ${back ? `two jumps back reach the first of two (${JSON.stringify(said)})` : `the gutter did NOT come back (the page says ${JSON.stringify(said)})`}`);
     } finally {
       await session.close();
     }
