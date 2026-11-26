@@ -167,7 +167,13 @@ func (c *controller) admitMetadata(pluginID string, state *pluginState, event re
 	known := c.lastKnown.warm(pluginID)
 	var prepared lastKnownPrepared
 	if !event.Removed {
-		prepared = c.lastKnown.prepare(snapshot)
+		// A snapshot that is not newer than the mirror's is refused below, whatever it holds: it is not worth preparing.
+		c.pluginsMu.RLock()
+		mirrored, inMirror := state.metadata[snapshot.ConnectionID]
+		c.pluginsMu.RUnlock()
+		if latest, _ := strconv.ParseUint(mirrored.Revision, 10, 64); !inMirror || revision > latest {
+			prepared = c.lastKnown.prepare(snapshot)
+		}
 	}
 	var dropped lastKnownDrops
 	defer func() { c.lastKnown.report(pluginID, dropped) }()

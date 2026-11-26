@@ -66,8 +66,11 @@ const (
 	// entries, counted with each so that the bound on a plugin's bytes bounds its file.
 	lastKnownEntryOverhead      = 4
 	lastKnownConnectionOverhead = 32
-	// lastKnownQuitWait is how long the quit waits for the writes that are still running: a disk that hangs must not hold it up.
+	// lastKnownQuitWait is how long a plugin's stop, and the quit, wait for the writes that are still running, all together: a disk
+	// that hangs must not hold either up.
 	lastKnownQuitWait = 3 * time.Second
+	// lastKnownRetry is how often a read that keeps failing (twice in a row) is tried again.
+	lastKnownRetry = time.Second
 	// lastKnownGeneration is the generation of a snapshot the host serves with kept entries and none of its own: the SDK's
 	// validation wants one for every snapshot that holds facts. It is opaque and never sorted, like every generation.
 	lastKnownGeneration = "host-last-known"
@@ -112,7 +115,9 @@ type lastKnownMetadata struct {
 	// afterFunc runs f once after d and returns the function that cancels it. It must not run f on the calling goroutine, which
 	// holds mu; tests replace it.
 	afterFunc func(d time.Duration, f func()) (stop func() bool)
-	quitWait  time.Duration
+	// now is the store's clock; tests replace it.
+	now      func() time.Time
+	quitWait time.Duration
 	// inflight counts the writes that passed the check for close, which waits for them.
 	inflight sync.WaitGroup
 	closed   bool
@@ -129,6 +134,7 @@ func newLastKnownMetadata(logger logging.Logger, storeFn func(pluginID string) (
 		afterFunc: func(d time.Duration, f func()) func() bool {
 			return time.AfterFunc(d, f).Stop
 		},
+		now:      time.Now,
 		quitWait: lastKnownQuitWait,
 		inflight: sync.WaitGroup{},
 		closed:   false,
@@ -146,13 +152,19 @@ type lastKnownPlugin struct {
 	bytes int
 	// loaded says the file has been read, or was found missing. Until then nothing is kept or written for the plugin: a file that
 	// could not be read is never replaced by a copy that holds only what this run saw. loading is open while a read is in flight,
-	// and loadFailed says a read failed, which is reported once.
+	// loadFailed says a read failed (reported once), failures counts the reads that failed in a row, and retryAt is when a read
+	// that keeps failing is next tried.
 	loaded     bool
 	loading    chan struct{}
 	loadFailed bool
-	// dirty says the file is behind the maps; gone that the plugin was uninstalled, and nothing may be kept for it or written.
-	dirty bool
-	gone  bool
+	failures   int
+	retryAt    time.Time
+	// dirty says the file is behind the maps. settled says the plugin's backend has stopped: until its next admitted snapshot a
+	// change marks the file owed and arms nothing, so that no write lands after the stop returned (the quit still writes it).
+	// gone says the plugin was uninstalled, and nothing may be kept for it or written.
+	dirty   bool
+	settled bool
+	gone    bool
 	// refusedIDs holds the connections whose ID looks like a credential: nothing is kept for them, and each is reported once.
 	refusedIDs map[string]struct{}
 	// stop cancels the timer that is armed for the plugin, whose delay is delay.
@@ -163,7 +175,8 @@ type lastKnownPlugin struct {
 func newLastKnownPlugin(s *lastKnownMetadata, id string) *lastKnownPlugin {
 	return &lastKnownPlugin{
 		store: s, id: id, writeMu: sync.Mutex{}, conns: make(map[string]*lastKnownConnection), bytes: 0,
-		loaded: false, loading: nil, loadFailed: false, dirty: false, gone: false,
+		loaded: false, loading: nil, loadFailed: false, failures: 0, retryAt: time.Time{},
+		dirty: false, settled: false, gone: false,
 		refusedIDs: make(map[string]struct{}), stop: nil, delay: 0,
 	}
 }
@@ -488,8 +501,8 @@ func (c *lastKnownConnection) serve(snapshot resourcev2.ConnectionMetadataSnapsh
 
 // warm returns what is kept for the plugin, reading its file first if that has not succeeded yet. A read that fails leaves the
 // plugin unloaded, so that nothing is kept or written for it and the file is never replaced by a copy that holds only what this
-// run saw; the next call reads again. The read is disk I/O: call warm before taking a lock, never under one. A plugin that is
-// loaded, or gone, is returned at once.
+// run saw; the next call reads again, and a read that has failed twice in a row is tried again once a second at most. The read is
+// disk I/O: call warm before taking a lock, never under one. A plugin that is loaded, or gone, is returned at once.
 func (s *lastKnownMetadata) warm(pluginID string) *lastKnownPlugin {
 	if s == nil {
 		return nil
@@ -509,6 +522,10 @@ func (s *lastKnownMetadata) warm(pluginID string) *lastKnownPlugin {
 		<-reading
 		return p
 	}
+	if p.failures >= 2 && s.now().Before(p.retryAt) {
+		s.mu.Unlock()
+		return p
+	}
 	p.loading = make(chan struct{})
 	s.mu.Unlock()
 
@@ -521,6 +538,8 @@ func (s *lastKnownMetadata) warm(pluginID string) *lastKnownPlugin {
 	switch {
 	case err != nil:
 		report, p.loadFailed = !p.loadFailed, true
+		p.failures++
+		p.retryAt = s.now().Add(lastKnownRetry)
 	case !p.gone:
 		p.conns, p.loaded = conns, true
 		p.bytes = p.sizeLocked()
@@ -681,7 +700,8 @@ func (p *lastKnownPlugin) sizeLocked() int {
 // observe records what an admitted snapshot says and returns the snapshot to serve in its place; cleared says the SDK cleared the
 // connection's facts on purpose (clearedBySDK), so that what was kept goes first. It does no I/O and takes only store.mu: it is
 // called inside the controller's pluginsMu, after warm. The drops are for the caller to report once it holds no lock. A plugin
-// that is not loaded, or is gone, keeps nothing.
+// that is not loaded, or is gone, keeps nothing. An admitted snapshot ends the stop that settled the plugin: writes are armed
+// again, and the file that a change since the stop left owed is written with this one's.
 func (p *lastKnownPlugin) observe(snapshot resourcev2.ConnectionMetadataSnapshot, prepared lastKnownPrepared, cleared bool) (resourcev2.ConnectionMetadataSnapshot, lastKnownDrops) {
 	var drops lastKnownDrops
 	if p == nil {
@@ -693,6 +713,8 @@ func (p *lastKnownPlugin) observe(snapshot resourcev2.ConnectionMetadataSnapshot
 	if p.gone || !p.loaded {
 		return snapshot, drops
 	}
+	wasSettled := p.settled
+	p.settled = false
 	id := snapshot.ConnectionID
 	if cleared && p.forgetLocked(id) {
 		s.touchLocked(p, 0)
@@ -721,7 +743,7 @@ func (p *lastKnownPlugin) observe(snapshot resourcev2.ConnectionMetadataSnapshot
 	if len(conn.entries) == 0 && len(conn.refused) == 0 {
 		delete(p.conns, id)
 	}
-	if changed {
+	if changed || (wasSettled && p.dirty) {
 		s.touchLocked(p, s.debounce)
 	}
 	return conn.serve(snapshot), drops
@@ -794,13 +816,14 @@ func connectionIDs(connections []types.Connection) map[string]struct{} {
 
 // touchLocked says the file is behind what is kept and arms the write: after delay, unless one is already due sooner, so that an
 // erasure that comes while a write is in flight is written at once after it. Nothing is armed for a plugin that is gone or not
-// loaded, or once the copy is closed. The caller holds mu.
+// loaded, for one whose backend has stopped (settled: a change that raced the stop leaves the file owed for the next admitted
+// snapshot or the quit), or once the copy is closed. The caller holds mu.
 func (s *lastKnownMetadata) touchLocked(p *lastKnownPlugin, delay time.Duration) {
 	if p.gone || !p.loaded {
 		return
 	}
 	p.dirty = true
-	if s.closed {
+	if s.closed || p.settled {
 		return
 	}
 	if p.stop != nil {
@@ -948,26 +971,37 @@ func (s *lastKnownMetadata) erase(pluginID string) error {
 
 // settle writes what is pending for a plugin whose backend has stopped, and cancels its timer, before the stop returns: the
 // plugin's store is about to be moved or removed by an update or an uninstall, and a file that is held open under it, by a write
-// that fires later, fails that on Windows. Admissions of the stopped registration are refused by then, so nothing is written for
-// the plugin until it starts again.
+// that fires later, fails that on Windows. The plugin is marked settled, so that a change that raced the stop (a profile change that
+// captured the plugin's copy before it) arms no write after this returns, and its next admitted snapshot or the quit writes it.
+// Admissions of the stopped registration are refused by then. A disk that hangs does not stall the stop: after the same bound as
+// the quit's, the wait is given up with one warning, and the file stays owed for the quit.
 func (s *lastKnownMetadata) settle(pluginID string) {
 	if s == nil {
 		return
 	}
 	s.mu.Lock()
 	p := s.plugins[pluginID]
-	s.mu.Unlock()
 	if p != nil {
-		s.flush(p)
+		p.settled = true
+	}
+	s.mu.Unlock()
+	if p == nil {
+		return
+	}
+	if !s.within("the plugin's stop", time.Now().Add(s.quitWait), func() { s.flush(p) }) {
+		s.mu.Lock()
+		p.dirty = true
+		s.mu.Unlock()
 	}
 }
 
 // shutdown writes every file that is behind and closes the copy. The host is quitting: nothing waits on it but the quit, and the
-// quit waits for it for a few seconds at most.
+// quit waits for it for a few seconds at most, in all.
 func (s *lastKnownMetadata) shutdown() {
 	if s == nil {
 		return
 	}
+	deadline := time.Now().Add(s.quitWait)
 	s.mu.Lock()
 	var behind []*lastKnownPlugin
 	for _, p := range s.plugins {
@@ -976,12 +1010,12 @@ func (s *lastKnownMetadata) shutdown() {
 		}
 	}
 	s.mu.Unlock()
-	s.within(func() {
+	s.within("the quit", deadline, func() {
 		for _, p := range behind {
 			s.flush(p)
 		}
 	})
-	s.close()
+	s.closeBy(deadline)
 }
 
 // close cancels the timers, refuses to arm more, and waits for the writes in flight, for a few seconds at most. Changes after it
@@ -990,6 +1024,10 @@ func (s *lastKnownMetadata) close() {
 	if s == nil {
 		return
 	}
+	s.closeBy(time.Now().Add(s.quitWait))
+}
+
+func (s *lastKnownMetadata) closeBy(deadline time.Time) {
 	s.mu.Lock()
 	s.closed = true
 	for _, p := range s.plugins {
@@ -999,22 +1037,24 @@ func (s *lastKnownMetadata) close() {
 		}
 	}
 	s.mu.Unlock()
-	s.within(s.inflight.Wait)
+	s.within("the quit", deadline, s.inflight.Wait)
 }
 
-// within runs f and waits for it for at most quitWait: a disk that hangs must not hold up the quit.
-func (s *lastKnownMetadata) within(f func()) {
+// within runs f and waits for it until deadline, and says whether it ended: a disk that hangs must not hold up a stop or the quit.
+func (s *lastKnownMetadata) within(what string, deadline time.Time, f func()) bool {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		f()
 	}()
-	timer := time.NewTimer(s.quitWait)
+	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
 	select {
 	case <-done:
+		return true
 	case <-timer.C:
-		s.logger.Warnw(context.Background(), "connection metadata writes were still running at quit; the quit did not wait for them")
+		s.logger.Warnw(context.Background(), "connection metadata writes were still running; the wait for them was given up", "waitedFor", what)
+		return false
 	}
 }
 

@@ -481,3 +481,112 @@ func TestConnectionMetadataLastKnownServesWhatThePluginPublishedWhenTheKeptEntri
 	require.NoError(t, resourcev2.ValidateConnectionMetadataSnapshot(*got.Snapshot), "what is served is what the SDK admits")
 	require.Contains(t, keptEntries(ctrl, "p", "c"), "kubernetes.server_version", "and what was kept is still kept")
 }
+
+func TestConnectionMetadataLastKnownARacingProfileChangeArmsNothingAfterTheStop(t *testing.T) {
+	cases := []struct {
+		name string
+		then func(t *testing.T, ctrl *controller, timers *lastKnownTimers, svc *appstate.Service)
+	}{
+		{"the next admission of a registration that starts again writes it", func(t *testing.T, ctrl *controller, timers *lastKnownTimers, svc *appstate.Service) {
+			state := metadataTestState(ctrl, "p", &mockProvider{})
+			_, err := ctrl.acceptMetadata("p", state, answerEvent("c2", "2", versionAt("v2", lastKnownObserved().Add(time.Minute))))
+			require.NoError(t, err)
+			require.Len(t, timers.armed(), 1)
+			timers.fire()
+			stored, err := os.ReadFile(lastKnownStorePath(svc, "p"))
+			require.NoError(t, err)
+			require.NotContains(t, string(stored), `"c1"`)
+		}},
+		{"the quit", func(t *testing.T, ctrl *controller, _ *lastKnownTimers, svc *appstate.Service) {
+			ctrl.lastKnown.shutdown()
+			stored, err := os.ReadFile(lastKnownStorePath(svc, "p"))
+			require.NoError(t, err)
+			require.NotContains(t, string(stored), `"c1"`)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := appstate.NewTestService(t)
+			ctrl, timers := newLastKnownController(t, svc)
+			state := metadataTestState(ctrl, "p", &mockProvider{})
+			for _, id := range []string{"c1", "c2"} {
+				_, err := ctrl.acceptMetadata("p", state, answerEvent(id, "1", serverVersion("v1")))
+				require.NoError(t, err)
+			}
+			// What a profile change holds when it captured the plugin's copy before the stop.
+			known := ctrl.lastKnown.warm("p")
+			require.NoError(t, ctrl.OnPluginStop("p", defaultMeta()))
+			require.Empty(t, timers.armed())
+
+			known.forget("c1")
+
+			require.Empty(t, timers.armed(), "nothing is armed after the stop returned")
+			stored, err := os.ReadFile(lastKnownStorePath(svc, "p"))
+			require.NoError(t, err)
+			require.Contains(t, string(stored), `"c1"`, "and nothing was written")
+			tc.then(t, ctrl, timers, svc)
+		})
+	}
+}
+
+func TestConnectionMetadataLastKnownAHungDiskDelaysNeitherAStopNorTheQuitBeyondTheBound(t *testing.T) {
+	svc := appstate.NewTestService(t)
+	ctrl, _ := newLastKnownController(t, svc)
+	sink, logger := recordingLogger()
+	ctrl.lastKnown.logger = logger
+	state := metadataTestState(ctrl, "p", &mockProvider{})
+	_, err := ctrl.acceptMetadata("p", state, answerEvent("c", "1", serverVersion("v1")))
+	require.NoError(t, err)
+	hung := make(chan struct{})
+	// Registered after the controller's cleanups, so it runs before them: the write that hangs is let go before the copy closes.
+	t.Cleanup(func() { close(hung) })
+	ctrl.lastKnown.storeFn = func(id string) (*appstate.ScopedRoot, error) {
+		<-hung
+		return svc.PluginStore(id)
+	}
+	const bound = 300 * time.Millisecond
+	ctrl.lastKnown.quitWait = bound
+
+	// A plugin's stop gives up on the write after the bound, says so once, and leaves the file owed.
+	start := time.Now()
+	require.NoError(t, ctrl.OnPluginStop("p", defaultMeta()))
+	require.Less(t, time.Since(start), 5*bound)
+	require.Len(t, loggedLines(sink), 1)
+	ctrl.lastKnown.mu.Lock()
+	owed := ctrl.lastKnown.plugins["p"].dirty
+	ctrl.lastKnown.mu.Unlock()
+	require.True(t, owed)
+
+	// The quit waits for the writes once, not once for the flush and again for the close.
+	start = time.Now()
+	ctrl.lastKnown.shutdown()
+	require.Less(t, time.Since(start), bound*8/5)
+}
+
+func TestConnectionMetadataLastKnownBacksOffAReadThatKeepsFailing(t *testing.T) {
+	svc := appstate.NewTestService(t)
+	ctrl, _ := newLastKnownController(t, svc)
+	state := metadataTestState(ctrl, "p", &mockProvider{})
+	var calls atomic.Int32
+	ctrl.lastKnown.storeFn = func(string) (*appstate.ScopedRoot, error) {
+		calls.Add(1)
+		return nil, errors.New("open store: too many open files")
+	}
+	clock := lastKnownObserved()
+	ctrl.lastKnown.now = func() time.Time { return clock }
+	admit := func(revision int) {
+		at := lastKnownObserved().Add(time.Duration(revision) * time.Second)
+		_, err := ctrl.acceptMetadata("p", state, answerEvent("c", strconv.Itoa(revision), versionAt("v", at)))
+		require.NoError(t, err)
+	}
+
+	admit(1)
+	admit(2)
+	require.Equal(t, int32(2), calls.Load(), "the first failure is tried again at once")
+	admit(3)
+	admit(4)
+	require.Equal(t, int32(2), calls.Load(), "a read that keeps failing is not tried on every admission")
+	clock = clock.Add(2 * lastKnownRetry)
+	admit(5)
+	require.Equal(t, int32(3), calls.Load(), "and is tried again after the interval")
+}
