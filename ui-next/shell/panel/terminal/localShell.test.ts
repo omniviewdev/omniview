@@ -261,3 +261,21 @@ describe('the terminals a page that reloaded finds again', () => {
     await expect(restoreLocalTerminals(given)).rejects.toBe(refusal);
   });
 });
+
+describe('the name of a terminal the host started', () => {
+  const profile = { name: 'zsh', path: '/usr/bin/zsh', args: ['-f'], env: { A: '1' }, cwd: '/work' };
+  const targets = {
+    'the `+`': () => localShellTarget(channels()),
+    'a profile': () => localProfileTarget(profile, channels()),
+    'new terminal here': () => localHereTarget({ state: 'known', path: '/usr', source: 'shell' }, channels()),
+    'a terminal the host keeps': () => attachLocalTerminal('term-7', undefined, channels()),
+  };
+
+  for (const [name, make] of Object.entries(targets)) {
+    it(`is the title a program set while it runs and the shell's name otherwise, for ${name}`, () => {
+      const { retitle } = make();
+      expect(retitle?.({ program: 'zsh', title: 'vim: notes' } as never)).toBe('vim: notes');
+      expect(retitle?.({ program: 'zsh' } as never)).toBe('zsh');
+    });
+  }
+});

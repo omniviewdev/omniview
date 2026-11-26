@@ -607,9 +607,47 @@ describe('naming the tab by what the producer says it runs', () => {
     const { target: given, feed } = target({ retitle: named });
     const id = sessions.open(given)?.id ?? '';
     feed.set({ program: 'zsh' });
-    store.retitleSession(id, 'build');
+    store.renameSession(id, 'build');
     feed.set({ program: 'vim' });
     expect(store.getSnapshot().sessions[id]?.title).toBe('build');
+  });
+
+  it('keeps the name the person gave the session while programs set titles, and when the name is the shell\'s own', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: (status) => status.title ?? status.program });
+    const id = sessions.open(given)?.id ?? '';
+    feed.set({ program: 'zsh' });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('zsh');
+    store.renameSession(id, 'zsh');
+    feed.set({ program: 'zsh', title: 'vim: notes' });
+    feed.set({ program: 'bash' });
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ title: 'zsh', titlePinned: true });
+  });
+
+  it('shows the title a program set while it runs and the shell\'s name after it, one change of the panel for each', () => {
+    const { store, sessions, target } = harness();
+    const { target: given, feed } = target({ retitle: (status) => status.title ?? status.program });
+    const id = sessions.open(given)?.id ?? '';
+    feed.set({ program: 'zsh' });
+    const heard = vi.fn();
+    store.subscribe(heard);
+    feed.set({ program: 'zsh', title: 'vim: notes' });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('vim: notes');
+    const afterTitle = heard.mock.calls.length;
+    feed.wake();
+    expect(heard).toHaveBeenCalledTimes(afterTitle);
+    feed.set({ program: 'zsh' });
+    expect(store.getSnapshot().sessions[id]?.title).toBe('zsh');
+  });
+
+  it('keeps a name the person gave after a reload: the saved tab says it is theirs, and the shell\'s name does not take it back', () => {
+    const initial = savedPanel([{ id: 'term-a', title: 'my build', titlePinned: true }, { id: 'term-b', title: 'old shell' }]);
+    const r = harness({ initial });
+    const named = (status: { readonly program?: string | undefined; readonly title?: string | undefined }): string | undefined => status.title ?? status.program;
+    r.sessions.open(terminalOf(fakeTerminalFeed({ program: 'zsh' }), 'term-a', { title: 'zsh', retitle: named }));
+    r.sessions.open(terminalOf(fakeTerminalFeed({ program: 'zsh' }), 'term-b', { title: 'zsh', retitle: named }));
+    expect(r.store.getSnapshot().sessions['term-a']).toMatchObject({ title: 'my build', titlePinned: true });
+    expect(r.store.getSnapshot().sessions['term-b']?.title, 'a name nobody gave is the shell\'s again').toBe('zsh');
   });
 
   it('goes on following the program after a title longer than the panel keeps: the title it set is the one the panel holds', () => {
@@ -688,7 +726,7 @@ describe('the members a feed must have', () => {
 
 // ---- a window that was reloaded (T2-go): the terminals its saved tabs belonged to are found again -----------------------------------------------------------------------------------------------------------
 
-type SavedTab = { readonly id: string; readonly title: string; readonly tool?: string; readonly plugin?: string };
+type SavedTab = { readonly id: string; readonly title: string; readonly tool?: string; readonly plugin?: string; readonly titlePinned?: true };
 
 /**
  * The panel a reloaded window starts from: what the last run saved, read back by the real restore, so each session is `ended` with the words of a restore and none has a feed. `active` is the session the person
@@ -702,7 +740,7 @@ function savedPanel(tabs: readonly SavedTab[], active?: string): PanelState {
       height: null,
       tool: 'terminal',
       active: active === undefined ? {} : { terminal: active },
-      sessions: tabs.map((tab) => ({ id: tab.id, tool: tab.tool ?? 'terminal', plugin: tab.plugin ?? HOST, title: tab.title, scope: '' })),
+      sessions: tabs.map((tab) => ({ id: tab.id, tool: tab.tool ?? 'terminal', plugin: tab.plugin ?? HOST, title: tab.title, scope: '', ...(tab.titlePinned === true ? { titlePinned: true as const } : {}) })),
     },
     { now: 500 },
   );

@@ -606,6 +606,66 @@ describe('retitling a session (the host learns the shell\'s name after the sessi
   });
 });
 
+describe('naming a session (the person\'s name is theirs: the owner no longer names it)', () => {
+  it('gives the session the title and pins it: one change, the record says it is theirs, and nothing else about it changes', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh', { scope: 'dev', state: 'running' }));
+    const before = h.snapshot().sessions.s1;
+    const told = h.notified();
+    expect(h.store.renameSession('s1', '  my build \n')).toEqual({ status: 'done' });
+    expect(h.notified()).toBe(told + 1);
+    expect(h.snapshot().sessions.s1).toEqual({ ...before, title: 'my build', titlePinned: true });
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's1')?.name).toBe('my build · dev');
+  });
+
+  it('refuses the owner\'s naming of a session the person named, and takes the owner\'s naming of one they did not', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'a'));
+    h.store.openSession(session('terminal', 'host', 'b'));
+    h.store.renameSession('s1', 'mine');
+    expect(h.store.retitleSession('s1', 'zsh')).toMatchObject({ status: 'refused', reason: 'pinned' });
+    expect(h.snapshot().sessions.s1?.title).toBe('mine');
+    expect(h.store.retitleSession('s2', 'zsh')).toEqual({ status: 'done' });
+    expect(h.snapshot().sessions.s2).not.toHaveProperty('titlePinned');
+  });
+
+  it('changes nothing for the title it already has when it is theirs, and pins the title the owner gave when the person confirms it', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'zsh'));
+    expect(h.store.renameSession('s1', 'zsh')).toEqual({ status: 'done' });
+    expect(h.snapshot().sessions.s1).toMatchObject({ title: 'zsh', titlePinned: true });
+    const told = h.notified();
+    expect(h.store.renameSession('s1', ' zsh ')).toEqual({ status: 'noop' });
+    expect(h.notified()).toBe(told);
+  });
+
+  it('refuses a missing session, an empty title, a title that is not text and a held session, as the owner\'s naming does', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'a'));
+    expect(h.store.renameSession('nope', 'x')).toMatchObject({ status: 'refused', reason: 'missing' });
+    expect(h.store.renameSession('s1', '   ')).toMatchObject({ status: 'refused', reason: 'invalid' });
+    expect(h.store.renameSession('s1', 5 as unknown as string)).toMatchObject({ status: 'refused', reason: 'invalid' });
+    expect(h.snapshot().sessions.s1).not.toHaveProperty('titlePinned');
+  });
+
+  it('cuts the title as a title is cut, and drops control characters: a name is text a tab draws on one line', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'a'));
+    h.store.renameSession('s1', `x${'y'.repeat(LIMITS.text + 50)}`);
+    expect(h.snapshot().sessions.s1?.title).toHaveLength(LIMITS.text);
+    h.store.renameSession('s1', 'a\u001b[31m\nb\u0007\u202ec');
+    expect(h.snapshot().sessions.s1?.title).toBe('a[31mbc');
+    expect(h.store.renameSession('s1', '\u001b\u0007')).toMatchObject({ status: 'refused', reason: 'invalid' });
+  });
+
+  it('drops control characters from a title the owner gives too', () => {
+    const h = boot({ hostTools: HOST_TOOLS });
+    h.store.openSession(session('terminal', 'host', 'a'));
+    h.store.retitleSession('s1', 'vim\u001b]8;;x\u0007 \n notes');
+    expect(h.snapshot().sessions.s1?.title).toBe('vim]8;;x  notes');
+  });
+});
+
 describe('closing a session', () => {
   const three = () => {
     const h = boot({ hostTools: HOST_TOOLS });

@@ -2911,3 +2911,100 @@ describe('the marks of the shell', () => {
     expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
   });
 });
+
+// THE TITLE A PROGRAM SETS (issue #695 step 4; protocol section 4b). The host reads OSC 0 and 2 and says the title with its own word that a program runs; the feed shows the title only while the host says a program runs, and the
+// page never decides it. The title is untrusted text: bounded, with no control character, and drawn as text only.
+
+describe('the title a program sets', () => {
+  it('is in the status while the host says a program runs, and not before, and not once it says none does', async () => {
+    const r = await running();
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+    r.stream().title('vim: notes', true);
+    expect(r.feed.getSnapshot().title).toBe('vim: notes');
+    r.stream().title('vim: notes', false);
+    expect(r.feed.getSnapshot().title, 'the shell\'s own title, or a title no program holds, is not the tab\'s').toBeUndefined();
+  });
+
+  it('does not infer that a program runs: a busy fact, output and a start mark with no title frame make no title, and a title frame that says no program makes none', async () => {
+    const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'busy', name: 'vim', pgid: 9 }) } });
+    r.stream().output(0, '\u001b]2;looks like a title\u0007');
+    r.stream().marks(start(40));
+    expect(await r.feed.busy?.()).toEqual({ state: 'busy', name: 'vim' });
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+    r.stream().title('shell title', false);
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+  });
+
+  it('tells its listeners once for each change of what the status says, and for nothing else', async () => {
+    const r = await running();
+    let told = 0;
+    r.feed.subscribe(() => {
+      told += 1;
+    });
+    r.stream().title('a', true);
+    r.stream().title('a', true);
+    expect(told).toBe(1);
+    r.stream().title('b', true);
+    expect(told).toBe(2);
+    r.stream().title('b', false);
+    r.stream().title('c', false);
+    expect(told).toBe(3);
+    const before = r.feed.getSnapshot();
+    r.stream().title('c', false);
+    expect(r.feed.getSnapshot(), 'the same status object until something in it changes').toBe(before);
+  });
+
+  it('is gone with the terminal: an ended, a failed and a lost terminal say no title', async () => {
+    const ended = await running();
+    ended.stream().title('vim', true);
+    ended.stream().ended();
+    expect(ended.feed.getSnapshot().state).toBe('ended');
+    expect(ended.feed.getSnapshot().title).toBeUndefined();
+
+    const taken = await running();
+    taken.stream().title('vim', true);
+    taken.stream().takenOver();
+    expect(taken.feed.getSnapshot().title).toBeUndefined();
+
+    const lost = await running();
+    lost.stream().title('vim', true);
+    lost.stream().drop();
+    expect(lost.feed.getSnapshot().title).toBeUndefined();
+  });
+
+  it('is bounded and clean: no control character, no separator, no bidirectional control, valid text, at most 256 bytes, whatever the host sent', async () => {
+    const r = await running();
+    r.stream().title('a\u001bb\u0007c\u0085d\u2028e\u202ef\ng\th', true);
+    expect(r.feed.getSnapshot().title).toBe('abcdefgh');
+    r.stream().title('x'.repeat(100_000), true);
+    expect(r.feed.getSnapshot().title).toBe('x'.repeat(256));
+    r.stream().title('東'.repeat(200), true);
+    expect(new TextEncoder().encode(r.feed.getSnapshot().title ?? '').length).toBeLessThanOrEqual(256);
+    expect(r.feed.getSnapshot().title).toBe('東'.repeat(85));
+    r.stream().title('lone \ud800 surrogate', true);
+    expect(r.feed.getSnapshot().title).toBe('lone \ufffd surrogate');
+    // A title with markup is text: it is kept as the characters it is, for the tab to draw as text.
+    r.stream().title('<img src=x onerror=alert(1)>', true);
+    expect(r.feed.getSnapshot().title).toBe('<img src=x onerror=alert(1)>');
+  });
+
+  it('says no title for one that is empty once cleaned', async () => {
+    const r = await running();
+    r.stream().title('vim', true);
+    r.stream().title('\u001b\u0007  \u202e', true);
+    expect(r.feed.getSnapshot().title).toBeUndefined();
+  });
+
+  it('takes no word of a frame it cannot read: nothing throws, the title it has stands, and a good frame after it is taken', async () => {
+    const r = await running();
+    r.stream().title('vim', true);
+    for (const bad of [undefined, null, 'x', 5, {}, { v: 1 }, { v: 1, title: 5, program: true }, { v: 1, title: 'x', program: 'yes' }, { v: 1, title: 'x' }, { v: 2, title: 'x', program: true }, { title: 'x', program: true }]) {
+      r.stream().rawTitle(bad);
+    }
+
+    expect(r.feed.getSnapshot().state).toBe('running');
+    expect(r.feed.getSnapshot().title).toBe('vim');
+    r.stream().title('less', true);
+    expect(r.feed.getSnapshot().title).toBe('less');
+  });
+});

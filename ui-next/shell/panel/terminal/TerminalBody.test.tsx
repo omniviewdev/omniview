@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore, HOST, type PanelStore, type Session } from '../../core/panel';
+import { RenamingProvider, type Renaming } from '../renaming';
 import type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './feed';
 import { createScreenReaderChoice, SCREEN_READER_COMMAND, type ScreenReaderChoice } from './screenReader';
 import { sessionStateOf } from './state';
@@ -30,7 +31,7 @@ type Rig = {
 
 let counter = 0;
 
-function mount(options: { readonly focus?: boolean; readonly visible?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly screenReader?: boolean; readonly retitle?: boolean; readonly name?: string } = {}): Rig {
+function mount(options: { readonly focus?: boolean; readonly visible?: boolean; readonly state?: TerminalFeedSnapshot['state']; readonly screenReader?: boolean; readonly retitle?: boolean; readonly name?: string; readonly renaming?: Renaming } = {}): Rig {
   counter = 0;
   const store = createPanelStore({ now: () => 1_000, newId: () => `s${String(++counter)}` });
   store.registerTool(TERMINAL_TOOL);
@@ -55,7 +56,8 @@ function mount(options: { readonly focus?: boolean; readonly visible?: boolean; 
   const opened = sessions.open(target, { focus: options.focus === true });
   const id = opened?.id ?? '';
   const session = () => store.getSnapshot().sessions[id];
-  const ui = (visible: boolean) => <TerminalBody sessions={sessions} session={session()} visible={visible} load={loader.load} screenReader={counted} {...(options.name === undefined ? {} : { name: options.name })} />;
+  const body = (visible: boolean) => <TerminalBody sessions={sessions} session={session()} visible={visible} load={loader.load} screenReader={counted} {...(options.name === undefined ? {} : { name: options.name })} />;
+  const ui = (visible: boolean) => (options.renaming === undefined ? body(visible) : <RenamingProvider renaming={options.renaming}>{body(visible)}</RenamingProvider>);
   const view = render(ui(options.visible ?? true));
   return {
     store,
@@ -109,11 +111,11 @@ describe('a session with no feed', () => {
 });
 
 describe('a session with a feed', () => {
-  it('draws the toolbar (Find, Clear and Copy selection), the screen and the lane, and loads no emulator while it is not on screen', async () => {
+  it('draws the toolbar (Find, Clear, Copy selection and Rename session), the screen and the lane, and loads no emulator while it is not on screen', async () => {
     const { loader } = mount({ visible: false });
     await flush();
     const toolbar = page.getByRole('toolbar', { name: 'Terminal tools' });
-    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Find', 'Clear', 'Copy selection']);
+    expect(within(toolbar).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual(['Find', 'Clear', 'Copy selection', 'Rename session']);
     expect(document.querySelector('[data-shell-part="terminalScreen"]')).not.toBeNull();
     expect(loader.loads()).toBe(0);
   });
@@ -354,6 +356,28 @@ describe('the toolbar', () => {
       page.getByRole('button', { name: 'Clear' }).click();
     });
     expect(loader.engines[0]?.clears()).toBe(1);
+  });
+
+  it('asks the panel to rename the tab of its session when Rename session is pressed (the mock\'s S117 table), and gives the keyboard to the field the tab draws', async () => {
+    const request = vi.fn();
+    const renaming: Renaming = { current: () => null, request, clear: vi.fn(), subscribe: () => () => undefined };
+    const { session } = mount({ renaming });
+    await flush();
+    const button = page.getByRole('button', { name: 'Rename session' });
+    expect(button).not.toHaveAttribute('aria-disabled');
+    act(() => {
+      button.click();
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(session().id);
+  });
+
+  it('cannot rename where there is no tab to draw the field in, says why, and stays reachable', async () => {
+    mount();
+    await flush();
+    const button = page.getByRole('button', { name: 'Rename session' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAccessibleDescription('The session\'s tab is not on screen');
   });
 
   it('cannot copy before something is selected, says why, and stays reachable', async () => {
