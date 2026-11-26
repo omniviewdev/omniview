@@ -35,8 +35,9 @@ The page keeps the capability **in memory and in its own tab's `sessionStorage`,
 | Call | Answers |
 |---|---|
 | `CloseChannelTerminal(capability)` | ends the terminal as `CloseSession` does and returns when it is gone |
-| `ChannelTerminalBusy(capability)` | `terminal.Foreground` (`idle`, `busy` with the program's name, `unknown`) |
+| `ChannelTerminalBusy(capability)` | `terminal.Foreground` (`idle`, `busy` with the program's name, `unknown`). For a shell with the integration, a command that the shell said it started and has not ended (section 4a) makes it `busy` even while the shell holds the foreground (a builtin loop); the process that holds the foreground makes it `busy` as before. |
 | `ChannelTerminalCwd(capability)` | `terminal.Directory` |
+| `ChannelTerminalCommands(capability)` | `terminal.Commands`: the record of the commands the shell's integration told of (section 4a): at most 512, oldest first, each with its output's offsets, exit status, directory, line (only with the nonce) and the host's times |
 | `ListChannelTerminals(capabilities)` | `ChannelListed[]`: one entry for each capability that opens a terminal or the kept end of one, **in the order given, naming the terminal by its id**; none for a capability that opens nothing. It never enumerates: at most 1,024 capabilities, and nothing is answered for one that was not given. Match entries to your slots by `id`. |
 | `DismissChannelTerminal(capability)` | forgets the end a terminal left (section 9). A terminal that is alive is closed, not dismissed. |
 
@@ -48,7 +49,7 @@ One frame is one binary message of the stream: a **1-byte type**, then the paylo
 
 | Type | Name | Direction | Payload |
 |---|---|---|---|
-| `0x01` | `attach` | page to host | UTF-8 JSON `{"v":2,"cap":"<capability>","from_offset":<u64, optional>,"writer":"<32 lowercase hex digits, optional>"}`, at most 1,024 bytes. **The first frame of the stream, and the only attach.** |
+| `0x01` | `attach` | page to host | UTF-8 JSON `{"v":2,"cap":"<capability>","from_offset":<u64, optional>,"writer":"<32 lowercase hex digits, optional>","marks":<1, optional>}`, at most 1,024 bytes. **The first frame of the stream, and the only attach.** |
 | `0x02` | `input` | page to host | the raw bytes, at most 1 MiB (`channel_max_input_bytes`). An empty input is a no-op. |
 | `0x03` | `resize` | page to host | `cols` (u16), `rows` (u16); each from 1 to 1,000. |
 | `0x04` | `ack` | page to host | `n` (u32): bytes of **output** the page parsed since its last acknowledgement. |
@@ -65,7 +66,43 @@ One frame is one binary message of the stream: a **1-byte type**, then the paylo
 | `0x8a` | `close-refused` | host to page | empty. A `close` of a stream that does not hold the terminal (a watcher): nothing ended, the stream goes on as a watcher. At least one is sent for the closes the stream sent while the sender was busy (they may be coalesced). |
 | `0x89` | `unsupported` | host to page | UTF-8 JSON `{"v":2}`: the version the host speaks. The answer to a well-formed `attach` of another version; the host closes the stream. It is decided from the request alone, before any capability is looked at, so it says nothing about whether the capability opens a terminal. |
 
+| `0x8b` | `marks` | host to page | UTF-8 JSON `{"v":1,"marks":[...]}`, section 4a. **Sent only to a page whose attach said `"marks":1`.** |
+
 There is no `lease` frame: while a stream holds the terminal no lease runs, and when it ends there is nobody to tell. `ready.lease_ms` states how long the terminal is kept after this stream ends.
+
+## 4a. The marks (issue #694 step 4)
+
+A shell with the host's integration tells the terminal where each command starts and ends, with what status and in which directory (OSC 133, OSC 633 `E` and `P`, OSC 7). The host reads those marks out of the output in the one step that appends the output to its ring, so that a mark's offsets are the offsets of the output frames, and sends them typed.
+
+**Version.** The stream stays version 2: the frame is additive, and a page of version 2 that does not know it is not broken, because the host sends it **only to a page that asks**. The attach carries `"marks":1` (the version of the frame the page reads; absent or 0, or any other number, asks for none), and the `ready` of a stream that will carry marks says `"marks":1` (absent otherwise: no integration, or the page did not ask). A host that is older than the frame reads the member as nothing; a page that asked and is not told by `ready` expects none.
+
+**The frame.** Type `0x8b`, then UTF-8 JSON `{"v":1,"marks":[<mark>,...]}` with at least one mark, in the order of the output:
+
+```json
+{"kind":"command-end","at":412,"end":423,"id":"c3","trust":"unverified","exit":0,"duration_ms":1500,"time_ms":1769000001500}
+```
+
+| Member | Meaning |
+|---|---|
+| `kind` | `prompt-start` (133 A), `input-start` (B), `command-start` (C), `command-end` (D), `cwd` (633 P) |
+| `at`, `end` | the offsets of the mark's sequence in the terminal's output: `[at, end)` holds its bytes. The mark is sent when the page stands at `end` (below). |
+| `id` | the command it belongs to (`c1`, `c2`, ...), the same on every mark of a command; absent for an end that closes no command |
+| `trust` | `nonce` for what the shell proved with the session's nonce (the command line of a `command-start`, the directory of a `cwd`), `unverified` for every prompt and command mark: any program in the terminal can print those, so they serve a gutter and a jump and nothing else. The host decides it; the page never sees the nonce. |
+| `command` | the command line, only on a `command-start` with trust `nonce` (it is the user's data) |
+| `cwd` | the directory, only on a `cwd` mark (always `nonce`) |
+| `exit`, `duration_ms` | on a `command-end`: the status when the shell sent one (pwsh sends none), and how long the command ran |
+| `time_ms` | on a `command-start` and a `command-end`: Unix milliseconds on the host's clock when it read the mark, never the page's |
+| `redraw` | a `prompt-start` that is the same prompt drawn again |
+
+**Where it comes.** A mark comes **after the bytes of its sequence**, and the output is cut so that the page stands exactly at `end` when it takes the frame: the frame that carries the bytes up to a mark's `end` stops there, and the marks that end at that offset follow it. A page that creates a marker for the mark creates it at the position it has parsed to (xterm.js: a marker made after a `write` that has not parsed yet reads line 0). A page that did not ask is not cut, and is sent no frame. Marks that were due together (a page that was behind) come in one frame, at most 64.
+
+**Replay.** The host keeps the newest 1,024 marks of a terminal at least and never more than twice that, beside the output. A stream that attaches is sent, after the bytes they follow, the marks that end after the first byte of its replay; one that attaches **by an offset the host has** (`ready.start` equals `from_offset`) is sent the mark that ends **at** that offset again, because the stream that dropped may have cut after the bytes and before the frame. The page keeps the end of the last mark it took and takes none that ends at or before it. So a replay, from the start or from an offset, gives the same marks at the same offsets. A `gap` skips the marks that end inside it, and the page forgets its marks with the screen it resets. A terminal that ended by itself keeps its marks with its output (section 9).
+
+**What is believed.** A terminal whose shell has no integration (the create answer's `integration` is not `on`) has no nonce and no marks: whatever a program prints, no frame, and no command that is "running". For one that has: a mark with a wrong or missing nonce gives no command line and no directory (the host counts it and says nothing); a directory that anything could have printed (OSC 7) is dropped, not sent with a lower trust. A command is **running** for the host only when its start mark came with a command line the nonce vouches for, and stops when an end mark comes (a program can print an end mark, which makes a running command read idle: the process that holds the foreground is still asked, so a program that holds it stays `busy`). This is the producer's fact for a close: a builtin loop, or any command, in a shell that holds the foreground reads `busy` where it read `idle` (B-106); a stopped job still reads `idle` from the marks, since the shell says its command ended.
+
+**The record.** `ChannelTerminalCommands(capability)` reads the commands the marks described, newest 512, oldest first (`terminal.Commands`: `integration`, `running`, `cwd`, `cwd_trust`, `end`, `commands`; each command `id`, `state` (`prompt`, `input`, `running`, `ended`), `ran`, `command_line` and `command_trust`, `cwd` and `cwd_trust`, `exit_code`, `started_unix_ms`, `ended_unix_ms`, `prompt_offset`, `output_start` and `output_end`: `[output_start, output_end)` is what the command printed). It is read in one step with `end`, the length of the output the record was read at.
+
+**The nonce.** It is the host's secret and the shell's: the shell prints it inside its own marks, so the output stream holds it (whoever holds the capability reads the output, and the nonce protects against programs that print forged marks, not against a reader of the output). It is in no other frame, answer, record, event or log line of the host.
 
 ## 5. The handshake
 
@@ -152,7 +189,7 @@ A page that was hidden for a minute under `yes` and wakes sees, instead: `82 <of
 
 1. Opens `Stream('terminal')`, sets `binaryType = 'arraybuffer'`, waits for `open`, sends `attach` with its capability and `from_offset` (the offset it applied up to, absent for a fresh emulator).
 2. Takes `ready` first, sets up the emulator from `start_size`, `start_modes`, writes the replay muted, then `size`.
-3. Applies `output` by offset (it never needs to drop a duplicate: there is none), `gap` as in section 6, `ended`, `taken-over` (stops typing, shows the terminal as taken and keeps the stream: it is a watcher), `close-refused` (its close ended nothing: it is not the holder), `released` (the terminal is free: shows "take it back"; it needs no poll); a watcher that closes with no `released` and no `ended` (the page lost the way to be told): the page offers "take it back" anyway, without saying the taker has gone, asks the host who holds the terminal (the press asks it again before it attaches, and attaching takes the terminal), `applied` (drops from its buffer the bytes of input up to `n`), `unsupported` (the host speaks another version: stops, does not retry), `not-found` (forgets the capability).
+3. Applies `marks` (section 4a: it asked for them with `marks:1` in its attach; it takes each mark once by its end offset and knows from them that a command runs), `output` by offset (it never needs to drop a duplicate: there is none), `gap` as in section 6, `ended`, `taken-over` (stops typing, shows the terminal as taken and keeps the stream: it is a watcher), `close-refused` (its close ended nothing: it is not the holder), `released` (the terminal is free: shows "take it back"; it needs no poll); a watcher that closes with no `released` and no `ended` (the page lost the way to be told): the page offers "take it back" anyway, without saying the taker has gone, asks the host who holds the terminal (the press asks it again before it attaches, and attaching takes the terminal), `applied` (drops from its buffer the bytes of input up to `n`), `unsupported` (the host speaks another version: stops, does not retry), `not-found` (forgets the capability).
 4. Sends `input`, `resize`, `ack`, `close` (to end the terminal, on a live stream) and `detach` on `pagehide`. A tab that closes while it holds a live stream sends `close` and waits for `ended` or `close-refused` on that stream; a tab whose stream is down sends nothing (the lease ends the terminal: a stream that is not attached cannot close, and an attach would take the terminal from its holder), and `CloseChannelTerminal` is for the terminal it made and never attached. It never retries a frame on a stream: order is the stream's. It keeps the input it sent that the host has not said it applied (`ready.input_applied`, then `applied`), and after a new `ready` it sends the bytes after `input_applied` again, once and in order.
 5. When the stream closes with no `ended`, `taken-over`, `released`, `unsupported` or `not-found`, it attaches again with its offset, with a backoff, and gives up after a few tries.
 
