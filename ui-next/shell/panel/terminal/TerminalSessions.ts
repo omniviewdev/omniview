@@ -59,7 +59,7 @@ export type TerminalSessionsOptions = {
    * Makes the target that attaches the terminal of a session again (T2d), given the id of the terminal (the feed's own `id`, else the session's): what `takeBack` opens for a session whose terminal another tab took over and the person wants back. The host's own shell makes it with the page's
    * key. Absent: a terminal this window lost cannot be taken back.
    */
-  readonly reattach?: ((session: SessionId) => TerminalTarget) | undefined;
+  readonly reattach?: ((session: SessionId, lost?: TerminalFeedHandle) => TerminalTarget) | undefined;
   /** Makes the target that starts a terminal in place of an ended one (#695 step 5): what `restart` opens for a session, given what the ended feed said a restart is made from and the session's id. Absent: nothing is restarted. */
   readonly restart?: ((restart: TerminalRestart, session: SessionId) => TerminalTarget) | undefined;
   /**
@@ -754,7 +754,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         await askFeed(old.plugin, (): Promise<void> | undefined => old.feed.refresh?.({ fresh: true }), 'could not ask who holds the terminal');
         // The answer came, and the session may not be what it was: its tab closed, the window stopped, the terminal ended, or somebody holds it now. Then nothing is attached.
         // The answer is the host's: a terminal it did not say is free (a holder it names, or no answer at all) is not attached, because attaching takes a terminal from whoever holds it.
-        return lostEntry(session) === old && old.feed.getSnapshot().detached?.free === true && replaceFeed(session, old, () => reattach(old.feed.id ?? session), 'take the terminal back');
+        return lostEntry(session) === old && old.feed.getSnapshot().detached?.free === true && replaceFeed(session, old, () => reattach(old.feed.id ?? session, old.feed), 'take the terminal back');
       } finally {
         old.taking = false;
       }

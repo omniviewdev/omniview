@@ -252,6 +252,11 @@ export type TerminalFeedHandle = {
    * asks nothing and starts nothing. A producer that cannot leaves it out, and nothing is restarted.
    */
   readonly restart?: (() => TerminalRestart | undefined) | undefined;
+  /**
+   * What the terminal was asked to start with: the shell and its arguments, and the environment (never the directory: the host says where it started). A take-back carries it to the feed it attaches, which cannot ask the host for it, so that a restart
+   * after the take-back runs the same. Pure. `undefined` when it was asked for nothing; a producer that cannot leaves it out.
+   */
+  readonly launch?: (() => { readonly command?: readonly string[] | undefined; readonly env?: Readonly<Record<string, string>> | undefined } | undefined) | undefined;
 };
 
 /** What opens a terminal session: plain data and one function. Who supplies it (the host's own shell today) is not the registry's business. */

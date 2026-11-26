@@ -1293,7 +1293,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       expect(r.terminals.sessions.canTakeBack('term-a')).toBe(true);
       await expect(r.terminals.sessions.takeBack('term-a')).resolves.toBe(true);
       expect(reattach).toHaveBeenCalledTimes(1);
-      expect(reattach).toHaveBeenCalledWith('term-a');
+      expect(reattach).toHaveBeenCalledWith('term-a', expect.anything());
       expect(r.terminals.sessions.feedOf('term-a')).toBe(again);
       expect(old.closed()).toBe(1);
       expect(stateOf(r.store, 'term-a')).toBe('starting');

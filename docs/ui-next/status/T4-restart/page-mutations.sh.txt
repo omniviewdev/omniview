@@ -238,5 +238,39 @@ run words-for-a-removed-directory "$P/state.ts" \
   "s/note: 'The directory it started in is gone\.'/note: 'The directory is not known.'/" \
   'says that the terminal started in the home directory because the one it started in was removed'
 
+# ---- review of step 5: the survivors, and what was added ----
+
+run screen-enter-repeat "$P/screen.ts" \
+  's/ && !event\.repeat//' \
+  'does not restart for an Enter that is held'
+
+run body-enter-restart-no-flush "$P/TerminalBody.tsx" \
+  's/^        made\.flush\(\);$/        void made;/' \
+  'when Enter restarts it as when the button does'
+
+run body-button-restart-no-flush "$P/TerminalBody.tsx" \
+  's/^    screen\.flush\(\);$/    void screen;/' \
+  'the last lines of the transcript are not lost to the restart'
+
+run screen-keeps-a-held-replay "$P/screen.ts" \
+  's/^      replayHeld = undefined;$/      replayHeld = replayHeld;/' \
+  'drops a replay the ended feed gave'
+
+run restart-hint-end-not-over "$P/execFeed.ts" \
+  '/if \(hint !== undefined\) \{/,/over\(/ s/processOver = true;/processOver = false;/' \
+  'when the stream drops after its whole replay'
+
+run restart-keeps-args-of-a-missing-shell "$P/execFeed.ts" \
+  's/\.\.\.\(shellReplaced \? \[\] : /...(false ? [] : /' \
+  'runs the shell that actually ran with none of the arguments'
+
+run feed-says-no-launch "$P/execFeed.ts" \
+  's/^    launch: \(\) => \{$/    launch: () => { return undefined;/' \
+  'says what it was asked to start with'
+
+run takeback-drops-the-lost-feed "$P/TerminalSessions.ts" \
+  's/reattach\(old\.feed\.id \?\? session, old\.feed\)/reattach(old.feed.id ?? session)/' \
+  'gives the window the feed that was lost with the id'
+
 if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
 exit $bad

@@ -3223,3 +3223,34 @@ describe('a terminal that started another shell than the one it asked for (`star
     expect(r.feed.getSnapshot().startNote).toBe('home-for-removed-directory');
   });
 });
+
+describe('review of #695 step 5: a restart runs the shell that ran, and what it was asked for is told on', () => {
+  it('runs the shell that actually ran with none of the arguments asked for the shell that was not there: a fallback shell is not given a foreign option', async () => {
+    const replaced = (id: string) => ({ id, shell: { path: '/bin/bash', name: 'bash', requested: '/opt/gone/zsh' }, cwd: '/home/u' });
+    const r = await running({ shell: 'bash', shellPath: '/bin/bash' }, { launch: { command: ['/opt/gone/zsh', '-f'] }, channels: { create: replaced } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(r.feed.restart?.()?.command).toEqual(['/bin/bash']);
+  });
+
+  it('keeps the arguments when the shell that ran is the one that was asked for', async () => {
+    const r = await running({ shellPath: '/bin/zsh' }, { launch: { command: ['/bin/zsh', '-f'] } });
+    r.stream().ended({ reason: 'exited', exit_code: 0 });
+    expect(r.feed.restart?.()?.command).toEqual(['/bin/zsh', '-f']);
+  });
+
+  it('says what it was asked to start with, for a terminal it made and for one it attached to, and nothing when it was asked for nothing', async () => {
+    const made = rig({ launch: { command: ['/bin/zsh', '-f'], env: { A: '1' }, cwd: '/work' } });
+    expect(made.feed.launch?.()).toEqual({ command: ['/bin/zsh', '-f'], env: { A: '1' } });
+    const attached = attaching({ launch: { command: ['/bin/zsh'], env: { B: '2' } } });
+    expect(attached.feed.launch?.()).toEqual({ command: ['/bin/zsh'], env: { B: '2' } });
+    expect(rig().feed.launch?.()).toBeUndefined();
+  });
+
+  it('is offered for a terminal the listing said had ended, when the stream drops after its whole replay and before its end (the hint of the ready)', async () => {
+    const r = attaching({ ended: true, program: 'zsh', shell: '/usr/bin/zsh' });
+    r.stream().ready({ start: 0, end: 0, shellPath: '/usr/bin/zsh', ended: { reason: 'exited', exit_code: 2 } });
+    r.stream().drop();
+    expect(r.feed.getSnapshot()).toMatchObject({ state: 'ended', exit: { code: 2 } });
+    expect(r.feed.restart?.()).toMatchObject({ id: 'term-1', command: ['/usr/bin/zsh'] });
+  });
+});

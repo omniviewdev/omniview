@@ -3097,3 +3097,41 @@ describe('Enter in a screen that takes no input restarts it (`onRestart`)', () =
     expect(r.engine().key({ key: 'Enter', code: 'Enter', keyCode: 13 })).toEqual({ handled: true, defaultPrevented: false });
   });
 });
+
+describe('what a restart must not lose or repeat (review of #695 step 5)', () => {
+  const ENTER = { key: 'Enter', code: 'Enter', keyCode: 13 } as const;
+
+  async function shown(options: RigOptions = {}) {
+    const r = rig(options);
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    return r;
+  }
+
+  it('does not restart for an Enter that is held: a key repeating through the exit of the shell is not a press of Restart', async () => {
+    const onRestart = vi.fn(() => true);
+    const r = await shown({ onRestart });
+    r.feed.set({ state: 'ended', exit: { code: 0 } });
+    expect(r.engine().key({ ...ENTER, repeat: true })).toEqual({ handled: true, defaultPrevented: false });
+    expect(onRestart).not.toHaveBeenCalled();
+  });
+
+  it('drops a replay the ended feed gave while the emulator still parsed: it would reset the screen and wipe the transcript the restart keeps', async () => {
+    const r = await shown({ auto: false, reattach: { late: true } });
+    r.feed.push('abc');
+    r.frame();
+    expect(r.engine().pendingWrites()).toBe(1);
+    const modes = { altScreen: false, bracketedPaste: false, applicationCursor: false, focusEvents: false, cursorHidden: false, mouseTracking: 0, mouseEncoding: 0, kittyKeyboard: [] };
+    r.arrive({ data: bytesOf('old'), startSize: { cols: 80, rows: 24 }, startModes: modes, size: { cols: 80, rows: 24 }, modes, end: 3 });
+    r.frame();
+    expect(r.takes()).toBe(1);
+    r.screen.continueWith(fakeTerminalFeed({ state: 'starting' }));
+    r.engine().complete();
+    r.frame();
+    r.engine().complete();
+    expect(r.engine().resets()).toBe(0);
+    expect(r.engine().text()).not.toContain('old');
+  });
+});

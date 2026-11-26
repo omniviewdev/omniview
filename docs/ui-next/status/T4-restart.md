@@ -15,9 +15,23 @@
 - **Keys.** The lane has a Restart button; Enter in the screen of a session that takes no input asks the registry (plain Enter only; while the session takes input Enter is the shell's).
 - **Two presses.** One new terminal: the registry's swap is synchronous, so the second press finds a terminal that starts, and a press inside the open of the first is refused (`restarting`).
 
+## Known limits (documented, not fixed)
+
+- **A reload between the swap and the host's answer to the new terminal's create leaves the tab with neither terminal.** The registry lets the ended feed go at the swap, which dismisses its end at the host (`TerminalSessions.ts` `replaceFeed`), and the new terminal is made when the screen tells its first size. A fix (dismiss after the create is answered) needs a "made" signal on the feed handle; not cheap, so not done.
+- **The ended terminal's transcript is gone after any reload**: it was kept in the page's emulator only, and the restart dismissed its end at the host.
+- **Enter restarts an ended session** (the mock's key). A second Enter pressed at once after typing `exit` therefore restarts; a held key (`repeat`) does not.
+- A replaced shell restarts as the shell that ran with none of the arguments asked for the missing one.
+- A take-back carries what the lost terminal was asked to start with (`feed.launch()`, `reattach(id, lost)`), so a restart after it keeps the environment and arguments.
+
 ## Shas
 
-(see "Commits" at the end)
+Red: `0b260f1fc` (feed, target, registry, screen, body), `ddd533326` (take-back by the terminal's id), `a2be5c0a1` (flush), `48b914c77` (host wiring). Green: `e1b9f957f`. Controls and probe/seam reads: `605edbb20`, `35e769559`, and the seam text fix. Review round: see the log of the branch.
+
+## Checks run
+
+- vitest `ui-next/shell/panel` and `ui-next/plugins/host`; tsc app, test and kit; eslint: clean (two unrelated timing tests failed once under load and pass alone: `LogStreams.fuzz`, `PluginHost.unload`).
+- `bash docs/ui-next/status/T4-restart/page-mutations.sh.txt`: every control red in exactly the tests named, and green without them.
+- `task local:seam -- terminal-core,terminal-restart`: passed in both engines (SEAM_SHELL=/bin/bash).
 
 ## Not verified / out of scope
 

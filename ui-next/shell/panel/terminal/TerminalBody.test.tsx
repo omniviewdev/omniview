@@ -1282,6 +1282,15 @@ describe('Enter in the screen of an ended terminal', () => {
     expect(r.asked).toEqual([]);
   });
 
+  it('draws what the ended terminal still held before the new shell starts, when Enter restarts it as when the button does', async () => {
+    const r = await mountRestartable();
+    r.old.push('last\r\n');
+    r.end({ exit: { code: 3 } });
+    r.loader.engines[0]?.key(ENTER);
+    await flush();
+    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
+  });
+
   it('restarts once for two presses in a row: the second finds a terminal that starts', async () => {
     const r = await mountRestartable();
     r.end();

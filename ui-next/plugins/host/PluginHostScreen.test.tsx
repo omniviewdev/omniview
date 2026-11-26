@@ -161,6 +161,17 @@ describe('the terminal channels the screen gives the Terminal tool', () => {
     expect(localRestartTarget).toHaveBeenCalledWith(made, 'tab-3', channels);
   });
 
+  it('carry what the lost terminal was asked to start with into the terminal it attaches again, so that a restart after a take-back keeps the environment and the arguments (#695 step 5)', async () => {
+    vi.mocked(attachLocalTerminal).mockReturnValue({ plugin: 'host', id: 'local', title: 'zsh', sessionId: 'term-7', open: vi.fn() });
+    render(<PluginHostScreen />);
+    await waitFor(() => {
+      expect(world.given.length).toBeGreaterThan(0);
+    });
+    const launch = { command: ['/bin/zsh', '-f'], env: { A: '1' } };
+    drawn()?.terminals?.reattach?.('term-7', { launch: () => launch } as never);
+    expect(attachLocalTerminal).toHaveBeenCalledWith('term-7', undefined, channels, { launch });
+  });
+
   it('keep the window\'s slots as they were: the screen writes none for the terminals, which the channels keep themselves', async () => {
     render(<PluginHostScreen />);
     await waitFor(() => {

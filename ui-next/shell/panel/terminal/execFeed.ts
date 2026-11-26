@@ -418,6 +418,8 @@ type Ready = {
   readonly startedIn: string | undefined;
   /** The path of the shell the host says started (`session.shell.path`). */
   readonly shellPath: string | undefined;
+  /** The host started another shell in place of the one asked for (`session.shell.requested`). */
+  readonly replaced: boolean;
   /** How the terminal ended, when the host's `ready` says it had: its `ended` frame follows the replay. */
   readonly ended: unknown;
 };
@@ -459,6 +461,7 @@ function readyOf(value: unknown): Ready | undefined {
     program: programOf(Reflect.get(value, 'session')),
     startedIn: startOf(Reflect.get(value, 'session')),
     shellPath: shellPathOf(Reflect.get(value, 'session')),
+    replaced: replacedOf(Reflect.get(value, 'session')),
     ended: typeof ended === 'object' && ended !== null ? ended : undefined,
   };
 }
@@ -534,6 +537,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let startedIn: string | undefined;
   /** The path of the shell the host says started, from the answer to the call that made the terminal or the `session` of a `ready`: what a restart runs. */
   let startedShell: string | undefined = attachTo?.shell;
+  /** The host started another shell than the one asked for: the arguments asked for belong to the shell that was not there. */
+  let shellReplaced = false;
   /** The process is over for good, which only the host's word says: it ended (`ended`, whatever the reason, a failed pty included) or it does not know the terminal. What `restart` waits for. */
   let processOver = false;
   let fate: Fate = attachTo?.ended === true ? 'dismiss' : 'ours';
@@ -1006,6 +1011,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     startedIn = ready.startedIn ?? startedIn;
     startedShell = ready.shellPath ?? startedShell;
+    shellReplaced = shellReplaced || ready.replaced;
     if (status.state === 'starting') {
       const program = ready.program ?? createdProgram ?? status.program;
       const { startNote } = status;
@@ -1365,8 +1371,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       startedShell = shellPathOf(answer) ?? startedShell;
       startedIn = startOf(answer);
       // The host started another shell in place of the one asked for: the status says so, until the first thing is typed (the note of the directory, when there is one, is what the person is told first).
-      if (replacedOf(answer) && status.startNote === undefined) {
-        status = { ...status, startNote: 'shell-replaced' };
+      if (replacedOf(answer)) {
+        shellReplaced = true;
+        if (status.startNote === undefined) {
+          status = { ...status, startNote: 'shell-replaced' };
+        }
       }
 
       if (!closed() && !left && status.state === 'starting') {
@@ -1598,6 +1607,13 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
     },
 
+    launch: () => {
+      const asked = options.launch ?? attachTo?.launch;
+      const command = asked?.command === undefined || asked.command.length === 0 ? undefined : [...asked.command];
+      const env = asked?.env === undefined || Object.keys(asked.env).length === 0 ? undefined : asked.env;
+      return command === undefined && env === undefined ? undefined : { ...(command === undefined ? {} : { command }), ...(env === undefined ? {} : { env }) };
+    },
+
     restart: (): TerminalRestart | undefined => {
       if (!processOver) {
         return undefined;
@@ -1606,7 +1622,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       // What the terminal was asked to start with: its own launch, or what the listing said it was asked for (a page after a reload). The shell is the one the host says it started, with the arguments that were asked for.
       const asked = options.launch ?? attachTo?.launch;
       const path = startedShell;
-      const command = path === undefined ? (asked?.command === undefined || asked.command.length === 0 ? undefined : [...asked.command]) : [path, ...(asked?.command?.slice(1) ?? [])];
+      const command = path === undefined ? (asked?.command === undefined || asked.command.length === 0 ? undefined : [...asked.command]) : [path, ...(shellReplaced ? [] : (asked?.command?.slice(1) ?? []))];
       const env = asked?.env === undefined || Object.keys(asked.env).length === 0 ? undefined : asked.env;
       return { id, ...(command === undefined ? {} : { command }), ...(startedIn === undefined ? {} : { cwd: startedIn }), ...(env === undefined ? {} : { env }) };
     },
