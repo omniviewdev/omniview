@@ -384,11 +384,11 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       return;
     }
 
-    // A title the registry did not set is the person's (Rename session): the program does not take it back.
-    if (named === undefined || named === '' || named === entry.title || store.getSnapshot().sessions[id]?.title !== entry.title) {
+    if (named === undefined || named === '' || named === entry.title) {
       return;
     }
 
+    // A name the person gave (Rename session) is pinned in the panel's record, which refuses the owner's naming: the program does not take it back, and a reload keeps it.
     store.retitleSession(id, named);
     entry.title = store.getSnapshot().sessions[id]?.title ?? entry.title;
   };

@@ -117,12 +117,18 @@ export function setSessionState(state: PanelState, id: SessionId, change: StateC
   return { state: settle(patch(state, { sessions: Object.freeze({ ...state.sessions, [id]: next }) })), result: { status: 'done' } };
 }
 
+/** Characters a title never holds: controls (C0, DEL, C1), line and paragraph separators and bidirectional controls. A title is drawn on one line as text, and nothing in it may carry an escape sequence or reorder the tab's words. */
+const NOT_IN_A_TITLE = /[\p{Cc}\u2028\u2029\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+
+/** A title as the model keeps it: the words of `text` without what a title never holds. */
+const titleText = (value: unknown): string => (typeof value === 'string' ? text(value.replaceAll(NOT_IN_A_TITLE, '')) : '');
+
 /**
- * Gives a session another title: what its tab is called once its owner knows more than it did when it opened it (the name of the shell its host resolved, a title the program set). The title is cut as an opened
- * session's is. Only the title changes, so the state, the time, the place and the choices of the session are as they were; the tab's name, its twins and its ordinal follow from the snapshot (`selectors`). The same
- * title changes nothing. A held session (A21) is over and never changes again, so it is refused like a change of its state.
+ * The title of a session, from its owner (`pinned` false) or from the person (`pinned` true). The title is cut as an opened session's is and has no control character. Only the title (and the pin) change, so the state, the
+ * time, the place and the choices of the session are as they were; the tab's name, its twins and its ordinal follow from the snapshot (`selectors`). The same title changes nothing. A held session (A21) is over and never
+ * changes again, so it is refused like a change of its state. A session the person named refuses its owner's naming.
  */
-export function retitleSession(state: PanelState, id: SessionId, title: string): Step<PanelResult> {
+function titled(state: PanelState, id: SessionId, title: string, pinned: boolean): Step<PanelResult> {
   const session = own(state.sessions, id);
   if (session === undefined) {
     return refuse(state, 'missing', `There is no session ${id}.`);
@@ -132,24 +138,34 @@ export function retitleSession(state: PanelState, id: SessionId, title: string):
     return refuse(state, 'held', `The session ${id} ended when its plugin was unloaded and is kept as it is until it is closed.`);
   }
 
-  const cut = text(title);
+  if (!pinned && session.titlePinned === true) {
+    return refuse(state, 'pinned', `The session ${id} has the name its user gave it.`);
+  }
+
+  const cut = titleText(title);
   if (cut === '') {
     return refuse(state, 'invalid', 'A session needs a title.');
   }
 
-  if (cut === session.title) {
+  if (cut === session.title && (!pinned || session.titlePinned === true)) {
     return unchanged(state);
   }
 
-  const next: Session = Object.freeze({ ...session, title: cut });
+  const next: Session = Object.freeze({ ...session, title: cut, ...(pinned ? { titlePinned: true as const } : {}) });
   return { state: settle(patch(state, { sessions: Object.freeze({ ...state.sessions, [id]: next }) })), result: { status: 'done' } };
 }
 
 /**
- * The person names a session: its title is theirs from now on, and its owner's naming no longer changes it (`retitleSession` is refused). Cut as a title is cut. No behavior yet.
+ * Gives a session another title: what its tab is called once its owner knows more than it did when it opened it (the name of the shell its host resolved, a title the program set). A session the person named
+ * (`renameSession`) is refused: their name stands.
  */
-export function renameSession(state: PanelState, _id: SessionId, _title: string): Step<PanelResult> {
-  return unchanged(state);
+export function retitleSession(state: PanelState, id: SessionId, title: string): Step<PanelResult> {
+  return titled(state, id, title, false);
+}
+
+/** The person names a session: its title is theirs from now on, saved with the session, and its owner's naming no longer changes it (`retitleSession` is refused). */
+export function renameSession(state: PanelState, id: SessionId, title: string): Step<PanelResult> {
+  return titled(state, id, title, true);
 }
 
 /**

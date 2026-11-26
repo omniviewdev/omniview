@@ -24,7 +24,7 @@ export function serialise(state: PanelState): PersistedPanel {
   for (const id of state.order.slice(-LIMITS.persistedSessions)) {
     const session = own(state.sessions, id);
     if (session !== undefined) {
-      sessions.push({ id, tool: session.tool, plugin: session.plugin, title: session.title, scope: session.scope, ...(session.route === undefined ? {} : { route: session.route }) });
+      sessions.push({ id, tool: session.tool, plugin: session.plugin, title: session.title, scope: session.scope, ...(session.titlePinned === true ? { titlePinned: true as const } : {}), ...(session.route === undefined ? {} : { route: session.route }) });
     }
   }
 
@@ -144,5 +144,5 @@ function readSession(entry: unknown, now: number, taken: ReadonlyMap<SessionId, 
     }
   }
 
-  return Object.freeze({ id, tool, plugin, title, scope: text(entry.scope), state: 'ended' as const, since: now, cause: RESTORED_CAUSE, ...(route === undefined ? {} : { route }) });
+  return Object.freeze({ id, tool, plugin, title, scope: text(entry.scope), state: 'ended' as const, since: now, cause: RESTORED_CAUSE, ...(entry.titlePinned === true ? { titlePinned: true as const } : {}), ...(route === undefined ? {} : { route }) });
 }

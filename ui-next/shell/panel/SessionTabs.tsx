@@ -1,5 +1,5 @@
 import { Icon, IconButton, Text, hoverCard, hoverCardAnchor, isIconName, menuTrigger, tip, useMenu, type IconName, type MenuItem } from '@omniviewdev/kit';
-import { useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { platformOf } from '../core/chords';
 import type { SessionId, SessionState, ToolId } from '../core/panel';
 import { useMaybeNotices } from '../notices/context';
@@ -9,6 +9,7 @@ import type { PanelNewSessionMenu } from './host';
 import { focusTab } from './focus';
 import { useActiveSession, useSessionIds, useSessionItem, useToolItem } from './hooks';
 import styles from './Header.module.css';
+import { useRenaming } from './renaming';
 import { SessionRename } from './SessionRename';
 import { closeChordText, sessionName, sessionTabId } from './words';
 
@@ -28,6 +29,8 @@ type SessionTabProps = {
   /** The name is being edited: the tab draws the field in place of its button. */
   readonly renaming: boolean;
   readonly onRenamed: (id: SessionId, title: string | null, refocus: boolean) => void;
+  /** Starts the rename of this tab (a double click, F2). */
+  readonly onRename: (id: SessionId) => void;
 };
 
 /**
@@ -39,7 +42,7 @@ type SessionTabProps = {
  * tooltip. The close control is the pointer's, as the document tab's is: a tablist owns tabs and nothing else, so it is hidden from the accessibility tree and out of the tab order, and the keyboard
  * closes a session with Delete.
  */
-function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRenamed }: SessionTabProps) {
+function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRenamed, onRename }: SessionTabProps) {
   const { store } = usePanel();
   const item = useSessionItem(id);
   const tool = useToolItem(item?.tool ?? '');
@@ -71,13 +74,22 @@ function SessionTab({ id, stop, selected, controls, prefix, menu, renaming, onRe
         className={styles.sessionTab}
         aria-selected={selected}
         aria-controls={controls}
-        aria-keyshortcuts="Delete"
+        aria-keyshortcuts="F2 Delete"
         aria-label={sessionName(item)}
         tabIndex={stop ? 0 : -1}
         data-tab-id={id}
         {...hoverCard(id, { arrow: 'down' })}
         onClick={() => {
           store.activateSession(id);
+        }}
+        onDoubleClick={() => {
+          onRename(id);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'F2' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+            event.preventDefault();
+            onRename(id);
+          }
         }}
         onAuxClick={(event) => {
           if (event.button === 1) {
@@ -152,7 +164,15 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
   const label = useToolItem(tool)?.label ?? 'Tool';
   const ids = useSessionIds(tool);
   const active = useActiveSession(tool);
-  const [renaming, setRenaming] = useState<SessionId | null>(null);
+  // The rename of a tab is asked for from the tab (a double click, F2, the menu) and from the tool's own toolbar (the Terminal's Rename session): one request for the window, which the strip draws.
+  const renames = useRenaming();
+  const renaming = useSyncExternalStore(renames.subscribe, renames.current);
+  const rename = (id: SessionId): void => {
+    if (store.getSnapshot().sessions[id]?.held !== true) {
+      renames.request(id);
+    }
+  };
+
   const say = useMaybeNotices()?.announcer.polite.announce;
   const close = (id: SessionId): boolean => {
     const closed = store.closeSession(id);
@@ -190,7 +210,7 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
         label: 'Rename session…',
         disabled: store.getSnapshot().sessions[key]?.held === true ? 'The plugin was unloaded: this session stays as it is until it is closed.' : false,
         onSelect: () => {
-          setRenaming(key);
+          rename(key);
         },
       },
       ...(stopOf === undefined
@@ -257,10 +277,12 @@ export function SessionTabs({ tool, prefix, controls }: SessionTabsProps) {
           prefix={prefix}
           menu={menu}
           renaming={id === renaming}
+          onRename={rename}
           onRenamed={(session, title, refocus) => {
-            setRenaming(null);
-            if (title !== null) {
-              store.retitleSession(session, title);
+            renames.clear();
+            // A name left as it was is not a name the person gave: only a changed one is theirs, and pinned.
+            if (title !== null && title.trim() !== store.getSnapshot().sessions[session]?.title) {
+              store.renameSession(session, title);
             }
 
             if (refocus) {

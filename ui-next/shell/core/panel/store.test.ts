@@ -615,7 +615,7 @@ describe('naming a session (the person\'s name is theirs: the owner no longer na
     expect(h.store.renameSession('s1', '  my build \n')).toEqual({ status: 'done' });
     expect(h.notified()).toBe(told + 1);
     expect(h.snapshot().sessions.s1).toEqual({ ...before, title: 'my build', titlePinned: true });
-    expect(h.store.selectors.sessionItem(h.snapshot(), 's1')?.name).toBe('my build · dev');
+    expect(h.store.selectors.sessionItem(h.snapshot(), 's1')?.name).toBe('my build');
   });
 
   it('refuses the owner\'s naming of a session the person named, and takes the owner\'s naming of one they did not', () => {

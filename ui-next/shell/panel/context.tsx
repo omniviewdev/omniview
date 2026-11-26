@@ -1,5 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { PanelBindings } from './host';
+import { PanelRenaming } from './renaming';
 
 // The panel's bindings, handed down the shell's tree: the toggle, the strip and each body read their own slice of the model through them (./hooks.ts). The model itself is framework-free
 // (../core/panel); what owns it is whoever mounts the shell.
@@ -7,7 +8,11 @@ import type { PanelBindings } from './host';
 const PanelContext = createContext<PanelBindings | null>(null);
 
 export function PanelProvider({ panel, children }: { readonly panel: PanelBindings; readonly children: ReactNode }) {
-  return <PanelContext value={panel}>{children}</PanelContext>;
+  return (
+    <PanelContext value={panel}>
+      <PanelRenaming>{children}</PanelRenaming>
+    </PanelContext>
+  );
 }
 
 /** The panel of the shell this component is in. */

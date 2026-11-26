@@ -636,7 +636,7 @@ describe('naming the tab by what the producer says it runs', () => {
     const afterTitle = heard.mock.calls.length;
     feed.wake();
     expect(heard).toHaveBeenCalledTimes(afterTitle);
-    feed.set({ program: 'zsh' });
+    feed.set({ program: 'zsh', title: undefined });
     expect(store.getSnapshot().sessions[id]?.title).toBe('zsh');
   });
 
@@ -644,8 +644,11 @@ describe('naming the tab by what the producer says it runs', () => {
     const initial = savedPanel([{ id: 'term-a', title: 'my build', titlePinned: true }, { id: 'term-b', title: 'old shell' }]);
     const r = harness({ initial });
     const named = (status: { readonly program?: string | undefined; readonly title?: string | undefined }): string | undefined => status.title ?? status.program;
-    r.sessions.open(terminalOf(fakeTerminalFeed({ program: 'zsh' }), 'term-a', { title: 'zsh', retitle: named }));
-    r.sessions.open(terminalOf(fakeTerminalFeed({ program: 'zsh' }), 'term-b', { title: 'zsh', retitle: named }));
+    const [a, b] = [fakeTerminalFeed(), fakeTerminalFeed()];
+    a.set({ program: 'zsh' });
+    b.set({ program: 'zsh' });
+    r.sessions.open(terminalOf(a, 'term-a', { title: 'zsh', retitle: named }));
+    r.sessions.open(terminalOf(b, 'term-b', { title: 'zsh', retitle: named }));
     expect(r.store.getSnapshot().sessions['term-a']).toMatchObject({ title: 'my build', titlePinned: true });
     expect(r.store.getSnapshot().sessions['term-b']?.title, 'a name nobody gave is the shell\'s again').toBe('zsh');
   });

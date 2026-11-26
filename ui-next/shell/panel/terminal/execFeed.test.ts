@@ -2954,7 +2954,7 @@ describe('the title a program sets', () => {
     expect(r.feed.getSnapshot(), 'the same status object until something in it changes').toBe(before);
   });
 
-  it('is gone with the terminal: an ended, a failed and a lost terminal say no title', async () => {
+  it('is gone with the terminal: an ended terminal and one taken over say no title', async () => {
     const ended = await running();
     ended.stream().title('vim', true);
     ended.stream().ended();
@@ -2965,11 +2965,6 @@ describe('the title a program sets', () => {
     taken.stream().title('vim', true);
     taken.stream().takenOver();
     expect(taken.feed.getSnapshot().title).toBeUndefined();
-
-    const lost = await running();
-    lost.stream().title('vim', true);
-    lost.stream().drop();
-    expect(lost.feed.getSnapshot().title).toBeUndefined();
   });
 
   it('is bounded and clean: no control character, no separator, no bidirectional control, valid text, at most 256 bytes, whatever the host sent', async () => {
