@@ -2804,10 +2804,19 @@ describe('the marks of the shell', () => {
     const r = await running({ end: 0 });
     r.stream().output(0, 'x'.repeat(100));
     r.stream().marks(prompt(8), start(40), finish(60, { exit: 3 }));
+    const first = r.feed.marks?.();
+    expect(r.feed.marks?.(), 'the same list until another mark comes').toBe(first);
+    const before = [...(first ?? [])];
+    r.stream().marks(prompt(100));
+    expect(r.feed.marks?.()).not.toBe(first);
+    expect(first, 'the earlier snapshot is unchanged').toEqual(before);
+    r.stream().rawMarks({ v: 1, marks: [] });
+    expect(r.feed.marks?.().length).toBe(before.length + 1);
     expect(r.feed.marks?.()).toEqual([
       { kind: 'prompt-start', at: 0, end: 8, id: 'c2', trust: 'unverified' },
       { kind: 'command-start', at: 32, end: 40, id: 'c1', trust: 'nonce', command: 'sleep 30', timeMs: 1000 },
       { kind: 'command-end', at: 49, end: 60, id: 'c1', trust: 'unverified', exit: 3, durationMs: 30_000, timeMs: 31_000 },
+      { kind: 'prompt-start', at: 92, end: 100, id: 'c2', trust: 'unverified' },
     ]);
   });
 
@@ -2861,17 +2870,37 @@ describe('the marks of the shell', () => {
     expect(kept.at(-1)?.end).toBe(40_000);
   });
 
-  it('takes no word of a frame it cannot read: nothing throws, nothing is kept, the stream goes on', async () => {
+  it('takes no word of an envelope it cannot read: nothing throws, nothing is kept, the stream goes on, and a good frame after it is taken', async () => {
     const r = await running({ end: 0 });
-    r.stream().output(0, 'x'.repeat(40));
-    for (const bad of [undefined, null, 'x', 5, {}, { v: 1 }, { v: 1, marks: 'x' }, { v: 2, marks: [start(40)] }, { v: 1, marks: [{ kind: 'nope', at: 0, end: 8, trust: 'nonce' }, { kind: 'command-start', at: 'a', end: 8, trust: 'nonce' }, { kind: 'command-start', at: 0, end: 8, trust: 'maybe' }, { kind: 'command-start', at: 9, end: 8, trust: 'nonce' }, null] }]) {
-      expect(() => r.feed.marks, 'the accessor is there').not.toThrow();
-      // The test speaks past the fake's typing, as a host that breaks the protocol would.
-      (r.stream().marks as (...marks: unknown[]) => void)(bad);
+    r.stream().output(0, 'x'.repeat(80));
+    for (const bad of [undefined, null, 'x', 5, {}, { v: 1 }, { v: 1, marks: 'x' }, { v: 2, marks: [start(40)] }, { marks: [start(40)] }]) {
+      r.stream().rawMarks(bad);
     }
 
     expect(r.feed.marks?.()).toEqual([]);
     expect(r.feed.getSnapshot().state).toBe('running');
+    r.stream().marks(start(40));
+    expect(r.feed.marks?.().map((mark) => mark.kind)).toEqual(['command-start']);
+  });
+
+  it('drops the entries of a good frame that are not marks, one by one, and keeps the rest', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'x'.repeat(80));
+    r.stream().marks(
+      { kind: 'nope', at: 0, end: 8, trust: 'nonce' },
+      { kind: 'command-start', at: 'a', end: 8, trust: 'nonce' },
+      { kind: 'command-start', at: 0, end: 8, trust: 'maybe' },
+      { kind: 'command-start', at: 9, end: 8, trust: 'nonce' },
+      start(40),
+    );
+    expect(r.feed.marks?.().map((mark) => mark.end)).toEqual([40]);
+  });
+
+  it('says idle when the host says the terminal is gone, whatever a start mark said, and busy for any other failure of the question', async () => {
+    const gone = await running({ end: 0 }, { channels: { busy: async () => Promise.reject(goneError()) } });
+    gone.stream().output(0, 'x'.repeat(40));
+    gone.stream().marks(start(40));
+    expect(await gone.feed.busy?.()).toEqual({ state: 'idle' });
   });
 
   it('knows nothing of marks at the end of the terminal: what runs in an ended terminal is nothing', async () => {
