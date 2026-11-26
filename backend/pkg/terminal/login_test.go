@@ -372,13 +372,40 @@ func TestClosingHangsUpTheBackgroundJobsOfABashShell(t *testing.T) {
 // which the integration says with its second input-start mark (the first is the first prompt). With the integration bash runs its
 // prompt commands as a non-interactive shell, which does not hang its jobs up, between the end of a command and the first hook that
 // sets a handler (T5-inject-bash.md, the known gap: tens of microseconds, longer in wall time when the machine is busy); a test that
-// closed the instant the job is named would fall into it by its own timing. A bash with no integration has no such window.
+// closed the instant the job is named would fall into it by its own timing. A bash with no integration has no such window; one whose
+// integration is `unconfirmed` (it was slow to start) has it.
 func waitForThePromptAfterTheJob(t *testing.T, sink *chunkSink, info Session) {
 	t.Helper()
-	if info.Integration.State == IntegrationOn {
+	if info.Integration.State == IntegrationOn || info.Integration.State == IntegrationUnconfirmed {
 		require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 2 },
 			20*time.Second, 5*time.Millisecond, "the prompt after the job's command was never drawn")
 	}
+}
+
+// blockedReading says whether the process is asleep (state S) for a few polls in a row, which on Linux is what a shell is when it waits for
+// its next line: after it has drawn its prompt and done what it does around it. Where there is no /proc it says so (true): the wait
+// before it is the only one. (Stub: says yes.)
+func blockedReading(pid int, within time.Duration) bool {
+	return true
+}
+
+// A prompt that has just been drawn is not a shell that is waiting for input: bash is still, for a moment, in readline's redisplay (state
+// R) and a hangup that lands there does not hang its jobs up. Even bash with no integration at all does it (seen: 11 of 240 closes on a
+// busy machine). The wait is for the shell to be asleep.
+func TestBlockedReadingIsAnAsleepProcessAndNotAStoppedOne(t *testing.T) {
+	if _, err := os.Stat("/proc/self/stat"); err != nil {
+		t.Skip("NOT RUN: no /proc")
+	}
+	cmd := exec.Command("sleep", "30")
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	assert.True(t, blockedReading(cmd.Process.Pid, 5*time.Second), "a sleeping process is blocked")
+	require.NoError(t, cmd.Process.Signal(syscall.SIGSTOP))
+	require.Eventually(t, func() bool {
+		data, _ := os.ReadFile("/proc/" + strconv.Itoa(cmd.Process.Pid) + "/stat")
+		return strings.Contains(string(data), ") T ")
+	}, 5*time.Second, 5*time.Millisecond)
+	assert.False(t, blockedReading(cmd.Process.Pid, 300*time.Millisecond), "a stopped one is not")
 }
 
 // A bash that is slow to start says `unconfirmed` for its integration (it has not said `ready` in 500 ms) and still has it: the test
