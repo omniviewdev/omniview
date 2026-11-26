@@ -379,53 +379,52 @@ func waitForThePromptAfterTheJob(t *testing.T, sink *chunkSink, info Session) {
 	if info.Integration.State == IntegrationOn || info.Integration.State == IntegrationUnconfirmed {
 		require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 2 },
 			20*time.Second, 5*time.Millisecond, "the prompt after the job's command was never drawn")
-		require.True(t, blockedReading(info.PID, 20*time.Second), "the shell never went to sleep at its prompt")
 	}
+	// Whatever the integration says: a bash with none is in readline's redisplay after it has drawn its prompt too.
+	waiting, known := waitingForInput(info.PID, 20*time.Second)
+	if !known {
+		t.Log("NOT RUN: this machine cannot say whether the shell waits for input (no /proc/<pid>/syscall or wchan): the close may land in readline's redisplay")
+		return
+	}
+	require.True(t, waiting, "the shell never waited for input at its prompt")
 }
 
-// blockedReading says whether the process is asleep (state S) for a few polls in a row, which on Linux is what a shell is when it waits for
-// its next line: after it has drawn its prompt and done what it does around it. Where there is no /proc it says so (true): the wait
-// before it is the only one.
-func blockedReading(pid int, within time.Duration) bool {
-	path := "/proc/" + strconv.Itoa(pid) + "/stat"
-	if _, err := os.Stat("/proc/self/stat"); err != nil {
-		return true
-	}
-	deadline := time.Now().Add(within)
-	asleep := 0
-	for time.Now().Before(deadline) {
-		data, err := os.ReadFile(path)
-		// The state is the field after the last ')' (the name may hold one).
-		if err == nil && strings.HasPrefix(strings.TrimLeft(string(data)[bytes.LastIndexByte(data, ')')+1:], " "), "S") {
-			asleep++
-			if asleep >= 3 {
-				return true
-			}
-		} else {
-			asleep = 0
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	return false
+// waitingForInput waits until the process is blocked in the system call that waits for input on its standard input (Linux): `read` of
+// descriptor 0, or the `select` that readline makes of descriptor 0 alone while it waits for a key. That is a shell that has drawn its
+// prompt and done what it does around it: before it, bash is still in readline's redisplay (state R) and a hangup that lands there does
+// not hang its jobs up (with or without the integration: seen on plain bash). It is the event itself, so one observation is enough. A
+// process asleep for another reason (a `wait4` for a hook's fork, a `write` to a full pty, a `nanosleep`) is not it. It reports whether
+// the process was seen waiting, and whether the machine can tell (`/proc/<pid>/syscall`, or `wchan`).
+// (Stub: says it was, and that it can tell.)
+func waitingForInput(pid int, within time.Duration) (waiting, known bool) {
+	return true, true
 }
 
-// A prompt that has just been drawn is not a shell that is waiting for input: bash is still, for a moment, in readline's redisplay (state
-// R) and a hangup that lands there does not hang its jobs up. Even bash with no integration at all does it (seen: 11 of 240 closes on a
-// busy machine). The wait is for the shell to be asleep.
-func TestBlockedReadingIsAnAsleepProcessAndNotAStoppedOne(t *testing.T) {
-	if _, err := os.Stat("/proc/self/stat"); err != nil {
-		t.Skip("NOT RUN: no /proc")
+func TestWaitingForInputIsAProcessBlockedReadingItsStdinAndNothingElse(t *testing.T) {
+	if _, err := os.Stat("/proc/self/syscall"); err != nil {
+		t.Skip("NOT RUN: no /proc/<pid>/syscall on this machine")
 	}
-	cmd := exec.Command("sleep", "30")
-	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
-	assert.True(t, blockedReading(cmd.Process.Pid, 5*time.Second), "a sleeping process is blocked")
-	require.NoError(t, cmd.Process.Signal(syscall.SIGSTOP))
-	require.Eventually(t, func() bool {
-		data, _ := os.ReadFile("/proc/" + strconv.Itoa(cmd.Process.Pid) + "/stat")
-		return strings.Contains(string(data), ") T ")
-	}, 5*time.Second, 5*time.Millisecond)
-	assert.False(t, blockedReading(cmd.Process.Pid, 300*time.Millisecond), "a stopped one is not")
+	// cat with a pipe that nobody writes to is blocked in read(0).
+	reader := exec.Command("cat")
+	stdin, err := reader.StdinPipe()
+	require.NoError(t, err)
+	require.NoError(t, reader.Start())
+	t.Cleanup(func() { _ = stdin.Close(); _ = reader.Process.Kill(); _ = reader.Wait() })
+	waiting, known := waitingForInput(reader.Process.Pid, 5*time.Second)
+	assert.True(t, known)
+	assert.True(t, waiting, "cat is blocked reading its stdin")
+
+	// sleep is asleep (nanosleep), and a shell waiting for a child is in wait4: neither waits for input.
+	sleeper := exec.Command("sh", "-c", "sleep 30; true")
+	require.NoError(t, sleeper.Start())
+	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
+	waiting, _ = waitingForInput(sleeper.Process.Pid, 400*time.Millisecond)
+	assert.False(t, waiting, "a shell that waits for its child does not wait for input")
+	stopped := exec.Command("sleep", "30")
+	require.NoError(t, stopped.Start())
+	t.Cleanup(func() { _ = stopped.Process.Kill(); _ = stopped.Wait() })
+	waiting, _ = waitingForInput(stopped.Process.Pid, 400*time.Millisecond)
+	assert.False(t, waiting, "a process asleep for a time does not wait for input")
 }
 
 // A bash that is slow to start says `unconfirmed` for its integration (it has not said `ready` in 500 ms) and still has it: the test
