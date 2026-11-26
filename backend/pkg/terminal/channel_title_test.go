@@ -285,7 +285,7 @@ func TestAnEmptyTitleTakesTheTitleBackAndSaysNoProgramRunsUnderIt(t *testing.T) 
 	page.input("two\n")
 	waitOutput(t, page, "two")
 	got := page.state().titles
-	guardedAny(t, append([]string{"empty-title-is-no-program"}, programFaults...), func() {
+	guardedAny(t, append([]string{"empty-title-is-no-program"}, programFaults()...), func() {
 		assert.Equal(t, []titleWire{{V: 1, Title: "mytitle", Program: true}, {V: 1, Title: "", Program: false}}, got, "the program took its title back while it still runs: no title, and no program under it")
 	})
 }
@@ -322,9 +322,11 @@ func TestATitleThePromptDrawsIsNotMadeAProgramsWhenTheStartMarkComesInAReadOfIts
 }
 
 // programFaults are the controls whose fault changes what the host says about a program: the tests of the title in the read of a start mark answer to each of them.
-var programFaults = []string{
-	"title-while-the-program-runs", "title-detached-when-the-program-ends", "same-title-is-one-frame", "title-of-a-vouched-command", "title-detached-by-the-end-mark",
-	"shell-title-is-not-a-program", "forged-start-is-no-program", "title-sent-to-a-page-that-comes-back", "stale-title-is-not-made-a-programs", "preexec-title-is-decided-at-the-start-mark",
+func programFaults() []string {
+	return []string{
+		"title-while-the-program-runs", "title-detached-when-the-program-ends", "same-title-is-one-frame", "title-of-a-vouched-command", "title-detached-by-the-end-mark",
+		"shell-title-is-not-a-program", "forged-start-is-no-program", "title-sent-to-a-page-that-comes-back", "stale-title-is-not-made-a-programs", "preexec-title-is-decided-at-the-start-mark",
+	}
 }
 
 // guardedAny is guarded for an assertion that several controls are named for: any of them switched off switches it off.
@@ -347,14 +349,14 @@ func TestAPromptTitleInTheReadOfTheStartMarkIsNotTheCommandsAndAPreexecTitleIs(t
 	k.print("barrier one\n")
 	waitOutput(t, page, "barrier one")
 	got := page.state().titles
-	guardedAny(t, append([]string{"pending-prompt-title-is-not-made-a-programs"}, programFaults...), func() {
+	guardedAny(t, append([]string{"pending-prompt-title-is-not-made-a-programs"}, programFaults()...), func() {
 		assert.Equal(t, []titleWire{{V: 1, Title: "user@host: ~", Program: false}}, got, "one read held the prompt with its title and the start mark: the title is the shell's")
 	})
 	k.print(osc("133;D;0") + osc("133;A") + "$ " + osc("133;B") + osc("2;build") + "build\r\n" + osc("633;E;build;"+k.nonce) + osc("133;C"))
 	k.print("barrier two\n")
 	waitOutput(t, page, "barrier two")
 	got = page.state().titles
-	guardedAny(t, append([]string{"pending-preexec-title-is-made-a-programs"}, programFaults...), func() {
+	guardedAny(t, append([]string{"pending-preexec-title-is-made-a-programs"}, programFaults()...), func() {
 		require.NotEmpty(t, got)
 		assert.Equal(t, titleWire{V: 1, Title: "build", Program: true}, got[len(got)-1], "a title set after the prompt, in the read of the start mark, is the command's")
 	})
