@@ -305,19 +305,16 @@ export class MarkScanner {
     this.seq = 0;
     this.seqStart = 0;
     this.escAt = 0;
-    this.body = '';
+    this.body = [];
     this.over = false;
     /** The marks that are kept, oldest first (newest 1,024 at least, 2,048 at most). */
     this.marks = [];
     /** The commands of the record, oldest first. */
     this.commands = [];
     this.trustedCwd = '';
-    this.looseCwd = '';
     this.pending = '';
     /** Marks whose nonce was wrong or missing. */
     this.forged = 0;
-    /** Where the last prompt start ends: a prompt ends a command that was running (a shell that is replaced never prints the end). */
-    this.promptEnd = 0;
   }
 
   feed(bytes, base) {
@@ -375,7 +372,7 @@ export class MarkScanner {
 
   afterEscape(byte) {
     if (byte === 0x5b) this.state = 'csi';
-    else if (byte === 0x5d) Object.assign(this, { state: 'osc', body: '', over: false });
+    else if (byte === 0x5d) Object.assign(this, { state: 'osc', body: [], over: false });
     else if (byte === 0x50 || byte === 0x58 || byte === 0x5e || byte === 0x5f) this.state = 'string';
     else if (byte >= 0x20 && byte <= 0x2f) this.state = 'esc';
     else this.state = 'ground';
@@ -384,7 +381,7 @@ export class MarkScanner {
   collect(byte) {
     if (this.over) return;
     if (this.body.length >= OSC_LIMIT) this.over = true;
-    else this.body += String.fromCharCode(byte);
+    else this.body.push(byte);
   }
 
   verified(given) {
@@ -395,9 +392,9 @@ export class MarkScanner {
   finish(end) {
     this.state = 'ground';
     if (this.over) return;
-    const body = this.body;
+    // The whole body is decoded as UTF-8, so that a character cut across two reads reads whole.
+    const body = new TextDecoder().decode(Uint8Array.from(this.body));
     if (body.startsWith('133;') || body.startsWith('633;')) this.read(body.slice(4), end);
-    else if (body.startsWith('7;')) this.readUrl(body.slice(2));
   }
 
   read(args, end) {
@@ -406,6 +403,9 @@ export class MarkScanner {
     const rest = args.slice(1);
     if (rest !== '' && rest[0] !== ';') return;
     if (letter === 'A') {
+      // The prompt of a shell that replaced the one that ran the command: that command ends, with no exit code.
+      const running = this.open();
+      if (running?.state === 'running') Object.assign(running, { state: 'ended', endedMs: Date.now(), outputEnd: at });
       const newest = this.open();
       if (newest === undefined || newest.state === 'ended') this.keep({ kind: 'prompt-start', at, end, id: this.begin('prompt', at).id, trust: 'unverified', redraw: false });
       else this.keep({ kind: 'prompt-start', at, end, id: newest.id, trust: 'unverified', redraw: newest.state !== 'running' });
@@ -461,13 +461,8 @@ export class MarkScanner {
     }
   }
 
-  readUrl(url) {
-    const found = /^file:\/\/[^/]*(\/.*)$/.exec(url);
-    if (found !== null) this.looseCwd = decodeURIComponent(found[1]).replace(/[\u0000-\u001f\u007f]/g, '');
-  }
-
   currentCwd() {
-    return this.trustedCwd !== '' ? { cwd: this.trustedCwd, cwdTrust: 'nonce' } : { cwd: this.looseCwd, cwdTrust: 'unverified' };
+    return this.trustedCwd !== '' ? { cwd: this.trustedCwd, cwdTrust: 'nonce' } : { cwd: '', cwdTrust: 'unverified' };
   }
 
   /** The newest command, when it has not ended. */
@@ -486,7 +481,6 @@ export class MarkScanner {
   }
 
   keep(mark) {
-    if (mark.kind === 'prompt-start') this.promptEnd = mark.end;
     this.marks.push(mark);
     if (this.marks.length >= 2 * MARKS_KEPT) this.marks.splice(0, this.marks.length - MARKS_KEPT);
   }
@@ -494,7 +488,7 @@ export class MarkScanner {
   /** The command that the shell said it started and has not ended, with the nonce's proof of its line: what "a command is running" means. */
   running() {
     const newest = this.commands.at(-1);
-    return newest !== undefined && newest.state === 'running' && newest.lineTrust === 'nonce' && this.promptEnd <= newest.outputStart ? newest : undefined;
+    return newest !== undefined && newest.state === 'running' && newest.lineTrust === 'nonce' ? newest : undefined;
   }
 
   /** The first mark that ends at or after `from`, as an index: the marks that end at or before `pos` are due, and the first after it says where the output is cut. */

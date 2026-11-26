@@ -10,7 +10,7 @@ export const FRAME: Readonly<{ attach: 1; input: 2; resize: 3; ack: 4; detach: 5
 /** The one version of the stream the host speaks (`attach.v`). */
 export const VERSION: number;
 export const pageFrames: {
-  attach(cap: string, fromOffset?: number, version?: number, writer?: unknown): Uint8Array;
+  attach(cap: string, fromOffset?: number, version?: number, writer?: unknown, marks?: number): Uint8Array;
   input(bytes: Uint8Array | string): Uint8Array;
   resize(cols: number, rows: number): Uint8Array;
   ack(n: number): Uint8Array;
@@ -28,6 +28,7 @@ export type HostFrame =
   | { kind: 'released' }
   | { kind: 'close-refused' }
   | { kind: 'unsupported'; v: unknown }
+  | { kind: 'marks'; frame: { v: number; marks: Array<Record<string, any>> } }
   | { kind: 'unknown'; type: number };
 export function readFrame(frame: Uint8Array): HostFrame;
 export function toBase64(bytes: Uint8Array): string;
@@ -89,6 +90,8 @@ export type Host = {
   capabilityOf(id: string): string;
   keptEnds(): Array<{ id: string; end: Record<string, any>; expires: number }>;
   state(id: string): Record<string, any> | undefined;
+  /** The session's nonce of a terminal whose shell has the integration (a test seam for the canary): `undefined` for one with none. */
+  nonceOf(id: string): string | undefined;
   bytes(id: string, from?: number): Uint8Array;
   waiting(): number;
   paused(): boolean;
