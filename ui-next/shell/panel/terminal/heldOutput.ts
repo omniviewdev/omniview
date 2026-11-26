@@ -3,11 +3,15 @@
 // terminal that nobody took in once a window of it is unacknowledged (`ack` in execFeed.ts), so a terminal nobody reads holds about that much and its shell waits; a bound here that threw the oldest chunks away cut escape
 // sequences in two and lost what a person had not seen yet.
 
+import type { PlacedMark, TerminalMark } from './feed';
+
 export type TakenOutput = {
   /** The chunks, oldest first, as the arrays that were pushed. */
   readonly chunks: readonly Uint8Array[];
   /** The bytes they hold. */
   readonly bytes: number;
+  /** The marks that fall in them, each with the bytes before it: absent when there is none. */
+  readonly marks?: readonly PlacedMark[] | undefined;
 };
 
 export type HeldOutput = {
@@ -17,6 +21,12 @@ export type HeldOutput = {
    * progress) and the rest stays for the next take.
    */
   readonly take: (max?: number) => TakenOutput;
+  /**
+   * A mark stands in the output, `behind` bytes before the end of what was pushed (0: right after the last byte). What is taken is cut at the mark, so that a reader that writes it and waits for the parse stands exactly at
+   * the mark when it creates its marker; the mark is handed over with the bytes that end at it, or, when all of them were taken already, with the next take (which may then hold no bytes). `behind` beyond what is held is
+   * the start of what is held.
+   */
+  readonly mark: (mark: TerminalMark, behind: number) => void;
   /** The bytes held now. */
   readonly bytes: () => number;
   /** Lets go of what is held: a session that was closed has no reader to wait for. */
@@ -64,6 +74,7 @@ export function createHeldOutput(): HeldOutput {
 
       return taken;
     },
+    mark: () => undefined,
     bytes: () => held,
     clear: () => {
       chunks = [];
