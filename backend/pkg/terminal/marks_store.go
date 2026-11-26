@@ -22,15 +22,12 @@ type markStore struct {
 	scanner *marks.Scanner
 	items   []marks.Mark
 	scratch []marks.Mark
-	// promptEnd is where the last prompt-start mark ends: a prompt ends any command that was running (a shell that is replaced, `exec zsh`, never prints
-	// the end of its command; the prompt of the new one comes).
-	promptEnd uint64
 }
 
 func newMarkStore(nonce marks.Nonce) *markStore {
 	return &markStore{
-		scanner: marks.New(marks.Config{Nonce: nonce, Now: nil, MaxRecords: 0, StartOffset: 0}),
-		items:   nil, scratch: nil, promptEnd: 0,
+		scanner: marks.New(marks.Config{Nonce: nonce, Now: nil, MaxRecords: 0, StartOffset: 0, PromptEndsCommand: true}),
+		items:   nil, scratch: nil,
 	}
 }
 
@@ -41,9 +38,6 @@ func (st *markStore) feed(p []byte) {
 	for _, m := range st.scratch {
 		if m.Kind == marks.KindCwd && m.Trust != marks.TrustNonce {
 			continue
-		}
-		if m.Kind == marks.KindPromptStart {
-			st.promptEnd = m.EndOffset
 		}
 		st.items = append(st.items, m)
 	}
@@ -76,15 +70,15 @@ func (st *markStore) plan(minEnd, pos uint64, limit int) ([]marks.Mark, int) {
 
 // clone is a copy that nothing feeds: the marks of a terminal that ended.
 func (st *markStore) clone() *markStore {
-	return &markStore{scanner: nil, items: slices.Clone(st.items), scratch: nil, promptEnd: st.promptEnd}
+	return &markStore{scanner: nil, items: slices.Clone(st.items), scratch: nil}
 }
 
-// running is the command that the shell said it started (with a line the nonce vouches for) and that no end mark and no later prompt has ended: what
+// running is the command that the shell said it started (with a line the nonce vouches for) and that no end mark and no later prompt (the scanner ends the command at one) has ended: what
 // "a command is running" means.
 func (st *markStore) running() (marks.Record, bool) {
 	var none marks.Record
 	rec, ok := st.log().Running()
-	if !ok || rec.Trust != marks.TrustNonce || st.promptEnd > rec.OutputStart {
+	if !ok || rec.Trust != marks.TrustNonce {
 		return none, false
 	}
 	return rec, true

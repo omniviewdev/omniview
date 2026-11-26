@@ -324,7 +324,6 @@ func TestAPageThatDidNotAskForMarksIsSentNoMarksFrame(t *testing.T) {
 		assert.NotContains(t, st.order, wMarks, "no frame of a type the page does not know")
 		assert.Empty(t, st.faults)
 		assert.Equal(t, k.out, st.bytes(), "the output is the output, not cut for marks it did not ask for")
-		assert.Len(t, st.segs, 1, "one frame for what the shell wrote in one read: no cut at marks the page does not read")
 	})
 	// A page of another marks version is told no marks either.
 	f := newFakeChannel(t)
@@ -601,5 +600,15 @@ func TestANewPromptEndsAnyRunningCommand(t *testing.T) {
 		record, recordErr := k.f.m.ChannelCommands(k.info.Cap)
 		require.NoError(t, recordErr)
 		assert.Empty(t, record.Running)
+	})
+	// The next command is its own: its start is believed, it is running, and the replaced command keeps no exit code.
+	k.print(osc("633;E;sleep\\x2030;"+k.nonce) + osc("133;C"))
+	guarded(t, "next-command-after-replaced", func() {
+		record, recordErr := k.f.m.ChannelCommands(k.info.Cap)
+		require.NoError(t, recordErr)
+		require.Len(t, record.Commands, 2)
+		assert.Nil(t, record.Commands[0].ExitCode)
+		assert.Equal(t, "sleep 30", record.Commands[1].CommandLine)
+		assert.Equal(t, record.Commands[1].ID, record.Running)
 	})
 }

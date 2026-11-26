@@ -76,10 +76,10 @@ type Scanner struct {
 	skip bool
 	over bool
 
-	nonce []byte
-	now   func() time.Time
-	log   *Log
-	start uint64
+	nonce      []byte
+	now        func() time.Time
+	log        *Log
+	start      uint64
 	promptEnds bool
 
 	off       atomic.Uint64

@@ -229,6 +229,17 @@ func (l *Log) open(at uint64, state State) *Record {
 // isOpen says whether a command still takes marks: it has not ended.
 func isOpen(r *Record) bool { return r != nil && r.State != StateEnded }
 
+// interrupt ends the command that runs, with no exit code: its shell was replaced and the prompt of the new one has come. Nothing when no command runs.
+func (l *Log) interrupt(at uint64, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r := l.newest()
+	if r == nil || r.State != StateRunning {
+		return
+	}
+	r.State, r.EndedAt, r.OutputEnd = StateEnded, now, at
+}
+
 // prompt reads a prompt start (A). A prompt while the command is still at its prompt is the same prompt drawn
 // again (a resize, a framework that prints its own mark as well); one while a command runs is not a prompt of a
 // new command, and does not end it.

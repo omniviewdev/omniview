@@ -22,6 +22,9 @@ func (s *Scanner) readPrompt(args []byte, end uint64, out []Mark) []Mark {
 	at := s.oscStart
 	switch args[0] {
 	case 'A':
+		if s.promptEnds {
+			s.log.interrupt(at, s.now())
+		}
 		id, redraw := s.log.prompt(at)
 		m := newMark(KindPromptStart, at)
 		m.CommandID, m.Redraw = id, redraw || hasOption(opts, "redraw=1")
