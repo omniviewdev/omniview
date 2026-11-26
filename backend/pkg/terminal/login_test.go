@@ -478,12 +478,27 @@ func waitsForInputNow(pid int) (bool, bool) {
 	if err != nil {
 		return false, false
 	}
-	for _, name := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
-		if strings.Contains(string(data), name) {
-			return true, true
+	return wchanWaitsForInput(strings.TrimSpace(string(data))), true
+}
+
+// wchanWaitsForInput says whether the kernel function a process sleeps in (wchan) is one that waits for input to be readable: a tty
+// read, a select or poll, a read of an empty pipe. Not a pipe write, a wait for a child, or a sleep.
+func wchanWaitsForInput(name string) bool {
+	for _, waits := range []string{"n_tty_read", "do_select", "do_sys_poll", "poll_schedule_timeout", "wait_woken"} {
+		if strings.Contains(name, waits) {
+			return true
 		}
 	}
-	return false, true
+	return false
+}
+
+func TestTheWchanThatWaitsForInputIsAReadAndNotAWriteOrAChildOrASleep(t *testing.T) {
+	for name, want := range map[string]bool{
+		"n_tty_read": true, "do_select": true, "do_sys_poll": true, "poll_schedule_timeout.constprop.0": true, "wait_woken": true,
+		"pipe_read": true, "pipe_write": false, "do_wait": false, "hrtimer_nanosleep": false, "0": false, "": false,
+	} {
+		assert.Equal(t, want, wchanWaitsForInput(name), name)
+	}
 }
 
 // syscallWaitsForInput reads /proc/<pid>/syscall: the number of the system call the process is in, or `running`. It does not know the
@@ -546,6 +561,9 @@ func TestTheWaitForThePromptAfterTheJobWaitsForASlowBashToo(t *testing.T) {
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("no bash on this machine")
+	}
+	if reason := integrationShellSkip("bash", func() (int, int, error) { return probeBashVersion(bash) }); reason != "" {
+		t.Skipf("NOT RUN: %s", reason)
 	}
 	home := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".bash_profile"), []byte("sleep 1\nPROMPT_COMMAND='sleep 0.3'\n"), 0o600))
