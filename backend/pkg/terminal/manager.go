@@ -571,6 +571,9 @@ func (m *Manager) launch(id string, opts Options, cols, rows uint16, owner Owner
 	if !started.nonce.IsZero() {
 		s.ring.marks = newMarkStore(started.nonce)
 	}
+	if opts.Channel {
+		s.ring.title = newTitleTracker()
+	}
 	s.queue = newInputQueue(ptyDevice{master: polled, applied: s.noteSize}, queueLimits{ops: MaxPendingOps, bytes: MaxPendingBytes, ahead: MaxSeqAhead, gapWait: GapWait})
 	return s, nil
 }

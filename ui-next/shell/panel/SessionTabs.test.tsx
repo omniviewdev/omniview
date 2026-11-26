@@ -241,6 +241,74 @@ describe('the menu of a session tab', () => {
     expect(names()).toEqual(['build', 'b']);
   });
 
+  it('pins the name the person gave, so that the session\'s owner no longer names it, and does not pin a name they left as it was', () => {
+    const store = createPanelStore();
+    mountMenu(['a', 'b'], store);
+    const edit = (): HTMLInputElement => screen.getByRole<HTMLInputElement>('textbox', { name: 'Session name' });
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.change(edit(), { target: { value: 'build' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    const [first, second] = Object.keys(store.getSnapshot().sessions);
+    expect(store.getSnapshot().sessions[first ?? '']).toMatchObject({ title: 'build', titlePinned: true });
+    expect(store.retitleSession(first ?? '', 'zsh')).toMatchObject({ status: 'refused', reason: 'pinned' });
+
+    // Opening the field and leaving it as it was (Enter, or the focus going elsewhere) names nothing.
+    fireEvent.click(within(openOn('b')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(store.getSnapshot().sessions[second ?? '']).not.toHaveProperty('titlePinned');
+    fireEvent.click(within(openOn('b')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.blur(edit());
+    expect(store.getSnapshot().sessions[second ?? '']).not.toHaveProperty('titlePinned');
+  });
+
+  it('undoes a name: clearing the field of a tab the person named unpins it, so that the session\'s owner names it again', () => {
+    const store = createPanelStore();
+    mountMenu(['a'], store);
+    const edit = (): HTMLInputElement => screen.getByRole<HTMLInputElement>('textbox', { name: 'Session name' });
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.change(edit(), { target: { value: 'build' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    const id = Object.keys(store.getSnapshot().sessions)[0] ?? '';
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ titlePinned: true });
+    fireEvent.click(within(openOn('build')).getByRole('menuitem', { name: 'Rename session…' }));
+    fireEvent.change(edit(), { target: { value: '' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(store.getSnapshot().sessions[id]).not.toHaveProperty('titlePinned');
+    expect(store.retitleSession(id, 'zsh')).toEqual({ status: 'done' });
+  });
+
+  it('does not pin the title an unedited field started with when the feed has retitled the session meanwhile, and pins a name typed to the live title', () => {
+    const store = createPanelStore();
+    mountMenu(['a'], store);
+    const edit = (): HTMLInputElement => screen.getByRole<HTMLInputElement>('textbox', { name: 'Session name' });
+    const id = Object.keys(store.getSnapshot().sessions)[0] ?? '';
+    fireEvent.click(within(openOn('a')).getByRole('menuitem', { name: 'Rename session…' }));
+    act(() => {
+      store.retitleSession(id, 'vim: notes');
+    });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(store.getSnapshot().sessions[id]).not.toHaveProperty('titlePinned');
+    expect(store.getSnapshot().sessions[id]?.title).toBe('vim: notes');
+    fireEvent.click(within(openOn('vim: notes')).getByRole('menuitem', { name: 'Rename session…' }));
+    act(() => {
+      store.retitleSession(id, 'less');
+    });
+    fireEvent.change(edit(), { target: { value: 'less' } });
+    fireEvent.keyDown(edit(), { key: 'Enter' });
+    expect(store.getSnapshot().sessions[id]).toMatchObject({ title: 'less', titlePinned: true });
+  });
+
+  it('starts the rename on a double click of the tab and on F2, and draws the tab\'s keys in its description', () => {
+    mountMenu(['a', 'b']);
+    expect(tab('a').getAttribute('aria-keyshortcuts')).toBe('F2 Delete');
+    fireEvent.doubleClick(tab('a'));
+    expect(screen.getByRole('textbox', { name: 'Session name' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Session name' }), { key: 'Escape' });
+    tab('b').focus();
+    fireEvent.keyDown(tab('b'), { key: 'F2' });
+    expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Session name' }).value).toBe('b');
+  });
+
   it('cannot rename a session its plugin left behind', () => {
     const store = createPanelStore();
     store.syncPlugins([{ id: 'acme', tools: [] }]);

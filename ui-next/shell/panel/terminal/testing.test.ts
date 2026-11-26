@@ -48,7 +48,7 @@ describe('the fake feed\'s count of what was typed (`inputs`)', () => {
 describe('the fake terminal channel', () => {
   const connected = () => {
     const channels = fakeChannels();
-    const events = { ready: vi.fn(), output: vi.fn(), gap: vi.fn(), ended: vi.fn(), applied: vi.fn(), marks: vi.fn(), takenOver: vi.fn(), closeRefused: vi.fn(), released: vi.fn(), unsupported: vi.fn(), notFound: vi.fn(), closed: vi.fn() };
+    const events = { ready: vi.fn(), output: vi.fn(), gap: vi.fn(), ended: vi.fn(), applied: vi.fn(), marks: vi.fn(), title: vi.fn(), takenOver: vi.fn(), closeRefused: vi.fn(), released: vi.fn(), unsupported: vi.fn(), notFound: vi.fn(), closed: vi.fn() };
     const link = channels.connect('term-1', 7, events);
     return { channels, events, link, stream: channels.stream() };
   };

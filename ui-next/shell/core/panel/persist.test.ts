@@ -57,6 +57,28 @@ describe('what the session saves', () => {
   });
 });
 
+describe('the name a person gave a session', () => {
+  it('is saved with the session, only for a session they named, and read back as theirs', () => {
+    const h = boot({ hostTools: [tool('terminal', 'Terminal', 20)], plugins: { acme: [] } });
+    h.store.openSession(session('terminal', 'acme', 'zsh'));
+    h.store.openSession(session('terminal', 'acme', 'bash'));
+    h.store.renameSession('s1', 'my build');
+    const document = h.store.serialise();
+    expect(document.sessions[0]).toMatchObject({ title: 'my build', titlePinned: true });
+    expect(document.sessions[1]).not.toHaveProperty('titlePinned');
+    const back = restore(JSON.parse(JSON.stringify(document)));
+    expect(back.ok && back.state.sessions.s1).toMatchObject({ title: 'my build', titlePinned: true });
+    expect(back.ok && back.state.sessions.s2).not.toHaveProperty('titlePinned');
+  });
+
+  it('is repaired when it is not the one value it can be: a flag that is not `true` is the owner\'s naming', () => {
+    for (const bad of [false, 'yes', 1, null, {}]) {
+      const back = restore(saved({ sessions: [entry('a', 'terminal', { titlePinned: bad })] }));
+      expect(back.ok && back.state.sessions.a).not.toHaveProperty('titlePinned');
+    }
+  });
+});
+
 describe('a session that is read back', () => {
   it('has the choices it was saved with, open as it was left, and the sessions all ended: a panel that was open comes back open whatever it holds (T2d)', () => {
     const result = restore(saved({ open: true, height: 300, tool: 'logs', active: { logs: 'b' }, sessions: [entry('a'), entry('b', 'logs', { scope: 'dev' })] }));

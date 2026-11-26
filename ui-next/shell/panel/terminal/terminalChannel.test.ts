@@ -215,6 +215,9 @@ function recorder(): { readonly said: Said; readonly events: ChannelEvents } {
     marks: (body) => {
       said.push(['marks', body]);
     },
+    title: (body) => {
+      said.push(['title', body]);
+    },
     takenOver: () => {
       said.push(['takenOver']);
     },
@@ -273,7 +276,7 @@ describe('the marks frame (0x8b)', () => {
     const r = rig({ saved: { t1: CAP } });
     const { socket } = connected(r, 7, writer);
     socket.open();
-    expect(attachJson(socket)).toMatchObject({ v: 2, marks: 1 });
+    expect(attachJson(socket)).toMatchObject({ v: 2, marks: 1, title: 1 });
     // The version of the stream stays 2: a host of version 2 that knows no marks reads the extra member as nothing.
     expect(attachJson(socket)).toHaveProperty('v', 2);
   });
@@ -300,6 +303,36 @@ describe('the marks frame (0x8b)', () => {
   });
 });
 
+describe('the title frame (0x8c)', () => {
+  it('asks for it in the attach, with the marks, and says the version of the frame it reads', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket } = connected(r);
+    socket.open();
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP });
+  });
+
+  it('hands the frame on parsed, in order with the output, and does not check what is in it', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x81, jsonOf({ v: 2, input_applied: 0 })));
+    socket.deliver(frame(0x82, u64(0), bytesOf(65)));
+    const body = { v: 1, title: 'vim: notes', program: true };
+    socket.deliver(frame(0x8c, jsonOf(body)));
+    socket.deliver(frame(0x82, u64(1), bytesOf(66)));
+    expect(said.map((one) => one[0])).toEqual(['ready', 'output', 'title', 'output']);
+    expect(said[2]).toEqual(['title', body]);
+  });
+
+  it('is closed, once, by a title frame that is not JSON, as by any frame the page cannot read', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x8c, encoder.encode('{nope')));
+    expect(said.map((one) => one[0])).toEqual(['closed']);
+  });
+});
+
 describe('opening a stream', () => {
   it('opens the stream called terminal and asks for binary messages as ArrayBuffers: the name carries nothing secret, and the capability is in no address', () => {
     const r = rig({ saved: { t1: CAP } });
@@ -313,11 +346,11 @@ describe('opening a stream', () => {
     const r = rig({ saved: { t1: CAP } });
     const { socket } = connected(r, 4096, writer);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, cap: CAP, from_offset: 4096, writer });
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP, from_offset: 4096, writer });
     expect(socket.sent[0]?.length).toBeLessThanOrEqual(1024);
     const none = connected(rig({ saved: { t1: CAP } }));
     none.socket.open();
-    expect(attachJson(none.socket)).toEqual({ v: 2, marks: 1, cap: CAP });
+    expect(attachJson(none.socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP });
   });
 
   it('sends the attach as the first frame, with the capability and the protocol version, and no offset when the page has none', () => {
@@ -326,7 +359,7 @@ describe('opening a stream', () => {
     socket.open();
     expect(socket.sent).toHaveLength(1);
     expect(socket.sent[0]?.[0]).toBe(0x01);
-    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP });
     expect(socket.sent[0]?.length).toBeLessThanOrEqual(1024);
   });
 
@@ -334,11 +367,11 @@ describe('opening a stream', () => {
     const first = rig({ saved: { t1: CAP } });
     const a = connected(first, 4096);
     a.socket.open();
-    expect(attachJson(a.socket)).toEqual({ v: 2, marks: 1, cap: CAP, from_offset: 4096 });
+    expect(attachJson(a.socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP, from_offset: 4096 });
     const second = rig({ saved: { t1: CAP } });
     const b = connected(second, 0);
     b.socket.open();
-    expect(attachJson(b.socket)).toEqual({ v: 2, marks: 1, cap: CAP, from_offset: 0 });
+    expect(attachJson(b.socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP, from_offset: 0 });
   });
 
   it('sends nothing before the stream is open, and what the feed sends meanwhile goes after the attach, in the order it was sent', () => {
@@ -810,7 +843,7 @@ describe('a terminal the host says is not there', () => {
     r.channels.connect('t1', 5, second.events);
     const next = socketOf(r, 1);
     next.open();
-    expect(attachJson(next)).toEqual({ v: 2, marks: 1, cap: CAP, from_offset: 5 });
+    expect(attachJson(next)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP, from_offset: 5 });
     next.drop();
     r.channels.connect('t1', undefined, recorder().events);
     expect(r.opened).toHaveLength(3);
@@ -863,7 +896,7 @@ describe('creating a terminal', () => {
     expect(session).not.toHaveProperty('cap');
     const { socket } = connected(r);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP });
   });
 
   it.each<readonly [string, unknown]>([
@@ -1102,7 +1135,7 @@ describe('where the capabilities are kept', () => {
     channels.connect('t2', 3, recorder().events);
     const socket = socketOf(r);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, cap: CAP_2, from_offset: 3 });
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP_2, from_offset: 3 });
   });
 
   it('is the tab\'s sessionStorage under one key, as JSON, and no other place', () => {
@@ -1125,7 +1158,7 @@ describe('where the capabilities are kept', () => {
     loadTerminalChannels({ ...second.deps, storage }).connect('t1', undefined, recorder().events);
     const socket = socketOf(second);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP });
   });
 
   it('never blocks the window: a storage that cannot be read starts with no terminals, and says so without the capability', async () => {
@@ -1453,8 +1486,8 @@ describe('what a mutation of the channel would change', () => {
     channels.connect('t2', undefined, recorder().events);
     r.sockets[0]?.open();
     r.sockets[1]?.open();
-    expect(attachJson(socketOf(r, 0))).toEqual({ v: 2, marks: 1, cap: CAP_2 });
-    expect(attachJson(socketOf(r, 1))).toEqual({ v: 2, marks: 1, cap: CAP_3 });
+    expect(attachJson(socketOf(r, 0))).toEqual({ v: 2, marks: 1, title: 1, cap: CAP_2 });
+    expect(attachJson(socketOf(r, 1))).toEqual({ v: 2, marks: 1, title: 1, cap: CAP_3 });
   });
 
   it('attaches at once on a stream that is open already', () => {
@@ -1464,7 +1497,7 @@ describe('what a mutation of the channel would change', () => {
     const channels = createTerminalChannels({ ...r.deps, saved: { t1: CAP }, openStream: () => socket });
     channels.connect('t1', undefined, recorder().events);
     expect(socket.sent).toHaveLength(1);
-    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP });
   });
 
   it('does not forget a newer capability when an older stream is told not found', async () => {
@@ -1482,7 +1515,7 @@ describe('what a mutation of the channel would change', () => {
     r.channels.connect('t1', undefined, next.events);
     const socket = socketOf(r, 1);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, cap: CAP_2 });
+    expect(attachJson(socket)).toEqual({ v: 2, marks: 1, title: 1, cap: CAP_2 });
     expect(next.said).toEqual([]);
   });
 });

@@ -49,7 +49,7 @@ One frame is one binary message of the stream: a **1-byte type**, then the paylo
 
 | Type | Name | Direction | Payload |
 |---|---|---|---|
-| `0x01` | `attach` | page to host | UTF-8 JSON `{"v":2,"cap":"<capability>","from_offset":<u64, optional>,"writer":"<32 lowercase hex digits, optional>","marks":<1, optional>}`, at most 1,024 bytes. **The first frame of the stream, and the only attach.** |
+| `0x01` | `attach` | page to host | UTF-8 JSON `{"v":2,"cap":"<capability>","from_offset":<u64, optional>,"writer":"<32 lowercase hex digits, optional>","marks":<1, optional>,"title":<1, optional>}`, at most 1,024 bytes. **The first frame of the stream, and the only attach.** |
 | `0x02` | `input` | page to host | the raw bytes, at most 1 MiB (`channel_max_input_bytes`). An empty input is a no-op. |
 | `0x03` | `resize` | page to host | `cols` (u16), `rows` (u16); each from 1 to 1,000. |
 | `0x04` | `ack` | page to host | `n` (u32): bytes of **output** the page parsed since its last acknowledgement. |
@@ -67,6 +67,7 @@ One frame is one binary message of the stream: a **1-byte type**, then the paylo
 | `0x89` | `unsupported` | host to page | UTF-8 JSON `{"v":2}`: the version the host speaks. The answer to a well-formed `attach` of another version; the host closes the stream. It is decided from the request alone, before any capability is looked at, so it says nothing about whether the capability opens a terminal. |
 
 | `0x8b` | `marks` | host to page | UTF-8 JSON `{"v":1,"marks":[...]}`, section 4a. **Sent only to a page whose attach said `"marks":1`.** |
+| `0x8c` | `title` | host to page | UTF-8 JSON `{"v":1,"title":"...","program":true}`, section 4b. **Sent only to a page whose attach said `"title":1`.** |
 
 There is no `lease` frame: while a stream holds the terminal no lease runs, and when it ends there is nobody to tell. `ready.lease_ms` states how long the terminal is kept after this stream ends.
 
@@ -103,6 +104,19 @@ A shell with the host's integration tells the terminal where each command starts
 **The record.** `ChannelTerminalCommands(capability)` reads the commands the marks described, newest 512, oldest first (`terminal.Commands`: `integration`, `running`, `cwd`, `cwd_trust`, `end`, `commands`; each command `id`, `state` (`prompt`, `input`, `running`, `ended`), `ran`, `command_line` and `command_trust`, `cwd` and `cwd_trust`, `exit_code`, `started_unix_ms`, `ended_unix_ms`, `prompt_offset`, `output_start` and `output_end`: `[output_start, output_end)` is what the command printed). It is read in one step with `end`, the length of the output the record was read at.
 
 **The nonce.** It is the host's secret and the shell's: the shell prints it inside its own marks, so the output stream holds it (whoever holds the capability reads the output, and the nonce protects against programs that print forged marks, not against a reader of the output). It is in no other frame, answer, record, event or log line of the host.
+
+## 4b. The title a program sets (issue #695 step 4)
+
+A program sets the title of its terminal with OSC 0 and OSC 2. The host reads those two out of the output in the step that appends the output to the replay ring (so that a tab no view is open for has its title, and a reload gets it), keeps the last one, and says it with its own word on whether a program runs. The page never scans the output for a title and never decides that a program runs.
+
+**Version.** Additive inside version 2, as the marks: the attach carries `"title":1`, and the `ready` of a stream that will carry the frame says `"title":1` (absent for a page that did not ask, and for the kept end of a terminal that ended). A page that did not ask is sent no frame.
+
+**The frame.** Type `0x8c`, then UTF-8 JSON `{"v":1,"title":"<text>","program":<bool>}`.
+
+- `title` is untrusted text and is cleaned before it is said: valid UTF-8 (a run of bytes that are not becomes one U+FFFD), no control character (C0, DEL, C1: so no ESC), no line or paragraph separator, no bidirectional control, outer white space removed, at most 256 bytes cut at a character boundary. The scanner holds at most 1,026 bytes of one title, so 100 KB of text costs 1 KiB. An empty title (OSC 2 with no text) is the way a program takes its title back. The page cleans and bounds it again and draws it as text only.
+- `program` is the host's fact that a program runs while this title is set: a command the shell's integration proved it started (a start mark with the nonce's line) and has not ended, or a process group other than the shell's that holds the terminal's foreground. It is taken in the step after the output that set the title, and again after every read while it is true, so the end of the program is said by the first output that follows it (the shell's prompt), or by the end mark of the command. When the system cannot say, the last answer stands. With no title, `program` is false.
+- The frame is the terminal's **fact**, not a position in its output. It is sent once when a stream attaches (if the terminal ever had a title), whatever offset it attaches from, and again whenever the pair `(title, program)` changes; the same pair is not said twice, so a shell that sets the same title at every prompt costs no frame. Several titles set in one read are one change: the last. A terminal that never had a title is sent none, and asks the system nothing: nothing polls.
+- The tab shows `title` only while `program` is true; otherwise it shows the shell's name (the rule of JetBrains; VS Code's default shows the process name). A rename by the person pins the tab's name and detaches it from this frame.
 
 ## 5. The handshake
 

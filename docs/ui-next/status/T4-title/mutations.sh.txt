@@ -1,0 +1,102 @@
+#!/bin/bash
+# Negative controls of the title on the channel stream (issue #695 step 4), the Go half. Each control puts ONE fault in a scratch copy of one source file and runs
+# the tests with `go test -overlay`, the worktree untouched.
+#   run:  a control is good when (1) the run FAILS in the assertion it is named for (`guarded(t, "<name>", ...)` of channel_title_test.go) and (2) the same fault
+#         PASSES with that guard switched off (TERMINAL_CHANNEL_CONTROL_OFF=<names>): a fault that a guard catches for another reason proves nothing.
+#   unit: the fault is caught by the unit tests of title_test.go (no guard): the run must FAIL in the test named.
+#
+# usage: bash docs/ui-next/status/T4-title/mutations.sh.txt   (from the worktree root; Go 1.27 on PATH, GOWORK=off GOTOOLCHAIN=local)
+#        ONLY="name name" runs those controls alone.
+set -u
+ROOT=$(pwd)
+PKG=./backend/pkg/terminal
+STREAM='TestTheTitleAProgramSets|TestATitleTheShell|TestAPageThatDidNotAskIsSentNoTitle|TestAPageThatComesBackIsSentTheTitle|TestATitleOfAHundred|TestACommandTheShellVouchedFor|TestATitleSetBefore|TestAPromptTitleInTheRead|TestATitleThePrompt|TestARemotePrompt|TestATitleFromBefore|TestAnEmptyTitleTakes|TestATitleFromBefore|TestAnEmptyTitleTakes|TestAForgedStartMark|TestATerminalThatEndedAndIsAttached'
+UNIT='TestTheScanner|TestAnOSC|TestAHundredKilobytes|TestACleanTitle|TestTheTracker'
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+BAD=0
+# Every assertion about what the host says of a program answers to each fault in the program fact: a fault there is caught by all of them, so the guard-off run switches all of them off.
+PROGRAM="title-while-the-program-runs,title-detached-when-the-program-ends,same-title-is-one-frame,title-of-a-vouched-command,title-detached-by-the-end-mark,shell-title-is-not-a-program,forged-start-is-no-program,title-sent-to-a-page-that-comes-back,stale-title-is-not-made-a-programs,preexec-title-is-decided-at-the-start-mark,empty-title-is-no-program,pending-prompt-title-is-not-made-a-programs,pending-preexec-title-is-made-a-programs,prompt-title-is-not-made-a-programs,remote-prompt-title-is-the-commands"
+
+fault() { # file old new -> $WORK/overlay.json
+  cp "$ROOT/$1" "$WORK/mut.go"
+  python3 - "$WORK/mut.go" "$2" "$3" <<'PY' || return 1
+import sys
+p, old, new = sys.argv[1:4]
+s = open(p).read()
+assert old in s, "the fault does not apply: " + old
+open(p, 'w').write(s.replace(old, new, 1))
+PY
+  printf '{"Replace":{"%s":"%s"}}' "$ROOT/$1" "$WORK/mut.go" > "$WORK/overlay.json"
+}
+
+run() { # names file old new
+  names=$1 file=$2 old=$3 new=$4
+  off=$names
+  for n in ${names//,/ }; do [[ ",$PROGRAM," == *",$n,"* ]] && off="$names,$PROGRAM"; done
+  if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" ${names%%,*} "* ]]; then return; fi
+  fault "$file" "$old" "$new" || { echo "CONTROL $names: DOES NOT APPLY"; BAD=1; return; }
+  caught=$(go test -overlay="$WORK/overlay.json" "$PKG" -run "$STREAM" 2>&1); s1=$?
+  offrun=$(TERMINAL_CHANNEL_CONTROL_OFF=$off go test -overlay="$WORK/overlay.json" "$PKG" -run "$STREAM" 2>&1); s2=$?
+  if [ $s1 -ne 0 ] && echo "$caught" | grep -q '^--- FAIL'; then c1=RED; else c1=GREEN-OR-BROKEN; fi
+  if [ $s2 -eq 0 ]; then c2=GREEN; else c2=RED-OR-BROKEN; fi
+  echo "CONTROL $names: with the guard $c1 (want RED), guard off $c2 (want GREEN)"
+  if [ "$c1" != RED ] || [ "$c2" != GREEN ]; then BAD=1; fi
+}
+
+unit() { # name file old new test
+  name=$1 file=$2 old=$3 new=$4 want=$5
+  if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then return; fi
+  fault "$file" "$old" "$new" || { echo "CONTROL $name: DOES NOT APPLY"; BAD=1; return; }
+  out=$(go test -overlay="$WORK/overlay.json" "$PKG" -run "$UNIT" 2>&1)
+  if echo "$out" | grep -q "^--- FAIL: $want"; then echo "CONTROL $name: RED in $want"; else echo "CONTROL $name: NOT CAUGHT by $want"; BAD=1; fi
+}
+
+T=backend/pkg/terminal/title.go
+C=backend/pkg/terminal/channel_title.go
+S=backend/pkg/terminal/channel_serve.go
+
+run ready-says-title $C 'if c.title {' 'if false {'
+run title-while-the-program-runs,title-detached-when-the-program-ends,same-title-is-one-frame $C 'return group != shell, true' 'return false && group != shell, true'
+run title-detached-when-the-program-ends,title-detached-by-the-end-mark $T 'return t.has || t.program' 'return t.has'
+run title-of-a-vouched-command,title-detached-by-the-end-mark,preexec-title-is-decided-at-the-start-mark,remote-prompt-title-is-the-commands $C 'if _, vouched := s.verifiedRunning(); vouched {' 'if false {'
+run forged-start-is-no-program backend/pkg/terminal/marks_store.go 'if !ok || rec.Trust != marks.TrustNonce {' 'if !ok {'
+run shell-title-is-not-a-program,title-detached-when-the-program-ends,forged-start-is-no-program,title-detached-by-the-end-mark,title-sent-to-a-page-that-comes-back $C 'return group != shell, true' 'return true || group != shell, true'
+run unasked-page-no-title $C 'if asked == titleFrameVersion && ring.title != nil {' 'if ring.title != nil {'
+run title-sent-to-a-page-that-comes-back $S 'c.title = titleVersionFor(s.ring, req.Title) != 0' 'c.title = titleVersionFor(s.ring, req.Title) != 0
+	c.titleSeen = s.ring.title.seq'
+run title-is-bounded $T 'if out.Len()+utf8.RuneLen(r) > maxTitleBytes {' 'if false && out.Len()+utf8.RuneLen(r) > maxTitleBytes {'
+run title-has-no-control $T 'case unicode.IsControl(r):
+		return true' 'case false:
+		return true'
+run title-has-no-bidi-control $T "case unicode.Is(unicode.Cf, r) && r != '\\u200d' && r != '\\u200c':" 'case false:'
+run pending-prompt-title-is-not-made-a-programs $C 'tracker.pendingAt <= s.ring.marks.promptEnd' 'false'
+run pending-preexec-title-is-made-a-programs $C 'tracker.pendingAt <= s.ring.marks.promptEnd' 'true'
+run same-title-is-one-frame,title-while-the-program-runs,title-detached-when-the-program-ends,title-of-a-vouched-command,title-detached-by-the-end-mark,title-sent-to-a-page-that-comes-back,shell-title-is-not-a-program,forged-start-is-no-program $T 'if text == t.text && program == t.program {' 'if false {'
+run ended-terminal-no-title $S 'marksVersionFor(kept.ring, req.Marks), 0)' 'marksVersionFor(kept.ring, req.Marks), titleFrameVersion)'
+run remote-prompt-title-is-the-commands $C 'rec.OutputStart > s.ring.marks.promptEnd' 'rec.OutputStart >= 0'
+run preexec-title-is-decided-at-the-start-mark $C 'waiting := !look && tracker != nil && s.ring.marks != nil && tracker.setAfter(s.ring.marks.promptEnd)' 'waiting := false'
+run stale-title-is-not-made-a-programs $T 'return t.text != "" && !t.program && t.at > promptEnd' 'return t.text != "" && !t.program'
+run empty-title-is-no-program $T 'if text == "" {
+		program = false
+	}' ''
+
+unit can-sub-cancel $T 'case canByte, subByte:
+		t.state = titleGround
+		return "", false' 'case 0xff:' TestTheScannerReadsNothingOfOtherSequences
+unit osc-one-is-not-a-title $T "if b != '0' && b != '2' {" "if b != '0' && b != '2' && b != '1' {" TestTheScannerReadsNothingOfOtherSequences
+unit scanner-holds-its-bound $T 'if len(t.buf) == maxTitleRead+titlePrefixBytes {' 'if false {' TestAHundredKilobytesOfTitleCostsTheScannerItsBound
+unit esc-ends-the-osc $T 'text, ok := t.finish()
+		t.afterEscape(b)
+		return text, ok' 'text, ok := t.finish()
+		return text, ok' TestAnOSCThatEndsWhereAnEscapeBeginsAnotherSequence
+unit unknown-keeps-the-last-answer $T 'if !known {
+		program = t.program
+	}' '' TestTheTrackerStatesAChangeOnlyWhenThePairChanges
+unit no-title-no-program $T 'if text == "" {
+		program = false
+	}' '' TestTheTrackerStatesAChangeOnlyWhenThePairChanges
+unit invalid-utf8-collapses $T 'strings.ToValidUTF8(string(raw), "\ufffd")' 'string(raw)' TestACleanTitleHasNoControl
+unit cf-characters-stay $T "case unicode.Is(unicode.Cf, r) && r != '\u200d' && r != '\u200c':" 'case false:' TestACleanTitleHasNoControl
+unit fillers-stay $T "case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0' || r == '\u2800':" 'case false:' TestACleanTitleHasNoControl
+exit $BAD

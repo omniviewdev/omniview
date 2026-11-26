@@ -52,6 +52,7 @@ const (
 	wReleased     byte = 0x88
 	wCloseRefused byte = 0x8a
 	wMarks        byte = 0x8b
+	wTitle        byte = 0x8c
 )
 
 // settle is the bound of a wait for an event that must come.
@@ -314,6 +315,15 @@ type readyWire struct {
 	WriterKnown bool `json:"writer_known"`
 	// Marks is the version of the marks frame this stream carries: absent when the page asked for none or the terminal has none.
 	Marks int `json:"marks"`
+	// Title is the version of the title frame this stream carries: absent when the page asked for none.
+	Title int `json:"title"`
+}
+
+// titleWire is the JSON of a title frame, as the page reads it.
+type titleWire struct {
+	V       int    `json:"v"`
+	Title   string `json:"title"`
+	Program bool   `json:"program"`
 }
 
 // markWire is one mark of a marks frame, as the page reads it.
@@ -349,6 +359,7 @@ type hostFrame struct {
 	end      End
 	applied  uint64
 	marks    marksWire
+	title    titleWire
 	raw      []byte
 }
 
@@ -387,6 +398,11 @@ func decodeHostFrame(raw []byte) (hostFrame, error) {
 		frame.raw = body
 		if err := json.Unmarshal(body, &frame.marks); err != nil {
 			return frame, fmt.Errorf("a marks frame that is not JSON: %w", err)
+		}
+	case wTitle:
+		frame.raw = body
+		if err := json.Unmarshal(body, &frame.title); err != nil {
+			return frame, fmt.Errorf("a title frame that is not JSON: %w", err)
 		}
 	case wTakenOver, wNotFound, wReleased, wCloseRefused:
 		if len(body) != 0 {
@@ -430,12 +446,15 @@ type chanPage struct {
 	// marks is every mark of every marks frame, in the order they came, with the offset the page stood at when each came; markFrames is the raw JSON of each frame.
 	marks      []markWire
 	markFrames [][]byte
-	faults     []string
-	frames     int
-	order      []byte
-	closed     bool
-	ackEvery   int
-	unacked    int
+	// titles is every title frame, in the order they came, and titleRaw the raw JSON of each.
+	titles   []titleWire
+	titleRaw [][]byte
+	faults   []string
+	frames   int
+	order    []byte
+	closed   bool
+	ackEvery int
+	unacked  int
 	// dead says the page has gone: what the host sent after is lost to it, as the frames queued in a closed tab are.
 	dead bool
 	// lag is how late the page's goroutine is for each frame it takes, in nanoseconds: the page of a machine that is busy. A test sets
@@ -523,6 +542,13 @@ func (p *chanPage) take(raw []byte) uint32 {
 			mark.seenAt = p.next
 			p.marks = append(p.marks, mark)
 		}
+	case wTitle:
+		p.requireReady("a title")
+		p.titleRaw = append(p.titleRaw, frame.raw)
+		if frame.title.V != 1 {
+			p.faults = append(p.faults, fmt.Sprintf("a title frame of version %d", frame.title.V))
+		}
+		p.titles = append(p.titles, frame.title)
 	case wApplied:
 		p.requireReady("an applied")
 		if n := len(p.applied); n > 0 && frame.applied <= p.applied[n-1] {
@@ -604,6 +630,8 @@ type pageState struct {
 	closeRefused int
 	marks        []markWire
 	markFrames   [][]byte
+	titles       []titleWire
+	titleRaw     [][]byte
 	faults       []string
 	frames       int
 	order        []byte
@@ -616,7 +644,7 @@ func (p *chanPage) state() pageState {
 	defer p.mu.Unlock()
 	return pageState{
 		ready: p.ready, segs: slices.Clone(p.segs), gaps: slices.Clone(p.gaps), ended: slices.Clone(p.ended), takenOver: p.takenOver, notFound: p.notFound,
-		applied: slices.Clone(p.applied), released: p.released, closeRefused: p.closeRefused, marks: slices.Clone(p.marks), markFrames: slices.Clone(p.markFrames), faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
+		applied: slices.Clone(p.applied), released: p.released, closeRefused: p.closeRefused, marks: slices.Clone(p.marks), markFrames: slices.Clone(p.markFrames), titles: slices.Clone(p.titles), titleRaw: slices.Clone(p.titleRaw), faults: slices.Clone(p.faults), frames: p.frames, order: slices.Clone(p.order), closed: p.closed, next: p.next,
 	}
 }
 
@@ -821,6 +849,34 @@ func (m *Manager) attachMarks(t *testing.T, capability string, from *uint64) *ch
 		m.ServeChannel(f)
 	}()
 	f.pageSend(attachFrameWithMarks(capability, from))
+	return p
+}
+
+// attachFrameTitle is an attach of a page that reads the title frame of version 1 (docs/ui-next/terminal-channel-protocol.md section 4b), and the marks when marks is set.
+func attachFrameTitle(capability string, from *uint64, marks bool) []byte {
+	extra := `,"title":1`
+	if marks {
+		extra += `,"marks":1`
+	}
+	if from == nil {
+		return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"writer":%q%s}`, capability, writerID(0), extra)...)
+	}
+	return append([]byte{wAttach}, fmt.Sprintf(`{"v":2,"cap":%q,"from_offset":%d,"writer":%q%s}`, capability, *from, writerID(0), extra)...)
+}
+
+// attachTitle opens a stream of a page that reads the title frame (and the marks, when marks is set), and serves it on a goroutine of its own.
+func (m *Manager) attachTitle(t *testing.T, capability string, from *uint64, marks bool) *chanPage {
+	t.Helper()
+	f := newFakeChannel(t)
+	p := newChanPage(t, f, 0)
+	served := make(chan struct{})
+	p.served = served
+	go p.run()
+	go func() {
+		defer close(served)
+		m.ServeChannel(f)
+	}()
+	f.pageSend(attachFrameTitle(capability, from, marks))
 	return p
 }
 

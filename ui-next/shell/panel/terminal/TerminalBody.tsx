@@ -4,6 +4,7 @@ import { platformOf } from '../../core/chords';
 import type { Session, SessionId } from '../../core/panel';
 import { copyToClipboard } from '../logs/clipboard';
 import { PanelEmpty } from '../PanelEmpty';
+import { useMaybeRenaming } from '../renaming';
 import { toggleChordText } from '../words';
 import { readAppearance, SWATCH_ROLES } from './appearance';
 import type { EngineLoader } from './engine';
@@ -14,7 +15,7 @@ import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
 import { screenReaderWords, type ScreenReaderSource } from './screenReader';
 import { laneOf } from './state';
-import { TerminalToolbar } from './TerminalToolbar';
+import { HELD_RENAME, TerminalToolbar } from './TerminalToolbar';
 import type { TerminalSessions } from './TerminalSessions';
 import { TERMINAL_GONE, TERMINAL_ICON } from './tool';
 import styles from './TerminalBody.module.css';
@@ -297,6 +298,11 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
     setAnnouncement((last) => ({ id: (last?.id ?? 0) + 1, text }));
   };
 
+  const renaming = useMaybeRenaming();
+  const rename = () => {
+    renaming?.request(session.id);
+  };
+
   const copy = () => {
     void screen.copy().then((done) => {
       if (done) {
@@ -338,6 +344,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
             screen.clear();
           }}
           onCopy={copy}
+          onRename={renaming === null || session.held === true ? undefined : rename}
+          renameReason={session.held === true ? HELD_RENAME : undefined}
         />
       </div>
       <div className={styles.main}>

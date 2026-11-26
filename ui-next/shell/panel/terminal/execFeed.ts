@@ -1,6 +1,7 @@
 import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
 import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
 import { marksOf } from './marks';
+import { titleOf } from './title';
 import { createHeldOutput } from './heldOutput';
 
 // A terminal of the host as a feed, over the terminal channel (docs/ui-next/terminal-channel-protocol.md; `channel.ts` is the contract with the one place that holds the capabilities and the streams). It is the one place the
@@ -1108,6 +1109,30 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
   };
 
+  /**
+   * The title a program set, and the host's word that a program runs while it is set (protocol section 4b). The status carries the title only while the host says a program runs and the title is not empty once cleaned: the host
+   * decides that (the foreground process group, a command the shell proved it started), the page never does. A frame that cannot be read changes nothing, and nothing is said again for a title the status has.
+   */
+  const onTitle = (frame: unknown) => {
+    if (!streaming || status.state !== 'running') {
+      return;
+    }
+
+    const said = titleOf(frame);
+    if (said === undefined) {
+      return;
+    }
+
+    const title = said.program && said.title !== '' ? said.title : undefined;
+    if (title === status.title) {
+      return;
+    }
+
+    const { title: _old, ...rest } = status;
+    status = title === undefined ? rest : { ...rest, title };
+    tell();
+  };
+
   /** The marks and what is known of what runs start over: the screen is brought afresh (a replay of the terminal, or a gap), so the marks of the screen that was are of lines that are not there. */
   const forgetMarks = (from: number) => {
     marks = [];
@@ -1253,6 +1278,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         gap: heard(onGap),
         applied: heard(onApplied),
         marks: heard(onMarks),
+        title: heard(onTitle),
         ended: heardEnd(onEnded),
         takenOver: heard(onTakenOver),
         closeRefused: heardEnd(() => undefined),

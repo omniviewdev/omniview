@@ -2,7 +2,7 @@ import { ExecClient } from '@omniviewdev/runtime/api';
 import { parseAppError } from '@omniviewdev/runtime/ui/v1';
 import { Stream } from '@wailsio/runtime';
 import { isNativeWindow } from '../../core/native';
-import { CHANNEL_MARKS_VERSION, CHANNEL_VERSION, type ChannelEvents, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
+import { CHANNEL_MARKS_VERSION, CHANNEL_TITLE_VERSION, CHANNEL_VERSION, type ChannelEvents, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
 
 // The one place that holds the capabilities of the terminals of this page and their streams (docs/ui-next/terminal-channel-protocol.md; the contract with the feed is `channel.ts`). A capability is what reaches a
 // terminal, so it never leaves this file: it is not exported, not handed to the feed, and not in any note, error or address. It is kept in memory and in the sessionStorage of this tab (id to capability), which a reload keeps and no other window
@@ -43,6 +43,7 @@ const RELEASED = 0x88;
 const UNSUPPORTED = 0x89;
 const CLOSE_REFUSED = 0x8a;
 const MARKS = 0x8b;
+const TITLE = 0x8c;
 
 /** What of a stream the channel uses: a WebSocket's, which is also the shape of the Wails stream. */
 export type ChannelSocket = {
@@ -571,6 +572,17 @@ function createCore(deps: ChannelDeps): Core {
           return;
         }
 
+        case TITLE: {
+          const parsed = json();
+          if (parsed === undefined) {
+            finish('closed');
+          } else {
+            events.title(parsed.value);
+          }
+
+          return;
+        }
+
         case TAKEN_OVER:
           events.takenOver();
           return;
@@ -610,7 +622,7 @@ function createCore(deps: ChannelDeps): Core {
     stream.addEventListener('error', listeners.error);
 
     // The attach is the first frame and nothing goes before it. An offset of 0 is an offset: it is said when it is given, and not when the page has nothing.
-    const request = { v: CHANNEL_VERSION, marks: CHANNEL_MARKS_VERSION, cap, ...(writer === undefined ? {} : { writer }), ...(fromOffset !== undefined && Number.isSafeInteger(fromOffset) && fromOffset >= 0 ? { from_offset: fromOffset } : {}) };
+    const request = { v: CHANNEL_VERSION, marks: CHANNEL_MARKS_VERSION, title: CHANNEL_TITLE_VERSION, cap, ...(writer === undefined ? {} : { writer }), ...(fromOffset !== undefined && Number.isSafeInteger(fromOffset) && fromOffset >= 0 ? { from_offset: fromOffset } : {}) };
     send(frameOf(ATTACH, encoder.encode(JSON.stringify(request))));
 
     return {

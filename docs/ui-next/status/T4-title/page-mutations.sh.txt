@@ -1,0 +1,159 @@
+#!/bin/bash
+# Negative controls for T4-title, the page half (the title fact: execFeed.ts, title.ts, terminalChannel.ts, localShell.ts; the pinned name: core/panel/sessions.ts, persist.ts; Rename: SessionTabs.tsx, TerminalBody.tsx).
+# Each fault is put into the real file (a backup is kept and restored on exit, even on Ctrl-C), and the test files of the folder are run with vitest. A control has two halves:
+#   1. with every test, the tests that go red are exactly the ones named for it;
+#   2. with the named tests filtered out (the assertion removed), the same fault passes.
+# Run from the worktree:  bash docs/ui-next/status/T4-title/page-mutations.sh.txt [control-name]
+WT=$(git rev-parse --show-toplevel) || exit 2
+cd "$WT" || exit 2
+P=ui-next/shell/panel/terminal
+FILES="$P/execFeed.test.ts $P/localShell.test.ts $P/terminalChannel.test.ts $P/TerminalSessions.test.ts $P/TerminalBody.test.tsx ui-next/shell/panel/SessionTabs.test.tsx ui-next/shell/core/panel/store.test.ts ui-next/shell/core/panel/persist.test.ts"
+B=$(mktemp -d "${TMPDIR:-/tmp}/t4title-page.XXXXXX") || exit 2
+current=""
+restore() { if [ -n "$current" ] && [ -f "$B/backup" ]; then cp "$B/backup" "$current"; fi; }
+trap 'restore; rm -rf -- "$B"' EXIT
+only="${1:-}"
+bad=0
+matched=0
+
+# name | file | sed expression | the tests named for it, each as a unique substring of its title, separated by '|'
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  matched=1
+  cp "$file" "$B/backup"; current="$file"
+  sed -i -E -e "$expr" "$file"
+  if cmp -s "$file" "$B/backup"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; restore; current=""; return; fi
+
+  out=$(pnpm exec vitest run $FILES 2>&1)
+  failed=$(echo "$out" | grep -E '^ FAIL ' | sed -E 's/^ FAIL +[^>]+> //' | sort -u)
+  ok=1
+  if [ -z "$failed" ]; then half1="UNDETECTED (every test passed)"; ok=0
+  else
+    half1="RED in exactly the tests named"
+    # every part names a test that went red, and every test that went red is named by a part
+    while IFS= read -r part; do
+      echo "$failed" | grep -qF -- "$part" || { ok=0; half1="named test did not go red: $part"; }
+    done < <(echo "$named" | tr '|' '\n')
+    while IFS= read -r line; do
+      hit=0
+      while IFS= read -r part; do
+        case "$line" in *"$part"*) hit=1 ;; esac
+      done < <(echo "$named" | tr '|' '\n')
+      [ "$hit" -eq 0 ] && { ok=0; half1="RED outside the named: $line"; }
+    done < <(echo "$failed")
+  fi
+  [ "$ok" -eq 0 ] && bad=1
+
+  # `-t` takes a pattern: every test whose title holds none of the named parts.
+  alternatives=$(echo "$named" | tr '|' '\n' | sed -E 's/[]\[.*^$()+?{|\\]/\\&/g' | paste -sd'|')
+  out2=$(pnpm exec vitest run $FILES -t "^(?!.*($alternatives))" 2>&1)
+  code2=$?
+  if echo "$out2" | grep -qE '^ FAIL '; then half2="without them: STILL RED"; bad=1
+  elif [ "$code2" -ne 0 ]; then half2="without them: the run ended with status $code2 and no FAIL line (not a pass)"; bad=1
+  else half2="without them: PASS (undetected)"; fi
+  restore; current=""
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+# ---- the title fact ----
+
+run title-ignores-the-hosts-program-word "$P/execFeed.ts" \
+  's/const title = said\.program && said\.title !== .. \? said\.title : undefined;/const title = said.title !== "" ? said.title : undefined;/' \
+  'is in the status while the host says a program runs|does not infer that a program runs'
+
+run title-not-cleaned "$P/title.ts" \
+  "s#replaceAll\(NOT_IN_A_TITLE, ''\)#replaceAll(/(?!)/g, '')#" \
+  'is bounded and clean|says no title for one that is empty once cleaned|is bounded and clean'
+
+run title-unbounded "$P/title.ts" \
+  's/if \(bytes \+ size > MAX_TITLE_BYTES\) \{/if (false) {/' \
+  'is bounded and clean'
+
+run title-frame-of-any-version "$P/title.ts" \
+  "s/ \|\| Reflect\.get\(frame, 'v'\) !== 1//" \
+  'takes no word of a frame it cannot read'
+
+run title-frame-not-heard "$P/terminalChannel.ts" \
+  's/events\.title\(parsed\.value\);/void parsed.value;/' \
+  'the title frame (0x8c) > hands the frame on parsed'
+
+run title-not-asked-for "$P/terminalChannel.ts" \
+  's/ title: CHANNEL_TITLE_VERSION,//' \
+  'asks for it in the attach, with the marks|asks for it in the attach, whatever the offset|says the feed'"'"'s writer in the attach|sends the attach as the first frame|carries the offset the page applied|keeps its capability on taken-over|answers the host'"'"'s session without|is read by the loader|is round-tripped|does not overwrite a capability|attaches at once on a stream|does not forget a newer capability'
+
+run tab-ignores-the-title "$P/localShell.ts" \
+  's/\(status\) => status\.title \?\? status\.program;/(status) => status.program;/' \
+  'is the title a program set while it runs and the shell'"'"'s name otherwise'
+
+# ---- the pinned name ----
+
+run owner-may-rename-a-pinned-session "ui-next/shell/core/panel/sessions.ts" \
+  's/if \(!pinned && session\.titlePinned === true\) \{/if (false) {/' \
+  'refuses the owner'"'"'s naming of a session the person named|keeps the name the person gave the session|keeps a name the person gave after a reload|pins the name the person gave'
+
+run rename-does-not-pin "ui-next/shell/core/panel/sessions.ts" \
+  's/\.\.\.\(pinned \? \{ titlePinned: true as const \} : \{\}\)//' \
+  'gives the session the title and pins it|refuses the owner'"'"'s naming of a session the person named|changes nothing for the title it already has|is saved with the session|keeps the name the person gave the session|pins the name the person gave'
+
+run pin-not-saved "ui-next/shell/core/panel/persist.ts" \
+  's/\.\.\.\(session\.titlePinned === true \? \{ titlePinned: true as const \} : \{\}\), //' \
+  'is saved with the session, only for a session they named'
+
+run pin-not-restored "ui-next/shell/core/panel/persist.ts" \
+  's/\.\.\.\(entry\.titlePinned === true \? \{ titlePinned: true as const \} : \{\}\), //' \
+  'is saved with the session, only for a session they named|keeps a name the person gave after a reload'
+
+run pin-restored-whatever-it-is "ui-next/shell/core/panel/persist.ts" \
+  's/entry\.titlePinned === true \? \{ titlePinned: true as const \}/entry.titlePinned !== undefined ? { titlePinned: true as const }/' \
+  'is repaired when it is not the one value it can be'
+
+run title-keeps-control-characters "ui-next/shell/core/panel/sessions.ts" \
+  's/text\(value\.replaceAll\(NOT_IN_A_TITLE, ..\)\)/text(value)/' \
+  'cuts the title as a title is cut, and drops control characters|drops control characters from a title the owner gives too'
+
+run unchanged-name-pins "ui-next/shell/panel/SessionRename.tsx" \
+  's/onDone\(value === initial \? null : value, refocus\);/onDone(value, refocus);/' \
+  'pins the name the person gave|does not pin the title an unedited field started with'
+
+
+run clearing-the-name-does-not-unpin "ui-next/shell/core/panel/sessions.ts" \
+  's/if \(cut === .. && pinned && session\.titlePinned === true\) \{/if (false) {/' \
+  'clears the pin of a session the person named|is the same for a name of nothing but invisible|undoes a name: clearing the field|names the tab by the program again when the person clears'
+
+run unpinned-tab-keeps-the-name "ui-next/shell/panel/terminal/TerminalSessions.ts" \
+  's/if \(entry\.named && !named && session !== undefined\) \{/if (false) {/' \
+  'names the tab by the program again when the person clears'
+
+run model-keeps-invisible-characters "ui-next/shell/core/panel/sessions.ts" \
+  's#\|\(\?!\[\\u200c\\u200d\]\)\\p\{Cf\}##' \
+  'drops zero-width and invisible characters from a title|is the same for a name of nothing but invisible|cuts the title as a title is cut'
+
+run feed-keeps-invisible-characters "ui-next/shell/panel/terminal/title.ts" \
+  's#\|\(\?!\[\\u200c\\u200d\]\)\\p\{Cf\}##' \
+  'says no title for one of zero-width and invisible characters|says no title for one that is empty once cleaned|is bounded and clean'
+
+run toolbar-rename-ignores-held "ui-next/shell/panel/terminal/TerminalBody.tsx" \
+  's/renaming === null \|\| session\.held === true \?/renaming === null ?/' \
+  'cannot rename a session its plugin left behind'
+
+run feed-takes-a-title-whenever-it-comes "ui-next/shell/panel/terminal/execFeed.ts" \
+  "s/if \(!streaming \|\| status\.state !== 'running'\) \{/if (false) {/" \
+  'takes none before the host said ready|takes none once the terminal is not this page'
+
+# ---- Rename ----
+
+run toolbar-rename-asks-nobody "ui-next/shell/panel/terminal/TerminalBody.tsx" \
+  's/renaming\?\.request\(session\.id\);//' \
+  'asks the panel to rename the tab of its session'
+
+run toolbar-rename-always-enabled "ui-next/shell/panel/terminal/TerminalBody.tsx" \
+  's/onRename=\{renaming === null \? undefined : rename\}/onRename={rename}/' \
+  'cannot rename where there is no tab'
+
+run tab-f2-is-not-rename "ui-next/shell/panel/SessionTabs.tsx" \
+  "s/event\.key === 'F2'/event.key === 'F13'/" \
+  'starts the rename on a double click of the tab and on F2'
+
+if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control called $only"; exit 2; fi
+exit "$bad"

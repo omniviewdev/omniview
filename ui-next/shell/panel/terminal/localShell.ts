@@ -11,8 +11,8 @@ import { launchOf, type TerminalProfile } from './profiles';
 // under an id made here, which is also the id of the panel session that shows it (`sessionId`), so that a tab that was saved with it finds its terminal again after a reload (`restoreLocalTerminals`). What the host says
 // back is read by the feed: the shell it started, how it ended, what runs in it, the code of a refusal, and the shells it tried.
 
-/** The tab is named by the shell the host says it started. */
-const retitle: TerminalTarget['retitle'] = (status) => status.program;
+/** The tab is named by the title a program set while it runs (the host says when one does: `status.title`), and otherwise by the shell the host says it started. */
+const retitle: TerminalTarget['retitle'] = (status) => status.title ?? status.program;
 
 /**
  * The target of "New terminal": the host's own, called `Terminal` until the host says which shell it started (the answer to the call that starts it names it: `zsh`, `bash`), and then called by that name. Its id names

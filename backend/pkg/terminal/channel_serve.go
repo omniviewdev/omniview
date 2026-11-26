@@ -47,6 +47,8 @@ const (
 	frameCloseRefused byte = 0x8a
 	// frameMarks carries the marks of the shell's integration, to a page that asked for them in its attach (attachRequest.Marks).
 	frameMarks byte = 0x8b
+	// frameTitle carries the title a program set and whether a program runs, to a page that asked for it in its attach (attachRequest.Title).
+	frameTitle byte = 0x8c
 )
 
 const (
@@ -74,6 +76,8 @@ type attachRequest struct {
 	// Marks is the version of the marks frame the page reads: absent or zero, none (the host sends it no frame it does not know); 1, the frame of
 	// docs/ui-next/terminal-channel-protocol.md section 4a. A page of this version 2 that never heard of marks does not ask, and is sent none.
 	Marks int `json:"marks"`
+	// Title is the version of the title frame the page reads: absent or zero, none; 1, the frame of docs/ui-next/terminal-channel-protocol.md section 4b.
+	Title int `json:"title"`
 }
 
 // writerIDLen is the length of a writer id: 16 bytes as lowercase hex digits.
@@ -154,18 +158,20 @@ type readyBody struct {
 	// Marks is the version of the marks frame this stream carries: absent when the page asked for none (or another version) or the terminal has no
 	// integration, so that a page that asked knows whether to expect any.
 	Marks int `json:"marks,omitempty"`
+	// Title is the version of the title frame this stream carries: absent when the page asked for none (or another version).
+	Title int `json:"title,omitempty"`
 }
 
 // readyFrame is the host's answer to a request that opens a terminal. lost is how much of what the page asked for is gone: the
 // distance from its offset up to the first byte the host still has, nothing for a page that gave no offset.
-func readyFrame(info Session, view *replayView, from *uint64, leaseMs int, cwd Directory, busy Foreground, ended *End, inputApplied uint64, writerKnown bool, marksVersion int) ([]byte, error) {
+func readyFrame(info Session, view *replayView, from *uint64, leaseMs int, cwd Directory, busy Foreground, ended *End, inputApplied uint64, writerKnown bool, marksVersion, titleVersion int) ([]byte, error) {
 	var lost uint64
 	if from != nil && *from < view.start {
 		lost = view.start - *from
 	}
 	raw, err := json.Marshal(readyBody{
 		V: attachVersion, Start: view.start, End: view.end, Lost: lost, Size: view.size, StartSize: view.startSize, Modes: view.now,
-		StartModes: view.startModes(), Cwd: cwd, Busy: busy, Session: info, LeaseMs: leaseMs, Ended: ended, InputApplied: inputApplied, WriterKnown: writerKnown, Marks: marksVersion,
+		StartModes: view.startModes(), Cwd: cwd, Busy: busy, Session: info, LeaseMs: leaseMs, Ended: ended, InputApplied: inputApplied, WriterKnown: writerKnown, Marks: marksVersion, Title: titleVersion,
 	})
 	if err != nil {
 		return nil, err
@@ -252,7 +258,11 @@ type channelConn struct {
 	// has not been sent (set by claim, then by the sender alone).
 	marks    bool
 	markNext uint64
-	lane     *inputLane
+	// title says the page asked for the title frame and the terminal has one to give, and titleSeen is the count of the stated title this stream was
+	// last sent (zero: none yet, so that a stream that attaches is sent the title the terminal has).
+	title     bool
+	titleSeen uint64
+	lane      *inputLane
 	// gone is closed when another stream takes the terminal: an input of this stream that waits for room in the queue looks again.
 	gone     chan struct{}
 	goneOnce sync.Once
@@ -266,7 +276,7 @@ func newChannelConn(ch Channel, clk clock) *channelConn {
 	return &channelConn{
 		ch: ch, clock: clk, sent: atomic.Uint64{}, begun: atomic.Uint64{}, sentBytes: atomic.Uint64{}, acked: atomic.Uint64{}, lost: atomic.Uint64{},
 		ackSeen: atomic.Bool{}, began: clk.Now(), progressAt: atomic.Int64{}, replayEnd: 0, displaced: atomic.Bool{}, stopped: atomic.Bool{},
-		released: atomic.Bool{}, evicted: atomic.Bool{}, closeRefused: atomic.Bool{}, reported: 0, writerID: "", writer: nil, writerKnown: false, marks: false, markNext: 0, lane: newInputLane(),
+		released: atomic.Bool{}, evicted: atomic.Bool{}, closeRefused: atomic.Bool{}, reported: 0, writerID: "", writer: nil, writerKnown: false, marks: false, markNext: 0, title: false, titleSeen: 0, lane: newInputLane(),
 		gone: make(chan struct{}), goneOnce: sync.Once{}, wake: make(chan struct{}, 1), finished: make(chan struct{}),
 	}
 }
@@ -373,6 +383,7 @@ func (m *Manager) serveLive(ch Channel, s *session, req attachRequest) {
 	c := newChannelConn(ch, m.clock)
 	c.writerID = req.Writer
 	c.marks = marksVersionFor(s.ring, req.Marks) != 0
+	c.title = titleVersionFor(s.ring, req.Title) != 0
 	view, err := s.claim(c, from)
 	switch {
 	case errors.Is(err, errEndingByItself):
@@ -391,7 +402,7 @@ func (m *Manager) serveLive(ch Channel, s *session, req attachRequest) {
 		return // an offset that is not this terminal's: the stream closes, with no answer
 	}
 	cwd, busy := s.whereAndWhat()
-	ready, err := readyFrame(s.info, &view, from, int(s.lease/time.Millisecond), cwd, busy, nil, c.reported, c.writerKnown, c.marksVersion())
+	ready, err := readyFrame(s.info, &view, from, int(s.lease/time.Millisecond), cwd, busy, nil, c.reported, c.writerKnown, c.marksVersion(), c.titleVersion())
 	if err != nil || ch.Send(ready) != nil {
 		m.release(s, c)
 		return
@@ -426,7 +437,7 @@ func (m *Manager) serveEnded(ch Channel, kept *tombstone, req attachRequest) {
 	if err != nil {
 		return
 	}
-	ready, err := readyFrame(kept.info, &view, from, 0, Directory{Path: "", Reason: ReasonEnded}, UnknownForeground(ReasonEnded), &kept.end, 0, false, marksVersionFor(kept.ring, req.Marks))
+	ready, err := readyFrame(kept.info, &view, from, 0, Directory{Path: "", Reason: ReasonEnded}, UnknownForeground(ReasonEnded), &kept.end, 0, false, marksVersionFor(kept.ring, req.Marks), 0)
 	if err != nil || ch.Send(ready) != nil {
 		return
 	}
@@ -702,6 +713,8 @@ const (
 	stepEnded
 	// stepMarks: marks of the output the stream has been sent are due.
 	stepMarks
+	// stepTitle: the title the terminal states is not the one the stream was last sent.
+	stepTitle
 )
 
 // senderStep is what the sender does next.
@@ -711,6 +724,7 @@ type senderStep struct {
 	parts    [][]byte
 	end      *End
 	marks    []marks.Mark
+	title    titleState
 }
 
 // nextStep decides what the sender does next, from the ring as it is now. The end is read before the ring: if it is set, the
@@ -728,6 +742,10 @@ func (s *session) nextStep(c *channelConn, lim channelLimits) senderStep {
 	var parts [][]byte
 	var to uint64
 	var due []marks.Mark
+	var title titleState
+	if c.title && s.ring.title != nil && s.ring.title.seq != c.titleSeen {
+		title = s.ring.title.state()
+	}
 	if c.marks && pos >= start {
 		// The marks that end at or before the cursor are due, and the output is cut where the next one ends, so that the page stands exactly there
 		// when it is handed.
@@ -739,18 +757,20 @@ func (s *session) nextStep(c *channelConn, lim channelLimits) senderStep {
 	s.outMu.Unlock()
 	switch {
 	case pos < start:
-		return senderStep{kind: stepGap, from: pos, to: start, parts: nil, end: nil, marks: nil}
+		return senderStep{kind: stepGap, from: pos, to: start, parts: nil, end: nil, marks: nil, title: titleState{seq: 0, text: "", program: false}}
 	case len(due) > 0:
-		return senderStep{kind: stepMarks, from: 0, to: 0, parts: nil, end: nil, marks: due}
+		return senderStep{kind: stepMarks, from: 0, to: 0, parts: nil, end: nil, marks: due, title: titleState{seq: 0, text: "", program: false}}
+	case title.seq != 0:
+		return senderStep{kind: stepTitle, from: 0, to: 0, parts: nil, end: nil, marks: nil, title: title}
 	case pos < end:
 		if !credit {
-			return senderStep{kind: stepWaitAck, from: 0, to: 0, parts: nil, end: nil, marks: nil}
+			return senderStep{kind: stepWaitAck, from: 0, to: 0, parts: nil, end: nil, marks: nil, title: titleState{seq: 0, text: "", program: false}}
 		}
-		return senderStep{kind: stepOutput, from: pos, to: to, parts: parts, end: nil, marks: nil}
+		return senderStep{kind: stepOutput, from: pos, to: to, parts: parts, end: nil, marks: nil, title: titleState{seq: 0, text: "", program: false}}
 	case ended != nil:
-		return senderStep{kind: stepEnded, from: 0, to: 0, parts: nil, end: ended, marks: nil}
+		return senderStep{kind: stepEnded, from: 0, to: 0, parts: nil, end: ended, marks: nil, title: titleState{seq: 0, text: "", program: false}}
 	default:
-		return senderStep{kind: stepIdle, from: 0, to: 0, parts: nil, end: nil, marks: nil}
+		return senderStep{kind: stepIdle, from: 0, to: 0, parts: nil, end: nil, marks: nil, title: titleState{seq: 0, text: "", program: false}}
 	}
 }
 
@@ -781,6 +801,8 @@ func (s *session) advance(c *channelConn, step senderStep) {
 	switch step.kind {
 	case stepMarks:
 		c.markNext = step.marks[len(step.marks)-1].EndOffset + 1
+	case stepTitle:
+		c.titleSeen = step.title.seq
 	case stepGap:
 		// What the gap skipped is not sent: its marks end at or before where the stream goes on.
 		c.markNext = max(c.markNext, step.to+1)
@@ -791,7 +813,7 @@ func (s *session) advance(c *channelConn, step senderStep) {
 	s.outMu.Unlock()
 	if step.kind == stepGap {
 		c.lost.Add(step.to - step.from)
-	} else if step.kind != stepMarks {
+	} else if step.kind != stepMarks && step.kind != stepTitle {
 		c.sentBytes.Add(step.to - step.from)
 	}
 	c.progress()
@@ -851,6 +873,8 @@ func (sd *sender) step() bool {
 		return sd.send(gapFrame(next.from, next.to), next)
 	case stepMarks:
 		return sd.send(marksFrame(next.marks), next)
+	case stepTitle:
+		return sd.send(titleFrame(next.title), next)
 	case stepOutput:
 		if sd.idle {
 			// Output came for a sender that had none: the page has had no chance to take it until now.

@@ -661,6 +661,10 @@ export type FakeStream = {
   readonly marks: (...marks: ReadonlyArray<Readonly<Record<string, unknown>>>) => void;
   /** `marks` with whatever the test makes of the frame: a host that breaks the protocol, past the fake's own envelope. */
   readonly rawMarks: (frame: unknown) => void;
+  /** `title`: the title a program set and the host's word that a program runs (`title`, `program` of the frame, section 4b). */
+  readonly title: (title: string, program: boolean) => void;
+  /** `title` with whatever the test makes of the frame: a host that breaks the protocol. */
+  readonly rawTitle: (frame: unknown) => void;
   /** `applied`: the bytes of input the host has applied from the capability, across streams, so far. */
   readonly applied: (total: number) => void;
   /** How the terminal ended: `terminal.End` as the host sends it. Default: the shell exited with code 0. */
@@ -668,7 +672,7 @@ export type FakeStream = {
   /** Another stream took the terminal: this stream stays open as a watcher, which hears `released` or `ended` and nothing else. */
   readonly takenOver: () => void;
   /** Frames the host may never send, for a test of how the feed takes a host that breaks the protocol: they reach the feed with no check of the stream's state. */
-  readonly raw: { readonly released: () => void };
+  readonly raw: { readonly released: () => void; readonly title: (title: string, program: boolean) => void };
   /** `close-refused`: the stream's close ended nothing, it does not hold the terminal. The stream goes on (as a watcher). */
   readonly closeRefused: () => void;
   /** To a watcher: the terminal is running and free. The stream is over. */
@@ -850,6 +854,14 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         holder('marks');
         events.marks(frame);
       },
+      title: (title, program) => {
+        holder('title');
+        events.title({ v: 1, title, program });
+      },
+      rawTitle: (frame) => {
+        holder('title');
+        events.title(frame);
+      },
       applied: (total) => {
         holder('applied');
         events.applied(total);
@@ -862,6 +874,9 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       raw: {
         released: () => {
           events.released();
+        },
+        title: (title, program) => {
+          events.title({ v: 1, title, program });
         },
       },
       closeRefused: () => {
