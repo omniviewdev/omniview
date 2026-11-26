@@ -59,6 +59,14 @@ const (
 	coverageComplete = "complete"
 )
 
+// northLabels are the labels the process puts on north (the SDK's `Labels`, which the host passes through and a landing reads as `connection.labels`): two that are text, and a number, which the host leaves out because a label is text. South has
+// none, which the host's list says as null.
+func northLabels() map[string]any {
+	const replicas = 3
+
+	return map[string]any{"env": "fixture", "tier": "one", "replicas": replicas}
+}
+
 // itemsOf are the three records each connection lists, by connection ID; none for an ID the process does not serve.
 func itemsOf(connection string) []string {
 	switch connection {
@@ -80,7 +88,7 @@ func main() {
 		Lifecycle: &resource.Lifecycle[client]{
 			LoadConnections: func(context.Context) ([]types.Connection, error) {
 				return []types.Connection{
-					{ID: northID, Name: "north", Description: northDescription},
+					{ID: northID, Name: "north", Description: northDescription, Labels: northLabels()},
 					{ID: southID, Name: "south", Description: southDescription},
 				}, nil
 			},

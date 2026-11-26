@@ -6,6 +6,7 @@ import type { ContextV1, PanelHostV1, PortForwardErrorV1, SidebarContextV1 } fro
 import { unloadedFailure } from '../loader/failure';
 import { acme, answering, startedOn, widgetPage, WIDGETS } from '../testing';
 import type { ConnectionsApi, StateRecord } from './connections/api';
+import { unusedVerbs } from './homeTesting';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import type { PortForwardNetwork, PortForwardStart, PortForwardStop } from './portForward';
@@ -62,6 +63,7 @@ function listing(initial: Listed) {
   let reads = 0;
   const heard = new Set<() => void>();
   const api: ConnectionsApi = {
+    ...unusedVerbs,
     states: async () => {
       reads += 1;
       return Promise.resolve(answer);

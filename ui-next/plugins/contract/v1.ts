@@ -151,7 +151,7 @@ export type { ShellAccent, ShellScopeFace } from '../../shell';
 // from the kit's parts (the page header, a data view, cards, rows): the host draws its frame, its tab, its error boundary and, for a page read in a connection, the scope lane, and nothing inside. Its `scope` says what it is read in: `connection`, where it is a page of a
 // connection as the others are (its route names the connection, a connection chosen on its tab keeps the page), or `plugin`, where it is read in NO connection (none is ever carried to it, it has no lane, and the panel handle it is given has no `ports`). What the window opens
 // when a plugin is opened and no connection is named is the plugin's `landing`, a custom page of scope `plugin`, instead of Home or a connection the window chooses; `home` keeps its meaning, the page a chosen connection opens. A Body reads the plugin's connections through
-// `context.connections` (`ConnectionsHostV1`): the host's own list, words and way of opening one, handed over as plain data and three functions, so a plugin draws them and holds no second store. (1) It is new, and nothing that exists is removed, renamed or given another meaning: no
+// `context.connections` (`ConnectionsHostV1`): the host's own list, words and way of opening one, handed over as plain data and functions, so a plugin draws them and holds no second store. (1) It is new, and nothing that exists is removed, renamed or given another meaning: no
 // list, detail or overview page is read or drawn differently, `ContextV1` is what it was (a Body is given it and one member more, as the sidebar's hook is given `open`), and `home` is read as before. (2) Every bundle written before it is admitted and drawn as before
 // (`admit.test.ts` keeps one), and a plugin that declares no `landing` is completed exactly as it was (`contributions.test.ts`). (3) A host that lacks the kind refuses a bundle that uses it by name, at admission, from the artifact: its check reads a page's `kind` as `list`,
 // `detail` or `overview` and nothing else, so a custom page, and a `landing`, which must name one, are refused with `pages.<id>.kind is "custom", and this version draws "list", "detail" and "overview" pages` (the `contract` failure, R11's refusal on proof of mismatch): a typed
@@ -306,10 +306,13 @@ export type OverviewPageV1 = {
 };
 
 /**
- * Where a connection stands, as the host says it (HM1): connected; being connected; not connected; or a start that failed, by the class of the failure, which is what the person can do about it (sign in, ask for access, wait for the server). The class is read from the host's own
- * error, never from the text a plugin wrote.
+ * Where a connection stands, as the host says it (HM1): connected; being connected; not connected; or a start that failed, by the class of the failure, which is what the person can do about it (sign in, ask for access, trust the server's certificate, wait for the server). The class is read from the host's own
+ * error, never from the text a plugin wrote. `certificate` was added by KL4: the host sends a certificate failure as the code CERTIFICATE_ERROR, which it used to draw as `unreachable`. A plugin that does not know a state treats it as `failed`: the word and the role are the host's and do not depend on it.
  */
-export type ConnectionStateV1 = 'connected' | 'connecting' | 'disconnected' | 'unauthorized' | 'forbidden' | 'unreachable' | 'failed';
+export type ConnectionStateV1 = 'connected' | 'connecting' | 'disconnected' | 'unauthorized' | 'forbidden' | 'certificate' | 'unreachable' | 'failed';
+
+/** What the host is doing to a connection for this window now: a start (`connecting`), or the verb of `ConnectionsHostV1` that holds it (`checking`, `disconnecting`, `removing`). One at a time: a second verb on a connection that is busy is refused. */
+export type ConnectionBusyV1 = 'connecting' | 'checking' | 'disconnecting' | 'removing';
 
 /** One connection of the plugin, as the host holds it: what the SDK gives every connection (a key, a name, a description, a readiness) and the host's own words for where it stands. Nothing of what a connection is (a cluster, an account, a database) is known to the host. */
 export type ConnectionV1 = {
@@ -319,6 +322,8 @@ export type ConnectionV1 = {
   readonly name: string;
   /** The plugin's secondary text for it (the SDK connection's description: a region, a provider), one line as the host makes it: white space collapsed, at most 200 characters. Absent when the plugin gives none. */
   readonly description?: string | undefined;
+  /** The labels the plugin's backend put on the connection (the SDK connection's `labels`), as it gave them: the ones whose value is text, in the order the host lists them, and `{}` when there are none. The same object while they do not change, so a page that reads them is not drawn again. The host reads none of them. */
+  readonly labels: Readonly<Record<string, string>>;
   readonly state: ConnectionStateV1;
   /** The host's word for the state ("Connected", "Connecting…", "Needs sign-in", "Access denied", "Not responding", "Connection failed", "Disconnected"): one word for each state, so two states are never told apart by a glyph alone. */
   readonly word: string;
@@ -326,6 +331,8 @@ export type ConnectionV1 = {
   readonly role: StatusRole;
   /** Why the last start failed, in one line the host made safe to show (never a stack, a payload or a page of output). Absent unless the state is a failure the host saw. */
   readonly reason?: string | undefined;
+  /** What the host is doing to the connection now, when it is doing something: `connecting` while a start runs, else the verb that holds it. Absent when it is doing nothing, which is when a verb runs: a page draws it over the state's word ("Disconnecting…") and may disable what would be refused. */
+  readonly busy?: ConnectionBusyV1 | undefined;
 };
 
 /** What the host knows of the plugin's connections now. */
@@ -347,10 +354,17 @@ export type ConnectionOpenOptionsV1 = {
 /** What opening a connection came to: done, or why not, in a sentence a person reads. */
 export type ConnectionOpenResultV1 = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
+/** What a verb on a connection came to: done, or why not, in a sentence a person reads. `cancelled` is set when the person answered the host's question with no: nothing ran, and there is nothing to tell them. */
+export type ConnectionVerbResultV1 = { readonly ok: true } | { readonly ok: false; readonly reason: string; readonly cancelled?: true | undefined };
+
 /**
  * What a custom page asks of the window about its plugin's connections (KL2): the host's own store, words and actions, for this plugin alone, so a plugin that draws its connections (a landing) holds no second store and words no state of its own. It is read the way React reads
  * an external store, `useSyncExternalStore(connections.subscribe, connections.getSnapshot)`: the snapshot is the same object until something in it changes, and a change of another plugin's connection is none of this one's. In a window with no connection data it
- * says no connection and `open` refuses.
+ * says no connection and `open` and every verb refuse.
+ *
+ * The verbs (KL4) are the host's own calls, made for this plugin and no other, and each answers `{ ok: true }` or why not in a sentence and never rejects. ONE VERB AT A TIME on a connection: while one runs the view marks the connection (`busy`), and a second verb on it (`open` and `connect` included) is refused
+ * in a sentence; the host's own stop waits behind a start that does not end, so a connection that is `connecting` is not checked, disconnected or removed either. `disconnect` and `remove` are the HOST's to confirm, not the plugin's: they open the host's own dialog, which names the connection, and
+ * do nothing until the person says yes, so a plugin cannot run either without asking; a person who says no is answered `{ ok: false, cancelled: true }`.
  */
 export type ConnectionsHostV1 = {
   /** Calls `listener` after every change of the view, and never for a read or a start that changed nothing of this plugin's. Answers the function that stops it. */
@@ -362,7 +376,15 @@ export type ConnectionsHostV1 = {
    * connections is a failed start like any other.
    */
   readonly open: (key: string, options?: ConnectionOpenOptionsV1) => Promise<ConnectionOpenResultV1>;
-  /** Reads the host's list again now; calls that overlap share one read. It never rejects: a read that failed is `failed: true` in the view. */
+  /** Starts the connection and opens no page, for a plugin that connects from its own landing. Resolves when it is connected (a connection that is connected already is), or why not; `state` and `busy` say `connecting` meanwhile. Call it from a person's action. */
+  readonly connect: (key: string) => Promise<ConnectionVerbResultV1>;
+  /** Asks the plugin whether the connection is healthy and reads the host's list again, so the view is current: `{ ok: true }` when it is, else what is wrong with it. `busy` says `checking` while it runs. The host's list does not change for the answer: a check says what it found to the page that asked. */
+  readonly check: (key: string) => Promise<ConnectionVerbResultV1>;
+  /** Asks the person, in the host's dialog (the connection's name and how many open tabs and sessions of it will lose it), and then stops the connection. `busy` says `disconnecting` while it runs; a person who says no is answered `cancelled`. */
+  readonly disconnect: (key: string) => Promise<ConnectionVerbResultV1>;
+  /** Asks the person, in the host's dialog, and then removes the connection from the plugin's list: nothing it points to is changed. `busy` says `removing` while it runs; a person who says no is answered `cancelled`. */
+  readonly remove: (key: string) => Promise<ConnectionVerbResultV1>;
+  /** Asks the plugin's backend to load its connections again (it may find new ones and lose others) and reads the host's list; calls that overlap share one. It used to read only what the host already holds (KL4), so call it from a person's action, not from an effect. It never rejects: a load that failed is `failed: true` in the view. */
   readonly refresh: () => Promise<void>;
 };
 

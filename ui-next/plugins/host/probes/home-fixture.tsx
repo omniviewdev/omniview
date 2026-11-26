@@ -34,6 +34,8 @@ function createStore(initial: readonly HostConnection[]): ConnectionsStore & { r
     },
     refresh: async () => Promise.resolve(),
     connect: async () => Promise.resolve({ status: 'connected' as const }),
+    hold: () => ({ ok: false, reason: 'This probe does not hold connections.' }),
+    reload: async () => Promise.resolve(),
     attach: () => () => undefined,
     // As the real store keeps a connection that did not change the same object (`reuse`), only the connections that changed are new objects; the list is a new array.
     change: (changes) => {

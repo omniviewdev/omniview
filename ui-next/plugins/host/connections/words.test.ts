@@ -1,8 +1,8 @@
 import { parseAppError, type AppError } from '@omniviewdev/runtime/ui/v1';
 import { describe, expect, it } from 'vitest';
 import { NAME_MAX } from '../connectionName';
-import type { ConnectionState } from './types';
-import { DETAIL_MAX, detailOf, faceOf, failureOf, nameOf, outcomeOfStatus, safeReason, stateOfReadiness, type FailedState } from './words';
+import type { ConnectionBusy, ConnectionState, HostConnection } from './types';
+import { DETAIL_MAX, detailOf, faceOf, failureOf, labelsOf, nameOf, outcomeOfStatus, refusalOf, safeReason, stateOfReadiness, unhealthyReason, verbFailure, type FailedState } from './words';
 
 // The words of a connection (words.ts): what each state is called, what the host's answers (a readiness word, an `apperror` envelope, a status) come to, and the one line a person may be shown about a failure.
 // No runtime and no host: the envelopes are the ones the host sends, and the errors are delivered the way the runtime delivers them.
@@ -47,11 +47,12 @@ const wails = (body: Body): Error => Object.assign(new Error(JSON.stringify(body
 const FALLBACKS: Readonly<Record<FailedState, string>> = {
   unauthorized: 'The connection needs you to sign in.',
   forbidden: 'You do not have access to this connection.',
+  certificate: 'The certificate of the server could not be verified.',
   unreachable: 'The server did not answer.',
   failed: 'The connection did not start.',
 };
 
-/** Every way an envelope can say what class a failure is, and what class that is. The checks run in order: sign-in, then access, then a server that does not answer. */
+/** Every way an envelope can say what class a failure is, and what class that is. The checks run in order: sign-in, then access, then a certificate, then a server that does not answer. */
 const CLASSES: Array<[name: string, state: FailedState, patch: Partial<AppError>]> = [
   ['a 401', 'unauthorized', { status: 401 }],
   ['the code UNAUTHORIZED', 'unauthorized', { code: 'UNAUTHORIZED' }],
@@ -59,6 +60,7 @@ const CLASSES: Array<[name: string, state: FailedState, patch: Partial<AppError>
   ['a 403', 'forbidden', { status: 403 }],
   ['the code FORBIDDEN', 'forbidden', { code: 'FORBIDDEN' }],
   ['the type of a forbidden resource', 'forbidden', { type: 'omniview:resource/forbidden' }],
+  ['the code CERTIFICATE_ERROR, on the envelope the host sends for it (a failed connection, a 502, reconnect)', 'certificate', { code: 'CERTIFICATE_ERROR', type: 'omniview:connection/failed', status: 502, recovery: 'reconnect' }],
   ['a recovery of reconnect', 'unreachable', { recovery: 'reconnect' }],
   ['the type of a failed connection', 'unreachable', { type: 'omniview:connection/failed' }],
   ['the type of a timeout', 'unreachable', { type: 'omniview:resource/timeout' }],
@@ -84,6 +86,7 @@ describe('faceOf', () => {
     ['disconnected', 'stopped', 'Disconnected'],
     ['unauthorized', 'attention', 'Needs sign-in'],
     ['forbidden', 'error', 'Access denied'],
+    ['certificate', 'error', 'Certificate problem'],
     ['unreachable', 'error', 'Not responding'],
     ['failed', 'error', 'Connection failed'],
   ] as const)('says %s with the role %s and the word "%s"', (state, role, word) => {
@@ -91,7 +94,7 @@ describe('faceOf', () => {
   });
 
   it('has one word for each state, so that no two states are told apart by their glyph alone', () => {
-    const everyState: Readonly<Record<ConnectionState, true>> = { connected: true, connecting: true, disconnected: true, unauthorized: true, forbidden: true, unreachable: true, failed: true };
+    const everyState: Readonly<Record<ConnectionState, true>> = { connected: true, connecting: true, disconnected: true, unauthorized: true, forbidden: true, certificate: true, unreachable: true, failed: true };
     const states = Object.keys(everyState) as ConnectionState[];
 
     const words = states.map((state) => faceOf(state).word);
@@ -355,5 +358,56 @@ describe('outcomeOfStatus', () => {
 
   it('says the sentence of the class when neither the error nor the details is one to show', () => {
     expect(outcomeOfStatus({ status: 'FORBIDDEN', error: 'denied\nat check (/srv/auth.js:1:2)', details: 'x'.repeat(201) })).toEqual({ status: 'failed', state: 'forbidden', reason: FALLBACKS.forbidden });
+  });
+});
+
+describe('unhealthyReason', () => {
+  it.each([
+    ['CONNECTED', {}, undefined],
+    ['UNAUTHORIZED', {}, FALLBACKS.unauthorized],
+    ['FORBIDDEN', { error: 'The role may not connect.' }, 'The role may not connect.'],
+    ['DISCONNECTED', { error: 'ignored' }, 'The connection is not connected.'],
+    ['PENDING', {}, 'The connection is still connecting.'],
+    ['NOT_FOUND', { details: 'The context is gone.' }, 'The context is gone.'],
+    ['SOMETHING_THE_HOST_ADDS_LATER', { error: 'first line\nsecond line' }, 'The connection is not healthy.'],
+  ])('says what a check that answered %s %j means for the connection: %s', (status, text, reason) => {
+    expect(unhealthyReason({ status, ...text })).toBe(reason);
+  });
+});
+
+describe('verbFailure', () => {
+  it('says the host\'s line when it is one to show, and the verb\'s own sentence when it is not', () => {
+    expect(verbFailure(wails(envelope({ detail: 'The profile is read only.' })), 'The connection was not removed.')).toBe('The profile is read only.');
+    expect(verbFailure(wails(envelope({ detail: 'first line\nsecond line' })), 'The connection was not removed.')).toBe('The connection was not removed.');
+  });
+});
+
+describe('labelsOf', () => {
+  it('is the labels whose value is text, in the order the host gave them, and nothing for a backend that put none: the host\'s JSON says null for it', () => {
+    expect(labelsOf({ labels: { env: 'prod', 'team/name': 'core', replicas: 3, on: true, nested: { a: 'b' }, empty: '' } })).toEqual({ env: 'prod', 'team/name': 'core', empty: '' });
+    expect(Object.keys(labelsOf({ labels: { b: '1', a: '2' } }) ?? {})).toEqual(['b', 'a']);
+    for (const none of [null, undefined, {}, { replicas: 3 }, ['text'], 'text']) {
+      expect(labelsOf({ labels: none }), JSON.stringify(none)).toBeUndefined();
+    }
+  });
+});
+
+describe('refusalOf', () => {
+  const north = (over: Partial<HostConnection>): HostConnection => ({ plugin: 'acme', key: 'n', name: 'north', state: 'connected', reason: undefined, ...over });
+
+  it.each([
+    ['connecting', 'north is connecting. Try again when it has finished.'],
+    ['checking', 'north is being checked. Try again when it has finished.'],
+    ['disconnecting', 'north is disconnecting. Try again when it has finished.'],
+    ['removing', 'north is being removed. Try again when it has finished.'],
+  ] satisfies ReadonlyArray<readonly [ConnectionBusy, string]>)('names the connection and what is being done to it: %s', (busy, sentence) => {
+    expect(refusalOf(north({ busy }))).toBe(sentence);
+  });
+
+  it('refuses a connection that the host says is connecting although this window is doing nothing to it, and no other state', () => {
+    expect(refusalOf(north({ state: 'connecting' }))).toBe('north is connecting. Try again when it has finished.');
+    for (const state of ['connected', 'disconnected', 'unauthorized', 'forbidden', 'certificate', 'unreachable', 'failed'] satisfies ConnectionState[]) {
+      expect(refusalOf(north({ state })), state).toBeUndefined();
+    }
   });
 });

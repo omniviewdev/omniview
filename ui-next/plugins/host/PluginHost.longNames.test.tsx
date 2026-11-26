@@ -6,6 +6,7 @@ import type { ContextV1, OverviewPageV1 } from '../contract/v1';
 import { acme, answering, startedOn, widgetPage, WIDGETS } from '../testing';
 import type { ConnectionsApi } from './connections/api';
 import { NAME_MAX } from './connectionName';
+import { unusedVerbs } from './homeTesting';
 import { PluginHost, type PluginHostProps } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import { NO_ROUTE, type HostRoute } from './route';
@@ -65,6 +66,7 @@ const plugins = { getSnapshot: () => entries, subscribe: () => () => undefined }
 
 /** The host's own list of the plugin's connections: the long one, and one a person could have given. */
 const api: ConnectionsApi = {
+  ...unusedVerbs,
   states: async () => ({
     acme: [
       { connection: { id: LONG, name: HUGE, description: HUGE }, readiness: 'CONNECTED' },

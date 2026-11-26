@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPanelStore } from '../../shell';
 import { acme } from '../testing';
 import type { ConnectionsApi, StateRecord } from './connections/api';
+import { unusedVerbs } from './homeTesting';
 import { PluginHost } from './PluginHost';
 import type { PluginEntry } from './pluginStore';
 import { NO_ROUTE, type HostRoute } from './route';
@@ -33,6 +34,7 @@ function fakeHost() {
   const reads: Array<PromiseWithResolvers<Answer>> = [];
   const heard = new Set<() => void>();
   const api: ConnectionsApi = {
+    ...unusedVerbs,
     states: async () => {
       const read = Promise.withResolvers<Answer>();
       reads.push(read);

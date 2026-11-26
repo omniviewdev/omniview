@@ -5,6 +5,7 @@ import type { ContributionV1 } from '../contract/v1';
 import { incompatibleFailure, unloadedFailure, type LoadFailure } from '../loader/failure';
 import { activityConditions, alertConditions, connectionConditions, pluginConditions } from './conditions';
 import { createConnectionsStore, type ConnectionsApi, type ConnectionsState, type ConnectionState, type HostConnection } from './connections';
+import { unusedVerbs } from './homeTesting';
 import type { PluginEntry } from './pluginStore';
 
 // The three producers of the Problems tool that exist today, as the conditions they state (ch16 S74, S94, S121; docs/ui-next/status/PT1.md, section 3): the plugins the window could not keep running, the connections
@@ -89,6 +90,7 @@ describe('connectionConditions: the connections that failed', () => {
     ['unreachable', 'Not responding', 'error'],
     ['failed', 'Connection failed', 'error'],
     ['forbidden', 'Access denied', 'error'],
+    ['certificate', 'Certificate problem', 'error'],
     ['unauthorized', 'Needs sign-in', 'warning'],
   ];
 
@@ -181,6 +183,7 @@ describe('connectionConditions over the connection store: what the host says of 
   const hostThatFails = (error: AppError | undefined, rejection: Error): ConnectionsApi => {
     let isStarted = false;
     return {
+      ...unusedVerbs,
       states: async () => ({ alpha: [{ connection: { id: 'c-1', name: 'north' }, readiness: isStarted ? 'FAILED' : 'DISCONNECTED', ...(isStarted && error !== undefined ? { readinessError: error } : {}) }] }),
       start: async () => {
         isStarted = true;
@@ -193,6 +196,7 @@ describe('connectionConditions over the connection store: what the host says of 
 
   it.each(HOST_SAYS)('is a row, with the class\'s words, the host\'s sentence and the connection, when the host says it failed because %s: no start of this window needed', async (_what, error, label, severity, sentence) => {
     const store = createConnectionsStore({
+      ...unusedVerbs,
       states: async () => ({ alpha: [{ connection: { id: 'c-1', name: 'north' }, readiness: 'FAILED', ...(error === undefined ? {} : { readinessError: error }) }] }),
       start: async () => {
         throw new Error('this window starts nothing');
@@ -220,6 +224,7 @@ describe('connectionConditions over the connection store: what the host says of 
     let readiness = 'FAILED';
     const ended = Promise.withResolvers<void>();
     const store = createConnectionsStore({
+      ...unusedVerbs,
       states: async () => ({ alpha: [{ connection: { id: 'c-1', name: 'north' }, readiness, ...(readiness === 'FAILED' ? { readinessError: UNAVAILABLE } : {}) }] }),
       start: async () => {
         await ended.promise;

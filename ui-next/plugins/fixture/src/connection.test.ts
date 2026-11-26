@@ -140,9 +140,9 @@ function constantOf(source: string, name: string): string | undefined {
   return new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`).exec(source)?.[1];
 }
 
-/** Whether the process lists the connection as `{ID: <name>ID, Name: "<name>", Description: <name>Description}`: its id, its name and its description are the constants and the literal the page holds. */
+/** Whether the process lists the connection as `{ID: <name>ID, Name: "<name>", Description: <name>Description}`, with `, Labels: <name>Labels()` after the description for a connection that has labels: its id, its name and its description are the constants and the literal the page holds. */
 function listsConnection(source: string, name: string): boolean {
-  return new RegExp(`\\{ID: ${name}ID, Name: "${name}", Description: ${name}Description\\}`).test(source);
+  return new RegExp(`\\{ID: ${name}ID, Name: "${name}", Description: ${name}Description(?:, Labels: ${name}Labels\\(\\))?\\}`).test(source);
 }
 
 /** The names of the records a connection lists: the `case <name>ID:` of the process's `itemsOf`. */
