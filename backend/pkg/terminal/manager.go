@@ -1045,8 +1045,17 @@ func (s *session) directory() (string, UnknownReason) {
 	case err == nil:
 		// The system still names a directory that was removed under the shell (Linux reads `<path> (deleted)`), and a
 		// terminal cannot start in it: a path that is not a directory now is not a fact worth passing on.
-		if info, statErr := os.Stat(path); statErr != nil || !info.IsDir() {
+		info, statErr := os.Stat(path)
+		if statErr != nil || !info.IsDir() {
 			return "", ReasonQueryFailed
+		}
+		// A sibling directory may be literally named `<path> (deleted)`: the path names the shell's own directory only
+		// when it is the very inode the shell is in (the process's cwd link follows to it, deleted or not).
+		if strings.HasSuffix(path, " (deleted)") {
+			live, liveErr := os.Stat("/proc/" + strconv.Itoa(s.cmd.Process.Pid) + "/cwd")
+			if liveErr != nil || !os.SameFile(live, info) {
+				return "", ReasonQueryFailed
+			}
 		}
 		return path, ""
 	case errors.Is(err, errors.ErrUnsupported):

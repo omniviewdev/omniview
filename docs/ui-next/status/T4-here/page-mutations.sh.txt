@@ -7,7 +7,7 @@
 WT=$(git rev-parse --show-toplevel) || exit 2
 cd "$WT" || exit 2
 P=ui-next/shell/panel/terminal
-FILES="$P"
+FILES="$P/execFeed.test.ts $P/localShell.test.ts $P/terminalChannel.test.ts $P/terminals.test.ts $P/state.test.ts $P/menu"
 B=$(mktemp -d "${TMPDIR:-/tmp}/t4here-page.XXXXXX") || exit 2
 current=""
 restore() { if [ -n "$current" ] && [ -f "$B/backup" ]; then cp "$B/backup" "$current"; fi; }
@@ -73,7 +73,7 @@ run directory-gone-is-unknown "$P/execFeed.ts" \
   'once the host says it is not there any more'
 
 run directory-ignores-the-created-answer "$P/execFeed.ts" \
-  '/^        startedIn = startOf\(answer\);$/d' \
+  '/^ *startedIn = startOf\(answer\);$/d' \
   'the answer to the call that made the terminal said'
 
 run directory-ignores-ready "$P/execFeed.ts" \
@@ -85,12 +85,12 @@ run directory-throws-on-a-failed-question "$P/execFeed.ts" \
   'says unknown, and never throws, when the question fails'
 
 run note-kept-after-typing "$P/execFeed.ts" \
-  's/ \|\| status\.startNote !== undefined\)/)/' \
-  'stops saying so at the first thing typed'
+  's/ \|\| \(status\.startNote !== undefined && writeOptions\?\.reply !== true\)//' \
+  'stops saying so at the first thing typed|is what the person typed, and not what the emulator answered'
 
 run note-dropped-at-running "$P/execFeed.ts" \
   's/\.\.\.\(startNote === undefined \? \{\} : \{ startNote \}\) \};$/ };/' \
-  'says so while it starts and while it runs|stops saying so at the first thing typed'
+  'says so while it starts and while it runs|stops saying so at the first thing typed|is what the person typed, and not what the emulator answered|is made again with no directory when the host refuses the directory'
 
 # ---- the channel ----
 
@@ -141,5 +141,17 @@ run body-says-it-can-always "$P/TerminalBody.tsx" \
 run lane-says-nothing-of-the-note "$P/state.ts" \
   's/snapshot\.startNote === undefined \? \{ words: .., note: .. \}/true ? { words: "", note: "" }/' \
   'says in words that the terminal started in the home directory'
+
+run reply-clears-the-note "$P/execFeed.ts" \
+  's/ && writeOptions\?\.reply !== true//' \
+  'is what the person typed, and not what the emulator answered'
+
+run home-if-missing-never "$P/execFeed.ts" \
+  's/options\.homeIfMissing !== true \|\|/true ||/' \
+  'is made again with no directory when the host refuses the directory'
+
+run start-target-no-fallback "$P/localShell.ts" \
+  "s/, undefined, where\.source === 'start'\)/)/" \
+  'falls back to home, with the note'
 
 exit $bad

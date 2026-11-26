@@ -36,7 +36,7 @@ export function localProfileTarget(profile: TerminalProfile, channels: TerminalC
  * own default directory (home), with the status saying so until the first thing is typed. The directory is the producer's fact (`TerminalFeedHandle.directory`), passed on as it was given.
  */
 export function localHereTarget(where: TerminalDirectory, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
-  return where.state === 'known' ? targetOf('Terminal', channels, leaseMs, { cwd: where.path }) : targetOf('Terminal', channels, leaseMs, undefined, 'home-for-unknown-directory');
+  return where.state === 'known' ? targetOf('Terminal', channels, leaseMs, { cwd: where.path }, undefined, where.source === 'start') : targetOf('Terminal', channels, leaseMs, undefined, 'home-for-unknown-directory');
 }
 
 function targetOf(
@@ -45,6 +45,7 @@ function targetOf(
   leaseMs: number | undefined,
   launch: Pick<ChannelLaunch, 'command' | 'cwd' | 'env'> | undefined,
   startNote?: TerminalFeedSnapshot['startNote'],
+  homeIfMissing?: boolean,
 ): TerminalTarget {
   const sessionId = newTerminalId();
   return {
@@ -60,6 +61,7 @@ function targetOf(
         ...(leaseMs === undefined ? {} : { leaseMs }),
         ...(launch === undefined ? {} : { launch }),
         ...(startNote === undefined ? {} : { startNote }),
+        ...(homeIfMissing === true ? { homeIfMissing } : {}),
       }),
   };
 }

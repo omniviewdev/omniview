@@ -1170,21 +1170,32 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const start = (first: Size) => {
     started = true;
     delivered = first;
-    creating = channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...options.launch }).then(
-      (answer: unknown) => {
-        created = true;
-        createdProgram = programOf(answer);
-        startedIn = startOf(answer);
-        if (!closed() && !left && status.state === 'starting') {
-          connect(next);
-        }
-      },
-      (error: unknown) => {
-        if (!closed()) {
-          over({ state: 'failed', cause: causeOf('start', error) });
-        }
-      },
-    );
+    const made = (launch: ExecFeedOptions['launch']) => channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...launch });
+    const answered = (answer: unknown) => {
+      created = true;
+      createdProgram = programOf(answer);
+      startedIn = startOf(answer);
+      if (!closed() && !left && status.state === 'starting') {
+        connect(next);
+      }
+    };
+    const failed = (error: unknown) => {
+      if (!closed()) {
+        over({ state: 'failed', cause: causeOf('start', error) });
+      }
+    };
+    creating = made(options.launch).then(answered, async (error: unknown) => {
+      const dir = options.launch?.cwd;
+      // The directory an ended terminal started in may have been removed since: the host refuses it (`INVALID_REQUEST`) and the terminal starts in its default directory instead, and says so.
+      if (options.homeIfMissing !== true || dir === undefined || closed() || channels.codeOf(error) !== 'INVALID_REQUEST') {
+        failed(error);
+        return;
+      }
+
+      const { cwd: _removed, ...rest } = options.launch ?? { command: [] };
+      status = { ...status, startNote: 'home-for-unknown-directory' };
+      await made(rest).then(answered, failed);
+    });
   };
 
   /**
@@ -1377,7 +1388,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
     },
 
-    write: (text) => {
+    write: (text, writeOptions) => {
       if (closed() || left || (status.state !== 'running' && status.state !== 'starting')) {
         return;
       }
@@ -1386,7 +1397,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         typed += 1;
       }
 
-      if (text !== '' && (status.inputLost === true || status.startNote !== undefined)) {
+      if (text !== '' && (status.inputLost === true || (status.startNote !== undefined && writeOptions?.reply !== true))) {
         const { inputLost: _lost, startNote: _note, ...rest } = status;
         status = rest;
         tell();

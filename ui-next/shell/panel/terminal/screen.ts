@@ -693,7 +693,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         if (user) {
           typed(data);
         } else if (replaying === undefined) {
-          feed.write(data);
+          feed.write(data, { reply: true });
         }
       }),
       made.onSelection(() => {
