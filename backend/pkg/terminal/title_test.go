@@ -91,8 +91,11 @@ func TestAnOSCThatEndsWhereAnEscapeBeginsAnotherSequenceStillSetsItsTitle(t *tes
 	assert.Equal(t, "a", got)
 	assert.Equal(t, 1, n)
 	got, n = feedAll("\x1b]2;a\x1b]0;b\x07")
-	assert.Equal(t, "b", got)
-	assert.Equal(t, 2, n)
+	assert.Equal(t, "b", got, "the last of the two in one chunk")
+	assert.Equal(t, 1, n)
+	got, n = feedAll("\x1b]2;a\x1b", "]0;b\x07")
+	assert.Equal(t, "b", got, "and when the chunks fall between them")
+	assert.Equal(t, 1, n)
 }
 
 func TestAHundredKilobytesOfTitleCostsTheScannerItsBoundAndKeepsTheTitleBounded(t *testing.T) {
@@ -169,7 +172,7 @@ func TestTheTrackerStatesAChangeOnlyWhenThePairChanges(t *testing.T) {
 	assert.True(t, tr.settle(true, true))
 	assert.True(t, tr.program)
 	assert.True(t, tr.wantsLook(), "a program runs under the title: it is looked at until it ends")
-	assert.False(t, tr.settle(true, false), "when the host cannot tell, the last answer stands")
+	assert.False(t, tr.settle(false, false), "when the host cannot tell, the last answer stands")
 	assert.True(t, tr.program)
 	assert.True(t, tr.settle(false, true), "the program ended")
 	assert.Equal(t, "two", tr.text, "the title stays, with the fact that no program holds it")

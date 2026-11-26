@@ -20,6 +20,7 @@ func (m *Manager) deliverChannel(s *session, data []byte) {
 	s.outMu.Lock()
 	s.ring.write(data)
 	s.outMu.Unlock()
+	s.settleTitle()
 	if holder := s.channel.holderPtr.Load(); holder != nil {
 		holder.signal()
 	}

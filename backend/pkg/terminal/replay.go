@@ -43,6 +43,8 @@ type replayRing struct {
 	overwritten uint64
 	// marks is what the shell's integration marked in the output, read in write: nil for a terminal that has no integration (channel_marks.go).
 	marks *markStore
+	// title is the title a program set, read in write: nil for a terminal that has no channel (channel_title.go).
+	title *titleTracker
 }
 
 // replayChunk is a run of whole reads.
@@ -76,6 +78,9 @@ func offset(n int) uint64 { return uint64(n) } //nolint:gosec // A length is nev
 func (r *replayRing) write(p []byte) {
 	if r.marks != nil {
 		r.marks.feed(p)
+	}
+	if r.title != nil {
+		r.title.feed(p)
 	}
 	for len(p) > 0 {
 		if len(r.chunks) == 0 {

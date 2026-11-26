@@ -39,7 +39,8 @@ func waitOutput(t *testing.T, p *chanPage, text string) pageState {
 func TestTheTitleAProgramSetsIsSaidWithTheFactThatAProgramRunsAndTheFactEndsWithTheProgram(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
 	// cat holds the foreground and writes back what it is typed (the terminal does not echo): a title typed to it is a title a program sets.
-	info := m.startChannel(t, `stty -echo; printf 'up\n'; cat; printf 'after\n'; read x`, Options{})
+	// What the page has seen of the output is a barrier: the host states a title before it sends the output that follows the read that set it.
+	info := m.startChannel(t, `stty -echo; printf 'up\n'; cat; printf 'after\n'; read x; printf 'barrier\n'; read x`, Options{})
 	page := m.attachTitle(t, info.Cap, nil, false)
 	ready := page.waitReady()
 	guarded(t, "ready-says-title", func() {
@@ -52,18 +53,23 @@ func TestTheTitleAProgramSetsIsSaidWithTheFactThatAProgramRunsAndTheFactEndsWith
 	}, settle, 5*time.Millisecond, "the shell has handed the terminal to cat")
 
 	page.input("\x1b]2;mytitle\x07\n")
-	got := waitTitles(t, page, 1)
+	page.input("mark\n")
+	waitOutput(t, page, "mark")
+	got := page.state().titles
 	guarded(t, "title-while-the-program-runs", func() {
-		assert.Equal(t, titleWire{V: 1, Title: "mytitle", Program: true}, got[0], "the title, and the host's word that a program holds the terminal")
+		assert.Equal(t, []titleWire{{V: 1, Title: "mytitle", Program: true}}, got, "the title, and the host's word that a program holds the terminal")
 	})
 
 	page.input("\x04") // the end of input: cat ends and the shell takes the terminal back
 	waitOutput(t, page, "after")
-	got = waitTitles(t, page, 2)
+	page.input("\n")
+	waitOutput(t, page, "barrier")
+	got = page.state().titles
 	guarded(t, "title-detached-when-the-program-ends", func() {
-		assert.Equal(t, titleWire{V: 1, Title: "mytitle", Program: false}, got[1], "the title is the program's no longer: the host says no program runs, and the page shows the shell's name")
+		assert.Equal(t, []titleWire{{V: 1, Title: "mytitle", Program: true}, {V: 1, Title: "mytitle", Program: false}}, got,
+			"the title is the program's no longer: the host says no program runs, and the page shows the shell's name; one frame for each change of the pair")
 	})
-	assert.Len(t, page.state().titles, 2, "one frame for each change of the pair, and no more")
+	assert.Empty(t, page.state().faults)
 }
 
 func TestATitleTheShellSetsItselfIsNotAProgramsAndASameTitleIsOneFrame(t *testing.T) {
@@ -73,7 +79,10 @@ func TestATitleTheShellSetsItselfIsNotAProgramsAndASameTitleIsOneFrame(t *testin
 	page.waitReady()
 	waitOutput(t, page, "done")
 	got := page.state().titles
-	require.Len(t, got, 1, "the same title twice is said once")
+	guarded(t, "same-title-is-one-frame", func() {
+		assert.Len(t, got, 1, "the same title twice is said once")
+	})
+	require.NotEmpty(t, got, "the title was said")
 	guarded(t, "shell-title-is-not-a-program", func() {
 		assert.Equal(t, titleWire{V: 1, Title: "shell title", Program: false}, got[0], "the shell holds the foreground: no program runs, whatever the title says")
 	})
@@ -100,11 +109,11 @@ func TestAPageThatDidNotAskIsSentNoTitleFrameAndReadyDoesNotSayOne(t *testing.T)
 
 func TestAPageThatComesBackIsSentTheTitleTheHostHoldsAfterReady(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
-	info := m.startChannel(t, shellTitleScript, Options{})
+	info := m.startChannel(t, shellTitleScript+`; printf 'barrier\n'; read x`, Options{})
 	first := m.attachTitle(t, info.Cap, nil, false)
 	first.waitReady()
 	waitOutput(t, first, "done")
-	require.Len(t, first.state().titles, 1)
+	guarded(t, "same-title-is-one-frame", func() { require.Len(t, first.state().titles, 1) })
 	first.detach()
 	first.waitClosed()
 
@@ -112,40 +121,55 @@ func TestAPageThatComesBackIsSentTheTitleTheHostHoldsAfterReady(t *testing.T) {
 	end := first.state().next
 	second := m.attachTitle(t, info.Cap, &end, false)
 	second.waitReady()
-	got := waitTitles(t, second, 1)
+	second.input("\n")
+	waitOutput(t, second, "barrier")
+	got := second.state().titles
 	guarded(t, "title-sent-to-a-page-that-comes-back", func() {
-		assert.Equal(t, titleWire{V: 1, Title: "shell title", Program: false}, got[0], "a reload gets the title the terminal has, though the bytes that set it are not replayed")
+		assert.Equal(t, []titleWire{{V: 1, Title: "shell title", Program: false}}, got, "a reload gets the title the terminal has, though the bytes that set it are not replayed")
 	})
-	assert.Empty(t, second.state().segs, "no output was replayed")
+	for _, seg := range second.state().segs {
+		assert.GreaterOrEqual(t, seg.offset, end, "no output was replayed: what the page took is live")
+	}
 }
 
 func TestATitleOfAHundredKilobytesAndOneWithControlsAreBoundedAndCleanOnTheStream(t *testing.T) {
 	m, _ := newChannelManager(t, smallChannel)
-	script := `printf '\033]2;'; head -c 102400 /dev/zero | tr '\0' A; printf '\007'; printf 'first\n'; ` +
-		`printf '\033]2;a\001b\033[31mred\033[0m\177c\007'; printf 'second\n'; ` +
+	// The shell waits for a line between the titles: each one is stated alone, where output that came in one read would state only the last.
+	script := `printf '\033]2;'; head -c 102400 /dev/zero | tr '\0' A; printf '\007'; printf 'first\n'; read x; ` +
+		`printf '\033]2;a\302\205b\001\033[31mred\033[0m\177c\007'; printf 'second\n'; read x; ` +
 		`printf '\033]0;\342\200\256evil\342\200\254\007'; printf 'third\n'; read x`
 	info := m.startChannel(t, script, Options{})
 	page := m.attachTitle(t, info.Cap, nil, false)
 	page.waitReady()
+	waitOutput(t, page, "first")
+	got := waitTitles(t, page, 1)
+	page.input("\n")
+	waitOutput(t, page, "second")
+	got = waitTitles(t, page, 2)
+	page.input("\n")
 	waitOutput(t, page, "third")
-	got := page.state().titles
+	got = waitTitles(t, page, 3)
 	require.Len(t, got, 3, "the three titles, each said once")
 	guarded(t, "title-is-bounded", func() {
 		assert.Equal(t, strings.Repeat("A", maxTitleBytes), got[0].Title, "100 KB of text is cut to what a title keeps")
 	})
 	guarded(t, "title-has-no-control", func() {
-		assert.Equal(t, "abc", got[1].Title, "controls, an ESC and the text of the sequence it began are not in the title: the ESC ended the OSC, and what follows is a CSI")
+		assert.Equal(t, "ab", got[1].Title, "controls are not in the title, and an ESC ends the OSC: what follows it is a sequence of its own and not text")
 	})
 	guarded(t, "title-has-no-bidi-control", func() {
 		assert.Equal(t, "evil", got[2].Title, "a right-to-left override does not reorder what the tab says")
 	})
-	for _, title := range got {
-		assert.True(t, utf8.ValidString(title.Title))
-		assert.LessOrEqual(t, len(title.Title), maxTitleBytes)
-		for _, r := range title.Title {
-			assert.False(t, unicode.IsControl(r), "no control character in %q", title.Title)
-		}
-	}
+	guarded(t, "title-is-bounded", func() {
+		guarded(t, "title-has-no-control", func() {
+			for _, title := range got {
+				assert.True(t, utf8.ValidString(title.Title))
+				assert.LessOrEqual(t, len(title.Title), maxTitleBytes)
+				for _, r := range title.Title {
+					assert.False(t, unicode.IsControl(r), "no control character in %q", title.Title)
+				}
+			}
+		})
+	})
 }
 
 func TestACommandTheShellVouchedForMakesTheTitleAProgramsAndItsEndEndsIt(t *testing.T) {
@@ -155,17 +179,22 @@ func TestACommandTheShellVouchedForMakesTheTitleAProgramsAndItsEndEndsIt(t *test
 	start := osc("133;A") + "$ " + osc("133;B") + "build\r\n" + osc("633;E;build;"+k.nonce) + osc("133;C")
 	k.print(start)
 	k.print(osc("2;compiling"))
-	got := waitTitles(t, page, 1)
+	k.print("barrier one\n")
+	waitOutput(t, page, "barrier one")
+	got := page.state().titles
 	guarded(t, "title-of-a-vouched-command", func() {
-		assert.Equal(t, titleWire{V: 1, Title: "compiling", Program: true}, got[0], "the shell said a command runs: the title is a program's even where the shell holds the foreground")
+		assert.Equal(t, []titleWire{{V: 1, Title: "compiling", Program: true}}, got, "the shell said a command runs: the title is a program's even where the shell holds the foreground")
 	})
 
 	k.print(osc("133;D;0") + osc("633;P;Cwd=/tmp;"+k.nonce) + osc("133;A") + "$ ")
-	got = waitTitles(t, page, 2)
+	k.print("barrier two\n")
+	waitOutput(t, page, "barrier two")
+	got = page.state().titles
 	guarded(t, "title-detached-by-the-end-mark", func() {
-		assert.Equal(t, titleWire{V: 1, Title: "compiling", Program: false}, got[1], "the command ended: the host says no program runs, with no title set after it")
+		assert.Equal(t, []titleWire{{V: 1, Title: "compiling", Program: true}, {V: 1, Title: "compiling", Program: false}}, got,
+			"the command ended: the host says no program runs, with no title set after it")
 	})
-	assert.Len(t, page.state().titles, 2)
+	assert.Empty(t, page.state().faults)
 }
 
 func TestAForgedStartMarkDoesNotMakeATitleAProgramsAndATitleOfAnUnverifiedCommandIsNotOne(t *testing.T) {
@@ -174,9 +203,11 @@ func TestAForgedStartMarkDoesNotMakeATitleAProgramsAndATitleOfAnUnverifiedComman
 	page.waitReady()
 	// Any program can print the marks of a prompt and a start: without the line the nonce vouches for, they prove nothing.
 	k.print(osc("133;C") + osc("633;E;build;wrong-nonce") + osc("2;forged"))
-	got := waitTitles(t, page, 1)
+	k.print("barrier\n")
+	waitOutput(t, page, "barrier")
+	got := page.state().titles
 	guarded(t, "forged-start-is-no-program", func() {
-		assert.Equal(t, titleWire{V: 1, Title: "forged", Program: false}, got[0], "a start nobody vouched for is not a program")
+		assert.Equal(t, []titleWire{{V: 1, Title: "forged", Program: false}}, got, "a start nobody vouched for is not a program")
 	})
 }
 
