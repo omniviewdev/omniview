@@ -591,7 +591,7 @@ func TestANewPromptEndsAnyRunningCommand(t *testing.T) {
 	k.print(osc("133;A") + osc("133;B") + "exec zsh\r\n" + osc("633;E;exec\\x20zsh;"+k.nonce) + osc("133;C"))
 	busy, err := k.f.m.ChannelBusy(k.info.Cap)
 	require.NoError(t, err)
-	require.Equal(t, StateBusy, busy.State)
+	guarded(t, "busy-from-marks", func() { require.Equal(t, StateBusy, busy.State) })
 	k.print(osc("133;A") + "$ " + osc("133;B"))
 	guarded(t, "prompt-ends-running", func() {
 		busy, err = k.f.m.ChannelBusy(k.info.Cap)
