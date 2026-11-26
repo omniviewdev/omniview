@@ -13,7 +13,7 @@
   }
 
   .command {
-    font-family: var(--ov-font-mono);
+    font-family: var(--ov-font-code);
   }
 
   .muted {
