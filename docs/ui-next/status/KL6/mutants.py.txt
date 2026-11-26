@@ -26,7 +26,7 @@ faults = {
     "M12 a snapshot is kept before the epoch and registration fences": ("meta", "\tdefer func() { c.lastKnown.report(pluginID, dropped) }()\n\tc.pluginsMu.Lock()", "\tdefer func() { c.lastKnown.report(pluginID, dropped) }()\n\t_, dropped = known.observe(snapshot, prepared, false)\n\tc.pluginsMu.Lock()"),
     "M13 no limit on a plugin": ("lk", "\tif p.bytes > s.limits.pluginBytes {", "\tif false && p.bytes > s.limits.pluginBytes {"),
     "M14 a refusal is reported again with each revision": ("lk", "\t\tif prior, was := c.refused[key]; was && prior.observed.Equal(observed) && prior.digest == refusal.digest {\n\t\t\treturn false\n\t\t}\n", ""),
-    "M15 the shutdown writes nothing": ("lk", "\ts.within(func() {\n\t\tfor _, p := range behind {\n\t\t\ts.flush(p)\n\t\t}\n\t})\n\ts.close()", "\ts.close()"),
+    "M15 the shutdown writes nothing": ("lk", "\ts.within(\"the quit\", deadline, func() {\n\t\tfor _, p := range behind {\n\t\t\ts.flush(p)\n\t\t}\n\t})\n\ts.closeBy(deadline)", "\ts.closeBy(deadline)"),
     "M16 the connect snapshot, active with no entries, is a complete answer": ("lk", COMPLETE, COMPLETE.replace(" && len(snapshot.Entries) > 0", "")),
     "M17 a failed refresh is a complete answer": ("lk", COMPLETE, COMPLETE.replace(" && snapshot.LastRefreshError == nil", "")),
     "M18 what was refused is remembered for ever": ("lk", "\tfor key := range c.refused {\n\t\tif _, reported := snapshot.Entries[key]; !reported {\n\t\t\tdelete(c.refused, key)\n\t\t}\n\t}\n", ""),
@@ -39,12 +39,15 @@ faults = {
     "M25 a read that failed is an empty copy": ("lk", "\t\treturn nil, err\n\t}\n\tsweepLastKnownTemporaries(root)", "\t\treturn map[string]*lastKnownConnection{}, nil\n\t}\n\tsweepLastKnownTemporaries(root)"),
     "M26 a file that cannot be parsed is not moved aside": ("lk", "\t\treturn map[string]*lastKnownConnection{}, s.quarantine(root, pluginID, err)", "\t\treturn map[string]*lastKnownConnection{}, nil"),
     "M27 the leftovers of a cut-short write are not swept": ("lk", "\tsweepLastKnownTemporaries(root)\n\tdata, found, err := readLastKnownFile(root)", "\tdata, found, err := readLastKnownFile(root)"),
-    "M28 the quit waits for a hung disk": ("lk", "\ttimer := time.NewTimer(s.quitWait)", "\ttimer := time.NewTimer(time.Hour)"),
+    "M28 the quit waits for a hung disk": ("lk", "\ttimer := time.NewTimer(time.Until(deadline))", "\ttimer := time.NewTimer(time.Hour)"),
     "M29 a removal during a write waits for the debounce": ("lk", "\tif p.forgetLocked(connectionID) {\n\t\ts.touchLocked(p, 0)\n\t}", "\tif p.forgetLocked(connectionID) {\n\t\ts.touchLocked(p, s.debounce)\n\t}"),
     "M30 a snapshot of kept entries alone has no generation": ("lk", "\tif candidate.Generation == \"\" {\n\t\tcandidate.Generation = lastKnownGeneration\n\t}", ""),
     "M31 an object named for a credential in its name or key member is kept": ("lk", "\t\tfor _, member := range [...]string{\"name\", \"key\"} {", "\t\tfor _, member := range [...]string{} {"),
     "M32 a connection ID that looks like a credential is kept": ("lk", "\tprepared.idRefused = devdiag.Redact(snapshot.ConnectionID) != snapshot.ConnectionID", "\tprepared.idRefused = false"),
     "M33 what is served is not held to the SDK's validation": ("lk", "\tif resourcev2.ValidateConnectionMetadataSnapshot(candidate) != nil {\n\t\treturn snapshot\n\t}", ""),
+    "M34 a change that raced a plugin's stop arms a write after it": ("lk", "\tif s.closed || p.settled {", "\tif s.closed {"),
+    "M35 the quit waits twice for a hung disk": ("lk", "\ts.closeBy(deadline)\n}", "\ts.closeBy(time.Now().Add(s.quitWait))\n}"),
+    "M36 a read that keeps failing is tried on every admission": ("lk", "\tif p.failures >= 2 && s.now().Before(p.retryAt) {", "\tif false {"),
 }
 
 # A fault whose control is the race detector runs the tests with -race.

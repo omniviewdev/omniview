@@ -107,3 +107,28 @@ macOS arm64, Go 1.27.4, `GOWORK=off GOTOOLCHAIN=local`; the machine is shared (l
 ## Dev tools
 
 `docs/ui-next/status/KL6/mutants.py.txt` (drop the `.txt`; run from the repository root): the 33 negative controls above. Scratch only, not committed: the reviewer's `zz_review_stress_test.go` and `zz_review_probe_test.go` in `/tmp/kl-review/` and the script that copied them in, patched them as described, ran them and removed them.
+
+## Round 2 of the review (rule 36)
+
+The second review's verdict was merge, with four small items. All are fixed in the next commit (3fb2532bc), each checked as below. The two rounds together: round 1 found 11 things (table above), round 2 four.
+
+| # | Item | Fix | Test |
+|---|---|---|---|
+| A | A write could land after `settle` returned: `forget` and `retain` have no registration fence, so a profile change that captured the plugin's copy before a stop armed a timer after `OnPluginStop` (the reviewer's probe: `[0s]` armed after the stop). | A `settled` flag, set by `settle` and cleared by the plugin's next admitted `observe`. While it is set `touchLocked` marks the file owed and arms nothing; the next admitted snapshot arms the write (which carries what the change left owed) and the quit writes it too. | `…ARacingProfileChangeArmsNothingAfterTheStop` (fake clock; both ways out: the next admission of a registration that starts again, and the quit) |
+| B | The design doc said the SDK's clearing drops the copy "while the host runs". | Section 13's first limit now says it holds only for a connection connected in this run: after a restart with no connect, `ApplyConnections` with changed `Data` publishes nothing (the SDK deduplicates the identical empty snapshot), so only the host's own profile operations drop the copy. | docs |
+| C | `shutdown` and `close` each waited `quitWait` (6 s in all), and a hung disk could stall a plugin's stop. | One deadline for both (3 s in all). `settle` is bounded by the same 3 s: on timeout one `Warn`, and the file is left owed for the quit's flush. | `…AHungDiskDelaysNeitherAStopNorTheQuitBeyondTheBound` |
+| D | `prepare` ran for a snapshot that is not newer than the mirror's, and the read retry ran on every admission while a read kept failing. | `admitMetadata` skips `prepare` for a snapshot whose revision is not newer than the mirror's. A read that has failed twice in a row is tried again once a second at most, by the store's clock (`now`); the first failure is tried again at the next admission. | `…BacksOffAReadThatKeepsFailing` (the skip has no test of its own: its effect is the cost of an admission that is discarded) |
+
+Checks of round 2 (macOS arm64, Go 1.27.4, `GOWORK=off GOTOOLCHAIN=local`):
+
+- Build, vet and `gofmt -l`: clean. The resource package without `-short`: ok (26 s); with `-race`: ok (70 s); 588 top-level tests (585 before), none failed or skipped. The 29 tests of this change passed 10 runs in a row under `-race`.
+- The reviewer's round-2 stress (`/tmp/kl-review/*.r2.go.txt`, copied in temporarily and removed), mode 1, 20 s, under `-race`, the store reachable at `OnPluginUninstalled` in half the cycles: pass (51,982 operations, 324 stops, 261 uninstalls, 23 restarts).
+- Changed-lines lint (the recipe of `status/N24-L2.md`): 0 issues.
+- Controls: round 2 changed the text that M15 and M28 plant and added M34 (a change that raced a stop arms a write), M35 (the quit waits twice for a hung disk) and M36 (a failing read is tried on every admission); the script is updated, and those five were not run.
+
+### Not verified (both rounds)
+
+- Windows: the claim that no file is held under the store after a stop (finding 2 of round 1, item A of round 2) rests on the code and the fake-clock tests, not on a Windows run. The rename over an existing file, and the directory sync that the profile store also skips there, were not run either.
+- The real host with the Kubernetes plugin and a cluster, and the window: the tests run the host in front of a real SDK controller in process (not over gRPC); the Wails event and the hook in a window were not run. Nothing in the runtime changed.
+- The effect of an update on the file (inferred from `appstate`), and `ServiceShutdown` and the 3 s bounds in a running app (the tests call them, with a disk that hangs).
+- A third look at round 2's changes: they were checked by the tests above and the reviewer's own stress, not re-reviewed. Look first at `touchLocked`/`settle` (the `settled` flag) and `within` (the shared deadline).
