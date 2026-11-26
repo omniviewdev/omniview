@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { EngineAppearance } from './engine';
 import type { PlacedMark, TerminalMark, TerminalReplay } from './feed';
 import type { GutterEvent } from './gutter/commandGutter';
@@ -371,5 +371,20 @@ describe('what review found, in the screen', () => {
     expect(await r.screen.commands.copyOutput()).toBe(false);
     r.engine().alternateScreen(false);
     expect(r.screen.commands.state().output).toBe(true);
+  });
+});
+
+describe('the cost of the menu\'s revision', () => {
+  it('reads no output of the buffer: the revision is asked on every change of the commands, and the text is read only when an item is chosen', async () => {
+    const r = await rig();
+    r.feed.push('$ make\r\nout1\r\nout2\r\n', [placed(0, A()), placed(2, B()), placed(8, C('make')), placed(20, D(2))]);
+    r.frame();
+    const read = vi.spyOn(r.engine(), 'lines');
+    const revision = r.screen.commands.revision();
+    expect(read).not.toHaveBeenCalled();
+    r.feed.push('$ x\r\n', [placed(0, A('c2')), placed(2, B('c2')), placed(5, C('x', 'c2')), placed(5, D(0, 'c2'))]);
+    r.frame();
+    expect(r.screen.commands.revision()).not.toBe(revision);
+    expect(read, 'no line was read for a revision or a change').not.toHaveBeenCalled();
   });
 });

@@ -118,6 +118,8 @@ export type ScreenCommands = {
   /** There are commands to act on, and the emulator is not showing a program's alternate screen: the jump keys are the terminal's. */
   readonly has: () => boolean;
   /** What the menu offers now: how many commands, whether the target printed output, and the reason a command cannot be run again (`undefined`: it can). */
+  /** A string that changes when what the menu offers may have: cheap (no output is read), for a menu that is open to be put away. */
+  readonly revision: () => string;
   readonly state: () => { readonly count: number; readonly output: boolean; readonly rerun: string | undefined };
   readonly jump: (direction: 'previous' | 'next', options?: { readonly select?: boolean }) => void;
   readonly selectOutput: () => void;
@@ -923,6 +925,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
 
   const commands: ScreenCommands = {
     has: () => gutter !== undefined && engine?.alternate() !== true && gutter.commands().length > 0,
+    revision: () => JSON.stringify(commands.state()),
     state: () => ({ count: gutter?.commands().length ?? 0, output: engine?.alternate() !== true && gutter?.output() !== undefined, rerun: rerunBlocked() }),
     jump: (direction, options) => {
       gutter?.jump(direction, options);

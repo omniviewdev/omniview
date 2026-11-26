@@ -415,6 +415,18 @@ describe('what review found', () => {
   });
 });
 
+describe('markers of a command whose line was erased', () => {
+  it('makes no new marker for the end of a command the gutter no longer holds: nothing would own it', async () => {
+    const { feed, prompt, engine } = setup();
+    await prompt();
+    await feed('sleep 9\r\n', [C('sleep 9')]);
+    engine.clear();
+    const made = vi.spyOn(engine, 'mark');
+    await feed('', [D(0, 9_000)]);
+    expect(made).not.toHaveBeenCalled();
+  });
+});
+
 describe('the jump to a command', () => {
   async function three() {
     const rig = setup({ rows: 6 });

@@ -430,6 +430,22 @@ describe('the commands in the body', () => {
     expect(page.queryByRole('menuitem', { name: 'Run command again' })).toBeNull();
   });
 
+  it('puts an open menu away when a command ends while it is open: its Copy command output and Run command again would say what was true when it opened', async () => {
+    const m = mount();
+    await flush();
+    m.feed.push('$ make test\r\nout1\r\n', [
+      { mark: mark('prompt-start'), at: 0 },
+      { mark: mark('input-start'), at: 2 },
+      { mark: mark('command-start', { trust: 'nonce', command: 'make test' }), at: 13 },
+    ]);
+    await flush();
+    rightClick(m.screen());
+    expect(menu()).not.toBeNull();
+    m.feed.push('more\r\n', [{ mark: mark('command-end', { exit: 0, durationMs: 5 }), at: 6 }]);
+    await flush();
+    expect(menu()).toBeNull();
+  });
+
   it('goes to the previous command from the menu, and says where it went to a person who cannot see the view move', async () => {
     const m = mount();
     await flush();
