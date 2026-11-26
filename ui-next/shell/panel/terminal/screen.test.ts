@@ -2995,6 +2995,32 @@ describe('a restart: the screen goes on with the next feed of its session (`cont
     expect(r.engine().text().match(/\[No shell could be started\]/g)).toHaveLength(2);
   });
 
+  it('draws what the ended feed still holds, and how it ended, before it is let go of (`flush`): the last lines of the transcript are not lost to the restart, and nothing is written twice', async () => {
+    const r = await shown();
+    r.feed.push('tail\r\n');
+    r.feed.set({ state: 'ended', exit: { code: 3 } });
+    r.screen.flush();
+    expect(r.engine().text()).toBe(`tail\r\n${ENDED}`);
+    r.screen.continueWith(fakeTerminalFeed({ state: 'starting' }));
+    r.frame();
+    expect(r.engine().text()).toBe(`tail\r\n${ENDED}${SEPARATOR}`);
+  });
+
+  it('draws nothing in a flush when the feed holds nothing and has not ended, and nothing before the emulator is made or after the screen is disposed', async () => {
+    const r = await shown();
+    r.screen.flush();
+    expect(r.engine().text()).toBe('');
+    const early = rig();
+    early.feed.push('x');
+    early.screen.mount(early.host);
+    early.screen.flush();
+    expect(early.feed.reads()).toBe(0);
+    r.screen.dispose();
+    r.feed.push('late');
+    r.screen.flush();
+    expect(r.feed.reads()).toBe(0);
+  });
+
   it('does nothing for a screen that was disposed, and nothing before the emulator is made', async () => {
     const early = rig();
     const next = fakeTerminalFeed({ state: 'starting' });

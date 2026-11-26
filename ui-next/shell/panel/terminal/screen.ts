@@ -146,6 +146,8 @@ export type TerminalScreen = {
    * go of, and the new one is told the size of the screen at once. Nothing before the emulator is made, and nothing once the screen is disposed.
    */
   readonly continueWith: (next: TerminalFeedHandle) => void;
+  /** Draws what the feed still holds and how it ended, now: what a restart does before it lets the ended feed go. */
+  readonly flush: () => void;
 };
 
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
@@ -820,6 +822,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     },
 
     continueWith: () => undefined,
+
+    flush: () => undefined,
 
     find: async () => (engine === undefined ? undefined : engine.find()),
 

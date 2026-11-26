@@ -1161,6 +1161,17 @@ describe('the lane\'s Restart', () => {
     expect(r.loader.engines[0]?.text()).toBe('bye\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n$ ');
   });
 
+  it('draws what the ended terminal still held before the new shell starts: the last lines of the transcript are not lost to the restart', async () => {
+    const r = await mountRestartable();
+    r.old.push('last\r\n');
+    r.end({ exit: { code: 3 } });
+    act(() => {
+      page.queryByRole('button', RESTART)?.click();
+    });
+    await flush();
+    expect(r.loader.engines[0]?.text()).toBe('last\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n');
+  });
+
   it('is the lane of the new feed afterwards: no button while the new shell starts or runs, and Connected when it does', async () => {
     const r = await mountRestartable();
     r.end();
