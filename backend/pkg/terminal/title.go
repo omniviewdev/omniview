@@ -69,7 +69,7 @@ func (t *titleScanner) Feed(p []byte) (string, bool) {
 			}
 			i += j
 		}
-		t.cur = t.off + uint64(i) //nolint:gosec // An index is never negative.
+		t.cur = t.off + uint64(i)
 		if text, ok := t.step(p[i]); ok {
 			title, found = text, true
 			t.lastEnd = t.cur + 1
