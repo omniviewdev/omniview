@@ -146,6 +146,13 @@ export function retitleSession(state: PanelState, id: SessionId, title: string):
 }
 
 /**
+ * The person names a session: its title is theirs from now on, and its owner's naming no longer changes it (`retitleSession` is refused). Cut as a title is cut. No behavior yet.
+ */
+export function renameSession(state: PanelState, _id: SessionId, _title: string): Step<PanelResult> {
+  return unchanged(state);
+}
+
+/**
  * Closes a session: its tab and its body go, and the session on screen passes to the one after it in its tool's strip, else the one before (as a closed tab does). The panel stays as it
  * is: a tool with no session left shows its empty state. Whoever owns the session's work stops it when its body unmounts (the host's viewer, or the plugin's body).
  */

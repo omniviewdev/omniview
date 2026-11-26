@@ -55,6 +55,11 @@ export type Session = {
   readonly plugin: string;
   /** What the tab is called: the end of a long one is kept whole when it is cut (SCT1). */
   readonly title: string;
+  /**
+   * The person named this session (`renameSession`): its title is theirs, and its owner's own naming (`retitleSession`: the shell the host resolved, the title a program set) no longer changes it. Kept with the saved
+   * session, so that a name survives a reload. Absent: the owner names it.
+   */
+  readonly titlePinned?: true | undefined;
   /** The muted qualifier after the name (the connection a twin is told apart by); empty when there is none. */
   readonly scope: string;
   readonly state: SessionState;
@@ -138,7 +143,9 @@ export type RefusedReason =
   /** The id is taken, or the tool limit is reached. */
   | 'taken'
   /** The session was ended by its plugin's unload and is kept as it is until its tab closes (A21): nothing changes it. */
-  | 'held';
+  | 'held'
+  /** The person named the session (`renameSession`): its owner may not name it again. */
+  | 'pinned';
 export type Refused = { readonly status: 'refused'; readonly reason: RefusedReason; readonly message: string };
 
 export type PanelResult = Done | Noop | Refused;
@@ -211,6 +218,8 @@ export type PersistedSession = {
   readonly plugin: string;
   readonly title: string;
   readonly scope: string;
+  /** The person named the session: kept, so that the name survives a reload. */
+  readonly titlePinned?: true | undefined;
   readonly route?: Route | undefined;
 };
 

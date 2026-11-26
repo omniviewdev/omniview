@@ -1,7 +1,7 @@
 import { activateSession, activateTool, fitHeight, hide, reorderSession, resize, revealSession, setHeight, show, type ShowOptions } from './arrange';
 import { serialise } from './persist';
 import { createSelectors } from './selectors';
-import { closeSession, openSession, retitleSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
+import { closeSession, openSession, renameSession, retitleSession, setSessionState, type OpenOptions, type StateChange } from './sessions';
 import { emptyPanel, type Context, type Step } from './state';
 import { registerTool, syncPlugins, unregisterTool, type PluginTools } from './tools';
 import type { CloseResult, OpenResult, PanelResult, PanelState, PersistedPanel, Resize, Selectors, SessionId, SessionInput, ToolId, ToolInput } from './types';
@@ -54,8 +54,16 @@ export type PanelStore = {
   readonly openSession: (input: SessionInput, options?: OpenOptions) => OpenResult;
   /** What a session came to. */
   readonly setSessionState: (id: SessionId, change: StateChange) => PanelResult;
-  /** Gives a session another title (the shell's real name once the host has it): one change, and the tab's name, twins and ordinal follow from the snapshot. The same title changes nothing; a held session is refused. */
+  /**
+   * Gives a session another title on its owner's behalf (the shell's real name once the host has it, the title a program set): one change, and the tab's name, twins and ordinal follow from the snapshot. The same title changes
+   * nothing; a held session is refused, and so is a session the person named (`renameSession`): their name stands.
+   */
   readonly retitleSession: (id: SessionId, title: string) => PanelResult;
+  /**
+   * The person names a session: the title is theirs from now on (`titlePinned`, saved with the session), and the owner's own naming (`retitleSession`) is refused. An empty title is refused. The same title of a session that is named
+   * changes nothing; a held session is refused.
+   */
+  readonly renameSession: (id: SessionId, title: string) => PanelResult;
   readonly closeSession: (id: SessionId) => CloseResult;
   /** Moves a session to an index of its tool's strip (kept within it): the other sessions keep their places, and the saved panel lists them in the new order. The place it has changes nothing. */
   readonly reorderSession: (id: SessionId, to: number) => PanelResult;
@@ -146,6 +154,7 @@ export function createPanelStore(options: PanelStoreOptions = {}): PanelStore {
     openSession: (input, openOptions) => run(openSession(state, input, ctx, openOptions)),
     setSessionState: (id, change) => run(setSessionState(state, id, change, ctx.now())),
     retitleSession: (id, title) => run(retitleSession(state, id, title)),
+    renameSession: (id, title) => run(renameSession(state, id, title)),
     closeSession: (id) => run(closeSession(state, id)),
     reorderSession: (id, to) => run(reorderSession(state, id, to)),
 

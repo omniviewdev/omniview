@@ -661,6 +661,10 @@ export type FakeStream = {
   readonly marks: (...marks: ReadonlyArray<Readonly<Record<string, unknown>>>) => void;
   /** `marks` with whatever the test makes of the frame: a host that breaks the protocol, past the fake's own envelope. */
   readonly rawMarks: (frame: unknown) => void;
+  /** `title`: the title a program set and the host's word that a program runs (`title`, `program` of the frame, section 4b). */
+  readonly title: (title: string, program: boolean) => void;
+  /** `title` with whatever the test makes of the frame: a host that breaks the protocol. */
+  readonly rawTitle: (frame: unknown) => void;
   /** `applied`: the bytes of input the host has applied from the capability, across streams, so far. */
   readonly applied: (total: number) => void;
   /** How the terminal ended: `terminal.End` as the host sends it. Default: the shell exited with code 0. */
@@ -849,6 +853,14 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       rawMarks: (frame) => {
         holder('marks');
         events.marks(frame);
+      },
+      title: (title, program) => {
+        holder('title');
+        events.title({ v: 1, title, program });
+      },
+      rawTitle: (frame) => {
+        holder('title');
+        events.title(frame);
       },
       applied: (total) => {
         holder('applied');

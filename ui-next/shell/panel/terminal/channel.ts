@@ -22,6 +22,8 @@ export type ChannelEvents = {
   readonly closeRefused: () => void;
   /** `0x8b`: the marks of the shell's integration (protocol section 4a), the frame's JSON parsed and unchecked: `{v: 1, marks: [...]}`. Sent only to a page that said `marks: 1` in its attach, after the bytes of each mark's sequence. */
   readonly marks: (frame: unknown) => void;
+  /** `0x8c`: the title a program set and whether a program runs (protocol section 4b), the frame's JSON parsed and unchecked: `{v: 1, title, program}`. Sent only to a page that said `title: 1` in its attach, once when it attaches and whenever the pair changes. */
+  readonly title: (frame: unknown) => void;
   /** `0x88`, to a watcher: the stream that held the terminal ended and the terminal runs and is free. The stream is over. */
   readonly released: () => void;
   /** `0x89`: the host speaks another version of the stream (its number, parsed from `{"v":n}` and unchecked). The stream is over; nothing is tried again. */
@@ -99,6 +101,9 @@ export const CHANNEL_VERSION = 2;
 
 /** The version of the marks frame this page reads (`attach.marks`, protocol section 4a): the host sends the frame only to a page that says it. */
 export const CHANNEL_MARKS_VERSION = 1;
+
+/** The version of the title frame this page reads (`attach.title`, protocol section 4b): the host sends the frame only to a page that says it. */
+export const CHANNEL_TITLE_VERSION = 1;
 
 /** The most marks a feed keeps (the host keeps the newest 1,024 and at most twice that): the oldest go first. */
 export const MAX_MARKS = 2048;

@@ -1108,6 +1108,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
   };
 
+  /** The title a program set, and the host's word that a program runs while it is set (protocol section 4b). No behavior yet. */
+  const onTitle = (_frame: unknown) => undefined;
+
   /** The marks and what is known of what runs start over: the screen is brought afresh (a replay of the terminal, or a gap), so the marks of the screen that was are of lines that are not there. */
   const forgetMarks = (from: number) => {
     marks = [];
@@ -1253,6 +1256,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         gap: heard(onGap),
         applied: heard(onApplied),
         marks: heard(onMarks),
+        title: heard(onTitle),
         ended: heardEnd(onEnded),
         takenOver: heard(onTakenOver),
         closeRefused: heardEnd(() => undefined),

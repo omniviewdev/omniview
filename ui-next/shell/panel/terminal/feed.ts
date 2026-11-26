@@ -115,6 +115,11 @@ export type TerminalFeedSnapshot = {
   readonly inputLost?: boolean | undefined;
   /** Set on a terminal that started in the home directory because the directory it was to start in was not known (`New terminal here` of a terminal whose directory the host could not name): the lane says so until the first thing is typed. */
   readonly startNote?: 'home-for-unknown-directory' | undefined;
+  /**
+   * The title a program set (OSC 0 and 2) while it runs in the terminal, as the host states it: the producer says that a program runs (the process that holds the foreground, or a command the shell proved it started), and the page
+   * never infers it. Absent when no program runs, when none set a title, and once the terminal is over: the tab then shows the shell's name. Untrusted text, bounded and with no control character; the page draws it as text only.
+   */
+  readonly title?: string | undefined;
 };
 
 /** What a mark of the shell's integration marks (the host's words, `docs/ui-next/terminal-channel-protocol.md` section 4a). */
