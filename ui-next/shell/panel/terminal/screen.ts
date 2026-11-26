@@ -696,6 +696,12 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
           feed.write(data);
         }
       }),
+      // A mouse report in raw bytes (a legacy X10 click). It refers to the screen the person sees: while a replay is applied the screen is about to be replaced, and the report is dropped, as the emulator's other answers are.
+      made.onBinary((bytes) => {
+        if (replaying === undefined) {
+          feed.writeBinary(bytes);
+        }
+      }),
       made.onSelection(() => {
         const selected = made.hasSelection();
         if (selected !== snapshot.selected) {

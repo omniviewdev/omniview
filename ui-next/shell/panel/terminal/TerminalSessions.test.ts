@@ -634,6 +634,13 @@ describe('the members a feed must have', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses a feed that cannot take raw bytes: a legacy mouse report would be lost without a word', () => {
+    const { sessions, warn } = harness();
+    const without = { ...fakeTerminalFeed(), writeBinary: undefined } as unknown as FakeTerminalFeed;
+    expect(sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => without })).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
   it('does not need a way to ask what runs in it: that is optional, and a close then asks the general question', () => {
     const { sessions } = harness();
     const feed = fakeTerminalFeed();

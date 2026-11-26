@@ -14,6 +14,8 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly reads: () => number;
   /** What was typed, in the order it was given. */
   readonly typed: () => readonly string[];
+  /** The raw bytes of `writeBinary`, in the order they were given. */
+  readonly binaries: () => readonly Uint8Array[];
   /** The sizes asked for, as [columns, rows], in order. */
   readonly sizes: () => ReadonlyArray<readonly [number, number]>;
   /** A new status: only what is given changes, and every listener is told. */
@@ -60,6 +62,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   const acks: number[] = [];
   let woken = false;
   const typed: string[] = [];
+  const binaries: Uint8Array[] = [];
   /** The calls of the typing that the feed took: what `inputs` says. */
   let taken = 0;
   const sizes: Array<readonly [number, number]> = [];
@@ -148,6 +151,12 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
         taken += 1;
       }
     },
+    writeBinary: (bytes) => {
+      binaries.push(bytes);
+      if (bytes.length > 0 && closed === 0 && (status.state === 'starting' || status.state === 'running')) {
+        taken += 1;
+      }
+    },
     resize: (cols, rows) => {
       sizes.push([cols, rows]);
     },
@@ -170,6 +179,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     closed: () => closed,
     reads: () => reads,
     typed: () => typed,
+    binaries: () => binaries,
     inputs: () => taken,
     sizes: () => sizes,
     acks: () => acks,
@@ -217,6 +227,8 @@ export type FakeEngine = Engine & {
   readonly focuses: () => number;
   /** What the user typed (or pasted): it reaches the listeners as the person's (`user`). */
   readonly type: (data: string) => void;
+  /** Raw bytes the emulator sends for the person (a legacy mouse report): they reach the `onBinary` listeners. */
+  readonly binary: (bytes: Uint8Array) => void;
   /** What the emulator says by itself, with no one typing (a focus report, an answer it was not asked for by a query it parsed): it reaches the listeners as the emulator's own, not the person's. */
   readonly say: (data: string) => void;
   /** Selects text (or clears the selection with `''`) and tells the listeners. */
@@ -289,6 +301,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   const dataListeners = new Set<(data: string, user: boolean) => void>();
   const selectionListeners = new Set<() => void>();
   const bellListeners = new Set<() => void>();
+  const binaryListeners = new Set<(bytes: Uint8Array) => void>();
   let keys: ((event: KeyboardEvent) => boolean) | undefined;
   let host: HTMLElement | undefined;
   let size = { cols: options.cols, rows: options.rows };
@@ -408,6 +421,12 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
         dataListeners.delete(listener);
       };
     },
+    onBinary: (listener) => {
+      binaryListeners.add(listener);
+      return () => {
+        binaryListeners.delete(listener);
+      };
+    },
     onSelection: (listener) => {
       selectionListeners.add(listener);
       return () => {
@@ -458,6 +477,11 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     type: (data) => {
       emit(data, true);
     },
+    binary: (bytes) => {
+      for (const listener of [...binaryListeners]) {
+        listener(bytes);
+      }
+    },
     say: (data) => {
       emit(data, false);
     },
@@ -485,7 +509,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     measured: (next) => {
       measured = next;
     },
-    listeners: () => dataListeners.size + selectionListeners.size + bellListeners.size,
+    listeners: () => dataListeners.size + binaryListeners.size + selectionListeners.size + bellListeners.size,
     find: async () => {
       findAsks += 1;
       return Promise.resolve(finder);

@@ -138,6 +138,11 @@ export type TerminalFeedHandle = {
   /** What the user typed or pasted. Delivered in order; ignored once the session is over. */
   readonly write: (text: string) => void;
   /**
+   * Raw bytes the emulator sends for the person (a legacy X10 mouse report: its three bytes after `ESC [ M` are the coordinates plus 32, and a byte above 127 is not UTF-8). They go the way typed text goes (kept until the host
+   * applies them, sent again once after a cut, dropped when the host does not know the writer) and reach the shell as they are, never as UTF-8 of a character.
+   */
+  readonly writeBinary: (bytes: Uint8Array) => void;
+  /**
    * How many calls of `write` the user's typing has made so far: it only goes up, and counts what the feed took (typing it ignored, and a call with nothing typed, are not counted). A close that asked what runs in the
    * session compares it before and after the answer: `idle` is true of the moment the host looked, and what was typed since may have started a program. A producer that does not count leaves it out, and then its `idle`
    * cannot be trusted: a close asks.
