@@ -361,3 +361,20 @@ func TestAPromptTitleInTheReadOfTheStartMarkIsNotTheCommandsAndAPreexecTitleIs(t
 		assert.Equal(t, titleWire{V: 1, Title: "build", Program: true}, got[len(got)-1], "a title set after the prompt, in the read of the start mark, is the command's")
 	})
 }
+
+// ssh holds the foreground of a command the shell vouched for; the remote shell draws its own prompt, with the title its PS1 sets, before a foreign input-start mark. The prompt is
+// not this terminal's: the title is the running command's (ssh's), whatever marks a program prints.
+func TestARemotePromptTitleWhileAVouchedCommandRunsIsTheCommandsTitle(t *testing.T) {
+	k := newMarked(t)
+	page := k.f.m.attachTitle(t, k.info.Cap, nil, true)
+	page.waitReady()
+	k.print(osc("133;A") + "$ " + osc("133;B") + "ssh host\r\n" + osc("633;E;ssh host;"+k.nonce) + osc("133;C"))
+	k.print(osc("133;A") + osc("0;remote: ~") + "remote$ " + osc("133;B"))
+	k.print("barrier\n")
+	waitOutput(t, page, "barrier")
+	got := page.state().titles
+	guarded(t, "remote-prompt-title-is-the-commands", func() {
+		require.NotEmpty(t, got)
+		assert.Equal(t, titleWire{V: 1, Title: "remote: ~", Program: true}, got[len(got)-1], "a command is running: the remote prompt's title is its title")
+	})
+}
