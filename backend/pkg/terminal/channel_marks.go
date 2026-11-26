@@ -154,12 +154,13 @@ func marksFrame(ms []marks.Mark) []byte {
 // verifiedRunning is the command that the shell said it started and has not ended, with the nonce's proof of its line: what "a command is running"
 // means. A start mark that anything could have printed does not make a terminal busy.
 func (s *session) verifiedRunning() (marks.Record, bool) {
+	var none marks.Record
 	if s.ring.marks == nil {
-		return marks.Record{}, false
+		return none, false
 	}
 	rec, ok := s.ring.marks.log().Running()
 	if !ok || rec.Trust != marks.TrustNonce {
-		return marks.Record{}, false
+		return none, false
 	}
 	return rec, true
 }

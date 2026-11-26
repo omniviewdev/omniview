@@ -785,7 +785,7 @@ func (s *session) advance(c *channelConn, step senderStep) {
 		// What the gap skipped is not sent: its marks end at or before where the stream goes on.
 		c.markNext = max(c.markNext, step.to+1)
 		c.sent.Store(step.to)
-	default:
+	case stepIdle, stepWaitAck, stepOutput, stepEnded:
 		c.sent.Store(step.to)
 	}
 	s.outMu.Unlock()
