@@ -1139,6 +1139,8 @@ test('a page that did not ask for marks, another version of the frame, and a ter
   const other = pageOf(host, made.cap, { marks: 2 });
   await other.until('ready', () => other.ready !== undefined);
   assert.equal(other.ready.marks, undefined, 'the host speaks version 1 of the frame');
+  await other.until('its replay', () => other.next >= other.end);
+  assert.deepEqual(other.marks, [], 'a page that asked for another version is sent no marks frame');
   const bare = createHost();
   const none = await make(bare, 'n');
   const page = pageOf(bare, none.cap, { marks: 1 });
@@ -1197,4 +1199,27 @@ test('the record is read by its capability: the commands with the offsets of the
   const late = pageOf(host, made.cap, { marks: 1 });
   await late.until('the output', () => late.next >= big.end);
   assert.ok(late.marks.length >= 1024 && late.marks.length <= 2048, `the marks held are bounded: ${String(late.marks.length)}`);
+});
+
+test('a command line and a directory are UTF-8, a malformed OSC 7 does not break the ring, and a prompt ends a running command so that the next one is its own', timeout, async () => {
+  const { host, made, page } = await marked();
+  host.type('t', 'echo caf\u00e9\r');
+  await page.until('the start', () => page.marks.some((mark) => mark.kind === 'command-start'));
+  assert.equal(page.marks.find((mark) => mark.kind === 'command-start').command, 'echo caf\u00e9', 'the line is decoded as UTF-8, not byte by byte');
+  host.append('t', '\u001b]7;file://h/%zz\u0007after-bad-osc7\r\n');
+  await page.until('the output after it', () => page.bytes().toString('latin1').includes('after-bad-osc7'));
+  const quiet = await host.call('ChannelTerminalCommands', [made.cap]);
+  assert.ok(quiet.commands.every((command) => command.cwd_trust === 'nonce' || command.cwd === undefined), 'an ignored OSC 7 leaves no directory in the record');
+  // A shell that is replaced never prints the end of its command: the prompt of the new one does.
+  host.type('t', 'loop\r');
+  await page.until('the loop', () => page.marks.filter((mark) => mark.kind === 'command-start').length >= 2);
+  const nonce = host.nonceOf('t');
+  host.append('t', `\u001b]133;A\u0007\u001b]133;B\u0007\u001b]633;E;sleep\\x2030;${nonce}\u0007\u001b]133;C\u0007`);
+  await page.until('the next start', () => page.marks.filter((mark) => mark.kind === 'command-start').length >= 3);
+  const record = await host.call('ChannelTerminalCommands', [made.cap]);
+  const [replaced, next] = record.commands.slice(-2);
+  assert.equal(replaced.state, 'ended');
+  assert.equal(replaced.exit_code, undefined, 'no exit code is invented for the replaced command');
+  assert.equal(next.command_line, 'sleep 30', 'the next command has its own line');
+  assert.equal(record.running, next.id);
 });
