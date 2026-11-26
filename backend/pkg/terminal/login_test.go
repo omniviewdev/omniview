@@ -379,14 +379,34 @@ func waitForThePromptAfterTheJob(t *testing.T, sink *chunkSink, info Session) {
 	if info.Integration.State == IntegrationOn || info.Integration.State == IntegrationUnconfirmed {
 		require.Eventually(t, func() bool { return bytes.Count(sink.output(info.ID), []byte("\x1b]133;B")) >= 2 },
 			20*time.Second, 5*time.Millisecond, "the prompt after the job's command was never drawn")
+		require.True(t, blockedReading(info.PID, 20*time.Second), "the shell never went to sleep at its prompt")
 	}
 }
 
 // blockedReading says whether the process is asleep (state S) for a few polls in a row, which on Linux is what a shell is when it waits for
 // its next line: after it has drawn its prompt and done what it does around it. Where there is no /proc it says so (true): the wait
-// before it is the only one. (Stub: says yes.)
+// before it is the only one.
 func blockedReading(pid int, within time.Duration) bool {
-	return true
+	path := "/proc/" + strconv.Itoa(pid) + "/stat"
+	if _, err := os.Stat("/proc/self/stat"); err != nil {
+		return true
+	}
+	deadline := time.Now().Add(within)
+	asleep := 0
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		// The state is the field after the last ')' (the name may hold one).
+		if err == nil && strings.HasPrefix(strings.TrimLeft(string(data)[bytes.LastIndexByte(data, ')')+1:], " "), "S") {
+			asleep++
+			if asleep >= 3 {
+				return true
+			}
+		} else {
+			asleep = 0
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return false
 }
 
 // A prompt that has just been drawn is not a shell that is waiting for input: bash is still, for a moment, in readline's redisplay (state
