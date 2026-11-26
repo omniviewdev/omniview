@@ -2912,6 +2912,93 @@ describe('the marks of the shell', () => {
   });
 });
 
+// THE MARKS IN THE BYTES THE READER TAKES (issue #694 step 5). The reader creates a marker where a mark stands, in the emulator's parse: so the feed hands each mark over with the bytes that end at it, cut there, whether the bytes
+// were read before the mark came (the mark then comes with the next read, which has no bytes) or not, and a replay carries the marks that stand in its bytes.
+
+describe('the marks in the bytes the reader takes', () => {
+  it('cuts what it hands the reader at the mark and hands the mark over with the bytes that end at it; the bytes after wait for the next read', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'a'.repeat(40));
+    r.stream().marks(start(40));
+    r.stream().output(40, 'b'.repeat(20));
+    const first = r.feed.read();
+    expect(first.bytes).toBe(40);
+    expect(first.marks?.map((one) => [one.mark.kind, one.at])).toEqual([['command-start', 40]]);
+    const second = r.feed.read();
+    expect(second.bytes).toBe(20);
+    expect(second.marks).toBeUndefined();
+  });
+
+  it('hands a mark that comes after its bytes were read over with the next read, which holds no bytes, and wakes the reader for it', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'a'.repeat(40));
+    expect(r.feed.read().bytes).toBe(40);
+    const before = r.wakes();
+    r.stream().marks(start(40));
+    expect(r.wakes(), 'the reader is told: a read has something for it').toBeGreaterThan(before);
+    const next = r.feed.read();
+    expect(next.chunks).toEqual([]);
+    expect(next.marks?.map((one) => [one.mark.end, one.at])).toEqual([[40, 0]]);
+  });
+
+  it('puts a mark where its end says even when the host did not cut there: inside a frame', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'a'.repeat(100));
+    r.stream().marks(prompt(30));
+    const first = r.feed.read();
+    expect(first.bytes).toBe(30);
+    expect(first.marks?.map((one) => one.at)).toEqual([30]);
+    expect(r.feed.read().bytes).toBe(70);
+  });
+
+  it('takes a mark once: the one a stream that came back is sent again is not handed over twice', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'a'.repeat(60));
+    r.stream().marks(start(40));
+    expect(r.feed.read(40).marks).toHaveLength(1);
+    r.stream().drop();
+    const again = reconnect(r);
+    again.ready({ start: 60, end: 60 });
+    again.marks(start(40), finish(60));
+    expect(r.feed.read().marks?.map((one) => one.mark.kind)).toEqual(['command-end']);
+  });
+
+  it('forgets the marks it holds for the reader when the screen is brought afresh (a gap): they are of lines that are not there', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'a'.repeat(40));
+    r.stream().marks(start(40));
+    r.stream().gap(40, 900);
+    const replay = replayOf(r.feed);
+    expect(replay.marks).toBeUndefined();
+    expect(r.feed.read().marks).toBeUndefined();
+  });
+
+  it('gives a replay the marks that stand in its bytes, each with the bytes of the replay before it, so that a reload brings the gutter back', async () => {
+    const r = attaching();
+    r.stream().ready({ start: 100, end: 160 });
+    r.stream().output(100, 'a'.repeat(30));
+    r.stream().marks(start(120, { id: 'c7' }), start(130, { id: 'c8' }));
+    r.stream().output(130, 'b'.repeat(30));
+    r.stream().marks(finish(160, { id: 'c8' }));
+    const replay = replayOf(r.feed);
+    expect(replay.data).toHaveLength(60);
+    expect(replay.marks?.map((one) => [one.mark.id, one.mark.kind, one.at])).toEqual([['c7', 'command-start', 20], ['c8', 'command-start', 30], ['c8', 'command-end', 60]]);
+    expect(r.feed.read().marks, 'the live output after the replay starts with none').toBeUndefined();
+  });
+
+  it('puts a mark of a replay that ends at its first byte at 0, and starts afresh after a gap inside a replay: the marks of the bytes that were dropped are dropped', async () => {
+    const r = attaching();
+    r.stream().ready({ start: 100, end: 200 });
+    r.stream().output(100, 'a'.repeat(20));
+    r.stream().marks(prompt(100), prompt(110));
+    r.stream().gap(120, 150);
+    r.stream().output(150, 'b'.repeat(50));
+    const replay = replayOf(r.feed);
+    expect(replay.data).toHaveLength(50);
+    expect(replay.marks).toBeUndefined();
+  });
+});
+
 // THE TITLE A PROGRAM SETS (issue #695 step 4; protocol section 4b). The host reads OSC 0 and 2 and says the title with its own word that a program runs; the feed shows the title only while the host says a program runs, and the
 // page never decides it. The title is untrusted text: bounded, with no control character, and drawn as text only.
 
