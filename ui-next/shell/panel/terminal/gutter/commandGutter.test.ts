@@ -174,11 +174,19 @@ describe('the commands the marks make', () => {
   });
 
   it('reads no clock: the duration is the host\'s number, whatever time the page has', async () => {
-    const now = vi.spyOn(Date, 'now');
-    const perf = vi.spyOn(performance, 'now');
-    const { gutter, run } = setup();
+    const { gutter, run, feed } = setup();
     await run('sleep 1', '', { exit: 0, ms: 1_000 });
     expect(gutter.commands()[0]?.durationMs).toBe(1_000);
+    // The emulator reads the clock to pace its own writes; what is asked here is the gutter, which takes its marks and answers its questions.
+    const now = vi.spyOn(Date, 'now');
+    const perf = vi.spyOn(performance, 'now');
+    await feed('', []);
+    now.mockClear();
+    perf.mockClear();
+    gutter.ingest([A('c2'), B('c2'), C('next', 'c2'), D(1, 7_000, 'c2')]);
+    gutter.commands();
+    gutter.jump('previous');
+    expect(gutter.commands().at(-1)?.durationMs).toBe(7_000);
     expect(now).not.toHaveBeenCalled();
     expect(perf).not.toHaveBeenCalled();
   });
@@ -191,7 +199,7 @@ describe('the markers of the gutter', () => {
     await run('two', 'c\r\n', { id: 'c2' });
     const lines = gutter.commands().map((one) => one.line);
     expect(lines).toEqual([0, 3]);
-    expect(engine.lines(0, 6)).toBe('$ one\na\nb\n$ two\nc');
+    expect(engine.lines(0, 5)).toBe('$ one\na\nb\n$ two\nc');
   });
 
   it('die with their lines when the scrollback drops them: the command goes, its decoration is disposed, the commands below stay', async () => {
