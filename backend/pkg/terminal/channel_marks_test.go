@@ -579,6 +579,8 @@ func TestMarksNeverRemoveWhatTheForegroundFactKnows(t *testing.T) {
 	pull := Foreground{State: StateBusy, Name: "sleep", PGID: 4242, Reason: ""}
 	guarded(t, "marks-keep-pull-fact", func() {
 		assert.Equal(t, pull, s.withMarks(pull))
+	})
+	guarded(t, "busy-from-marks", func() {
 		idle := s.withMarks(Foreground{State: StateIdle, Name: "", PGID: 0, Reason: ""})
 		assert.Equal(t, StateBusy, idle.State)
 		assert.Empty(t, idle.Name)
