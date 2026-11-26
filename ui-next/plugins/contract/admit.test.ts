@@ -135,6 +135,20 @@ describe('admit', () => {
     expect(problemsOf(value)).toContain('sidebar.nodes[0].count is not a number, null, or { value, approximate: true }');
   });
 
+  // What a leaf opens and how a row is dressed (KL5, a minor addition to version 1, on the terms the contract's own comment gives): the skeleton is read before the bundle runs, so an entry that names another page than its id, parameters to open it with or a connection,
+  // and a row with a badge and a colour, are held to their rules here, in the words `sidebarTargets.ts` says them in; a host that predates the members refuses an entry that is no page's id by the sentence it always had.
+  it('admits the entries of a skeleton that open a page with parameters or a connection, and rows with a badge and a colour; refuses the page an entry names when the plugin has none, and a member that is not valid, each by the sentence that names it', () => {
+    const recent = { id: 'recent', label: 'Recent', icon: 'box', page: 'widgets', params: { filter: 'recent' }, status: { role: 'attention', label: 'Needs sign-in' }, tone: 'amber' };
+    const nodes = [{ id: 'widgets', label: 'Widgets', icon: 'box' }, recent, { id: 'north', label: 'north', icon: 'server', connection: 'north-1' }];
+
+    expect(problemsOf(contribution({ sidebar: sidebar({ nodes }) }))).toEqual([]);
+    expect(problemsOf(contribution({ sidebar: sidebar({ nodes: [{ ...recent, page: 'landing' }] }) }))).toEqual(['the sidebar entry "recent" opens no page "landing"']);
+    expect(problemsOf(contribution({ sidebar: sidebar({ nodes: [{ ...recent, params: 'filter=recent', tone: 'magenta' }] }) }))).toEqual([
+      'sidebar.nodes[0].tone is not a colour of the kit\'s data palette: blue, green, amber, red, purple, cyan, gray',
+      'sidebar.nodes[0].params is not an object of text values',
+    ]);
+  });
+
   it('admits a contribution written before the count had these shapes: a plain number on an entry, a hook that reads only the context every hook gets', () => {
     // The bundle an older plugin ships: numbers only, and a sidebar hook of one parameter that knows nothing of the open groups.
     const older = contribution({
@@ -188,6 +202,21 @@ describe('openable', () => {
     expect(openable(named, { widgets: {}, gadgets: {} })).toEqual([
       { id: 'group', label: 'Group', icon: 'layers', children: [{ id: 'widgets', label: 'Widgets', icon: 'box', keywords: ['wg'] }] },
       { id: 'gadgets', label: 'Gadgets', icon: 'box', keywords: ['gd', 'gizmo'] },
+    ]);
+  });
+
+  it('keeps the entries that open a page with parameters, under an id of their own, and those that open a connection; leaves out one that opens nothing, a detail page, or two things at once; and takes a badge and a colour the shell cannot draw off the row', () => {
+    const named: readonly SidebarNodeV1[] = [
+      { id: 'recent', label: 'Recent', icon: 'box', page: 'widgets', params: { filter: 'recent', sort: '' } },
+      { id: 'lost', label: 'Lost', icon: 'box', page: 'ghost' },
+      { id: 'one', label: 'One', icon: 'box', page: 'widget' },
+      { id: 'both', label: 'Both', icon: 'box', connection: 'north-1', params: { filter: 'recent' } },
+      { id: 'north', label: 'north', icon: 'server', connection: 'north-1', tone: 'magenta' as unknown as SidebarNodeV1['tone'], status: { role: 'attention', label: 'Needs sign-in' } },
+    ];
+
+    expect(openable(named, { widgets: {}, widget: { kind: 'detail' } })).toEqual([
+      { id: 'recent', label: 'Recent', icon: 'box', page: 'widgets', params: { filter: 'recent' } },
+      { id: 'north', label: 'north', icon: 'server', connection: 'north-1', status: { role: 'attention', label: 'Needs sign-in' } },
     ]);
   });
 });
