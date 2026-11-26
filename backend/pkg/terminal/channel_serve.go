@@ -47,6 +47,8 @@ const (
 	frameCloseRefused byte = 0x8a
 	// frameMarks carries the marks of the shell's integration, to a page that asked for them in its attach (attachRequest.Marks).
 	frameMarks byte = 0x8b
+	// frameTitle carries the title a program set and whether a program runs, to a page that asked for it in its attach (attachRequest.Title).
+	frameTitle byte = 0x8c
 )
 
 const (
@@ -74,6 +76,8 @@ type attachRequest struct {
 	// Marks is the version of the marks frame the page reads: absent or zero, none (the host sends it no frame it does not know); 1, the frame of
 	// docs/ui-next/terminal-channel-protocol.md section 4a. A page of this version 2 that never heard of marks does not ask, and is sent none.
 	Marks int `json:"marks"`
+	// Title is the version of the title frame the page reads: absent or zero, none; 1, the frame of docs/ui-next/terminal-channel-protocol.md section 4b.
+	Title int `json:"title"`
 }
 
 // writerIDLen is the length of a writer id: 16 bytes as lowercase hex digits.
@@ -154,6 +158,8 @@ type readyBody struct {
 	// Marks is the version of the marks frame this stream carries: absent when the page asked for none (or another version) or the terminal has no
 	// integration, so that a page that asked knows whether to expect any.
 	Marks int `json:"marks,omitempty"`
+	// Title is the version of the title frame this stream carries: absent when the page asked for none (or another version).
+	Title int `json:"title,omitempty"`
 }
 
 // readyFrame is the host's answer to a request that opens a terminal. lost is how much of what the page asked for is gone: the
