@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES } from './channel';
+import { MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS } from './channel';
 import { offersTakeBack } from './feed';
 import { laneOf } from './state';
 import { RECONNECT_DELAYS_MS, createExecFeed, listedOf, type ExecAttach, type ExecFeed } from './execFeed';
@@ -2531,5 +2531,132 @@ describe('raw bytes the emulator sends for the person (`writeBinary`: a legacy X
     r.stream().drop();
     r.feed.writeBinary(Uint8Array.of(0xb6));
     expect(r.feed.getSnapshot().state).toBe('failed');
+  });
+});
+
+// THE MARKS OF THE SHELL (issue #694 step 4; protocol section 4a). The host types them and addresses them by offset; the feed takes them and knows from them that a command is running (B-106): the producer says it, the page
+// does not infer it from the process that holds the foreground. No gutter yet (step 5): the feed keeps them, bounded, for the page that draws one.
+
+const start = (end: number, extra: Readonly<Record<string, unknown>> = {}): Readonly<Record<string, unknown>> => ({ kind: 'command-start', at: end - 8, end, id: 'c1', trust: 'nonce', command: 'sleep 30', time_ms: 1000, ...extra });
+const finish = (end: number, extra: Readonly<Record<string, unknown>> = {}): Readonly<Record<string, unknown>> => ({ kind: 'command-end', at: end - 11, end, id: 'c1', trust: 'unverified', exit: 0, duration_ms: 30_000, time_ms: 31_000, ...extra });
+const prompt = (end: number): Readonly<Record<string, unknown>> => ({ kind: 'prompt-start', at: end - 8, end, id: 'c2', trust: 'unverified' });
+
+describe('the marks of the shell', () => {
+  it('knows that a command is running from its start mark, and asks the host nothing', async () => {
+    const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
+    r.stream().output(0, 'x'.repeat(40));
+    r.stream().marks(start(40));
+    expect(await r.feed.busy?.()).toEqual({ state: 'busy', name: 'sleep' });
+    expect(r.channels.of('busy'), 'the producer said it: nothing is asked').toEqual([]);
+  });
+
+  it('is idle for the host to say once the end mark has come: the question goes back to the host', async () => {
+    const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
+    r.stream().output(0, 'x'.repeat(60));
+    r.stream().marks(start(40));
+    r.stream().marks(finish(60));
+    expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
+    expect(r.channels.of('busy')).toHaveLength(1);
+  });
+
+  it('does not take a start that the host did not prove for a command that runs: trust is the host\'s word', async () => {
+    const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
+    r.stream().output(0, 'x'.repeat(40));
+    r.stream().marks(start(40, { trust: 'unverified', command: undefined }));
+    expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
+    expect(r.channels.of('busy')).toHaveLength(1);
+  });
+
+  it('names the command by the first word of its line and leaves a name out when the line has none', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'x'.repeat(40));
+    r.stream().marks(start(40, { command: '  git push --force ' }));
+    expect(await r.feed.busy?.()).toEqual({ state: 'busy', name: 'git' });
+    const bare = await running({ end: 0 });
+    bare.stream().output(0, 'x'.repeat(40));
+    bare.stream().marks(start(40, { command: undefined, trust: 'nonce' }));
+    expect(await bare.feed.busy?.()).toEqual({ state: 'busy' });
+  });
+
+  it('keeps the marks it was given, oldest first, each with what the host typed, and the same list object until another comes', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'x'.repeat(100));
+    r.stream().marks(prompt(8), start(40), finish(60, { exit: 3 }));
+    expect(r.feed.marks?.()).toEqual([
+      { kind: 'prompt-start', at: 0, end: 8, id: 'c2', trust: 'unverified' },
+      { kind: 'command-start', at: 32, end: 40, id: 'c1', trust: 'nonce', command: 'sleep 30', timeMs: 1000 },
+      { kind: 'command-end', at: 49, end: 60, id: 'c1', trust: 'unverified', exit: 3, durationMs: 30_000, timeMs: 31_000 },
+    ]);
+  });
+
+  it('takes a mark once: the host sends again the one that ends at the offset of a stream that came back, and a replay of marks it has changes nothing', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'x'.repeat(60));
+    r.stream().marks(start(40));
+    r.stream().drop();
+    const again = reconnect(r);
+    expect(again.fromOffset, 'it comes back from the offset it applied').toBe(60);
+    again.ready({ start: 60, end: 60 });
+    again.marks(finish(60), finish(60));
+    expect(r.feed.marks?.().map((mark) => mark.kind)).toEqual(['command-start', 'command-end']);
+    again.marks(start(40));
+    expect(r.feed.marks?.().map((mark) => mark.kind), 'a mark that ends before the last one it has is a mark it has').toEqual(['command-start', 'command-end']);
+  });
+
+  it('starts over when the host brings the screen afresh (nothing applied, or bytes lost): its marks are those of the replay, and it knows nothing of what runs until it is told', async () => {
+    const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
+    r.stream().output(0, 'x'.repeat(60));
+    r.stream().marks(start(40));
+    r.stream().drop();
+    const lost = reconnect(r);
+    lost.ready({ start: 100, end: 100, lost: 40 });
+    expect(r.feed.marks?.()).toEqual([]);
+    expect(await r.feed.busy?.(), 'the producer has not said, so the host is asked').toEqual({ state: 'idle' });
+    expect(r.channels.of('busy')).toHaveLength(1);
+  });
+
+  it('forgets what it knew of a running command at a gap: the end mark may have been in the bytes that were lost', async () => {
+    const r = await running({ end: 0 }, { channels: { busy: () => ({ state: 'idle' }) } });
+    r.stream().output(0, 'x'.repeat(40));
+    r.stream().marks(start(40));
+    r.stream().gap(40, 900);
+    expect(r.feed.marks?.()).toEqual([]);
+    expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
+    expect(r.channels.of('busy')).toHaveLength(1);
+  });
+
+  it('keeps no more than the newest MAX_MARKS marks, whatever the flood', async () => {
+    const r = await running({ end: 0 });
+    const flood = Array.from({ length: 5000 }, (_, index) => prompt(8 * (index + 1)));
+    r.stream().output(0, 'x'.repeat(8 * 5000));
+    for (let at = 0; at < flood.length; at += 100) {
+      r.stream().marks(...flood.slice(at, at + 100));
+    }
+
+    const kept = r.feed.marks?.() ?? [];
+    expect(kept.length).toBeLessThanOrEqual(MAX_MARKS);
+    expect(kept.length).toBeGreaterThanOrEqual(MAX_MARKS / 2);
+    expect(kept.at(-1)?.end).toBe(40_000);
+  });
+
+  it('takes no word of a frame it cannot read: nothing throws, nothing is kept, the stream goes on', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'x'.repeat(40));
+    for (const bad of [undefined, null, 'x', 5, {}, { v: 1 }, { v: 1, marks: 'x' }, { v: 2, marks: [start(40)] }, { v: 1, marks: [{ kind: 'nope', at: 0, end: 8, trust: 'nonce' }, { kind: 'command-start', at: 'a', end: 8, trust: 'nonce' }, { kind: 'command-start', at: 0, end: 8, trust: 'maybe' }, { kind: 'command-start', at: 9, end: 8, trust: 'nonce' }, null] }]) {
+      expect(() => r.feed.marks, 'the accessor is there').not.toThrow();
+      // The test speaks past the fake's typing, as a host that breaks the protocol would.
+      (r.stream().marks as (...marks: unknown[]) => void)(bad);
+    }
+
+    expect(r.feed.marks?.()).toEqual([]);
+    expect(r.feed.getSnapshot().state).toBe('running');
+  });
+
+  it('knows nothing of marks at the end of the terminal: what runs in an ended terminal is nothing', async () => {
+    const r = await running({ end: 0 });
+    r.stream().output(0, 'x'.repeat(40));
+    r.stream().marks(start(40));
+    r.stream().ended({ reason: 'exited', exit_code: 0, last_offset: 40 });
+    expect(await r.feed.busy?.()).toEqual({ state: 'idle' });
   });
 });
