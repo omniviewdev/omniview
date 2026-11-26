@@ -386,6 +386,60 @@ func TestAFailedPtyIsTypedAndTheShellIsEnded(t *testing.T) {
 	requireGone(t, info.PID, "the shell of a failed pty")
 }
 
+// The shell dies of the closed pty (the kernel hangs it up) and is reaped before the reader has told the session what its read said.
+// Whatever order the two come in, the pty failed under a shell that was running: that is the end, not the shell's exit.
+// (The reader is held where it is until the shell has gone, so that the order is the one that went wrong about one run in a hundred.)
+func TestAFailedPtyIsTypedWhenTheShellIsReapedBeforeTheReadSaysSo(t *testing.T) {
+	m, rec := newTestManager(t)
+	info, err := m.Start(Options{Command: []string{sh(t)}}, nil)
+	require.NoError(t, err)
+	require.NoError(t, m.Write(info.ID, 0, []byte("echo ready-$((1000+13))\n")))
+	rec.waitFor(t, info.ID, "ready-1013")
+	s := m.session(t, info.ID)
+	s.flow.hold()
+	require.NoError(t, m.Write(info.ID, 0, []byte("echo held-$((2000+7))\n")))
+	require.Eventually(t, func() bool {
+		s.flow.mu.Lock()
+		defer s.flow.mu.Unlock()
+		return s.flow.paused
+	}, 5*time.Second, time.Millisecond, "the reader never stopped at the hold")
+	require.NoError(t, s.master.Close(), "something closes the pty under the session")
+	end := rec.waitEnd(t, info.ID)
+	assert.Equal(t, EndFailed, end.Reason)
+	require.NotNil(t, end.Failure)
+	assert.Equal(t, StageRead, end.Failure.Stage)
+	assert.Nil(t, end.ExitCode)
+	requireGone(t, info.PID, "the shell of a failed pty")
+}
+
+// The host had already decided to close the session when the pty failed under it: the close stands, whoever asked for it.
+func TestARequestedCloseStandsOverAFailedPty(t *testing.T) {
+	for _, by := range []ClosedBy{ClosedByRequest, ClosedByWindow, ClosedByShutdown, ClosedByDetachTimeout} {
+		t.Run(string(by), func(t *testing.T) {
+			m, rec := newTestManager(t)
+			info, err := m.Start(Options{Command: []string{sh(t)}}, nil)
+			require.NoError(t, err)
+			require.NoError(t, m.Write(info.ID, 0, []byte("echo ready-$((1000+13))\n")))
+			rec.waitFor(t, info.ID, "ready-1013")
+			s := m.session(t, info.ID)
+			s.flow.hold()
+			require.NoError(t, m.Write(info.ID, 0, []byte("echo held\n")))
+			require.Eventually(t, func() bool {
+				s.flow.mu.Lock()
+				defer s.flow.mu.Unlock()
+				return s.flow.paused
+			}, 5*time.Second, time.Millisecond, "the reader never stopped at the hold")
+			require.True(t, s.decide(fate{set: true, closedBy: by, failure: nil}))
+			require.NoError(t, s.master.Close(), "something closes the pty under the session")
+			end := rec.waitEnd(t, info.ID)
+			assert.Equal(t, EndClosed, end.Reason)
+			assert.Equal(t, by, end.ClosedBy)
+			assert.Nil(t, end.Failure)
+			requireGone(t, info.PID, "the shell of a closed session")
+		})
+	}
+}
+
 // The shell binary is missing: nothing starts, the caller is told in typed words, and nothing is left behind.
 func TestAMissingShellIsRefusedTypedAndLeavesNothing(t *testing.T) {
 	m, _ := newTestManager(t)
