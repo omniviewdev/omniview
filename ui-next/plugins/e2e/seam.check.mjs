@@ -11281,7 +11281,13 @@ async function checkTerminalFindMenu(page, base, engine) {
   await rightClick(0.97, 0.5);
   const menuOpened = await holdsWithin(menuIsOpen, 10_000);
   assert.ok(menuOpened, `${engine}: a right click on the screen opens the context menu`);
-  assert.deepEqual(await menuItems(), ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here'], `${engine}: the context menu offers Copy, Paste, Select all, Clear, Find and New terminal here, in that order`);
+  // The command items are in the menu only while the terminal has commands (the shell's integration made some): the list is the base items, then none or all five of them, then New terminal here.
+  const offered = await menuItems();
+  const COMMAND_ITEMS = ['Previous command', 'Next command', 'Select command output', 'Copy command output', 'Run command again'];
+  const base = offered.filter((label) => !COMMAND_ITEMS.includes(label));
+  const commandItems = offered.filter((label) => COMMAND_ITEMS.includes(label));
+  assert.deepEqual(base, ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here'], `${engine}: the context menu offers Copy, Paste, Select all, Clear, Find and New terminal here, in that order (it offers ${JSON.stringify(offered)})`);
+  assert.ok(commandItems.length === 0 || (JSON.stringify(commandItems) === JSON.stringify(COMMAND_ITEMS) && offered.indexOf('Previous command') === 5 && offered.at(-1) === 'New terminal here'), `${engine}: the command items are all five or none, after Find and before New terminal here (it offers ${JSON.stringify(offered)})`);
   assert.equal(await item('Copy').getAttribute('aria-disabled'), 'true', `${engine}: Copy is not available with nothing selected`);
   assert.match((await item('Copy').getAttribute('aria-description')) ?? '', /Select text in the terminal first/, `${engine}: Copy says why it is not available`);
   await page.keyboard.press('Escape');
