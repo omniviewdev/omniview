@@ -24,7 +24,12 @@
 
 ## Verification
 
-See the end of this file (filled after the runs).
+PR: #784. Linux amd64, Go 1.27.4, `GOWORK=off GOTOOLCHAIN=local`. SYNTHETIC checks (a fake shell script that prints the marks and the fixture host); a real zsh or bash producing marks end to end, macOS and Windows runs were NOT done here.
+
+- Passed: golangci-lint v2.15.0 CI form (0 issues on the diff); Go `-race` of `backend/pkg/terminal/...` and `backend/pkg/plugin/exec/...`, with and without `-tags server` (the tagged run failed once in `TestTwoHundredDetachedTerminals…` on a wrapped negative heap difference and passed twice on rerun; not checked on main); the terminal vitest (all files); `terminal-host.test.mjs` (34 of 34); eslint of the changed files; tsc app and test (a stale runtime `dist` once broke the app project on a file this change does not touch).
+- Controls: `mutations.sh.txt` (Go, `go test -overlay`) and `mutations-page.sh.txt` (page): each fault is red in the named test and green with it left out; both scripts exit nonzero on a wrong verdict.
+- The seam (terminal-core, terminal-channel) and the probes are run by the lead: the seam first failed on the unknown `0x8b` frame (fixed in the seam's frame table) and on busy dropping `pgid` (fixed: marks add busy and never remove the pull fact's name or pgid).
+- Not verified: the time-bound negative controls of the probes under load (they fail on timing at load 10 to 25); a real `exec zsh`; pwsh and fish (not installed here).
 
 ## Dev tools
 

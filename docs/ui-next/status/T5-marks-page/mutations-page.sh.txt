@@ -29,7 +29,8 @@ PY
   named=$(echo "$fails" | grep -c "$only")
   others=$(echo "$fails" | grep -vc "$only")
   # The same fault with the named test left out of the run must pass.
-  pattern="^(?!.*the marks of the shell.*$(printf '%s' "$only" | sed 's/[][\.*^$(){}?+|/]/\\&/g')).*the marks of the shell"
+  escaped=$(python3 -c 'import re,sys; print(re.escape(sys.argv[1]))' "$only")
+  pattern="^(?!.*${escaped}).*the marks of the shell"
   out2=$(npx vitest run "$TEST" -t "$pattern" 2>&1); s2=$?
   echo "CONTROL $name: exit $s1 (want nonzero), named test red: $named (want 1+), other failures: $others (want 0), named test left out: exit $s2 (want 0)"
   if [ $s1 -eq 0 ] || [ "$named" -lt 1 ] || [ "$others" -ne 0 ] || [ $s2 -ne 0 ]; then BAD=1; fi
