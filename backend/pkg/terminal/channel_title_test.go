@@ -226,3 +226,66 @@ func TestATerminalThatEndedAndIsAttachedAfterwardsIsSentNoTitleAndReadySaysNone(
 	})
 	assert.Empty(t, late.state().faults)
 }
+
+// zsh runs the user's preexec (oh-my-zsh and p10k set the tab's title there) BEFORE the integration's own, so the title comes in a read of its own and the vouched
+// start mark in a later one: the host decides at the start mark, for a title that was set after the prompt began.
+func TestATitleSetBeforeTheStartMarkIsAProgramsWhenTheShellVouchesForTheCommandAfterIt(t *testing.T) {
+	k := newMarked(t)
+	page := k.f.m.attachTitle(t, k.info.Cap, nil, true)
+	page.waitReady()
+	k.print(osc("133;A") + "$ " + osc("133;B") + "build\r\n")
+	k.print(osc("2;build"))
+	k.print(osc("633;E;build;"+k.nonce) + osc("133;C"))
+	k.print("barrier one\n")
+	waitOutput(t, page, "barrier one")
+	got := page.state().titles
+	guarded(t, "preexec-title-is-decided-at-the-start-mark", func() {
+		assert.Equal(t, []titleWire{{V: 1, Title: "build", Program: false}, {V: 1, Title: "build", Program: true}}, got,
+			"the title came before the start mark, in another read: the start mark makes it a program's")
+	})
+	k.print(osc("133;D;0") + osc("133;A") + "$ ")
+	k.print("barrier two\n")
+	waitOutput(t, page, "barrier two")
+	got = page.state().titles
+	guarded(t, "preexec-title-is-decided-at-the-start-mark", func() {
+		assert.Equal(t, []titleWire{{V: 1, Title: "build", Program: false}, {V: 1, Title: "build", Program: true}, {V: 1, Title: "build", Program: false}}, got, "and the end of the command ends it")
+	})
+}
+
+func TestATitleFromBeforeThePromptIsNotMadeAProgramsByTheNextCommand(t *testing.T) {
+	k := newMarked(t)
+	page := k.f.m.attachTitle(t, k.info.Cap, nil, true)
+	page.waitReady()
+	// The shell's own precmd title, then the prompt; the command that follows sets no title of its own: the old one is not its program's.
+	k.print(osc("2;user@host: ~"))
+	k.print(osc("133;A") + "$ " + osc("133;B") + "ls\r\n" + osc("633;E;ls;"+k.nonce) + osc("133;C"))
+	k.print("barrier\n")
+	waitOutput(t, page, "barrier")
+	got := page.state().titles
+	guarded(t, "stale-title-is-not-made-a-programs", func() {
+		assert.Equal(t, []titleWire{{V: 1, Title: "user@host: ~", Program: false}}, got, "a title set before the prompt is the shell's: a command that sets none does not borrow it")
+	})
+}
+
+// A program that takes its title back (OSC 2 with no text) leaves no program under a title, and a read that follows says nothing more.
+func TestAnEmptyTitleTakesTheTitleBackAndSaysNoProgramRunsUnderIt(t *testing.T) {
+	m, _ := newChannelManager(t, smallChannel)
+	info := m.startChannel(t, `stty -echo; printf 'up\n'; cat; printf 'after\n'; read x`, Options{})
+	page := m.attachTitle(t, info.Cap, nil, false)
+	page.waitReady()
+	waitOutput(t, page, "up")
+	require.Eventually(t, func() bool {
+		busy, err := m.ChannelBusy(info.Cap)
+		return err == nil && busy.State == StateBusy
+	}, settle, 5*time.Millisecond, "the shell has handed the terminal to cat")
+	page.input("\x1b]2;mytitle\x07\n")
+	page.input("one\n")
+	waitOutput(t, page, "one")
+	page.input("\x1b]2;\x07\n")
+	page.input("two\n")
+	waitOutput(t, page, "two")
+	got := page.state().titles
+	guarded(t, "empty-title-is-no-program", func() {
+		assert.Equal(t, []titleWire{{V: 1, Title: "mytitle", Program: true}, {V: 1, Title: "", Program: false}}, got, "the program took its title back while it still runs: no title, and no program under it")
+	})
+}
