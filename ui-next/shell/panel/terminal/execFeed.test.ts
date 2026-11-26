@@ -2986,6 +2986,19 @@ describe('the marks in the bytes the reader takes', () => {
     expect(r.feed.read().marks, 'the live output after the replay starts with none').toBeUndefined();
   });
 
+  it('places a mark that stands at the end of a replay the reader took already before the live bytes after it, and one that stands after them at their end', async () => {
+    const r = attaching();
+    r.stream().ready({ start: 0, end: 30 });
+    r.stream().output(0, 'a'.repeat(30));
+    expect(replayOf(r.feed).marks).toBeUndefined();
+    r.stream().marks(finish(30));
+    r.stream().output(30, 'b'.repeat(10));
+    r.stream().marks(prompt(40));
+    const first = r.feed.read();
+    expect(first.bytes).toBe(10);
+    expect(first.marks?.map((one) => [one.mark.kind, one.at])).toEqual([['command-end', 0], ['prompt-start', 10]]);
+  });
+
   it('puts a mark of a replay that ends at its first byte at 0, and starts afresh after a gap inside a replay: the marks of the bytes that were dropped are dropped', async () => {
     const r = attaching();
     r.stream().ready({ start: 100, end: 200 });
