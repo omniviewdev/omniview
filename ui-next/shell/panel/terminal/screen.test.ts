@@ -3016,9 +3016,10 @@ describe('a restart: the screen goes on with the next feed of its session (`cont
     early.screen.flush();
     expect(early.feed.reads()).toBe(0);
     r.screen.dispose();
+    const reads = r.feed.reads();
     r.feed.push('late');
     r.screen.flush();
-    expect(r.feed.reads()).toBe(0);
+    expect(r.feed.reads()).toBe(reads);
   });
 
   it('does nothing for a screen that was disposed, and nothing before the emulator is made', async () => {

@@ -136,7 +136,7 @@ export type Terminals = {
 
 /** The registry, the guard and the answers of the Terminal tool over a window's panel store. */
 export function createTerminals(store: PanelStore, options: TerminalsOptions = {}, restored: TerminalsRestored = {}): Terminals {
-  const { restore, reattach, openExternal } = options;
+  const { restore, reattach, restart, openExternal } = options;
   // The shells the `+` offers: the list is asked of the host when the menu is first drawn (and never while it is not), and the items are made again only when the list changes.
   const shells = options.shells ?? appShellList();
   const startFrom = (profile: TerminalProfile) => {
@@ -155,7 +155,7 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
     return items;
   };
 
-  const sessions = createTerminalSessions(store, { reattach, openExternal });
+  const sessions = createTerminalSessions(store, { reattach, restart, openExternal });
   const screenReader = createScreenReaderChoice(restored.screenReader);
   // What the host said of the terminals left for this window, until a window that is attached opens them; whether it was asked (once for the life of the window: a development build attaches, stops and attaches again);
   // and how many attaches are on.

@@ -56,7 +56,7 @@ export type TerminalSessionsOptions = {
   /** Where the host says what it could not do for a supplier. Default: the console, with the `[panel]` prefix the panel's other messages have. */
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
   /**
-   * Makes the target that attaches the terminal of a session again (T2d): what `takeBack` opens for a session whose terminal another tab took over and the person wants back. The host's own shell makes it with the page's
+   * Makes the target that attaches the terminal of a session again (T2d), given the id of the terminal (the feed's own `id`, else the session's): what `takeBack` opens for a session whose terminal another tab took over and the person wants back. The host's own shell makes it with the page's
    * key. Absent: a terminal this window lost cannot be taken back.
    */
   readonly reattach?: ((session: SessionId) => TerminalTarget) | undefined;
@@ -171,6 +171,8 @@ type Entry = {
   announced: boolean;
   /** A take-back of the session is in flight (the host is being asked who holds the terminal): a second press does nothing. */
   taking: boolean;
+  /** A restart of the session is in flight (the target is being opened): a press that comes inside it does nothing. */
+  restarting: boolean;
   /** What the record says once the entry ended (A21: a kept session never changes again): the status at the unload, with a process that was starting or running as ended. A closed feed may say anything after. */
   final?: TerminalFeedSnapshot | undefined;
 };
@@ -238,6 +240,8 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
   const external = options.openExternal;
   const entries = new Map<SessionId, Entry>();
   const wanted = new Set<SessionId>();
+  /** The feed each feed made for a restart continues: its screen keeps the transcript. */
+  const continuations = new WeakMap<TerminalFeedHandle, TerminalFeedHandle>();
   const feedListeners = new Set<() => void>();
 
   /** Tells whoever follows which feed a session has (`subscribeFeeds`) that it changed, once, now. A listener that throws is the host's own fault: it goes to the log, and the others, and what the registry was doing, go on. */
@@ -446,16 +450,37 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
   };
 
   /**
-   * Attaches the terminal of a session again in place of the feed it lost: makes the feed with the target the window makes for the session (`reattach`), listens to it, and, when the session is still what it was, replaces the entry,
-   * lets the lost feed go and tells whoever follows the feeds. The new feed is made and listened to before the old one is let go of, so that an attach that cannot be made leaves the lost terminal as it was and the person can try
-   * again. Whether a feed was published.
+   * The entry of a terminal that is over for good and can be restarted (`canRestart`): the host's own, in a window that can make the target of a restart, whose feed says its process is over (`restart`: the producer's word) and is ended or
+   * failed. An entry the registry has let go of is restarted all the same (a session that was stopped: its process is over, and its feed is closed already), but not one that was LEFT because the page is going away: that terminal belongs to the
+   * page that comes back. One whose restart is in flight is not restartable again.
    */
-  const replaceFeed = (session: SessionId, old: Entry, reattach: (id: SessionId) => TerminalTarget): boolean => {
+  const restartEntry = (id: SessionId): { readonly entry: Entry; readonly spec: TerminalRestart } | undefined => {
+    const entry = entries.get(id);
+    if (entry === undefined || entry.left || entry.restarting || entry.plugin !== HOST || options.restart === undefined) {
+      return undefined;
+    }
+
+    try {
+      const { state } = entry.feed.getSnapshot();
+      const spec = entry.feed.restart?.();
+      return spec !== undefined && (state === 'ended' || state === 'failed') ? { entry, spec } : undefined;
+    } catch (error) {
+      warn(`[panel] ${entry.plugin} could not say whether the terminal can be restarted`, error);
+      return undefined;
+    }
+  };
+
+  /**
+   * Puts another feed in a session in place of the one it has: makes the feed with the target the window makes for the session (the one that attaches the terminal again for a take-back, the one that starts a new terminal for a restart),
+   * listens to it, and, when the session is still what it was, replaces the entry, lets the old feed go and tells whoever follows the feeds. The new feed is made and listened to before the old one is let go of, so that one that cannot be made
+   * leaves the session as it was and the person can try again. `what` is what the supplier could not do, for the log. A feed made for a restart continues the one it replaced (`restartedFrom`), whose screen the body keeps. Whether a feed was published.
+   */
+  const replaceFeed = (session: SessionId, old: Entry, target: () => TerminalTarget, what: 'take the terminal back' | 'restart the terminal'): boolean => {
     let feed: unknown;
     try {
-      feed = reattach(session).open();
+      feed = target().open();
     } catch (error) {
-      warn(`[panel] ${old.plugin} could not take the terminal back`, error);
+      warn(`[panel] ${old.plugin} could not ${what}`, error);
       return false;
     }
 
@@ -465,7 +490,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         closeFeed(old.plugin, () => feed.close());
       }
 
-      warn(`[panel] ${old.plugin} could not take the terminal back: it gave no terminal feed`);
+      warn(`[panel] ${old.plugin} could not ${what}: it gave no terminal feed`);
       return false;
     }
 
@@ -478,7 +503,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
       });
     } catch (error) {
       closeFeed(old.plugin, (): Promise<void> | void => feed.close());
-      warn(`[panel] ${old.plugin} could not take the terminal back`, error);
+      warn(`[panel] ${old.plugin} could not ${what}`, error);
       return false;
     }
 
@@ -497,8 +522,12 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
 
     // The session is the same one: its entry is replaced, with what the tab was named and what the card knows, and the feed that was lost is let go of (it sends the host nothing for a terminal it lost, and nobody hears it
     // any more). The entry is the new one before the panel hears of the first status, as when a session opens.
-    const next: Entry = { plugin: old.plugin, target: old.target, resource: old.resource, feed, stop, retitle: old.retitle, title: old.title, named: old.named, last: old.last, ended: false, left: false, announced: true, taking: false };
+    const next: Entry = { plugin: old.plugin, target: old.target, resource: old.resource, feed, stop, retitle: old.retitle, title: old.title, named: old.named, last: old.last, ended: false, left: false, announced: true, taking: false, restarting: false };
     entries.set(session, next);
+    if (what === 'restart the terminal') {
+      continuations.set(feed, old.feed);
+    }
+
     end(old);
     retitle(session, next, first);
     heard(session);
@@ -622,6 +651,7 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         left: false,
         announced: false,
         taking: false,
+        restarting: false,
       };
       entries.set(id, entry);
       if (saved === undefined) {
@@ -724,15 +754,32 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         await askFeed(old.plugin, (): Promise<void> | undefined => old.feed.refresh?.({ fresh: true }), 'could not ask who holds the terminal');
         // The answer came, and the session may not be what it was: its tab closed, the window stopped, the terminal ended, or somebody holds it now. Then nothing is attached.
         // The answer is the host's: a terminal it did not say is free (a holder it names, or no answer at all) is not attached, because attaching takes a terminal from whoever holds it.
-        return lostEntry(session) === old && old.feed.getSnapshot().detached?.free === true && replaceFeed(session, old, reattach);
+        return lostEntry(session) === old && old.feed.getSnapshot().detached?.free === true && replaceFeed(session, old, () => reattach(old.feed.id ?? session), 'take the terminal back');
       } finally {
         old.taking = false;
       }
     },
 
-    canRestart: () => false,
-    restart: () => false,
-    restartedFrom: () => undefined,
+    canRestart: (session) => restartEntry(session) !== undefined,
+
+    restart: (session) => {
+      const found = restartEntry(session);
+      const make = options.restart;
+      if (found === undefined || make === undefined) {
+        return false;
+      }
+
+      // One restart of a session at a time, and one new terminal for it: the swap is synchronous, so a press after it finds a terminal that starts, and a press inside it (what the supplier runs while the target opens) finds this flag.
+      const { entry, spec } = found;
+      entry.restarting = true;
+      try {
+        return replaceFeed(session, entry, () => make(spec, session), 'restart the terminal');
+      } finally {
+        entry.restarting = false;
+      }
+    },
+
+    restartedFrom: (feed) => continuations.get(feed),
 
     canOpenExternal: () => external !== undefined,
 

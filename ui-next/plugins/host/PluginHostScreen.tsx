@@ -7,7 +7,7 @@ import { isNativeWindow, loadNotices, loadSession, noticesStorage, resolveWindow
 import { productionApi } from './connections';
 import { createActivityFeed, type ActivityFeedControl } from '../../shell/panel/activity';
 import { CLOSED_EVENT } from '../../shell/panel/ports/api';
-import { attachLocalTerminal, restoreLocalTerminals, type TerminalsOptions } from '../../shell/panel/terminal';
+import { attachLocalTerminal, localRestartTarget, restoreLocalTerminals, type TerminalsOptions } from '../../shell/panel/terminal';
 import { loadAppTerminalChannels } from '../../shell/panel/terminal/terminalChannel';
 import { listenForLifecycle } from './lifecycle';
 import { PluginHost } from './PluginHost';
@@ -152,9 +152,9 @@ export function PluginHostScreen() {
     const channels = loadAppTerminalChannels();
     void Promise.all([loadWindowSession(), loadWindowNotices()]).then(([session, notices]) => {
       if (current) {
-        // When the window attaches, the Terminal tool asks the host for the terminals this window left (`restoreLocalTerminals`), and a terminal another tab took over is attached again (`attachLocalTerminal`), both
+        // When the window attaches, the Terminal tool asks the host for the terminals this window left (`restoreLocalTerminals`), and a terminal another tab took over is attached again (`attachLocalTerminal`) and an ended one is started again in its tab (`localRestartTarget`), all
         // through the page's channels, which hold the capabilities. A stream that drops is connected again by its own feed, so there is no signal to forward. A link a person follows in a terminal opens in the system browser (`openExternal`).
-        setLoaded({ session, notices, terminals: { restore: async () => restoreLocalTerminals(channels), reattach: (id) => attachLocalTerminal(id, undefined, channels), openExternal } });
+        setLoaded({ session, notices, terminals: { restore: async () => restoreLocalTerminals(channels), reattach: (id) => attachLocalTerminal(id, undefined, channels), restart: (made, tab) => localRestartTarget(made, tab, channels), openExternal } });
       }
     });
     return () => {

@@ -150,7 +150,7 @@ describe('making a terminal', () => {
     const r = rig({ launch: { command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' } } });
     r.feed.resize(100, 30);
     await turns();
-    expect(r.channels.of('create')).toEqual([{ kind: 'create', id: 'term-1', cols: 100, rows: 30, leaseMs: undefined, command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' } }]);
+    expect(r.channels.of('create')).toEqual([{ kind: 'create', id: 'term-1', cols: 100, rows: 30, leaseMs: undefined, command: ['/usr/bin/zsh'], cwd: '/work', env: { A: '1' }, params: { launch: JSON.stringify({ command: ['/usr/bin/zsh'], env: { A: '1' } }) } }]);
     const plain = rig();
     plain.feed.resize(100, 30);
     await turns();

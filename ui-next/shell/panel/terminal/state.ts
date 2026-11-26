@@ -137,7 +137,19 @@ export function stateWords(snapshot: TerminalFeedSnapshot | undefined): string {
   }
 }
 
-/** What the lane under the screen says: the state, and the one sentence that goes with it. A running terminal says nothing (the mock's strip is empty for a ready session) unless it lost input, or started in the home directory because the one it was to open in was not known. */
+/** What a terminal that did not start as asked says, until the first thing is typed: where it started and why, or which shell started in place of the one asked for. */
+function startNoteWords(note: NonNullable<TerminalFeedSnapshot['startNote']>): { readonly words: string; readonly note: string } {
+  switch (note) {
+    case 'home-for-unknown-directory':
+      return { words: 'Started in your home directory', note: 'The directory of the terminal it was opened from is not known.' };
+    case 'home-for-removed-directory':
+      return { words: 'Started in your home directory', note: 'The directory it started in is gone.' };
+    case 'shell-replaced':
+      return { words: 'Started another shell', note: 'The shell it ran before is not available.' };
+  }
+}
+
+/** What the lane under the screen says: the state, and the one sentence that goes with it. A running terminal says nothing (the mock's strip is empty for a ready session) unless it lost input, or did not start as asked (the home directory, another shell: `startNote`). */
 export function laneOf(snapshot: TerminalFeedSnapshot | undefined): { readonly words: string; readonly note: string } {
   switch (snapshot?.state) {
     case 'running':
@@ -145,7 +157,7 @@ export function laneOf(snapshot: TerminalFeedSnapshot | undefined): { readonly w
         return { words: 'Input may be lost', note: 'What was typed while the connection was away may not have reached the shell.' };
       }
 
-      return snapshot.startNote === undefined ? { words: '', note: '' } : { words: 'Started in your home directory', note: 'The directory of the terminal it was opened from is not known.' };
+      return snapshot.startNote === undefined ? { words: '', note: '' } : startNoteWords(snapshot.startNote);
     case 'starting':
       return { words: stateWords(snapshot), note: '' };
     case 'failed':

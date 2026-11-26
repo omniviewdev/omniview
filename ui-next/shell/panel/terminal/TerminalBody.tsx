@@ -26,8 +26,8 @@ import styles from './TerminalBody.module.css';
 // so that a build in a session that is not shown is never stalled by the view (docs/ui-next/status/T2a.md). What is released while it is hidden is what only a screen on show needs: the lane's listener on the feed, the
 // size observer and the measure, and the GPU context.
 //
-// The feed is the REGISTRY's, and the registry may change which feed a session has: it adopts a terminal that came back after a reload (the body of the saved tab can render before it did) and it swaps the feed for a fresh attach feed
-// when the person takes a terminal back. The body reads it from the registry's own word of the change (`subscribeFeeds`) and makes a screen FOR A FEED: a new feed object for the same session is a new screen, the old one
+// The feed is the REGISTRY's, and the registry may change which feed a session has: it adopts a terminal that came back after a reload (the body of the saved tab can render before it did), it swaps the feed for a fresh attach feed
+// when the person takes a terminal back, and it puts a new terminal's feed in the session of an ended one when the person restarts it (the screen goes on with it: the emulator is the same, so the transcript stays above the new shell). The body reads it from the registry's own word of the change (`subscribeFeeds`) and makes a screen FOR A FEED: a new feed object for the same session is a new screen, the old one
 // disposed with its emulator, and the new feed's replay applied on a fresh emulator as at a reload. A call of the registry in a render is not enough: the React Compiler keeps a call by what it is given (the registry and the id),
 // and neither changes with the feed.
 
@@ -88,11 +88,18 @@ const fontsReady = async (font: string): Promise<void> => {
 const feedKeys = new WeakMap<TerminalFeedHandle, number>();
 let feedCount = 0;
 
-function keyOfFeed(feed: TerminalFeedHandle): number {
+function keyOfFeed(feed: TerminalFeedHandle, sessions: TerminalSessions): number {
   let key = feedKeys.get(feed);
   if (key === undefined) {
-    feedCount += 1;
-    key = feedCount;
+    // A feed a restart made continues the one it replaced, and its screen: the transcript of the ended terminal stays above the new shell. Any other feed is a new screen.
+    const earlier = sessions.restartedFrom(feed);
+    if (earlier === undefined) {
+      feedCount += 1;
+      key = feedCount;
+    } else {
+      key = keyOfFeed(earlier, sessions);
+    }
+
     feedKeys.set(feed, key);
   }
 
@@ -105,6 +112,14 @@ function keyOfFeed(feed: TerminalFeedHandle): number {
  */
 function canTakeBack(sessions: TerminalSessions, id: SessionId, status: TerminalFeedSnapshot): boolean {
   return status.state === 'ended' && offersTakeBack(status.detached) && sessions.canTakeBack(id);
+}
+
+/**
+ * Whether the lane offers Restart now: the session's terminal is over for good (the producer says so: its feed has a restart) and the registry can make a new one. The status is an argument, as for `canTakeBack`: the compiler keeps a call by what it
+ * is given, and a status that changed is a new object.
+ */
+function canRestart(sessions: TerminalSessions, id: SessionId, status: TerminalFeedSnapshot): boolean {
+  return (status.state === 'ended' || status.state === 'failed') && sessions.canRestart(id);
 }
 
 /** The keyboard goes into a terminal the user started when it is not somewhere else: nowhere in particular (the page after a click), or in the panel (its `+`, its empty state's button, its tabs). */
@@ -151,6 +166,18 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, n
     });
   };
 
+  // The person restarts the session (the lane's Restart, or Enter in its screen) and wants the keyboard in the new shell: the request lives here, which the screen that goes on with the new feed does not replace. A press that starts nothing
+  // leaves no request behind.
+  const restart = (): boolean => {
+    keyboard.current = true;
+    const done = sessions.restart(session.id);
+    if (!done) {
+      keyboard.current = false;
+    }
+
+    return done;
+  };
+
   const takeKeyboard = () => {
     const asked = keyboard.current;
     keyboard.current = false;
@@ -159,7 +186,7 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, n
 
   return (
     <TerminalView
-      key={keyOfFeed(feed)}
+      key={keyOfFeed(feed, sessions)}
       sessions={sessions}
       session={session}
       feed={feed}
@@ -168,6 +195,7 @@ export function TerminalBody({ sessions, session, visible, load, screenReader, n
       screenReader={screenReader}
       name={name}
       takeBack={takeBack}
+      restart={restart}
       takeKeyboard={takeKeyboard}
       onNewHere={onNewHere}
     />
@@ -184,21 +212,23 @@ type TerminalViewProps = {
   readonly name: string | undefined;
   /** The person pressed Take it back in the lane: asks the registry to take the terminal back, and keeps the request for the keyboard. */
   readonly takeBack: () => void;
+  /** The person asked to restart the session: asks the registry to start a new terminal in it, keeps the request for the keyboard, and says whether the registry did. */
+  readonly restart: () => boolean;
   /** Whether the person pressed a control in the lane that asked for the keyboard, once: true the first time it is asked after the press. */
   readonly takeKeyboard: () => boolean;
   /** Opens a new terminal where this one is (the menu's "New terminal here"): the window's own way to do it. Absent: the menu has no such item. */
   readonly onNewHere: ((session: SessionId) => void) | undefined;
 };
 
-function TerminalView({ sessions, session, feed, visible, load, screenReader, name, takeBack, takeKeyboard, onNewHere }: TerminalViewProps) {
+function TerminalView({ sessions, session, feed, visible, load, screenReader, name, takeBack, restart, takeKeyboard, onNewHere }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const hintId = useId();
   const platform = platformOf(navigator);
   const label = name ?? (session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
   // The find bar's session is made before the screen: the screen's keys (the find chord, F3, Escape) open the bar, step the find and close the bar through it, and `useTerminalFind` below draws the bar once the screen is there.
   const [finding] = useState(createFindSession);
-  const [screen] = useState(() =>
-    createScreen({
+  const [screen] = useState(() => {
+    const made = createScreen({
       feed,
       load,
       // The swatches are in the body, around the screen's element: found from it, so no ref is read while this renders.
@@ -214,8 +244,26 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
       onFind: finding.open,
       onFindStep: finding.step,
       onFindClose: finding.closeIfOpen,
-    }),
-  );
+      // Enter in the screen of a session that is over asks to restart it (the lane's Restart is the same press): what the ended feed still holds is drawn first, because the registry lets that feed go with the swap.
+      onRestart: () => {
+        if (!sessions.canRestart(session.id)) {
+          return false;
+        }
+
+        made.flush();
+        return restart();
+      },
+    });
+    return made;
+  });
+  // A restart puts a new feed in the session: the screen goes on with it, and the one it had before is let go of. The first feed is the one the screen was made with.
+  const followed = useRef(feed);
+  useEffect(() => {
+    if (followed.current !== feed) {
+      followed.current = feed;
+      screen.continueWith(feed);
+    }
+  }, [screen, feed]);
   const view = useSyncExternalStore(screen.subscribe, screen.getSnapshot);
   const find = useTerminalFind({ screen, visible, ready: view.ready, session: finding });
   // The lane reads the feed's status only while the body is on screen: this listener is the lane's, and it is released while the body is hidden. The screen keeps its own (it goes on reading and acknowledging while hidden), besides the registry's.
@@ -280,6 +328,16 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
   }, [screen, sessions, session.id, visible, view.ready, running, takeKeyboard]);
   // The lane offers the way back for a terminal that this page lost and that nobody holds now.
   const takeable = canTakeBack(sessions, session.id, status);
+  // The lane offers Restart for a terminal that is over for good, and Enter in the screen is its key. What the ended feed still holds is drawn first: the registry lets that feed go with the swap, and what was not drawn would be lost.
+  const restartable = canRestart(sessions, session.id, status);
+  const restartNow = (): boolean => {
+    if (!canRestart(sessions, session.id, feed.getSnapshot())) {
+      return false;
+    }
+
+    screen.flush();
+    return restart();
+  };
 
   useEffect(() => {
     if (!copied) {
@@ -368,6 +426,13 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
             <div className={styles.laneActions}>
               <Button size="row" data-shell-part="terminalTakeBack" onClick={takeBack}>
                 Take it back
+              </Button>
+            </div>
+          ) : null}
+          {restartable ? (
+            <div className={styles.laneActions}>
+              <Button size="row" data-shell-part="terminalRestart" onClick={restartNow}>
+                Restart
               </Button>
             </div>
           ) : null}

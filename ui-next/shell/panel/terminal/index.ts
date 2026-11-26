@@ -6,4 +6,4 @@ export type { ScreenReaderChoice } from './screenReader';
 export { NEW_TERMINAL, TERMINAL_TOOL, TERMINAL_TOOL_ID } from './tool';
 export type { TerminalFeedHandle, TerminalFeedSnapshot, TerminalTarget } from './feed';
 export type { Engine, EngineLoader, EngineOptions } from './engine';
-export { attachLocalTerminal, restoreLocalTerminals } from './localShell';
+export { attachLocalTerminal, localRestartTarget, restoreLocalTerminals } from './localShell';
