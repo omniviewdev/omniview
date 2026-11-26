@@ -7396,7 +7396,7 @@ async function transcriptOf(base, id) {
   return outputSince(id, outputEnd(id) - 1_048_576);
 }
 
-const HOST_FRAMES = new Map([[0x81, 'ready'], [0x82, 'output'], [0x83, 'gap'], [0x84, 'ended'], [0x85, 'takenOver'], [0x86, 'notFound'], [0x87, 'applied'], [0x88, 'released'], [0x89, 'unsupported'], [0x8a, 'closeRefused']]);
+const HOST_FRAMES = new Map([[0x81, 'ready'], [0x82, 'output'], [0x83, 'gap'], [0x84, 'ended'], [0x85, 'takenOver'], [0x86, 'notFound'], [0x87, 'applied'], [0x88, 'released'], [0x89, 'unsupported'], [0x8a, 'closeRefused'], [0x8b, 'marks']]);
 
 /**
  * Every terminal stream a page opens (a WebSocket at `/wails/stream/ws`), and the frames each carries in both directions, in the order they came: `frames` are `{ n, ms, dir, type, ... }` (`n` is the counter of `nextOrder`; `dir` is `page` or `host`). A frame's bytes are not kept but for the
