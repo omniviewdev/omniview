@@ -60,3 +60,31 @@ func TestAMarkCutAcrossReadsHasTheSameEnd(t *testing.T) {
 		}
 	}
 }
+
+// A shell that is replaced never prints the end of its command: with PromptEndsCommand the prompt of the new one ends it, with no exit code, and the
+// next command gets a record of its own (its line, its start and its exit code are its own, not the old one's).
+func TestAPromptEndsARunningCommandWhenTheConfigSaysSo(t *testing.T) {
+	nonce, err := ParseNonce(testNonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(ends bool) []Record {
+		s := New(Config{Nonce: nonce, Now: newClock().Now, MaxRecords: 0, StartOffset: 0, PromptEndsCommand: ends})
+		feedAll(s, osc("133;A")+osc("633;E;exec\\x20zsh;"+testNonce)+osc("133;C")+"x"+
+			osc("133;A")+osc("633;E;ls;"+testNonce)+osc("133;C")+"y"+osc("133;D;3"))
+		return s.Log().Records()
+	}
+	recs := run(true)
+	if len(recs) != 2 {
+		t.Fatalf("the log keeps %d commands, want 2: %v", len(recs), recs)
+	}
+	if recs[0].State != StateEnded || recs[0].HasExitCode || recs[0].CommandLine != "exec zsh" {
+		t.Errorf("the replaced command: %v", recs[0])
+	}
+	if recs[1].CommandLine != "ls" || !recs[1].HasExitCode || recs[1].ExitCode != 3 {
+		t.Errorf("the next command is its own, with its exit code: %v", recs[1])
+	}
+	if old := run(false); len(old) != 1 {
+		t.Errorf("without the config a prompt inside a running command is output: %d commands, want 1", len(old))
+	}
+}

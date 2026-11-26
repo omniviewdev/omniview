@@ -54,6 +54,9 @@ type Config struct {
 	MaxRecords int
 	// StartOffset is the offset of the first byte fed: a scanner that is made when the session has output already.
 	StartOffset uint64
+	// PromptEndsCommand makes a prompt start (OSC 133 A) while a command runs end that command, with no exit code: a shell that is replaced (`exec zsh`)
+	// never prints the end of its command, and the prompt of the new one comes. The default (false) keeps a prompt inside a running command as output.
+	PromptEndsCommand bool
 }
 
 // Scanner reads the output of one session, in the pieces it came in, and says which marks are in it. It never
@@ -77,6 +80,7 @@ type Scanner struct {
 	now   func() time.Time
 	log   *Log
 	start uint64
+	promptEnds bool
 
 	off       atomic.Uint64
 	marks     atomic.Uint64
@@ -95,6 +99,7 @@ func New(cfg Config) *Scanner {
 	}
 	s.log = newLog(cfg.MaxRecords)
 	s.start = cfg.StartOffset
+	s.promptEnds = cfg.PromptEndsCommand
 	s.off.Store(cfg.StartOffset)
 	return s
 }
