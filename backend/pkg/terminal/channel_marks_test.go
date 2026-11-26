@@ -600,7 +600,11 @@ func TestOnlyOurNextPromptEndsACommandWhoseEndNeverCame(t *testing.T) {
 	guarded(t, "foreign-prompt-ends-nothing", func() {
 		busy, err = k.f.m.ChannelBusy(k.info.Cap)
 		require.NoError(t, err)
-		assert.Equal(t, StateBusy, busy.State)
+		// Busy comes from the marks: the fault that ignores them is the busy-from-marks guard's.
+		guarded(t, "busy-from-marks", func() { assert.Equal(t, StateBusy, busy.State) })
+		record, recordErr := k.f.m.ChannelCommands(k.info.Cap)
+		require.NoError(t, recordErr)
+		assert.NotEmpty(t, record.Running, "the command is still the running one: a foreign prompt ended nothing")
 	})
 	// Ours: the directory with the nonce, then the prompt.
 	k.print(osc("633;P;Cwd=/w;"+k.nonce) + osc("133;A") + "$ " + osc("133;B"))

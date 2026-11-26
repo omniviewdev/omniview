@@ -8,7 +8,7 @@
 set -u
 ROOT=$(pwd)
 PKG=./backend/pkg/terminal
-TESTS='TestMarksArrive|TestAReplayGivesTheSame|TestAMarkWithoutTheNonce|TestATerminalWithoutIntegration|TestAPageThatDidNotAsk|TestTheRecordAndTheMarks|TestACommandRunsFrom|TestTheRecordIsRead|TestTheNonceIsInNo|TestTheKeptEnd|TestANewPrompt|TestMarksThatEnded|TestMarksNever'
+TESTS='TestMarksArrive|TestAReplayGivesTheSame|TestAMarkWithoutTheNonce|TestATerminalWithoutIntegration|TestAPageThatDidNotAsk|TestTheRecordAndTheMarks|TestACommandRunsFrom|TestTheRecordIsRead|TestTheNonceIsInNo|TestTheKeptEnd|TestOnlyOurNextPromptEndsACommandWhoseEndNeverCame|TestMarksThatEnded|TestMarksNever'
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
