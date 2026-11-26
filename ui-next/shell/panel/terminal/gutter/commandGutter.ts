@@ -58,7 +58,7 @@ export type CommandGutter = {
   /** Whether there is output to read, from the marks alone: no text is read. */
   readonly hasOutput: (command?: GutterCommand) => boolean;
   /** What typing a command again takes: its line, and whether the shell proved it (then Enter is pressed; a line read from the screen is left for the person to run). `undefined` while a command runs, on the alternate screen, and for a line that is gone. */
-  readonly rerun: (command?: GutterCommand) => { readonly text: string; readonly enter: boolean } | undefined;
+  readonly rerun: (command?: GutterCommand) => { readonly text: string; readonly enter: boolean; readonly earlier?: true } | undefined;
   /** A command runs now (the shell's own word). */
   readonly busy: () => boolean;
   readonly onEvent: (listener: (event: GutterEvent) => void) => () => void;
@@ -69,6 +69,8 @@ type Anchor = { readonly marker: EngineMarker; readonly column: number };
 
 type Entry = {
   readonly id: string;
+  /** The terminal it belongs to (`seal` starts another): a command of an earlier one is never run by a press of Enter in the new shell. */
+  readonly epoch: number;
   prompt: Anchor | undefined;
   input: Anchor | undefined;
   readonly start: Anchor;
@@ -226,6 +228,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     counter += 1;
     const entry: Entry = {
       id: idOf(mark.id) ?? `command-${String(counter)}`,
+      epoch,
       prompt: pending.prompt,
       input: pending.input,
       start,
@@ -379,14 +382,15 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     return range === undefined ? undefined : engine.lines(range[0], range[1], range[2] === undefined ? undefined : { to: range[2] });
   };
 
-  const rerun = (command?: GutterCommand): { readonly text: string; readonly enter: boolean } | undefined => {
+  const rerun = (command?: GutterCommand): { readonly text: string; readonly enter: boolean; readonly earlier?: true } | undefined => {
     const entry = entryOf(command);
     if (entry === undefined || running !== undefined || engine.alternate()) {
       return undefined;
     }
 
     if (entry.command !== undefined && entry.command !== '') {
-      return { text: entry.command.replace(unsafe, ''), enter: true };
+      const earlier = entry.epoch !== epoch;
+      return { text: entry.command.replace(unsafe, ''), enter: !earlier, ...(earlier ? { earlier: true as const } : {}) };
     }
 
     // The shell did not prove the line: it is what the screen shows from where the input starts to where the output starts, and it is the person's to run.
@@ -404,7 +408,7 @@ export function createCommandGutter(engine: GutterEngine): CommandGutter {
     }
 
     const text = shown.replace(unsafe, '');
-    return text === '' ? undefined : { text, enter: false };
+    return text === '' ? undefined : { text, enter: false, ...(entry.epoch === epoch ? {} : { earlier: true as const }) };
   };
 
   /** Whether the command the actions are for has output lines to read: the marks and the cursor only, never the text. */

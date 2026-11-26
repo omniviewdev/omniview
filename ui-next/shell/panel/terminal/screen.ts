@@ -4,7 +4,7 @@ import type { PlacedMark, TerminalFeedHandle, TerminalFeedSnapshot, TerminalRepl
 import { keyOf, sequenceOf } from './keys';
 import type { ScreenReaderSource } from './screenReader';
 import { createCommandGutter, type CommandGutter, type GutterEvent } from './gutter/commandGutter';
-import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED } from './gutter/words';
+import { COPIED_OUTPUT, COULD_NOT_COPY, INPUT_OFF, NO_COMMANDS, NO_LINE, NO_OUTPUT, RERUN_EARLIER, RERUN_RUNNING, RERUN_SENT, RERUN_TYPED } from './gutter/words';
 import { drainLine, exitLine, failureLines } from './state';
 
 // The screen of a terminal session: the one object between a feed and an emulator (docs/ui-next/status/T1.md, "The screen"). It is framework-free and knows no xterm: it is written against `Engine`, and the body
@@ -1012,7 +1012,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
         typed('\r');
       }
 
-      sayCommands(plan.enter ? RERUN_SENT : RERUN_TYPED);
+      sayCommands(plan.earlier === true ? RERUN_EARLIER : plan.enter ? RERUN_SENT : RERUN_TYPED);
     },
     onEvent: (listener) => {
       commandListeners.add(listener);
@@ -1087,11 +1087,11 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       // Everything the feed holds, whatever a frame's share: what is not drawn now is lost when the feed is let go of.
       for (;;) {
         const out = feed.read();
-        if (out.chunks.length === 0) {
+        if (out.chunks.length === 0 && out.marks === undefined) {
           break;
         }
 
-        send(engine, out.chunks);
+        send(engine, out.chunks, out.marks);
       }
 
       tellEnd(engine);

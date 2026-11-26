@@ -312,5 +312,21 @@ run screen-seal-at-once "$P/screen.ts" \
   's/^      sealAfterQueued\(emulator\);$/      gutter?.seal();/' \
   'keeps a mark in an old write that the emulator has not parsed at the restart'
 
+run screen-flush-drops-marks "$P/screen.ts" \
+  's/if \(out\.chunks\.length === 0 && out\.marks === undefined\) \{/if (out.chunks.length === 0) {/' \
+  'keeps a command whose marks'
+
+run screen-flush-sends-no-marks "$P/screen.ts" \
+  's/send\(engine, out\.chunks, out\.marks\);/send(engine, out.chunks);/' \
+  'keeps a command whose marks'
+
+run gutter-old-command-with-enter "$P/gutter/commandGutter.ts" \
+  's/enter: !earlier,/enter: true,/' \
+  'types its line without Enter, and says it came from the terminal before|runs again a command of the terminal before the restart WITHOUT Enter'
+
+run screen-earlier-words-dropped "$P/screen.ts" \
+  's/plan\.earlier === true \? RERUN_EARLIER : //' \
+  'runs again a command of the terminal before the restart WITHOUT Enter'
+
 if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
 exit $bad

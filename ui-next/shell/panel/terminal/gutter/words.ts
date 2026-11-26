@@ -84,6 +84,8 @@ export const COPIED_OUTPUT = 'Copied the output of the command';
 export const COULD_NOT_COPY = 'Could not copy the output';
 export const RERUN_RUNNING = 'A command is running';
 export const RERUN_TYPED = 'The command line is typed; press Enter to run it';
+/** The line came from the terminal before a restart: the old shell's proof does not hold for the new one, and its directory may differ, so it is typed and not run. */
+export const RERUN_EARLIER = 'The command line is typed from the terminal before the restart; press Enter to run it';
 export const RERUN_SENT = 'Running the command again';
 export const NO_LINE = 'The command line is not known';
 export const INPUT_OFF = 'Input is off';

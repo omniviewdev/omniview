@@ -38,3 +38,5 @@ Red: `0b260f1fc` (feed, target, registry, screen, body), `ddd533326` (take-back 
 ## Not verified / out of scope
 
 - Probe and seam scenarios are step 6.
+
+- **Gutter across a restart.** The old terminal's commands stay with its transcript (jump keys cross the boundary), the one that ran is `incomplete`, the seal waits for the old writes to be parsed, and the new terminal's ids are its own. Running an OLD command again types the line without Enter and says it came from the terminal before the restart (see T5-gutter.md).
