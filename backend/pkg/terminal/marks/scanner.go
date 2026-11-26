@@ -280,13 +280,17 @@ func (s *Scanner) finishOSC(end uint64, out []Mark) []Mark {
 		return out
 	}
 	body := s.buf[:s.n]
+	before := len(out)
 	switch {
 	case hasPrefix(body, "7;"):
-		return s.readCwdURL(body[len("7;"):], out)
+		out = s.readCwdURL(body[len("7;"):], out)
 	case hasPrefix(body, "133;"):
-		return s.readPrompt(body[len("133;"):], end, out)
+		out = s.readPrompt(body[len("133;"):], end, out)
 	case hasPrefix(body, "633;"):
-		return s.readVSCode(body[len("633;"):], end, out)
+		out = s.readVSCode(body[len("633;"):], end, out)
+	}
+	for i := before; i < len(out); i++ {
+		out[i].EndOffset = end
 	}
 	return out
 }

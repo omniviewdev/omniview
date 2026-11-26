@@ -31,8 +31,10 @@ func (s *Scanner) readPrompt(args []byte, end uint64, out []Mark) []Mark {
 		m.CommandID = s.log.input(at)
 		return s.emit(out, m)
 	case 'C':
-		rec, started := s.log.start(at, end, s.now())
+		now := s.now()
+		rec, started := s.log.start(at, end, now)
 		m := newMark(KindCommandStart, at)
+		m.Time = now
 		m.CommandID = rec.CommandID
 		if started {
 			// Only the mark that started the command has its line: a second start is not the shell's.
@@ -41,8 +43,10 @@ func (s *Scanner) readPrompt(args []byte, end uint64, out []Mark) []Mark {
 		return s.emit(out, m)
 	case 'D':
 		code, has := exitCode(opts)
-		id, duration := s.log.end(at, code, has, s.now())
+		now := s.now()
+		id, duration := s.log.end(at, code, has, now)
 		m := newMark(KindCommandEnd, at)
+		m.Time = now
 		m.CommandID, m.ExitCode, m.HasExitCode, m.DurationMS = id, code, has, duration
 		return s.emit(out, m)
 	}
