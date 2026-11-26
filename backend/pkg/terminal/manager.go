@@ -1043,6 +1043,11 @@ func (s *session) directory() (string, UnknownReason) {
 	path, err := processCwd(s.cmd.Process.Pid)
 	switch {
 	case err == nil:
+		// The system still names a directory that was removed under the shell (Linux reads `<path> (deleted)`), and a
+		// terminal cannot start in it: a path that is not a directory now is not a fact worth passing on.
+		if info, statErr := os.Stat(path); statErr != nil || !info.IsDir() {
+			return "", ReasonQueryFailed
+		}
 		return path, ""
 	case errors.Is(err, errors.ErrUnsupported):
 		return "", ReasonUnsupported
