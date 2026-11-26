@@ -2,12 +2,30 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ call: vi.fn(), commit: vi.fn(), showFeatures: false, current: 'stable' }));
-vi.mock('@wailsio/runtime', () => ({ Call: { ByName: mocks.call } }));
+const mocks = vi.hoisted(() => ({
+  call: vi.fn(), commit: vi.fn(), confirm: vi.fn(), openURL: vi.fn(), showFeatures: false, current: 'stable',
+  updateMode: 'automatic',
+  progressListener: undefined as ((event: { data: unknown }) => void) | undefined,
+}));
+vi.mock('@wailsio/runtime', () => ({
+  Call: { ByName: mocks.call },
+  Events: {
+    On: vi.fn((name: string, listener: (event: { data: unknown }) => void) => {
+      if (name === 'wails:updater:download-progress') {
+        mocks.progressListener = listener;
+      }
+
+      return () => undefined;
+    }),
+  },
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- Wails runtime API name
+  Browser: { OpenURL: mocks.openURL },
+}));
 vi.mock('@omniviewdev/runtime', () => ({
   HOST_SETTINGS_SCOPE: { kind: 'host' },
   useScopedSettings: () => ({ commit: mocks.commit }),
-  useSettings: () => ({ settings: { 'developer.show_feature_channels': mocks.showFeatures } }),
+  useSettings: () => ({ settings: { 'developer.show_feature_channels': mocks.showFeatures, 'general.update_mode': mocks.updateMode } }),
+  useConfirmationModal: () => ({ show: mocks.confirm }),
 }));
 vi.mock('@omniviewdev/base-ui', () => ({
   Button: ({ children, ...props }: React.ComponentProps<'button'>) => <button {...props}>{children}</button>,
@@ -22,11 +40,15 @@ vi.mock('@omniviewdev/base-ui', () => ({
     <input type='checkbox' checked={checked} onChange={event => {
       onCheckedChange(event.target.checked);
     }} />,
+  Progress: ({ value, ...props }: { value: number; 'aria-label': string }) => <progress value={value} max={100} {...props} />,
   Select: {
-    Root: ({ children, value, onValueChange, disabled }: { children: React.ReactNode; value: string; onValueChange: (value: string) => void; disabled: boolean }) =>
-      <select aria-label='Release channel' value={value} disabled={disabled} onChange={event => {
+    Root: ({ children, value, onValueChange, disabled }: { children: React.ReactNode; value: string; onValueChange: (value: string) => void; disabled: boolean }) => {
+      const trigger = React.Children.toArray(children).find(child => React.isValidElement<{ 'aria-label'?: string }>(child) && child.props['aria-label']);
+      const label = React.isValidElement<{ 'aria-label'?: string }>(trigger) ? trigger.props['aria-label'] : undefined;
+      return <select aria-label={label} value={value} disabled={disabled} onChange={event => {
         onValueChange(event.target.value);
-      }}>{children}</select>,
+      }}>{children}</select>;
+    },
     Trigger: () => null, Value: () => null, Icon: () => null,
     Portal: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     Positioner: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -50,6 +72,10 @@ describe('UpdatesSettingsPage channels', () => {
   beforeEach(() => {
     mocks.showFeatures = false;
     mocks.current = 'stable';
+    mocks.updateMode = 'automatic';
+    mocks.progressListener = undefined;
+    mocks.confirm.mockReset();
+    mocks.openURL.mockReset();
     mocks.commit.mockReset().mockResolvedValue({ applied: true, uncertain: false });
     mocks.call.mockReset().mockImplementation(async (method: string) => {
       if (method.endsWith('.Status')) {
@@ -64,6 +90,73 @@ describe('UpdatesSettingsPage channels', () => {
     });
   });
   afterEach(cleanup);
+
+  const withStatus = (status: Record<string, unknown>) => {
+    mocks.call.mockImplementation(async (method: string) => {
+      if (method.endsWith('.Status')) {
+        return { state: 'idle', channel: mocks.current, ...status };
+      }
+
+      if (method.endsWith('.ListChannels')) {
+        return { current: mocks.current, options, error: '' };
+      }
+
+      return undefined;
+    });
+  };
+
+  it('shows and saves the update mode', async () => {
+    render(<UpdatesSettingsPage />);
+    const select = screen.getByLabelText<HTMLSelectElement>('Update mode');
+    expect(select.value).toBe('automatic');
+    fireEvent.change(select, { target: { value: 'check_only' } });
+    await waitFor(() => {
+      expect(mocks.commit).toHaveBeenCalledWith({ 'general.update_mode': 'check_only' });
+    });
+  });
+
+  it('downloads an available update on request', async () => {
+    withStatus({ state: 'available', availableVersion: '2.0.0' });
+    render(<UpdatesSettingsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Download update' }));
+    await waitFor(() => {
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.Download');
+    });
+  });
+
+  it('shows download progress and cancels the download', async () => {
+    withStatus({ state: 'downloading', availableVersion: '2.0.0' });
+    render(<UpdatesSettingsPage />);
+    await screen.findByText('Downloading 2.0.0');
+    act(() => {
+      mocks.progressListener?.({ data: { written: 50, total: 100, rate: 10 } });
+    });
+    expect(screen.getByLabelText<HTMLProgressElement>('Update download progress').value).toBe(50);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(mocks.call).toHaveBeenCalledWith('main.UpdateService.Cancel');
+    });
+  });
+
+  it('reports a canceled update without an error', async () => {
+    withStatus({ state: 'available', availableVersion: '2.0.0', canceled: true, error: '' });
+    render(<UpdatesSettingsPage />);
+    expect(await screen.findByText('Update canceled.')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('opens the release notes', async () => {
+    withStatus({ state: 'available', availableVersion: '2.0.0', releaseUrl: 'https://example.test/notes' });
+    render(<UpdatesSettingsPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'View release notes' }));
+    expect(mocks.openURL).toHaveBeenCalledWith('https://example.test/notes');
+  });
+
+  it('explains why updates are unavailable', async () => {
+    withStatus({ state: 'unconfigured', unsupportedReason: 'Omniview is running from a disk image.' });
+    render(<UpdatesSettingsPage />);
+    expect(await screen.findByText('Omniview is running from a disk image.')).toBeTruthy();
+  });
 
   it('retries failed channel index discovery and restores feature channels', async () => {
     mocks.showFeatures = true;

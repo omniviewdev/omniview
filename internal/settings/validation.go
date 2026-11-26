@@ -104,3 +104,14 @@ func validatePprofPort(value any) settings.ValidationResult {
 	}
 	return settings.ValidationResult{Valid: true, Code: "port", Message: "Port is valid."}
 }
+
+// validateUpdateMode accepts only the three update modes.
+func validateUpdateMode(value any) settings.ValidationResult {
+	switch value {
+	case UpdateModeAutomatic, UpdateModeCheckOnly, UpdateModeManual:
+		return settings.ValidationResult{Valid: true, Code: "valid_update_mode", Message: "Update mode is valid."}
+	}
+	return settings.ValidationResult{
+		Valid: false, Code: "unknown_update_mode", Message: "Choose Automatic, Check only, or Manual.",
+	}
+}

@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { AppShell, Button } from '@omniviewdev/base-ui';
+import { AppShell } from '@omniviewdev/base-ui';
 
 // Components
 import HeaderContextArea from './areas/HeaderContextArea';
@@ -14,37 +14,7 @@ import { toggleMaximiseOnDoubleClick } from './toggleMaximise';
 import styles from './Header.module.css';
 import { GlobalCommandSearch } from '@/features/command-search/GlobalCommandSearch';
 import { useGlobalCommandSearch } from '@/features/command-search/useGlobalCommandSearch';
-import { Call } from '@wailsio/runtime';
-import { openSettings } from '@omniviewdev/runtime';
-
-function UpdateIndicator() {
-  const [version, setVersion] = React.useState('');
-  React.useEffect(() => {
-    const refresh = () => {
-      void Call.ByName('main.UpdateService.Status')
-        .then((value: unknown) => {
-          const status = value as { state: string; availableVersion: string };
-          setVersion(status.state === 'ready' ? status.availableVersion : '');
-        }).catch(() => {
-          setVersion('');
-        });
-    };
-
-    refresh();
-    const timer = window.setInterval(refresh, 5000);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, []);
-  if (!version) {
-    return null;
-  }
-
-  return <Button onClick={() => {
-    void openSettings('/settings?section=core&category=updates');
-  }}>Update {version} ready</Button>;
-}
+import { UpdateIndicator } from '@/features/updates/UpdateIndicator';
 
 /**
  * Primary header component for the core main layout

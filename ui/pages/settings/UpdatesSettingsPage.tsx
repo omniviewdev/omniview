@@ -1,14 +1,45 @@
 import React from 'react';
-import { Call } from '@wailsio/runtime';
-import { Button, Checkbox, Input, Select, Switch } from '@omniviewdev/base-ui';
+import { Browser, Call } from '@wailsio/runtime';
+import { Button, Checkbox, Input, Progress, Select, Switch } from '@omniviewdev/base-ui';
 import { HOST_SETTINGS_SCOPE, useScopedSettings, useSettings } from '@omniviewdev/runtime';
 import { LuChevronDown } from 'react-icons/lu';
+import { RestartToUpdateButton } from '@/features/updates/RestartToUpdateButton';
+import { type UpdateStatus, updateServiceName as service } from '@/features/updates/types';
+import { useUpdateStatus } from '@/features/updates/useUpdateStatus';
 import styles from './UpdatesSettingsPage.module.css';
 
-const service = 'main.UpdateService';
-type Status = { state: string; version: string; availableVersion: string; error: string; channel: string; switchTarget: string };
+type Status = UpdateStatus;
 type ChannelOption = { channel: string; branch: string; status: string; desktopVersion: string; stateExists: boolean; stateIdentity: string; statePath: string; stateModifiedAt: string; stateFileModifiedAt: Record<string, string>; stateInUse: 'in-use' | 'not-in-use' | 'unknown'; stateError: string };
 type ChannelList = { current: string; options: ChannelOption[]; error: string };
+
+const updateModes = [
+  { value: 'automatic', label: 'Automatic', description: 'Check, download, and prepare updates in the background' },
+  { value: 'check_only', label: 'Check only', description: 'Check in the background and tell you when an update is available' },
+  { value: 'manual', label: 'Manual', description: 'Check only when you ask' },
+];
+
+function statusText(status: Status | undefined, state: string): string {
+  const version = status?.availableVersion ?? '';
+  if (status?.canceled) {
+    return 'Update canceled.';
+  }
+
+  switch (state) {
+    case 'idle': return 'Not checked yet';
+    case 'checking': return 'Checking for updates…';
+    case 'up-to-date': return 'Omniview is up to date';
+    case 'available': return `Update ${version} is available`;
+    case 'downloading': return `Downloading ${version}`;
+    case 'verifying': return `Verifying ${version}`;
+    case 'installing': return `Preparing ${version}`;
+    case 'ready': return `Update ${version} is ready. Restart to apply it.`;
+    case 'error': return 'Update failed';
+    case 'unconfigured':
+      // Go sends an empty reason, not a missing one.
+      return status?.unsupportedReason === undefined || status.unsupportedReason === '' ? 'Updates are not available in this build.' : status.unsupportedReason;
+    default: return 'Loading…';
+  }
+}
 
 const channelName = (channel: string) => channel === 'stable' ? 'Stable' : channel === 'nightly' ? 'Nightly' : channel;
 
@@ -23,7 +54,7 @@ function ProfileFileTimes({ times }: { times: Record<string, string> | undefined
 }
 
 export default function UpdatesSettingsPage() {
-  const [status, setStatus] = React.useState<Status>();
+  const { status, error: statusError, progress, refresh } = useUpdateStatus();
   const [channels, setChannels] = React.useState<ChannelList>();
   const [selectedChannel, setSelected] = React.useState('');
   const [copy, setCopy] = React.useState(false);
@@ -38,22 +69,17 @@ export default function UpdatesSettingsPage() {
   const { settings } = useSettings();
   const { commit } = useScopedSettings(HOST_SETTINGS_SCOPE);
   const showFeatures = settings['developer.show_feature_channels'] === true;
-  const refresh = React.useCallback(async () => {
-    return Call.ByName(`${service}.Status`).then((value: unknown) => {
-      setStatus(value as Status);
+  const updateMode = settings['general.update_mode'];
+  const commitSetting = (values: Record<string, unknown>) => {
+    void commit(values).then(result => {
+      if (!result.applied || result.uncertain) {
+        setError(result.message ?? 'Could not apply setting');
+      }
     }).catch((err: unknown) => {
       setError(String(err));
     });
-  }, []);
-  React.useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => {
-      void refresh();
-    }, 2000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [refresh]);
+  };
+
   const canListChannels = Boolean(status) && status?.state !== 'unconfigured';
   React.useEffect(() => {
     if (!canListChannels) {
@@ -88,7 +114,10 @@ export default function UpdatesSettingsPage() {
         setChannelAttempt(attempt => attempt + 1);
       }
     } catch (err) {
-      setError(String(err));
+      // Cancel reports itself through status.canceled, not as a failure.
+      if (!String(err).includes('context canceled')) {
+        setError(String(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -106,7 +135,6 @@ export default function UpdatesSettingsPage() {
       ]);
       setChannels(list);
       setChannelError(list.error);
-      setStatus(latestStatus);
       const option = list.options.find(item => item.channel === channel);
       if (!deleteIdentity || option?.stateIdentity !== deleteIdentity || option.stateError || !option.stateExists || option.stateInUse === 'in-use'
         || channel === list.current || channel === latestStatus.channel || channel === latestStatus.switchTarget) {
@@ -181,26 +209,51 @@ export default function UpdatesSettingsPage() {
   return <section>
     <h1>Updates</h1>
     {status?.version && <p>Current version: {status.version}</p>}
-    <p role='status'>Status: {state === 'unconfigured' ? 'not configured' : state}</p>
-    {status?.availableVersion && <p>Available version: {status.availableVersion}</p>}
-    {(error || status?.error) && <p role='alert'>{error || status?.error}</p>}
+    {status?.channel && <p>Channel: {channelName(status.channel)}</p>}
+    {typeof updateMode === 'string' && <>
+      <Select.Root size='sm' value={updateMode} items={updateModes} disabled={busy} onValueChange={(value) => {
+        if (value !== null && value !== updateMode) {
+          commitSetting({ 'general.update_mode': value });
+        }
+      }}>
+        <Select.Trigger aria-label='Update mode'><Select.Value /><Select.Icon><LuChevronDown aria-hidden /></Select.Icon></Select.Trigger>
+        <Select.Portal><Select.Positioner sideOffset={4}><Select.Popup><Select.List>
+          {updateModes.map(mode => <Select.Item key={mode.value} value={mode.value}>
+            <Select.ItemText>{mode.label}</Select.ItemText>
+          </Select.Item>)}
+        </Select.List></Select.Popup></Select.Positioner></Select.Portal>
+      </Select.Root>
+      <p>{updateModes.find(mode => mode.value === updateMode)?.description}</p>
+    </>}
+    <p role='status'>{statusText(status, state)}</p>
+    {status?.lastCheckedAt && <p>Last checked: {status.lastCheckedAt}</p>}
+    {(error || statusError || (status?.error && !status.canceled)) && <p role='alert'>{error || statusError || status?.error}</p>}
+    {state === 'downloading' && progress && progress.total > 0
+      && <Progress value={Math.round(progress.written / progress.total * 100)} aria-label='Update download progress' />}
     {(deletionError || identityChanged) && <p role='alert'>{deletionError || 'Channel data changed. Open a new deletion confirmation.'} <Button onClick={() => {
       setDeletionError('');
       setDeleteChannel('');
       setDeleteIdentity('');
       setDeleteConfirmation('');
     }}>Dismiss deletion error</Button></p>}
-    {state === 'ready'
-      ? <Button variant={status?.switchTarget ? 'solid' : undefined} color={status?.switchTarget ? 'danger' : undefined} onClick={() => {
-        void run('Restart');
-      }}>
-        {status?.switchTarget ? `Restart into ${status.switchTarget}` : 'Restart to Update'}
-      </Button>
-      : <Button disabled={busy || ['loading', 'unconfigured', 'checking', 'downloading', 'verifying', 'installing'].includes(state)} onClick={() => {
-        void run('Check');
-      }}>
-        Check for Updates
-      </Button>}
+    {state === 'ready' && status
+      ? <RestartToUpdateButton status={status} onError={setError} />
+      : state === 'available'
+        ? <Button disabled={busy} onClick={() => {
+          void run('Download');
+        }}>Download update</Button>
+        : state === 'checking' || state === 'downloading'
+          ? <Button onClick={() => {
+            void run('Cancel');
+          }}>Cancel</Button>
+          : <Button disabled={busy || ['loading', 'unconfigured', 'verifying', 'installing'].includes(state)} onClick={() => {
+            void run('Check');
+          }}>
+            Check for Updates
+          </Button>}
+    {status?.releaseUrl && <Button onClick={() => {
+      void Browser.OpenURL(status.releaseUrl);
+    }}>View release notes</Button>}
     {status && state !== 'unconfigured' && <section>
       <h2>Release channel</h2>
       <p>Current channel: {channelName(current)}</p>

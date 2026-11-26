@@ -725,7 +725,10 @@ func main() {
 
 	// Create the AppService
 	appService := NewAppService(profile.Descriptor)
-	updateService := newUpdateService(app, profile.Descriptor.Channel, stateDir.Root(), version.Version)
+	updateService := newUpdateService(app, profile.Descriptor.Channel, stateDir.Root(), version.Version, func() string {
+		mode, _ := coreSettings.CategoryValues("general")["update_mode"].(string)
+		return mode
+	}, activeWorkLister(execController, logsController, networkerController, activityService))
 
 	// Create the bootstrap service that wraps startup/shutdown logic
 	bootstrapSvc := &bootstrap.Service{
@@ -900,7 +903,17 @@ func main() {
 		if _, err := windowService.OpenSettings(""); err != nil {
 			log.Errorw(context.Background(), "failed to open settings", "error", err)
 		}
-	}, menus.AppMenuOptions{Reload: profile.Descriptor.Kind == "development"})
+	}, menus.AppMenuOptions{
+		Reload: profile.Descriptor.Kind == "development",
+		CheckForUpdates: func() {
+			if _, openErr := windowService.OpenSettings("/settings?section=core&category=updates"); openErr != nil {
+				log.Errorw(context.Background(), "failed to open update settings", "error", openErr)
+			}
+			if checkErr := updateService.Check(); checkErr != nil {
+				log.Warnw(context.Background(), "update check from menu failed", "error", checkErr)
+			}
+		},
+	})
 	menus.SetupKeyBindings(app)
 	menus.SetupContextMenus(app)
 

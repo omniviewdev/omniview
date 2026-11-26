@@ -5,6 +5,37 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+/**
+ * ActiveWork is work that a restart would end.
+ */
+export class ActiveWork {
+    /**
+     * "terminal", "log-stream", "port-forward", "task", "unknown"
+     */
+    "kind": string;
+    "description": string;
+
+    /** Creates a new ActiveWork instance. */
+    constructor($$source: Partial<ActiveWork> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ActiveWork instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ActiveWork {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ActiveWork($$parsedSource as Partial<ActiveWork>);
+    }
+}
+
 export class ChannelList {
     "current": string;
     "options": ChannelOption[];
@@ -201,6 +232,10 @@ export class UpdateStatus {
     "error": string;
     "channel": string;
     "switchTarget": string;
+    "canceled": boolean;
+    "releaseUrl": string;
+    "lastCheckedAt": string;
+    "unsupportedReason": string;
 
     /** Creates a new UpdateStatus instance. */
     constructor($$source: Partial<UpdateStatus> = {}) {
@@ -221,6 +256,18 @@ export class UpdateStatus {
         }
         if (!("switchTarget" in $$source)) {
             this["switchTarget"] = "";
+        }
+        if (!("canceled" in $$source)) {
+            this["canceled"] = false;
+        }
+        if (!("releaseUrl" in $$source)) {
+            this["releaseUrl"] = "";
+        }
+        if (!("lastCheckedAt" in $$source)) {
+            this["lastCheckedAt"] = "";
+        }
+        if (!("unsupportedReason" in $$source)) {
+            this["unsupportedReason"] = "";
         }
 
         Object.assign(this, $$source);

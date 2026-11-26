@@ -3,6 +3,8 @@
 The release workflows publish signed feeds and payloads to the self-hosted update service. GitHub Releases and Homebrew remain separate distribution channels. Nightly and promoted feature releases activate automatically after validation; stable releases require approval in the update portal. Feature releases do not create GitHub Releases or Homebrew casks.
 Release builds require `UPDATER_PUBLIC_KEYS` to be a non-empty JSON array of lowercase 64-hex Ed25519 public keys. Invalid trust configuration fails the build.
 
+The desktop has three update modes in Settings → Updates (`general.update_mode`). Automatic, the default, checks at startup and every six hours, then downloads and prepares an update in the background. Check only checks on the same schedule and reports an available update; the user downloads it. Manual checks only when the user asks, also from the native "Check for Updates…" menu item. A change to Automatic or Check only starts a check at once; a change to Manual does not. A prepared update applies only at an explicit restart. If terminals, log streams, port forwards, or running tasks exist, the restart asks for confirmation and lists them. Server builds, macOS apps that run translocated or from a disk image, and executables in a folder that the user cannot write to do not update themselves, and the Updates page shows the reason. `internal/updater.feedBaseURL` sets the feed origin. Override it with `-ldflags -X` only for local lifecycle tests.
+
 Run with Node.js and these environment variables:
 
 - `UPDATER_SIGNING_KEYS`: JSON array of lowercase 64-hex Ed25519 seeds. Every configured key signs the same manifest bytes; the service requires its configured public-key set to match exactly.

@@ -9,31 +9,51 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/omniviewdev/omniview/internal/bootstrap"
 	"github.com/omniviewdev/omniview/internal/devcontract"
 	"github.com/omniviewdev/omniview/internal/instance"
 	"github.com/omniviewdev/omniview/internal/releasechannel"
+	coresettings "github.com/omniviewdev/omniview/internal/settings"
 	feed "github.com/omniviewdev/omniview/internal/updater"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	wailsupdater "github.com/wailsapp/wails/v3/pkg/updater"
 )
 
+var (
+	errActiveWorkBlocksRestart = errors.New("active work would be lost; confirm restart")
+	errUpdateOperationRunning  = errors.New("another update operation is running")
+)
+
 type UpdateService struct {
-	updater          *wailsupdater.Updater
-	provider         *feed.Provider
-	channel          string
-	root             string
-	configured       bool
-	mu               sync.Mutex
-	flow             sync.Mutex
-	identityMu       sync.Mutex
-	identities       map[string]profileIdentity
-	lastError        string
-	availableVersion string
-	switchTarget     string
-	cancel           context.CancelFunc
+	updater                  *wailsupdater.Updater
+	provider                 *feed.Provider
+	channel                  string
+	root                     string
+	configured               bool
+	updateMode               func() string
+	listActiveWork           func() []ActiveWork
+	modeChanged              chan struct{}
+	stopSettingsSubscription func()
+	mu                       sync.Mutex
+	flow                     sync.Mutex
+	identityMu               sync.Mutex
+	identities               map[string]profileIdentity
+	lastError                string
+	availableVersion         string
+	switchTarget             string
+	operationCancel          context.CancelFunc
+	canceled                 bool
+	releaseURL               string
+	lastCheckedAt            string
+	unsupportedReason        string
+	version                  string
+	restartFailure           string
+	cancel                   context.CancelFunc
 }
 
 type profileIdentity struct {
@@ -42,12 +62,22 @@ type profileIdentity struct {
 }
 
 type UpdateStatus struct {
-	State            string `json:"state"`
-	Version          string `json:"version"`
-	AvailableVersion string `json:"availableVersion"`
-	Error            string `json:"error"`
-	Channel          string `json:"channel"`
-	SwitchTarget     string `json:"switchTarget"`
+	State             string `json:"state"`
+	Version           string `json:"version"`
+	AvailableVersion  string `json:"availableVersion"`
+	Error             string `json:"error"`
+	Channel           string `json:"channel"`
+	SwitchTarget      string `json:"switchTarget"`
+	Canceled          bool   `json:"canceled"`
+	ReleaseURL        string `json:"releaseUrl"`
+	LastCheckedAt     string `json:"lastCheckedAt"`
+	UnsupportedReason string `json:"unsupportedReason"`
+}
+
+// ActiveWork is work that a restart would end.
+type ActiveWork struct {
+	Kind        string `json:"kind"` // "terminal", "log-stream", "port-forward", "task", "unknown"
+	Description string `json:"description"`
 }
 
 type ChannelOption struct {
@@ -70,8 +100,15 @@ type ChannelList struct {
 	Error   string          `json:"error"`
 }
 
-func newUpdateService(app *application.App, channel, root, version string) *UpdateService {
-	s := &UpdateService{updater: app.Updater, channel: channel, root: root}
+func newUpdateService(app *application.App, channel, root, version string, updateMode func() string, listActiveWork func() []ActiveWork) *UpdateService {
+	s := &UpdateService{ //nolint:exhaustruct // The other fields start at their zero values.
+		updater: app.Updater, channel: channel, root: root, version: version,
+		updateMode: updateMode, listActiveWork: listActiveWork, modeChanged: make(chan struct{}, 1),
+	}
+	if reason := buildUnsupportedReason(); reason != "" {
+		s.unsupportedReason = reason
+		return s
+	}
 	provider, err := feed.NewProvider(channel, root, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "updater disabled: %v\n", err)
@@ -80,13 +117,61 @@ func newUpdateService(app *application.App, channel, root, version string) *Upda
 	if provider == nil {
 		return s
 	}
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "updater disabled: %v\n", err)
+		return s
+	}
+	if problem := updateTargetProblem(exe, runtime.GOOS, directoryIsWritable); problem != "" {
+		s.unsupportedReason = problem
+		return s
+	}
 	s.provider = provider
 	if err := s.updater.Init(wailsupdater.Config{CurrentVersion: version, Providers: []wailsupdater.Provider{provider}, Window: wailsupdater.WindowNone}); err != nil {
 		fmt.Fprintf(os.Stderr, "updater disabled: %v\n", err)
 		return s
 	}
 	s.configured = true
+	s.recoverFromFailedRestart()
 	return s
+}
+
+func buildUnsupportedReason() string {
+	if !updatesSupportedByBuild {
+		return "Updates are managed by the server that hosts this Omniview instance."
+	}
+	return ""
+}
+
+// updateTargetProblem explains why the running executable cannot replace itself, or returns "".
+func updateTargetProblem(executablePath, goos string, writable func(dir string) bool) string {
+	dir := filepath.Dir(executablePath)
+	if goos == "darwin" {
+		if strings.Contains(executablePath, "/AppTranslocation/") {
+			return "Move Omniview to your Applications folder and open it again to receive updates."
+		}
+		if strings.HasPrefix(executablePath, "/Volumes/") {
+			return "Omniview is running from a disk image. Copy it to your Applications folder and open it from there to receive updates."
+		}
+		if bundleEnd := strings.Index(executablePath, ".app/Contents/MacOS/"); bundleEnd >= 0 {
+			dir = filepath.Dir(executablePath[:bundleEnd+len(".app")])
+		}
+	}
+	if !writable(dir) {
+		return fmt.Sprintf("Omniview cannot replace itself in %s. Move it to a folder you can write to, or update it with the tool that installed it.", dir)
+	}
+	return ""
+}
+
+func directoryIsWritable(dir string) bool {
+	probe, err := os.CreateTemp(dir, ".omniview-update-probe-*")
+	if err != nil {
+		return false
+	}
+	name := probe.Name()
+	closeErr := probe.Close()
+	removeErr := os.Remove(name)
+	return closeErr == nil && removeErr == nil
 }
 
 func (s *UpdateService) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
@@ -94,23 +179,17 @@ func (s *UpdateService) ServiceStartup(ctx context.Context, _ application.Servic
 		return nil
 	}
 	ctx, s.cancel = context.WithCancel(ctx)
-	go func() {
-		s.check(ctx)
-		ticker := time.NewTicker(6 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.check(ctx)
-			}
-		}
-	}()
+	if app := application.Get(); app != nil {
+		s.stopSettingsSubscription = app.Event.On(bootstrap.SettingsChangedEvent, func(*application.CustomEvent) { s.settingsChanged() })
+	}
+	go s.schedule(ctx)
 	return nil
 }
 
 func (s *UpdateService) ServiceShutdown() error {
+	if s.stopSettingsSubscription != nil {
+		s.stopSettingsSubscription()
+	}
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -123,46 +202,207 @@ func (s *UpdateService) ServiceShutdown() error {
 	return nil
 }
 
-func (s *UpdateService) check(ctx context.Context) error {
+// settingsChanged wakes the schedule loop; a pending wake already covers this change.
+func (s *UpdateService) settingsChanged() {
+	select {
+	case s.modeChanged <- struct{}{}:
+	default:
+	}
+}
+
+func (s *UpdateService) currentMode() string {
+	mode := s.updateMode()
+	switch mode {
+	case coresettings.UpdateModeAutomatic, coresettings.UpdateModeCheckOnly, coresettings.UpdateModeManual:
+		return mode
+	}
+	s.mu.Lock()
+	s.lastError = fmt.Sprintf("unknown update mode %q; background checks are off", mode)
+	s.mu.Unlock()
+	return coresettings.UpdateModeManual
+}
+
+// Background check timing.
+const (
+	scheduledCheckInterval = 6 * time.Hour
+	busyRetryInterval      = time.Second
+)
+
+// schedule runs background checks: at startup, every six hours, and when the
+// mode changes to Automatic or Check only. A check that finds another update
+// operation running stays pending and retries.
+func (s *UpdateService) schedule(ctx context.Context) {
+	mode := s.currentMode()
+	pending := true
+	var retry <-chan time.Time
+	ticker := time.NewTicker(scheduledCheckInterval)
+	defer ticker.Stop()
+	for {
+		if pending {
+			retry = nil
+			if s.runScheduledCheck(ctx, mode) {
+				pending = false
+			} else {
+				retry = time.After(busyRetryInterval)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			mode = s.currentMode()
+			pending = true
+		case <-s.modeChanged:
+			next := s.currentMode()
+			if next != mode {
+				pending = next != coresettings.UpdateModeManual
+			}
+			mode = next
+		case <-retry:
+		}
+	}
+}
+
+// runScheduledCheck reports false when another update operation holds the flow.
+func (s *UpdateService) runScheduledCheck(ctx context.Context, mode string) bool {
+	var err error
+	switch mode {
+	case coresettings.UpdateModeCheckOnly:
+		err = s.check(ctx, false)
+	case coresettings.UpdateModeAutomatic:
+		err = s.check(ctx, true)
+	}
+	return !errors.Is(err, errUpdateOperationRunning)
+}
+
+// beginOperation makes the returned context cancelable through Cancel until finish runs.
+func (s *UpdateService) beginOperation(parent context.Context) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(parent)
+	s.mu.Lock()
+	s.operationCancel = cancel
+	s.canceled = false
+	s.mu.Unlock()
+	return ctx, func() {
+		s.mu.Lock()
+		s.operationCancel = nil
+		s.mu.Unlock()
+		cancel()
+	}
+}
+
+// recordResult stores the outcome of a check or download. A canceled operation is not an error.
+func (s *UpdateService) recordResult(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case err == nil:
+		s.lastError = s.restartFailure
+	case errors.Is(err, context.Canceled):
+		s.canceled = true
+		s.lastError = s.restartFailure
+	default:
+		s.lastError = err.Error()
+	}
+}
+
+// operationResult marks the failure of a canceled operation as a
+// cancellation. Wails joins provider errors into text, which loses
+// context.Canceled.
+func operationResult(opCtx context.Context, err error) error {
+	if err != nil && !errors.Is(err, context.Canceled) && errors.Is(opCtx.Err(), context.Canceled) {
+		return fmt.Errorf("%w: %w", context.Canceled, err)
+	}
+	return err
+}
+
+func (s *UpdateService) check(ctx context.Context, downloadWhenFound bool) error {
 	if !s.flow.TryLock() {
-		return nil
+		return errUpdateOperationRunning
 	}
 	defer s.flow.Unlock()
 	if s.updater.State() == wailsupdater.StateReady {
 		return nil
 	}
-	release, err := s.updater.Check(ctx)
-	if err == nil && release != nil {
+	opCtx, finish := s.beginOperation(ctx)
+	defer finish()
+	release, err := s.updater.Check(opCtx)
+	if err == nil {
 		s.mu.Lock()
-		s.availableVersion = release.Version
+		s.lastCheckedAt = time.Now().UTC().Format(time.RFC3339)
+		if release != nil {
+			s.availableVersion = release.Version
+			s.releaseURL, _ = release.Metadata["releaseUrl"].(string)
+		}
 		s.mu.Unlock()
-		err = s.updater.DownloadAndInstall(ctx)
+		// The mode can change while the manifest loads; only Automatic downloads on its own.
+		if release != nil && downloadWhenFound && s.currentMode() == coresettings.UpdateModeAutomatic {
+			err = s.updater.DownloadAndInstall(opCtx)
+		}
 	}
-	s.mu.Lock()
-	if err != nil {
-		s.lastError = err.Error()
-	} else {
-		s.lastError = ""
-	}
-	s.mu.Unlock()
+	err = operationResult(opCtx, err)
+	s.recordResult(err)
 	return err
 }
 
 func (s *UpdateService) Status() UpdateStatus {
 	state := string(s.updater.State())
 	s.mu.Lock()
-	err := s.lastError
-	available := s.availableVersion
-	target := s.switchTarget
-	s.mu.Unlock()
-	return UpdateStatus{State: state, Version: s.updater.CurrentVersion(), AvailableVersion: available, Error: err, Channel: s.channel, SwitchTarget: target}
+	defer s.mu.Unlock()
+	return UpdateStatus{
+		State: state, Version: s.version, AvailableVersion: s.availableVersion,
+		Error: s.lastError, Channel: s.channel, SwitchTarget: s.switchTarget,
+		Canceled: s.canceled, ReleaseURL: s.releaseURL, LastCheckedAt: s.lastCheckedAt,
+		UnsupportedReason: s.unsupportedReason,
+	}
 }
 
+// Check looks for an update now. Automatic mode also downloads and prepares it.
 func (s *UpdateService) Check() error {
 	if !s.configured {
-		return fmt.Errorf("updater is not configured")
+		return errors.New("updater is not configured")
 	}
-	return s.check(context.Background())
+	return s.check(context.Background(), s.currentMode() == coresettings.UpdateModeAutomatic)
+}
+
+// Download prepares the update that a previous check found.
+func (s *UpdateService) Download() error {
+	if !s.configured {
+		return errors.New("updater is not configured")
+	}
+	if s.updater.State() != wailsupdater.StateAvailable {
+		return errors.New("no update is available; check for updates first")
+	}
+	if !s.flow.TryLock() {
+		return errUpdateOperationRunning
+	}
+	defer s.flow.Unlock()
+	opCtx, finish := s.beginOperation(context.Background())
+	defer finish()
+	err := operationResult(opCtx, s.updater.DownloadAndInstall(opCtx))
+	s.recordResult(err)
+	return err
+}
+
+// Cancel stops the running check or download.
+func (s *UpdateService) Cancel() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.operationCancel == nil {
+		return errors.New("no update check or download is running")
+	}
+	s.operationCancel()
+	return nil
+}
+
+// ActiveWork lists the work that a restart would end.
+func (s *UpdateService) ActiveWork() []ActiveWork {
+	if s.listActiveWork == nil {
+		return []ActiveWork{}
+	}
+	if work := s.listActiveWork(); work != nil {
+		return work
+	}
+	return []ActiveWork{}
 }
 
 func (s *UpdateService) ListChannels() ChannelList {
@@ -335,7 +575,16 @@ func (s *UpdateService) SwitchChannel(target string, copyCurrentData bool) (err 
 			_ = s.provider.SetTarget("")
 		}
 	}()
-	ctx := context.Background()
+	ctx, finish := s.beginOperation(context.Background())
+	defer finish()
+	defer func() {
+		err = operationResult(ctx, err)
+		if errors.Is(err, context.Canceled) {
+			s.mu.Lock()
+			s.canceled = true
+			s.mu.Unlock()
+		}
+	}()
 	release, err := s.updater.Check(ctx)
 	if err != nil {
 		return err
@@ -432,7 +681,65 @@ func (s *UpdateService) DeleteChannelData(channel, stateIdentity string) error {
 	return deleteInactiveProfile(path, info)
 }
 
-func (s *UpdateService) Restart() error { return s.updater.Restart(context.Background()) }
+// Restart applies the prepared update. Active work blocks it unless the caller confirms.
+func (s *UpdateService) Restart(restartDespiteActiveWork bool) error {
+	if !restartDespiteActiveWork && len(s.ActiveWork()) > 0 {
+		return errActiveWorkBlocksRestart
+	}
+	s.mu.Lock()
+	target := s.availableVersion
+	switching := s.switchTarget != ""
+	s.mu.Unlock()
+	// A channel switch starts another profile, which never reads this record.
+	recorded := s.root != "" && target != "" && !switching
+	if recorded {
+		if err := os.WriteFile(filepath.Join(s.root, restartTargetFile), []byte(target), 0o600); err != nil {
+			return fmt.Errorf("record update restart: %w", err)
+		}
+	}
+	if err := s.updater.Restart(context.Background()); err != nil {
+		if recorded {
+			_ = os.Remove(filepath.Join(s.root, restartTargetFile))
+		}
+		return err
+	}
+	return nil
+}
+
+// restartTargetFile holds the version that the last restart tried to start.
+// skippedVersionFile holds a version that the Wails helper rolled back, so
+// the updater does not offer it again.
+const (
+	restartTargetFile  = "update-restart-target"
+	skippedVersionFile = "update-skipped-version"
+)
+
+// recoverFromFailedRestart detects a restart that the Wails helper rolled
+// back: the running version differs from the recorded restart target. That
+// version is skipped from then on; a newer release is still offered.
+func (s *UpdateService) recoverFromFailedRestart() {
+	if s.root == "" {
+		return
+	}
+	targetPath := filepath.Join(s.root, restartTargetFile)
+	skippedPath := filepath.Join(s.root, skippedVersionFile)
+	if target, err := os.ReadFile(targetPath); err == nil {
+		if removeErr := os.Remove(targetPath); removeErr != nil {
+			log.Printf("remove update restart record: %v", removeErr)
+		}
+		// Only a release version is recorded; anything else is a corrupt record.
+		if string(target) != s.version && releasechannel.ValidVersion(s.channel, string(target)) {
+			if writeErr := os.WriteFile(skippedPath, target, 0o600); writeErr != nil { //nolint:gosec // The path is the profile root and a constant name; the content is a validated version.
+				log.Printf("record skipped update: %v", writeErr)
+			}
+			s.restartFailure = fmt.Sprintf("Omniview %s did not start, so Omniview kept %s. This update is skipped; a newer one will be offered.", target, s.version)
+			s.lastError = s.restartFailure
+		}
+	}
+	if skipped, err := os.ReadFile(skippedPath); err == nil && len(skipped) > 0 {
+		s.updater.SkipVersion(string(skipped))
+	}
+}
 
 // removeIsolatedProfile deletes through a pinned directory, never its pathname.
 // The empty quarantine is retained because removing its name would race a rename.

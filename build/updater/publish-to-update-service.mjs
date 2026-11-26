@@ -6,7 +6,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { buildManifest, signEnvelope } from './envelope.mjs';
 
-const CDN = 'https://updates.omniview.dev';
+// Artifact URLs must match the update service's CDN origin. Release workflows keep the default;
+// local lifecycle tests point both at a local service with UPDATE_SERVICE_CDN_URL.
+const CDN = process.env.UPDATE_SERVICE_CDN_URL?.replace(/\/$/, '') || 'https://updates.omniview.dev';
 const MAX_SIZE = 1024 * 1024 * 1024;
 const API_TIMEOUT_MS = 30 * 1000;
 const UPLOAD_TIMEOUT_MS = 15 * 60 * 1000;

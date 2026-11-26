@@ -37,6 +37,9 @@ type AppMenuOptions struct {
 	// so every open tab, which is why it is kept for development instances and
 	// dropped from packaged builds (decision A18). Force Reload stays in both.
 	Reload bool
+	// CheckForUpdates adds "Check for Updates…" when it is set. The item runs it
+	// on a new goroutine so the menu thread never waits on the network.
+	CheckForUpdates func()
 }
 
 // windowCloser is the part of a window the Close Window item needs.
@@ -74,6 +77,11 @@ func SetupAppMenu(
 		aboutMenu.Add("About " + app.Config().Name).OnClick(func(_ *application.Context) {
 			app.Menu.ShowAbout()
 		})
+		if options.CheckForUpdates != nil {
+			aboutMenu.Add("Check for Updates…").OnClick(func(_ *application.Context) {
+				go options.CheckForUpdates()
+			})
+		}
 		aboutMenu.AddSeparator()
 		aboutMenu.Add("Settings…").SetAccelerator("CmdOrCtrl+,").OnClick(func(_ *application.Context) {
 			go openSettings()
@@ -88,6 +96,11 @@ func SetupAppMenu(
 		fileMenu.Add("Settings…").SetAccelerator("CmdOrCtrl+,").OnClick(func(_ *application.Context) {
 			go openSettings()
 		})
+		if options.CheckForUpdates != nil {
+			fileMenu.Add("Check for Updates…").OnClick(func(_ *application.Context) {
+				go options.CheckForUpdates()
+			})
+		}
 	}
 
 	addViewMenu(menu, app, focusedWindow, options.Reload)
