@@ -1095,7 +1095,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       if (mark.kind === 'command-start' && mark.trust === 'nonce') {
         running = true;
       } else if (mark.kind === 'command-end' || mark.kind === 'prompt-start') {
-        running = undefined;
+        running = false;
       }
     }
 

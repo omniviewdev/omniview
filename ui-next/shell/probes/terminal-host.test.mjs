@@ -1144,7 +1144,7 @@ test('a page that did not ask for marks, another version of the frame, and a ter
   const page = pageOf(bare, none.cap, { marks: 1 });
   await page.until('ready', () => page.ready !== undefined);
   bare.type('n', 'forge\r');
-  await page.until('the output', () => page.bytes().toString('latin1').includes('synthetic: command not found'));
+  await page.until('the output', () => page.bytes().toString('latin1').includes('forged\r\n'));
   assert.equal(page.ready.marks, undefined, 'a terminal with no integration promises none');
   assert.deepEqual(page.marks, []);
   assert.equal((await bare.call('ChannelTerminalCommands', [none.cap])).integration, 'off');
