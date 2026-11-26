@@ -653,8 +653,7 @@ describe('a new terminal takes the place of an ended one (`seal`, #695 step 5)',
     const { gutter, feed } = setup();
     await feed('old $ ', [A('c1'), B('c1')]);
     gutter.seal();
-    await feed('\r\nnew $ ', [A('c1'), B('c1')]);
-    await feed('x\r\n', [C('x', 'c1')]);
-    expect(gutter.commands().map((one) => one.line)).toEqual([1]);
+    await feed('\r\nnew $ x\r\n', [C('x', 'c1')]);
+    expect(gutter.commands().map((one) => one.line), 'a start with no prompt of its own is on its own line, not on the old prompt\'s').toEqual([2]);
   });
 });

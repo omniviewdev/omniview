@@ -302,7 +302,15 @@ run gutter-seal-keeps-the-ids "$P/gutter/commandGutter.ts" \
 
 run screen-restart-does-not-seal "$P/screen.ts" \
   's/^      gutter\?\.seal\(\);$/      void gutter;/' \
-  'keeps the commands of the ended terminal, and a command it was running'
+  'keeps the commands of the ended terminal, and a command it was running|keeps a mark in an old write that the emulator has not parsed at the restart'
+
+run gutter-seal-keeps-the-prompt "$P/gutter/commandGutter.ts" \
+  '/    seal: \(\) => \{/,/^    },/ { /release\(pending\./d; /pending = \{\};/d }' \
+  'lets go of the prompt that was waiting'
+
+run screen-seal-at-once "$P/screen.ts" \
+  's/^      sealAfterQueued\(emulator\);$/      gutter?.seal();/' \
+  'keeps a mark in an old write that the emulator has not parsed at the restart'
 
 if [ -n "$only" ] && [ "$matched" -eq 0 ]; then echo "no control named $only"; exit 2; fi
 exit $bad

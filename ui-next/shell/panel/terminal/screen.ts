@@ -265,6 +265,21 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
   let linkHandler: LinkHandler | undefined;
   /** The command gutter of the emulator: made with it. */
   let gutter: CommandGutter | undefined;
+  /**
+   * The commands of the ended terminal are sealed where the emulator stands once it has parsed everything queued before the restart, in order with those writes: the marks the old feed's writes still carry are the old terminal's, and what
+   * comes after is the new one's. Like a mark's write, it is no byte and holds a replay back until it has run.
+   */
+  function sealAfterQueued(emulator: Engine): void {
+    markWrites += 1;
+    emulator.write(NOTHING, () => {
+      markWrites -= 1;
+      gutter?.seal();
+      if (markWrites === 0 && replayHeld !== undefined && pending === 0) {
+        schedule();
+      }
+    });
+  }
+
   /** The writes that make markers that the emulator has not run yet: a replay is not begun while one waits (it would let go of the gutter under it). */
   let markWrites = 0;
   const commandListeners = new Set<(event: GutterEvent) => void>();
@@ -1101,7 +1116,7 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
       // A replay of the ended feed that is still being written is dropped: its remaining slices are never written, what the queued ones make the emulator answer is muted until they are parsed, and what was typed meanwhile was for the ended terminal.
       replaying = undefined;
       // The commands of the ended terminal stay with its transcript, none of them runs any more, and the new terminal's are its own.
-      gutter?.seal();
+      sealAfterQueued(emulator);
       draining = pending > 0;
       held = [];
       heldLength = 0;
