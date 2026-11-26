@@ -5,8 +5,16 @@
 // The Pod whose detail the check opens: a StatefulSet's, so its name is exact and its values do not change while the check runs.
 export const DETAIL_POD = { namespace: 'checkout', name: 'cart-cache-0' };
 
-// The route of a Pod's detail page, as the Pods list's name link carries it (the plugin's contribution `kubernetes/pod`).
+// The route of a Pod's detail page, as the Pods list's name link carries it (the plugin's contribution `kubernetes/pod`), without the connection the link also carries (`linkTo`).
 export const detailHref = ({ namespace, name }) => `#/kubernetes/pod?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`;
+
+// The selector of the link that opens a page from a list, given the route of the page (`detailHref`, `deploymentHref`). A page is read in the connection that was opened from the plugin's landing, and the links of the page carry that connection
+// before the object's own parameters (`#/kubernetes/pod?connection=<id>&namespace=checkout&name=cart-cache-0`, the host's `paramsOfTarget` of `ui-next/plugins/host/links.ts`). The ID is derived and differs on every run (H6), so the selector names the
+// page and the object, which is what the link is for, and says nothing of the connection.
+export function linkTo(href) {
+  const [route, query] = href.split('?');
+  return `a[href^="${route}?"][href$="${query}"]`;
+}
 
 // `kubectl get pod <name> -n <namespace> -o json` (parsed) -> the plain-text values the page's header and Details section print.
 export function expectedDetail(pod) {
@@ -46,7 +54,7 @@ export function compareDetail(read, expected) {
 // The Deployment whose generic detail page the check opens (K2c-2): the fixture's `cart-api`, which the check never changes, so its rows do not move while it runs.
 export const DETAIL_DEPLOYMENT = { namespace: 'checkout', name: 'cart-api' };
 
-// The route of a Deployment's detail page, as the Deployments list's name link carries it (the plugin's contribution `kubernetes/deployment`).
+// The route of a Deployment's detail page, as the Deployments list's name link carries it (the plugin's contribution `kubernetes/deployment`), without the connection the link also carries (`linkTo`).
 export const deploymentHref = ({ namespace, name }) => `#/kubernetes/deployment?namespace=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`;
 
 // `kubectl get deployment <name> -n <namespace> -o json` (parsed) -> the values the page's header and Details rows print, in the page's words: the strategy as `Rolling update · max surge 25%, max

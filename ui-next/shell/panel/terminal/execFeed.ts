@@ -1,5 +1,5 @@
-import { MAX_INPUT_BYTES, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalClosedBy, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
+import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
+import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalModes, TerminalOutput, TerminalReplay } from './feed';
 import { createHeldOutput } from './heldOutput';
 
 // A terminal of the host as a feed, over the terminal channel (docs/ui-next/terminal-channel-protocol.md; `channel.ts` is the contract with the one place that holds the capabilities and the streams). It is the one place the
@@ -10,16 +10,19 @@ import { createHeldOutput } from './heldOutput';
 //   - what the shell writes comes as bytes with offsets, in one ordered stream, and is held exactly as it came (nothing decoded, nothing dropped) and wakes a listener once between two reads, so a flood costs a push per frame and
 //     a hidden terminal costs no more. What bounds it is the HOST's flow control: the first acknowledgement, of nothing, turns the host's window on as soon as the stream is ready, and the feed acknowledges every byte the
 //     reader parsed of what the shell wrote LIVE. The bytes of a replay are credited as they arrive (the host counts every output frame against its window), a gap's never;
-//   - what the user types goes out in input frames of at most `MAX_INPUT_BYTES`, in the order it was typed: the order is the stream's, so nothing is numbered, windowed or sent again. What is typed before the stream is
-//     ready, or while it is connecting again, waits and goes after `ready`;
+//   - what the user types goes out in input frames of at most `MAX_INPUT_BYTES`, in the order it was typed: the order is the stream's, so nothing is numbered or windowed. The feed KEEPS every byte it typed until the host says it
+//     applied it (`ready.input_applied`, then each `applied`: the host's count of the input it wrote to the terminal, across streams) and, after the `ready` of a stream that was connected again, sends the bytes after that count, once
+//     and in order, before anything typed since: no byte is typed twice and none is lost. What is typed before the stream is ready, or while it is connecting again, waits and goes after `ready`. The kept bytes are bounded (the
+//     host's own queue, 1 MiB): a page that types more than the host has applied fails in words;
 //   - the size STARTS the terminal and is then settled (`settleMs`: a drag is one frame), sent once the stream is ready, rows and columns together;
 //   - the feed that MADE its terminal treats every byte as live: nothing is replayed to it and nothing is muted. A feed that ATTACHES (a page after a reload, a take-back) is given `[ready.start, ready.end)` as one replay for
 //     a fresh emulator (`takeReplay`, taken once before any live output; `read` gives nothing until then), and the bytes after it are live;
 //   - a stream that dropped is opened again from the offset the feed has applied up to, after 250 ms, one second and four seconds, and then the feed fails in words. The host answers with `lost` what of that it no longer has:
 //     none, and the output continues; some, and the reader is given a fresh replay. A `gap` is the host saying the bytes in between were overwritten before they were sent: the reader is given a replay of nothing at its end,
 //     which resets the emulator. What the reader parsed of a stream that is over is not credited to the next one (`forgiven`);
-//   - the host's word that another stream took the terminal ends the feed for this page (`detached`), input off, and the terminal is told apart from one that ended: `refresh` asks the host whether it is free to take back. A
-//     terminal the host does not know ends the feed in words; how a terminal ended (the typed `ended` frame) is read in ONE place and kept in the status;
+//   - the host's word that another stream took the terminal ends the feed for this page (`detached`), input off, and the stream stays open as a WATCHER: the host tells it `released` (the terminal is free to take back: `detached.free`,
+//     at once, nothing is asked) or `ended` (how the terminal ended) and closes it. A watcher the host closes with no word (it watched longest of five, or the connection dropped) asks the host (`refresh`: asked again on the
+//     schedule of a reconnect only while the host cannot be reached), which a take-back also does before it attaches. A host of another version (`unsupported`) and a terminal the host does not know end the feed in words; how a terminal ended (the typed `ended` frame) is read in ONE place and kept in the status;
 //   - `leave` (the page is going) sends the detach frame; `redraw` makes a full-screen program draw itself again. A close ends the terminal exactly once (a terminal that ended by itself is dismissed instead), and every
 //     listener and timer is released on every way out (docs/ui-next/optimisations.md HLT-28).
 
@@ -43,19 +46,52 @@ export type ExecFeedOptions = {
   readonly warn?: ((message: string, error?: unknown) => void) | undefined;
   /** How long the host keeps a terminal this feed made once no stream holds it, in milliseconds. Absent: the host's own. */
   readonly leaseMs?: number | undefined;
+  /** The directory in `launch` is one an ended terminal started in: if the host refuses it (it was removed since), the terminal is made again in the host's default directory, with the note. */
+  readonly homeIfMissing?: boolean | undefined;
+  /** The terminal starts in the home directory because the directory it was to start in was not known: the status says so until the first thing is typed (`startNote`). Absent: it was asked for nowhere in particular, or for a directory. */
+  readonly startNote?: TerminalFeedSnapshot['startNote'] | undefined;
   /** The shell, directory and environment the terminal is made with (`ChannelLaunch`). Absent: the host's own choices. */
   readonly launch?: Pick<ChannelLaunch, 'command' | 'cwd' | 'env'> | undefined;
   /** How long the feed waits before it connects again after each stream that dropped; the feed fails when they are used up. Default: `RECONNECT_DELAYS_MS`. */
   readonly reconnectDelaysMs?: readonly number[] | undefined;
 };
 
-export type ExecFeed = TerminalFeedHandle & { readonly id: string };
+export type ExecFeed = TerminalFeedHandle & {
+  readonly id: string;
+  /** How many pieces of typed input the feed holds (sent or not) that the host has not said it applied: a test holds it to a bound. */
+  readonly keptPieces: () => number;
+  /** How many bytes the pieces kept still reference, confirmed or not (a test holds a confirmed piece to be let go of at once). */
+  readonly keptHeld: () => number;
+};
 
 /** How long a size stands still before it is sent: a drag of the splitter is one message. */
 export const SETTLE_MS = 100;
 
 /** How long the feed waits before it connects again, after the first, the second and the third stream that dropped without a word of the host (docs/ui-next/terminal-channel-protocol.md section 11). */
 export const RECONNECT_DELAYS_MS: readonly number[] = [250, 1_000, 4_000];
+
+const NO_BYTES = new Uint8Array(0);
+
+/** How many streams in a row the kept input is sent to again with none of it applied, before it is let go of. The resend is at most `MAX_KEPT_INPUT_BYTES` (1 MiB) each time, under the host's 8 MiB lane cap, so a stream is never closed for it. */
+const MAX_RESENDS = 3;
+
+/** A new writer id: 16 random bytes as 32 lowercase hex digits. It is not a secret and opens nothing. */
+function writerId(): string {
+  const bytes = new Uint8Array(16);
+  if (typeof platform.crypto?.getRandomValues === 'function') {
+    platform.crypto.getRandomValues(bytes);
+  } else {
+    // Where the platform has no crypto (a test environment) the id is made from the clock and a counter and Math.random: unique within a run, and as unguessable as it needs to be (it opens nothing).
+    counter += 1;
+    let seed = Date.now() * 4096 + counter;
+    for (let at = 0; at < bytes.length; at += 1) {
+      bytes[at] = Math.floor(Math.random() * 256) ^ (seed & 0xff);
+      seed = Math.floor(seed / 7);
+    }
+  }
+
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 const EMPTY: TerminalOutput = Object.freeze({ chunks: Object.freeze([]), bytes: 0 });
 const IDLE: TerminalBusy = Object.freeze({ state: 'idle' });
@@ -67,6 +103,13 @@ const CLOSED_BY: readonly unknown[] = ['request', 'window', 'shutdown', 'detach-
 const OUTPUT_GAP = 'Some of the terminal\'s output did not arrive.';
 /** What the session says when the host's first frame was something the page cannot join the output to. */
 const UNREADABLE_ATTACH = 'The terminal could not be taken over: the host\'s answer was not understood.';
+const INPUT_OVERFLOW = 'More was typed than the terminal has taken: the page keeps at most 1 MiB of input that the host has not said it applied, so the terminal was given up.';
+
+/** What a host of another version of the stream says: the number when it gives one. */
+const unsupportedWords = (version: unknown): string =>
+  typeof version === 'number' && Number.isSafeInteger(version)
+    ? `The terminal host speaks version ${String(version)} of the terminal channel and this page speaks version ${String(CHANNEL_VERSION)}, so the terminal cannot be reached.`
+    : `The terminal host speaks another version of the terminal channel than this page (version ${String(CHANNEL_VERSION)}), so the terminal cannot be reached.`;
 /** What the session says when the host does not know the terminal: it ended while this window was away, or its capability is not valid any more. */
 const TERMINAL_GONE = 'The terminal is not there any more: the host ended it while this window was away.';
 /** What the session says when the stream of the terminal dropped and could not be opened again. The terminal may still run: a reload may find it. */
@@ -105,6 +148,33 @@ function programOf(answer: unknown): string | undefined {
 
   const shell: unknown = Reflect.get(answer, 'shell');
   return typeof shell === 'object' && shell !== null ? worded(Reflect.get(shell, 'name')) : undefined;
+}
+
+/** The directory the host started a shell in, as it says it in a `terminal.Session` (`cwd`, an absolute path); nothing when it does not say. */
+function startOf(session: unknown): string | undefined {
+  if (typeof session !== 'object' || session === null) {
+    return undefined;
+  }
+
+  const cwd: unknown = Reflect.get(session, 'cwd');
+  return typeof cwd === 'string' && cwd !== '' ? cwd : undefined;
+}
+
+/** The host's answer to "which directory is the shell in now" (`terminal.Directory`: a `path`, or a `reason` when it cannot tell), as the fact it states. An answer that says neither is unreadable, and nothing is made up. */
+function directoryOf(answer: unknown): TerminalDirectory {
+  if (typeof answer === 'object' && answer !== null) {
+    const path: unknown = Reflect.get(answer, 'path');
+    if (typeof path === 'string' && path !== '') {
+      return { state: 'known', path, source: 'shell' };
+    }
+
+    const reason: unknown = Reflect.get(answer, 'reason');
+    if (typeof reason === 'string' && reason !== '') {
+      return { state: 'unknown', reason };
+    }
+  }
+
+  return { state: 'unknown', reason: 'unreadable' };
 }
 
 /**
@@ -307,11 +377,17 @@ type Ready = {
   readonly start: number;
   readonly end: number;
   readonly lost: number;
+  /** The bytes of input the host has applied from this capability, across streams: the feed sends again what it kept after it. */
+  readonly inputApplied: number;
+  /** Whether the host had a count for this feed's writer before this attach; absent: known (a host that does not say cannot lose a count). */
+  readonly writerKnown: boolean;
   readonly size: Size;
   readonly startSize: Size;
   readonly modes: TerminalModes;
   readonly startModes: TerminalModes;
   readonly program: string | undefined;
+  /** The directory the host says the terminal started in (`session.cwd`). */
+  readonly startedIn: string | undefined;
   /** How the terminal ended, when the host's `ready` says it had: its `ended` frame follows the replay. */
   readonly ended: unknown;
 };
@@ -329,12 +405,13 @@ function readyOf(value: unknown): Ready | undefined {
   const end = finite(Reflect.get(value, 'end'));
   const said: unknown = Reflect.get(value, 'lost');
   const lost = said === undefined ? 0 : finite(said);
+  const inputApplied = finite(Reflect.get(value, 'input_applied'));
   const size = sizeOfWire(Reflect.get(value, 'size'));
-  if (start === undefined || end === undefined || lost === undefined || size === undefined) {
+  if (start === undefined || end === undefined || lost === undefined || inputApplied === undefined || size === undefined) {
     return undefined;
   }
 
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || !Number.isSafeInteger(lost) || start < 0 || end < start || lost < 0) {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || !Number.isSafeInteger(lost) || !Number.isSafeInteger(inputApplied) || start < 0 || end < start || lost < 0 || inputApplied < 0) {
     return undefined;
   }
 
@@ -343,11 +420,14 @@ function readyOf(value: unknown): Ready | undefined {
     start,
     end,
     lost,
+    inputApplied,
+    writerKnown: Reflect.get(value, 'writer_known') !== false,
     size,
     startSize: sizeOfWire(Reflect.get(value, 'start_size')) ?? size,
     modes: modesOf(Reflect.get(value, 'modes')),
     startModes: modesOf(Reflect.get(value, 'start_modes')),
     program: programOf(Reflect.get(value, 'session')),
+    startedIn: startOf(Reflect.get(value, 'session')),
     ended: typeof ended === 'object' && ended !== null ? ended : undefined,
   };
 }
@@ -389,21 +469,38 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const encoder = new TextEncoder();
   const listeners = new Set<() => void>();
   const listed = attachTo?.program;
-  let status: TerminalFeedSnapshot = listed === undefined ? { state: 'starting' } : { state: 'starting', program: listed };
+  let status: TerminalFeedSnapshot = { state: 'starting', ...(listed === undefined ? {} : { program: listed }), ...(options.startNote === undefined ? {} : { startNote: options.startNote }) };
   /** The host has the terminal: the call that made it was answered, or it is a terminal this page attaches to. A close of a terminal the host never made has nothing to end. */
   let created = attachTo !== undefined;
   let started = attachTo !== undefined;
   /** The call that makes the terminal, while it is out: a close waits for it, so that what the host made is ended. */
   let creating: Promise<void> | undefined;
   let createdProgram: string | undefined;
+  /** The directory the host says the terminal started in (the answer to the call that made it, or the `session` of a `ready`): where "New terminal here" opens once the shell is not there to ask. */
+  let startedIn: string | undefined;
   let fate: Fate = attachTo?.ended === true ? 'dismiss' : 'ours';
   let closing: Promise<void> | undefined;
   let woken = false;
   let warnedRefresh = false;
   /** The page left the terminal for the page that comes back (`leave`): it is no longer this page's to write to, to size or to end. */
   let left = false;
-  /** What the user typed that has not gone out yet, in order: it waits for the stream to be ready. */
-  let waiting = '';
+  /**
+   * What the user typed that the host has not said it applied, in order, in pieces of at most `MAX_INPUT_BYTES`: `kept[head..]`, `keptBytes` bytes. `sentTo` is how many of them the stream now open took (a stream
+   * that is over took none that counts: after its successor's `ready` the feed sends from `head`). `applied` is the host's count of input applied up to the first kept byte; unknown until the first `ready`.
+   */
+  let kept: Uint8Array[] = [];
+  let head = 0;
+  let sentTo = 0;
+  let keptBytes = 0;
+  let applied: number | undefined;
+  /** Some of the kept bytes were handed to a stream already: what the next `ready` has the feed send again is a resend. */
+  let sentOnce = false;
+  /** How many streams in a row had the kept bytes sent to them again with the host applying none of them. */
+  let resends = 0;
+  /** The feed has had a `ready` of its writer before: a host that then does not know the writer has lost its count. */
+  let attachedBefore = false;
+  /** The terminal was taken by another stream and this stream stays open as a watcher, which hears `released` or `ended`. */
+  let watching = false;
   /** How many calls of `write` the feed took with something typed in them: what `inputs` says. */
   let typed = 0;
   let wanted: Size | undefined;
@@ -429,7 +526,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** Where the output the host advertised for the stream now open ends: a continuation is complete when the cursor is there. */
   let resumeEnd = 0;
   /** A stream of this feed said `ready` at least once. */
-  let everReady = false;
+  /** The id this feed types under (16 random bytes, 32 lowercase hex digits): said in every attach, so that the host counts the input applied for this feed alone and the count in `ready` and `applied` is this feed's own. */
+  const writer = writerId();
+  /** A stream was ever opened for this feed: from then on another stream may have taken the terminal, and only the stream (or the lease) may end it. */
+  let everConnected = false;
   let retry: Timer | undefined;
   /** The offset the feed has applied up to: what a stream that drops is connected again from. A terminal the feed made starts at 0; one it attaches to has nothing until its replay is complete. */
   let next: number | undefined = attachTo === undefined ? 0 : undefined;
@@ -444,7 +544,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   let outstanding = 0;
   /** How many of the bytes the reader acknowledges next are bytes of a stream that is over: the host's window of the new stream started at nothing, so they are not passed on. */
   let forgiven = 0;
-  let refreshing: Promise<void> | undefined;
+  let refreshing: Promise<boolean> | undefined;
+  /** A close in flight on the live stream: the host ends the terminal when this stream holds it and tells the stream (`ended`); a watcher is told `close-refused`. */
+  let ending: (() => void) | undefined;
 
   const closed = (): boolean => closing !== undefined;
 
@@ -488,7 +590,10 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const dropOutgoing = () => {
     stopSettling();
     stopRetry();
-    waiting = '';
+    kept = [];
+    head = 0;
+    sentTo = 0;
+    keptBytes = 0;
     bounce = undefined;
   };
 
@@ -496,7 +601,9 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const unlink = (close: boolean) => {
     connection = undefined;
     streaming = false;
+    watching = false;
     gathering = undefined;
+    sentTo = head;
     if (close) {
       link?.close();
     }
@@ -534,11 +641,12 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   /** Makes a terminal this page lost free, or held again: the snapshot changes, and the listeners are told, only when that changes something. */
   const setFree = (free: boolean) => {
     const current = status.detached;
-    if (current === undefined || (current.free === true) === free) {
+    if (current === undefined || current.free === free || (!free && current.free === undefined && current.unwatched !== true)) {
       return;
     }
 
-    status = { ...status, detached: free ? { by: current.by, free } : { by: current.by } };
+    const base = current.unwatched === true ? { by: current.by, unwatched: true } : { by: current.by };
+    status = { ...status, detached: free ? { ...base, free } : current.unwatched === true ? { ...base, free } : base };
     tell();
   };
 
@@ -551,18 +659,165 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
   };
 
-  /** Sends what the user typed, in order, in frames of at most `MAX_INPUT_BYTES`. */
-  const pump = () => {
-    while (waiting !== '' && usable()) {
-      const length = pieceLength(waiting);
-      const text = waiting.slice(0, length);
-      waiting = waiting.slice(length);
-      // A link that refuses the bytes is over (it has told `closed`): they go back to the front, to be sent after the next `ready`.
-      if (link?.input(encoder.encode(text)) === false) {
-        waiting = text + waiting;
-        return;
+  /** What the user typed, as text or as raw bytes: counted, kept and sent the same way. `empty` is a call with nothing in it, which is no typing. */
+  const type = (empty: boolean, kept: () => boolean, reply = false): void => {
+    if (closed() || left || (status.state !== 'running' && status.state !== 'starting')) {
+      return;
+    }
+
+    if (!empty) {
+      typed += 1;
+    }
+
+    if (!empty) {
+      // The two notes are cleared on their own: the loss of input by anything written, and where the terminal started only by what the person typed (the emulator's replies are not theirs).
+      const clearNote = !reply && status.startNote !== undefined;
+      if (status.inputLost === true || clearNote) {
+        const { inputLost: _lost, startNote, ...rest } = status;
+        status = clearNote || startNote === undefined ? rest : { ...rest, startNote };
+        tell();
       }
     }
+
+    if (kept()) {
+      pump();
+    }
+  };
+
+  /** Sends what the user typed that the stream now open has not taken, in order, in frames of at most `MAX_INPUT_BYTES`. */
+  const pump = () => {
+    while (sentTo < kept.length && usable()) {
+      const piece = kept[sentTo];
+      // A link that refuses the bytes is over (it has told `closed`): they stay kept, to be sent after the next `ready`.
+      if (piece === undefined || link?.input(piece) === false) {
+        return;
+      }
+
+      sentTo += 1;
+      sentOnce = true;
+    }
+  };
+
+  /** Keeps what was typed, in pieces, within the bound. False: there is no more room, and the feed has given the terminal up. */
+  const keep = (text: string): boolean => {
+    let rest = text;
+    while (rest !== '') {
+      const length = pieceLength(rest);
+      if (!keepPiece(encoder.encode(rest.slice(0, length)))) {
+        return false;
+      }
+
+      rest = rest.slice(length);
+    }
+
+    return true;
+  };
+
+  /** Keeps raw bytes (a mouse report), in pieces of at most `MAX_INPUT_BYTES`, as `keep` keeps text: the same bound, the same order, the same resend. */
+  const keepBinary = (bytes: Uint8Array): boolean => {
+    for (let at = 0; at < bytes.length; at += MAX_INPUT_BYTES) {
+      if (!keepPiece(bytes.slice(at, at + MAX_INPUT_BYTES))) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  /** Keeps one piece of at most `MAX_INPUT_BYTES`. False: there is no more room, and the feed has given the terminal up. */
+  const keepPiece = (piece: Uint8Array): boolean => {
+    if (keptBytes + piece.length > MAX_KEPT_INPUT_BYTES) {
+      failStream(INPUT_OVERFLOW);
+      return false;
+    }
+
+    // What waits for a stream goes in as few frames as it can: typing while the stream is away is one frame, as it was typed.
+    const last = kept.length > sentTo ? kept[kept.length - 1] : undefined;
+    if (last !== undefined && last.length + piece.length <= MAX_INPUT_BYTES) {
+      const joinedPiece = new Uint8Array(last.length + piece.length);
+      joinedPiece.set(last);
+      joinedPiece.set(piece, last.length);
+      kept[kept.length - 1] = joinedPiece;
+    } else {
+      kept.push(piece);
+    }
+
+    keptBytes += piece.length;
+
+    return true;
+  };
+
+  /** Lets go of every byte kept, unconfirmed: the host's count is `total` from here on, and the user is told that input typed while away may be lost. */
+  const dropKept = (total: number) => {
+    const lost = keptBytes > 0;
+    kept = [];
+    head = 0;
+    sentTo = 0;
+    keptBytes = 0;
+    sentOnce = false;
+    resends = 0;
+    applied = total;
+    // Only input that was kept and is let go of may be lost: a reconnect after nothing was typed says nothing.
+    if (lost) {
+      status = { ...status, inputLost: true };
+      tell();
+    }
+  };
+
+  /** The host has applied input up to `total` (its count, across streams): the kept bytes up to it are let go. A number that does not grow changes nothing; one above what the feed typed is all of it, and said once. */
+  const confirm = (total: number): number => {
+    if (applied === undefined) {
+      // The first `ready`: nothing this feed typed was before it.
+      applied = total;
+      return 0;
+    }
+
+    let drop = total - applied;
+    if (drop <= 0) {
+      return 0;
+    }
+
+    if (drop > keptBytes) {
+      warn(`[terminal] the host says it applied ${String(total)} bytes of input and the feed typed ${String(applied + keptBytes)}`);
+      drop = keptBytes;
+    }
+
+    applied += drop;
+    keptBytes -= drop;
+    let left = drop;
+    while (left > 0) {
+      const piece = kept[head];
+      if (piece === undefined) {
+        break;
+      }
+
+      if (piece.length <= left) {
+        left -= piece.length;
+        // The confirmed bytes are let go now, not when the array is next compacted.
+        kept[head] = NO_BYTES;
+        head += 1;
+      } else {
+        kept[head] = piece.subarray(left);
+        left = 0;
+      }
+    }
+
+    if (keptBytes === 0) {
+      kept = [];
+      head = 0;
+      sentTo = 0;
+      sentOnce = false;
+      return drop;
+    }
+
+    sentTo = Math.max(sentTo, head);
+    if (head >= 64 && head * 2 >= kept.length) {
+      kept = kept.slice(head);
+      sentTo -= head;
+      head = 0;
+    }
+
+    return drop;
   };
 
   /** One size, as its own frame. */
@@ -632,7 +887,6 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     streaming = true;
-    everReady = true;
     size = ready.size;
     modes = ready.modes;
     delivered = ready.size;
@@ -647,6 +901,26 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     forgiven = outstanding;
+    // What the host applied is not sent again; what it did not is, from the first kept byte, before anything typed since.
+    if (!ready.writerKnown && attachedBefore) {
+      // The host has no count for this feed's writer (it restarted, or forgot the writer): what it applied of the kept bytes is not known, and sending them again could type them twice. They are let go, and the user is told.
+      dropKept(ready.inputApplied);
+    } else {
+      if (confirm(ready.inputApplied) > 0) {
+        resends = 0;
+      }
+
+      // The same unconfirmed bytes sent to stream after stream with none applied (a program that never reads): sent a few times, then let go, so that the feed does not cycle with the host's lane cap closing each stream.
+      if (keptBytes > 0 && sentOnce) {
+        resends += 1;
+        if (resends > MAX_RESENDS) {
+          dropKept(ready.inputApplied);
+        }
+      }
+    }
+
+    attachedBefore = true;
+    sentTo = head;
     // The first acknowledgement goes before anything else is sent, whatever a listener writes when it is told the feed is running. If it finds the socket dead the stream is over, and nothing more of this ready is read.
     const mine = connection;
     link?.ack(0);
@@ -662,9 +936,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       attempts = 0;
     }
 
+    startedIn = ready.startedIn ?? startedIn;
     if (status.state === 'starting') {
       const program = ready.program ?? createdProgram ?? status.program;
-      status = program === undefined ? { state: 'running' } : { state: 'running', program };
+      const { startNote } = status;
+      status = { state: 'running', ...(program === undefined ? {} : { program }), ...(startNote === undefined ? {} : { startNote }) };
       tell();
     }
 
@@ -763,6 +1039,15 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   };
 
   const onEnded = (end: unknown) => {
+    if (watching) {
+      // The terminal ended while another stream held it: this page learns how, and the end is not its to dismiss.
+      unlink(false);
+      const result = endOf(end);
+      status = result.state === 'ended' ? { ...withProgram(result, status.program), ...(status.detached === undefined ? {} : { detached: { by: status.detached.by } }) } : result;
+      tell();
+      return;
+    }
+
     unlink(false);
     fate = 'dismiss';
     publishGatheredIfAny();
@@ -776,18 +1061,59 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
   };
 
-  /** Another stream took the terminal: it ends for this page, with input off, and is told apart from one that ended. */
+  /** The host says how much input it has applied: the kept bytes up to it are let go. */
+  const onApplied = (total: number) => {
+    if (!streaming) {
+      failStream(UNREADABLE_ATTACH, 'start');
+      return;
+    }
+
+    if (confirm(total) > 0) {
+      resends = 0;
+    }
+  };
+
+  /** Another stream took the terminal: the feed ends for this page, with input off, and is told apart from one that ended. The stream stays open as a watcher, which the host tells `released` or `ended`. */
   const onTakenOver = () => {
-    unlink(false);
+    if (closed() || finished()) {
+      return;
+    }
+
     fate = 'not-ours';
+    watching = true;
+    streaming = false;
+    gathering = undefined;
+    dropOutgoing();
     const { program } = status;
-    over(program === undefined ? { state: 'ended', detached: { by: 'taken-over' } } : { state: 'ended', program, detached: { by: 'taken-over' } });
+    status = program === undefined ? { state: 'ended', detached: { by: 'taken-over' } } : { state: 'ended', program, detached: { by: 'taken-over' } };
+    tell();
+  };
+
+  /** The watcher is told the terminal runs and is free: it can be taken back at once. The stream is over. */
+  const onReleased = () => {
+    if (!watching) {
+      failStream(UNREADABLE_ATTACH, 'start');
+      return;
+    }
+
+    unlink(false);
+    setFree(true);
+  };
+
+  const onUnsupported = (version: unknown) => {
+    failStream(unsupportedWords(version), 'start');
   };
 
   const onNotFound = () => {
     unlink(false);
     fate = 'not-ours';
     over({ state: 'failed', cause: { stage: 'session', message: TERMINAL_GONE } });
+  };
+
+  /** The close on the stream was answered or the stream is over: the stream is let go of, and the close resolves. */
+  const finishEnding = () => {
+    unlink(true);
+    ending?.();
   };
 
   const connectAgain = () => {
@@ -801,6 +1127,18 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
   /** The stream ended with no word of the host: when the host had said the terminal ended that is its end, and otherwise it is connected again from the offset the feed has, and then given up in words. */
   const onClosed = () => {
+    if (watching) {
+      // The host closed the watcher with no word (it watched longest of five) or the connection dropped: nothing says when the terminal is free, so the host is asked, once.
+      unlink(false);
+      if (status.detached !== undefined && status.exit === undefined) {
+        status = { ...status, detached: { ...status.detached, unwatched: true } };
+        tell();
+      }
+
+      learn(0);
+      return;
+    }
+
     unlink(false);
     // A terminal that had ended ends the feed only with its whole replay: a stream that dropped before that (before `ready`, or part of the way) is connected again, from nothing.
     const hint = complete ? (readyEnded ?? (attachTo?.ended === true ? {} : undefined)) : undefined;
@@ -824,6 +1162,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   function connect(from: number | undefined): void {
     const mine = {};
     connection = mine;
+    everConnected = true;
     complete = false;
     readyEnded = undefined;
     const heard =
@@ -834,16 +1173,38 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
           }
         };
 
+    /** What can end the stream also ends a close in flight on it: the close is over, however it was answered. */
+    const heardEnd =
+      <Args extends unknown[]>(listener: (...args: Args) => void) =>
+        (...args: Args): void => {
+          if (connection === mine && ending !== undefined) {
+            finishEnding();
+          } else {
+            heard(listener)(...args);
+          }
+        };
+
     try {
       link = channels.connect(id, from, {
         ready: heard(onReady),
-        output: heard(onOutput),
+        // While a close is in flight the bytes the host still sends are not the reader's, and are credited as they come: the host sends the end only after every byte, and sends bytes only against credit.
+        output: (offset, bytes) => {
+          if (connection === mine && ending !== undefined) {
+            link?.ack(bytes.length);
+          } else {
+            heard(onOutput)(offset, bytes);
+          }
+        },
         gap: heard(onGap),
-        ended: heard(onEnded),
+        applied: heard(onApplied),
+        ended: heardEnd(onEnded),
         takenOver: heard(onTakenOver),
-        notFound: heard(onNotFound),
-        closed: heard(onClosed),
-      });
+        closeRefused: heardEnd(() => undefined),
+        released: heardEnd(onReleased),
+        unsupported: heardEnd(onUnsupported),
+        notFound: heardEnd(onNotFound),
+        closed: heardEnd(onClosed),
+      }, writer);
     } catch (error) {
       connection = undefined;
       over({ state: 'failed', cause: causeOf('start', error) });
@@ -854,20 +1215,34 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const start = (first: Size) => {
     started = true;
     delivered = first;
-    creating = channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...options.launch }).then(
-      (answer: unknown) => {
-        created = true;
-        createdProgram = programOf(answer);
-        if (!closed() && !left && status.state === 'starting') {
-          connect(next);
-        }
-      },
-      (error: unknown) => {
-        if (!closed()) {
-          over({ state: 'failed', cause: causeOf('start', error) });
-        }
-      },
-    );
+    const made = async (launch: ExecFeedOptions['launch']) => channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...launch });
+    const answered = (answer: unknown) => {
+      created = true;
+      createdProgram = programOf(answer);
+      startedIn = startOf(answer);
+      if (!closed() && !left && status.state === 'starting') {
+        connect(next);
+      }
+    };
+
+    const failed = (error: unknown) => {
+      if (!closed()) {
+        over({ state: 'failed', cause: causeOf('start', error) });
+      }
+    };
+
+    creating = made(options.launch).then(answered, async (error: unknown) => {
+      const dir = options.launch?.cwd;
+      // The directory an ended terminal started in may have been removed since: the host refuses it (`INVALID_REQUEST`) and the terminal starts in its default directory instead, and says so.
+      if (options.homeIfMissing !== true || dir === undefined || closed() || channels.codeOf(error) !== 'INVALID_REQUEST') {
+        failed(error);
+        return;
+      }
+
+      const { cwd: _removed, ...rest } = options.launch ?? { command: [] };
+      status = { ...status, startNote: 'home-for-unknown-directory' };
+      await made(rest).then(answered, failed);
+    });
   };
 
   /**
@@ -875,16 +1250,16 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
    * `free` (the tab that took it has let it go while this page was not told), and one that a stream holds is not; a terminal the host lists as ended is not free either, since nobody can take it back. A terminal the
    * host has no entry for, an entry that does not say, and a call that fails change nothing (a failure is said once). Only for a lost terminal whose end is not known, and one call at a time: a second call shares the one that is out.
    */
-  const refresh = async (asking?: { readonly fresh?: boolean }): Promise<void> => {
+  const ask = async (asking?: { readonly fresh?: boolean }): Promise<boolean> => {
     if (closed() || status.detached === undefined || status.exit !== undefined) {
-      return;
+      return true;
     }
 
     // A take-back needs an answer that began after its press: it waits for the listing that is out, and asks anew. A poll shares the one that is out.
     if (asking?.fresh === true && refreshing !== undefined) {
       await refreshing;
       if (closed() || status.detached === undefined || status.exit !== undefined) {
-        return;
+        return true;
       }
     }
 
@@ -896,7 +1271,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         });
         // What the page learned meanwhile stands: a feed that was closed, or whose terminal ended, has nothing to change.
         if (closed() || status.detached === undefined || status.exit !== undefined || typeof entry !== 'object' || entry === null) {
-          return;
+          return true;
         }
 
         const ended: unknown = Reflect.get(entry, 'ended');
@@ -906,16 +1281,57 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         } else if (typeof attached === 'boolean') {
           setFree(!attached);
         }
+
+        return true;
       } catch (error) {
         if (!warnedRefresh) {
           warnedRefresh = true;
           warn('[terminal] the host could not say who holds the terminal this page lost', error);
         }
+
+        return false;
       } finally {
         refreshing = undefined;
       }
     })();
-    await refreshing;
+    return refreshing;
+  };
+
+  /** Whether the last fresh question of a take-back could not be asked: the lane says so, and the next press tries again. */
+  const setAskFailed = (failed: boolean) => {
+    const current = status.detached;
+    if (current === undefined || (current.askFailed === true) === failed) {
+      return;
+    }
+
+    const { askFailed: _was, ...rest } = current;
+    status = { ...status, detached: failed ? { ...rest, askFailed: true } : rest };
+    tell();
+  };
+
+  const refresh = async (asking?: { readonly fresh?: boolean }): Promise<void> => {
+    const answered = await ask(asking);
+    if (answered) {
+      setAskFailed(false);
+    } else if (asking?.fresh === true) {
+      setAskFailed(true);
+    }
+  };
+
+  /**
+   * The host closed the watcher with no word, so nothing will say when the terminal is free: the host is asked. A question that could not be asked (the host was not reached) is asked again on the schedule of a reconnect
+   * (250 ms, one second, four seconds) and then given up; one that was answered is final.
+   */
+  const learn = (attempt: number): void => {
+    void ask().then((answered) => {
+      const delay = delays[attempt];
+      if (!answered && delay !== undefined && !closed() && status.detached?.free !== true) {
+        retry = setTimeout(() => {
+          retry = undefined;
+          learn(attempt + 1);
+        }, delay);
+      }
+    });
   };
 
   /** The page is going away, and its terminal is left for the page that comes back: the detach frame, once; nothing is sent or connected from now on, and a `close` after it does not end the terminal. */
@@ -955,6 +1371,8 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
   return {
     id,
+    keptPieces: () => kept.length,
+    keptHeld: () => kept.reduce((sum, piece) => sum + piece.length, 0),
 
     subscribe: (listener) => {
       listeners.add(listener);
@@ -1001,23 +1419,34 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       }
     },
 
-    write: (text) => {
-      if (closed() || left || (status.state !== 'running' && status.state !== 'starting')) {
-        return;
+    directory: async (): Promise<TerminalDirectory> => {
+      // Where the terminal started is what the host said at its start; a terminal that never said has no such fact, and nothing is made up in its place.
+      const start: TerminalDirectory = startedIn === undefined ? { state: 'unknown', reason: 'ended' } : { state: 'known', path: startedIn, source: 'start' };
+      // Only a shell that runs and that this page holds can be asked: an ended terminal, one this page lost, one that could not be started and one the page is leaving have the directory they started in.
+      if (closed() || left || status.state !== 'running') {
+        return start;
       }
 
-      if (text !== '') {
-        typed += 1;
+      try {
+        return directoryOf(await channels.cwd(id));
+      } catch (error) {
+        // A terminal the host says is gone ended since the page last heard; a question that failed is a question not answered.
+        return channels.isGone(error) ? start : { state: 'unknown', reason: 'unanswered' };
       }
+    },
 
-      waiting += text;
-      pump();
+    write: (text, writeOptions) => {
+      type(text === '', () => keep(text), writeOptions?.reply === true);
+    },
+
+    writeBinary: (bytes) => {
+      type(bytes.length === 0, () => keepBinary(bytes));
     },
 
     inputs: () => typed,
 
-    // Nothing typed waits for the stream, and nothing sent waits in the link; a session that is over sends nothing more, so nothing is left to wait for.
-    inputsSettled: () => closed() || finished() || (waiting === '' && (link?.pending() ?? 0) === 0),
+    // Nothing typed waits for a stream, and nothing sent waits in the link; a session that is over sends nothing more, so nothing is left to wait for.
+    inputsSettled: () => closed() || finished() || (keptBytes === 0 && sentTo >= kept.length && (link?.pending() ?? 0) === 0),
 
     resize: (cols, rows) => {
       const target = { cols: Math.floor(cols), rows: Math.floor(rows) };
@@ -1061,7 +1490,31 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
       // Whether this feed holds a live stream to the terminal now, or made the terminal and never opened one (nobody else can hold it): only then is it this page's to end. A stream that dropped, is being connected again or is not ready may have been
       // taken by another tab meanwhile, and a close of the capability alone would end what that tab shows: it is left to the host's lease, until the host binds a close to the holder.
-      const holding = (streaming && link !== undefined) || (attachTo === undefined && !everReady);
+      const holding = (streaming && link !== undefined) || (attachTo === undefined && !everConnected);
+      // A terminal this feed holds a live stream to is ended by the stream: the host ends it only if this stream still holds it (a page that was displaced without knowing is told `close-refused`), and tells the stream. The close of the
+      // capability is for a terminal that was made and never attached: nobody else can hold it.
+      if (fate === 'ours' && !left && streaming && link !== undefined && status.state === 'running') {
+        const stream = link;
+        // What the stream delivered and was not credited yet (what the reader has not parsed, and what it owes) is credited now: the discarded bytes would otherwise hold the end back.
+        // (`owed` is always nothing here: a stream that is running credits what the reader parsed as it comes.)
+        const uncredited = Math.max(0, outstanding - forgiven);
+        closing = new Promise<void>((resolve) => {
+          ending = resolve;
+        });
+        if (uncredited > 0) {
+          stream.ack(uncredited);
+        }
+
+        dropOutgoing();
+        held.clear();
+        awaiting = undefined;
+        if (!stream.end()) {
+          finishEnding();
+        }
+
+        return closing;
+      }
+
       unlink(true);
       dropOutgoing();
       held.clear();

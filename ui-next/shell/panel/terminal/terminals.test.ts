@@ -5,13 +5,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock }
 import { createPanelStore, HOST, PANEL_VERSION, restorePanel, type PanelState, type PanelStore, type Session } from '../../core/panel';
 import { focusTab } from '../focus';
 import type { EngineAppearance } from './engine';
-import type { TerminalBusy, TerminalFeedHandle, TerminalTarget } from './feed';
-import { localProfileTarget, localShellTarget } from './localShell';
+import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalTarget } from './feed';
+import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
 import { shellsOf, type ShellChoice, type ShellList } from './profiles';
 import { createScreen } from './screen';
 import { createScreenReaderChoice } from './screenReader';
 import { stateWords } from './state';
-import { ASK_MS, LOST_REFRESH_MS, createTerminals, type TerminalsOptions } from './terminals';
+import { ASK_MS, createTerminals, type TerminalsOptions } from './terminals';
 import { fakeEngineLoader, fakeTerminalFeed, type FakeEngineLoader, type FakeTerminalFeed, type FakeTerminalFeedOptions } from './testing';
 import { TERMINAL_TOOL } from './tool';
 
@@ -19,7 +19,7 @@ vi.mock('../focus', () => ({ focusTab: vi.fn(), focusPage: vi.fn(), focusPanel: 
 // What `New terminal` starts when nothing else is given is the host's own shell: a test says what it is asked for, and what it answers.
 vi.mock('./localShell', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
-  return { ...original, localShellTarget: vi.fn(), localProfileTarget: vi.fn() };
+  return { ...original, localShellTarget: vi.fn(), localProfileTarget: vi.fn(), localHereTarget: vi.fn() };
 });
 
 // The terminal's one listener on the window: Command K clears a terminal that has the focus, ahead of the palette that also has it for a chord (docs/ui-next/status/T1.md, decision 13). It is added before the
@@ -663,6 +663,7 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.mocked(localShellTarget).mockReset();
     vi.mocked(localProfileTarget).mockReset();
+    vi.mocked(localHereTarget).mockReset();
   });
 
   afterEach(() => {
@@ -994,6 +995,113 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
   });
 
+  describe('what `New terminal here` starts (the menu\'s item, `openHere`)', () => {
+    const SHELL: TerminalDirectory = { state: 'known', path: '/usr', source: 'shell' };
+    let counter = 0;
+    /** A target of the host's own shell, under an id of its own, that opens a feed. */
+    const targetFor = (): TerminalTarget => {
+      counter += 1;
+      return { plugin: HOST, id: 'local', title: 'Terminal', sessionId: `term-here-${String(counter)}`, open: () => keyedFeed() };
+    };
+
+    beforeEach(() => {
+      counter = 0;
+      vi.mocked(localHereTarget).mockReset();
+      vi.mocked(localHereTarget).mockImplementation(targetFor);
+    });
+
+    /** A window with a terminal whose feed says where it is by `directory`. */
+    function withTerminal(directory: (() => Promise<TerminalDirectory>) | undefined, options: TerminalsOptions = {}) {
+      const r = reloaded(options);
+      const stop = r.terminals.attach();
+      const opened = r.terminals.sessions.open(found('term-a', keyedFeed(directory === undefined ? {} : { directory })));
+      return { ...r, stop, id: opened?.id ?? '' };
+    }
+
+    it('opens a terminal in the directory the feed of the session says, on screen and focused, and asks the feed and nothing else where it is', async () => {
+      const directory = vi.fn(async () => Promise.resolve(SHELL));
+      const r = withTerminal(directory);
+      await r.terminals.openHere(r.id);
+      expect(directory).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([SHELL]);
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a', 'term-here-1']);
+      expect(r.terminals.sessions.takeFocus('term-here-1')).toBe(true);
+      expect(r.store.getSnapshot().open).toBe(true);
+      expect(localShellTarget).not.toHaveBeenCalled();
+      r.stop();
+    });
+
+    it('gives the target what the feed said as it said it, an unknown directory included: the target is the one that starts in home and says so, and the window does not choose a directory', async () => {
+      const unknown: TerminalDirectory = { state: 'unknown', reason: 'query-failed' };
+      const r = withTerminal(async () => Promise.resolve(unknown));
+      await r.terminals.openHere(r.id);
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([unknown]);
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a', 'term-here-1']);
+      r.stop();
+    });
+
+    it('opens the terminal only when the feed has answered: nothing is opened for a question still out, and what the host says at the answer is what is used', async () => {
+      const answer = Promise.withResolvers<TerminalDirectory>();
+      const r = withTerminal(async () => answer.promise);
+      const opening = r.terminals.openHere(r.id);
+      await turns();
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a']);
+      answer.resolve({ state: 'known', path: '/var', source: 'shell' });
+      await opening;
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([{ state: 'known', path: '/var', source: 'shell' }]);
+      r.stop();
+    });
+
+    it('opens nothing for a session whose feed cannot say where it is, and for a session that has no feed or does not exist: no target is made', async () => {
+      const r = withTerminal(undefined);
+      await r.terminals.openHere(r.id);
+      await r.terminals.openHere('no-such-session');
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a']);
+      r.stop();
+    });
+
+    it('takes a feed that throws for one that could not say, which is how it is told: the terminal still opens, in home, and the throw is not the person\'s to read', async () => {
+      const r = withTerminal(async () => Promise.reject(new Error('boom')));
+      await r.terminals.openHere(r.id);
+      expect(vi.mocked(localHereTarget).mock.calls.map(([where]) => where)).toEqual([{ state: 'unknown', reason: 'unanswered' }]);
+      r.stop();
+    });
+
+    it('opens one terminal for each press, each under an id of its own: the same terminal can be the place of two', async () => {
+      const r = withTerminal(async () => Promise.resolve(SHELL));
+      await Promise.all([r.terminals.openHere(r.id), r.terminals.openHere(r.id)]);
+      expect(Object.keys(r.store.getSnapshot().sessions)).toEqual(['term-a', 'term-here-1', 'term-here-2']);
+      r.stop();
+    });
+
+    it('uses the target a probe gives, as the `+` does, and then makes none of its own', async () => {
+      const given = vi.fn((_where: TerminalDirectory): TerminalTarget => ({ plugin: HOST, id: 'synthetic', title: 'Synthetic', open: () => fakeTerminalFeed() }));
+      const r = withTerminal(async () => Promise.resolve(SHELL), { here: given });
+      await r.terminals.openHere(r.id);
+      expect(given.mock.calls.map(([where]) => where)).toEqual([SHELL]);
+      expect(localHereTarget).not.toHaveBeenCalled();
+      expect(Object.values(r.store.getSnapshot().sessions).map((session) => session.title)).toEqual(['Terminal', 'Synthetic']);
+      r.stop();
+    });
+
+    it('is what the body\'s menu item runs: the body is given it by the window, for the session it shows', async () => {
+      const directory = vi.fn(async () => Promise.resolve(SHELL));
+      const r = withTerminal(directory);
+      const session = r.store.getSnapshot().sessions[r.id];
+      expect(session).toBeDefined();
+      const body = r.terminals.bodyOf(session, true);
+      // The element's props are the body's own (`onNewHere`); the cast says so once, in a named constant.
+      const props = body.props as { readonly session: Session; readonly onNewHere: (id: string) => void };
+      expect(props.session.id).toBe(r.id);
+      props.onNewHere(r.id);
+      await turns();
+      expect(directory).toHaveBeenCalledTimes(1);
+      r.stop();
+    });
+  });
+
   describe('the shells `New terminal` offers', () => {
     /** A list of shells the test changes, as the page's store of what the host lists does when the settings change. */
     function shellList(initial: unknown) {
@@ -1095,25 +1203,10 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
     });
   });
 
-  describe('learning that the tab that took a terminal has gone, without a click (the host sends no word of it)', () => {
+  describe('learning that the tab that took a terminal has gone (the host says `released`: nothing is asked)', () => {
     const visibility = (state: 'visible' | 'hidden'): void => {
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
     };
-
-    /** A window with a terminal another tab took: its feed answers `refresh` from `holder.held`. */
-    function taken() {
-      const holder = { held: true };
-      const feed = keyedFeed();
-      const refresh = vi.fn(async (): Promise<void> => {
-        feed.set({ detached: holder.held ? { by: 'taken-over' } : { by: 'taken-over', free: true } });
-      });
-      const full: FakeTerminalFeed = { ...feed, refresh };
-      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
-      const stop = r.terminals.attach();
-      r.terminals.sessions.open(found('term-a', full));
-      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
-      return { r, stop, holder, refresh };
-    }
 
     beforeEach(() => {
       vi.useFakeTimers();
@@ -1124,120 +1217,61 @@ describe('a window that was reloaded finds its terminals again (T2-go)', () => {
       visibility('visible');
     });
 
-    it('says the tab has closed and offers the way back after the taker leaves, with nobody clicking: the next tick asks the host', async () => {
-      const { r, stop, holder, refresh } = taken();
+    it('asks the host nothing, on a timer, when the page is shown or when the window gets the focus, however long a terminal stays lost, and runs no timer', async () => {
+      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
+      const stop = r.terminals.attach();
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+      stop();
+    });
+
+    it('offers the way back the moment the feed says the terminal is free, with nobody clicking and nothing asked', async () => {
+      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
+      const stop = r.terminals.attach();
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
       expect(r.terminals.sessions.canTakeBack('term-a')).toBe(false);
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS);
-      expect(refresh).toHaveBeenCalledTimes(1);
-      expect(r.terminals.sessions.canTakeBack('term-a')).toBe(false);
-      holder.held = false;
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS);
+      feed.set({ detached: { by: 'taken-over', free: true } });
       const snapshot = r.terminals.sessions.recordOf('term-a')?.snapshot;
-      expect(snapshot?.detached?.free).toBe(true);
       expect(stateWords(snapshot)).toBe('The tab that took this terminal has closed.');
       expect(r.terminals.sessions.canTakeBack('term-a')).toBe(true);
-      stop();
-    });
-
-    it('runs no timer while nothing is lost, arms one when a feed is taken over, and clears it when the terminal ends or is taken back', async () => {
-      const r = reloaded({ reattach: (id) => found(id, again) });
-      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
-      const again = keyedFeed({ state: 'starting' });
-      const stop = r.terminals.attach();
-      expect(vi.getTimerCount()).toBe(0);
-      r.terminals.sessions.open(found('term-a', feed));
-      expect(vi.getTimerCount()).toBe(0);
-      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
-      expect(vi.getTimerCount()).toBe(1);
-      feed.set({ exit: { code: 0 } });
-      expect(vi.getTimerCount()).toBe(0);
-      feed.set({ exit: undefined });
-      expect(vi.getTimerCount()).toBe(1);
-      feed.set({ detached: { by: 'taken-over', free: true } });
-      await r.terminals.sessions.takeBack('term-a');
-      expect(r.terminals.sessions.feedOf('term-a')).toBe(again);
-      expect(vi.getTimerCount()).toBe(0);
-      stop();
-    });
-
-    it('runs no timer while the page is hidden, and arms it when it shows', () => {
-      const { stop } = taken();
-      expect(vi.getTimerCount()).toBe(1);
-      visibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(vi.getTimerCount()).toBe(0);
-      visibility('visible');
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(vi.getTimerCount()).toBe(1);
-      stop();
-    });
-
-    it('arms the poll at attach when a terminal is already lost', () => {
-      const r = reloaded({});
-      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
-      r.terminals.sessions.open(found('term-a', feed));
-      feed.set({ state: 'ended', detached: { by: 'taken-over' } });
-      expect(vi.getTimerCount()).toBe(0);
-      const stop = r.terminals.attach();
-      expect(vi.getTimerCount()).toBe(1);
-      stop();
-    });
-
-    it('asks every 5 seconds and no sooner', async () => {
-      const { stop, refresh } = taken();
-      await vi.advanceTimersByTimeAsync(4_999);
-      expect(refresh).not.toHaveBeenCalled();
-      await vi.advanceTimersByTimeAsync(1);
-      expect(refresh).toHaveBeenCalledTimes(1);
-      expect(LOST_REFRESH_MS).toBe(5_000);
-      stop();
-    });
-
-    it('asks when the page becomes visible and when the window gets the focus', async () => {
-      const { stop, refresh } = taken();
-      window.dispatchEvent(new Event('focus'));
-      expect(refresh).toHaveBeenCalledTimes(1);
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(refresh).toHaveBeenCalledTimes(2);
-      visibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
-      expect(refresh).toHaveBeenCalledTimes(2);
-      stop();
-    });
-
-    it('asks the host nothing while no terminal is lost', async () => {
-      const r = reloaded({});
-      const stop = r.terminals.attach();
-      const feed = { ...keyedFeed(), refresh: vi.fn(async (): Promise<void> => undefined) };
-      r.terminals.sessions.open(found('term-a', feed));
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS * 4);
-      window.dispatchEvent(new Event('focus'));
       expect(feed.refresh).not.toHaveBeenCalled();
       stop();
     });
 
-    it('asks nothing while the page is hidden, and again once it shows', async () => {
-      const { stop, refresh } = taken();
+    it('asks a terminal whose watcher was lost once when the person comes back to the tab (visible), and not when it is hidden, on the focus or on a timer', async () => {
+      const r = reloaded({ reattach: (id) => found(id) }, [zsh('term-a')]);
+      const feed = { ...keyedFeed(), refresh: vi.fn(async (_options?: { readonly fresh?: boolean }): Promise<void> => undefined) };
+      const stop = r.terminals.attach();
+      r.terminals.sessions.open(found('term-a', feed));
+      feed.set({ state: 'ended', detached: { by: 'taken-over', unwatched: true } });
+      await vi.advanceTimersByTimeAsync(60_000);
+      window.dispatchEvent(new Event('focus'));
       visibility('hidden');
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS * 3);
-      window.dispatchEvent(new Event('focus'));
-      expect(refresh).not.toHaveBeenCalled();
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).not.toHaveBeenCalled();
       visibility('visible');
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS);
-      expect(refresh).toHaveBeenCalledTimes(1);
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(feed.refresh).toHaveBeenCalledTimes(1);
+      expect(feed.refresh).toHaveBeenCalledWith({ fresh: true });
+      expect(vi.getTimerCount()).toBe(0);
+      const asked = vi.spyOn(r.terminals.sessions, 'refreshUnwatched');
       stop();
-    });
-
-    it('stops everything when the window detaches', async () => {
-      const { r, stop, refresh } = taken();
-      const asked = vi.spyOn(r.terminals.sessions, 'refreshLost');
-      stop();
-      await vi.advanceTimersByTimeAsync(LOST_REFRESH_MS * 3);
-      window.dispatchEvent(new Event('focus'));
       document.dispatchEvent(new Event('visibilitychange'));
       expect(asked).not.toHaveBeenCalled();
-      expect(refresh).not.toHaveBeenCalled();
-      expect(vi.getTimerCount()).toBe(0);
+      expect(feed.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not export the poll interval', async () => {
+      expect(await import('./terminals')).not.toHaveProperty('LOST_REFRESH_MS');
     });
   });
 

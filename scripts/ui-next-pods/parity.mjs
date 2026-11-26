@@ -6,10 +6,11 @@ import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { converge } from './agreement.mjs';
 import { compareCounts, countLines } from './counts.mjs';
-import { compareDeployment, compareDetail, compareGone, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail, goneDeployment } from './detail.mjs';
+import { compareDeployment, compareDetail, compareGone, DETAIL_DEPLOYMENT, DETAIL_POD, deploymentHref, detailHref, expectedDeployment, expectedDetail, goneDeployment, linkTo } from './detail.mjs';
+import { compareLanding, LANDING_TAB, LANDING_TABLE, listedProblems, readLanding } from './landing.mjs';
 import { busyPod, busyRate, busyReplayed, compareLogs, compareRate, compareRepress, expectedLogs, LOGS_BUSY, LOGS_JOB, LOGS_RUNNING, readStrip, READY_SECONDS, TELLING_SAMPLES, waitProcessMs, withOwnedPod } from './logs.mjs';
 import { diffNames, fixtureGaps, ParityError, parseKubectlTable } from './oracle.mjs';
-import { compareOverview, expectedOverview, frameProblems, isSettled, loadingFrames, readOverview } from './overview.mjs';
+import { compareOverview, expectedOverview, frameProblems, isSettled, loadingFrames, readOverview, shortVersion } from './overview.mjs';
 import { compareSorted, deploymentsByAge, directionOf, opposite, podsByRestarts, sortCanBeTold } from './sort.mjs';
 import { APISERVICE, AVAILABLE_JSONPATH, compareAvailability, compareFacts, refusedRequests } from './unavailable.mjs';
 
@@ -115,21 +116,33 @@ export async function openWindow(browser, baseURL, options = {}) {
   return page;
 }
 
-// The plugin's landing, opened the way a person opens it from that window: the plugin's row in the list of plugins that can be opened. It is the same in every mode of the check: a plugin installed without its
-// bundle is in the list too ("Did not load") and its row opens the page that names the failure, and a host without the plugin has no row, so the window stays at its own list of plugins (the page the
-// check reads and finds wanting). What the page shows is the plugin's page, named by the plugin's contribution: since plugin #287 the connection's Overview (`checkOverview`).
-export async function openOverview(browser, baseURL, options = {}) {
-  const page = await openWindow(browser, baseURL, options);
-  await openPluginPage(page);
-  return page;
+// From the empty window to the page of a connection, as a person goes: the plugin's row in the list of plugins that can be opened, and, when that opened the plugin's landing (plugin #289: a page of the plugin that belongs to no connection, a table of its
+// connections and no sidebar, landing.mjs), the connection of the context kubectl calls current, pressed there: the host starts it and opens its Overview in a NEW tab, where the sidebar is. It is the same in every mode of the check: a plugin installed
+// without its bundle is in the list too ("Did not load") and its row opens the page that names the failure, which is not the landing and is left as it is, and a host without the plugin has no row, so the window stays at its own list of plugins (the
+// page the check reads and finds wanting). Returns whether there was a row to press.
+export async function openConnection(page, kubeconfig) {
+  if (!(await openPluginPage(page))) {
+    return false;
+  }
+
+  if (await landingIsUp(page)) {
+    await openFromLanding(page, (await kubectl(kubeconfig, ['config', 'current-context'])).trim());
+  }
+
+  return true;
 }
 
-// The Pods list, opened the way a person opens it from the landing: the plugin's page, and then the sidebar's Workloads group and its Pods entry. Every check of a list or of the page of an object starts here. A window that
-// has no row to press has no sidebar to choose from either, and is read as it stands (the control of a host without the plugin).
-export async function openPods(browser, baseURL, options = {}) {
+// The Pods list, opened the way a person opens it: the plugin's row, the connection in the landing's table, and then the sidebar's Workloads group and its Pods entry. Every check of a list or of the page of an object starts here. A window that
+// has no row to press has no sidebar to choose from either, and is read as it stands (the control of a host without the plugin). A page that fails on the way is closed, and the failure is the caller's.
+export async function openPods(browser, baseURL, kubeconfig, options = {}) {
   const page = await openWindow(browser, baseURL, options);
-  if (await openPluginPage(page)) {
-    await choosePods(page);
+  try {
+    if (await openConnection(page, kubeconfig)) {
+      await choosePods(page);
+    }
+  } catch (error) {
+    await page.close().catch(() => undefined);
+    throw error;
   }
 
   return page;
@@ -148,8 +161,79 @@ export async function openPluginPage(page) {
   }
 }
 
-// The sidebar's Pods entry, on a window that has the plugin's page: the Workloads group is opened when it is closed (the landing of the plugin before the Overview was the Pods list, and the group is open for it), and Pods is
-// pressed, which opens the list in the tab. A window with no sidebar (the plugin's page failed to load) is left as it is.
+// The plugin's landing, once its row is pressed: the table of its connections is drawn (a region named for it, landing.mjs), where the plugin's row opened another page, the host's own page of a plugin that did not load (an alert, "Couldn't load Kubernetes": what
+// a plugin installed without its bundle opens). Whichever is drawn first settles it; a page that draws neither within `timeoutMs` is not the landing. Returns whether the landing is on screen.
+export async function landingIsUp(page, timeoutMs = 20_000) {
+  const table = page.getByRole('region', { name: LANDING_TABLE, exact: true });
+  const failure = page.getByRole('alert').filter({ hasText: /Couldn't load/ });
+  try {
+    await table.or(failure).first().waitFor({ timeout: timeoutMs });
+  } catch {
+    return false;
+  }
+
+  return table.isVisible();
+}
+
+// The landing's table as the page draws it (`readLanding` of landing.mjs makes the model): the headers, and for each row the name of the connection (the button that opens it) and the text of each cell. `null` when no such table is on screen: a page the
+// keep-alive holds hidden is not read, and the landing is hidden while the Overview it opened is on screen.
+export async function readLandingDom(page) {
+  return page.evaluate((label) => {
+    const norm = (text) => (text ?? '').replace(/\s+/g, ' ').trim();
+    const region = [...document.querySelectorAll('[role=region]')].find((candidate) => candidate.getAttribute('aria-label') === label && candidate.getClientRects().length > 0);
+    const table = region?.querySelector('table') ?? null;
+    if (table === null) {
+      return null;
+    }
+
+    return {
+      heads: [...table.querySelectorAll('thead th')].map((cell) => norm(cell.textContent)),
+      rows: [...table.querySelectorAll('tbody tr')].map((row) => ({ name: norm(row.querySelector('button')?.textContent), cells: [...row.querySelectorAll('td')].map((cell) => norm(cell.textContent)) })),
+    };
+  }, LANDING_TABLE);
+}
+
+// A press on the connection's name in the landing's table: the name is a button that opens the connection (`connections.open` of the host, which starts the connection first when it is not connected and then opens its Overview in a NEW tab, the landing
+// staying where it is). A table that does not list the connection fails the check here, naming what it lists (landing.mjs, the `listed` rule): ParityError('LANDING_MISMATCH').
+export async function openFromLanding(page, context, timeoutMs = 20_000) {
+  const button = page.getByRole('region', { name: LANDING_TABLE, exact: true }).getByRole('button', { name: context, exact: true });
+  try {
+    await button.click({ timeout: timeoutMs });
+  } catch (error) {
+    const problems = listedProblems(readLanding(await readLandingDom(page)), context);
+    if (problems.length === 0) {
+      throw error;
+    }
+
+    throw new ParityError('LANDING_MISMATCH', problems.join('; '), { problems });
+  }
+}
+
+// The landing, read again once the connection has been opened from it, which is the one assertion about it (landing.mjs): its tab is still in the strip and a person goes back to it by pressing the tab. The host started the connection, so the row of the context
+// kubectl calls current says Connected, and its Kubernetes column the version `kubectl version` reports for the server. The version comes through the plugin's facts, which can be a moment behind the state, so the page is read until it agrees or `timeoutMs`
+// has passed. Throws ParityError('LANDING_MISMATCH') with the last problems; returns the row.
+async function readOpenedLanding(page, { context, version, timeoutMs }) {
+  await page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab', { name: LANDING_TAB, exact: true }).click({ timeout: timeoutMs });
+  const deadline = Date.now() + timeoutMs;
+  let read;
+  let problems;
+  do {
+    read = readLanding(await readLandingDom(page));
+    problems = compareLanding(read, { context, version });
+    if (problems.length > 0) {
+      await page.waitForTimeout(100);
+    }
+  } while (problems.length > 0 && Date.now() < deadline);
+
+  if (problems.length > 0) {
+    throw new ParityError('LANDING_MISMATCH', `${problems.join('; ')}; the landing's table said ${JSON.stringify(read)}, read for ${String(timeoutMs / 1000)} s`, { problems, landing: read });
+  }
+
+  return read.find((candidate) => candidate.name === context);
+}
+
+// The sidebar's Pods entry, on a window that has the connection's page: the Workloads group is opened when it is closed, and Pods is pressed, which opens the list in the tab. A window with no sidebar (the plugin's page failed to load, or the connection was
+// never opened from the landing) is left as it is.
 export async function choosePods(page) {
   const tree = page.getByRole('navigation', { name: 'Kubernetes resources' });
   const workloads = tree.getByRole('treeitem', { name: 'Workloads', exact: true });
@@ -179,8 +263,8 @@ export async function settle(page, done, timeoutMs) {
   return read;
 }
 
-// The check: the cluster holds the fixture, and the Pods list the window reaches the way a person does (the host opens with no URL parameter and no hash, the Kubernetes plugin's row is pressed and lands on its Overview, and the
-// sidebar's Workloads group and Pods entry open the list) lists exactly the Pods `kubectl get pods -A` lists, counts them as it does in its footer, and counts its quick filters
+// The check: the cluster holds the fixture, and the Pods list the window reaches the way a person does (the host opens with no URL parameter and no hash, the Kubernetes plugin's row is pressed and opens its landing, the connection of the current context is
+// pressed there and opens its Overview in a new tab, and the sidebar's Workloads group and Pods entry open the list) lists exactly the Pods `kubectl get pods -A` lists, counts them as it does in its footer, and counts its quick filters
 // from kubectl's own STATUS words (plan 1a.6 exit test). The page and kubectl are never read at the same instant, so kubectl is read before and after every reading of
 // the page, and a Pod kubectl itself changed in between may read either way on the page: nothing else may (agreement.mjs).
 // Throws ParityError('FIXTURE_MISSING') when the cluster is empty of the fixture, ParityError('PAGE_MISMATCH') when the page does not agree before the deadline.
@@ -191,7 +275,7 @@ export async function checkParity({ browser, baseURL, kubeconfig, timeoutMs = 30
     throw new ParityError('FIXTURE_MISSING', `the cluster lacks the fixture: ${gaps.join('; ')}`, { gaps, oracle });
   }
 
-  const page = await openPods(browser, baseURL);
+  const page = await openPods(browser, baseURL, kubeconfig);
   try {
     return await agreeWithKubectl(page, kubeconfig, timeoutMs);
   } finally {
@@ -214,10 +298,10 @@ async function agreeWithKubectl(page, kubeconfig, timeoutMs) {
   return { oracle: result.matched.names, status: result.read.status, read: result.read, expected: { count: result.matched.count, filters: result.matched.filters } };
 }
 
-// The Overview, the page the plugin lands on (HM3c; plugin PR #287). The window is opened as the native app opens it and the plugin's row is pressed; the page is read the way a person reads it, in the page's own markup (the host's
-// `ui-next/page/DetailPage.tsx`, the kit's parts, the plugin's `ui/src/overview/cells.tsx`), and every reading is text. What it means, and what kubectl says it must be, is overview.mjs's.
-// This function runs in the page, so it names nothing outside itself. Installed BEFORE the press, it samples the page every `intervalMs` from the click on the plugin's row (the capture phase of the first click of the window, so
-// that the first sample is the press's own) and keeps each reading that differs from the one before, with the number of samples that read exactly it: the frames a person could see between the press and the settled page.
+// The Overview, the page a connection opens on (HM3c; plugin PR #287). The window is opened as the native app opens it, the plugin's row is pressed and the connection is pressed in the plugin's landing; the page is read the way a person reads it, in the page's own
+// markup (the host's `ui-next/page/DetailPage.tsx`, the kit's parts, the plugin's `ui/src/overview/cells.tsx`), and every reading is text. What it means, and what kubectl says it must be, is overview.mjs's.
+// This function runs in the page, so it names nothing outside itself. Installed after the press on the plugin's row and BEFORE the press on the connection, it samples the page every `intervalMs` from the click on the connection (the capture phase of the first click of the
+// window after it is installed, so that the first sample is the press's own) and keeps each reading that differs from the one before, with the number of samples that read exactly it: the frames a person could see between the press and the settled page.
 // The reading: the strip's tabs, the headings of level 1 of the page on screen, the sidebar's current entries, the items of the summary line, and each section (`data-detail-section`) as the text of its rows: a list's rows are
 // `[title, detail]`, a table's are its cells, a key and value list's are `[label, value]`.
 function installOverviewRecorder(intervalMs) {
@@ -317,14 +401,17 @@ async function connectionIdentity({ baseURL, kubeconfig }) {
   }
 }
 
-// The Overview the plugin lands on says what kubectl says (overview.mjs): the window opened as the native app opens it and the plugin pressed, one tab titled Overview, one heading that is the connection's NAME (never its
-// ID), the sidebar's Overview entry current, Needs attention naming what fails (the count of the section and of its rows, and every name a row shows, held to kubectl's failing objects), the Workloads table's Totals and
+// The Overview a press on the connection in the plugin's landing opens says what kubectl says (overview.mjs): the window opened as the native app opens it, the plugin pressed and then its connection, two tabs, the landing and the Overview, which is on screen, one heading that is
+// the connection's NAME (never its ID), the sidebar's Overview entry current, Needs attention naming what fails (the count of the section and of its rows, and every name a row shows, held to kubectl's failing objects), the Workloads table's Totals and
 // Failing counts and the Cluster rows equal to kubectl's, and no fake zero while it loads: the page is sampled from the press until it has settled, and every frame is held to the rules of a page that has not finished
 // (a row that says Loading shows no None failing, a Cluster row that says Loading shows no number, the summary does not say Everything is running while a row says Loading). kubectl is read before and after every reading of the
-// page, and a reading whose cluster moved is read again (the fixture's crash-looping Pod flips between words).
+// page, and a reading whose cluster moved is read again (the fixture's crash-looping Pod flips between words). Once the Overview agrees, the landing is read again from its tab, which is the one assertion about it (landing.mjs): the connection of the current context is listed,
+// Connected, with the version `kubectl version` reports for the server.
 // Throws ParityError('FIXTURE_MISSING') when the cluster is empty of the fixture (an Overview of an empty cluster agrees with kubectl too: the check must stop there), ParityError('OVERVIEW_MISMATCH') when the settled page does not
-// agree before the deadline (the page of a host without the plugin, and of a plugin without its bundle, are none of them an Overview) and ParityError('OVERVIEW_LOADING') when a frame broke a rule of a page that is loading.
-// Returns the settled reading, the page kubectl says, the connection's identity and what the sampling saw (`frames`: samples, distinct readings, the frames and samples with a row that was Loading, the time the page settled).
+// agree before the deadline (the page of a host without the plugin, and of a plugin without its bundle, are none of them an Overview), ParityError('OVERVIEW_LOADING') when a frame broke a rule of a page that is loading, and ParityError('LANDING_MISMATCH')
+// when the landing does not list the connection or does not say what kubectl says of it.
+// Returns the settled reading, the page kubectl says, the connection's identity, what the sampling saw (`frames`: samples, distinct readings, the frames and samples with a row that was Loading, the time the page settled) and the landing's row for the connection
+// (`landing`: its name, its state and its version; undefined when the plugin's row did not open a landing).
 export async function checkOverview({ browser, baseURL, kubeconfig, timeoutMs = 30_000, intervalMs = OVERVIEW_SAMPLE_MS }) {
   const listed = (await oracleRows(kubeconfig)).map((row) => row.name);
   const gaps = fixtureGaps(listed);
@@ -335,9 +422,16 @@ export async function checkOverview({ browser, baseURL, kubeconfig, timeoutMs = 
   const facts = await oracleFacts(kubeconfig);
   const page = await openWindow(browser, baseURL);
   try {
-    await page.evaluate(installOverviewRecorder, intervalMs);
     const pressed = await openPluginPage(page);
+    // The plugin's row opens its landing, and the connection is pressed there. A plugin installed without its bundle opens the page that names the failure, which is not the landing and has no connection to press: it is read as it stands. The recorder arms on the
+    // first click it sees, so it is installed after the press on the plugin's row and before the press on the connection, and the frames it keeps are the Overview's first paint from that press.
+    const landed = pressed && (await landingIsUp(page));
     const identity = await connectionIdentity({ baseURL, kubeconfig });
+    await page.evaluate(installOverviewRecorder, intervalMs);
+    if (landed) {
+      await openFromLanding(page, identity.context);
+    }
+
     // A window that has no row to press cannot get an Overview by waiting: it is read once.
     const deadline = Date.now() + (pressed ? timeoutMs : 0);
     const readDom = () => page.evaluate(() => window.__overview.read());
@@ -389,7 +483,8 @@ export async function checkOverview({ browser, baseURL, kubeconfig, timeoutMs = 
       throw new ParityError('OVERVIEW_LOADING', broken.join('; '), { problems: broken, overview: read, expected, frames: seen });
     }
 
-    return { read, expected, identity, frames: seen };
+    const opened = landed ? await readOpenedLanding(page, { context: identity.context, version: shortVersion(facts.version), timeoutMs }) : undefined;
+    return { read, expected, identity, frames: seen, landing: opened };
   } finally {
     await page.close();
   }
@@ -430,7 +525,7 @@ async function sidebarRows(page) {
 
 // Throws ParityError('COUNT_MISMATCH') when the sidebar does not agree with kubectl before the deadline.
 export async function checkCounts({ browser, baseURL, kubeconfig, timeoutMs = 45_000 }) {
-  const page = await openPods(browser, baseURL);
+  const page = await openPods(browser, baseURL, kubeconfig);
   try {
     const deadline = Date.now() + timeoutMs;
     let rows = [];
@@ -454,14 +549,14 @@ export async function checkCounts({ browser, baseURL, kubeconfig, timeoutMs = 45
 
 // Opens a detail page from its kind's list (the click on the object's name link) and polls until the page agrees with `oracle` or the deadline, then throws ParityError('DETAIL_MISMATCH') with the last problems.
 // `listEntry` is the sidebar entry that opens the list when the Pods list is not the page on screen (a name or `undefined`); `what` names the object in a failure.
-async function checkDetailOf({ browser, baseURL, href, listEntry, oracle, compare, what, timeoutMs }) {
-  const page = await openPods(browser, baseURL);
+async function checkDetailOf({ browser, baseURL, kubeconfig, href, listEntry, oracle, compare, what, timeoutMs }) {
+  const page = await openPods(browser, baseURL, kubeconfig);
   try {
     if (listEntry !== undefined) {
       await page.getByRole('navigation', { name: 'Kubernetes resources' }).getByRole('treeitem', { name: new RegExp(`^${listEntry}`) }).click({ timeout: timeoutMs });
     }
 
-    const link = page.locator(`a[href="${href}"]`).first();
+    const link = page.locator(linkTo(href)).first();
     try {
       await link.waitFor({ timeout: timeoutMs });
     } catch {
@@ -498,6 +593,7 @@ export async function checkDetail({ browser, baseURL, kubeconfig, pod = DETAIL_P
   return checkDetailOf({
     browser,
     baseURL,
+    kubeconfig,
     href: detailHref(pod),
     listEntry: undefined,
     oracle: async () => expectedDetail(JSON.parse(await kubectl(kubeconfig, ['get', 'pod', pod.name, '-n', pod.namespace, '-o', 'json']))),
@@ -513,6 +609,7 @@ export async function checkDeploymentDetail({ browser, baseURL, kubeconfig, depl
   return checkDetailOf({
     browser,
     baseURL,
+    kubeconfig,
     href: deploymentHref(deployment),
     listEntry: 'Deployments',
     oracle: async () => expectedDeployment(JSON.parse(await kubectl(kubeconfig, ['get', 'deployment', deployment.name, '-n', deployment.namespace, '-o', 'json']))),
@@ -532,9 +629,9 @@ export async function checkDeploymentGone({ browser, baseURL, kubeconfig, deploy
   await kubectl(kubeconfig, ['create', 'deployment', name, '-n', namespace, '--image=busybox:1.37.0', '--replicas=0']);
   let page;
   try {
-    page = await openPods(browser, baseURL);
+    page = await openPods(browser, baseURL, kubeconfig);
     await page.getByRole('navigation', { name: 'Kubernetes resources' }).getByRole('treeitem', { name: /^Deployments/ }).click({ timeout: timeoutMs });
-    const link = page.locator(`a[href="${deploymentHref(deployment)}"]`).first();
+    const link = page.locator(linkTo(deploymentHref(deployment))).first();
     try {
       await link.waitFor({ timeout: timeoutMs });
     } catch {
@@ -670,7 +767,7 @@ export async function checkSort({ browser, baseURL, kubeconfig, kind, timeoutMs 
     throw new ParityError('SORT_FIXTURE', `${spec.what}: the cluster's objects have one value in the column (or none): a press cannot be told from no press`, { items });
   }
 
-  const page = await openPods(browser, baseURL);
+  const page = await openPods(browser, baseURL, kubeconfig);
   try {
     if (spec.listEntry !== undefined) {
       await page.getByRole('navigation', { name: 'Kubernetes resources' }).getByRole('treeitem', { name: new RegExp(`^${spec.listEntry}`) }).click({ timeout: timeoutMs });
@@ -780,9 +877,9 @@ export async function checkLogs({ browser, baseURL, kubeconfig, timeoutMs = 30_0
   const pod = { namespace: LOGS_JOB.namespace, name: names[0] };
   const expected = expectedLogs(await kubectl(kubeconfig, ['logs', '-n', pod.namespace, pod.name, '--timestamps']));
   const before = (await listLogSessions(baseURL)).length;
-  const page = await openPods(browser, baseURL, { timezoneId: 'UTC' });
+  const page = await openPods(browser, baseURL, kubeconfig, { timezoneId: 'UTC' });
   try {
-    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    const link = page.locator(linkTo(detailHref(pod))).first();
     await link.waitFor({ timeout: timeoutMs });
     await link.click();
     // Playwright waits for the command to be enabled: the page enables it once the record of the Pod shows a container that ran.
@@ -865,8 +962,8 @@ async function pressTwice({ browser, baseURL, kubeconfig, timeoutMs = 60_000 }) 
   let page;
   try {
     const before = (await listLogSessions(baseURL)).length;
-    page = await openPods(browser, baseURL, { timezoneId: 'UTC' });
-    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    page = await openPods(browser, baseURL, kubeconfig, { timezoneId: 'UTC' });
+    const link = page.locator(linkTo(detailHref(pod))).first();
     await link.waitFor({ timeout: timeoutMs });
     await link.click();
     const press = () => page.getByRole('button', { name: 'Logs', exact: true }).first().click({ timeout: timeoutMs });
@@ -945,8 +1042,8 @@ async function readRate({ browser, baseURL, kubeconfig, timeoutMs = 90_000 }) {
   await kubectl(kubeconfig, ['wait', '--for=condition=Ready', `pod/${pod.name}`, '-n', pod.namespace, `--timeout=${String(READY_SECONDS)}s`], { timeoutMs: waitProcessMs(READY_SECONDS) });
   let page;
   try {
-    page = await openPods(browser, baseURL, { timezoneId: 'UTC' });
-    const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+    page = await openPods(browser, baseURL, kubeconfig, { timezoneId: 'UTC' });
+    const link = page.locator(linkTo(detailHref(pod))).first();
     await link.waitFor({ timeout: timeoutMs });
     await link.click();
     const logs = page.getByRole('button', { name: 'Logs', exact: true }).first();
@@ -1004,10 +1101,10 @@ export async function checkForward({ browser, baseURL, kubeconfig, timeoutMs = 6
     },
     async () => {
       await kubectl(kubeconfig, ['wait', '--for=condition=Ready', `pod/${pod.name}`, ...at, `--timeout=${String(READY_SECONDS)}s`], { timeoutMs: waitProcessMs(READY_SECONDS) });
-      const page = await openPods(browser, baseURL);
+      const page = await openPods(browser, baseURL, kubeconfig);
       const mapping = page.locator('[data-ports-part="mapping"]');
       try {
-        const link = page.locator(`a[href="${detailHref(pod)}"]`).first();
+        const link = page.locator(linkTo(detailHref(pod))).first();
         await link.waitFor({ timeout: timeoutMs });
         await link.click();
         await page.getByRole('button', { name: /^More actions for / }).first().click({ timeout: timeoutMs });
@@ -1135,7 +1232,7 @@ export async function checkUnavailableGroup({ browser, baseURL, kubeconfig, time
   const page = await openWindow(browser, baseURL);
   const requests = recordRequests(page);
   try {
-    if (await openPluginPage(page)) {
+    if (await openConnection(page, kubeconfig)) {
       await choosePods(page);
     }
 

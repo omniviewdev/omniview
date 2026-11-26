@@ -1,0 +1,67 @@
+// Scratch: look at what the pinned plugin's landing draws, and what a press on its connection does (not committed).
+import { chromium } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin/node_modules/playwright/index.mjs';
+
+const base = process.env.BASE ?? 'http://127.0.0.1:24301';
+const WINDOW_SERVICE = 'github.com/omniviewdev/omniview/backend/window.Service';
+await new Promise((r) => setTimeout(r, 1200));
+await fetch(new URL('/wails/runtime', base), {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-wails-client-id': 'pods-check' },
+  body: JSON.stringify({ object: 0, method: 0, args: { 'call-id': `pods-forget-${Date.now()}`, methodName: `${WINDOW_SERVICE}.SaveState`, args: ['main', 'session', 'null'] } }),
+});
+
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1440, height: 4000 } });
+const requests = [];
+page.on('response', (r) => { if (r.status() >= 400) requests.push(`${r.status()} ${r.request().method()} ${new URL(r.url()).pathname}`); });
+await page.goto(new URL('/', base).href);
+
+const dump = async (label) => {
+  const read = await page.evaluate(() => {
+    const norm = (t) => (t ?? '').replace(/\s+/g, ' ').trim();
+    return {
+      tabs: [...document.querySelectorAll('[role=tablist][aria-label="Open tabs"] [role=tab]')].map((tab) => ({ text: norm(tab.textContent), label: tab.getAttribute('aria-label'), selected: tab.getAttribute('aria-selected') })),
+      slots: [...document.querySelectorAll('[data-page-slot]')].map((s) => ({ visible: s.getClientRects().length > 0, h1: [...s.querySelectorAll('h1')].map((h) => norm(h.textContent)), h2: [...s.querySelectorAll('h2')].map((h) => norm(h.textContent)) })),
+      regions: [...document.querySelectorAll('[role=region]')].map((r) => ({ label: r.getAttribute('aria-label'), visible: r.getClientRects().length > 0 })),
+      nav: [...document.querySelectorAll('nav')].map((n) => n.getAttribute('aria-label')),
+      lane: [...document.querySelectorAll('[data-shell-part=lane] [data-shell-part=scopeFace]')].map((f) => norm(f.textContent)),
+    };
+  });
+  console.log(label, JSON.stringify(read, null, 1));
+};
+
+const row = page.getByRole('region', { name: 'Plugins you can open' }).getByRole('button', { name: /^Kubernetes/ });
+await row.click({ timeout: 20000 });
+await page.waitForTimeout(1500);
+await dump('after the plugin row');
+
+const region = page.getByRole('region', { name: 'Connections' });
+console.log('connections regions:', await region.count());
+if (await region.count()) {
+  console.log('region html:', (await region.first().evaluate((el) => el.outerHTML)).slice(0, 6000));
+}
+
+const t0 = Date.now();
+await region.getByRole('button', { name: process.env.CONTEXT ?? 'kind-landing-pin', exact: true }).click({ timeout: 20000 });
+console.log('pressed at', Date.now() - t0);
+for (const wait of [100, 400, 1000, 2500]) {
+  await page.waitForTimeout(wait);
+  await dump(`after the connection press +${wait}`);
+}
+const rowsOf = () => page.evaluate(() => {
+  const norm = (t) => (t ?? '').replace(/\s+/g, ' ').trim();
+  return [...document.querySelectorAll('[role=region][aria-label=Connections]')].map((r) => ({
+    visible: r.getClientRects().length > 0,
+    heads: [...r.querySelectorAll('thead th')].map((th) => norm(th.textContent)),
+    rows: [...r.querySelectorAll('tbody tr')].map((tr) => [...tr.querySelectorAll('td')].map((td) => ({ text: norm(td.textContent), buttons: [...td.querySelectorAll('button')].map((b) => b.getAttribute('aria-label') ?? norm(b.textContent)) }))),
+  }));
+});
+console.log('landing hidden rows:', JSON.stringify(await rowsOf(), null, 1));
+console.log('data-ov-state roots:', await page.evaluate(() => [...document.querySelectorAll('[data-ov-state]')].map((e) => ({ s: e.getAttribute('data-ov-state'), visible: e.getClientRects().length > 0 }))));
+await page.getByRole('tablist', { name: 'Open tabs' }).getByRole('tab', { name: 'Kubernetes', exact: true }).click();
+await page.waitForTimeout(500);
+await dump('back on the landing tab');
+console.log('landing visible rows:', JSON.stringify(await rowsOf(), null, 1));
+await page.screenshot({ path: '/tmp/landing-pin/landing2.png', clip: { x: 0, y: 0, width: 1440, height: 300 } });
+await browser.close();
+console.log('refused:', requests);

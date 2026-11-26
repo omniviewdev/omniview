@@ -955,20 +955,20 @@ export function createFindSections({ check, note, report, runAxe }) {
       const known = await page.evaluate(() => window.__known);
       // The items draw no shortcut: the kit names an item by its label alone, and a drawn shortcut makes the name differ from what is drawn (axe: label-content-name-mismatch), so the terminal's menu has none until the kit names the two together.
       const at = await screenPoint(page);
-      const labels = ['Copy', 'Paste', 'Select all', 'Clear', 'Find'];
+      const labels = ['Copy', 'Paste', 'Select all', 'Clear', 'Find', 'New terminal here'];
       const problems = [];
       const expect = (name, ok, got) => {
         if (!ok) problems.push({ name, got });
       };
 
-      // 1. The pointer: the items, in order, with one separator, Copy unavailable while nothing is selected.
+      // 1. The pointer: the items, in order, with two separators, Copy unavailable while nothing is selected.
       await openByPointer(page, at);
       const first = await menuShown(page, true, 5000);
       await perturb(ctx, page, 'open');
       const again = await menuNow(page);
       expect('the pointer opens the menu', first !== null);
       expect('its items', JSON.stringify(again?.items?.map((item) => item.label)) === JSON.stringify(labels), again?.items?.map((item) => item.label));
-      expect('one separator', again?.separators === 1, again?.separators);
+      expect('two separators', again?.separators === 2, again?.separators);
       expect('Copy is unavailable without a selection', again?.items?.find((item) => item.label === 'Copy')?.disabled === true, again?.items);
       expect('the others are available', again?.items?.filter((item) => item.label !== 'Copy').every((item) => !item.disabled) === true, again?.items);
       expect('the menu is named', again?.label === 'Terminal actions', again?.label);

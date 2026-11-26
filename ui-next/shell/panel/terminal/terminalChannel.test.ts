@@ -114,6 +114,7 @@ type Answers = {
   /** What `ListChannelTerminals` answers, given the capabilities. */
   list: (capabilities: readonly string[]) => unknown;
   busy: unknown;
+  cwd: unknown;
 };
 
 type Rig = {
@@ -143,6 +144,7 @@ function rig(options: RigOptions = {}): Rig {
     fails: {},
     list: (capabilities) => capabilities.map((cap) => ({ id: cap === CAP ? 't1' : cap === CAP_2 ? 't2' : 't3', shell: { name: 'zsh' } })),
     busy: { state: 'idle' },
+    cwd: { path: '/home/u' },
   };
   const call = async (name: string, ...args: unknown[]): Promise<unknown> => {
     calls.push([name, ...args]);
@@ -150,7 +152,9 @@ function rig(options: RigOptions = {}): Rig {
       return Promise.reject(answers.fails[name]);
     }
 
-    return Promise.resolve(name === 'CreateTerminal' ? answers.create() : name === 'ListChannelTerminals' ? answers.list(args[0] as string[]) : name === 'ChannelTerminalBusy' ? answers.busy : undefined);
+    return Promise.resolve(
+      name === 'CreateTerminal' ? answers.create() : name === 'ListChannelTerminals' ? answers.list(args[0] as string[]) : name === 'ChannelTerminalBusy' ? answers.busy : name === 'ChannelTerminalCwd' ? answers.cwd : undefined,
+    );
   };
 
   const client: ChannelClient = {
@@ -158,6 +162,7 @@ function rig(options: RigOptions = {}): Rig {
     CloseChannelTerminal: async (cap) => call('CloseChannelTerminal', cap),
     DismissChannelTerminal: async (cap) => call('DismissChannelTerminal', cap),
     ChannelTerminalBusy: async (cap) => call('ChannelTerminalBusy', cap),
+    ChannelTerminalCwd: async (cap) => call('ChannelTerminalCwd', cap),
     ListChannelTerminals: async (caps) => call('ListChannelTerminals', caps),
   };
   const storage: CapabilityStorage = {
@@ -204,8 +209,20 @@ function recorder(): { readonly said: Said; readonly events: ChannelEvents } {
     ended: (end) => {
       said.push(['ended', end]);
     },
+    applied: (total) => {
+      said.push(['applied', total]);
+    },
     takenOver: () => {
       said.push(['takenOver']);
+    },
+    released: () => {
+      said.push(['released']);
+    },
+    closeRefused: () => {
+      said.push(['closeRefused']);
+    },
+    unsupported: (version) => {
+      said.push(['unsupported', version]);
     },
     notFound: () => {
       said.push(['notFound']);
@@ -241,9 +258,9 @@ const attachJson = (socket: FakeSocket): unknown => {
 };
 
 /** Opens a stream for `t1` and returns it with what it said. */
-function connected(r: Rig, fromOffset?: number): { readonly socket: FakeSocket; readonly said: Said; readonly link: ReturnType<TerminalChannels['connect']> } {
+function connected(r: Rig, fromOffset?: number, writer?: string): { readonly socket: FakeSocket; readonly said: Said; readonly link: ReturnType<TerminalChannels['connect']> } {
   const { said, events } = recorder();
-  const link = r.channels.connect('t1', fromOffset, events);
+  const link = r.channels.connect('t1', fromOffset, events, writer);
   return { socket: socketOf(r), said, link };
 }
 
@@ -255,13 +272,25 @@ describe('opening a stream', () => {
     expect(socket.binaryType).toBe('arraybuffer');
   });
 
+  it('says the feed\'s writer in the attach when it has one, and not otherwise', () => {
+    const writer = 'ab'.repeat(16);
+    const r = rig({ saved: { t1: CAP } });
+    const { socket } = connected(r, 4096, writer);
+    socket.open();
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP, from_offset: 4096, writer });
+    expect(socket.sent[0]?.length).toBeLessThanOrEqual(1024);
+    const none = connected(rig({ saved: { t1: CAP } }));
+    none.socket.open();
+    expect(attachJson(none.socket)).toEqual({ v: 2, cap: CAP });
+  });
+
   it('sends the attach as the first frame, with the capability and the protocol version, and no offset when the page has none', () => {
     const r = rig({ saved: { t1: CAP } });
     const { socket } = connected(r);
     socket.open();
     expect(socket.sent).toHaveLength(1);
     expect(socket.sent[0]?.[0]).toBe(0x01);
-    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP });
     expect(socket.sent[0]?.length).toBeLessThanOrEqual(1024);
   });
 
@@ -269,11 +298,11 @@ describe('opening a stream', () => {
     const first = rig({ saved: { t1: CAP } });
     const a = connected(first, 4096);
     a.socket.open();
-    expect(attachJson(a.socket)).toEqual({ v: 1, cap: CAP, from_offset: 4096 });
+    expect(attachJson(a.socket)).toEqual({ v: 2, cap: CAP, from_offset: 4096 });
     const second = rig({ saved: { t1: CAP } });
     const b = connected(second, 0);
     b.socket.open();
-    expect(attachJson(b.socket)).toEqual({ v: 1, cap: CAP, from_offset: 0 });
+    expect(attachJson(b.socket)).toEqual({ v: 2, cap: CAP, from_offset: 0 });
   });
 
   it('sends nothing before the stream is open, and what the feed sends meanwhile goes after the attach, in the order it was sent', () => {
@@ -445,11 +474,137 @@ describe('the frames the host sends', () => {
   });
 });
 
+describe('the frames of protocol version 2', () => {
+  it('hands the bytes of input the host applied on as a number, in the order the host sent them', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x81, jsonOf({ v: 2, input_applied: 0 })));
+    socket.deliver(frame(0x87, u64(3)));
+    socket.deliver(frame(0x87, u64(70_000)));
+    expect(said.map((one) => one[0])).toEqual(['ready', 'applied', 'applied']);
+    expect(said.slice(1)).toEqual([['applied', 3], ['applied', 70_000]]);
+    expect(socket.closed).toBe(0);
+  });
+
+  it('says the version the host speaks when it refuses the attach, and ends the stream', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x89, jsonOf({ v: 3 })));
+    expect(said).toEqual([['unsupported', 3]]);
+    expect(socket.closed).toBeGreaterThan(0);
+    expect(r.calls.filter(([name]) => name === 'ListChannelTerminals')).toEqual([]);
+  });
+
+  describe('a terminal another stream took (`taken-over`): the stream stays open as a watcher', () => {
+    it('is told takenOver and keeps the stream: it is not closed, and is not told as over', () => {
+      const r = rig({ saved: { t1: CAP } });
+      const { socket, said } = connected(r);
+      socket.open();
+      socket.deliver(frame(0x81, jsonOf({ v: 2 })));
+      socket.deliver(frame(0x85));
+      expect(said.map((one) => one[0])).toEqual(['ready', 'takenOver']);
+      expect(socket.closed).toBe(0);
+      expect(socket.readyState).toBe(1);
+    });
+
+    it('is told released after it, once, and then the stream is over and closed', () => {
+      const r = rig({ saved: { t1: CAP } });
+      const { socket, said } = connected(r);
+      socket.open();
+      socket.deliver(frame(0x85));
+      socket.deliver(frame(0x88));
+      expect(said.map((one) => one[0])).toEqual(['takenOver', 'released']);
+      expect(socket.closed).toBeGreaterThan(0);
+      socket.deliver(frame(0x88));
+      expect(said.map((one) => one[0])).toEqual(['takenOver', 'released']);
+    });
+
+    it('is told ended after it, with how the terminal ended, and then the stream is over and closed', () => {
+      const r = rig({ saved: { t1: CAP } });
+      const { socket, said } = connected(r);
+      socket.open();
+      socket.deliver(frame(0x85));
+      socket.deliver(frame(0x84, jsonOf({ reason: 'exited', exit_code: 3, last_offset: 4 })));
+      expect(said).toEqual([['takenOver'], ['ended', { reason: 'exited', exit_code: 3, last_offset: 4 }]]);
+      expect(socket.closed).toBeGreaterThan(0);
+    });
+
+    it('is told closed, with no released and no ended, when the host closes the watcher (it watched longest of five) or the connection drops', () => {
+      const r = rig({ saved: { t1: CAP } });
+      const { socket, said } = connected(r);
+      socket.open();
+      socket.deliver(frame(0x85));
+      socket.drop();
+      expect(said.map((one) => one[0])).toEqual(['takenOver', 'closed']);
+    });
+
+    it('can still be left: a detach sent on it goes to the host, which closes the watcher', () => {
+      const r = rig({ saved: { t1: CAP } });
+      const { socket, link } = connected(r);
+      socket.open();
+      socket.deliver(frame(0x85));
+      const before = socket.sent.length;
+      link.detach();
+      expect(socket.sent.slice(before)).toEqual([Uint8Array.of(0x05)]);
+    });
+
+    it('is closed without a word when the feed closes the link, as any stream is', () => {
+      const r = rig({ saved: { t1: CAP } });
+      const { socket, said, link } = connected(r);
+      socket.open();
+      socket.deliver(frame(0x85));
+      link.close();
+      expect(socket.closed).toBeGreaterThan(0);
+      socket.drop();
+      expect(said.map((one) => one[0])).toEqual(['takenOver']);
+    });
+  });
+});
+
+describe('close on the stream (0x06, 0x8a)', () => {
+  it('sends close as one byte on the stream, and tells close-refused without ending the stream, also to a watcher and more than once', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said, link } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x81, jsonOf({ v: 2, input_applied: 0 })));
+    const before = socket.sent.length;
+    expect(link.end()).toBe(true);
+    expect(socket.sent.slice(before)).toEqual([Uint8Array.of(0x06)]);
+    socket.deliver(frame(0x85));
+    socket.deliver(frame(0x8a));
+    socket.deliver(frame(0x8a));
+    expect(said.map((one) => one[0])).toEqual(['ready', 'takenOver', 'closeRefused', 'closeRefused']);
+    expect(socket.closed).toBe(0);
+  });
+
+  it('waits behind the attach on a stream that is not open yet, and is refused on a stream that is over', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, link } = connected(r);
+    expect(link.end()).toBe(true);
+    expect(socket.sent).toEqual([]);
+    socket.open();
+    expect(socket.sent.map((one) => one[0])).toEqual([0x01, 0x06]);
+    socket.drop();
+    expect(link.end()).toBe(false);
+  });
+
+  it('closes the stream on a close-refused that has a payload', () => {
+    const r = rig({ saved: { t1: CAP } });
+    const { socket, said } = connected(r);
+    socket.open();
+    socket.deliver(frame(0x8a, bytesOf(1)));
+    expect(said.map((one) => one[0])).toEqual(['closed']);
+  });
+});
+
 describe('the end of a stream', () => {
   const ends: ReadonlyArray<readonly [string, (socket: FakeSocket) => void]> = [
     ['ended', (socket) => socket.deliver(frame(0x84, jsonOf({ reason: 'exited', last_offset: 0 })))],
-    ['takenOver', (socket) => socket.deliver(frame(0x85))],
+    ['released', (socket) => socket.deliver(frame(0x88))],
     ['notFound', (socket) => socket.deliver(frame(0x86))],
+    ['unsupported', (socket) => socket.deliver(frame(0x89, jsonOf({ v: 2 })))],
     ['closed', (socket) => {
       socket.drop(); 
     }],
@@ -468,6 +623,9 @@ describe('the end of a stream', () => {
     socket.deliver(frame(0x84, jsonOf({ reason: 'closed' })));
     socket.deliver(frame(0x85));
     socket.deliver(frame(0x86));
+    socket.deliver(frame(0x87, u64(1)));
+    socket.deliver(frame(0x88));
+    socket.deliver(frame(0x89, jsonOf({ v: 2 })));
     socket.drop();
     socket.fail();
     link.input(bytesOf(1));
@@ -501,6 +659,10 @@ describe('the end of a stream', () => {
     ['an empty message', (socket) => socket.deliver(new Uint8Array())],
     ['an output with no room for its offset', (socket) => socket.deliver(frame(0x82, bytesOf(0, 0, 0)))],
     ['a gap that is too short', (socket) => socket.deliver(frame(0x83, u64(1)))],
+    ['an applied that is too short', (socket) => socket.deliver(frame(0x87, bytesOf(0, 0, 0, 3)))],
+    ['an applied that is too long', (socket) => socket.deliver(frame(0x87, u64(3), bytesOf(0)))],
+    ['an applied that is no safe number', (socket) => socket.deliver(frame(0x87, u64(2 ** 60)))],
+    ['an unsupported that is not JSON', (socket) => socket.deliver(frame(0x89, encoder.encode('{nope')))],
     ['a ready that is not JSON', (socket) => socket.deliver(frame(0x81, encoder.encode('{nope')))],
     ['an ended that is not JSON', (socket) => socket.deliver(frame(0x84, encoder.encode('')))],
     ['a message that is text', (socket) => {
@@ -566,7 +728,7 @@ describe('a terminal the page holds no capability for', () => {
 
   it('answers every call as the host answers a capability that opens nothing, and does not call the host', async () => {
     const r = rig();
-    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1')]) {
+    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1'), r.channels.cwd('t1')]) {
       const error = await call.then(
         () => undefined,
         (failure: unknown) => failure,
@@ -591,7 +753,7 @@ describe('a terminal the host says is not there', () => {
     await turns();
     expect(again.said).toEqual([['notFound']]);
     expect(r.opened).toEqual(['terminal']);
-    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1')]) {
+    for (const call of [r.channels.close('t1'), r.channels.dismiss('t1'), r.channels.busy('t1'), r.channels.cwd('t1')]) {
       const error = await call.then(
         () => undefined,
         (failure: unknown) => failure,
@@ -612,7 +774,7 @@ describe('a terminal the host says is not there', () => {
     r.channels.connect('t1', 5, second.events);
     const next = socketOf(r, 1);
     next.open();
-    expect(attachJson(next)).toEqual({ v: 1, cap: CAP, from_offset: 5 });
+    expect(attachJson(next)).toEqual({ v: 2, cap: CAP, from_offset: 5 });
     next.drop();
     r.channels.connect('t1', undefined, recorder().events);
     expect(r.opened).toHaveLength(3);
@@ -665,7 +827,7 @@ describe('creating a terminal', () => {
     expect(session).not.toHaveProperty('cap');
     const { socket } = connected(r);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP });
   });
 
   it.each<readonly [string, unknown]>([
@@ -739,6 +901,24 @@ describe('the calls that name a terminal', () => {
     r.answers.busy = { state: 'busy', name: 'sleep' };
     await expect(r.channels.busy('t1')).resolves.toEqual({ state: 'busy', name: 'sleep' });
     expect(r.calls).toEqual([['ChannelTerminalBusy', CAP]]);
+  });
+
+  it('cwd answers what the host answers, by the capability, and asks nothing else', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.cwd = { path: '/usr' };
+    await expect(r.channels.cwd('t1')).resolves.toEqual({ path: '/usr' });
+    r.answers.cwd = { reason: 'query-failed' };
+    await expect(r.channels.cwd('t1')).resolves.toEqual({ reason: 'query-failed' });
+    expect(r.calls).toEqual([['ChannelTerminalCwd', CAP], ['ChannelTerminalCwd', CAP]]);
+  });
+
+  it('cwd forgets a capability the host refuses, as every call does', async () => {
+    const r = rig({ saved: { t1: CAP } });
+    r.answers.fails.ChannelTerminalCwd = notFound();
+    await expect(r.channels.cwd('t1')).rejects.toSatisfy((error: unknown) => r.channels.isGone(error));
+    r.calls.length = 0;
+    await r.channels.close('t1').catch(() => undefined);
+    expect(r.calls).toEqual([]);
   });
 });
 
@@ -886,7 +1066,7 @@ describe('where the capabilities are kept', () => {
     channels.connect('t2', 3, recorder().events);
     const socket = socketOf(r);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP_2, from_offset: 3 });
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP_2, from_offset: 3 });
   });
 
   it('is the tab\'s sessionStorage under one key, as JSON, and no other place', () => {
@@ -909,7 +1089,7 @@ describe('where the capabilities are kept', () => {
     loadTerminalChannels({ ...second.deps, storage }).connect('t1', undefined, recorder().events);
     const socket = socketOf(second);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP });
   });
 
   it('never blocks the window: a storage that cannot be read starts with no terminals, and says so without the capability', async () => {
@@ -1022,7 +1202,8 @@ describe('the capability, which nothing says', () => {
     failing.answers.fails.DismissChannelTerminal = echoing(CAP);
     failing.answers.fails.ListChannelTerminals = echoing(CAP);
     await failing.channels.create('t1', { cols: 80, rows: 24 });
-    for (const call of [failing.channels.busy('t1'), failing.channels.close('t1'), failing.channels.dismiss('t1'), failing.channels.list()]) {
+    failing.answers.fails.ChannelTerminalCwd = echoing(CAP);
+    for (const call of [failing.channels.busy('t1'), failing.channels.cwd('t1'), failing.channels.close('t1'), failing.channels.dismiss('t1'), failing.channels.list()]) {
       const error = await call.then(
         () => undefined,
         (failure: unknown) => failure,
@@ -1114,6 +1295,7 @@ describe('the errors that leave the channel', () => {
     ['close', 'CloseChannelTerminal', async (channels) => channels.close('t1')],
     ['dismiss', 'DismissChannelTerminal', async (channels) => channels.dismiss('t1')],
     ['busy', 'ChannelTerminalBusy', async (channels) => channels.busy('t1')],
+    ['cwd', 'ChannelTerminalCwd', async (channels) => channels.cwd('t1')],
     ['list', 'ListChannelTerminals', async (channels) => channels.list()],
     ['listed', 'ListChannelTerminals', async (channels) => channels.listed('t1')],
     ['create', 'CreateTerminal', async (channels) => channels.create('t2', { cols: 80, rows: 24 })],
@@ -1235,8 +1417,8 @@ describe('what a mutation of the channel would change', () => {
     channels.connect('t2', undefined, recorder().events);
     r.sockets[0]?.open();
     r.sockets[1]?.open();
-    expect(attachJson(socketOf(r, 0))).toEqual({ v: 1, cap: CAP_2 });
-    expect(attachJson(socketOf(r, 1))).toEqual({ v: 1, cap: CAP_3 });
+    expect(attachJson(socketOf(r, 0))).toEqual({ v: 2, cap: CAP_2 });
+    expect(attachJson(socketOf(r, 1))).toEqual({ v: 2, cap: CAP_3 });
   });
 
   it('attaches at once on a stream that is open already', () => {
@@ -1246,7 +1428,7 @@ describe('what a mutation of the channel would change', () => {
     const channels = createTerminalChannels({ ...r.deps, saved: { t1: CAP }, openStream: () => socket });
     channels.connect('t1', undefined, recorder().events);
     expect(socket.sent).toHaveLength(1);
-    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP });
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP });
   });
 
   it('does not forget a newer capability when an older stream is told not found', async () => {
@@ -1264,7 +1446,7 @@ describe('what a mutation of the channel would change', () => {
     r.channels.connect('t1', undefined, next.events);
     const socket = socketOf(r, 1);
     socket.open();
-    expect(attachJson(socket)).toEqual({ v: 1, cap: CAP_2 });
+    expect(attachJson(socket)).toEqual({ v: 2, cap: CAP_2 });
     expect(next.said).toEqual([]);
   });
 });

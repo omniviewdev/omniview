@@ -1,0 +1,161 @@
+#!/bin/bash
+# Negative controls for T3-channel-wire (docs/ui-next/status/T3-channel-wire.md; HOW-WE-WORK 5). Run from the repository root:
+#   bash docs/ui-next/status/T3-channel-wire/mutations.sh.txt [regexp of the control names to run]
+# Every control is a fault in a SCRATCH copy of one non-test source file, built with `go test -overlay`: the worktree is never edited.
+# For each control the tests named for it run twice:
+#   half 1: with the fault. They must fail, by an assertion (no panic, no build failure, no timeout of the binary).
+#   half 2: with the fault and the assertions the control is named for switched off (guarded() in the tests reads
+#           TERMINAL_CHANNEL_CONTROL_OFF). They must pass: nothing else in them catches the fault.
+export GOWORK=off GOTOOLCHAIN=local
+WT=${ROOT:-$PWD}
+ONLY=${ONLY:-${1:-.}}
+failed=0
+M=$(mktemp -d)
+trap 'rm -rf "$M"' EXIT
+cd "$WT" || exit 2
+T=backend/pkg/terminal
+
+# control NAME FILE TESTS GUARDS OLD NEW
+control() {
+  name="$1"; file="$2"; tests="$3"; guards="$4"; old="$5"; new="$6"
+  echo "$name" | grep -Eq "$ONLY" || return 0
+  cp "$WT/$file" "$M/$name.go"
+  if ! OLD="$old" NEW="$new" F="$M/$name.go" python3 - <<'PY'
+import os, sys
+p = os.environ["F"]; s = open(p).read(); o = os.environ["OLD"]
+if s.count(o) != 1:
+    sys.exit(1)
+open(p, "w").write(s.replace(o, os.environ["NEW"]))
+PY
+  then echo "CONTROL $name: FAULT NOT APPLIED (the old text is not in $file exactly once)"; failed=1; return 0; fi
+  printf '{"Replace":{"%s":"%s"}}' "$WT/$file" "$M/$name.go" > "$M/$name.json"
+  out1=$(go test -overlay="$M/$name.json" "./$T" -run "^($tests)\$" -count=1 -timeout 240s 2>&1); code1=$?
+  redtests=$(echo "$out1" | grep -E '^\s*--- FAIL' | sed -E 's/^\s*--- FAIL: ([A-Za-z0-9_]+).*/\1/' | sort -u | tr '\n' ' ')
+  out2=$(TERMINAL_CHANNEL_CONTROL_OFF="$guards" go test -overlay="$M/$name.json" "./$T" -run "^($tests)\$" -count=1 -timeout 240s 2>&1); code2=$?
+  if [ $code1 -eq 0 ]; then half1="UNDETECTED"
+  elif echo "$out1" | grep -Eq 'panic:|\[build failed\]|\[setup failed\]|test timed out'; then half1="NOT AN ASSERTION (panic, build or timeout)"
+  elif ! echo "$out1" | grep -q 'Error Trace\|never saw\|Condition never satisfied\|stream closed before'; then half1="NOT AN ASSERTION"
+  else half1="RED ($redtests)"; fi
+  if [ $code2 -eq 0 ]; then half2="GREEN with $guards off"; else half2="STILL RED with $guards off: $(echo "$out2" | grep -E '^\s*--- FAIL' | head -3 | tr '\n' ' ')"; fi
+  echo "CONTROL $name: half 1 $half1 | half 2 $half2"
+  case "$half1|$half2" in RED*"|GREEN with"*) ;; *) failed=1 ;; esac
+  return 0
+}
+
+control applied-counted-before-the-write $T/ordered.go \
+  'TestAppliedCountsTheBytesWrittenWhenTheWriteReturnsAndNotBefore|TestAppliedCountsOnlyTheBytesTheDeviceTookAndNothingForAResize' \
+  'applied-after-the-write,applied-counts-written' \
+  $'\t\tn, err := q.dev.Write(o.data)\n\t\tif o.applied != nil {\n\t\t\to.applied(n, len(o.data))\n\t\t}\n\t\treturn err' \
+  $'\t\tif o.applied != nil {\n\t\t\to.applied(len(o.data), len(o.data))\n\t\t}\n\t\t_, err := q.dev.Write(o.data)\n\t\treturn err'
+
+control refused-input-is-counted $T/channel_serve.go 'TestInputOfADisplacedStreamIsNeverCounted' 'refused-not-counted' \
+  $'if s.channel.holder != c || s.fate.set || s.ending.Load() {' $'if s.fate.set || s.ending.Load() {'
+
+control ready-leaves-out-the-queued-input $T/channel_serve.go \
+  'TestAWriteThatBlocksAcrossAReconnectIsCountedByTheNextReadyAndNotToldTwice|TestAppliedAndATakeoverAtOnceCountEveryByteOnceAndTellOnlyTheHolder' \
+  'ready-counts-queued-input,applied-from-the-ready-value' \
+  $'c.reported = c.writer.admitted.Load()' $'c.reported = c.writer.applied.Load()'
+
+control applied-ignores-the-ready-value $T/channel_serve.go \
+  'TestAWriteThatBlocksAcrossAReconnectIsCountedByTheNextReadyAndNotToldTwice|TestAppliedAndATakeoverAtOnceCountEveryByteOnceAndTellOnlyTheHolder' \
+  'applied-from-the-ready-value' \
+  $'reported: c.reported}' $'reported: 0}'
+
+control applied-one-frame-for-each-byte $T/channel_serve.go 'TestAppliedIsCoalescedWhileThePageTakesNothing' 'applied-coalesced' \
+  $'\t\tsd.reported = n\n\t\treturn c.ch.Send(appliedFrame(n)) == nil' $'\t\tsd.reported++\n\t\treturn c.ch.Send(appliedFrame(sd.reported)) == nil'
+
+control ready-says-no-input-applied $T/channel_serve.go 'TestAppliedSurvivesAReconnectAndTheNextStreamGoesOnFromIt' 'ready-input-applied,applied-after-the-write' \
+  $'Ended: ended, InputApplied: inputApplied,' $'Ended: ended, InputApplied: 0,'
+
+control a-watcher-is-sent-applied $T/channel_serve.go 'TestAppliedAndATakeoverAtOnceCountEveryByteOnceAndTellOnlyTheHolder' 'only-the-holder-is-told' \
+  $'\tswitch {\n\tcase c.evicted.Load():' \
+  $'\tif n := c.writer.applied.Load(); n > sd.reported {\n\t\tsd.reported = n\n\t\t_ = c.ch.Send(appliedFrame(n))\n\t}\n\tswitch {\n\tcase c.evicted.Load():'
+
+control the-displaced-stream-is-closed-at-once $T/channel_serve.go 'TestADisplacedStreamStaysAsAWatcherAndIsToldOnceWhenTheTerminalIsFree' \
+  'watcher-stays-open,displaced-cannot-type,released-once' \
+  $'\t\treturn c.ch.Send([]byte{frameTakenOver}) == nil' $'\t\t_ = c.ch.Send([]byte{frameTakenOver})\n\t\t_ = c.ch.Close()\n\t\treturn false'
+
+control watchers-are-not-bounded $T/channel.go 'TestAtMostFourStreamsWatchATerminalAndTheOldestIsClosedWithoutAFrame' 'watcher-bound' \
+  $'const channelWatchers = 4' $'const channelWatchers = 100'
+
+control released-when-the-terminal-is-ending $T/channel_serve.go 'TestTheHolderEndingAndTheTerminalEndingAtOnceAreToldInTheOrderTheyHappened' 'released-not-on-terminal-end' \
+  $'\t\t\ts.channel.freeLocked()\n\t\t}\n\t}\n\ts.mu.Unlock()' $'\t\t}\n\t\ts.channel.freeLocked()\n\t}\n\ts.mu.Unlock()'
+
+control the-end-is-not-sent-to-a-watcher $T/channel_serve.go 'TestAWatcherIsToldHowTheTerminalEndedAndNeverThatItIsFree' 'ended-not-released' \
+  $'\t\tif frame, err := endedFrame(*end); err == nil {\n\t\t\t_ = c.ch.Send(frame)\n\t\t}\n\t}\n\t_ = c.ch.Close()' $'\t\t_ = end\n\t}\n\t_ = c.ch.Close()'
+
+control released-is-sent-twice $T/channel_serve.go 'TestADisplacedStreamStaysAsAWatcherAndIsToldOnceWhenTheTerminalIsFree|TestAReleaseAndANewAttachAtOnceTellEveryWatcherOnceAndNeverEarly' 'released-once' \
+  $'\t\t_ = c.ch.Send([]byte{frameReleased})' $'\t\t_ = c.ch.Send([]byte{frameReleased})\n\t\t_ = c.ch.Send([]byte{frameReleased})'
+
+control a-watcher-that-ends-frees-the-others $T/channel_serve.go \
+  'TestAReleaseAndANewAttachAtOnceTellEveryWatcherOnceAndNeverEarly|TestAWatcherThatLeavesChangesNothingForTheHolderAndTheLease' 'released-only-when-free,watcher-is-not-holder' \
+  $'\ts.channel.unwatchLocked(c)\n' $'\ts.channel.unwatchLocked(c)\n\ts.channel.freeLocked()\n'
+
+control a-watcher-that-ends-lets-go-of-the-holder $T/channel_serve.go \
+  'TestAReleaseAndANewAttachAtOnceTellEveryWatcherOnceAndNeverEarly|TestAWatcherThatLeavesChangesNothingForTheHolderAndTheLease' 'released-only-when-free,watcher-is-not-holder' \
+  $'\tif s.channel.holder == c {\n\t\ts.channel.holder = nil' $'\tif true {\n\t\ts.channel.holder = nil'
+
+control an-evicted-watcher-is-not-closed $T/channel_serve.go 'TestAtMostFourStreamsWatchATerminalAndTheOldestIsClosedWithoutAFrame|TestAStormOfStreamsKeepsTheProtocolCountsEveryByteOnceAndLeavesNothing' 'watcher-bound,storm-end-state' \
+  $'\tcase c.evicted.Load():\n\tcase c.released.Load():' $'\tcase c.released.Load():'
+
+control the-queue-count-is-not-kept $T/channel_serve.go 'TestAStormOfStreamsKeepsTheProtocolCountsEveryByteOnceAndLeavesNothing' 'storm-applied' \
+  $'\t\t\tc.writer.admitted.Add(uint64(len(o.data)))' $'\t\t\t_ = o'
+
+control another-version-opens-the-terminal $T/channel_serve.go 'TestAnAttachOfVersionOneIsRefusedWithTheUnsupportedFrameWhateverTheCapability' 'unsupported-closes,version-refusal-opens-nothing' \
+  $'\t\t_ = ch.Send(unsupportedFrame())\n\t\treturn' $'\t\t_ = ch.Send(unsupportedFrame())'
+
+control no-unwatch $T/channel_serve.go 'TestAWatcherThatLeftTakesNoPlaceOfTheFourAndNoLiveWatcherIsEvictedForIt' 'left-watcher-forgotten' \
+  $'\ts.channel.unwatchLocked(c)\n\tif s.channel.holder == c {' $'\tif s.channel.holder == c {'
+
+control ended-ready-says-the-count $T/channel_serve.go 'TestTheReadyOfTheKeptEndOfATerminalSaysNoInputAppliedAndHowItEnded' 'ended-ready-zero' \
+  $'&kept.end, 0, false)' $'&kept.end, 7, false)'
+
+control version-before-capability-shape $T/channel_serve.go 'TestTheAttachIsParsedCapabilityShapeFirstThenVersionAndNeitherAnswerLooksAtATerminal' 'cap-shape-before-version' \
+  $'err != nil || req.Cap == "" || req.V == 0 ||' $'err != nil || req.V == 0 ||'
+
+control close-ends-for-any-stream $T/channel_serve.go 'TestADisplacedHoldersCloseIsRefusedAndTheNewHolderKeepsTheTerminalAndIsNotToldOfAnEnd|TestEveryWatchersCloseIsRefusedAndTheirReleaseStillComes|TestACloseAndATakeoverAtOnceHaveOneOutcomeInEitherOrder' 'displaced-close-refused' \
+  $'\tif s.channel.holder != c {\n\t\ts.mu.Unlock()\n\t\tc.closeRefused.Store(true)' $'\tif false {\n\t\ts.mu.Unlock()\n\t\tc.closeRefused.Store(true)'
+
+control close-of-the-holder-is-ignored $T/channel_serve.go 'TestTheHoldersCloseOnItsStreamEndsTheTerminalAndTellsTheStreamHowItEnded|TestACloseAndATakeoverAtOnceHaveOneOutcomeInEitherOrder' 'holder-close-ends' \
+  $'\tdecided := !s.fate.set\n' $'\tdecided := false\n'
+
+control refused-close-is-not-answered $T/channel_serve.go 'TestADisplacedHoldersCloseIsRefusedAndTheNewHolderKeepsTheTerminalAndIsNotToldOfAnEnd|TestEveryWatchersCloseIsRefusedAndTheirReleaseStillComes' 'displaced-close-refused' \
+  $'\t\tc.closeRefused.Store(true)\n\t\tc.signal()\n\t\treturn' $'\t\treturn'
+
+control the-reader-waits-for-the-input $T/channel_serve.go 'TestTheHoldersCloseIsReadWhileAnInputWaitsForAProgramThatNeverReads' 'close-while-input-waits' \
+  $'\t\ts.closeFrom(c)\n\t\treturn true' $'\t\t<-c.lane.done\n\t\ts.closeFrom(c)\n\t\treturn true'
+
+control the-lane-is-not-bounded $T/channel_lane.go 'TestAStreamThatSendsMoreInputThanTheHostHoldsForABlockedTerminalIsClosedAndTheLeaseRuns' 'input-overflow-closes' \
+  $'const laneBytes = 8 << 20' $'const laneBytes = 1 << 40'
+
+control the-count-is-shared-by-every-writer $T/channel_serve.go 'TestTheInputCountIsTheWritersOwnAcrossStreamsOfOtherWriters' 'writer-count' \
+  $'c.writer, c.writerKnown = s.channel.writerLocked(c.writerID)' $'c.writer, c.writerKnown = s.channel.writerLocked("00000000000000000000000000000000")'
+
+control the-writer-is-not-validated $T/channel_serve.go 'TestAWriterIsValidatedAndTheHostKeepsTheLastEight' 'writer-validated' \
+  $' || !validWriter(req.Writer) {' $' {'
+
+control the-writers-are-not-bounded $T/channel.go 'TestAWriterIsValidatedAndTheHostKeepsTheLastEight' 'writer-bound' \
+  $'const channelWriters = 8' $'const channelWriters = 800'
+
+control a-short-write-counts-whole $T/channel.go 'TestAShortWriteThatFailsIsNotCountedByTheNextReady' 'ready-short-write' \
+  $'\tif given > took {' $'\tif false {'
+
+control ack-waits-behind-the-input $T/channel_serve.go 'TestAcknowledgementsStillFreeTheWindowWhileAnInputWriteIsBlocked' 'ack-inline' \
+  $'\t\ts.ackFrom(c, binary.BigEndian.Uint32(body)) // acted on as read, like close: no order against input matters to it\n\t\treturn true' \
+  $'\t\tfor {\n\t\t\tc.lane.mu.Lock()\n\t\t\tidle := len(c.lane.items) == 0 && !c.lane.admitting && !c.lane.waitingRoom\n\t\t\tc.lane.mu.Unlock()\n\t\t\tif idle {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tselect {\n\t\t\tcase <-c.ch.Done():\n\t\t\t\treturn false\n\t\t\tcase <-time.After(time.Millisecond):\n\t\t\t}\n\t\t}\n\t\ts.ackFrom(c, binary.BigEndian.Uint32(body))\n\t\treturn true'
+
+control the-host-always-knows-the-writer $T/channel.go 'TestReadySaysWhetherTheHostKnowsTheWriter' 'writer-known' \
+  $'\treturn w, false\n}' $'\treturn w, true\n}'
+
+control the-host-never-knows-the-writer $T/channel.go 'TestReadySaysWhetherTheHostKnowsTheWriter' 'writer-known' \
+  $'\t\t\treturn w, true\n' $'\t\t\treturn w, false\n'
+
+control a-kept-end-knows-the-writer $T/channel_serve.go 'TestTheReadyOfTheKeptEndOfATerminalSaysNoInputAppliedAndHowItEnded' 'ended-ready-zero' \
+  $'&kept.end, 0, false)' $'&kept.end, 0, true)'
+
+control ack-settles-the-lane-first $T/channel_serve.go 'TestAcknowledgementsStillFreeTheWindowWhileAnInputWriteIsBlocked' 'ack-inline' \
+  $'\t\ts.ackFrom(c, binary.BigEndian.Uint32(body)) // acted on as read, like close: no order against input matters to it\n\t\treturn true' \
+  $'\t\tc.lane.settle()\n\t\ts.ackFrom(c, binary.BigEndian.Uint32(body))\n\t\treturn true'
+
+# The run fails when a selected control was not red with its fault and green with its guards off.
+exit $failed

@@ -1,6 +1,6 @@
 import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
 import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
+import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -14,6 +14,10 @@ export type FakeTerminalFeed = TerminalFeedHandle & {
   readonly reads: () => number;
   /** What was typed, in the order it was given. */
   readonly typed: () => readonly string[];
+  /** What was written as the emulator's own reply to a query (`{ reply: true }`), as opposed to what the person typed. */
+  readonly replies: () => readonly string[];
+  /** The raw bytes of `writeBinary`, in the order they were given. */
+  readonly binaries: () => readonly Uint8Array[];
   /** The sizes asked for, as [columns, rows], in order. */
   readonly sizes: () => ReadonlyArray<readonly [number, number]>;
   /** A new status: only what is given changes, and every listener is told. */
@@ -39,6 +43,8 @@ export type FakeTerminalFeedOptions = {
   readonly close?: (() => Promise<void> | void) | undefined;
   /** What the feed answers when it is asked what runs in it; default: the feed cannot tell (it has no such member). */
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
+  /** What the feed answers when it is asked where a new terminal opened from it starts; default: the feed cannot tell (it has no such member). */
+  readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
   /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`, unless `takeReplay` says it has). */
   readonly replay?: TerminalReplay | undefined;
   /** The feed has a `leave`, counted by `left`. Default: it has none. */
@@ -60,6 +66,8 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
   const acks: number[] = [];
   let woken = false;
   const typed: string[] = [];
+  const replies: string[] = [];
+  const binaries: Uint8Array[] = [];
   /** The calls of the typing that the feed took: what `inputs` says. */
   let taken = 0;
   const sizes: Array<readonly [number, number]> = [];
@@ -141,10 +149,20 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       held = held.slice(count);
       return { chunks, bytes: chunks.reduce((sum, chunk) => sum + chunk.length, 0) };
     },
-    write: (text) => {
+    write: (text, writeOptions) => {
       typed.push(text);
+      if (writeOptions?.reply === true) {
+        replies.push(text);
+      }
+
       // A real feed takes what is typed while the process starts or runs, and not a call with nothing in it, nor anything once it was closed or the session is over.
       if (text !== '' && closed === 0 && (status.state === 'starting' || status.state === 'running')) {
+        taken += 1;
+      }
+    },
+    writeBinary: (bytes) => {
+      binaries.push(bytes);
+      if (bytes.length > 0 && closed === 0 && (status.state === 'starting' || status.state === 'running')) {
         taken += 1;
       }
     },
@@ -159,6 +177,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
       acks.push(bytes);
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
+    ...(options.directory === undefined ? {} : { directory: options.directory }),
     ...(options.replay === undefined && options.takeReplay !== true ? {} : { takeReplay }),
     ...(options.leave === true ? { leave } : {}),
     ...(options.redraw === true ? { redraw } : {}),
@@ -170,6 +189,8 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     closed: () => closed,
     reads: () => reads,
     typed: () => typed,
+    replies: () => replies,
+    binaries: () => binaries,
     inputs: () => taken,
     sizes: () => sizes,
     acks: () => acks,
@@ -217,6 +238,8 @@ export type FakeEngine = Engine & {
   readonly focuses: () => number;
   /** What the user typed (or pasted): it reaches the listeners as the person's (`user`). */
   readonly type: (data: string) => void;
+  /** Raw bytes the emulator sends for the person (a legacy mouse report): they reach the `onBinary` listeners. */
+  readonly binary: (bytes: Uint8Array) => void;
   /** What the emulator says by itself, with no one typing (a focus report, an answer it was not asked for by a query it parsed): it reaches the listeners as the emulator's own, not the person's. */
   readonly say: (data: string) => void;
   /** Selects text (or clears the selection with `''`) and tells the listeners. */
@@ -289,6 +312,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
   const dataListeners = new Set<(data: string, user: boolean) => void>();
   const selectionListeners = new Set<() => void>();
   const bellListeners = new Set<() => void>();
+  const binaryListeners = new Set<(bytes: Uint8Array) => void>();
   let keys: ((event: KeyboardEvent) => boolean) | undefined;
   let host: HTMLElement | undefined;
   let size = { cols: options.cols, rows: options.rows };
@@ -408,6 +432,12 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
         dataListeners.delete(listener);
       };
     },
+    onBinary: (listener) => {
+      binaryListeners.add(listener);
+      return () => {
+        binaryListeners.delete(listener);
+      };
+    },
     onSelection: (listener) => {
       selectionListeners.add(listener);
       return () => {
@@ -458,6 +488,11 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     type: (data) => {
       emit(data, true);
     },
+    binary: (bytes) => {
+      for (const listener of [...binaryListeners]) {
+        listener(bytes);
+      }
+    },
     say: (data) => {
       emit(data, false);
     },
@@ -485,7 +520,7 @@ export function fakeEngine(options: EngineOptions, config: FakeEngineOptions = {
     measured: (next) => {
       measured = next;
     },
-    listeners: () => dataListeners.size + selectionListeners.size + bellListeners.size,
+    listeners: () => dataListeners.size + binaryListeners.size + selectionListeners.size + bellListeners.size,
     find: async () => {
       findAsks += 1;
       return Promise.resolve(finder);
@@ -575,9 +610,10 @@ export function fakeEngineLoader(config: FakeEngineOptions & { readonly deferred
 
 // ---- the terminal channel, for the tests of the feed and of the whole data path ----------------------------------------------------------------------------------------------------------------------------
 //
-// `TerminalChannels` (channel.ts) as the tests drive it: the test is the host. Every stream the feed opens is a `FakeStream` the test speaks on frame by frame (`ready`, `output`, `gap`, `ended`, `takenOver`,
-// `notFound`, `drop`), and what the feed sent on it is recorded as frames (`sent`), in the order it sent them. The contract of channel.ts is kept as the real one keeps it: a stream is over after one of the
-// four ends or after the feed closed it, and the host's frames after that, like the feed's, are mistakes of the test (the host's throw, the feed's are dropped and counted). The calls that answer (`create`, `close`, `dismiss`,
+// `TerminalChannels` (channel.ts) as the tests drive it: the test is the host. Every stream the feed opens is a `FakeStream` the test speaks on frame by frame (`ready`, `output`, `gap`, `applied`, `ended`, `takenOver`,
+// `released`, `notFound`, `unsupported`, `drop`), and what the feed sent on it is recorded as frames (`sent`), in the order it sent them. The contract of channel.ts is kept as the real one keeps it: a stream is over after one of the
+// five ends (`ended`, `released`, `notFound`, `unsupported`, `closed`) or after the feed closed it, and the host's frames after that, like the feed's, are mistakes of the test (the host's throw, the feed's are dropped and counted). `takenOver` is not an end: the
+// stream stays open as a watcher, and the host's only frames on it are `released` or `ended` (protocol, section 8). The calls that answer (`create`, `close`, `dismiss`,
 // `busy`, `list`, `listed`) are answered by what the test gives, and may be answered by a promise the test holds. Nothing here is a host: no ring, no credit, no timers.
 
 /** What the feed sent on a stream, in order. `input` carries the bytes as text, as the shell would read them. */
@@ -585,6 +621,7 @@ export type SentFrame =
   | { readonly kind: 'input'; readonly bytes: Uint8Array; readonly text: string }
   | { readonly kind: 'resize'; readonly cols: number; readonly rows: number }
   | { readonly kind: 'ack'; readonly bytes: number }
+  | { readonly kind: 'close' }
   | { readonly kind: 'detach' };
 
 /** What the test says in a `ready`: what it leaves out is a terminal at the start of its output, 80 by 24, with nothing switched on. */
@@ -598,7 +635,13 @@ export type ReadyInit = {
   readonly modes?: Readonly<Record<string, unknown>>;
   readonly startModes?: Readonly<Record<string, unknown>>;
   readonly shell?: string;
+  /** The directory the host says the shell started in (`ready.session.cwd`). Default: `/home/u`. */
+  readonly startedIn?: string;
   readonly ended?: unknown;
+  /** The bytes of input the host has applied from the capability, across streams (`ready.input_applied`). Default: 0. */
+  readonly inputApplied?: number;
+  /** Whether the host had a count for this feed's writer before this attach (`ready.writer_known`). Default: true. */
+  readonly writerKnown?: boolean;
   /** Whole members to put in the payload as they are, or `undefined` to leave a member out. */
   readonly raw?: Readonly<Record<string, unknown>>;
 };
@@ -607,14 +650,27 @@ export type FakeStream = {
   /** The terminal this stream is for, and the offset the feed asked from (`undefined`: the feed had nothing). */
   readonly id: string;
   readonly fromOffset: number | undefined;
+  /** The writer id the feed said in its attach (`undefined`: it said none). */
+  readonly writer: string | undefined;
   /** The first frame of the host. */
   readonly ready: (init?: ReadyInit) => void;
   /** Output from `offset`, as the bytes or the text as UTF-8. */
   readonly output: (offset: number, data: string | Uint8Array) => void;
   readonly gap: (from: number, to: number) => void;
+  /** `applied`: the bytes of input the host has applied from the capability, across streams, so far. */
+  readonly applied: (total: number) => void;
   /** How the terminal ended: `terminal.End` as the host sends it. Default: the shell exited with code 0. */
   readonly ended: (end?: unknown) => void;
+  /** Another stream took the terminal: this stream stays open as a watcher, which hears `released` or `ended` and nothing else. */
   readonly takenOver: () => void;
+  /** Frames the host may never send, for a test of how the feed takes a host that breaks the protocol: they reach the feed with no check of the stream's state. */
+  readonly raw: { readonly released: () => void };
+  /** `close-refused`: the stream's close ended nothing, it does not hold the terminal. The stream goes on (as a watcher). */
+  readonly closeRefused: () => void;
+  /** To a watcher: the terminal is running and free. The stream is over. */
+  readonly released: () => void;
+  /** The host speaks another version than the attach said (`{"v": version}`). The stream is over. */
+  readonly unsupported: (version?: unknown) => void;
   readonly notFound: () => void;
   /** The stream ends without a word of the host: a connection that dropped. */
   readonly drop: () => void;
@@ -652,6 +708,7 @@ export type ChannelCall =
   | { readonly kind: 'close'; readonly id: string }
   | { readonly kind: 'dismiss'; readonly id: string }
   | { readonly kind: 'busy'; readonly id: string }
+  | { readonly kind: 'cwd'; readonly id: string }
   | { readonly kind: 'listed'; readonly id: string }
   | { readonly kind: 'list' };
 
@@ -661,6 +718,8 @@ export type FakeChannelsOptions = {
   readonly close?: ((id: string) => Promise<void> | void) | undefined;
   readonly dismiss?: ((id: string) => Promise<void> | void) | undefined;
   readonly busy?: ((id: string) => unknown) | undefined;
+  /** What `cwd` answers (`ChannelTerminalCwd`: `{ path }` or `{ reason }`). Default: `{ path: '/home/u' }`. A function may answer with a promise the test holds, or throw. */
+  readonly cwd?: ((id: string) => unknown) | undefined;
   readonly list?: (() => unknown) | undefined;
   readonly listed?: ((id: string) => unknown) | undefined;
 };
@@ -685,7 +744,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
   const calls: ChannelCall[] = [];
   const text = new TextDecoder();
 
-  const connect = (id: string, fromOffset: number | undefined, events: ChannelEvents): ChannelLink => {
+  const connect = (id: string, fromOffset: number | undefined, events: ChannelEvents, writer?: string): ChannelLink => {
     const sent: SentFrame[] = [];
     let open = true;
     let byFeed = false;
@@ -693,9 +752,18 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     let pending = 0;
     let dead = false;
     let inputsLeft = Number.POSITIVE_INFINITY;
+    let watching = false;
     const alive = (what: string): void => {
       if (!open) {
         throw new Error(`the test spoke on a stream that is over (${what})`);
+      }
+    };
+
+    /** The host's frames of a stream it took the terminal from: only `released` and `ended`. */
+    const holder = (what: string): void => {
+      alive(what);
+      if (watching) {
+        throw new Error(`the test spoke on a watcher: the host sends it only released or ended (${what})`);
       }
     };
 
@@ -727,21 +795,24 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     streams.push({
       id,
       fromOffset,
+      writer,
       ready: (init = {}) => {
-        alive('ready');
+        holder('ready');
         const size = init.size ?? { cols: 80, rows: 24 };
         const payload: Record<string, unknown> = {
-          v: 1,
+          v: 2,
           start: init.start ?? 0,
           end: init.end ?? init.start ?? 0,
           lost: init.lost ?? 0,
+          input_applied: init.inputApplied ?? 0,
+          writer_known: init.writerKnown ?? true,
           size,
           start_size: init.startSize ?? size,
           modes: { ...PLAIN_MODES, ...init.modes },
           start_modes: { ...PLAIN_MODES, ...init.startModes },
           cwd: { path: '/home/u' },
           busy: { state: 'idle' },
-          session: { id, pid: 4242, shell: { path: `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
+          session: { id, pid: 4242, shell: { path: `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
           lease_ms: 300_000,
           ended: init.ended ?? null,
           ...init.raw,
@@ -755,11 +826,11 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         events.ready(payload);
       },
       output: (offset, data) => {
-        alive('output');
+        holder('output');
         events.output(offset, typeof data === 'string' ? new TextEncoder().encode(data) : data);
       },
       gap: (from, to) => {
-        alive('gap');
+        holder('gap');
         events.gap(from, to);
       },
       ended: (end = { reason: 'exited', exit_code: 0 }) => {
@@ -767,13 +838,40 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         finish();
         events.ended(end);
       },
+      applied: (total) => {
+        holder('applied');
+        events.applied(total);
+      },
       takenOver: () => {
-        alive('taken-over');
-        finish();
+        holder('taken-over');
+        watching = true;
         events.takenOver();
       },
+      raw: {
+        released: () => {
+          events.released();
+        },
+      },
+      closeRefused: () => {
+        alive('close-refused');
+        events.closeRefused();
+      },
+      released: () => {
+        alive('released');
+        if (!watching) {
+          throw new Error('the test sent released to a stream that holds the terminal');
+        }
+
+        finish();
+        events.released();
+      },
+      unsupported: (version = 2) => {
+        holder('unsupported');
+        finish();
+        events.unsupported(version);
+      },
       notFound: () => {
-        alive('not-found');
+        holder('not-found');
         finish();
         events.notFound();
       },
@@ -809,6 +907,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
       ack: (bytes) => {
         send({ kind: 'ack', bytes });
       },
+      end: () => send({ kind: 'close' }),
       detach: () => {
         send({ kind: 'detach' });
       },
@@ -834,7 +933,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         ...(launch.cwd === undefined ? {} : { cwd: launch.cwd }),
         ...(launch.env === undefined ? {} : { env: launch.env }),
       });
-      return options.create === undefined ? { id, shell: { path: '/bin/zsh', name: 'zsh' } } : options.create(id);
+      return options.create === undefined ? { id, shell: { path: '/bin/zsh', name: 'zsh' }, cwd: launch.cwd ?? '/home/u' } : options.create(id);
     },
     connect,
     close: async (id) => {
@@ -848,6 +947,10 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
     busy: async (id) => {
       calls.push({ kind: 'busy', id });
       return options.busy === undefined ? { state: 'idle' } : options.busy(id);
+    },
+    cwd: async (id) => {
+      calls.push({ kind: 'cwd', id });
+      return options.cwd === undefined ? { path: '/home/u' } : options.cwd(id);
     },
     list: async () => {
       calls.push({ kind: 'list' });

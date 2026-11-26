@@ -80,6 +80,9 @@ function checkNodes(nodes: unknown, where: string, problems: Problems, seen: Set
 /** A detail page: the page of one object. */
 const isDetail = (page: unknown): boolean => isRecord(page) && page.kind === 'detail';
 
+/** What draws a custom page's Body: a function (a component), or the object React makes of one (`memo`, `forwardRef`, `lazy`), which is no function and carries React's own symbol. */
+const isComponent = (value: unknown): boolean => isFunction(value) || (isRecord(value) && typeof value.$$typeof === 'symbol');
+
 /** What a page's tile must say: the glyph of its kind, before the heading. A detail page and an overview page have the same one. */
 function checkTile(definition: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
   const tile = definition.tile;
@@ -141,6 +144,29 @@ function checkOverviewDefinition(definition: Readonly<Record<string, unknown>>, 
   checkTabs(definition, at, problems);
 }
 
+/** What a custom page must say: where it is read, its tab's words and glyph, who scrolls it (optional) and the component that draws it. It has no definition and no data hook: the plugin draws the whole page. */
+function checkCustomPage(page: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
+  if (page.scope !== 'plugin' && page.scope !== 'connection') {
+    problems.push(`${at}.scope is "${String(page.scope)}", and a custom page is read in the "plugin" or in a "connection"`);
+  }
+
+  if (!isText(page.title)) {
+    problems.push(`${at}.title is not a non-empty string`);
+  }
+
+  if (!isText(page.icon)) {
+    problems.push(`${at}.icon is not a glyph name`);
+  }
+
+  if (page.layout !== undefined && page.layout !== 'document' && page.layout !== 'pane') {
+    problems.push(`${at}.layout is neither "document" nor "pane"`);
+  }
+
+  if (!isComponent(page.Body)) {
+    problems.push(`${at}.Body is not a component`);
+  }
+}
+
 /** A detail page's list is a list page of this contribution: its crumb and its sidebar entry would lead nowhere otherwise. */
 function checkListOf(page: unknown, pages: Readonly<Record<string, unknown>>, at: string, problems: Problems): void {
   if (!isDetail(page) || !isRecord(page) || !isRecord(page.definition) || !isRecord(page.definition.list)) {
@@ -154,14 +180,42 @@ function checkListOf(page: unknown, pages: Readonly<Record<string, unknown>>, at
   }
 }
 
+/**
+ * The landing is a custom page of scope `plugin`: the page the window opens when the plugin is opened and no connection is named, which is read in none. One sentence says what the key named instead. A page of a kind this version does not know, or of a scope it does not
+ * know, has its own problem and is not said again here.
+ */
+function checkLanding(landing: unknown, pages: Readonly<Record<string, unknown>>, problems: Problems): void {
+  const said = String(landing);
+  if (typeof landing !== 'string' || !Object.hasOwn(pages, landing)) {
+    problems.push(`landing "${said}" is not one of the pages`);
+    return;
+  }
+
+  const page = pages[landing];
+  if (!isRecord(page)) {
+    return;
+  }
+
+  if (page.kind === 'list' || page.kind === 'detail' || page.kind === 'overview') {
+    problems.push(`landing "${landing}" is ${page.kind === 'overview' ? 'an overview' : `a ${page.kind}`} page: a landing is a custom page of scope "plugin"`);
+  } else if (page.kind === 'custom' && page.scope === 'connection') {
+    problems.push(`landing "${landing}" is a custom page of scope "connection": a landing is read in no connection, so its scope is "plugin"`);
+  }
+}
+
 function checkPage(page: unknown, at: string, problems: Problems): void {
   if (!isRecord(page)) {
     problems.push(`${at} is not an object`);
     return;
   }
 
-  if (page.kind !== 'list' && page.kind !== 'detail' && page.kind !== 'overview') {
-    problems.push(`${at}.kind is "${String(page.kind)}", and this version draws "list", "detail" and "overview" pages`);
+  if (page.kind !== 'list' && page.kind !== 'detail' && page.kind !== 'overview' && page.kind !== 'custom') {
+    problems.push(`${at}.kind is "${String(page.kind)}", and this version draws "list", "detail", "overview" and "custom" pages`);
+  }
+
+  if (page.kind === 'custom') {
+    checkCustomPage(page, at, problems);
+    return;
   }
 
   if (!isFunction(page.usePage)) {
@@ -451,6 +505,10 @@ function checkContribution(value: Readonly<Record<string, unknown>>): Problems {
       problems.push(`home "${String(value.home)}" is not one of the pages`);
     } else if (isDetail(pages[value.home])) {
       problems.push(`home "${value.home}" is a detail page, which needs an object: the window could not open it`);
+    }
+
+    if (value.landing !== undefined) {
+      checkLanding(value.landing, pages, problems);
     }
   }
 

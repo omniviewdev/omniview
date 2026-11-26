@@ -11,6 +11,8 @@ const text = new TextDecoder();
 const CAP = /^[A-Za-z0-9_-]{43}$/;
 const MODES_ON = { known: true, alt_screen: true, bracketed_paste: true, application_cursor: true, focus_events: true, cursor_hidden: true, mouse_tracking: 1, mouse_encoding: 2, kitty_keyboard: [] };
 const timeout = { timeout: 30_000 };
+const WRITER = 'a1'.repeat(16);
+const OTHER = 'b2'.repeat(16);
 
 /** Makes a terminal and answers it with its capability. */
 const make = async (host, id = 't', launch = { channel: true, cols: 80, rows: 24 }) => {
@@ -24,8 +26,8 @@ const make = async (host, id = 't', launch = { channel: true, cols: 80, rows: 24
  * A page that follows the protocol: it opens a stream, sends `attach` (with `from` when it has the bytes before it), keeps every frame the host sends in order, applies the output by offset (a frame that does not join is a failure
  * of the host, and the test says so), acknowledges what it took when `ack` is on (the first acknowledgement, of nothing, turns the host's window on), and says when the stream is closed.
  */
-function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } = {}) {
-  const page = { frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, notFound: false, waiters: [], acked: 0, live: 0 };
+function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true, writer } = {}) {
+  const page = { frames: [], closed: false, ready: undefined, applied: [], raw: [], next: undefined, end: undefined, ended: undefined, gaps: [], taken: false, released: false, refused: 0, unsupported: undefined, counts: [], notFound: false, waiters: [], acked: 0, live: 0 };
   const wake = () => {
     for (const waiter of page.waiters.splice(0)) waiter();
   };
@@ -61,6 +63,14 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } 
         page.ended = read.end;
       } else if (read.kind === 'taken-over') {
         page.taken = true;
+      } else if (read.kind === 'applied') {
+        page.counts.push(read.n);
+      } else if (read.kind === 'close-refused') {
+        page.refused += 1;
+      } else if (read.kind === 'released') {
+        page.released = true;
+      } else if (read.kind === 'unsupported') {
+        page.unsupported = read.v;
       } else if (read.kind === 'not-found') {
         page.notFound = true;
       }
@@ -78,7 +88,7 @@ function pageOf(host, cap, { from, ack = true, sendAttach = true, join = true } 
   };
 
   page.bytes = () => Buffer.concat(page.applied);
-  if (sendAttach) page.stream.send(pageFrames.attach(cap, from));
+  if (sendAttach) page.stream.send(pageFrames.attach(cap, from, undefined, writer));
   return page;
 }
 
@@ -141,7 +151,7 @@ test('the host sends ready first, then the replay and the live output by offset 
   const page = pageOf(host, cap);
   await page.until('ready', () => page.ready !== undefined);
   assert.equal(page.frames[0].kind, 'ready', 'ready is the first frame, always');
-  assert.equal(page.ready.v, 1);
+  assert.equal(page.ready.v, 2);
   assert.equal(page.ready.start, 0);
   assert.equal(page.ready.lost, 0);
   assert.deepEqual(page.ready.size, { cols: 80, rows: 24 });
@@ -176,7 +186,7 @@ test('a stream that opens nothing is answered with the one frame, byte for byte,
     return frame;
   };
 
-  const first = [pageFrames.attach(wrongCap), pageFrames.attach('t'), pageFrames.attach(''), asked({ v: 2, cap }), asked({ cap }), asked({ v: 1, cap: 7 }), pageFrames.input('hi'), pageFrames.ack(1), new Uint8Array([0x99]), new Uint8Array(0), new Uint8Array([FRAME.attach]), pageFrames.attach('x'.repeat(1100))];
+  const first = [pageFrames.attach(wrongCap), pageFrames.attach('t'), pageFrames.attach(''), asked({ v: 0, cap }), asked({ cap }), asked({ v: '2', cap }), asked({ v: 1, cap: 7 }), asked({ v: 2, cap, from_offset: -1 }), pageFrames.input('hi'), pageFrames.ack(1), new Uint8Array([0x99]), new Uint8Array(0), new Uint8Array([FRAME.attach]), pageFrames.attach('x'.repeat(1100))];
   for (const frame of first) {
     const page = pageOf(host, cap, { sendAttach: false });
     page.stream.send(frame);
@@ -333,7 +343,7 @@ test('the modes are the same however the output is cut, and a ring answers them 
   assert.equal(scanner.boundary, true);
 });
 
-test('the holder is the stream: a second stream takes the terminal, the first is told and cannot type, and a stream that ends detaches it', timeout, async () => {
+test('the holder is the stream: a second stream takes the terminal, the first is told, stays open as a watcher and cannot type, and a stream that ends detaches it', timeout, async () => {
   const host = createHost({ leaseMs: 60_000 });
   const { cap } = await make(host);
   const first = pageOf(host, cap);
@@ -341,8 +351,9 @@ test('the holder is the stream: a second stream takes the terminal, the first is
   first.stream.send(pageFrames.input('zz'));
   assert.equal(host.log.writes.at(-1).data, 'zz');
   const second = pageOf(host, cap);
-  await first.until('taken', () => first.closed);
+  await first.until('taken', () => first.taken);
   assert.equal(first.frames.at(-1).kind, 'taken-over');
+  assert.equal(first.closed, false, 'the displaced stream stays open as a watcher');
   assert.equal(host.state('t').holder, second.stream.id);
   assert.equal(host.log.taken.length, 1);
   // The displaced stream cannot type, and its acknowledgements count for nothing.
@@ -423,7 +434,7 @@ test('the window of acknowledgements: nothing is held back until the first ackno
   // A stream that does not hold the terminal gets nothing for its acknowledgement.
   const stale = host.openStream(() => undefined);
   stale.send(pageFrames.attach(other.cap));
-  await page.until('taken', () => page.closed);
+  await page.until('taken', () => page.taken);
   const credited = host.log.acked;
   page.stream.send(pageFrames.ack(1_000_000));
   assert.equal(host.log.acked, credited, 'an acknowledgement of a stream that does not hold the terminal counts for nothing');
@@ -553,7 +564,7 @@ test('the answer of an attach can be held: the host has taken the terminal and t
   await first.until('ready', () => first.ready !== undefined);
   const hold = host.holdReady('t');
   const second = pageOf(host, cap);
-  await first.until('taken', () => first.taken && first.closed);
+  await first.until('taken', () => first.taken);
   assert.equal(hold.held(), true);
   assert.equal(second.ready, undefined, 'the answer waits');
   assert.equal(host.state('t').holder, second.stream.id);
@@ -646,7 +657,7 @@ test('a ring is bounded whatever the shell writes: a sequence that stays open pa
   assert.equal(ring.end - ring.start, ring.held);
 });
 
-test('a frame that waited and lost its right meanwhile is refused, a hold ends once and cancels its own timer, and a close that wins over a natural end leaves nothing', timeout, async () => {
+test('a frame that waited and was admitted before the terminal was taken is applied, a hold ends once and cancels its own timer, and a close that wins over a natural end leaves nothing', timeout, async () => {
   const host = createHost({ leaseMs: 60_000 });
   const { cap } = await make(host);
   const first = pageOf(host, cap);
@@ -656,8 +667,13 @@ test('a frame that waited and lost its right meanwhile is refused, a hold ends o
   const second = pageOf(host, cap);
   await second.until('ready', () => second.ready !== undefined);
   host.release();
-  assert.equal(host.log.writes.length, 0, 'the frame of the stream that lost the terminal is not applied');
-  assert.equal(host.log.frames.find((entry) => entry.kind === 'write').outcome, 'refused');
+  assert.deepEqual(
+    host.log.writes.map((entry) => entry.data),
+    ['held'],
+    'what the stream admitted before it lost the terminal is applied (and counted by the ready of the new holder)',
+  );
+  assert.equal(host.log.frames.find((entry) => entry.kind === 'write').outcome, 'applied');
+  host.log.writes.length = 0;
   // A hold released early does not release the next one when its own timer would have fired.
   host.slow(1, 30);
   second.stream.send(pageFrames.input('a'));
@@ -747,6 +763,190 @@ test('a frame behind a held input of the same stream waits for it; an attach dur
   closing.stop();
 });
 
+// ---- version 2: input applied, watchers, released, unsupported ----------------------------------------------------------------------------------------------------------------------------------------
+
+test('the host speaks version 2: ready says so and counts the input applied, and an attach of another version gets `unsupported` for a capability that opens a terminal and one that does not, and opens nothing', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const first = pageOf(host, cap);
+  await first.until('ready', () => first.ready !== undefined);
+  assert.equal(first.ready.v, 2);
+  assert.equal(first.ready.input_applied, 0);
+  first.stream.close();
+  const other = `${cap.slice(0, 42)}${cap.endsWith('A') ? 'B' : 'A'}`;
+  const bytes = [];
+  for (const [version, capability] of [[1, cap], [1, other], [3, cap], [3, other]]) {
+    const page = pageOf(host, cap, { sendAttach: false });
+    page.stream.send(pageFrames.attach(capability, undefined, version));
+    await page.until('closed', () => page.closed);
+    assert.equal(page.unsupported, 2);
+    assert.deepEqual(page.frames.map((read) => read.kind), ['unsupported']);
+    bytes.push([...page.raw[0]]);
+  }
+
+  assert.equal(new Set(bytes.map((one) => JSON.stringify(one))).size, 1, 'the same bytes whatever the capability: the version is decided before it is looked at');
+  assert.equal(host.state('t').holder, null, 'a refused attach opens nothing');
+  assert.deepEqual(host.log.attaches.filter((entry) => entry.outcome === 'unsupported').map((entry) => entry.v), [1, 1, 3, 3]);
+  host.stop();
+});
+
+test('the holder is told how much input was applied, across the streams of one writer: only when it is more than it was told, never a number that goes down or repeats, and a watcher is told nothing; the ready of the next stream counts what the last had admitted', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const first = pageOf(host, cap, { writer: WRITER });
+  await first.until('ready', () => first.ready !== undefined);
+  first.stream.send(pageFrames.input('abc'));
+  first.stream.send(pageFrames.input(''));
+  first.stream.send(pageFrames.input('de'));
+  await first.until('applied 5', () => first.counts.at(-1) === 5);
+  assert.deepEqual(first.counts, [3, 5], 'one frame for each input that was applied, an empty input counts nothing');
+  assert.equal(host.state('t').applied, 5);
+  // The host is slow to apply the next frame: a second stream takes the terminal meanwhile, and its ready counts what the first had admitted, so that the page does not send it again.
+  host.slow(1, Infinity);
+  first.stream.send(pageFrames.input('xy'));
+  const second = pageOf(host, cap, { writer: WRITER });
+  await second.until('ready', () => second.ready !== undefined);
+  assert.equal(second.ready.input_applied, 7, 'applied (5) and what is queued ahead (2)');
+  host.release();
+  assert.deepEqual(host.log.writes.map((entry) => entry.data), ['abc', 'de', 'xy'], 'what the displaced stream had admitted is applied');
+  second.stream.send(pageFrames.input('z'));
+  await second.until('applied 8', () => second.counts.at(-1) === 8);
+  assert.deepEqual(second.counts, [8], 'the number is the terminal\'s: the 2 that the first stream admitted are in the ready, not told again');
+  assert.deepEqual(first.counts, [3, 5], 'a watcher is told nothing');
+  // What a displaced stream sends after the handover is refused and never counted.
+  first.stream.send(pageFrames.input('no'));
+  assert.equal(host.state('t').applied, 8);
+  assert.equal(host.log.frames.filter((entry) => entry.stream === first.stream.id && entry.kind === 'write').at(-1).outcome, 'refused');
+  host.stop();
+});
+
+test('a displaced stream stays open as a watcher and is told once when the terminal is free (`released`) and closed; it is not a holder: its leaving changes nothing, and the terminal is on its lease', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const first = pageOf(host, cap);
+  await first.until('ready', () => first.ready !== undefined);
+  const second = pageOf(host, cap);
+  await second.until('ready', () => second.ready !== undefined);
+  await first.until('taken', () => first.taken);
+  assert.equal(first.closed, false);
+  assert.equal(host.state('t').watchers, 1);
+  // Nothing it sends counts, and it is sent no output.
+  first.stream.send(pageFrames.ack(3));
+  first.stream.send(pageFrames.resize(100, 30));
+  const before = first.frames.length;
+  host.append('t', 'while the second tab holds it\r\n');
+  await second.until('output', () => second.bytes().includes('while the second'));
+  assert.equal(first.frames.length, before, 'a watcher is sent no output');
+  assert.equal(first.released, false, 'not told while another stream holds the terminal');
+  // The holder ends while the terminal runs: the watcher is told, once, and closed; the terminal is on its lease.
+  second.stream.close();
+  await first.until('released', () => first.released && first.closed);
+  assert.deepEqual(first.frames.slice(before).map((read) => read.kind), ['released']);
+  assert.equal(host.state('t').holder, null);
+  assert.equal(host.state('t').watchers, 0);
+  assert.ok((await host.call('ListChannelTerminals', [[cap]]))[0].lease_expires_unix_ms > 0);
+  // A watcher that leaves changes nothing for the holder.
+  const third = pageOf(host, cap);
+  await third.until('ready', () => third.ready !== undefined);
+  const fourth = pageOf(host, cap);
+  await fourth.until('ready', () => fourth.ready !== undefined);
+  await third.until('taken', () => third.taken);
+  third.stream.close();
+  assert.equal(host.state('t').holder, fourth.stream.id);
+  assert.equal(host.state('t').watchers, 0);
+  host.stop();
+});
+
+test('a watcher is told how the terminal ended, never that it is free, when the terminal ends; and when the holder lets go first it is released before the end can reach it', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const first = pageOf(host, cap);
+  await first.until('ready', () => first.ready !== undefined);
+  const second = pageOf(host, cap);
+  await second.until('ready', () => second.ready !== undefined);
+  await first.until('taken', () => first.taken);
+  host.type('t', 'exit 3\r');
+  await first.until('ended', () => first.ended !== undefined && first.closed);
+  assert.equal(first.ended.exit_code, 3);
+  assert.equal(first.released, false);
+  await second.until('ended', () => second.ended !== undefined);
+
+  const other = await make(host, 'o');
+  const a = pageOf(host, other.cap);
+  await a.until('ready', () => a.ready !== undefined);
+  const b = pageOf(host, other.cap);
+  await b.until('ready', () => b.ready !== undefined);
+  await a.until('taken', () => a.taken);
+  b.stream.close();
+  await a.until('released', () => a.released && a.closed);
+  host.type('o', 'exit 0\r');
+  await until(() => host.keptEnds().some((entry) => entry.id === 'o'), 'the end of o to be kept');
+  assert.equal(a.ended, undefined, 'a watcher that was released is closed before the end can reach it');
+  host.stop();
+});
+
+test('at most four streams watch a terminal: when a fifth is displaced the one that has watched longest is closed with no frame after its taken-over', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const pages = [];
+  for (let at = 0; at < 7; at += 1) {
+    const page = pageOf(host, cap);
+    await page.until('ready', () => page.ready !== undefined);
+    pages.push(page);
+  }
+
+  assert.equal(host.state('t').watchers, 4);
+  await pages[0].until('closed', () => pages[0].closed);
+  await pages[1].until('closed', () => pages[1].closed);
+  for (const page of pages.slice(0, 2)) assert.deepEqual(page.frames.map((read) => read.kind).filter((kind) => kind !== 'output'), ['ready', 'taken-over'], 'closed with no frame after taken-over');
+  assert.equal(pages[2].closed, false);
+  pages.at(-1).stream.close();
+  for (const page of pages.slice(2, 6)) await page.until('released', () => page.released && page.closed);
+  assert.equal(host.state('t').watchers, 0);
+  host.stop();
+});
+
+test('close on the stream (0x06): the holder ends the terminal as a close does and is sent the end; a watcher is sent close-refused, ends nothing and stays; a close that is the first frame, or has a payload, is no close', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const first = pageOf(host, cap);
+  await first.until('ready', () => first.ready !== undefined);
+  const second = pageOf(host, cap);
+  await second.until('ready', () => second.ready !== undefined);
+  await first.until('taken', () => first.taken);
+  first.stream.send(pageFrames.close());
+  assert.equal(first.refused, 1, 'a close from a watcher is answered close-refused');
+  assert.equal(first.closed, false, 'a watcher stays a watcher');
+  assert.equal(host.state('t').holder, second.stream.id, 'nothing ended');
+  assert.equal(host.log.closed.length, 0);
+  first.stream.send(pageFrames.close());
+  assert.equal(first.refused, 2);
+  second.stream.send(pageFrames.close());
+  assert.notEqual(second.ended, undefined, 'the holder is sent the end');
+  assert.equal(second.closed, true);
+  assert.equal(second.ended.reason, 'closed');
+  assert.equal(second.ended.closed_by, 'request');
+  assert.equal(host.state('t'), undefined, 'the terminal is gone');
+  assert.notEqual(first.ended, undefined, 'the watcher is told how it ended');
+  assert.equal(first.closed, true);
+  assert.equal(first.released, false);
+  assert.deepEqual(await host.call('ListChannelTerminals', [[cap]]), []);
+
+  const other = await make(host, 'o');
+  const lone = pageOf(host, other.cap, { sendAttach: false });
+  lone.stream.send(pageFrames.close());
+  await lone.until('closed', () => lone.closed);
+  assert.deepEqual(lone.raw.map((bytes) => [...bytes]), [[FRAME.notFound]], 'a close is not an attach');
+  assert.notEqual(host.state('o'), undefined, 'and ends nothing');
+  const loud = pageOf(host, other.cap);
+  await loud.until('ready', () => loud.ready !== undefined);
+  loud.stream.send(new Uint8Array([FRAME.close, 1]));
+  await loud.until('closed', () => loud.closed);
+  assert.deepEqual(loud.frames.map((read) => read.kind).filter((kind) => kind !== 'output'), ['ready'], 'no answer to a close with a payload');
+  assert.notEqual(host.state('o'), undefined);
+  host.stop();
+});
+
 test('an attach that waits for a natural exit is closed when the terminal vanishes or the host restarts, and a detach waits behind the held input of its own stream', timeout, async () => {
   for (const how of ['vanish', 'restart']) {
     const host = createHost({ leaseMs: 60_000 });
@@ -781,5 +981,72 @@ test('an attach that waits for a natural exit is closed when the terminal vanish
   );
   assert.equal(host.log.detaches.length, 1);
   assert.equal(host.state('t').holder, null);
+  host.stop();
+});
+
+test('the input applied is counted for each writer: another writer\'s input is in its own count and never in this one\'s, a malformed writer is the one not-found, an absent writer is one nothing remembers, and the last eight writers are kept', timeout, async () => {
+  const host = createHost({ leaseMs: 60_000 });
+  const { cap } = await make(host);
+  const one = pageOf(host, cap, { writer: WRITER });
+  await one.until('ready', () => one.ready !== undefined);
+  one.stream.send(pageFrames.input('abc'));
+  await one.until('applied 3', () => one.counts.at(-1) === 3);
+  // Another writer takes the terminal and types 4 bytes while the first is away.
+  one.stream.close();
+  const two = pageOf(host, cap, { writer: OTHER });
+  await two.until('ready', () => two.ready !== undefined);
+  assert.equal(two.ready.input_applied, 0, 'a writer the host does not know starts at 0');
+  assert.equal(one.ready.writer_known, false, 'a first attach');
+  assert.equal(two.ready.writer_known, false, 'a first attach of another writer');
+  two.stream.send(pageFrames.input('wxyz'));
+  await two.until('applied 4', () => two.counts.at(-1) === 4);
+  two.stream.close();
+  const back = pageOf(host, cap, { writer: WRITER });
+  await back.until('ready', () => back.ready !== undefined);
+  assert.equal(back.ready.writer_known, true, 'the host had a count for this writer');
+  assert.equal(back.ready.input_applied, 3, 'the first writer\'s count is its own: the 4 bytes of the other are not in it');
+  back.stream.send(pageFrames.input('d'));
+  await back.until('applied 4', () => back.counts.at(-1) === 4);
+  back.stream.close();
+
+  const anonymous = pageOf(host, cap);
+  await anonymous.until('ready', () => anonymous.ready !== undefined);
+  assert.equal(anonymous.ready.input_applied, 0);
+  assert.equal(anonymous.ready.writer_known, false, 'no writer: nothing is known');
+  anonymous.stream.send(pageFrames.input('q'));
+  await anonymous.until('applied 1', () => anonymous.counts.at(-1) === 1);
+  anonymous.stream.close();
+  const again = pageOf(host, cap);
+  await again.until('ready', () => again.ready !== undefined);
+  assert.equal(again.ready.input_applied, 0, 'a writer of its own is gone with its stream');
+  assert.equal(again.ready.writer_known, false);
+  again.stream.close();
+
+  for (const bad of ['A1'.repeat(16), 'a1'.repeat(15), 'a1'.repeat(17), 'zz'.repeat(16), 7, '']) {
+    const page = pageOf(host, cap, { sendAttach: false });
+    page.stream.send(pageFrames.attach(cap, undefined, undefined, bad));
+    await page.until('closed', () => page.closed);
+    assert.deepEqual(page.raw.map((bytes) => [...bytes]), [[FRAME.notFound]], 'a malformed writer is the one not-found');
+  }
+
+  // Eight writers are kept: the first one, last attached before nine others, is forgotten and starts at 0.
+  const ids = Array.from({ length: 9 }, (_, at) => at.toString(16).padStart(2, '0').repeat(16));
+  for (const id of ids) {
+    const page = pageOf(host, cap, { writer: id });
+    await page.until('ready', () => page.ready !== undefined);
+    page.stream.send(pageFrames.input('1'));
+    await page.until('applied', () => page.counts.at(-1) === 1);
+    page.stream.close();
+  }
+
+  const forgotten = pageOf(host, cap, { writer: ids[0] });
+  await forgotten.until('ready', () => forgotten.ready !== undefined);
+  assert.equal(forgotten.ready.input_applied, 0, 'the writer that attached least recently was forgotten');
+  assert.equal(forgotten.ready.writer_known, false, 'an evicted writer is not known');
+  forgotten.stream.close();
+  const kept = pageOf(host, cap, { writer: ids[8] });
+  await kept.until('ready', () => kept.ready !== undefined);
+  assert.equal(kept.ready.input_applied, 1);
+  assert.equal(kept.ready.writer_known, true);
   host.stop();
 });

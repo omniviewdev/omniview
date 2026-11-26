@@ -1,0 +1,21 @@
+// Scratch: what links does the Pods list draw on the pinned plugin (not committed).
+import { chromium } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin/node_modules/playwright/index.mjs';
+import { openPods } from '/Users/joshuapare/Repos/omniviewdev/worktrees/landing-pin/scripts/ui-next-pods/parity.mjs';
+
+const base = process.env.BASE ?? 'http://127.0.0.1:24303';
+const kubeconfig = process.env.KC ?? '/tmp/landing-pin/work/kubeconfig';
+const browser = await chromium.launch();
+const page = await openPods(browser, base, kubeconfig);
+await page.waitForTimeout(2500);
+console.log('url', page.url());
+console.log(
+  JSON.stringify(
+    await page.evaluate(() => ({
+      links: [...document.querySelectorAll('a[href]')].map((a) => a.getAttribute('href')).filter((h) => h.includes('kubernetes')).slice(0, 12),
+      tabs: [...document.querySelectorAll('[role=tablist][aria-label="Open tabs"] [role=tab]')].map((t) => t.getAttribute('aria-label')),
+    })),
+    null,
+    1,
+  ),
+);
+await browser.close();

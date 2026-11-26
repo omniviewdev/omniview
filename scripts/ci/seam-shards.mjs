@@ -15,8 +15,9 @@
 // (`runs: [...]`, one `SEAM_CONTROL=<run>` after the other: a run is one control for the plain ones, every control of a table for the scenarios that have one), each with the `seconds` it takes on the runner. The check says which phases
 // and runs exist (`PHASE_IDS` and the control tables; `SEAM_LIST=1` prints them): `check` fails for a phase or a run that no unit has, so a scenario added to the check and to no unit is red in the plan job, and the verdict repeats it.
 //
-// THE SECONDS ARE HELD (as the kit probes' are, rule 25): a unit that took more than its seconds plus the larger of a quarter of them and 60 s, or a shard whose units took more than SHARD_CEILING_SECONDS, fails with the number to
-// put in the file. A phase's seconds are the check's own (`SEAM-PHASE <engine> <id> <seconds>`, one line for each phase that passed); a control run's are the step's.
+// THE SECONDS ONLY PACK THE SHARDS (as the kit probes' do, rule 25): a unit that took more or less than its seconds by the larger of a quarter of them and 60 s is a warning with the number to put in the file, never a failure
+// (the seam runs at night only, N34, where nothing keeps the seconds current; the job's timeout is the one wall). A phase's seconds are the check's own (`SEAM-PHASE <engine> <id> <seconds>`, one line for each phase that passed);
+// a control run's are the step's.
 //
 // THE VERDICT. Each shard writes what it ran, from its logs, and `verify` reads them all: both engines, every shard of the plan, every phase and every control of the table once, passed. A shard that never reported, one that ran
 // no phase, one that was cancelled by the job's timeout, and a scenario that is in no unit are all red.
@@ -36,11 +37,6 @@ export const ENGINES = ['webkit', 'chromium'];
 export const LIMIT_SECONDS = 420;
 /** The start of the one host that the phases of a shard share (the check's fixture plugins are built and the host starts): the plan leaves it out of every shard's limit, so the limit is the shard's. */
 export const PHASE_START_SECONDS = 15;
-/** A shard fails when its units add up to more than this on the runner: the limit and the slowest machine the kit probes' record has seen (1.29, N25). */
-export const SHARD_SLOWDOWN_WORST = 1.3;
-export const SHARD_CEILING_SECONDS = Math.ceil(LIMIT_SECONDS * SHARD_SLOWDOWN_WORST);
-/** The job's own limit, in minutes: the setup at its slowest (260 s), the shard at its ceiling and the report, with room, and the hang that `timeout-minutes` is for. */
-export const JOB_TIMEOUT_MINUTES = 20;
 export { DRIFT_FLOOR_SECONDS, DRIFT_RATIO };
 
 const firstLine = (text) => String(text).split('\n')[0].slice(0, 300);
@@ -62,7 +58,7 @@ const keysOf = (block) => [...block.matchAll(/^ {2}(?:'([a-z0-9-]+)'|([a-z][a-zA
 /** `{ phases: [id], controls: [{ run, proves: [name] }] }` from the text of the check, in the shape `SEAM_LIST=1` prints. */
 export function listFromText(text) {
   // A table of controls the plan does not know is a table of controls no job would run: name it here and in SEAM_LIST (the check prints which run makes it) before it can be added.
-  const KNOWN_TABLES = ['CONTROLS', 'SETTINGS_PARTS', 'PROCESS_CONTROLS', 'FAILED_CONTROLS', 'PAGE_CONTROLS', 'CONNECTIONS_CONTROLS', 'PT_CONTROLS', 'PORTS_CONTROLS', 'RECONNECT_CONTROLS', 'ISOLATION_CONTROLS'];
+  const KNOWN_TABLES = ['CONTROLS', 'SETTINGS_PARTS', 'PROCESS_CONTROLS', 'FAILED_CONTROLS', 'PAGE_CONTROLS', 'CONNECTIONS_CONTROLS', 'PT_CONTROLS', 'PORTS_CONTROLS', 'RECONNECT_CONTROLS', 'ISOLATION_CONTROLS', 'PROFILE_CONTROLS'];
   const unknown = [...text.matchAll(/^const ([A-Z][A-Z_]*_CONTROLS) = \{$/gm)].map((match) => match[1]).filter((name) => !KNOWN_TABLES.includes(name));
   if (unknown.length > 0) throw new Error(`${CHECK} has a table of negative controls that the plan does not know: ${unknown.join(', ')} (add it to listFromText in scripts/ci/seam-shards.mjs and to SEAM_LIST in the check, and its run to a unit of ${UNITS_FILE})`);
   const phases = /^const PHASE_IDS = \[\n([\s\S]*?)^\];$/m.exec(text);
@@ -78,6 +74,7 @@ export function listFromText(text) {
     ['ports', keysOf(blockOf(text, 'PORTS_CONTROLS'))],
     ['terminal-reconnect', keysOf(blockOf(text, 'RECONNECT_CONTROLS'))],
     ['terminal-isolation', keysOf(blockOf(text, 'ISOLATION_CONTROLS'))],
+    ['terminal-profile', keysOf(blockOf(text, 'PROFILE_CONTROLS'))],
   ];
   return { phases: ids, controls: [...alone.map((name) => ({ run: name, proves: [name] })), ...groups.map(([run, proves]) => ({ run, proves }))] };
 }
@@ -268,43 +265,35 @@ export function ranUnits({ units, list, engine, seamLog, controlRuns, controlLog
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// The seconds are held
+// The seconds of each unit
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
- * The drift of each unit that passed from its seconds, and of the shard from its ceiling: `{ failures, warnings, rows, shard }`. A unit fails when it took more than `max(floor, ratio of its seconds)` over its seconds, with the number
- * to put in its file; it warns when it took more than that under. A unit that did not pass says nothing of the cost (a phase that stopped early). The shard fails when its units add up to more than `ceiling`.
+ * The drift of each unit that passed from its seconds: `{ warnings, rows, shard }`. A unit warns when it took more than `max(floor, ratio of its seconds)` over or under its seconds, with the number to put in its file. A unit
+ * that did not pass says nothing of the cost (a phase that stopped early). No drift fails a shard.
  */
-export function driftFindings({ engine, shard, ran, units, ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS, ceiling = SHARD_CEILING_SECONDS }) {
+export function driftFindings({ engine, shard, ran, units, ratio = DRIFT_RATIO, floor = DRIFT_FLOOR_SECONDS }) {
   const title = `Seam unit seconds ${engine} shard ${shard}`;
-  const failures = [];
   const warnings = [];
   const rows = [];
   for (const entry of ran) {
     if (!entry.ok) continue;
     const unit = units.find((candidate) => candidate.id === entry.id);
-    if (unit === undefined) {
-      failures.push(`::error title=${title}::${escapeData(`the unit "${entry.id}" ran in this shard and is not in ${UNITS_FILE}: the plan and the table disagree`)}`);
-      continue;
-    }
     const took = whole(entry.seconds);
     const delta = took - unit.seconds;
     const margin = Math.max(floor, ratio * unit.seconds);
     const verdict = delta > margin ? 'slower' : -delta > margin ? 'faster' : 'ok';
     rows.push({ id: unit.id, table: unit.seconds, took, delta, verdict });
     if (verdict === 'ok') continue;
-    const lead = `${unit.id} took ${took} s on this runner, ${unit.seconds} s in ${UNITS_FILE} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s; a unit ${verdict === 'slower' ? 'fails' : 'warns'} past a quarter and ${floor} s ${verdict === 'slower' ? 'over' : 'under'}): put \`seconds: ${took}\` there`;
-    (verdict === 'slower' ? failures : warnings).push(`::${verdict === 'slower' ? 'error' : 'warning'} title=${title}::${escapeData(lead)}`);
+    // A unit may be listed at LIMIT_SECONDS less PHASE_START_SECONDS at most (checkUnits): past it the number to put there is that, which gives the unit a shard of its own, or the unit is split.
+    const most = LIMIT_SECONDS - PHASE_START_SECONDS;
+    const advice = took > most ? `it took more than the ${most} s a unit may be listed at: split it, or put \`seconds: ${most}\` there and it has a shard of its own` : `put \`seconds: ${took}\` there`;
+    warnings.push(`::warning title=${title}::${escapeData(`${unit.id} took ${took} s on this runner, ${unit.seconds} s in ${UNITS_FILE} (${delta > 0 ? '+' : '-'}${Math.abs(delta)} s; a unit warns past a quarter and ${floor} s ${verdict === 'slower' ? 'over' : 'under'}): ${advice}`)}`);
   }
 
   const took = whole(ran.reduce((sum, entry) => sum + entry.seconds, 0));
   const planned = ran.reduce((sum, entry) => sum + (units.find((candidate) => candidate.id === entry.id)?.seconds ?? 0), 0);
-  if (took > ceiling) {
-    const parts = ran.map((entry) => `${entry.id} ${whole(entry.seconds)} s of ${units.find((candidate) => candidate.id === entry.id)?.seconds ?? '?'}`);
-    failures.push(`::error title=Seam shard seconds ${engine} shard ${shard}::${escapeData(`shard ${shard} took ${took} s of units in ${engine}, over the ${ceiling} s a shard may take (${planned} s in the table: ${parts.join(', ')})`)}`);
-  }
-
-  return { failures, warnings, rows, shard: { took, planned, ceiling } };
+  return { warnings, rows, shard: { took, planned } };
 }
 
 export function renderRan({ engine, shard, ran, drift }) {
@@ -314,7 +303,7 @@ export function renderRan({ engine, shard, ran, drift }) {
     lines.push(`| ${entry.id} | ${entry.ok ? 'pass' : '**did not pass**'} | ${row?.table ?? ''} | ${whole(entry.seconds)} | ${row === undefined ? '' : `${row.delta > 0 ? '+' : ''}${row.delta}${row.verdict === 'ok' ? '' : row.verdict === 'slower' ? ' **over**' : ' under'}`} |`);
   }
 
-  lines.push('', `The shard's units took ${drift.shard.took} s against ${drift.shard.planned} s in the table; it fails past ${drift.shard.ceiling} s.`);
+  lines.push('', `The shard's units took ${drift.shard.took} s against ${drift.shard.planned} s in the table.`);
   return `${lines.join('\n')}\n`;
 }
 
@@ -536,7 +525,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
   const drift = driftFindings({ engine, shard, ran, units });
   const text = renderRan({ engine, shard, ran, drift });
   out(`\n${text}\n`);
-  for (const line of [...drift.warnings, ...drift.failures]) out(`${line}\n`);
+  for (const line of drift.warnings) out(`${line}\n`);
   for (const entry of ran.filter((candidate) => !candidate.ok)) out(`::error title=Seam unit ${engine} shard ${shard}::${escapeData(`the unit "${entry.id}" did not pass: ${table.get(entry.id).phases !== undefined ? `phases seen ${entry.phases.join(', ') || 'none'} of ${table.get(entry.id).phases.join(', ')}` : `controls detected ${entry.controls.join(', ') || 'none'} in the runs ${table.get(entry.id).runs.join(', ')}`}`)}\n`);
   try {
     if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${text}\n`);
@@ -546,7 +535,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
     return 1;
   }
 
-  return ran.every((entry) => entry.ok) && drift.failures.length === 0 ? 0 : 1;
+  return ran.every((entry) => entry.ok) ? 0 : 1;
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {

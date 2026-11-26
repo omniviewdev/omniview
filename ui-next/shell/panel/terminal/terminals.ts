@@ -7,9 +7,9 @@ import { terminalCardOf } from './card';
 import { ClosePrompt } from './ClosePrompt';
 import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
-import type { TerminalBusy, TerminalTarget } from './feed';
+import type { TerminalBusy, TerminalDirectory, TerminalTarget } from './feed';
 import { keyOf } from './keys';
-import { localProfileTarget, localShellTarget } from './localShell';
+import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
 import { clearScreenIn } from './screen';
 import { createScreenReaderChoice, type ScreenReaderChoice } from './screenReader';
@@ -23,9 +23,6 @@ import { CHOOSE_SHELL, NEW_TERMINAL, TERMINAL_EMPTY, TERMINAL_TOOL_ID } from './
  * (`unknown`: ask).
  */
 export const ASK_MS = 1_500;
-
-/** How often a visible window asks the host who holds the terminals it lost: the host says nothing when the tab that took one goes, so a lost terminal is asked about until it is free. */
-export const LOST_REFRESH_MS = 5_000;
 
 /** The host's answer to "what runs in it", or `unknown` when it does not come in time or the question fails: a question that was not answered is never "nothing runs". */
 async function answered(question: Promise<TerminalBusy>): Promise<TerminalBusy> {
@@ -74,6 +71,8 @@ export type TerminalsOptions = {
   readonly shells?: ShellList | undefined;
   /** What "New terminal" starts: a target the registry opens. Default: the host's own shell. A probe gives a synthetic one. */
   readonly target?: (() => TerminalTarget) | undefined;
+  /** What "New terminal here" starts, given where the terminal it was opened from is: a target the registry opens. Default: the host's own shell, started there. A probe gives a synthetic one. */
+  readonly here?: ((where: TerminalDirectory) => TerminalTarget) | undefined;
   /** Where the emulator's code comes from. Default: the lazy chunk. A test gives a fake emulator. */
   readonly load?: EngineLoader | undefined;
   /**
@@ -114,6 +113,11 @@ export type Terminals = {
   readonly takeKeys: () => () => void;
   /** What the `+` of the tool and the button of its empty state start. */
   readonly newSession: PanelNewSession;
+  /**
+   * "New terminal here" of the session: asks the session's feed where its terminal is (`TerminalFeedHandle.directory`: the host's fact, never the page's guess) and opens a new terminal there, on screen and focused; a terminal whose
+   * directory is unknown starts in the host's default directory and says so. A session with no feed, or whose feed cannot say, opens nothing. Resolves once the new terminal is opened.
+   */
+  readonly openHere: (session: SessionId) => Promise<void>;
   /** The window's one screen reader choice: every terminal follows it (a terminal that is made later is made in it), and the session saves it. Off until the person turns it on. */
   readonly screenReader: ScreenReaderChoice;
   readonly empty: PanelEmpty;
@@ -241,6 +245,25 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       return store.selectors.sessionItem(state, id)?.name ?? (session === undefined ? '' : session.scope === '' ? session.title : `${session.title} · ${session.scope}`);
     },
   });
+
+  // The directory comes from the session's own feed and from nothing the page knows: the host's `ChannelTerminalCwd` while the shell runs, the directory it started in once it ended or was lost. A feed that throws instead of
+  // saying `unknown` is a feed that could not say, and the terminal opens in the host's default directory all the same.
+  const openHere = async (session: SessionId): Promise<void> => {
+    const feed = sessions.feedOf(session);
+    if (feed?.directory === undefined) {
+      return;
+    }
+
+    let where: TerminalDirectory;
+    try {
+      where = await feed.directory();
+    } catch {
+      where = { state: 'unknown', reason: 'unanswered' };
+    }
+
+    sessions.open(options.here?.(where) ?? localHereTarget(where), { focus: true });
+  };
+
   return {
     screenReader,
     sessions,
@@ -253,35 +276,14 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       };
 
       window.addEventListener('pagehide', hide);
-      // The host does not tell a page that the tab that took its terminal has gone: a visible window asks when it is shown, when it gets the focus and every few seconds, and only while it has a lost terminal.
-      const ask = (): void => {
-        if (document.visibilityState === 'visible') {
-          sessions.refreshLost();
-        }
-      };
-
-      // The interval exists only while a terminal is lost and the page is visible: an idle terminal runs no timer.
-      let timer: ReturnType<typeof setInterval> | undefined;
-      const arm = (): void => {
-        const wanted = document.visibilityState === 'visible' && sessions.hasLost();
-        if (wanted && timer === undefined) {
-          timer = setInterval(ask, LOST_REFRESH_MS);
-        } else if (!wanted && timer !== undefined) {
-          clearInterval(timer);
-          timer = undefined;
-        }
-      };
-
+      // A terminal whose watcher was lost cannot be told when it is free: when the person comes back to the tab the host is asked, once, with no timer.
       const shown = (): void => {
-        arm();
-        ask();
+        if (document.visibilityState === 'visible') {
+          sessions.refreshUnwatched();
+        }
       };
 
       document.addEventListener('visibilitychange', shown);
-      window.addEventListener('focus', ask);
-      const stopStore = store.subscribe(arm);
-      const stopFeeds = sessions.subscribeFeeds(arm);
-      arm();
       attached += 1;
       findTerminals();
       openFound();
@@ -295,13 +297,6 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
         attached -= 1;
         window.removeEventListener('pagehide', hide);
         document.removeEventListener('visibilitychange', shown);
-        window.removeEventListener('focus', ask);
-        stopStore();
-        stopFeeds();
-        if (timer !== undefined) {
-          clearInterval(timer);
-        }
-
         stop();
       };
     },
@@ -331,7 +326,19 @@ export function createTerminals(store: PanelStore, options: TerminalsOptions = {
       },
     },
     empty: TERMINAL_EMPTY,
-    bodyOf: (session, visible) => createElement(TerminalBody, { sessions, session, visible, load: options.load, screenReader, name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name }),
+    openHere,
+    bodyOf: (session, visible) =>
+      createElement(TerminalBody, {
+        sessions,
+        session,
+        visible,
+        load: options.load,
+        screenReader,
+        name: store.selectors.sessionItem(store.getSnapshot(), session.id)?.name,
+        onNewHere: (id) => {
+          void openHere(id);
+        },
+      }),
     cardOf: (session) => terminalCardOf(sessions.recordOf(session.id)),
     prompt: createElement(ClosePrompt, { guard }),
     modal: { subscribe: guard.subscribe, open: () => guard.getSnapshot() !== null },

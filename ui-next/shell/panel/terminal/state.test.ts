@@ -98,6 +98,17 @@ describe('the status lane under the screen (the mock\'s .ptool__status, a fixed 
     expect(laneOf(snap('running'))).toEqual({ words: '', note: '' });
   });
 
+  it('says in words that the terminal started in the home directory because the directory it was to open in was not known, while it runs', () => {
+    expect(laneOf(snap('running', { startNote: 'home-for-unknown-directory' }))).toEqual({
+      words: 'Started in your home directory',
+      note: 'The directory of the terminal it was opened from is not known.',
+    });
+  });
+
+  it('says the loss of input before it says where the terminal started: the first can cost what the person typed', () => {
+    expect(laneOf(snap('running', { startNote: 'home-for-unknown-directory', inputLost: true })).words).toBe('Input may be lost');
+  });
+
   it('says it is connecting while the session starts', () => {
     expect(laneOf(snap('starting'))).toEqual({ words: 'Connecting', note: '' });
   });
@@ -416,5 +427,31 @@ describe('the shells the host tried, when no shell could be started (host #672: 
 
   it('lists nothing for a failure that did not happen at the start, whatever it carries', () => {
     expect(failureLines(snap('failed', { cause: { stage: 'session', message: 'x', tried: [attempt('requested', '/bin/zsh', 'not-found')] } }))).toEqual([]);
+  });
+});
+
+describe('a terminal whose watcher the host closed with no word (`detached.unwatched`)', () => {
+  it('does not say the taker has gone: the lane keeps the words of a terminal another tab holds', () => {
+    const lane = laneOf(snap('ended', { detached: { by: 'taken-over', unwatched: true } }));
+    expect(lane.words).toBe('Taken over by another tab');
+    expect(lane.note).toBe(TAKEN_NOTE);
+  });
+});
+
+describe('a terminal another tab holds that this page can no longer be told about (`unwatched`, `free: false`)', () => {
+  it('says so in the lane: another tab holds it, and Take it back asks again and attaches only when nobody does', () => {
+    const lane = laneOf(snap('ended', { detached: { by: 'taken-over', unwatched: true, free: false } }));
+    expect(lane.words).toBe('Taken over by another tab');
+    expect(lane.note).toMatch(/asks again/);
+    expect(lane.note).toMatch(/nobody holds it/);
+  });
+});
+
+describe('a take-back whose question could not be asked (`detached.askFailed`)', () => {
+  it('says so: nothing was attached because the host could not be asked, and Take it back tries again', () => {
+    const lane = laneOf(snap('ended', { detached: { by: 'taken-over', unwatched: true, askFailed: true } }));
+    expect(lane.words).toBe('Taken over by another tab');
+    expect(lane.note).toMatch(/could not be asked/);
+    expect(lane.note).toMatch(/tries again/);
   });
 });

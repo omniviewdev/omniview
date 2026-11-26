@@ -30,6 +30,8 @@ export type TerminalMenuOptions = {
   readonly openFind: () => void;
   /** Copies the selection, as the toolbar's Copy button does (it confirms itself and says when the clipboard refused): the Copy item. */
   readonly copy: () => void;
+  /** "New terminal here": what it opens and whether this terminal can say where it is. Absent: the menu has no such item. */
+  readonly here?: TerminalMenuHere | undefined;
 };
 
 /** What the screen's element is given: the attributes of the menu's trigger, and the one rule that keeps a click for the program. Spread it on the element the emulator draws in. */
@@ -41,6 +43,9 @@ export type TerminalMenuHost = MenuTriggerAttributes & {
 export type TerminalMenu = {
   readonly host: TerminalMenuHost;
 };
+
+/** "New terminal here" of the menu: what it opens, and whether this terminal can say where it is (its feed has a `directory`). */
+export type TerminalMenuHere = { readonly open: () => void; readonly available: boolean };
 
 const quiet = (): (() => void) => () => undefined;
 
@@ -75,14 +80,14 @@ async function pasteInto(screen: TerminalMenuScreen | undefined, canPaste: () =>
   screen?.paste(text);
 }
 
-export function useTerminalMenu({ screen, status, openFind, copy }: TerminalMenuOptions): TerminalMenu {
+export function useTerminalMenu({ screen, status, openFind, copy, here }: TerminalMenuOptions): TerminalMenu {
   // The terminal takes what is typed or pasted while it is starting or running (the screen's own rule).
   const input = status.state === 'starting' || status.state === 'running';
   // An action runs after the host gave the focus back, in whatever render the menu was chosen in: it reads what it calls from here and not from the render the menu opened in.
-  const latest = useRef({ screen, openFind, copy, input });
+  const latest = useRef({ screen, openFind, copy, input, here });
   useLayoutEffect(() => {
-    latest.current = { screen, openFind, copy, input };
-  }, [screen, openFind, copy, input]);
+    latest.current = { screen, openFind, copy, input, here };
+  }, [screen, openFind, copy, input, here]);
 
   // Whether something is selected and whether the terminal takes input are the revision of the menu: the host closes an open menu when it changes (its Copy would be unavailable, or would have something to copy that the menu did not
   // offer; its Paste would have nowhere to go). A menu shows the state it opened in. The items themselves are read when the menu opens, and not from what this render heard.
@@ -109,10 +114,17 @@ export function useTerminalMenu({ screen, status, openFind, copy }: TerminalMenu
         find: () => {
           latest.current.openFind();
         },
+        ...(here === undefined
+          ? {}
+          : {
+            newHere: () => {
+              latest.current.here?.open();
+            },
+          }),
       },
-      { selected: screen.getSnapshot().selected, input },
+      { selected: screen.getSnapshot().selected, input, here: here?.available },
     );
-  }, `${selected ? 'selected' : 'nothing selected'}, ${input ? 'input' : 'no input'}`);
+  }, `${selected ? 'selected' : 'nothing selected'}, ${input ? 'input' : 'no input'}, ${here === undefined ? 'no new terminal' : here.available ? 'new terminal here' : 'no directory'}`);
 
   const trigger = useMemo(() => ({ ...menuTrigger(id, undefined, 'context'), 'data-ov-menu-label': TERMINAL_MENU_LABEL }), [id]);
   // The emulator's input is made when the screen is first shown, and the screen keeps what it is asked here for it.

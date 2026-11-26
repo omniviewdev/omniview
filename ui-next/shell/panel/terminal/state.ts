@@ -100,6 +100,15 @@ function lossOf(snapshot: TerminalFeedSnapshot): { readonly words: string; reado
     return { words: 'The tab that took this terminal has closed.', note: 'The shell keeps running until its lease ends.' };
   }
 
+  if (snapshot.detached.askFailed === true) {
+    return { words: 'Taken over by another tab', note: 'Input is off. The host could not be asked who holds the shell, so nothing was attached; Take it back tries again.' };
+  }
+
+  if (snapshot.detached.unwatched === true && snapshot.detached.free === false) {
+    // The page cannot be told when the holder leaves, so it says what the press does: it asks again, and attaches only when nobody holds the terminal.
+    return { words: 'Taken over by another tab', note: 'Input is off. Another tab holds the shell now; Take it back asks again, and attaches only when nobody holds it.' };
+  }
+
   return { words: 'Taken over by another tab', note: 'Input is off. The shell keeps running in the tab that took it.' };
 }
 
@@ -128,11 +137,15 @@ export function stateWords(snapshot: TerminalFeedSnapshot | undefined): string {
   }
 }
 
-/** What the lane under the screen says: the state, and the one sentence that goes with it. A running terminal says nothing (the mock's strip is empty for a ready session). */
+/** What the lane under the screen says: the state, and the one sentence that goes with it. A running terminal says nothing (the mock's strip is empty for a ready session) unless it lost input, or started in the home directory because the one it was to open in was not known. */
 export function laneOf(snapshot: TerminalFeedSnapshot | undefined): { readonly words: string; readonly note: string } {
   switch (snapshot?.state) {
     case 'running':
-      return { words: '', note: '' };
+      if (snapshot.inputLost === true) {
+        return { words: 'Input may be lost', note: 'What was typed while the connection was away may not have reached the shell.' };
+      }
+
+      return snapshot.startNote === undefined ? { words: '', note: '' } : { words: 'Started in your home directory', note: 'The directory of the terminal it was opened from is not known.' };
     case 'starting':
       return { words: stateWords(snapshot), note: '' };
     case 'failed':

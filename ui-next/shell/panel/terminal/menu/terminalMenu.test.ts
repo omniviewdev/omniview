@@ -1,7 +1,7 @@
 import type { MenuAction, MenuItem } from '@omniviewdev/kit';
 import { describe, expect, it, vi } from 'vitest';
 import { NO_SELECTION } from '../TerminalToolbar';
-import { NO_INPUT, terminalMenu, type TerminalMenuActions } from './terminalMenu';
+import { NO_DIRECTORY, NO_INPUT, terminalMenu, type TerminalMenuActions } from './terminalMenu';
 
 // The terminal's context menu as data: the items of the kit's menu model, for what the terminal is now (a selection, an input that takes what is pasted). Pure: the hook gives them their actions and the kit's host draws them. What is
 // checked here is the list, the words, the reasons, and that no item draws a shortcut.
@@ -82,6 +82,54 @@ describe('selecting an item', () => {
     const names = { copy: 'copy', paste: 'paste', 'select-all': 'selectAll', clear: 'clear', find: 'find' } as const;
     for (const [name, call] of Object.entries(actions)) {
       expect(call).toHaveBeenCalledTimes(name === names[id] ? 1 : 0);
+    }
+  });
+});
+
+describe('New terminal here', () => {
+  const withHere = (state: { readonly here?: boolean } = {}) => {
+    const actions = { ...fakes(), newHere: vi.fn() };
+    return { actions, items: terminalMenu(actions, { selected: true, input: true, here: state.here ?? true }) };
+  };
+
+  it('is not in the menu of a window that cannot open a terminal: no action, no item', () => {
+    expect(menu().map((item) => item.id)).not.toContain('new-here');
+  });
+
+  it('is the last item, after a separator of its own, with the kit\'s plus glyph', () => {
+    const { items } = withHere();
+    expect(items.map((item) => [item.kind, item.id, 'label' in item ? item.label : undefined])).toEqual([
+      ['action', 'copy', 'Copy'],
+      ['action', 'paste', 'Paste'],
+      ['action', 'select-all', 'Select all'],
+      ['separator', 'tools'],
+      ['action', 'clear', 'Clear'],
+      ['action', 'find', 'Find'],
+      ['separator', 'terminals'],
+      ['action', 'new-here', 'New terminal here'],
+    ].map(([kind, id, label]) => [kind, id, label ?? undefined]));
+    expect(action(items, 'new-here').icon).toBe('plus');
+  });
+
+  it('is available when the terminal can say where it is', () => {
+    expect(action(withHere({ here: true }).items, 'new-here').disabled).toBeFalsy();
+  });
+
+  it('says why it is not for a terminal that cannot say where it is: there is no directory to open in', () => {
+    expect(NO_DIRECTORY).not.toBe('');
+    expect(action(withHere({ here: false }).items, 'new-here').disabled).toBe(NO_DIRECTORY);
+  });
+
+  it('does not depend on the input: an ended terminal can still be the place a new one opens from', () => {
+    const actions = { ...fakes(), newHere: vi.fn() };
+    expect(action(terminalMenu(actions, { selected: false, input: false, here: true }), 'new-here').disabled).toBeFalsy();
+  });
+
+  it('calls its own action, once, and no other', () => {
+    const { actions, items } = withHere();
+    action(items, 'new-here').onSelect();
+    for (const [name, call] of Object.entries(actions)) {
+      expect(call, name).toHaveBeenCalledTimes(name === 'newHere' ? 1 : 0);
     }
   });
 });
