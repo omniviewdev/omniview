@@ -1,0 +1,145 @@
+#!/bin/bash
+# Negative controls for T4-here, the page half (ui-next/shell/panel/terminal: execFeed.ts, localShell.ts, terminals.ts, terminalChannel.ts, state.ts, TerminalBody.tsx, menu/terminalMenu.ts).
+# Each fault is put into the real file (a backup is kept and restored on exit, even on Ctrl-C), and the test files of the folder are run with vitest. A control has two halves:
+#   1. with every test, the tests that go red are exactly the ones named for it;
+#   2. with the named tests filtered out (the assertion removed), the same fault passes.
+# Run from the worktree:  bash docs/ui-next/status/T4-here/page-mutations.sh.txt [control-name]
+WT=$(git rev-parse --show-toplevel) || exit 2
+cd "$WT" || exit 2
+P=ui-next/shell/panel/terminal
+FILES="$P"
+B=$(mktemp -d "${TMPDIR:-/tmp}/t4here-page.XXXXXX") || exit 2
+current=""
+restore() { if [ -n "$current" ] && [ -f "$B/backup" ]; then cp "$B/backup" "$current"; fi; }
+trap 'restore; rm -rf -- "$B"' EXIT
+only="${1:-}"
+bad=0
+
+# name | file | sed expression | the tests named for it, each as a unique substring of its title, separated by '|'
+run() {
+  name="$1"; file="$2"; expr="$3"; named="$4"
+  [ -n "$only" ] && [ "$only" != "$name" ] && return
+  cp "$file" "$B/backup"; current="$file"
+  sed -i -E -e "$expr" "$file"
+  if cmp -s "$file" "$B/backup"; then echo "CONTROL $name: FAULT NOT APPLIED"; bad=1; restore; current=""; return; fi
+
+  out=$(pnpm exec vitest run $FILES 2>&1)
+  failed=$(echo "$out" | grep -E '^ FAIL ' | sed -E 's/^ FAIL +[^>]+> //' | sort -u)
+  ok=1
+  if [ -z "$failed" ]; then half1="UNDETECTED (every test passed)"; ok=0
+  else
+    half1="RED in exactly the tests named"
+    # every part names a test that went red, and every test that went red is named by a part
+    while IFS= read -r part; do
+      echo "$failed" | grep -qF -- "$part" || { ok=0; half1="named test did not go red: $part"; }
+    done < <(echo "$named" | tr '|' '\n')
+    while IFS= read -r line; do
+      hit=0
+      while IFS= read -r part; do
+        case "$line" in *"$part"*) hit=1 ;; esac
+      done < <(echo "$named" | tr '|' '\n')
+      [ "$hit" -eq 0 ] && { ok=0; half1="RED outside the named: $line"; }
+    done < <(echo "$failed")
+  fi
+  [ "$ok" -eq 0 ] && bad=1
+
+  # `-t` takes a pattern: every test whose title holds none of the named parts.
+  alternatives=$(echo "$named" | tr '|' '\n' | sed -E 's/[][.*^$()+?{|\\]/\\&/g' | paste -sd'|')
+  out2=$(pnpm exec vitest run $FILES -t "^(?!.*($alternatives))" 2>&1)
+  code2=$?
+  if echo "$out2" | grep -qE '^ FAIL '; then half2="without them: STILL RED"; bad=1
+  elif [ "$code2" -ne 0 ]; then half2="without them: the run ended with status $code2 and no FAIL line (not a pass)"; bad=1
+  else half2="without them: PASS (undetected)"; fi
+  restore; current=""
+  echo "CONTROL $name: $half1 | $half2"
+}
+
+# ---- the feed: where a new terminal opens from this one ----
+
+run directory-keeps-the-first-answer "$P/execFeed.ts" \
+  's/^  let startedIn: string \| undefined;/  let startedIn: string | undefined; let memo: TerminalDirectory | undefined;/; s/return directoryOf\(await channels\.cwd\(id\)\);/memo ??= directoryOf(await channels.cwd(id)); return memo;/' \
+  'is asked afresh every time'
+
+run directory-falls-back-to-start-when-unknown "$P/execFeed.ts" \
+  's/return directoryOf\(await channels\.cwd\(id\)\);/const said = directoryOf(await channels.cwd(id)); return said.state === "known" || startedIn === undefined ? said : { state: "known", path: startedIn, source: "start" };/' \
+  'says unknown, with the host'"'"'s reason, when the host cannot say|says unknown when the host'"'"'s answer is neither a path nor a reason'
+
+run directory-asks-an-ended-terminal "$P/execFeed.ts" \
+  '/directory: async/,/^    },/ s/status\.state !== .running./status.state === "failed"/' \
+  'once it ended, and the host is not asked|for a terminal this page lost to another tab|and the host never said where it started|for a terminal a page found again after a reload that had ended|says unknown for a terminal that could not be started'
+
+run directory-gone-is-unknown "$P/execFeed.ts" \
+  's/channels\.isGone\(error\) \? start :/channels.isGone(error) ? { state: "unknown", reason: "ended" } :/' \
+  'once the host says it is not there any more'
+
+run directory-ignores-the-created-answer "$P/execFeed.ts" \
+  '/^        startedIn = startOf\(answer\);$/d' \
+  'the answer to the call that made the terminal said'
+
+run directory-ignores-ready "$P/execFeed.ts" \
+  '/^    startedIn = ready\.startedIn \?\? startedIn;$/d' \
+  'the host'"'"'s `ready` says the terminal started in|asks the host for a terminal a page found again that runs'
+
+run directory-throws-on-a-failed-question "$P/execFeed.ts" \
+  's/return channels\.isGone\(error\) \? start : \{ state: .unknown., reason: .unanswered. \};/if (channels.isGone(error)) { return start; } throw error;/' \
+  'says unknown, and never throws, when the question fails'
+
+run note-kept-after-typing "$P/execFeed.ts" \
+  's/ \|\| status\.startNote !== undefined\)/)/' \
+  'stops saying so at the first thing typed'
+
+run note-dropped-at-running "$P/execFeed.ts" \
+  's/\.\.\.\(startNote === undefined \? \{\} : \{ startNote \}\) \};$/ };/' \
+  'says so while it starts and while it runs'
+
+# ---- the channel ----
+
+run channel-cwd-asks-busy "$P/terminalChannel.ts" \
+  's/client\.ChannelTerminalCwd\(cap\)/client.ChannelTerminalBusy(cap)/' \
+  'cwd answers what the host answers'
+
+# ---- the target and the window ----
+
+run here-target-passes-no-directory "$P/localShell.ts" \
+  's/\{ cwd: where\.path \}/undefined/' \
+  'asks the host for the directory the terminal it was opened from said it is in|asks for the directory a terminal that ended started in'
+
+run here-target-unknown-says-nothing "$P/localShell.ts" \
+  "s/undefined, 'home-for-unknown-directory'\)/undefined)/" \
+  'asks for no directory when the terminal it was opened from could not say'
+
+run here-target-invents-a-directory "$P/localShell.ts" \
+  "s/targetOf\('Terminal', channels, leaseMs, undefined, 'home-for-unknown-directory'\)/targetOf('Terminal', channels, leaseMs, { cwd: '\/' }, 'home-for-unknown-directory')/" \
+  'asks for no directory when the terminal it was opened from could not say'
+
+run window-guesses-the-directory "$P/terminals.ts" \
+  's/localHereTarget\(where\)/localHereTarget({ state: "known", path: "\/", source: "shell" })/' \
+  'opens a terminal in the directory the feed of the session says|gives the target what the feed said as it said it|opens the terminal only when the feed has answered|takes a feed that throws for one that could not say'
+
+run window-opens-for-a-feed-that-cannot-say "$P/terminals.ts" \
+  's/if \(feed\?\.directory === undefined\) \{/if (feed === undefined) {/' \
+  'opens nothing for a session whose feed cannot say where it is'
+
+run window-throws-with-the-feed "$P/terminals.ts" \
+  "s/where = \{ state: 'unknown', reason: 'unanswered' \};/throw new Error('the feed threw');/" \
+  'takes a feed that throws for one that could not say'
+
+# ---- the menu and the lane ----
+
+run menu-here-needs-input "$P/menu/terminalMenu.ts" \
+  's/disabled: here === true \? undefined : NO_DIRECTORY/disabled: here === true \&\& input ? undefined : NO_DIRECTORY/' \
+  'does not depend on the input|is available once the terminal ended'
+
+run menu-here-never-unavailable "$P/menu/terminalMenu.ts" \
+  's/disabled: here === true \? undefined : NO_DIRECTORY/disabled: undefined/' \
+  'says why it is not for a terminal that cannot say where it is|is unavailable for a terminal that cannot say where it is|is unavailable when the session'"'"'s feed cannot say where it is'
+
+run body-says-it-can-always "$P/TerminalBody.tsx" \
+  's/available: feed\.directory !== undefined/available: true/' \
+  'is unavailable when the session'"'"'s feed cannot say where it is'
+
+run lane-says-nothing-of-the-note "$P/state.ts" \
+  's/snapshot\.startNote === undefined \? \{ words: .., note: .. \}/true ? { words: "", note: "" }/' \
+  'says in words that the terminal started in the home directory'
+
+exit $bad
