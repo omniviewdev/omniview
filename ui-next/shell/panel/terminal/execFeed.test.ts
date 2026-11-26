@@ -2490,6 +2490,40 @@ describe('raw bytes the emulator sends for the person (`writeBinary`: a legacy X
     expect(r.feed.getSnapshot().inputLost).toBe(true);
   });
 
+  it('goes out in frames of at most MAX_INPUT_BYTES, whole and in order: a megabyte of bytes is cut into pieces and no frame is larger', async () => {
+    const r = await running();
+    const big = Uint8Array.from({ length: 1024 * 1024 }, (_, at) => at % 251);
+    r.feed.writeBinary(big);
+    const frames = r.stream().sent().flatMap((frame) => (frame.kind === 'input' ? [frame.bytes] : []));
+    expect(frames.length).toBeGreaterThan(1);
+    expect(Math.max(...frames.map((frame) => frame.length))).toBeLessThanOrEqual(MAX_INPUT_BYTES);
+    expect(frames.flatMap((frame) => [...frame])).toEqual([...big]);
+  });
+
+  it('is ignored once the session is over, closed, left, taken over or gone: not counted, no input frame after the end', async () => {
+    for (const end of ['ended', 'closed', 'left', 'taken-over', 'not-found'] as const) {
+      const r = await running();
+      r.feed.writeBinary(report);
+      if (end === 'ended') {
+        r.stream().ended();
+      } else if (end === 'closed') {
+        await closeLive(r);
+      } else if (end === 'left') {
+        r.feed.leave?.();
+      } else if (end === 'taken-over') {
+        r.stream().takenOver();
+      } else {
+        r.stream().notFound();
+      }
+
+      const before = r.stream().sent().length;
+      r.feed.writeBinary(report);
+      expect(r.feed.inputs?.()).toBe(1);
+      expect(r.stream().sent()).toHaveLength(before);
+      expect(inputBytes(r.stream())).toEqual([...report]);
+    }
+  });
+
   it('is ignored once the session is over, and counted in the bound of the kept input like text', async () => {
     const r = await running();
     r.feed.writeBinary(new Uint8Array(1024 * 1024).fill(0xb6));
