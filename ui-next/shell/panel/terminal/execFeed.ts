@@ -1170,7 +1170,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
   const start = (first: Size) => {
     started = true;
     delivered = first;
-    const made = (launch: ExecFeedOptions['launch']) => channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...launch });
+    const made = async (launch: ExecFeedOptions['launch']) => channels.create(id, { cols: first.cols, rows: first.rows, ...(options.leaseMs === undefined ? {} : { leaseMs: options.leaseMs }), ...launch });
     const answered = (answer: unknown) => {
       created = true;
       createdProgram = programOf(answer);
@@ -1179,11 +1179,13 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
         connect(next);
       }
     };
+
     const failed = (error: unknown) => {
       if (!closed()) {
         over({ state: 'failed', cause: causeOf('start', error) });
       }
     };
+
     creating = made(options.launch).then(answered, async (error: unknown) => {
       const dir = options.launch?.cwd;
       // The directory an ended terminal started in may have been removed since: the host refuses it (`INVALID_REQUEST`) and the terminal starts in its default directory instead, and says so.

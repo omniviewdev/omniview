@@ -2627,13 +2627,17 @@ describe('a terminal opened in the directory an ended terminal started in, which
   });
 
   it('fails as before for a feed that did not ask for it: a profile\'s directory that is missing is the person\'s to read', async () => {
-    const r = await connecting({ launch: { command: [], cwd: '/gone' }, channels: { create: () => { throw refused(); } } });
+    const r = await connecting({ launch: { command: [], cwd: '/gone' }, channels: { create: () => {
+      throw refused(); 
+    } } });
     expect(r.feed.getSnapshot().state).toBe('failed');
     expect(r.channels.of('create')).toHaveLength(1);
   });
 
   it('does not make it again for another refusal', async () => {
-    const r = await connecting({ homeIfMissing: true, launch: { command: [], cwd: '/gone' }, channels: { create: () => { throw Object.assign(new Error('x'), { code: 'SHELL_UNAVAILABLE' }); } } });
+    const r = await connecting({ homeIfMissing: true, launch: { command: [], cwd: '/gone' }, channels: { create: () => {
+      throw Object.assign(new Error('x'), { code: 'SHELL_UNAVAILABLE' }); 
+    } } });
     expect(r.feed.getSnapshot().state).toBe('failed');
     expect(r.channels.of('create')).toHaveLength(1);
   });

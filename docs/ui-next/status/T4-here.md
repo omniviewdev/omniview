@@ -26,13 +26,20 @@
 ## Controls
 
 - Go: the red test is the control for the `os.Stat` guard (it fails on `main`, passes with the fix; a directory that exists is asserted before the removal).
-- Page: `bash docs/ui-next/status/T4-here/page-mutations.sh.txt` (21 faults, both halves). **Written, not run.**
+- Go: `bash docs/ui-next/status/T4-here/mutations.sh.txt` (the sibling named like the link suffix: red in its test).
+- Page: `bash docs/ui-next/status/T4-here/page-mutations.sh.txt` (23 faults, both halves). Run: each is red in exactly the tests named and passes with them filtered out.
 
 ## Not verified
 
-- Page controls script (above), kit `typecheck` and `verify`, full `pnpm test`.
-- `task local:probes -- terminal` and `task local:seam -- <units>` in both engines: not run. The probe `terminal-find.mjs` and the seam `r` context-menu assertion were updated for the sixth item and a second separator but never run, so they may need adjusting.
+- Kit `verify`, full `pnpm test`.
+- Run later (Main's order): seam `terminal-core,terminal-find` passed in both engines; probes `--changed`: every find unit and control passed, and 11 `terminal-probe` timing controls (flood/hidden-work frames and callbacks, load average over 20) exited 1; Main reports they fail on main here too.
 - No probe section or seam scenario for the new behaviour: reserved for step 6 of the issue (`r6`). The fixture host's `ChannelTerminalCwd` answers a constant `/home/user`.
 - Real browser, macOS (proc_info with a removed directory), Windows (`unsupported`).
 - The Go half needs the independent review (nothing about processes changed, but `GetCwd` semantics did).
 - Which failures also fail on `origin/main`: none seen; no failure was observed in the runs above.
+
+## Review notes closed (ReviewDirectoryHere: MERGE)
+
+1. A removed `y` next to a live `y (deleted)`: `os.SameFile` against the process's cwd link when the path ends in ` (deleted)`.
+2. An ended terminal whose start directory was removed: the feed (`homeIfMissing`) makes the terminal again without `cwd` when the host answers `INVALID_REQUEST`, with the note.
+3. Only the person's writes clear the note; the emulator's replies are passed with `{ reply: true }`.
