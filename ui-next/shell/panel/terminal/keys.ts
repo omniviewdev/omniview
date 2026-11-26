@@ -32,10 +32,40 @@ export type KeyEventLike = {
  *   `find`      the find over the output opens: Command F on a Mac, Control F and Control Shift F elsewhere (VS Code and JetBrains bind Control F, the written spec Control Shift F: both are taken, and the shell loses Control F,
  *               as VS Code's does)
  *   `findNext`  a find steps: F3 on every platform, Command G on a Mac; with Shift, `findPrevious`. They stay the terminal's (F3) or the window's (Command G) unless the find bar takes them
+ *   `previousCommand`, `nextCommand`  the view jumps to the previous or the next command (issue #694 step 5): Command Up and Down on a Mac, Control Up and Down elsewhere (VS Code's chords); with Shift, `selectPreviousCommand` and
+ *               `selectNextCommand` jump and select the command's output. They are the terminal's only while it has commands to jump to and no program has the alternate screen: otherwise the key is what it was (the window's on a Mac,
+ *               the shell's elsewhere), and the screen says which
  */
-export type TerminalKey = 'terminal' | 'leave' | 'app' | 'copy' | 'paste' | 'selectAll' | 'clear' | 'find' | 'findNext' | 'findPrevious';
+export type TerminalKey =
+  | 'terminal'
+  | 'leave'
+  | 'app'
+  | 'copy'
+  | 'paste'
+  | 'selectAll'
+  | 'clear'
+  | 'find'
+  | 'findNext'
+  | 'findPrevious'
+  | 'previousCommand'
+  | 'nextCommand'
+  | 'selectPreviousCommand'
+  | 'selectNextCommand';
 
 const MODIFIERS: Readonly<Record<string, true>> = { Shift: true, Control: true, Alt: true, Meta: true, AltGraph: true, CapsLock: true, Fn: true, FnLock: true, OS: true, Hyper: true, Super: true, Dead: true, Process: true, Unidentified: true };
+
+/** The chord that jumps between commands: the arrow up or down, with Shift to select the output too. The caller has checked the modifier that makes it the terminal's (Command on a Mac, Control elsewhere) and that no other is held. */
+function commandJump(event: KeyEventLike): TerminalKey | undefined {
+  if (event.code === 'ArrowUp') {
+    return event.shiftKey ? 'selectPreviousCommand' : 'previousCommand';
+  }
+
+  if (event.code === 'ArrowDown') {
+    return event.shiftKey ? 'selectNextCommand' : 'nextCommand';
+  }
+
+  return undefined;
+}
 
 /**
  * The rule. Copy and paste are the platform's, and VS Code and JetBrains agree on them: Command C and V on a Mac (Control C is the interrupt, always); Control C and V on Windows, where C copies while there is a
@@ -92,6 +122,14 @@ export function keyOf(event: KeyEventLike, platform: Platform, selected: boolean
         }
       }
 
+      // The jump to a previous or a next command (the screen hands the key back when there is none).
+      if (!event.altKey && !event.ctrlKey) {
+        const jump = commandJump(event);
+        if (jump !== undefined) {
+          return jump;
+        }
+      }
+
       return 'app';
     }
 
@@ -125,8 +163,8 @@ export function keyOf(event: KeyEventLike, platform: Platform, selected: boolean
       return 'find';
     }
 
-    // Control with Shift is the window's; Control without it is the shell's.
-    return event.shiftKey ? 'app' : 'terminal';
+    // Control and the arrows up and down jump between commands (with Shift, and select the output); the rest of Control with Shift is the window's, and Control without it the shell's.
+    return commandJump(event) ?? (event.shiftKey ? 'app' : 'terminal');
   }
 
   return 'terminal';

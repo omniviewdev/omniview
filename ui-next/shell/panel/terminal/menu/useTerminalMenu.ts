@@ -19,7 +19,7 @@ import { terminalMenu } from './terminalMenu';
 export const TERMINAL_MENU_LABEL = 'Terminal actions';
 
 /** What the menu needs of the screen: a real `TerminalScreen` has all of it, and a test makes one with these members only. */
-export type TerminalMenuScreen = Pick<TerminalScreen, 'clear' | 'selectAll' | 'paste' | 'mouseReporting' | 'decorateInput' | 'subscribe' | 'getSnapshot'>;
+export type TerminalMenuScreen = Pick<TerminalScreen, 'clear' | 'selectAll' | 'paste' | 'mouseReporting' | 'decorateInput' | 'subscribe' | 'getSnapshot'> & { readonly commands?: Pick<TerminalScreen['commands'], 'state' | 'revision' | 'jump' | 'selectOutput' | 'copyOutput' | 'rerun' | 'onEvent'> | undefined };
 
 export type TerminalMenuOptions = {
   /** The screen of the session. Before there is one (`undefined`) there is no menu to open. */
@@ -92,6 +92,15 @@ export function useTerminalMenu({ screen, status, openFind, copy, here }: Termin
   // Whether something is selected and whether the terminal takes input are the revision of the menu: the host closes an open menu when it changes (its Copy would be unavailable, or would have something to copy that the menu did not
   // offer; its Paste would have nowhere to go). A menu shows the state it opened in. The items themselves are read when the menu opens, and not from what this render heard.
   const selected = useSyncExternalStore(screen?.subscribe ?? quiet, () => screen?.getSnapshot().selected === true);
+  // What the gutter's actions can do is part of the revision too: a command that finishes while the menu is open changes what Copy command output and Run command again say, and the menu is put away as it is for a selection.
+  const commandState = useSyncExternalStore(
+    (listener) => screen?.commands?.onEvent((event) => {
+      if (event.kind === 'commands') {
+        listener();
+      }
+    }) ?? quiet(),
+    () => screen?.commands?.revision() ?? 'no commands',
+  );
   const id = useMenu(() => {
     if (screen === undefined) {
       return null;
@@ -121,10 +130,32 @@ export function useTerminalMenu({ screen, status, openFind, copy, here }: Termin
               latest.current.here?.open();
             },
           }),
+        // The items are in the menu of a terminal that has commands: one with no shell integration, or none run yet, has nothing for them to act on, and five items that are all unavailable are noise.
+        ...(screen.commands === undefined || screen.commands.state().count === 0
+          ? {}
+          : {
+            commands: {
+              previous: () => {
+                latest.current.screen?.commands?.jump('previous');
+              },
+              next: () => {
+                latest.current.screen?.commands?.jump('next');
+              },
+              selectOutput: () => {
+                latest.current.screen?.commands?.selectOutput();
+              },
+              copyOutput: () => {
+                void latest.current.screen?.commands?.copyOutput();
+              },
+              rerun: () => {
+                latest.current.screen?.commands?.rerun();
+              },
+            },
+          }),
       },
-      { selected: screen.getSnapshot().selected, input, here: here?.available },
+      { selected: screen.getSnapshot().selected, input, here: here?.available, commands: screen.commands?.state() },
     );
-  }, `${selected ? 'selected' : 'nothing selected'}, ${input ? 'input' : 'no input'}, ${here === undefined ? 'no new terminal' : here.available ? 'new terminal here' : 'no directory'}`);
+  }, `${selected ? 'selected' : 'nothing selected'}, ${commandState}, ${input ? 'input' : 'no input'}, ${here === undefined ? 'no new terminal' : here.available ? 'new terminal here' : 'no directory'}`);
 
   const trigger = useMemo(() => ({ ...menuTrigger(id, undefined, 'context'), 'data-ov-menu-label': TERMINAL_MENU_LABEL }), [id]);
   // The emulator's input is made when the screen is first shown, and the screen keeps what it is asked here for it.

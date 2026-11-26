@@ -10,6 +10,7 @@ import { readAppearance, SWATCH_ROLES } from './appearance';
 import type { EngineLoader } from './engine';
 import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot } from './feed';
 import { createFindSession, useTerminalFind } from './find';
+import { useCommandGutter } from './gutter/useCommandGutter';
 import { loadXtermEngine } from './loadEngine';
 import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
@@ -385,6 +386,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
     };
   const menu = useTerminalMenu({ screen, status, openFind: find.open, copy, here });
   const links = useTerminalLinks({ screen, sessions, platform });
+  // The marks of the shell's integration: the tooltip of a command's mark, and what a jump or a selection did said in the live region.
+  const gutter = useCommandGutter({ screen, say });
 
   const lane = view.error === undefined ? laneOf(status) : { words: 'The terminal view could not be loaded.', note: `${view.error}.` };
   const hint = `Escape and Tab go to the shell. Press F6 to move to the next part of the window${platform === 'mac' ? `, or ${toggleChordText(platform)} to hide the panel` : ''}. ${screenReaderWords(reading, platform)}`;
@@ -410,6 +413,7 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
         <div ref={host} className={styles.screen} data-shell-part="terminalScreen" {...menu.host} />
         {find.element}
         {links.element}
+        {gutter.element}
         <div className={styles.lane} role="status" data-shell-part="terminalLane">
           {lane.words === '' ? null : (
             <>

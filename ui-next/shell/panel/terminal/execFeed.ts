@@ -1,5 +1,5 @@
 import { CHANNEL_VERSION, MAX_INPUT_BYTES, MAX_KEPT_INPUT_BYTES, MAX_MARKS, type ChannelLaunch, type ChannelLink, type TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay, TerminalRestart } from './feed';
+import type { TerminalBusy, TerminalClosedBy, TerminalDirectory, TerminalExit, TerminalFeedCause, TerminalFeedHandle, TerminalFeedSnapshot, TerminalFeedStage, PlacedMark, TerminalMark, TerminalModes, TerminalOutput, TerminalReplay, TerminalRestart } from './feed';
 import { marksOf } from './marks';
 import { titleOf } from './title';
 import { createHeldOutput } from './heldOutput';
@@ -489,6 +489,8 @@ type Gathering = {
   startModes: TerminalModes;
   readonly size: Size;
   readonly modes: TerminalModes;
+  /** The marks that stand in the bytes gathered so far, each with the bytes of the replay before it. */
+  marks: PlacedMark[];
 };
 
 /** What the host did with the terminal this feed shows, which decides what a close does with it: it is this page's to end (`ours`), it ended by itself and the host keeps its end until a page forgets it (`dismiss`), or it is not this page's (taken by another, gone, left for the page that comes back). */
@@ -938,7 +940,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     complete = true;
     attempts = 0;
     if (replay !== undefined) {
-      publish(cursor, { data: joined(replay.parts), startSize: replay.startSize, startModes: replay.startModes, size: replay.size, modes: replay.modes });
+      publish(cursor, { data: joined(replay.parts), startSize: replay.startSize, startModes: replay.startModes, size: replay.size, modes: replay.modes, ...(replay.marks.length === 0 ? {} : { marks: replay.marks }) });
     }
   };
 
@@ -972,7 +974,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       outstanding = Math.max(0, outstanding - held.bytes());
       held.clear();
       awaiting = undefined;
-      gathering = { start: ready.start, end: ready.end, parts: [], startSize: ready.startSize, startModes: ready.startModes, size: ready.size, modes: ready.modes };
+      gathering = { start: ready.start, end: ready.end, parts: [], startSize: ready.startSize, startModes: ready.startModes, size: ready.size, modes: ready.modes, marks: [] };
     }
 
     forgiven = outstanding;
@@ -1092,6 +1094,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     if (gathering !== undefined) {
       // The bytes gathered so far are not the terminal: the replay starts again at `to`, and is over when `to` is at its end or past it.
       gathering.parts = [];
+      gathering.marks = [];
       gathering.startSize = gathering.size;
       gathering.startModes = gathering.modes;
       gathering.start = to;
@@ -1151,6 +1154,7 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
     }
 
     let taken = false;
+    let placed = false;
     for (const mark of marksOf(frame)) {
       if (mark.end <= markedEnd) {
         continue;
@@ -1159,6 +1163,18 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
       taken = true;
       markedEnd = mark.end;
       marks.push(mark);
+      // The reader makes its marker where the mark stands: in the bytes of the replay being gathered, or among the live bytes held for it. A host that cut where the protocol says gives `end` at the end of what is held.
+      if (gathering === undefined && awaiting !== undefined && mark.end <= awaiting.end) {
+        // The replay is complete and not taken yet, and the mark stands in it (the host sends a mark after the bytes it ends at, and the last of them completed the replay).
+        const start = awaiting.end - awaiting.data.length;
+        awaiting = { ...awaiting, marks: [...(awaiting.marks ?? []), { mark, at: Math.max(0, mark.end - start) }] };
+      } else if (gathering === undefined) {
+        held.mark(mark, cursor - mark.end);
+        placed = true;
+      } else {
+        gathering.marks.push({ mark, at: Math.min(Math.max(0, mark.end - gathering.start), cursor - gathering.start) });
+      }
+
       if (mark.kind === 'command-start' && mark.trust === 'nonce') {
         running = true;
       } else if (mark.kind === 'command-end' || mark.kind === 'prompt-start') {
@@ -1172,6 +1188,11 @@ export function createExecFeed(options: ExecFeedOptions): ExecFeed {
 
     if (taken) {
       markList = undefined;
+    }
+
+    // A mark whose bytes the reader has read already comes with its next read: it is woken for it.
+    if (placed) {
+      wake();
     }
   };
 

@@ -98,3 +98,107 @@ describe('the output a session holds', () => {
     expect(held.take()).toEqual({ chunks: [], bytes: 0 });
   });
 });
+
+// THE MARKS IN THE OUTPUT (issue #694 step 5). A reader creates a marker at the place a mark stands, which is a place in the emulator's parse: so what is taken is cut where a mark stands, and the mark goes with the bytes that
+// end at it. A mark that arrives when its bytes were taken already goes with the next take, which then holds no bytes.
+
+const prompt = (end: number, extra: Record<string, unknown> = {}) => ({ kind: 'prompt-start' as const, at: end - 4, end, trust: 'unverified' as const, ...extra });
+const placed = (taken: { readonly marks?: ReadonlyArray<{ readonly mark: { readonly end: number }; readonly at: number }> | undefined }): Array<readonly [number, number]> => (taken.marks ?? []).map((one) => [one.mark.end, one.at]);
+
+describe('the marks in the output a session holds', () => {
+  it('hands a mark over with the bytes that end at it, and cuts what it hands over there: the bytes after the mark wait for the next take', () => {
+    const held = createHeldOutput();
+    held.push(chunk('abcd'));
+    held.mark(prompt(4), 0);
+    held.push(chunk('efgh'));
+    const first = held.take();
+    expect(texts(first)).toEqual(['abcd']);
+    expect(first.bytes).toBe(4);
+    expect(placed(first)).toEqual([[4, 4]]);
+    const second = held.take();
+    expect(texts(second)).toEqual(['efgh']);
+    expect(second.marks, 'a mark is handed over once').toBeUndefined();
+  });
+
+  it('cuts INSIDE a chunk when the mark stands inside it (a host that did not cut where the protocol says), and loses no byte', () => {
+    const held = createHeldOutput();
+    held.push(chunk('abcdefgh'));
+    held.mark(prompt(8), 3);
+    const first = held.take();
+    expect(texts(first)).toEqual(['abcde']);
+    expect(placed(first)).toEqual([[8, 5]]);
+    const second = held.take();
+    expect(texts(second)).toEqual(['fgh']);
+    expect(held.bytes()).toBe(0);
+  });
+
+  it('gives several marks that stand at one place, and the ones before it, each with its own place, in one take', () => {
+    const held = createHeldOutput();
+    held.push(chunk('abcd'));
+    held.mark(prompt(2), 2);
+    held.mark(prompt(4), 0);
+    held.mark(prompt(4, { kind: 'input-start' }), 0);
+    const taken = held.take();
+    expect(texts(taken)).toEqual(['ab']);
+    expect(placed(taken)).toEqual([[2, 2]]);
+    const next = held.take();
+    expect(texts(next)).toEqual(['cd']);
+    expect(placed(next)).toEqual([[4, 2], [4, 2]]);
+  });
+
+  it('hands a mark that arrives when every byte was taken over with the next take, which holds no bytes, and cuts nothing after it', () => {
+    const held = createHeldOutput();
+    held.push(chunk('abcd'));
+    expect(held.take().bytes).toBe(4);
+    held.mark(prompt(4), 0);
+    const marked = held.take();
+    expect(marked.chunks).toEqual([]);
+    expect(marked.bytes).toBe(0);
+    expect(placed(marked)).toEqual([[4, 0]]);
+    expect(held.take()).toEqual({ chunks: [], bytes: 0 });
+  });
+
+  it('honours the bound of a take and the mark together: a read of at most N bytes stops at N or at the mark, whichever is first, and the marks beyond the stop stay', () => {
+    const held = createHeldOutput();
+    held.push(chunk('aaaa'));
+    held.push(chunk('bbbb'));
+    held.push(chunk('cccc'));
+    held.mark(prompt(8), 4);
+    held.mark(prompt(12), 0);
+    const first = held.take(5);
+    expect(texts(first), 'the bound is whole chunks: one chunk reaches it').toEqual(['aaaa', 'bbbb']);
+    expect(placed(first)).toEqual([[8, 8]]);
+    const second = held.take();
+    expect(texts(second)).toEqual(['cccc']);
+    expect(placed(second)).toEqual([[12, 4]]);
+  });
+
+  it('puts a mark that claims more bytes behind it than are held at the start of what is held, and one that stands before what was taken at the next take', () => {
+    const held = createHeldOutput();
+    held.push(chunk('abcd'));
+    held.mark(prompt(1), 99);
+    const taken = held.take();
+    expect(placed(taken)).toEqual([[1, 0]]);
+    expect(texts(taken)).toEqual(['abcd']);
+  });
+
+  it('forgets its marks with its bytes when it is cleared, and counts the bytes of a take that was cut', () => {
+    const held = createHeldOutput();
+    held.push(chunk('abcdef'));
+    held.mark(prompt(3), 3);
+    held.clear();
+    expect(held.take()).toEqual({ chunks: [], bytes: 0 });
+    held.push(chunk('xyz'));
+    expect(held.take().marks).toBeUndefined();
+    held.push(chunk('abcdef'));
+    held.mark(prompt(3), 3);
+    expect(held.take().bytes).toBe(3);
+    expect(held.bytes()).toBe(3);
+  });
+
+  it('a take with no marks is what it was: the same object shape, no `marks` member', () => {
+    const held = createHeldOutput();
+    held.push(chunk('abc'));
+    expect(held.take()).toEqual({ chunks: [chunk('abc')], bytes: 3 });
+  });
+});

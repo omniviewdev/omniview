@@ -259,6 +259,16 @@ export const units = [
     seconds: 158,
   },
 
+  // The command gutter (issue #694 step 5): a mark for each command beside its row and over no cell, hidden by the alternate screen, the words of the pointer on it, the keys that jump and the copy of an output, the gutter after a reload,
+  // and axe (the sections are in terminal-gutter.mjs, the host is the probe's own with the shell's integration on). WebKit and Chromium at both viewports. The seconds are a guess to be set from the runner's first summary.
+  {
+    id: 'terminal-gutter',
+    name: 'Probe that the command gutter draws a mark for each command beside its row, hides it on the alternate screen, says what ran on hover, jumps and copies by key, comes back after a reload and passes axe',
+    script: 'ui-next/shell/probes/terminal-gutter-probe.mjs',
+    env: { FONT_DELAY_MS: '40', REPORT: '$RUNNER_TEMP/terminal-gutter-probe.json' },
+    seconds: 60,
+  },
+
   // T3a: find in the scrollback, the context menu of the terminal and the links in its output (the sections are in terminal-find.mjs, the fixture is terminal-fixture.tsx, the mock's bar is measured by
   // mock-terminal-find-measure.mjs), four probes of their own, WebKit and Chromium at both viewports. The seconds are the laptop's measure times 1.3: the sections wait on what the page shows and on counters, with no clock,
   // so they take 1 to 5 s each at each of the four sizes.
@@ -346,5 +356,14 @@ export const units = [
     controls: ['links-hover-never', 'links-leave-never', 'links-plain-follows', 'open-twice', 'open-given', 'tooltip-axe'],
     plants: 'page',
     seconds: 70,
+  },
+  {
+    id: 'terminal-controls-gutter',
+    name: 'Probe that the gutter probe sees a mark over the output, one on the alternate screen, no mark at all, a tooltip that stays or never comes, a jump that is lost, a clipboard that keeps nothing, a replay with no marks, and a violation',
+    script: 'ui-next/shell/probes/terminal-probe.mjs',
+    env: { FONT_DELAY_MS: '40' },
+    controls: ['gutter-covers-text', 'gutter-alt-shown', 'gutter-marks-never', 'gutter-tip-stuck', 'gutter-tip-never', 'gutter-jump-lost', 'gutter-clipboard-dropped', 'gutter-reload-forgets', 'gutter-axe'],
+    plants: 'page',
+    seconds: 120,
   },
 ];

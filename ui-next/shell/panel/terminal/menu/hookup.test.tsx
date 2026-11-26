@@ -406,3 +406,85 @@ describe('with the real emulator', () => {
     expect(page.getByRole('button', { name: 'Copy selection' })).not.toHaveAttribute('aria-disabled');
   });
 });
+
+// THE COMMANDS IN THE BODY (issue #694 step 5): the hook-up of the gutter. The shell's marks reach the screen through the feed; what a person can do with them is in the menu (the keyboard path: Shift F10 or the Menu key opens it, and
+// every item is named), what the pointer does on a mark is the tooltip, and what an action did is said in the body's live region. A fake emulator draws nothing: where a mark is drawn is the probes' to prove.
+
+describe('the commands in the body', () => {
+  const mark = (kind: 'prompt-start' | 'input-start' | 'command-start' | 'command-end', extra: Record<string, unknown> = {}) => ({ kind, at: 0, end: 1, id: 'c1', trust: 'unverified' as const, ...extra });
+  const ran = async (m: Mounted) => {
+    m.feed.push('$ make test\r\nout1\r\nout2\r\n', [
+      { mark: mark('prompt-start'), at: 0 },
+      { mark: mark('input-start'), at: 2 },
+      { mark: mark('command-start', { trust: 'nonce', command: 'make test' }), at: 13 },
+      { mark: mark('command-end', { exit: 2, durationMs: 3_000 }), at: 25 },
+    ]);
+    await flush();
+  };
+
+  it('has no items in the menu while the shell has made no command: a terminal with no shell integration has nothing for them to act on', async () => {
+    const m = mount();
+    await flush();
+    rightClick(m.screen());
+    expect(page.queryByRole('menuitem', { name: 'Previous command' })).toBeNull();
+    expect(page.queryByRole('menuitem', { name: 'Run command again' })).toBeNull();
+  });
+
+  it('puts an open menu away when a command ends while it is open: its Copy command output and Run command again would say what was true when it opened', async () => {
+    const m = mount();
+    await flush();
+    m.feed.push('$ make test\r\nout1\r\n', [
+      { mark: mark('prompt-start'), at: 0 },
+      { mark: mark('input-start'), at: 2 },
+      { mark: mark('command-start', { trust: 'nonce', command: 'make test' }), at: 13 },
+    ]);
+    await flush();
+    rightClick(m.screen());
+    expect(menu()).not.toBeNull();
+    m.feed.push('more\r\n', [{ mark: mark('command-end', { exit: 0, durationMs: 5 }), at: 6 }]);
+    await flush();
+    expect(menu()).toBeNull();
+  });
+
+  it('goes to the previous command from the menu, and says where it went to a person who cannot see the view move', async () => {
+    const m = mount();
+    await flush();
+    await ran(m);
+    rightClick(m.screen());
+    expect(item('Previous command')).not.toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(item('Previous command'));
+    await flush();
+    expect(m.loader.engines.at(-1)?.scrolls).toEqual([0]);
+    expect(page.getByText('Command 1 of 1, Failed, exit 2, took 3.0 s: make test')).toBeInTheDocument();
+  });
+
+  it('selects the output of the command, copies it, and runs it again, from the menu', async () => {
+    const m = mount();
+    await flush();
+    await ran(m);
+    rightClick(m.screen());
+    fireEvent.click(item('Select command output'));
+    await flush();
+    expect(m.loader.engines.at(-1)?.lineSelections).toEqual([[1, 3]]);
+    rightClick(m.screen());
+    fireEvent.click(item('Run command again'));
+    await flush();
+    expect(m.loader.engines.at(-1)?.pastes).toEqual(['make test']);
+    expect(m.feed.typed()).toContain('\r');
+  });
+
+  it('shows the tooltip of a mark while the pointer is on it, and not after', async () => {
+    const m = mount();
+    await flush();
+    await ran(m);
+    const decoration = m.loader.engines.at(-1)?.decorations()[0];
+    expect(decoration, 'the command is drawn').toBeDefined();
+    decoration?.element.firstElementChild?.dispatchEvent(new MouseEvent('mouseenter'));
+    await flush();
+    expect(page.getByRole('tooltip')).toHaveTextContent('make test');
+    expect(page.getByRole('tooltip')).toHaveTextContent('Failed, exit 2, took 3.0 s');
+    decoration?.element.firstElementChild?.dispatchEvent(new MouseEvent('mouseleave'));
+    await flush();
+    expect(page.queryByRole('tooltip')).toBeNull();
+  });
+});

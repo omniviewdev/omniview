@@ -3,10 +3,10 @@ import type { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { WebglAddon } from '@xterm/addon-webgl';
-import { Terminal, type ITheme, type IViewportRange } from '@xterm/xterm';
+import { Terminal, type IMarker, type ITheme, type IViewportRange } from '@xterm/xterm';
 import xtermCss from '@xterm/xterm/css/xterm.css?inline';
 import { PALETTE_ROLES } from './appearance';
-import { FIND_LIMIT, type Engine, type EngineAppearance, type EngineOptions, type EngineRenderer, type Finder, type FindOptions, type FindState, type LinkHandler, type LinkHover } from './engine';
+import { FIND_LIMIT, type Engine, type EngineAppearance, type EngineMarker, type EngineOptions, type EngineRenderer, type Finder, type FindOptions, type FindState, type LinkHandler, type LinkHover } from './engine';
 import { findDecorations } from './findColours';
 
 // The emulator: xterm.js behind the host's `Engine` (docs/ui-next/status/T1.md, "The renderer"). This is the ONLY file that imports `@xterm/*`, and it is reached only through `loadEngine.ts`'s dynamic import, so
@@ -197,7 +197,17 @@ export function createXtermEngine(options: EngineOptions): Engine {
     }
   };
 
-  const marks = [terminal.onWriteParsed(markScrollable), terminal.onScroll(markScrollable)];
+  /**
+   * The host element says while a program has the alternate screen up (`data-alternate`): the gutter's decorations belong to the normal screen's lines and are hidden by a rule of the stylesheet while it is up (a decoration is the
+   * emulator's DOM node and the emulator draws it by the line of its marker, whichever screen is shown).
+   */
+  const markAlternate = (): void => {
+    element?.toggleAttribute('data-alternate', terminal.buffer.active.type === 'alternate');
+  };
+
+  const marks = [terminal.onWriteParsed(markScrollable), terminal.onScroll(markScrollable), terminal.buffer.onBufferChange(markAlternate)];
+  /** The emulator's own marker behind each one the engine gave out: a decoration is made on it. */
+  const rawMarkers = new WeakMap<EngineMarker, IMarker>();
 
   /** Puts the attributes the host asked for on the input, and takes off those that an earlier call set and this one does not: nothing before the emulator is opened, which has no input yet. */
   const applyAttributes = (): void => {
@@ -431,6 +441,7 @@ export function createXtermEngine(options: EngineOptions): Engine {
     open: (host) => {
       element = host;
       terminal.open(host);
+      markAlternate();
       calibrate();
       applyAttributes();
       // The emulator's own paste handler is never reached: this one takes the event first (capture, at the host) and stops it, so a paste is made once, by `pasteText`.
@@ -642,6 +653,116 @@ export function createXtermEngine(options: EngineOptions): Engine {
       links = addon;
       addon.activate(terminal);
     },
+
+    mark: () => {
+      if (disposed || terminal.buffer.active.type === 'alternate') {
+        return undefined;
+      }
+
+      const raw = terminal.registerMarker(0);
+      if (raw === undefined) {
+        return undefined;
+      }
+
+      const marker: EngineMarker = {
+        line: () => (raw.isDisposed ? -1 : raw.line),
+        onDispose: (listener) => {
+          if (raw.isDisposed) {
+            listener();
+            return () => undefined;
+          }
+
+          const subscription = raw.onDispose(listener);
+          return () => {
+            subscription.dispose();
+          };
+        },
+        dispose: () => {
+          raw.dispose();
+        },
+      };
+      rawMarkers.set(marker, raw);
+      return { marker, column: terminal.buffer.active.cursorX };
+    },
+
+    decorate: (marker, paint) => {
+      const raw = rawMarkers.get(marker);
+      if (disposed || raw === undefined || raw.isDisposed) {
+        return undefined;
+      }
+
+      const decoration = terminal.registerDecoration({ marker: raw, x: 0, width: 1, height: 1 });
+      if (decoration === undefined) {
+        return undefined;
+      }
+
+      // The emulator hands the element when it draws the decoration, and again when it draws it anew.
+      decoration.onRender(paint);
+      if (decoration.element !== undefined) {
+        paint(decoration.element);
+      }
+
+      return {
+        refresh: () => {
+          if (decoration.element !== undefined) {
+            paint(decoration.element);
+          }
+        },
+        dispose: () => {
+          decoration.dispose();
+        },
+      };
+    },
+
+    cursor: () => {
+      const buffer = terminal.buffer.active;
+      return { line: buffer.baseY + buffer.cursorY, column: buffer.cursorX };
+    },
+
+    viewport: () => {
+      const buffer = terminal.buffer.active;
+      return { top: buffer.viewportY, rows: terminal.rows, atBottom: buffer.viewportY >= buffer.baseY };
+    },
+
+    lines: (from, to, columns) => {
+      const buffer = terminal.buffer.active;
+      const out: string[] = [];
+      for (let index = Math.max(0, from); index < Math.min(to, buffer.length); index += 1) {
+        const line = buffer.getLine(index);
+        if (line === undefined) {
+          continue;
+        }
+
+        // A row that the next one continues is full, so its end is part of the text; the end of the last row of a logical line is trimmed below.
+        const first = index === Math.max(0, from) ? columns?.from : undefined;
+        const last = index === Math.min(to, buffer.length) - 1 ? columns?.to : undefined;
+        const text = line.translateToString(false, first, last);
+        if (line.isWrapped && out.length > 0 && index > from) {
+          out[out.length - 1] = `${out[out.length - 1] ?? ''}${text}`;
+        } else {
+          out.push(text);
+        }
+      }
+
+      return out.map((text) => text.trimEnd()).join('\n');
+    },
+
+    selectLines: (from, to) => {
+      const last = Math.min(to, terminal.buffer.active.length) - 1;
+      if (last >= from && from >= 0) {
+        terminal.selectLines(from, last);
+      }
+    },
+
+    scrollTo: (line) => {
+      terminal.scrollToLine(Math.max(0, line));
+    },
+
+    scrollToBottom: () => {
+      terminal.scrollToBottom();
+    },
+
+    alternate: () => terminal.buffer.active.type === 'alternate',
 
     dispose: () => {
       disposed = true;

@@ -464,6 +464,10 @@
     "probe": true,
     "controls": []
   },
+  "ui-next/shell/probes/terminal-gutter-probe.mjs": {
+    "probe": true,
+    "controls": []
+  },
   "ui-next/shell/probes/terminal-probe.mjs": {
     "probe": true,
     "controls": [
@@ -588,7 +592,16 @@
       "links-plain-follows",
       "open-twice",
       "open-given",
-      "tooltip-axe"
+      "tooltip-axe",
+      "gutter-covers-text",
+      "gutter-alt-shown",
+      "gutter-marks-never",
+      "gutter-tip-stuck",
+      "gutter-tip-never",
+      "gutter-jump-lost",
+      "gutter-clipboard-dropped",
+      "gutter-reload-forgets",
+      "gutter-axe"
     ]
   },
   "ui-next/shell/probes/terminal-reattach-b-probe.mjs": {

@@ -89,6 +89,8 @@ export type TerminalReplay = {
   readonly modes: TerminalModes;
   /** The offset after the last byte of `data`: the live output continues there. */
   readonly end: number;
+  /** The marks of the shell's integration that stand in `data`, in order, each with the bytes of `data` before it. Absent when there is none. */
+  readonly marks?: readonly PlacedMark[] | undefined;
 };
 
 /** Why a session is no longer held by this page though its process lives on: another page took it (`taken-over`). */
@@ -161,10 +163,21 @@ export type TerminalMark = {
   readonly redraw?: boolean | undefined;
 };
 
-/** What the process wrote since the last read, oldest first: its bytes (an escape sequence may be cut between two chunks, the emulator keeps its state). */
+/**
+ * A mark placed in the bytes that are handed to the reader: `at` is how many of those bytes come before it (0 to their count), so that the reader writes that many, waits until the emulator has parsed them, and creates its
+ * marker there (xterm.js #5214: a marker made before the parse reads line 0). The host cuts the output where a mark ends, so for a host that does what the protocol says `at` is the end of the mark's sequence.
+ */
+export type PlacedMark = {
+  readonly mark: TerminalMark;
+  readonly at: number;
+};
+
+/** What the process wrote since the last read, oldest first: its bytes (an escape sequence may be cut between two chunks, the emulator keeps its state), and the marks that stand in them. */
 export type TerminalOutput = {
   readonly chunks: readonly Uint8Array[];
   readonly bytes: number;
+  /** The marks of the shell's integration that fall in these bytes (at or after the first, at or before the last), in order, each with the bytes before it. Absent when there is none. A read that holds only marks has no chunks. */
+  readonly marks?: readonly PlacedMark[] | undefined;
 };
 
 /**
