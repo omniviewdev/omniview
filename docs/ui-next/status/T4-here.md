@@ -31,7 +31,7 @@
 
 ## Not verified
 
-- Kit `verify`, full `pnpm test`.
+- Kit `verify`: its run fails only by 5 s timeouts under load average over 20 in kit files this PR does not touch (LogView, Menu counts, formatAge, CardGrid, table counts); the plugin-vocabulary guard (`eslint/vocabulary.test.mjs`) passes, 28 of 28, with a 120 s timeout. Full `pnpm test`: not run.
 - Run later (Main's order): seam `terminal-core,terminal-find` passed in both engines; probes `--changed`: every find unit and control passed, and 11 `terminal-probe` timing controls (flood/hidden-work frames and callbacks, load average over 20) exited 1; Main reports they fail on main here too.
 - No probe section or seam scenario for the new behaviour: reserved for step 6 of the issue (`r6`). The fixture host's `ChannelTerminalCwd` answers a constant `/home/user`.
 - Real browser, macOS (proc_info with a removed directory), Windows (`unsupported`).
