@@ -1,5 +1,5 @@
 import { HOST, type PanelStore, type Session, type SessionId } from '../../core/panel';
-import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot, type TerminalTarget } from './feed';
+import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot, type TerminalRestart, type TerminalTarget } from './feed';
 import { sessionStateOf } from './state';
 import { TERMINAL_TOOL_ID } from './tool';
 
@@ -60,6 +60,8 @@ export type TerminalSessionsOptions = {
    * key. Absent: a terminal this window lost cannot be taken back.
    */
   readonly reattach?: ((session: SessionId) => TerminalTarget) | undefined;
+  /** Makes the target that starts a terminal in place of an ended one (#695 step 5): what `restart` opens for a session, given what the ended feed said a restart is made from and the session's id. Absent: nothing is restarted. */
+  readonly restart?: ((restart: TerminalRestart, session: SessionId) => TerminalTarget) | undefined;
   /**
    * What opens an address outside the app (T3a): the window's own way to do it (the system browser, through the runtime), called with the address of a link a person followed in a terminal. Absent: the window cannot open an address, and no link
    * is drawn (`canOpenExternal`). The registry gives it only http and https addresses, once for each follow; a way that throws or rejects is one warning, and nothing is tried again.
@@ -132,6 +134,12 @@ export type TerminalSessions = {
    * between two changes, it is an external store (`useSyncExternalStore(subscribeFeeds, () => feedOf(session))`): a body drawn before its terminal was found, or while another feed was the session's, is drawn again.
    */
   readonly subscribeFeeds: (listener: () => void) => () => void;
+  /** Whether the terminal of this session is over for good and a restart can be made from it (#695 step 5). */
+  readonly canRestart: (session: SessionId) => boolean;
+  /** Starts a new terminal in the session of an ended one, and answers whether it did (#695 step 5). */
+  readonly restart: (session: SessionId) => boolean;
+  /** The feed a feed was made to continue by a restart (`restart`): the one whose transcript its screen keeps. `undefined` for any other feed. */
+  readonly restartedFrom: (feed: TerminalFeedHandle) => TerminalFeedHandle | undefined;
   /** Whether the window gave the registry a way to open an address outside the app (`TerminalSessionsOptions.openExternal`). A link in a terminal's output is drawn only where this is true, so that no link is dead. The same answer every time. */
   readonly canOpenExternal: () => boolean;
   /**
@@ -721,6 +729,10 @@ export function createTerminalSessions(store: PanelStore, options: TerminalSessi
         old.taking = false;
       }
     },
+
+    canRestart: () => false,
+    restart: () => false,
+    restartedFrom: () => undefined,
 
     canOpenExternal: () => external !== undefined,
 

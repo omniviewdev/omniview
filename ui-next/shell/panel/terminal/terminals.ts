@@ -7,7 +7,7 @@ import { terminalCardOf } from './card';
 import { ClosePrompt } from './ClosePrompt';
 import { createCloseGuard } from './closeGuard';
 import type { EngineLoader } from './engine';
-import type { TerminalBusy, TerminalDirectory, TerminalTarget } from './feed';
+import type { TerminalBusy, TerminalDirectory, TerminalRestart, TerminalTarget } from './feed';
 import { keyOf } from './keys';
 import { localHereTarget, localProfileTarget, localShellTarget } from './localShell';
 import { appShellList, shellMenu, type ShellChoice, type ShellList, type TerminalProfile } from './profiles';
@@ -87,6 +87,11 @@ export type TerminalsOptions = {
    * shell makes it with the page's key), after the host has been asked who holds it. Absent: a terminal this window lost cannot be taken back.
    */
   readonly reattach?: ((session: string) => TerminalTarget) | undefined;
+  /**
+   * What makes the target that starts a terminal in place of an ended one (#695 step 5): given what the ended feed said a restart is made from and the id of the session, the target the registry opens in that session (the host's own shell makes it
+   * with a fresh id, the ended terminal's shell, directory and environment). Absent: the lane of an ended terminal offers no Restart.
+   */
+  readonly restart?: ((restart: TerminalRestart, session: string) => TerminalTarget) | undefined;
   /**
    * What opens an address outside the app (T3a): the window's own way to do it (the system browser, through the runtime), which the Terminal tool calls with the address of a link a person followed in a terminal's output. The tool draws
    * a link only when it was given one (`TerminalSessions.canOpenExternal`: no dead link), and gives it only http and https addresses; a way that throws or rejects is one warning on the console and nothing else. Absent: no link is drawn.

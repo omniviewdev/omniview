@@ -1,6 +1,6 @@
 import type { Engine, EngineAppearance, EngineLoader, EngineOptions, EngineRenderer, FindOptions, FindState, Finder, LinkHandler, LinkHover } from './engine';
 import type { ChannelEvents, ChannelLink, TerminalChannels } from './channel';
-import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalShellAttempt } from './feed';
+import type { TerminalBusy, TerminalDirectory, TerminalFeedHandle, TerminalFeedSnapshot, TerminalOutput, TerminalReplay, TerminalRestart, TerminalShellAttempt } from './feed';
 
 // A feed for the tests of the Terminal tool: it has the contract of a real one (a reader that reads what is held, a wake-up once between two reads, a status that is the same object until it changes) and the
 // counters a test asks for: how many listeners it has, how many times it was closed and read, what was typed, which sizes were asked for. Invented bytes; nothing here is a backend.
@@ -45,6 +45,8 @@ export type FakeTerminalFeedOptions = {
   readonly busy?: (() => Promise<TerminalBusy>) | undefined;
   /** What the feed answers when it is asked where a new terminal opened from it starts; default: the feed cannot tell (it has no such member). */
   readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
+  /** What the feed says a restart of it is made from (`restart`); default: the feed says nothing (it has no such member). A function is asked every time, as the real feed's is. */
+  readonly restart?: TerminalRestart | (() => TerminalRestart | undefined) | undefined;
   /** A replay the feed holds for its reader, as a reattached feed does: `takeReplay` gives it once, and `read` gives nothing until it is taken. Default: none (the feed has no `takeReplay`, unless `takeReplay` says it has). */
   readonly replay?: TerminalReplay | undefined;
   /** The feed has a `leave`, counted by `left`. Default: it has none. */
@@ -178,6 +180,7 @@ export function fakeTerminalFeed(options: FakeTerminalFeedOptions = {}): FakeTer
     },
     ...(options.busy === undefined ? {} : { busy: options.busy }),
     ...(options.directory === undefined ? {} : { directory: options.directory }),
+    ...(options.restart === undefined ? {} : { restart: typeof options.restart === 'function' ? options.restart : () => options.restart as TerminalRestart }),
     ...(options.replay === undefined && options.takeReplay !== true ? {} : { takeReplay }),
     ...(options.leave === true ? { leave } : {}),
     ...(options.redraw === true ? { redraw } : {}),
@@ -635,6 +638,8 @@ export type ReadyInit = {
   readonly modes?: Readonly<Record<string, unknown>>;
   readonly startModes?: Readonly<Record<string, unknown>>;
   readonly shell?: string;
+  /** The absolute path of the shell the host says started (`ready.session.shell.path`). Default: `/bin/<shell>`. */
+  readonly shellPath?: string;
   /** The directory the host says the shell started in (`ready.session.cwd`). Default: `/home/u`. */
   readonly startedIn?: string;
   readonly ended?: unknown;
@@ -712,6 +717,7 @@ export type ChannelCall =
     readonly command?: readonly string[];
     readonly cwd?: string;
     readonly env?: Readonly<Record<string, string>>;
+    readonly params?: Readonly<Record<string, string>>;
   }
   | { readonly kind: 'close'; readonly id: string }
   | { readonly kind: 'dismiss'; readonly id: string }
@@ -820,7 +826,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
           start_modes: { ...PLAIN_MODES, ...init.startModes },
           cwd: { path: '/home/u' },
           busy: { state: 'idle' },
-          session: { id, pid: 4242, shell: { path: `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
+          session: { id, pid: 4242, shell: { path: init.shellPath ?? `/bin/${init.shell ?? 'zsh'}`, name: init.shell ?? 'zsh' }, cwd: init.startedIn ?? '/home/u', cols: size.cols, rows: size.rows, lease_ms: 300_000 },
           lease_ms: 300_000,
           ended: init.ended ?? null,
           ...init.raw,
@@ -959,6 +965,7 @@ export function fakeChannels(options: FakeChannelsOptions = {}): FakeChannels {
         ...(launch.command === undefined ? {} : { command: launch.command }),
         ...(launch.cwd === undefined ? {} : { cwd: launch.cwd }),
         ...(launch.env === undefined ? {} : { env: launch.env }),
+        ...(launch.params === undefined ? {} : { params: launch.params }),
       });
       return options.create === undefined ? { id, shell: { path: '/bin/zsh', name: 'zsh' }, cwd: launch.cwd ?? '/home/u' } : options.create(id);
     },

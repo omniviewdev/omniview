@@ -63,6 +63,8 @@ export type ChannelLaunch = {
   readonly command?: readonly string[] | undefined;
   readonly cwd?: string | undefined;
   readonly env?: Readonly<Record<string, string>> | undefined;
+  /** What the page attaches to the terminal, which the host lists back with it (`params` of `CreateTerminal`): the tab the terminal belongs to, and what it was started with. Absent: nothing. */
+  readonly params?: Readonly<Record<string, string>> | undefined;
 };
 
 /**

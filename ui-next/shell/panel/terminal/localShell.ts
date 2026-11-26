@@ -1,7 +1,7 @@
 import { HOST } from '../../core/panel';
 import type { ChannelLaunch, TerminalChannels } from './channel';
 import { createExecFeed, newTerminalId } from './execFeed';
-import type { TerminalDirectory, TerminalFeedSnapshot, TerminalTarget } from './feed';
+import type { TerminalDirectory, TerminalFeedSnapshot, TerminalRestart, TerminalTarget } from './feed';
 import { appTerminalChannels } from './terminalChannel';
 import { launchOf, type TerminalProfile } from './profiles';
 
@@ -37,6 +37,10 @@ export function localProfileTarget(profile: TerminalProfile, channels: TerminalC
  */
 export function localHereTarget(where: TerminalDirectory, channels: TerminalChannels = appTerminalChannels(), leaseMs?: number): TerminalTarget {
   return where.state === 'known' ? targetOf('Terminal', channels, leaseMs, { cwd: where.path }, undefined, where.source === 'start') : targetOf('Terminal', channels, leaseMs, undefined, 'home-for-unknown-directory');
+}
+
+export function localRestartTarget(_restart: TerminalRestart, _tab: string, channels: TerminalChannels = appTerminalChannels(), _newId: () => string = newTerminalId): TerminalTarget {
+  return targetOf('Terminal', channels, undefined, undefined);
 }
 
 function targetOf(

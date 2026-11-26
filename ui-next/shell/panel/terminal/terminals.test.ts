@@ -1339,3 +1339,25 @@ describe('the way to open an address outside the app that the window gives the T
     expect(console.warn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('restarting an ended terminal (#695 step 5)', () => {
+  it('hands the window\'s way to make the restart\'s target to the registry: a session whose feed says a restart can be made from it restarts through it', () => {
+    const store = createPanelStore();
+    store.registerTool(TERMINAL_TOOL);
+    const fresh = fakeTerminalFeed({ state: 'starting' });
+    const restart = vi.fn((_made: unknown, session: string): TerminalTarget => ({ plugin: HOST, id: 'local', title: 'Terminal', sessionId: session, open: () => fresh }));
+    const terminals = createTerminals(store, { restart });
+    const opened = terminals.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed({ state: 'ended', restart: { id: 'old' } }) });
+    expect(terminals.sessions.restart(opened?.id ?? '')).toBe(true);
+    expect(restart).toHaveBeenCalledWith({ id: 'old' }, opened?.id);
+    expect(terminals.sessions.feedOf(opened?.id ?? '')).toBe(fresh);
+  });
+
+  it('is not offered by a window that gave no way to make it', () => {
+    const store = createPanelStore();
+    store.registerTool(TERMINAL_TOOL);
+    const terminals = createTerminals(store, {});
+    const opened = terminals.sessions.open({ plugin: HOST, id: 'local', title: 'Terminal', open: () => fakeTerminalFeed({ state: 'ended', restart: { id: 'old' } }) });
+    expect(terminals.sessions.canRestart(opened?.id ?? '')).toBe(false);
+  });
+});

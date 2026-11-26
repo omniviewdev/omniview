@@ -34,6 +34,10 @@ export type ExecAttach = {
   readonly program?: string | undefined;
   /** The host listed how the terminal ended: it is kept, with its output, until a page dismisses it. */
   readonly ended?: boolean | undefined;
+  /** The absolute path of the shell the host listed for the terminal: what a restart runs when the host cannot say more (it does not know the terminal any more). */
+  readonly shell?: string | undefined;
+  /** What the terminal was asked to start with, as the host listed it back (`params`): the shell and its arguments, and the environment. A restart runs the same. */
+  readonly launch?: { readonly command?: readonly string[] | undefined; readonly env?: Readonly<Record<string, string>> | undefined } | undefined;
 };
 
 export type ExecFeedOptions = {
@@ -52,6 +56,8 @@ export type ExecFeedOptions = {
   readonly homeIfMissing?: boolean | undefined;
   /** The terminal starts in the home directory because the directory it was to start in was not known: the status says so until the first thing is typed (`startNote`). Absent: it was asked for nowhere in particular, or for a directory. */
   readonly startNote?: TerminalFeedSnapshot['startNote'] | undefined;
+  /** The tab (the panel session's id) the terminal belongs to, attached to it so that a page that reloads finds the tab again: it differs from the terminal's id for a terminal that stands in for an ended one. Absent: the terminal's own id is the tab's. */
+  readonly tab?: string | undefined;
   /** The shell, directory and environment the terminal is made with (`ChannelLaunch`). Absent: the host's own choices. */
   readonly launch?: Pick<ChannelLaunch, 'command' | 'cwd' | 'env'> | undefined;
   /** How long the feed waits before it connects again after each stream that dropped; the feed fails when they are used up. Default: `RECONNECT_DELAYS_MS`. */

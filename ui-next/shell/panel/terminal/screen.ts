@@ -103,6 +103,11 @@ export type ScreenDeps = {
    * shell, and the window's region keys, which move the focus to the page for an Escape, do not see it. When it did not, or there is no handler, Escape is the shell's, as it is (programs need it).
    */
   readonly onFindClose?: (() => boolean) | undefined;
+  /**
+   * Enter was pressed in the terminal, plain, while the session takes no input (it ended or failed): says whether the session restarts. When it does the screen stops the key (nothing is sent and the emulator does not take it); when it does
+   * not, or there is no handler, Enter is what it was. Never asked while the session takes input: Enter is the shell's.
+   */
+  readonly onRestart?: (() => boolean) | undefined;
 };
 
 export type TerminalScreen = {
@@ -136,6 +141,11 @@ export type TerminalScreen = {
   readonly setLinks: (handler: LinkHandler | undefined) => void;
   /** Selects the whole buffer, the screen and the scrollback (nothing before the emulator is made): the key does it too. */
   readonly selectAll: () => void;
+  /**
+   * The session was given another feed in place of the ended one that this screen shows (a restart): the screen goes on with it, with the emulator it has, so that the transcript stays above the new process, after a separator. The ended feed is let
+   * go of, and the new one is told the size of the screen at once. Nothing before the emulator is made, and nothing once the screen is disposed.
+   */
+  readonly continueWith: (next: TerminalFeedHandle) => void;
 };
 
 /** Text in the muted colour of the transcript's own lines, on a line of its own (the escape sequences are the emulator's: reset, bright black, reset). The palette's bright black is the theme's muted text; the emulator's dim style would be half the opacity of any colour, which no contrast rule can pass. */
@@ -808,6 +818,8 @@ export function createScreen(deps: ScreenDeps): TerminalScreen {
     selectAll: () => {
       engine?.selectAll();
     },
+
+    continueWith: () => undefined,
 
     find: async () => (engine === undefined ? undefined : engine.find()),
 

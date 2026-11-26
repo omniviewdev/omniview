@@ -52,6 +52,17 @@ export type TerminalDirectory =
   | { readonly state: 'known'; readonly path: string; readonly source: 'shell' | 'start' }
   | { readonly state: 'unknown'; readonly reason?: string | undefined };
 
+/**
+ * What a new terminal that stands in for an ended one is made from (`restart`): the producer's own facts, never the page's guess. `id` is the id the ended terminal had: the new one has another, and the host never meets this one again.
+ * `command` is the shell that ran (the path the host resolved) and the arguments it was asked for, `cwd` the directory the host says it started in, and `env` what it was asked to add to its environment: each absent when it is not known.
+ */
+export type TerminalRestart = {
+  readonly id: string;
+  readonly command?: readonly string[] | undefined;
+  readonly cwd?: string | undefined;
+  readonly env?: Readonly<Record<string, string>> | undefined;
+};
+
 /** The modes a terminal is in at an offset of its output (T2-go `TerminalModes`): what a reattach has to switch back on before it writes the bytes. `mouseTracking` is bits (1 click, 2 drag, 4 any motion), `mouseEncoding` is 0 X10, 1 UTF-8, 2 SGR, 3 urxvt. */
 export type TerminalModes = {
   readonly altScreen: boolean;
@@ -114,7 +125,7 @@ export type TerminalFeedSnapshot = {
   /** The host did not know this feed's writer when its stream came back (a host restart, an evicted writer), or applied none of what was resent: what was typed while the connection was away may be lost, and the lane says so until the next thing is typed. */
   readonly inputLost?: boolean | undefined;
   /** Set on a terminal that started in the home directory because the directory it was to start in was not known (`New terminal here` of a terminal whose directory the host could not name): the lane says so until the first thing is typed. */
-  readonly startNote?: 'home-for-unknown-directory' | undefined;
+  readonly startNote?: 'home-for-unknown-directory' | 'home-for-removed-directory' | 'shell-replaced' | undefined;
   /**
    * The title a program set (OSC 0 and 2) while it runs in the terminal, as the host states it: the producer says that a program runs (the process that holds the foreground, or a command the shell proved it started), and the page
    * never infers it. Absent when no program runs, when none set a title, and once the terminal is over: the tab then shows the shell's name. Untrusted text, bounded and with no control character; the page draws it as text only.
@@ -230,6 +241,12 @@ export type TerminalFeedHandle = {
    * leaves it out, and nothing is opened from it.
    */
   readonly directory?: (() => Promise<TerminalDirectory>) | undefined;
+  /**
+   * What a restart of this terminal is made from, once the producer knows that the process is over for good (it ended by itself, was closed, was killed by a signal, its pty failed, or the host does not have it any more) and
+   * `undefined` until then: a terminal that runs, one that never started, one whose connection was lost (it may still run), one another tab holds and one whose input could not be delivered are not over, and offer nothing. Pure: it
+   * asks nothing and starts nothing. A producer that cannot leaves it out, and nothing is restarted.
+   */
+  readonly restart?: (() => TerminalRestart | undefined) | undefined;
 };
 
 /** What opens a terminal session: plain data and one function. Who supplies it (the host's own shell today) is not the registry's business. */

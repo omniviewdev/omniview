@@ -66,6 +66,8 @@ type RigOptions = {
   readonly onFindStep?: (direction: 'next' | 'previous') => boolean;
   /** The handler of Escape for the find bar (`ScreenDeps.onFindClose`): says whether the bar took the key. */
   readonly onFindClose?: () => boolean;
+  /** `ScreenDeps.onRestart`: Enter in a screen that takes no input; says whether the session restarts. */
+  readonly onRestart?: () => boolean;
   /** The queries the emulator answers when it parses them (`FakeEngineOptions.answers`). */
   readonly answers?: FakeEngineOptions['answers'];
   /**
@@ -180,6 +182,7 @@ function rig(options: RigOptions = {}): Rig {
     onFind: options.onFind,
     onFindStep: options.onFindStep,
     onFindClose: options.onFindClose,
+    onRestart: options.onRestart,
   });
   return {
     screen,
@@ -2876,5 +2879,193 @@ describe('Escape with the find bar open', () => {
     expect(r.engine().key(ESCAPE)).toEqual(STOPPED);
     expect(r.engine().key(ESCAPE)).toEqual(SHELLS);
     expect(r.engine().keysStopped()).toBe(1);
+  });
+});
+
+// Step 5 of #695: a restart puts a NEW feed in the session of an ended one, and the screen that shows the ended one goes on with it: the same emulator, so the transcript of the ended terminal stays above the new shell (scrollback, find and
+// selection continue), a separator after it, and the size told to the new feed at once (it starts the terminal). Enter, in a screen that takes no input, asks to restart.
+
+describe('a restart: the screen goes on with the next feed of its session (`continueWith`)', () => {
+  const SEPARATOR = '\u001b[!p\u001b[?1049l\u001b[0m\r\n\u001b[90m[Restarted]\u001b[0m\r\n';
+  const ENDED = '\u001b[0m\r\n\u001b[90m[Process exited with code 3]\u001b[0m\r\n';
+
+  async function shown(options: RigOptions = {}) {
+    const r = rig(options);
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    r.frame();
+    return r;
+  }
+
+  it('keeps the emulator, and with it the transcript of the ended terminal: no second emulator is made, and nothing is cleared or reset in full', async () => {
+    const r = await shown();
+    r.feed.push('bye\r\n');
+    r.feed.set({ state: 'ended', exit: { code: 3 } });
+    r.frame();
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    expect(r.loader.engines).toHaveLength(1);
+    expect(r.engine().clears()).toBe(0);
+    expect(r.engine().resets()).toBe(0);
+    expect(r.engine().text()).toBe(`bye\r\n${ENDED}${SEPARATOR}`);
+  });
+
+  it('listens to the new feed and lets go of the ended one', async () => {
+    const r = await shown();
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    expect(r.feed.listeners()).toBe(0);
+    expect(next.listeners()).toBe(1);
+  });
+
+  it('draws what the new feed holds after the separator, in order, and tells how the new process ended too, once, as it did for the first', async () => {
+    const r = await shown();
+    r.feed.set({ state: 'ended', exit: { code: 3 } });
+    r.frame();
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    next.set({ state: 'running' });
+    next.push('$ ');
+    r.frame();
+    next.push('exit\r\n');
+    next.set({ state: 'ended', exit: { code: 1 } });
+    r.frame();
+    expect(r.engine().text()).toBe(`${ENDED}${SEPARATOR}$ exit\r\n\u001b[0m\r\n\u001b[90m[Process exited with code 1]\u001b[0m\r\n`);
+  });
+
+  it('tells the new feed the size of the screen at once: that size starts the terminal, and the old feed is told nothing more', async () => {
+    const r = await shown();
+    r.feed.set({ state: 'ended' });
+    r.frame();
+    const before = r.feed.sizes().length;
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    expect(next.sizes()).toEqual([[80, 24]]);
+    expect(r.feed.sizes()).toHaveLength(before);
+  });
+
+  it('tells the new feed the size when the screen is shown again, when it was hidden as the restart came: nothing is measured while it is hidden', async () => {
+    const r = await shown();
+    r.feed.set({ state: 'ended' });
+    r.frame();
+    r.screen.hide();
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    expect(next.sizes()).toEqual([]);
+    r.screen.show();
+    await r.settle();
+    expect(next.sizes()).toEqual([[80, 24]]);
+  });
+
+  it('credits what the emulator parsed of the ended feed\'s output to that feed, and nothing of it to the new one', async () => {
+    const r = await shown({ auto: false });
+    r.feed.push('abc');
+    r.frame();
+    expect(r.engine().pendingWrites()).toBe(1);
+    r.feed.set({ state: 'ended' });
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    r.engine().complete();
+    expect(r.feed.acks()).toEqual([3]);
+    expect(next.acks()).toEqual([]);
+  });
+
+  it('takes input again once the new feed runs, and sends what is typed to it and not to the ended one', async () => {
+    const r = await shown();
+    r.feed.set({ state: 'ended' });
+    r.frame();
+    expect(r.engine().inputs.at(-1)).toBe(false);
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    expect(r.engine().inputs.at(-1)).toBe(true);
+    r.engine().type('ls');
+    expect(next.typed()).toEqual(['ls']);
+    expect(r.feed.typed()).toEqual([]);
+  });
+
+  it('says again why a restart failed to start, where the shell\'s prompt would have been', async () => {
+    const r = await shown();
+    r.feed.set({ state: 'failed', cause: { stage: 'start', message: 'No shell', code: 'SHELL_UNAVAILABLE' } });
+    r.frame();
+    const next = fakeTerminalFeed({ state: 'starting' });
+    r.screen.continueWith(next);
+    next.set({ state: 'failed', cause: { stage: 'start', message: 'No shell', code: 'SHELL_UNAVAILABLE' } });
+    r.frame();
+    expect(r.engine().text().match(/\[No shell could be started\]/g)).toHaveLength(2);
+  });
+
+  it('does nothing for a screen that was disposed, and nothing before the emulator is made', async () => {
+    const early = rig();
+    const next = fakeTerminalFeed({ state: 'starting' });
+    early.screen.mount(early.host);
+    early.screen.continueWith(next);
+    expect(early.feed.listeners()).toBe(0);
+    const r = await shown();
+    r.screen.dispose();
+    r.screen.continueWith(fakeTerminalFeed({ state: 'starting' }));
+    expect(r.engine().text()).toBe('');
+  });
+});
+
+describe('Enter in a screen that takes no input restarts it (`onRestart`)', () => {
+  async function shown(options: RigOptions) {
+    const r = rig(options);
+    r.screen.mount(r.host);
+    r.screen.show();
+    await r.settle();
+    return r;
+  }
+
+  it('asks to restart for a plain Enter when the session is over, and the emulator does not handle the key', async () => {
+    const onRestart = vi.fn(() => true);
+    const r = await shown({ onRestart });
+    r.feed.set({ state: 'ended', exit: { code: 0 } });
+    expect(r.engine().key({ key: 'Enter', code: 'Enter', keyCode: 13 })).toEqual({ handled: false, defaultPrevented: true });
+    expect(onRestart).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for a failed session too: the screen does not know what can be restarted, the one who answers does', async () => {
+    const onRestart = vi.fn(() => true);
+    const r = await shown({ onRestart });
+    r.feed.set({ state: 'failed', cause: { stage: 'session', message: 'x' } });
+    r.engine().key({ key: 'Enter', code: 'Enter', keyCode: 13 });
+    expect(onRestart).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the key as it was when nothing restarts: the answer is no, and the emulator takes the key as before', async () => {
+    const onRestart = vi.fn(() => false);
+    const r = await shown({ onRestart });
+    r.feed.set({ state: 'ended' });
+    expect(r.engine().key({ key: 'Enter', code: 'Enter', keyCode: 13 })).toEqual({ handled: true, defaultPrevented: false });
+    expect(onRestart).toHaveBeenCalledTimes(1);
+  });
+
+  it('is the shell\'s while the session takes input: Enter reaches the terminal and nothing asks to restart', async () => {
+    const onRestart = vi.fn(() => true);
+    const r = await shown({ onRestart });
+    for (const state of ['running', 'starting'] as const) {
+      r.feed.set({ state });
+      expect(r.engine().key({ key: 'Enter', code: 'Enter', keyCode: 13 })).toEqual({ handled: true, defaultPrevented: false });
+    }
+
+    expect(onRestart).not.toHaveBeenCalled();
+  });
+
+  it('is only a plain Enter pressed down: not with a modifier, not while an input method composes, not a key release', async () => {
+    const onRestart = vi.fn(() => true);
+    const r = await shown({ onRestart });
+    r.feed.set({ state: 'ended' });
+    for (const init of [{ shiftKey: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { isComposing: true }, { type: 'keyup' as const }, { key: 'Escape', code: 'Escape', keyCode: 27 }]) {
+      r.engine().key({ key: 'Enter', code: 'Enter', keyCode: 13, ...init });
+    }
+
+    expect(onRestart).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when it was given no way to restart: Enter is what it was', async () => {
+    const r = await shown({});
+    r.feed.set({ state: 'ended' });
+    expect(r.engine().key({ key: 'Enter', code: 'Enter', keyCode: 13 })).toEqual({ handled: true, defaultPrevented: false });
   });
 });
