@@ -1236,13 +1236,13 @@ const shells: ShellList | undefined =
   shellsAsked === null
     ? undefined
     : createShellList({
-        list: async () =>
-          shellsAsked.split(',').map((entry) => {
-            const [name = '', path = ''] = entry.split('=');
-            return { name, path: path.replace(/\*$/, ''), default: path.endsWith('*') };
-          }),
-        onChanged: () => () => undefined,
-      });
+      list: async () =>
+        shellsAsked.split(',').map((entry) => {
+          const [name = '', path = ''] = entry.split('=');
+          return { name, path: path.replace(/\*$/, ''), default: path.endsWith('*') };
+        }),
+      onChanged: () => () => undefined,
+    });
 if (control === 'search-eager') {
   void import('@xterm/addon-search');
 }

@@ -315,7 +315,7 @@ export function createWhereSections({ check, note, report, runAxe }) {
       const read = await page.evaluate(() => ({ label: window.__where.labels()[0], markup: window.__where.markup(0), item: window.__where.item(0), strip: window.__where.strip() }));
       const boundProblems = [];
       if (!sent) boundProblems.push('the host never sent the title');
-      // eslint-disable-next-line no-control-regex
+       
       if (/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(read.label)) boundProblems.push(`the tab's name has a control or direction character (${JSON.stringify(read.label.slice(0, 20))})`);
       if (!read.label.startsWith('abcdevil<b>x</b>xxxx')) boundProblems.push(`the tab's name starts ${JSON.stringify(read.label.slice(0, 24))}, not the title's text with the control character and the override gone`);
       if (new TextEncoder().encode(read.label).length > 256) boundProblems.push(`the tab's name is ${String(read.label.length)} characters, over the 256 bytes of a title`);
