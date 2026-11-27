@@ -13,11 +13,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// THE TRACKED DIRECTORY (issue #694 step 6). "New terminal here" and the card's directory follow the directory the shell said it is in, when
-// the shell's integration is on and the directory came with the session's nonce; otherwise the system is asked, as it always was. The shell of
-// these tests starts in the account's home (the system's answer) and prints directories that are not the home, so the two answers differ.
+// THE TRACKED DIRECTORY (issue #694 step 6). "New terminal here" and the card's directory follow the directory the shell said it is in with the
+// session's nonce, but only while the system agrees that the shell's process is in that very directory (the same inode, so the shell's logical
+// spelling of a symlink is kept): a shell that was replaced (`exec zsh`: the new one has no integration) or that moved while a command runs would
+// otherwise be answered for with a stale directory. When the system cannot say, the tracked one is the answer; otherwise the system's is.
 
-// cwdOf asks the channel.
+// goTo makes the fake shell change its own directory (no output), and waits until it has by sending a command after it and waiting for its output.
+func goTo(t *testing.T, k *marked, dir string) {
+	t.Helper()
+	_, err := k.f.m.chanOf(t, k.info).master.Write([]byte("cd:" + dir + "\n"))
+	require.NoError(t, err)
+	k.print("") // the shell reads this after the cd; nothing is printed, so wait on the process's own directory instead
+	require.Eventually(t, func() bool {
+		got, pullErr := processCwd(k.f.m.chanOf(t, k.info).cmd.Process.Pid)
+		if pullErr != nil {
+			return false
+		}
+		want, evalErr := filepath.EvalSymlinks(dir)
+		return evalErr == nil && got == want
+	}, settle, time.Millisecond, "the shell is in %s", dir)
+}
+
 func cwdOf(t *testing.T, k *marked) Directory {
 	t.Helper()
 	got, err := k.f.m.ChannelCwd(k.info.Cap)
@@ -25,33 +41,57 @@ func cwdOf(t *testing.T, k *marked) Directory {
 	return got
 }
 
-func TestTheDirectoryIsTheOneTheShellProvedWithTheNonceAndFollowsIt(t *testing.T) {
+func TestTheDirectoryIsTheOneTheShellProvedWhereTheSystemAgreesAndFollowsIt(t *testing.T) {
 	k := newMarked(t)
 	first, second := t.TempDir(), t.TempDir()
-	require.Equal(t, Directory{Path: k.f.home}, cwdOf(t, k), "before any mark the system's answer: the shell's own directory")
+	require.Equal(t, Directory{Path: k.f.home}, cwdOf(t, k), "before any mark the system's answer")
 
-	k.print(k.command("cd first", "", 0, first))
+	goTo(t, k, first)
+	k.print(osc("633;P;Cwd=" + first + ";" + k.nonce))
 	guarded(t, "tracked", func() {
-		assert.Equal(t, Directory{Path: first}, cwdOf(t, k), "the directory the shell proved, not the one the process is in")
+		assert.Equal(t, Directory{Path: first}, cwdOf(t, k))
 	})
-	k.print(k.command("cd second", "", 0, second))
+	goTo(t, k, second)
+	k.print(osc("633;P;Cwd=" + second + ";" + k.nonce))
 	guarded(t, "follows", func() {
-		assert.Equal(t, Directory{Path: second}, cwdOf(t, k), "the newest one")
+		assert.Equal(t, Directory{Path: second}, cwdOf(t, k))
+	})
+}
+
+// After `exec zsh` the new shell has no integration and tells nothing; a command that changed the shell's directory tells nothing either: the
+// last proof names a directory the shell is no longer in, and the system's answer is the true one.
+func TestAProofThatTheSystemContradictsIsNotTheAnswer(t *testing.T) {
+	k := newMarked(t)
+	stale, now := t.TempDir(), t.TempDir()
+	goTo(t, k, stale)
+	k.print(osc("633;P;Cwd=" + stale + ";" + k.nonce))
+	goTo(t, k, now)
+	guarded(t, "stale-proof", func() {
+		assert.Equal(t, Directory{Path: now}, cwdOf(t, k), "the shell moved with no word: the system says where it is")
+	})
+}
+
+func TestTheShellsOwnSpellingOfASymlinkedDirectoryIsKept(t *testing.T) {
+	k := newMarked(t)
+	target := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(target, link))
+	goTo(t, k, link)
+	k.print(osc("633;P;Cwd=" + link + ";" + k.nonce))
+	guarded(t, "logical-spelling", func() {
+		assert.Equal(t, Directory{Path: link}, cwdOf(t, k), "the same directory, in the words the shell used")
 	})
 }
 
 func TestADirectoryNoNonceVouchedForIsNeverTheAnswer(t *testing.T) {
 	k := newMarked(t)
-	genuine, forged := t.TempDir(), t.TempDir()
+	elsewhere := t.TempDir()
+	goTo(t, k, elsewhere)
+	other := t.TempDir()
 	wrong := strings.Repeat("f", len(k.nonce))
-	k.print(osc("633;P;Cwd="+forged+";"+wrong) + osc("633;P;Cwd="+forged) + osc("7;file://host"+forged))
+	k.print(osc("633;P;Cwd=" + other + ";" + wrong) + osc("633;P;Cwd=" + other) + osc("7;file://host" + other))
 	guarded(t, "forged-ignored", func() {
-		assert.Equal(t, Directory{Path: k.f.home}, cwdOf(t, k), "a wrong nonce, no nonce and OSC 7 (anything can print it) change nothing")
-	})
-	// The other half: the same mark with the nonce is believed.
-	k.print(osc("633;P;Cwd=" + genuine + ";" + k.nonce))
-	guarded(t, "genuine-believed", func() {
-		assert.Equal(t, Directory{Path: genuine}, cwdOf(t, k))
+		assert.Equal(t, Directory{Path: elsewhere}, cwdOf(t, k), "a wrong nonce, no nonce and OSC 7 change nothing")
 	})
 }
 
@@ -79,21 +119,22 @@ func TestATerminalWithoutIntegrationAnswersWithTheSystemsDirectory(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, IntegrationOff, info.Integration.State)
 	elsewhere := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(k.dir, "claim"), []byte(osc("633;P;Cwd="+elsewhere+";"+k.nonce)), 0o600))
+	claim := osc("633;P;Cwd=" + elsewhere + ";" + k.nonce)
+	require.NoError(t, os.WriteFile(filepath.Join(k.dir, "claim"), []byte(claim), 0o600))
 	page := off.m.attachMarks(t, info.Cap, nil)
 	page.waitReady()
 	_, writeErr := off.m.chanOf(t, info).master.Write([]byte("claim\n"))
 	require.NoError(t, writeErr)
-	page.waitBytes(len(osc("633;P;Cwd=" + elsewhere + ";" + k.nonce)))
+	page.waitBytes(len(claim))
 	got, cwdErr := off.m.ChannelCwd(info.Cap)
 	require.NoError(t, cwdErr)
 	guarded(t, "no-integration", func() {
-		assert.Equal(t, Directory{Path: off.home}, got, "no scanner reads a terminal without the integration: what it prints names no directory")
+		assert.Equal(t, Directory{Path: off.home}, got, "no scanner reads a terminal without the integration")
 	})
 }
 
 // The events lane (a terminal with no channel, asked by its id) gives the same answer from the same record.
-func TestTheEventsLanesDirectoryIsTheTrackedOneToo(t *testing.T) {
+func TestTheEventsLanesDirectoryFollowsTheSameRule(t *testing.T) {
 	dir := t.TempDir()
 	shell := filepath.Join(dir, "zsh")
 	require.NoError(t, os.WriteFile(shell, []byte(marksShellScript), 0o700))
@@ -104,29 +145,43 @@ func TestTheEventsLanesDirectoryIsTheTrackedOneToo(t *testing.T) {
 	s := f.m.session(t, info.ID)
 	nonce := s.nonce.Reveal()
 	require.NotEmpty(t, nonce)
-	tracked := t.TempDir()
+	tracked, elsewhere := t.TempDir(), t.TempDir()
 
+	send := func(line string) {
+		t.Helper()
+		_, writeErr := s.master.Write([]byte(line + "\n"))
+		require.NoError(t, writeErr)
+	}
 	say := func(text string) {
 		t.Helper()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "say"), []byte(text), 0o600))
 		want := s.next() + uint64(len(text))
-		_, writeErr := s.master.Write([]byte("say\n"))
-		require.NoError(t, writeErr)
+		send("say")
 		require.Eventually(t, func() bool { return s.next() >= want }, settle, time.Millisecond, "the shell printed it")
 	}
+	moveTo := func(to string) {
+		t.Helper()
+		send("cd:" + to)
+		require.Eventually(t, func() bool {
+			got, pullErr := processCwd(s.cmd.Process.Pid)
+			return pullErr == nil && got == to
+		}, settle, time.Millisecond)
+	}
+	moveTo(tracked)
+	say(osc("633;P;Cwd=" + tracked + ";" + strings.Repeat("f", len(nonce))))
 	got, err := f.m.Cwd(info.ID)
 	require.NoError(t, err)
-	require.Equal(t, Directory{Path: f.home}, got, "before any mark the system's answer")
-
-	say(osc("633;P;Cwd=" + tracked + ";" + strings.Repeat("f", len(nonce))))
-	got, err = f.m.Cwd(info.ID)
-	require.NoError(t, err)
-	assert.Equal(t, Directory{Path: f.home}, got, "a wrong nonce changes nothing")
-
+	assert.Equal(t, Directory{Path: tracked}, got, "a wrong nonce changes nothing: the system says so")
 	say(osc("633;P;Cwd=" + tracked + ";" + nonce))
 	got, err = f.m.Cwd(info.ID)
 	require.NoError(t, err)
 	guarded(t, "events-tracked", func() {
-		assert.Equal(t, Directory{Path: tracked}, got, "the events lane follows the shell's proof")
+		assert.Equal(t, Directory{Path: tracked}, got)
+	})
+	moveTo(elsewhere)
+	got, err = f.m.Cwd(info.ID)
+	require.NoError(t, err)
+	guarded(t, "events-stale-proof", func() {
+		assert.Equal(t, Directory{Path: elsewhere}, got, "the proof names a directory the shell left")
 	})
 }
