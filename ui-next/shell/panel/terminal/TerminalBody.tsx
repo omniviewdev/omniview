@@ -327,6 +327,20 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
       screen.focus();
     }
   }, [screen, sessions, session.id, visible, view.ready, running, takeKeyboard]);
+  // A request to show a command (the finished-command notice's Show): once this body is on screen and its screen is there, the view moves to the command, and the keyboard goes in the terminal, which the person asked for by pressing Show,
+  // wherever it was. The registry keeps the request until it is taken; a command the screen no longer holds is said, and the request is spent all the same.
+  const jump = useSyncExternalStore(sessions.subscribeJumps, () => sessions.pendingJump(session.id));
+  useEffect(() => {
+    if (jump === undefined || !visible || !view.ready) {
+      return;
+    }
+
+    const command = sessions.takeJump(session.id);
+    if (command !== undefined) {
+      screen.commands.reveal(command);
+      screen.focus();
+    }
+  }, [screen, sessions, session.id, jump, visible, view.ready]);
   // The lane offers the way back for a terminal that this page lost and that nobody holds now.
   const takeable = canTakeBack(sessions, session.id, status);
   // The lane offers Restart for a terminal that is over for good, and Enter in the screen is its key. What the ended feed still holds is drawn first: the registry lets that feed go with the swap, and what was not drawn would be lost.
