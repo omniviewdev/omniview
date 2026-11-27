@@ -11,6 +11,7 @@ import type { EngineLoader } from './engine';
 import { offersTakeBack, type TerminalFeedHandle, type TerminalFeedSnapshot } from './feed';
 import { createFindSession, useTerminalFind } from './find';
 import { useCommandGutter } from './gutter/useCommandGutter';
+import { integrationWords } from './integration';
 import { loadXtermEngine } from './loadEngine';
 import { useTerminalLinks, useTerminalMenu } from './menu';
 import { createScreen } from './screen';
@@ -404,7 +405,8 @@ function TerminalView({ sessions, session, feed, visible, load, screenReader, na
   const gutter = useCommandGutter({ screen, say });
 
   const lane = view.error === undefined ? laneOf(status) : { words: 'The terminal view could not be loaded.', note: `${view.error}.` };
-  const hint = `Escape and Tab go to the shell. Press F6 to move to the next part of the window${platform === 'mac' ? `, or ${toggleChordText(platform)} to hide the panel` : ''}. ${screenReaderWords(reading, platform)}`;
+  const tier = integrationWords(status);
+  const hint = `Escape and Tab go to the shell. Press F6 to move to the next part of the window${platform === 'mac' ? `, or ${toggleChordText(platform)} to hide the panel` : ''}. ${screenReaderWords(reading, platform)}${tier === undefined ? '' : ` Shell integration. ${tier.text}`}`;
 
   return (
     <div className={styles.terminal} data-shell-part="terminalBody">
