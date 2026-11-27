@@ -542,21 +542,24 @@ const INTEGRATION_GROUP = 'terminal-integration';
 const INTEGRATION_CONTROLS = {
   'integration-exit-true': /true ends with exit 0 in the host's marks/,
   'integration-exit-false': /false ends with exit 1 in the host's marks/,
-  'integration-exit-three': /\(exit 3\) ends with exit 3 in the host's marks/,
+  'integration-exit-three': /ends with exit 3 in the host's marks/,
   'integration-ctrlc-none': /Ctrl-C at an empty prompt makes no command/,
   'integration-gutter-success': /the gutter shows success for a command that exited 0/,
   'integration-gutter-error': /the gutter shows an error for the commands that exited with a status/,
   'integration-gutter-incomplete': /the gutter shows incomplete for a command that ended with no status/,
   'integration-jump': /a jump moves the viewport to the previous command's line/,
+  'integration-jump-top': /after a jump the command's line is the top row of the view/,
   'integration-select-output': /Select output selects exactly the output of the command/,
   'integration-forged-line': /a forged mark, with a wrong nonce or none, gives no command line/,
   'integration-forged-cwd': /a forged mark, with a wrong nonce or none, changes no directory/,
+  'integration-forged-midcommand': /633;E is believed only for a command started at a prompt/,
   'integration-trusted-line': /a mark with the session's nonce gives a trusted command line/,
   'integration-trusted-cwd': /a mark with the session's nonce gives a trusted directory/,
   'integration-file-zshrc': /~\/\.zshrc is byte for byte as it was/,
   'integration-file-zprofile': /~\/\.zprofile is byte for byte as it was/,
   'integration-file-bashrc': /~\/\.bashrc is byte for byte as it was/,
   'integration-file-bash-profile': /~\/\.bash_profile is byte for byte as it was/,
+  'integration-file-config-fish': /~\/\.config\/fish\/config\.fish is byte for byte as it was/,
   'integration-optout-fact': /with the integration off the host says it is off/,
   'integration-optout-env': /with the integration off the shell has none of its variables/,
   'integration-optout-marks': /with the integration off no mark arrives/,
@@ -565,6 +568,9 @@ const INTEGRATION_CONTROLS = {
   'integration-canary-log': /the session's nonce is in no host log line/,
   'integration-canary-frames': /the session's nonce is in no typed frame the page receives/,
   'integration-canary-records': /the session's nonce is in no record or answer the host gives/,
+  'integration-canary-end-log': /after the terminals ended no host log line holds the session's nonce/,
+  'integration-canary-end-state': /after the terminals ended no file of the state root holds the session's nonce/,
+  'integration-canary-end-tmp': /after the terminals ended no file of the temporary directory holds the session's nonce/,
   'integration-canary-errors': /the session's nonce is in no error or console line of the page/,
 };
 /** The second page of scenario r7: the 404s of its own calls are what the scenario asks for (RUNTIME_ALLOW). */
@@ -12230,15 +12236,53 @@ async function checkTerminalOpenWhere(page, base, engine) {
 // r10: the shell integration (issue #694 step 7)
 
 /** The files of the user's home that the shell integration must never touch (issue #694: "never edits the user's rc files"). */
-const INTEGRATION_FILES = ['.zshrc', '.zprofile', '.bashrc', '.bash_profile'];
-const INTEGRATION_FILE_CONTROLS = { '.zshrc': 'integration-file-zshrc', '.zprofile': 'integration-file-zprofile', '.bashrc': 'integration-file-bashrc', '.bash_profile': 'integration-file-bash-profile' };
+const INTEGRATION_FILES = ['.zshrc', '.zprofile', '.bashrc', '.bash_profile', '.config/fish/config.fish'];
+const INTEGRATION_FILE_CONTROLS = { '.zshrc': 'integration-file-zshrc', '.zprofile': 'integration-file-zprofile', '.bashrc': 'integration-file-bashrc', '.bash_profile': 'integration-file-bash-profile', '.config/fish/config.fish': 'integration-file-config-fish' };
+/** What differs between the shells for the lines the check types: the way a status of 3 is made (fish has no `(exit 3)`), the variables the user's own files set (the premise of the hashes) and the line that counts the integration's variables. */
+const SHELL_USES = {
+  zsh: { exit3: '(exit 3)', vars: ['SEAM_R10_ZSHRC', 'SEAM_R10_ZPROFILE'] },
+  bash: { exit3: '(exit 3)', vars: ['SEAM_R10_BASHRC', 'SEAM_R10_BASH_PROFILE'] },
+  fish: { exit3: "sh -c 'exit 3'", vars: ['SEAM_R10_FISH', 'SEAM_R10_FISH'] },
+};
+const INTEG_ENV_SH = 'printf \'INTEG_ENV|%s|%s|%s|\\n\' "$(env | grep -c -E \'^(OMNIVIEW_|__omniview|ZDOTDIR=.*omniview-integration|XDG_DATA_DIRS=.*omniview-integration)\')" "$( (set; typeset -f) 2>/dev/null | grep -c \'^__omniview\')" "${__omniview_nonce+set}"';
+const INTEG_ENV_FISH = 'printf \'INTEG_ENV|%s|%s|%s|\\n\' (env | grep -c -E \'^(OMNIVIEW_|__omniview|XDG_DATA_DIRS=.*omniview-integration)\') (begin; set; functions -n; end | grep -c \'^__omniview\') (set -q __omniview_nonce; and echo set)';
+const nonceVariantsOf = (nonce) => [Buffer.from(nonce), ...[0, 1, 2].map((shift) => Buffer.from(Buffer.concat([Buffer.alloc(shift), Buffer.from(nonce)]).toString('base64').slice(4, -4)))];
+
+/** The files under a directory, to a depth, that were written at or after `since`, none over 20 MB; a directory that cannot be read is left (the search is for a nonce in what the check can read). */
+async function filesUnder(root, { depth, since = 0, skip = () => false }) {
+  const found = [];
+  const visit = async (directory, level) => {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const full = path.join(directory, entry.name);
+      if (skip(full)) continue;
+      if (entry.isDirectory()) {
+        if (level < depth) await visit(full, level + 1);
+      } else if (entry.isFile()) {
+        const info = await stat(full).catch(() => null);
+        if (info !== null && info.mtimeMs >= since && info.size <= 20_000_000) found.push(full);
+      }
+    }
+  };
+  await visit(root, 0);
+  return found;
+}
+
+const blobOf = async (files) => Buffer.concat(await Promise.all(files.map((file) => readFile(file).catch(() => Buffer.alloc(0)))));
+const takeOutOf = (list, item) => { const at = list.indexOf(item); if (at >= 0) list.splice(at, 1); };
 const sha256Of = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const OSC = (body) => `\u001b]${body}\u0007`;
 
 /** The lines a command printed, as a person reads them: control sequences out, the end of each line trimmed, and the trailing lines that hold nothing (zsh redraws a `%` and blanks after the output). */
 function printedLines(raw) {
-  const lines = plain(raw).split('\n').map((line) => line.trimEnd());
-  while (lines.length > 0 && (lines.at(-1) === '' || lines.at(-1) === '%')) lines.pop();
+  const lines = plain(raw).replace(/\u001b[()][0-9A-Za-z]/g, '').split('\n').map((line) => line.trimEnd());
+  while (lines.length > 0 && (lines.at(-1) === '' || lines.at(-1) === '%' || lines.at(-1) === '#')) lines.pop();
   return lines;
 }
 
@@ -12288,10 +12332,15 @@ async function checkTerminalIntegration(page, host, engine) {
     '.bashrc': '# the user\'s own bashrc\nexport SEAM_R10_BASHRC=yes\n',
     '.zprofile': `${originals['.zprofile'] ?? ''}export SEAM_R10_ZPROFILE=yes\n`,
     '.bash_profile': `${originals['.bash_profile'] ?? ''}export SEAM_R10_BASH_PROFILE=yes\n[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n`,
+    '.config/fish/config.fish': '# the user\'s own config.fish\nset -gx SEAM_R10_FISH yes\n',
   };
+  await mkdir(path.join(home, '.config', 'fish'), { recursive: true });
   for (const file of INTEGRATION_FILES) await writeFile(path.join(home, file), seeds[file]);
   const hashes = async () => Object.fromEntries(await Promise.all(INTEGRATION_FILES.map(async (file) => [file, sha256Of(await readFile(path.join(home, file)))])));
   const hashesBefore = await hashes();
+  const sessionStart = Date.now();
+  const nonces = [];
+  const plantedEnd = [];
   const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'seam-r10-')));
   let integrationOff = false;
 
@@ -12346,7 +12395,7 @@ async function checkTerminalIntegration(page, host, engine) {
       }, 30_000);
       return found;
     };
-    const doIt = async (id, line) => say(id, `${line}; echo INTEG_DONE`, /\nINTEG_DONE\r?\n/, 'the shell to run a line of the check');
+    const doIt = async (id, line) => say(id, `${line}; echo INTEG_DO""NE`, /INTEG_DONE\r?\n/, 'the shell to run a line of the check');
     const focusTab = async (index) => {
       await sessionTabsOf(page).nth(index).click();
       await takeKeyboard(page);
@@ -12376,19 +12425,36 @@ async function checkTerminalIntegration(page, host, engine) {
           .map((glyph) => glyph.state);
       });
     /** Changes the state of the nth mark in view, as the page draws it, and says what it was. */
-    const setGlyph = async (index, state) =>
+    /** Makes the nth mark in view show `state` (the state it had is the answer) and holds it there: the emulator draws a decoration anew when it renders, which would put the true state back between the fault and the assertion, so an observer of the screen puts the faulted state back until the hold is released. */
+    const setGlyph = async (index, state, { hold = true } = {}) =>
       page.evaluate(
-        ({ index: at, state: next }) => {
+        ({ index: at, state: next, hold: keep }) => {
           const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
-          const box = screen.getBoundingClientRect();
-          const glyph = [...screen.querySelectorAll('[data-state]')]
-            .filter((one) => one.getClientRects().length > 0 && one.getBoundingClientRect().top >= box.top - 1 && one.getBoundingClientRect().top < box.bottom)
-            .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[at];
+          const inView = () => {
+            const box = screen.getBoundingClientRect();
+            return [...screen.querySelectorAll('[data-state]')]
+              .filter((one) => one.getClientRects().length > 0 && one.getBoundingClientRect().top >= box.top - 1 && one.getBoundingClientRect().top < box.bottom)
+              .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+          };
+          window.__seamHeld ??= new Map();
+          if (keep) window.__seamHeld.set(at, next);
+          else window.__seamHeld.delete(at);
+          if (window.__seamObserved !== screen) {
+            window.__seamObserver?.disconnect();
+            window.__seamObserved = screen;
+            window.__seamObserver = new MutationObserver(() => {
+              const shown = inView();
+              for (const [held, wanted] of window.__seamHeld) if (shown[held] !== undefined && shown[held].dataset.state !== wanted) shown[held].dataset.state = wanted;
+            });
+            window.__seamObserver.observe(screen, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state'] });
+          }
+
+          const glyph = inView()[at];
           const was = glyph.dataset.state;
           glyph.dataset.state = next;
           return was;
         },
-        { index, state },
+        { index, state, hold },
       );
     /** What the shown terminal says to a person who cannot see the gutter (its polite live region). */
     const words = async () =>
@@ -12399,18 +12465,21 @@ async function checkTerminalIntegration(page, host, engine) {
 
     await startTerminal(page, base, page.locator('[data-shell-part="panelEmpty"]').getByRole('button', { name: 'New terminal', exact: true }));
     const shells = await callBound(base, EXEC_SERVICE, 'ListTerminalShells');
-    const chosen = ['zsh', 'bash'].filter((one) => shells.some((shell) => shell.name === one));
-    assert.deepEqual(chosen, ['zsh', 'bash'], `${engine}: scenario r10 needs the real bash and zsh of the machine, and the host lists ${JSON.stringify(shells.map((shell) => shell.name))}: install the missing one (the CI image holds both)`);
-    note('shells', `the host lists ${JSON.stringify(shells.map((shell) => shell.name))}; r10 ran in zsh and bash; fish has no pass here (NOT RUN)`);
+    const chosen = ['zsh', 'bash', 'fish'].filter((one) => shells.some((shell) => shell.name === one));
+    assert.ok(chosen.includes('zsh') && chosen.includes('bash'), `${engine}: scenario r10 needs the real bash and zsh of the machine, and the host lists ${JSON.stringify(shells.map((shell) => shell.name))}: install the missing one (the CI image holds both)`);
+    const fishRan = chosen.includes('fish');
+    note('shells', `the host lists ${JSON.stringify(shells.map((shell) => shell.name))}; r10 ran in ${chosen.join(', ')}${fishRan ? '' : '; fish is not listed on this machine: its pass and the config.fish control are NOT RUN'}`);
 
     for (const name of chosen) {
       const before = await ids();
       await chooseShell(name);
       const { id, index } = await arrive(before);
       const own = (text) => `${engine} ${name}: ${text}`;
+      const SH = SHELL_USES[name];
       // The shell ran the user's files (the premise of the hashes).
-      const ran = await say(id, 'echo "INTEG_RC|${SEAM_R10_ZSHRC-no}|${SEAM_R10_BASHRC-no}|${SEAM_R10_ZPROFILE-no}|${SEAM_R10_BASH_PROFILE-no}|"', /\nINTEG_RC\|([^|\r\n]*)\|([^|\r\n]*)\|([^|\r\n]*)\|([^|\r\n]*)\|/, 'the shell to say which of the user\'s files it ran');
-      assert.deepEqual(name === 'zsh' ? [ran[1], ran[3]] : [ran[2], ran[4]], ['yes', 'yes'], own(`the shell ran the user's own files (${ran.slice(1).join(' / ')}): the files the check hashes are read by it`));
+      const ranTry = async () => say(id, `printf 'INTEG_RC|%s|%s|\\n' "$${SH.vars[0]}" "$${SH.vars[1]}"`, /INTEG_RC\|([^|\r\n%]*)\|([^|\r\n%]*)\|/, 'the shell to say which of the user\'s files it ran');
+      const ran = await ranTry();
+      assert.deepEqual([ran[1], ran[2]], ['yes', 'yes'], own(`the shell ran the user's own files (${ran.slice(1).join(' / ')}): the files the check hashes are read by it`));
 
       // 1. Exit codes, a command with no status, and Ctrl-C at an empty prompt.
       let w = { from: 0, to: 0 };
@@ -12427,7 +12496,7 @@ async function checkTerminalIntegration(page, host, engine) {
       };
       await afterwards(async () => { w = await typeBare(id, 'true'); }, ['integration-exit-true', exitIs('true', 0, 'true ends with exit 0 in the host\'s marks')]);
       await afterwards(async () => { w = await typeBare(id, 'false'); }, ['integration-exit-false', exitIs('false', 1, 'false ends with exit 1 in the host\'s marks')]);
-      await afterwards(async () => { w = await typeBare(id, '(exit 3)'); }, ['integration-exit-three', exitIs('(exit 3)', 3, '(exit 3) ends with exit 3 in the host\'s marks')]);
+      await afterwards(async () => { w = await typeBare(id, SH.exit3); }, ['integration-exit-three', exitIs(SH.exit3, 3, `${SH.exit3} ends with exit 3 in the host's marks`)]);
       // A command whose end carries no status (what pwsh sends; here a program prints it).
       const noStatus = "printf '\\033]133;D\\007'";
       w = await typeBare(id, noStatus);
@@ -12441,6 +12510,8 @@ async function checkTerminalIntegration(page, host, engine) {
         async () => {
           const from = outputEnd(id);
           await page.keyboard.press('Control+c');
+          // fish draws nothing at all for Ctrl-C at an empty prompt (no new prompt, no mark): an empty Enter is what makes it draw the next one, which is the event to wait for.
+          if (name === 'fish') await page.keyboard.press('Enter');
           await waitUntil('the prompt after Ctrl-C', async () => marksOf(id).some((mark) => mark.kind === 'input-start' && mark.at >= from), 20_000);
           ctrlC = { from, to: outputEnd(id) };
         },
@@ -12470,7 +12541,7 @@ async function checkTerminalIntegration(page, host, engine) {
       const gutterNow = await gutter();
       const wasGlyph = {};
       const swapped = async (at, to) => { wasGlyph[at] = await setGlyph(at, to); };
-      const restored = async (at) => { await setGlyph(at, wasGlyph[at]); };
+      const restored = async (at) => { await setGlyph(at, wasGlyph[at], { hold: false }); };
       // The first mark is the one of the echo that said which files the shell ran.
       const LEAD = 1;
       await asserting('integration-gutter-success', async () => swapped(LEAD, 'failure'), async () => restored(LEAD), async () => {
@@ -12502,21 +12573,76 @@ async function checkTerminalIntegration(page, host, engine) {
       const selecting = "printf 'SEL_%s\\n' 1 2 3 4";
       await typeBare(id, selecting);
       await typeBare(id, 'seq 1 100');
+      await waitUntil('the emulator to have drawn the 100 lines of seq 1 100', async () => lineIn(await bufferOf(page, mac, 'the buffer after seq 1 100'), '100'), 30_000);
       const count = (await recordOf(id)).commands.filter((command) => command.ran).length;
       const viewBefore = await gutter();
       assert.equal(viewBefore.length, 0, own(`after 100 lines of output no command line is in view (${JSON.stringify(viewBefore)}): the jump has somewhere to go`));
+      /** The row of the view (from its top, in rows of 18 px) that holds the one command mark in view: the emulator's own placement of the marker, where the jump put the line; null when none or more than one is in view. */
+      const glyphAt = async () =>
+        page.evaluate(() => {
+          const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
+          const box = (screen.querySelector('.xterm-screen') ?? screen).getBoundingClientRect();
+          const shown = [...screen.querySelectorAll('[data-state]')]
+            .filter((glyph) => glyph.getClientRects().length > 0)
+            .map((glyph) => ({ top: (glyph.parentElement ?? glyph).getBoundingClientRect().top, state: glyph.dataset.state }))
+            .filter((one) => one.top >= box.top - 1 && one.top < box.bottom);
+          return shown.length === 1 ? { row: Math.round((shown[0].top - box.top) / 18), state: shown[0].state } : null;
+        });
+      const glyphRow = async () => (await glyphAt())?.row ?? null;
+      const setWords = async (text) =>
+        page.evaluate((said) => {
+          const screen = [...document.querySelectorAll('[data-shell-part="terminalScreen"]')].find((one) => one.getClientRects().length > 0);
+          screen.closest('[data-shell-part="terminalBody"]').querySelector('[aria-live="polite"]').textContent = said;
+        }, text);
+      let jumpWords = '';
       await afterwards(
         async () => {
           await page.keyboard.press(`${MOD}+ArrowUp`);
           await waitUntil('the jump to say where it went', async () => /^Command \d+ of/.test(await words()), 15_000);
-          await waitUntil('the emulator to draw the mark of the command the jump went to', async () => (await gutter()).length === 1, 15_000);
+          await waitUntil('the emulator to draw the mark of the command the jump went to', async () => (await glyphRow()) !== null, 15_000);
         },
         [
           'integration-jump',
           async () => {
             const said = await words();
-            const view = await gutter();
+            const view = [(await glyphAt())?.state].filter((one) => one !== undefined);
             assert.ok(new RegExp(`^Command ${String(count)} of ${String(count)}, Succeeded(, took [^:]+)?: seq 1 100$`).test(said) && view.length === 1 && view[0] === 'success', own(`a jump moves the viewport to the previous command's line: it says ${JSON.stringify(said)} and the marks in view are ${JSON.stringify(view)} (none before)`));
+          },
+          async () => {
+            jumpWords = await words();
+            await setWords('Command 1 of 1, Failed: nothing');
+          },
+          async () => {
+            await setWords(jumpWords);
+          },
+        ],
+        [
+          'integration-jump-top',
+          async () => {
+            const row = await glyphRow();
+            assert.equal(row, 0, own(`after a jump the command's line is the top row of the view: it is on row ${String(row)} of the view (counted from 0)`));
+          },
+          async () => {
+            const box = await page.locator('.xterm-screen:visible').boundingBox();
+            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await page.mouse.wheel(0, -54);
+            await waitUntil('the view to scroll up from the command', async () => {
+              const row = await glyphRow();
+              return row !== null && row > 0;
+            }, 10_000);
+          },
+          async () => {
+            // Back to the bottom, where the jump is deterministic (the previous command from the bottom is the last), and the jump again: the amount a wheel scrolls is the engine's own.
+            for (let turn = 0; turn < 12; turn += 1) {
+              const before = await glyphAt();
+              if (before === null) break;
+              await page.mouse.wheel(0, 3000);
+              await waitUntil('the view to move down', async () => (await glyphAt())?.row !== before.row, 10_000);
+            }
+
+            assert.equal(await glyphAt(), null, `${engine}: the view is at the bottom, with no command line in it, before the jump is made again`);
+            await page.keyboard.press(`${MOD}+ArrowUp`);
+            await waitUntil('the emulator to draw the mark of the command the jump went to', async () => (await glyphRow()) !== null, 15_000);
           },
         ],
       );
@@ -12556,6 +12682,10 @@ async function checkTerminalIntegration(page, host, engine) {
       await writeFile(forgedFile, [OSC('133;D;0'), OSC('133;A'), OSC('133;B'), OSC(`633;E;FORGED_WRONG;${wrong}`), OSC('133;C'), 'forged output\n', OSC(`633;P;Cwd=/forged/wrong;${wrong}`), OSC('133;D;0'), OSC('133;A'), OSC('133;B'), OSC('633;E;FORGED_NONE'), OSC('133;C'), OSC('633;P;Cwd=/forged/none'), OSC('7;file://forged/forged/osc7'), OSC('133;D;0'), `${END}\n`].join(''));
       await writeFile(trustedLineFile, [OSC('133;D;0'), OSC('133;A'), OSC('133;B'), OSC(`633;E;FORGED_RIGHT;${nonce}`), OSC('133;C'), 'trusted output\n', OSC('133;D;0'), `${END}\n`].join(''));
       await writeFile(trustedCwdFile, [OSC(`633;P;Cwd=/usr;${nonce}`), `${END}\n`].join(''));
+      // The right nonce, and no end of the shell's own command first: a program running inside a command, which knows the nonce (a reader of the output has it), says a start with a line.
+      const midFile = path.join(dir, `mid-${name}.txt`);
+      await writeFile(midFile, [OSC(`633;E;MID_RIGHT;${nonce}`), OSC('133;C'), 'mid output\n', `${END}\n`].join(''));
+      nonces.push(nonce);
       await typeBare(id, `cd ${dir}`);
       const startCwd = (await recordOf(id)).cwd;
       assert.equal(startCwd, dir, own('the shell\'s own directory mark says where it is'));
@@ -12608,10 +12738,27 @@ async function checkTerminalIntegration(page, host, engine) {
         assert.ok(forgedW.to > forgedW.from && moved.length === 0 && cwd === startCwd, own(`a forged mark, with a wrong nonce or none, changes no directory: the shell is in ${startCwd}, the host's record says ${JSON.stringify(cwd)} and the marks of the window moved it to ${JSON.stringify(moved.map((mark) => mark.cwd))}`));
       });
       assert.equal((await callBound(base, EXEC_SERVICE, 'ChannelTerminalCwd', capOf(id))).path, startCwd, own('the host\'s own fact of the directory is the shell\'s'));
+      let midW = await catWindow(midFile);
+      const realMid = midW;
+      const trustedIn = async (window) => {
+        const marks = inWindow(marksOf(id), window);
+        const record = await recordOf(id);
+        const notCat = (line) => !String(line ?? '').startsWith('cat ');
+        return {
+          starts: marks.filter((mark) => mark.kind === 'command-start' && mark.trust === 'nonce' && notCat(mark.command)),
+          inside: record.commands.filter((command) => command.command_trust === 'nonce' && notCat(command.command_line) && command.output_start >= window.from && command.output_start < window.to),
+        };
+      };
+      // The fault is the window of the file the shell's nonce signed at a prompt: the same line, trusted.
+      await asserting('integration-forged-midcommand', async () => { midW = lineW; }, async () => { midW = realMid; }, async () => {
+        const { starts, inside } = await trustedIn(midW);
+        assert.ok(midW.to > midW.from && starts.length === 0 && inside.length === 0, own(`a mark with the session's nonce printed inside a running command gives no trusted command line (633;E is believed only for a command started at a prompt): the marks of its window carry ${JSON.stringify(starts.map((mark) => mark.command))} and the record ${JSON.stringify(inside.map((command) => command.command_line))}`));
+      });
+      for (const file of [forgedFile, trustedLineFile, trustedCwdFile, midFile]) await rm(file, { force: true });
       note(`${name} forged and trusted`, `cat of a file with 133, 633;E, 633;P and OSC 7 marks (wrong nonce, none): no command line, directory stays ${startCwd}; with the shell's nonce: the line FORGED_RIGHT and the directory /usr are trusted`);
 
       // 6. The canary: the nonce in every sink but the raw output.
-      const nonceVariants = [Buffer.from(nonce), ...[0, 1, 2].map((shift) => Buffer.from(Buffer.concat([Buffer.alloc(shift), Buffer.from(nonce)]).toString('base64').slice(4, -4)))];
+      const nonceVariants = nonceVariantsOf(nonce);
       const hasNonce = (text) => nonceVariants.some((variant) => Buffer.from(text).includes(variant));
       const hostLogText = async () => {
         let text = host.output() + plantedLog.join('\n');
@@ -12630,7 +12777,7 @@ async function checkTerminalIntegration(page, host, engine) {
         const dom = await page.evaluate(() => `${document.documentElement.outerHTML}\n${document.body.innerText}`);
         assert.equal(hasNonce(dom), false, own('the session\'s nonce is in no DOM node'));
       });
-      const takeOutOf = (list, item) => { const at = list.indexOf(item); if (at >= 0) list.splice(at, 1); };
+      // (takeOutOf is at module level: the canary after the end uses it too)
       await asserting('integration-canary-log', async () => { plantedLog.push(nonce); }, async () => { takeOutOf(plantedLog, nonce); }, async () => {
         assert.equal(hasNonce(await hostLogText()), false, own('the session\'s nonce is in no host log line'));
       });
@@ -12677,7 +12824,7 @@ async function checkTerminalIntegration(page, host, engine) {
       await asserting('integration-optout-env', async () => { subject = 'on'; }, async () => { subject = 'off'; }, async () => {
         const { id: subjectId, index: subjectIndex } = subjectOf();
         await focusTab(subjectIndex);
-        const found = await say(subjectId, 'printf \'INTEG_ENV|%s|%s|%s|\\n\' "$(env | grep -c -E \'^(OMNIVIEW_|__omniview|ZDOTDIR=.*omniview-integration)\')" "$( (set; typeset -f) 2>/dev/null | grep -c \'^__omniview\')" "${__omniview_nonce+set}"', /\nINTEG_ENV\|(\d+)\|(\d+)\|([^|\r\n%]*)\|/, 'the shell to count its integration variables');
+        const found = await say(subjectId, name === 'fish' ? INTEG_ENV_FISH : INTEG_ENV_SH, /INTEG_ENV\|(\d+)\|(\d+)\|([^|\r\n%]*)\|/, 'the shell to count its integration variables');
         assert.deepEqual([found[1], found[2], found[3]], ['0', '0', ''], own(`with the integration off the shell has none of its variables: the environment has ${found[1]} of them, the shell ${found[2]} functions or parameters of the integration, and the nonce variable is ${JSON.stringify(found[3])}`));
       });
       await focusTab(off.index);
@@ -12686,17 +12833,40 @@ async function checkTerminalIntegration(page, host, engine) {
         const raw = outputSince(subjectId, 0);
         const typed = marksOf(subjectId).length;
         const commands = (await recordOf(subjectId)).commands.length;
-        assert.ok(typed === 0 && !/\u001b\](133|633|7);/.test(raw) && commands === 0, own(`with the integration off no mark arrives: ${String(typed)} typed marks, ${/\u001b\](133|633|7);/.test(raw) ? 'marks' : 'none'} in the output, ${String(commands)} commands in the record`));
+        // fish 4 prints OSC 133 and OSC 7 itself, whatever the host does; what the integration adds is 633, so that is what fish must not print.
+        const marksIn = name === 'fish' ? /\u001b\]633;/ : /\u001b\](133|633|7);/;
+        assert.ok(typed === 0 && !marksIn.test(raw) && commands === 0, own(`with the integration off no mark arrives: ${String(typed)} typed marks, ${marksIn.test(raw) ? 'marks' : 'none'} in the output, ${String(commands)} commands in the record`));
       });
       await callBound(base, SETTINGS_SERVICE, 'Commit', { kind: 'host' }, { 'terminal.shellIntegration': true });
       integrationOff = false;
       note(`${name} opt-out`, 'with terminal.shellIntegration off a new terminal says off, has none of the integration\'s variables or functions, and received no mark');
     }
 
-    // 8. The user's files, after the sessions are over.
+    // 8. After the sessions: the canary again, in what the end of a shell writes to (the host's log, the state root, the temporary directory), and the user's files.
     await endTerminals(base);
+    const anyNonce = (blob) => nonces.some((one) => nonceVariantsOf(one).some((variant) => Buffer.from(blob).includes(variant)));
+    const lastNonce = nonces.at(-1);
+    const plantedState = path.join(stateRoot(work), 'terminal-planted.state');
+    const plantedTmp = path.join(os.tmpdir(), `seam-r10-planted-${String(process.pid)}.txt`);
+    await asserting('integration-canary-end-log', async () => { plantedEnd.push(lastNonce); }, async () => { takeOutOf(plantedEnd, lastNonce); }, async () => {
+      assert.equal(anyNonce(host.output() + plantedEnd.join('\n')), false, `${engine}: after the terminals ended no host log line holds the session's nonce`);
+    });
+    await asserting('integration-canary-end-state', async () => writeFile(plantedState, `state ${lastNonce}\n`), async () => rm(plantedState, { force: true }), async () => {
+      const files = await filesUnder(stateRoot(work), { depth: 8, skip: (full) => /(^|\/)node_modules(\/|$)/.test(full) });
+      assert.equal(anyNonce(await blobOf(files)), false, `${engine}: after the terminals ended no file of the state root holds the session's nonce (${String(files.length)} files read, of any type)`);
+    });
+    await asserting('integration-canary-end-tmp', async () => writeFile(plantedTmp, `tmp ${lastNonce}\n`), async () => rm(plantedTmp, { force: true }), async () => {
+      const files = await filesUnder(os.tmpdir(), { depth: 3, since: sessionStart, skip: (full) => full.startsWith(stateRoot(work)) });
+      assert.equal(anyNonce(await blobOf(files)), false, `${engine}: after the terminals ended no file of the temporary directory holds the session's nonce (${String(files.length)} files written since the check began, read, of any type)`);
+    });
+    note('canary after the end', `after the terminals ended the nonces of ${String(nonces.length)} sessions are in no host log line, no file of the state root and no file written to the temporary directory since the check began`);
     for (const file of INTEGRATION_FILES) {
       const target = path.join(home, file);
+      if (file.endsWith('config.fish') && !fishRan) {
+        console.log(`NEGATIVE CONTROL "${INTEGRATION_FILE_CONTROLS[file]}": NOT RUN in ${engine}: fish is not listed on this machine, so no shell read its config.fish`);
+        continue;
+      }
+
       await asserting(
         INTEGRATION_FILE_CONTROLS[file],
         async () => appendFile(target, '# edited by a fault of the check\n'),

@@ -27,8 +27,8 @@ export const units = [
   { id: 'terminal-find', phases: ['terminal-find'], seconds: 35 },
   // Scenario r9, where a terminal opens and what it is called (#695 step 6): the shells of the `+` menu, a start in /tmp with an environment, New terminal here, a program's title and a rename, and Restart, with the machine's real bash and zsh. 30 s is an ESTIMATE from the laptop (the phase took 21 s in Chromium with bash and zsh, load average 3; WebKit not yet measured), to be set from the first nightly figure.
   { id: 'terminal-where', phases: ['terminal-where'], seconds: 30 },
-  // Scenario r10, the shell integration (#694 step 7): marks, gutter, jump and Select output, forged marks, the user's files, the opt-out, a reload and the canary, in the machine's real bash and zsh. 40 s is an ESTIMATE from the laptop (the phase took 23 s in Chromium with bash and zsh, load average 5; WebKit not yet measured), to be set from the first nightly figure.
-  { id: 'terminal-integration', phases: ['terminal-integration'], seconds: 40 },
+  // Scenario r10, the shell integration (#694 step 7): marks, gutter, jump and Select output, forged marks, the user's files, the opt-out, a reload and the canary, in the machine's real bash and zsh. 80 s is an ESTIMATE from the laptop (the phase took 51 s in Chromium and 66 s in WebKit with bash, zsh and fish, load average 12 to 14; on a runner without fish it is shorter), to be set from the first nightly figure.
+  { id: 'terminal-integration', phases: ['terminal-integration'], seconds: 80 },
   { id: 'session', phases: ['session'], seconds: 15 },
   // The scenarios that start a plugin's process (the Go fixture is built once for the run).
   { id: 'plugin-process', phases: ['process', 'failed-load', 'plugins-page'], seconds: 135 },
@@ -70,6 +70,6 @@ export const units = [
   { id: 'controls-terminal-profile', runs: ['terminal-profile'], seconds: 65 },
   // The controls of r9: one run of the whole table (17 controls). 70 s is an ESTIMATE from the laptop (the run took 51 s of phase in Chromium, and the host's start of about 15 s is added), to be set from the first nightly figure.
   { id: 'controls-terminal-where', runs: ['terminal-where'], seconds: 70 },
-  // The controls of r10: one run of the whole table (26 controls, 22 of them in each shell). 70 s is an ESTIMATE from the laptop (the run took 27 s of phase in Chromium, and the host's start of about 15 s is added, with room for WebKit), to be set from the first nightly figure.
-  { id: 'controls-terminal-integration', runs: ['terminal-integration'], seconds: 70 },
+  // The controls of r10: one run of the whole table (32 controls, 24 of them in each of three shells, the three end-of-session canary ones and the five file ones once). 150 s is an ESTIMATE from the laptop (the run took about 110 s in Chromium with fish, load 12 to 14, and the host's start of about 15 s is added), to be set from the first nightly figure.
+  { id: 'controls-terminal-integration', runs: ['terminal-integration'], seconds: 150 },
 ];
