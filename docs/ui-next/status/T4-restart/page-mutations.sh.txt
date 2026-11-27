@@ -294,11 +294,11 @@ run gutter-seal-keeps-running "$P/gutter/commandGutter.ts" \
 
 run gutter-seal-keeps-the-ids "$P/gutter/commandGutter.ts" \
   's/^      epoch \+= 1;$/      epoch += 0;/' \
-  'lets the new terminal count from c1 again|runs again a command of the terminal before the restart WITHOUT Enter|types its line without Enter, and says it came from the terminal before|types nothing of an earlier terminal'"'"'s multi-line command|refuses the line of an earlier terminal'"'"'s proven command when it has a line break'
+  'lets the new terminal count from c1 again|runs again a command of the terminal before the restart WITHOUT Enter|types its line without Enter, and says it came from the terminal before|types nothing of an earlier terminal'"'"'s multi-line command|refuses the line of an earlier terminal'"'"'s proven command when it has a line break|types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return'
 
 run screen-restart-does-not-seal "$P/screen.ts" \
   's/^      gutter\?\.seal\(\);$/      void gutter;/' \
-  'keeps the commands of the ended terminal, and a command it was running|keeps a mark in an old write that the emulator has not parsed at the restart|runs again a command of the terminal before the restart WITHOUT Enter|types nothing of an earlier terminal'"'"'s multi-line command'
+  'keeps the commands of the ended terminal, and a command it was running|keeps a mark in an old write that the emulator has not parsed at the restart|runs again a command of the terminal before the restart WITHOUT Enter|types nothing of an earlier terminal'"'"'s multi-line command|types nothing into the new shell: the emulator'"'"'s paste turns the line feed into a carriage return'
 
 run gutter-seal-keeps-the-prompt "$P/gutter/commandGutter.ts" \
   '/    seal: \(\) => \{/,/^    },/ { /release\(pending\./d; /pending = \{\};/d }' \
