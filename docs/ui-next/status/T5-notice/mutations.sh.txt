@@ -37,12 +37,7 @@ PY
   if [ "$c1" != RED ] || [ "$c2" != GREEN ]; then BAD=1; fi
 }
 
-run no-tracking,tracked,follows,genuine-believed,events-tracked backend/pkg/terminal/manager.go 'if path, ok := s.trackedDirectory(); ok {' 'if path, ok := s.trackedDirectory(); ok && false {'
-run forged-ignored backend/pkg/terminal/channel_marks.go 'trust != marks.TrustNonce {
-			dir = ""' 'trust != marks.TrustNonce && false {
-			dir = ""'
-run fallback-missing,fallback-a-file backend/pkg/terminal/channel_marks.go 'if info, err := os.Stat(dir); err != nil || !info.IsDir() {' 'if info, err := os.Stat(dir); false && (err != nil || !info.IsDir()) {'
-run fallback-relative backend/pkg/terminal/channel_marks.go 'if dir == "" || !filepath.IsAbs(dir) {' 'if dir == "" || (!filepath.IsAbs(dir) && false) {'
+run no-tracking,tracked,follows,logical-spelling,events-tracked backend/pkg/terminal/manager.go 'tracked, ok := s.trackedDirectory()' 'tracked, ok := s.trackedDirectory(); ok = false'
 run stale-proof,events-stale-proof backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {' 'os.SameFile(trackedInfo, pulledInfo) || true {'
 run logical-spelling backend/pkg/terminal/manager.go 'os.SameFile(trackedInfo, pulledInfo) {
 		return tracked, ""' 'os.SameFile(trackedInfo, pulledInfo) {
